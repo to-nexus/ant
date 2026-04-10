@@ -12,7 +12,7 @@
  * Usage sites:
  *   - Spec doc (error task) — was condenseSpecDoc()
  *   - ui-assets.json injection
- *   - designDoc injection (prompt block only, not ModeController)
+ *   - design document injection (via documents[])
  */
 
 import * as path from 'path';

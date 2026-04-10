@@ -56,14 +56,8 @@ export class TemplateComposer {
       ? await this.buildProfileSection(assembled.codebaseProfile)
       : '';
     
-    // ✅ 3. Determine design document to use
-    // Priority: designDoc > filtered designDocs (environment-specific)
-    let designDoc = assembled.designDoc || '';
-    
-    // Design doc is already filtered by detectEnvironment node
-    
     // 4. Render base template
-    // User-controlled fields (prdSpec, directive, designDoc) are wrapped
+    // User-controlled fields (directive, document content) are wrapped
     // in boundary tags by sanitizeInjectionVars to mitigate prompt injection.
     const base = await this.renderTemplate(
       modeConfig.templates.base,
@@ -76,17 +70,7 @@ export class TemplateComposer {
         // ✅ Used in multiple conditionals ({{#if currentTask}}, {{currentTask.type}}, etc.)
         currentTask: assembled.currentTask || null,
         
-        // ✅ Used in {{#if designDoc}} and {{designDoc}} (multiple places)
-        designDoc,
-        
-        // ✅ Requirements inputs (design job)
-        // - prdSpec is the source of truth when present
-        // - directive is non-authoritative user instruction/context
-        prdSpec: assembled.prdSpec || '',
         directive: assembled.directive || '',
-        
-        // Template alias: some templates still use {{spec}} which maps to directive
-        spec: assembled.directive || '',
         
         // ✅ Used in {{#if (eq modificationMode "MODIFICATION MODE: ...")}}
         modificationMode: assembled.projectCodeContext?.files && assembled.projectCodeContext.files.length > 0
@@ -111,7 +95,7 @@ export class TemplateComposer {
         // ✅ Used in {{#if filteredCatalog}} — replaces full catalog partial with assigned-only guide
         filteredCatalog: assembled.filteredCatalog || undefined,
         
-        hasUiDoc: assembled.hasUiDoc || false,
+        hasUiInDocuments: (assembled.documents || []).some(d => d.path?.includes('ui-')),
         isSpecDriven: assembled.isSpecDriven || false,
         figmaAvailable: assembled.figmaAvailable || false,
         figmaStartNodeId: assembled.figmaStartNodeId || undefined
@@ -279,7 +263,7 @@ export class TemplateComposer {
    * Get variables for a specific injection template
    * 
    * ✅ CRITICAL: Variable names MUST match template expectations exactly!
-   * Each injection template declares its own variable names (e.g., {{directive}}, {{designDoc}})
+   * Each injection template declares its own variable names (e.g., {{directive}}, {{resolvedAction}})
    * This mapping ensures the correct variables are passed to each template.
    */
   private getInjectionVars(
@@ -300,24 +284,9 @@ export class TemplateComposer {
         directive: assembled.directive 
       },
       
-      // design-doc.md expects: {{designDoc}}
-      'design-doc': { 
-        designDoc: assembled.designDoc || '' 
-      },
-      
       // memory.md expects: {{content}} (generic placeholder for any content)
       'memory': { 
         content: this.formatLessons(assembled.lessons) || 'No relevant lessons found.' 
-      },
-      
-      // prd-spec.md expects: {{prdSpec}}
-      'prd-spec': {
-        prdSpec: assembled.prdSpec || ''
-      },
-
-      // ui-doc.md expects: {{uiDoc}}
-      'ui-doc': {
-        uiDoc: assembled.uiDoc || ''
       },
       
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -393,6 +362,8 @@ export class TemplateComposer {
       'preview-setup': {},
       'preview-env-contract': {},
       'hints': {},
+
+      'ui-design-policy': {},
 
       // RAC injection templates
       'action-context': {

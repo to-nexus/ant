@@ -254,15 +254,13 @@ describe('Template Smoke Tests', () => {
     // Templates wrapped entirely in {{#if}} blocks produce empty output when
     // the condition variable is falsy. This is expected behavior, not a failure.
     const ALLOWED_EMPTY = new Set([
-      'common/injections/ui-doc',
-      'common/injections/design-doc',
-      'common/injections/prd-spec',
       'common/injections/memory',
       'common/injections/directive',
       'common/injections/action-context',
       'common/injections/basis-guidance',
       'common/injections/refactor-guidance',
       'code/phases/decompose/mode-guide',
+      'code/phases/decompose/design-doc-guide',
     ]);
 
     const failures: Array<{ name: string; error: string }> = [];
@@ -494,6 +492,74 @@ describe('Template Smoke Tests', () => {
     const engravePartials = collectResolvedPartials(['visual/nodes/engrave/base']);
     expect(engravePartials).toContain('agents/creator/base');
     expect(engravePartials).toContain('visual/nodes/engrave/rules');
+  });
+
+  it('action-context.md renders documents with role labels', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('common/injections/action-context', {
+      resolvedAction: {
+        hasExplicitFields: true,
+        intentDescription: 'Generate code from design',
+        documents: [
+          { path: 'inputs/sources/prd.md', content: '# PRD\nOverview', role: 'ref' },
+          { path: 'outputs/design/system/fe-system-main.md', content: '# FE Design', role: 'context' },
+        ],
+      },
+    });
+
+    expect(output).toContain('PRIMARY REFERENCE: inputs/sources/prd.md');
+    expect(output).toContain('# PRD');
+    expect(output).toContain('SECONDARY CONTEXT: outputs/design/system/fe-system-main.md');
+    expect(output).toContain('# FE Design');
+    expect(output).not.toContain('explicitly selected as primary references');
+  });
+
+  it('action-context.md falls back to path list when no documents', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('common/injections/action-context', {
+      resolvedAction: {
+        hasExplicitFields: true,
+        intentDescription: 'Generate code',
+        refs: ['docs/spec.md'],
+        context: ['docs/notes.md'],
+      },
+    });
+
+    expect(output).toContain('explicitly selected as primary references');
+    expect(output).toContain('docs/spec.md');
+    expect(output).toContain('Additional context files');
+    expect(output).toContain('docs/notes.md');
+    expect(output).not.toContain('PRIMARY REFERENCE');
+  });
+
+  it('action-context.md renders target list', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('common/injections/action-context', {
+      resolvedAction: {
+        hasExplicitFields: true,
+        intentDescription: 'Generate frontend code',
+        target: ['src/App.tsx', 'src/main.tsx'],
+      },
+    });
+
+    expect(output).toContain('Generate output ONLY for these specific files');
+    expect(output).toContain('src/App.tsx');
+    expect(output).toContain('src/main.tsx');
+  });
+
+  it('action-context.md renders nothing when hasExplicitFields is false', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render('common/injections/action-context', {
+      resolvedAction: {
+        hasExplicitFields: false,
+      },
+    });
+
+    expect(output.trim()).toBe('');
   });
 
   it('all § section references in design templates match canonical catalog names', async () => {

@@ -61,6 +61,13 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     }
   }
 
+  if (slots.target.codebase) {
+    const codebaseHasFiles = hasCodebaseFilesFromTree(fileTree);
+    if (!codebaseHasFiles) {
+      return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'codebase-empty', buildDisabledReason: 'codebase-empty' };
+    }
+  }
+
   if (slots.target.mirrorRefs) {
     const hasTarget = actionMetadata.target && actionMetadata.target.length > 0;
     if (!hasTarget) {
@@ -122,4 +129,10 @@ function dirHasFiles(tree: FileNode[], dirPath: string): boolean {
     nodes = node.children;
   }
   return nodes.some(n => n.type === 'file');
+}
+
+const CANONICAL_ROOT_NAMES = new Set(['inputs', 'outputs', 'sessions', '.gitignore', '.git']);
+
+function hasCodebaseFilesFromTree(fileTree: FileNode[]): boolean {
+  return fileTree.some(n => !CANONICAL_ROOT_NAMES.has(n.name));
 }

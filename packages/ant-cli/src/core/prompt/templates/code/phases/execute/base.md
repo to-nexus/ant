@@ -16,32 +16,6 @@ When writing files, use `codebase/` prefix for all code files.
 
 **Wrong paths (do NOT use):** `app/page.tsx` (missing codebase/ prefix), `features/<feature>/codebase/...` (codebase is at feature root, NOT inside features/).
 
-{{#if designDoc}}
-{{#unless isSpecDriven}}
-════════════════════════════════════════════════════════════════════════════════
-## 🚨 CRITICAL: API Contract Compliance is MANDATORY
-
-**API Contract in Design Specification below is IMMUTABLE.**
-- Endpoints, field names, types, validation rules defined in API contracts cannot be changed
-- Your conventions or "best practices" do NOT override API contracts
-- Follow API contracts EXACTLY from initial implementation
-
-**Note**: Directory names in design documents (`app/`, `components/`, `handlers/`) describe architectural layer boundaries, not filesystem paths. The language/framework profile determines the actual source root — e.g., `app/` in the design doc maps to `src/app/` when the profile convention is `src/`.
-
-### API Response Data Ownership
-
-**Principle**: The API response is the single source of truth for renderable data. If the API provides a complete list, the UI renders that list as-is — it does NOT inject additional items that may overlap with what the API already provides.
-
-**Observation target**: Does the API contract specify that the response already includes aggregate or filter-all entries?
-
-**Constraint**: If the API response provides a complete collection (including aggregate/summary entries), do NOT create independent duplicates in the UI.
-
-⚠️ **Blind spot**: When the API contract defines an aggregate entry and the UI independently creates the same entry, the result is duplicate list keys and duplicated UI elements. This is easily missed when UI and adapter tasks run in parallel.
-
-════════════════════════════════════════════════════════════════════════════════
-{{/unless}}
-{{/if}}
-
 ## 🎯 CORE PRINCIPLES (ALWAYS APPLY)
 
 ### 1. LAYER-AWARE FIX PRINCIPLE
@@ -135,45 +109,7 @@ Output `<done>true</done>` when complete.
 ════════════════════════════════════════════════════════════════════════════════
 {{else}}
 
-{{#if designDoc}}
-{{#if (eq modificationMode "MODIFICATION MODE: Modify existing code")}}
-## 📋 {{#if isSpecDriven}}FEATURE SPECIFICATION{{else}}DESIGN SPECIFICATION{{/if}}
-
-**🚨 When modifying existing code, design documents are for REFERENCE ONLY!**
-
-- ✅ Modify EXISTING code (see "EXISTING FILES" section)
-- ✅ Keep same architecture/patterns
-- ✅ Use {{#if isSpecDriven}}feature specification{{else}}API Contract{{/if}} for correct field names and types
-- ❌ DO NOT regenerate from scratch
-
-────────────────────────────────────────────────────────────────────────────────
-
-{{designDoc}}
-
-────────────────────────────────────────────────────────────────────────────────
-
-**Remember: Code EXISTS. Your job is to MODIFY it, not rewrite it.**
-
-════════════════════════════════════════════════════════════════════════════════
-{{else}}
-## 📋 {{#if isSpecDriven}}FEATURE SPECIFICATION{{else}}DESIGN SPECIFICATION{{/if}}
-
-{{#if isSpecDriven}}
-**Principle**: This feature specification is SELF-CONTAINED for UI implementation.
-- UI layout, design tokens, component states, and asset references are all documented within this spec
-- `inputs/assets/` contains pre-downloaded assets referenced in the spec
-- Do NOT look for separate `ui-assets.json` or `ui-spec.json` — the spec document IS the single source of truth
-{{/if}}
-
-{{designDoc}}
-
-{{#if hasUiDoc}}
-{{> code/base/injections/ui-design-guide}}
-{{/if}}
-
-════════════════════════════════════════════════════════════════════════════════
-{{/if}}
-{{/if}}
+{{!-- Documents are rendered via action-context injection —— no base template designDoc block needed --}}
 
 {{#if currentTask}}
 {{#if (eq currentTask.type "setup")}}
@@ -301,7 +237,7 @@ MODIFY: app/page.tsx - Add import and render new component
 - Build/dev verification is NOT your responsibility in feature tasks
 - Output `<done>true</done>` immediately
 
-{{#if hasUiDoc}}
+{{#if hasUiInDocuments}}
 ### Visual Design Reference (on-demand)
 
 UI design documents are available at `outputs/design/ui/`. Use `read_file` to inspect sections relevant to your current task:
@@ -368,7 +304,7 @@ Sub-role is determined by priority:
 
 **File organization**: Component files extracted from skeleton sections are within scope — same DOM elements, different file. The plan's `create` list specifies which extractions to perform.
 
-{{#if hasUiDoc}}
+{{#if hasUiInDocuments}}
 **Visual source**: Design tokens (ui-tokens.json) and layout properties (ui-spec.json). Token names, `visibleWhen` conditions, and `interactionStates` elements are all in scope.
 {{else}}
 {{#if figmaAvailable}}

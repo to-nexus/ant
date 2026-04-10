@@ -13,6 +13,7 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import type { ResolvedDocument } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { resolveDesignDocForTask } from "../documentResolver";
@@ -108,19 +109,29 @@ export async function buildPlanPrompt(
   }
 
   const designDoc = resolveDesignDoc(state, task);
+  const isSpecDriven = !!state.selectedSpec;
+
+  // Build documents[] from designDoc and uiDoc
+  const planDocs: ResolvedDocument[] = [];
+  if (designDoc) {
+    const docLabel = isSpecDriven ? 'Feature Specification' : 'Design Specification';
+    planDocs.push({ path: 'system-design', content: designDoc, role: 'ref', label: docLabel });
+  }
+  if (uiDoc) {
+    planDocs.push({ path: 'ui-spec', content: uiDoc, role: 'context', label: 'UI Specification' });
+  }
 
   const prompt = await promptEngine.buildTaskPlanPrompt(
     task,
     state.directive || '',
-    designDoc,
+    planDocs,
     projectCodeContext,
     violationsText,
-    uiDoc,
     state.profile,
     remainingTasks,
     { hasTools: options?.hasTools ?? false },
     state.designDocUnknownPackages,
-    !!state.selectedSpec,  // isSpecDriven
+    isSpecDriven,
     state.resolvedAction,
   );
 
@@ -151,19 +162,29 @@ export async function buildPlanPromptBlocks(
 
   const blocks: TextContentBlock[] = [];
 
+  // Cache split: use total document content size (covers designDoc + uiDoc combined)
   // Anthropic requires ~1024 tokens minimum for caching; 3000 chars is a safe threshold
-  if (designDoc && designDoc.length > 3000) {
+  const docParts: string[] = [];
+  if (designDoc) docParts.push(designDoc);
+  if (uiDoc) docParts.push(uiDoc);
+  const totalDocSize = docParts.reduce((sum, d) => sum + d.length, 0);
+
+  if (totalDocSize > 3000) {
+    const combinedDocs = docParts.join('\n\n---\n\n');
     blocks.push({
       type: 'text',
-      text: designDoc,
+      text: combinedDocs,
       cache_control: { type: 'ephemeral' },
     });
-    const promptWithoutDesign = fullPrompt.replace(designDoc, '[See design document in previous block]');
+    let promptWithoutDocs = fullPrompt;
+    for (const doc of docParts) {
+      promptWithoutDocs = promptWithoutDocs.replace(doc, '[See document in previous block]');
+    }
     blocks.push({
       type: 'text',
-      text: promptWithoutDesign,
+      text: promptWithoutDocs,
     });
-    console.log(`🔥 [Plan] Split prompt into cached designDoc (${designDoc.length} chars) + prompt (${promptWithoutDesign.length} chars)`);
+    console.log(`🔥 [Plan] Split prompt into cached documents (${totalDocSize} chars) + prompt (${promptWithoutDocs.length} chars)`);
   } else {
     blocks.push({
       type: 'text',

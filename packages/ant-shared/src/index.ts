@@ -22,5 +22,6 @@ export * from './bridge';
 export * from './canonical';
 export * from './actions';
 export * from './action-config-matrix';
+export * from './file-descriptions';
 export * from './rac';
 export * from './deploy';

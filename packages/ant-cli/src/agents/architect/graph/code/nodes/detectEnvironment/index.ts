@@ -160,9 +160,12 @@ export async function detectEnvironment(
   }
   
   const combinedPrd = buildAllSourceDocs(state.sourceDocuments) || state.prd;
+  const detectDocs = combinedPrd
+    ? [{ path: 'source-docs', content: combinedPrd, role: 'context' as const, label: 'Source Documents' }]
+    : [];
   const prompt = await promptEngine.buildDetectEnvironmentPrompt(
     state.directive || '',
-    combinedPrd,
+    detectDocs,
     artifactAvailability
   );
   

@@ -7,7 +7,7 @@ import { TemplateComposer, ComposedPrompt } from "./TemplateComposer";
 import { PolicyInjector } from "./PolicyInjector";
 import { PromptFormatter, FormattedPrompt } from "./PromptFormatter";
 import { ProjectCodeContext, ReferenceCodeContext } from "../types/CodeContext";
-import type { ResolvedActionContext } from "@ant/shared";
+import type { ResolvedActionContext, ResolvedDocument } from "@ant/shared";
 /**
  * Dependencies for PromptEngine
  */
@@ -70,7 +70,6 @@ export class PromptEngine {
     context: ProjectContext,
     artifacts: {
       directive?: string;
-      designDoc?: string;
       previousDesign?: string;
       projectCodeContext?: ProjectCodeContext;
       currentTask?: {
@@ -159,10 +158,7 @@ export class PromptEngine {
     context: ProjectContext,
     artifacts: {
       directive?: string;
-      designDoc?: string;
-      prdSpec?: string;         // ✅ Added for design graph
-      currentCode?: string;     // ✅ Added for design graph
-      uiDoc?: string;           // ✅ Optional UI spec (Figma-derived)
+      currentCode?: string;
       uiAssets?: any;           // ✅ Optional UI assets index (text-only manifest)
       lastSectionNumber?: number;
       sectionPattern?: string;  // ✅ 'top-level' or 'nested' structure pattern
@@ -205,11 +201,11 @@ export class PromptEngine {
         description: string;
       };
       designDomain?: 'game' | 'service';
-      hasUiDoc?: boolean;  // ✅ Derived from existingDesignDocs (ui-* files present)
-      isSpecDriven?: boolean;  // ✅ true when designDoc comes from spec document (not system design)
+      isSpecDriven?: boolean;
       figmaAvailable?: boolean;
       figmaStartNodeId?: string;
       resolvedAction?: ResolvedActionContext;
+      documents?: ResolvedDocument[];
     },
     mode?: JobMode,
     taskType?: string
@@ -312,12 +308,13 @@ export class PromptEngine {
    */
   async buildDetectEnvironmentPrompt(
     directive: string,
-    prdSpec?: string,
+    documents?: ResolvedDocument[],
     artifactAvailability?: string
   ): Promise<string> {
     return await this.deps.promptPort.render('code/phases/detect/base', {
       directive,
-      prdSpec: prdSpec || '',
+      documents: documents || [],
+      hasDocuments: (documents?.length ?? 0) > 0,
       artifactAvailability: artifactAvailability || '',
     });
   }
@@ -331,13 +328,12 @@ export class PromptEngine {
    */
   async buildDesignDomainPrompt(args: {
     directive: string;
-    prdSpec?: string;
-    // UI document detection context
+    documents?: ResolvedDocument[];
+    hasDocuments?: boolean;
     hasReferences?: boolean;
     hasAssets?: boolean;
     referencesList?: string;
     assetsList?: string;
-    // ✅ NEW: Document completion status (CRITICAL for decision)
     hasUiDocs?: boolean;
     hasUiTokens?: boolean;
     hasUiAssets?: boolean;
@@ -351,7 +347,8 @@ export class PromptEngine {
   }): Promise<string> {
     return await this.deps.promptPort.render('design/phases/detect/base', {
       directive: args.directive,
-      prdSpec: args.prdSpec || '',
+      documents: args.documents || [],
+      hasDocuments: args.hasDocuments || false,
       hasReferences: args.hasReferences || false,
       hasAssets: args.hasAssets || false,
       referencesList: args.referencesList || '',
@@ -375,23 +372,22 @@ export class PromptEngine {
    */
   async buildDecomposePrompt(context: {
     directive: string;
-    designDoc: string;
-    hasDesignDoc: boolean;
-    specDoc?: string;              // Full content of LLM-selected spec document
-    specApiContract?: string;      // API contract content (reference for spec-driven mode)
+    documents?: ResolvedDocument[];
+    hasDocuments?: boolean;
+    specDoc?: string;
+    specApiContract?: string;
     mode: string;
     profile: any;
-    designDocsMeta?: string;       // ✅ Design document availability metadata (for profile detection)
-    specDocsMeta?: string;         // ✅ Spec document list (for LLM selection of selectedSpec)
-    codebaseFilePaths?: string[];  // File paths from keyword search
-    hasProjectCode?: boolean;      // ✅ CRITICAL: Actual project code existence (git-based)
-    hasErrorInDirective?: boolean; // ✅ Error detected in directive
-    uiSectionsSummary?: string;    // ✅ UI sections summary with token estimates (for split injection)
-    runtimeAssetsIndex?: {         // ✅ Optional: runtime asset files list (text-only)
+    designDocsMeta?: string;
+    specDocsMeta?: string;
+    codebaseFilePaths?: string[];
+    hasProjectCode?: boolean;
+    hasErrorInDirective?: boolean;
+    uiSectionsSummary?: string;
+    runtimeAssetsIndex?: {
       count: number;
       files: string[];
     };
-    // Inter-Job Context Bridge
     jobConversation?: import('../../types/session').ConversationEntry[];
     hasJobHistory?: boolean;
     needsBoundaryClassification?: boolean;
@@ -431,6 +427,8 @@ export class PromptEngine {
       hasErrorInDirective: context.hasErrorInDirective || false,
       hasUiDocs: Boolean(context.uiSectionsSummary),
       hasSpecDocs: Boolean(context.specDocsMeta),
+      documents: context.documents || [],
+      hasDocuments: context.hasDocuments || false,
       uiHint,
       assetsHint,
       jobConversation: context.jobConversation,
@@ -516,32 +514,25 @@ export class PromptEngine {
       description: string;
       type: string;
     },
-    directive: string,  // ✅ Original directive for ground truth
-    designDoc: string | undefined,
+    directive: string,
+    documents: ResolvedDocument[],
     projectCodeContext: any,
-    violationsText?: string,  // ✅ Formatted violations for retry context
-    uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
-    profile?: { language: string; [key: string]: any },  // ✅ Codebase profile for language-specific injection
-    remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>,  // ✅ Remaining tasks for task boundary awareness
+    violationsText?: string,
+    profile?: { language: string; [key: string]: any },
+    remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>,
     options?: { hasTools?: boolean },
     designDocUnknownPackages?: string[],
     isSpecDriven?: boolean,
     resolvedAction?: ResolvedActionContext,
   ): Promise<string> {
-    // ✅ Format projectCodeContext as FILE PATHS ONLY (not full content)
-    // Plan node is a strategic planner — CodeGen reads actual files via tools.
-    // Injecting full file content here caused 200K+ token prompts (see commit a2011ff regression).
-    // Original design (commit cdb67fd): plan receives paths, CodeGen reads with read_file tool.
     let formattedCodeContext = '';
     if (projectCodeContext?.files && Array.isArray(projectCodeContext.files) && projectCodeContext.files.length > 0) {
       const pathList = projectCodeContext.files.map((f: any) => `- \`${f.path}\``).join('\n');
       formattedCodeContext = `**Retrieved Files** (${projectCodeContext.files.length} files):\n\n${pathList}`;
     }
     
-    // ✅ Extract directory tree if available
     const directoryTree = projectCodeContext?.directoryTree || '';
     
-    // ✅ Load language-specific setup constraints for setup tasks
     let setupConstraints = '';
     if (task.type === 'setup' && profile?.language) {
       const language = this.mapLanguageToTemplatePath(profile.language);
@@ -550,34 +541,30 @@ export class PromptEngine {
         setupConstraints = await this.deps.promptPort.render(templatePath, {});
         console.log(`📋 [PromptEngine] Injected setup constraints for language: ${language}`);
       } catch {
-        // Template not found for this language — skip injection
         console.log(`📋 [PromptEngine] No setup constraints template for language: ${language}`);
       }
     }
     
-    // ✅ Uses base.md for plan generation
     return await this.deps.promptPort.render('code/phases/plan/base', {
       taskName: task.name,
       taskDescription: task.description,
-      directive: directive,  // ✅ Pass original directive
+      directive: directive,
       taskType: task.type,
-      designDoc: designDoc,
-      uiDoc: uiDoc,  // ✅ UI spec for UI-related tasks
-      hasUiDoc: !!uiDoc,  // ✅ Flag for template conditional
-      projectCodeContext: formattedCodeContext,  // ✅ Formatted string (not .code property)
-      directoryTree: directoryTree,  // ✅ Directory tree for path decisions
-      hasDesignDoc: !!designDoc,
+      documents: documents,
+      hasDocuments: documents.length > 0,
+      isSpecDriven: isSpecDriven || false,
+      projectCodeContext: formattedCodeContext,
+      directoryTree: directoryTree,
       hasProjectCodeContext: !!formattedCodeContext,
-      violationsText: violationsText,  // ✅ Formatted violations for retry
-      isRetry: !!violationsText,  // ✅ Flag for template conditional
-      setupConstraints: setupConstraints,  // ✅ Language-specific setup constraints
-      hasSetupConstraints: !!setupConstraints,  // ✅ Flag for template conditional
-      remainingTasks: remainingTasks,  // ✅ Remaining tasks for task boundary awareness
-      hasRemainingTasks: remainingTasks && remainingTasks.length > 0,  // ✅ Flag for template conditional
+      violationsText: violationsText,
+      isRetry: !!violationsText,
+      setupConstraints: setupConstraints,
+      hasSetupConstraints: !!setupConstraints,
+      remainingTasks: remainingTasks,
+      hasRemainingTasks: remainingTasks && remainingTasks.length > 0,
       hasTools: options?.hasTools ?? false,
       designDocUnknownPackages: designDocUnknownPackages,
       hasDesignDocUnknownPackages: designDocUnknownPackages && designDocUnknownPackages.length > 0,
-      isSpecDriven: isSpecDriven || false,
       resolvedAction: resolvedAction,
     });
   }

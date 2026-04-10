@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X, Check, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Package, Folder, FolderOpen, ArrowUpRight, ArrowDownLeft, Upload, X, Check, AlertCircle, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, renameFileOrDirectory, getDownloadUrl, fetchTransferRequests, FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
@@ -122,12 +122,16 @@ interface DirectoryViewProps {
   isNarrow?: boolean;
   nodeHints?: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }>;
   fileIndicators?: Record<string, React.ReactNode>;
+  sectionPrefix?: string;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints, fileIndicators }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints, fileIndicators, sectionPrefix }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
+  const [sectionCollapsed, setSectionCollapsed] = useState(false);
   const highlightedDirs = useStore(s => s.highlightedArtifactDirs);
+  const spotlightTarget = useStore(s => s.spotlightTarget);
+  const clearSpotlightTarget = useStore(s => s.clearSpotlightTarget);
 
   useEffect(() => {
     if (highlightedDirs.length === 0) return;
@@ -142,6 +146,36 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
       return next;
     });
   }, [highlightedDirs]);
+
+  useEffect(() => {
+    if (!spotlightTarget) {
+      setExpandedDirs(new Set(nodes.map(n => n.path)));
+      setSectionCollapsed(false);
+      return;
+    }
+    const targetPath = spotlightTarget.path;
+    const belongsToThisSection = !sectionPrefix || targetPath.startsWith(sectionPrefix + '/') || targetPath === sectionPrefix;
+
+    if (!belongsToThisSection) {
+      setSectionCollapsed(true);
+      setExpandedDirs(new Set());
+      return;
+    }
+
+    setSectionCollapsed(false);
+    const parts = targetPath.split('/');
+    const depth = spotlightTarget.type === 'file' ? parts.length - 1 : parts.length;
+    const requiredDirs = new Set<string>();
+    for (let i = 1; i <= depth; i++) {
+      requiredDirs.add(parts.slice(0, i).join('/'));
+    }
+    setExpandedDirs(requiredDirs);
+
+    requestAnimationFrame(() => {
+      const el = document.querySelector('[data-spotlight-path]');
+      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }, [spotlightTarget, sectionPrefix]);
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');
   const [newFileName, setNewFileName] = useState('');
@@ -264,12 +298,14 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     const isDragTarget = isDirectory && dragOverPath === node.path;
     const isRenaming = renamingPath === node.path;
     const isHighlighted = highlightedDirs.some(d => node.path === d || node.path.endsWith('/' + d));
+    const isSpotlighted = spotlightTarget?.path === node.path;
 
     return (
       <div
         key={node.path}
         data-drop-dir={isDirectory && onDropFiles ? node.path : undefined}
         data-drop-blocked={isDirectory && onDropFiles && isStructural ? '' : undefined}
+        data-spotlight-path={isSpotlighted ? node.path : undefined}
       >
         <div
           className={cn(
@@ -284,17 +320,18 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
             isMenuActive && !isDragTarget && (isSelected
               ? 'ring-1 ring-blue-400 dark:ring-blue-500'
               : 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-300 dark:ring-amber-600'),
-            isHighlighted && 'artifact-highlight ring-1 ring-blue-300 dark:ring-blue-600'
+            isHighlighted && 'artifact-highlight ring-1 ring-blue-300 dark:ring-blue-600',
+            isSpotlighted && 'artifact-spotlight'
           )}
           style={{ paddingLeft: `${currentLevel * 12 + 8}px` }}
         >
           <div 
             className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
             onClick={() => {
+              if (isSpotlighted) clearSpotlightTarget();
               if (node.type === 'directory') {
                 toggleDirectory(node.path);
               } else {
-                // Toggle file selection - deselect if already selected
                 if (selectedFile === node.path) {
                   onFileSelect('');
                 } else {
@@ -524,8 +561,17 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
 
   return (
     <div>
-      <h4 className="font-medium text-sm mb-2 text-gray-700 dark:text-gray-300 text-center">{title}</h4>
-      <div
+      <button
+        type="button"
+        onClick={() => setSectionCollapsed(prev => !prev)}
+        className="w-full flex items-center justify-center gap-1.5 py-1.5 mb-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      >
+        {sectionCollapsed
+          ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+          : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+        <span className="font-medium text-sm text-gray-700 dark:text-gray-300">{title}</span>
+      </button>
+      {sectionCollapsed ? null : <div
         className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide"
         onDragOver={(e) => {
           e.preventDefault();
@@ -598,7 +644,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
         ) : (
           nodes.map((node) => renderNode(node, 0))
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -962,6 +1008,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         <DirectoryView
           title={t('panel.inputs')}
           nodes={inputsNodes}
+          sectionPrefix="inputs"
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
           onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
@@ -995,6 +1042,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         <DirectoryView
           title={t('panel.outputs')}
           nodes={outputsNodes}
+          sectionPrefix="outputs"
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
           onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
@@ -1014,6 +1062,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         <DirectoryView
           title={t('panel.sessions')}
           nodes={sessionsNodes}
+          sectionPrefix="sessions"
           onFileSelect={selectFile}
           selectedFile={selectedFile}
           onCreateFile={undefined}

@@ -119,13 +119,7 @@ CODE BLOCKS:
 ## 📋 REQUIREMENTS (SOURCE OF TRUTH)
 ════════════════════════════════════════════════════════════════════════════════
 
-{{#if prdSpec}}
-## PRD (ABSOLUTE TRUTH)
-{{prdSpec}}
-{{else}}
-## Requirements (Fallback)
-{{spec}}
-{{/if}}
+{{!-- Requirements are rendered via action-context injection —— no base template prdSpec/spec block needed --}}
 
 **⚠️ PRD = ABSOLUTE TRUTH (But Extract Intent, Not Wording)**
 

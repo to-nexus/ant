@@ -319,7 +319,7 @@ describe('getIntentDescription', () => {
 // ============================================
 
 describe('getBasisDescription', () => {
-  const allBases: Basis[] = ['prd', 'directive', 'existing-doc', 'figma', 'references'];
+  const allBases: Basis[] = ['prd', 'directive', 'existing-doc', 'figma', 'references', 'spec', 'design-doc'];
 
   it('returns non-empty string for all basis types', () => {
     for (const basis of allBases) {
@@ -335,6 +335,15 @@ describe('getBasisDescription', () => {
     expect(getBasisDescription('references')).toContain('Reference');
     expect(getBasisDescription('directive')).toContain('directive');
     expect(getBasisDescription('existing-doc')).toContain('design documents');
+    expect(getBasisDescription('spec')).toContain('spec');
+    expect(getBasisDescription('design-doc')).toContain('design');
+  });
+
+  it('returns actual description, not raw basis string (no fallback)', () => {
+    for (const basis of allBases) {
+      const desc = getBasisDescription(basis);
+      expect(desc).not.toBe(basis);
+    }
   });
 });
 
@@ -526,6 +535,17 @@ describe('resolveFromExplicit', () => {
     expect(rac.tech.runtime).toBe('node-api');
   });
 
+  it('does NOT include documents (resolve node adds them separately)', () => {
+    const metadata: ActionMetadata = {
+      explicit: true, intent: 'create-code',
+      refs: ['inputs/sources/prd.md'], context: ['outputs/design/system/fe-system-main.md'],
+    };
+    const rac = resolveFromExplicit(metadata);
+    expect(rac.documents).toBeUndefined();
+    expect(rac.refs).toEqual(['inputs/sources/prd.md']);
+    expect(rac.context).toEqual(['outputs/design/system/fe-system-main.md']);
+  });
+
   it('covers all INTENT_DEFINITIONS', () => {
     for (const def of INTENT_DEFINITIONS) {
       const metadata: ActionMetadata = { explicit: true, intent: def.id };
@@ -692,5 +712,21 @@ describe('resolveFromDetection', () => {
     const rac = resolveFromDetection(report);
 
     expect(rac.domain).toBe('game');
+  });
+});
+
+// ============================================
+// ResolvedDocument.label
+// ============================================
+
+describe('ResolvedDocument', () => {
+  it('supports optional label field', () => {
+    const doc = { path: 'design.md', content: '# Design', role: 'ref' as const, label: 'System Design' };
+    expect(doc.label).toBe('System Design');
+  });
+
+  it('label is optional', () => {
+    const doc = { path: 'prd.md', content: '# PRD', role: 'context' as const };
+    expect(doc.label).toBeUndefined();
   });
 });

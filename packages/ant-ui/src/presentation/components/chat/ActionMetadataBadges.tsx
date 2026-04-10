@@ -1,7 +1,7 @@
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
 import { INTENT_DEFINITIONS, type ActionMetadata } from '@ant/shared';
-import { X, Target, Crosshair, FileText, Layers, BookOpen, Sparkles } from 'lucide-react';
+import { X, Target, Crosshair, FileText, Layers, BookOpen, Zap } from 'lucide-react';
 
 interface BadgeProps {
   icon: any;
@@ -104,7 +104,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
       {meta.explicit && (
         <span className={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-semibold border transition-colors
           bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300`}>
-          <Sparkles className="w-3 h-3 shrink-0" />
+          <Zap className="w-3 h-3 shrink-0" />
           <span>Explicit</span>
           {!readOnly && (
             <button

@@ -14,6 +14,7 @@ import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { buildSourceDocsForTask, buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
 import { designDirOf } from '@ant/shared';
+import type { ResolvedDocument } from '@ant/shared';
 
 export interface BuildMessagesResult {
   messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
@@ -149,6 +150,19 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       useSourceFileTool = false;
     }
 
+    // Build resolvedAction with Infer documents[] when no explicit docs present
+    let resolvedActionWithDocs = state.resolvedAction;
+    if (!hasExplicitDocs && prdSpec) {
+      const docs: ResolvedDocument[] = [];
+      docs.push({ path: 'source-docs', content: prdSpec, role: 'context', label: 'PRD Specification' });
+      if (docs.length > 0) {
+        resolvedActionWithDocs = {
+          ...(state.resolvedAction || { source: 'infer' as const, jobMode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+          documents: docs,
+        };
+      }
+    }
+
     const promptResult = await promptEngine.buildExecutePrompt(
       'design',
       state.context,
@@ -156,7 +170,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         directive: state.directive || '',
         lastSectionNumber,
         sectionPattern,
-        prdSpec: hasExplicitDocs ? '' : prdSpec,
+        documents: resolvedActionWithDocs?.documents,
         designDomain: state.detectionReport?.domain,
         currentTask: {
           name: state.currentTask.name,
@@ -169,7 +183,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         isLastTaskForDocument,
         sectionScope,
         filteredCatalog,
-        resolvedAction: state.resolvedAction,
+        resolvedAction: resolvedActionWithDocs,
       },
       undefined,
       undefined

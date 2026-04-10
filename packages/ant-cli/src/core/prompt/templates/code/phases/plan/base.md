@@ -2,7 +2,21 @@
 
 You are the **ARCHITECT** planning HOW to implement a specific task.
 
-{{> common/injections/action-context}}
+{{#if resolvedAction.hasExplicitFields}}
+## User Action Specification
+
+{{#if resolvedAction.intentDescription}}
+The user has explicitly requested: **{{resolvedAction.intentDescription}}**
+{{/if}}
+{{#if resolvedAction.basisDescription}}
+Primary source for this task: {{resolvedAction.basisDescription}}.
+{{/if}}
+{{#if resolvedAction.target}}
+Generate output ONLY for these specific files:
+{{#each resolvedAction.target}}- {{this}}
+{{/each}}
+{{/if}}
+{{/if}}
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🚨 YOUR ROLE: Plan provides GUIDANCE, CodeGen determines PATHS
@@ -210,20 +224,12 @@ Speculation without empirical validation is insufficient.
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
-{{#if designDoc}}
+{{#if hasDocuments}}
 ════════════════════════════════════════════════════════════════════════════════
-{{#if isSpecDriven}}
-## 📋 FEATURE SPECIFICATION (SOURCE OF TRUTH)
-════════════════════════════════════════════════════════════════════════════════
+{{#each documents}}
+## {{label}}
 
-This is a feature-scoped specification. If an API Contract section is included,
-treat its endpoints and field names as immutable reference.
-
-{{designDoc}}
-{{else}}
-## 📐 DESIGN SPECIFICATION (SOURCE OF TRUTH)
-════════════════════════════════════════════════════════════════════════════════
-
+{{#if (eq label "Design Specification")}}
 🚨 **CRITICAL: API Contract contains IMMUTABLE specifications**
 
 **Use EXACT specifications from API Contract:**
@@ -234,25 +240,14 @@ treat its endpoints and field names as immutable reference.
 
 **Your execution plan MUST reference specifications EXACTLY.**
 
-{{designDoc}}
+{{/if}}
+{{{content}}}
 
+{{#if (eq label "Design Specification")}}
 {{> code/base/injections/system-design-guide}}
 {{/if}}
-
-════════════════════════════════════════════════════════════════════════════════
-{{/if}}
-
-{{#if hasUiDoc}}
-════════════════════════════════════════════════════════════════════════════════
-## 🎨 UI SPECIFICATION
-════════════════════════════════════════════════════════════════════════════════
-
-{{> code/base/injections/ui-design-guide}}
-
 ────────────────────────────────────────────────────────────────────────────────
-
-{{uiDoc}}
-
+{{/each}}
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 

@@ -32,11 +32,11 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
       return intents.some(intent => deriveFromIntent(intent.id).agent === agentFilter);
     });
   }, [agentFilter]);
-  const gridCols = defs.length === 1 ? 'grid-cols-1 max-w-xs' : variant === 'large' ? 'grid-cols-2 max-w-lg' : 'grid-cols-2 max-w-md';
   const gap = variant === 'large' ? 'gap-4' : 'gap-3';
+  const isSingle = defs.length === 1;
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="@container flex flex-col items-center w-full">
       {title && (
         <h2 className={`font-semibold text-gray-800 dark:text-gray-200 mb-5 ${variant === 'large' ? 'text-xl' : 'text-lg'}`}>
           {title}
@@ -46,9 +46,14 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{subtitle}</p>
       )}
 
-      <div className={`grid w-full ${gridCols} ${gap}`}>
+      <div className={`
+        w-full
+        flex flex-wrap justify-center ${gap}
+        @xs:grid @xs:grid-cols-1 @xs:max-w-[15rem] @xs:mx-auto
+        ${isSingle ? '' : '@sm:grid-cols-2 @sm:max-w-lg'}
+      `}>
         {defs.map((def, idx) => (
-          <div key={def.id}>
+          <div key={def.id} className="w-full">
             <ActionChip
               actionId={def.id}
               label={def.label[lang] || def.label.en}
@@ -85,10 +90,10 @@ interface IntentChipGridProps {
 }
 
 export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipGridProps) {
-  const gridCols = items.length === 1 ? 'grid-cols-1 max-w-xs' : 'grid-cols-2 max-w-lg';
+  const isSingle = items.length === 1;
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="@container flex flex-col items-center w-full">
       {title && (
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
           {title}
@@ -98,9 +103,14 @@ export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipG
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{subtitle}</p>
       )}
 
-      <div className={`grid w-full gap-3 ${gridCols}`}>
+      <div className={`
+        w-full
+        grid grid-cols-1 gap-3
+        max-w-[15rem] mx-auto
+        ${isSingle ? '' : '@sm:grid-cols-2 @sm:max-w-lg'}
+      `}>
         {items.map((item, idx) => (
-          <div key={item.id}>
+          <div key={item.id} className="w-full">
             <button
               type="button"
               onClick={() => !item.disabled && onSelect(item.id)}

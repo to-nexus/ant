@@ -86,6 +86,14 @@
     "outputDir": "Output directory"
   },
 
+  "emptySlot": {
+    "missing": "No {{name}} found",
+    "create": "Create",
+    "upload": "Upload",
+    "noFiles": "no files",
+    "viewInExplorer": "View in explorer"
+  },
+
   "status": {
     "buildReady": "BUILD ready",
     "hasOutput": "Has outputs",
