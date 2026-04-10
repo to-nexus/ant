@@ -120,9 +120,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       state = {
         ...state,
         directive: sessionCheck.mergedDirective,
-        completedTasks: sessionCheck.session.state.completedTasks || [],
-        completedTasksDetails: sessionCheck.session.state.completedTasksDetails || [],
-        referenceRequests: sessionCheck.session.state.referenceRequests || [],
+        completedTasks: sessionCheck.session.state?.completedTasks || [],
+        completedTasksDetails: sessionCheck.session.state?.completedTasksDetails || [],
+        referenceRequests: sessionCheck.session.state?.referenceRequests || [],
         retries: 0,
         previousAttempts: [],
         enforcementHistory: [],
@@ -130,8 +130,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         resolvedCategories: []
       } as any;
       
-      (state as any)._replanJobId = sessionCheck.session.jobId;
-      (state as any)._replanJobTiming = sessionCheck.session.jobTiming;
+      (state as any)._replanJobId = sessionCheck.session.state?.jobId;
+      (state as any)._replanJobTiming = sessionCheck.session.state?.jobTiming;
       
       // Fall through to decomposition
     } else {
@@ -391,7 +391,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // ✅ Accumulate decompose token usage to job-level (not task-level, as decompose runs before tasks)
     if (decomposeTokenUsage) {
       const { finalizeStreamTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
-      finalizeStreamTokenUsage(state as any, decomposeTokenUsage, { taskLevel: false, jobLevel: true });
+      finalizeStreamTokenUsage(state, decomposeTokenUsage, { taskLevel: false, jobLevel: true });
 
       // ✅ Log to debug/tokens/
       logTokenUsageToFile(
@@ -412,8 +412,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       );
 
       // ✅ Push live token update to Kanban UI during estimating phase
-      if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
       }
     }
   } catch (error) {
@@ -650,8 +650,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Capture job-level tokenUsage BEFORE tasks begin. At this point, state.tokenUsage
   // contains only estimating phase tokens (detectEnvironment + decompose).
-  const estimatingTokenUsage = (state as any).tokenUsage
-    ? { ...(state as any).tokenUsage }
+  const estimatingTokenUsage = state.tokenUsage
+    ? { ...state.tokenUsage }
     : undefined;
   if (estimatingTokenUsage) {
     console.log(`📊 [Decompose] Estimating phase tokens captured: ${estimatingTokenUsage.inputTokens + estimatingTokenUsage.outputTokens} (input: ${estimatingTokenUsage.inputTokens}, output: ${estimatingTokenUsage.outputTokens}, cacheRead: ${estimatingTokenUsage.cacheReadTokens || 0}, cacheCreate: ${estimatingTokenUsage.cacheCreationTokens || 0})`);

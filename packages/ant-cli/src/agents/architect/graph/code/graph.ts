@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { StateGraph, END } from "@langchain/langgraph";
+import { Annotation, StateGraph, END } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
 import { resolve } from "./nodes/resolve";
@@ -19,6 +19,7 @@ import { saveCheckpoint } from "./nodes/checkpoint";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "./parallel/types";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
+import type { InterruptionReason } from '../../../../core/types/session';
 
 /**
  * Node that handles task completion logic and state mutations.
@@ -195,8 +196,8 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
   // Without this, a cancelled job can still mark the current task as "completed"
   // if checkTaskStatus runs after the cancellation signal but before process termination.
-  const isStopRequested = typeof (state as any)._isStopRequested === 'function'
-    ? (state as any)._isStopRequested()
+  const isStopRequested = typeof state._isStopRequested === 'function'
+    ? state._isStopRequested()
     : false;
 
   if (isStopRequested) {
@@ -244,7 +245,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     // No additional merge or job-level re-accumulation needed here.
     const { getTaskTokenUsage } = await import('../../../common/graph/llmHelpers');
     const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
-    const taskTokenUsage = getTaskTokenUsage(state as any);
+    const taskTokenUsage = getTaskTokenUsage(state);
     
     const { TaskTimingHelper } = await import('./state');
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
@@ -376,7 +377,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
         completedTasksDetails,
         state.recursionCount,
         state.recursionLimit,
-        (state as any).tokenUsage  // ✅ FIX: Pass job-level token usage to prevent badge reset
+        state.tokenUsage  // ✅ FIX: Pass job-level token usage to prevent badge reset
       );
     }
     
@@ -479,7 +480,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     designDocPath: state.designDocPath,
     designDocs: state.designDocs,
     code: state.code,
-    codeHead: (state as any).codeHead,
+    codeHead: state.codeHead,
     profile: state.profile,
     parsedUiDocs: state.parsedUiDocs,
     runtimeAssetsIndex: state.runtimeAssetsIndex,
@@ -491,8 +492,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     recursionLimit: state.recursionLimit,  // ✅ Always set by runner.ts from env RECURSION_LIMIT
     _httpJobId: state._httpJobId,
     _uiLocale: state._uiLocale,
-    jobId: (state as any).jobId,
-    jobTiming: (state as any).jobTiming,
+    jobId: state.jobId,
+    jobTiming: state.jobTiming,
     featureTasks: state.featureTasks,
     referenceRequests: state.referenceRequests,
     designDocUnknownPackages: state.designDocUnknownPackages,
@@ -631,16 +632,16 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   })),
                   tokenUsage: checkpoint.tokenUsage,
                   // ✅ Preserve estimating phase token usage snapshot in checkpoint
-                  estimatingTokenUsage: (state as any)._estimatingTokenUsage,
-                  jobId: (state as any).jobId,
-                  jobTiming: (state as any).jobTiming,
+                  estimatingTokenUsage: state._estimatingTokenUsage,
+                  jobId: state.jobId,
+                  jobTiming: state.jobTiming,
                   parallelMode: true,
                   // ✅ FIX: Preserve decompose-phase context in checkpoint.
                   // onCheckpoint does a full replace of session.state, so any field
                   // not listed here is lost on session reload / resume.
                   designDocUnknownPackages: state.designDocUnknownPackages,
                   profile: state.profile,
-                  detectionReport: (state as any).detectionReport,
+                  detectionReport: state.detectionReport,
                   referenceRequests: state.referenceRequests,
                   userLanguage: state.context.userLanguage,
                   // ✅ FIX: Preserve interruption details in checkpoint.
@@ -649,7 +650,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   // child process writes its checkpoint after the API server.
                   ...(checkpoint.interruption ? {
                     interruption: {
-                      reason: checkpoint.interruption.reason,
+                      reason: checkpoint.interruption.reason as InterruptionReason,
                       message: `Job interrupted: ${checkpoint.interruption.reason}`,
                       timestamp: new Date().toISOString(),
                       canResume: checkpoint.interruption.canResume,
@@ -806,7 +807,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   // Mark job timing as paused so resume calculates accurate totalPausedDuration
   const hasActualRemainingWork = result.remainingQueue.length > 0 || result.failedTasks.length > 0;
   if ((result.hasInterruptedTasks && hasActualRemainingWork) || result.hasFailures) {
-    (state as any).jobTiming = JobTimingManager.pauseJob((state as any).jobTiming);
+    state.jobTiming = JobTimingManager.pauseJob(state.jobTiming);
   }
 
   // ✅ If any tasks were paused due to recursion limit AND there are actually
@@ -838,12 +839,12 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               timestamp: f.timestamp,
             })),
             tokenUsage: result.tokenUsage,
-            estimatingTokenUsage: (state as any)._estimatingTokenUsage,
-            jobId: (state as any).jobId,
-            jobTiming: (state as any).jobTiming,
+            estimatingTokenUsage: state._estimatingTokenUsage,
+            jobId: state.jobId,
+            jobTiming: state.jobTiming,
             parallelMode: true,
             interruption: {
-              reason: result.interruptReason || 'recursion_limit',
+              reason: (result.interruptReason || 'recursion_limit') as InterruptionReason,
               message: `Job interrupted: ${result.interruptReason || 'recursion_limit'} (${result.remainingQueue.length} task(s) remaining)`,
               timestamp: new Date().toISOString(),
               canResume: true,
@@ -870,11 +871,11 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               completedTasks: result.completedTasks.map(t => t.id),
               completedTasksDetails: result.completedTasks,
               tokenUsage: result.tokenUsage,
-              estimatingTokenUsage: (state as any)._estimatingTokenUsage,
-              jobId: (state as any).jobId,
-              jobTiming: (state as any).jobTiming,
+              estimatingTokenUsage: state._estimatingTokenUsage,
+              jobId: state.jobId,
+              jobTiming: state.jobTiming,
               parallelMode: true,
-              interruption: null,  // ✅ Explicitly clear stale interruption
+              interruption: undefined,
             },
           },
         );
@@ -911,9 +912,9 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               timestamp: f.timestamp,
             })),
             tokenUsage: result.tokenUsage,
-            estimatingTokenUsage: (state as any)._estimatingTokenUsage,
-            jobId: (state as any).jobId,
-            jobTiming: (state as any).jobTiming,
+            estimatingTokenUsage: state._estimatingTokenUsage,
+            jobId: state.jobId,
+            jobTiming: state.jobTiming,
             parallelMode: true,
             interruption: {
               reason: 'tasks_failed',
@@ -938,7 +939,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     completedTasksDetails: result.completedTasks,
     failedTasks: result.failedTasks.map(f => f.task) as any,
     currentTask: undefined,
-    tokenUsage: result.tokenUsage || (state as any).tokenUsage,
+    tokenUsage: result.tokenUsage || state.tokenUsage,
     interruption: result.hasInterruptedTasks ? {
       reason: result.interruptReason || 'recursion_limit',
       message: result.interruptReason === 'user_stopped'
@@ -967,188 +968,194 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   } as any;
 }
 
-export function buildCodeGraph() {
-  const graph = new StateGraph<ArchitectGraphState>({
-    channels: {
+const ArchitectCodeGraphStateAnnotation = Annotation.Root({
       // Context & Input
-      context: null as any,
-      workspaceConfig: null as any,
-      isResume: null as any,  // ✅ Resume flag (API level)
+      context: Annotation<any>,
+      workspaceConfig: Annotation<any>,
+      featurePath: Annotation<any>,
+      isResume: Annotation<any>,
       
       // Dependencies
-      deps: null as any,
-      gitPort: null as any,
+      deps: Annotation<any>,
+      gitPort: Annotation<any>,
       
       // ✅ CRITICAL: Detection Report (unified environment detection result)
       // Contains: jobMode, environment, profile, requireRag
-      detectionReport: null as any,
+      detectionReport: Annotation<any>,
       
       // Environment Detection outputs
-      decomposeKeywords: null as any,
-      selectedDesignFiles: null as any,
-      decomposeFilePaths: null as any,
+      decomposeKeywords: Annotation<any>,
+      selectedDesignFiles: Annotation<any>,
+      decomposeFilePaths: Annotation<any>,
       
       // Artifacts (from TaskArtifacts)
-      prd: null as any,
-      directive: null as any,
-      design: null as any,
-      designDocPath: null as any,  // ✅ Design document file path (from TaskArtifacts)
-      designDocs: null as any,  // ✅ Structured design docs for environment detection
-      code: null as any,
-      codeHead: null as any,
-      profile: {
-        value: (x: any, y?: any) => y ?? x,
+      prd: Annotation<any>,
+      directive: Annotation<any>,
+      design: Annotation<any>,
+      designDocPath: Annotation<any>,  // ✅ Design document file path (from TaskArtifacts)
+      designDocs: Annotation<any>,  // ✅ Structured design docs for environment detection
+      code: Annotation<any>,
+      codeHead: Annotation<any>,
+      profile: Annotation<any>({
+        reducer: (x: any, y: any) => y ?? x,
         default: () => undefined,
-      } as any,
-      parsedUiDocs: null as any,  // ✅ CRITICAL: Parsed UI docs for split injection (from TaskArtifacts)
+      }),
+      parsedUiDocs: Annotation<any>,  // ✅ CRITICAL: Parsed UI docs for split injection (from TaskArtifacts)
       
       // ✅ Runtime Assets Index (for asset copying tasks)
-      runtimeAssetsIndex: null as any,
+      runtimeAssetsIndex: Annotation<any>,
       
       
       // ✅ Code Context (CRITICAL for file operations!)
-      projectCodeContext: null as any,      // Main project code
-      referenceCodeContexts: null as any,   // Reference projects
-      sessionContext: null as any,          // Session context
+      projectCodeContext: Annotation<any>,      // Main project code
+      referenceCodeContexts: Annotation<any>,   // Reference projects
+      sessionContext: Annotation<any>,          // Session context
       // Execution
-      planText: {
-        value: (x: string, y?: string) => y ?? x,  // ✅ FIX: Explicit reducer for state propagation
+      planText: Annotation<any>({
+        reducer: (x: any, y: any) => y ?? x,  // ✅ FIX: Explicit reducer for state propagation
         default: () => '',
-      } as any,
-      codePrompt: null as any,
-      rawResponse: null as any,
-      responseSection: null as any,
+      }),
+      codePrompt: Annotation<any>,
+      rawResponse: Annotation<any>,
+      responseSection: Annotation<any>,
       // ✅ REMOVED: files (replaced by projectCodeContext.files)
-      filesToDelete: null as any,
-      modifications: null as any,
-      featureName: null as any,          // Feature name for buffer manager
+      filesToDelete: Annotation<any>,
+      modifications: Annotation<any>,
+      featureName: Annotation<any>,          // Feature name for buffer manager
       
       // Integrations & Validation
-      requiredIntegrations: null as any,
-      violations: null as any,
-      fileErrors: null as any,
-      retries: null as any,
-      maxRetries: null as any,
+      requiredIntegrations: Annotation<any>,
+      violations: Annotation<any>,
+      fileErrors: Annotation<any>,
+      retries: Annotation<any>,
+      maxRetries: Annotation<any>,
       
       // Progress tracking
-      lastViolations: null as any,
-      previousFileCount: null as any,
+      lastViolations: Annotation<any>,
+      previousFileCount: Annotation<any>,
       
       // Attempt history
-      previousAttempts: null as any,
+      previousAttempts: Annotation<any>,
       
       // Enforcement feedback history
-      enforcementHistory: null as any,
+      enforcementHistory: Annotation<any>,
       
       // Task Queue System
-      taskQueue: null as any,
-      currentTask: null as any,
-      featureTasks: null as any,
-      completedTasks: null as any,
-      completedTasksDetails: null as any,  // ✅ Full task objects for completed tasks
-      resolvedCategories: null as any,
+      taskQueue: Annotation<any>,
+      currentTask: Annotation<any>,
+      featureTasks: Annotation<any>,
+      completedTasks: Annotation<any>,
+      completedTasksDetails: Annotation<any>,  // ✅ Full task objects for completed tasks
+      resolvedCategories: Annotation<any>,
       
       // ✅ Job tracking (for timing and continuity)
-      jobId: null as any,
-      jobTiming: null as any,
+      jobId: Annotation<any>,
+      jobTiming: Annotation<any>,
       
       // Error Handling & Final Verification
-      failedTasks: null as any,
-      unresolvedErrors: null as any,
+      failedTasks: Annotation<any>,
+      unresolvedErrors: Annotation<any>,
       
       // Evaluation & Learning
-      evaluationReport: null as any,
-      lessons: null as any,
+      evaluationReport: Annotation<any>,
+      lessons: Annotation<any>,
       
       // Spec Documents (feature-scoped specifications)
-      specDocs: null as any,
-      selectedSpec: null as any,
+      specDocs: Annotation<any>,
+      selectedSpec: Annotation<any>,
       
       // Reference Projects (for cross-project tool calling)
-      referenceRequests: null as any,
+      referenceRequests: Annotation<any>,
       
       // Design-prescribed dependencies (extracted by decompose LLM, injected into plan prompts)
-      designDocUnknownPackages: null as any,
+      designDocUnknownPackages: Annotation<any>,
       
       // Results
-      branch: null as any,
-      filesWritten: null as any,
-      reportFile: null as any,
+      branch: Annotation<any>,
+      filesWritten: Annotation<any>,
+      reportFile: Annotation<any>,
       
       // Real-time Kanban tracking
-      _httpJobId: null as any,  // ✅ HTTP task ID for live updates
-      _phaseTimings: null as any,  // ✅ Per-node timing for phaseBreakdown
-      _uiLocale: null as any,     // ✅ UI locale (ko/en) from directive
+      _httpJobId: Annotation<any>,  // ✅ HTTP task ID for live updates
+      _phaseTimings: Annotation<any>,  // ✅ Per-node timing for phaseBreakdown
+      _uiLocale: Annotation<any>,     // ✅ UI locale (ko/en) from directive
       
       
       // ✅ Revise Support
-      directives: null as any,       // Multiple directives
+      directives: Annotation<any>,       // Multiple directives
       // ✅ Chat integration
-      overrideDirective: null as any,  // ✅ Chat input as directive (highest priority)
-      chatSource: null as any,  // ✅ Flag for Chat SSE
+      overrideDirective: Annotation<any>,  // ✅ Chat input as directive (highest priority)
+      chatSource: Annotation<any>,  // ✅ Flag for Chat SSE
       
       // ✅ Triage System
-      skipTriage: null as any,       // Skip triage if true
-      actionMetadata: null as any,   // Explicit action context from Actions panel
-      triageResult: null as any,     // Triage analysis result
-      workspaceState: null as any,   // Workspace state snapshot
-      currentAgent: null as any,     // Current agent name
-      currentJob: null as any,       // Current job name
+      skipTriage: Annotation<any>,       // Skip triage if true
+      actionMetadata: Annotation<any>,   // Explicit action context from Actions panel
+      triageResult: Annotation<any>,     // Triage analysis result
+      workspaceState: Annotation<any>,   // Workspace state snapshot
+      currentAgent: Annotation<any>,     // Current agent name
+      currentJob: Annotation<any>,       // Current job name
       
       // ✅ Error repetition tracking
-      _errorIsRepeating: null as any,  // Flag to indicate if errors are repeating
+      _errorIsRepeating: Annotation<any>,  // Flag to indicate if errors are repeating
       
       // ✅ Token tracking (internal, accumulated across LLM calls)
-      _currentTaskTokenUsage: null as any,  // Task-level token usage (reset per task)
-      tokenUsage: null as any,              // Job-level token usage (accumulated across all tasks + decompose)
-      _estimatingTokenUsage: null as any,   // Estimating phase snapshot (captured at end of decompose)
+      _currentTaskTokenUsage: Annotation<any>,  // Task-level token usage (reset per task)
+      tokenUsage: Annotation<any>,              // Job-level token usage (accumulated across all tasks + decompose)
+      _estimatingTokenUsage: Annotation<any>,   // Estimating phase snapshot (captured at end of decompose)
       
       // ✅ execute call counter (per task, reset in checkTaskStatus)
-      _executeCallIndex: {
-        value: (_prev: number, next: number) => next,
+      _executeCallIndex: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
         default: () => 0,
-      } as any,
+      }),
 
       // Safety Net C: final task loop counter (computed by execute node, read by router)
-      _finalTaskLoopCount: {
-        value: (_prev: number, next: number) => next,
+      _finalTaskLoopCount: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
         default: () => 0,
-      } as any,
+      }),
 
       // Recursion tracking
-      recursionCount: null as any,  // ✅ Current iteration count
-      recursionLimit: null as any,  // ✅ Maximum allowed iterations
+      recursionCount: Annotation<any>,  // ✅ Current iteration count
+      recursionLimit: Annotation<any>,  // ✅ Maximum allowed iterations
       
       // Verification & command tracking
-      _verificationTracker: null as any,
-      commandHistory: null as any,
+      _verificationTracker: Annotation<any>,
+      commandHistory: Annotation<any>,
 
       // ✅ NEW: Tool Calling support
-      llmResponse: null as any,     // LLM response (thinking, text, tool calls)
-      toolResults: null as any,     // Tool execution results
-      conversationHistory: null as any,  // Multi-turn conversation
-      interruption: null as any,         // Interruption details
-      _activePhase: null as any,
-      _planEntryReason: null as any,
-      _executeModifiedFiles: null as any,
-      _installNeeded: null as any,
-      _appliedPlanHistory: null as any,
-      _otherWorkerFiles: null as any,
-      planConversationHistory: null as any,
+      llmResponse: Annotation<any>,     // LLM response (thinking, text, tool calls)
+      toolResults: Annotation<any>,     // Tool execution results
+      conversationHistory: Annotation<any>,  // Multi-turn conversation
+      interruption: Annotation<any>,         // Interruption details
+      _activePhase: Annotation<any>,
+      _planEntryReason: Annotation<any>,
+      _executeModifiedFiles: Annotation<any>,
+      _installNeeded: Annotation<any>,
+      _appliedPlanHistory: Annotation<any>,
+      _otherWorkerFiles: Annotation<any>,
+      planConversationHistory: Annotation<any>,
 
       // Figma MCP state
-      figmaAvailable: null as any,
-      figmaFileKey: null as any,
-      figmaStartNodeId: null as any,
+      figmaAvailable: Annotation<any>,
+      figmaFileKey: Annotation<any>,
+      figmaStartNodeId: Annotation<any>,
 
       // Inter-Job Context Bridge
-      boundary: null as any,
-      jobConversation: null as any,
+      boundary: Annotation<any>,
+      jobConversation: Annotation<any>,
 
       // Decompose clarify
-      awaitingDecomposeClarify: null as any,
-    } as any,
-  } as any);
+      awaitingDecomposeClarify: Annotation<any>,
+
+      // Worker/cancel support (runtime-injected but consumed by checkTaskStatus in main graph)
+      workerId: Annotation<any>,
+      _isStopRequested: Annotation<any>,
+
+});
+
+export function buildCodeGraph() {
+  const graph = new StateGraph(ArchitectCodeGraphStateAnnotation);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Node Registration
@@ -1351,8 +1358,8 @@ export function buildCodeGraph() {
   graph.addConditionalEdges(
     "learn" as any,
     ((s: ArchitectGraphState) => {
-      if ((s as any).interruption) {
-        const reason = (s as any).interruption.reason;
+      if (s.interruption) {
+        const reason = s.interruption.reason;
         console.log(`\n⛔ [Learn] Interruption detected (${reason}) → stopping execution\n`);
         return "__end__";
       }
