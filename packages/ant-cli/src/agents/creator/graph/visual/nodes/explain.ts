@@ -94,7 +94,7 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
 
     console.log(`💡 [Visual:Explain] Response: ${responseText.length} chars`);
 
-    if (state._httpJobId) {
+    if (state._httpJobId && state.featurePath) {
       try {
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'explain', systemPrompt.length + userPrompt.length, {
           templatePath: 'visual/nodes/explain/base',

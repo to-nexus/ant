@@ -279,7 +279,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     await chatAPI.sendLLMEvent({ type: 'text', text: result.reasoning });
   }
 
-  if (state._httpJobId) {
+  if (state._httpJobId && state.featurePath) {
     try {
       await logPrompt(state.featurePath, state._httpJobId, 'visual', 'direct', systemPrompt.length + userPrompt.length, {
         templatePath: 'visual/nodes/direct/base',

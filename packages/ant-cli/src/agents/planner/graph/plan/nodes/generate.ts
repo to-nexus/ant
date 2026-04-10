@@ -239,7 +239,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   const systemPrompt = buildSystemPrompt(state, compactionResult);
   
   // ✅ Log prompt structure to debug directory (aligned with code/design agents)
-  if (state._httpJobId) {
+  if (state._httpJobId && state.featurePath) {
     try {
       await logPrompt(
         state.featurePath,

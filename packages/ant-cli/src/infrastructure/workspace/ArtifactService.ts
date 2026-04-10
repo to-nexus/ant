@@ -23,7 +23,6 @@ import {
   getAllUiContent,
   generateUiSectionsSummary,
 } from "./UiDocParser";
-import { getSessionDebugDir } from "../../core/utils/sessionPaths";
 import { normalizeTemplateDoc } from "../../core/utils/templateDetector";
 import { designSubdirOf, DESIGN_SUBDIRS, DESIGN_DIR } from "@ant/shared";
 
@@ -587,27 +586,6 @@ export class ArtifactService {
     }
 
     return Array.from(results.values());
-  }
-
-  /**
-   * Write report file (실행 로그는 sessions/debug/logs로 이동)
-   */
-  static async writeReportFile(
-    context: ArtifactProjectContext,
-    fileName: string,
-    content: string,
-    gitPort: GitPort,
-    fileSystem: FileSystemPort
-  ): Promise<string> {
-    const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const reportDirAbs = getSessionDebugDir(featurePathAbs, 'architect', 'logs');
-    const reportDir = ArtifactService.toWorkspaceRelative(fileSystem, reportDirAbs);
-    await fileSystem.createDirectory(reportDir);
-    
-    const reportFile = path.join(reportDir, fileName);
-    await fileSystem.writeFile(reportFile, content);
-    
-    return reportFile;
   }
 
   /**
