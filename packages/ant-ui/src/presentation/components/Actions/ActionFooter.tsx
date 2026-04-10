@@ -3,6 +3,7 @@ import { useStore } from '@/domain/store';
 import { deriveFromIntent, type ActionId } from '@ant/shared';
 import { MessageSquare, Zap, Loader2 } from 'lucide-react';
 import { executeCodeJob } from '@/infrastructure/http/cli';
+import { addChatUserMessage } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 
 interface ActionFooterProps {
@@ -37,21 +38,43 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
     store.setRunning(true, undefined, 'generate');
 
     const metadata = { ...actionMetadata };
+    const hasMetadata = Object.keys(metadata).length > 0;
+    const intentId = metadata.intent || '';
+    const buildDirective = t(`buildDirective.${intentId}`, { defaultValue: t('footer.build') });
 
     try {
+      await addChatUserMessage(
+        selectedProject,
+        selectedFeature,
+        buildDirective,
+        hasMetadata ? metadata : undefined,
+      );
+
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature,
         jobType: derived.jobType as any,
         agent: derived.agent,
         chatSource: true,
-        actionMetadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+        actionMetadata: hasMetadata ? metadata : undefined,
       });
 
-      const jobId = await jobExecution.jobId;
-      if (jobId) {
-        store.setRunning(true, jobId);
+      store.setCurrentJob(jobExecution);
+
+      if (hasMetadata) {
+        store.resetActionMetadata();
       }
+
+      jobExecution.onJobIdReady((jobId) => {
+        useStore.getState().setRunning(true, jobId);
+      });
+
+      jobExecution.on('exit', (code, signal) => {
+        const jobFailed = code !== 0 && code !== null;
+        useStore.getState().setLastJobFailed(jobFailed);
+        useStore.getState().setRunning(false);
+        useStore.getState().setCurrentJob(null);
+      });
     } catch (error) {
       console.error('[Actions] BUILD failed:', error);
       store.setRunning(false);
