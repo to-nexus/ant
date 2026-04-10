@@ -77,6 +77,7 @@ export function buildPlanGraph() {
       context: null as any,
       triageResult: null as any,
       skipTriage: null as any,
+      actionMetadata: null as any,
       currentAgent: null as any,
       currentJob: null as any,
       overrideDirective: null as any,

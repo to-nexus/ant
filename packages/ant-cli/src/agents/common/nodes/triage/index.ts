@@ -89,8 +89,8 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   }
   
   // ✅ Skip triage if explicitly requested or intent is already determined
-  if (state.skipTriage || (state as any).actionMetadata?.intent) {
-    const reason = state.skipTriage ? 'skipTriage=true' : `actionMetadata.intent=${(state as any).actionMetadata.intent}`;
+  if (state.skipTriage || state.actionMetadata?.intent) {
+    const reason = state.skipTriage ? 'skipTriage=true' : `actionMetadata.intent=${state.actionMetadata!.intent}`;
     console.log(`⏭️  Triage skipped (${reason})\n`);
     return {} as Partial<T>;
   }

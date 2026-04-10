@@ -28,6 +28,7 @@ export interface PlanRunnerParams {
   isResume?: boolean;
   chatSource?: boolean;
   skipTriage?: boolean;
+  actionMetadata?: import('@ant/shared').ActionMetadata;
   deps?: PlanGraphState['deps'];
   _httpJobId?: string;
 }
@@ -73,6 +74,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     isResume: params.isResume,
     chatSource: params.chatSource,
     skipTriage: params.skipTriage,
+    actionMetadata: params.actionMetadata,
     deps: params.deps,
     _httpJobId: params._httpJobId,
   });

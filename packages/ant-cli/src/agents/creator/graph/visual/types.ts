@@ -185,6 +185,7 @@ export interface RunVisualGraphParams {
   isResume?: boolean;
   chatSource?: boolean;
   skipTriage?: boolean;
+  actionMetadata?: import('@ant/shared').ActionMetadata;
   deps: VisualGraphDeps;
   visualSettings?: VisualSettings;
   _httpJobId?: string;

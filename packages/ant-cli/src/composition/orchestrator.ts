@@ -79,7 +79,11 @@ export async function orchestrator(params: {
           llm, 
           chunk, 
           git, 
-          config
+          config,
+          overrideDirective,
+          chatSource,
+          skipTriage,
+          actionMetadata,
         });
       }
 
@@ -393,6 +397,7 @@ export async function orchestrator(params: {
         isResume: !!(overrideDirective && jobId),  // continue endpoint sets both
         chatSource: chatSource,
         skipTriage: skipTriage,
+        actionMetadata: actionMetadata,
         deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate, promptPort: planPromptPort },
         _httpJobId: jobId,
       });
@@ -473,6 +478,7 @@ export async function orchestrator(params: {
         isResume: !!(overrideDirective && jobId),
         chatSource,
         skipTriage,
+        actionMetadata,
         deps: {
           llm,
           directLLM,

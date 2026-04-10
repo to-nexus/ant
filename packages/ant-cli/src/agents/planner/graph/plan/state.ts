@@ -11,7 +11,7 @@ import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers
 import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
 import { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
-import type { ResolvedActionContext } from '@ant/shared';
+import type { ResolvedActionContext, ActionMetadata } from '@ant/shared';
 
 export interface PlanGraphState extends PhaseTrackingState {
   // Input
@@ -52,6 +52,7 @@ export interface PlanGraphState extends PhaseTrackingState {
   context: { featurePath?: string; [key: string]: any };
   triageResult?: TriageResult;
   skipTriage?: boolean;
+  actionMetadata?: ActionMetadata;
   currentAgent?: string;
   currentJob?: string;
   overrideDirective?: string;
@@ -99,6 +100,7 @@ export function createInitialPlanState(params: {
   _httpJobId?: string;
   chatSource?: boolean;
   skipTriage?: boolean;
+  actionMetadata?: ActionMetadata;
 }): PlanGraphState {
   return {
     directive: params.directive,
@@ -118,6 +120,7 @@ export function createInitialPlanState(params: {
     overrideDirective: params.directive,
     chatSource: params.chatSource,
     skipTriage: params.skipTriage,
+    actionMetadata: params.actionMetadata,
     // Dependencies
     deps: params.deps,
     _httpJobId: params._httpJobId,

@@ -909,6 +909,7 @@ export function buildDesignGraph() {
       
       // Triage System
       skipTriage: null as any,
+      actionMetadata: null as any,
       triageResult: null as any,
       workspaceState: null as any,
       currentAgent: null as any,

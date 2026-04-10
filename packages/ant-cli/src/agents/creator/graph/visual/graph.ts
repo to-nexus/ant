@@ -99,6 +99,7 @@ export function buildVisualGraph() {
       currentJob: null as any,
       overrideDirective: null as any,
       chatSource: null as any,
+      actionMetadata: null as any,
 
       // Visual-specific state
       conversation: null as any,
@@ -250,7 +251,7 @@ export function buildVisualGraph() {
  * Run the visual job graph.
  */
 export async function runVisualGraph(params: RunVisualGraphParams): Promise<any> {
-  const { directive, featurePath, deps, _httpJobId, visualSettings, isResume, chatSource, skipTriage } = params;
+  const { directive, featurePath, deps, _httpJobId, visualSettings, isResume, chatSource, skipTriage, actionMetadata } = params;
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🎨 CREATOR AGENT - Visual');
@@ -296,6 +297,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
     currentJob: 'visual',
     overrideDirective: directive,
     chatSource,
+    actionMetadata,
 
     conversation: [],
     engineeredPrompt: undefined,

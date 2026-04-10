@@ -20,6 +20,8 @@ export function buildLearnGraph() {
       workspaceState: null as any,
       overrideDirective: null as any,
       skipTriage: null as any,
+      actionMetadata: null as any,
+      chatSource: null as any,
       currentJob: null as any,
       currentAgent: null as any,
       _httpJobId: null as any,
