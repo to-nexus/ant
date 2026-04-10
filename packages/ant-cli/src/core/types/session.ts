@@ -5,8 +5,8 @@
  * Sessions track job execution history and enable resume after interruption.
  */
 
-import type { AgentJob } from './agent';
-import type { TaskTokenUsage, JobTiming, InterruptionDetails } from '@ant/shared';
+import type { AgentJob, CodebaseProfile } from './agent';
+import type { TaskTokenUsage, JobTiming, InterruptionDetails, DetectionReport } from '@ant/shared';
 import type { MessageContentBlock } from '../ports/llm';
 
 // Re-export shared types
@@ -127,6 +127,10 @@ export interface SessionState {
   currentTask?: any;
   completedTasks?: string[];
   completedTasksDetails?: any[];
+  failedTasks?: Array<{ taskId: string; taskName: string; error: string; timestamp: string }>;
+
+  // Parallel Execution
+  parallelMode?: boolean;
   
   // Retry State
   retries?: number;
@@ -165,7 +169,7 @@ export interface SessionState {
   
   // Project Code Context (for LLM RAG)
   projectCodeContext?: {
-    source: 'plan' | 'stackTrace' | 'semantic';
+    source: 'plan' | 'execute' | 'decompose';
     filePaths: string[];
     files: any[];
     stats?: {
@@ -182,6 +186,31 @@ export interface SessionState {
 
   // Inter-Job Context Bridge (cross-job directive+result history)
   jobConversation?: ConversationEntry[];
+
+  // Environment Detection & Profile
+  detectionReport?: DetectionReport;
+  profile?: CodebaseProfile;
+
+  // Artifact Restoration
+  directive?: string;
+  design?: string;
+  prd?: string;
+
+  // Token Estimation Tracking
+  estimatingTokenUsage?: TaskTokenUsage;
+  estimatingLabel?: string;
+  estimatingStartedAt?: number;
+  estimatingNodeId?: string;
+
+  // Code Job: design-prescribed dependencies
+  designDocUnknownPackages?: string[];
+
+  // Design Job: Figma & UI
+  uiDesignSource?: string;
+  figmaConfig?: any;
+  figmaExplorationResult?: any;
+  awaitingDetectClarify?: boolean;
+  awaitingClarify?: boolean;
 }
 
 // ============================================

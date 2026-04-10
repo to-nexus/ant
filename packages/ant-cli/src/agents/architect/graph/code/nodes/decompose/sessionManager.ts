@@ -1,21 +1,6 @@
 import { ArchitectGraphState, TaskQueue } from "../../state";
 import { CodeTask } from "../../../../types/task";
-import * as path from 'path';
-
-export interface SessionState {
-  taskQueue: CodeTask[];
-  completedTasks?: string[];
-  completedTasksDetails?: CodeTask[];
-  currentTask?: CodeTask;
-  referenceRequests?: Array<{project: string; branch?: string}>;
-  [key: string]: any;
-}
-
-export interface SessionData {
-  state: SessionState;
-  jobId?: string;
-  jobTiming?: any;
-}
+import type { Session } from '../../../../../../core/types/session';
 
 /**
  * Check if session exists and should be restored
@@ -24,7 +9,7 @@ export async function checkSessionRestore(
   state: ArchitectGraphState
 ): Promise<{
   shouldRestore: boolean;
-  session?: SessionData;
+  session?: Session;
   hasAdditionalDirective: boolean;
   shouldResetAndDecompose: boolean;
   mergedDirective?: string;
@@ -57,7 +42,7 @@ export async function checkSessionRestore(
     // Get directive from state (may be array or string)
     const previousDirective = Array.isArray(session.state.directives) 
       ? session.state.directives[0]?.trim()
-      : (session.state as any).directive?.trim();  // Use 'any' to access non-standard field
+      : session.state.directive?.trim();
     const hasAdditionalDirective = Boolean(
       currentDirective && 
       previousDirective && 
@@ -91,7 +76,7 @@ export async function checkSessionRestore(
     
     return {
       shouldRestore: true,
-      session: session as SessionData,
+      session,
       hasAdditionalDirective,
       shouldResetAndDecompose: false,
       mergedDirective
@@ -112,12 +97,16 @@ export async function checkSessionRestore(
  */
 export function restoreFromSession(
   state: ArchitectGraphState,
-  session: SessionData
+  session: Session
 ): ArchitectGraphState {
-  const taskQueue = TaskQueue.from<CodeTask>(session.state.taskQueue);
+  if (!session.state) {
+    return state;
+  }
+
+  const taskQueue = TaskQueue.from<CodeTask>(session.state.taskQueue ?? []);
   
   const featureTasks = new Map<string, CodeTask>();
-  session.state.taskQueue.forEach((task: CodeTask) => {
+  (session.state.taskQueue ?? []).forEach((task: CodeTask) => {
     if (task.type === 'feature') {
       featureTasks.set(task.id, task);
     }
@@ -184,7 +173,6 @@ export function restoreFromSession(
     taskQueue,
     featureTasks,
     totalSubtasks: totalTasks
-    // Note: jobId and jobTiming are managed separately by runner/JobTimingManager
   };
 }
 

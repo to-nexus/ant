@@ -223,21 +223,6 @@ export class JobStateTracker {
   }
 
   /**
-   * Check if job is completed (all tasks done)
-   */
-  isJobCompleted(sessionState: any): boolean {
-    const hasNoRemainingWork = 
-      (!sessionState.taskQueue || sessionState.taskQueue.length === 0) &&
-      !sessionState.currentTask;
-    
-    const hasCompletionMarker = 
-      (sessionState.completedTasks && sessionState.completedTasks.length > 0) ||
-      sessionState.jobTiming?.completedAt;
-    
-    return hasNoRemainingWork && hasCompletionMarker;
-  }
-
-  /**
    * Clear all state (for shutdown)
    */
   clearAll(): void {

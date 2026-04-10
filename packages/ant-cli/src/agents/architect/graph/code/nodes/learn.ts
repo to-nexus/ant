@@ -22,7 +22,7 @@ function buildJobRecord(state: ArchitectGraphState): { user: ConversationEntry; 
     role: 'user',
     content: state.directive || state.overrideDirective || '',
     timestamp,
-    metadata: { jobId: (state as any).jobId, boundary },
+    metadata: { jobId: state.jobId, boundary },
   };
 
   // Collect consumed document references for next job's context
@@ -45,7 +45,7 @@ function buildJobRecord(state: ArchitectGraphState): { user: ConversationEntry; 
       state.planText && `Plan: ${state.planText.substring(0, 500)}`,
     ].filter(Boolean).join('\n'),
     timestamp,
-    metadata: { jobId: (state as any).jobId, boundary, taskCount: tasks.length, filesWritten: filePaths.length },
+    metadata: { jobId: state.jobId, boundary, taskCount: tasks.length, filesWritten: filePaths.length },
   };
 
   return { user, assistant };
@@ -203,10 +203,10 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   }
   
   // Clean up Docker infrastructure if started during task execution
-  if ((state as any)._infraManager && (state as any)._infraProjectPath) {
+  if (state._infraManager && state._infraProjectPath) {
     try {
-      const infraManager = (state as any)._infraManager as import('../../../../../infrastructure/docker').InfrastructureManager;
-      const infraPath = (state as any)._infraProjectPath as string;
+      const infraManager = state._infraManager as import('../../../../../infrastructure/docker').InfrastructureManager;
+      const infraPath = state._infraProjectPath as string;
       
       console.log(`\n🐳 [Learn] Cleaning up Docker infrastructure...`);
       
@@ -218,8 +218,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       await infraManager.stopInfrastructure(infraPath, onLog);
       
       // Clear references
-      delete (state as any)._infraManager;
-      delete (state as any)._infraProjectPath;
+      delete state._infraManager;
+      delete state._infraProjectPath;
       
       console.log(`   ✅ Infrastructure cleanup complete\n`);
     } catch (infraError: any) {
@@ -239,7 +239,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId, 
       'learn', 
-      (state as any).workerId ?? 0,
+      state.workerId ?? 0,
       taskInfo, 
       undefined, // llmInfo
       state.recursionCount,
@@ -305,7 +305,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   
   // 3. Save run to session file first (to get sessionId and runId)
   // Skip run recording in worker context (only main orchestrator should record)
-  const _workerId = (state as any).workerId;
+  const _workerId = state.workerId;
   const isWorkerContext = _workerId !== undefined && _workerId !== null;
 
   if (!isWorkerContext && state.figmaAvailable) {
@@ -327,13 +327,18 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // hasOrchestratorFailure=true → learn skips session write → orchestrator's saved
   // state (with correct interruption + no completedAt) is kept intact.
   const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts'];
-  if (isLastTask && orchestratorReasons.includes((state as any).interruption?.reason)) {
-    const failedTasks = (state as any).failedTasks;
+  const orchestratorInterruptionReason = state.interruption?.reason;
+  if (
+    isLastTask &&
+    orchestratorInterruptionReason !== undefined &&
+    orchestratorReasons.includes(orchestratorInterruptionReason)
+  ) {
+    const failedTasks = state.failedTasks;
     if (failedTasks && failedTasks.length > 0) {
-      console.log(`⚠️  [Learn] ${failedTasks.length} task(s) failed — preserving ${(state as any).interruption.reason} interruption`);
+      console.log(`⚠️  [Learn] ${failedTasks.length} task(s) failed — preserving ${orchestratorInterruptionReason} interruption`);
     } else {
-      console.log(`✅ [Learn] All tasks completed — clearing stale ${(state as any).interruption.reason} interruption`);
-      (state as any).interruption = undefined;
+      console.log(`✅ [Learn] All tasks completed — clearing stale ${orchestratorInterruptionReason} interruption`);
+      state.interruption = undefined;
     }
   }
 
@@ -341,9 +346,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // failure/interruption state. The orchestrator's updateArtifacts includes
   // failed tasks, interruption details, and correct taskQueue. If the learn
   // node overwrites it, all that data is lost (session.state = full replace).
-  const hasOrchestratorFailure = (state as any).interruption?.reason === 'tasks_failed'
-    || (state as any).interruption?.reason === 'recursion_limit'
-    || (state as any).interruption?.reason === 'consecutive_timeouts';
+  const hasOrchestratorFailure = state.interruption?.reason === 'tasks_failed'
+    || state.interruption?.reason === 'recursion_limit'
+    || state.interruption?.reason === 'consecutive_timeouts';
   
   let sessionId: string | undefined;
   let runId: number | undefined;
@@ -408,16 +413,18 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // Without the violation check, a failed verification task gets
     // completedAt set → frontend shows "completed" despite build failure.
     const taskFailed = state.violations && state.violations.length > 0;
-    const completedJobTiming = (state as any).jobTiming ? {
-      ...(state as any).jobTiming,
+    const completedJobTiming = state.jobTiming ? {
+      ...state.jobTiming,
       ...(isLastTask && !taskFailed && { completedAt: new Date().toISOString() })
     } : undefined;
     
     // If the last task failed, set interruption so the frontend shows failure
     if (isLastTask && taskFailed) {
-      (state as any).interruption = {
+      state.interruption = {
         reason: 'verification_failed',
         message: `Task "${state.currentTask?.name}" failed after ${state.retries} retries with unresolved violations`,
+        timestamp: new Date().toISOString(),
+        canResume: true,
         failedTask: state.currentTask?.name,
         violations: (state.violations || []).slice(0, 3).map(v => ({
           type: v.type,
@@ -452,7 +459,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           const featureDirRel = rootPath
             ? path.relative(rootPath, state.context.featurePath)
             : state.context.featurePath.replace(/^\//, '');
-          const jobId = (state as any).jobId || 'unknown';
+          const jobId = state.jobId || 'unknown';
           const meta = buildConsumedMeta(jobId);
 
           const markFile = async (filename: string) => {
@@ -506,11 +513,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           recursionCount: state.recursionCount,  // ✅ Preserve recursion tracking
           recursionLimit: state.recursionLimit,
           interruption: isLastTask
-            ? (taskFailed ? (state as any).interruption : null)
-            : (existingSession.state?.interruption || (state as any).interruption),
-          jobId: (state as any).jobId,  // ✨ Preserve jobId
+            ? (taskFailed ? state.interruption : undefined)
+            : (existingSession.state?.interruption || state.interruption),
+          jobId: state.jobId,  // ✨ Preserve jobId
           jobTiming: completedJobTiming,  // ✨ Mark as completed
-          tokenUsage: (state as any).tokenUsage,  // ✅ Preserve token usage
+          tokenUsage: state.tokenUsage,  // ✅ Preserve token usage
           directives: directivesArray,  // ✅ Save directives array (newest first)
           overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
           chatSource: state.chatSource,  // ✅ Save chat source flag
@@ -643,14 +650,14 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       // Continue execution even if chat update fails
     }
   } else if (isWorkerContext) {
-    console.log(`   ℹ️  [Learn] Skipping chat status in worker context (worker ${(state as any).workerId})\n`);
+    console.log(`   ℹ️  [Learn] Skipping chat status in worker context (worker ${state.workerId})\n`);
   } else if (hasOrchestratorFailure) {
     console.log(`   ℹ️  [Learn] Skipping chat status — orchestrator reported failure\n`);
   }
   
   // ✅ Workflow instrumentation: Exit node (success path)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn', (state as any).workerId ?? 0);
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn', state.workerId ?? 0);
   }
   
   // ✅ CRITICAL: Update Kanban when transitioning to learn (all tasks completed)
@@ -658,7 +665,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // Skip in worker context — orchestrator handles kanban for parallel mode
   // ✅ FIX: Also skip when orchestrator already saved failure state — broadcasting
   // empty kanban here would erase the failed tasks from the UI.
-  const _learnWorkerId = (state as any).workerId;
+  const _learnWorkerId = state.workerId;
   const _isLearnWorkerContext = _learnWorkerId !== undefined && _learnWorkerId !== null;
   if (!_isLearnWorkerContext && !hasOrchestratorFailure && state.deps?.kanbanUpdate && state._httpJobId) {
     console.log(`\n📋 [Learn] Updating Kanban → All tasks completed`);
@@ -688,8 +695,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       jobId: state._httpJobId,
       jobType: 'code',
     });
-    const jobTokenUsage = (state as any).tokenUsage;
-    const jobTiming = (state as any).jobTiming;
+    const jobTokenUsage = state.tokenUsage;
+    const jobTiming = state.jobTiming;
     const startedAt = jobTiming?.startedAt ? new Date(jobTiming.startedAt).getTime() : 0;
     await execLogger.logJobComplete({
       totalTasks: (state.completedTasksDetails || []).length,
