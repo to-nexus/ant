@@ -94,6 +94,17 @@
     "viewInExplorer": "View in explorer"
   },
 
+  "buildDirective": {
+    "create-fe": "Design frontend system architecture from source materials",
+    "create-be": "Design backend system architecture and API contracts",
+    "create-fullstack": "Design full-stack system architecture",
+    "create-figma": "Extract UI design from Figma file",
+    "create-ref": "Design UI from reference images",
+    "create-desc": "Design UI from text description",
+    "create-code": "Generate code from the prepared materials",
+    "refactor-code": "Refactor existing codebase"
+  },
+
   "status": {
     "buildReady": "BUILD ready",
     "hasOutput": "Has outputs",
