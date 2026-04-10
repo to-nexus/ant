@@ -139,11 +139,14 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     setSelectedCtx(new Set());
     updateActionMetadata({ context: undefined });
 
-    const targetPaths = slots.target.mirrorRefs
-      ? defaultRefPaths
-      : resolveTargetFiles(slots.target, fileTree);
-    setSelectedTargets(new Set(targetPaths));
-    updateActionMetadata({ target: targetPaths.length > 0 ? targetPaths : undefined });
+    if (slots.target.mirrorRefs) {
+      setSelectedTargets(new Set(defaultRefPaths));
+      updateActionMetadata({ target: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
+    } else {
+      const displayTargets = resolveTargetFiles(slots.target, fileTree);
+      setSelectedTargets(new Set(displayTargets));
+      updateActionMetadata({ target: undefined });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intentId, selectedBasis]);
 
