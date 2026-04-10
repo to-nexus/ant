@@ -142,8 +142,9 @@ N개 Job Summary 수집 → 집계 분석 → 트렌드/이상치 식별 → 개
 docs/observability/
     README.md                     이 문서 (개요 + 로드맵)
     01-baseline-metrics.md        정상 범위 기준표 (Phase 1)
-    02-aggregation-queries.md     배치 집계 쿼리 정의 (Phase 2)
-    03-feedback-pipeline.md       유저 리포트 수집/분석 파이프라인 (Phase 3)
+    02-token-time-tracking.md     토큰 비용 모델 + 시간 추적 + 캐시 효율 분석
+    03-aggregation-queries.md     배치 집계 쿼리 정의 (Phase 2)
+    04-feedback-pipeline.md       유저 리포트 수집/분석 파이프라인 (Phase 3)
 ```
 
 ## 경계
