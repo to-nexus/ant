@@ -64,34 +64,34 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         // Prevents stale low limits from old sessions overriding a raised RECURSION_LIMIT
         initial.recursionLimit = Math.max(session.state.recursionLimit || 0, finalLimit);
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
-        initial._estimatingTokenUsage = (session.state as any).estimatingTokenUsage;  // ✅ Restore estimating phase snapshot
+        initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
         
-        // ✅ CRITICAL: Restore detectionReport (required for enableTools in execute)
-        // Without this, execute disables tool calling and LLM outputs XML tags as text
-        if ((session.state as any).detectionReport) {
-          initial.detectionReport = (session.state as any).detectionReport;
+        if (session.state.detectionReport) {
+          initial.detectionReport = session.state.detectionReport;
         }
         
-        // ✅ Restore reference requests (for search_reference_code tool availability)
-        if ((session.state as any).referenceRequests) {
-          initial.referenceRequests = (session.state as any).referenceRequests;
+        if (session.state.referenceRequests) {
+          initial.referenceRequests = session.state.referenceRequests;
         }
         
-        // Restore design-prescribed dependencies (for plan prompt injection)
-        if ((session.state as any).designDocUnknownPackages) {
-          initial.designDocUnknownPackages = (session.state as any).designDocUnknownPackages;
+        if (session.state.designDocUnknownPackages) {
+          initial.designDocUnknownPackages = session.state.designDocUnknownPackages;
         }
         
-        // Restore profile (language/framework detection for diagnostic hints)
-        const restoredProfile = (session.state as any).profile
-          ?? (session.state as any).detectionReport?.profile;
+        const restoredProfile = session.state.profile
+          ?? session.state.detectionReport?.profile;
         if (restoredProfile) {
           initial.profile = restoredProfile;
         }
         
-        // ✅ Restore projectCodeContext (filePaths for existingFiles detection in execute)
-        if ((session.state as any).projectCodeContext) {
-          initial.projectCodeContext = (session.state as any).projectCodeContext;
+        if (session.state.projectCodeContext) {
+          initial.projectCodeContext = {
+            ...session.state.projectCodeContext,
+            stats: {
+              filesLoaded: session.state.projectCodeContext.stats?.filesLoaded ?? 0,
+              estimatedTokens: session.state.projectCodeContext.stats?.estimatedTokens ?? 0,
+            },
+          };
         }
         
         // ✅ Restore planText for task-level resume (skip plan regeneration)
@@ -113,42 +113,40 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.directive = session.state.directives[0];
         }
         
-        if ((session.state as any).design) {
-          initial.design = (session.state as any).design;
+        if (session.state.design) {
+          initial.design = session.state.design;
         } else if (session.artifacts?.design) {
           initial.design = session.artifacts.design;
         }
         
-        // Restore PRD for downstream prompts
-        if ((session.state as any).prd) {
-          initial.prd = (session.state as any).prd;
+        if (session.state.prd) {
+          initial.prd = session.state.prd;
         }
         
-        if ((session.state as any).userLanguage) {
-          initial.context.userLanguage = (session.state as any).userLanguage;
+        if (session.state.userLanguage) {
+          initial.context.userLanguage = session.state.userLanguage;
         }
         
-        if ((session.state as any).jobId) {
-          (initial as any).jobId = (session.state as any).jobId;
+        if (session.state.jobId) {
+          initial.jobId = session.state.jobId;
         }
-        if ((session.state as any).jobTiming) {
-          (initial as any).jobTiming = (session.state as any).jobTiming;
+        if (session.state.jobTiming) {
+          initial.jobTiming = session.state.jobTiming;
         }
       } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
         // Restore partial state from early-interrupted session (triage/detectEnv stage)
         // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)
-        const savedDirective = (session.state as any).directive || session.state.overrideDirective;
+        const savedDirective = session.state.directive || session.state.overrideDirective;
         if (savedDirective && !initial.directive) {
           console.log(`🔄 [CodeRunner] Restoring directive from early-interrupted session`);
           initial.directive = savedDirective;
         }
-        // Restore detectionReport (enables decompose-direct routing after detectEnv interruption)
-        if ((session.state as any).detectionReport && !initial.detectionReport) {
+        if (session.state.detectionReport && !initial.detectionReport) {
           console.log(`🔄 [CodeRunner] Restoring detectionReport from session`);
-          initial.detectionReport = (session.state as any).detectionReport;
+          initial.detectionReport = session.state.detectionReport;
         }
-        if ((session.state as any).userLanguage) {
-          initial.context.userLanguage = (session.state as any).userLanguage;
+        if (session.state.userLanguage) {
+          initial.context.userLanguage = session.state.userLanguage;
         }
       }
     } catch (err) {
@@ -161,8 +159,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   initial.recursionCount = initial.recursionCount || 0;
   
   // ✅ Set jobTiming on broadcaster for resume (so SSE broadcasts include timing from first event)
-  if ((initial as any).jobTiming && initial.deps?.kanbanUpdate?.setJobTiming) {
-    initial.deps.kanbanUpdate.setJobTiming((initial as any).jobTiming);
+  if (initial.jobTiming && initial.deps?.kanbanUpdate?.setJobTiming) {
+    initial.deps.kanbanUpdate.setJobTiming(initial.jobTiming);
   }
   
   // ✅ Also set isResume from env var (for cloud mode where session restoration may be partial)
@@ -171,9 +169,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   }
 
   // Write resume marker to token log so run boundaries are visible
-  if (initial.isResume && initial.context?.featurePath && (initial as any).jobId) {
+  if (initial.isResume && initial.context?.featurePath && initial.jobId) {
     const { getTokenLogger } = await import('../../../../core/utils/tokenLogger');
-    const logger = getTokenLogger({ featurePath: initial.context.featurePath, jobId: (initial as any).jobId });
+    const logger = getTokenLogger({ featurePath: initial.context.featurePath, jobId: initial.jobId });
     logger.logResumeMarker().catch(() => {});
   }
   
@@ -187,8 +185,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.context.featureFolder,
         'code'
       );
-      // Only save if session doesn't already have directive (avoid overwriting with stale data)
-      if (!(session.state as any)?.directive) {
+      if (!session.state?.directive) {
         await initial.deps.session.updateArtifacts(
           initial.context.project,
           initial.context.featureFolder,
@@ -249,18 +246,18 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             resolvedCategories: (session.state.resolvedCategories || []) as any,
             recursionCount: session.state.recursionCount || 0,
             recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),
-            ...((session.state as any).profile || (session.state as any).detectionReport?.profile) && {
-              profile: (session.state as any).profile ?? (session.state as any).detectionReport?.profile
+            ...(session.state.profile || session.state.detectionReport?.profile) && {
+              profile: session.state.profile ?? session.state.detectionReport?.profile
             },
-            ...(session.state as any).jobId && { jobId: (session.state as any).jobId },
-            ...(session.state as any).jobTiming && { jobTiming: (session.state as any).jobTiming },
-            ...(session.state as any).detectionReport && { detectionReport: (session.state as any).detectionReport },
-            ...(session.state as any).referenceRequests && { referenceRequests: (session.state as any).referenceRequests },
-            ...(session.state as any).designDocUnknownPackages && { designDocUnknownPackages: (session.state as any).designDocUnknownPackages },
-            ...(session.state as any).projectCodeContext && { projectCodeContext: (session.state as any).projectCodeContext },
+            ...(session.state.jobId && { jobId: session.state.jobId }),
+            ...(session.state.jobTiming && { jobTiming: session.state.jobTiming }),
+            ...(session.state.detectionReport && { detectionReport: session.state.detectionReport }),
+            ...(session.state.referenceRequests && { referenceRequests: session.state.referenceRequests }),
+            ...(session.state.designDocUnknownPackages && { designDocUnknownPackages: session.state.designDocUnknownPackages }),
+            ...(session.state.projectCodeContext && { projectCodeContext: session.state.projectCodeContext }),
           } as any;
-          if ((session.state as any).userLanguage) {
-            state.context.userLanguage = (session.state as any).userLanguage;
+          if (session.state.userLanguage) {
+            state.context.userLanguage = session.state.userLanguage;
           }
         }
       } catch (restoreError) {
@@ -347,15 +344,15 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     }
     
     // ✅ CRITICAL: Set interruption in state before learn node
-    (state as any).interruption = interruption;
+    state.interruption = interruption;
     
     // Try to run learn node for cleanup (optional, can fail safely)
     try {
       const { learn } = await import('./nodes/index');
       state = await learn(state);
       
-      if (!(state as any).interruption) {
-        (state as any).interruption = interruption;
+      if (!state.interruption) {
+        state.interruption = interruption;
       }
     } catch (learnError) {
       // Learn node failed (non-critical)
@@ -381,7 +378,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     branch: state.branch!, 
     reportFile: reportMessage,
     filesChanged: filesGenerated,
-    interruption: (state as any).interruption,
+    interruption: state.interruption,
     triageResult: state.triageResult,  // ✅ Pass triage result for ask/redirect/blocked handling
   };
 }
