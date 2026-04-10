@@ -16,7 +16,7 @@ import { useActionReadiness } from '@/application/hooks/features/useActionReadin
 import { ActionChipGrid } from '../Actions';
 import { useStore } from '@/domain/store';
 import type { ActionId } from '@ant/shared';
-import { Compass, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FileStats } from '@/domain/models/chat';
 
 interface ChatPanelProps {
@@ -383,11 +383,12 @@ function ActionsCTA() {
     <button
       type="button"
       onClick={() => openActionsPanel()}
-      className="mx-4 mt-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-[#30363d] flex items-center gap-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm w-[calc(100%-2rem)]"
+      className="mx-4 mt-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 flex items-center gap-2 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors text-sm w-[calc(100%-2rem)]"
     >
-      <Compass className="w-4 h-4 text-gray-500" />
-      <span className="font-medium text-gray-700 dark:text-gray-300">{t('ctaButton')}</span>
-      <ChevronRight className="w-3 h-3 text-gray-400 ml-auto" />
+      <Zap className="w-4 h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" />
+      <span className="font-medium text-amber-700 dark:text-amber-300">{t('ctaButton')}</span>
+      <span className="text-amber-500/70 dark:text-amber-400/50 truncate hidden sm:inline">— {t('title')}</span>
+      <ChevronRight className="w-3 h-3 text-amber-400 dark:text-amber-500 ml-auto flex-shrink-0" />
     </button>
   );
 }
