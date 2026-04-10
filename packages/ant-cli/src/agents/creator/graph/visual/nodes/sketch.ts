@@ -123,7 +123,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
       }, getEstimatingLabel('sketch', state._uiLocale as any));
     }
 
-    if (state._httpJobId) {
+    if (state._httpJobId && state.featurePath) {
       try {
         const byteSizes = sketchImages.map((d, i) => `[sketch ${i + 1}] ${d.data.length} bytes`).join(', ');
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'sketch', prompt.length, {
@@ -146,7 +146,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
       _phaseTimings: { ...state._phaseTimings, sketch: Date.now() - phaseStart },
     };
   } catch (err: any) {
-    if (state._httpJobId) {
+    if (state._httpJobId && state.featurePath) {
       try {
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'sketch', prompt.length, {
           hardcodedContent: `engineeredPrompt: ${prompt}\n\nERROR: ${err.message}${err instanceof SafetyBlockError ? ' (SAFETY_BLOCK)' : ''}`,

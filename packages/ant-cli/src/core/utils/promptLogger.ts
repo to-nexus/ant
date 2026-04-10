@@ -42,7 +42,7 @@ export interface PromptLogEntry {
 export interface PromptLoggerOptions {
   featurePath: string;
   jobId: string;
-  jobType: 'design' | 'code' | 'plan';
+  jobType: 'design' | 'code' | 'plan' | 'visual';
 }
 
 /**
@@ -73,6 +73,7 @@ export class PromptLogger {
     const promptLength = entry.promptLength || 0;
     const fullEntry: PromptLogEntry = {
       ...entry,
+      callIndex: entry.callIndex ?? 0,
       timestamp: new Date().toISOString(),
       tokenEstimate: entry.tokenEstimate ?? this.estimateTokens(promptLength),
     };
@@ -292,7 +293,7 @@ export function getPromptLogger(options: PromptLoggerOptions): PromptLogger {
 /**
  * Clear logger instance (call when job completes)
  */
-export function clearPromptLogger(jobType: 'design' | 'code' | 'plan', jobId: string): void {
+export function clearPromptLogger(jobType: 'design' | 'code' | 'plan' | 'visual', jobId: string): void {
   loggerInstances.delete(jobId);
 }
 

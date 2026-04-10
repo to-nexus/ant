@@ -74,7 +74,7 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
         getEstimatingLabel('render', state._uiLocale as any));
     }
 
-    if (state._httpJobId) {
+    if (state._httpJobId && state.featurePath) {
       try {
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'render', prompt.length, {
           injectedVariables: { aspectRatio, selectedSketchIndex: state.selectedSketchIndex, hasReferenceImage: !!refImage },
@@ -94,7 +94,7 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
       _phaseTimings: { ...state._phaseTimings, render: Date.now() - phaseStart },
     };
   } catch (err: any) {
-    if (state._httpJobId) {
+    if (state._httpJobId && state.featurePath) {
       try {
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'render', prompt.length, {
           hardcodedContent: `engineeredPrompt: ${prompt}\n\nERROR: ${err.message}${err instanceof SafetyBlockError ? ' (SAFETY_BLOCK)' : ''}`,

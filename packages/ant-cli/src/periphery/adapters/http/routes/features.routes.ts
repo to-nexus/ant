@@ -281,6 +281,15 @@ export function createFeaturesRoutes(deps: {
                 logger.debug(`[Session] 🗑️ Deleted debug file: ${subdir}/${entry.name}`);
               }
             }
+            // screenshots/ inside figma subdir uses {nodeId}.png (no jobId),
+            // so clear the entire directory when the session is cleaned.
+            if (subdir === 'figma') {
+              const screenshotsDir = path.join(debugDir, 'screenshots');
+              try {
+                await fs.promises.rm(screenshotsDir, { recursive: true, force: true });
+                logger.debug(`[Session] 🗑️ Cleared figma screenshots directory`);
+              } catch { /* directory may not exist */ }
+            }
           }
           logger.debug(`[Session] ✅ Cleared debug logs for jobs: ${cleanedJobIds.join(', ')}`);
         } catch (error) {

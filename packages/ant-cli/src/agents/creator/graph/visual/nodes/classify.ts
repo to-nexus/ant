@@ -87,7 +87,7 @@ export async function classifyNode(state: VisualGraphState): Promise<Partial<Vis
       await chatAPI.finalizeMessage();
     }
 
-    if (state._httpJobId) {
+    if (state._httpJobId && state.featurePath) {
       try {
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'classify', classifyPrompt.length, {
           templatePath: 'visual/nodes/direct/classify',
