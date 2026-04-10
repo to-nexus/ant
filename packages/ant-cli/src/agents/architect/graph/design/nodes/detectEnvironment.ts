@@ -29,7 +29,7 @@ import {
   JobEnvironment,
   DesignDomain,
 } from "../../../../../core/types/detection";
-import { isFigmaDataPopulated, UIDesignSource, DESIGN_DIR, DESIGN_SUBDIR, resolveFromDetection } from "@ant/shared";
+import { isFigmaDataPopulated, UIDesignSource, DESIGN_DIR, DESIGN_SUBDIR, resolveFromInfer } from "@ant/shared";
 import type { ResolvedActionContext, ActionMetadata } from "@ant/shared";
 import { extractLLMInfo } from "../../../../../core/ports/workflow";
 
@@ -386,7 +386,7 @@ export async function detectEnvironment(
     
     // RAC: create from detection (infer path, clarify resume)
     const clarifyActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
-    const clarifyRAC = resolveFromDetection(detectionReport, clarifyActionMetadata, state.context.codebaseProfile);
+    const clarifyRAC = resolveFromInfer(detectionReport, clarifyActionMetadata, state.context.codebaseProfile);
     console.log(`📋 [detectEnvironment] RAC created (clarify resume): tech=${JSON.stringify(clarifyRAC.tech)}`);
 
     return {
@@ -825,7 +825,7 @@ export async function detectEnvironment(
         
         // RAC: create even on error path (downstream may need it)
         const errorActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
-        const errorRAC = state.resolvedAction || resolveFromDetection(detectionReport, errorActionMetadata, state.context.codebaseProfile);
+        const errorRAC = state.resolvedAction || resolveFromInfer(detectionReport, errorActionMetadata, state.context.codebaseProfile);
 
         return {
           detectionReport,
@@ -889,7 +889,7 @@ export async function detectEnvironment(
     let inferRAC: ResolvedActionContext | undefined = state.resolvedAction;
     if (!inferRAC) {
       const inferActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
-      inferRAC = resolveFromDetection(detectionReport, inferActionMetadata, state.context.codebaseProfile);
+      inferRAC = resolveFromInfer(detectionReport, inferActionMetadata, state.context.codebaseProfile);
       console.log(`📋 [detectEnvironment] RAC created (infer): workType=${inferRAC.workType}, tech=${JSON.stringify(inferRAC.tech)}`);
     }
 

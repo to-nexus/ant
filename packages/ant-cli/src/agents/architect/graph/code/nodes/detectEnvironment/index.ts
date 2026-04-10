@@ -21,7 +21,7 @@ import {
   formatDetectionReportForChat,
   JobMode,
 } from '../../../../../../core/types/detection';
-import { DESIGN_DIR, DESIGN_SUBDIR, DESIGN_SUBDIRS, resolveFromDetection } from '@ant/shared';
+import { DESIGN_DIR, DESIGN_SUBDIR, DESIGN_SUBDIRS, resolveFromInfer } from '@ant/shared';
 import type { ActionMetadata, EnvironmentHints } from '@ant/shared';
 
 // Import submodules
@@ -379,7 +379,7 @@ export async function detectEnvironment(
     const fallbackHints: EnvironmentHints = {
       designDocPath: state.designDocPath,
     };
-    resolvedAction = resolveFromDetection(detectionReport, inferActionMetadata, codebaseProfile, fallbackHints);
+    resolvedAction = resolveFromInfer(detectionReport, inferActionMetadata, codebaseProfile, fallbackHints);
     console.log(`📋 [DetectEnv] RAC created (infer): jobMode=${resolvedAction.jobMode}, tech=${JSON.stringify(resolvedAction.tech)}`);
   }
 

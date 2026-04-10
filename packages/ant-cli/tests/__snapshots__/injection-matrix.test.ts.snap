@@ -131,6 +131,7 @@ exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-co
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
+  "code/base/injections/preview-setup",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
   "common/injections/action-context",
@@ -192,6 +193,7 @@ exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-co
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
+  "code/base/injections/preview-setup",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
   "common/injections/action-context",
@@ -253,6 +255,7 @@ exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-co
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
+  "code/base/injections/preview-setup",
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
@@ -322,6 +325,7 @@ exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-co
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
+  "code/base/injections/preview-setup",
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
@@ -538,6 +542,7 @@ exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-setup",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
   "common/injections/action-context",
@@ -611,6 +616,7 @@ exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-setup",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
   "common/injections/action-context",
@@ -684,6 +690,7 @@ exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-setup",
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
@@ -765,6 +772,7 @@ exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-setup",
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",

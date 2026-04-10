@@ -9,7 +9,7 @@ import {
   getBasisDescription,
   getUiSourceFromIntent,
   resolveFromExplicit,
-  resolveFromDetection,
+  resolveFromInfer,
   INTENT_DEFINITIONS,
   deriveFromIntent,
 } from '@ant/shared';
@@ -560,10 +560,10 @@ describe('resolveFromExplicit', () => {
 });
 
 // ============================================
-// resolveFromDetection
+// resolveFromInfer
 // ============================================
 
-describe('resolveFromDetection', () => {
+describe('resolveFromInfer', () => {
   const baseReport: DetectionReport = {
     jobMode: 'generate',
     jobModeReasoning: 'test',
@@ -577,7 +577,7 @@ describe('resolveFromDetection', () => {
       environment: 'frontend',
       domain: 'service',
     };
-    const rac = resolveFromDetection(report, undefined, { language: 'TypeScript', framework: 'Next.js' });
+    const rac = resolveFromInfer(report, undefined, { language: 'TypeScript', framework: 'Next.js' });
 
     expect(rac.source).toBe('infer');
     expect(rac.intent).toBeUndefined();
@@ -597,7 +597,7 @@ describe('resolveFromDetection', () => {
       environment: 'backend',
       profile: { language: 'Go', framework: 'Gin' },
     };
-    const rac = resolveFromDetection(report);
+    const rac = resolveFromInfer(report);
 
     expect(rac.tech.language).toBe('go');
     expect(rac.tech.framework).toBe('gin');
@@ -613,7 +613,7 @@ describe('resolveFromDetection', () => {
       target: ['src/main.ts'],
       context: ['docs/notes.md'],
     };
-    const rac = resolveFromDetection(report, metadata);
+    const rac = resolveFromInfer(report, metadata);
 
     expect(rac.basis).toBe('prd');
     expect(rac.refs).toEqual(['docs/spec.md']);
@@ -625,7 +625,7 @@ describe('resolveFromDetection', () => {
 
   it('hasExplicitFields false when no metadata', () => {
     const report: DetectionReport = { ...baseReport };
-    const rac = resolveFromDetection(report);
+    const rac = resolveFromInfer(report);
 
     expect(rac.hasExplicitFields).toBe(false);
   });
@@ -636,7 +636,7 @@ describe('resolveFromDetection', () => {
       sourceJob: 'code',
       profile: { language: 'Python' },
     };
-    const rac = resolveFromDetection(report, undefined, { language: 'Go' });
+    const rac = resolveFromInfer(report, undefined, { language: 'Go' });
 
     expect(rac.tech.language).toBe('go');
   });
@@ -647,7 +647,7 @@ describe('resolveFromDetection', () => {
       sourceJob: 'code',
       profile: { language: 'Python' },
     };
-    const rac = resolveFromDetection(report);
+    const rac = resolveFromInfer(report);
 
     expect(rac.tech.language).toBe('python');
   });
@@ -657,7 +657,7 @@ describe('resolveFromDetection', () => {
       ...baseReport,
       environment: 'unknown',
     };
-    const rac = resolveFromDetection(report);
+    const rac = resolveFromInfer(report);
 
     expect(rac.tech.environment).toBeUndefined();
     expect(rac.tech.runtime).toBeUndefined();
@@ -665,7 +665,7 @@ describe('resolveFromDetection', () => {
 
   it('uses fallbackHints when no environment from report', () => {
     const report: DetectionReport = { ...baseReport };
-    const rac = resolveFromDetection(
+    const rac = resolveFromInfer(
       report,
       undefined,
       { language: 'TypeScript' },
@@ -681,7 +681,7 @@ describe('resolveFromDetection', () => {
       ...baseReport,
       environment: 'frontend',
     };
-    const rac = resolveFromDetection(
+    const rac = resolveFromInfer(
       report,
       undefined,
       { language: 'TypeScript' },
@@ -697,7 +697,7 @@ describe('resolveFromDetection', () => {
       ...baseReport,
       environment: 'fullstack',
     };
-    const rac = resolveFromDetection(report, undefined, { language: 'TypeScript' });
+    const rac = resolveFromInfer(report, undefined, { language: 'TypeScript' });
 
     expect(rac.tech.environment).toBe('fullstack');
     expect(rac.tech.runtime).toBeUndefined();
@@ -709,7 +709,7 @@ describe('resolveFromDetection', () => {
       workType: 'system-design',
       domain: 'game',
     };
-    const rac = resolveFromDetection(report);
+    const rac = resolveFromInfer(report);
 
     expect(rac.domain).toBe('game');
   });
