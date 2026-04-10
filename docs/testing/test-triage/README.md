@@ -48,6 +48,7 @@ cp "$FIXTURES/spec-auth.md" "$FEATURE/outputs/design/spec/"
 
 | 파일 | 트리거하는 플래그 | 복사 경로 |
 |------|-----------------|----------|
+| `directives.json` | — (채팅 입력 레퍼런스) | 복사 불필요. 시나리오별 채팅 입력 텍스트 모음. |
 | `prd.md` | `hasPrd` | `inputs/sources/prd.md` |
 | `fe-system-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
 | `be-system-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
