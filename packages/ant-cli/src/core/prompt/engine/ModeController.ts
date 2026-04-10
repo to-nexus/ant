@@ -168,8 +168,11 @@ export class ModeController {
     const isError = taskType === 'error';
     const isTestCode = taskType === 'test-code';
     const isDoc = taskType === 'doc';
-    const skipDesignContext = isVerification || isTestCode || isDoc;
-    const detectedEnv = (context as any).detectedEnvironment as string | undefined;
+    const isExplicit = resolvedAction?.source === 'explicit';
+    const hasExplicitDocs = isExplicit && (resolvedAction?.documents?.length ?? 0) > 0;
+    const skipDesignContext = isVerification || isTestCode || isDoc || hasExplicitDocs;
+    const detectedEnv = (isExplicit && resolvedAction?.tech?.environment)
+      || (context as any).detectedEnvironment as string | undefined;
 
     // ✅ Common injections (used by ALL jobs - code, design, learn)
     if (context.stats.hasDirective) {
@@ -216,7 +219,7 @@ export class ModeController {
       }
       
       // Behavioral debugging (only for refactor mode)
-      if (this.isRefactorMode(mode, context)) {
+      if ((isExplicit && resolvedAction?.jobMode === 'refactor') || this.isRefactorMode(mode, context)) {
         injections.push(`${jobPrefix}/behavioral-debugging`);
         console.log('[ModeController] Adding behavioral-debugging for refactor mode');
       }
@@ -224,8 +227,10 @@ export class ModeController {
     
     // Phase-specific injections
     if (phase === 'execute') {
-      const language = this.detectLanguage(context);
-      const environment = this.detectEnvironment(context, language);
+      const language = (isExplicit && resolvedAction?.tech?.language)
+        || this.detectLanguage(context);
+      const environment = (isExplicit && this.resolveEnvironmentFromRAC(resolvedAction, language))
+        || this.detectEnvironment(context, language);
       
       // Diagnostic (verification/error) and test-code tasks use dedicated templates.
       // Environment-specific rules (e.g. go-api/rules.md) contain "Do NOT run build commands"
@@ -322,7 +327,8 @@ export class ModeController {
         }
         
         // ✅ Framework-aware augmentations (directory structure principles)
-        const frameworkAugmentation = this.detectFrameworkAugmentation(context, targetFile);
+        const frameworkAugmentation = (isExplicit && this.resolveFrameworkFromRAC(resolvedAction, targetFile))
+          || this.detectFrameworkAugmentation(context, targetFile);
         if (frameworkAugmentation) {
           injections.push(frameworkAugmentation);
           console.log(`[ModeController] Adding framework augmentation: ${frameworkAugmentation}`);
@@ -393,6 +399,41 @@ export class ModeController {
     return injections;
   }
   
+  /**
+   * Resolve environment from RAC.tech for explicit path.
+   * Maps abstract Environment → concrete template directory name.
+   */
+  private resolveEnvironmentFromRAC(
+    rac?: ResolvedActionContext, language?: string
+  ): string | undefined {
+    if (!rac?.tech?.environment) return undefined;
+    const env = rac.tech.environment;
+    if (env === 'fullstack') return 'fullstack';
+    if (env === 'frontend') return 'browser';
+    if (env === 'backend') return language === 'go' ? 'go-api' : 'node-api';
+    return undefined;
+  }
+
+  /**
+   * Resolve framework augmentation from RAC.tech for explicit path.
+   * Filters by targetFile so that frontend augmentations only apply to frontend documents.
+   */
+  private resolveFrameworkFromRAC(
+    rac?: ResolvedActionContext, targetFile?: string
+  ): string | undefined {
+    const fw = rac?.tech?.framework;
+    if (!fw) return undefined;
+    const isFE = !targetFile || targetFile.includes('fe-system-') || targetFile.includes('frontend');
+    const isBE = !targetFile || targetFile.includes('be-system-') || targetFile.includes('backend');
+    if ((fw === 'nextjs' || fw === 'nuxt') && isFE) {
+      return 'design/phases/execute/injections/nextjs-augmentation';
+    }
+    if (rac.tech?.language === 'go' && isBE) {
+      return 'design/phases/execute/injections/go-api-augmentation';
+    }
+    return undefined;
+  }
+
   /**
    * Detect project environment from codebase profile or design document
    * Always returns an inferred environment (never null)

@@ -59,6 +59,13 @@ export interface ExpectedFile {
   ext: string;
   label: { en: string; ko: string };
   warnIfExists: boolean;
+  /** true = wildcard pattern (fe-system-*.md), false = exact filename (prd-refine.md) */
+  isPattern: boolean;
+}
+
+/** Format an expected file entry for display: "fe-system-*.md" or "prd-refine.md" */
+export function formatExpectedFile(ef: ExpectedFile): string {
+  return ef.isPattern ? `${ef.prefix}*${ef.ext}` : `${ef.prefix}${ef.ext}`;
 }
 
 // ============================================
@@ -83,8 +90,8 @@ function emptyRef(): SlotDef {
   return { path: '', label: CHAT_HINT, type: 'file', defaultSelected: false, emptyHint: CHAT_HINT };
 }
 
-function expected(prefix: string, ext: string, label: { en: string; ko: string }): ExpectedFile {
-  return { prefix, ext, label, warnIfExists: true };
+function expected(prefix: string, ext: string, label: { en: string; ko: string }, isPattern = true): ExpectedFile {
+  return { prefix, ext, label, warnIfExists: true, isPattern };
 }
 
 // ============================================
@@ -108,7 +115,7 @@ const L = {
   uiSpec: { en: 'ui-spec.json', ko: 'ui-spec.json' },
   spec: { en: 'spec-*.md', ko: 'spec-*.md' },
   plan: { en: 'PRD', ko: '기획서' },
-  prd: { en: 'prd.md', ko: 'prd.md' },
+  prd: { en: 'prd-refine.md', ko: 'prd-refine.md' },
   visual: { en: 'Generated Images', ko: '생성 이미지' },
 } as const;
 
@@ -130,9 +137,9 @@ const FE_TARGETS: ExpectedFile[] = [expected('fe-system-', '.md', L.feSystem)];
 const BE_TARGETS: ExpectedFile[] = [expected('be-system-', '.md', L.beSystem), expected('api-contract-', '.md', L.apiContract)];
 const FULLSTACK_TARGETS: ExpectedFile[] = [...FE_TARGETS, ...BE_TARGETS];
 const UI_TARGETS: ExpectedFile[] = [
-  expected('ui-tokens', '.json', L.uiTokens),
-  expected('ui-assets', '.json', L.uiAssets),
-  expected('ui-spec', '.json', L.uiSpec),
+  expected('ui-tokens', '.json', L.uiTokens, false),
+  expected('ui-assets', '.json', L.uiAssets, false),
+  expected('ui-spec', '.json', L.uiSpec, false),
 ];
 const SPEC_TARGETS: ExpectedFile[] = [expected('spec-', '.md', L.spec)];
 
@@ -144,7 +151,7 @@ const MATRIX: Record<string, MatrixEntry> = {
     directive: {
       refs: [emptyRef()],
       context: [ctxDir(SOURCES_DIR, L.sources)],
-      target: { dir: PLAN_DIR, expectedFiles: [expected('prd', '.md', L.prd)] },
+      target: { dir: PLAN_DIR, expectedFiles: [expected('prd-refine', '.md', L.prd, false)] },
     },
   },
   'revise-plan': {
