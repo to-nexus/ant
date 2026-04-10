@@ -95,11 +95,10 @@ export async function architectAgent(
   // 3. Retrieve long-term knowledge from Vector DB
   const vectorMemory = await retrieve(job, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
   
-  // 4. Detect user language from input
-  // Job-level language detection: each job can have different language
+  // 4. Detect user language: actionMetadata.language (explicit from UI) > input text inference
   const { detectUserLanguage } = await import('../../core/utils/languageDetector');
-  const inputText = input || '';
-  const userLanguage = detectUserLanguage(inputText);
+  const explicitLanguage = deps?.actionMetadata?.language;
+  const userLanguage = explicitLanguage || detectUserLanguage(input || '');
   
   // 5. Extract UserContext for path resolution
   // ✅ Get from deps (passed by orchestrator)

@@ -114,14 +114,14 @@
   },
 
   "buildDirective": {
-    "create-fe": "소스 문서를 기반으로 프론트엔드 시스템 아키텍처를 설계합니다",
-    "create-be": "백엔드 시스템 아키텍처와 API 계약을 설계합니다",
-    "create-fullstack": "풀스택 시스템 아키텍처를 설계합니다",
-    "create-figma": "Figma 파일에서 UI 설계를 추출합니다",
-    "create-ref": "레퍼런스 이미지를 분석하여 UI를 설계합니다",
-    "create-desc": "텍스트 설명으로 UI를 설계합니다",
-    "create-code": "준비된 재료를 기반으로 코드를 생성합니다",
-    "refactor-code": "기존 코드를 리팩토링합니다"
+    "create-fe": "소스 문서를 기반으로 프론트엔드 시스템 아키텍처를 설계해주세요",
+    "create-be": "소스 문서를 기반으로 백엔드 시스템 아키텍처와 API 계약을 설계해주세요",
+    "create-fullstack": "소스 문서를 기반으로 풀스택 시스템 아키텍처를 설계해주세요",
+    "create-figma": "Figma 파일에서 UI 설계를 추출해주세요",
+    "create-ref": "레퍼런스 이미지를 분석하여 UI를 설계해주세요",
+    "create-desc": "텍스트 설명을 기반으로 UI를 설계해주세요",
+    "create-code": "준비된 재료를 기반으로 코드를 생성해주세요",
+    "refactor-code": "기존 코드를 리팩토링해주세요"
   },
 
   "status": {
