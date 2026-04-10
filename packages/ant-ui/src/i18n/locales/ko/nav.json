@@ -55,7 +55,9 @@
   },
   "splitLayout": {
     "horizontal": "수평 분할 (좌/우)",
-    "vertical": "수직 분할 (상/하)"
+    "vertical": "수직 분할 (상/하)",
+    "singleView": "단일 보기 (워크플로 숨김)",
+    "splitView": "분할 보기 (워크플로 표시)"
   },
   "desktop": {
     "offline": "Ant Desktop",

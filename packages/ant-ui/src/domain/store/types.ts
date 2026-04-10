@@ -84,6 +84,7 @@ export interface UIState {
   theme: 'light' | 'dark';
   language: 'en' | 'ko';
   splitLayout: 'horizontal' | 'vertical';
+  showWorkflow: boolean;
   mainView: 'agents' | 'codeIde';
   ideBaseUrl: string | undefined; // ✅ Cloud IDE: direct URL returned from /api/cloud-ide/start
   ideWorkspacePath: string | undefined;
@@ -131,6 +132,7 @@ export interface UIState {
 export interface GitStatus {
   hasGit: boolean;
   hasCodebase: boolean;
+  codebaseHasFiles: boolean;
   hasFeatures: boolean;
   currentBranch?: string;
   remoteUrl?: string;

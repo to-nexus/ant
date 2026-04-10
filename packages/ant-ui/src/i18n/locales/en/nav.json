@@ -55,7 +55,9 @@
   },
   "splitLayout": {
     "horizontal": "Horizontal Split (Left/Right)",
-    "vertical": "Vertical Split (Top/Bottom)"
+    "vertical": "Vertical Split (Top/Bottom)",
+    "singleView": "Single View (Hide Workflow)",
+    "splitView": "Split View (Show Workflow)"
   },
   "desktop": {
     "offline": "Ant Desktop",
