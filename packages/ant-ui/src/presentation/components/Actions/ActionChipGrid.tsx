@@ -111,39 +111,18 @@ export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipG
       `}>
         {items.map((item, idx) => (
           <div key={item.id} className="w-full">
-            <button
-              type="button"
-              onClick={() => !item.disabled && onSelect(item.id)}
+            <ActionChip
+              label={item.label}
+              description={item.description}
+              variant="large"
+              onClick={() => onSelect(item.id)}
+              icon={item.icon}
+              iconBg={item.bg}
+              iconColor={item.text}
               disabled={item.disabled}
-              className={`
-                relative overflow-hidden w-full h-full
-                rounded-2xl border border-gray-200 dark:border-[#30363d]
-                bg-white dark:bg-gray-800/50
-                transition-all duration-200 text-left group
-                px-5 py-4
-                ${item.disabled
-                  ? 'opacity-50 cursor-not-allowed'
-                  : 'cursor-pointer hover:shadow-lg hover:border-gray-300 dark:hover:border-gray-500 hover:scale-[1.02] active:scale-[0.98]'}
-              `}
-              style={{ animationDelay: `${idx * 50}ms` }}
-            >
-              <div className="relative flex items-center gap-3">
-                {item.icon && (
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${item.bg || 'bg-gray-100 dark:bg-gray-800'} group-hover:scale-105 transition-transform duration-200`}>
-                    <item.icon className={`w-5 h-5 ${item.text || 'text-gray-600 dark:text-gray-400'}`} />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                    {item.label}
-                  </span>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{item.description}</p>
-                  {item.disabled && item.blockReason && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{item.blockReason}</p>
-                  )}
-                </div>
-              </div>
-            </button>
+              blockReason={item.blockReason}
+              animationDelay={idx * 50}
+            />
           </div>
         ))}
       </div>
