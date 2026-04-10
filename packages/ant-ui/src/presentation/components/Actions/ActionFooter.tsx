@@ -35,9 +35,10 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
     if (!derived || !policy.canBuild || !selectedProject || !selectedFeature) return;
 
     const store = useStore.getState();
+    store.updateActionMetadata({ explicit: true });
     store.setRunning(true, undefined, 'generate');
 
-    const metadata = { ...actionMetadata, language: i18n.language };
+    const metadata = { ...useStore.getState().actionMetadata, language: i18n.language };
     const hasMetadata = Object.keys(metadata).length > 0;
     const intentId = metadata.intent || '';
     const buildDirective = t(`buildDirective.${intentId}`, { defaultValue: t('footer.build') });
