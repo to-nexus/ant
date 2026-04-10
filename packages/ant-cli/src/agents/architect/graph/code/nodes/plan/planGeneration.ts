@@ -395,7 +395,7 @@ export async function generatePlanText(
 /**
  * Save planText to sessions/debug/plans directory for debugging
  * 
- * Saves to: {featurePath}/sessions/debug/plans/{jobId}.json
+ * Saves to: {featurePath}/sessions/architect/debug/plans/plan-{jobId}.json
  * All task plans for a job are stored in a single JSON file.
  * 
  * @param state - Current graph state

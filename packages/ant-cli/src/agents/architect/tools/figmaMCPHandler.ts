@@ -193,13 +193,13 @@ export async function saveFigmaScreenshot(
 ): Promise<string> {
   const ext = mimeType.includes('png') ? 'png' : mimeType.includes('jpeg') ? 'jpg' : 'png';
   const safeNodeId = nodeId.replace(/:/g, '-');
-  const relativePath = `sessions/architect/debug/figma/screenshots/${safeNodeId}.${ext}`;
-  const fullPath = path.join(featurePath, relativePath);
-
-  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+  const figmaDir = getSessionDebugDir(featurePath, 'architect', 'figma');
+  const screenshotDir = path.join(figmaDir, 'screenshots');
+  await fs.mkdir(screenshotDir, { recursive: true });
+  const fullPath = path.join(screenshotDir, `${safeNodeId}.${ext}`);
   await fs.writeFile(fullPath, Buffer.from(base64, 'base64'));
 
-  return relativePath;
+  return path.relative(featurePath, fullPath);
 }
 
 /**

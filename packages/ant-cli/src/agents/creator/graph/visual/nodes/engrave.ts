@@ -79,7 +79,7 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
     }
   }
 
-  if (state._httpJobId) {
+  if (state._httpJobId && state.featurePath) {
     try {
       const svgSummary = svgSketches.map((d, i) => `[variation ${i + 1}] ${d.code.length} chars`).join(', ');
       const promptLen = systemPrompt.length + (usePerSketchPrompts ? basePrompt!.length : fallbackPrompt.length);

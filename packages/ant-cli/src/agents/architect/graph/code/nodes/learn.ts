@@ -682,6 +682,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   if (isLastTask && !_isLearnWorkerContext && state.context?.featurePath && state._httpJobId) {
     const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../core/utils/executionLogger');
     const { clearTokenLogger } = await import('../../../../../core/utils/tokenLogger');
+    const { clearPromptLogger } = await import('../../../../../core/utils/promptLogger');
     const execLogger = getExecutionLogger({
       featurePath: state.context.featurePath,
       jobId: state._httpJobId,
@@ -700,6 +701,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     });
     await clearExecutionLogger(state._httpJobId);
     await clearTokenLogger(state._httpJobId);
+    clearPromptLogger('code', state._httpJobId);
   }
 
   // Note: lessons string is used for session/vector DB storage, not returned in state

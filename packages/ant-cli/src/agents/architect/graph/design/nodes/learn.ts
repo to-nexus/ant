@@ -279,6 +279,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   if (!_isWorkerContext && state.context?.featurePath && state._httpJobId) {
     const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../core/utils/executionLogger');
     const { clearTokenLogger } = await import('../../../../../core/utils/tokenLogger');
+    const { clearPromptLogger } = await import('../../../../../core/utils/promptLogger');
     
     if (!hasEarlyTermination) {
       try {
@@ -304,6 +305,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     
     await clearTokenLogger(state._httpJobId);
     await clearExecutionLogger(state._httpJobId);
+    clearPromptLogger('design', state._httpJobId);
   }
   
   // ✅ End workflow visualization
