@@ -15,7 +15,6 @@
   "create-desc:directive": "텍스트 설명으로 UI 설계해줘",
   "revise-ui:directive": "색상 팔레트를 다크 테마로 변경해줘",
 
-  "create-spec:existing-doc": "설계 문서 기반으로 태스크 검색 API 스펙을 작성해줘",
   "create-spec:directive": "사용자 인증 기능 스펙을 작성해줘",
   "revise-spec:directive": "페이지네이션을 offset에서 cursor로 변경해줘",
 
