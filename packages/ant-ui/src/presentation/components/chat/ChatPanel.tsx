@@ -8,7 +8,7 @@ import { useMemo, useState, useCallback, useEffect, type CSSProperties } from 'r
 import { useTranslation } from 'react-i18next';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
-import { PinnedQuery } from './PinnedQuery';
+import { PinnedQuery, type PinnedQueryData } from './PinnedQuery';
 import { QueueStatusBanner } from './QueueStatusBanner';
 import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
@@ -107,9 +107,9 @@ export function ChatPanel({
 
   // ✅ Track which user message to pin (Cursor-style dynamic pinning)
   // null = no pin needed (user message visible or none above viewport)
-  const [pinnedQuery, setPinnedQuery] = useState<string | null>(null);
+  const [pinnedQuery, setPinnedQuery] = useState<PinnedQueryData | null>(null);
   
-  const handlePinnedUserMessageChange = useCallback((query: string | null) => {
+  const handlePinnedUserMessageChange = useCallback((query: PinnedQueryData | null) => {
     setPinnedQuery(query);
   }, []);
   

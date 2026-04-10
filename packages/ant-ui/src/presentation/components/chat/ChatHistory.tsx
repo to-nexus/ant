@@ -11,6 +11,7 @@
 import { useEffect, useRef, useCallback, forwardRef } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import type { ChatMessage } from '@/domain/models/chat';
+import type { PinnedQueryData } from './PinnedQuery';
 import { MessageItem } from './MessageItem';
 import { TypingIndicator } from './TypingIndicator';
 import { useStore } from '@/domain/store';
@@ -34,7 +35,7 @@ const ScrollerWithTextSelect = forwardRef<HTMLDivElement, React.ComponentPropsWi
 interface ChatHistoryProps {
   messages: ChatMessage[];
   isStreaming: boolean;
-  onPinnedUserMessageChange?: (pinnedQuery: string | null) => void;
+  onPinnedUserMessageChange?: (pinnedQuery: PinnedQueryData | null) => void;
 }
 
 export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistoryProps) {
@@ -79,6 +80,12 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
   const calculatePinnedMessage = useCallback(() => {
     const { messages: msgs, onPinnedUserMessageChange: callback } = latestRef.current;
     const visibleMessages = visibleMessagesRef.current;
+
+    const buildPinData = (msg: ChatMessage): PinnedQueryData | null => {
+      const content = msg.contents[0]?.content;
+      if (!content) return null;
+      return { content, actionMetadata: msg.actionMetadata };
+    };
     
     if (!callback || msgs.length === 0) {
       if (lastPinnedRef.current !== null) {
@@ -95,10 +102,11 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       if (lastMsg?.role === 'assistant') {
         for (let i = msgs.length - 2; i >= 0; i--) {
           if (msgs[i].role === 'user') {
-            const content = msgs[i].contents[0]?.content || null;
-            if (lastPinnedRef.current !== content) {
-              lastPinnedRef.current = content;
-              callback(content);
+            const pinData = buildPinData(msgs[i]);
+            const pinKey = pinData?.content || null;
+            if (lastPinnedRef.current !== pinKey) {
+              lastPinnedRef.current = pinKey;
+              callback(pinData);
             }
             return;
           }
@@ -132,10 +140,11 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     // If the topmost visible is an assistant message → find the user message above it
     for (let i = firstVisibleIndex - 1; i >= 0; i--) {
       if (msgs[i].role === 'user') {
-        const content = msgs[i].contents[0]?.content || null;
-        if (lastPinnedRef.current !== content) {
-          lastPinnedRef.current = content;
-          callback(content);
+        const pinData = buildPinData(msgs[i]);
+        const pinKey = pinData?.content || null;
+        if (lastPinnedRef.current !== pinKey) {
+          lastPinnedRef.current = pinKey;
+          callback(pinData);
         }
         return;
       }

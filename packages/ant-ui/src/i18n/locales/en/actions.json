@@ -95,14 +95,14 @@
   },
 
   "buildDirective": {
-    "create-fe": "Design frontend system architecture from source materials",
-    "create-be": "Design backend system architecture and API contracts",
-    "create-fullstack": "Design full-stack system architecture",
-    "create-figma": "Extract UI design from Figma file",
-    "create-ref": "Design UI from reference images",
-    "create-desc": "Design UI from text description",
-    "create-code": "Generate code from the prepared materials",
-    "refactor-code": "Refactor existing codebase"
+    "create-fe": "Please design the frontend system architecture based on the source materials",
+    "create-be": "Please design the backend system architecture and API contracts based on the source materials",
+    "create-fullstack": "Please design the full-stack system architecture based on the source materials",
+    "create-figma": "Please extract the UI design from the Figma file",
+    "create-ref": "Please design the UI based on the reference images",
+    "create-desc": "Please design the UI based on the text description",
+    "create-code": "Please generate code based on the prepared materials",
+    "refactor-code": "Please refactor the existing codebase"
   },
 
   "status": {

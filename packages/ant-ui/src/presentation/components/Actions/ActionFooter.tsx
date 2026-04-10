@@ -11,7 +11,7 @@ interface ActionFooterProps {
 }
 
 export function ActionFooter({ actionId }: ActionFooterProps) {
-  const { t } = useTranslation('actions');
+  const { t, i18n } = useTranslation('actions');
 
   const selectedProject = useStore(s => s.selectedProject);
   const selectedFeature = useStore(s => s.selectedFeature);
@@ -37,7 +37,7 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
     const store = useStore.getState();
     store.setRunning(true, undefined, 'generate');
 
-    const metadata = { ...actionMetadata };
+    const metadata = { ...actionMetadata, language: i18n.language };
     const hasMetadata = Object.keys(metadata).length > 0;
     const intentId = metadata.intent || '';
     const buildDirective = t(`buildDirective.${intentId}`, { defaultValue: t('footer.build') });
