@@ -1,4 +1,4 @@
-import { Columns, Rows } from 'lucide-react';
+import { Columns, Rows, PanelRightClose, PanelRight } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { textColors, cn } from '@/shared/utils/design-system';
 import { useAvailableModels } from '../hooks/useAvailableModels';
@@ -11,6 +11,8 @@ export function JobControls() {
   const currentJobId = useStore((state) => state.currentJobId);
   const splitLayout = useStore((state) => state.splitLayout);
   const toggleSplitLayout = useStore((state) => state.toggleSplitLayout);
+  const showWorkflow = useStore((state) => state.showWorkflow);
+  const toggleShowWorkflow = useStore((state) => state.toggleShowWorkflow);
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedJobType = useStore((state) => state.selectedJobType);
   const isRunning = useStore((state) => state.isRunning);
@@ -55,6 +57,22 @@ export function JobControls() {
           title={t('splitLayout.vertical')}
         >
           <Rows className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Workflow Panel Toggle */}
+      <div className="flex items-center gap-1 border-l pl-3 border-gray-300 dark:border-gray-600">
+        <button
+          onClick={toggleShowWorkflow}
+          className={cn(
+            'p-1.5 rounded transition-all',
+            showWorkflow
+              ? 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              : 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm'
+          )}
+          title={showWorkflow ? t('splitLayout.singleView') : t('splitLayout.splitView')}
+        >
+          {showWorkflow ? <PanelRightClose className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
         </button>
       </div>
     </>

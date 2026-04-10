@@ -41,6 +41,7 @@ export function MainContentArea({
   const openTabs = useStore((s) => s.mainPanelOpenTabs);
   const isJobTabCleared = useStore((s) => s.isJobTabCleared);
   const selectedFile = useStore((s) => s.selectedFile);
+  const showWorkflow = useStore((s) => s.showWorkflow);
   
   // For "job tab cleared" we render the same empty state as when no job is selected,
   // without mutating the underlying kanban/workflow state.
@@ -119,11 +120,17 @@ export function MainContentArea({
         </div>
       ) : (
         <div className="flex-1 h-full">
-          <SplitLayout
-            direction={splitLayout}
-            first={<KanbanBoard kanbanData={effectiveKanbanData} workflowState={effectiveWorkflowState} />}
-            second={<AgentWorkflowBoard workflowState={effectiveWorkflowState} />}
-          />
+          {showWorkflow ? (
+            <SplitLayout
+              direction={splitLayout}
+              first={<KanbanBoard kanbanData={effectiveKanbanData} workflowState={effectiveWorkflowState} />}
+              second={<AgentWorkflowBoard workflowState={effectiveWorkflowState} />}
+            />
+          ) : (
+            <div className="h-full overflow-y-auto">
+              <KanbanBoard kanbanData={effectiveKanbanData} workflowState={effectiveWorkflowState} />
+            </div>
+          )}
         </div>
       )}
     </MainPanel>
