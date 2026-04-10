@@ -7,6 +7,7 @@ export interface FileNode {
   children?: FileNode[];
   size?: number;
   modifiedTime?: string;
+  isTemplate?: boolean;
 }
 
 export interface FileContent {

@@ -3,6 +3,10 @@
  * 
  * Creates provider-specific LLM clients based on configuration.
  * Provider is auto-detected from model name (claude-* = anthropic, gpt-* = openai).
+ *
+ * Mock support (two mechanisms):
+ *   1. ANT_LLM_MOCK=true env var → all processes (E2E mock)
+ *   2. setLLMClientFactory() → in-process override (unit test)
  */
 
 import { LLMClient } from '../../../core/ports/llm';
@@ -11,6 +15,7 @@ import { AnthropicLLMClient } from './AnthropicLLMClient';
 import { OpenAILLMClient } from './OpenAILLMClient';
 import { GeminiLLMClient } from './GeminiLLMClient';
 import { GeminiImageClient } from './GeminiImageClient';
+import { MockLLMClient } from './MockLLMClient';
 
 export type ModelProvider = 'anthropic' | 'openai' | 'google';
 
@@ -113,6 +118,27 @@ function resolveMaxTokens(agentJob?: string, fallback = 16000): number {
   return tokens ? parseInt(tokens) : fallback;
 }
 
+// ============================================
+// Factory Override Hook (unit test)
+// ============================================
+
+type LLMClientFactoryFn = (
+  agentJob?: string,
+  config?: LLMConfig,
+  context?: LLMContext,
+  workspaceConfig?: any,
+) => LLMClient;
+
+let _factoryOverride: LLMClientFactoryFn | null = null;
+
+/**
+ * Override the factory for in-process tests.
+ * Pass null to restore default behaviour.
+ */
+export function setLLMClientFactory(factory: LLMClientFactoryFn | null): void {
+  _factoryOverride = factory;
+}
+
 /**
  * Create LLM client based on job/node context
  * Provider is auto-detected from model name
@@ -123,6 +149,14 @@ export function createLLMClient(
   context?: LLMContext,
   workspaceConfig?: any
 ): LLMClient {
+  if (_factoryOverride) {
+    return _factoryOverride(agentJob, config, context, workspaceConfig);
+  }
+
+  if (process.env.ANT_LLM_MOCK === 'true') {
+    return new MockLLMClient(agentJob, context);
+  }
+
   // Resolve model name based on context
   const modelName = resolveModelForContext(context, workspaceConfig);
   
@@ -164,6 +198,18 @@ export function createLLMClient(
   }
 }
 
+// ============================================
+// Image Generation Factory Override Hook
+// ============================================
+
+type ImageGenFactoryFn = (workspaceConfig?: any, modelNameOverride?: string) => ImageGenerationPort;
+
+let _imageFactoryOverride: ImageGenFactoryFn | null = null;
+
+export function setImageGenerationClientFactory(factory: ImageGenFactoryFn | null): void {
+  _imageFactoryOverride = factory;
+}
+
 /**
  * Create Image Generation client for visual job.
  * Uses Gemini Nano Banana models (gemini-*-image-preview).
@@ -172,6 +218,10 @@ export function createImageGenerationClient(
   workspaceConfig?: any,
   modelNameOverride?: string
 ): ImageGenerationPort {
+  if (_imageFactoryOverride) {
+    return _imageFactoryOverride(workspaceConfig, modelNameOverride);
+  }
+
   const modelName = modelNameOverride
     || workspaceConfig?.llmModels?.visual?.sketch
     || 'gemini-3.1-flash-image-preview';

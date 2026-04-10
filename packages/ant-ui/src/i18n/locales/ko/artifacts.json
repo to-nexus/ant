@@ -33,6 +33,7 @@
       "figma": "JSON"
     },
     "figmaEmpty": "Figma URL이 설정되지 않았습니다. 클릭하여 디자인 파일 URL을 추가하세요.",
+    "templateFile": "실제 데이터가 없는 빈 파일입니다. 클릭하여 내용을 작성하세요.",
     "figmaConnected": "Figma 연동 완료",
     "figmaNotConnected": "Figma URL이 설정되었지만 Ant Desktop이 연결되지 않았습니다. 클릭하여 설정하세요.",
     "goToAccountSettings": "계정 설정으로 이동"

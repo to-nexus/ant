@@ -1,0 +1,5 @@
+{
+  "colors": { "primary": "#2563EB", "background": "#FFFFFF", "text": "#1F2937" },
+  "spacing": { "xs": "4px", "sm": "8px", "md": "16px" },
+  "typography": { "heading": "Pretendard 24px bold", "body": "Pretendard 16px" }
+}

@@ -1,0 +1,7 @@
+{
+  "sections": [
+    { "id": "dashboard", "name": "대시보드", "components": ["ProgressChart", "DeadlineList", "WorkloadChart"] },
+    { "id": "kanban", "name": "칸반 보드", "components": ["KanbanColumn", "TaskCard", "TaskCreateForm"] },
+    { "id": "task-detail", "name": "태스크 상세", "components": ["TaskHeader", "CommentThread", "ActivityLog"] }
+  ]
+}

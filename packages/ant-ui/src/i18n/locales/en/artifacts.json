@@ -33,6 +33,7 @@
       "figma": "JSON"
     },
     "figmaEmpty": "No Figma URLs configured. Click to add design file URLs.",
+    "templateFile": "File contains only placeholder content — click to add real data.",
     "figmaConnected": "Figma integration active",
     "figmaNotConnected": "Figma URLs configured but Ant Desktop is not connected. Click to set up.",
     "goToAccountSettings": "Go to Account Settings"

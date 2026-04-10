@@ -102,6 +102,16 @@ function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReacha
   );
 }
 
+function TemplateStatusIndicator({ t }: { t: (key: string) => string }) {
+  return (
+    <Tooltip content={t('panel.templateFile')} placement="right">
+      <span className="inline-flex items-center flex-shrink-0">
+        <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+      </span>
+    </Tooltip>
+  );
+}
+
 interface DirectoryViewProps {
   title: string;
   nodes: FileNode[];
@@ -950,6 +960,11 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     UI_VISIBLE_INPUT_FILES.includes(node.name)
   );
 
+  const templateFileNames = allInputsNodes
+    .find(node => node.name === 'sources')?.children
+    ?.filter(n => n.type === 'file' && n.isTemplate)
+    .map(n => n.name) || [];
+
   const allOutputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
   const outputsNodes = allOutputsNodes.filter(node =>
     UI_VISIBLE_OUTPUT_DIRS.includes(node.name)
@@ -1036,6 +1051,9 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
                 }}
                 t={t}
               />
+            ),
+            ...Object.fromEntries(
+              templateFileNames.map(name => [name, <TemplateStatusIndicator key={name} t={t} />])
             ),
           }}
         />
