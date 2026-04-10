@@ -10,6 +10,7 @@ export interface UIActions {
   setTheme: (theme: 'light' | 'dark') => void;
   setLanguage: (language: 'en' | 'ko') => void;
   toggleSplitLayout: (layout: 'horizontal' | 'vertical') => void;
+  toggleShowWorkflow: () => void;
   setMainView: (mode: 'agents' | 'codeIde') => void;
   setIdeBaseUrl: (url: string | undefined) => void;
   setIdeWorkspacePath: (path: string | undefined) => void;
@@ -103,6 +104,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   theme: getInitialTheme(),
   language: getInitialLanguage(),
   splitLayout: 'vertical',
+  showWorkflow: true,
   mainView: 'agents',
   ideBaseUrl: undefined,
   ideWorkspacePath: undefined,
@@ -155,6 +157,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   toggleSplitLayout: (layout) => {
     set({ splitLayout: layout });
+  },
+
+  toggleShowWorkflow: () => {
+    set((s: any) => ({ showWorkflow: !s.showWorkflow }));
   },
 
   setMainView: (mode) => {
