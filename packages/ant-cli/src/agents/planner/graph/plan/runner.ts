@@ -229,6 +229,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     directive: initialState.directive,
     overrideDirective: initialState.overrideDirective,
     tokenUsage: initialState.tokenUsage,
+    jobTiming: jobTimingRef,
   };
   
   // Inject stateSnapshot into deps for node access
@@ -252,6 +253,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
             directive: stateSnapshot.directive || session.state?.directive,
             overrideDirective: stateSnapshot.overrideDirective || stateSnapshot.directive || session.state?.overrideDirective,
             tokenUsage: stateSnapshot.tokenUsage || session.state?.tokenUsage,
+            jobTiming: stateSnapshot.jobTiming || session.state?.jobTiming,
             interruption: {
               reason,
               message: `Plan interrupted: ${reason}`,
@@ -314,6 +316,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       if (JobTimingManagerRef && jobTimingRef && kanbanUpdate?.setJobTiming) {
         jobTimingRef = JobTimingManagerRef.pauseJob(jobTimingRef)!;
         kanbanUpdate.setJobTiming(jobTimingRef);
+        if (stateSnapshot) stateSnapshot.jobTiming = jobTimingRef;
       }
       
       console.log('\n⏸️ Planner Agent paused (recursion limit)');
@@ -333,6 +336,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               chatSource: initialState.chatSource,
               mode: initialState.mode,
               tokenUsage: stateSnapshot?.tokenUsage || initialState.tokenUsage,
+              jobTiming: jobTimingRef || session.state?.jobTiming,
               // ✅ Save latest conversationHistory from stateSnapshot for resume
               conversationHistory: stateSnapshot?.conversationHistory?.length
                 ? stateSnapshot.conversationHistory
@@ -382,6 +386,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     if (JobTimingManagerRef && jobTimingRef && kanbanUpdate?.setJobTiming) {
       jobTimingRef = JobTimingManagerRef.completeJob(jobTimingRef)!;
       kanbanUpdate.setJobTiming(jobTimingRef);
+      if (stateSnapshot) stateSnapshot.jobTiming = jobTimingRef;
     }
     
     if (chatAPI.hasActiveMessage()) {
@@ -403,6 +408,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   if (JobTimingManagerRef && jobTimingRef && kanbanUpdate?.setJobTiming) {
     jobTimingRef = JobTimingManagerRef.completeJob(jobTimingRef)!;
     kanbanUpdate.setJobTiming(jobTimingRef);
+    if (stateSnapshot) stateSnapshot.jobTiming = jobTimingRef;
   }
   
   // Final token broadcast so the UI badge shows the definitive total

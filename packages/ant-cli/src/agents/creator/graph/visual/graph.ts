@@ -402,6 +402,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           conversation: prunedConversation,
           directive: finalState.directive,
           tokenUsage: finalState.tokenUsage,
+          jobTiming: jobTimingRef,
           jobId: _httpJobId,
           lastEngineeredPrompt: finalState.lastEngineeredPrompt,
           lastOutputPath: finalState.lastOutputPath,
