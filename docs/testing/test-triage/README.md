@@ -17,6 +17,7 @@ pnpm dev
 
 테스트 시나리오별로 워크스페이스 상태를 달리해야 한다.
 `workspace-fixtures/` 디렉토리의 fixture 파일들을 feature 디렉토리에 복사하여 사용한다.
+파일명이 실제 워크스페이스 규칙과 동일하므로, 대상 디렉토리에 그대로 복사하면 된다.
 
 ```bash
 FIXTURES="docs/testing/test-triage/workspace-fixtures"
@@ -24,36 +25,62 @@ FEATURE="<feature-path>"
 
 # PRD 셋업
 mkdir -p "$FEATURE/inputs/sources"
-cp "$FIXTURES/sample-prd.md" "$FEATURE/inputs/sources/prd.md"
+cp "$FIXTURES/prd.md" "$FEATURE/inputs/sources/prd.md"
 
-# 시스템 설계문서 셋업
-mkdir -p "$FEATURE/outputs/design"
-cp "$FIXTURES/sample-system-design.md" "$FEATURE/outputs/design/system-design.md"
+# 시스템 설계문서 셋업 (system/ 서브디렉토리)
+mkdir -p "$FEATURE/outputs/design/system"
+cp "$FIXTURES/fe-system-main.md" "$FEATURE/outputs/design/system/"
+cp "$FIXTURES/be-system-main.md" "$FEATURE/outputs/design/system/"
+cp "$FIXTURES/api-contract-main.md" "$FEATURE/outputs/design/system/"
 
-# Spec 문서 셋업
-cp "$FIXTURES/sample-spec.md" "$FEATURE/outputs/design/spec-auth.md"
+# UI 문서 셋업 (ui/ 서브디렉토리)
+mkdir -p "$FEATURE/outputs/design/ui"
+cp "$FIXTURES/ui-tokens.json" "$FEATURE/outputs/design/ui/"
+cp "$FIXTURES/ui-assets.json" "$FEATURE/outputs/design/ui/"
+cp "$FIXTURES/ui-spec.json" "$FEATURE/outputs/design/ui/"
+
+# Spec 문서 셋업 (spec/ 서브디렉토리)
+mkdir -p "$FEATURE/outputs/design/spec"
+cp "$FIXTURES/spec-auth.md" "$FEATURE/outputs/design/spec/"
 ```
+
+## Fixture 파일 목록
+
+| 파일 | 트리거하는 플래그 | 복사 경로 |
+|------|-----------------|----------|
+| `prd.md` | `hasPrd` | `inputs/sources/prd.md` |
+| `fe-system-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
+| `be-system-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
+| `api-contract-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
+| `ui-tokens.json` | `hasUiDocs` | `outputs/design/ui/` |
+| `ui-assets.json` | `hasUiDocs` | `outputs/design/ui/` |
+| `ui-spec.json` | `hasUiDocs` | `outputs/design/ui/` |
+| `spec-auth.md` | `hasSpecDocs` | `outputs/design/spec/` |
 
 ## 워크스페이스 상태 조합
 
-triage가 확인하는 핵심 상태와 감지 조건:
+triage가 확인하는 핵심 상태와 감지 조건 (`workspaceAnalyzer.ts` 기준):
 
 | 상태 플래그 | 감지 조건 |
 |------------|----------|
-| `hasPrd` | `inputs/sources/prd.md` 존재 (빈 템플릿 아닌 실제 내용) |
-| `hasSystemDesignDoc` | `outputs/design/*system-design*.md` 존재 |
-| `hasSpecDocs` | `outputs/design/spec-*.md` 존재 |
-| `hasDesignDoc` | `outputs/design/` 에 .md 또는 .json 파일 존재 |
-| `hasDirective` | 채팅 입력 (항상 true) |
+| `hasPrd` | `inputs/sources/`에 비어있지 않은 텍스트 파일 존재 (.md, .txt, .json, .yaml 등) |
+| `hasDirective` | `inputs/directives/{design,code}/directive.md` 존재, 또는 채팅 입력 시 `overrideDirective`로 true |
+| `hasSystemDesignDoc` | `outputs/design/system/` 또는 `outputs/design/`에 `fe-system-*.md`, `be-system-*.md`, `api-contract-*.md` 패턴 파일 존재 |
+| `hasUiDocs` | `outputs/design/ui/` 또는 `outputs/design/`에 `ui-tokens.json`, `ui-assets.json`, `ui-spec.json` 중 하나 이상 존재 |
+| `hasSpecDocs` | `outputs/design/spec/` 또는 `outputs/design/`에 `spec-*.md` 패턴 파일 존재 |
+| `hasDesignDoc` | `outputs/design/` 전체(system/, ui/, spec/, flat)에 `.md` 또는 `.json` 파일 하나 이상 존재 |
+| `hasFigmaConfig` | `inputs/figma.json` 존재하고 `isFigmaDataPopulated` = true |
+| `hasScreens` | `inputs/references/screens/`에 파일 존재 |
+| `hasCodebase` | vector DB에 인덱스된 파일 존재 |
 
 테스트 시나리오별 필요한 조합:
 
-| 조합 | 셋업 방법 | 사용 시나리오 |
-|------|----------|-------------|
-| **풀 셋업** | PRD + system-design + spec | 1-3, 2-5~2-7 |
-| **PRD만** | PRD만 복사 | 1-1, 1-2, 2-3~2-4, 3-1, 3-3 |
-| **PRD + spec** | PRD + spec 복사 | 1-5, 3-2 |
-| **빈 상태** | 아무것도 없음 (새 feature 생성) | 1-4, 2-1~2-2 |
+| 조합 | 셋업 방법 | 트리거되는 플래그 | 사용 시나리오 |
+|------|----------|-----------------|-------------|
+| **풀 셋업** | PRD + system + ui + spec | hasPrd, hasSystemDesignDoc, hasUiDocs, hasSpecDocs, hasDesignDoc | 1-3, 2-5~2-7 |
+| **PRD만** | PRD만 복사 | hasPrd | 1-1, 1-2, 2-3~2-4, 3-1, 3-3 |
+| **PRD + spec** | PRD + spec 복사 | hasPrd, hasSpecDocs, hasDesignDoc | 1-5, 3-2 |
+| **빈 상태** | 아무것도 없음 (새 feature 생성) | (없음) | 1-4, 2-1~2-2 |
 
 ---
 
@@ -137,20 +164,27 @@ design job에서 문서 vs 코드 구분을 올바르게 하는지 확인.
 FIXTURES="docs/testing/test-triage/workspace-fixtures"
 
 # === 풀 셋업 (Phase 1: 1-3, Phase 2: 2-5~2-7) ===
-mkdir -p "$FEATURE/inputs/sources" "$FEATURE/outputs/design"
-cp "$FIXTURES/sample-prd.md" "$FEATURE/inputs/sources/prd.md"
-cp "$FIXTURES/sample-system-design.md" "$FEATURE/outputs/design/system-design.md"
-cp "$FIXTURES/sample-spec.md" "$FEATURE/outputs/design/spec-auth.md"
+mkdir -p "$FEATURE/inputs/sources" \
+         "$FEATURE/outputs/design/system" \
+         "$FEATURE/outputs/design/ui" \
+         "$FEATURE/outputs/design/spec"
+cp "$FIXTURES/prd.md"                "$FEATURE/inputs/sources/"
+cp "$FIXTURES/fe-system-main.md"     "$FEATURE/outputs/design/system/"
+cp "$FIXTURES/be-system-main.md"     "$FEATURE/outputs/design/system/"
+cp "$FIXTURES/api-contract-main.md"  "$FEATURE/outputs/design/system/"
+cp "$FIXTURES/ui-tokens.json"        "$FEATURE/outputs/design/ui/"
+cp "$FIXTURES/ui-assets.json"        "$FEATURE/outputs/design/ui/"
+cp "$FIXTURES/ui-spec.json"          "$FEATURE/outputs/design/ui/"
+cp "$FIXTURES/spec-auth.md"          "$FEATURE/outputs/design/spec/"
 
 # === PRD만 (Phase 1: 1-1~1-2, Phase 2: 2-3~2-4, Phase 3: 3-1, 3-3) ===
 mkdir -p "$FEATURE/inputs/sources"
-cp "$FIXTURES/sample-prd.md" "$FEATURE/inputs/sources/prd.md"
-# outputs/design/ 에 아무것도 없어야 함
+cp "$FIXTURES/prd.md" "$FEATURE/inputs/sources/"
 
 # === PRD+spec (Phase 1: 1-5, Phase 3: 3-2) ===
-mkdir -p "$FEATURE/inputs/sources" "$FEATURE/outputs/design"
-cp "$FIXTURES/sample-prd.md" "$FEATURE/inputs/sources/prd.md"
-cp "$FIXTURES/sample-spec.md" "$FEATURE/outputs/design/spec-auth.md"
+mkdir -p "$FEATURE/inputs/sources" "$FEATURE/outputs/design/spec"
+cp "$FIXTURES/prd.md"       "$FEATURE/inputs/sources/"
+cp "$FIXTURES/spec-auth.md" "$FEATURE/outputs/design/spec/"
 
 # === 빈 상태 (Phase 1: 1-4, Phase 2: 2-1~2-2) ===
 # 새 feature 생성하거나 기존 feature의 inputs/outputs 삭제

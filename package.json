@@ -25,7 +25,12 @@
     "dev:infra:vector": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d",
     "dev:infra:vector:down": "docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down",
     
+    "dev:local:mock": "ANT_LLM_MOCK=true ANT_SERVER_MODE=local pnpm --filter @ant/cli dev:cloud",
+    "dev:local:mock:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm dev:local:mock\" \"pnpm dev:ui\"",
+
     "test:cli": "pnpm --filter @ant/cli test",
+    "test:e2e": "pnpm --filter @ant/cli exec vitest run tests/e2e-mock/",
+    "test:e2e:real": "ANT_E2E_TIMEOUT=300000 pnpm --filter @ant/cli exec vitest run tests/e2e-mock/",
     "build": "pnpm -r build",
     "build:shared": "pnpm --filter @ant/shared build",
     "build:cli": "pnpm --filter @ant/shared build && pnpm --filter @ant/cli build",
@@ -39,6 +44,8 @@
 
     "start:cloud": "pnpm --filter @ant/cli start:cloud",
     "start:cloud:all": "concurrently -n cli,ui,site -c cyan,magenta,green \"pnpm start:cloud\" \"pnpm start:ui\" \"pnpm start:site\"",
+    "start:local:mock": "ANT_LLM_MOCK=true ANT_SERVER_MODE=local pnpm --filter @ant/cli start:cloud",
+    "start:local:mock:all": "concurrently -n cli,ui -c cyan,magenta \"pnpm start:local:mock\" \"pnpm start:ui\"",
     "start:api-server": "pnpm --filter @ant/cli start:server",
     "start:realtime-server": "pnpm --filter @ant/cli start:realtime-server",
     "start:job-worker": "pnpm --filter @ant/cli start:job-worker",

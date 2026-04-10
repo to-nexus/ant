@@ -1,5 +1,7 @@
 # Intent Test Dataset — Implementation Spec
 
+> **구현 완료**: `packages/ant-cli/tests/intents/` 에 구현됨. 테스트 문서는 `docs/testing/prompt-test-spec.md` > Intent Acceptance 참조.
+
 새 탭에서 이 문서만 보고 구현 가능한 완전한 사양.
 
 ## 목적
@@ -86,7 +88,7 @@ packages/ant-cli/tests/intents/
 │   ├── spec-search-api.md
 │   └── figma.json
 ├── intent-acceptance.test.ts     ← vitest 자동 테스트
-└── e2e-reference.md              ← 수동 E2E 레퍼런스
+└── (e2e-reference → docs/testing/e2e-intent-reference.md 로 이동됨)
 ```
 
 ## 1. dataset.ts 상세
