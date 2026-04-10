@@ -534,3 +534,5 @@ PASS  위 조건 모두 해당 없으면
 - Job 라이프사이클과 로거 호출 지점: [10-job-lifecycle.md](10-job-lifecycle.md)
 - 프롬프트 시스템 (템플릿 구조): [13-prompt-system.md](13-prompt-system.md)
 - Realtime 시스템 (SSE 이벤트): [21-realtime-system.md](21-realtime-system.md)
+- Observability (집계/분석/피드백 루프): [docs/observability/](../observability/README.md)
+- 검증 기준 지표: [docs/observability/01-baseline-metrics.md](../observability/01-baseline-metrics.md)
