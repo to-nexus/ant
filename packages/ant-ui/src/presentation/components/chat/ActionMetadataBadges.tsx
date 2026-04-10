@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
-import { INTENT_DEFINITIONS, type ActionMetadata } from '@ant/shared';
+import { INTENT_DEFINITIONS, getAvailableBases, type ActionMetadata } from '@ant/shared';
 import { X, Target, Crosshair, FileText, Layers, BookOpen, Zap } from 'lucide-react';
 
 interface BadgeProps {
@@ -15,7 +15,6 @@ function Badge({ icon: Icon, label, value, color, onRemove }: BadgeProps) {
   return (
     <span className={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-xs font-medium border transition-colors ${color}`}>
       <Icon className="w-3 h-3 shrink-0" />
-      <span className="text-gray-500 dark:text-gray-400">{label}:</span>
       <span className="truncate max-w-[120px]">{value}</span>
       {onRemove && (
         <button
@@ -140,7 +139,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
         />
       ))}
 
-      {meta.basis && (
+      {meta.basis && (!meta.intent || getAvailableBases(meta.intent).length > 1) && (
         <Badge
           icon={Layers}
           label="basis"
