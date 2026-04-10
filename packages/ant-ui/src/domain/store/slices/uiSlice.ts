@@ -422,7 +422,19 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   resetActionMetadata: () => {
-    set({ actionMetadata: {}, selectedIntentId: null });
+    set((s: any) => {
+      const nextOpen = { ...s.mainPanelOpenTabs, actions: false };
+      const nextOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'actions');
+      return {
+        actionMetadata: {},
+        selectedIntentId: null,
+        actionsStep: 'pick-action' as const,
+        selectedActionId: null,
+        mainPanelActiveTab: 'job',
+        mainPanelOpenTabs: nextOpen,
+        mainPanelTabOrder: nextOrder,
+      };
+    });
   },
 
   highlightArtifactDirs: (dirs: string[]) => {

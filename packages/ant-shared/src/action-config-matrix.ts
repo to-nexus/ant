@@ -292,11 +292,6 @@ const MATRIX: Record<string, MatrixEntry> = {
 
   // ── Spec ──────────────────────────────────
   'create-spec': {
-    'existing-doc': {
-      refs: [refDir(DESIGN_DIR, L.designAll, { createIntent: 'create-fullstack', humanLabel: HL.designAll })],
-      context: [],
-      target: { dir: SPEC_DIR, expectedFiles: SPEC_TARGETS },
-    },
     directive: {
       refs: [emptyRef()],
       context: [ctxDir(DESIGN_DIR, L.designAll, { createIntent: 'create-fullstack', humanLabel: HL.designAll })],

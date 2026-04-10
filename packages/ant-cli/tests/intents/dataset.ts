@@ -353,30 +353,8 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   // ─────────────────────────────────────────────
-  // Spec: Create (2 변형)
+  // Spec: Create
   // ─────────────────────────────────────────────
-
-  {
-    intent: 'create-spec',
-    directive: D('create-spec:existing-doc'),
-    metadata: {
-      intent: 'create-spec', basis: 'existing-doc',
-      refs: ['outputs/design/system/be-system-main.md'],
-    },
-    documents: {
-      'outputs/design/system/be-system-main.md': { content: LOAD('be-system-main.md'), role: 'ref' },
-    },
-    routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'spec',
-    },
-    prompt: {
-      templateBase: 'design/phases/execute/base-system-design',
-      requiredInjections: ['common/injections/action-context'],
-      forbiddenInjections: [],
-      mustContain: ['태스크 검색'],
-    },
-  },
 
   {
     intent: 'create-spec',
