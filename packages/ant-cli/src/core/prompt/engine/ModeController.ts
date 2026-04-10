@@ -162,17 +162,18 @@ export class ModeController {
       }
     }
     
-    // ✅ Verification, test-code, doc tasks skip design context injections (designDoc, prdSpec, uiDoc).
-    // Error tasks allow design-doc injection so spec-driven designDoc can pass through.
+    // ✅ Verification, test-code, doc tasks skip static policy injections.
     const isVerification = taskType === 'verification';
     const isError = taskType === 'error';
     const isTestCode = taskType === 'test-code';
     const isDoc = taskType === 'doc';
     const isExplicit = resolvedAction?.source === 'explicit';
-    const hasExplicitDocs = isExplicit && (resolvedAction?.documents?.length ?? 0) > 0;
-    const skipDesignContext = isVerification || isTestCode || isDoc || hasExplicitDocs;
+    const hasDocuments = (resolvedAction?.documents?.length ?? 0) > 0;
     const detectedEnv = (isExplicit && resolvedAction?.tech?.environment)
       || (context as any).detectedEnvironment as string | undefined;
+
+    // visual-source-authority: static policy, independent of documents
+    const skipStaticPolicy = isVerification || isTestCode || isDoc;
 
     // ✅ Common injections (used by ALL jobs - code, design, learn)
     if (context.stats.hasDirective) {
@@ -183,22 +184,14 @@ export class ModeController {
       injections.push(`${commonPrefix}/memory`);
     }
     
-    if (context.designDoc && !skipDesignContext) {
-      injections.push(`${commonPrefix}/design-doc`);
-    }
-    
-    // ✅ PRD for both design and code jobs (prevents information loss in design transformation)
-    if (context.prdSpec && !skipDesignContext) {
-      injections.push(`${commonPrefix}/prd-spec`);
-    }
-    
-    // ✅ Visual source authority principles — always for frontend projects (regardless of uiDoc presence)
-    if (!skipDesignContext && detectedEnv !== 'backend') {
+    // ✅ Visual source authority principles — always for frontend projects
+    if (!skipStaticPolicy && detectedEnv !== 'backend') {
       injections.push(`${commonPrefix}/visual-source-authority`);
     }
-    // ✅ UI doc data — only when present
-    if (context.uiDoc && !skipDesignContext && detectedEnv !== 'backend') {
-      injections.push(`${commonPrefix}/ui-doc`);
+    // ✅ UI design policy — static rules when documents contain UI spec
+    const hasUiInDocuments = (resolvedAction?.documents || []).some(d => d.path?.includes('ui-'));
+    if (hasUiInDocuments && !skipStaticPolicy && detectedEnv !== 'backend') {
+      injections.push(`${commonPrefix}/ui-design-policy`);
     }
     
     // Code job specific injections (moved to code/base/injections)
@@ -382,8 +375,8 @@ export class ModeController {
 
     // RAC-only injections (R1-R3): additional injections when resolvedAction is present
     if (resolvedAction) {
-      // R1: action-context — only when source=explicit OR has substantive fields
-      if (resolvedAction.source === 'explicit' || resolvedAction.hasExplicitFields) {
+      // R1: action-context — when documents present, explicit, or has substantive fields
+      if (hasDocuments || resolvedAction.source === 'explicit' || resolvedAction.hasExplicitFields) {
         injections.push('common/injections/action-context');
       }
       // R2: basis-guidance — only when basis is explicitly set
@@ -422,10 +415,9 @@ export class ModeController {
     rac?: ResolvedActionContext, targetFile?: string
   ): string | undefined {
     const fw = rac?.tech?.framework;
-    if (!fw) return undefined;
     const isFE = !targetFile || targetFile.includes('fe-system-') || targetFile.includes('frontend');
     const isBE = !targetFile || targetFile.includes('be-system-') || targetFile.includes('backend');
-    if ((fw === 'nextjs' || fw === 'nuxt') && isFE) {
+    if (fw && (fw === 'nextjs' || fw === 'nuxt') && isFE) {
       return 'design/phases/execute/injections/nextjs-augmentation';
     }
     if (rac.tech?.language === 'go' && isBE) {
@@ -509,27 +501,28 @@ export class ModeController {
       }
     }
     
-    // 2. Try to infer from design document content (new projects)
-    if (context.designDoc) {
-      const doc = context.designDoc.toLowerCase();
+    // 2. Try to infer from documents[] content (new projects)
+    const docTexts = (context.documents || []).map(d => d.content).join(' ');
+    if (docTexts) {
+      const doc = docTexts.toLowerCase();
       
       // SSR frameworks — these are "browser" environment (frontend with optional server-side rendering),
       // NOT "fullstack" (which is reserved for separate BE + FE monorepos like Express + React).
       // browser/rules.md already covers SSR dual-context (Server Components, API Routes, etc.).
       if (doc.includes('next.js') || doc.includes('nextjs') || doc.includes('next app router')) {
-        console.log('[ModeController] Inferred environment from design doc: browser (Next.js SSR)');
+        console.log('[ModeController] Inferred environment from documents: browser (Next.js SSR)');
         return 'browser';
       }
       if (doc.includes('remix') || doc.includes('@remix-run')) {
-        console.log('[ModeController] Inferred environment from design doc: browser (Remix SSR)');
+        console.log('[ModeController] Inferred environment from documents: browser (Remix SSR)');
         return 'browser';
       }
       if (doc.includes('sveltekit') || doc.includes('svelte kit')) {
-        console.log('[ModeController] Inferred environment from design doc: browser (SvelteKit SSR)');
+        console.log('[ModeController] Inferred environment from documents: browser (SvelteKit SSR)');
         return 'browser';
       }
       if (doc.includes('nuxt')) {
-        console.log('[ModeController] Inferred environment from design doc: browser (Nuxt SSR)');
+        console.log('[ModeController] Inferred environment from documents: browser (Nuxt SSR)');
         return 'browser';
       }
       
@@ -550,7 +543,7 @@ export class ModeController {
       
       if (isBackendAPI) {
         const backendEnv = language === 'go' ? 'go-api' : 'node-api';
-        console.log(`[ModeController] Inferred environment from design doc: ${backendEnv}`);
+        console.log(`[ModeController] Inferred environment from documents: ${backendEnv}`);
         return backendEnv;
       }
       
@@ -566,7 +559,7 @@ export class ModeController {
         doc.includes('web app') && (doc.includes('react') || doc.includes('vue'));
       
       if (isBrowserSPA) {
-        console.log('[ModeController] Inferred environment from design doc: browser');
+        console.log('[ModeController] Inferred environment from documents: browser');
         return 'browser';
       }
       
@@ -585,7 +578,7 @@ export class ModeController {
       
       if (isCLI) {
         const cliEnv = language === 'go' ? 'go-cli' : 'node-cli';
-        console.log(`[ModeController] Inferred environment from design doc: ${cliEnv}`);
+        console.log(`[ModeController] Inferred environment from documents: ${cliEnv}`);
         return cliEnv;
       }
     }
@@ -709,8 +702,11 @@ export class ModeController {
       }
     }
     
-    // Priority 2: Infer from PRD/spec or design doc content (fallback for legacy/no-profile cases)
-    const textSources = [context.prdSpec, (context as any).spec, context.designDoc].filter(Boolean);
+    // Priority 2: Infer from documents[] content (fallback for legacy/no-profile cases)
+    const textSources = [
+      ...(context.documents || []).map(d => d.content),
+      context.directive,
+    ].filter(Boolean);
     const combined = textSources.join(' ').toLowerCase();
     
     if (!combined) return undefined;

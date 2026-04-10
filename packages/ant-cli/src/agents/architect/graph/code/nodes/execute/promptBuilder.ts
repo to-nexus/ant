@@ -22,6 +22,7 @@ import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
 import { condenseContent } from "../../../../../../core/utils/contentCondenser";
 import { buildAllSourceDocs } from "../../../../../../core/utils/sourceDocuments";
+import type { ResolvedDocument } from "@ant/shared";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -128,7 +129,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     console.warn(`   task.id=${state.currentTask?.id}, task.packages=${JSON.stringify(state.currentTask?.packages)}, hasDesignDocs=${!!state.designDocs}`);
   }
 
-  // For error tasks with a selected spec doc, inject the spec as the "designDoc".
+  // For error tasks with a selected spec doc, inject the spec into documents.
   // resolver returns '' for error tasks; this post-resolver override handles the spec case.
   if (isErrorTask && state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
     const specContent = state.specDocs[state.selectedSpec];
@@ -153,14 +154,34 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
     && (state.resolvedAction?.documents?.length ?? 0) > 0;
 
+  // Build resolvedAction with Infer documents[] when no explicit docs present
+  let resolvedActionWithDocs = state.resolvedAction;
+  if (!hasExplicitDocs) {
+    const docs: ResolvedDocument[] = [];
+    if (designDocForTask)
+      docs.push({ path: 'system-design', content: designDocForTask, role: 'ref', label: 'System Design' });
+    const prdContent = !isVerificationTask && !isErrorTask
+      ? (buildAllSourceDocs(state.sourceDocuments) || state.prd)
+      : undefined;
+    if (prdContent)
+      docs.push({ path: 'prd', content: prdContent, role: 'context', label: 'PRD Specification' });
+    if (uiDocForTask && !isVerificationTask && !isErrorTask)
+      docs.push({ path: 'ui-spec', content: uiDocForTask, role: 'context', label: 'UI Specification' });
+
+    if (docs.length > 0) {
+      resolvedActionWithDocs = {
+        ...(state.resolvedAction || { source: 'infer' as const, jobMode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+        documents: docs,
+      };
+    }
+  }
+
   const promptResult = await promptEngine.buildExecutePrompt(
     'code',
     contextWithProfile,
     {
       directive: isVerificationTask ? undefined : state.directive,
-      designDoc: hasExplicitDocs ? undefined : designDocForTask,
-      prdSpec: (isVerificationTask || isErrorTask || hasExplicitDocs) ? undefined : (buildAllSourceDocs(state.sourceDocuments) || state.prd),
-      uiDoc: (isVerificationTask || isErrorTask || hasExplicitDocs) ? undefined : uiDocForTask,
+      documents: resolvedActionWithDocs?.documents,
       projectCodeContext: executeProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
@@ -173,10 +194,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         description: state.currentTask.description,
       },
       isSpecDriven: !!state.selectedSpec,
-      hasUiDoc: !!state.parsedUiDocs,
       figmaAvailable: (state.figmaAvailable && !state.parsedUiDocs) || false,
       figmaStartNodeId: state.figmaStartNodeId,
-      resolvedAction: state.resolvedAction,
+      resolvedAction: resolvedActionWithDocs,
     },
     state.detectionReport?.jobMode,
     state.currentTask.type
@@ -203,7 +223,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Block 2: Project Context (CACHED - changes per task)
-  // Verification tasks skip prdSpec and designDoc (irrelevant to build checks)
+  // Verification tasks skip document context (irrelevant to build checks)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const foundationContract = isVerificationTask ? null : await buildFoundationContract(state);
   const schemaAnchor = isVerificationTask ? null : await buildSchemaAnchor(state);

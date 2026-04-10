@@ -206,17 +206,17 @@ Asset files: available
 {{directive}}
 ```
 
-{{#if prdSpec}}
+{{#each documents}}
 
-### Source Documents (condensed)
+### {{label}}
 
-The following source documents may be truncated for budget. Use them as supplementary signals for domain/environment classification. The directive above is the primary signal.
+The following source document may be truncated for budget. Use it as a supplementary signal for domain/environment classification. The directive above is the primary signal.
 
 ```
-{{prdSpec}}
+{{{content}}}
 ```
 
-{{/if}}
+{{/each}}
 
 {{#if referencesList}}
 

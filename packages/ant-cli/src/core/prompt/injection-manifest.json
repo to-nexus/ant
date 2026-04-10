@@ -2,11 +2,9 @@
   "$comment": "Injection template -> expected variable mapping. Source of truth for template contracts.",
   "common/injections": {
     "directive": ["directive"],
-    "design-doc": ["designDoc"],
     "memory": ["content"],
-    "prd-spec": ["prdSpec"],
-    "ui-doc": ["uiDoc"],
     "visual-source-authority": [],
+    "ui-design-policy": [],
     "action-context": ["resolvedAction"],
     "basis-guidance": ["resolvedAction"],
     "refactor-guidance": ["resolvedAction"]

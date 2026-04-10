@@ -484,7 +484,7 @@ export async function detectEnvironment(
     
     const directive = state.overrideDirective || state.directive || "";
     const { buildCondensedSourceDocs } = await import('./docGen/sourceSelector');
-    const prdSpec = buildCondensedSourceDocs(state.sourceDocuments, 350_000) || state.prd || "";
+    const condensedSource = buildCondensedSourceDocs(state.sourceDocuments, 350_000) || state.prd || "";
 
     // Scan inputs/references and inputs/assets
     const featurePath = state.context.featurePath || '';
@@ -581,10 +581,16 @@ export async function detectEnvironment(
       uiReferences = allRefFiles.map(f => `inputs/references/${f}`);
     }
 
+    // Build documents[] for detect prompt
+    const detectDocs = condensedSource
+      ? [{ path: 'source-docs', content: condensedSource, role: 'context' as const, label: 'Source Documents (condensed)' }]
+      : [];
+
     // Build prompt
     const detectVars = {
       directive,
-      prdSpec,
+      documents: detectDocs,
+      hasDocuments: detectDocs.length > 0,
       hasReferences,
       hasAssets,
       referencesList,

@@ -1,0 +1,941 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=false | doc 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=false | error 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=false | feature 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/languages/go/environments/go-api/rules",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=false | setup 1`] = `
+[
+  "code/phases/execute/languages/go/setup/constraints",
+  "common/injections/directive",
+  "code/phases/execute/languages/go/environments/go-api/rules",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=false | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/tasks/test-code/languages/go/hints",
+  "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=false | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=true | doc 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=true | error 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=true | feature 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/languages/go/environments/go-api/rules",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=true | setup 1`] = `
+[
+  "code/phases/execute/languages/go/setup/constraints",
+  "common/injections/directive",
+  "code/phases/execute/languages/go/environments/go-api/rules",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=true | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/tasks/test-code/languages/go/hints",
+  "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | backend | docs=true | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=false | doc 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=false | error 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=false | feature 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=false | setup 1`] = `
+[
+  "code/phases/execute/languages/typescript/setup/constraints",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=false | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=false | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=true | doc 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=true | error 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=true | feature 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=true | setup 1`] = `
+[
+  "code/phases/execute/languages/typescript/setup/constraints",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=true | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | frontend | docs=true | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=false | doc 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=false | error 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=false | feature 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/phases/execute/languages/typescript/environments/node-api/rules",
+  "code/phases/execute/languages/typescript/environments/fullstack/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=false | setup 1`] = `
+[
+  "code/phases/execute/languages/typescript/setup/constraints",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/phases/execute/languages/typescript/environments/node-api/rules",
+  "code/phases/execute/languages/typescript/environments/fullstack/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=false | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=false | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=true | doc 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=true | error 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=true | feature 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/phases/execute/languages/typescript/environments/node-api/rules",
+  "code/phases/execute/languages/typescript/environments/fullstack/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=true | setup 1`] = `
+[
+  "code/phases/execute/languages/typescript/setup/constraints",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/phases/execute/languages/typescript/environments/node-api/rules",
+  "code/phases/execute/languages/typescript/environments/fullstack/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=true | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > create-code | fullstack | docs=true | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=false | doc 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=false | error 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=false | feature 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/go/environments/go-api/rules",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=false | setup 1`] = `
+[
+  "code/phases/execute/languages/go/setup/constraints",
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/go/environments/go-api/rules",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=false | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/tasks/test-code/languages/go/hints",
+  "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=false | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=true | doc 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=true | error 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=true | feature 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/go/environments/go-api/rules",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=true | setup 1`] = `
+[
+  "code/phases/execute/languages/go/setup/constraints",
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/go/environments/go-api/rules",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=true | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/tasks/test-code/languages/go/hints",
+  "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | backend | docs=true | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=false | doc 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=false | error 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=false | feature 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=false | setup 1`] = `
+[
+  "code/phases/execute/languages/typescript/setup/constraints",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=false | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=false | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=true | doc 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=true | error 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=true | feature 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=true | setup 1`] = `
+[
+  "code/phases/execute/languages/typescript/setup/constraints",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=true | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | frontend | docs=true | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=false | doc 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=false | error 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=false | feature 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/phases/execute/languages/typescript/environments/node-api/rules",
+  "code/phases/execute/languages/typescript/environments/fullstack/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=false | setup 1`] = `
+[
+  "code/phases/execute/languages/typescript/setup/constraints",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/phases/execute/languages/typescript/environments/node-api/rules",
+  "code/phases/execute/languages/typescript/environments/fullstack/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=false | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=false | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=true | doc 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=true | error 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=true | feature 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/phases/execute/languages/typescript/environments/node-api/rules",
+  "code/phases/execute/languages/typescript/environments/fullstack/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=true | setup 1`] = `
+[
+  "code/phases/execute/languages/typescript/setup/constraints",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/phases/execute/languages/typescript/environments/node-api/rules",
+  "code/phases/execute/languages/typescript/environments/fullstack/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/phases/execute/injections/backend-safety",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=true | test-code 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Code Job (intent x env x docs x taskType) > refactor-code | fullstack | docs=true | verification 1`] = `
+[
+  "common/injections/directive",
+  "code/base/injections/behavioral-debugging",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
+  "common/injections/refactor-guidance",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-be | backend 1`] = `
+[
+  "common/injections/directive",
+  "design/base/injections/document-language",
+  "design/phases/execute/injections/go-api-augmentation",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-be | frontend 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-be | fullstack 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-fe | backend 1`] = `
+[
+  "common/injections/directive",
+  "design/base/injections/document-language",
+  "design/phases/execute/injections/go-api-augmentation",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-fe | frontend 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-fe | fullstack 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-fullstack | backend 1`] = `
+[
+  "common/injections/directive",
+  "design/base/injections/document-language",
+  "design/phases/execute/injections/go-api-augmentation",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-fullstack | frontend 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > create-fullstack | fullstack 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > revise-system | backend 1`] = `
+[
+  "common/injections/directive",
+  "design/base/injections/document-language",
+  "design/phases/execute/injections/go-api-augmentation",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > revise-system | frontend 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Injection Matrix: Design Job (intent x env) > revise-system | fullstack 1`] = `
+[
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;

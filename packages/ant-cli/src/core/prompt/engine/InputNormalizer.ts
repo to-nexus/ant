@@ -1,4 +1,5 @@
 import { AgentJob, JobMode, ProjectContext } from "../../types";
+import type { ResolvedDocument } from "@ant/shared";
 
 /**
  * Normalized input structure for prompt engine
@@ -11,10 +12,9 @@ export interface NormalizedPromptInput {
   mode?: JobMode;                  // generate, refactor, explain
   
   artifacts: {
-    directive?: string;            // User instruction
-    designDoc?: string;            // Design document
-    prdSpec?: string;              // PRD specification
-    currentCode?: string;          // Current working code
+    directive?: string;
+    currentCode?: string;
+    documents?: ResolvedDocument[];
   };
   
   context: ProjectContext;         // Project metadata
@@ -38,9 +38,8 @@ export class InputNormalizer {
     context: ProjectContext,
     artifacts: {
       directive?: string;
-      designDoc?: string;
-      prdSpec?: string;
       currentCode?: string;
+      documents?: ResolvedDocument[];
     },
     mode?: JobMode,
     taskType?: string
@@ -71,9 +70,8 @@ export class InputNormalizer {
     context: ProjectContext,
     artifacts: {
       directive?: string;
-      designDoc?: string;
-      prdSpec?: string;
       currentCode?: string;
+      documents?: ResolvedDocument[];
     },
     mode?: JobMode,
     taskType?: string
@@ -152,11 +150,10 @@ export class InputNormalizer {
     taskType?: string
   ): void {
     // Code job requires either design doc or directive
-    // Verification, test-code, and doc tasks operate on existing codebase — they don't need a directive or design doc
-    // UI and design-system tasks use uiDoc (not designDoc) — they get content via resolveUiDocForTask()
+    // Verification, test-code, doc, error, UI, and design-system tasks don't require a directive or documents
     const designDocExempt = ['verification', 'test-code', 'doc', 'error', 'ui', 'design-system'];
     if (job === 'code' && !designDocExempt.includes(taskType || '')) {
-      if (!artifacts.designDoc && !artifacts.directive) {
+      if (!(artifacts.documents?.length) && !artifacts.directive) {
         throw new Error(
           "Code job requires either design document or directive.\n" +
           "Run 'architect design' first or provide a directive."
@@ -164,10 +161,10 @@ export class InputNormalizer {
       }
     }
     
-    // Design job should have PRD or directive
+    // Design job should have documents or directive
     if (job === 'design' && phase === 'plan') {
-      if (!artifacts.prdSpec && !artifacts.directive) {
-        console.warn("Design job: No PRD or directive provided. Using empty spec.");
+      if (!(artifacts.documents?.length) && !artifacts.directive) {
+        console.warn("Design job: No documents or directive provided. Using empty spec.");
       }
     }
   }

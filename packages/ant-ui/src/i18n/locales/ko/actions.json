@@ -99,10 +99,18 @@
 
   "intent": {
     "pickTitle": "어떤 작업을 진행하시겠습니까?",
-    "basis": "기반 소스",
+    "basis": "작업 기반",
     "refs": "참조 파일",
     "context": "추가 컨텍스트",
     "outputDir": "산출물 위치"
+  },
+
+  "emptySlot": {
+    "missing": "{{name}} 파일이 없습니다",
+    "create": "만들기",
+    "upload": "업로드",
+    "noFiles": "파일 없음",
+    "viewInExplorer": "보러가기"
   },
 
   "status": {

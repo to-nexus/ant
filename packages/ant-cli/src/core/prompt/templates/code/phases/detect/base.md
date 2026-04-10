@@ -13,11 +13,12 @@ Your analysis will determine the workflow routing strategy.
 
 {{directive}}
 
-{{#if prdSpec}}
-## Requirements (PRD)
+{{#each documents}}
+## {{label}}
 
-{{prdSpec}}
-{{/if}}
+{{{content}}}
+
+{{/each}}
 
 {{#if artifactAvailability}}
 ## Available Artifacts
