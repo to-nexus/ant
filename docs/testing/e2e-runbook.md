@@ -13,22 +13,15 @@
 ### 서버 시작
 
 ```bash
-# 1. Redis
-pnpm dev:infra:redis
-
-# 2. 4개 프로세스 (각각 별도 터미널)
-pnpm --filter @ant/cli dev:server            # API (4100)
-pnpm --filter @ant/cli dev:realtime-server   # SSE (4101)
-pnpm --filter @ant/cli dev:job-worker        # Worker
-pnpm --filter @ant/cli dev:preview-server    # Preview (4102)
+pnpm dev:infra          # Redis + ChromaDB + Visual Processor (Docker)
+pnpm dev:local:all      # API (4100) + UI + Site
 ```
 
 ### 환경변수
 
+`.env`가 설정되어 있으면 별도 export 불필요. curl 테스트에 필요한 변수만:
+
 ```bash
-export ANT_SERVER_MODE="local"
-export ANT_REDIS_URL="redis://localhost:16379"
-export ANT_WORKSPACE_BASE_PATH="/Users/probe/dev/ant-workspaces"
 export USER_EMAIL="local@local"
 export PROJECT_ID="probe"
 export FEATURE_NAME="skeleton"

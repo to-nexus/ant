@@ -24,6 +24,7 @@ import {
   BroadcasterOptions 
 } from './types';
 import { REDIS_KEYS, REDIS_TTL } from '../../infrastructure/state/redisConstants';
+import { isTemplateContent } from '../utils/templateDetector';
 
 // File patterns to exclude from tree
 const EXCLUDE_PATTERNS = [
@@ -48,6 +49,7 @@ interface FileTreeNode {
   children?: FileTreeNode[];
   size?: number;
   modifiedTime?: string;
+  isTemplate?: boolean;
 }
 
 export class FileTreeBroadcaster implements FileTreeUpdatePort {
@@ -159,15 +161,25 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
         } else if (entry.isFile()) {
           try {
             const stats = await fs.promises.stat(fullPath);
-            nodes.push({
+            const node: FileTreeNode = {
               name: entry.name,
               type: 'file',
               path: relPath,
               size: stats.size,
               modifiedTime: stats.mtime.toISOString(),
-            });
+            };
+
+            if (relPath.startsWith('inputs/sources/')) {
+              try {
+                const content = await fs.promises.readFile(fullPath, 'utf-8');
+                if (isTemplateContent(content)) {
+                  node.isTemplate = true;
+                }
+              } catch { /* skip read failures */ }
+            }
+
+            nodes.push(node);
           } catch {
-            // Skip files we can't stat
             nodes.push({
               name: entry.name,
               type: 'file',

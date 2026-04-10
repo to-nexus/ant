@@ -3,6 +3,7 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
+import { isTemplateContent } from '../../../../../core/utils/templateDetector';
 
 const TREE_EXCLUDE = new Set([
   'node_modules',
@@ -88,11 +89,28 @@ export class FileOperationService {
             children
           });
         } else {
-          tree.push({
+          const node: any = {
             name: item.name,
             path: itemRelativePath,
             type: 'file'
-          });
+          };
+
+          try {
+            const stats = await fs.promises.stat(fullPath);
+            node.size = stats.size;
+            node.modifiedTime = stats.mtime.toISOString();
+          } catch { /* skip stat failures */ }
+
+          if (itemRelativePath.startsWith('inputs/sources/')) {
+            try {
+              const content = await fs.promises.readFile(fullPath, 'utf-8');
+              if (isTemplateContent(content)) {
+                node.isTemplate = true;
+              }
+            } catch { /* skip read failures */ }
+          }
+
+          tree.push(node);
         }
       }
 

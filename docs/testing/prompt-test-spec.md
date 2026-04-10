@@ -7,7 +7,10 @@
 ## 테스트 계층
 
 ```
-889 tests (전체)
+969 tests (전체)
+├── Intent Acceptance ── intent-acceptance.test.ts (80)  16개 intent × basis 변형 = 22 fixture
+│                                                        Config Matrix → RAC → Prompt 전체 경로
+│
 ├── Safety Gate ──── prompt-smoke.test.ts (25)     partial 등록, 템플릿 렌더, manifest 무결성
 │                    runtime-context.test.ts        buildRuntimeContext, generateFileTree
 │
@@ -26,6 +29,80 @@
 │
 └── 기타 ──── rac.test.ts, triage-*.test.ts, rac-matrix.test.ts 등
 ```
+
+---
+
+## Intent Acceptance
+
+16개 intent에 대해 (directive, basis, refs, context) 조합을 준비하고, 디렉티브 입력 → RAC 생성 → 프롬프트 빌드 전체 경로를 자동 검증한다. 서버/LLM 없이 순수 함수 호출만으로 ~270ms에 실행.
+
+| 파일 | 역할 |
+|------|------|
+| `tests/intents/dataset.ts` | 22개 fixture (16 intent × basis 변형) + 8개 샘플 문서 |
+| `tests/intents/intent-acceptance.test.ts` | vitest 자동 테스트 (80 tests) |
+| `tests/intents/documents/` | 테스트용 최소 문서 (prd, fe-system, be-system 등 8개) |
+| `docs/testing/e2e-intent-reference.md` | 수동 E2E curl 레퍼런스 (자동 테스트 아님) |
+
+### 검증 3단계
+
+```
+Stage 1: Config Matrix      getAvailableBases(intent) → basis 포함 확인
+                             getConfigSlots(intent, basis) → null 아닌지
+
+Stage 2: RAC Routing         resolveFromExplicit(metadata) → RAC 생성
+                             deriveFromIntent(intent) → agent/jobType 일치
+                             RAC.jobMode, workType, tech.environment 일치
+                             refs/context/basis 필드 보존
+
+Stage 3: Prompt Build        buildExecutePrompt() → PromptBuildResult
+  (code/design만)            requiredInjections 포함 확인
+                             forbiddenInjections 배제 확인
+                             mustContain 키워드 프롬프트 텍스트에 포함
+                             injection 목록 스냅샷 비교 (회귀 방지)
+```
+
+- **Stage 1-2**: 모든 22개 fixture에 대해 실행 (plan 포함)
+- **Stage 3**: code/design job만 실행 (plan은 별도 빌더 사용)
+
+### 왜 서버 없이 가능한가
+
+테스트는 파이프라인의 가운데 두 함수만 직접 호출한다:
+
+```
+resolveFromExplicit(metadata)      ← 순수 함수, ActionMetadata → RAC
+engine.buildExecutePrompt(...)     ← 템플릿 렌더링 + ModeController injection 결정
+```
+
+HTTP, Redis, BullMQ, LLM 호출이 전혀 없다. ModeController의 injection 선택 로직(environment 판단, language 감지, framework augmentation, refactor/behavioral-debugging 등)이 RAC와 context를 기반으로 deterministic하게 동작하므로 스냅샷 테스트가 가능하다.
+
+### 프롬프트 변경 시 워크플로우
+
+```
+1. 템플릿/ModeController/RAC 변경
+2. pnpm test:cli → 스냅샷 diff 발생 (FAIL)
+3. diff 검토: 의도한 변경인지 확인
+4. pnpm vitest run tests/intents/intent-acceptance.test.ts --update
+5. 새 스냅샷 커밋
+```
+
+### Fixture 커버리지
+
+| Intent | Basis 변형 | Stage 3 |
+|--------|-----------|---------|
+| create-plan | directive | - (plan job) |
+| revise-plan | directive | - (plan job) |
+| create-fe | prd, directive | design |
+| create-be | prd, directive | design |
+| create-fullstack | prd | design |
+| revise-system | directive | design |
+| create-figma | figma | design |
+| create-ref | references | design |
+| create-desc | prd, directive | design |
+| revise-ui | directive | design |
+| create-spec | existing-doc, directive | design |
+| revise-spec | directive | design |
+| create-code | design-doc, spec, directive | code |
+| refactor-code | existing-doc, directive | code |
 
 ---
 
