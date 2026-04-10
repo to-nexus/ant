@@ -374,7 +374,7 @@ export async function detectEnvironment(
   // RAC: create from detection (infer path, LLM detection complete)
   let resolvedAction = state.resolvedAction;
   if (!resolvedAction) {
-    const inferActionMetadata = (state as any).actionMetadata as ActionMetadata | undefined;
+    const inferActionMetadata = state.actionMetadata;
     const codebaseProfile = state.context.codebaseProfile;
     const fallbackHints: EnvironmentHints = {
       designDocPath: state.designDocPath,

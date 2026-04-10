@@ -162,11 +162,11 @@ export async function architectAgent(
         // ✅ Triage System fields
         _httpJobId: jobId || process.env.ANT_JOB_ID,
         overrideDirective: deps?.overrideDirective || overrideDirective,
+        chatSource: deps?.chatSource,
+        skipTriage: deps?.skipTriage,
+        actionMetadata: deps?.actionMetadata,
         currentJob: 'learn',
         currentAgent: 'architect'
-        // ✅ DO NOT skip triage - still need redirect detection (e.g., "개발해라" → code)
-        // But Learn job should NOT be blocked by missing codebase index
-        // (Learn job PERFORMS indexing, so indexing is not a prerequisite)
       };
       
       console.log('🚀 Starting LEARN job');

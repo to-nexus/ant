@@ -1089,6 +1089,7 @@ export function buildCodeGraph() {
       
       // ✅ Triage System
       skipTriage: null as any,       // Skip triage if true
+      actionMetadata: null as any,   // Explicit action context from Actions panel
       triageResult: null as any,     // Triage analysis result
       workspaceState: null as any,   // Workspace state snapshot
       currentAgent: null as any,     // Current agent name

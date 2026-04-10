@@ -9,6 +9,7 @@ import { ProjectContext } from '../../../architect/types';
 import { LLMClient } from '../../../../core/ports';
 import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow';
 import { TokenUsage } from '../../graph/llmHelpers';
+import type { ActionMetadata } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Intent & Status
@@ -185,6 +186,9 @@ export interface TriageableState {
   // Chat input
   overrideDirective?: string;
   chatSource?: boolean;
+  
+  // Explicit action context (from Actions panel)
+  actionMetadata?: ActionMetadata;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

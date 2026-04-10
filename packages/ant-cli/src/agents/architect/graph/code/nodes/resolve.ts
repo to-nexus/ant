@@ -416,8 +416,8 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
 
   // 1. Load design document (optional)
   // When actionMetadata.refs is provided, only load referenced files
-  const actionRefs = (state as any).actionMetadata?.refs as string[] | undefined;
-  const actionContext = (state as any).actionMetadata?.context as string[] | undefined;
+  const actionRefs = state.actionMetadata?.refs;
+  const actionContext = state.actionMetadata?.context;
   const hasExplicitRefs = actionRefs && actionRefs.length > 0;
 
   const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
@@ -618,7 +618,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
   // Profile detection moved to detectEnvironment node (LLM-based)
 
   // RAC creation: explicit path only (infer path creates RAC in detectEnvironment)
-  const actionMetadata = (state as any).actionMetadata;
+  const actionMetadata = state.actionMetadata;
   let resolvedAction = state.resolvedAction;
   if (!resolvedAction && actionMetadata?.intent) {
     const codebaseProfile = state.context.codebaseProfile;
