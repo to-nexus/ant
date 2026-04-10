@@ -150,14 +150,17 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     console.log(`📋 [Execute] Error task with spec "${state.selectedSpec}" — injecting specDoc (${designDocForTask.length} chars)`);
   }
   
+  const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
+    && (state.resolvedAction?.documents?.length ?? 0) > 0;
+
   const promptResult = await promptEngine.buildExecutePrompt(
     'code',
     contextWithProfile,
     {
       directive: isVerificationTask ? undefined : state.directive,
-      designDoc: designDocForTask,
-      prdSpec: (isVerificationTask || isErrorTask) ? undefined : (buildAllSourceDocs(state.sourceDocuments) || state.prd),
-      uiDoc: (isVerificationTask || isErrorTask) ? undefined : uiDocForTask,
+      designDoc: hasExplicitDocs ? undefined : designDocForTask,
+      prdSpec: (isVerificationTask || isErrorTask || hasExplicitDocs) ? undefined : (buildAllSourceDocs(state.sourceDocuments) || state.prd),
+      uiDoc: (isVerificationTask || isErrorTask || hasExplicitDocs) ? undefined : uiDocForTask,
       projectCodeContext: executeProjectCodeContext,
       referenceCodeContexts: state.referenceCodeContexts,
       lessons: Array.isArray(state.lessons) ? state.lessons : undefined,

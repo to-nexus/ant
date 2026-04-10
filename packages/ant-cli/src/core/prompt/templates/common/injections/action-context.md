@@ -17,6 +17,21 @@ Generate output ONLY for these specific files:
 Do NOT generate content for files outside this list.
 {{/if}}
 
+{{#if resolvedAction.documents}}
+{{#each resolvedAction.documents}}
+{{#if (eq role "ref")}}
+### PRIMARY REFERENCE: {{path}}
+
+{{{content}}}
+
+{{else}}
+### SECONDARY CONTEXT: {{path}}
+
+{{{content}}}
+
+{{/if}}
+{{/each}}
+{{else}}
 {{#if resolvedAction.refs}}
 The following files were explicitly selected as primary references:
 {{#each resolvedAction.refs}}- {{this}}
@@ -27,5 +42,6 @@ The following files were explicitly selected as primary references:
 Additional context files (secondary, for reference only):
 {{#each resolvedAction.context}}- {{this}}
 {{/each}}
+{{/if}}
 {{/if}}
 {{/if}}

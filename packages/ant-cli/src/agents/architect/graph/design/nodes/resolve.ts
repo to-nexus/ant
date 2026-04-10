@@ -5,6 +5,8 @@ import * as path from "path";
 import { getEstimatingLabel, detectUILocale } from "../../../../common/graph/timing/estimatingLabels";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
 import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR, resolveFromExplicit } from "@ant/shared";
+import type { ResolvedDocument } from "@ant/shared";
+import type { FileSystemPort } from "../../../../../core/ports/filesystem";
 import type { ConversationEntry } from "../../../../../core/types/session";
 import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
 
@@ -466,6 +468,23 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     const codebaseProfile = state.context.codebaseProfile;
     resolvedAction = resolveFromExplicit(actionMetadata, codebaseProfile);
     console.log(`📋 [Design Resolve] RAC created (explicit): intent=${actionMetadata.intent}, tech=${JSON.stringify(resolvedAction.tech)}`);
+
+    // Load documents for explicit path: ActionMetadata.refs/context → ResolvedDocument[]
+    if (fileSystem && featurePath) {
+      const documents: ResolvedDocument[] = [];
+      for (const refPath of actionMetadata.refs || []) {
+        const content = await loadFeatureFile(refPath, fileSystem, featurePath);
+        if (content) documents.push({ path: refPath, content, role: 'ref' });
+      }
+      for (const ctxPath of actionMetadata.context || []) {
+        const content = await loadFeatureFile(ctxPath, fileSystem, featurePath);
+        if (content) documents.push({ path: ctxPath, content, role: 'context' });
+      }
+      if (documents.length > 0) {
+        resolvedAction = { ...resolvedAction, documents };
+        console.log(`📋 [Design Resolve] RAC documents loaded: ${documents.length} (${documents.filter(d => d.role === 'ref').length} ref, ${documents.filter(d => d.role === 'context').length} context)`);
+      }
+    }
   }
 
   return {
@@ -485,4 +504,24 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     jobTiming: (state as any).jobTiming,
     jobConversation: processedJobConversation,
   };
+}
+
+/**
+ * Load a feature-relative file via FileSystemPort.
+ * Returns undefined if the file doesn't exist or can't be read.
+ */
+async function loadFeatureFile(
+  relativePath: string,
+  fileSystem: FileSystemPort,
+  featurePath: string,
+): Promise<string | undefined> {
+  const fullPath = path.join(featurePath, relativePath);
+  const rootPath = fileSystem.getRootPath?.();
+  const normalizedPath = rootPath ? path.relative(rootPath, fullPath) : fullPath;
+  try {
+    if (await fileSystem.fileExists(normalizedPath)) {
+      return await fileSystem.readFile(normalizedPath) || undefined;
+    }
+  } catch { /* file not found, skip */ }
+  return undefined;
 }

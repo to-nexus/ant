@@ -25,6 +25,16 @@ export interface TechContext {
 }
 
 // ============================================
+// ResolvedDocument (role-labeled file content for action-context rendering)
+// ============================================
+
+export interface ResolvedDocument {
+  path: string;
+  content: string;
+  role: 'ref' | 'context';
+}
+
+// ============================================
 // ResolvedActionContext
 // ============================================
 
@@ -39,6 +49,8 @@ export interface ResolvedActionContext {
   basis?: Basis;
   refs?: string[];
   context?: string[];
+
+  documents?: ResolvedDocument[];
 
   domain?: DesignDomain;
 
@@ -186,6 +198,8 @@ const BASIS_DESCRIPTIONS: Record<Basis, string> = {
   'existing-doc': 'Existing design documents',
   'figma': 'Figma design file',
   'references': 'Reference images and screenshots',
+  'spec': 'Feature specification document',
+  'design-doc': 'System design document',
 };
 
 export function getBasisDescription(basis: Basis): string {

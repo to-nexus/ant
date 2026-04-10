@@ -143,6 +143,12 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     }
     prdSpecForLog = prdSpec;
 
+    const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
+      && (state.resolvedAction?.documents?.length ?? 0) > 0;
+    if (hasExplicitDocs) {
+      useSourceFileTool = false;
+    }
+
     const promptResult = await promptEngine.buildExecutePrompt(
       'design',
       state.context,
@@ -150,7 +156,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         directive: state.directive || '',
         lastSectionNumber,
         sectionPattern,
-        prdSpec,
+        prdSpec: hasExplicitDocs ? '' : prdSpec,
         designDomain: state.detectionReport?.domain,
         currentTask: {
           name: state.currentTask.name,
