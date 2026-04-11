@@ -34,6 +34,8 @@
     },
     "figmaEmpty": "No Figma URLs configured. Click to add design file URLs.",
     "templateFile": "File contains only placeholder content — click to add real data.",
+    "templateReasonMarker": "Template marker (<!-- ant:template -->) is present and meaningful content is {{contentLength}}/{{threshold}} chars. Remove the marker or add more content.",
+    "templateReasonEmpty": "File is empty (0 bytes).",
     "figmaConnected": "Figma integration active",
     "figmaNotConnected": "Figma URLs configured but Ant Desktop is not connected. Click to set up.",
     "goToAccountSettings": "Go to Account Settings"
@@ -83,6 +85,8 @@
     "figmaNotConnected": "Ant Desktop not connected",
     "figmaSetup": "Set up",
     "syntaxError": "File has syntax errors. Using raw editor.",
+    "templateMarker": "Treated as empty — template marker present, content {{contentLength}}/{{threshold}} chars",
+    "templateEmpty": "File is empty (0 bytes)",
     "smartPlaceholder": {
       "figma": "Paste Figma file URLs, one per line"
     }

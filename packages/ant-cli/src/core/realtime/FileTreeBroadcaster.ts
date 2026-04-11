@@ -24,7 +24,7 @@ import {
   BroadcasterOptions 
 } from './types';
 import { REDIS_KEYS, REDIS_TTL } from '../../infrastructure/state/redisConstants';
-import { isTemplateContent } from '../utils/templateDetector';
+import { isTemplateContent, getTemplateReason } from '../utils/templateDetector';
 
 // File patterns to exclude from tree
 const EXCLUDE_PATTERNS = [
@@ -172,8 +172,12 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
             if (relPath.startsWith('inputs/sources/')) {
               try {
                 const content = await fs.promises.readFile(fullPath, 'utf-8');
-                if (isTemplateContent(content)) {
+                const result = getTemplateReason(content, stats.size);
+                if (result.reason) {
                   node.isTemplate = true;
+                  (node as any).templateReason = result.reason;
+                  if (result.contentLength !== undefined) (node as any).templateContentLength = result.contentLength;
+                  if (result.threshold !== undefined) (node as any).templateThreshold = result.threshold;
                 }
               } catch { /* skip read failures */ }
             }

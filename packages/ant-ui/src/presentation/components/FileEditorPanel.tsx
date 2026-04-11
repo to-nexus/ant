@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { fetchFileBlob, fetchFileContent, isBinaryImageFilePath, isSvgFilePath, saveFileContent } from '@/infrastructure/http/api';
+import { fetchFileBlob, fetchFileContent, isBinaryImageFilePath, isSvgFilePath, saveFileContent, type FileNode } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -171,7 +171,23 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
   const setFigmaPopulated = useStore((state) => state.setFigmaPopulated);
 
+  const fileTree = useStore((state) => state.fileTree);
+
   const isFigmaFile = selectedFile?.endsWith('figma.json') ?? false;
+
+  const currentFileNode = useMemo((): FileNode | null => {
+    if (!fileTree || !selectedFile) return null;
+    const parts = selectedFile.split('/');
+    let nodes = fileTree;
+    for (let i = 0; i < parts.length; i++) {
+      const node = nodes.find(n => n.name === parts[i]);
+      if (!node) return null;
+      if (i === parts.length - 1) return node.type === 'file' ? node : null;
+      if (!node.children) return null;
+      nodes = node.children;
+    }
+    return null;
+  }, [fileTree, selectedFile]);
 
   // ── Smart edit ────────────────────────────────────────
   const smartEditConfig = useMemo(
@@ -188,7 +204,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const useSmartEdit = deserializeResult?.ok === true;
 
   // ── Header warning (single, priority-ordered) ────────
-  type HeaderWarningType = 'syntax_error' | 'figma_empty' | 'figma_not_connected';
+  type HeaderWarningType = 'syntax_error' | 'figma_empty' | 'figma_not_connected' | 'template_marker' | 'template_empty';
 
   const headerWarning = useMemo((): HeaderWarningType | null => {
     if (smartEditConfig && deserializeResult && !deserializeResult.ok) {
@@ -205,8 +221,13 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
         return 'figma_not_connected';
       }
     }
+    if (currentFileNode?.isTemplate) {
+      if (currentFileNode.templateReason === 'file_empty') return 'template_empty';
+      if (currentFileNode.templateReason === 'marker_and_short_content') return 'template_marker';
+      return 'template_marker';
+    }
     return null;
-  }, [smartEditConfig, deserializeResult, isFigmaFile, editedContent, bridgeConnected, figmaDesktopReachable]);
+  }, [smartEditConfig, deserializeResult, isFigmaFile, editedContent, bridgeConnected, figmaDesktopReachable, currentFileNode]);
 
   // ── Reset handler (smart edit files only) ─────────────
   const handleReset = useCallback(() => {
@@ -474,6 +495,25 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
               >
                 {t('editor.figmaSetup')}
               </button>
+            </div>
+          )}
+          {headerWarning === 'template_marker' && (
+            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="text-xs text-amber-700 dark:text-amber-300">
+                {t('editor.templateMarker', {
+                  contentLength: currentFileNode?.templateContentLength ?? 0,
+                  threshold: currentFileNode?.templateThreshold ?? 50,
+                })}
+              </span>
+            </div>
+          )}
+          {headerWarning === 'template_empty' && (
+            <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className="text-xs text-amber-700 dark:text-amber-300">
+                {t('editor.templateEmpty')}
+              </span>
             </div>
           )}
 

@@ -5,7 +5,7 @@
  *   1. It contains the `<!-- ant:template -->` marker, AND
  *   2. After stripping HTML comments + markdown scaffolding (headers, empty
  *      list items, label-only items, blockquotes) the remaining user-written
- *      content is negligible (< 50 chars).
+ *      content is negligible (< CONTENT_THRESHOLD chars).
  *
  * If the marker is present but substantial content exists, the file is treated
  * as a real document with a leftover marker — the marker is stripped and the
@@ -13,22 +13,49 @@
  */
 
 const TEMPLATE_MARKER = '<!-- ant:template -->';
+const CONTENT_THRESHOLD = 50;
+
+export type TemplateReason =
+  | 'marker_and_short_content'
+  | 'file_empty'
+  | null;
 
 /**
- * Check if file content is a template placeholder.
+ * Strip scaffolding from content, returning only user-written text.
  */
-export function isTemplateContent(content: string): boolean {
-  if (!content.includes(TEMPLATE_MARKER)) return false;
-
-  const stripped = content
+function stripScaffolding(content: string): string {
+  return content
     .replace(/<!--[\s\S]*?-->/g, '')          // HTML comments
     .replace(/^#+\s+.*$/gm, '')               // Markdown headers
     .replace(/^>\s.*$/gm, '')                  // Blockquotes
     .replace(/^-\s*(\*\*[^*]+\*\*:)?\s*$/gm, '') // "- " or "- **label**:"
     .replace(/^-\s*[^\s:]+:\s*$/gm, '')        // "- label:"
     .trim();
+}
 
-  return stripped.length < 50;
+/**
+ * Check if file content is a template placeholder.
+ */
+export function isTemplateContent(content: string): boolean {
+  if (!content.includes(TEMPLATE_MARKER)) return false;
+  return stripScaffolding(content).length < CONTENT_THRESHOLD;
+}
+
+/**
+ * Get the reason why a file is considered empty/template, with metadata
+ * for the UI to display a meaningful message.
+ */
+export function getTemplateReason(content: string, fileSize: number): { reason: TemplateReason; contentLength?: number; threshold?: number } {
+  if (fileSize === 0) {
+    return { reason: 'file_empty' };
+  }
+  if (content.includes(TEMPLATE_MARKER)) {
+    const strippedLen = stripScaffolding(content).length;
+    if (strippedLen < CONTENT_THRESHOLD) {
+      return { reason: 'marker_and_short_content', contentLength: strippedLen, threshold: CONTENT_THRESHOLD };
+    }
+  }
+  return { reason: null };
 }
 
 /**
