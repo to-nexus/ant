@@ -3,7 +3,7 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
-import { isTemplateContent } from '../../../../../core/utils/templateDetector';
+import { isTemplateContent, normalizeTemplateDoc, getTemplateReason } from '../../../../../core/utils/templateDetector';
 
 const TREE_EXCLUDE = new Set([
   'node_modules',
@@ -104,8 +104,12 @@ export class FileOperationService {
           if (itemRelativePath.startsWith('inputs/sources/')) {
             try {
               const content = await fs.promises.readFile(fullPath, 'utf-8');
-              if (isTemplateContent(content)) {
+              const result = getTemplateReason(content, node.size ?? 0);
+              if (result.reason) {
                 node.isTemplate = true;
+                node.templateReason = result.reason;
+                if (result.contentLength !== undefined) node.templateContentLength = result.contentLength;
+                if (result.threshold !== undefined) node.templateThreshold = result.threshold;
               }
             } catch { /* skip read failures */ }
           }
@@ -169,8 +173,17 @@ export class FileOperationService {
     
     // Ensure directory exists
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-    
-    await fs.promises.writeFile(fullPath, content, 'utf-8');
+
+    // Auto-strip ant:template marker when user saves real content in sources
+    let finalContent = content;
+    if (filePath.startsWith('inputs/sources/')) {
+      const normalized = normalizeTemplateDoc(content);
+      if (normalized !== null) {
+        finalContent = normalized;
+      }
+    }
+
+    await fs.promises.writeFile(fullPath, finalContent, 'utf-8');
   }
   
   /**

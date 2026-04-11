@@ -1,5 +1,7 @@
 import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, ApiError } from './client';
 
+export type TemplateReason = 'marker_and_short_content' | 'file_empty';
+
 export interface FileNode {
   name: string;
   path: string;
@@ -8,6 +10,12 @@ export interface FileNode {
   size?: number;
   modifiedTime?: string;
   isTemplate?: boolean;
+  /** Why the file is considered empty/template — used by UI to show meaningful warnings */
+  templateReason?: TemplateReason;
+  /** User-written content length (after stripping scaffolding) when templateReason is marker_and_short_content */
+  templateContentLength?: number;
+  /** Threshold that content must exceed to be considered real */
+  templateThreshold?: number;
 }
 
 export interface FileContent {
