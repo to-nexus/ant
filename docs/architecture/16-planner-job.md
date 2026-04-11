@@ -28,7 +28,7 @@ UI가 `actionMetadata.target`을 세팅한다. resolve에서 추론하지 않는
 | `mirrorRefs` (rev-plan) | refs 선택 시 | `['inputs/sources/api-spec.md']` |
 | `dir + expectedFiles` (gen-plan) | intent 선택 시 | `['inputs/sources/prd.md']` |
 
-rev-plan은 `refsMaxSelection: 1`로 단일 선택만 허용.
+rev-plan은 `refsSingleSelect: true`로 단일 선택만 허용.
 
 Explicit에서 target이 없으면 (codebase/emptyHint 제외) 시스템 오류로 처리한다. 추론 폴백 없음.
 
