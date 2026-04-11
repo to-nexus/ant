@@ -13,7 +13,7 @@
 import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { buildPlanGraph } from './graph';
-import { PlanGraphState, createInitialPlanState } from './state';
+import { PlanGraphState, createInitialPlanState, getPlanMode } from './state';
 import { WorkspaceState } from '../../../common/nodes/triage/types';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { setPlannerWorkspaceFeaturePath, setPlannerFileTreeUpdate } from '../tools';
@@ -24,7 +24,6 @@ export interface PlanRunnerParams {
   language: 'ko' | 'en';
   workspaceState: WorkspaceState;
   featurePath: string;
-  mode?: 'generate' | 'refine';
   isResume?: boolean;
   chatSource?: boolean;
   skipTriage?: boolean;
@@ -34,8 +33,7 @@ export interface PlanRunnerParams {
 }
 
 export interface PlanRunnerResult {
-  generatedDocument?: string;
-  plannerPhase: string;
+  planMode: string;
   tokenUsage?: any;
   interruption?: {
     reason: string;
@@ -70,7 +68,6 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     language: params.language,
     workspaceState: params.workspaceState,
     featurePath: params.featurePath,
-    plannerPhase: params.mode,
     isResume: params.isResume,
     chatSource: params.chatSource,
     skipTriage: params.skipTriage,
@@ -119,6 +116,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
         // ✅ Restore tokenUsage from session
         if (session.state.tokenUsage) {
           initialState.tokenUsage = session.state.tokenUsage;
+        }
+        
+        // ✅ Restore detectionReport from session (determines plan mode: generate/refactor/explain)
+        if (session.state.detectionReport) {
+          initialState.detectionReport = session.state.detectionReport;
+          console.log(`🔄 [PlanRunner] Restoring detectionReport (mode=${session.state.detectionReport.detectedMode})`);
         }
         
         // ✅ Restore conversationHistory from session (enables LLM to continue from exact interruption point)
@@ -179,7 +182,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
             directive: initialState.directive || existingDirective,
             overrideDirective: initialState.overrideDirective || initialState.directive,
             chatSource: params.chatSource,
-            plannerPhase: initialState.plannerPhase,
+            detectionReport: initialState.detectionReport,
             jobId: params._httpJobId || session.state?.jobId,
             // ✅ Clear stale interruption from previous job.
             // Without this, JobCleanupManager's fallback logic reuses the old
@@ -293,14 +296,18 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     if (isRecursionLimit) {
       console.log(`⚠️ [Planner] Recursion limit reached (${recursionLimit}). Finalizing with current progress.`);
       
-      // Read the current staging file which has been edited by all tool calls so far
-      let generatedDocument: string | undefined;
-      const stagingPath = path.join(params.featurePath, 'outputs/plan/prd-refine.md');
-      try {
-        generatedDocument = await fsPromises.readFile(stagingPath, 'utf-8');
-        console.log(`📝 [Planner] Read edited PRD from staging (${generatedDocument.length} chars)`);
-      } catch {
-        console.log(`📝 [Planner] No staging file found`);
+      // Read staging file (edited by tool calls so far) — path derived from target
+      const target = initialState.resolvedAction?.target?.[0];
+      const stagingFile = target ? `outputs/plan/${path.basename(target)}` : undefined;
+      let stagingSize = 0;
+      if (stagingFile) {
+        try {
+          const content = await fsPromises.readFile(path.join(params.featurePath, stagingFile), 'utf-8');
+          stagingSize = content.length;
+          console.log(`📝 [Planner] Staging file found: ${stagingFile} (${stagingSize} chars)`);
+        } catch {
+          console.log(`📝 [Planner] No staging file found`);
+        }
       }
       
       // Finalize any active message NORMALLY (not cancelled)
@@ -320,7 +327,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       }
       
       console.log('\n⏸️ Planner Agent paused (recursion limit)');
-      console.log(`   Document length: ${generatedDocument?.length || 0} chars`);
+      console.log(`   Staging: ${stagingFile || 'none'} (${stagingSize} chars)`);
       
       // ✅ Save session state on recursion limit (enables resume)
       // Without this, the session only has what saveConversationToSession saved during
@@ -334,7 +341,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               directive: initialState.directive,
               overrideDirective: initialState.overrideDirective || initialState.directive,
               chatSource: initialState.chatSource,
-              plannerPhase: initialState.plannerPhase,
+              detectionReport: initialState.detectionReport,
               tokenUsage: stateSnapshot?.tokenUsage || initialState.tokenUsage,
               jobTiming: jobTimingRef || session.state?.jobTiming,
               // ✅ Save latest conversationHistory from stateSnapshot for resume
@@ -364,8 +371,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       // This matches the code job pattern (architectAgent → interruption → paused).
       unregisterActiveOrchestrator();
       return {
-        generatedDocument,
-        plannerPhase: initialState.plannerPhase,
+        planMode: getPlanMode(initialState),
         tokenUsage: initialState.tokenUsage,
         interruption: {
           reason: 'recursion_limit',
@@ -428,13 +434,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     );
   }
 
+  const planMode = getPlanMode(finalState);
   console.log('\n✅ Planner Agent completed');
-  console.log(`   Planner phase: ${finalState.plannerPhase}`);
-  console.log(`   Document length: ${finalState.generatedDocument?.length || 0} chars`);
+  console.log(`   Plan mode: ${planMode}`);
   
   return {
-    generatedDocument: finalState.generatedDocument,
-    plannerPhase: finalState.plannerPhase,
+    planMode,
     tokenUsage: finalState.tokenUsage,
   };
 }

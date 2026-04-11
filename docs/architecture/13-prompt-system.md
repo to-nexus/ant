@@ -115,7 +115,7 @@ Handlebars를 사용하며, 조건부 섹션(`{{#if}}`)과 반복(`{{#each}}`)�
 | `detectionReport` | detectEnvironment 노드 |
 | `taskDescription` | decompose에서 생성된 태스크 설명 |
 | `previousChaptersSummary` | 이전 챕터 요약 (Design Job) |
-| `existingDocument` | 기존 PRD 또는 설계 문서 |
+| `resolvedAction` | RAC 객체 (intent, target, refs, context, documents) — `action-context.md` partial에서 렌더링 |
 
 ## FPOP 원칙
 

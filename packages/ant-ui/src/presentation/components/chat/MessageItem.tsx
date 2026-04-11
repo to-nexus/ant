@@ -31,7 +31,7 @@ export function MessageItem({ message }: MessageItemProps) {
   // In-progress → completed transitions happen via content_update at the same array index,
   // so each slot in the contents array already reflects its final state.
   // Multiple completed operations on the same filePath are independent cards
-  // (e.g., planner editing prd-refine.md multiple times across ReAct iterations).
+  // (e.g., planner editing prd.md multiple times across ReAct iterations).
   const deduplicatedContents = useMemo(() => {
     return message.contents.map((content, index) => ({
       content,
@@ -347,9 +347,6 @@ function ContentBlock({ content, isStreaming, messageId }: ContentBlockProps) {
       const cardType = content.metadata?.cardType;
       if (cardType === 'eval_save') {
         return <ChoiceCard content={content} variant="eval_save" messageId={messageId} />;
-      }
-      if (cardType === 'prd_apply') {
-        return <ChoiceCard content={content} variant="prd_apply" messageId={messageId} />;
       }
       if (cardType === 'clarifying') {
         return <ChoiceCard content={content} variant="clarifying" messageId={messageId} />;

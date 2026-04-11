@@ -5,9 +5,7 @@
  * 의료 Triage 개념 차용: 분류 → 적절한 경로로 라우팅
  */
 
-import { LLMClient } from '../../../../core/ports';
-import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow';
-import { TokenUsage } from '../../graph/llmHelpers';
+import type { ResolvableState } from '../resolve/types.js';
 import type { ActionMetadata } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -172,41 +170,16 @@ export type TriageableContext = {
 /**
  * TriageableState: Triage 기능이 추가된 Graph State
  * Design/Code/Plan/Visual/Learn 그래프의 공통 베이스 타입
+ *
+ * Extends ResolvableState (resolve → triage → detect execution chain).
+ * Fields common to ALL nodes (featurePath, context, directive, deps, etc.)
+ * live in ResolvableState. Triage-specific fields live here.
  */
-export interface TriageableState {
-  // Core path — single source of truth for workspace location
-  featurePath?: string;
-  
-  // Minimal context (each graph overrides with narrower type)
-  context: TriageableContext;
-  directive?: string;  // User instruction (unified: CLI input or chat input)
-  deps?: { 
-    llm?: LLMClient;
-    memory?: any;
-    workflowUpdate?: WorkflowStateUpdatePort;
-    kanbanUpdate?: any;
-  };
-  _httpJobId?: string;
-  tokenUsage?: TokenUsage;
-  
-  // Triage state
+export interface TriageableState extends ResolvableState {
+  // Triage state (triage-specific fields only; common fields are in ResolvableState)
   skipTriage?: boolean;
   triageResult?: TriageResult;
   workspaceState?: WorkspaceState;
-  currentAgent?: string;
-  currentJob?: string;
-  
-  // Chat input
-  overrideDirective?: string;
-  chatSource?: boolean;
-  
-  // Explicit action context (from Actions panel)
-  actionMetadata?: ActionMetadata;
-  
-  // Locale & timing (shared across all graphs, used by triage)
-  _uiLocale?: string;
-  isResume?: boolean;
-  _phaseTimings?: Record<string, number>;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

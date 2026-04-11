@@ -35,15 +35,6 @@ export function submitEvalSave(
   );
 }
 
-export function submitPrdApply(
-  projectId: string,
-  featureName: string,
-): Promise<{ success: boolean; resolvedLabel?: string }> {
-  return apiPost(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/prd-apply`,
-  );
-}
-
 export function submitChoiceDismiss(
   projectId: string,
   featureName: string,

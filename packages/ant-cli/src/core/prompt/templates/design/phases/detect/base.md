@@ -171,20 +171,13 @@ Asset files: available
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## STEP 4: Domain + Environment (system-design only)
+## STEP 4: Environment (system-design only)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 **Skip if intentGroup is NOT system-design.**
 
-### Observation Priority: Directive FIRST, then Source Documents
-
-**domain**: Observe from directive first, then source documents:
-
-- Directive mentions realtime physics, game-loop, or game engine mechanics → `game`
-- Otherwise → `service` (default)
-
-**environment**: Observe from directive first, then source documents:
+**environment**: Observe from directive first:
 
 - **Directive signal (primary)**: If directive explicitly names a tier or technology stack, use it as strong evidence for environment
 - **Source document signal (supplementary)**: Observe project structure from document content
@@ -205,18 +198,6 @@ Asset files: available
 ```
 {{directive}}
 ```
-
-{{#each documents}}
-
-### {{label}}
-
-The following source document may be truncated for budget. Use it as a supplementary signal for domain/environment classification. The directive above is the primary signal.
-
-```
-{{{content}}}
-```
-
-{{/each}}
 
 {{#if referencesList}}
 
@@ -240,6 +221,47 @@ The following source document may be truncated for budget. Use it as a supplemen
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+## STEP 5: Intent Selection
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After determining intentGroup, jobMode, domain, and environment, select the precise `intentId`.
+
+### system-design intents
+
+| intentId | Condition |
+|----------|-----------|
+| `gen-sys-fe` | generate + frontend |
+| `gen-sys-be` | generate + backend |
+| `gen-sys-full` | generate + fullstack |
+| `rev-sys` | refactor |
+| `explain-sys` | explain |
+
+### ui-design intents
+
+| intentId | Condition |
+|----------|-----------|
+| `gen-ui-figma` | generate + Figma config populated |
+| `gen-ui-ref` | generate + reference images available (no Figma) |
+| `gen-ui-desc` | generate + description only (no Figma, no references) |
+| `rev-ui` | refactor |
+| `explain-ui` | explain |
+
+### spec intents
+
+| intentId | Condition |
+|----------|-----------|
+| `gen-spec` | generate |
+| `rev-spec` | refactor |
+| `explain-spec` | explain |
+
+### Runtime Hints
+
+{{#if figmaPopulated}}- Figma config: **populated** (file URL configured){{else}}- Figma config: not populated{{/if}}
+{{#if hasReferences}}- Reference images: **available**{{else}}- Reference images: not available{{/if}}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 ## Output Format
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -248,15 +270,15 @@ Respond with ONLY JSON wrapped in `<detect>` tags. No markdown fences.
 
 ### spec
 
-{ "intentGroup": "spec", "intentGroupReasoning": "1-2 sentences: what specific feature/task scope was identified", "jobMode": "generate" | "refactor", "jobModeReasoning": "1-2 sentences" }
+{ "intentGroup": "spec", "intentGroupReasoning": "1-2 sentences: what specific feature/task scope was identified", "intentId": "gen-spec" | "rev-spec" | "explain-spec", "jobMode": "generate" | "refactor", "jobModeReasoning": "1-2 sentences" }
 
 ### ui-design
 
-{ "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences" }
+{ "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-ui-figma" | "gen-ui-ref" | "gen-ui-desc" | "rev-ui" | "explain-ui", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences" }
 
 ### system-design
 
-{ "intentGroup": "system-design", "intentGroupReasoning": "1-2 sentences", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "domain": "game" | "service", "domainReasoning": "1-2 sentences", "environment": "frontend" | "backend" | "fullstack", "environmentReasoning": "1-2 sentences" }
+{ "intentGroup": "system-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-sys-fe" | "gen-sys-be" | "gen-sys-full" | "rev-sys" | "explain-sys", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "environment": "frontend" | "backend" | "fullstack", "environmentReasoning": "1-2 sentences" }
 
 ### clarify (ambiguous between spec and system-design)
 

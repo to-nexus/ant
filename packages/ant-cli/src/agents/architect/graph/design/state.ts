@@ -7,7 +7,7 @@ import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageableState } from '../../../common/nodes/triage/types';
-import type { FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, ResolvedDocument } from '@ant/shared';
+import type { FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext } from '@ant/shared';
 
 /**
  * Design Task State
@@ -45,9 +45,6 @@ export interface DesignGraphState extends TaskArtifacts, TriageableState {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   detectionReport?: DetectionReport;
   resolvedAction?: ResolvedActionContext;
-
-  /** Documents loaded in resolve before RAC exists (infer path). Merged into RAC in detectEnvironment. */
-  _pendingDocuments?: ResolvedDocument[];
 
   // ✅ NEW: Task Queue (for task breakdown like code)
   taskQueue?: TaskQueue<DesignTask>;

@@ -7,7 +7,7 @@ import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/promp
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/nodes/triage/types';
-import type { ResolvedActionContext, ResolvedDocument } from '@ant/shared';
+import type { ResolvedActionContext } from '@ant/shared';
 
 // Re-export for convenience (so files can still import TaskQueue from code/state)
 export { TaskQueue } from "../../types/task";
@@ -183,17 +183,8 @@ export interface ArchitectGraphState extends TaskArtifacts, TriageableState {
   detectionReport?: DetectionReport;
   resolvedAction?: ResolvedActionContext;
 
-  /** Documents loaded in resolve before RAC exists (infer path). Merged into RAC in detectEnvironment. */
-  _pendingDocuments?: ResolvedDocument[];
-  
   selectedDesignFiles?: string[];
-  decomposeKeywords?: {
-    errorFiles: string[];  // ✅ Files that caused errors (build errors, file operation errors)
-    keywords: string[];    // ✅ Semantic keywords
-    references: Map<string, string[]>;
-  }
-  // Note: decomposeFilePaths is populated in decompose node via keyword search
-  decomposeFilePaths?: string[];  // File paths found via keyword search for decompose
+  decomposeFilePaths?: string[];
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // ✅ REFACTORED: Unified code context structure

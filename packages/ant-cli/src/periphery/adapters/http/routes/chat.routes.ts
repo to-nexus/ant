@@ -353,7 +353,9 @@ export function createChatRoutes(deps: {
 
   /**
    * POST /projects/:id/features/:feature/chat/prd-apply
-   * Apply PRD draft from outputs/plan/prd-refine.md to inputs/sources/prd.md
+   * Apply document draft from staging path to source path.
+   * Body: { stagingPath?: string, sourcePath?: string }
+   * Fallback: outputs/plan/prd-refine.md → inputs/sources/prd.md (legacy compat)
    */
   router.post('/projects/:id/features/:feature/chat/prd-apply', async (req: Request, res: Response) => {
     const projectId = req.params.id;
@@ -361,7 +363,6 @@ export function createChatRoutes(deps: {
     const userContext = extractUserContext(req);
 
     try {
-      // Resolve feature path
       let featurePath: string;
       if (deps.workspaceResolver) {
         featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
@@ -370,36 +371,31 @@ export function createChatRoutes(deps: {
         featurePath = path.join(workspaceRoot, 'ant-workspaces', projectId, featureName);
       }
 
-      const sourcePath = path.join(featurePath, 'outputs', 'plan', 'prd-refine.md');
-      const targetPath = path.join(featurePath, 'inputs', 'sources', 'prd.md');
+      const stagingRel = req.body?.stagingPath || 'outputs/plan/prd-refine.md';
+      const sourceRel = req.body?.sourcePath || 'inputs/sources/prd.md';
+      const stagingAbs = path.join(featurePath, stagingRel);
+      const sourceAbs = path.join(featurePath, sourceRel);
 
-      // Read the draft
-      const draftContent = await fs.readFile(sourcePath, 'utf-8');
+      const draftContent = await fs.readFile(stagingAbs, 'utf-8');
 
-      // Ensure target directory exists
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.mkdir(path.dirname(sourceAbs), { recursive: true });
+      await fs.writeFile(sourceAbs, draftContent, 'utf-8');
 
-      // Write to inputs/sources/prd.md
-      await fs.writeFile(targetPath, draftContent, 'utf-8');
-
-      // Remove staging copy (no longer needed after apply)
       try {
-        await fs.unlink(sourcePath);
+        await fs.unlink(stagingAbs);
       } catch {
-        // Non-critical — staging file may already be gone
+        // Non-critical
       }
 
-      logger.debug(`📋 [chat.routes] PRD applied: outputs/plan/prd-refine.md → inputs/sources/prd.md (staging removed)`);
+      logger.debug(`📋 [chat.routes] Document applied: ${stagingRel} → ${sourceRel} (staging removed)`);
 
-      // ✅ Notify file tree update after PRD apply write
       if (deps.fileTreeNotifier) {
         deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
       }
 
-      // ✅ Add unseen artifact notification for applied PRD
       if (deps.stateStore) {
         try {
-          await deps.stateStore.addUnseenArtifacts(userContext.userId, projectId, featureName, ['inputs/sources/prd.md']);
+          await deps.stateStore.addUnseenArtifacts(userContext.userId, projectId, featureName, [sourceRel]);
           const allUnseen = await deps.stateStore.getUnseenArtifacts(userContext.userId, projectId, featureName);
           const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
           await deps.stateStore.publish(channel, {
@@ -412,29 +408,26 @@ export function createChatRoutes(deps: {
         }
       }
 
-      // Update choice card metadata
-      // ✅ metadataFilter ensures we update the correct choice_card (prd_apply, not eval_save)
+      const resolvedLabel = `Applied to ${sourceRel}`;
       if (deps.chatService) {
         await deps.chatService.updateLastContentMetadata(
           projectId,
           featureName,
           'choice_card',
-          { choiceSelected: 'apply', resolvedLabel: 'Applied to inputs/sources/prd.md' },
+          { choiceSelected: 'apply', resolvedLabel },
           userContext,
           { cardType: 'prd_apply' }
         );
       }
 
-      res.json({
-        success: true,
-        resolvedLabel: 'Applied to inputs/sources/prd.md'
-      });
+      res.json({ success: true, resolvedLabel });
     } catch (error: any) {
-      logger.error('PRD apply error', { component: 'Chat' }, error);
+      logger.error('Document apply error', { component: 'Chat' }, error);
       if (error.code === 'ENOENT') {
-        res.status(404).json({ error: 'PRD draft not found at outputs/plan/prd-refine.md' });
+        const stagingRel = req.body?.stagingPath || 'outputs/plan/prd-refine.md';
+        res.status(404).json({ error: `Draft not found at ${stagingRel}` });
       } else {
-        res.status(500).json({ error: 'Failed to apply PRD' });
+        res.status(500).json({ error: 'Failed to apply document' });
       }
     }
   });

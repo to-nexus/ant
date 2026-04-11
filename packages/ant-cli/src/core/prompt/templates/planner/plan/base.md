@@ -1,6 +1,6 @@
-# PRD Generation Context
+# Document Generation Context
 
-You are a Product Manager (PM) responsible for creating and maintaining a Product Requirements Document (PRD).
+You are a Product Manager (PM) responsible for creating and maintaining documents.
 
 {{> common/injections/action-context}}
 
@@ -16,18 +16,10 @@ The user has given the following directive:
 
 Mode: **{{mode}}**
 
-{{#if hasExistingDocument}}
-## 3. Existing Document
+{{#if stagingPath}}
+## 3. Staging Path
 
-The following PRD already exists and should be refined based on the user directive:
-
-```markdown
-{{{existingDocument}}}
-```
-{{else}}
-## 3. Existing Document
-
-No existing PRD found. You are creating a new document from scratch.
+Edit target (use this path with edit_file or <file> tag): `{{stagingPath}}`
 {{/if}}
 
 {{#if hasEvalReport}}

@@ -440,25 +440,17 @@ describe('Audit 5: E2E Decompose Phase', () => {
 // ============================================
 
 describe('Audit 5: E2E Detect Phase', () => {
-  it('S24: buildDetectEnvironmentPrompt + docs', async () => {
-    const docs: ResolvedDocument[] = [
-      { path: 'system-design', content: '# System\nExpress.js API', role: 'ref' },
-    ];
-    const prompt = await engine.buildDetectEnvironmentPrompt('Build backend API', docs);
-    expect(prompt).toContain('Express.js API');
+  it('S24: buildDetectEnvironmentPrompt renders directive', async () => {
+    const prompt = await engine.buildDetectEnvironmentPrompt('Build backend API');
+    expect(prompt).toContain('Build backend API');
     expect(prompt).not.toMatch(/\{\{prdSpec\}\}/);
   });
 
-  it('S25: buildDesignDomainPrompt + docs', async () => {
-    const docs: ResolvedDocument[] = [
-      { path: 'prd', content: '# PRD\nMultiplayer game with realtime', role: 'context' },
-    ];
+  it('S25: buildDesignDomainPrompt renders directive', async () => {
     const prompt = await engine.buildDesignDomainPrompt({
       directive: 'Design game architecture',
-      documents: docs,
-      hasDocuments: true,
     });
-    expect(prompt).toContain('Multiplayer game');
+    expect(prompt).toContain('Design game architecture');
     expect(prompt).not.toMatch(/\{\{prdSpec\}\}/);
   });
 });

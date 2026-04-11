@@ -346,9 +346,6 @@ export class SpecialTagTransformer {
             framework: parsed.profile.framework,
           };
         }
-        if (parsed.requireRag !== undefined || parsed.requireRagForDecompose !== undefined) {
-          report.requireRag = parsed.requireRag ?? parsed.requireRagForDecompose;
-        }
       }
       
       // Use unified formatter

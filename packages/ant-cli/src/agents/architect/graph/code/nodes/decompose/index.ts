@@ -28,7 +28,7 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
-import { loadCodebaseFilePaths } from "./codebaseLoader";
+
 
 /**
  * Decompose Node - Main Entry Point
@@ -141,23 +141,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 2: Keyword-based RAG (if requireRagForDecompose)
+  // STEP 2: Codebase file listing (git-based)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 
-  // PURPOSE: Provide file list to LLM for accurate task planning
-  // - LLM uses this list to know what files exist
-  // - Prevents "Create missing X" when X actually exists
-  // - Keywords from detectEnvironment determine search scope
-  //
-  let codebaseFilePaths: string[] | undefined = undefined;
-  let gitDiffResult: any = undefined;
-  
-  
-  if (state.detectionReport?.requireRag && state.decomposeKeywords) {
-    const result = await loadCodebaseFilePaths(state);
-    codebaseFilePaths = result.filePaths.length > 0 ? result.filePaths : undefined;
-    gitDiffResult = result.gitDiff;
-  }
+  let codebaseFilePaths: string[] | undefined;
+  let gitDiffResult: any;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 3: Prepare design documents (environment-aware)

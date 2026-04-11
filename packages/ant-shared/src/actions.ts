@@ -132,7 +132,10 @@ const INTENT_DEFINITIONS_INTERNAL = [
   { id: 'explain-code', intentGroup: 'code', label: { en: 'Explain Code', ko: '코드 설명' }, description: { en: 'Explain and answer questions about code', ko: '코드에 대해 설명하고 질문에 답합니다' } },
 
   // Visual
-  { id: 'gen-visual', intentGroup: 'visual', label: { en: 'Generate Images', ko: '이미지 생성' }, description: { en: 'Generate images and visual assets', ko: '이미지와 비주얼 에셋을 생성합니다' } },
+  { id: 'gen-visual-logo', intentGroup: 'visual', label: { en: 'Logo', ko: '로고' }, description: { en: 'Generate brand marks, symbols, and monograms', ko: '브랜드 마크, 심볼, 모노그램을 생성합니다' } },
+  { id: 'gen-visual-icon', intentGroup: 'visual', label: { en: 'Icon', ko: '아이콘' }, description: { en: 'Generate UI icons, action icons, and status indicators', ko: 'UI 아이콘, 액션 아이콘, 상태 표시기를 생성합니다' } },
+  { id: 'gen-visual-hero', intentGroup: 'visual', label: { en: 'Hero Image', ko: '히어로 이미지' }, description: { en: 'Generate hero images, banners, and cover art', ko: '히어로 이미지, 배너, 커버 아트를 생성합니다' } },
+  { id: 'gen-visual-illustration', intentGroup: 'visual', label: { en: 'Illustration', ko: '일러스트' }, description: { en: 'Generate illustrations, diagrams, and decorative art', ko: '일러스트, 다이어그램, 장식 아트를 생성합니다' } },
   { id: 'explain-visual', intentGroup: 'visual', label: { en: 'Explain Visual', ko: '이미지 설명' }, description: { en: 'Explain visual assets and images', ko: '이미지와 비주얼 에셋을 설명합니다' } },
 
   // Learn
@@ -155,6 +158,11 @@ export const INTENT_DEFINITIONS: ReadonlyArray<IntentDefinition> = INTENT_DEFINI
 /** Get intents available for a given intent group */
 export function getIntentsForAction(group: IntentGroup): ReadonlyArray<IntentDefinition> {
   return INTENT_DEFINITIONS.filter(d => d.intentGroup === group);
+}
+
+/** Type guard: check if a string is a valid IntentId from INTENT_DEFINITIONS. */
+export function isValidIntentId(id: string): id is IntentId {
+  return INTENT_DEFINITIONS.some(d => d.id === id);
 }
 
 // ============================================
@@ -188,6 +196,7 @@ export function deriveFromIntent(intent: IntentId): {
   environment?: 'frontend' | 'backend' | 'fullstack';
   agent: string;
   jobType: string;
+  targetTier?: string;
 } {
   switch (intent) {
     case 'gen-plan':
@@ -233,8 +242,14 @@ export function deriveFromIntent(intent: IntentId): {
     case 'explain-code':
       return { mode: 'explain', agent: 'architect', jobType: 'code' };
 
-    case 'gen-visual':
-      return { mode: 'generate', agent: 'creator', jobType: 'visual' };
+    case 'gen-visual-logo':
+      return { mode: 'generate', agent: 'creator', jobType: 'visual', targetTier: 'logo' };
+    case 'gen-visual-icon':
+      return { mode: 'generate', agent: 'creator', jobType: 'visual', targetTier: 'icon' };
+    case 'gen-visual-hero':
+      return { mode: 'generate', agent: 'creator', jobType: 'visual', targetTier: 'hero' };
+    case 'gen-visual-illustration':
+      return { mode: 'generate', agent: 'creator', jobType: 'visual', targetTier: 'illustration' };
     case 'explain-visual':
       return { mode: 'explain', agent: 'creator', jobType: 'visual' };
 

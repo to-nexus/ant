@@ -1,5 +1,5 @@
 /**
- * Design File Selection for DetectEnvironment Node
+ * Design File Selection
  * 
  * Unified naming: all design docs use `{type}-{name}.md` pattern.
  *   - api-contract-{name}.md

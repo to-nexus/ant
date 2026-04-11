@@ -214,14 +214,9 @@ describe('Audit 4C: buildDecomposePrompt', () => {
 // ============================================
 
 describe('Audit 4D: buildDetectEnvironmentPrompt / buildDesignDomainPrompt', () => {
-  it('detect prompt renders documents', async () => {
-    const docs: ResolvedDocument[] = [
-      { path: 'system-design', content: '# System Design\nNode.js API', role: 'ref', label: 'System Design' },
-    ];
-
-    const prompt = await engine.buildDetectEnvironmentPrompt('Build an API', docs);
-    expect(prompt).toContain('System Design');
-    expect(prompt).toContain('Node.js API');
+  it('detect prompt renders directive', async () => {
+    const prompt = await engine.buildDetectEnvironmentPrompt('Build an API');
+    expect(prompt).toContain('Build an API');
     expect(prompt).not.toMatch(/\{\{prdSpec\}\}/);
   });
 
@@ -231,24 +226,17 @@ describe('Audit 4D: buildDetectEnvironmentPrompt / buildDesignDomainPrompt', () 
     expect(prompt.length).toBeGreaterThan(0);
   });
 
-  it('design domain prompt renders documents', async () => {
-    const docs: ResolvedDocument[] = [
-      { path: 'prd', content: '# PRD\nBuild a game', role: 'context', label: 'PRD' },
-    ];
-
+  it('design domain prompt renders directive', async () => {
     const prompt = await engine.buildDesignDomainPrompt({
       directive: 'Design the game architecture',
-      documents: docs,
-      hasDocuments: true,
     });
-    expect(prompt).toContain('Build a game');
+    expect(prompt).toContain('Design the game architecture');
     expect(prompt).not.toMatch(/\{\{prdSpec\}\}/);
   });
 
   it('design domain prompt with completion status flags', async () => {
     const prompt = await engine.buildDesignDomainPrompt({
       directive: 'Design a SaaS',
-      hasDocuments: false,
       hasUiDocs: true,
       hasSystemDesign: true,
       hasApiContract: false,
