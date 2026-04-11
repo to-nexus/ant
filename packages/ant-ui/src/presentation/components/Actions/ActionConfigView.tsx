@@ -730,6 +730,14 @@ function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight
     );
   }
 
+  if (target.emptyHint) {
+    return (
+      <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
+        {target.emptyHint[lang] || target.emptyHint.en}
+      </p>
+    );
+  }
+
   return null;
 }
 
@@ -749,6 +757,9 @@ function resolveFileWarnings(
   fileSize: number | undefined,
   ctx: FileWarningContext,
   isTemplate?: boolean,
+  templateReason?: string,
+  templateContentLength?: number,
+  templateThreshold?: number,
 ): SlotWarning[] {
   const warnings: SlotWarning[] = [];
   const fileName = filePath.split('/').pop() || '';
@@ -769,10 +780,25 @@ function resolveFileWarnings(
       });
     }
   } else if (isTemplate) {
-    warnings.push({
-      type: 'invalid-file',
-      message: { en: 'File contains only placeholder content — needs real data', ko: '실제 데이터가 없는 빈 파일입니다 — 내용을 작성해주세요' },
-    });
+    if (templateReason === 'marker_and_short_content' && templateContentLength !== undefined && templateThreshold !== undefined) {
+      warnings.push({
+        type: 'invalid-file',
+        message: {
+          en: `Template marker present — content ${templateContentLength}/${templateThreshold} chars. Remove marker or add more content.`,
+          ko: `템플릿 마커 존재 — 실질 콘텐츠 ${templateContentLength}/${templateThreshold}자. 마커를 삭제하거나 내용을 추가하세요.`,
+        },
+      });
+    } else if (templateReason === 'file_empty') {
+      warnings.push({
+        type: 'invalid-file',
+        message: { en: 'File is empty (0 bytes)', ko: '파일이 비어있습니다 (0 bytes)' },
+      });
+    } else {
+      warnings.push({
+        type: 'invalid-file',
+        message: { en: 'File contains only placeholder content — needs real data', ko: '실제 데이터가 없는 빈 파일입니다 — 내용을 작성해주세요' },
+      });
+    }
   } else if (fileSize === 0) {
     warnings.push({
       type: 'invalid-file',
@@ -796,14 +822,17 @@ function resolveSlotEntries(
       if (def.type === 'file') {
         const node = findFileNode(fileTree, def.path);
         if (node) {
-          const warnings = warningCtx ? resolveFileWarnings(def.path, node.size, warningCtx, node.isTemplate) : [];
+          const warnings = warningCtx ? resolveFileWarnings(def.path, node.size, warningCtx, node.isTemplate, node.templateReason, node.templateContentLength, node.templateThreshold) : [];
           files = [{ name: def.path.split('/').pop() || def.path, path: def.path, size: node.size, warnings }];
         }
       } else if (def.path) {
         files = listDirWithMeta(fileTree, def.path).map(f => {
-          const warnings = warningCtx ? resolveFileWarnings(f.path, f.size, warningCtx, f.isTemplate) : [];
+          const warnings = warningCtx ? resolveFileWarnings(f.path, f.size, warningCtx, f.isTemplate, f.templateReason, f.templateContentLength, f.templateThreshold) : [];
           return { name: f.name, path: f.path, size: f.size, warnings };
         });
+      }
+      if (def.excludeFiles && def.excludeFiles.length > 0) {
+        files = files.filter(f => !def.excludeFiles!.includes(f.name));
       }
       if (excludePaths && excludePaths.size > 0) {
         files = files.filter(f => !excludePaths.has(f.path));
@@ -839,7 +868,7 @@ function listDir(fileTree: FileNode[], dirPath: string): { name: string; path: s
   return listDirWithMeta(fileTree, dirPath);
 }
 
-function listDirWithMeta(fileTree: FileNode[], dirPath: string): { name: string; path: string; size?: number; isTemplate?: boolean }[] {
+function listDirWithMeta(fileTree: FileNode[], dirPath: string): { name: string; path: string; size?: number; isTemplate?: boolean; templateReason?: string; templateContentLength?: number; templateThreshold?: number }[] {
   const parts = dirPath.split('/');
   let nodes: FileNode[] = fileTree;
   for (const part of parts) {
@@ -849,5 +878,5 @@ function listDirWithMeta(fileTree: FileNode[], dirPath: string): { name: string;
   }
   return nodes
     .filter(n => n.type === 'file')
-    .map(n => ({ name: n.name, path: `${dirPath}/${n.name}`, size: n.size, isTemplate: n.isTemplate }));
+    .map(n => ({ name: n.name, path: `${dirPath}/${n.name}`, size: n.size, isTemplate: n.isTemplate, templateReason: n.templateReason, templateContentLength: n.templateContentLength, templateThreshold: n.templateThreshold }));
 }

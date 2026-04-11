@@ -102,9 +102,23 @@ function FigmaStatusIndicator({ isPopulated, bridgeConnected, figmaDesktopReacha
   );
 }
 
-function TemplateStatusIndicator({ t }: { t: (key: string) => string }) {
+function TemplateStatusIndicator({ reason, contentLength, threshold, t }: {
+  reason?: string;
+  contentLength?: number;
+  threshold?: number;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}) {
+  let tooltipContent: string;
+  if (reason === 'marker_and_short_content' && contentLength !== undefined && threshold !== undefined) {
+    tooltipContent = t('panel.templateReasonMarker', { contentLength, threshold });
+  } else if (reason === 'file_empty') {
+    tooltipContent = t('panel.templateReasonEmpty');
+  } else {
+    tooltipContent = t('panel.templateFile');
+  }
+
   return (
-    <Tooltip content={t('panel.templateFile')} placement="right">
+    <Tooltip content={tooltipContent} placement="right">
       <span className="inline-flex items-center flex-shrink-0">
         <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
       </span>
@@ -960,10 +974,9 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     UI_VISIBLE_INPUT_FILES.includes(node.name)
   );
 
-  const templateFileNames = allInputsNodes
+  const templateFiles = allInputsNodes
     .find(node => node.name === 'sources')?.children
-    ?.filter(n => n.type === 'file' && n.isTemplate)
-    .map(n => n.name) || [];
+    ?.filter(n => n.type === 'file' && n.isTemplate) || [];
 
   const allOutputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
   const outputsNodes = allOutputsNodes.filter(node =>
@@ -1053,7 +1066,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
               />
             ),
             ...Object.fromEntries(
-              templateFileNames.map(name => [name, <TemplateStatusIndicator key={name} t={t} />])
+              templateFiles.map(n => [n.name, <TemplateStatusIndicator key={n.name} reason={n.templateReason} contentLength={n.templateContentLength} threshold={n.templateThreshold} t={t} />])
             ),
           }}
         />
