@@ -116,14 +116,9 @@ describe('PromptEngine Pipeline: Plan Phase', () => {
 });
 
 describe('PromptEngine Pipeline: Detect Phase', () => {
-  it('buildDetectEnvironmentPrompt renders documents without prdSpec', async () => {
-    const detectDocs: ResolvedDocument[] = [
-      { path: 'source-docs', content: 'Build a Next.js app', role: 'context', label: 'Source Documents' },
-    ];
-
-    const rendered = await engine.buildDetectEnvironmentPrompt('Build a todo app', detectDocs);
-    expect(rendered).toContain('Source Documents');
-    expect(rendered).toContain('Build a Next.js app');
+  it('buildDetectEnvironmentPrompt renders directive and workspace state', async () => {
+    const rendered = await engine.buildDetectEnvironmentPrompt('Build a todo app');
+    expect(rendered).toContain('Build a todo app');
     expect(rendered).not.toMatch(/\{\{prdSpec\}\}/);
   });
 });

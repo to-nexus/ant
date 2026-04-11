@@ -1,7 +1,8 @@
+import { useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
-import { INTENT_DEFINITIONS, type ActionMetadata } from '@ant/shared';
-import { X, Target, Crosshair, FileText, Layers, BookOpen, Zap } from 'lucide-react';
+import { INTENT_DEFINITIONS, getConfigSlots, type ActionMetadata } from '@ant/shared';
+import { X, Target, Crosshair, FileText, BookOpen, Zap, Lock } from 'lucide-react';
 
 interface BadgeProps {
   icon: any;
@@ -46,6 +47,16 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
 
   const meta = metadata || storeMetadata;
 
+  const slots = useMemo(() => meta.intent ? getConfigSlots(meta.intent as any) : null, [meta.intent]);
+
+  const isRefLocked = useCallback((refPath: string): boolean => {
+    if (!slots) return false;
+    return slots.refs.some(r =>
+      (r.locked || r.codebase) &&
+      (r.type === 'file' ? refPath === r.path : !r.path || refPath.startsWith(r.path + '/'))
+    );
+  }, [slots]);
+
   const hasAnything = meta.explicit || meta.intent
     || (meta.target && meta.target.length > 0)
     || (meta.refs && meta.refs.length > 0)
@@ -72,17 +83,14 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
 
   const handleRemoveRef = (ref: string) => {
     if (readOnly) return;
-    updateActionMetadata({ explicit: undefined, refs: meta.refs?.filter(r => r !== ref) });
+    const nextRefs = meta.refs?.filter(r => r !== ref);
+    updateActionMetadata({ explicit: undefined, refs: nextRefs && nextRefs.length > 0 ? nextRefs : undefined });
   };
 
   const handleRemoveContext = (ctx: string) => {
     if (readOnly) return;
-    updateActionMetadata({ explicit: undefined, context: meta.context?.filter(c => c !== ctx) });
-  };
-
-  const handleRemoveTarget = (tgt: string) => {
-    if (readOnly) return;
-    updateActionMetadata({ explicit: undefined, target: meta.target?.filter(t => t !== tgt) });
+    const nextCtx = meta.context?.filter(c => c !== ctx);
+    updateActionMetadata({ explicit: undefined, context: nextCtx && nextCtx.length > 0 ? nextCtx : undefined });
   };
 
   return (
@@ -122,20 +130,22 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
           label="target"
           value={tgt.split('/').pop() || tgt}
           color="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300"
-          onRemove={readOnly ? undefined : () => handleRemoveTarget(tgt)}
         />
       ))}
 
-      {meta.refs?.map(ref => (
-        <Badge
-          key={ref}
-          icon={FileText}
-          label="ref"
-          value={ref.split('/').pop() || ref}
-          color="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
-          onRemove={readOnly ? undefined : () => handleRemoveRef(ref)}
-        />
-      ))}
+      {meta.refs?.map(ref => {
+        const locked = isRefLocked(ref);
+        return (
+          <Badge
+            key={ref}
+            icon={locked ? Lock : FileText}
+            label="ref"
+            value={ref.split('/').pop() || ref}
+            color="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
+            onRemove={readOnly || locked ? undefined : () => handleRemoveRef(ref)}
+          />
+        );
+      })}
 
       {meta.context?.map(ctx => (
         <Badge

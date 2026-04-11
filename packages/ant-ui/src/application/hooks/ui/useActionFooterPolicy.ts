@@ -2,11 +2,14 @@
  * Action Footer UI Policy Hook
  *
  * Centralized logic for ActionFooter button states.
+ * All policy decisions are driven by the ConfigSlots matrix — no mode/target special cases here.
  *
- * Universal rule:
- *   - refs not selected → chat only
- *   - refs selected → chat + build both available
- *   - context selection does not affect chat/build
+ * Policy (from matrix):
+ *   - Default: refs not selected → chat only; refs selected → chat + build
+ *   - chatRequiresRefs: true → refs required for BOTH chat and build
+ *   - codebaseRef (locked) counts as "selected" automatically
+ *   - context selection does not affect chat/build by default
+ *   - buildRequiresContext: true → context must be selected for build
  */
 
 import { useStore } from '@/domain/store';
@@ -50,22 +53,37 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'invalid-config', buildDisabledReason: 'invalid-config' };
   }
 
-  if (slots.target.codebase && !gitStatus?.codebaseHasFiles) {
-    return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'codebase-empty', buildDisabledReason: 'codebase-empty' };
-  }
-
-  if (slots.target.mirrorRefs) {
+  if (slots.target.kind === 'revise') {
     const hasTarget = actionMetadata.target && actionMetadata.target.length > 0;
     if (!hasTarget) {
       return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'target-missing', buildDisabledReason: 'target-missing' };
     }
   }
 
-  const canStartChat = true;
+  const hasLockedCodebaseRef = slots.refs.some(r => r.codebase && r.locked);
+  const codebaseAvailable = !hasLockedCodebaseRef || !!gitStatus?.codebaseHasFiles;
 
-  const hasRealRefs = slots.refs.some(r => !r.emptyHint && r.path);
-  const hasSelectedRefs = !!(actionMetadata.refs && actionMetadata.refs.length > 0);
-  const canBuild = hasRealRefs && hasSelectedRefs;
+  if (hasLockedCodebaseRef && !codebaseAvailable) {
+    return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'codebase-empty', buildDisabledReason: 'codebase-empty' };
+  }
 
-  return { canStartChat, canBuild, isBuilding: false, buildDisabledReason: canBuild ? undefined : 'refs-not-selected' };
+  const hasRealRefs = slots.refs.some(r => !r.emptyHint && (r.path || r.codebase));
+  const hasSelectedRefs = hasLockedCodebaseRef || !!(actionMetadata.refs && actionMetadata.refs.length > 0);
+  const hasSelectedContext = !!(actionMetadata.context && actionMetadata.context.length > 0);
+
+  const canStartChat = slots.chatRequiresRefs ? hasSelectedRefs : true;
+  const contextGate = slots.buildRequiresContext ? hasSelectedContext : true;
+  const canBuild = hasRealRefs && hasSelectedRefs && contextGate;
+
+  const buildDisabledReason = !canBuild
+    ? (slots.buildRequiresContext && !hasSelectedContext ? 'context-not-selected' : 'refs-not-selected')
+    : undefined;
+
+  return {
+    canStartChat,
+    canBuild,
+    isBuilding: false,
+    chatDisabledReason: canStartChat ? undefined : 'refs-not-selected',
+    buildDisabledReason,
+  };
 }

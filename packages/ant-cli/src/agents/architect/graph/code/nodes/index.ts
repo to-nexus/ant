@@ -1,4 +1,4 @@
-export { resolve } from "./resolve";
+export { codeResolveStrategy } from "./resolve";
 export { decompose } from "./decompose/index";
 export { revise } from "./revise";
 export { plan } from "./plan/index";

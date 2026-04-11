@@ -14,6 +14,7 @@ import { readBranchBaseFromConfig } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
+import { getConfigSlots } from '@ant/shared';
 
 /**
  * Auto-resolve agent from job type when not explicitly provided.
@@ -136,6 +137,18 @@ export function createJobRoutes(deps: {
         }
       }
       
+      // Matrix-driven build precondition: reject if required context is missing
+      if (actionMetadata?.intent) {
+        const slots = getConfigSlots(actionMetadata.intent);
+        if (slots?.buildRequiresContext && (!actionMetadata.context || actionMetadata.context.length === 0)) {
+          return res.status(400).json({
+            error: 'Context files must be selected for this action.',
+            code: 'context-not-selected',
+            intent: actionMetadata.intent,
+          });
+        }
+      }
+
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const inputFile = overrideDirective ? undefined : path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
       

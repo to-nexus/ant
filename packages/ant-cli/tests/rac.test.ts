@@ -437,7 +437,7 @@ describe('resolveFromExplicit', () => {
   });
 
   it('hasExplicitFields false when no descriptive fields', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'gen-visual' };
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-visual-illustration' };
     const rac = resolveFromExplicit(metadata);
 
     expect(rac.hasExplicitFields).toBe(true);
@@ -777,10 +777,22 @@ describe('synthesizePlanIntent explain', () => {
   });
 });
 
-describe('synthesizeVisualIntent explain', () => {
+describe('synthesizeVisualIntent', () => {
   it('returns explain-visual for explain mode', () => {
     const intent = synthesizeVisualIntent('explain');
     expect(intent).toBe('explain-visual');
+  });
+
+  it('returns gen-visual-{tier} for generate mode with targetTier', () => {
+    expect(synthesizeVisualIntent('generate', 'logo')).toBe('gen-visual-logo');
+    expect(synthesizeVisualIntent('generate', 'icon')).toBe('gen-visual-icon');
+    expect(synthesizeVisualIntent('generate', 'hero')).toBe('gen-visual-hero');
+    expect(synthesizeVisualIntent('generate', 'illustration')).toBe('gen-visual-illustration');
+  });
+
+  it('maps general/undefined to gen-visual-illustration', () => {
+    expect(synthesizeVisualIntent('generate')).toBe('gen-visual-illustration');
+    expect(synthesizeVisualIntent('generate', 'general')).toBe('gen-visual-illustration');
   });
 
   it('return type is always string (never undefined)', () => {
@@ -832,6 +844,8 @@ describe('deriveFromIntent explain intents', () => {
 
     expect(deriveFromIntent(synthesizePlanIntent('explain')).mode).toBe('explain');
     expect(deriveFromIntent(synthesizeVisualIntent('explain')).mode).toBe('explain');
+    expect(deriveFromIntent(synthesizeVisualIntent('generate', 'logo')).mode).toBe('generate');
+    expect(deriveFromIntent(synthesizeVisualIntent('generate')).mode).toBe('generate');
 
     const designReport: DetectionReport = { detectedMode: 'explain', detectedModeReasoning: 'test', sourceJob: 'design', detectedIntentGroup: 'design-ui' };
     expect(deriveFromIntent(synthesizeDesignIntent(designReport, {})).mode).toBe('explain');
@@ -907,7 +921,6 @@ describe('resolveFromInfer with workspaceState', () => {
     sourceJob: 'design',
     detectedIntentGroup: 'design-ui',
     targetFiles: ['outputs/design/ui/ui-spec.json'],
-    primarySources: ['inputs/sources/prd.md'],
   };
 
   it('auto-maps targetFiles from report', () => {
@@ -915,8 +928,8 @@ describe('resolveFromInfer with workspaceState', () => {
     expect(rac.target).toEqual(['outputs/design/ui/ui-spec.json']);
   });
 
-  it('auto-maps primarySources to refs', () => {
-    const rac = resolveFromInfer(baseReport, undefined, undefined, undefined, 'gen-ui-figma', {});
+  it('refs come from metadata only', () => {
+    const rac = resolveFromInfer(baseReport, { refs: ['inputs/sources/prd.md'] }, undefined, undefined, 'gen-ui-figma', {});
     expect(rac.refs).toEqual(['inputs/sources/prd.md']);
   });
 

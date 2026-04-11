@@ -143,6 +143,31 @@ ResolvedActionContext (RAC) — Intent-Centric 프롬프트 시스템의 SSOT. r
 
 **RAC 커버리지**: design, code, plan, visual, learn에 더해 **ask** Job도 triage 등에서 `synthesizeAskIntent`·`resolveFromExplicit`/`resolveFromInfer` 경로와 맞물려 RAC를 사용한다.
 
+### action-config-matrix.ts
+
+인텐트 → (refs, context, target) 매핑. FE(`ActionConfigView`)와 BE(`resolve` 노드)의 SSOT.
+
+| 타입 | 정의 |
+|------|------|
+| `ConfigSlots` | `refs: SlotDef[]`, `context: SlotDef[]`, `target: TargetDef`, `chatRequiresRefs?` |
+| `SlotDef` | `path`, `label`, `type: 'dir'\|'file'`, `defaultSelected`, `locked?`, `excludeSelectedRefs?`, `createIntent?`, `humanLabel?`, `codebase?`, `excludeFiles?`, `maxSelection?` |
+| `TargetDef` | `dir?`, `expectedFiles?`, `codebase?`, `mirrorRefs?`, `emptyHint?` |
+| `ExpectedFile` | `prefix`, `ext`, `label`, `warnIfExists`, `isPattern` |
+
+#### Target 결정 규칙 (explicit)
+
+UI(`ActionConfigView`)가 intent 선택 시점에 `actionMetadata.target`을 세팅한다. explicit에서 target이 없으면 시스템 오류 (codebase/emptyHint 제외).
+
+| TargetDef 패턴 | `actionMetadata.target` | 시점 |
+|---|---|---|
+| `mirrorRefs: true` | refs 배열과 동일 | refs 선택 시 |
+| `dir` + `expectedFiles` | `["{dir}/{prefix}{ext}"]` | intent 선택 시 |
+| `dir` only | `["{dir}"]` | intent 선택 시 |
+| `codebase: true` | 없음 (해당 없음) | — |
+| `emptyHint` only | 없음 (채팅 응답) | — |
+
+`maxSelection`: `SlotDef`에 지정 시 해당 슬롯의 선택 수를 제한 (예: rev-plan refs → `maxSelection: 1`).
+
 ### 인텐트·모드 철학 (Phase 6+)
 
 | 개념 | 설명 |

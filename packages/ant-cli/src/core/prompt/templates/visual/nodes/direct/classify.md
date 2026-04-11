@@ -41,6 +41,16 @@ Classify the visual asset type and job mode for the current request.
 - If the request is ambiguous between two types, prefer the more specific one
 - Use `general` only when no type signal is observable
 
+## Intent Selection
+
+| intentId | When to select |
+|----------|---------------|
+| `gen-visual-logo` | Brand mark, symbol, monogram, app icon as brand identity |
+| `gen-visual-icon` | UI icon, action icon, status indicator, system icon |
+| `gen-visual-hero` | Hero image, background, banner, cover, splash screen |
+| `gen-visual-illustration` | Scene illustration, character art, diagram, infographic, decorative art, or any visual that does not match logo/icon/hero |
+| `explain-visual` | Question, analysis, or consultation — the user wants information, not an image |
+
 ## Response
 
 Respond inside `<classify>` tags with valid JSON:
@@ -48,6 +58,7 @@ Respond inside `<classify>` tags with valid JSON:
 <classify>
 {
   "assetType": "logo" or "icon" or "hero" or "illustration" or "general",
+  "intentId": "gen-visual-logo" or "gen-visual-icon" or "gen-visual-hero" or "gen-visual-illustration" or "explain-visual",
   "jobMode": "generate" or "explain",
   "reasoning": "one sentence explaining the classification and mode decision"
 }

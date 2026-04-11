@@ -59,7 +59,10 @@ const INTENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   'gen-code-directive': MessageSquareText,
   'rev-code':           Wrench,
 
-  'gen-visual':         ImageIcon,
+  'gen-visual-logo':          ImageIcon,
+  'gen-visual-icon':          ImageIcon,
+  'gen-visual-hero':          ImageIcon,
+  'gen-visual-illustration':  ImageIcon,
 
   'gen-learn':          BookOpen,
 };

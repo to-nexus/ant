@@ -14,7 +14,7 @@
 
 import { ArchitectGraphState } from '../state';
 import { CodeTask } from '../../../types/task';
-import { buildDesignDocForTask } from './detectEnvironment/designSelector';
+import { buildDesignDocForTask } from './designSelector';
 import { ArtifactService } from '../../../../../infrastructure/workspace/ArtifactService';
 
 /**

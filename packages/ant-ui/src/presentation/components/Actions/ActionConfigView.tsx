@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
@@ -7,10 +7,10 @@ import {
   type IntentGroup,
   type IntentId,
   getConfigSlots,
-  matchesExpectedFile,
-  formatExpectedFile,
-  type ConfigSlots,
+  matchesOutputSpec,
+  formatOutputSpec,
   type SlotDef,
+  type TargetDef,
   getFileDescription,
   getDirDescription,
   getPatternDescription,
@@ -94,35 +94,37 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
   const slots = getConfigSlots(intentId);
 
-  const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
-  const [selectedCtx, setSelectedCtx] = useState<Set<string>>(new Set());
-  const [_selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
+  const actionMetadata = useStore(s => s.actionMetadata);
+  const selectedRefs = useMemo(() => new Set(actionMetadata.refs ?? []), [actionMetadata.refs]);
+  const selectedCtx = useMemo(() => new Set(actionMetadata.context ?? []), [actionMetadata.context]);
 
   useEffect(() => {
     if (!slots) {
-      setSelectedRefs(new Set());
-      setSelectedCtx(new Set());
-      setSelectedTargets(new Set());
+      updateActionMetadata({ refs: undefined, context: undefined, target: undefined });
       return;
     }
 
     const refEntries = resolveSlotEntries(slots.refs, fileTree, undefined, warningCtx);
-    const defaultRefPaths = refEntries
+    let defaultRefPaths = refEntries
       .flatMap(e => e.files)
       .filter(f => f.warnings.length === 0)
       .map(f => f.path);
-    setSelectedRefs(new Set(defaultRefPaths));
+    const maxSel = slots.refs.find(s => s.maxSelection)?.maxSelection;
+    if (maxSel && defaultRefPaths.length > maxSel) {
+      defaultRefPaths = defaultRefPaths.slice(0, maxSel);
+    }
     updateActionMetadata({ refs: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
-
-    setSelectedCtx(new Set());
     updateActionMetadata({ context: undefined });
 
-    if (slots.target.mirrorRefs) {
-      setSelectedTargets(new Set(defaultRefPaths));
+    const { target } = slots;
+    if (target.kind === 'revise') {
       updateActionMetadata({ target: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
+    } else if (target.kind === 'generate' && target.outputs.length > 0) {
+      const expectedPaths = target.outputs.map(os => `${target.dir}/${formatOutputSpec(os)}`);
+      updateActionMetadata({ target: expectedPaths });
+    } else if (target.kind === 'generate') {
+      updateActionMetadata({ target: [target.dir] });
     } else {
-      const displayTargets = resolveTargetFiles(slots.target, fileTree);
-      setSelectedTargets(new Set(displayTargets));
       updateActionMetadata({ target: undefined });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,29 +169,30 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       : `Navigated from ${fromLabel} to ${toLabel}`);
   };
 
-  const toggleFile = (
-    path: string,
-    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
-    field: 'refs' | 'context' | 'target',
-  ) => {
-    setter(prev => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path); else next.add(path);
-      const arr = Array.from(next);
-      const patch: Record<string, unknown> = { [field]: arr.length > 0 ? arr : undefined };
-      if (field === 'refs' && slots?.target.mirrorRefs) {
-        setSelectedTargets(new Set(next));
-        patch.target = arr.length > 0 ? arr : undefined;
+  const toggleFile = (path: string, field: 'refs' | 'context') => {
+    const current = field === 'refs' ? (actionMetadata.refs ?? []) : (actionMetadata.context ?? []);
+    let next: string[];
+    if (current.includes(path)) {
+      next = current.filter(p => p !== path);
+    } else {
+      if (field === 'refs' && slots) {
+        const maxSel = slots.refs.find(s => s.maxSelection)?.maxSelection;
+        if (maxSel && current.length >= maxSel) {
+          next = [path];
+        } else {
+          next = [...current, path];
+        }
+      } else {
+        next = [...current, path];
       }
-      updateActionMetadata(patch as any);
-      return next;
-    });
+    }
+    updateActionMetadata({ [field]: next.length > 0 ? next : undefined });
   };
 
   const refEntries = useMemo(() => slots ? resolveSlotEntries(slots.refs, fileTree, selectedCtx, warningCtx) : [], [slots, fileTree, selectedCtx, warningCtx]);
   const ctxEntries = useMemo(() => slots ? resolveSlotEntries(slots.context, fileTree, selectedRefs, warningCtx) : [], [slots, fileTree, selectedRefs, warningCtx]);
   const targetExisting = useMemo(() => {
-    if (!slots?.target.dir) return [];
+    if (!slots || slots.target.kind !== 'generate') return [];
     return listDir(fileTree, slots.target.dir);
   }, [slots, fileTree]);
 
@@ -219,7 +222,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                 <SlotEntryList
                   entries={refEntries}
                   selected={selectedRefs}
-                  onToggle={(p) => toggleFile(p, setSelectedRefs, 'refs')}
+                  onToggle={(p) => toggleFile(p, 'refs')}
                   onHighlightDir={(dir) => highlightArtifactDirs([dir])}
                   onCreateIntent={handleCreateIntent}
                   onUploadDir={handleUploadDir}
@@ -241,7 +244,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                 <SlotEntryList
                   entries={ctxEntries}
                   selected={selectedCtx}
-                  onToggle={(p) => toggleFile(p, setSelectedCtx, 'context')}
+                  onToggle={(p) => toggleFile(p, 'context')}
                   onHighlightDir={(dir) => highlightArtifactDirs([dir])}
                   onCreateIntent={handleCreateIntent}
                   onToggleSpotlight={handleToggleSpotlight}
@@ -502,6 +505,8 @@ function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onCreateIn
       {entries.map(entry => {
         if (!entry.hasFiles) {
           const humanName = entry.def.humanLabel?.[lang] || entry.def.humanLabel?.en || entry.def.label[lang] || entry.def.label.en;
+          const isOptionalRef = showEmptyActions && entry.def.defaultSelected === false;
+          const showWarningStyle = showEmptyActions && !isOptionalRef;
           const hasCreateIntent = showEmptyActions && !!entry.def.createIntent;
           const hasPath = !!entry.def.path;
           const dirDesc = hasPath ? getDirDescription(entry.def.path) : null;
@@ -509,11 +514,11 @@ function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onCreateIn
           return (
             <FileCard
               key={entry.def.path || entry.def.label.en}
-              name={showEmptyActions ? t('emptySlot.missing', { name: humanName }) : (entry.def.label[lang] || entry.def.label.en)}
+              name={showWarningStyle ? t('emptySlot.missing', { name: humanName }) : (entry.def.label[lang] || entry.def.label.en)}
               path={hasPath ? `${entry.def.path}/` : `— ${t('emptySlot.noFiles')}`}
               description={dirDesc?.description}
               empty
-              emptyStyle={showEmptyActions ? 'amber' : 'gray'}
+              emptyStyle={showWarningStyle ? 'amber' : 'gray'}
               spotlight={hasPath ? {
                 active: spotlightPath === entry.def.path,
                 onClick: () => onToggleSpotlight('dir', entry.def.path),
@@ -614,7 +619,7 @@ function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onCreateIn
 }
 
 function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight, spotlightPath, onOpenIde, codebaseHasFiles, lang }: {
-  target: ConfigSlots['target'];
+  target: TargetDef;
   selectedRefs: Set<string>;
   targetExisting: { name: string; path: string }[];
   onToggleSpotlight: (type: 'file' | 'dir', path: string) => void;
@@ -624,121 +629,119 @@ function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight
   lang: 'en' | 'ko';
 }) {
   const { t } = useTranslation('actions');
-  if (target.mirrorRefs) {
-    if (selectedRefs.size === 0) {
+
+  switch (target.kind) {
+    case 'revise': {
+      if (selectedRefs.size === 0) {
+        return (
+          <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
+            {lang === 'ko' ? '참조(Refs)에서 파일을 선택하면 타겟이 결정됩니다' : 'Select files in Refs to determine targets'}
+          </p>
+        );
+      }
       return (
-        <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
-          {lang === 'ko' ? '참조(Refs)에서 파일을 선택하면 타겟이 결정됩니다' : 'Select files in Refs to determine targets'}
-        </p>
+        <div className="space-y-1.5">
+          {Array.from(selectedRefs).map(p => {
+            const fileName = p.split('/').pop() || p;
+            const dirPath = p.includes('/') ? p.substring(0, p.lastIndexOf('/')) : undefined;
+            return (
+              <FileCard
+                key={p}
+                name={fileName}
+                path={p}
+                description={getFileDescription(fileName, dirPath)}
+                locked
+                selected
+                icon={<Lock className="w-4 h-4 text-gray-500 shrink-0" />}
+                lang={lang}
+              />
+            );
+          })}
+        </div>
       );
     }
-    return (
-      <div className="space-y-1.5">
-        {Array.from(selectedRefs).map(p => {
-          const fileName = p.split('/').pop() || p;
-          const dirPath = p.includes('/') ? p.substring(0, p.lastIndexOf('/')) : undefined;
-          return (
-            <FileCard
-              key={p}
-              name={fileName}
-              path={p}
-              description={getFileDescription(fileName, dirPath)}
-              locked
-              selected
-              icon={<Lock className="w-4 h-4 text-gray-500 shrink-0" />}
-              lang={lang}
-            />
-          );
-        })}
-      </div>
-    );
-  }
 
-  if (target.codebase) {
-    return (
-      <FileCard
-        name={lang === 'ko' ? '코드베이스' : 'Codebase'}
-        path={lang === 'ko' ? (codebaseHasFiles ? '소스 코드 감지됨' : '소스 코드 없음 — 코드를 먼저 생성하세요') : (codebaseHasFiles ? 'Source code detected' : 'No source code — generate code first')}
-        selected={codebaseHasFiles}
-        locked={codebaseHasFiles}
-        empty={!codebaseHasFiles}
-        emptyStyle={!codebaseHasFiles ? 'amber' : undefined}
-        icon={<FolderOpen className={`w-4 h-4 ${codebaseHasFiles ? 'text-emerald-500' : 'text-amber-400'} shrink-0`} />}
-        description={{ en: 'Source code generated in the codebase/ directory.', ko: 'codebase/ 디렉터리에 생성된 소스 코드입니다.' }}
-        actions={onOpenIde ? (
-          <button
-            type="button"
-            onClick={onOpenIde}
-            className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
-            title={lang === 'ko' ? 'IDE에서 보기' : 'View in IDE'}
-          >
-            <Eye className="w-4.5 h-4.5" />
-          </button>
-        ) : undefined}
-        lang={lang}
-      />
-    );
-  }
+    case 'codebase':
+      return (
+        <FileCard
+          name={lang === 'ko' ? '코드베이스' : 'Codebase'}
+          path={lang === 'ko' ? (codebaseHasFiles ? '소스 코드 감지됨' : '소스 코드 없음 — 코드를 먼저 생성하세요') : (codebaseHasFiles ? 'Source code detected' : 'No source code — generate code first')}
+          selected={codebaseHasFiles}
+          locked={codebaseHasFiles}
+          empty={!codebaseHasFiles}
+          emptyStyle={!codebaseHasFiles ? 'amber' : undefined}
+          icon={<FolderOpen className={`w-4 h-4 ${codebaseHasFiles ? 'text-emerald-500' : 'text-amber-400'} shrink-0`} />}
+          description={{ en: 'Source code generated in the codebase/ directory.', ko: 'codebase/ 디렉터리에 생성된 소스 코드입니다.' }}
+          actions={onOpenIde ? (
+            <button
+              type="button"
+              onClick={onOpenIde}
+              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
+              title={lang === 'ko' ? 'IDE에서 보기' : 'View in IDE'}
+            >
+              <Eye className="w-4.5 h-4.5" />
+            </button>
+          ) : undefined}
+          lang={lang}
+        />
+      );
 
-  if (target.expectedFiles && target.expectedFiles.length > 0 && target.dir) {
-    return (
-      <div className="space-y-1.5">
-        {target.expectedFiles.map(ef => {
-          const displayName = formatExpectedFile(ef);
-          const fullPath = `${target.dir}/${displayName}`;
-          const hasConflict = targetExisting.some(f => matchesExpectedFile(f.name, ef));
-          const conflictWarning: SlotWarning | undefined = hasConflict
-            ? { type: 'invalid-file', message: { en: 'May overwrite existing file', ko: '기존 파일이 덮어쓰여질 수 있습니다' } }
-            : undefined;
-          return (
-            <FileCard
-              key={ef.prefix}
-              name={displayName}
-              path={fullPath}
-              warnings={conflictWarning ? [conflictWarning] : undefined}
-              description={getPatternDescription(displayName)}
-              disabled
-              icon={<FolderOpen className="w-4 h-4 text-gray-400 shrink-0" />}
-              spotlight={{
-                active: spotlightPath === target.dir,
-                onClick: () => onToggleSpotlight('dir', target.dir!),
-                title: t('emptySlot.viewInExplorer'),
-              }}
-              lang={lang}
-            />
-          );
-        })}
-      </div>
-    );
-  }
+    case 'generate': {
+      if (target.outputs.length > 0) {
+        return (
+          <div className="space-y-1.5">
+            {target.outputs.map(os => {
+              const displayName = formatOutputSpec(os);
+              const fullPath = `${target.dir}/${displayName}`;
+              const hasConflict = targetExisting.some(f => matchesOutputSpec(f.name, os));
+              const conflictWarning: SlotWarning | undefined = hasConflict
+                ? { type: 'invalid-file', message: { en: 'May overwrite existing file', ko: '기존 파일이 덮어쓰여질 수 있습니다' } }
+                : undefined;
+              return (
+                <FileCard
+                  key={os.prefix}
+                  name={displayName}
+                  path={fullPath}
+                  warnings={conflictWarning ? [conflictWarning] : undefined}
+                  description={getPatternDescription(displayName)}
+                  disabled
+                  icon={<FolderOpen className="w-4 h-4 text-gray-400 shrink-0" />}
+                  spotlight={{
+                    active: spotlightPath === target.dir,
+                    onClick: () => onToggleSpotlight('dir', target.dir),
+                    title: t('emptySlot.viewInExplorer'),
+                  }}
+                  lang={lang}
+                />
+              );
+            })}
+          </div>
+        );
+      }
+      return (
+        <FileCard
+          name={`${target.dir}/`}
+          path={lang === 'ko' ? '생성 예정' : 'will be created'}
+          description={getDirDescription(target.dir)?.description}
+          disabled
+          icon={<FolderOpen className="w-4 h-4 text-gray-400 shrink-0" />}
+          spotlight={{
+            active: spotlightPath === target.dir,
+            onClick: () => onToggleSpotlight('dir', target.dir),
+            title: t('emptySlot.viewInExplorer'),
+          }}
+          lang={lang}
+        />
+      );
+    }
 
-  if (target.dir) {
-    return (
-      <FileCard
-        name={`${target.dir}/`}
-        path={lang === 'ko' ? '생성 예정' : 'will be created'}
-        description={getDirDescription(target.dir)?.description}
-        disabled
-        icon={<FolderOpen className="w-4 h-4 text-gray-400 shrink-0" />}
-        spotlight={{
-          active: spotlightPath === target.dir,
-          onClick: () => onToggleSpotlight('dir', target.dir!),
-          title: t('emptySlot.viewInExplorer'),
-        }}
-        lang={lang}
-      />
-    );
+    case 'chat-only':
+      return (
+        <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
+          {target.hint[lang] || target.hint.en}
+        </p>
+      );
   }
-
-  if (target.emptyHint) {
-    return (
-      <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
-        {target.emptyHint[lang] || target.emptyHint.en}
-      </p>
-    );
-  }
-
-  return null;
 }
 
 // ============================================
@@ -854,14 +857,6 @@ function findFileNode(tree: FileNode[], path: string): FileNode | null {
     nodes = node.children;
   }
   return null;
-}
-
-function resolveTargetFiles(target: ConfigSlots['target'], fileTree: FileNode[]): string[] {
-  if (target.codebase || !target.dir) return [];
-  if (!target.expectedFiles || target.expectedFiles.length === 0) return [];
-  return listDir(fileTree, target.dir)
-    .filter(f => target.expectedFiles!.some(ef => matchesExpectedFile(f.name, ef)))
-    .map(f => f.path);
 }
 
 function listDir(fileTree: FileNode[], dirPath: string): { name: string; path: string; size?: number }[] {

@@ -21,7 +21,6 @@ export interface InferWorkspaceState {
   hasDesignDoc?: boolean;
   hasSpecDocs?: boolean;
   targetFiles?: string[];
-  primarySources?: string[];
 }
 
 // ============================================
@@ -254,33 +253,54 @@ export function resolveFromExplicit(
 }
 
 /**
- * Create RAC from LLM DetectionReport (infer path, no explicit intent).
- * Merges actionMetadata fields (refs/target/context) if present.
- * Called in detect node after LLM analysis.
+ * Create RAC from LLM DetectionReport (infer path).
+ * Merges actionMetadata fields with inferred values:
+ *  - intent/targets: metadata replaces inferred (if present)
+ *  - refs/context: additive (dedup merge of inferred + metadata)
  *
+ * @param report - Optional: DetectionReport from LLM analysis. When undefined
+ *   (e.g. plan/learn jobs), mode/env are derived from synthesizedIntent.
  * @param synthesizedIntent - Optional intent ID synthesized from DetectionReport
- *   via synthesizeDesignIntent() / synthesizeCodeIntent(). When provided, the
- *   returned RAC carries intent + intentDescription so downstream nodes can
- *   branch on intent uniformly regardless of explicit vs infer origin.
+ *   or determined by job-specific logic. When provided, the returned RAC
+ *   carries intent + intentDescription.
  */
 export function resolveFromInfer(
-  report: DetectionReport,
+  report: DetectionReport | undefined,
   actionMetadata?: ActionMetadata,
   codebaseProfile?: CodebaseProfileLike,
   fallbackHints?: EnvironmentHints,
   synthesizedIntent?: IntentId,
   _workspaceState?: InferWorkspaceState,
 ): ResolvedActionContext {
-  const env = mapJobEnvironmentToEnvironment(report.environment);
+  const derivedFromIntent = synthesizedIntent ? deriveFromIntent(synthesizedIntent) : undefined;
+
+  const env = report
+    ? mapJobEnvironmentToEnvironment(report.environment)
+    : (derivedFromIntent?.environment as Environment | undefined);
   const tech = buildTechContext(
-    codebaseProfile || report.profile,
+    codebaseProfile || report?.profile,
     env,
     undefined,
     fallbackHints,
   );
 
-  const target = actionMetadata?.target ?? (report.targetFiles?.length ? report.targetFiles : undefined);
-  const refs = actionMetadata?.refs ?? (report.primarySources?.length ? report.primarySources : undefined);
+  const mode: Mode = report?.detectedMode
+    ?? derivedFromIntent?.mode
+    ?? 'generate';
+
+  // targets: metadata replaces inferred (if present)
+  const target = (actionMetadata?.target?.length)
+    ? actionMetadata.target
+    : (report?.targetFiles?.length ? report.targetFiles : undefined);
+
+  // refs: metadata only (primarySources removed from DetectionReport)
+  const metadataRefs = actionMetadata?.refs ?? [];
+  const refs = metadataRefs.length > 0 ? metadataRefs : undefined;
+
+  // context: metadata only (DetectionReport has no contextFiles field)
+  const metadataCtx = actionMetadata?.context ?? [];
+  const mergedCtx = dedup([...metadataCtx]);
+  const context = mergedCtx.length > 0 ? mergedCtx : undefined;
 
   const hasExplicitFields = !!(
     (actionMetadata?.target && actionMetadata.target.length > 0) ||
@@ -293,16 +313,21 @@ export function resolveFromInfer(
     intentDescription: synthesizedIntent
       ? getIntentDescription(synthesizedIntent)
       : undefined,
-    intentGroup: report.detectedIntentGroup,
-    mode: report.detectedMode,
+    intentGroup: report?.detectedIntentGroup ?? derivedFromIntent?.intentGroup,
+    mode,
     tech,
     target,
     refs,
-    context: actionMetadata?.context,
-    domain: report.domain,
+    context,
+    domain: report?.domain,
     source: 'infer',
     hasExplicitFields,
   };
+}
+
+/** Deduplicate string array, preserving order of first occurrence. */
+function dedup(arr: string[]): string[] {
+  return [...new Set(arr)];
 }
 
 // ============================================
@@ -380,27 +405,29 @@ export function synthesizeCodeIntent(
 }
 
 /**
- * Synthesize an intent ID for plan jobs from the resolved mode.
- * Plan has no DetectionReport; mode is determined by PRD existence + LLM classification.
- * Called in planner resolve node after mode determination.
+ * Synthesize an intent ID for plan jobs from the detected mode.
+ * Called in planner resolve node after DetectionReport creation.
  */
 export function synthesizePlanIntent(
   mode: string,
 ): IntentId {
   if (mode === 'explain') return 'explain-plan';
-  return mode === 'refine' ? 'rev-plan' : 'gen-plan';
+  // 'refine' accepted for backward compat with legacy session data
+  return (mode === 'refactor' || mode === 'refine') ? 'rev-plan' : 'gen-plan';
 }
 
 /**
- * Synthesize an intent ID for visual jobs from the classified jobMode.
- * Visual has a single generative intent (`gen-visual`); explain returns undefined (D1 pattern).
+ * Synthesize an intent ID for visual jobs from the classified jobMode + targetTier.
+ * Maps targetTier to gen-visual-{tier}; explain always returns 'explain-visual'.
  * Called in visual classify node after LLM classification.
  */
 export function synthesizeVisualIntent(
   jobMode: string,
+  targetTier?: string,
 ): IntentId {
   if (jobMode === 'explain') return 'explain-visual';
-  return 'gen-visual';
+  const tier = (!targetTier || targetTier === 'general') ? 'illustration' : targetTier;
+  return `gen-visual-${tier}` as IntentId;
 }
 
 /**

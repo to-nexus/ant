@@ -1,11 +1,6 @@
-# Job Mode Inference, RAG Strategy & Development Source
+# Job Mode Inference
 
-You are analyzing a development directive to determine:
-
-1. **Job Mode** (generate/refactor/explain)
-2. **RAG Requirement** (does decompose need codebase context?)
-3. **Search Keywords** (if RAG needed)
-4. **Primary Sources** (which documents/directories are the development source?)
+You are analyzing a development directive to determine the **Job Mode** (generate/refactor/explain).
 
 Your analysis will determine the workflow routing strategy.
 
@@ -13,18 +8,36 @@ Your analysis will determine the workflow routing strategy.
 
 {{directive}}
 
-{{#each documents}}
-## {{label}}
-
-{{{content}}}
-
-{{/each}}
-
 {{#if artifactAvailability}}
 ## Available Artifacts
 
 {{{artifactAvailability}}}
 {{/if}}
+
+## Workspace State
+
+{{#if hasDesignDoc}}
+- System design documents: **exist**
+{{else}}
+- System design documents: not found
+{{/if}}
+{{#if hasSpecDocs}}
+- Spec documents: **exist**
+{{else}}
+- Spec documents: not found
+{{/if}}
+
+## Intent Selection
+
+Based on the directive and workspace state above, select the most appropriate `intentId`:
+
+| intentId | When to select |
+|----------|---------------|
+| `gen-code-sys` | Generate code from system design documents (design docs exist and directive references them) |
+| `gen-code-spec` | Generate code from spec documents (spec docs exist and directive references them) |
+| `gen-code-directive` | Generate code from directive alone (no design/spec docs referenced) |
+| `rev-code` | Modify, fix, or refactor existing code |
+| `explain-code` | Explain or answer questions about code (no modification) |
 
 ## Output Format
 
@@ -32,21 +45,9 @@ Wrap your JSON response in <detect> tags (NO markdown code blocks):
 
 <detect>
 {
+  "intentId": "gen-code-sys" | "gen-code-spec" | "gen-code-directive" | "rev-code" | "explain-code",
   "jobMode": "generate" | "refactor" | "explain",
-  "jobModeReasoning": "Why this mode? (1 sentence)",
-  "requireRag": true | false,
-  "primarySources": ["outputs/design/spec/spec-auth.md"],
-  "primarySourcesReasoning": "Why these sources? (1 sentence)",
-  "decomposeKeywords": {
-    "errorFiles": ["file1.tsx", "file2.tsx"],
-    "keywords": ["keyword1", "keyword2", ...],
-    "references": [
-      {
-        "project": "backend",
-        "keywords": ["user API", "auth endpoint"]
-      }
-    ]
-  }
+  "jobModeReasoning": "Why this mode? (1 sentence)"
 }
 </detect>
 

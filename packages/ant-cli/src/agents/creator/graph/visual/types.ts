@@ -2,10 +2,11 @@
  * Visual Graph State Types
  *
  * Defines the state shape for the visual job LangGraph,
- * conforming to TriageableState for triage node compatibility.
+ * conforming to DetectableState for triage + detect node compatibility.
  */
 
 import { TriageableState, TriageableContext } from '../../../common/nodes/triage/types.js';
+import type { DetectableState } from '../../../common/nodes/detect/types.js';
 import { LLMClient } from '../../../../core/ports/llm.js';
 import { ImageGenerationPort, GeneratedImage } from '../../../../core/ports/imageGeneration.js';
 import { BackgroundRemovalPort } from '../../../../core/ports/backgroundRemoval.js';
@@ -16,9 +17,13 @@ import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers
 import { VisualSettings } from '../../../../core/types/workspace.js';
 import type { ConversationEntry } from '../../../../core/types/session.js';
 import type { ConversationCompaction } from '../../../../core/context/compactJob.js';
-import type { JobMode, ResolvedActionContext } from '@ant/shared';
+import type { Mode } from '@ant/shared';
 
-export type { JobMode };
+/** @deprecated Use Mode instead */
+export type JobMode = Mode;
+
+/** Visual-pipeline-local asset type (removed from @ant/shared DetectionReport) */
+export type VisualAssetType = 'logo' | 'icon' | 'hero' | 'illustration' | 'general';
 
 /**
  * Sketch image with full parameter preservation for render step
@@ -51,11 +56,6 @@ export interface SketchVariation {
   prompt: string;
   label: string;
 }
-
-/**
- * Normalized asset type for conditional prompt injection
- */
-export type VisualAssetType = 'logo' | 'icon' | 'hero' | 'illustration' | 'general';
 
 export const VISUAL_ASSET_TYPES: readonly VisualAssetType[] = ['logo', 'icon', 'hero', 'illustration', 'general'] as const;
 
@@ -101,9 +101,9 @@ export interface VisualGraphDeps {
 }
 
 /**
- * Visual Graph State — conforms to TriageableState
+ * Visual Graph State — conforms to DetectableState (extends TriageableState)
  */
-export interface VisualGraphState extends TriageableState, PhaseTrackingState {
+export interface VisualGraphState extends DetectableState, PhaseTrackingState {
   // TriageableState overrides
   featurePath: string;
   context: TriageableContext;
@@ -125,8 +125,7 @@ export interface VisualGraphState extends TriageableState, PhaseTrackingState {
   jobMode?: JobMode;
   skipClassify?: boolean;
 
-  // RAC (Intent-Centric)
-  resolvedAction?: ResolvedActionContext;
+  // resolvedAction inherited from DetectableState
 
   // Session carry-over (preserved across invocations)
   lastEngineeredPrompt?: string;

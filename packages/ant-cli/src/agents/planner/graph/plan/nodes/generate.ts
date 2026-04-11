@@ -1,16 +1,13 @@
 /**
  * Generate Node
  * 
- * ReAct agent that generates or refines the PRD.
+ * ReAct agent that generates or refines documents.
+ * Target and staging paths are derived from resolvedAction.target (no hardcoded paths).
  * 
  * Two output modes:
- *  - Generate mode: LLM outputs full PRD via <file path="outputs/plan/prd-refine.md">...</file> tags.
- *    StreamOrchestrator handles real-time file card streaming.
- *  - Refine mode: LLM uses edit_file tool for targeted search/replace edits on the staging copy.
- *    After all edits, the staging file is read back as the generated document.
+ *  - Generate mode: LLM outputs full document via <file path="{stagingPath}">...</file> tags.
+ *  - Refine mode: LLM uses edit_file tool for targeted edits on the staging copy.
  * 
- * Unlike design job which uses writeImmediately=true with gitPort/fileSystem,
- * planner writes to disk after orchestrator.finalize() (single file, no timing difference).
  * There is no separate write node — this node handles streaming, disk write, choice card, and session.
  */
 
@@ -18,7 +15,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import Handlebars from 'handlebars';
-import { PlanGraphState } from '../state';
+import { PlanGraphState, getPlanMode } from '../state';
 import { ConversationEntry } from '../../../../../core/types/session';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers';
 import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
@@ -152,18 +149,31 @@ function formatConversationForPrompt(conversation: ConversationEntry[]): string 
   }).join('\n\n');
 }
 
+/**
+ * Derive staging path from resolvedAction.target[0].
+ * Convention: outputs/plan/{basename(target)}
+ */
+function getStagingPath(state: PlanGraphState): string | undefined {
+  const target = state.resolvedAction?.target?.[0];
+  if (!target) return undefined;
+  return `outputs/plan/${path.basename(target)}`;
+}
+
 function buildSystemPrompt(
   state: PlanGraphState,
   compaction: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean },
 ): string {
   const { base, rules } = loadPlanTemplates();
+  const stagingPath = getStagingPath(state);
+  const hasTargets = (state.resolvedAction?.target?.length ?? 0) > 0;
   
+  const planMode = getPlanMode(state);
   const basePrompt = base({
     isKorean: state.language === 'ko',
     directive: state.directive,
-    mode: state.plannerPhase,
-    existingDocument: state.existingDocument || '',
-    hasExistingDocument: !!state.existingDocument,
+    mode: planMode,
+    hasTargets,
+    stagingPath: stagingPath || '',
     evalReport: state.evalReport || '',
     hasEvalReport: !!state.evalReport,
     rubricContent: state.rubricContent || '',
@@ -187,7 +197,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   // Increment recursion count each time generate is entered (ReAct loop)
   const recursionCount = (state.recursionCount || 0) + 1;
   
-  const modeLabel = state.plannerPhase === 'generate' ? 'Creating' : state.plannerPhase === 'explain' ? 'Analyzing' : 'Refining';
+  const planMode = getPlanMode(state);
+  const modeLabel = planMode === 'generate' ? 'Creating' : planMode === 'explain' ? 'Analyzing' : 'Refining';
   console.log(`\n🤖 [Planner:Generate] ${modeLabel} PRD... (iteration ${recursionCount}/${state.recursionLimit})`);
   
   // Kanban activity banner
@@ -252,8 +263,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
           usedTemplates: ['planner/plan/base', 'planner/plan/rules'],
           injectedVariables: {
             directive: state.directive || '',
-            mode: state.plannerPhase,
-            hasExistingDocument: !!state.existingDocument,
+            mode: planMode,
+            targets: state.resolvedAction?.target || [],
             hasEvalReport: !!state.evalReport,
             hasConversation: compactionResult.entries.length > 0,
             conversationEntries: compactionResult.entries.length,
@@ -295,7 +306,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   }
   
   // Setup tools (explain mode uses read-only subset)
-  const activeTools = state.plannerPhase === 'explain' ? PLANNER_EXPLAIN_TOOLS : PLANNER_TOOLS;
+  const activeTools = planMode === 'explain' ? PLANNER_EXPLAIN_TOOLS : PLANNER_TOOLS;
   const toolDefinitions = activeTools.map(t => ({
     name: t.name,
     description: t.description,
@@ -480,64 +491,63 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       timestamp: new Date().toISOString(),
       metadata: {
         hasArtifact: false,
-        mode: state.plannerPhase,
+        mode: planMode,
       },
     });
     
     return {
       conversationHistory: updatedHistory,
       conversation: updatedConversation,
-      generatedDocument: undefined,
       pendingToolCalls: [],
       tokenUsage: state.tokenUsage,
       recursionCount,
     };
   }
   
-  // === Explain mode: read-only Q&A — skip PRD extraction, disk write, choice card ===
+  // === Explain mode: read-only Q&A — skip extraction, disk write, choice card ===
+  const stagingRelPath = getStagingPath(state);
   let generatedDocument: string | undefined;
   
-  if (state.plannerPhase === 'explain') {
-    // Explain mode: stream answer only, save conversation for context continuity
+  if (planMode === 'explain') {
     const explainHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
     await saveConversationToSession(state, responseText, undefined, explainHistory, compactionMeta);
   } else {
     // Extract file content from registry (populated by StreamOrchestrator via <file> tags)
     const files = orchestrator.getRegistry().getAllFiles();
-    const prdFile = files.find(f => f.path.includes('prd-refine'));
-    generatedDocument = prdFile?.content || undefined;
+    const matchedFile = stagingRelPath
+      ? files.find(f => f.path.includes(path.basename(stagingRelPath)))
+      : files[0];
+    generatedDocument = matchedFile?.content || undefined;
     
     // Edit-based refine: if no <file> output, read the staging file (modified by edit_file tool calls)
-    if (!generatedDocument && state.plannerPhase === 'refine') {
-      const editStagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
+    if (!generatedDocument && planMode === 'refactor' && stagingRelPath) {
+      const editStagingPath = path.join(state.featurePath, stagingRelPath);
       try {
         generatedDocument = await fsPromises.readFile(editStagingPath, 'utf-8');
-        console.log(`📝 [Planner:Generate] Read edited PRD from staging (${generatedDocument.length} chars)`);
+        console.log(`📝 [Planner:Generate] Read edited document from staging (${generatedDocument.length} chars)`);
       } catch {
         console.log(`📝 [Planner:Generate] No staging file found (no edits made)`);
       }
     }
     
-    // === Post-stream: disk write + choice card + session (same role as design job's docGen) ===
-    if (generatedDocument) {
-      const stagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
+    // === Post-stream: disk write + choice card + session ===
+    if (generatedDocument && stagingRelPath) {
+      const stagingAbsPath = path.join(state.featurePath, stagingRelPath);
+      const sourcePath = state.resolvedAction?.target?.[0];
       
-      // Kanban: show "saving" activity
       if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
         state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
       }
       
-      // Write to disk (for <file> tag mode; for edit mode this is a harmless overwrite of same content)
       try {
-        await fsPromises.mkdir(path.dirname(stagingPath), { recursive: true });
-        await fsPromises.writeFile(stagingPath, generatedDocument, 'utf-8');
-        console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to outputs/plan/prd-refine.md`);
+        await fsPromises.mkdir(path.dirname(stagingAbsPath), { recursive: true });
+        await fsPromises.writeFile(stagingAbsPath, generatedDocument, 'utf-8');
+        console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to ${stagingRelPath}`);
       } catch (error: any) {
-        console.error(`❌ [Planner:Generate] Failed to write PRD: ${error.message}`);
+        console.error(`❌ [Planner:Generate] Failed to write document: ${error.message}`);
         throw error;
       }
       
-      // ✅ Notify file tree update (Redis Pub/Sub → Realtime Server → SSE)
       if (state.deps?.fileTreeUpdate) {
         const projectId = process.env.ANT_PROJECT_ID;
         const featureName = process.env.ANT_FEATURE_NAME;
@@ -546,12 +556,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         } else {
           try {
             state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
-            console.log(`📂 [Planner:Generate] File tree update notified`);
-            
-            // ✅ Add unseen artifact notification for PRD file
             if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
               (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
-                projectId, featureName, ['outputs/plan/prd-refine.md']
+                projectId, featureName, [stagingRelPath]
               );
             }
           } catch (error: any) {
@@ -560,26 +567,22 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         }
       }
       
-      // Record session run
       try {
         const session = state.deps?.session;
         if (session) {
           const projectId = session.projectId || process.env.ANT_PROJECT_ID || 'default';
           const featureName = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
-          
-          const directiveSummary = (state.directive || '').substring(0, 200);
-          
           await session.addRun(projectId, featureName, 'plan', {
-            runId: 0, // Will be set by adapter
+            runId: 0,
             job: 'plan',
             timestamp: new Date().toISOString(),
             input: {
               type: 'directive',
-              source: state.plannerPhase === 'refine' ? 'inputs/sources/prd.md' : undefined,
-              summary: directiveSummary,
+              source: planMode === 'refactor' ? sourcePath : undefined,
+              summary: (state.directive || '').substring(0, 200),
             },
             output: {
-              planSummary: `PRD ${state.plannerPhase} completed (${generatedDocument.length} chars)`,
+              planSummary: `${planMode} completed (${generatedDocument.length} chars)`,
             },
           });
         }
@@ -587,22 +590,23 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         console.warn(`⚠️ [Planner:Generate] Failed to record session: ${error.message}`);
       }
       
-      // Save conversation to session (multi-turn persistence)
       const prdHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
       await saveConversationToSession(state, responseText, generatedDocument, prdHistory, compactionMeta);
       
-      // Send PRD apply choice card
+      // Send apply choice card with dynamic file mapping
       try {
+        const displayName = sourcePath ? path.basename(sourcePath) : 'document';
         await chatAPI.sendChoiceCard({
           type: 'prd_apply',
-          title: state.language === 'ko' 
-            ? '📋 PRD를 inputs/sources/prd.md에 적용하시겠습니까?'
-            : '📋 Apply this PRD to inputs/sources/prd.md?',
+          title: state.language === 'ko'
+            ? `📋 ${displayName}을(를) 원본에 적용하시겠습니까?`
+            : `📋 Apply ${displayName} to source?`,
           choices: [
             {
               id: 'apply',
               label: state.language === 'ko' ? '적용' : 'Apply',
               action: 'prd_apply',
+              data: { stagingPath: stagingRelPath, sourcePath },
             },
             {
               id: 'keep_draft',
@@ -616,7 +620,6 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       }
     }
     
-    // Save conversation even when no PRD was generated (e.g. clarifying response)
     if (!generatedDocument) {
       const textOnlyHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
       await saveConversationToSession(state, responseText, undefined, textOnlyHistory, compactionMeta);
@@ -648,15 +651,14 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     timestamp: new Date().toISOString(),
     metadata: {
       hasArtifact: !!generatedDocument,
-      artifactPath: generatedDocument ? 'outputs/plan/prd-refine.md' : undefined,
-      mode: state.plannerPhase,
+      artifactPath: generatedDocument ? stagingRelPath : undefined,
+      mode: planMode,
     },
   });
   
   return {
     conversationHistory: updatedHistory,
     conversation: updatedConversation,
-    generatedDocument,
     pendingToolCalls: [],
     tokenUsage: state.tokenUsage,
     recursionCount,
@@ -696,15 +698,14 @@ async function saveConversationToSession(
       });
     }
     
-    // Add assistant response
     updatedConversation.push({
       role: 'assistant',
       content: responseText,
       timestamp: new Date().toISOString(),
       metadata: {
         hasArtifact: !!generatedDocument,
-        artifactPath: generatedDocument ? 'outputs/plan/prd-refine.md' : undefined,
-        mode: state.plannerPhase,
+        artifactPath: generatedDocument ? getStagingPath(state) : undefined,
+        mode: getPlanMode(state),
       },
     });
     
@@ -744,7 +745,7 @@ async function saveConversationToSession(
     sessionData.state.directive = state.directive;
     sessionData.state.overrideDirective = state.overrideDirective;
     sessionData.state.chatSource = state.chatSource;
-    sessionData.state.plannerPhase = state.plannerPhase;
+    sessionData.state.detectionReport = state.detectionReport;
     sessionData.state.tokenUsage = state.tokenUsage;
     sessionData.state.jobTiming = state.deps?.stateSnapshot?.jobTiming;
     sessionData.state.recursionCount = state.recursionCount;

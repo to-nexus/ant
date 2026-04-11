@@ -1,8 +1,14 @@
 /**
- * Resolve Node
- * 
- * Loads existing PRD, eval reports, and recent session history
- * to build context for generation/refinement.
+ * Plan Resolve Strategy
+ *
+ * Determines target, loads documents, creates staging copies,
+ * loads eval reports and session history. Mode detection and RAC
+ * creation are handled by the downstream detect node.
+ *
+ * Target resolution (3 cases):
+ *   1. Explicit: actionMetadata.target from UI
+ *   2. Infer + prd.md exists: ['inputs/sources/prd.md']
+ *   3. Infer + no prd.md + other sources: all source files (LLM clarifies)
  */
 
 import * as fs from 'fs';
@@ -10,68 +16,99 @@ import * as path from 'path';
 import { PlanGraphState } from '../state';
 import { ConversationEntry } from '../../../../../core/types/session';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
-import { detectUILocale, getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
-import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers';
-import { resolveFromExplicit, synthesizePlanIntent } from '@ant/shared';
-import type { ResolvedActionContext } from '@ant/shared';
+import type { ResolvedDocument } from '@ant/shared';
+import type { ResolveStrategy } from '../../../../common/nodes/resolve/types';
 
-export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
+export const planResolveStrategy: ResolveStrategy<PlanGraphState> = {
+  async loadArtifacts(state) {
+    return loadPlanContext(state);
+  },
+
+  async onResume(state) {
+    return loadPlanContext(state);
+  },
+};
+
+/**
+ * Shared logic for both new and resume paths.
+ * Plan resolve doesn't distinguish — it always loads context.
+ */
+async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
   console.log('\n📋 [Planner:Resolve] Loading context...');
-  
-  // Detect UI locale from directive
-  const uiLocale = detectUILocale(state.overrideDirective || state.directive || '');
-  
-  // Kanban activity banner
-  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('resolve', uiLocale), 'resolve');
-  }
-  
-  // Workflow instrumentation (pass recursion info for badge display)
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(
-      state._httpJobId, 'resolve', 0,
-      undefined, undefined,
-      state.recursionCount, state.recursionLimit,
-    );
-  }
-  
+
   const { featurePath } = state;
-  
-  // 1. Load existing PRD (if any)
-  let existingDocument: string | undefined;
-  const prdPath = path.join(featurePath, 'inputs/sources/prd.md');
-  try {
-    const raw = fs.readFileSync(prdPath, 'utf-8');
-    existingDocument = normalizeTemplateDoc(raw) ?? undefined;
-    if (existingDocument) {
-      console.log(`   PRD: Loaded (${existingDocument.length} chars)`);
-    } else {
-      console.log('   PRD: Template only (treated as no PRD)');
-    }
-  } catch (err: any) {
-    console.log(`   PRD: Not found (${err.code || err.message})`);
-  }
-  
-  // 2. Determine planner phase
-  let plannerPhase: 'generate' | 'refine' | 'explain';
-  if (!existingDocument) {
-    plannerPhase = 'generate';
+  const actionMetadata = state.actionMetadata;
+
+  // 1. Resolve target
+  const isExplicit = !!actionMetadata?.intent;
+  const isExplainIntent = actionMetadata?.intent === 'explain-plan';
+  let targets: string[];
+
+  if (actionMetadata?.target?.length) {
+    targets = actionMetadata.target;
+    console.log(`   Target (explicit): ${targets.join(', ')}`);
+  } else if (isExplicit && !isExplainIntent) {
+    console.error(`   ❌ Target missing for explicit intent: ${actionMetadata?.intent}`);
+    targets = [];
   } else {
-    plannerPhase = await detectPlanMode(state);
+    const sourceFileNames = state.workspaceState?.sourceFileNames;
+    if (sourceFileNames?.includes('prd.md')) {
+      targets = ['inputs/sources/prd.md'];
+      console.log(`   Target (infer): prd.md found`);
+    } else if (sourceFileNames?.length) {
+      targets = sourceFileNames.map(f => `inputs/sources/${f}`);
+      console.log(`   Target (infer/clarify): ${targets.length} source files, LLM will clarify`);
+    } else {
+      targets = [];
+      console.log(`   Target: none — generate mode`);
+    }
   }
-  console.log(`   Planner phase: ${plannerPhase}`);
-  
-  // 2b. In refine phase, create staging copy for edit_prd tool (skip for explain)
-  if (plannerPhase === 'refine' && existingDocument) {
+
+  // 2. Check if target documents exist
+  const hasExistingTarget = targets.length > 0 && targets.some(t => {
+    try {
+      const raw = fs.readFileSync(path.join(featurePath, t), 'utf-8');
+      return !!normalizeTemplateDoc(raw);
+    } catch { return false; }
+  });
+
+  // 3. Infer default target
+  if (targets.length === 0 && !isExplicit) {
+    targets = ['inputs/sources/prd.md'];
+    console.log(`   Target (infer default): inputs/sources/prd.md`);
+  }
+
+  // 4. Load refs/context content
+  const documents: ResolvedDocument[] = [];
+  const refPaths = actionMetadata?.refs || (targets.length ? targets : []);
+  for (const refPath of refPaths) {
+    try {
+      const raw = fs.readFileSync(path.join(featurePath, refPath), 'utf-8');
+      const content = normalizeTemplateDoc(raw);
+      if (content) documents.push({ path: refPath, content, role: 'ref' });
+    } catch { /* file not found */ }
+  }
+  for (const ctxPath of actionMetadata?.context || []) {
+    try {
+      const content = fs.readFileSync(path.join(featurePath, ctxPath), 'utf-8');
+      if (content.trim()) documents.push({ path: ctxPath, content, role: 'context' });
+    } catch { /* file not found */ }
+  }
+  if (documents.length > 0) {
+    console.log(`   Documents: ${documents.length} loaded (${documents.filter(d => d.role === 'ref').length} ref, ${documents.filter(d => d.role === 'context').length} context)`);
+  }
+
+  // 5. Create staging copies
+  if (hasExistingTarget && !isExplainIntent && actionMetadata?.intent !== 'gen-plan') {
     const stagingDir = path.join(featurePath, 'outputs/plan');
-    const stagingPath = path.join(stagingDir, 'prd-refine.md');
+    const target = targets[0];
+    const stagingPath = path.join(stagingDir, path.basename(target));
     try {
       fs.mkdirSync(stagingDir, { recursive: true });
-      fs.writeFileSync(stagingPath, existingDocument, 'utf-8');
-      console.log(`   Staging: Created outputs/plan/prd-refine.md (${existingDocument.length} chars)`);
-      
-      // ✅ Notify file tree update after staging copy creation
+      const content = fs.readFileSync(path.join(featurePath, target), 'utf-8');
+      fs.writeFileSync(stagingPath, content, 'utf-8');
+      console.log(`   Staging: Created outputs/plan/${path.basename(target)} (${content.length} chars)`);
       if (state.deps?.fileTreeUpdate) {
         const projectId = process.env.ANT_PROJECT_ID;
         const featureName = process.env.ANT_FEATURE_NAME;
@@ -83,29 +120,20 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
       console.warn(`   ⚠️ Staging: Failed to create staging copy: ${error.message}`);
     }
   }
-  
-  // 3. Load eval reports (if any) — skip stale evals (PRD modified after eval)
-  //    Uses file mtime for comparison (not filename timestamp) to avoid timezone bugs.
-  //    Whether to apply eval findings is decided by the LLM based on the user's directive.
+
+  // 6. Load eval reports (skip stale evals)
   let evalReport: string | undefined;
   const evalDir = path.join(featurePath, 'outputs/evals/prd');
   try {
-    const evalFiles = fs.readdirSync(evalDir)
-      .filter(f => f.endsWith('.md'))
-      .sort()
-      .reverse();
-    
+    const evalFiles = fs.readdirSync(evalDir).filter(f => f.endsWith('.md')).sort().reverse();
     if (evalFiles.length > 0) {
       const evalFileName = evalFiles[0];
       const evalFilePath = path.join(evalDir, evalFileName);
-      
-      if (existingDocument) {
-        // Compare file mtimes directly (avoids UTC/local timezone mismatch from filename parsing)
+      if (hasExistingTarget && targets[0]) {
         const evalMtime = fs.statSync(evalFilePath).mtimeMs;
-        const prdMtime = fs.statSync(prdPath).mtimeMs;
-        
-        if (prdMtime > evalMtime) {
-          console.log(`   Eval: Skipped stale (${evalFileName}) — PRD modified after eval`);
+        const targetMtime = fs.statSync(path.join(featurePath, targets[0])).mtimeMs;
+        if (targetMtime > evalMtime) {
+          console.log(`   Eval: Skipped stale (${evalFileName}) — target modified after eval`);
         } else {
           evalReport = fs.readFileSync(evalFilePath, 'utf-8');
           console.log(`   Eval: Loaded latest (${evalFileName})`);
@@ -115,17 +143,11 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
         console.log(`   Eval: Loaded latest (${evalFileName})`);
       }
     }
-  } catch {
-    // No eval reports
-  }
-  
-  // 4. Rubric auto-loading removed.
-  // Rubric was injected into the system prompt in refine mode, but LLMs cannot
-  // reliably "ignore" 840 lines of context. It caused unintended document restructuring.
-  // Rubric-based improvement should be explicitly requested via the directive.
+  } catch { /* No eval reports */ }
+
   const rubricContent: string | undefined = undefined;
-  
-  // 5. Load multi-turn conversation + recent session turns
+
+  // 8. Load multi-turn conversation + recent session turns
   let conversation: ConversationEntry[] = [];
   let isConversationContinuation = false;
   let conversationHistoryReset = false;
@@ -133,18 +155,12 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
   try {
     const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
-    
-    // 5a. Load conversation from session state (multi-turn history)
+
     if (sessionData.state?.conversation && Array.isArray(sessionData.state.conversation)) {
       conversation = sessionData.state.conversation;
       console.log(`   Conversation: ${conversation.length} entries loaded from session`);
     }
-    
-    // 5b. If this is a conversation continuation, append the new user message.
-    //     Two triggers:
-    //       - Resume/Continue: isResume + overrideDirective  (from /continue endpoint)
-    //       - Chat follow-up:  chatSource + overrideDirective (from clarify answer submit or ChatInput)
-    //     Both require an existing conversation to append to.
+
     const shouldContinueConversation = conversation.length > 0 && state.overrideDirective && (
       state.isResume || state.chatSource
     );
@@ -156,10 +172,6 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
       });
       isConversationContinuation = true;
       console.log(`   Conversation: Appended new user message (now ${conversation.length} entries)`);
-      
-      // ✅ Save updated conversation to session immediately (crash safety).
-      // Without this, if the job is stopped before generate.ts saves, the appended
-      // user message is lost — causing the LLM to repeat clarifying questions on resume.
       try {
         const sessionWriteData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
         sessionWriteData.state = sessionWriteData.state || {};
@@ -171,12 +183,7 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
         console.warn(`   ⚠️ Conversation: Failed to persist: ${err.message}`);
       }
     }
-    
-    // 5b-2. Resume without new directive: check if conversation has a pending user turn.
-    // This happens when the previous job was stopped after resolve appended the user's
-    // clarify answers but before generate could process them.
-    // conversationHistory from the prior run is stale (doesn't include answers),
-    // so we reset it to force generate.ts to use conversation's last user message.
+
     if (!isConversationContinuation && state.isResume && conversation.length > 0) {
       const lastEntry = conversation[conversation.length - 1];
       if (lastEntry.role === 'user' && lastEntry.content) {
@@ -185,29 +192,27 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
         console.log(`   Conversation: Resuming pending user turn (${conversation.length} entries)`);
       }
     }
-    
-    // 5c. Load recent run summaries (fallback context for non-conversation runs)
+
     const runs = sessionData.runs || [];
     if (runs.length > 0) {
-      recentTurnSummaries = runs.slice(-3).map((t: any) => 
+      recentTurnSummaries = runs.slice(-3).map((t: any) =>
         `[Run ${t.runId}] ${t.input?.summary?.substring(0, 100) || 'N/A'}`
       );
       console.log(`   Session: ${recentTurnSummaries?.length ?? 0} recent runs loaded`);
     }
-  } catch {
-    // No session history
-  }
-  
+  } catch { /* No session history */ }
+
   // Notify user about loaded context
   const contextItems: Array<{ label: string; detail?: string }> = [];
-  if (existingDocument) {
-    contextItems.push({ label: 'PRD', detail: `${existingDocument.length.toLocaleString()} chars` });
+  if (documents.length > 0) {
+    for (const doc of documents.filter(d => d.role === 'ref')) {
+      contextItems.push({ label: path.basename(doc.path), detail: `${doc.content.length.toLocaleString()} chars` });
+    }
   }
   if (evalReport) {
     const latestEvalFile = fs.readdirSync(evalDir).filter(f => f.endsWith('.md')).sort().reverse()[0];
     contextItems.push({ label: 'Eval report', detail: latestEvalFile });
   }
-  // Rubric context item removed (rubric auto-loading disabled)
   if (conversation.length > 0) {
     contextItems.push({ label: 'Conversation', detail: `${conversation.length} messages` });
   } else if (recentTurnSummaries && recentTurnSummaries.length > 0) {
@@ -217,112 +222,13 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     const chatAPI = getChatAPIClient();
     await chatAPI.showContextLoaded(contextItems);
   }
-  
-  // Workflow instrumentation
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve', 0);
-  }
-  
-  // RAC creation: resolve handles both explicit and infer paths
-  // (plan has no detectEnvironment node, so both paths are handled here)
-  const actionMetadata = state.actionMetadata;
-  let resolvedAction: ResolvedActionContext | undefined = state.resolvedAction;
-  if (!resolvedAction) {
-    if (actionMetadata?.intent) {
-      resolvedAction = resolveFromExplicit(actionMetadata);
-      console.log(`📋 [Planner:Resolve] RAC created (explicit): intent=${actionMetadata.intent}, mode=${resolvedAction.mode}`);
-    } else {
-      const synthesizedIntent = synthesizePlanIntent(plannerPhase);
-      resolvedAction = resolveFromExplicit({ ...actionMetadata, intent: synthesizedIntent });
-      const inferHasExplicit = !!(
-        (actionMetadata?.target && actionMetadata.target.length > 0) ||
-        (actionMetadata?.refs && actionMetadata.refs.length > 0) ||
-        (actionMetadata?.context && actionMetadata.context.length > 0)
-      );
-      resolvedAction = { ...resolvedAction, source: 'infer', hasExplicitFields: inferHasExplicit };
-      console.log(`📋 [Planner:Resolve] RAC created (infer): intent=${synthesizedIntent}, mode=${resolvedAction.mode}`);
-    }
-  }
 
   return {
-    existingDocument,
     evalReport,
     rubricContent,
     recentTurnSummaries,
     conversation,
     isConversationContinuation,
-    // Reset stale conversationHistory when resuming a pending user turn.
-    // Without this, generate.ts uses the old [user, assistant] history instead of
-    // the conversation's last user message (clarify answers).
     ...(conversationHistoryReset ? { conversationHistory: [] } : {}),
-    plannerPhase,
-    resolvedAction,
-    _uiLocale: uiLocale,
-  };
-}
-
-/**
- * Detect plan mode when PRD exists: refine (modify PRD) vs explain (read-only Q&A).
- * Uses a lightweight LLM call with directive only (no PRD content needed).
- * Falls back to 'refine' on error (safe default — avoids accidental read-only).
- */
-async function detectPlanMode(
-  state: PlanGraphState,
-): Promise<'refine' | 'explain'> {
-  const directive = state.overrideDirective || state.directive || '';
-  if (!directive) return 'refine';
-
-  const llm = state.deps?.llm;
-  if (!llm) return 'refine';
-
-  const prompt = `Classify the following user directive about an existing PRD document.
-
-Directive: "${directive}"
-
-Is the user asking to:
-A) UNDERSTAND/ANALYZE the PRD content (explain, describe, query, check what's in it) — no modification expected
-B) MODIFY/IMPROVE the PRD (refine, add, fix, update, expand, improve) — changes expected
-
-Respond with ONLY a JSON object:
-<detect>
-{ "mode": "explain" | "refine", "reasoning": "one sentence" }
-</detect>`;
-
-  try {
-    let response = '';
-    for await (const event of llm.stream(
-      [{ role: 'user', content: prompt }],
-      { temperature: 0, maxTokens: 150, enableThinking: false }
-    )) {
-      if (event.type === 'retry') { response = ''; continue; }
-      if (event.text) response += event.text;
-      if (event.type === 'done') {
-        const capturedUsage = extractTokenUsageFromStreamEvent(event);
-        if (capturedUsage) {
-          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
-          upsertPhaseTokenUsage(state, 'resolve', capturedUsage);
-        }
-      }
-    }
-
-    const match = response.match(/<detect>\s*([\s\S]*?)\s*<\/detect>/);
-    if (match) {
-      const parsed = JSON.parse(match[1]);
-      const mode = parsed.mode === 'explain' ? 'explain' : 'refine';
-      console.log(`   DetectPlanMode: ${mode} (${parsed.reasoning || 'no reasoning'})`);
-      return mode;
-    }
-
-    // Fallback: try raw JSON
-    const jsonMatch = response.match(/\{[\s\S]*?"mode"\s*:\s*"(explain|refine)"[\s\S]*?\}/);
-    if (jsonMatch) {
-      const mode = jsonMatch[1] as 'explain' | 'refine';
-      console.log(`   DetectPlanMode: ${mode} (fallback parse)`);
-      return mode;
-    }
-  } catch (err) {
-    console.warn(`   ⚠️ DetectPlanMode failed, defaulting to refine:`, err);
-  }
-
-  return 'refine';
+  } as Partial<PlanGraphState>;
 }

@@ -2,7 +2,7 @@
 
 ## 개요
 
-Planner Job은 사용자의 directive를 받아 PRD를 생성하거나 수정하는 planner 에이전트의 LangGraph 그래프이다. Code/Design Job과 달리 태스크 분해가 없고, 단일 ReAct 루프(generate <-> tool)로 동작한다. 멀티턴 대화와 clarifying question을 지원한다.
+Planner Job은 사용자의 directive를 받아 문서(PRD 등)를 생성하거나 수정하는 planner 에이전트의 LangGraph 그래프이다. Code/Design Job과 달리 태스크 분해가 없고, 단일 ReAct 루프(generate ↔ tool)로 동작한다. 멀티턴 대화와 clarifying question을 지원한다.
 
 ## Architect Job과의 차이
 
@@ -10,46 +10,85 @@ Planner Job은 사용자의 directive를 받아 PRD를 생성하거나 수정하
 |------|------------------------|---------|
 | 태스크 분해 | 있음 | 없음 |
 | 병렬 실행 | 있음 | 없음 |
-| 산출물 | 복수 파일 | 단일 파일 (PRD) |
+| 산출물 | 복수 파일 | 단일 파일 |
 | 멀티턴 대화 | 미지원 | 지원 (session 기반) |
 | Clarifying questions | 미지원 | 지원 (`<clarify>` 태그) |
 | Resume 전략 | 태스크 단위 | Job 단위 (전체 재실행) |
-| 그래프 노드 수 | 10+ | 4 |
+
+## Target 결정
+
+Planner Job의 산출물 대상(target)은 `resolvedAction.target`으로 결정된다. 하드코딩된 `prd.md` 경로는 없다.
+
+### Explicit (Actions 패널)
+
+UI가 `actionMetadata.target`을 세팅한다. resolve에서 추론하지 않는다.
+
+| 패턴 | target 세팅 시점 | 예시 |
+|------|-----------------|------|
+| `mirrorRefs` (rev-plan) | refs 선택 시 | `['inputs/sources/api-spec.md']` |
+| `dir + expectedFiles` (gen-plan) | intent 선택 시 | `['inputs/sources/prd.md']` |
+
+rev-plan refs는 `maxSelection: 1`로 단일 선택만 허용.
+
+Explicit에서 target이 없으면 (codebase/emptyHint 제외) 시스템 오류로 처리한다. 추론 폴백 없음.
+
+### Infer (채팅)
+
+resolve가 `workspaceState.sourceFileNames`를 활용하여 추론한다.
+
+| 조건 | targets |
+|------|---------|
+| `prd.md` 있음 | `['inputs/sources/prd.md']` |
+| `prd.md` 없고 다른 파일 있음 | 전체 source 파일 (LLM clarify) |
+| 파일 없음 | `['inputs/sources/prd.md']` (gen-plan 기본값) |
+
+### Staging Path 도출
+
+`outputs/plan/${path.basename(target)}` — target으로부터 자동 도출. state에 저장하지 않음.
 
 ## 모드
 
 | Mode | 조건 | 행동 |
 |------|------|------|
-| `generate` | PRD가 없거나 template-only | `<file>` 태그로 전체 PRD 출력 |
-| `refine` | 기존 PRD 존재 | `edit_file` 도구로 targeted editing |
+| `generate` | 기존 target 문서 없음, 또는 explicit gen-plan | `<file path="{stagingPath}">` 태그로 전체 문서 출력 |
+| `refine` | 기존 target 문서 존재 + LLM이 수정 의도 감지 | `edit_file(path="{stagingPath}")` 도구로 targeted editing |
+| `explain` | 기존 문서 존재 + LLM이 분석/질의 의도 감지 | 읽기 전용 채팅 응답 |
 
-resolve 노드가 `inputs/sources/prd.md`의 존재 여부와 실질 콘텐츠를 확인하여 mode를 자동 결정한다.
+## 문서 내용 주입
+
+`existingDocument` state 필드는 없다. 문서 내용은 architect와 동일한 패턴으로 `resolvedAction.documents`에 로드되고, `action-context.md` partial이 렌더링한다.
+
+| 역할 | 출처 | 렌더링 위치 |
+|------|------|-------------|
+| `ref` (수정 대상) | `actionMetadata.refs` | `action-context.md` — Primary References |
+| `context` (참고) | `actionMetadata.context` | `action-context.md` — Background Context |
 
 ## 그래프 노드 흐름
 
 ```
-__start__ -> resolve -> [router]
-    +-> conversation 존재 -> generate (triage 건너뜀)
-    +-> conversation 없음 -> triage -> [router]
-        +-> ask -> __end__
-        +-> redirect -> __end__
-        +-> blocked -> __end__
-        +-> proceed -> generate
+__start__ -> resolve -> triage -> [router]
+    +-> ask -> __end__
+    +-> redirect -> __end__
+    +-> blocked -> __end__
+    +-> proceed -> generate
 
 generate -> [router]
     +-> tool_use -> tool -> generate (ReAct 루프)
     +-> <clarify> 감지 -> ChoiceCard 발행 -> __end__
-    +-> <file> 감지 -> PRD 저장 + PRD Apply ChoiceCard -> __end__
+    +-> <file> 감지 -> 디스크 저장 + Apply ChoiceCard -> __end__
     +-> text only -> 대화 저장 -> __end__
 ```
 
-## PRD-as-State 패턴
+## Apply 흐름
 
-PRD 파일 자체가 누적 상태이다. Job 간 대화 맥락 전달이 불필요하다.
+산출물은 staging path에 생성된다. 사용자가 "적용"을 선택하면 staging → source로 복사된다.
 
-- 생성 중 (staging): `outputs/plan/prd-refine.md`
-- 적용 후 (canonical): `inputs/sources/prd.md`
-- PRD Apply ChoiceCard를 통해 사용자가 적용 여부를 결정한다
+| 단계 | 경로 예시 |
+|------|----------|
+| Staging (생성/편집) | `outputs/plan/prd.md` |
+| Apply (적용) | `outputs/plan/prd.md` → `inputs/sources/prd.md` |
+
+`POST /chat/prd-apply`가 body에서 `{ stagingPath, sourcePath }` 매핑을 수신한다.
 
 ## Clarifying Questions
 
@@ -57,33 +96,19 @@ PRD 생성/수정 시 정보가 부족하면 LLM이 `<clarify>` 태그로 질문
 
 ### 처리 흐름
 
-1. LLM 스트리밍 중 `XMLStreamParser`가 `<clarify>` 태그를 suppress (채팅에 raw XML 미노출)
+1. LLM 스트리밍 중 `XMLStreamParser`가 `<clarify>` 태그를 suppress
 2. generate 노드에서 `parseClarifyBlocks()`로 질문 추출
-3. Compound Clarifying ChoiceCard 발행 (N개 질문을 하나의 카드에 묶음)
+3. Compound Clarifying ChoiceCard 발행
 4. 대화를 세션에 저장 후 종료
-
-### 사용자 응답 경로
-
-| 경로 | 설명 |
-|------|------|
-| 카드에서 전부 답변 | 구조적 응답만으로 Job 재실행 |
-| 카드 일부 + 자유 입력 | 구조적 + 자유 텍스트 합산 |
-| 카드 무시, 자유 입력만 | 일반 conversation continuation |
-
-카드 선택은 Zustand `pendingClarifyAnswers`에 저장되며, ChatInput과 공유된다.
-
-## Conversation Continuation
-
-세션 파일에 대화 이력이 저장되고 다음 실행 시 로드된다. conversation이 존재하면 triage를 건너뛰고 generate로 직행한다. LLM은 축적된 대화 컨텍스트 위에서 작업을 이어간다.
 
 ## 도구
 
-| 도구 | Generate | Refine |
-|------|----------|--------|
-| `read_workspace_file` | O | O |
-| `list_workspace_files` | O | O |
-| `search_web` (Tavily) | O | O |
-| `edit_file` | X | O |
+| 도구 | Generate | Refine | Explain |
+|------|----------|--------|---------|
+| `read_workspace_file` | O | O | O |
+| `list_workspace_files` | O | O | O |
+| `search_web` (Tavily) | O | O | O |
+| `edit_file` | X | O | X |
 
 ## 파일 구조
 
@@ -95,20 +120,14 @@ agents/planner/
         plan/
             graph.ts            (buildPlanGraph)
             runner.ts           (runPlanGraph)
-            state.ts            (PlanGraphState, createInitialPlanState)
+            state.ts            (PlanGraphState — existingDocument 없음)
             nodes/
-                resolve.ts      (PRD 존재 여부 → mode 결정)
-                generate.ts     (ReAct 루프, clarify/file 감지, conversation compaction)
+                resolve.ts      (target 결정, documents 로드, staging 복사)
+                generate.ts     (ReAct 루프, getStagingPath()로 동적 경로)
                 tool.ts         (도구 실행)
 ```
 
-## Conversation Compaction
-
-대화가 길어지면 `generate` 노드에서 `applyCompactionToConversation()`을 호출하여 오래된 턴을 LLM 기반으로 요약·압축한다. `PromptPort`가 deps로 주입되어 compaction 프롬프트 렌더링에 사용된다.
-
 ## State Persistence
-
-Plan Job은 ReAct 루프 단위로 상태를 저장한다.
 
 | 시점 | 저장 내용 |
 |------|----------|
@@ -116,14 +135,16 @@ Plan Job은 ReAct 루프 단위로 상태를 저장한다.
 | tool 완료 | conversationHistory, tokenUsage |
 | SIGTERM | stateSnapshot의 최신 상태 + interruption |
 
-SIGTERM 처리는 `stateSnapshot` 패턴을 사용한다. mutable 공유 참조 객체를 모든 노드에 deps로 주입하고, 노드가 상태 변경 시 직접 업데이트한다. SIGTERM 핸들러는 이 객체를 읽어 세션에 저장한다.
+## 프롬프트 구조
 
-## 평가와의 관계
+`planner/plan/base.md` + `planner/plan/rules.md`. PromptEngine 6단계 파이프라인을 타지 않고 `generate.ts`에서 직접 Handlebars 렌더링한다.
 
-PRD 생성과 평가는 별도 시스템이다. 생성은 planner agent (plan job), 평가는 ask agent (architect)가 PRD-RUBRIC.md 기반으로 수행한다. 생성 시점에 루브릭을 주입하지 않는다(할루시네이션 방지, 관심사 분리).
+- `base.md`: directive, mode, staging path, eval report, conversation context, `{{> common/injections/action-context}}`
+- `rules.md`: 출력 프로토콜 (staging path 동적 참조), clarify 규칙, mode별 행동
 
 ## 경계
 
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
 - Triage 분류: [12-triage-routing.md](12-triage-routing.md)
 - Chat/ChoiceCard UI: [31-chat-system.md](31-chat-system.md)
+- Action Config Matrix: [01-shared-contracts.md](01-shared-contracts.md)

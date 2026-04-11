@@ -16,7 +16,7 @@ import { CacheableContent, MessageContentBlock } from "../../../../../../core/po
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
-import { selectDesignFilesByPackages } from "../detectEnvironment/designSelector";
+import { selectDesignFilesByPackages } from "../designSelector";
 import { resolveDesignDocForTask, resolveUiDocForTask } from "../documentResolver";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
