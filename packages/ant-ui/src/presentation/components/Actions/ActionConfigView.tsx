@@ -106,12 +106,12 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
     const refEntries = resolveSlotEntries(slots.refs, fileTree, undefined, warningCtx);
     let defaultRefPaths = refEntries
+      .filter(e => e.def.required)
       .flatMap(e => e.files)
       .filter(f => f.warnings.length === 0)
       .map(f => f.path);
-    const maxSel = slots.refs.find(s => s.maxSelection)?.maxSelection;
-    if (maxSel && defaultRefPaths.length > maxSel) {
-      defaultRefPaths = defaultRefPaths.slice(0, maxSel);
+    if (slots.refsMaxSelection && defaultRefPaths.length > slots.refsMaxSelection) {
+      defaultRefPaths = defaultRefPaths.slice(0, slots.refsMaxSelection);
     }
     updateActionMetadata({ refs: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
     updateActionMetadata({ context: undefined });
@@ -176,8 +176,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       next = current.filter(p => p !== path);
     } else {
       if (field === 'refs' && slots) {
-        const maxSel = slots.refs.find(s => s.maxSelection)?.maxSelection;
-        if (maxSel && current.length >= maxSel) {
+        if (slots.refsMaxSelection && current.length >= slots.refsMaxSelection) {
           next = [path];
         } else {
           next = [...current, path];
@@ -505,8 +504,7 @@ function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onCreateIn
       {entries.map(entry => {
         if (!entry.hasFiles) {
           const humanName = entry.def.humanLabel?.[lang] || entry.def.humanLabel?.en || entry.def.label[lang] || entry.def.label.en;
-          const isOptionalRef = showEmptyActions && entry.def.defaultSelected === false;
-          const showWarningStyle = showEmptyActions && !isOptionalRef;
+          const showWarningStyle = showEmptyActions && entry.def.required;
           const hasCreateIntent = showEmptyActions && !!entry.def.createIntent;
           const hasPath = !!entry.def.path;
           const dirDesc = hasPath ? getDirDescription(entry.def.path) : null;
