@@ -1,7 +1,7 @@
 /**
  * Response Parsing for DetectEnvironment Node
  * 
- * Parses: jobMode + requireRag + keywords
+ * Parses: mode + requireRag + keywords
  * (environment and profile are now determined by decompose node)
  */
 

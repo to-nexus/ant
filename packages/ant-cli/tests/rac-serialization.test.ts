@@ -25,8 +25,7 @@ function roundtrip<T>(obj: T): T {
 // ---------------------------------------------------------------------------
 
 const fullExplicitMetadata: ActionMetadata = {
-  intent: 'create-frontend',
-  basis: 'prd',
+  intent: 'gen-sys-fe',
   target: ['src/components/Button.tsx', 'src/pages/Home.tsx'],
   refs: ['docs/design.md'],
   context: ['Use TailwindCSS for styling'],
@@ -34,7 +33,7 @@ const fullExplicitMetadata: ActionMetadata = {
 
 const baseReport: DetectionReport = {
   environment: 'frontend',
-  jobMode: 'generate',
+  detectedMode: 'generate',
   profile: { language: 'TypeScript', framework: 'React' },
 } as DetectionReport;
 
@@ -72,7 +71,7 @@ describe('RAC serialization roundtrip', () => {
     expect(restored).toEqual(original);
 
     expect(restored.source).toBe('infer');
-    expect(restored.jobMode).toBe('generate');
+    expect(restored.mode).toBe('generate');
     expect(restored.tech).toBeDefined();
   });
 
@@ -113,7 +112,6 @@ describe('RAC serialization roundtrip', () => {
 
     expect(original.intent).toBeUndefined();
     expect(original.target).toBeUndefined();
-    expect(original.basis).toBeUndefined();
     expect(original.refs).toBeUndefined();
     expect(original.context).toBeUndefined();
     expect(original.documents).toBeUndefined();
@@ -123,7 +121,6 @@ describe('RAC serialization roundtrip', () => {
 
     expect(restored.intent).toBeUndefined();
     expect(restored.target).toBeUndefined();
-    expect(restored.basis).toBeUndefined();
     expect(restored.refs).toBeUndefined();
     expect(restored.context).toBeUndefined();
     expect(restored.documents).toBeUndefined();

@@ -194,6 +194,18 @@ Compare target vs current job:
 
 ## SCOPE BOUNDARY (for ask intent)
 
+### Ask Sub-type Classification
+
+When intent is \`ask\`, classify the sub-type:
+
+| Observation | askSubType |
+|-------------|-----------|
+| Quality scoring, rubric-based evaluation, assessment against criteria | \`evaluate\` |
+| Questions about Ant system, workflow, capabilities, or usage | \`ant\` |
+| General project-related questions, workspace status inquiries | \`general\` |
+
+**Constraint**: Default to \`general\` when uncertain.
+
 ### In-scope (\`inScope: true\`)
 - Ant system workflow guidance
 - Ant system prerequisite requirements

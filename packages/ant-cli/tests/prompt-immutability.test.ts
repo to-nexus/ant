@@ -37,7 +37,7 @@ function makeAssembledContext(overrides?: Partial<AssembledContext>): AssembledC
 function makeResolvedAction(overrides?: Partial<ResolvedActionContext>): ResolvedActionContext {
   return {
     source: 'infer' as const,
-    jobMode: 'generate' as const,
+    mode: 'generate' as const,
     tech: { language: 'typescript' as const, environment: 'frontend' as const },
     hasExplicitFields: false,
     documents: [
@@ -80,8 +80,7 @@ describe('ModeController.determineMode immutability', () => {
   it('does not mutate context when using refactor mode with documents', () => {
     const rac = makeResolvedAction({
       source: 'explicit',
-      jobMode: 'refactor',
-      basis: 'prd',
+      mode: 'refactor',
       documents: [
         { path: 'ui-spec.md', content: 'UI spec', role: 'ref' },
         { path: 'design.md', content: 'Design', role: 'context' },
@@ -211,8 +210,7 @@ describe('condenseContent immutability', () => {
 describe('RAC factory immutability', () => {
   it('resolveFromExplicit does not mutate actionMetadata', () => {
     const metadata: ActionMetadata = {
-      intent: 'create-frontend',
-      basis: 'prd',
+      intent: 'gen-sys-fe',
       target: ['src/App.tsx'],
       refs: ['docs/spec.md'],
       context: ['Use React'],
@@ -225,7 +223,7 @@ describe('RAC factory immutability', () => {
   });
 
   it('resolveFromExplicit does not mutate codebaseProfile', () => {
-    const metadata: ActionMetadata = { intent: 'create-frontend' };
+    const metadata: ActionMetadata = { intent: 'gen-sys-fe' };
     const profile = { language: 'TypeScript', framework: 'React' };
     const before = deepClone(profile);
 
@@ -237,7 +235,7 @@ describe('RAC factory immutability', () => {
   it('resolveFromInfer does not mutate DetectionReport', () => {
     const report: DetectionReport = {
       environment: 'frontend',
-      jobMode: 'generate',
+      detectedMode: 'generate',
       profile: { language: 'TypeScript', framework: 'React' },
     } as DetectionReport;
     const before = deepClone(report);
@@ -250,11 +248,10 @@ describe('RAC factory immutability', () => {
   it('resolveFromInfer does not mutate actionMetadata', () => {
     const report: DetectionReport = {
       environment: 'backend',
-      jobMode: 'refactor',
+      detectedMode: 'refactor',
       profile: { language: 'Go' },
     } as DetectionReport;
     const metadata: ActionMetadata = {
-      basis: 'prd',
       target: ['main.go'],
       refs: ['api.md'],
       context: ['REST API'],

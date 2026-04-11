@@ -627,21 +627,30 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     };
     resolvedAction = resolveFromExplicit(actionMetadata, codebaseProfile, fallbackHints);
     console.log(`📋 [Resolve] RAC created (explicit): intent=${actionMetadata.intent}, tech=${JSON.stringify(resolvedAction.tech)}`);
+  }
 
-    // Load documents for explicit path: ActionMetadata.refs/context → ResolvedDocument[]
-    if (fileSystem && featurePath) {
-      const documents: ResolvedDocument[] = [];
-      for (const refPath of actionMetadata.refs || []) {
-        const content = await loadFeatureFile(refPath, fileSystem, featurePath);
-        if (content) documents.push({ path: refPath, content, role: 'ref' });
-      }
-      for (const ctxPath of actionMetadata.context || []) {
-        const content = await loadFeatureFile(ctxPath, fileSystem, featurePath);
-        if (content) documents.push({ path: ctxPath, content, role: 'context' });
-      }
-      if (documents.length > 0) {
+  // Additive document loading: refs/context loaded regardless of intent presence.
+  // For explicit path → attach to RAC immediately.
+  // For infer path → store in _pendingDocuments for detectEnvironment to merge after RAC creation.
+  let pendingDocuments: ResolvedDocument[] | undefined;
+  if (fileSystem && featurePath && (actionMetadata?.refs?.length || actionMetadata?.context?.length)) {
+    const documents: ResolvedDocument[] = [];
+    for (const refPath of actionMetadata!.refs || []) {
+      const content = await loadFeatureFile(refPath, fileSystem, featurePath);
+      if (content) documents.push({ path: refPath, content, role: 'ref' });
+    }
+    for (const ctxPath of actionMetadata!.context || []) {
+      const content = await loadFeatureFile(ctxPath, fileSystem, featurePath);
+      if (content) documents.push({ path: ctxPath, content, role: 'context' });
+    }
+
+    if (documents.length > 0) {
+      if (resolvedAction) {
         resolvedAction = { ...resolvedAction, documents };
         console.log(`📋 [Resolve] RAC documents loaded: ${documents.length} (${documents.filter(d => d.role === 'ref').length} ref, ${documents.filter(d => d.role === 'context').length} context)`);
+      } else {
+        pendingDocuments = documents;
+        console.log(`📋 [Resolve] Pending documents stored for infer merge: ${documents.length}`);
       }
     }
   }
@@ -660,6 +669,7 @@ export async function resolve(state: ArchitectGraphState): Promise<ArchitectGrap
     profile,
     referenceContexts,
     resolvedAction,
+    _pendingDocuments: pendingDocuments,
     figmaAvailable,
     figmaFileKey,
     figmaStartNodeId,

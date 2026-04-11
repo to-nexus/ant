@@ -161,7 +161,7 @@ function buildSystemPrompt(
   const basePrompt = base({
     isKorean: state.language === 'ko',
     directive: state.directive,
-    mode: state.mode,
+    mode: state.plannerPhase,
     existingDocument: state.existingDocument || '',
     hasExistingDocument: !!state.existingDocument,
     evalReport: state.evalReport || '',
@@ -187,7 +187,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   // Increment recursion count each time generate is entered (ReAct loop)
   const recursionCount = (state.recursionCount || 0) + 1;
   
-  const modeLabel = state.mode === 'generate' ? 'Creating' : state.mode === 'explain' ? 'Analyzing' : 'Refining';
+  const modeLabel = state.plannerPhase === 'generate' ? 'Creating' : state.plannerPhase === 'explain' ? 'Analyzing' : 'Refining';
   console.log(`\n🤖 [Planner:Generate] ${modeLabel} PRD... (iteration ${recursionCount}/${state.recursionLimit})`);
   
   // Kanban activity banner
@@ -252,7 +252,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
           usedTemplates: ['planner/plan/base', 'planner/plan/rules'],
           injectedVariables: {
             directive: state.directive || '',
-            mode: state.mode,
+            mode: state.plannerPhase,
             hasExistingDocument: !!state.existingDocument,
             hasEvalReport: !!state.evalReport,
             hasConversation: compactionResult.entries.length > 0,
@@ -295,7 +295,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   }
   
   // Setup tools (explain mode uses read-only subset)
-  const activeTools = state.mode === 'explain' ? PLANNER_EXPLAIN_TOOLS : PLANNER_TOOLS;
+  const activeTools = state.plannerPhase === 'explain' ? PLANNER_EXPLAIN_TOOLS : PLANNER_TOOLS;
   const toolDefinitions = activeTools.map(t => ({
     name: t.name,
     description: t.description,
@@ -480,7 +480,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       timestamp: new Date().toISOString(),
       metadata: {
         hasArtifact: false,
-        mode: state.mode,
+        mode: state.plannerPhase,
       },
     });
     
@@ -497,7 +497,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   // === Explain mode: read-only Q&A — skip PRD extraction, disk write, choice card ===
   let generatedDocument: string | undefined;
   
-  if (state.mode === 'explain') {
+  if (state.plannerPhase === 'explain') {
     // Explain mode: stream answer only, save conversation for context continuity
     const explainHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
     await saveConversationToSession(state, responseText, undefined, explainHistory, compactionMeta);
@@ -508,7 +508,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     generatedDocument = prdFile?.content || undefined;
     
     // Edit-based refine: if no <file> output, read the staging file (modified by edit_file tool calls)
-    if (!generatedDocument && state.mode === 'refine') {
+    if (!generatedDocument && state.plannerPhase === 'refine') {
       const editStagingPath = path.join(state.featurePath, 'outputs/plan/prd-refine.md');
       try {
         generatedDocument = await fsPromises.readFile(editStagingPath, 'utf-8');
@@ -575,11 +575,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
             timestamp: new Date().toISOString(),
             input: {
               type: 'directive',
-              source: state.mode === 'refine' ? 'inputs/sources/prd.md' : undefined,
+              source: state.plannerPhase === 'refine' ? 'inputs/sources/prd.md' : undefined,
               summary: directiveSummary,
             },
             output: {
-              planSummary: `PRD ${state.mode} completed (${generatedDocument.length} chars)`,
+              planSummary: `PRD ${state.plannerPhase} completed (${generatedDocument.length} chars)`,
             },
           });
         }
@@ -649,7 +649,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     metadata: {
       hasArtifact: !!generatedDocument,
       artifactPath: generatedDocument ? 'outputs/plan/prd-refine.md' : undefined,
-      mode: state.mode,
+      mode: state.plannerPhase,
     },
   });
   
@@ -704,7 +704,7 @@ async function saveConversationToSession(
       metadata: {
         hasArtifact: !!generatedDocument,
         artifactPath: generatedDocument ? 'outputs/plan/prd-refine.md' : undefined,
-        mode: state.mode,
+        mode: state.plannerPhase,
       },
     });
     
@@ -744,7 +744,7 @@ async function saveConversationToSession(
     sessionData.state.directive = state.directive;
     sessionData.state.overrideDirective = state.overrideDirective;
     sessionData.state.chatSource = state.chatSource;
-    sessionData.state.mode = state.mode;
+    sessionData.state.plannerPhase = state.plannerPhase;
     sessionData.state.tokenUsage = state.tokenUsage;
     sessionData.state.jobTiming = state.deps?.stateSnapshot?.jobTiming;
     sessionData.state.recursionCount = state.recursionCount;

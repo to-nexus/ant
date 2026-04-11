@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
-import { INTENT_DEFINITIONS, getAvailableBases, type ActionMetadata } from '@ant/shared';
+import { INTENT_DEFINITIONS, type ActionMetadata } from '@ant/shared';
 import { X, Target, Crosshair, FileText, Layers, BookOpen, Zap } from 'lucide-react';
 
 interface BadgeProps {
@@ -46,7 +46,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
 
   const meta = metadata || storeMetadata;
 
-  const hasAnything = meta.explicit || meta.intent || meta.basis
+  const hasAnything = meta.explicit || meta.intent
     || (meta.target && meta.target.length > 0)
     || (meta.refs && meta.refs.length > 0)
     || (meta.context && meta.context.length > 0);
@@ -70,11 +70,6 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
     }
   };
 
-  const handleRemoveBasis = () => {
-    if (readOnly) return;
-    updateActionMetadata({ explicit: undefined, basis: undefined, refs: undefined, context: undefined });
-  };
-
   const handleRemoveRef = (ref: string) => {
     if (readOnly) return;
     updateActionMetadata({ explicit: undefined, refs: meta.refs?.filter(r => r !== ref) });
@@ -88,14 +83,6 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
   const handleRemoveTarget = (tgt: string) => {
     if (readOnly) return;
     updateActionMetadata({ explicit: undefined, target: meta.target?.filter(t => t !== tgt) });
-  };
-
-  const basisLabels: Record<string, { en: string; ko: string }> = {
-    prd: { en: 'PRD', ko: 'PRD' },
-    directive: { en: 'Directive', ko: '지시사항' },
-    'existing-doc': { en: 'Existing Doc', ko: '기존 문서' },
-    figma: { en: 'Figma', ko: 'Figma' },
-    references: { en: 'References', ko: '레퍼런스' },
   };
 
   return (
@@ -138,16 +125,6 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
           onRemove={readOnly ? undefined : () => handleRemoveTarget(tgt)}
         />
       ))}
-
-      {meta.basis && (!meta.intent || getAvailableBases(meta.intent).length > 1) && (
-        <Badge
-          icon={Layers}
-          label="basis"
-          value={basisLabels[meta.basis]?.[lang] || meta.basis}
-          color="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300"
-          onRemove={readOnly ? undefined : handleRemoveBasis}
-        />
-      )}
 
       {meta.refs?.map(ref => (
         <Badge

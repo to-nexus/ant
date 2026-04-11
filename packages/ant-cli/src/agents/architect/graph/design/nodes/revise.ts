@@ -126,9 +126,9 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
       // ✅ Track token usage for revise node
       if (result.usage) {
         const { accumulateTokenUsage, logTokenUsageToFile } = await import('../../../../common/graph/llmHelpers');
-        accumulateTokenUsage(state as any, result.usage, { taskLevel: false, jobLevel: true });
-        if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
-          state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+        accumulateTokenUsage(state, result.usage, { taskLevel: false, jobLevel: true });
+        if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+          state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
         }
         
         logTokenUsageToFile(

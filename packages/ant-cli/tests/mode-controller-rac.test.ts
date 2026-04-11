@@ -66,8 +66,8 @@ describe('ModeController explicit path', () => {
     });
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-code',
-      jobMode: 'generate',
+      intent: 'gen-code-sys',
+      mode: 'generate',
       tech: { language: 'typescript', environment: 'frontend' },
       hasExplicitFields: true,
       documents: [{ path: 'inputs/sources/prd.md', content: '# PRD', role: 'ref' }],
@@ -97,8 +97,8 @@ describe('ModeController explicit path', () => {
     });
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-code',
-      jobMode: 'generate',
+      intent: 'gen-code-sys',
+      mode: 'generate',
       tech: { language: 'typescript' },
       hasExplicitFields: true,
     };
@@ -117,8 +117,8 @@ describe('ModeController explicit path', () => {
     const ctx = minimalContext();
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-be',
-      jobMode: 'generate',
+      intent: 'gen-sys-be',
+      mode: 'generate',
       tech: { language: 'go', environment: 'backend' },
       hasExplicitFields: true,
     };
@@ -131,8 +131,8 @@ describe('ModeController explicit path', () => {
     const ctx = minimalContext();
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-fe',
-      jobMode: 'generate',
+      intent: 'gen-sys-fe',
+      mode: 'generate',
       tech: { language: 'typescript', environment: 'frontend' },
       hasExplicitFields: true,
     };
@@ -145,8 +145,8 @@ describe('ModeController explicit path', () => {
     const ctx = minimalContext();
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-fullstack',
-      jobMode: 'generate',
+      intent: 'gen-sys-full',
+      mode: 'generate',
       tech: { language: 'typescript', environment: 'fullstack' },
       hasExplicitFields: true,
     };
@@ -158,15 +158,15 @@ describe('ModeController explicit path', () => {
   });
 
   // ============================================
-  // C3: Explicit + jobMode=refactor → behavioral-debugging
+  // C3: Explicit + mode=refactor → behavioral-debugging
   // ============================================
 
   it('adds behavioral-debugging for explicit refactor', () => {
     const ctx = minimalContext();
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'refactor-code',
-      jobMode: 'refactor',
+      intent: 'rev-code',
+      mode: 'refactor',
       tech: { language: 'typescript' },
       hasExplicitFields: true,
     };
@@ -186,8 +186,8 @@ describe('ModeController explicit path', () => {
     });
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-fe',
-      jobMode: 'generate',
+      intent: 'gen-sys-fe',
+      mode: 'generate',
       tech: { language: 'typescript', framework: 'nextjs', environment: 'frontend' },
       hasExplicitFields: true,
     };
@@ -202,8 +202,8 @@ describe('ModeController explicit path', () => {
     });
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-be',
-      jobMode: 'generate',
+      intent: 'gen-sys-be',
+      mode: 'generate',
       tech: { language: 'go', environment: 'backend' },
       hasExplicitFields: true,
     };
@@ -220,8 +220,8 @@ describe('ModeController explicit path', () => {
     const ctx = minimalContext();
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-code',
-      jobMode: 'generate',
+      intent: 'gen-code-sys',
+      mode: 'generate',
       tech: { language: 'typescript' },
       hasExplicitFields: true,
     };
@@ -230,26 +230,11 @@ describe('ModeController explicit path', () => {
     expect(inj).toContain('common/injections/action-context');
   });
 
-  it('adds R2 (basis-guidance) when basis is set', () => {
-    const ctx = minimalContext();
-    const rac: ResolvedActionContext = {
-      source: 'explicit',
-      intent: 'create-code',
-      jobMode: 'generate',
-      tech: { language: 'typescript' },
-      basis: 'prd',
-      hasExplicitFields: true,
-    };
-
-    const inj = getInjections(mc, ctx, rac);
-    expect(inj).toContain('common/injections/basis-guidance');
-  });
-
-  it('adds R3 (refactor-guidance) when jobMode=refactor regardless of source', () => {
+  it('adds R3 (refactor-guidance) when mode=refactor regardless of source', () => {
     const ctx = minimalContext();
     const inferRac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'refactor',
+      mode: 'refactor',
       tech: { language: 'typescript' },
       hasExplicitFields: false,
     };
@@ -281,7 +266,7 @@ describe('ModeController infer path (regression)', () => {
     });
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'generate',
+      mode: 'generate',
       tech: { language: 'typescript' },
       hasExplicitFields: false,
     };
@@ -291,7 +276,7 @@ describe('ModeController infer path (regression)', () => {
     expect(hasInjection(inj, 'prd-spec')).toBe(false);
   });
 
-  it('includes action-context and basis-guidance when infer + hasExplicitFields=true (Phase 8: no legacy injections)', () => {
+  it('includes action-context when infer + hasExplicitFields=true (Phase 8: no legacy injections)', () => {
     const ctx = minimalContext({
       stats: {
         hasDirective: false,
@@ -306,10 +291,8 @@ describe('ModeController infer path (regression)', () => {
     });
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'generate',
+      mode: 'generate',
       tech: { language: 'typescript' },
-      basis: 'prd',
-      basisDescription: 'PRD and product requirements',
       hasExplicitFields: true,
     };
 
@@ -317,7 +300,6 @@ describe('ModeController infer path (regression)', () => {
     expect(hasInjection(inj, 'design-doc')).toBe(false);
     expect(hasInjection(inj, 'prd-spec')).toBe(false);
     expect(inj).toContain('common/injections/action-context');
-    expect(inj).toContain('common/injections/basis-guidance');
   });
 
   it('does not add action-context when no resolvedAction', () => {
@@ -332,7 +314,7 @@ describe('ModeController infer path (regression)', () => {
     });
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'generate',
+      mode: 'generate',
       tech: { language: 'typescript' },
       hasExplicitFields: false,
     };
@@ -367,7 +349,7 @@ describe('ModeController documents[] generalization (Phase 7)', () => {
     });
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'generate',
+      mode: 'generate',
       tech: { language: 'typescript' },
       hasExplicitFields: false,
       documents: [
@@ -385,7 +367,7 @@ describe('ModeController documents[] generalization (Phase 7)', () => {
     const ctx = minimalContext();
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'generate',
+      mode: 'generate',
       tech: { language: 'typescript' },
       hasExplicitFields: false,
       documents: [
@@ -401,7 +383,7 @@ describe('ModeController documents[] generalization (Phase 7)', () => {
     const ctx = minimalContext();
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'generate',
+      mode: 'generate',
       tech: { language: 'typescript', environment: 'frontend' },
       hasExplicitFields: false,
       documents: [
@@ -419,7 +401,7 @@ describe('ModeController documents[] generalization (Phase 7)', () => {
     } as any);
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'generate',
+      mode: 'generate',
       tech: { language: 'typescript' },
       hasExplicitFields: false,
       documents: [

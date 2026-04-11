@@ -10,6 +10,7 @@ import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
 import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { getEstimatingLabel, detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
+import { resolveFromExplicit } from '@ant/shared';
 
 export async function resolveNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -68,16 +69,9 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
         lastJobMode = sessionData.state.jobMode;
         console.log(`📂 [Visual:Resolve] Restored jobMode: ${lastJobMode}`);
       }
-      if (lastJobMode === 'refactor') {
-        console.log(`📂 [Visual:Resolve] Migrating legacy jobMode 'refactor' → 'generate'`);
-        lastJobMode = 'generate';
-      }
       if (sessionData.state?.availableSketchPaths && Array.isArray(sessionData.state.availableSketchPaths)) {
         availableSketchPaths = sessionData.state.availableSketchPaths;
-        console.log(`📂 [Visual:Resolve] Restored availableSketchPaths from session (${availableSketchPaths!.length} paths)`);
-      } else if (sessionData.state?.availableDraftPaths && Array.isArray(sessionData.state.availableDraftPaths)) {
-        availableSketchPaths = sessionData.state.availableDraftPaths;
-        console.log(`📂 [Visual:Resolve] Restored availableSketchPaths from legacy session (${availableSketchPaths!.length} paths)`);
+        console.log(`📂 [Visual:Resolve] Restored availableSketchPaths (${availableSketchPaths!.length} paths)`);
       }
       if (sessionData.state?.basePrompt) {
         lastBasePrompt = sessionData.state.basePrompt;
@@ -86,9 +80,6 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
       if (sessionData.state?.sketchVariations && Array.isArray(sessionData.state.sketchVariations)) {
         lastSketchVariations = sessionData.state.sketchVariations;
         console.log(`📂 [Visual:Resolve] Restored sketchVariations (${lastSketchVariations!.length} variations)`);
-      } else if (sessionData.state?.draftVariations && Array.isArray(sessionData.state.draftVariations)) {
-        lastSketchVariations = sessionData.state.draftVariations;
-        console.log(`📂 [Visual:Resolve] Restored sketchVariations from legacy session (${lastSketchVariations!.length} variations)`);
       }
 
       // Restore clarify count from conversation (count assistant→user pairs)
@@ -171,6 +162,14 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve', 0);
   }
 
+  // RAC creation: explicit path only (infer path creates RAC in classify node)
+  const actionMetadata = state.actionMetadata;
+  let resolvedAction = state.resolvedAction;
+  if (!resolvedAction && actionMetadata?.intent) {
+    resolvedAction = resolveFromExplicit(actionMetadata);
+    console.log(`📋 [Visual:Resolve] RAC created (explicit): intent=${actionMetadata.intent}, mode=${resolvedAction.mode}`);
+  }
+
   const result: Partial<VisualGraphState> = {
     conversation,
     isResume,
@@ -184,6 +183,7 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     overrideDirective: parsedDirective || state.overrideDirective,
     _uiLocale: state._uiLocale || detectUILocale(state.directive),
     _phaseTimings: { ...state._phaseTimings, resolve: Date.now() - phaseStart },
+    ...(resolvedAction ? { resolvedAction } : {}),
   };
 
   // Detect clarify response: last session conversation entry is an assistant clarify question (not a sketch delivery)

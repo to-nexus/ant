@@ -19,7 +19,7 @@ function buildDesignJobRecord(state: DesignGraphState): { user: ConversationEntr
     role: 'user',
     content: state.directive || state.overrideDirective || '',
     timestamp,
-    metadata: { jobId: state.jobId || (state as any)._httpJobId, boundary },
+    metadata: { jobId: state.jobId || state._httpJobId, boundary },
   };
 
   const assistant: ConversationEntry = {
@@ -30,7 +30,7 @@ function buildDesignJobRecord(state: DesignGraphState): { user: ConversationEntr
       state.planText && `Plan: ${state.planText.substring(0, 500)}`,
     ].filter(Boolean).join('\n'),
     timestamp,
-    metadata: { jobId: state.jobId || (state as any)._httpJobId, boundary, taskCount: tasks.length, filesWritten: files.length },
+    metadata: { jobId: state.jobId || state._httpJobId, boundary, taskCount: tasks.length, filesWritten: files.length },
   };
 
   return { user, assistant };
@@ -66,7 +66,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       priority: state.currentTask.priority
     } : undefined;
     await state.deps.workflowUpdate.enterNode(
-      state._httpJobId, 'learn', (state as any).workerId ?? 0, taskInfo,
+      state._httpJobId, 'learn', state.workerId ?? 0, taskInfo,
       undefined, state.recursionCount, state.recursionLimit
     );
   }
@@ -74,7 +74,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // ✅ Update Kanban to show all tasks completed
   // Skip in worker context — orchestrator handles kanban for parallel mode
   // (worker's learn would overwrite multi-task kanban with only this worker's completed tasks)
-  const _workerId = (state as any).workerId;
+  const _workerId = state.workerId;
   const _isWorkerContext = _workerId !== undefined && _workerId !== null;
   
   // Clear stale orchestrator interruption when all tasks completed on resume.
@@ -82,25 +82,26 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // even though the job succeeded.
   const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
   const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts', 'call_limit', 'figma_rate_limited', 'figma_connection_lost'];
-  if (isLastTask && orchestratorReasons.includes((state as any).interruption?.reason)) {
-    const failedTasks = (state as any).failedTasks;
+  const staleOrchReason = state.interruption?.reason;
+  if (isLastTask && staleOrchReason != null && orchestratorReasons.includes(staleOrchReason)) {
+    const failedTasks = state.failedTasks;
     if (failedTasks && failedTasks.length > 0) {
-      console.log(`⚠️  [Design Learn] ${failedTasks.length} task(s) failed — preserving ${(state as any).interruption.reason} interruption`);
+      console.log(`⚠️  [Design Learn] ${failedTasks.length} task(s) failed — preserving ${staleOrchReason} interruption`);
     } else {
-      console.log(`✅ [Design Learn] All tasks completed — clearing stale ${(state as any).interruption.reason} interruption`);
-      (state as any).interruption = undefined;
+      console.log(`✅ [Design Learn] All tasks completed — clearing stale ${staleOrchReason} interruption`);
+      state.interruption = undefined;
     }
   }
 
   // ✅ Skip session write / Kanban / spec_complete card when parallelOrchestrator
   // already saved failure/interruption state. If learn overwrites it, failedTasks
   // and interruption details are lost (session.state = full replace).
-  const hasOrchestratorFailure = (state as any).interruption?.reason === 'tasks_failed'
-    || (state as any).interruption?.reason === 'recursion_limit'
-    || (state as any).interruption?.reason === 'consecutive_timeouts'
-    || (state as any).interruption?.reason === 'call_limit'
-    || (state as any).interruption?.reason === 'figma_rate_limited'
-    || (state as any).interruption?.reason === 'figma_connection_lost';
+  const hasOrchestratorFailure = state.interruption?.reason === 'tasks_failed'
+    || state.interruption?.reason === 'recursion_limit'
+    || state.interruption?.reason === 'consecutive_timeouts'
+    || state.interruption?.reason === 'call_limit'
+    || state.interruption?.reason === 'figma_rate_limited'
+    || state.interruption?.reason === 'figma_connection_lost';
   const hasDesignError = Boolean(state.designError);
   const hasEarlyTermination = hasOrchestratorFailure || hasDesignError;
 
@@ -150,11 +151,14 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     
     const designDirRel = path.join(featureDirRel, DESIGN_DIR);
     
-    const isUiDesign = state.detectionReport?.workType === 'ui-design'
-      || state.uiDesignSource != null;
+    const isUiDesign = state.detectionReport?.detectedIntentGroup === 'design-ui'
+      || state.resolvedAction?.intent === 'gen-ui-figma'
+      || state.resolvedAction?.intent === 'gen-ui-ref'
+      || state.resolvedAction?.intent === 'gen-ui-desc'
+      || state.resolvedAction?.intent === 'rev-ui';
     
-    if (!state.detectionReport?.workType && state.uiDesignSource) {
-      console.warn(`⚠️  [Learn] detectionReport.workType missing — falling back to uiDesignSource="${state.uiDesignSource}"`);
+    if (!state.detectionReport?.detectedIntentGroup && state.resolvedAction?.intent) {
+      console.warn(`⚠️  [Learn] detectionReport.detectedIntentGroup missing — falling back to intent="${state.resolvedAction.intent}"`);
     }
 
     const targetSubdir = isUiDesign ? DESIGN_SUBDIR.UI : DESIGN_SUBDIR.SYSTEM;
@@ -258,7 +262,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   // ✅ Job completion token usage summary
   if (!_isWorkerContext && !hasEarlyTermination) {
-    const jobTokens = (state as any).tokenUsage;
+    const jobTokens = state.tokenUsage;
     if (jobTokens) {
       console.log(`\n📊 [Learn] Job Token Usage Summary:`);
       console.log(`   Total: ${jobTokens.totalTokens || 0} tokens`);
@@ -283,8 +287,8 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     
     if (!hasEarlyTermination) {
       try {
-        const jobTokens = (state as any).tokenUsage;
-        const jobTiming = (state as any).jobTiming;
+        const jobTokens = state.tokenUsage;
+        const jobTiming = state.jobTiming;
         const execLogger = getExecutionLogger({
           featurePath: state.context.featurePath,
           jobId: state._httpJobId,
@@ -319,7 +323,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   // ✅ Spec completion choice card: offer to start development
   // Skip in worker context (main graph's learn handles it) and when orchestrator had failures
-  if (!_isWorkerContext && !hasEarlyTermination && state.detectionReport?.workType === 'spec' && !state.awaitingClarify) {
+  if (!_isWorkerContext && !hasEarlyTermination && state.detectionReport?.detectedIntentGroup === 'design-spec' && !state.awaitingClarify) {
     try {
       const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
       const chatAPI = getChatAPIClient();
@@ -372,7 +376,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 async function saveSessionRun(state: DesignGraphState): Promise<void> {
   if (!state.deps?.session) return;
   
-  const workerId = (state as any).workerId;
+  const workerId = state.workerId;
   if (workerId !== undefined && workerId !== null) return;
   
   const decisions = extractDesignDecisions(state).split('\n').filter(d => d.trim());
@@ -418,8 +422,8 @@ async function saveSessionRun(state: DesignGraphState): Promise<void> {
   );
 
   // ✨ Mark job as completed
-  const completedJobTiming = (state as any).jobTiming ? {
-    ...(state as any).jobTiming,
+  const completedJobTiming = state.jobTiming ? {
+    ...state.jobTiming,
     completedAt: new Date().toISOString()
   } : undefined;
 
@@ -457,10 +461,10 @@ async function saveSessionRun(state: DesignGraphState): Promise<void> {
         completedTasks: state.completedTasks || [],
         completedTasksDetails: state.completedTasksDetails || [],
         interruption: existingSession.state?.interruption,
-        jobId: (state as any).jobId,  // ✨ Preserve jobId
+        jobId: state.jobId,  // ✨ Preserve jobId
         jobTiming: completedJobTiming,  // ✨ Mark as completed
-        tokenUsage: (state as any).tokenUsage,  // ✅ Preserve job-level token usage
-        estimatingTokenUsage: (state as any)._estimatingTokenUsage,  // ✅ Preserve estimating phase breakdown
+        tokenUsage: state.tokenUsage,  // ✅ Preserve job-level token usage
+        estimatingTokenUsage: state._estimatingTokenUsage,  // ✅ Preserve estimating phase breakdown
         directives: directivesArray,  // ✅ Save directives array (newest first)
         overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
         chatSource: state.chatSource,  // ✅ Save chat source flag

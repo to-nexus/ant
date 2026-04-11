@@ -65,7 +65,7 @@ export async function generateTaskKeywords(
     { name: task.name, description: task.description },
     state.directive || '',
     state.profile,
-    state.detectionReport?.jobMode || 'unknown',
+    state.detectionReport?.detectedMode || 'unknown',
     state.referenceRequests,
     directoryTree
   );
@@ -89,7 +89,7 @@ export async function generateTaskKeywords(
             taskName: task.name,
             taskDescription: task.description ? `[${task.description.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            jobMode: state.detectionReport?.jobMode,
+            detectedMode: state.detectionReport?.detectedMode,
             hasReferences: !!(state.referenceRequests?.length),
             hasDirectoryTree: !!directoryTree,
           },
@@ -103,17 +103,17 @@ export async function generateTaskKeywords(
   try {
     // ✅ Use centralized LLM wrapper with automatic token tracking
     const { invokeWithTracking, logTokenUsageToFile, getTaskTokenUsage, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-    const beforeUsage = getTaskTokenUsage(state as any);
+    const beforeUsage = getTaskTokenUsage(state);
     const response = await invokeWithTracking(
       llm,
       [{ role: 'user', content: prompt }],
-      state as any,
+      state,
       { temperature: LLM_TEMPERATURE.PLAN_KEYWORD, maxTokens: LLM_MAX_TOKENS.KEYWORD, enableThinking: false }
     );
-    updateKanbanTokenUsage(state as any);
+    updateKanbanTokenUsage(state);
 
     // Log to debug/tokens/
-    const afterUsage = getTaskTokenUsage(state as any);
+    const afterUsage = getTaskTokenUsage(state);
     const kwCallUsage = {
       inputTokens: afterUsage.inputTokens - beforeUsage.inputTokens,
       outputTokens: afterUsage.outputTokens - beforeUsage.outputTokens,

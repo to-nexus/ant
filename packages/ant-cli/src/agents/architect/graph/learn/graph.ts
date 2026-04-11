@@ -1,50 +1,49 @@
-import { StateGraph } from "@langchain/langgraph";
+import { Annotation, StateGraph } from "@langchain/langgraph";
 import { LearnGraphState } from "./state";
 import { decompose } from "./nodes/decompose";
 import { resolve } from "./nodes/resolve";
 import { store } from "./nodes/store";
 import { triage, routeAfterTriage } from "../../../common/nodes/triage";
 
+const LearnAnnotation = Annotation.Root({
+  context: Annotation<any>,
+  directive: Annotation<any>,
+  deps: Annotation<any>,
+  command: Annotation<any>,
+  targets: Annotation<any>,
+  texts: Annotation<any>,
+  reportFilePath: Annotation<any>,
+  triageResult: Annotation<any>,
+  workspaceState: Annotation<any>,
+  overrideDirective: Annotation<any>,
+  skipTriage: Annotation<any>,
+  actionMetadata: Annotation<any>,
+  chatSource: Annotation<any>,
+  currentJob: Annotation<any>,
+  currentAgent: Annotation<any>,
+  featurePath: Annotation<any>,
+  _httpJobId: Annotation<any>,
+  _phaseTimings: Annotation<any>,
+  _uiLocale: Annotation<any>,
+  isResume: Annotation<any>,
+  tokenUsage: Annotation<any>,
+  resolvedAction: Annotation<any>,
+});
+
 export function buildLearnGraph() {
-  const graph = new StateGraph<LearnGraphState>({
-    channels: {
-      context: null as any,
-      directive: null as any,
-      deps: null as any,
-      command: null as any,
-      targets: null as any,
-      texts: null as any,
-      reportFilePath: null as any,
-      // ✅ Triage System channels
-      triageResult: null as any,
-      workspaceState: null as any,
-      overrideDirective: null as any,
-      skipTriage: null as any,
-      actionMetadata: null as any,
-      chatSource: null as any,
-      currentJob: null as any,
-      currentAgent: null as any,
-      _httpJobId: null as any,
-      tokenUsage: null as any,
-    } as any,
-  } as any);
+  const graph = new StateGraph(LearnAnnotation);
   
-  // ✅ Triage: analyze intent and prerequisites
   graph.addNode("triage", triage as any);
-  graph.addNode("decompose", decompose as any);  // LLM이 자연어 분해
-  graph.addNode("resolve", resolve as any);      // 명령 실행
+  graph.addNode("decompose", decompose as any);
+  graph.addNode("resolve", resolve as any);
   graph.addNode("store", store as any);
 
-  // ✅ Start with triage
   graph.addEdge("__start__" as any, "triage" as any);
   
-  // ✅ Route after triage: proceed to decompose or end (redirect/ask)
   graph.addConditionalEdges(
     "triage" as any,
     (state: LearnGraphState) => {
-      // ✅ Use common router with custom detectEnvironment → decompose mapping
       const route = routeAfterTriage(state);
-      // Learn doesn't have detectEnvironment, map to decompose
       if (route === 'detectEnvironment') {
         return 'decompose';
       }

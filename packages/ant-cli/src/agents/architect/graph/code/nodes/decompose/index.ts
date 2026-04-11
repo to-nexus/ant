@@ -74,7 +74,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 EXPLAIN MODE: Skip decompose, create single explain task
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state.detectionReport?.jobMode === 'explain') {
+  if (state.detectionReport?.detectedMode === 'explain') {
     console.log('💡 [Decompose] Explain mode detected - creating single explanation task\n');
     
     const explainTask: CodeTask = {
@@ -166,7 +166,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   // Inter-Job Context Bridge: pre-determine boundary classification
   const suggestedBoundary: 'heavyweight' | 'lightweight' | 'pending' =
-    state.detectionReport?.jobMode === 'explain' ? 'lightweight'
+    state.detectionReport?.detectedMode === 'explain' ? 'lightweight'
     : hasDocuments ? 'heavyweight'
     : (state.specDocs && Object.keys(state.specDocs).length > 0) ? 'pending'
     : 'lightweight';
@@ -307,7 +307,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     hasDocuments,
     specDoc,
     specApiContract,
-    mode: state.detectionReport?.jobMode || 'unknown',
+    mode: state.detectionReport?.detectedMode || 'unknown',
     profile: state.profile,
     designDocsMeta,
     specDocsMeta,
@@ -492,7 +492,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  validateTasks(tasks, state.detectionReport?.jobMode, state.directive, state.designDocs);
+  validateTasks(tasks, state.detectionReport?.detectedMode, state.directive, state.designDocs);
   
   const { taskQueue, featureTasks } = createTaskQueue(tasks);
   logTaskSummary(tasks, referenceRequests);
@@ -524,7 +524,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     console.log(`✅ Environment: ${parsedProfile.environment}`);
     console.log(`   Reasoning: ${parsedProfile.environmentReasoning}`);
     
-    // ✅ Display profile in Chat UI (environment + language/framework only; jobMode already shown by detectEnv)
+    // ✅ Display profile in Chat UI (environment + language/framework only; detectedMode already shown by detectEnv)
     const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
     const { formatProfileForChat } = await import('../../../../../../core/types/detection');
     const chatAPI = getChatAPIClient();

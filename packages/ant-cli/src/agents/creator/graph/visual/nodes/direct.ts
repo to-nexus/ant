@@ -27,14 +27,14 @@ const MAX_TOOL_ROUNDS = 5;
 export async function directNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
   const tokensBefore = {
-    input: (state as any).tokenUsage?.inputTokens ?? 0,
-    output: (state as any).tokenUsage?.outputTokens ?? 0,
+    input: state.tokenUsage?.inputTokens ?? 0,
+    output: state.tokenUsage?.outputTokens ?? 0,
   };
 
   console.log('\n🎬 [Visual:Direct] Art direction analysis...');
 
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('direct', state._uiLocale as any), 'direct');
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('direct', state._uiLocale === 'ko' ? 'ko' : 'en'), 'direct');
   }
 
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -125,7 +125,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     recentConv = result.entries;
     convSummary = result.summary;
     if (result.tokenUsage) {
-      accumulateTokenUsage(state as any, result.tokenUsage, { taskLevel: false, jobLevel: true });
+      accumulateTokenUsage(state, result.tokenUsage, { taskLevel: false, jobLevel: true });
     }
     compactionMeta = result.wasCompacted
       ? { summary: result.summary!, summarizedCount: allButLast.length - VISUAL_COMPACTION_WINDOW }
@@ -231,7 +231,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       directLLM, messages, undefined, state, MAX_TOOL_ROUNDS,
     );
     if (usage) {
-      accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true });
+      accumulateTokenUsage(state, usage, { taskLevel: true, jobLevel: true });
     }
 
     result = extractJsonFromLlmResponse(rawContent, { tag: 'direct' });
@@ -294,14 +294,14 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage as any);
   }
 
-  const deltaInput = ((state as any).tokenUsage?.inputTokens ?? 0) - tokensBefore.input;
-  const deltaOutput = ((state as any).tokenUsage?.outputTokens ?? 0) - tokensBefore.output;
+  const deltaInput = (state.tokenUsage?.inputTokens ?? 0) - tokensBefore.input;
+  const deltaOutput = (state.tokenUsage?.outputTokens ?? 0) - tokensBefore.output;
   if (deltaInput > 0 || deltaOutput > 0) {
     upsertPhaseTokenUsage(state, 'direct', {
       inputTokens: deltaInput,
       outputTokens: deltaOutput,
       totalTokens: deltaInput + deltaOutput,
-    }, getEstimatingLabel('direct', state._uiLocale as any));
+    }, getEstimatingLabel('direct', state._uiLocale === 'ko' ? 'ko' : 'en'));
   }
 
   if (state.deps?.workflowUpdate && state._httpJobId) {

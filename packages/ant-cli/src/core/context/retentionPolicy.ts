@@ -4,12 +4,13 @@
  * Decides whether to preserve, compact, or discard conversation history
  * between sequential tasks in a job.
  *
- * Issue 3 fix: explicit spec workType discard branch.
+ * Issue 3 fix: explicit spec intentGroup discard branch.
  */
 
 import type { ConversationMessage } from './types';
 import { compactRun } from './compactRun';
 import { TokenBudgetManager } from '../utils/tokenBudget';
+import type { IntentGroup } from '@ant/shared';
 
 export interface RetentionDecision {
   action: 'discard' | 'compact' | 'preserve';
@@ -18,7 +19,7 @@ export interface RetentionDecision {
 
 export interface RetentionContext {
   jobType: 'code' | 'design';
-  workType?: 'system-design' | 'ui-design' | 'spec';
+  intentGroup?: IntentGroup;
   currentTask: { targetFile?: string; id: string };
   nextTask?: { targetFile?: string; id: string };
   conversationHistory: ConversationMessage[];
@@ -37,15 +38,15 @@ export function decideRetention(ctx: RetentionContext): RetentionDecision {
   }
 
   // Issue 3: spec uses accumulated doc artifacts, no conversation needed
-  if (ctx.workType === 'spec') {
+  if (ctx.intentGroup === 'design-spec') {
     return { action: 'discard', reason: 'spec uses accumulated doc artifacts' };
   }
 
-  if (ctx.workType === 'ui-design') {
+  if (ctx.intentGroup === 'design-ui') {
     return { action: 'discard', reason: 'ui-design uses disk-based loadPreviousUiDocs' };
   }
 
-  if (ctx.workType === 'system-design') {
+  if (ctx.intentGroup === 'design-system') {
     const sameFile =
       ctx.currentTask.targetFile &&
       ctx.nextTask.targetFile &&
@@ -60,7 +61,7 @@ export function decideRetention(ctx: RetentionContext): RetentionDecision {
     return { action: 'discard', reason: 'different targetFile' };
   }
 
-  return { action: 'discard', reason: 'fallback — unknown work type' };
+  return { action: 'discard', reason: 'fallback — unknown intent group' };
 }
 
 /**

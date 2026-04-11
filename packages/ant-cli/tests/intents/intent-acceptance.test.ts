@@ -6,7 +6,6 @@ import '../../src/core/prompt/engine/TemplateComposer';
 import {
   resolveFromExplicit,
   getConfigSlots,
-  getAvailableBases,
   deriveFromIntent,
 } from '@ant/shared';
 import type { ResolvedDocument } from '@ant/shared';
@@ -49,16 +48,14 @@ function buildPromptArgs(fixture: IntentFixture, label: string) {
 
 describe('Intent Acceptance', () => {
   for (const fixture of FIXTURES) {
-    const label = `${fixture.intent}${fixture.metadata.basis ? ':' + fixture.metadata.basis : ''}`;
+    const label = fixture.intent;
 
     describe(label, () => {
 
       // ── Stage 1: Config Matrix ──
 
       it('config matrix has valid slots', () => {
-        const basis = fixture.metadata.basis!;
-        expect(getAvailableBases(fixture.intent)).toContain(basis);
-        const slots = getConfigSlots(fixture.intent, basis);
+        const slots = getConfigSlots(fixture.intent);
         expect(slots).not.toBeNull();
       });
 
@@ -70,10 +67,10 @@ describe('Intent Acceptance', () => {
 
         expect(derived.agent).toBe(fixture.routing.agent);
         expect(derived.jobType).toBe(fixture.routing.jobType);
-        expect(rac.jobMode).toBe(fixture.routing.jobMode);
+        expect(rac.mode).toBe(fixture.routing.mode);
 
-        if (fixture.routing.workType) {
-          expect(rac.workType).toBe(fixture.routing.workType);
+        if (fixture.routing.intentGroup) {
+          expect(rac.intentGroup).toBe(fixture.routing.intentGroup);
         }
         if (fixture.routing.environment) {
           expect(rac.tech.environment).toBe(fixture.routing.environment);
@@ -84,9 +81,6 @@ describe('Intent Acceptance', () => {
         }
         if (fixture.metadata.context?.length) {
           expect(rac.context).toEqual(fixture.metadata.context);
-        }
-        if (fixture.metadata.basis) {
-          expect(rac.basis).toBe(fixture.metadata.basis);
         }
       });
 

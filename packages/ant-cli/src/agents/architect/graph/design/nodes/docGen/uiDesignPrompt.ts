@@ -21,7 +21,7 @@ import { compactAndPruneHistory } from '../../../../../../core/utils/historyMana
 import { buildSourceDocsForTask } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
 import type { FigmaNodeSummary } from '@ant/shared';
-import { designDirOf, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
+import { designDirOf, DESIGN_DIR, DESIGN_SUBDIR, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -135,14 +135,15 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   });
   
   // ✅ 3. PRD Context (if available) — per-task selective injection
+  const figmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   const effectiveSourceDocs = state.sourceDocuments ? { ...state.sourceDocuments } : {};
-  if (state.uiDesignSource === 'figma' && state.figmaConfig) {
+  if (figmaMode && state.figmaConfig) {
     effectiveSourceDocs['figma.json'] = JSON.stringify(state.figmaConfig, null, 2);
   }
   const taskSourceFiles = (task as DesignTask)?.sourceFiles
     ? [...(task as DesignTask).sourceFiles!]
     : undefined;
-  if (state.uiDesignSource === 'figma' && taskSourceFiles && !taskSourceFiles.includes('figma.json')) {
+  if (figmaMode && taskSourceFiles && !taskSourceFiles.includes('figma.json')) {
     taskSourceFiles.push('figma.json');
   }
   const sourceDocsForTask = buildSourceDocsForTask(
@@ -179,7 +180,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
-      const logSuffix = state.uiDesignSource === 'figma' ? 'by-figma' : 'by-ref';
+      const logSuffix = figmaMode ? 'by-figma' : 'by-ref';
       await logPrompt(
         state.context.featurePath,
         jobId,
@@ -281,7 +282,8 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     console.log(`🔔 [FreshPrompt] Adding "Next Steps" instruction for ${task?.id} → ${targetDoc}`);
     const { FilePromptAdapter } = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
     const adapter = new FilePromptAdapter();
-    const continuationTemplate = state.uiDesignSource === 'figma'
+    const freshFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
+    const continuationTemplate = freshFigmaMode
       ? 'design/phases/execute/injections/ui-continuation-by-figma'
       : 'design/phases/execute/injections/ui-continuation';
     const continuationText = await adapter.render(continuationTemplate, { targetDoc });
@@ -299,7 +301,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
-      const freshLogSuffix = state.uiDesignSource === 'figma' ? 'by-figma' : 'by-ref';
+      const freshLogSuffix = freshFigmaMode ? 'by-figma' : 'by-ref';
       await logPrompt(
         state.context.featurePath,
         jobIdFresh,
@@ -382,7 +384,7 @@ function countDescendants(parent: FigmaNodeSummary, all: FigmaNodeSummary[]): nu
  * - Examples of file names
  */
 function buildResourcesSummary(state: DesignGraphState): string {
-  const isFigmaMode = state.uiDesignSource === 'figma';
+  const isFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   let resourcesSummary = '\n\n# Available Resources\n\n';
 
   if (isFigmaMode) {
@@ -511,7 +513,7 @@ async function loadPreviousUiDocs(
 /**
  * Build system prompt for UI Design generation
  * 
- * Loads design/phases/execute/base-ui-design-{by-ref|by-figma}.md based on state.uiDesignSource
+ * Loads design/phases/execute/base-ui-design-{by-ref|by-figma}.md based on resolvedAction.intent
  * - Includes corresponding rules and injection guides via partials
  * - Injects previousChaptersSummary to prevent duplicate content
  * - Injects siblingTasks for MECE awareness in parallel chapters
@@ -603,7 +605,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   }
   
   // Build sibling tasks summary for MECE awareness in parallel chapters
-  const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string }> = (state as any)._allTasksSummary || [];
+  const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string }> = state._allTasksSummary || [];
   const siblingTasks = allTasks
     .filter(t => t.targetFile === actualTargetFile && t.id !== taskId)
     .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 200) || ''}`)
@@ -619,13 +621,13 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     forceAppend,
     pathPattern,
     siblingTasks: siblingTasks || '',
-    jobMode: state.detectionReport?.jobMode,
+    detectedMode: state.detectionReport?.detectedMode,
     userLanguage: state.context.userLanguage || 'en',
     resolvedAction: state.resolvedAction,
   };
 
-  const isFigmaMode = state.uiDesignSource === 'figma';
-  const templateSuffix = isFigmaMode ? 'by-figma' : 'by-ref';
+  const sysFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
+  const templateSuffix = sysFigmaMode ? 'by-figma' : 'by-ref';
   const templatePath = `design/phases/execute/base-ui-design-${templateSuffix}`;
 
   const template = await (promptPort as any).deps?.promptPort?.render(templatePath, injectedVariables);
@@ -656,7 +658,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
           injectedVariables: {
             taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
             targetFile: injectedVariables.targetFile,
-            jobMode: injectedVariables.jobMode,
+            detectedMode: injectedVariables.detectedMode,
             isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
             forceAppend: injectedVariables.forceAppend,
             pathPattern: injectedVariables.pathPattern,

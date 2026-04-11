@@ -49,7 +49,7 @@ export interface JobModeOutput {
   description: string;
 }
 
-export interface JobMode {
+export interface JobModeSlot {
   id: string;
   description: string;  // Direct text
   detection: DetectionCondition;
@@ -66,7 +66,7 @@ export interface JobDefinition {
   id: string;
   agent: string;
   description: string;  // Direct text
-  modes: JobMode[];
+  modes: JobModeSlot[];
   redirect_signals: RedirectSignals;
 }
 

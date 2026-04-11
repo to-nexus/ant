@@ -79,6 +79,7 @@ export interface ChatMessageData {
   timestamp: string;
   jobId?: string;
   isStreaming?: boolean;
+  actionMetadata?: import('@ant/shared').ActionMetadata;
 }
 
 export interface ChatSessionData {

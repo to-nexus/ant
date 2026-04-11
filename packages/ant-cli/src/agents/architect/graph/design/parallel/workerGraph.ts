@@ -12,7 +12,7 @@
  * with WorkerGraphBuilder but has no effect for design tasks.
  */
 
-import { StateGraph } from '@langchain/langgraph';
+import { Annotation, StateGraph } from '@langchain/langgraph';
 import type { DesignGraphState } from '../state';
 import { plan } from '../nodes/plan';
 import { docGen } from '../nodes/docGen/index';
@@ -39,7 +39,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   // ✅ Increment recursion count (per-worker, track node execution for UI gauge)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
-  const workerId = (state as any).workerId ?? 0;
+  const workerId = state.workerId ?? 0;
   
   // Workflow instrumentation
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -59,8 +59,8 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Gate 0: User stop requested — do NOT mark task as completed
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const isStopRequested = typeof (state as any)._isStopRequested === 'function'
-    ? (state as any)._isStopRequested()
+  const isStopRequested = typeof state._isStopRequested === 'function'
+    ? state._isStopRequested()
     : false;
 
   if (isStopRequested) {
@@ -135,11 +135,11 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     const { TaskTimingHelper } = await import('../../code/state');
     const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
 
-    const taskTokenUsage = getTaskTokenUsage(state as any);
+    const taskTokenUsage = getTaskTokenUsage(state);
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
 
     if (taskTokenUsage) {
-      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
+      accumulateTokenUsage(state, taskTokenUsage, { taskLevel: false, jobLevel: true });
     }
 
     console.log(`✅ [Worker] Design task "${completedTask.name}" completed!`);
@@ -190,7 +190,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       conversationHistory: [],
       files: [],
       fileErrors: undefined,
-      tokenUsage: (state as any).tokenUsage,
+      tokenUsage: state.tokenUsage,
       _docGenCallIndex: 0,
       _noOutputCallCount: 0,
       _callLimitReached: false,
@@ -212,76 +212,75 @@ async function workerLearn(state: DesignGraphState): Promise<Partial<DesignGraph
   return learn(state) as any;
 }
 
+const DesignWorkerSubgraphAnnotation = Annotation.Root({
+  context: Annotation<any>,
+  workspaceConfig: Annotation<any>,
+  deps: Annotation<any>,
+  detectionReport: Annotation<any>,
+  designError: Annotation<any>,
+  prd: Annotation<any>,
+  directive: Annotation<any>,
+  design: Annotation<any>,
+  taskQueue: Annotation<any>,
+  currentTask: Annotation<any>,
+  completedTasks: Annotation<any>,
+  completedTasksDetails: Annotation<any>,
+  jobId: Annotation<any>,
+  jobTiming: Annotation<any>,
+  _currentTaskTokenUsage: Annotation<any>,
+  tokenUsage: Annotation<any>,
+  _estimatingTokenUsage: Annotation<any>,
+  planText: Annotation<any>,
+  files: Annotation<any>,
+  filesToDelete: Annotation<any>,
+  lessons: Annotation<any>,
+  llmResponse: Annotation<any>,
+  conversationHistory: Annotation<any>,
+  _httpJobId: Annotation<any>,
+  _phaseTimings: Annotation<any>,
+  _uiLocale: Annotation<any>,
+  overrideDirective: Annotation<any>,
+  chatSource: Annotation<any>,
+  skipTriage: Annotation<any>,
+  triageResult: Annotation<any>,
+  workspaceState: Annotation<any>,
+  currentAgent: Annotation<any>,
+  currentJob: Annotation<any>,
+  uiReferences: Annotation<any>,
+  uiAssetsList: Annotation<any>,
+  figmaConfig: Annotation<any>,
+  figmaExplorationResult: Annotation<any>,
+  isResume: Annotation<any>,
+  existingDesignDocs: Annotation<any>,
+  sourceDocuments: Annotation<any>,
+  recursionCount: Annotation<any>,
+  recursionLimit: Annotation<any>,
+  interruption: Annotation<any>,
+  awaitingDetectClarify: Annotation<any>,
+  awaitingClarify: Annotation<any>,
+  _docGenCallIndex: Annotation<any>,
+  _noOutputCallCount: Annotation<any>,
+  _callLimitReached: Annotation<any>,
+  _toolResultCache: Annotation<any>,
+  fileErrors: Annotation<any>,
+  // Figma MCP connection health
+  _figmaConsecutiveErrors: Annotation<any>,
+  _figmaConnectionLost: Annotation<any>,
+  // MECE: all sibling tasks for scope awareness
+  _allTasksSummary: Annotation<any>,
+  // Worker-specific
+  workerId: Annotation<any>,
+  _taskCompleted: Annotation<any>,
+  _isStopRequested: Annotation<any>,
+});
+
 /**
  * Build a design worker subgraph.
  *
  * @param _includeInstallValidate - Ignored for design tasks (API compat only)
  */
 function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
-  const graph = new StateGraph<DesignGraphState>({
-    channels: {
-      context: null as any,
-      workspaceConfig: null as any,
-      deps: null as any,
-      detectionReport: null as any,
-      designError: null as any,
-      prd: null as any,
-      directive: null as any,
-      design: null as any,
-      taskQueue: null as any,
-      currentTask: null as any,
-      completedTasks: null as any,
-      completedTasksDetails: null as any,
-      jobId: null as any,
-      jobTiming: null as any,
-      _currentTaskTokenUsage: null as any,
-      tokenUsage: null as any,
-      _estimatingTokenUsage: null as any,
-      planText: null as any,
-      files: null as any,
-      filesToDelete: null as any,
-      lessons: null as any,
-      llmResponse: null as any,
-      conversationHistory: null as any,
-      _httpJobId: null as any,
-      _phaseTimings: null as any,
-      _uiLocale: null as any,
-      overrideDirective: null as any,
-      chatSource: null as any,
-      skipTriage: null as any,
-      triageResult: null as any,
-      workspaceState: null as any,
-      currentAgent: null as any,
-      currentJob: null as any,
-      uiReferences: null as any,
-      uiAssetsList: null as any,
-      figmaConfig: null as any,
-      uiDesignSource: null as any,
-      figmaExplorationResult: null as any,
-      isResume: null as any,
-      existingDesignDocs: null as any,
-      sourceDocuments: null as any,
-      recursionCount: null as any,
-      recursionLimit: null as any,
-      interruption: null as any,
-      awaitingDetectClarify: null as any,
-      awaitingClarify: null as any,
-      _docGenCallIndex: null as any,
-      _noOutputCallCount: null as any,
-      _callLimitReached: null as any,
-      _toolResultCache: null as any,
-      fileErrors: null as any,
-      // Figma MCP connection health
-      _figmaConsecutiveErrors: null as any,
-      _figmaConnectionLost: null as any,
-      // MECE: all sibling tasks for scope awareness
-      _allTasksSummary: null as any,
-      // Worker-specific
-      workerId: null as any,
-      _taskCompleted: null as any,
-      _isStopRequested: null as any,
-    } as any,
-  } as any);
+  const graph = new StateGraph(DesignWorkerSubgraphAnnotation);
 
   // Register nodes
   graph.addNode('plan', plan as any);

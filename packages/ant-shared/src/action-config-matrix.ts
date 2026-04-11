@@ -1,20 +1,21 @@
 /**
  * Action Config Matrix
  *
- * Defines (intent, basis) → (refs, context, target) mapping.
+ * Defines intent → (refs, context, target) mapping.
  * Single source of truth consumed by both FE (ActionConfigView) and
  * BE (resolve node) to determine which files to show/load.
  *
  * Rules:
+ * - Each intent maps to exactly one ConfigSlots (1:1).
  * - Refs (primary): default ON, individually toggleable. locked=true → cannot deselect.
  * - Context (secondary): default OFF, individually toggleable.
- * - Target: create intents show expected file patterns with warnIfExists.
- *           revise intents use mirrorRefs (target = selected refs).
- * - buildRequiresContext: when true, BUILD needs at least one context file.
- *   Chat start is always allowed if refs are satisfied.
+ * - Target: gen intents show expected file patterns with warnIfExists.
+ *           rev intents use mirrorRefs (target = selected refs).
+ * - Build/Chat policy (universal):
+ *   - refs not selected → chat only
+ *   - refs selected → chat + build both available
+ *   - context selection does not affect chat/build
  */
-
-import type { Basis } from './actions';
 
 // ============================================
 // Types
@@ -24,8 +25,6 @@ export interface ConfigSlots {
   refs: SlotDef[];
   context: SlotDef[];
   target: TargetDef;
-  /** When true, BUILD requires at least one context file to be present */
-  buildRequiresContext?: boolean;
 }
 
 export interface SlotDef {
@@ -51,11 +50,11 @@ export interface SlotDef {
 export interface TargetDef {
   /** Directory for target files */
   dir?: string;
-  /** Expected output file patterns (create intents) */
+  /** Expected output file patterns (gen intents) */
   expectedFiles?: ExpectedFile[];
   /** Special marker: target is the codebase, not feature-relative */
   codebase?: boolean;
-  /** When true, target = selectedRefs (revise: the files being revised ARE the output) */
+  /** When true, target = selectedRefs (rev: the files being revised ARE the output) */
   mirrorRefs?: boolean;
 }
 
@@ -184,176 +183,166 @@ const UI_TARGETS: ExpectedFile[] = [
 ];
 const SPEC_TARGETS: ExpectedFile[] = [expected('spec-', '.md', L.spec)];
 
-type MatrixEntry = Partial<Record<Basis, ConfigSlots>>;
+import type { IntentId } from './actions';
 
-const MATRIX: Record<string, MatrixEntry> = {
+const MATRIX: Record<IntentId, ConfigSlots> = {
   // ── Plan ──────────────────────────────────
-  'create-plan': {
-    directive: {
-      refs: [emptyRef()],
-      context: [ctxDir(SOURCES_DIR, L.sources)],
-      target: { dir: PLAN_DIR, expectedFiles: [expected('prd-refine', '.md', L.prd, false)] },
-    },
+  'gen-plan': {
+    refs: [emptyRef()],
+    context: [ctxDir(SOURCES_DIR, L.sources)],
+    target: { dir: PLAN_DIR, expectedFiles: [expected('prd-refine', '.md', L.prd, false)] },
   },
-  'revise-plan': {
-    directive: {
-      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      context: [ctxDir(SOURCES_DIR, L.sources, { excludeSelectedRefs: true })],
-      target: { mirrorRefs: true },
-      buildRequiresContext: true,
-    },
+  'rev-plan': {
+    refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { excludeSelectedRefs: true })],
+    target: { mirrorRefs: true },
   },
 
-  // ── System Design: Create ─────────────────
-  'create-fe': {
-    prd: {
-      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
-      target: { dir: SYS_DIR, expectedFiles: FE_TARGETS },
-    },
-    directive: {
-      refs: [emptyRef()],
-      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
-      target: { dir: SYS_DIR, expectedFiles: FE_TARGETS },
-    },
+  // ── System Design: Gen ─────────────────────
+  'gen-sys-fe': {
+    refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
+    target: { dir: SYS_DIR, expectedFiles: FE_TARGETS },
   },
-  'create-be': {
-    prd: {
-      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
-      target: { dir: SYS_DIR, expectedFiles: BE_TARGETS },
-    },
-    directive: {
-      refs: [emptyRef()],
-      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
-      target: { dir: SYS_DIR, expectedFiles: BE_TARGETS },
-    },
+  'gen-sys-be': {
+    refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
+    target: { dir: SYS_DIR, expectedFiles: BE_TARGETS },
   },
-  'create-fullstack': {
-    prd: {
-      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
-      target: { dir: SYS_DIR, expectedFiles: FULLSTACK_TARGETS },
-    },
-    directive: {
-      refs: [emptyRef()],
-      context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
-      target: { dir: SYS_DIR, expectedFiles: FULLSTACK_TARGETS },
-    },
+  'gen-sys-full': {
+    refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
+    target: { dir: SYS_DIR, expectedFiles: FULLSTACK_TARGETS },
   },
 
-  // ── System Design: Revise ─────────────────
-  'revise-system': {
-    directive: {
-      refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'create-fullstack', humanLabel: HL.systemDesign })],
-      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      target: { mirrorRefs: true },
-      buildRequiresContext: true,
-    },
+  // ── System Design: Rev ─────────────────────
+  'rev-sys': {
+    refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    target: { mirrorRefs: true },
   },
 
-  // ── UI Design: Create ─────────────────────
-  'create-figma': {
-    figma: {
-      refs: [refFile('inputs/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
-      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
-    },
+  // ── UI Design: Gen ─────────────────────────
+  'gen-ui-figma': {
+    refs: [refFile('inputs/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
   },
-  'create-ref': {
-    references: {
-      refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
-      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
-      target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
-    },
+  'gen-ui-ref': {
+    refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
+    target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
   },
-  'create-desc': {
-    prd: {
-      refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      context: [],
-      target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
-    },
-    directive: {
-      refs: [emptyRef()],
-      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
-    },
+  'gen-ui-desc': {
+    refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [],
+    target: { dir: UI_DIR, expectedFiles: UI_TARGETS },
   },
 
-  // ── UI Design: Revise ─────────────────────
-  'revise-ui': {
-    directive: {
-      refs: [refDir(UI_DIR, L.uiDesign, { createIntent: 'create-desc', humanLabel: HL.uiDesign })],
-      context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'create-plan', humanLabel: HL.prd })],
-      target: { mirrorRefs: true },
-      buildRequiresContext: true,
-    },
+  // ── UI Design: Rev ─────────────────────────
+  'rev-ui': {
+    refs: [refDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    target: { mirrorRefs: true },
   },
 
   // ── Spec ──────────────────────────────────
-  'create-spec': {
-    directive: {
-      refs: [emptyRef()],
-      context: [ctxDir(DESIGN_DIR, L.designAll, { createIntent: 'create-fullstack', humanLabel: HL.designAll })],
-      target: { dir: SPEC_DIR, expectedFiles: SPEC_TARGETS },
-    },
+  'gen-spec': {
+    refs: [emptyRef()],
+    context: [ctxDir(DESIGN_DIR, L.designAll, { createIntent: 'gen-sys-full', humanLabel: HL.designAll })],
+    target: { dir: SPEC_DIR, expectedFiles: SPEC_TARGETS },
   },
-  'revise-spec': {
-    directive: {
-      refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'create-spec', humanLabel: HL.specDocs })],
-      context: [ctxDir(DESIGN_DIR, L.designAll, { createIntent: 'create-fullstack', humanLabel: HL.designAll })],
-      target: { mirrorRefs: true },
-      buildRequiresContext: true,
-    },
+  'rev-spec': {
+    refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
+    context: [ctxDir(DESIGN_DIR, L.designAll, { createIntent: 'gen-sys-full', humanLabel: HL.designAll })],
+    target: { mirrorRefs: true },
   },
 
-  // ── Code ──────────────────────────────────
-  'create-code': {
-    'design-doc': {
-      refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'create-fullstack', humanLabel: HL.systemDesign })],
-      context: [ctxDir(UI_DIR, L.uiDesign, { createIntent: 'create-desc', humanLabel: HL.uiDesign })],
-      target: { codebase: true },
-    },
-    spec: {
-      refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'create-spec', humanLabel: HL.specDocs })],
-      context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'create-fullstack', humanLabel: HL.systemDesign }), ctxDir(UI_DIR, L.uiDesign, { createIntent: 'create-desc', humanLabel: HL.uiDesign })],
-      target: { codebase: true },
-    },
-    directive: {
-      refs: [emptyRef()],
-      context: [],
-      target: { codebase: true },
-    },
+  // ── Code: Gen (3 pipeline-specific intents) ──
+  'gen-code-sys': {
+    refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign })],
+    context: [ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
+    target: { codebase: true },
   },
-  'refactor-code': {
-    'existing-doc': {
-      refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'create-spec', humanLabel: HL.specDocs }), refDir(SYS_DIR, L.systemDesign, { createIntent: 'create-fullstack', humanLabel: HL.systemDesign }), refDir(UI_DIR, L.uiDesign, { createIntent: 'create-desc', humanLabel: HL.uiDesign })],
-      context: [],
-      target: { codebase: true },
-    },
-    directive: {
-      refs: [emptyRef()],
-      context: [],
-      target: { codebase: true },
-    },
+  'gen-code-spec': {
+    refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
+    context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
+    target: { codebase: true },
+  },
+  'gen-code-directive': {
+    refs: [emptyRef()],
+    context: [],
+    target: { codebase: true },
+  },
+
+  // ── Code: Rev (unified, docs as optional refs) ──
+  'rev-code': {
+    refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs }), refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), refDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
+    context: [],
+    target: { codebase: true },
   },
 
   // ── Visual ────────────────────────────────
-  'create-visual': {
-    directive: {
-      refs: [emptyRef()],
-      context: [],
-      target: { dir: ASSETS_GEN_DIR },
-    },
+  'gen-visual': {
+    refs: [emptyRef()],
+    context: [],
+    target: { dir: ASSETS_GEN_DIR },
+  },
+  'explain-visual': {
+    refs: [emptyRef()],
+    context: [],
+    target: {},
   },
 
   // ── Learn ─────────────────────────────────
-  'create-learn': {
-    directive: {
-      refs: [emptyRef()],
-      context: [],
-      target: { codebase: true },
-    },
+  'gen-learn': {
+    refs: [emptyRef()],
+    context: [],
+    target: { codebase: true },
+  },
+
+  // ── Explain (cross-domain) ────────────────
+  'explain-code': {
+    refs: [codebaseRef()],
+    context: [],
+    target: {},
+  },
+  'explain-ui': {
+    refs: [refDir(UI_DIR, L.uiDesign, { humanLabel: HL.uiDesign })],
+    context: [],
+    target: {},
+  },
+  'explain-sys': {
+    refs: [refDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
+    context: [],
+    target: {},
+  },
+  'explain-spec': {
+    refs: [refDir(SPEC_DIR, L.specDocs, { humanLabel: HL.specDocs })],
+    context: [],
+    target: {},
+  },
+  'explain-plan': {
+    refs: [refDir(SOURCES_DIR, L.sources, { humanLabel: HL.prd })],
+    context: [],
+    target: {},
+  },
+
+  // ── Ask ─────────────────────────────────
+  'ask-evaluate': {
+    refs: [emptyRef()],
+    context: [],
+    target: {},
+  },
+  'ask-ant': {
+    refs: [emptyRef()],
+    context: [],
+    target: {},
+  },
+  'ask-general': {
+    refs: [emptyRef()],
+    context: [],
+    target: {},
   },
 };
 
@@ -362,27 +351,16 @@ const MATRIX: Record<string, MatrixEntry> = {
 // ============================================
 
 /**
- * Get the refs/context/target configuration for a given (intent, basis) combination.
- * Returns null if the combination is not defined in the matrix.
+ * Get the refs/context/target configuration for a given intent.
+ * Returns null if the intent is not defined in the matrix.
  */
-export function getConfigSlots(intent: string, basis: Basis): ConfigSlots | null {
-  const entry = MATRIX[intent];
-  if (!entry) return null;
-  return entry[basis] ?? null;
-}
-
-/**
- * Get all valid basis options for a given intent.
- */
-export function getAvailableBases(intent: string): Basis[] {
-  const entry = MATRIX[intent];
-  if (!entry) return [];
-  return Object.keys(entry) as Basis[];
+export function getConfigSlots(intent: IntentId): ConfigSlots | null {
+  return MATRIX[intent] ?? null;
 }
 
 /**
  * Check if an expected target file pattern already has matching files.
- * Used by UI to show conflict warnings on create intents.
+ * Used by UI to show conflict warnings on gen intents.
  */
 export function matchesExpectedFile(filename: string, expected: ExpectedFile): boolean {
   return filename.startsWith(expected.prefix) && filename.endsWith(expected.ext);

@@ -52,17 +52,122 @@ Workflow SSE 타입.
 
 ### detection.ts
 
-환경 감지 결과.
+환경 감지 결과. 공통 어휘는 **Mode** / **IntentGroup**으로 통일했고, 이전 이름은 타입 별칭·필드로 하위 호환된다.
 
 | 타입 | 정의 |
 |------|------|
-| `JobMode` | `'generate' \| 'refactor' \| 'explain'` |
+| `Mode` | `'generate' \| 'refactor' \| 'explain'` — 모든 Job에서 공유하는 보편 모드 어휘 |
+| `JobMode` | `@deprecated` — `Mode`와 동일한 별칭 |
 | `JobEnvironment` | `'frontend' \| 'backend' \| 'fullstack' \| 'unknown'` |
-| `DesignWorkType` | `'system-design' \| 'ui-design' \| 'spec'` |
+| `IntentGroup` | `'plan' \| 'design-system' \| 'design-ui' \| 'design-spec' \| 'code' \| 'visual' \| 'learn-codebase' \| 'ask'` — 전 Job 포괄 universal enum. `ActionId`를 대체. |
+| `DesignWorkType` | `@deprecated` — `IntentGroup`과 동일한 별칭 |
 | `DesignDomain` | `'game' \| 'service'` |
 | `ProjectProfile` | `language`, `framework` |
 | `JobSource` | `'code' \| 'design'` |
-| `DetectionReport` | `jobMode`, `jobModeReasoning`, `environment`, `environmentReasoning`, `workType`, `workTypeReasoning`, `domain`, `domainReasoning`, `targetFiles`, `profile`, `requireRag`, `sourceJob`, `detectedAt` |
+| `DetectionReport` | 아래 표 참고 |
+
+**`DetectionReport` 필드 (이름 변경 및 하위 호환)**
+
+| 구역 | 필드 | 비고 |
+|------|------|------|
+| 공통 | `detectedMode`, `detectedModeReasoning` | Code·Design 공통 |
+| | `jobMode?`, `jobModeReasoning?` | `@deprecated` — 각각 `detectedMode`, `detectedModeReasoning`에 대응 |
+| | `environment?`, `environmentReasoning?` | |
+| Design 전용 | `detectedIntentGroup?`, `detectedIntentGroupReasoning?` | |
+| | `workType?`, `workTypeReasoning?` | `@deprecated` — 각각 `detectedIntentGroup`, `detectedIntentGroupReasoning`에 대응 |
+| | `domain?`, `domainReasoning?`, `targetFiles?` | |
+| Code 전용 | `profile?`, `requireRag?`, `primarySources?`, `primarySourcesReasoning?` | |
+| 메타 | `sourceJob`, `detectedAt?` | |
+
+**백엔드 전용 (`packages/ant-cli/src/core/types/detection.ts`)**
+
+| 함수 | 시그니처 | 역할 |
+|------|----------|------|
+| `normalizeDetectionReport` | `(raw: any) => DetectionReport` | 세션 JSON 등에서 로드한 객체의 폐기 필드명을 정규 필드로 매핑 (`jobMode`→`detectedMode`, `workType`→`detectedIntentGroup` 등). ant-cli 전용 — `@ant/shared`의 `DetectionReport` 타입과 함께 사용 |
+
+### actions.ts
+
+액션 및 인텐트 정의 시스템. FE ActionsPanel과 BE 에이전트 라우팅 간 계약.
+
+| 타입/함수 | 정의 |
+|-----------|------|
+| `ActionId` | `@deprecated` — `IntentGroup`의 별칭. `'plan' \| 'design-system' \| 'design-ui' \| 'design-spec' \| 'code' \| 'visual' \| 'learn-codebase' \| 'ask'` |
+| `ActionDefinition` | 액션 카드 정의 (`id`, `label`, `description`, `status`) |
+| `ACTION_DEFINITIONS` | 전체 액션 정의 배열 |
+| `IntentDefinition` | 인텐트 정의 (`id`, `intentGroup`, `label`, `description`) |
+| `INTENT_DEFINITIONS` | 전체 인텐트 정의 배열 — **고유 인텐트 ID 27개** (intentGroup별 개수는 아래 표) |
+| `getIntentsForAction()` | `(intentGroup: IntentGroup) => ReadonlyArray<IntentDefinition>` |
+| `ActionMetadata` | `explicit?`, `intent?`, `target?`, `refs?`, `context?`, **`locale?`**, `language?` (`@deprecated`, `locale`과 동일 용도) |
+| `deriveFromIntent()` | `(intent: IntentId) => { intentGroup?, mode, environment?, agent, jobType }` — 반환의 **`mode`**는 구 `jobMode`에 대응. Design 계열은 `intentGroup`으로 `design-system` \| `design-ui` \| `design-spec` 구분 |
+| `ActionReadiness` | FE 액션 실행 가능 여부 (`buildReady`, `hasOutput`, `detectedMode`, `subModes?`, `namingIssues`, …) |
+| `SubModeStatus` | FE 서브모드 활성 상태 (`id`, `active`, `blockReason?`) |
+| `validateDesignFileName()` | 설계 출력 파일명 규칙 검증 |
+
+**`INTENT_DEFINITIONS` intentGroup별 개수 (합계 27)**
+
+| `intentGroup` | 개수 | 비고 |
+|---------------|------|------|
+| `plan` | 3 | `gen-plan`, `rev-plan`, `explain-plan` |
+| `design-system` | 5 | `gen-sys-fe`, `gen-sys-be`, `gen-sys-full`, `rev-sys`, `explain-sys` |
+| `design-ui` | 5 | `gen-ui-figma`, `gen-ui-ref`, `gen-ui-desc`, `rev-ui`, `explain-ui` |
+| `design-spec` | 3 | `gen-spec`, `rev-spec`, `explain-spec` |
+| `code` | 5 | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `rev-code`, `explain-code` |
+| `visual` | 2 | `gen-visual`, `explain-visual` |
+| `learn-codebase` | 1 | `gen-learn` |
+| `ask` | 3 | `ask-evaluate`, `ask-ant`, `ask-general` |
+
+**교차 도메인 explain 인텐트 (6개)** — 위 intentGroup별 집계에 이미 포함: `explain-code`, `explain-ui`, `explain-sys`, `explain-spec`, `explain-plan`, `explain-visual`.
+
+### rac.ts
+
+ResolvedActionContext (RAC) — Intent-Centric 프롬프트 시스템의 SSOT. resolve/detect 노드에서 생성, ModeController와 프롬프트 템플릿에서 소비.
+
+| 타입/함수 | 정의 |
+|-----------|------|
+| `InferWorkspaceState` | infer 경로 보조: `hasFigmaConfig?`, `hasScreens?`, `hasComponents?`, `hasPrd?`, `hasDesignDoc?`, `hasSpecDocs?`, `targetFiles?`, `primarySources?` |
+| `ResolvedActionContext` | `intent?`, **`intentGroup?`** (`IntentGroup`), **`mode`** (`Mode`), `tech`, `target?`, `refs?`, `context?`, `documents?`, `domain?`, `intentDescription?`, `source`, `hasExplicitFields` — 구 필드명 `workType`/`jobMode`는 각각 **`intentGroup`** / **`mode`** 로 정렬 |
+| `ResolvedDocument` | role-labeled 문서 (`path`, `content`, `role: 'ref' \| 'context'`, `label?`) |
+| `TechContext` | `language`, `framework`, `environment`, `runtime` |
+| `resolveFromExplicit()` | `(actionMetadata, codebaseProfile?, fallbackHints?) => ResolvedActionContext` |
+| `resolveFromInfer()` | `(report, actionMetadata?, codebaseProfile?, fallbackHints?, synthesizedIntent?, workspaceState?) => ResolvedActionContext` — `target`/`refs`는 메타데이터 우선, 없으면 `report.targetFiles` / `report.primarySources`. `context`는 메타데이터에서 병합 |
+| `synthesizeDesignIntent()` | `(report, hints: { figmaPopulated?, hasReferences? }) => IntentId` |
+| `synthesizeCodeIntent()` | `(report, workspaceState?) => IntentId` |
+| `synthesizePlanIntent()` | `(mode: string) => IntentId` — `explain`→`explain-plan`, `refine`→`rev-plan`, 그 외→`gen-plan` |
+| `synthesizeVisualIntent()` | `(jobMode: string) => IntentId` — `explain`→`explain-visual`, 그 외→`gen-visual` |
+| `synthesizeAskIntent()` | `(subType?: 'evaluate' \| 'ant' \| 'general') => IntentId` — `ask-evaluate` / `ask-ant` / `ask-general`(기본) |
+| `synthesizeLearnIntent()` | `() => IntentId` — 항상 `'gen-learn'` |
+| `isFigmaPipeline()` | `(intent, figmaPopulated) => boolean` |
+| `buildTechContext()` | profile + env + hints → `TechContext` |
+
+**인텐트 합성 함수**: `synthesize*` 계열은 **`IntentId`**를 반환한다 (`@ant/shared/actions`의 유효 인텐트 ID 유니온).
+
+**RAC 커버리지**: design, code, plan, visual, learn에 더해 **ask** Job도 triage 등에서 `synthesizeAskIntent`·`resolveFromExplicit`/`resolveFromInfer` 경로와 맞물려 RAC를 사용한다.
+
+### 인텐트·모드 철학 (Phase 6+)
+
+| 개념 | 설명 |
+|------|------|
+| **Intent** | 불투명한 문자열 키(인텐트 ID). 파이프라인 분기·템플릿 선택의 1차 축. `INTENT_DEFINITIONS`가 SSOT. |
+| **Mode (`Mode`)** | `generate` \| `refactor` \| `explain` — **보편 어휘**이지 Job마다 다른 계약이 아니다. 모든 Job이 세 모드를 구현하는 것은 아니다. |
+| **`intentGroup` (`IntentGroup`)** | 전 Job 포괄 universal enum: `plan`, `design-system`, `design-ui`, `design-spec`, `code`, `visual`, `learn-codebase`, `ask`. `ActionId`를 대체. RAC·감지 리포트의 `detectedIntentGroup`과 대응. |
+| **인텐트 네이밍** | **접두 패턴**: `gen-*`(생성), `rev-*`(수정), `explain-*`, `ask-*` 등. Code는 산출 경로별 `gen-code-sys` / `gen-code-spec` / `gen-code-directive`로 구분. |
+
+**전체 인텐트 ID 목록 (`INTENT_DEFINITIONS` 기준 27개)**
+
+| intentGroup | 인텐트 ID |
+|-------------|-----------|
+| plan (3) | `gen-plan`, `rev-plan`, `explain-plan` |
+| design-system (5) | `gen-sys-fe`, `gen-sys-be`, `gen-sys-full`, `rev-sys`, `explain-sys` |
+| design-ui (5) | `gen-ui-figma`, `gen-ui-ref`, `gen-ui-desc`, `rev-ui`, `explain-ui` |
+| design-spec (3) | `gen-spec`, `rev-spec`, `explain-spec` |
+| code (5) | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `rev-code`, `explain-code` |
+| visual (2) | `gen-visual`, `explain-visual` |
+| learn-codebase (1) | `gen-learn` |
+| ask (3) | `ask-evaluate`, `ask-ant`, `ask-general` |
+
+**모드(`Mode`) vs 계약**: `Mode`는 크로스잡 용어로 문서·프롬프트·감지에 쓰이며, 실제 지원 조합은 `deriveFromIntent()` 및 각 Job 그래프 구현에 따른다.
+
+**개수 정리**: intentGroup별 인텐트 수는 plan 3 · design-system 5 · design-ui 5 · design-spec 3 · code 5 · visual 2 · learn-codebase 1 · ask 3이며, 합계 **`INTENT_DEFINITIONS` 고유 인텐트 ID 27개**다. 교차 explain 6개(`explain-*`)는 위 표의 해당 intentGroup 행에 이미 포함된다.
 
 ### figma.ts
 
@@ -71,7 +176,6 @@ Figma 데이터 설정 및 MCP 연동 타입. Design Job과 Code Job 모두에�
 | 타입/함수 | 정의 |
 |-----------|------|
 | `FigmaDataConfig` | `{ file: string \| null }` — 단일 Figma URL (inputs/figma.json 스키마) |
-| `UIDesignSource` | `'figma' \| 'references' \| 'none'` |
 | `FigmaMCPTool` | `'get_metadata' \| 'get_design_context' \| 'get_screenshot' \| 'get_variable_defs'` |
 | `MCPToolResult` | MCP 도구 실행 결과 (`content`, `isError`) |
 | `FigmaExplorationResult` | `variationMatrix`, `annotations`, `componentStateMatrix`, `variableDefs`, `totalFrameCount`, `downloadedAssets`, `nodeSummary`, `explorationErrors` |

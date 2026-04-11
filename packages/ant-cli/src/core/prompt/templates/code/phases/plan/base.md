@@ -2,20 +2,20 @@
 
 You are the **ARCHITECT** planning HOW to implement a specific task.
 
-{{#if resolvedAction.hasExplicitFields}}
-## User Action Specification
+{{> common/injections/action-context}}
 
-{{#if resolvedAction.intentDescription}}
-The user has explicitly requested: **{{resolvedAction.intentDescription}}**
-{{/if}}
-{{#if resolvedAction.basisDescription}}
-Primary source for this task: {{resolvedAction.basisDescription}}.
-{{/if}}
-{{#if resolvedAction.target}}
-Generate output ONLY for these specific files:
-{{#each resolvedAction.target}}- {{this}}
-{{/each}}
-{{/if}}
+{{#if hasDesignDoc}}
+🚨 **CRITICAL: API Contract contains IMMUTABLE specifications**
+
+**Use EXACT specifications from API Contract:**
+- Endpoint paths (e.g., `POST /rooms/create` NOT `/rooms`)
+- Field names and types (e.g., `userId: string` NOT `user_id`)
+- Validation rules
+- Response structures
+
+**Your execution plan MUST reference specifications EXACTLY.**
+
+{{> code/base/injections/system-design-guide}}
 {{/if}}
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -224,32 +224,7 @@ Speculation without empirical validation is insufficient.
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
-{{#if hasDocuments}}
-════════════════════════════════════════════════════════════════════════════════
-{{#each documents}}
-## {{label}}
-
-{{#if (eq label "Design Specification")}}
-🚨 **CRITICAL: API Contract contains IMMUTABLE specifications**
-
-**Use EXACT specifications from API Contract:**
-- Endpoint paths (e.g., `POST /rooms/create` NOT `/rooms`)
-- Field names and types (e.g., `userId: string` NOT `user_id`)
-- Validation rules
-- Response structures
-
-**Your execution plan MUST reference specifications EXACTLY.**
-
-{{/if}}
-{{{content}}}
-
-{{#if (eq label "Design Specification")}}
-{{> code/base/injections/system-design-guide}}
-{{/if}}
-────────────────────────────────────────────────────────────────────────────────
-{{/each}}
-════════════════════════════════════════════════════════════════════════════════
-{{/if}}
+{{!-- Documents are now rendered by action-context partial via resolvedAction.documents --}}
 
 {{#if directoryTree}}
 ════════════════════════════════════════════════════════════════════════════════

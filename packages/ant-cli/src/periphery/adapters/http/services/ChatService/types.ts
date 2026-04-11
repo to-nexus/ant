@@ -112,6 +112,7 @@ export interface ChatMessage {
   timestamp: string;
   jobId?: string; // Which job this message belongs to
   isStreaming?: boolean;
+  actionMetadata?: import('@ant/shared').ActionMetadata;
 }
 
 /**

@@ -67,8 +67,9 @@ export async function decomposeUiDesign(
     uiContext = parts.length > 0 ? parts.join('\n\n---\n\n') : '';
   }
 
+  const { isFigmaPipeline, isFigmaDataPopulated } = await import('@ant/shared');
   const sourceFileNames = state.sourceDocuments ? Object.keys(state.sourceDocuments) : [];
-  const isFigmaMode = state.uiDesignSource === 'figma';
+  const isFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   if (isFigmaMode && !sourceFileNames.includes('figma.json')) {
     sourceFileNames.push('figma.json');
   }
@@ -85,7 +86,7 @@ export async function decomposeUiDesign(
     assetCount: state.uiAssetsList
       ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
       : 0,
-    jobMode: state.detectionReport?.jobMode || 'generate',
+    detectedMode: state.detectionReport?.detectedMode || 'generate',
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
     nodeSummary: isFigmaMode && state.figmaExplorationResult?.nodeSummary
       ? state.figmaExplorationResult.nodeSummary
@@ -242,7 +243,7 @@ export async function decomposeUiDesign(
       completedTasksDetails: [],
       jobId: ctx.newJobId,
       jobTiming: finalJobTiming,
-      tokenUsage: (state as any).tokenUsage,
+      tokenUsage: state.tokenUsage,
       overrideDirective: state.overrideDirective,
       chatSource: state.chatSource,
       userLanguage: state.context.userLanguage,

@@ -15,7 +15,7 @@ pnpm dev:local:all    # API + Realtime + Worker
 
 ## Plan
 
-### create-plan (directive)
+### gen-plan
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -24,8 +24,7 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "팀 협업 프로젝트 관리 웹 서비스를 기획해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-plan",
-      "basis": "directive"
+      "intent": "gen-plan"
     }
   }'
 ```
@@ -34,7 +33,7 @@ curl -X POST http://localhost:4100/api/jobs \
 - **예상 산출물**: `outputs/plan/prd-refine.md`
 - **PASS 기준**: prd-refine.md 생성되고 "프로젝트 관리" 키워드 포함
 
-### revise-plan (directive)
+### rev-plan
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -42,14 +41,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "소셜 로그인을 추가하고 게스트 모드를 삭제해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "revise-plan",
-      "basis": "directive",
+      "intent": "rev-plan",
       "refs": ["inputs/sources/prd.md"]
     }
   }'
 ```
 
-- **예상 Triage**: agent=planner, jobType=plan, jobMode=refactor
+- **예상 Triage**: agent=planner, jobType=plan, mode=refactor
 - **예상 산출물**: `inputs/sources/prd.md` (수정)
 - **PASS 기준**: 소셜 로그인 관련 내용 추가, 게스트 모드 삭제
 
@@ -57,7 +55,7 @@ curl -X POST http://localhost:4100/api/jobs \
 
 ## System Design
 
-### create-fe (prd)
+### gen-sys-fe
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -65,8 +63,7 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "React로 프론트엔드 시스템 설계해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-fe",
-      "basis": "prd",
+      "intent": "gen-sys-fe",
       "refs": ["inputs/sources/prd.md"]
     }
   }'
@@ -76,7 +73,7 @@ curl -X POST http://localhost:4100/api/jobs \
 - **예상 산출물**: `outputs/design/system/fe-system-*.md`
 - **PASS 기준**: fe-system-main.md 생성, React/frontend 관련 내용 포함
 
-### create-be (prd)
+### gen-sys-be
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -84,8 +81,7 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "Express 백엔드 시스템 설계해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-be",
-      "basis": "prd",
+      "intent": "gen-sys-be",
       "refs": ["inputs/sources/prd.md"]
     }
   }'
@@ -95,7 +91,7 @@ curl -X POST http://localhost:4100/api/jobs \
 - **예상 산출물**: `outputs/design/system/be-system-*.md`, `outputs/design/system/api-contract-*.md`
 - **PASS 기준**: be-system-main.md 및 api-contract-main.md 생성
 
-### create-fullstack (prd)
+### gen-sys-full
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -103,8 +99,7 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "풀스택 시스템 설계해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-fullstack",
-      "basis": "prd",
+      "intent": "gen-sys-full",
       "refs": ["inputs/sources/prd.md"]
     }
   }'
@@ -114,7 +109,7 @@ curl -X POST http://localhost:4100/api/jobs \
 - **예상 산출물**: `outputs/design/system/fe-system-*.md`, `outputs/design/system/be-system-*.md`, `outputs/design/system/api-contract-*.md`
 - **PASS 기준**: 프론트엔드 + 백엔드 + API 계약 문서 모두 생성
 
-### revise-system (directive)
+### rev-sys
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -122,14 +117,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "인증 방식을 OAuth로 변경해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "revise-system",
-      "basis": "directive",
+      "intent": "rev-sys",
       "refs": ["outputs/design/system/fe-system-main.md"]
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, jobMode=refactor, workType=system-design
+- **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=system-design
 - **예상 산출물**: `outputs/design/system/fe-system-main.md` (수정)
 - **PASS 기준**: OAuth 관련 내용으로 수정
 
@@ -137,7 +131,7 @@ curl -X POST http://localhost:4100/api/jobs \
 
 ## UI Design
 
-### create-figma (figma)
+### gen-ui-figma
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -145,8 +139,7 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "Figma 파일에서 UI 설계를 추출해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-figma",
-      "basis": "figma",
+      "intent": "gen-ui-figma",
       "refs": ["inputs/figma.json"]
     }
   }'
@@ -157,7 +150,7 @@ curl -X POST http://localhost:4100/api/jobs \
 - **PASS 기준**: 3개 UI 설계 파일 생성
 - **참고**: figma.json은 `{ "file": "<figma-url>" }` 형식의 설정 파일. 프롬프트에 내용 주입 없음.
 
-### create-desc (prd)
+### gen-ui-desc
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -165,8 +158,7 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "PRD 기반으로 UI 설계해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-desc",
-      "basis": "prd",
+      "intent": "gen-ui-desc",
       "refs": ["inputs/sources/prd.md"]
     }
   }'
@@ -176,7 +168,7 @@ curl -X POST http://localhost:4100/api/jobs \
 - **예상 산출물**: `outputs/design/ui/ui-tokens.json`, `outputs/design/ui/ui-assets.json`, `outputs/design/ui/ui-spec.json`
 - **PASS 기준**: 3개 UI 설계 파일 생성
 
-### revise-ui (directive)
+### rev-ui
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -184,14 +176,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "색상 팔레트를 다크 테마로 변경해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "revise-ui",
-      "basis": "directive",
+      "intent": "rev-ui",
       "refs": ["outputs/design/ui/ui-tokens.json"]
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, jobMode=refactor, workType=ui-design
+- **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=ui-design
 - **예상 산출물**: `outputs/design/ui/ui-tokens.json` (수정)
 - **PASS 기준**: 다크 테마 색상으로 변경
 
@@ -199,7 +190,7 @@ curl -X POST http://localhost:4100/api/jobs \
 
 ## Spec
 
-### create-spec (existing-doc)
+### gen-spec
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -207,8 +198,7 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "설계 문서 기반으로 태스크 검색 API 스펙을 작성해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-spec",
-      "basis": "existing-doc",
+      "intent": "gen-spec",
       "refs": ["outputs/design/system/be-system-main.md"]
     }
   }'
@@ -218,7 +208,7 @@ curl -X POST http://localhost:4100/api/jobs \
 - **예상 산출물**: `outputs/design/spec/spec-*.md`
 - **PASS 기준**: 스펙 파일 생성
 
-### revise-spec (directive)
+### rev-spec
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -226,14 +216,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "페이지네이션을 offset에서 cursor로 변경해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "revise-spec",
-      "basis": "directive",
+      "intent": "rev-spec",
       "refs": ["outputs/design/spec/spec-search-api.md"]
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, jobMode=refactor, workType=spec
+- **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=spec
 - **예상 산출물**: `outputs/design/spec/spec-search-api.md` (수정)
 - **PASS 기준**: cursor 기반 페이지네이션으로 변경
 
@@ -241,7 +230,7 @@ curl -X POST http://localhost:4100/api/jobs \
 
 ## Code
 
-### create-code (design-doc)
+### gen-code-sys
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -249,19 +238,18 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "설계 문서 기반으로 코드 생성해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-code",
-      "basis": "design-doc",
+      "intent": "gen-code-sys",
       "refs": ["outputs/design/system/fe-system-main.md"],
       "context": ["outputs/design/ui/ui-spec.json"]
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, jobMode=generate
+- **예상 Triage**: agent=architect, jobType=code, mode=generate
 - **예상 산출물**: 코드베이스에 소스 코드 파일
 - **PASS 기준**: 프론트엔드 코드 생성 (React 컴포넌트, 라우팅 등)
 
-### create-code (spec)
+### gen-code-spec
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -269,19 +257,35 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "스펙 기반으로 태스크 검색 API를 구현해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "create-code",
-      "basis": "spec",
+      "intent": "gen-code-spec",
       "refs": ["outputs/design/spec/spec-search-api.md"],
       "context": ["outputs/design/system/be-system-main.md"]
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, jobMode=generate
+- **예상 Triage**: agent=architect, jobType=code, mode=generate
 - **예상 산출물**: 코드베이스에 API 엔드포인트 코드
 - **PASS 기준**: 태스크 검색 API 엔드포인트 구현
 
-### refactor-code (existing-doc)
+### gen-code-directive
+
+```bash
+curl -X POST http://localhost:4100/api/jobs \
+  -d '{
+    "directive": "간단한 TODO 앱을 만들어줘",
+    "actionMetadata": {
+      "explicit": true,
+      "intent": "gen-code-directive"
+    }
+  }'
+```
+
+- **예상 Triage**: agent=architect, jobType=code, mode=generate
+- **예상 산출물**: 코드베이스에 소스 코드 파일
+- **PASS 기준**: 지시문만으로 앱 골격 또는 요청 범위에 맞는 코드 생성
+
+### rev-code (스펙·문서 기준)
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -289,18 +293,17 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "스펙 문서 기반으로 코드를 리팩토링해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "refactor-code",
-      "basis": "existing-doc",
+      "intent": "rev-code",
       "refs": ["outputs/design/spec/spec-search-api.md"]
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, jobMode=refactor
+- **예상 Triage**: agent=architect, jobType=code, mode=refactor
 - **예상 산출물**: 기존 코드 수정
 - **PASS 기준**: 스펙에 맞게 코드 수정, behavioral debugging injection 포함
 
-### refactor-code (directive)
+### rev-code (지시문만)
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -308,13 +311,12 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "성능 최적화를 위해 코드를 리팩토링해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "refactor-code",
-      "basis": "directive"
+      "intent": "rev-code"
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, jobMode=refactor
+- **예상 Triage**: agent=architect, jobType=code, mode=refactor
 - **예상 산출물**: 기존 코드 최적화
 - **PASS 기준**: refactor-guidance injection 포함
 

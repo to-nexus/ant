@@ -980,7 +980,7 @@ const ArchitectCodeGraphStateAnnotation = Annotation.Root({
       gitPort: Annotation<any>,
       
       // ✅ CRITICAL: Detection Report (unified environment detection result)
-      // Contains: jobMode, environment, profile, requireRag
+      // Contains: detectedMode, environment, profile, requireRag
       detectionReport: Annotation<any>,
       
       // Environment Detection outputs

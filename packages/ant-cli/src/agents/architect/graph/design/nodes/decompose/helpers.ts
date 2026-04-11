@@ -162,7 +162,7 @@ export function createExplainTask(state: DesignGraphState): DesignTask {
     name: 'Explain: Design documents',
     type: 'doc',
     priority: 200,
-    targetFile: state.detectionReport?.workType === 'ui-design' ? 'ui-spec.json' : 'be-system-main.md',
+    targetFile: state.detectionReport?.detectedIntentGroup === 'design-ui' ? 'ui-spec.json' : 'be-system-main.md',
     description: state.directive || 'Analyze and explain the design documents'
   };
 }
@@ -232,10 +232,10 @@ export function resetDecomposeCallIndex(): void {
 export async function trackTokenUsage(state: DesignGraphState, usage: any, subNode?: string): Promise<void> {
   if (!usage) return;
   const { accumulateTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
-  accumulateTokenUsage(state as any, usage, { taskLevel: false, jobLevel: true });
+  accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
   // ✅ Push live token update to Kanban UI during estimating phase
-  if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
-    state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+  if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+    state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
   }
   
   logTokenUsageToFile(

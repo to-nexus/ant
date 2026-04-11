@@ -21,7 +21,7 @@
  * Safety blocked in sketch/render → loops back to direct for prompt revision.
  */
 
-import { StateGraph, END } from '@langchain/langgraph';
+import { Annotation, StateGraph, END } from '@langchain/langgraph';
 import { RunVisualGraphParams, VisualGraphState } from './types.js';
 import { resolveNode } from './nodes/resolve.js';
 import { classifyNode } from './nodes/classify.js';
@@ -82,85 +82,88 @@ function routeAfterClassify(state: VisualGraphState): string {
   return 'direct';
 }
 
+const VisualGraphAnnotation = Annotation.Root({
+  // TriageableState fields
+  featurePath: Annotation<any>,
+  context: Annotation<any>,
+  directive: Annotation<any>,
+  deps: Annotation<any>,
+  _httpJobId: Annotation<any>,
+  tokenUsage: Annotation<any>,
+  skipTriage: Annotation<any>,
+  triageResult: Annotation<any>,
+  workspaceState: Annotation<any>,
+  currentAgent: Annotation<any>,
+  currentJob: Annotation<any>,
+  overrideDirective: Annotation<any>,
+  chatSource: Annotation<any>,
+  actionMetadata: Annotation<any>,
+
+  // Visual-specific state
+  conversation: Annotation<any>,
+  engineeredPrompt: Annotation<any>,
+  sketchImages: Annotation<any>,
+  svgSketches: Annotation<any>,
+  selectedSketchIndex: Annotation<any>,
+  finalImage: Annotation<any>,
+  outputPath: Annotation<any>,
+
+  // Asset classification & job mode
+  assetType: Annotation<any>,
+  jobMode: Annotation<any>,
+  skipClassify: Annotation<any>,
+
+  // RAC (Intent-Centric)
+  resolvedAction: Annotation<any>,
+
+  // Session carry-over
+  lastEngineeredPrompt: Annotation<any>,
+  lastOutputPath: Annotation<any>,
+
+  // LLM-resolved parameters
+  resolvedAspectRatio: Annotation<any>,
+  availableSketchPaths: Annotation<any>,
+
+  // Per-sketch variation prompts
+  basePrompt: Annotation<any>,
+  sketchVariations: Annotation<any>,
+  variationAxis: Annotation<any>,
+
+  // Clarify counter
+  clarifyCount: Annotation<any>,
+
+  // Sketch selection intent
+  sketchIntent: Annotation<any>,
+
+  // Control flow
+  routeDecision: Annotation<any>,
+  needsSketches: Annotation<any>,
+  isSvgRequest: Annotation<any>,
+
+  // Error handling
+  visualError: Annotation<any>,
+  safetyBlocked: Annotation<any>,
+
+  // Settings
+  visualSettings: Annotation<any>,
+
+  // Session & timing
+  isResume: Annotation<any>,
+  _phaseTimings: Annotation<any>,
+  _uiLocale: Annotation<any>,
+
+  // Persist pruning metadata
+  _conversationCompaction: Annotation<any>,
+
+  // Phase-level token tracking
+  phaseTokenUsages: Annotation<any>,
+
+  // TriageableState compat
+  pendingToolCalls: Annotation<any>,
+});
+
 export function buildVisualGraph() {
-  const graph = new StateGraph<VisualGraphState>({
-    channels: {
-      // TriageableState fields
-      featurePath: null as any,
-      context: null as any,
-      directive: null as any,
-      deps: null as any,
-      _httpJobId: null as any,
-      tokenUsage: null as any,
-      skipTriage: null as any,
-      triageResult: null as any,
-      workspaceState: null as any,
-      currentAgent: null as any,
-      currentJob: null as any,
-      overrideDirective: null as any,
-      chatSource: null as any,
-      actionMetadata: null as any,
-
-      // Visual-specific state
-      conversation: null as any,
-      engineeredPrompt: null as any,
-      sketchImages: null as any,
-      svgSketches: null as any,
-      selectedSketchIndex: null as any,
-      finalImage: null as any,
-      outputPath: null as any,
-
-      // Asset classification & job mode
-      assetType: null as any,
-      jobMode: null as any,
-      skipClassify: null as any,
-
-      // Session carry-over
-      lastEngineeredPrompt: null as any,
-      lastOutputPath: null as any,
-
-      // LLM-resolved parameters
-      resolvedAspectRatio: null as any,
-      availableSketchPaths: null as any,
-
-      // Per-sketch variation prompts
-      basePrompt: null as any,
-      sketchVariations: null as any,
-      variationAxis: null as any,
-
-      // Clarify counter
-      clarifyCount: null as any,
-
-      // Sketch selection intent
-      sketchIntent: null as any,
-
-      // Control flow
-      routeDecision: null as any,
-      needsSketches: null as any,
-      isSvgRequest: null as any,
-
-      // Error handling
-      visualError: null as any,
-      safetyBlocked: null as any,
-
-      // Settings
-      visualSettings: null as any,
-
-      // Session & timing
-      isResume: null as any,
-      _phaseTimings: null as any,
-      _uiLocale: null as any,
-
-      // Persist pruning metadata
-      _conversationCompaction: null as any,
-
-      // Phase-level token tracking
-      phaseTokenUsages: null as any,
-
-      // TriageableState compat
-      pendingToolCalls: null as any,
-    },
-  });
+  const graph = new StateGraph(VisualGraphAnnotation);
 
   // Add nodes
   graph.addNode('resolve', resolveNode as any);

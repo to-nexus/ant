@@ -206,7 +206,6 @@ export interface SessionState {
   designDocUnknownPackages?: string[];
 
   // Design Job: Figma & UI
-  uiDesignSource?: string;
   figmaConfig?: any;
   figmaExplorationResult?: any;
   awaitingDetectClarify?: boolean;

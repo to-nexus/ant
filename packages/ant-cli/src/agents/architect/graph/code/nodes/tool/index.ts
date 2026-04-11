@@ -298,7 +298,7 @@ export async function tool(
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'tool',
-      (state as any).workerId ?? 0,
+      state.workerId ?? 0,
       taskInfo,
       undefined,
       state.recursionCount,
@@ -455,7 +455,7 @@ export async function tool(
 
   // Workflow: exit once per batch
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool', (state as any).workerId ?? 0);
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool', state.workerId ?? 0);
   }
 
   // Flush chat once per batch

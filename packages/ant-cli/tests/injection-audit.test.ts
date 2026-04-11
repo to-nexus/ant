@@ -64,8 +64,8 @@ function buildRAC(source: SourceType, env: EnvType, docs: DocCombo): ResolvedAct
   const docList = docs === 'none' ? undefined : docs === 'design-only' ? [sampleDocs[0]] : sampleDocsWithUi;
   return {
     source: source as 'explicit' | 'infer',
-    intent: source === 'explicit' ? 'create-code' : undefined,
-    jobMode: 'generate',
+    intent: source === 'explicit' ? 'gen-code-sys' : undefined,
+    mode: 'generate',
     tech: source === 'explicit' ? { language: langMap[env] as any, environment: env } : {},
     hasExplicitFields: source === 'explicit',
     documents: docList,
@@ -159,7 +159,7 @@ describe('Audit 1B: Language × Environment cross', () => {
       });
       const rac: ResolvedActionContext = {
         source: 'explicit',
-        jobMode: 'generate',
+        mode: 'generate',
         tech: { language: lang.toLowerCase() as any, environment: env },
         hasExplicitFields: true,
         documents: sampleDocs,
@@ -190,7 +190,7 @@ describe('Audit 1C: Context flags toggle', () => {
   function baseRAC(): ResolvedActionContext {
     return {
       source: 'explicit',
-      jobMode: 'generate',
+      mode: 'generate',
       tech: { language: 'typescript', environment: 'frontend' },
       hasExplicitFields: true,
       documents: sampleDocs,
@@ -233,22 +233,10 @@ describe('Audit 1C: Context flags toggle', () => {
     expect(has(inj, 'session-context')).toBe(false);
   });
 
-  it('basis ON → basis-guidance injection', () => {
-    const rac = { ...baseRAC(), basis: 'prd' as const };
-    const inj = getInjections('code', baseCtx(), rac, 'feature');
-    expect(has(inj, 'basis-guidance')).toBe(true);
-  });
-
-  it('basis OFF → no basis-guidance', () => {
-    const rac = { ...baseRAC(), basis: undefined };
-    const inj = getInjections('code', baseCtx(), rac, 'feature');
-    expect(has(inj, 'basis-guidance')).toBe(false);
-  });
-
   it('refactor-explicit → both refactor-guidance and behavioral-debugging', () => {
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      jobMode: 'refactor',
+      mode: 'refactor',
       tech: { language: 'typescript', environment: 'frontend' },
       hasExplicitFields: true,
       documents: sampleDocs,
@@ -261,7 +249,7 @@ describe('Audit 1C: Context flags toggle', () => {
   it('refactor-infer with explicit mode → behavioral-debugging', () => {
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'refactor',
+      mode: 'refactor',
       tech: {},
       hasExplicitFields: false,
     };
@@ -361,14 +349,14 @@ describe('Audit 1C-2: TaskType-specific injection matrix', () => {
 
   function featureRAC(): ResolvedActionContext {
     return {
-      source: 'explicit', jobMode: 'generate',
+      source: 'explicit', mode: 'generate',
       tech: { language: 'typescript', environment: 'frontend' },
       hasExplicitFields: true, documents: sampleDocsWithUi,
     };
   }
   function backendRAC(): ResolvedActionContext {
     return {
-      source: 'explicit', jobMode: 'generate',
+      source: 'explicit', mode: 'generate',
       tech: { language: 'go', environment: 'backend' },
       hasExplicitFields: true, documents: sampleDocs,
     };
@@ -544,7 +532,7 @@ describe('Audit 1D: Design job — framework augmentation + targetFile', () => {
 
   function designRAC(): ResolvedActionContext {
     return {
-      source: 'explicit', jobMode: 'generate',
+      source: 'explicit', mode: 'generate',
       tech: { language: 'typescript', environment: 'frontend', framework: 'nextjs' },
       hasExplicitFields: true, documents: sampleDocs,
     };
@@ -564,7 +552,7 @@ describe('Audit 1D: Design job — framework augmentation + targetFile', () => {
       detectedEnvironment: 'backend',
     });
     const rac: ResolvedActionContext = {
-      source: 'explicit', jobMode: 'generate',
+      source: 'explicit', mode: 'generate',
       tech: { language: 'go', environment: 'backend' },
       hasExplicitFields: true, documents: sampleDocs,
     };
@@ -606,7 +594,7 @@ describe('Audit 1D: Design job — framework augmentation + targetFile', () => {
       documents: [{ path: 'doc', content: 'Using Next.js app router for SSR', role: 'ref' as const }],
     });
     const rac: ResolvedActionContext = {
-      source: 'infer', jobMode: 'generate', tech: {},
+      source: 'infer', mode: 'generate', tech: {},
       hasExplicitFields: false,
     };
     const inj = getInjections('design', ctx, rac, 'feature');
@@ -621,7 +609,7 @@ describe('Audit 1D: Design job — framework augmentation + targetFile', () => {
       detectedEnvironment: 'backend',
     });
     const rac: ResolvedActionContext = {
-      source: 'infer', jobMode: 'generate', tech: {},
+      source: 'infer', mode: 'generate', tech: {},
       hasExplicitFields: false,
     };
     const inj = getInjections('design', ctx, rac, 'feature');

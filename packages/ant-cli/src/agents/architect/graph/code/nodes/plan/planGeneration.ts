@@ -69,9 +69,9 @@ export async function buildPlanPrompt(
   if (!promptEngine) throw new Error('[Plan] PromptEngine not available');
 
   if (task.type === 'verification') {
-    const profile = state.profile || (state as any).detectionReport?.profile;
+    const profile = state.profile || state.detectionReport?.profile;
     if (!profile) {
-      console.warn(`⚠️ [Plan] Verification task "${task.name}": profile is null (state.profile=${!!state.profile}, detectionReport.profile=${!!(state as any).detectionReport?.profile})`);
+      console.warn(`⚠️ [Plan] Verification task "${task.name}": profile is null (state.profile=${!!state.profile}, detectionReport.profile=${!!state.detectionReport?.profile})`);
     } else {
       console.log(`🔧 [Plan] Verification profile: language=${profile.language}, framework=${profile.framework || 'none'}`);
     }
@@ -96,7 +96,7 @@ export async function buildPlanPrompt(
   }
 
   if (task.type === 'error') {
-    const profile = state.profile || (state as any).detectionReport?.profile;
+    const profile = state.profile || state.detectionReport?.profile;
     return await promptEngine.buildErrorPlanPrompt(
       task,
       state.directive || '',
@@ -111,7 +111,7 @@ export async function buildPlanPrompt(
   const designDoc = resolveDesignDoc(state, task);
   const isSpecDriven = !!state.selectedSpec;
 
-  // Build documents[] from designDoc and uiDoc
+  // Merge plan-specific docs into resolvedAction.documents (role-labeled)
   const planDocs: ResolvedDocument[] = [];
   if (designDoc) {
     const docLabel = isSpecDriven ? 'Feature Specification' : 'Design Specification';
@@ -119,6 +119,17 @@ export async function buildPlanPrompt(
   }
   if (uiDoc) {
     planDocs.push({ path: 'ui-spec', content: uiDoc, role: 'context', label: 'UI Specification' });
+  }
+
+  const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
+    && (state.resolvedAction?.documents?.length ?? 0) > 0;
+
+  let resolvedActionWithDocs = state.resolvedAction;
+  if (!hasExplicitDocs && planDocs.length > 0) {
+    resolvedActionWithDocs = {
+      ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+      documents: planDocs,
+    };
   }
 
   const prompt = await promptEngine.buildTaskPlanPrompt(
@@ -132,7 +143,7 @@ export async function buildPlanPrompt(
     { hasTools: options?.hasTools ?? false },
     state.designDocUnknownPackages,
     isSpecDriven,
-    state.resolvedAction,
+    resolvedActionWithDocs,
   );
 
   return prompt;
@@ -320,8 +331,8 @@ export async function generatePlanText(
       const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
       capturedUsage = extractTokenUsageFromStreamEvent(event);
       if (capturedUsage) {
-        accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
-        updateKanbanTokenUsage(state as any);
+        accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: true });
+        updateKanbanTokenUsage(state);
       }
     }
   }
@@ -593,8 +604,8 @@ export async function runPlanLLMWithTools(
     if (event.type === 'done' && (event as any).usage) {
       tokenUsage = (event as any).usage;
       const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
-      accumulateTokenUsage(state as any, tokenUsage, { taskLevel: true, jobLevel: true });
-      updateKanbanTokenUsage(state as any);
+      accumulateTokenUsage(state, tokenUsage, { taskLevel: true, jobLevel: true });
+      updateKanbanTokenUsage(state);
       const planRound = Math.floor((messages.length - 1) / 2);
       logTokenUsageToFile(
         state.context?.featurePath,
@@ -788,8 +799,8 @@ export async function finalizePlanFromExploration(
     if (event.type === 'done' && (event as any).usage) {
       tokenUsage = (event as any).usage;
       const { accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
-      accumulateTokenUsage(state as any, tokenUsage, { taskLevel: true, jobLevel: true });
-      updateKanbanTokenUsage(state as any);
+      accumulateTokenUsage(state, tokenUsage, { taskLevel: true, jobLevel: true });
+      updateKanbanTokenUsage(state);
       logTokenUsageToFile(
         state.context?.featurePath,
         state._httpJobId,

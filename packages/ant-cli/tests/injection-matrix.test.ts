@@ -6,8 +6,8 @@ import { INTENT_DEFINITIONS } from '@ant/shared';
 
 const mc = new ModeController();
 
-const CODE_INTENTS = INTENT_DEFINITIONS.filter(d => d.actionId === 'code');
-const DESIGN_INTENTS = INTENT_DEFINITIONS.filter(d => d.actionId === 'system-design');
+const CODE_INTENTS = INTENT_DEFINITIONS.filter(d => d.intentGroup === 'code');
+const DESIGN_INTENTS = INTENT_DEFINITIONS.filter(d => d.intentGroup === 'design-system');
 
 const ENVIRONMENTS = ['frontend', 'backend', 'fullstack'] as const;
 const TASK_TYPES = ['feature', 'setup', 'verification', 'error', 'test-code', 'doc'] as const;
@@ -46,7 +46,7 @@ function buildRAC(intentId: string, env: string, docs?: ResolvedDocument[]): Res
   return {
     source: 'explicit',
     intent: intentId,
-    jobMode: intentId.includes('refactor') ? 'refactor' as const : 'generate' as const,
+    mode: intentId === 'rev-code' ? 'refactor' as const : 'generate' as const,
     tech: { language: langMap[env], environment: env },
     hasExplicitFields: true,
     documents: docs,
@@ -126,7 +126,7 @@ describe('Injection Matrix: Design Job (intent x env)', () => {
 describe('Injection Matrix: ui-design-policy edge cases', () => {
   it('ui-design-policy included when documents contain ui- path', () => {
     const ctx = buildContext('frontend', sampleDocsWithUi);
-    const rac = buildRAC('create-code', 'frontend', sampleDocsWithUi);
+    const rac = buildRAC('gen-code-sys', 'frontend', sampleDocsWithUi);
     const inj = getInjections('code', ctx, rac, 'feature');
     expect(has(inj, 'ui-design-policy')).toBe(true);
   });
@@ -134,14 +134,14 @@ describe('Injection Matrix: ui-design-policy edge cases', () => {
   it('ui-design-policy excluded for backend env even with ui docs', () => {
     const ctx = buildContext('backend', sampleDocsWithUi);
     (ctx as any).detectedEnvironment = 'backend';
-    const rac = buildRAC('create-code', 'backend', sampleDocsWithUi);
+    const rac = buildRAC('gen-code-sys', 'backend', sampleDocsWithUi);
     const inj = getInjections('code', ctx, rac, 'feature');
     expect(has(inj, 'ui-design-policy')).toBe(false);
   });
 
   it('ui-design-policy excluded for verification taskType (skipStaticPolicy)', () => {
     const ctx = buildContext('frontend', sampleDocsWithUi);
-    const rac = buildRAC('create-code', 'frontend', sampleDocsWithUi);
+    const rac = buildRAC('gen-code-sys', 'frontend', sampleDocsWithUi);
     const inj = getInjections('code', ctx, rac, 'verification');
     expect(has(inj, 'ui-design-policy')).toBe(false);
   });

@@ -1,4 +1,4 @@
-import type { Basis, ActionMetadata } from '@ant/shared';
+import type { ActionMetadata } from '@ant/shared';
 import type { ResolvedDocument } from '@ant/shared';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -18,8 +18,8 @@ export interface IntentFixture {
   routing: {
     agent: string;
     jobType: string;
-    jobMode: string;
-    workType?: string;
+    mode: string;
+    intentGroup?: string;
     environment?: string;
   };
   prompt: {
@@ -47,7 +47,7 @@ function D(key: string): string {
 }
 
 // ============================================
-// 22 Fixtures
+// Fixtures
 // ============================================
 
 export const FIXTURES: IntentFixture[] = [
@@ -57,11 +57,11 @@ export const FIXTURES: IntentFixture[] = [
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-plan',
-    directive: D('create-plan:directive'),
-    metadata: { intent: 'create-plan', basis: 'directive' },
+    intent: 'gen-plan',
+    directive: D('gen-plan'),
+    metadata: { intent: 'gen-plan' },
     documents: {},
-    routing: { agent: 'planner', jobType: 'plan', jobMode: 'generate' },
+    routing: { agent: 'planner', jobType: 'plan', mode: 'generate' },
     prompt: {
       templateBase: 'plan',
       requiredInjections: [],
@@ -71,16 +71,16 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   {
-    intent: 'revise-plan',
-    directive: D('revise-plan:directive'),
+    intent: 'rev-plan',
+    directive: D('rev-plan'),
     metadata: {
-      intent: 'revise-plan', basis: 'directive',
+      intent: 'rev-plan',
       refs: ['inputs/sources/prd.md'],
     },
     documents: {
       'inputs/sources/prd.md': { content: LOAD('prd.md'), role: 'ref' },
     },
-    routing: { agent: 'planner', jobType: 'plan', jobMode: 'refactor' },
+    routing: { agent: 'planner', jobType: 'plan', mode: 'refactor' },
     prompt: {
       templateBase: 'plan',
       requiredInjections: [],
@@ -90,41 +90,18 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   // ─────────────────────────────────────────────
-  // System Design: Create FE (2 변형)
+  // System Design: Create FE (1)
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-fe',
-    directive: D('create-fe:prd'),
-    metadata: {
-      intent: 'create-fe', basis: 'prd',
-      refs: ['inputs/sources/prd.md'],
-    },
-    documents: {
-      'inputs/sources/prd.md': { content: LOAD('prd.md'), role: 'ref' },
-    },
-    targetFile: 'fe-system-main.md',
-    routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'system-design', environment: 'frontend',
-    },
-    prompt: {
-      templateBase: 'design/phases/execute/base-system-design',
-      requiredInjections: ['design/base/injections/frontend-guide'],
-      forbiddenInjections: ['design/base/injections/backend-guide'],
-      mustContain: ['React'],
-    },
-  },
-
-  {
-    intent: 'create-fe',
-    directive: D('create-fe:directive'),
-    metadata: { intent: 'create-fe', basis: 'directive' },
+    intent: 'gen-sys-fe',
+    directive: D('gen-sys-fe'),
+    metadata: { intent: 'gen-sys-fe' },
     documents: {},
     targetFile: 'fe-system-main.md',
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'system-design', environment: 'frontend',
+      agent: 'architect', jobType: 'design', mode: 'generate',
+      intentGroup: 'design-system', environment: 'frontend',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -135,41 +112,18 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   // ─────────────────────────────────────────────
-  // System Design: Create BE (2 변형)
+  // System Design: Create BE (1)
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-be',
-    directive: D('create-be:prd'),
-    metadata: {
-      intent: 'create-be', basis: 'prd',
-      refs: ['inputs/sources/prd.md'],
-    },
-    documents: {
-      'inputs/sources/prd.md': { content: LOAD('prd.md'), role: 'ref' },
-    },
-    targetFile: 'be-system-main.md',
-    routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'system-design', environment: 'backend',
-    },
-    prompt: {
-      templateBase: 'design/phases/execute/base-system-design',
-      requiredInjections: ['design/base/injections/backend-guide'],
-      forbiddenInjections: ['design/base/injections/frontend-guide'],
-      mustContain: ['Express'],
-    },
-  },
-
-  {
-    intent: 'create-be',
-    directive: D('create-be:directive'),
-    metadata: { intent: 'create-be', basis: 'directive' },
+    intent: 'gen-sys-be',
+    directive: D('gen-sys-be'),
+    metadata: { intent: 'gen-sys-be' },
     documents: {},
     targetFile: 'be-system-main.md',
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'system-design', environment: 'backend',
+      agent: 'architect', jobType: 'design', mode: 'generate',
+      intentGroup: 'design-system', environment: 'backend',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -184,18 +138,18 @@ export const FIXTURES: IntentFixture[] = [
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-fullstack',
-    directive: D('create-fullstack:prd'),
+    intent: 'gen-sys-full',
+    directive: D('gen-sys-full'),
     metadata: {
-      intent: 'create-fullstack', basis: 'prd',
+      intent: 'gen-sys-full',
       refs: ['inputs/sources/prd.md'],
     },
     documents: {
       'inputs/sources/prd.md': { content: LOAD('prd.md'), role: 'ref' },
     },
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'system-design', environment: 'fullstack',
+      agent: 'architect', jobType: 'design', mode: 'generate',
+      intentGroup: 'design-system', environment: 'fullstack',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -210,10 +164,10 @@ export const FIXTURES: IntentFixture[] = [
   // ─────────────────────────────────────────────
 
   {
-    intent: 'revise-system',
-    directive: D('revise-system:directive'),
+    intent: 'rev-sys',
+    directive: D('rev-sys'),
     metadata: {
-      intent: 'revise-system', basis: 'directive',
+      intent: 'rev-sys',
       refs: ['outputs/design/system/fe-system-main.md'],
     },
     documents: {
@@ -221,8 +175,8 @@ export const FIXTURES: IntentFixture[] = [
     },
     targetFile: 'fe-system-main.md',
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'refactor',
-      workType: 'system-design',
+      agent: 'architect', jobType: 'design', mode: 'refactor',
+      intentGroup: 'design-system',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -234,21 +188,19 @@ export const FIXTURES: IntentFixture[] = [
 
   // ─────────────────────────────────────────────
   // UI Design: Create Figma (1)
-  // figma.json은 FigmaDataConfig({ file: string }) 설정 파일.
-  // 경로만 refs에 전달되고 문서 내용은 프롬프트에 주입되지 않는다.
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-figma',
-    directive: D('create-figma:figma'),
+    intent: 'gen-ui-figma',
+    directive: D('gen-ui-figma'),
     metadata: {
-      intent: 'create-figma', basis: 'figma',
+      intent: 'gen-ui-figma',
       refs: ['inputs/figma.json'],
     },
     documents: {},
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'ui-design',
+      agent: 'architect', jobType: 'design', mode: 'generate',
+      intentGroup: 'design-ui',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -260,20 +212,19 @@ export const FIXTURES: IntentFixture[] = [
 
   // ─────────────────────────────────────────────
   // UI Design: Create Ref (1)
-  // references는 이미지 파일 경로. 프롬프트에 내용 주입 없음.
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-ref',
-    directive: D('create-ref:references'),
+    intent: 'gen-ui-ref',
+    directive: D('gen-ui-ref'),
     metadata: {
-      intent: 'create-ref', basis: 'references',
+      intent: 'gen-ui-ref',
       refs: ['inputs/references/screenshot.png'],
     },
     documents: {},
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'ui-design',
+      agent: 'architect', jobType: 'design', mode: 'generate',
+      intentGroup: 'design-ui',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -284,39 +235,17 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   // ─────────────────────────────────────────────
-  // UI Design: Create Desc (2 변형)
+  // UI Design: Create Desc (1)
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-desc',
-    directive: D('create-desc:prd'),
-    metadata: {
-      intent: 'create-desc', basis: 'prd',
-      refs: ['inputs/sources/prd.md'],
-    },
-    documents: {
-      'inputs/sources/prd.md': { content: LOAD('prd.md'), role: 'ref' },
-    },
-    routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'ui-design',
-    },
-    prompt: {
-      templateBase: 'design/phases/execute/base-system-design',
-      requiredInjections: [],
-      forbiddenInjections: [],
-      mustContain: ['PRD'],
-    },
-  },
-
-  {
-    intent: 'create-desc',
-    directive: D('create-desc:directive'),
-    metadata: { intent: 'create-desc', basis: 'directive' },
+    intent: 'gen-ui-desc',
+    directive: D('gen-ui-desc'),
+    metadata: { intent: 'gen-ui-desc' },
     documents: {},
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'ui-design',
+      agent: 'architect', jobType: 'design', mode: 'generate',
+      intentGroup: 'design-ui',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -331,18 +260,18 @@ export const FIXTURES: IntentFixture[] = [
   // ─────────────────────────────────────────────
 
   {
-    intent: 'revise-ui',
-    directive: D('revise-ui:directive'),
+    intent: 'rev-ui',
+    directive: D('rev-ui'),
     metadata: {
-      intent: 'revise-ui', basis: 'directive',
+      intent: 'rev-ui',
       refs: ['outputs/design/ui/ui-tokens.json'],
     },
     documents: {
       'outputs/design/ui/ui-tokens.json': { content: LOAD('ui-tokens.json'), role: 'ref' },
     },
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'refactor',
-      workType: 'ui-design',
+      agent: 'architect', jobType: 'design', mode: 'refactor',
+      intentGroup: 'design-ui',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -353,17 +282,17 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   // ─────────────────────────────────────────────
-  // Spec: Create
+  // Spec: Create (1)
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-spec',
-    directive: D('create-spec:directive'),
-    metadata: { intent: 'create-spec', basis: 'directive' },
+    intent: 'gen-spec',
+    directive: D('gen-spec'),
+    metadata: { intent: 'gen-spec' },
     documents: {},
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'generate',
-      workType: 'spec',
+      agent: 'architect', jobType: 'design', mode: 'generate',
+      intentGroup: 'design-spec',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -378,18 +307,18 @@ export const FIXTURES: IntentFixture[] = [
   // ─────────────────────────────────────────────
 
   {
-    intent: 'revise-spec',
-    directive: D('revise-spec:directive'),
+    intent: 'rev-spec',
+    directive: D('rev-spec'),
     metadata: {
-      intent: 'revise-spec', basis: 'directive',
+      intent: 'rev-spec',
       refs: ['outputs/design/spec/spec-search-api.md'],
     },
     documents: {
       'outputs/design/spec/spec-search-api.md': { content: LOAD('spec-search-api.md'), role: 'ref' },
     },
     routing: {
-      agent: 'architect', jobType: 'design', jobMode: 'refactor',
-      workType: 'spec',
+      agent: 'architect', jobType: 'design', mode: 'refactor',
+      intentGroup: 'design-spec',
     },
     prompt: {
       templateBase: 'design/phases/execute/base-system-design',
@@ -400,14 +329,14 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   // ─────────────────────────────────────────────
-  // Code: Create (3 변형)
+  // Code: Create (3 변형 — intent가 basis를 인코딩)
   // ─────────────────────────────────────────────
 
   {
-    intent: 'create-code',
-    directive: D('create-code:design-doc'),
+    intent: 'gen-code-sys',
+    directive: D('gen-code-sys'),
     metadata: {
-      intent: 'create-code', basis: 'design-doc',
+      intent: 'gen-code-sys',
       refs: ['outputs/design/system/fe-system-main.md'],
       context: ['outputs/design/ui/ui-spec.json'],
     },
@@ -415,7 +344,7 @@ export const FIXTURES: IntentFixture[] = [
       'outputs/design/system/fe-system-main.md': { content: LOAD('fe-system-main.md'), role: 'ref' },
       'outputs/design/ui/ui-spec.json': { content: LOAD('ui-spec.json'), role: 'context' },
     },
-    routing: { agent: 'architect', jobType: 'code', jobMode: 'generate' },
+    routing: { agent: 'architect', jobType: 'code', mode: 'generate' },
     prompt: {
       templateBase: 'code/phases/execute/base',
       requiredInjections: ['common/injections/action-context'],
@@ -425,10 +354,10 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   {
-    intent: 'create-code',
-    directive: D('create-code:spec'),
+    intent: 'gen-code-spec',
+    directive: D('gen-code-spec'),
     metadata: {
-      intent: 'create-code', basis: 'spec',
+      intent: 'gen-code-spec',
       refs: ['outputs/design/spec/spec-search-api.md'],
       context: ['outputs/design/system/be-system-main.md'],
     },
@@ -436,7 +365,7 @@ export const FIXTURES: IntentFixture[] = [
       'outputs/design/spec/spec-search-api.md': { content: LOAD('spec-search-api.md'), role: 'ref' },
       'outputs/design/system/be-system-main.md': { content: LOAD('be-system-main.md'), role: 'context' },
     },
-    routing: { agent: 'architect', jobType: 'code', jobMode: 'generate' },
+    routing: { agent: 'architect', jobType: 'code', mode: 'generate' },
     prompt: {
       templateBase: 'code/phases/execute/base',
       requiredInjections: ['common/injections/action-context'],
@@ -446,11 +375,11 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   {
-    intent: 'create-code',
-    directive: D('create-code:directive'),
-    metadata: { intent: 'create-code', basis: 'directive' },
+    intent: 'gen-code-directive',
+    directive: D('gen-code-directive'),
+    metadata: { intent: 'gen-code-directive' },
     documents: {},
-    routing: { agent: 'architect', jobType: 'code', jobMode: 'generate' },
+    routing: { agent: 'architect', jobType: 'code', mode: 'generate' },
     prompt: {
       templateBase: 'code/phases/execute/base',
       requiredInjections: [],
@@ -460,34 +389,15 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   // ─────────────────────────────────────────────
-  // Code: Refactor (2 변형)
+  // Code: Revise (1)
   // ─────────────────────────────────────────────
 
   {
-    intent: 'refactor-code',
-    directive: D('refactor-code:existing-doc'),
-    metadata: {
-      intent: 'refactor-code', basis: 'existing-doc',
-      refs: ['outputs/design/spec/spec-search-api.md'],
-    },
-    documents: {
-      'outputs/design/spec/spec-search-api.md': { content: LOAD('spec-search-api.md'), role: 'ref' },
-    },
-    routing: { agent: 'architect', jobType: 'code', jobMode: 'refactor' },
-    prompt: {
-      templateBase: 'code/phases/execute/base',
-      requiredInjections: ['common/injections/refactor-guidance'],
-      forbiddenInjections: [],
-      mustContain: ['리팩토링'],
-    },
-  },
-
-  {
-    intent: 'refactor-code',
-    directive: D('refactor-code:directive'),
-    metadata: { intent: 'refactor-code', basis: 'directive' },
+    intent: 'rev-code',
+    directive: D('rev-code'),
+    metadata: { intent: 'rev-code' },
     documents: {},
-    routing: { agent: 'architect', jobType: 'code', jobMode: 'refactor' },
+    routing: { agent: 'architect', jobType: 'code', mode: 'refactor' },
     prompt: {
       templateBase: 'code/phases/execute/base',
       requiredInjections: ['common/injections/refactor-guidance'],

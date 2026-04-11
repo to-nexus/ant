@@ -109,9 +109,10 @@ export class ChatService {
     featureName: string, 
     content: string, 
     jobId?: string, 
-    userContext?: UserContext
+    userContext?: UserContext,
+    actionMetadata?: import('@ant/shared').ActionMetadata,
   ): Promise<string> {
-    return this.messageManager.addUserMessage(projectId, featureName, content, jobId, userContext);
+    return this.messageManager.addUserMessage(projectId, featureName, content, jobId, userContext, actionMetadata);
   }
 
   /**

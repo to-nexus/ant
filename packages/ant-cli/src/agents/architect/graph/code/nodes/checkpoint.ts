@@ -1,4 +1,5 @@
 import { ArchitectGraphState } from "../state";
+import type { SessionState } from "../../../../../core/types/session";
 
 /**
  * Save checkpoint for resuming after interruption (recursion limit, etc.)
@@ -22,7 +23,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
   // Workers must NOT write global session checkpoint — orchestrator handles it.
   // Worker state has taskQueue=undefined, so writing here would clobber the
   // session's taskQueue with [] and lose all queued tasks.
-  const _wid = (state as any).workerId;
+  const _wid = state.workerId;
   if (_wid !== undefined && _wid !== null) {
     return;
   }
@@ -51,10 +52,10 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     }
     
     // ✅ Build state object, conditionally include currentTask
-    const sessionState: any = {
+    const sessionState: Partial<SessionState> = {
       taskQueue: state.taskQueue?.getAll() || [],
       completedTasks: state.completedTasks || [],
-      completedTasksDetails: state.completedTasksDetails || [], // ✅ NEW: Save full task details
+      completedTasksDetails: state.completedTasksDetails || [],
       retries: state.retries || 0,
       maxRetries: state.maxRetries || 3,
       previousAttempts: state.previousAttempts || [],
@@ -62,35 +63,25 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       lastViolations: state.lastViolations || [],
       previousFileCount: state.previousFileCount,
       resolvedCategories: state.resolvedCategories || [],
-      planText: state.planText,  // ✅ Save plan for reuse on resume
-      // ✅ Save conversationHistory for mid-task resume (execute can continue from interruption point)
-      // Content includes assistant responses + tool_results from execute loop
+      planText: state.planText,
       conversationHistory: state.conversationHistory || [],
-      recursionCount: state.recursionCount,  // ✅ Save current recursion count
-      recursionLimit: state.recursionLimit,  // ✅ Save recursion limit
-      directives: directivesArray,  // ✅ Save directives array (newest first)
-      overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
-      chatSource: state.chatSource,  // ✅ Save chat source flag
-      referenceRequests: state.referenceRequests || [],  // ✅ Save reference requests for tool calling
-      designDocUnknownPackages: state.designDocUnknownPackages,  // Save design-prescribed dependencies for plan injection
-      profile: state.profile,  // Save profile directly (also in detectionReport, but direct access simplifies restore)
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+      directives: directivesArray,
+      overrideDirective: state.overrideDirective,
+      chatSource: state.chatSource,
+      referenceRequests: state.referenceRequests || [],
+      designDocUnknownPackages: state.designDocUnknownPackages,
+      profile: state.profile,
       userLanguage: state.context.userLanguage,
-      // ✅ Save DetectionReport (unified detection result)
       detectionReport: state.detectionReport,
-      // ✅ CRITICAL: Save artifacts for CodeGen validation on resume
-      directive: state.directive,  // ✅ Save directive (for CodeGen validation)
-      design: state.design,  // ✅ Save design document
-      prd: state.prd,  // ✅ Save PRD if exists
-      // ✅ NOTE: parsedUiDocs is NOT saved (contains Map, heavy)
-      // It's reloaded from disk in resolve/execute when needed
-      // ✅ CRITICAL: Save projectCodeContext (filePaths only, NOT files content)
-      // Why: files content is heavy (~500KB) and redundant (already on disk)
-      // Solution: Save filePaths (~5KB) only, LLM can read_file when needed
-      // ALWAYS save as object (even if empty) to ensure field exists in JSON
+      directive: state.directive,
+      design: state.design,
+      prd: state.prd,
       projectCodeContext: state.projectCodeContext ? {
         source: state.projectCodeContext.source,
         filePaths: state.projectCodeContext.filePaths || [],
-        files: [],  // ❌ DON'T save content (too heavy!)
+        files: [],
         stats: state.projectCodeContext.stats || { filesLoaded: 0, estimatedTokens: 0 }
       } : {
         source: 'plan' as const,
@@ -98,30 +89,12 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
         files: [],
         stats: { filesLoaded: 0, stackTraceCount: 0, semanticCount: 0, deduplicatedCount: 0, estimatedTokens: 0 }
       },
+      ...(state.jobId && { jobId: state.jobId }),
+      ...(state.jobTiming && { jobTiming: state.jobTiming }),
+      ...(state.tokenUsage && { tokenUsage: state.tokenUsage }),
+      ...(state._estimatingTokenUsage && { estimatingTokenUsage: state._estimatingTokenUsage }),
+      ...(state.interruption && { interruption: state.interruption }),
     };
-    
-    // ✅ Include jobId and jobTiming if present
-    if ((state as any).jobId) {
-      (sessionState as any).jobId = (state as any).jobId;
-    }
-    if ((state as any).jobTiming) {
-      (sessionState as any).jobTiming = (state as any).jobTiming;
-    }
-    
-    // ✅ CRITICAL: Include job-level token usage
-    if ((state as any).tokenUsage) {
-      (sessionState as any).tokenUsage = (state as any).tokenUsage;
-    }
-    
-    // ✅ Include estimating phase token usage snapshot
-    if ((state as any)._estimatingTokenUsage) {
-      (sessionState as any).estimatingTokenUsage = (state as any)._estimatingTokenUsage;
-    }
-    
-    // ✅ Include interruption details if present
-    if ((state as any).interruption) {
-      (sessionState as any).interruption = (state as any).interruption;
-    }
     
     // ✅ Only include currentTask if it exists
     if (state.currentTask) {
@@ -129,7 +102,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       // This allows UI to show token consumption even before task completes
       const currentTaskWithTokens = {
         ...state.currentTask,
-        tokenUsage: (state as any)._currentTaskTokenUsage || state.currentTask.tokenUsage
+        tokenUsage: state._currentTaskTokenUsage || state.currentTask.tokenUsage
       };
       sessionState.currentTask = currentTaskWithTokens;
     }
@@ -143,7 +116,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       }
     );
     
-    const hasInterruption = !!(state as any).interruption;
+    const hasInterruption = !!state.interruption;
     console.log(`[saveCheckpoint] ✅ Checkpoint saved successfully (interrupted: ${hasInterruption}, recursion: ${state.recursionCount}/${state.recursionLimit})`);
   } catch (error) {
     console.warn(`⚠️  Failed to save checkpoint: ${error}`);

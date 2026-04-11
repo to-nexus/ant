@@ -14,10 +14,9 @@ import {
 import type {
   ActionMetadata,
   DetectionReport,
-  Basis,
-  JobMode,
+  Mode,
   JobEnvironment,
-  DesignWorkType,
+  IntentGroup,
 } from '@ant/shared';
 
 // ============================================
@@ -37,8 +36,8 @@ describe('Audit 2A: resolveFromExplicit — every intent', () => {
       expect(rac.intentDescription!.length).toBeGreaterThan(0);
 
       const derived = deriveFromIntent(def.id);
-      expect(rac.jobMode).toBe(derived.jobMode);
-      expect(rac.workType).toBe(derived.workType);
+      expect(rac.mode).toBe(derived.mode);
+      expect(rac.intentGroup).toBe(derived.intentGroup);
 
       if (derived.environment) {
         expect(rac.tech.environment).toBe(derived.environment);
@@ -53,7 +52,7 @@ describe('Audit 2A: resolveFromExplicit — every intent', () => {
   }
 
   it('all code intents have no derived environment', () => {
-    const codeIntents = INTENT_DEFINITIONS.filter(d => d.actionId === 'code');
+    const codeIntents = INTENT_DEFINITIONS.filter(d => d.intentGroup === 'code');
     for (const def of codeIntents) {
       const derived = deriveFromIntent(def.id);
       expect(derived.environment).toBeUndefined();
@@ -61,51 +60,44 @@ describe('Audit 2A: resolveFromExplicit — every intent', () => {
   });
 
   it('all system-design create intents have derived environment', () => {
-    const envIntents = ['create-fe', 'create-be', 'create-fullstack'];
+    const envIntents = ['gen-sys-fe', 'gen-sys-be', 'gen-sys-full'];
     for (const id of envIntents) {
       const derived = deriveFromIntent(id);
       expect(derived.environment).toBeDefined();
     }
   });
 
-  it('revise-system has no derived environment', () => {
-    const derived = deriveFromIntent('revise-system');
+  it('rev-sys has no derived environment', () => {
+    const derived = deriveFromIntent('rev-sys');
     expect(derived.environment).toBeUndefined();
   });
 
   it('all ui-design intents have no derived environment (it is implicit frontend)', () => {
-    const uiIntents = INTENT_DEFINITIONS.filter(d => d.actionId === 'ui-design');
+    const uiIntents = INTENT_DEFINITIONS.filter(d => d.intentGroup === 'design-ui');
     for (const def of uiIntents) {
       const derived = deriveFromIntent(def.id);
       expect(derived.environment).toBeUndefined();
     }
   });
 
-  it('basis + refs + context propagate to RAC', () => {
-    const allBases: Basis[] = ['prd', 'directive', 'existing-doc', 'figma', 'references', 'spec', 'design-doc'];
-    for (const basis of allBases) {
-      const metadata: ActionMetadata = {
-        explicit: true,
-        intent: 'create-code',
-        basis,
-        refs: ['ref1.md'],
-        context: ['ctx1.md'],
-        target: ['src/main.ts'],
-      };
-      const rac = resolveFromExplicit(metadata);
-      expect(rac.basis).toBe(basis);
-      expect(rac.refs).toEqual(['ref1.md']);
-      expect(rac.context).toEqual(['ctx1.md']);
-      expect(rac.target).toEqual(['src/main.ts']);
-      expect(rac.basisDescription).toBeDefined();
-      expect(rac.basisDescription!.length).toBeGreaterThan(0);
-    }
+  it('refs + context + target propagate to RAC', () => {
+    const metadata: ActionMetadata = {
+      explicit: true,
+      intent: 'gen-code-sys',
+      refs: ['ref1.md'],
+      context: ['ctx1.md'],
+      target: ['src/main.ts'],
+    };
+    const rac = resolveFromExplicit(metadata);
+    expect(rac.refs).toEqual(['ref1.md']);
+    expect(rac.context).toEqual(['ctx1.md']);
+    expect(rac.target).toEqual(['src/main.ts']);
   });
 
   it('documents are NOT populated by resolveFromExplicit', () => {
     const metadata: ActionMetadata = {
       explicit: true,
-      intent: 'create-code',
+      intent: 'gen-code-sys',
       refs: ['a.md'],
     };
     const rac = resolveFromExplicit(metadata);
@@ -122,7 +114,7 @@ describe('Audit 2A: resolveFromExplicit — every intent', () => {
     ];
     for (const { input, expected } of languages) {
       const rac = resolveFromExplicit(
-        { explicit: true, intent: 'create-code' },
+        { explicit: true, intent: 'gen-code-sys' },
         { language: input },
       );
       expect(rac.tech.language).toBe(expected);
@@ -131,7 +123,7 @@ describe('Audit 2A: resolveFromExplicit — every intent', () => {
 
   it('tech.framework reflects codebaseProfile', () => {
     const rac = resolveFromExplicit(
-      { explicit: true, intent: 'create-fe' },
+      { explicit: true, intent: 'gen-sys-fe' },
       { language: 'TypeScript', framework: 'Next.js' },
     );
     expect(rac.tech.framework).toBe('nextjs');
@@ -139,7 +131,7 @@ describe('Audit 2A: resolveFromExplicit — every intent', () => {
 
   it('intent-derived environment takes priority over fallbackHints', () => {
     const rac = resolveFromExplicit(
-      { explicit: true, intent: 'create-be' },
+      { explicit: true, intent: 'gen-sys-be' },
       { language: 'TypeScript' },
       { designDocPath: 'fe-system-main.md' },
     );
@@ -148,7 +140,7 @@ describe('Audit 2A: resolveFromExplicit — every intent', () => {
 
   it('fallbackHints used when intent has no environment', () => {
     const rac = resolveFromExplicit(
-      { explicit: true, intent: 'create-code' },
+      { explicit: true, intent: 'gen-code-sys' },
       { language: 'TypeScript' },
       { designDocPath: 'be-system-main.md' },
     );
@@ -162,8 +154,8 @@ describe('Audit 2A: resolveFromExplicit — every intent', () => {
 
 describe('Audit 2B: resolveFromInfer — detection report variations', () => {
   const baseReport: DetectionReport = {
-    jobMode: 'generate',
-    jobModeReasoning: 'test',
+    detectedMode: 'generate',
+    detectedModeReasoning: 'test',
     sourceJob: 'design',
   };
 
@@ -243,12 +235,6 @@ describe('Audit 2B: resolveFromInfer — detection report variations', () => {
   }
 
   describe('hasExplicitFields reflects actionMetadata presence', () => {
-    it('true when actionMetadata has basis', () => {
-      const rac = resolveFromInfer(baseReport, { basis: 'prd' });
-      expect(rac.hasExplicitFields).toBe(true);
-      expect(rac.basisDescription).toBeDefined();
-    });
-
     it('true when actionMetadata has refs', () => {
       const rac = resolveFromInfer(baseReport, { refs: ['a.md'] });
       expect(rac.hasExplicitFields).toBe(true);
@@ -297,22 +283,22 @@ describe('Audit 2B: resolveFromInfer — detection report variations', () => {
     });
   });
 
-  describe('jobMode variations', () => {
-    const modes: JobMode[] = ['generate', 'refactor', 'explain'];
+  describe('mode variations', () => {
+    const modes: Mode[] = ['generate', 'refactor', 'explain'];
     for (const mode of modes) {
-      it(`jobMode=${mode} passes through`, () => {
-        const rac = resolveFromInfer({ ...baseReport, jobMode: mode });
-        expect(rac.jobMode).toBe(mode);
+      it(`mode=${mode} passes through`, () => {
+        const rac = resolveFromInfer({ ...baseReport, detectedMode: mode });
+        expect(rac.mode).toBe(mode);
       });
     }
   });
 
-  describe('workType and domain pass through', () => {
-    const workTypes: Array<DesignWorkType | undefined> = ['ui-design', 'system-design', 'spec', undefined];
-    for (const wt of workTypes) {
-      it(`workType=${wt}`, () => {
-        const rac = resolveFromInfer({ ...baseReport, workType: wt });
-        expect(rac.workType).toBe(wt);
+  describe('intentGroup and domain pass through', () => {
+    const intentGroups: Array<IntentGroup | undefined> = ['design-ui', 'design-system', 'design-spec', undefined];
+    for (const ig of intentGroups) {
+      it(`intentGroup=${ig}`, () => {
+        const rac = resolveFromInfer({ ...baseReport, detectedIntentGroup: ig });
+        expect(rac.intentGroup).toBe(ig);
       });
     }
 
@@ -356,38 +342,49 @@ describe('Audit 2B: resolveFromInfer — detection report variations', () => {
 describe('Audit 2C: deriveFromIntent — intent → derived values', () => {
   const EXPECTED_DERIVATIONS: Array<{
     intent: string;
-    jobMode: JobMode;
+    mode: Mode;
     agent: string;
     jobType: string;
-    workType?: DesignWorkType;
+    intentGroup?: IntentGroup;
     environment?: string;
   }> = [
-    { intent: 'create-plan', jobMode: 'generate', agent: 'planner', jobType: 'plan' },
-    { intent: 'revise-plan', jobMode: 'refactor', agent: 'planner', jobType: 'plan' },
-    { intent: 'create-fe', jobMode: 'generate', agent: 'architect', jobType: 'design', workType: 'system-design', environment: 'frontend' },
-    { intent: 'create-be', jobMode: 'generate', agent: 'architect', jobType: 'design', workType: 'system-design', environment: 'backend' },
-    { intent: 'create-fullstack', jobMode: 'generate', agent: 'architect', jobType: 'design', workType: 'system-design', environment: 'fullstack' },
-    { intent: 'revise-system', jobMode: 'refactor', agent: 'architect', jobType: 'design', workType: 'system-design' },
-    { intent: 'create-figma', jobMode: 'generate', agent: 'architect', jobType: 'design', workType: 'ui-design' },
-    { intent: 'create-ref', jobMode: 'generate', agent: 'architect', jobType: 'design', workType: 'ui-design' },
-    { intent: 'create-desc', jobMode: 'generate', agent: 'architect', jobType: 'design', workType: 'ui-design' },
-    { intent: 'revise-ui', jobMode: 'refactor', agent: 'architect', jobType: 'design', workType: 'ui-design' },
-    { intent: 'create-spec', jobMode: 'generate', agent: 'architect', jobType: 'design', workType: 'spec' },
-    { intent: 'revise-spec', jobMode: 'refactor', agent: 'architect', jobType: 'design', workType: 'spec' },
-    { intent: 'create-code', jobMode: 'generate', agent: 'architect', jobType: 'code' },
-    { intent: 'refactor-code', jobMode: 'refactor', agent: 'architect', jobType: 'code' },
-    { intent: 'create-visual', jobMode: 'generate', agent: 'creator', jobType: 'visual' },
-    { intent: 'create-learn', jobMode: 'generate', agent: 'architect', jobType: 'learn' },
+    { intent: 'gen-plan', mode: 'generate', agent: 'planner', jobType: 'plan' },
+    { intent: 'rev-plan', mode: 'refactor', agent: 'planner', jobType: 'plan' },
+    { intent: 'explain-plan', mode: 'explain', agent: 'planner', jobType: 'plan' },
+    { intent: 'gen-sys-fe', mode: 'generate', agent: 'architect', jobType: 'design', intentGroup: 'design-system', environment: 'frontend' },
+    { intent: 'gen-sys-be', mode: 'generate', agent: 'architect', jobType: 'design', intentGroup: 'design-system', environment: 'backend' },
+    { intent: 'gen-sys-full', mode: 'generate', agent: 'architect', jobType: 'design', intentGroup: 'design-system', environment: 'fullstack' },
+    { intent: 'rev-sys', mode: 'refactor', agent: 'architect', jobType: 'design', intentGroup: 'design-system' },
+    { intent: 'explain-sys', mode: 'explain', agent: 'architect', jobType: 'design', intentGroup: 'design-system' },
+    { intent: 'gen-ui-figma', mode: 'generate', agent: 'architect', jobType: 'design', intentGroup: 'design-ui' },
+    { intent: 'gen-ui-ref', mode: 'generate', agent: 'architect', jobType: 'design', intentGroup: 'design-ui' },
+    { intent: 'gen-ui-desc', mode: 'generate', agent: 'architect', jobType: 'design', intentGroup: 'design-ui' },
+    { intent: 'rev-ui', mode: 'refactor', agent: 'architect', jobType: 'design', intentGroup: 'design-ui' },
+    { intent: 'explain-ui', mode: 'explain', agent: 'architect', jobType: 'design', intentGroup: 'design-ui' },
+    { intent: 'gen-spec', mode: 'generate', agent: 'architect', jobType: 'design', intentGroup: 'design-spec' },
+    { intent: 'rev-spec', mode: 'refactor', agent: 'architect', jobType: 'design', intentGroup: 'design-spec' },
+    { intent: 'explain-spec', mode: 'explain', agent: 'architect', jobType: 'design', intentGroup: 'design-spec' },
+    { intent: 'gen-code-sys', mode: 'generate', agent: 'architect', jobType: 'code' },
+    { intent: 'gen-code-spec', mode: 'generate', agent: 'architect', jobType: 'code' },
+    { intent: 'gen-code-directive', mode: 'generate', agent: 'architect', jobType: 'code' },
+    { intent: 'rev-code', mode: 'refactor', agent: 'architect', jobType: 'code' },
+    { intent: 'explain-code', mode: 'explain', agent: 'architect', jobType: 'code' },
+    { intent: 'gen-visual', mode: 'generate', agent: 'creator', jobType: 'visual' },
+    { intent: 'explain-visual', mode: 'explain', agent: 'creator', jobType: 'visual' },
+    { intent: 'gen-learn', mode: 'generate', agent: 'architect', jobType: 'learn' },
+    { intent: 'ask-evaluate', mode: 'explain', agent: 'architect', jobType: 'ask' },
+    { intent: 'ask-ant', mode: 'explain', agent: 'architect', jobType: 'ask' },
+    { intent: 'ask-general', mode: 'explain', agent: 'architect', jobType: 'ask' },
   ];
 
   for (const expected of EXPECTED_DERIVATIONS) {
-    it(`${expected.intent} → jobMode=${expected.jobMode}, agent=${expected.agent}, jobType=${expected.jobType}`, () => {
+    it(`${expected.intent} → mode=${expected.mode}, agent=${expected.agent}, jobType=${expected.jobType}`, () => {
       const derived = deriveFromIntent(expected.intent);
-      expect(derived.jobMode).toBe(expected.jobMode);
+      expect(derived.mode).toBe(expected.mode);
       expect(derived.agent).toBe(expected.agent);
       expect(derived.jobType).toBe(expected.jobType);
-      if (expected.workType) {
-        expect(derived.workType).toBe(expected.workType);
+      if (expected.intentGroup) {
+        expect(derived.intentGroup).toBe(expected.intentGroup);
       }
       if (expected.environment) {
         expect(derived.environment).toBe(expected.environment);
@@ -406,7 +403,7 @@ describe('Audit 2C: deriveFromIntent — intent → derived values', () => {
 
   it('unknown intent defaults to generate/architect/design', () => {
     const derived = deriveFromIntent('nonexistent-intent');
-    expect(derived.jobMode).toBe('generate');
+    expect(derived.mode).toBe('generate');
     expect(derived.agent).toBe('architect');
     expect(derived.jobType).toBe('design');
   });

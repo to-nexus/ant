@@ -369,10 +369,10 @@ export class TemplateComposer {
       'action-context': {
         resolvedAction: assembled.resolvedAction || null,
       },
-      'basis-guidance': {
+      'refactor-guidance': {
         resolvedAction: assembled.resolvedAction || null,
       },
-      'refactor-guidance': {
+      'explain-guidance': {
         resolvedAction: assembled.resolvedAction || null,
       },
 

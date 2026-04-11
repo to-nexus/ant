@@ -10,58 +10,45 @@
  *       respond (stream to chat)
  */
 
-import { StateGraph } from '@langchain/langgraph';
+import { Annotation, StateGraph } from '@langchain/langgraph';
 import { AskGraphState } from './state.js';
 import { agentNode, routeAfterAgent } from './nodes/agent.js';
 import { toolNode } from './nodes/tool.js';
 import { respondNode } from './nodes/respond.js';
 
+const AskAnnotation = Annotation.Root({
+  question: Annotation<any>,
+  language: Annotation<any>,
+  workspaceState: Annotation<any>,
+  currentJob: Annotation<any>,
+  currentAgent: Annotation<any>,
+  conversationHistory: Annotation<any>,
+  toolCalls: Annotation<any>,
+  pendingToolCalls: Annotation<any>,
+  response: Annotation<any>,
+  streamingCompleted: Annotation<any>,
+  chatMessageStarted: Annotation<any>,
+  resolvedAction: Annotation<any>,
+  isEvaluation: Annotation<any>,
+  evalType: Annotation<any>,
+  featurePath: Annotation<any>,
+  deps: Annotation<any>,
+  _httpJobId: Annotation<any>,
+  tokenUsage: Annotation<any>,
+});
+
 /**
  * Build Ask LangGraph
  */
 export function buildAskGraph() {
-  const graph = new StateGraph<AskGraphState>({
-    channels: {
-      // Input
-      question: null as any,
-      language: null as any,
-      workspaceState: null as any,
-      currentJob: null as any,
-      currentAgent: null as any,
-      
-      // LLM conversation (Anthropic native format)
-      conversationHistory: null as any,
-      
-      // Tool execution
-      toolCalls: null as any,
-      pendingToolCalls: null as any,
-      
-      // Output
-      response: null as any,
-      streamingCompleted: null as any,
-      chatMessageStarted: null as any,
-      
-      // Evaluation state
-      isEvaluation: null as any,
-      evalType: null as any,
-      featurePath: null as any,
-      
-      // Dependencies
-      deps: null as any,
-      _httpJobId: null as any,
-      tokenUsage: null as any,
-    } as any,
-  } as any);
+  const graph = new StateGraph(AskAnnotation);
   
-  // Add nodes
   graph.addNode('agent', agentNode as any);
   graph.addNode('tool', toolNode as any);
   graph.addNode('respond', respondNode as any);
   
-  // Start with agent
   graph.addEdge('__start__' as any, 'agent' as any);
   
-  // Agent decides: call tool or respond
   graph.addConditionalEdges(
     'agent' as any,
     routeAfterAgent,
@@ -71,10 +58,7 @@ export function buildAskGraph() {
     } as any
   );
   
-  // After tool, go back to agent (loop)
   graph.addEdge('tool' as any, 'agent' as any);
-  
-  // After respond, end
   graph.addEdge('respond' as any, '__end__' as any);
   
   return (graph as any).compile();

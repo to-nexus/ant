@@ -8,8 +8,8 @@
 
 ```
 969 tests (전체)
-├── Intent Acceptance ── intent-acceptance.test.ts (80)  16개 intent × basis 변형 = 22 fixture
-│                                                        Config Matrix → RAC → Prompt 전체 경로
+├── Intent Acceptance ── intent-acceptance.test.ts (60)  16 fixture (intent별)
+│                                                        getConfigSlots(intent) → RAC → Prompt 전체 경로
 │
 ├── Safety Gate ──── prompt-smoke.test.ts (25)     partial 등록, 템플릿 렌더, manifest 무결성
 │                    runtime-context.test.ts        buildRuntimeContext, generateFileTree
@@ -34,25 +34,24 @@
 
 ## Intent Acceptance
 
-16개 intent에 대해 (directive, basis, refs, context) 조합을 준비하고, 디렉티브 입력 → RAC 생성 → 프롬프트 빌드 전체 경로를 자동 검증한다. 서버/LLM 없이 순수 함수 호출만으로 ~270ms에 실행.
+16개 fixture에 대해 디렉티브·`ActionMetadata`(intent, refs, context 등) 조합을 준비하고, 디렉티브 입력 → RAC 생성 → 프롬프트 빌드 전체 경로를 자동 검증한다. 서버/LLM 없이 순수 함수 호출만으로 실행.
 
 | 파일 | 역할 |
 |------|------|
-| `tests/intents/dataset.ts` | 22개 fixture (16 intent × basis 변형) + 8개 샘플 문서 |
-| `tests/intents/intent-acceptance.test.ts` | vitest 자동 테스트 (80 tests) |
+| `tests/intents/dataset.ts` | 16개 fixture + 테스트용 샘플 문서 |
+| `tests/intents/intent-acceptance.test.ts` | vitest 자동 테스트 (60 tests) |
 | `tests/intents/documents/` | 테스트용 최소 문서 (prd, fe-system, be-system 등 8개) |
 | `docs/testing/e2e-intent-reference.md` | 수동 E2E curl 레퍼런스 (자동 테스트 아님) |
 
 ### 검증 3단계
 
 ```
-Stage 1: Config Matrix      getAvailableBases(intent) → basis 포함 확인
-                             getConfigSlots(intent, basis) → null 아닌지
+Stage 1: Config Matrix      getConfigSlots(intent) → null 아닌지
 
 Stage 2: RAC Routing         resolveFromExplicit(metadata) → RAC 생성
                              deriveFromIntent(intent) → agent/jobType 일치
-                             RAC.jobMode, workType, tech.environment 일치
-                             refs/context/basis 필드 보존
+                             RAC.mode, intentGroup, tech.environment 일치
+                             refs/context 필드 보존
 
 Stage 3: Prompt Build        buildExecutePrompt() → PromptBuildResult
   (code/design만)            requiredInjections 포함 확인
@@ -61,7 +60,7 @@ Stage 3: Prompt Build        buildExecutePrompt() → PromptBuildResult
                              injection 목록 스냅샷 비교 (회귀 방지)
 ```
 
-- **Stage 1-2**: 모든 22개 fixture에 대해 실행 (plan 포함)
+- **Stage 1-2**: 모든 16개 fixture에 대해 실행 (plan 포함)
 - **Stage 3**: code/design job만 실행 (plan은 별도 빌더 사용)
 
 ### 왜 서버 없이 가능한가
@@ -87,22 +86,24 @@ HTTP, Redis, BullMQ, LLM 호출이 전혀 없다. ModeController의 injection �
 
 ### Fixture 커버리지
 
-| Intent | Basis 변형 | Stage 3 |
-|--------|-----------|---------|
-| create-plan | directive | - (plan job) |
-| revise-plan | directive | - (plan job) |
-| create-fe | prd, directive | design |
-| create-be | prd, directive | design |
-| create-fullstack | prd | design |
-| revise-system | directive | design |
-| create-figma | figma | design |
-| create-ref | references | design |
-| create-desc | prd, directive | design |
-| revise-ui | directive | design |
-| create-spec | existing-doc, directive | design |
-| revise-spec | directive | design |
-| create-code | design-doc, spec, directive | code |
-| refactor-code | existing-doc, directive | code |
+| Intent | Stage 3 |
+|--------|---------|
+| gen-plan | - (plan job) |
+| rev-plan | - (plan job) |
+| gen-sys-fe | design |
+| gen-sys-be | design |
+| gen-sys-full | design |
+| rev-sys | design |
+| gen-ui-figma | design |
+| gen-ui-ref | design |
+| gen-ui-desc | design |
+| rev-ui | design |
+| gen-spec | design |
+| rev-spec | design |
+| gen-code-sys | code |
+| gen-code-spec | code |
+| gen-code-directive | code |
+| rev-code | code |
 
 ---
 
@@ -150,7 +151,7 @@ HTTP, Redis, BullMQ, LLM 호출이 전혀 없다. ModeController의 injection �
 ### 7개 축
 
 1. **Source**: explicit / infer / infer+metadata / none
-2. **Intent**: 16개 intent → jobMode/workType/environment 파생
+2. **Intent**: 대표 intent → mode/intentGroup/environment 파생
 3. **Environment**: browser / node-api / go-api / fullstack / node-cli / go-cli
 4. **Language**: typescript / go / python / rust / java
 5. **TaskType**: feature / setup / verification / error / test-code / doc
@@ -199,7 +200,7 @@ RAC 생성 ─→ Documents 파이프라인 ─→ 6-Layer Pipeline (execute) �
 | RAC 유형 | 검증 |
 |----------|------|
 | explicit + full fields | 모든 필드 동일 |
-| infer + minimal | source, jobMode, tech 보존 |
+| infer + minimal | source, mode, tech 보존 |
 | special chars in documents | newlines, unicode, backticks 무손실 |
 | undefined fields | 키 사라짐 허용, null 변환 금지 |
 

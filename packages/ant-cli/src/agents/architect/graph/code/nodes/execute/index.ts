@@ -151,7 +151,7 @@ export async function execute(
       console.log(`📋 [CodeGen] Session manifest: ${otherTaskFiles.length} file(s) from other tasks`);
     }
   } else if (workerFSForManifest?.sharedBuffer?.getWrittenFilesByOtherWorkers) {
-    const currentWorkerId = (state as any).workerId ?? 0;
+    const currentWorkerId = state.workerId ?? 0;
     const otherWorkerFiles: Array<{ path: string; taskName?: string }> =
       workerFSForManifest.sharedBuffer.getWrittenFilesByOtherWorkers(currentWorkerId);
     if (otherWorkerFiles.length > 0) {
@@ -216,23 +216,23 @@ export async function execute(
   // - All other modes in code graph: YES tools (generate/refactor/unknown)
   // 
   // ⚠️ DEFENSIVE: Default to tools ENABLED in code graph.
-  // Previously, tools were disabled when detectionReport.jobMode was undefined,
+  // Previously, tools were disabled when detectionReport.detectedMode was undefined,
   // causing LLM to output <function_calls><invoke> XML as text instead of
   // using structured tool_use blocks. This happened when detectionReport was
   // not properly restored on resume.
-  const isExplainMode = state.detectionReport?.jobMode === 'explain';
+  const isExplainMode = state.detectionReport?.detectedMode === 'explain';
   const tools = isExplainMode
     ? await getToolsByNamesWithTemplates(TOOL_SETS.codeExplain, state.deps?.promptEngine?.deps?.promptPort)
     : await getAvailableTools(state);
   
-  if (!state.detectionReport?.jobMode) {
-    console.warn(`⚠️ [CodeGen] detectionReport.jobMode is missing — defaulting to tools enabled`);
+  if (!state.detectionReport?.detectedMode) {
+    console.warn(`⚠️ [CodeGen] detectionReport.detectedMode is missing — defaulting to tools enabled`);
   }
   
   if (isExplainMode) {
     console.log(`💡 [CodeGen] Explain mode - read-only tools enabled`);
   } else {
-    console.log(`🔧 [CodeGen] Tool calling enabled (code job, mode=${state.detectionReport?.jobMode || 'unknown'})`);
+    console.log(`🔧 [CodeGen] Tool calling enabled (code job, mode=${state.detectionReport?.detectedMode || 'unknown'})`);
   }
   
   // ✅ Workflow update
@@ -247,7 +247,7 @@ export async function execute(
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'execute',
-      (state as any).workerId ?? 0,
+      state.workerId ?? 0,
       taskInfo, 
       extractLLMInfo(llmToUse),
       state.recursionCount,
@@ -435,8 +435,8 @@ export async function execute(
         const { extractTokenUsageFromStreamEvent, accumulateTokenUsage, updateKanbanTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
         capturedUsage = extractTokenUsageFromStreamEvent(event);
         if (capturedUsage) {
-          accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: true });
-          updateKanbanTokenUsage(state as any);
+          accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: true });
+          updateKanbanTokenUsage(state);
 
           // Log to debug/tokens/ for per-call analysis
           const callIdx = newCallIndex - 1;
@@ -521,7 +521,7 @@ export async function execute(
 
       // 1. Authorize worker for post-merge writes (prevents re-conflict on next write)
       const workerFSForAuth = state.deps?.fileSystem as any;
-      const currentWorkerId = (state as any).workerId ?? 0;
+      const currentWorkerId = state.workerId ?? 0;
       if (workerFSForAuth?.sharedBuffer?.authorizeWriter) {
         for (const conflict of fileConflicts) {
           workerFSForAuth.sharedBuffer.authorizeWriter(conflict.path, currentWorkerId);
@@ -623,7 +623,7 @@ export async function execute(
 
       // Workflow exit
       if (state.deps?.workflowUpdate && state._httpJobId) {
-        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', (state as any).workerId ?? 0);
+        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', state.workerId ?? 0);
       }
 
       // Suppress fileErrors while merge is in progress — returning them
@@ -679,7 +679,7 @@ export async function execute(
     
     // ✅ Workflow instrumentation: Exit node (success path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', (state as any).workerId ?? 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', state.workerId ?? 0);
     }
     
     // ✅ Return LLM response (state에 저장)
@@ -851,7 +851,7 @@ export async function execute(
     
     // ✅ Workflow instrumentation: Exit node (error path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', (state as any).workerId ?? 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', state.workerId ?? 0);
     }
     
     throw error;

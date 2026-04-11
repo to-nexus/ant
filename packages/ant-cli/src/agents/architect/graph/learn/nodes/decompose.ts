@@ -6,13 +6,33 @@
 
 import { LearnGraphState, LearnCommand } from "../state";
 import * as fs from "fs";
-import * as path from "path";
 import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
+import { resolveFromExplicit, synthesizeLearnIntent } from '@ant/shared';
+import type { ResolvedActionContext } from '@ant/shared';
 
 export async function decompose(state: LearnGraphState): Promise<Partial<LearnGraphState>> {
   const llm = state.deps?.llm;
   if (!llm) {
     throw new Error("LLM not provided for analysis");
+  }
+
+  // ── RAC creation (explicit + infer, plan pattern) ──
+  const actionMetadata = state.actionMetadata;
+  let resolvedAction: ResolvedActionContext | undefined;
+
+  if (actionMetadata?.intent) {
+    resolvedAction = resolveFromExplicit(actionMetadata);
+    console.log(`🔍 [Learn:Decompose] RAC created (explicit): intent=${actionMetadata.intent}, mode=${resolvedAction.mode}`);
+  } else {
+    const synthesizedIntent = synthesizeLearnIntent();
+    resolvedAction = resolveFromExplicit({ ...actionMetadata, intent: synthesizedIntent });
+    const inferHasExplicit = !!(
+      (actionMetadata?.target && actionMetadata.target.length > 0) ||
+      (actionMetadata?.refs && actionMetadata.refs.length > 0) ||
+      (actionMetadata?.context && actionMetadata.context.length > 0)
+    );
+    resolvedAction = { ...resolvedAction, source: 'infer', hasExplicitFields: inferHasExplicit };
+    console.log(`🔍 [Learn:Decompose] RAC created (infer): intent=${synthesizedIntent}, mode=${resolvedAction.mode}`);
   }
 
   // Get ChatAPI for status updates
@@ -74,35 +94,34 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   const commandMatch = responseText.match(/<learn_command>\s*([\s\S]*?)\s*<\/learn_command>/);
   if (!commandMatch) {
     console.log('⚠️  [Learn] No <learn_command> tag found, defaulting to learn_text');
-    // Fallback: treat as raw text
     return {
       command: {
         action: 'learn_text',
         text: state.directive
-      } as LearnCommand
+      } as LearnCommand,
+      resolvedAction,
     };
   }
 
   try {
     const command: LearnCommand = JSON.parse(commandMatch[1]);
     
-    // Validate command
     if (!['index_branch', 'index_codebase', 'learn_files', 'learn_text'].includes(command.action)) {
       throw new Error(`Invalid action: ${command.action}`);
     }
 
     console.log(`✅ [Learn] Parsed command:`, JSON.stringify(command, null, 2));
 
-    return { command };
+    return { command, resolvedAction };
   } catch (error) {
     console.error('⚠️  Failed to parse learn command:', error);
     console.log('   Falling back to learn_text');
-    // Fallback
     return {
       command: {
         action: 'learn_text',
         text: state.directive
-      } as LearnCommand
+      } as LearnCommand,
+      resolvedAction,
     };
   }
 }

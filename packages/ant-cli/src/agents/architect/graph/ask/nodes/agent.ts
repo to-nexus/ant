@@ -90,6 +90,14 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   let isEvaluation = state.isEvaluation;
   let evalType = state.evalType;
   
+  // Pre-set evaluation mode from RAC intent (triage classified as ask-evaluate)
+  if (!isEvaluation && state.resolvedAction?.intent === 'ask-evaluate') {
+    isEvaluation = true;
+    if (DEBUG) {
+      console.log('   📋 Evaluation mode pre-set from RAC intent (ask-evaluate)');
+    }
+  }
+  
   // Build system prompt
   const systemPrompt = buildSystemPrompt(state);
   

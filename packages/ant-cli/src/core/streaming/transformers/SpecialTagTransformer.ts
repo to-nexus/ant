@@ -306,17 +306,16 @@ export class SpecialTagTransformer {
       const parsed = JSON.parse(detectJson);
       
       // Determine source job from JSON structure
-      // - Code job: has 'jobMode' or 'mode' WITHOUT 'workType'
-      // - Design job: has 'workType'
-      const isDesignJob = 'workType' in parsed;
+      // - Code job: has 'jobMode' or 'mode' WITHOUT 'intentGroup'/'workType'
+      // - Design job: has 'intentGroup' or 'workType'
+      const isDesignJob = 'intentGroup' in parsed || 'workType' in parsed;
       const sourceJob = isDesignJob ? 'design' : 'code';
       
       // Build DetectionReport from parsed JSON (inline conversion)
       const report: any = {
         sourceJob,
-        // Support both old (mode/modeReasoning) and new (jobMode/jobModeReasoning) field names
-        jobMode: parsed.jobMode || parsed.mode || parsed.designMode || 'generate',
-        jobModeReasoning: parsed.jobModeReasoning || parsed.modeReasoning || parsed.designModeReasoning || '',
+        detectedMode: parsed.detectedMode || parsed.jobMode || parsed.mode || parsed.designMode || 'generate',
+        detectedModeReasoning: parsed.detectedModeReasoning || parsed.jobModeReasoning || parsed.modeReasoning || parsed.designModeReasoning || '',
         detectedAt: new Date().toISOString(),
       };
       
@@ -328,9 +327,10 @@ export class SpecialTagTransformer {
       
       // Design-specific fields
       if (sourceJob === 'design') {
-        if (parsed.workType && parsed.workType !== 'error') {
-          report.workType = parsed.workType;
-          report.workTypeReasoning = parsed.workTypeReasoning;
+        const ig = parsed.intentGroup ?? parsed.workType;
+        if (ig && ig !== 'error') {
+          report.detectedIntentGroup = ig;
+          report.detectedIntentGroupReasoning = parsed.intentGroupReasoning ?? parsed.workTypeReasoning;
         }
         if (parsed.domain) {
           report.domain = parsed.domain;

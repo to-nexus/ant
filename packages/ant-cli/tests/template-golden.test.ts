@@ -18,7 +18,7 @@ const ctx = { project: 'test', featurePath: '/tmp/test', featureFolder: 'test' }
 
 function rac(overrides?: Partial<ResolvedActionContext>): ResolvedActionContext {
   return {
-    source: 'infer', jobMode: 'generate', tech: { language: 'typescript', environment: 'frontend' },
+    source: 'infer', mode: 'generate', tech: { language: 'typescript', environment: 'frontend' },
     hasExplicitFields: false, ...overrides,
   } as ResolvedActionContext;
 }
@@ -95,7 +95,7 @@ describe('Template Golden: Execute phase (extended)', () => {
       directive: 'Refactor authentication module',
       documents: docs,
       resolvedAction: rac({
-        source: 'explicit', jobMode: 'refactor', hasExplicitFields: true,
+        source: 'explicit', mode: 'refactor', hasExplicitFields: true,
         documents: docs,
       }),
       currentTask: { name: 'Refactor auth', type: 'feature', priority: 200, description: 'Refactor auth' },
@@ -167,7 +167,7 @@ describe('Template Golden: Design job', () => {
 });
 
 describe('Template Golden: Design job (extended)', () => {
-  it('Scenario 11: design execute: create-fullstack + api-contract-guide', async () => {
+  it('Scenario 11: design execute: gen-sys-full + api-contract-guide', async () => {
     const docs: ResolvedDocument[] = [
       { path: 'source-docs', content: '# PRD\nBuild fullstack app with REST API', role: 'context', label: 'PRD Specification' },
     ];
