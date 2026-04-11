@@ -37,8 +37,8 @@ export interface ConfigSlots {
   chatRequiresRefs?: boolean;
   /** When true, context must be selected for build (e.g. rev-plan needs background docs) */
   buildRequiresContext?: boolean;
-  /** Max number of ref files user can select across all ref slots (e.g. rev-plan: 1 for single-target) */
-  refsMaxSelection?: number;
+  /** When true, only one ref file can be selected at a time (e.g. rev-plan: pick one document to revise) */
+  refsSingleSelect?: boolean;
 }
 
 export interface SlotDef {
@@ -221,7 +221,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     context: [ctxDir(SOURCES_DIR, L.sources, { excludeSelectedRefs: true })],
     target: { kind: 'revise' },
     buildRequiresContext: true,
-    refsMaxSelection: 1,
+    refsSingleSelect: true,
   },
 
   // ── System Design: Gen ─────────────────────

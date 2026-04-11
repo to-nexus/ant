@@ -149,7 +149,7 @@ ResolvedActionContext (RAC) — Intent-Centric 프롬프트 시스템의 SSOT. r
 
 | 타입 | 정의 |
 |------|------|
-| `ConfigSlots` | `refs: SlotDef[]`, `context: SlotDef[]`, `target: TargetDef`, `chatRequiresRefs?`, `refsMaxSelection?` |
+| `ConfigSlots` | `refs: SlotDef[]`, `context: SlotDef[]`, `target: TargetDef`, `chatRequiresRefs?`, `refsSingleSelect?` |
 | `SlotDef` | `path`, `label`, `type: 'dir'\|'file'`, `required`, `locked?`, `excludeSelectedRefs?`, `createIntent?`, `humanLabel?`, `codebase?`, `excludeFiles?` |
 | `TargetDef` | `dir?`, `expectedFiles?`, `codebase?`, `mirrorRefs?`, `emptyHint?` |
 | `ExpectedFile` | `prefix`, `ext`, `label`, `warnIfExists`, `isPattern` |
@@ -166,7 +166,7 @@ UI(`ActionConfigView`)가 intent 선택 시점에 `actionMetadata.target`을 세
 | `codebase: true` | 없음 (해당 없음) | — |
 | `emptyHint` only | 없음 (채팅 응답) | — |
 
-`refsMaxSelection`: `ConfigSlots`에 지정 시 해당 intent의 refs 선택 수를 제한 (예: rev-plan → `refsMaxSelection: 1`). `required`: `SlotDef` 필드로, true면 파일 있을 때 자동 선택 + 없을 때 amber 경고, false면 수동 선택 + gray 표시.
+`refsSingleSelect`: `ConfigSlots`에 true로 지정 시 refs를 하나만 선택 가능 (예: rev-plan). `required`: `SlotDef` 필드로, true면 파일 있을 때 자동 선택 + 없을 때 amber 경고, false면 수동 선택 + gray 표시.
 
 ### 인텐트·모드 철학 (Phase 6+)
 
