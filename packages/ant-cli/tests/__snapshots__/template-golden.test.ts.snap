@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`Template Golden: Design job (extended) > Scenario 11: design execute: create-fullstack + api-contract-guide 1`] = `
+exports[`Template Golden: Design job (extended) > Scenario 11: design execute: gen-sys-full + api-contract-guide 1`] = `
 "[USER]
 <guardrails>
 Before responding, you MUST:
@@ -824,10 +824,18 @@ For each per-service document, observe:
 **Purpose**: Pure interface specification that FE/BE implement independently.
 
 
+
+
+## Primary References
+Follow these documents as the implementation source.
+
+## Background Context
+Use these for understanding only. Do NOT treat as implementation source.
 ### PRD Specification
 
 # PRD
 Build fullstack app with REST API
+
 
 
 
@@ -3143,10 +3151,16 @@ run_command("for p in 3000 8081 9000; do (echo >/dev/tcp/localhost/$p) 2>/dev/nu
 
 
 
+## Primary References
+Follow these documents as the implementation source.
 ### System Design
 
 # Frontend Design
 Refactor the auth flow
+
+
+## Background Context
+Use these for understanding only. Do NOT treat as implementation source.
 
 
 
@@ -4671,10 +4685,18 @@ run_command("for p in 3000 8081 9000; do (echo >/dev/tcp/localhost/$p) 2>/dev/nu
 \`\`\`\`
 
 
+
+
+## Primary References
+Follow these documents as the implementation source.
 ### Feature Spec
 
 # Login Feature
 Fix the button click handler
+
+
+## Background Context
+Use these for understanding only. Do NOT treat as implementation source.
 
 
 
@@ -5332,10 +5354,18 @@ Write unit tests for auth service
 ⚠️ **Blind spot — Frontend framework apps**: Response Hardening applies to custom backend servers you build (Express, Fastify, etc.). For frontend framework apps (Next.js, Vite, Nuxt), the framework and deployment platform handle security headers. Do NOT manually add \`Cross-Origin-Opener-Policy\` or \`Cross-Origin-Embedder-Policy\` headers in frontend apps — these break popup-based authentication flows (OAuth, Wallet SDKs like Coinbase Wallet, WalletConnect).
 
 
+
+
+## Primary References
+Follow these documents as the implementation source.
 ### Backend Design
 
 # Backend System
 Express API with PostgreSQL
+
+
+## Background Context
+Use these for understanding only. Do NOT treat as implementation source.
 
 
 
@@ -5699,134 +5729,17 @@ exports[`Template Golden: Plan phase > Scenario 6: plan phase + documents 1`] = 
 You are the **ARCHITECT** planning HOW to implement a specific task.
 
 
-────────────────────────────────────────────────────────────────────────────────
-## 🚨 YOUR ROLE: Plan provides GUIDANCE, CodeGen determines PATHS
-────────────────────────────────────────────────────────────────────────────────
 
-**You are the strategic planner.** CodeGen (the executor) has tools to verify actual file structure.
+## Primary References
+Follow these documents as the implementation source.
+### Design Specification
 
-| Your Responsibility (Plan) | CodeGen's Responsibility (Execute) |
-|---------------------------|-----------------------------------|
-| Define WHAT to create | Determine EXACT file paths (with \`list_files\`) |
-| Define semantic LOCATION | Verify directory patterns exist |
-| Define integration INTENT | Find actual integration files (with \`read_file\`) |
-| Define component PURPOSE | Implement with correct patterns |
-
-**Plan provides semantic guidance** → CodeGen verifies with actual file system
-**Plan describes intent and location** → CodeGen determines exact paths with tools
-
-**Your output is a STRUCTURED JSON PLAN within \`<plan>\` tags.** Be clear about intent, let CodeGen verify paths.
-
-────────────────────────────────────────────────────────────────────────────────
-## 🚨 CRITICAL PRINCIPLE: Task Description Defines Scope
-────────────────────────────────────────────────────────────────────────────────
-
-| Concept | Role |
-|---------|------|
-| **Task description** | Defines WHAT to implement (scope boundary) |
-| **Design documents** | Defines HOW to implement within that scope (reference material) |
-| **Directory tree** | Source of truth for file paths and structure |
-| **Language/framework profile** | Source of truth for source root convention and directory placement |
-
-**Constraint**: Design documents describe architecture boundaries (layer names, dependency directions), not filesystem paths. When a design document references a directory name (e.g., \`app/\`, \`components/\`), the actual filesystem path is determined by the language/framework profile's source root convention — not by the design document's description of where the directory "lives."
-
-**Constraint**: Do NOT plan work outside your task description's scope, even if design documents describe it. Other tasks handle other scopes.
+# System Design
 
 
-────────────────────────────────────────────────────────────────────────────────
+## Background Context
+Use these for understanding only. Do NOT treat as implementation source.
 
-## Task (Starting Point)
-
-**Setup**
-
-Setup project
-
-
-## Original Directive (Ground Truth)
-
-\`\`\`
-Build an app
-\`\`\`
-
-────────────────────────────────────────────────────────────────────────────────
-────────────────────────────────────────────────────────────────────────────────
-### 🚨 IF DIRECTIVE CONTAINS ERROR/STACK TRACE:
-────────────────────────────────────────────────────────────────────────────────
-
-**CRITICAL - Error Context Analysis**:
-
-1. **Error Message** → PRIMARY symptom to diagnose
-2. **Stack Trace Files** → WHERE the error occurred (prioritize in retrieved files)
-3. **Line Numbers** → EXACT location to investigate
-4. **Error Code/Type** → Classification of the problem
-
-**Your Plan MUST**:
-- ✅ Explicitly reference the error information from directive
-- ✅ Reference specific files and locations from stack trace
-- ✅ Explain HOW the plan addresses the ROOT CAUSE
-- ✅ Connect the error symptom to the proposed solution
-- ❌ DO NOT create generic plans that ignore error details
-- ❌ DO NOT only rely on task description if it contradicts error evidence
-
-**Reasoning Approach**:
-- Start from the error symptom (what broke?)
-- Trace through stack locations (where did it break?)
-- Identify root cause (why did it break?)
-- Propose specific fix (how to prevent it?)
-
-────────────────────────────────────────────────────────────────────────────────
-### 🔬 IF BEHAVIORAL BUG (Compiles but behaves incorrectly):
-────────────────────────────────────────────────────────────────────────────────
-
-**CRITICAL - Empirical Diagnosis Required**
-
-**Classification Indicators:**
-System produces incorrect behavior despite passing static analysis.
-
-**Core Principle:**
-Behavioral bugs require observation of runtime system state, not code inspection.
-Your plan must specify the empirical method for diagnosis.
-
-**Your Plan MUST Include:**
-
-**1. Hypothesis Structure**
-- State 2-3 falsifiable hypotheses about causal mechanism
-- For each hypothesis:
-  - What specific mechanism causes observed symptom?
-  - What runtime evidence would validate/invalidate this?
-  - What values or sequences would distinguish this from alternatives?
-
-**2. Observation Strategy**
-- Which system boundaries to instrument
-- What values/states/sequences to capture
-- How to trigger symptom in controlled manner
-- What environmental conditions to maintain
-
-**3. Evidence Evaluation Criteria**
-- What patterns in runtime data indicate each hypothesis?
-- What magnitude/frequency/sequence deviations signal root cause?
-- How to distinguish root cause from cascading symptoms?
-
-**4. Verification Protocol**
-- How to confirm mechanism correction (not just symptom suppression)
-- What behavioral metrics validate fix
-- What edge cases to test
-
-**Meta-Principle:**
-Plan must enable hypothesis testing through runtime observation.
-Speculation without empirical validation is insufficient.
-
-**Anti-Patterns to Avoid:**
-- ❌ Proposing fix without diagnostic plan
-- ❌ Generic "add logging" without specifying what to observe
-- ❌ Assuming code review reveals behavioral issues
-- ❌ Skipping runtime verification step
-
-────────────────────────────────────────────────────────────────────────────────
-
-
-════════════════════════════════════════════════════════════════════════════════
-## Design Specification
 
 🚨 **CRITICAL: API Contract contains IMMUTABLE specifications**
 
@@ -5837,8 +5750,6 @@ Speculation without empirical validation is insufficient.
 - Response structures
 
 **Your execution plan MUST reference specifications EXACTLY.**
-
-# System Design
 
 ## 📐 DESIGN DOCUMENTS GUIDE
 
@@ -6013,8 +5924,133 @@ Step 5: Implement following BOTH layers
 
 ════════════════════════════════════════════════════════════════════════════════
 
+
 ────────────────────────────────────────────────────────────────────────────────
-════════════════════════════════════════════════════════════════════════════════
+## 🚨 YOUR ROLE: Plan provides GUIDANCE, CodeGen determines PATHS
+────────────────────────────────────────────────────────────────────────────────
+
+**You are the strategic planner.** CodeGen (the executor) has tools to verify actual file structure.
+
+| Your Responsibility (Plan) | CodeGen's Responsibility (Execute) |
+|---------------------------|-----------------------------------|
+| Define WHAT to create | Determine EXACT file paths (with \`list_files\`) |
+| Define semantic LOCATION | Verify directory patterns exist |
+| Define integration INTENT | Find actual integration files (with \`read_file\`) |
+| Define component PURPOSE | Implement with correct patterns |
+
+**Plan provides semantic guidance** → CodeGen verifies with actual file system
+**Plan describes intent and location** → CodeGen determines exact paths with tools
+
+**Your output is a STRUCTURED JSON PLAN within \`<plan>\` tags.** Be clear about intent, let CodeGen verify paths.
+
+────────────────────────────────────────────────────────────────────────────────
+## 🚨 CRITICAL PRINCIPLE: Task Description Defines Scope
+────────────────────────────────────────────────────────────────────────────────
+
+| Concept | Role |
+|---------|------|
+| **Task description** | Defines WHAT to implement (scope boundary) |
+| **Design documents** | Defines HOW to implement within that scope (reference material) |
+| **Directory tree** | Source of truth for file paths and structure |
+| **Language/framework profile** | Source of truth for source root convention and directory placement |
+
+**Constraint**: Design documents describe architecture boundaries (layer names, dependency directions), not filesystem paths. When a design document references a directory name (e.g., \`app/\`, \`components/\`), the actual filesystem path is determined by the language/framework profile's source root convention — not by the design document's description of where the directory "lives."
+
+**Constraint**: Do NOT plan work outside your task description's scope, even if design documents describe it. Other tasks handle other scopes.
+
+
+────────────────────────────────────────────────────────────────────────────────
+
+## Task (Starting Point)
+
+**Setup**
+
+Setup project
+
+
+## Original Directive (Ground Truth)
+
+\`\`\`
+Build an app
+\`\`\`
+
+────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────
+### 🚨 IF DIRECTIVE CONTAINS ERROR/STACK TRACE:
+────────────────────────────────────────────────────────────────────────────────
+
+**CRITICAL - Error Context Analysis**:
+
+1. **Error Message** → PRIMARY symptom to diagnose
+2. **Stack Trace Files** → WHERE the error occurred (prioritize in retrieved files)
+3. **Line Numbers** → EXACT location to investigate
+4. **Error Code/Type** → Classification of the problem
+
+**Your Plan MUST**:
+- ✅ Explicitly reference the error information from directive
+- ✅ Reference specific files and locations from stack trace
+- ✅ Explain HOW the plan addresses the ROOT CAUSE
+- ✅ Connect the error symptom to the proposed solution
+- ❌ DO NOT create generic plans that ignore error details
+- ❌ DO NOT only rely on task description if it contradicts error evidence
+
+**Reasoning Approach**:
+- Start from the error symptom (what broke?)
+- Trace through stack locations (where did it break?)
+- Identify root cause (why did it break?)
+- Propose specific fix (how to prevent it?)
+
+────────────────────────────────────────────────────────────────────────────────
+### 🔬 IF BEHAVIORAL BUG (Compiles but behaves incorrectly):
+────────────────────────────────────────────────────────────────────────────────
+
+**CRITICAL - Empirical Diagnosis Required**
+
+**Classification Indicators:**
+System produces incorrect behavior despite passing static analysis.
+
+**Core Principle:**
+Behavioral bugs require observation of runtime system state, not code inspection.
+Your plan must specify the empirical method for diagnosis.
+
+**Your Plan MUST Include:**
+
+**1. Hypothesis Structure**
+- State 2-3 falsifiable hypotheses about causal mechanism
+- For each hypothesis:
+  - What specific mechanism causes observed symptom?
+  - What runtime evidence would validate/invalidate this?
+  - What values or sequences would distinguish this from alternatives?
+
+**2. Observation Strategy**
+- Which system boundaries to instrument
+- What values/states/sequences to capture
+- How to trigger symptom in controlled manner
+- What environmental conditions to maintain
+
+**3. Evidence Evaluation Criteria**
+- What patterns in runtime data indicate each hypothesis?
+- What magnitude/frequency/sequence deviations signal root cause?
+- How to distinguish root cause from cascading symptoms?
+
+**4. Verification Protocol**
+- How to confirm mechanism correction (not just symptom suppression)
+- What behavioral metrics validate fix
+- What edge cases to test
+
+**Meta-Principle:**
+Plan must enable hypothesis testing through runtime observation.
+Speculation without empirical validation is insufficient.
+
+**Anti-Patterns to Avoid:**
+- ❌ Proposing fix without diagnostic plan
+- ❌ Generic "add logging" without specifying what to observe
+- ❌ Assuming code review reveals behavioral issues
+- ❌ Skipping runtime verification step
+
+────────────────────────────────────────────────────────────────────────────────
+
+
 
 
 

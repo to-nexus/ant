@@ -162,7 +162,8 @@ async function executeDesignTool(
           const errCategory = classifyFigmaError(err);
           if (errCategory === 'connection' || errCategory === 'environment') {
             state._figmaConsecutiveErrors = (state._figmaConsecutiveErrors || 0) + 1;
-            if ((state.uiDesignSource === 'figma' || state.figmaAvailable) && state._figmaConsecutiveErrors >= 3) {
+            const { isFigmaPipeline, isFigmaDataPopulated } = await import('@ant/shared');
+            if ((isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig)) || state.figmaAvailable) && state._figmaConsecutiveErrors >= 3) {
               console.error(`❌ [Tool] Figma MCP unavailable (${errCategory}): ${state._figmaConsecutiveErrors} consecutive failures — flagging connection lost`);
               state._figmaConnectionLost = true;
             }
@@ -361,7 +362,7 @@ export async function tool(
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'tool',
-      (state as any).workerId ?? 0,
+      state.workerId ?? 0,
       taskInfo,
       undefined,
       state.recursionCount,
@@ -407,14 +408,14 @@ export async function tool(
 
   // Workflow: exit once per batch
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool', (state as any).workerId ?? 0);
+    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'tool', state.workerId ?? 0);
   }
 
   return {
     conversationHistory: newHistory,
     files: state.files,
     _currentTaskTokenUsage: state._currentTaskTokenUsage,
-    tokenUsage: (state as any).tokenUsage,
+    tokenUsage: state.tokenUsage,
     _toolResultCache: state._toolResultCache,
     _figmaConsecutiveErrors: state._figmaConsecutiveErrors,
     _figmaConnectionLost: state._figmaConnectionLost,

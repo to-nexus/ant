@@ -28,12 +28,12 @@ export async function plan(state: DesignGraphState) {
       
       // ✅ Reset task-level token usage tracking
       const { resetTaskTokenUsage } = await import('../../../../common/graph/llmHelpers');
-      resetTaskTokenUsage(state as any);
+      resetTaskTokenUsage(state);
       
       // ✅ CRITICAL: Update Kanban snapshot when task starts
       // Skip in worker context — TaskOrchestrator handles kanban for parallel mode
       // (per-worker kanban would overwrite multi-task inProgress with just this worker's task)
-      const _workerId = (state as any).workerId;
+      const _workerId = state.workerId;
       const isWorkerContext = _workerId !== undefined && _workerId !== null;
       if (!isWorkerContext && state._httpJobId && state.deps?.kanbanUpdate) {
         console.log(`\n🔥 [Plan] Updating Kanban → task started`);
@@ -81,7 +81,7 @@ export async function plan(state: DesignGraphState) {
     
     // ✅ Note: No llmInfo needed - plan node doesn't call LLM
     await state.deps.workflowUpdate.enterNode(
-      state._httpJobId, 'plan', (state as any).workerId ?? 0, taskInfo,
+      state._httpJobId, 'plan', state.workerId ?? 0, taskInfo,
       undefined, state.recursionCount, state.recursionLimit
     );
   }

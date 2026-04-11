@@ -13,7 +13,7 @@
  * - 루프 (LangGraph가 관리)
  * 
  * ✅ XML 파서 통합 for Markdown 실시간 렌더링
- * ✅ UI Design 모드 지원 (designWorkType === 'ui-design')
+ * ✅ UI Design 모드 지원 (detectedIntentGroup === 'design-ui')
  *     - 멀티모달 이미지 분석 (레퍼런스 스크린샷)
  *     - ui-tokens.json, ui-assets.json, ui-spec.json 생성
  */
@@ -52,20 +52,20 @@ export async function docGen(
   }
   
   // ✅ Log iteration start info (per-call debugging, like code job's execute)
-  const taskTokensSoFar = (state as any)._currentTaskTokenUsage;
+  const taskTokensSoFar = state._currentTaskTokenUsage;
   console.log(`\n💭 [DocGen] Starting iteration ${newCallIndex} for task "${state.currentTask?.name || 'unknown'}"`);
-  console.log(`   Work type: ${state.detectionReport?.workType || 'unknown'}`);
+  console.log(`   Intent group: ${intentGroup || 'unknown'}`);
   console.log(`   Conversation history: ${state.conversationHistory?.length || 0} messages`);
   if (taskTokensSoFar?.totalTokens) {
     console.log(`   Task tokens so far: ${taskTokensSoFar.totalTokens} (in=${taskTokensSoFar.inputTokens} out=${taskTokensSoFar.outputTokens})`);
   }
   
-  // ✅ Build messages based on work type
-  const workType = state.detectionReport?.workType;
-  const isExplainMode = state.detectionReport?.jobMode === 'explain';
+  // ✅ Build messages based on intent group
+  const intentGroup = state.detectionReport?.detectedIntentGroup;
+  const isExplainMode = state.detectionReport?.detectedMode === 'explain';
   
   // ✅ Spec clarify continuation: append user's clarify response to conversation history
-  if (workType === 'spec' && state.awaitingClarify && state.overrideDirective) {
+  if (intentGroup === 'design-spec' && state.awaitingClarify && state.overrideDirective) {
     console.log(`📋 [DocGen/Spec] Clarify continuation — appending user response to conversation`);
     if (!state.conversationHistory) state.conversationHistory = [];
     state.conversationHistory.push({
@@ -78,9 +78,9 @@ export async function docGen(
   let messages;
   let useSourceFileTool = false;
 
-  if (workType === 'ui-design') {
+  if (intentGroup === 'design-ui') {
     messages = await buildUiDesignMessages(state);
-  } else if (workType === 'spec') {
+  } else if (intentGroup === 'design-spec') {
     messages = await buildSpecMessages(state);
   } else {
     const result = await buildMessages(state);
@@ -89,11 +89,12 @@ export async function docGen(
   }
   
   // Figma mode detection (used for both budget thresholds and tool selection)
-  const isFigmaUiDesign = workType === 'ui-design' && state.uiDesignSource === 'figma';
+  const { isFigmaPipeline, isFigmaDataPopulated } = await import('@ant/shared');
+  const isFigmaUiDesign = intentGroup === 'design-ui' && isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
 
   // Progressive call counter + budget warning injection
   // Figma tasks get higher thresholds to accommodate drill-down queries
-  const hasFigmaTools = isFigmaUiDesign || (workType === 'spec' && state.figmaAvailable === true);
+  const hasFigmaTools = isFigmaUiDesign || (intentGroup === 'design-spec' && state.figmaAvailable === true);
   const softWarnAt = hasFigmaTools ? 8 : 5;
   const hardWarnAt = hasFigmaTools ? 12 : 8;
   const noOutputCount = state._noOutputCallCount || 0;
@@ -128,13 +129,13 @@ export async function docGen(
   }
 
   // Tool activation: Select appropriate tool set based on work type
-  const isSpecFigma = workType === 'spec' && state.figmaAvailable === true;
+  const isSpecFigma = intentGroup === 'design-spec' && state.figmaAvailable === true;
 
   const tools = isExplainMode
     ? getToolsByNames(TOOL_SETS.designExplain)
     : isFigmaUiDesign
       ? getToolsByNames(TOOL_SETS.uiDesignFigma)
-      : workType === 'ui-design'
+      : intentGroup === 'design-ui'
         ? getToolsByNames(TOOL_SETS.uiDesign)
         : isSpecFigma
           ? getToolsByNames(TOOL_SETS.specFigma)
@@ -154,7 +155,7 @@ export async function docGen(
       priority: state.currentTask.priority
     } : undefined;
     await state.deps.workflowUpdate.enterNode(
-      state._httpJobId, 'docGen', (state as any).workerId ?? 0, taskInfo,
+      state._httpJobId, 'docGen', state.workerId ?? 0, taskInfo,
       state.deps?.llm ? extractLLMInfo(state.deps.llm) : undefined,
       state.recursionCount, state.recursionLimit
     );
@@ -179,7 +180,7 @@ export async function docGen(
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
   
   // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)
-  const existingFiles = await scanExistingFiles(state, workType === 'ui-design');
+  const existingFiles = await scanExistingFiles(state, intentGroup === 'design-ui');
   
   const orchestrator = new StreamOrchestrator({
     parser,
@@ -296,10 +297,10 @@ export async function docGen(
     // Accumulate token usage to state
     if (capturedUsage) {
       const { accumulateTokenUsage, logTokenUsageToFile, updateKanbanTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-      accumulateTokenUsage(state as any, capturedUsage, { taskLevel: true, jobLevel: false });
-      updateKanbanTokenUsage(state as any);
+      accumulateTokenUsage(state, capturedUsage, { taskLevel: true, jobLevel: false });
+      updateKanbanTokenUsage(state);
       
-      const taskUsage = (state as any)._currentTaskTokenUsage;
+      const taskUsage = state._currentTaskTokenUsage;
       logTokenUsageToFile(
         state.context?.featurePath,
         state._httpJobId,
@@ -357,7 +358,7 @@ export async function docGen(
     }
 
     // ✅ Spec clarify detection: if LLM response contains <clarify> tags, pause for user input
-    if (workType === 'spec' && textResponse.includes('<clarify>')) {
+    if (intentGroup === 'design-spec' && textResponse.includes('<clarify>')) {
       const clarifyMatch = textResponse.match(/<clarify>([\s\S]*?)<\/clarify>/);
       if (clarifyMatch) {
         console.log(`💬 [DocGen/Spec] Clarify block detected, pausing for user input`);
@@ -405,8 +406,8 @@ export async function docGen(
           _docGenCallIndex: newCallIndex,
           _noOutputCallCount: 0,
           _callLimitReached: false,
-          _currentTaskTokenUsage: (state as any)._currentTaskTokenUsage,
-          tokenUsage: (state as any).tokenUsage,
+          _currentTaskTokenUsage: state._currentTaskTokenUsage,
+          tokenUsage: state.tokenUsage,
         };
       }
     }
@@ -418,8 +419,8 @@ export async function docGen(
       _docGenCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
       _callLimitReached: callLimitReached,
-      _currentTaskTokenUsage: (state as any)._currentTaskTokenUsage,
-      tokenUsage: (state as any).tokenUsage,
+      _currentTaskTokenUsage: state._currentTaskTokenUsage,
+      tokenUsage: state.tokenUsage,
       llmResponse: hasToolCalls ? {
         toolCalls: pendingToolCalls,
         textResponse,

@@ -20,7 +20,7 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
   console.log('\n🎨 [Visual:Render] Final high-quality rendering...');
 
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('render', state._uiLocale as any), 'render');
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('render', state._uiLocale === 'ko' ? 'ko' : 'en'), 'render');
   }
 
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -66,12 +66,12 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
     console.log(`🎨 [Visual:Render] Rendered final image (${finalImage.data.length} bytes)`);
 
     if (finalImage.tokenUsage) {
-      accumulateTokenUsage(state as any, finalImage.tokenUsage, { taskLevel: false, jobLevel: true });
-      if (state.deps?.kanbanUpdate?.updateTokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      accumulateTokenUsage(state, finalImage.tokenUsage, { taskLevel: false, jobLevel: true });
+      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
       }
       upsertPhaseTokenUsage(state, 'render', finalImage.tokenUsage,
-        getEstimatingLabel('render', state._uiLocale as any));
+        getEstimatingLabel('render', state._uiLocale === 'ko' ? 'ko' : 'en'));
     }
 
     if (state._httpJobId && state.featurePath) {

@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
 import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
-import type { ActionId, IntentDefinition } from '@ant/shared';
+import type { IntentGroup, IntentDefinition } from '@ant/shared';
 
 interface IntentTabNavProps {
-  actionId: ActionId;
+  actionId: IntentGroup;
   intents: readonly IntentDefinition[];
   selectedIntentId: string;
   onSelect: (intentId: string) => void;

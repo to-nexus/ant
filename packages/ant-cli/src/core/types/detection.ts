@@ -6,16 +6,17 @@
 
 // Re-export shared detection types (canonical source: @ant/shared)
 export type {
+  Mode,
   JobMode,
   JobEnvironment,
-  DesignWorkType,
+  IntentGroup,
   DesignDomain,
   ProjectProfile,
   JobSource,
   DetectionReport,
 } from '@ant/shared';
 
-import type { JobMode, JobEnvironment, DesignDomain, JobSource, DetectionReport, ProjectProfile } from '@ant/shared';
+import type { Mode, JobEnvironment, DesignDomain, JobSource, DetectionReport, ProjectProfile } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Factory Functions
@@ -25,8 +26,8 @@ import type { JobMode, JobEnvironment, DesignDomain, JobSource, DetectionReport,
  * Code Job에서 DetectionReport 생성
  */
 export function createCodeDetectionReport(params: {
-  jobMode: JobMode;
-  jobModeReasoning: string;
+  detectedMode: Mode;
+  detectedModeReasoning: string;
   environment?: JobEnvironment;
   environmentReasoning?: string;
   profile?: ProjectProfile;
@@ -36,8 +37,8 @@ export function createCodeDetectionReport(params: {
 }): DetectionReport {
   return {
     sourceJob: 'code',
-    jobMode: params.jobMode,
-    jobModeReasoning: params.jobModeReasoning,
+    detectedMode: params.detectedMode,
+    detectedModeReasoning: params.detectedModeReasoning,
     environment: params.environment,
     environmentReasoning: params.environmentReasoning,
     profile: params.profile,
@@ -52,15 +53,15 @@ export function createCodeDetectionReport(params: {
  * Design Job (UI Design)에서 DetectionReport 생성
  */
 export function createUiDesignDetectionReport(params: {
-  jobMode: JobMode;
-  jobModeReasoning: string;
+  detectedMode: Mode;
+  detectedModeReasoning: string;
 }): DetectionReport {
   return {
     sourceJob: 'design',
-    jobMode: params.jobMode,
-    jobModeReasoning: params.jobModeReasoning,
-    workType: 'ui-design',
-    workTypeReasoning: 'UI design work: generating ui-tokens.json, ui-assets.json, ui-spec.json',
+    detectedMode: params.detectedMode,
+    detectedModeReasoning: params.detectedModeReasoning,
+    detectedIntentGroup: 'design-ui',
+    detectedIntentGroupReasoning: 'UI design work: generating ui-tokens.json, ui-assets.json, ui-spec.json',
     detectedAt: new Date().toISOString(),
   };
 }
@@ -69,15 +70,15 @@ export function createUiDesignDetectionReport(params: {
  * Design Job (Spec)에서 DetectionReport 생성
  */
 export function createSpecDetectionReport(params: {
-  jobMode: JobMode;
-  jobModeReasoning: string;
+  detectedMode: Mode;
+  detectedModeReasoning: string;
 }): DetectionReport {
   return {
     sourceJob: 'design',
-    jobMode: params.jobMode,
-    jobModeReasoning: params.jobModeReasoning,
-    workType: 'spec',
-    workTypeReasoning: 'Spec work: generating feature/task specification document',
+    detectedMode: params.detectedMode,
+    detectedModeReasoning: params.detectedModeReasoning,
+    detectedIntentGroup: 'design-spec',
+    detectedIntentGroupReasoning: 'Spec work: generating feature/task specification document',
     detectedAt: new Date().toISOString(),
   };
 }
@@ -86,8 +87,8 @@ export function createSpecDetectionReport(params: {
  * Design Job (System Design)에서 DetectionReport 생성
  */
 export function createSystemDesignDetectionReport(params: {
-  jobMode: JobMode;
-  jobModeReasoning: string;
+  detectedMode: Mode;
+  detectedModeReasoning: string;
   environment: JobEnvironment;
   environmentReasoning: string;
   domain: DesignDomain;
@@ -95,10 +96,10 @@ export function createSystemDesignDetectionReport(params: {
 }): DetectionReport {
   return {
     sourceJob: 'design',
-    jobMode: params.jobMode,
-    jobModeReasoning: params.jobModeReasoning,
-    workType: 'system-design',
-    workTypeReasoning: 'System design work: generating architecture documents',
+    detectedMode: params.detectedMode,
+    detectedModeReasoning: params.detectedModeReasoning,
+    detectedIntentGroup: 'design-system',
+    detectedIntentGroupReasoning: 'System design work: generating architecture documents',
     environment: params.environment,
     environmentReasoning: params.environmentReasoning,
     domain: params.domain,
@@ -125,7 +126,7 @@ function getDefaultTargetFiles(env: JobEnvironment | undefined): string[] {
 }
 
 /**
- * Resolve targetFiles and effective jobMode for system-design work.
+ * Resolve targetFiles and effective mode for system-design work.
  * Called once after detect LLM response — both chat and decompose consume the result.
  *
  * - refactor requires same-tier docs; falls back to generate otherwise.
@@ -133,18 +134,18 @@ function getDefaultTargetFiles(env: JobEnvironment | undefined): string[] {
  */
 export function resolveDesignTargetFiles(
   environment: JobEnvironment | undefined,
-  jobMode: JobMode,
+  mode: Mode,
   existingDesignFiles: string[]
-): { targetFiles: string[]; effectiveJobMode: JobMode } {
-  if (jobMode === 'refactor' && existingDesignFiles.length > 0) {
+): { targetFiles: string[]; effectiveMode: Mode } {
+  if (mode === 'refactor' && existingDesignFiles.length > 0) {
     const ownTierFiles = filterByTier(existingDesignFiles, environment);
     if (ownTierFiles.length > 0) {
-      return { targetFiles: ownTierFiles, effectiveJobMode: 'refactor' };
+      return { targetFiles: ownTierFiles, effectiveMode: 'refactor' };
     }
   }
 
   const targetFiles = getDefaultTargetFiles(environment);
-  return { targetFiles, effectiveJobMode: jobMode === 'refactor' ? 'generate' : jobMode };
+  return { targetFiles, effectiveMode: mode === 'refactor' ? 'generate' : mode };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -166,35 +167,37 @@ export function formatDetectionReportForChat(
     ? `\n🔍 **환경 분석 완료**\n\n`
     : `\n🔍 **Environment Analysis Complete**\n\n`;
   
-  // ━━━ 1. Job Mode (공통) ━━━
-  const modeEmoji = report.jobMode === 'generate' ? '✨' 
-    : report.jobMode === 'refactor' ? '🔧' 
+  // ━━━ 1. Mode (공통) ━━━
+  const modeEmoji = report.detectedMode === 'generate' ? '✨' 
+    : report.detectedMode === 'refactor' ? '🔧' 
     : '📖';
   
   formatted += isKorean
-    ? `${modeEmoji} **작업 모드**: ${report.jobMode}\n`
-    : `${modeEmoji} **Job Mode**: ${report.jobMode}\n`;
+    ? `${modeEmoji} **작업 모드**: ${report.detectedMode}\n`
+    : `${modeEmoji} **Job Mode**: ${report.detectedMode}\n`;
   
-  if (report.jobModeReasoning) {
-    formatted += `   └ ${report.jobModeReasoning}\n\n`;
+  if (report.detectedModeReasoning) {
+    formatted += `   └ ${report.detectedModeReasoning}\n\n`;
   }
   
-  // ━━━ 2. Work Type (Design Job only) ━━━
-  if (report.workType) {
-    const workTypeEmoji = report.workType === 'ui-design' ? '🎨' 
-      : report.workType === 'spec' ? '📋' : '🏗️';
-    const workTypeLabel = report.workType === 'ui-design'
+  // ━━━ 2. Intent Group (Design Job only) ━━━
+  const intentGroup = report.detectedIntentGroup;
+  if (intentGroup) {
+    const igEmoji = intentGroup === 'design-ui' ? '🎨' 
+      : intentGroup === 'design-spec' ? '📋' : '🏗️';
+    const igLabel = intentGroup === 'design-ui'
       ? (isKorean ? 'UI 디자인' : 'UI Design')
-      : report.workType === 'spec'
+      : intentGroup === 'design-spec'
         ? (isKorean ? '기능 스펙' : 'Feature Spec')
         : (isKorean ? '시스템 디자인' : 'System Design');
     
     formatted += isKorean
-      ? `${workTypeEmoji} **작업 유형**: ${workTypeLabel}\n`
-      : `${workTypeEmoji} **Work Type**: ${workTypeLabel}\n`;
+      ? `${igEmoji} **작업 유형**: ${igLabel}\n`
+      : `${igEmoji} **Work Type**: ${igLabel}\n`;
     
-    if (report.workTypeReasoning) {
-      formatted += `   └ ${report.workTypeReasoning}\n\n`;
+    const igReasoning = report.detectedIntentGroupReasoning;
+    if (igReasoning) {
+      formatted += `   └ ${igReasoning}\n\n`;
     }
   }
   
@@ -240,17 +243,17 @@ export function formatDetectionReportForChat(
   }
   
   // ━━━ 6. Output Files Hint (Design Job) ━━━
-  if (report.workType === 'ui-design') {
+  if (intentGroup === 'design-ui') {
     formatted += isKorean
       ? `📄 **생성 문서**:\n`
       : `📄 **Output Documents**:\n`;
     formatted += `   • \`outputs/design/ui/ui-tokens.json\`\n`;
     formatted += `   • \`outputs/design/ui/ui-assets.json\`\n`;
     formatted += `   • \`outputs/design/ui/ui-spec.json\`\n\n`;
-  } else if (report.workType === 'spec') {
+  } else if (intentGroup === 'design-spec') {
     // spec doc output hint is dynamic (spec-{slug}.md), shown after decompose determines the slug
-  } else if (report.workType === 'system-design') {
-    if (report.jobMode === 'refactor' && report.targetFiles?.length) {
+  } else if (intentGroup === 'design-system') {
+    if (report.detectedMode === 'refactor' && report.targetFiles?.length) {
       const filesList = report.targetFiles.map(f => `\`${f}\``).join(', ');
       formatted += isKorean
         ? `📄 **대상 문서**: ${filesList}\n\n`
@@ -311,7 +314,7 @@ export function formatVisualClassifyForChat(
 
 /**
  * Profile-only display for decompose node (environment + language + framework).
- * Avoids re-displaying jobMode already shown by detectEnvironment.
+ * Avoids re-displaying detectedMode already shown by detectEnvironment.
  */
 export function formatProfileForChat(
   report: DetectionReport,
@@ -386,8 +389,8 @@ export function parseDetectionReportFromLLM(
     // Build DetectionReport from parsed JSON
     const report: DetectionReport = {
       sourceJob,
-      jobMode: parsed.jobMode || parsed.mode || 'generate',
-      jobModeReasoning: parsed.jobModeReasoning || parsed.modeReasoning || '',
+      detectedMode: parsed.detectedMode || parsed.jobMode || parsed.mode || 'generate',
+      detectedModeReasoning: parsed.detectedModeReasoning || parsed.jobModeReasoning || parsed.modeReasoning || '',
       detectedAt: new Date().toISOString(),
     };
     
@@ -399,9 +402,10 @@ export function parseDetectionReportFromLLM(
     
     // Design-specific fields
     if (sourceJob === 'design') {
-      if (parsed.workType) {
-        report.workType = parsed.workType;
-        report.workTypeReasoning = parsed.workTypeReasoning;
+      const ig = parsed.intentGroup ?? parsed.workType;
+      if (ig) {
+        report.detectedIntentGroup = ig;
+        report.detectedIntentGroupReasoning = parsed.intentGroupReasoning ?? parsed.workTypeReasoning;
       }
       if (parsed.domain) {
         report.domain = parsed.domain;
@@ -434,8 +438,8 @@ export function parseDetectionReportFromLLM(
  */
 export function serializeDetectionReportToJson(report: DetectionReport): string {
   const json: Record<string, any> = {
-    jobMode: report.jobMode,
-    jobModeReasoning: report.jobModeReasoning,
+    detectedMode: report.detectedMode,
+    detectedModeReasoning: report.detectedModeReasoning,
   };
   
   if (report.environment) {
@@ -443,9 +447,10 @@ export function serializeDetectionReportToJson(report: DetectionReport): string 
     json.environmentReasoning = report.environmentReasoning;
   }
   
-  if (report.workType) {
-    json.workType = report.workType;
-    json.workTypeReasoning = report.workTypeReasoning;
+  const ig = report.detectedIntentGroup;
+  if (ig) {
+    json.intentGroup = ig;
+    json.intentGroupReasoning = report.detectedIntentGroupReasoning;
   }
   
   if (report.domain) {
@@ -462,4 +467,32 @@ export function serializeDetectionReportToJson(report: DetectionReport): string 
   }
   
   return JSON.stringify(json, null, 2);
+}
+
+/**
+ * Normalize a DetectionReport loaded from session JSON.
+ * Maps deprecated field names (jobMode/intentGroup/workType) to current names (detectedMode/detectedIntentGroup).
+ */
+const LEGACY_INTENT_GROUP_MAP: Record<string, string> = {
+  'ui-design': 'design-ui',
+  'system-design': 'design-system',
+  'spec': 'design-spec',
+};
+
+function migrateIntentGroup(value: string | undefined): string | undefined {
+  if (!value) return value;
+  return LEGACY_INTENT_GROUP_MAP[value] ?? value;
+}
+
+export function normalizeDetectionReport(raw: any): DetectionReport {
+  const rawIG = raw.detectedIntentGroup ?? raw.intentGroup ?? raw.workType;
+  return {
+    ...raw,
+    detectedMode: raw.detectedMode ?? raw.jobMode ?? 'generate',
+    detectedModeReasoning: raw.detectedModeReasoning ?? raw.jobModeReasoning ?? '',
+    detectedIntentGroup: migrateIntentGroup(rawIG),
+    detectedIntentGroupReasoning: raw.detectedIntentGroupReasoning ?? raw.intentGroupReasoning ?? raw.workTypeReasoning,
+    workType: undefined,
+    workTypeReasoning: undefined,
+  };
 }

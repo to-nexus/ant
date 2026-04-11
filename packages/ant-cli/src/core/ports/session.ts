@@ -1,4 +1,4 @@
-import { Session, SessionRun, SessionArtifacts } from "../types";
+import { Session, SessionRun, SessionArtifacts, SessionState } from "../types";
 import { SessionableJobType } from '@ant/shared';
 
 /**
@@ -48,7 +48,7 @@ export interface SessionPort {
    * @param job - Sessionable job type
    * @param artifacts - Artifacts to merge
    */
-  updateArtifacts(project: string, feature: string, job: SessionableJobType, artifacts: Partial<SessionArtifacts>): Promise<void>;
+  updateArtifacts(project: string, feature: string, job: SessionableJobType, artifacts: Partial<SessionArtifacts> & { state?: Partial<SessionState> }): Promise<void>;
   
   /**
    * Get the last run from the session

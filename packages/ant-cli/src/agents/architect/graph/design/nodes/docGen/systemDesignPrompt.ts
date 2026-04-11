@@ -157,7 +157,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       docs.push({ path: 'source-docs', content: prdSpec, role: 'context', label: 'PRD Specification' });
       if (docs.length > 0) {
         resolvedActionWithDocs = {
-          ...(state.resolvedAction || { source: 'infer' as const, jobMode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+          ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
           documents: docs,
         };
       }
@@ -389,7 +389,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
             prdSpec: prdSpecForLog ? `[${prdSpecForLog.length} chars]` : undefined,
             design: state.design ? `[${state.design.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            jobMode: state.detectionReport?.jobMode,
+            detectedMode: state.detectionReport?.detectedMode,
             designDomain: state.detectionReport?.domain,
             isMSAServiceDoc: targetFileForLog.startsWith('be-system-') && !targetFileForLog.includes('be-system-main'),
           },
@@ -446,7 +446,7 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   // - generate: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
   // - refactor: FULL document needed (LLM must understand structure to modify specific sections)
   //   Use content matching targetFile from existingDesignDocs (not state.design which may be a different file)
-  if (state.detectionReport?.jobMode === 'refactor') {
+  if (state.detectionReport?.detectedMode === 'refactor') {
     const targetFileName = task?.targetFile || 'be-system-main.md';
     const existingContent = state.existingDesignDocs?.[targetFileName] || state.design;
     if (existingContent) {

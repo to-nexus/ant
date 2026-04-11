@@ -93,14 +93,14 @@ DO NOT CREATE:
 - ❌ "Final verification" or "review" tasks
 - ❌ Deployment / Operations / Infrastructure tasks
 - ❌ Separate documents per chapter (all chapters → same file)
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 - ❌ Multiple chapter-based tasks (refactor mode = single focused task)
 - ❌ Full document regeneration (only modify requested section)
 {{/if}}
 
 ---
 
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 ## 📤 OUTPUT FORMAT (REFACTOR MODE)
 
 **Principle**: Single focused task for modification. No multi-chapter decomposition.

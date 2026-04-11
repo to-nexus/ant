@@ -2,7 +2,7 @@ import { StateCreator } from 'zustand';
 import { UIState } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import { type ActionMetadata, deriveFromIntent, getAvailableBases } from '@ant/shared';
+import { type ActionMetadata, deriveFromIntent } from '@ant/shared';
 import i18n from '@/i18n';
 
 export interface UIActions {
@@ -397,12 +397,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   selectIntent: (intentId: string) => {
     const derived = deriveFromIntent(intentId);
-    const validBases = getAvailableBases(intentId);
     set({
       selectedIntentId: intentId,
       actionMetadata: {
         intent: intentId,
-        basis: validBases.length === 1 ? validBases[0] : undefined,
       },
       selectedAgent: derived.agent,
       selectedJobType: derived.jobType as any,
@@ -416,8 +414,6 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const updates: any = {};
 
       if (patch.intent !== undefined && patch.intent !== s.actionMetadata.intent) {
-        const validBases = patch.intent ? getAvailableBases(patch.intent) : [];
-        next.basis = validBases.length === 1 ? validBases[0] : undefined;
         next.refs = undefined;
         next.context = undefined;
         next.target = undefined;
@@ -427,12 +423,6 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
           updates.selectedAgent = derived.agent;
           updates.selectedJobType = derived.jobType;
         }
-      }
-
-      if (patch.basis !== undefined && patch.basis !== s.actionMetadata.basis) {
-        next.refs = undefined;
-        next.context = undefined;
-        next.target = undefined;
       }
 
       updates.actionMetadata = next;

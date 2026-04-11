@@ -1,4 +1,4 @@
-import { StateGraph } from "@langchain/langgraph";
+import { Annotation, StateGraph } from "@langchain/langgraph";
 import { DesignGraphState } from "./state";
 import { DesignTask } from "../../types/task";
 import { resolve } from "./nodes/resolve";
@@ -13,6 +13,7 @@ import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "../code/parallel/types";
 import { routeAfterDocGen } from "./routers/docGenRouter";
+import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { designSubdirOf } from "@ant/shared";
 import path from "node:path";
@@ -108,13 +109,13 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
   }
   
   // ✅ CALL LIMIT INTERRUPTION: task force-stopped by call budget
-  if ((state as any)._callLimitReached && state.currentTask) {
+  if (state._callLimitReached && state.currentTask) {
     const { TaskTimingHelper } = await import('../code/state');
     const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
     
-    const taskTokenUsage = getTaskTokenUsage(state as any);
+    const taskTokenUsage = getTaskTokenUsage(state);
     if (taskTokenUsage) {
-      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
+      accumulateTokenUsage(state, taskTokenUsage, { taskLevel: false, jobLevel: true });
     }
     
     const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
@@ -158,13 +159,12 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               conversationHistory: state.conversationHistory || [],
               files: state.files || [],
               filesToDelete: state.filesToDelete || [],
-              jobId: (state as any).jobId,
-              jobTiming: (state as any).jobTiming,
-              tokenUsage: (state as any).tokenUsage,
+              jobId: state.jobId,
+              jobTiming: state.jobTiming,
+              tokenUsage: state.tokenUsage,
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
               detectionReport: state.detectionReport,
-              uiDesignSource: state.uiDesignSource,
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -187,7 +187,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
         state.completedTasksDetails || [],
         state.recursionCount,
         state.recursionLimit,
-        (state as any).tokenUsage
+        state.tokenUsage
       );
     }
     
@@ -202,7 +202,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _toolResultCache: undefined,
       fileErrors: undefined,
       interruption,
-      tokenUsage: (state as any).tokenUsage,
+      tokenUsage: state.tokenUsage,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
     } as any;
@@ -213,9 +213,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     const { TaskTimingHelper } = await import('../code/state');
     const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
     
-    const taskTokenUsage = getTaskTokenUsage(state as any);
+    const taskTokenUsage = getTaskTokenUsage(state);
     if (taskTokenUsage) {
-      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
+      accumulateTokenUsage(state, taskTokenUsage, { taskLevel: false, jobLevel: true });
     }
     
     const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
@@ -258,13 +258,12 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               conversationHistory: state.conversationHistory || [],
               files: state.files || [],
               filesToDelete: state.filesToDelete || [],
-              jobId: (state as any).jobId,
-              jobTiming: (state as any).jobTiming,
-              tokenUsage: (state as any).tokenUsage,
+              jobId: state.jobId,
+              jobTiming: state.jobTiming,
+              tokenUsage: state.tokenUsage,
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
               detectionReport: state.detectionReport,
-              uiDesignSource: state.uiDesignSource,
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -287,7 +286,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
         state.completedTasksDetails || [],
         state.recursionCount,
         state.recursionLimit,
-        (state as any).tokenUsage
+        state.tokenUsage
       );
     }
     
@@ -304,7 +303,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _toolResultCache: undefined,
       fileErrors: undefined,
       interruption,
-      tokenUsage: (state as any).tokenUsage,
+      tokenUsage: state.tokenUsage,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
     } as any;
@@ -357,14 +356,14 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     const { getTaskTokenUsage, accumulateTokenUsage } = await import('../../../common/graph/llmHelpers');
     
     // ✅ Get task-level token usage
-    const taskTokenUsage = getTaskTokenUsage(state as any);
+    const taskTokenUsage = getTaskTokenUsage(state);
     
     // ✅ Complete task with timing and token usage
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
     
     // ✅ Accumulate task tokens into job-level tokenUsage
     if (taskTokenUsage) {
-      accumulateTokenUsage(state as any, taskTokenUsage, { taskLevel: false, jobLevel: true });
+      accumulateTokenUsage(state, taskTokenUsage, { taskLevel: false, jobLevel: true });
     }
     
     // ✅ Log completion
@@ -432,13 +431,12 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               conversationHistory: [],  // Checkpoint saves empty; runtime state uses retention policy
               files: state.files || [],
               filesToDelete: state.filesToDelete || [],
-              jobId: (state as any).jobId,
-              jobTiming: (state as any).jobTiming,
-              tokenUsage: (state as any).tokenUsage,  // ✅ Save job-level token usage
+              jobId: state.jobId,
+              jobTiming: state.jobTiming,
+              tokenUsage: state.tokenUsage,  // ✅ Save job-level token usage
               overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
               chatSource: state.chatSource,  // ✅ Save chat source flag
               detectionReport: state.detectionReport,  // ✅ Save for resume routing
-              uiDesignSource: state.uiDesignSource,
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -474,7 +472,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
         completedTasksDetails,
         state.recursionCount,   // ✅ FIX: Pass recursion tracking
         state.recursionLimit,   // ✅ FIX: Pass recursion limit
-        (state as any).tokenUsage  // ✅ FIX: Pass job-level token usage to prevent badge reset
+        state.tokenUsage  // ✅ FIX: Pass job-level token usage to prevent badge reset
       );
     }
     
@@ -483,7 +481,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     const nextTask = state.taskQueue?.peek();
     const retainedHistory = applyRetention({
       jobType: 'design',
-      workType: (state.detectionReport?.workType as any) || 'system-design',
+      intentGroup: (state.detectionReport?.detectedIntentGroup as any) || 'design-system',
       currentTask: { targetFile: state.currentTask.targetFile, id: state.currentTask.id },
       nextTask: nextTask ? { targetFile: (nextTask as any).targetFile, id: nextTask.id } : undefined,
       conversationHistory: state.conversationHistory || [],
@@ -497,7 +495,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       conversationHistory: retainedHistory,
       files: [],
       fileErrors: undefined,
-      tokenUsage: (state as any).tokenUsage,
+      tokenUsage: state.tokenUsage,
       _docGenCallIndex: 0,
       _noOutputCallCount: 0,
       _callLimitReached: false,
@@ -548,29 +546,29 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   }
 
   // Build shared context
-  console.log(`🔧 [Design ParallelOrchestrator] detectionReport.workType=${state.detectionReport?.workType || 'MISSING'}, uiDesignSource=${state.uiDesignSource || 'N/A'}`);
+  console.log(`🔧 [Design ParallelOrchestrator] detectionReport.detectedIntentGroup=${state.detectionReport?.detectedIntentGroup || 'MISSING'}, intent=${state.resolvedAction?.intent || 'N/A'}`);
   const sharedContext = {
     context: state.context,
     workspaceConfig: state.workspaceConfig,
     deps: state.deps,
     detectionReport: state.detectionReport,
+    resolvedAction: state.resolvedAction,
     prd: state.prd,
     sourceDocuments: state.sourceDocuments,
     directive: state.directive,
     design: state.design,
     existingDesignDocs: state.existingDesignDocs,
-    uiReferences: (state as any).uiReferences,
-    uiAssetsList: (state as any).uiAssetsList,
+    uiReferences: state.uiReferences,
+    uiAssetsList: state.uiAssetsList,
     figmaConfig: state.figmaConfig,
-    uiDesignSource: state.uiDesignSource,
     figmaExplorationResult: state.figmaExplorationResult,
     figmaAvailable: state.figmaAvailable,
     figmaFileKey: state.figmaFileKey,
     figmaStartNodeId: state.figmaStartNodeId,
     _httpJobId: state._httpJobId,
-    _uiLocale: (state as any)._uiLocale,
-    jobId: (state as any).jobId,
-    jobTiming: (state as any).jobTiming,
+    _uiLocale: state._uiLocale,
+    jobId: state.jobId,
+    jobTiming: state.jobTiming,
     // ✅ Pass recursionLimit so worker subgraph uses the correct limit
     // Without this, LangGraph defaults to 25 which is too low for complex tasks
     recursionLimit: state.recursionLimit,  // ✅ Always set by runner.ts from env RECURSION_LIMIT
@@ -678,11 +676,10 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                     timestamp: f.timestamp,
                   })),
                   tokenUsage: checkpoint.tokenUsage,
-                  estimatingTokenUsage: (state as any)._estimatingTokenUsage,
-                  jobId: (state as any).jobId,
-                  jobTiming: (state as any).jobTiming,
+                  estimatingTokenUsage: state._estimatingTokenUsage,
+                  jobId: state.jobId,
+                  jobTiming: state.jobTiming,
                   parallelMode: true,
-                  uiDesignSource: state.uiDesignSource,
                   figmaConfig: state.figmaConfig,
                   figmaAvailable: state.figmaAvailable,
                   figmaFileKey: state.figmaFileKey,
@@ -760,7 +757,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
 
   // Mark job timing as paused so resume calculates accurate totalPausedDuration
   if (result.hasFailures || result.hasInterruptedTasks) {
-    (state as any).jobTiming = JobTimingManager.pauseJob((state as any).jobTiming);
+    state.jobTiming = JobTimingManager.pauseJob(state.jobTiming);
   }
 
   // ✅ If any tasks permanently failed, save interrupted state to session
@@ -788,11 +785,10 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
               timestamp: f.timestamp,
             })),
             tokenUsage: result.tokenUsage,
-            estimatingTokenUsage: (state as any)._estimatingTokenUsage,
-            jobId: (state as any).jobId,
-            jobTiming: (state as any).jobTiming,
+            estimatingTokenUsage: state._estimatingTokenUsage,
+            jobId: state.jobId,
+            jobTiming: state.jobTiming,
             parallelMode: true,
-            uiDesignSource: state.uiDesignSource,
             figmaConfig: state.figmaConfig,
             figmaAvailable: state.figmaAvailable,
             figmaFileKey: state.figmaFileKey,
@@ -820,7 +816,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     completedTasks: result.completedTasks.map(t => t.id),
     completedTasksDetails: result.completedTasks,
     currentTask: undefined,
-    tokenUsage: result.tokenUsage || (state as any).tokenUsage,
+    tokenUsage: result.tokenUsage || state.tokenUsage,
     interruption: result.hasInterruptedTasks ? {
       reason: result.interruptReason || 'recursion_limit',
       message: result.interruptReason === 'user_stopped'
@@ -849,114 +845,115 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   } as any;
 }
 
+const DesignGraphAnnotation = Annotation.Root({
+  // Context & Input
+  context: Annotation<any>,
+  workspaceConfig: Annotation<any>,
+  featurePath: Annotation<any>,
+
+  // Dependencies (MUST be in channels to be passed between nodes!)
+  deps: Annotation<any>,
+
+  // ✅ CRITICAL: Detection Report (unified environment detection result)
+  // Contains: detectedIntentGroup (design-ui/design-system/design-spec), detectedMode, environment, domain
+  detectionReport: Annotation<any>,
+
+  // ✅ Error handling for invalid requests (e.g., modify without documents)
+  designError: Annotation<any>,
+
+  // Artifacts
+  prd: Annotation<any>,
+  directive: Annotation<any>,
+  design: Annotation<any>,
+  existingDesignDocs: Annotation<any>,
+  sourceDocuments: Annotation<any>,
+
+  // Task Queue (like code graph)
+  taskQueue: Annotation<any>,
+  currentTask: Annotation<any>,
+  completedTasks: Annotation<any>,
+  completedTasksDetails: Annotation<any>,
+
+  // Job tracking (for timing and continuity)
+  jobId: Annotation<any>,
+  jobTiming: Annotation<any>,
+
+  // Token usage tracking (task-level and job-level)
+  _currentTaskTokenUsage: Annotation<any>,
+  tokenUsage: Annotation<any>,
+  _estimatingTokenUsage: Annotation<any>,
+
+  // Execution
+  planText: Annotation<any>,
+  files: Annotation<any>,
+  filesToDelete: Annotation<any>,
+  lessons: Annotation<any>,
+
+  // Tool Calling Support
+  llmResponse: Annotation<any>,
+  conversationHistory: Annotation<any>,
+
+  // For tracking in UI
+  _httpJobId: Annotation<any>,
+  _phaseTimings: Annotation<any>, // ✅ Per-node timing for phaseBreakdown
+  _uiLocale: Annotation<any>, // ✅ UI locale (ko/en) from directive
+
+  // Chat integration
+  overrideDirective: Annotation<any>,
+  chatSource: Annotation<any>,
+
+  // Triage System
+  skipTriage: Annotation<any>,
+  actionMetadata: Annotation<any>,
+  triageResult: Annotation<any>,
+  workspaceState: Annotation<any>,
+  currentAgent: Annotation<any>,
+  currentJob: Annotation<any>,
+
+  // UI document generation context
+  uiReferences: Annotation<any>,
+  uiAssetsList: Annotation<any>,
+
+  // Figma integration (resolve -> detectEnvironment -> figmaExplore -> docGen)
+  figmaConfig: Annotation<any>,
+  figmaExplorationResult: Annotation<any>,
+  figmaAvailable: Annotation<any>,
+  figmaFileKey: Annotation<any>,
+  figmaStartNodeId: Annotation<any>,
+
+  // ✅ Resume flag (set by runner before graph invoke)
+  isResume: Annotation<any>,
+
+  // ✅ Recursion tracking (for UI gauge display)
+  recursionCount: Annotation<any>,
+  recursionLimit: Annotation<any>,
+
+  // ✅ Parallel orchestrator failure signal (propagated to learn for failure-aware handling)
+  interruption: Annotation<any>,
+  failedTasks: Annotation<any>,
+
+  // ✅ DocGen call budget tracking
+  _docGenCallIndex: Annotation<any>,
+  _callLimitReached: Annotation<any>,
+  _noOutputCallCount: Annotation<any>,
+  _toolResultCache: Annotation<any>,
+  fileErrors: Annotation<any>,
+
+  // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
+  awaitingDetectClarify: Annotation<any>,
+  awaitingClarify: Annotation<any>,
+
+  // ✅ Figma MCP connection health (tool → docGenRouter → checkTaskStatus)
+  _figmaConsecutiveErrors: Annotation<any>,
+  _figmaConnectionLost: Annotation<any>,
+
+  // Inter-Job Context Bridge
+  boundary: Annotation<any>,
+  jobConversation: Annotation<any>,
+});
+
 export function buildDesignGraph() {
-  const graph = new StateGraph<DesignGraphState>({
-    channels: {
-      // Context & Input
-      context: null as any,
-      workspaceConfig: null as any,
-      
-      // Dependencies (MUST be in channels to be passed between nodes!)
-      deps: null as any,
-      
-      // ✅ CRITICAL: Detection Report (unified environment detection result)
-      // Contains: workType (ui-design/system-design), jobMode, environment, domain
-      detectionReport: null as any,
-      
-      // ✅ Error handling for invalid requests (e.g., modify without documents)
-      designError: null as any,
-      
-      // Artifacts
-      prd: null as any,
-      directive: null as any,
-      design: null as any,
-      existingDesignDocs: null as any,
-      sourceDocuments: null as any,
-      
-      // Task Queue (like code graph)
-      taskQueue: null as any,
-      currentTask: null as any,
-      completedTasks: null as any,
-      completedTasksDetails: null as any,
-      
-      // Job tracking (for timing and continuity)
-      jobId: null as any,
-      jobTiming: null as any,
-      
-      // Token usage tracking (task-level and job-level)
-      _currentTaskTokenUsage: null as any,
-      tokenUsage: null as any,
-      _estimatingTokenUsage: null as any,
-      
-      // Execution
-      planText: null as any,
-      files: null as any,
-      filesToDelete: null as any,
-      lessons: null as any,
-      
-      // Tool Calling Support
-      llmResponse: null as any,
-      conversationHistory: null as any,
-      
-      // For tracking in UI
-      _httpJobId: null as any,
-      _phaseTimings: null as any,  // ✅ Per-node timing for phaseBreakdown
-      _uiLocale: null as any,     // ✅ UI locale (ko/en) from directive
-      
-      // Chat integration
-      overrideDirective: null as any,
-      chatSource: null as any,
-      
-      // Triage System
-      skipTriage: null as any,
-      actionMetadata: null as any,
-      triageResult: null as any,
-      workspaceState: null as any,
-      currentAgent: null as any,
-      currentJob: null as any,
-      
-      // UI document generation context
-      uiReferences: null as any,
-      uiAssetsList: null as any,
-
-      // Figma integration (resolve -> detectEnvironment -> figmaExplore -> docGen)
-      figmaConfig: null as any,
-      uiDesignSource: null as any,
-      figmaExplorationResult: null as any,
-      figmaAvailable: null as any,
-      figmaFileKey: null as any,
-      figmaStartNodeId: null as any,
-      
-      // ✅ Resume flag (set by runner before graph invoke)
-      isResume: null as any,
-      
-      // ✅ Recursion tracking (for UI gauge display)
-      recursionCount: null as any,
-      recursionLimit: null as any,
-      
-      // ✅ Parallel orchestrator failure signal (propagated to learn for failure-aware handling)
-      interruption: null as any,
-
-      // ✅ DocGen call budget tracking
-      _docGenCallIndex: null as any,
-      _callLimitReached: null as any,
-      _noOutputCallCount: null as any,
-      _toolResultCache: null as any,
-      fileErrors: null as any,
-
-      // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
-      awaitingDetectClarify: null as any,
-      awaitingClarify: null as any,
-
-      // ✅ Figma MCP connection health (tool → docGenRouter → checkTaskStatus)
-      _figmaConsecutiveErrors: null as any,
-      _figmaConnectionLost: null as any,
-
-      // Inter-Job Context Bridge
-      boundary: null as any,
-      jobConversation: null as any,
-    } as any,
-  } as any);
+  const graph = new StateGraph(DesignGraphAnnotation);
 
   graph.addNode("resolve" as const, resolve as any);
   graph.addNode("triage" as const, triage as any);  // ✅ Triage: analyze intent and prerequisites
@@ -978,7 +975,7 @@ export function buildDesignGraph() {
   
   // ✅ 6-way conditional routing after resolve
   // 1. isResume + awaitingClarify + overrideDirective → docGen (clarify direct route — skip triage/detect/decompose)
-  // 2. isResume + spec workType + overrideDirective + !hasTaskQueue → decompose (spec iterative modification)
+  // 2. isResume + spec intentGroup + overrideDirective + !hasTaskQueue → decompose (spec iterative modification)
   // 3. isResume + hasTaskQueue + hasNewDirective → revise (task queue modification)
   // 4. isResume + hasTaskQueue (no new directive) → plan (continue from where we left off)
   // 5. isResume + !hasTaskQueue + hasDetectionReport → decompose (interrupted after detect but before decompose)
@@ -1004,7 +1001,7 @@ export function buildDesignGraph() {
       }
       
       // Path 2: Spec iterative modification — simplified decompose for single-task spec update
-      if (isResume && hasNewDirective && !hasTaskQueue && s.detectionReport?.workType === 'spec') {
+      if (isResume && hasNewDirective && !hasTaskQueue && s.detectionReport?.detectedIntentGroup === 'design-spec') {
         console.log(`🔀 [Resolve→Router] isResume + spec + newDirective (no tasks) → decompose (spec modification)`);
         return "decompose";
       }
@@ -1046,7 +1043,7 @@ export function buildDesignGraph() {
   // ✅ Conditional routing from detectEnvironment
   // - designError → learn (cleanup, error message, endJob)
   // - awaitingDetectClarify → END (paused for user choice between spec/system-design)
-  // - uiDesignSource === 'figma' → figmaExplore → decompose
+  // - Figma pipeline (intent=gen-ui-figma or rev-ui+figma) → figmaExplore → decompose
   // - otherwise → decompose (reference mode or non-UI)
   graph.addConditionalEdges(
     "detectEnvironment" as any,
@@ -1059,8 +1056,8 @@ export function buildDesignGraph() {
         console.log(`⏸️  [Graph] Detect clarify — paused for user choice`);
         return "__end__";
       }
-      if (s.uiDesignSource === 'figma') {
-        console.log(`🎨 [Graph] Figma mode → figmaExplore`);
+      if (isFigmaPipeline(s.resolvedAction?.intent, isFigmaDataPopulated(s.figmaConfig))) {
+        console.log(`🎨 [Graph] Figma pipeline (intent=${s.resolvedAction?.intent}) → figmaExplore`);
         return "figmaExplore";
       }
       return "decompose";
@@ -1130,7 +1127,7 @@ export function buildDesignGraph() {
       if (s._assetValidationFailed) {
         return "docGen";  // ← Asset validation failed — retry with guidance
       }
-      if ((s as any).interruption) {
+      if (s.interruption) {
         return "learn";  // ← Interrupted (call limit / recursion) — skip to cleanup
       }
       if (s.taskQueue && !s.taskQueue.isEmpty()) {

@@ -40,7 +40,7 @@ export function decomposeDesignResponse(): string {
       {
         id: 'mock-design-main',
         name: 'System Design Document',
-        type: 'system-design',
+        type: 'design-system',
         priority: 100,
         description: 'Generate the main system design document.',
         targetFile: 'fe-system-main.md',

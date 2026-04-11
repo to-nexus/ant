@@ -16,6 +16,31 @@ import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { formatVisualClassifyForChat } from '../../../../../core/types/detection.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
+import { synthesizeVisualIntent, resolveFromInfer } from '@ant/shared';
+import type { DetectionReport, ResolvedActionContext } from '@ant/shared';
+
+/**
+ * Build RAC from classify result when resolve didn't create one (infer path).
+ * Returns undefined when RAC already exists (explicit path).
+ */
+function buildVisualRAC(
+  state: VisualGraphState,
+  jobMode: string,
+): ResolvedActionContext | undefined {
+  if (state.resolvedAction) return undefined;
+
+  const intent = synthesizeVisualIntent(jobMode);
+
+  const minimalReport: DetectionReport = {
+    detectedMode: jobMode as DetectionReport['detectedMode'],
+    detectedModeReasoning: 'Visual classify LLM',
+    sourceJob: 'code',
+  };
+
+  const rac = resolveFromInfer(minimalReport, state.actionMetadata, undefined, undefined, intent);
+  console.log(`📋 [Visual:Classify] RAC created (infer): intent=${rac.intent}, mode=${rac.mode}`);
+  return rac;
+}
 
 export async function classifyNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   const phaseStart = Date.now();
@@ -59,8 +84,8 @@ export async function classifyNode(state: VisualGraphState): Promise<Partial<Vis
     if (llm.invokeWithUsage) {
       const response = await llm.invokeWithUsage(messages);
       if (response.usage) {
-        accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
-        upsertPhaseTokenUsage(state as any, 'classify', response.usage);
+        accumulateTokenUsage(state, response.usage, { taskLevel: true, jobLevel: true });
+        upsertPhaseTokenUsage(state, 'classify', response.usage);
       }
       rawContent = response.content;
     } else {
@@ -105,10 +130,14 @@ export async function classifyNode(state: VisualGraphState): Promise<Partial<Vis
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'classify', 0);
     }
 
+    // RAC: skip if already created in resolve (explicit path)
+    const resolvedAction = buildVisualRAC(state, classified.jobMode);
+
     return {
       assetType: classified.assetType,
       jobMode: classified.jobMode,
       _phaseTimings: { ...state._phaseTimings, classify: Date.now() - phaseStart },
+      ...(resolvedAction ? { resolvedAction } : {}),
     };
   } catch (err: any) {
     console.warn(`⚠️ [Visual:Classify] Classification failed, using defaults: ${err.message}`);
@@ -117,10 +146,13 @@ export async function classifyNode(state: VisualGraphState): Promise<Partial<Vis
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'classify', 0);
     }
 
+    const fallbackRAC = buildVisualRAC(state, 'generate');
+
     return {
       assetType: 'general',
       jobMode: 'generate',
       _phaseTimings: { ...state._phaseTimings, classify: Date.now() - phaseStart },
+      ...(fallbackRAC ? { resolvedAction: fallbackRAC } : {}),
     };
   }
 }

@@ -6,8 +6,8 @@ import { ProjectContext } from "../../types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
-import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
-import type { ResolvedActionContext } from '@ant/shared';
+import { TriageableState } from '../../../common/nodes/triage/types';
+import type { ResolvedActionContext, ResolvedDocument } from '@ant/shared';
 
 // Re-export for convenience (so files can still import TaskQueue from code/state)
 export { TaskQueue } from "../../types/task";
@@ -172,22 +172,19 @@ export interface ValidationResult {
  * - design: Latest design document
  * - profile: Codebase profile (language/framework)
  */
-export interface ArchitectGraphState extends TaskArtifacts {
-  // Context
+export interface ArchitectGraphState extends TaskArtifacts, TriageableState {
+  // Context (narrowed from TriageableContext)
   context: ProjectContext & { enableEvaluation?: boolean };
   workspaceConfig?: any;  // Workspace config for job/node-specific model selection
-  
-  // ✅ Resume flag (API level: true for both resume button and continue chat)
-  isResume?: boolean;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 DetectionReport (통합 환경 감지 결과)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  /** 통합 환경 감지 결과 (jobMode, environment, profile 등 포함) */
   detectionReport?: DetectionReport;
-  
-  /** Intent-centric resolved context (created in resolve/detect, consumed by ModeController + templates) */
   resolvedAction?: ResolvedActionContext;
+
+  /** Documents loaded in resolve before RAC exists (infer path). Merged into RAC in detectEnvironment. */
+  _pendingDocuments?: ResolvedDocument[];
   
   selectedDesignFiles?: string[];
   decomposeKeywords?: {
@@ -230,7 +227,7 @@ export interface ArchitectGraphState extends TaskArtifacts {
   figmaFileKey?: string;
   figmaStartNodeId?: string;
 
-  // Dependencies
+  // Dependencies (extends TriageableState.deps)
   deps?: { 
     git?: GitPort;
     fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;
@@ -267,18 +264,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
     windowSize: number;
     compressionRatio: number;
   };
-  
-  // ✅ Chat Integration
-  overrideDirective?: string;  // Chat input as directive (highest priority)
-  chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
-
-  // ✅ Triage System
-  skipTriage?: boolean;          // Skip triage if true
-  actionMetadata?: import('@ant/shared').ActionMetadata;
-  triageResult?: TriageResult;   // Triage analysis result
-  workspaceState?: WorkspaceState;  // Workspace state snapshot
-  currentAgent?: string;         // Current agent name (e.g., 'architect')
-  currentJob?: string;           // Current job name (e.g., 'code', 'design', 'learn')
 
   // ✅ UI Runtime Assets (opt-in copy/sync)
   // - inputs/assets/** are runtime assets (NOT injected to LLM).
@@ -421,10 +406,8 @@ export interface ArchitectGraphState extends TaskArtifacts {
   filesWritten?: number;
   reportFile?: string;
   
-  // ✅ Real-time tracking and resume (internal, not persisted)
-  _httpJobId?: string;  // Job ID for live updates and job resumption
-  _phaseTimings?: Record<string, number>;  // Per-node ms timings for phaseBreakdown
-  _uiLocale?: 'ko' | 'en';  // UI locale detected from directive
+  // ✅ UI locale (narrowed from TriageableState.string to literal union)
+  _uiLocale?: 'ko' | 'en';
   
   // ✅ Error repetition tracking (internal)
   _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating
@@ -451,9 +434,6 @@ export interface ArchitectGraphState extends TaskArtifacts {
   // ✅ Token tracking for current task (internal, accumulated across LLM calls within a task)
   _currentTaskTokenUsage?: TokenUsage;
   
-  // ✅ Job-level token usage (accumulated across all tasks + decompose/detectEnv)
-  tokenUsage?: TokenUsage;
-  
   // ✅ Estimating phase token usage snapshot (captured at end of decompose, before tasks)
   _estimatingTokenUsage?: TokenUsage;
   
@@ -471,6 +451,18 @@ export interface ArchitectGraphState extends TaskArtifacts {
     workingDir: string;
     startedAt: number;
   }>;
+
+  // ✅ Job tracking (for timing and continuity)
+  jobId?: string;
+  jobTiming?: import('../../../common/graph/timing/JobTimingManager').JobTiming;
+
+  // ✅ Worker runtime injection
+  workerId?: number;
+  _isStopRequested?: (() => boolean);
+
+  // ✅ Docker infrastructure cleanup (runner-injected, not serializable)
+  _infraManager?: any;
+  _infraProjectPath?: string;
 
   // Inter-Job Context Bridge
   boundary?: 'heavyweight' | 'lightweight';

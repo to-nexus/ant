@@ -212,7 +212,7 @@ export class ModeController {
       }
       
       // Behavioral debugging (only for refactor mode)
-      if ((isExplicit && resolvedAction?.jobMode === 'refactor') || this.isRefactorMode(mode, context)) {
+      if ((isExplicit && resolvedAction?.mode === 'refactor') || this.isRefactorMode(mode, context)) {
         injections.push(`${jobPrefix}/behavioral-debugging`);
         console.log('[ModeController] Adding behavioral-debugging for refactor mode');
       }
@@ -375,17 +375,15 @@ export class ModeController {
 
     // RAC-only injections (R1-R3): additional injections when resolvedAction is present
     if (resolvedAction) {
-      // R1: action-context — when documents present, explicit, or has substantive fields
-      if (hasDocuments || resolvedAction.source === 'explicit' || resolvedAction.hasExplicitFields) {
-        injections.push('common/injections/action-context');
-      }
-      // R2: basis-guidance — only when basis is explicitly set
-      if (resolvedAction.basis) {
-        injections.push('common/injections/basis-guidance');
-      }
-      // R3: refactor-guidance — when jobMode is refactor (both explicit and infer)
-      if (resolvedAction.jobMode === 'refactor') {
+      // R1: action-context — always inject when RAC exists
+      injections.push('common/injections/action-context');
+      // R2: refactor-guidance — when mode is refactor (both explicit and infer)
+      if (resolvedAction.mode === 'refactor') {
         injections.push('common/injections/refactor-guidance');
+      }
+      // R3: explain-guidance — when mode is explain (read-only Q&A)
+      if (resolvedAction.mode === 'explain') {
+        injections.push('common/injections/explain-guidance');
       }
     }
     
@@ -420,7 +418,7 @@ export class ModeController {
     if (fw && (fw === 'nextjs' || fw === 'nuxt') && isFE) {
       return 'design/phases/execute/injections/nextjs-augmentation';
     }
-    if (rac.tech?.language === 'go' && isBE) {
+    if (rac?.tech?.language === 'go' && isBE) {
       return 'design/phases/execute/injections/go-api-augmentation';
     }
     return undefined;

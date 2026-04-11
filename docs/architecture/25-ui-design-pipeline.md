@@ -8,15 +8,16 @@ UI Design 파이프라인은 design job의 `workType === 'ui-design'`일 때 실
 
 ### 모드 결정
 
-`detectEnvironment` 노드에서 `state.uiDesignSource`를 결정한다.
+`detectEnvironment` 노드에서 `resolvedAction.intent`와 `isFigmaPipeline()` 헬퍼로 파이프라인을 결정한다.
 
 ```
-isFigmaDataPopulated(state.figmaConfig) === true  →  'figma'
-inputs/references/ 또는 inputs/assets/ 존재      →  'references'
-둘 다 없음                                        →  'none' (ui-design 아님)
+isFigmaPipeline(resolvedAction.intent, isFigmaDataPopulated(figmaConfig))
+  intent === 'gen-ui-figma'                          →  figma 파이프라인
+  intent === 'rev-ui' && figmaConfig populated    →  figma 파이프라인
+  그 외 (gen-ui-ref, gen-ui-desc, rev-ui 등)      →  ref 파이프라인
 ```
 
-Figma 모드가 우선한다. figma.json이 populated이면 references/에 파일이 있어도 무시된다.
+Figma 파이프라인이 우선한다. `gen-ui-figma` intent이거나, `rev-ui`에서 figma.json이 populated이면 Figma 모드로 진입한다.
 
 ### 입출력 요약
 
@@ -127,7 +128,7 @@ Figma Desktop MCP 도구로 디자인 데이터를 구조적으로 추출한다.
 ### 그래프 흐름 (figmaExplore 포함)
 
 ```
-detectEnvironment (uiDesignSource = 'figma')
+detectEnvironment (isFigmaPipeline → true)
   → figmaExplore (Phase 0: 프로그래밍적 구조 탐색 + 매트릭스 생성)
   → decompose (매트릭스 기반 태스크 분해)
   → plan → docGen ⇄ tool (Phase 1-3: 문서 생성)
@@ -199,7 +200,7 @@ detectEnvironment (uiDesignSource = 'figma')
 ```
 inputs/figma.json
   → resolve: state.figmaConfig 로드
-  → detectEnvironment: uiDesignSource = 'figma', uiReferences = undefined
+  → detectEnvironment: isFigmaPipeline(intent, figmaPopulated) → true
   → figmaExplore: MCP 어댑터 직접 호출 → state.figmaExplorationResult
   → decompose: 매트릭스 기반 복잡도 평가 → taskQueue
   → docGen: buildResourcesSummary(figmaExplorationResult) → LLM 프롬프트 주입
@@ -247,23 +248,23 @@ by-ref과 by-figma가 각각 독립적인 규칙 세트를 가진다. 공통 규
 
 ```
 buildUiDesignSystemPrompt():
-  uiDesignSource === 'figma'
+  isFigmaPipeline(resolvedAction.intent, figmaPopulated)
     → 'design/phases/execute/base-ui-design-by-figma'
     → figmaExplorationResult 변수 주입
-  uiDesignSource === 'references'
+  otherwise
     → 'design/phases/execute/base-ui-design-by-ref'
     → uiReferences 변수 주입
 
 buildResourcesSummary():
-  figma 모드 → MCP 도구 안내 + 매트릭스 요약 + 에셋 카운트
-  ref 모드   → Reference Images + Asset Files 목록
+  figma 파이프라인 → MCP 도구 안내 + 매트릭스 요약 + 에셋 카운트
+  ref 파이프라인   → Reference Images + Asset Files 목록
 ```
 
 docGen/index.ts에서 도구 세트 선택:
 
 ```
-uiDesignSource === 'figma' → TOOL_SETS.uiDesignFigma
-otherwise                  → TOOL_SETS.uiDesign
+isFigmaPipeline(intent, figmaPopulated) → TOOL_SETS.uiDesignFigma
+otherwise                               → TOOL_SETS.uiDesign
 ```
 
 ### nodeSummary LLM 표시 (buildNodeSummaryDisplay)

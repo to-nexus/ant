@@ -61,19 +61,14 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];
         initial.tokenUsage = session.state.tokenUsage;
-        initial._estimatingTokenUsage = (session.state as any).estimatingTokenUsage;  // ✅ Restore estimating phase snapshot
+        initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
 
-        // ✅ Restore detectionReport (required for workType routing in docGen)
-        if ((session.state as any).detectionReport) {
-          initial.detectionReport = (session.state as any).detectionReport;
+        if (session.state.detectionReport) {
+          initial.detectionReport = session.state.detectionReport;
         }
         
-        // ✅ Restore Figma context (required for Figma tool activation on resume)
-        if ((session.state as any).uiDesignSource) {
-          initial.uiDesignSource = (session.state as any).uiDesignSource;
-        }
-        if ((session.state as any).figmaConfig) {
-          initial.figmaConfig = (session.state as any).figmaConfig;
+        if (session.state.figmaConfig) {
+          initial.figmaConfig = session.state.figmaConfig;
         }
         // Load figmaExplorationResult from sidecar file (preferred) or session fallback
         if (initial.context?.featurePath) {
@@ -85,13 +80,12 @@ export async function runDesignGraph(initial: DesignGraphState) {
             const raw = await fs.readFile(sidecarPath, 'utf-8');
             initial.figmaExplorationResult = JSON.parse(raw);
           } catch {
-            // Sidecar not found — fall back to legacy session storage
-            if ((session.state as any).figmaExplorationResult) {
-              initial.figmaExplorationResult = (session.state as any).figmaExplorationResult;
+            if (session.state.figmaExplorationResult) {
+              initial.figmaExplorationResult = session.state.figmaExplorationResult;
             }
           }
-        } else if ((session.state as any).figmaExplorationResult) {
-          initial.figmaExplorationResult = (session.state as any).figmaExplorationResult;
+        } else if (session.state.figmaExplorationResult) {
+          initial.figmaExplorationResult = session.state.figmaExplorationResult;
         }
         
         // ✅ Restore planText for task-level resume (skip plan regeneration if applicable)
@@ -104,12 +98,11 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.conversationHistory = session.state.conversationHistory;
         }
         
-        // ✅ Restore generated files (design docs written to disk between tasks)
-        if ((session.state as any).files) {
-          initial.files = (session.state as any).files;
+        if (session.state.files) {
+          initial.files = session.state.files;
         }
-        if ((session.state as any).filesToDelete) {
-          initial.filesToDelete = (session.state as any).filesToDelete;
+        if (session.state.filesToDelete) {
+          initial.filesToDelete = session.state.filesToDelete;
         }
         
         // ✅ Restore directive/overrideDirective from session
@@ -121,45 +114,41 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.overrideDirective = session.state.overrideDirective;
         initial.chatSource = session.state.chatSource;
         
-        // ✅ Restore design artifacts for downstream prompts
-        if ((session.state as any).design) {
-          initial.design = (session.state as any).design;
+        if (session.state.design) {
+          initial.design = session.state.design;
         }
-        if ((session.state as any).prd) {
-          initial.prd = (session.state as any).prd;
-        }
-        
-        // ✅ Restore jobId and jobTiming
-        if ((session.state as any).jobId) {
-          initial.jobId = (session.state as any).jobId;
-        }
-        if ((session.state as any).jobTiming) {
-          initial.jobTiming = (session.state as any).jobTiming;
+        if (session.state.prd) {
+          initial.prd = session.state.prd;
         }
         
-        if ((session.state as any).userLanguage) {
-          initial.context.userLanguage = (session.state as any).userLanguage;
+        if (session.state.jobId) {
+          initial.jobId = session.state.jobId;
+        }
+        if (session.state.jobTiming) {
+          initial.jobTiming = session.state.jobTiming;
         }
         
-      } else if (session?.state && (session.state as any).awaitingDetectClarify) {
-        // ✅ Detect clarify resume: user chose between spec and system-design
+        if (session.state.userLanguage) {
+          initial.context.userLanguage = session.state.userLanguage;
+        }
+        
+      } else if (session?.state && session.state.awaitingDetectClarify) {
         console.log(`🔄 [DesignRunner] Restoring awaitingDetectClarify state from session`);
         initial.isResume = true;
         initial.awaitingDetectClarify = true;
         
-        if ((session.state as any).directive) {
-          initial.directive = (session.state as any).directive;
+        if (session.state.directive) {
+          initial.directive = session.state.directive;
         }
         initial.overrideDirective = session.state.overrideDirective;
         initial.chatSource = session.state.chatSource;
-        if ((session.state as any).prd) {
-          initial.prd = (session.state as any).prd;
+        if (session.state.prd) {
+          initial.prd = session.state.prd;
         }
-        if ((session.state as any).userLanguage) {
-          initial.context.userLanguage = (session.state as any).userLanguage;
+        if (session.state.userLanguage) {
+          initial.context.userLanguage = session.state.userLanguage;
         }
-      } else if (session?.state && (session.state as any).awaitingClarify) {
-        // ✅ Spec clarify resume: restore conversation and awaitingClarify flag
+      } else if (session?.state && session.state.awaitingClarify) {
         console.log(`🔄 [DesignRunner] Restoring awaitingClarify state from session`);
         initial.isResume = true;
         initial.awaitingClarify = true;
@@ -167,36 +156,32 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if (session.state.conversationHistory?.length) {
           initial.conversationHistory = session.state.conversationHistory;
         }
-        if ((session.state as any).detectionReport) {
-          initial.detectionReport = (session.state as any).detectionReport;
+        if (session.state.detectionReport) {
+          initial.detectionReport = session.state.detectionReport;
         }
-        if ((session.state as any).directive) {
-          initial.directive = (session.state as any).directive;
+        if (session.state.directive) {
+          initial.directive = session.state.directive;
         }
         initial.overrideDirective = session.state.overrideDirective;
         initial.chatSource = session.state.chatSource;
-        if ((session.state as any).prd) {
-          initial.prd = (session.state as any).prd;
+        if (session.state.prd) {
+          initial.prd = session.state.prd;
         }
-        if ((session.state as any).userLanguage) {
-          initial.context.userLanguage = (session.state as any).userLanguage;
+        if (session.state.userLanguage) {
+          initial.context.userLanguage = session.state.userLanguage;
         }
       } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
-        // ✅ FIX: Restore directive from early-interrupted session (triage/detectEnv stage)
-        // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)
-        // Without this guard, a new job could inherit stale directive from a previous session
-        const savedDirective = (session.state as any).directive || session.state.overrideDirective;
+        const savedDirective = session.state.directive || session.state.overrideDirective;
         if (savedDirective && !initial.directive) {
           console.log(`🔄 [DesignRunner] Restoring directive from early-interrupted session`);
           initial.directive = savedDirective;
         }
-        // Restore detectionReport (enables decompose-direct routing after detectEnv interruption)
-        if ((session.state as any).detectionReport && !initial.detectionReport) {
+        if (session.state.detectionReport && !initial.detectionReport) {
           console.log(`🔄 [DesignRunner] Restoring detectionReport from session`);
-          initial.detectionReport = (session.state as any).detectionReport;
+          initial.detectionReport = session.state.detectionReport;
         }
-        if ((session.state as any).userLanguage) {
-          initial.context.userLanguage = (session.state as any).userLanguage;
+        if (session.state.userLanguage) {
+          initial.context.userLanguage = session.state.userLanguage;
         }
       }
     } catch (err) {
@@ -210,9 +195,9 @@ export async function runDesignGraph(initial: DesignGraphState) {
   }
   
   // ✅ Write resume marker to token log so run boundaries are visible
-  if (initial.isResume && initial.context?.featurePath && (initial as any).jobId) {
+  if (initial.isResume && initial.context?.featurePath && initial.jobId) {
     const { getTokenLogger } = await import('../../../../core/utils/tokenLogger');
-    const tLogger = getTokenLogger({ featurePath: initial.context.featurePath, jobId: (initial as any).jobId });
+    const tLogger = getTokenLogger({ featurePath: initial.context.featurePath, jobId: initial.jobId });
     tLogger.logResumeMarker().catch(() => {});
   }
   
@@ -221,8 +206,8 @@ export async function runDesignGraph(initial: DesignGraphState) {
   initial.recursionLimit = initial.recursionLimit || finalLimit;
   
   // ✅ Set jobTiming on broadcaster for resume (so SSE broadcasts include timing from first event)
-  if ((initial as any).jobTiming && initial.deps?.kanbanUpdate?.setJobTiming) {
-    initial.deps.kanbanUpdate.setJobTiming((initial as any).jobTiming);
+  if (initial.jobTiming && initial.deps?.kanbanUpdate?.setJobTiming) {
+    initial.deps.kanbanUpdate.setJobTiming(initial.jobTiming);
   }
   
   // ✅ FIX: Save directive to session EARLY (before graph invoke)
@@ -234,7 +219,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.context.featureFolder,
         'design'
       );
-      if (!(session.state as any)?.directive) {
+      if (!session.state?.directive) {
         await initial.deps.session.updateArtifacts(
           initial.context.project,
           initial.context.featureFolder,
@@ -359,14 +344,14 @@ export async function runDesignGraph(initial: DesignGraphState) {
       }
       
       // Set interruption in state
-      (state as any).interruption = interruption;
+      state.interruption = interruption;
       
       // Try to run learn node for cleanup
       try {
         const { learn } = await import('./nodes/learn');
         state = await learn(state);
-        if (!(state as any).interruption) {
-          (state as any).interruption = interruption;
+        if (!state.interruption) {
+          state.interruption = interruption;
         }
       } catch (learnError) {
         // Learn node failed (non-critical)

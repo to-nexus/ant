@@ -62,7 +62,7 @@ This is a **continuation section**. The document already exists. Use `<append>` 
 
 {{/if}}
 
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 ════════════════════════════════════════════════════════════════════════════════
 🔧 REFACTOR MODE - MODIFY EXISTING SPEC
 ════════════════════════════════════════════════════════════════════════════════

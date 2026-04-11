@@ -1,4 +1,4 @@
-{{#if (eq resolvedAction.jobMode "refactor")}}
+{{#if (eq resolvedAction.mode "refactor")}}
 ## Refactoring Constraints
 
 You are modifying an existing system. Observe these constraints:

@@ -43,7 +43,7 @@ export async function architectAgent(
     actionMetadata?: import('@ant/shared').ActionMetadata;
     redis?: any;  // Raw ioredis client for cloud Figma MCP bridge
   },
-  jobMode?: JobMode,
+  mode?: JobMode,
   enableEvaluation?: boolean,
   jobId?: string  // ✅ Existing jobId for resume or real-time tracking
 ): Promise<ArchitectResult> {
@@ -95,9 +95,9 @@ export async function architectAgent(
   // 3. Retrieve long-term knowledge from Vector DB
   const vectorMemory = await retrieve(job, project, featureFolder, deps?.memory ? { memory: deps.memory } : undefined);
   
-  // 4. Detect user language: actionMetadata.language (explicit from UI) > input text inference
+  // 4. Detect user locale: actionMetadata.locale (explicit from UI) > input text inference
   const { detectUserLanguage } = await import('../../core/utils/languageDetector');
-  const explicitLanguage = deps?.actionMetadata?.language;
+  const explicitLanguage = deps?.actionMetadata?.locale ?? deps?.actionMetadata?.language;
   const userLanguage = explicitLanguage || detectUserLanguage(input || '');
   
   // 5. Extract UserContext for path resolution
@@ -382,7 +382,7 @@ export async function architectAgent(
 
       // === ✅ Mode inference is handled by LLM in detectEnvironment node ===
       // Do NOT infer mode here - let detectEnvironment decide
-      const inferredMode = jobMode;  // Use explicit mode if provided, otherwise undefined
+      const inferredMode = mode;  // Use explicit mode if provided, otherwise undefined
       
       // UNIFIED: Always use Task Queue Mode with LLM validation
       const { WorkSizeEstimator } = await import('../../core/codebase');

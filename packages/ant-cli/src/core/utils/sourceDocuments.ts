@@ -11,6 +11,7 @@
  */
 
 import { generateFileOutline } from './fileOutline';
+import type { ResolvedDocument } from '@ant/shared';
 
 /**
  * Build formatted source documents string for a specific task.
@@ -250,6 +251,34 @@ export function buildSourceFileIndex(
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Convert source documents to ResolvedDocument[] for RAC-aware nodes.
+ * Each file becomes a separate ResolvedDocument with the given role.
+ * Existing functions remain for non-RAC paths (detect, decompose).
+ *
+ * @param sourceDocuments - Source files from inputs/sources/ (filename -> content)
+ * @param role - Role to assign: 'ref' for implementation sources, 'context' for background
+ */
+export function buildSourceDocsAsResolved(
+  sourceDocuments?: Record<string, string>,
+  role: 'ref' | 'context' = 'context',
+): ResolvedDocument[] {
+  if (!sourceDocuments || Object.keys(sourceDocuments).length === 0) return [];
+
+  const sorted = Object.keys(sourceDocuments).sort((a, b) => {
+    if (a === 'prd.md') return -1;
+    if (b === 'prd.md') return 1;
+    return a.localeCompare(b);
+  });
+
+  return sorted.map(filename => ({
+    path: filename,
+    content: sourceDocuments[filename],
+    role,
+    label: filename,
+  }));
 }
 
 /**

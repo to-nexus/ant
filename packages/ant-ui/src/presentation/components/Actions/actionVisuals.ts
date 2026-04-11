@@ -1,4 +1,4 @@
-import type { ActionId } from '@ant/shared';
+import type { IntentGroup } from '@ant/shared';
 import {
   FileText, Server, Palette, LayoutList, Code2, ImageIcon, BookOpen,
   FilePlus2, FilePen,
@@ -19,17 +19,17 @@ export interface VisualDef {
 }
 
 // ============================================
-// Action-level visuals (one per ActionId)
+// Action-level visuals (one per IntentGroup)
 // ============================================
 
-export const ACTION_VISUALS: Record<ActionId, VisualDef> = {
-  plan:            { icon: FileText,  bg: 'bg-blue-100 dark:bg-blue-900/50',    text: 'text-blue-600 dark:text-blue-400' },
-  'system-design': { icon: Server,    bg: 'bg-purple-100 dark:bg-purple-900/50', text: 'text-purple-600 dark:text-purple-400' },
-  'ui-design':     { icon: Palette,   bg: 'bg-pink-100 dark:bg-pink-900/50',    text: 'text-pink-600 dark:text-pink-400' },
-  spec:            { icon: LayoutList, bg: 'bg-rose-100 dark:bg-rose-900/50',    text: 'text-rose-600 dark:text-rose-400' },
-  code:            { icon: Code2,     bg: 'bg-emerald-100 dark:bg-emerald-900/50', text: 'text-emerald-600 dark:text-emerald-400' },
-  visual:          { icon: ImageIcon, bg: 'bg-violet-100 dark:bg-violet-900/50', text: 'text-violet-600 dark:text-violet-400' },
-  learn:           { icon: BookOpen,  bg: 'bg-amber-100 dark:bg-amber-900/50',  text: 'text-amber-600 dark:text-amber-400' },
+export const ACTION_VISUALS: Record<IntentGroup, VisualDef> = {
+  plan:              { icon: FileText,  bg: 'bg-blue-100 dark:bg-blue-900/50',    text: 'text-blue-600 dark:text-blue-400' },
+  'design-system':   { icon: Server,    bg: 'bg-purple-100 dark:bg-purple-900/50', text: 'text-purple-600 dark:text-purple-400' },
+  'design-ui':       { icon: Palette,   bg: 'bg-pink-100 dark:bg-pink-900/50',    text: 'text-pink-600 dark:text-pink-400' },
+  'design-spec':     { icon: LayoutList, bg: 'bg-rose-100 dark:bg-rose-900/50',    text: 'text-rose-600 dark:text-rose-400' },
+  code:              { icon: Code2,     bg: 'bg-emerald-100 dark:bg-emerald-900/50', text: 'text-emerald-600 dark:text-emerald-400' },
+  visual:            { icon: ImageIcon, bg: 'bg-violet-100 dark:bg-violet-900/50', text: 'text-violet-600 dark:text-violet-400' },
+  'learn-codebase':  { icon: BookOpen,  bg: 'bg-amber-100 dark:bg-amber-900/50',  text: 'text-amber-600 dark:text-amber-400' },
 };
 
 // ============================================
@@ -38,35 +38,37 @@ export const ACTION_VISUALS: Record<ActionId, VisualDef> = {
 // ============================================
 
 const INTENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
-  'create-plan':      FilePlus2,
-  'revise-plan':      FilePen,
+  'gen-plan':           FilePlus2,
+  'rev-plan':           FilePen,
 
-  'create-fe':        Monitor,
-  'create-be':        Server,
-  'create-fullstack': Layers,
-  'revise-system':    PenLine,
+  'gen-sys-fe':         Monitor,
+  'gen-sys-be':         Server,
+  'gen-sys-full':       Layers,
+  'rev-sys':            PenLine,
 
-  'create-figma':     Figma,
-  'create-ref':       Camera,
-  'create-desc':      MessageSquareText,
-  'revise-ui':        Paintbrush,
+  'gen-ui-figma':       Figma,
+  'gen-ui-ref':         Camera,
+  'gen-ui-desc':        MessageSquareText,
+  'rev-ui':             Paintbrush,
 
-  'create-spec':      ClipboardList,
-  'revise-spec':      ClipboardPenLine,
+  'gen-spec':           ClipboardList,
+  'rev-spec':           ClipboardPenLine,
 
-  'create-code':      Code2,
-  'refactor-code':    Wrench,
+  'gen-code-sys':       Server,
+  'gen-code-spec':      ClipboardList,
+  'gen-code-directive': MessageSquareText,
+  'rev-code':           Wrench,
 
-  'create-visual':    ImageIcon,
+  'gen-visual':         ImageIcon,
 
-  'create-learn':     BookOpen,
+  'gen-learn':          BookOpen,
 };
 
 /**
  * Resolve full visual for an intent: intent-specific icon + parent action colors.
  * Falls back to parent action icon if no intent-specific icon is defined.
  */
-export function getIntentVisual(intentId: string, actionId: ActionId): VisualDef {
+export function getIntentVisual(intentId: string, actionId: IntentGroup): VisualDef {
   const action = ACTION_VISUALS[actionId];
   const intentIcon = INTENT_ICONS[intentId];
   return {

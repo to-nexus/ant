@@ -1,9 +1,9 @@
 import { ChevronLeft } from 'lucide-react';
 import { ACTION_VISUALS } from './actionVisuals';
-import type { ActionId } from '@ant/shared';
+import type { IntentGroup } from '@ant/shared';
 
 interface ActionStepHeaderProps {
-  actionId: ActionId;
+  actionId: IntentGroup;
   title: string;
   subtitle?: string;
   onBack: () => void;

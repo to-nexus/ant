@@ -5,9 +5,24 @@
  * Created in resolve/detect nodes, consumed by ModeController and prompt templates.
  */
 
-import type { Basis, ActionMetadata, UIDesignModeId } from './actions';
+import type { ActionMetadata, IntentId } from './actions';
 import { deriveFromIntent, INTENT_DEFINITIONS } from './actions';
-import type { JobMode, DesignWorkType, DesignDomain, DetectionReport, JobEnvironment } from './detection';
+import type { Mode, IntentGroup, DesignDomain, DetectionReport, JobEnvironment } from './detection';
+
+// ============================================
+// Workspace State (minimal, for infer path)
+// ============================================
+
+export interface InferWorkspaceState {
+  hasFigmaConfig?: boolean;
+  hasScreens?: boolean;
+  hasComponents?: boolean;
+  hasPrd?: boolean;
+  hasDesignDoc?: boolean;
+  hasSpecDocs?: boolean;
+  targetFiles?: string[];
+  primarySources?: string[];
+}
 
 // ============================================
 // TechContext Types
@@ -40,14 +55,13 @@ export interface ResolvedDocument {
 // ============================================
 
 export interface ResolvedActionContext {
-  intent?: string;
-  workType?: DesignWorkType;
-  jobMode: JobMode;
+  intent?: IntentId;
+  intentGroup?: IntentGroup;
+  mode: Mode;
 
   tech: TechContext;
 
   target?: string[];
-  basis?: Basis;
   refs?: string[];
   context?: string[];
 
@@ -56,7 +70,6 @@ export interface ResolvedActionContext {
   domain?: DesignDomain;
 
   intentDescription?: string;
-  basisDescription?: string;
 
   source: 'explicit' | 'infer';
   hasExplicitFields: boolean;
@@ -188,37 +201,9 @@ export function buildTechContext(
 // Description Helpers
 // ============================================
 
-export function getIntentDescription(intent: string): string | undefined {
+export function getIntentDescription(intent: IntentId): string | undefined {
   const def = INTENT_DEFINITIONS.find(d => d.id === intent);
   return def?.description.en;
-}
-
-const BASIS_DESCRIPTIONS: Record<Basis, string> = {
-  'prd': 'PRD and product requirements',
-  'directive': 'User directive and instructions',
-  'existing-doc': 'Existing design documents',
-  'figma': 'Figma design file',
-  'references': 'Reference images and screenshots',
-  'spec': 'Feature specification document',
-  'design-doc': 'System design document',
-};
-
-export function getBasisDescription(basis: Basis): string {
-  return BASIS_DESCRIPTIONS[basis] ?? basis;
-}
-
-/**
- * Map intent to UI design source type.
- * Returns null for intents that need runtime resolution (e.g. revise-ui checks figmaConfig).
- */
-export function getUiSourceFromIntent(intent: string): UIDesignModeId | null {
-  switch (intent) {
-    case 'create-figma': return 'figma';
-    case 'create-ref': return 'references';
-    case 'create-desc': return 'description';
-    case 'revise-ui': return null;
-    default: return null;
-  }
 }
 
 // ============================================
@@ -246,13 +231,9 @@ export function resolveFromExplicit(
   const tech = buildTechContext(codebaseProfile, env, undefined, fallbackHints);
 
   const intentDescription = getIntentDescription(intent);
-  const basisDescription = actionMetadata.basis
-    ? getBasisDescription(actionMetadata.basis)
-    : undefined;
 
   const hasExplicitFields = !!(
     intentDescription ||
-    basisDescription ||
     (actionMetadata.target && actionMetadata.target.length > 0) ||
     (actionMetadata.refs && actionMetadata.refs.length > 0) ||
     (actionMetadata.context && actionMetadata.context.length > 0)
@@ -260,15 +241,13 @@ export function resolveFromExplicit(
 
   return {
     intent,
-    workType: derived.workType,
-    jobMode: derived.jobMode,
+    intentGroup: derived.intentGroup,
+    mode: derived.mode,
     tech,
     target: actionMetadata.target,
-    basis: actionMetadata.basis,
     refs: actionMetadata.refs,
     context: actionMetadata.context,
     intentDescription,
-    basisDescription,
     source: 'explicit',
     hasExplicitFields,
   };
@@ -276,14 +255,21 @@ export function resolveFromExplicit(
 
 /**
  * Create RAC from LLM DetectionReport (infer path, no explicit intent).
- * Merges actionMetadata fields (basis/refs/target/context) if present.
+ * Merges actionMetadata fields (refs/target/context) if present.
  * Called in detect node after LLM analysis.
+ *
+ * @param synthesizedIntent - Optional intent ID synthesized from DetectionReport
+ *   via synthesizeDesignIntent() / synthesizeCodeIntent(). When provided, the
+ *   returned RAC carries intent + intentDescription so downstream nodes can
+ *   branch on intent uniformly regardless of explicit vs infer origin.
  */
 export function resolveFromInfer(
   report: DetectionReport,
   actionMetadata?: ActionMetadata,
   codebaseProfile?: CodebaseProfileLike,
   fallbackHints?: EnvironmentHints,
+  synthesizedIntent?: IntentId,
+  _workspaceState?: InferWorkspaceState,
 ): ResolvedActionContext {
   const env = mapJobEnvironmentToEnvironment(report.environment);
   const tech = buildTechContext(
@@ -293,28 +279,150 @@ export function resolveFromInfer(
     fallbackHints,
   );
 
-  const basisDescription = actionMetadata?.basis
-    ? getBasisDescription(actionMetadata.basis)
-    : undefined;
+  const target = actionMetadata?.target ?? (report.targetFiles?.length ? report.targetFiles : undefined);
+  const refs = actionMetadata?.refs ?? (report.primarySources?.length ? report.primarySources : undefined);
 
   const hasExplicitFields = !!(
-    basisDescription ||
     (actionMetadata?.target && actionMetadata.target.length > 0) ||
     (actionMetadata?.refs && actionMetadata.refs.length > 0) ||
     (actionMetadata?.context && actionMetadata.context.length > 0)
   );
 
   return {
-    workType: report.workType,
-    jobMode: report.jobMode,
+    intent: synthesizedIntent,
+    intentDescription: synthesizedIntent
+      ? getIntentDescription(synthesizedIntent)
+      : undefined,
+    intentGroup: report.detectedIntentGroup,
+    mode: report.detectedMode,
     tech,
-    target: actionMetadata?.target,
-    basis: actionMetadata?.basis,
-    refs: actionMetadata?.refs,
+    target,
+    refs,
     context: actionMetadata?.context,
     domain: report.domain,
-    basisDescription,
     source: 'infer',
     hasExplicitFields,
   };
+}
+
+// ============================================
+// Intent-based Pipeline Helpers
+// ============================================
+
+/**
+ * Determine whether the Figma MCP pipeline should be used.
+ *
+ * Returns true when the intent is gen-ui-figma or rev-ui with populated figmaConfig.
+ */
+export function isFigmaPipeline(
+  intent: IntentId | undefined,
+  figmaPopulated: boolean,
+): boolean {
+  if (intent === 'gen-ui-figma') return true;
+  if (intent === 'rev-ui' && figmaPopulated) return true;
+  return false;
+}
+
+// ============================================
+// Intent Synthesis (reverse of deriveFromIntent)
+// ============================================
+
+/**
+ * Synthesize an intent ID for design jobs from a DetectionReport + environment hints.
+ * Inverse of deriveFromIntent(): given observed detection results, pick the
+ * closest matching intent ID from INTENT_DEFINITIONS.
+ *
+ * Called in design detectEnvironment after LLM analysis, passed to resolveFromInfer().
+ */
+export function synthesizeDesignIntent(
+  report: DetectionReport,
+  hints: { figmaPopulated?: boolean; hasReferences?: boolean },
+): IntentId {
+  const intentGroup = report.detectedIntentGroup;
+  const { detectedMode } = report;
+
+  if (detectedMode === 'explain') {
+    if (intentGroup === 'design-ui') return 'explain-ui';
+    if (intentGroup === 'design-spec') return 'explain-spec';
+    return 'explain-sys';
+  }
+
+  if (intentGroup === 'design-ui') {
+    if (detectedMode === 'refactor') return 'rev-ui';
+    if (hints.figmaPopulated) return 'gen-ui-figma';
+    if (hints.hasReferences) return 'gen-ui-ref';
+    return 'gen-ui-desc';
+  }
+  if (intentGroup === 'design-spec') {
+    return detectedMode === 'refactor' ? 'rev-spec' : 'gen-spec';
+  }
+  // design-system (default)
+  if (detectedMode === 'refactor') return 'rev-sys';
+  const env = report.environment;
+  if (env === 'frontend') return 'gen-sys-fe';
+  if (env === 'backend') return 'gen-sys-be';
+  return 'gen-sys-full';
+}
+
+/**
+ * Synthesize an intent ID for code jobs from a DetectionReport.
+ * Called in code detectEnvironment after LLM analysis, passed to resolveFromInfer().
+ */
+export function synthesizeCodeIntent(
+  report: DetectionReport,
+  workspaceState?: InferWorkspaceState,
+): IntentId {
+  if (report.detectedMode === 'explain') return 'explain-code';
+  if (report.detectedMode === 'refactor') return 'rev-code';
+  if (workspaceState?.hasDesignDoc) return 'gen-code-sys';
+  if (workspaceState?.hasSpecDocs) return 'gen-code-spec';
+  return 'gen-code-directive';
+}
+
+/**
+ * Synthesize an intent ID for plan jobs from the resolved mode.
+ * Plan has no DetectionReport; mode is determined by PRD existence + LLM classification.
+ * Called in planner resolve node after mode determination.
+ */
+export function synthesizePlanIntent(
+  mode: string,
+): IntentId {
+  if (mode === 'explain') return 'explain-plan';
+  return mode === 'refine' ? 'rev-plan' : 'gen-plan';
+}
+
+/**
+ * Synthesize an intent ID for visual jobs from the classified jobMode.
+ * Visual has a single generative intent (`gen-visual`); explain returns undefined (D1 pattern).
+ * Called in visual classify node after LLM classification.
+ */
+export function synthesizeVisualIntent(
+  jobMode: string,
+): IntentId {
+  if (jobMode === 'explain') return 'explain-visual';
+  return 'gen-visual';
+}
+
+/**
+ * Synthesize an intent ID for ask jobs from the triage sub-type.
+ * Ask has three intents mapped 1:1 from askSubType.
+ * Called in triage node when intent is 'ask'.
+ */
+export function synthesizeAskIntent(
+  subType?: 'evaluate' | 'ant' | 'general',
+): IntentId {
+  switch (subType) {
+    case 'evaluate': return 'ask-evaluate';
+    case 'ant': return 'ask-ant';
+    default: return 'ask-general';
+  }
+}
+
+/**
+ * Synthesize an intent ID for learn jobs.
+ * Learn has a single generative intent ('gen-learn'); no explain/refactor modes.
+ * Called in learn decompose node before LLM classification.
+ */
+export function synthesizeLearnIntent(): IntentId {
+  return 'gen-learn';
 }

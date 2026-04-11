@@ -5,7 +5,6 @@
  * 의료 Triage 개념 차용: 분류 → 적절한 경로로 라우팅
  */
 
-import { ProjectContext } from '../../../architect/types';
 import { LLMClient } from '../../../../core/ports';
 import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow';
 import { TokenUsage } from '../../graph/llmHelpers';
@@ -72,12 +71,15 @@ export interface ChoiceOptions {
  */
 export type ContinuationType = 'supplement' | 'newScope';
 
+export type AskSubType = 'evaluate' | 'ant' | 'general';
+
 export interface TriageResult {
   intent: Intent;
   
   // ask 관련
   inScope?: boolean;           // guardrails 통과 여부
   askResponse?: string;        // 응답 (in-scope일 때)
+  askSubType?: AskSubType;     // ask 하위 분류
   
   // work 관련
   workStatus?: WorkStatus;
@@ -158,20 +160,31 @@ export interface WorkspaceState {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
+ * TriageableContext: Minimal context for triage node.
+ * Architect uses full ProjectContext (subtype), Planner uses { featurePath }.
+ */
+export type TriageableContext = {
+  featurePath?: string;
+  project?: string;
+  [key: string]: any;
+};
+
+/**
  * TriageableState: Triage 기능이 추가된 Graph State
- * 기존 ArchitectGraphState, DesignGraphState를 확장
+ * Design/Code/Plan/Visual/Learn 그래프의 공통 베이스 타입
  */
 export interface TriageableState {
   // Core path — single source of truth for workspace location
   featurePath?: string;
   
-  // Legacy context (architect uses full ProjectContext; planner uses minimal object)
-  context: ProjectContext;
+  // Minimal context (each graph overrides with narrower type)
+  context: TriageableContext;
   directive?: string;  // User instruction (unified: CLI input or chat input)
   deps?: { 
     llm?: LLMClient;
     memory?: any;
     workflowUpdate?: WorkflowStateUpdatePort;
+    kanbanUpdate?: any;
   };
   _httpJobId?: string;
   tokenUsage?: TokenUsage;
@@ -189,6 +202,11 @@ export interface TriageableState {
   
   // Explicit action context (from Actions panel)
   actionMetadata?: ActionMetadata;
+  
+  // Locale & timing (shared across all graphs, used by triage)
+  _uiLocale?: string;
+  isResume?: boolean;
+  _phaseTimings?: Record<string, number>;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

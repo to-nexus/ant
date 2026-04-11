@@ -372,7 +372,7 @@ export async function decomposeSystemDesign(
   const existingDesignFiles = state.existingDesignDocs
     ? Object.keys(state.existingDesignDocs).filter(isSystemDesignFile)
     : [];
-  const jobMode = state.detectionReport?.jobMode || 'generate';
+  const jobMode = state.detectionReport?.detectedMode || 'generate';
   const resolvedTargetFiles = state.detectionReport?.targetFiles;
   const detectedEnv = state.detectionReport?.environment;
 
@@ -392,7 +392,7 @@ export async function decomposeSystemDesign(
     spec,
     hasExistingDesign,
     designPreview,
-    jobMode,
+    detectedMode: jobMode,
     existingDesignFiles: promptExistingFiles,
     primaryDesignFile: promptPrimaryFile,
     environment: detectedEnv,
@@ -589,8 +589,8 @@ export async function decomposeSystemDesign(
   }
 
   // Snapshot estimating phase token usage
-  const estimatingTokenUsage = (state as any).tokenUsage
-    ? { ...(state as any).tokenUsage }
+  const estimatingTokenUsage = state.tokenUsage
+    ? { ...state.tokenUsage }
     : undefined;
   if (estimatingTokenUsage && state.deps?.kanbanUpdate?.setEstimatingTokenUsage) {
     state.deps.kanbanUpdate.setEstimatingTokenUsage(estimatingTokenUsage);
@@ -598,7 +598,7 @@ export async function decomposeSystemDesign(
 
   // Reset task-level token usage (will be used by first task in plan node)
   const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-  resetTaskTokenUsage(state as any);
+  resetTaskTokenUsage(state);
 
   // Finalize estimating phase
   const phaseBreakdown = { ...(state._phaseTimings || {}), decompose: Date.now() - ctx.phaseStart };
@@ -614,7 +614,7 @@ export async function decomposeSystemDesign(
     completedTasksDetails: [],
     jobId: ctx.newJobId,
     jobTiming: finalJobTiming,
-    tokenUsage: (state as any).tokenUsage,
+    tokenUsage: state.tokenUsage,
     estimatingTokenUsage,
     userLanguage: state.context.userLanguage,
   });

@@ -31,8 +31,8 @@ beforeAll(async () => {
 
 describe('E2E Intent Matrix', () => {
   for (const fixture of FIXTURES) {
-    const label = `${fixture.intent}:${fixture.metadata.basis || 'default'}`;
-    const featureName = `e2e-${fixture.intent}-${fixture.metadata.basis || 'default'}`.replace(/[^a-z0-9-]/g, '-');
+    const label = fixture.intent;
+    const featureName = `e2e-${fixture.intent}`.replace(/[^a-z0-9-]/g, '-');
 
     it(label, { timeout: 120_000 }, async (ctx) => {
       if (!serverAvailable) return ctx.skip();
@@ -46,7 +46,6 @@ describe('E2E Intent Matrix', () => {
         actionMetadata: {
           explicit: true,
           intent: fixture.intent,
-          basis: fixture.metadata.basis,
           refs: fixture.metadata.refs,
           context: fixture.metadata.context,
         },

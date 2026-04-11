@@ -15,7 +15,7 @@ import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { ActionChipGrid } from '../Actions';
 import { useStore } from '@/domain/store';
-import type { ActionId } from '@ant/shared';
+import type { IntentGroup } from '@ant/shared';
 import { Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FileStats } from '@/domain/models/chat';
 
@@ -322,7 +322,7 @@ function ChatActionCards() {
   const selectedAgent = useStore(s => s.selectedAgent);
   const [showAll, setShowAll] = useState(false);
 
-  const handleSelect = (actionId: ActionId) => {
+  const handleSelect = (actionId: IntentGroup) => {
     openActionsPanel(actionId);
   };
 

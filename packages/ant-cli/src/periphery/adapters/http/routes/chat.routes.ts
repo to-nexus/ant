@@ -93,7 +93,7 @@ export function createChatRoutes(deps: {
   router.post('/projects/:id/features/:feature/chat/user-message', chatRateLimiter, validateBody(chatUserMessageSchema), async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { content, jobId } = req.body;
+    const { content, jobId, actionMetadata } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -106,7 +106,7 @@ export function createChatRoutes(deps: {
     }
 
     const userContext = extractUserContext(req);
-    const messageId = await deps.chatService.addUserMessage(projectId, featureName, content, jobId, userContext);
+    const messageId = await deps.chatService.addUserMessage(projectId, featureName, content, jobId, userContext, actionMetadata);
     res.json({ messageId });
   });
 
@@ -259,7 +259,7 @@ export function createChatRoutes(deps: {
    * Save evaluation report to outputs/evals/{evalType}/
    * 
    * Request body:
-   * - evalType: 'prd' | 'system-design' | 'ui-design' | 'code' | 'all'
+   * - evalType: 'prd' | 'design-system' | 'design-ui' | 'code' | 'all'
    * - content: string (markdown content of evaluation)
    */
   router.post('/projects/:id/features/:feature/chat/eval-save', async (req: Request, res: Response) => {
@@ -272,7 +272,7 @@ export function createChatRoutes(deps: {
       return;
     }
 
-    const validTypes = ['prd', 'system-design', 'ui-design', 'code', 'all'];
+    const validTypes = ['prd', 'design-system', 'design-ui', 'code', 'all'];
     if (!validTypes.includes(evalType)) {
       res.status(400).json({ error: `Invalid evalType. Must be one of: ${validTypes.join(', ')}` });
       return;

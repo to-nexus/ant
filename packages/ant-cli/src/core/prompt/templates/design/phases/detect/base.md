@@ -1,15 +1,15 @@
-## Design Work Type + Mode + Domain + Environment Detection
+## Design Intent Group + Mode + Domain + Environment Detection
 
 You are analyzing a design directive to determine:
 
-1. **workType**: spec | ui-design | system-design | clarify | error
+1. **intentGroup**: spec | ui-design | system-design | clarify | error
 2. **jobMode**: generate | refactor | explain
 3. **domain** (system-design only): game | service
 4. **environment** (system-design only): frontend | backend | fullstack
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## STEP 1: Determine workType (MECE Classification)
+## STEP 1: Determine intentGroup (MECE Classification)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -18,7 +18,7 @@ You are analyzing a design directive to determine:
 Observe the **scope of work** described in the directive. Every directive falls into exactly one of these categories:
 
 
-| workType          | Scope Criterion                                                                | Output                                                  |
+| intentGroup       | Scope Criterion                                                                | Output                                                  |
 | ----------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------- |
 | **spec**          | Directive scopes to **one feature, task, or bounded change unit**              | `spec-{slug}.md`                                        |
 | **ui-design**     | Directive scopes to **visual appearance, interface layout, or design tokens**  | `ui-*.json`                                             |
@@ -27,9 +27,9 @@ Observe the **scope of work** described in the directive. Every directive falls 
 | **error**         | Modification requested but **target documents do not exist**                   | Error message                                           |
 
 
-### Constraint: Scope Determines workType, NOT Document Existence
+### Constraint: Scope Determines intentGroup, NOT Document Existence
 
-⚠️ **CRITICAL**: The presence or absence of existing documents (`api-contract-*.md`, `be-system-*.md`, `fe-system-*.md`, etc.) MUST NOT influence your workType decision. Document existence only affects `jobMode` (Step 2).
+⚠️ **CRITICAL**: The presence or absence of existing documents (`api-contract-*.md`, `be-system-*.md`, `fe-system-*.md`, etc.) MUST NOT influence your intentGroup decision. Document existence only affects `jobMode` (Step 2).
 
 - Existing system docs present + feature-scoped directive → **still spec** (NOT system-design refactor)
 - Existing system docs absent + architecture-scoped directive → **still system-design**
@@ -39,7 +39,7 @@ Observe the **scope of work** described in the directive. Every directive falls 
 **Observe what the directive names:**
 
 
-| Observation                                                                             | workType          |
+| Observation                                                                             | intentGroup       |
 | --------------------------------------------------------------------------------------- | ----------------- |
 | Directive names a **single feature, endpoint, flow, or change**                         | **spec**          |
 | Directive references **existing spec-*.md** by name                                     | **spec**          |
@@ -112,11 +112,11 @@ Observe the **intent** of the directive with respect to existing documents:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## STEP 3: Ambiguous Directive Fallback (workType only)
+## STEP 3: Ambiguous Directive Fallback (intentGroup only)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Apply ONLY when Step 1 cannot determine workType** (directive has no clear scope indication):
+**Apply ONLY when Step 1 cannot determine intentGroup** (directive has no clear scope indication):
 
 {{#if hasUiDocs}}
 {{#unless hasSystemDocs}}
@@ -175,7 +175,7 @@ Asset files: available
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Skip if workType is NOT system-design.**
+**Skip if intentGroup is NOT system-design.**
 
 ### Observation Priority: Directive FIRST, then Source Documents
 
@@ -248,24 +248,24 @@ Respond with ONLY JSON wrapped in `<detect>` tags. No markdown fences.
 
 ### spec
 
-{ "workType": "spec", "workTypeReasoning": "1-2 sentences: what specific feature/task scope was identified", "jobMode": "generate" | "refactor", "jobModeReasoning": "1-2 sentences" }
+{ "intentGroup": "spec", "intentGroupReasoning": "1-2 sentences: what specific feature/task scope was identified", "jobMode": "generate" | "refactor", "jobModeReasoning": "1-2 sentences" }
 
 ### ui-design
 
-{ "workType": "ui-design", "workTypeReasoning": "1-2 sentences", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences" }
+{ "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences" }
 
 ### system-design
 
-{ "workType": "system-design", "workTypeReasoning": "1-2 sentences", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "domain": "game" | "service", "domainReasoning": "1-2 sentences", "environment": "frontend" | "backend" | "fullstack", "environmentReasoning": "1-2 sentences" }
+{ "intentGroup": "system-design", "intentGroupReasoning": "1-2 sentences", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "domain": "game" | "service", "domainReasoning": "1-2 sentences", "environment": "frontend" | "backend" | "fullstack", "environmentReasoning": "1-2 sentences" }
 
 ### clarify (ambiguous between spec and system-design)
 
-{ "workType": "clarify", "workTypeReasoning": "1-2 sentences: why you cannot confidently determine spec vs system-design" }
+{ "intentGroup": "clarify", "intentGroupReasoning": "1-2 sentences: why you cannot confidently determine spec vs system-design" }
 
 ### error (modification requested but documents missing)
 
-{ "workType": "error", "workTypeReasoning": "1-2 sentences", "errorMessage": "human-readable error message", "errorType": "missing_documents" }
+{ "intentGroup": "error", "intentGroupReasoning": "1-2 sentences", "errorMessage": "human-readable error message", "errorType": "missing_documents" }
 
 ### error (PRD analysis — out of design job scope)
 
-{ "workType": "error", "workTypeReasoning": "1-2 sentences: directive targets PRD content, not design artifacts", "errorMessage": "human-readable message explaining PRD analysis belongs to the plan job", "errorType": "out_of_scope" }
+{ "intentGroup": "error", "intentGroupReasoning": "1-2 sentences: directive targets PRD content, not design artifacts", "errorMessage": "human-readable message explaining PRD analysis belongs to the plan job", "errorType": "out_of_scope" }

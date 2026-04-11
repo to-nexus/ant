@@ -69,14 +69,14 @@ DO NOT CREATE tasks for:
 - ❌ Test planning / QA
 - ❌ "Final verification" or "review" tasks
 - ❌ Separate documents (all tasks → ONE document per tier)
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 - ❌ Multiple tasks targeting the SAME file (one task per file only)
 - ❌ Full document regeneration (only modify requested section)
 {{/if}}
 
 ---
 
-{{#unless (eq jobMode "refactor")}}
+{{#unless (eq detectedMode "refactor")}}
 ## MULTI-DOCUMENT STRATEGY (if applicable)
 
 ### Principle
@@ -143,7 +143,7 @@ Each per-service document uses the **same catalog sections** but organizes conte
 
 ---
 
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 ## 📤 OUTPUT FORMAT (REFACTOR MODE)
 
 Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.

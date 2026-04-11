@@ -257,8 +257,8 @@ describe('Template Smoke Tests', () => {
       'common/injections/memory',
       'common/injections/directive',
       'common/injections/action-context',
-      'common/injections/basis-guidance',
       'common/injections/refactor-guidance',
+      'common/injections/explain-guidance',
       'code/phases/decompose/mode-guide',
       'code/phases/decompose/design-doc-guide',
     ]);
@@ -508,10 +508,12 @@ describe('Template Smoke Tests', () => {
       },
     });
 
-    expect(output).toContain('PRIMARY REFERENCE: inputs/sources/prd.md');
+    expect(output).toContain('### inputs/sources/prd.md');
     expect(output).toContain('# PRD');
-    expect(output).toContain('SECONDARY CONTEXT: outputs/design/system/fe-system-main.md');
+    expect(output).toContain('### outputs/design/system/fe-system-main.md');
     expect(output).toContain('# FE Design');
+    expect(output).toContain('Primary References');
+    expect(output).toContain('Background Context');
     expect(output).not.toContain('explicitly selected as primary references');
   });
 
@@ -545,7 +547,7 @@ describe('Template Smoke Tests', () => {
       },
     });
 
-    expect(output).toContain('Generate output ONLY for these specific files');
+    expect(output).toContain('Generate output ONLY for:');
     expect(output).toContain('src/App.tsx');
     expect(output).toContain('src/main.tsx');
   });

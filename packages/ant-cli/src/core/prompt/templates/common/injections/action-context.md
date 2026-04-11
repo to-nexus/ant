@@ -5,36 +5,49 @@
 The user has explicitly requested: **{{resolvedAction.intentDescription}}**
 {{/if}}
 
-{{#if resolvedAction.basisDescription}}
-Primary source for this task: {{resolvedAction.basisDescription}}.
-Prioritize this source over other available materials.
 {{/if}}
+{{#if resolvedAction.documents}}
 
 {{#if resolvedAction.target}}
-Generate output ONLY for these specific files:
-{{#each resolvedAction.target}}- {{this}}
+## Output Target
+Generate output ONLY for:
+{{#each resolvedAction.target}}- `{{this}}`
 {{/each}}
 Do NOT generate content for files outside this list.
 {{/if}}
 
-{{/if}}
-{{#if resolvedAction.documents}}
+## Primary References
+Follow these documents as the implementation source.
 {{#each resolvedAction.documents}}
-{{#if label}}
-### {{label}}
-{{else}}
 {{#if (eq role "ref")}}
-### PRIMARY REFERENCE: {{path}}
-{{else}}
-### SECONDARY CONTEXT: {{path}}
-{{/if}}
-{{/if}}
+### {{#if label}}{{label}}{{else}}{{path}}{{/if}}
 
 {{{content}}}
 
+{{/if}}
 {{/each}}
+
+## Background Context
+Use these for understanding only. Do NOT treat as implementation source.
+{{#each resolvedAction.documents}}
+{{#if (eq role "context")}}
+### {{#if label}}{{label}}{{else}}{{path}}{{/if}}
+
+{{{content}}}
+
+{{/if}}
+{{/each}}
+
 {{else}}
 {{#if resolvedAction.hasExplicitFields}}
+{{#if resolvedAction.target}}
+## Output Target
+Generate output ONLY for:
+{{#each resolvedAction.target}}- `{{this}}`
+{{/each}}
+Do NOT generate content for files outside this list.
+{{/if}}
+
 {{#if resolvedAction.refs}}
 The following files were explicitly selected as primary references:
 {{#each resolvedAction.refs}}- {{this}}

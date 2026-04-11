@@ -39,7 +39,7 @@ You have access to tools for exploring reference images and assets:
 ## XML Tag Reference for UI Design Documents
 ════════════════════════════════════════════════════════════════════════════════
 
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 ### Scenario: MODIFY EXISTING SECTION (Refactor Mode)
 
 **You are modifying an EXISTING section of the document, NOT creating new content.**

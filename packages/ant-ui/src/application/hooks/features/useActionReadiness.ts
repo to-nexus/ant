@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import type { FileNode } from '@/infrastructure/http/api';
 import {
-  type ActionId,
+  type IntentGroup,
   type ActionReadiness,
   type NamingIssue,
   ACTION_DEFINITIONS,
@@ -15,10 +15,10 @@ import {
  * Reactive: re-computes when fileTree, figmaPopulated, gitStatus, or bridgeConnected change.
  *
  * Note: refs/context/target are now determined by the config matrix module
- * (getConfigSlots) based on (intent, basis). This hook only computes
+ * (getConfigSlots) based on intent. This hook only computes
  * action-level readiness (buildReady, hasOutput, subModes, namingIssues).
  */
-export function useActionReadiness(): Record<ActionId, ActionReadiness> {
+export function useActionReadiness(): Record<IntentGroup, ActionReadiness> {
   const fileTree = useStore(s => s.fileTree);
   const figmaPopulated = useStore(s => s.figmaPopulated);
   const gitStatus = useStore(s => s.gitStatus);
@@ -29,7 +29,7 @@ export function useActionReadiness(): Record<ActionId, ActionReadiness> {
     const hasCodebase = gitStatus?.hasCodebase ?? false;
     const ctx: TreeContext = { fileTree, figmaPopulated, hasCodebase, bridgeConnected, figmaDesktopReachable };
 
-    const result = {} as Record<ActionId, ActionReadiness>;
+    const result = {} as Record<IntentGroup, ActionReadiness>;
     for (const def of ACTION_DEFINITIONS) {
       result[def.id] = computeReadiness(def.id, ctx);
     }
@@ -109,15 +109,15 @@ function checkNaming(tree: FileNode[], dirPath: string, subdir: DesignSubdir): N
 // Per-action readiness computation
 // ============================================
 
-function computeReadiness(actionId: ActionId, ctx: TreeContext): ActionReadiness {
+function computeReadiness(actionId: IntentGroup, ctx: TreeContext): ActionReadiness {
   switch (actionId) {
     case 'plan': return computePlan(ctx);
-    case 'system-design': return computeSystemDesign(ctx);
-    case 'ui-design': return computeUiDesign(ctx);
-    case 'spec': return computeSpec(ctx);
+    case 'design-system': return computeSystemDesign(ctx);
+    case 'design-ui': return computeUiDesign(ctx);
+    case 'design-spec': return computeSpec(ctx);
     case 'code': return computeCode(ctx);
     case 'visual': return computeVisual(ctx);
-    case 'learn': return computeLearn(ctx);
+    case 'learn-codebase': return computeLearn(ctx);
   }
 }
 

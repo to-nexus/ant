@@ -36,7 +36,7 @@ import { extractFilesFromPlanToolLoop, computeBudgetFromPlanText } from "./utils
 import { detectTestFilesFromDisk } from "./testFileDetector";
 
 function isTypeScriptProject(state: ArchitectGraphState): boolean {
-  const lang = (state.profile?.language || (state as any).detectionReport?.profile?.language || '').toLowerCase();
+  const lang = (state.profile?.language || state.detectionReport?.profile?.language || '').toLowerCase();
   return lang.includes('typescript');
 }
 
@@ -403,7 +403,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     } else {
     // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
     // Sequential context: pop next task from queue
-    const _wid = (state as any).workerId;
+    const _wid = state.workerId;
     const isWorkerCtx = _wid !== undefined && _wid !== null;
     
     if (isWorkerCtx && state.currentTask) {
@@ -426,7 +426,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     // ✅ Initialize token usage tracking for new task
     const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-    resetTaskTokenUsage(state as any);
+    resetTaskTokenUsage(state);
     state._executeCallIndex = 0;
 
     // ✅ Initialize verification tracker for verification tasks only.
@@ -536,7 +536,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     await state.deps.workflowUpdate.enterNode(
       state._httpJobId,
       'plan',
-      (state as any).workerId ?? 0,
+      state.workerId ?? 0,
       taskInfo,
       state.deps?.llm ? extractLLMInfo(state.deps.llm as LLMClient) : undefined,
       state.recursionCount,
@@ -565,7 +565,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     
     // Exit node for workflow tracking
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
     }
     
     return {
@@ -600,7 +600,7 @@ const hasPrePlanText =
 
     // Exit node for workflow tracking
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
     }
 
     return {
@@ -652,7 +652,7 @@ const hasPrePlanText =
         state._activePhase = 'execute';
         state.planConversationHistory = undefined;
         if (state.deps?.workflowUpdate && state._httpJobId) {
-          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
         }
         return {
           ...state,
@@ -688,7 +688,7 @@ const hasPrePlanText =
       const result = await runPlanLLMWithTools(state, state.planConversationHistory, nextTask);
       if (result && '_activePhase' in result) {
         if (state.deps?.workflowUpdate && state._httpJobId) {
-          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
         }
         return {
           ...state,
@@ -729,7 +729,7 @@ const hasPrePlanText =
             : { done: false, textResponse: '', thinking: '', toolCalls: [] },
         };
         if (state.deps?.workflowUpdate && state._httpJobId) {
-          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
         }
         return updatedState;
       }
@@ -769,7 +769,7 @@ const hasPrePlanText =
     );
 
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
     }
 
     return {
@@ -1048,7 +1048,7 @@ const hasPrePlanText =
     const result = await runPlanLLMWithTools(state, messages, nextTask);
     if (result && '_activePhase' in result) {
       if (state.deps?.workflowUpdate && state._httpJobId) {
-        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
       }
       return {
         ...state,
@@ -1137,7 +1137,7 @@ const hasPrePlanText =
     
     // Exit node for workflow tracking
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', (state as any).workerId ?? 0);
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
     }
     
     return updatedState;

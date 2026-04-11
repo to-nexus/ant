@@ -75,14 +75,14 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
           await chatAPI.sendLLMEvent({ type: 'text', text: event.text });
         }
         if (event.type === 'done' && event.usage) {
-          accumulateTokenUsage(state as any, event.usage, { taskLevel: true, jobLevel: true });
+          accumulateTokenUsage(state, event.usage, { taskLevel: true, jobLevel: true });
         }
       }
     } else if (llm.invokeWithUsage) {
       const response = await llm.invokeWithUsage(messages);
       responseText = response.content;
       if (response.usage) {
-        accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
+        accumulateTokenUsage(state, response.usage, { taskLevel: true, jobLevel: true });
       }
       await chatAPI.sendLLMEvent({ type: 'text', text: responseText });
     } else {

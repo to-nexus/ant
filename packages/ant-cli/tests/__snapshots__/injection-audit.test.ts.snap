@@ -599,6 +599,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
 exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer | backend | doc | docs=none 1`] = `
 [
   "common/injections/directive",
+  "common/injections/action-context",
 ]
 `;
 
@@ -628,6 +629,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -663,6 +665,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -701,6 +704,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -727,6 +731,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "common/injections/directive",
   "code/phases/execute/tasks/test-code/languages/go/hints",
   "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
 ]
 `;
 
@@ -753,6 +758,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "common/injections/directive",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -773,6 +779,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
 exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer | frontend | doc | docs=none 1`] = `
 [
   "common/injections/directive",
+  "common/injections/action-context",
 ]
 `;
 
@@ -806,6 +813,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/base/injections/preview-setup",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -845,6 +853,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/base/injections/tool-calling-rules-compact",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -887,6 +896,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/base/injections/tool-calling-rules-compact",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -910,6 +920,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
 [
   "common/injections/directive",
   "code/phases/execute/tasks/test-code/languages/typescript/hints",
+  "common/injections/action-context",
 ]
 `;
 
@@ -936,6 +947,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "common/injections/directive",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -956,6 +968,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
 exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer | fullstack | doc | docs=none 1`] = `
 [
   "common/injections/directive",
+  "common/injections/action-context",
 ]
 `;
 
@@ -992,6 +1005,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -1040,6 +1054,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -1091,6 +1106,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "code/phases/execute/injections/backend-safety",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 
@@ -1117,6 +1133,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "common/injections/directive",
   "code/phases/execute/tasks/test-code/languages/typescript/hints",
   "code/phases/execute/injections/backend-safety",
+  "common/injections/action-context",
 ]
 `;
 
@@ -1143,6 +1160,7 @@ exports[`Audit 1A: Orthogonal matrix (source × env × taskType × docs) > infer
   "common/injections/directive",
   "code/base/injections/preview-env-contract",
   "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
 ]
 `;
 

@@ -5,13 +5,27 @@
  * Type definitions only - factory functions and formatters stay in each package.
  */
 
-/** Job execution mode */
-export type JobMode = 'generate' | 'refactor' | 'explain';
+/** Universal mode — shared vocabulary across all jobs */
+export type Mode = 'generate' | 'refactor' | 'explain';
+
+/** @deprecated Use Mode instead */
+export type JobMode = Mode;
 
 /** Execution environment */
 export type JobEnvironment = 'frontend' | 'backend' | 'fullstack' | 'unknown';
 
-/** Design work type (Design Job only) */
+/** Intent group — universal job identity enum */
+export type IntentGroup =
+  | 'plan'
+  | 'design-system'
+  | 'design-ui'
+  | 'design-spec'
+  | 'code'
+  | 'visual'
+  | 'learn-codebase'
+  | 'ask';
+
+/** @deprecated Use IntentGroup instead */
 export type DesignWorkType = 'ui-design' | 'system-design' | 'spec';
 
 /** Domain (System Design only) */
@@ -29,14 +43,18 @@ export type JobSource = 'code' | 'design';
 /** Unified detection result (Code Job & Design Job) */
 export interface DetectionReport {
   // Common (Code & Design)
-  jobMode: JobMode;
-  jobModeReasoning: string;
+  detectedMode: Mode;
+  detectedModeReasoning: string;
+  /** @deprecated Use detectedMode */
+  jobMode?: Mode;
+  /** @deprecated Use detectedModeReasoning */
+  jobModeReasoning?: string;
   environment?: JobEnvironment;
   environmentReasoning?: string;
 
   // Design Job only
-  workType?: DesignWorkType;
-  workTypeReasoning?: string;
+  detectedIntentGroup?: IntentGroup;
+  detectedIntentGroupReasoning?: string;
   domain?: DesignDomain;
   domainReasoning?: string;
   targetFiles?: string[];

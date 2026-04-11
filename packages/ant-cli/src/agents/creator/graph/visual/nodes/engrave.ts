@@ -61,7 +61,7 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
         const response = await llm.invokeWithUsage(messages);
         svgCode = response.content;
         if (response.usage) {
-          accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
+          accumulateTokenUsage(state, response.usage, { taskLevel: true, jobLevel: true });
         }
       } else {
         svgCode = await llm.invoke(messages);

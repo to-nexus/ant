@@ -10,10 +10,11 @@ import * as path from 'path';
 import { PlanGraphState } from '../state';
 import { ConversationEntry } from '../../../../../core/types/session';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
-import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { detectUILocale, getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers';
+import { resolveFromExplicit, synthesizePlanIntent } from '@ant/shared';
+import type { ResolvedActionContext } from '@ant/shared';
 
 export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
   console.log('\n📋 [Planner:Resolve] Loading context...');
@@ -52,17 +53,17 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     console.log(`   PRD: Not found (${err.code || err.message})`);
   }
   
-  // 2. Determine mode
-  let mode: 'generate' | 'refine' | 'explain';
+  // 2. Determine planner phase
+  let plannerPhase: 'generate' | 'refine' | 'explain';
   if (!existingDocument) {
-    mode = 'generate';
+    plannerPhase = 'generate';
   } else {
-    mode = await detectPlanMode(state);
+    plannerPhase = await detectPlanMode(state);
   }
-  console.log(`   Mode: ${mode}`);
+  console.log(`   Planner phase: ${plannerPhase}`);
   
-  // 2b. In refine mode, create staging copy for edit_prd tool (skip for explain)
-  if (mode === 'refine' && existingDocument) {
+  // 2b. In refine phase, create staging copy for edit_prd tool (skip for explain)
+  if (plannerPhase === 'refine' && existingDocument) {
     const stagingDir = path.join(featurePath, 'outputs/plan');
     const stagingPath = path.join(stagingDir, 'prd-refine.md');
     try {
@@ -222,6 +223,27 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve', 0);
   }
   
+  // RAC creation: resolve handles both explicit and infer paths
+  // (plan has no detectEnvironment node, so both paths are handled here)
+  const actionMetadata = state.actionMetadata;
+  let resolvedAction: ResolvedActionContext | undefined = state.resolvedAction;
+  if (!resolvedAction) {
+    if (actionMetadata?.intent) {
+      resolvedAction = resolveFromExplicit(actionMetadata);
+      console.log(`📋 [Planner:Resolve] RAC created (explicit): intent=${actionMetadata.intent}, mode=${resolvedAction.mode}`);
+    } else {
+      const synthesizedIntent = synthesizePlanIntent(plannerPhase);
+      resolvedAction = resolveFromExplicit({ ...actionMetadata, intent: synthesizedIntent });
+      const inferHasExplicit = !!(
+        (actionMetadata?.target && actionMetadata.target.length > 0) ||
+        (actionMetadata?.refs && actionMetadata.refs.length > 0) ||
+        (actionMetadata?.context && actionMetadata.context.length > 0)
+      );
+      resolvedAction = { ...resolvedAction, source: 'infer', hasExplicitFields: inferHasExplicit };
+      console.log(`📋 [Planner:Resolve] RAC created (infer): intent=${synthesizedIntent}, mode=${resolvedAction.mode}`);
+    }
+  }
+
   return {
     existingDocument,
     evalReport,
@@ -233,7 +255,8 @@ export async function resolveNode(state: PlanGraphState): Promise<Partial<PlanGr
     // Without this, generate.ts uses the old [user, assistant] history instead of
     // the conversation's last user message (clarify answers).
     ...(conversationHistoryReset ? { conversationHistory: [] } : {}),
-    mode,
+    plannerPhase,
+    resolvedAction,
     _uiLocale: uiLocale,
   };
 }

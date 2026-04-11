@@ -14,6 +14,7 @@ import { AskGraphState, createInitialAskState } from './state.js';
 import { WorkspaceState } from '../../../common/nodes/triage/types.js';
 import { setWorkspaceFeaturePath } from './tools.js';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
+import type { ResolvedActionContext } from '@ant/shared';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
 
@@ -25,6 +26,7 @@ export interface AskRunnerParams {
   currentAgent?: string;
   deps?: { llm?: any };
   _httpJobId?: string;
+  resolvedAction?: ResolvedActionContext;
 }
 
 export interface AskRunnerResult {
@@ -63,6 +65,11 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
   
   // Set featurePath for eval save
   initialState.featurePath = params.workspaceState.featurePath;
+  
+  // Pass RAC from triage
+  if (params.resolvedAction) {
+    initialState.resolvedAction = params.resolvedAction;
+  }
   
   // Run graph with recursion limit (default: 100 for Ask job, can be overridden via ASK_RECURSION_LIMIT)
   const recursionLimit = parseInt(process.env.ASK_RECURSION_LIMIT || '100', 10);

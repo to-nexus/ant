@@ -8,7 +8,7 @@
  * Flow: plan → execute ↔ tool → checkTaskStatus → (enforce/workerLearn)
  */
 
-import { StateGraph, END } from '@langchain/langgraph';
+import { Annotation, StateGraph, END } from '@langchain/langgraph';
 import type { ArchitectGraphState, ViolationType } from '../state';
 import type { CodeTask } from '../../../types/task';
 import { plan } from '../nodes/plan';
@@ -32,7 +32,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
 
   // Workflow instrumentation
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    const workerId = (state as any).workerId ?? 0;
+    const workerId = state.workerId ?? 0;
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
       name: state.currentTask.name,
@@ -94,15 +94,15 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
   // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
   // Without this check, a task can be marked "completed" even when the user cancelled
   // the job mid-execution, because checkTaskStatus only looked at violations.
-  const isStopRequested = typeof (state as any)._isStopRequested === 'function'
-    ? (state as any)._isStopRequested()
+  const isStopRequested = typeof state._isStopRequested === 'function'
+    ? state._isStopRequested()
     : false;
 
   if (isStopRequested) {
     console.log(`🛑 [Worker checkTaskStatus] User stop requested — NOT marking task as completed`);
     // Workflow exit before early return
     if (state.deps?.workflowUpdate && state._httpJobId) {
-      const workerId = (state as any).workerId ?? 0;
+      const workerId = state.workerId ?? 0;
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }
     return {
@@ -118,7 +118,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
   // (pushed by processDiagnosticBatchSplit). The orchestrator's broadcastKanban
   // in reportCompletion will pick them up once the worker graph finishes.
   if (state._batchSplitRequeued === true) {
-    const workerId = (state as any).workerId ?? 0;
+    const workerId = state.workerId ?? 0;
     const newTasks = state.taskQueue?.getAll().filter((t: any) => t.type === 'error' && !t.completed) || [];
     console.log(`📋 [Worker ${workerId} checkTaskStatus] Batch split completed: ${newTasks.length} error sub-task(s) created, original task re-enqueued`);
 
@@ -229,7 +229,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
 
   // Workflow exit (await to ensure broadcast completes before next node's enterNode)
   if (state.deps?.workflowUpdate && state._httpJobId) {
-    const workerId = (state as any).workerId ?? 0;
+    const workerId = state.workerId ?? 0;
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
   }
 
@@ -239,7 +239,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
     // accumulateTokenUsage({ taskLevel: true, jobLevel: true }) in each node.
     // No additional merge or job-level re-accumulation needed here.
     const { getTaskTokenUsage } = await import('../../../../common/graph/llmHelpers');
-    const taskTokenUsage = getTaskTokenUsage(state as any);
+    const taskTokenUsage = getTaskTokenUsage(state);
 
     const { TaskTimingHelper } = await import('../state');
     const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
@@ -297,123 +297,123 @@ async function workerLearn(state: ArchitectGraphState): Promise<Partial<Architec
   return learn(state) as any;
 }
 
+const CodeWorkerSubgraphAnnotation = Annotation.Root({
+  // Shared context (injected by worker)
+  context: Annotation<any>,
+  workspaceConfig: Annotation<any>,
+  deps: Annotation<any>,
+  gitPort: Annotation<any>,
+  detectionReport: Annotation<any>,
+  decomposeKeywords: Annotation<any>,
+  selectedDesignFiles: Annotation<any>,
+  decomposeFilePaths: Annotation<any>,
+  prd: Annotation<any>,
+  directive: Annotation<any>,
+  design: Annotation<any>,
+  designDocPath: Annotation<any>,
+  designDocs: Annotation<any>,
+  code: Annotation<any>,
+  codeHead: Annotation<any>,
+  profile: Annotation<any>({
+    reducer: (x: any, y: any) => y ?? x,
+    default: () => undefined,
+  }),
+  parsedUiDocs: Annotation<any>,
+  runtimeAssetsIndex: Annotation<any>,
+  referenceCodeContexts: Annotation<any>,
+  sessionContext: Annotation<any>,
+
+  // Per-worker state
+  projectCodeContext: Annotation<any>,
+  planText: Annotation<any>({
+    reducer: (x: any, y: any) => y ?? x,
+    default: () => '',
+  }),
+  codePrompt: Annotation<any>,
+  rawResponse: Annotation<any>,
+  responseSection: Annotation<any>,
+  filesToDelete: Annotation<any>,
+  modifications: Annotation<any>,
+  featureName: Annotation<any>,
+  requiredIntegrations: Annotation<any>,
+  violations: Annotation<any>,
+  fileErrors: Annotation<any>,
+  retries: Annotation<any>,
+  maxRetries: Annotation<any>,
+  lastViolations: Annotation<any>,
+  previousFileCount: Annotation<any>,
+  previousAttempts: Annotation<any>,
+  enforcementHistory: Annotation<any>,
+
+  // Task
+  taskQueue: Annotation<any>,
+  currentTask: Annotation<any>,
+  featureTasks: Annotation<any>,
+  completedTasks: Annotation<any>,
+  completedTasksDetails: Annotation<any>,
+  resolvedCategories: Annotation<any>,
+  jobId: Annotation<any>,
+  jobTiming: Annotation<any>,
+  failedTasks: Annotation<any>,
+  unresolvedErrors: Annotation<any>,
+  evaluationReport: Annotation<any>,
+  lessons: Annotation<any>,
+  referenceRequests: Annotation<any>,
+  branch: Annotation<any>,
+  filesWritten: Annotation<any>,
+  reportFile: Annotation<any>,
+  _httpJobId: Annotation<any>,
+  _phaseTimings: Annotation<any>,
+  _uiLocale: Annotation<any>,
+  directives: Annotation<any>,
+  overrideDirective: Annotation<any>,
+  chatSource: Annotation<any>,
+  skipTriage: Annotation<any>,
+  triageResult: Annotation<any>,
+  workspaceState: Annotation<any>,
+  currentAgent: Annotation<any>,
+  currentJob: Annotation<any>,
+  _errorIsRepeating: Annotation<any>,
+  _currentTaskTokenUsage: Annotation<any>,
+  tokenUsage: Annotation<any>,
+  _executeCallIndex: Annotation<any>,
+  _finalTaskLoopCount: Annotation<any>,
+  recursionCount: Annotation<any>,
+  recursionLimit: Annotation<any>,
+  llmResponse: Annotation<any>,
+  toolResults: Annotation<any>,
+  conversationHistory: Annotation<any>,
+  interruption: Annotation<any>,
+  _activePhase: Annotation<any>,
+  _planEntryReason: Annotation<any>,
+  _executeModifiedFiles: Annotation<any>,
+  _installNeeded: Annotation<any>,
+  _appliedPlanHistory: Annotation<any>,
+  _otherWorkerFiles: Annotation<any>,
+  planConversationHistory: Annotation<any>,
+
+  // Verification & command tracking
+  _verificationTracker: Annotation<any>,
+  commandHistory: Annotation<any>,
+
+  // Worker-specific
+  workerId: Annotation<any>,
+  _taskCompleted: Annotation<any>,
+  _isStopRequested: Annotation<any>,
+  isResume: Annotation<any>,
+  _batchSplitRequeued: Annotation<any>,
+
+  // Figma MCP state
+  figmaAvailable: Annotation<any>,
+  figmaFileKey: Annotation<any>,
+  figmaStartNodeId: Annotation<any>,
+});
+
 /**
  * Build a worker subgraph for code job tasks.
  */
 function buildWorkerSubgraph() {
-  const graph = new StateGraph<ArchitectGraphState>({
-    channels: {
-      // Shared context (injected by worker)
-      context: null as any,
-      workspaceConfig: null as any,
-      deps: null as any,
-      gitPort: null as any,
-      detectionReport: null as any,
-      decomposeKeywords: null as any,
-      selectedDesignFiles: null as any,
-      decomposeFilePaths: null as any,
-      prd: null as any,
-      directive: null as any,
-      design: null as any,
-      designDocPath: null as any,
-      designDocs: null as any,
-      code: null as any,
-      codeHead: null as any,
-      profile: {
-        value: (x: any, y?: any) => y ?? x,
-        default: () => undefined,
-      } as any,
-      parsedUiDocs: null as any,
-      runtimeAssetsIndex: null as any,
-      referenceCodeContexts: null as any,
-      sessionContext: null as any,
-
-      // Per-worker state
-      projectCodeContext: null as any,
-      planText: {
-        value: (x: string, y?: string) => y ?? x,
-        default: () => '',
-      } as any,
-      codePrompt: null as any,
-      rawResponse: null as any,
-      responseSection: null as any,
-      filesToDelete: null as any,
-      modifications: null as any,
-      featureName: null as any,
-      requiredIntegrations: null as any,
-      violations: null as any,
-      fileErrors: null as any,
-      retries: null as any,
-      maxRetries: null as any,
-      lastViolations: null as any,
-      previousFileCount: null as any,
-      previousAttempts: null as any,
-      enforcementHistory: null as any,
-      
-      // Task
-      taskQueue: null as any,
-      currentTask: null as any,
-      featureTasks: null as any,
-      completedTasks: null as any,
-      completedTasksDetails: null as any,
-      resolvedCategories: null as any,
-      jobId: null as any,
-      jobTiming: null as any,
-      failedTasks: null as any,
-      unresolvedErrors: null as any,
-      evaluationReport: null as any,
-      lessons: null as any,
-      referenceRequests: null as any,
-      branch: null as any,
-      filesWritten: null as any,
-      reportFile: null as any,
-      _httpJobId: null as any,
-      _phaseTimings: null as any,
-      _uiLocale: null as any,
-      directives: null as any,
-      overrideDirective: null as any,
-      chatSource: null as any,
-      skipTriage: null as any,
-      triageResult: null as any,
-      workspaceState: null as any,
-      currentAgent: null as any,
-      currentJob: null as any,
-      _errorIsRepeating: null as any,
-      _currentTaskTokenUsage: null as any,
-      tokenUsage: null as any,
-      _executeCallIndex: null as any,
-      _finalTaskLoopCount: null as any,
-      recursionCount: null as any,
-      recursionLimit: null as any,
-      llmResponse: null as any,
-      toolResults: null as any,
-      conversationHistory: null as any,
-      interruption: null as any,
-      _activePhase: null as any,
-      _planEntryReason: null as any,
-      _executeModifiedFiles: null as any,
-      _installNeeded: null as any,
-      _appliedPlanHistory: null as any,
-      _otherWorkerFiles: null as any,
-      planConversationHistory: null as any,
-
-      // Verification & command tracking
-      _verificationTracker: null as any,
-      commandHistory: null as any,
-
-      // Worker-specific
-      workerId: null as any,
-      _taskCompleted: null as any,
-      _isStopRequested: null as any,
-      isResume: null as any,
-      _batchSplitRequeued: null as any,
-
-      // Figma MCP state
-      figmaAvailable: null as any,
-      figmaFileKey: null as any,
-      figmaStartNodeId: null as any,
-    } as any,
-  } as any);
+  const graph = new StateGraph(CodeWorkerSubgraphAnnotation);
 
   // Register nodes
   graph.addNode('plan', plan as any);

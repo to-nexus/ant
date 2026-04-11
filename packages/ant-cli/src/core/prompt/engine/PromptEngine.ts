@@ -323,7 +323,7 @@ export class PromptEngine {
 
   /**
    * Build prompt for Design Work Type + Domain Detection (design graph)
-   * - First classifies work type: "ui-design" vs "system-design"
+   * - First classifies work type: "design-ui" vs "design-system"
    * - For system-design: classifies domain (game/service) and environment (frontend/backend/fullstack)
    * - Uses directive, PRD, and optional references/assets info
    * - ✅ NEW: Document completion status determines next phase
@@ -547,13 +547,29 @@ export class PromptEngine {
       }
     }
     
+    // documents param (planDocs from the calling node) takes precedence for display.
+    // resolvedAction provides metadata (intent, target) but its documents
+    // are replaced by the node-determined planDocs when available.
+    let effectiveResolvedAction = resolvedAction;
+    if (documents.length > 0) {
+      effectiveResolvedAction = {
+        ...(resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+        documents,
+      };
+    }
+
+    const allDocs = effectiveResolvedAction?.documents ?? [];
+    const hasDesignDoc = allDocs.some(
+      d => d.role === 'ref' && (d.label === 'Design Specification' || d.label === 'Feature Specification')
+    );
+
     return await this.deps.promptPort.render('code/phases/plan/base', {
       taskName: task.name,
       taskDescription: task.description,
       directive: directive,
       taskType: task.type,
       documents: documents,
-      hasDocuments: documents.length > 0,
+      hasDocuments: allDocs.length > 0,
       isSpecDriven: isSpecDriven || false,
       projectCodeContext: formattedCodeContext,
       directoryTree: directoryTree,
@@ -567,7 +583,8 @@ export class PromptEngine {
       hasTools: options?.hasTools ?? false,
       designDocUnknownPackages: designDocUnknownPackages,
       hasDesignDocUnknownPackages: designDocUnknownPackages && designDocUnknownPackages.length > 0,
-      resolvedAction: resolvedAction,
+      resolvedAction: effectiveResolvedAction,
+      hasDesignDoc,
     });
   }
   

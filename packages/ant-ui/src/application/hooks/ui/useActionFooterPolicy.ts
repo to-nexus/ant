@@ -3,13 +3,14 @@
  *
  * Centralized logic for ActionFooter button states.
  *
- * canStartChat: workspace + intent + basis + refs (if required)
- * canBuild:     canStartChat + buildRequiresContext check
+ * Universal rule:
+ *   - refs not selected → chat only
+ *   - refs selected → chat + build both available
+ *   - context selection does not affect chat/build
  */
 
 import { useStore } from '@/domain/store';
 import { getConfigSlots } from '@ant/shared';
-import type { Basis } from '@ant/shared';
 
 export interface ActionFooterPolicy {
   canStartChat: boolean;
@@ -27,7 +28,6 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   const gitStatus = useStore(s => s.gitStatus);
 
   const hasWorkspace = !!selectedProject && !!selectedFeature;
-  const hasRequiredMetadata = !!actionMetadata.intent && !!actionMetadata.basis;
 
   if (!hasWorkspace) {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'no-workspace', buildDisabledReason: 'no-workspace' };
@@ -41,23 +41,13 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     return { canStartChat: false, canBuild: false, isBuilding: true, chatDisabledReason: 'job-running', buildDisabledReason: 'job-running' };
   }
 
-  if (!hasRequiredMetadata) {
+  if (!actionMetadata.intent) {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'metadata-incomplete', buildDisabledReason: 'metadata-incomplete' };
   }
 
-  const slots = getConfigSlots(actionMetadata.intent!, actionMetadata.basis! as Basis);
+  const slots = getConfigSlots(actionMetadata.intent);
   if (!slots) {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'invalid-config', buildDisabledReason: 'invalid-config' };
-  }
-
-  const isDirectiveBasis = actionMetadata.basis === 'directive';
-  const refsRequired = slots.refs.some(r => !r.emptyHint && r.path);
-
-  if (refsRequired && !isDirectiveBasis) {
-    const hasSelectedRefs = actionMetadata.refs && actionMetadata.refs.length > 0;
-    if (!hasSelectedRefs) {
-      return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'refs-missing', buildDisabledReason: 'refs-missing' };
-    }
   }
 
   if (slots.target.codebase && !gitStatus?.codebaseHasFiles) {
@@ -73,20 +63,9 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
 
   const canStartChat = true;
 
-  if (isDirectiveBasis) {
-    return { canStartChat, canBuild: false, isBuilding: false, buildDisabledReason: 'directive-basis' };
-  }
+  const hasRealRefs = slots.refs.some(r => !r.emptyHint && r.path);
+  const hasSelectedRefs = !!(actionMetadata.refs && actionMetadata.refs.length > 0);
+  const canBuild = hasRealRefs && hasSelectedRefs;
 
-  let canBuild = true;
-  let buildDisabledReason: string | undefined;
-
-  if (slots.buildRequiresContext) {
-    const hasSelectedContext = actionMetadata.context && actionMetadata.context.length > 0;
-    if (!hasSelectedContext) {
-      canBuild = false;
-      buildDisabledReason = 'context-missing';
-    }
-  }
-
-  return { canStartChat, canBuild, isBuilding: false, buildDisabledReason };
+  return { canStartChat, canBuild, isBuilding: false, buildDisabledReason: canBuild ? undefined : 'refs-not-selected' };
 }

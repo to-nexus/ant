@@ -19,8 +19,8 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   language: 'ko' | 'en';
   featurePath: string;
   
-  // Mode
-  mode: 'generate' | 'refine' | 'explain';
+  // Planner phase (distinct from universal RAC `Mode`)
+  plannerPhase: 'generate' | 'refine' | 'explain';
   
   // Context (loaded by resolve node)
   context: { featurePath?: string; [key: string]: any };
@@ -77,7 +77,7 @@ export function createInitialPlanState(params: {
   language: 'ko' | 'en';
   workspaceState: WorkspaceState;
   featurePath: string;
-  mode?: 'generate' | 'refine' | 'explain';
+  plannerPhase?: 'generate' | 'refine' | 'explain';
   isResume?: boolean;
   deps?: PlanGraphState['deps'];
   _httpJobId?: string;
@@ -90,7 +90,7 @@ export function createInitialPlanState(params: {
     language: params.language,
     workspaceState: params.workspaceState,
     featurePath: params.featurePath,
-    mode: params.mode || 'generate',
+    plannerPhase: params.plannerPhase || 'generate',
     isResume: params.isResume,
     conversationHistory: [],
     pendingToolCalls: [],

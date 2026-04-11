@@ -76,8 +76,8 @@ describe('Audit 4A: buildTaskPlanPrompt', () => {
     ];
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-code',
-      jobMode: 'generate',
+      intent: 'gen-code-sys',
+      mode: 'generate',
       tech: { language: 'typescript', environment: 'frontend' },
       hasExplicitFields: true,
       intentDescription: 'Generate code from design',
@@ -95,16 +95,14 @@ describe('Audit 4A: buildTaskPlanPrompt', () => {
     expect(prompt).toContain('Generate code from design');
   });
 
-  it('resolvedAction metadata (intent/basis) IS rendered in plan', async () => {
+  it('resolvedAction metadata (intent) IS rendered in plan', async () => {
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-code',
-      jobMode: 'generate',
+      intent: 'gen-code-spec',
+      mode: 'generate',
       tech: { language: 'typescript' },
       hasExplicitFields: true,
       intentDescription: 'Generate code from design',
-      basisDescription: 'PRD and product requirements',
-      basis: 'prd',
     };
 
     const prompt = await engine.buildTaskPlanPrompt(
@@ -138,8 +136,8 @@ describe('Audit 4B: buildVerificationPlanPrompt / buildErrorPlanPrompt', () => {
   it('verification prompt with resolvedAction passes metadata only', async () => {
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-code',
-      jobMode: 'generate',
+      intent: 'gen-code-directive',
+      mode: 'generate',
       tech: {},
       hasExplicitFields: true,
       intentDescription: 'Generate code',
@@ -162,7 +160,7 @@ describe('Audit 4B: buildVerificationPlanPrompt / buildErrorPlanPrompt', () => {
   it('error prompt with resolvedAction passes metadata only', async () => {
     const rac: ResolvedActionContext = {
       source: 'infer',
-      jobMode: 'refactor',
+      mode: 'refactor',
       tech: {},
       hasExplicitFields: false,
     };

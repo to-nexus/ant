@@ -6,8 +6,8 @@ import { ProjectContext } from "../../types";
 import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
-import { TriageResult, WorkspaceState } from '../../../common/nodes/triage/types';
-import type { FigmaDataConfig, UIDesignSource, FigmaExplorationResult, ResolvedActionContext } from '@ant/shared';
+import { TriageableState } from '../../../common/nodes/triage/types';
+import type { FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, ResolvedDocument } from '@ant/shared';
 
 /**
  * Design Task State
@@ -18,56 +18,46 @@ import type { FigmaDataConfig, UIDesignSource, FigmaExplorationResult, ResolvedA
  * - directive: User instruction
  * - design: Previous design document (single string for docGen)
  */
-export interface DesignGraphState extends TaskArtifacts {
-  // Context
+export interface DesignGraphState extends TaskArtifacts, TriageableState {
+  // Context (narrowed from TriageableContext)
   context: ProjectContext;
   workspaceConfig?: any;  // Workspace config for job/node-specific model selection
   
-  // Dependencies
+  // Dependencies (extends TriageableState.deps)
   deps?: {
     llm?: LLMClient;
     promptEngine?: PromptEngine;
     chunk?: ChunkPort;
     session?: SessionPort;
-    git?: GitPort;          // ✅ REFACTORED: Git operations only (no file I/O)
-    fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;  // ✅ NEW: File I/O operations
+    git?: GitPort;
+    fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;
     analyzer?: CodebaseAnalyzerPort;
     memory?: MemoryPort;
-    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;  // ✅ For path resolution (tenant-aware)
-    kanbanUpdate?: TaskQueueUpdatePort;  // ✅ For real-time Kanban updates
+    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;
+    kanbanUpdate?: TaskQueueUpdatePort;
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;
-    redis?: any;  // Raw ioredis client for cloud Figma MCP (BridgeMCPTransport)
+    redis?: any;
   };
-  
-  
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 DetectionReport (통합 환경 감지 결과)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  /** 통합 환경 감지 결과 (jobMode, workType, environment, domain 등 포함) */
   detectionReport?: DetectionReport;
-  
-  /** Intent-centric resolved context (created in resolve/detect, consumed by ModeController + templates) */
   resolvedAction?: ResolvedActionContext;
-  
-  // ✅ Resume flag (API level, set by runner before graph invoke)
-  isResume?: boolean;
-  
-  // ✅ Chat Integration
-  overrideDirective?: string;  // Chat input as directive (highest priority)
-  chatSource?: boolean;         // True if job started from chat (enables Chat SSE)
 
-  // ✅ Triage System
-  skipTriage?: boolean;          // Skip triage if true
-  actionMetadata?: import('@ant/shared').ActionMetadata;
-  triageResult?: TriageResult;   // Triage analysis result
-  workspaceState?: WorkspaceState;  // Workspace state snapshot
-  currentAgent?: string;         // Current agent name (e.g., 'architect')
-  currentJob?: string;           // Current job name (e.g., 'design')
+  /** Documents loaded in resolve before RAC exists (infer path). Merged into RAC in detectEnvironment. */
+  _pendingDocuments?: ResolvedDocument[];
 
   // ✅ NEW: Task Queue (for task breakdown like code)
   taskQueue?: TaskQueue<DesignTask>;
+  /** Set by design graph (parallel mode) for MECE sibling-task context in docGen */
+  _allTasksSummary?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    targetFile?: string;
+  }>;
   currentTask?: DesignTask;
   completedTasks?: string[];  // Task IDs
   completedTasksDetails?: DesignTask[];  // Full task details for resume
@@ -107,7 +97,6 @@ export interface DesignGraphState extends TaskArtifacts {
   
   // ✅ Token usage (per-turn and job-level)
   _currentTaskTokenUsage?: TokenUsage;
-  tokenUsage?: TokenUsage;
   jobTokenUsage?: TokenUsage;
   _estimatingTokenUsage?: TokenUsage;
   
@@ -147,10 +136,8 @@ export interface DesignGraphState extends TaskArtifacts {
   recursionCount?: number;
   recursionLimit?: number;
   
-  // ✅ For tracking and resume
-  _httpJobId?: string;  // Job ID for real-time UI updates and job resumption
-  _phaseTimings?: Record<string, number>;  // Per-node ms timings for phaseBreakdown
-  _uiLocale?: 'ko' | 'en';  // UI locale detected from directive
+  // ✅ UI locale (narrowed from TriageableState.string to literal union)
+  _uiLocale?: 'ko' | 'en';
   
   
   
@@ -173,17 +160,31 @@ export interface DesignGraphState extends TaskArtifacts {
   };
   
   // ✅ UI document generation context
-  // Populated when detectionReport.workType === 'ui-design'
+  // Populated when detectionReport.detectedIntentGroup === 'design-ui'
   uiReferences?: string[];  // All image paths under inputs/references/ (recursive)
   uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under inputs/assets/
   
   // ✅ Figma Integration (All-or-Nothing: Full MCP required)
   figmaConfig?: FigmaDataConfig;        // Loaded from inputs/figma.json at resolve
-  uiDesignSource?: UIDesignSource;       // 'figma' | 'references' | 'none' — set by detectEnvironment
   figmaExplorationResult?: FigmaExplorationResult;  // Output of figmaExplore node
   figmaAvailable?: boolean;              // MCP reachable — set by detectEnvironment (spec: tools only, ui-design: full pipeline)
   figmaFileKey?: string;                 // Parsed from figmaConfig.file URL
   figmaStartNodeId?: string;             // Parsed nodeId from URL (optional)
+
+  // ✅ Interruption & failure tracking (DEFECT-5: was only in channels, not interface)
+  interruption?: import('../../../../core/types').InterruptionDetails;
+  failedTasks?: Array<{
+    taskId: string;
+    taskName: string;
+    taskType: string;
+    priority: number;
+    violations?: any[];
+    timestamp: string;
+  }>;
+  
+  // ✅ Worker runtime injection
+  workerId?: number;
+  _isStopRequested?: (() => boolean);
 
   // Inter-Job Context Bridge
   boundary?: 'heavyweight' | 'lightweight';
