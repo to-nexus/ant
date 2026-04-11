@@ -3,7 +3,7 @@
  * 
  * Responsibilities:
  * 1. Detect job mode (generate/refactor/explain)
- * 2. Detect work type (ui-design/system-design)
+ * 2. Detect intent group (design-ui/design-system/design-spec)
  * 3. Detect environment (frontend/backend/fullstack) - for system-design only
  * 4. Detect domain (game/service) - for system-design only
  * 
@@ -28,14 +28,15 @@ import {
   JobMode,
   JobEnvironment,
   DesignDomain,
+  IntentGroup,
 } from "../../../../../core/types/detection";
-import { isFigmaDataPopulated, UIDesignSource, DESIGN_DIR, DESIGN_SUBDIR, resolveFromInfer } from "@ant/shared";
+import { isFigmaDataPopulated, DESIGN_DIR, DESIGN_SUBDIR, resolveFromInfer, synthesizeDesignIntent } from "@ant/shared";
 import type { ResolvedActionContext, ActionMetadata } from "@ant/shared";
 import { extractLLMInfo } from "../../../../../core/ports/workflow";
 
 interface ParsedDesignResponse {
-  workType: "ui-design" | "system-design" | "spec" | "clarify" | "error";
-  workTypeReasoning: string;
+  intentGroup: "design-ui" | "design-system" | "design-spec" | "clarify" | "error";
+  intentGroupReasoning: string;
   jobMode: JobMode;
   jobModeReasoning: string;
   domain?: DesignDomain;
@@ -65,19 +66,21 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
 
     const parsed = JSON.parse(jsonStr);
     
-    // Parse workType
-    const workType: "ui-design" | "system-design" | "spec" | "clarify" | "error" =
-      parsed.workType === "ui-design" ? "ui-design" : 
-      parsed.workType === "spec" ? "spec" :
-      parsed.workType === "clarify" ? "clarify" :
-      parsed.workType === "error" ? "error" :
-      "system-design";
+    // Parse intentGroup (backward compat: read workType if intentGroup absent)
+    const rawIG = parsed.intentGroup ?? parsed.workType;
+    const intentGroup: "design-ui" | "design-system" | "design-spec" | "clarify" | "error" =
+      (rawIG === "ui-design" || rawIG === "design-ui") ? "design-ui" : 
+      (rawIG === "spec" || rawIG === "design-spec") ? "design-spec" :
+      rawIG === "clarify" ? "clarify" :
+      rawIG === "error" ? "error" :
+      "design-system";
+    const rawIGReasoning = parsed.intentGroupReasoning ?? parsed.workTypeReasoning;
     
     // Handle error case
-    if (workType === "error") {
+    if (intentGroup === "error") {
       return {
-        workType: "error",
-        workTypeReasoning: parsed.workTypeReasoning || "Error occurred during work type detection",
+        intentGroup: "error",
+        intentGroupReasoning: rawIGReasoning || "Error occurred during intent group detection",
         jobMode: "generate",
         jobModeReasoning: "",
         errorMessage: parsed.errorMessage || "문서가 존재하지 않습니다",
@@ -99,17 +102,17 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
           : "New document creation or full regeneration requested.");
     
     // Clarify: LLM could not confidently determine spec vs system-design
-    if (workType === "clarify") {
+    if (intentGroup === "clarify") {
       return {
-        workType: "clarify",
-        workTypeReasoning: parsed.workTypeReasoning || "Ambiguous between spec and system-design.",
+        intentGroup: "clarify",
+        intentGroupReasoning: rawIGReasoning || "Ambiguous between spec and system-design.",
         jobMode: "generate",
         jobModeReasoning: "",
       };
     }
     
     // For system-design, parse domain and environment
-    if (workType === "system-design") {
+    if (intentGroup === "design-system") {
       const domain: DesignDomain =
         parsed.domain === "game" ? "game" : "service";
       
@@ -118,8 +121,8 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
         parsed.environment === "backend" ? "backend" : "fullstack";
 
       return {
-        workType,
-        workTypeReasoning: parsed.workTypeReasoning || "System design work detected.",
+        intentGroup,
+        intentGroupReasoning: rawIGReasoning || "System design work detected.",
         jobMode,
         jobModeReasoning,
         domain,
@@ -130,10 +133,10 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
     }
     
     // For spec
-    if (workType === "spec") {
+    if (intentGroup === "design-spec") {
       return {
-        workType: "spec",
-        workTypeReasoning: parsed.workTypeReasoning || "Spec document work detected.",
+        intentGroup: "design-spec",
+        intentGroupReasoning: rawIGReasoning || "Spec document work detected.",
         jobMode,
         jobModeReasoning,
       };
@@ -141,8 +144,8 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
     
     // For ui-design
     return {
-      workType: "ui-design",
-      workTypeReasoning: parsed.workTypeReasoning || "UI design work detected.",
+      intentGroup: "design-ui",
+      intentGroupReasoning: rawIGReasoning || "UI design work detected.",
       jobMode,
       jobModeReasoning,
     };
@@ -152,8 +155,8 @@ function parseDetectResponse(raw: string): ParsedDesignResponse {
 
     // Parse failure → clarify instead of silent fallback
     return {
-      workType: "clarify",
-      workTypeReasoning: "Failed to parse LLM response. Asking user to clarify.",
+      intentGroup: "clarify",
+      intentGroupReasoning: "Failed to parse LLM response. Asking user to clarify.",
       jobMode: "generate",
       jobModeReasoning: "",
     };
@@ -208,20 +211,20 @@ async function dirHasFiles(dirPath: string): Promise<boolean> {
 function parseDetectClarifyChoice(
   directive: string,
   hasSystemDocs: boolean
-): { workType: 'spec' | 'system-design'; jobMode: JobMode } {
+): { intentGroup: 'design-spec' | 'design-system'; jobMode: JobMode } {
   const lower = directive.toLowerCase();
   if (lower.includes('spec') || lower.includes('스펙 문서')) {
-    return { workType: 'spec', jobMode: 'generate' };
+    return { intentGroup: 'design-spec', jobMode: 'generate' };
   }
   if (lower.includes('시스템 기획서 수정') || lower.includes('system-design')) {
-    return { workType: 'system-design', jobMode: hasSystemDocs ? 'refactor' : 'generate' };
+    return { intentGroup: 'design-system', jobMode: hasSystemDocs ? 'refactor' : 'generate' };
   }
   // Best-effort: if contains "수정" / "modify" lean toward system-design refactor
   if (lower.includes('수정') || lower.includes('modify') || lower.includes('refactor')) {
-    return { workType: 'system-design', jobMode: hasSystemDocs ? 'refactor' : 'generate' };
+    return { intentGroup: 'design-system', jobMode: hasSystemDocs ? 'refactor' : 'generate' };
   }
-  // Default to spec (safer — avoids destructive modification of existing docs)
-  return { workType: 'spec', jobMode: 'generate' };
+  // Default to design-spec (safer — avoids destructive modification of existing docs)
+  return { intentGroup: 'design-spec', jobMode: 'generate' };
 }
 
 /**
@@ -268,48 +271,32 @@ async function saveDetectClarifyToSession(state: DesignGraphState): Promise<void
 import { checkLocalMCPAvailability } from '../../../../../periphery/adapters/figma/MCPTransport';
 
 /**
- * Determine UI design source mode and validate MCP availability.
- * Returns uiDesignSource + optional designError if MCP unavailable.
+ * Validate Figma MCP availability for pipelines requiring MCP access.
+ * Returns undefined if MCP is reachable, or a designError if not.
  */
-async function resolveUIDesignSource(
+async function checkFigmaMCPReachable(
   state: DesignGraphState,
-): Promise<{
-  uiDesignSource: UIDesignSource;
-  designError?: DesignGraphState['designError'];
-}> {
-  const figmaPopulated = isFigmaDataPopulated(state.figmaConfig);
-  
-  if (!figmaPopulated) {
-    return { uiDesignSource: 'references' };
-  }
-
+): Promise<DesignGraphState['designError'] | undefined> {
   const serverMode = process.env.ANT_SERVER_MODE || 'local';
 
   if (serverMode === 'local') {
     const mcpAvailable = await checkLocalMCPAvailability();
     if (!mcpAvailable) {
       return {
-        uiDesignSource: 'figma',
-        designError: {
-          type: 'figma_mcp_unavailable',
-          message: 'Figma Desktop이 실행되지 않았습니다.',
-        },
+        type: 'figma_mcp_unavailable',
+        message: 'Figma Desktop이 실행되지 않았습니다.',
       };
     }
   } else {
-    // Cloud mode: check Bridge via BridgeMCPTransport.isAvailable()
     const userId = state.context?.userId;
     const redis = state.deps?.redis;
 
     if (!userId || !redis) {
       return {
-        uiDesignSource: 'figma',
-        designError: {
-          type: 'figma_bridge_unavailable',
-          message: !userId
-            ? 'Ant Desktop 앱 연결 확인에 필요한 컨텍스트가 없습니다.'
-            : 'Redis 연결이 없어 Ant Desktop 상태를 확인할 수 없습니다.',
-        },
+        type: 'figma_bridge_unavailable',
+        message: !userId
+          ? 'Ant Desktop 앱 연결 확인에 필요한 컨텍스트가 없습니다.'
+          : 'Redis 연결이 없어 Ant Desktop 상태를 확인할 수 없습니다.',
       };
     }
 
@@ -320,25 +307,19 @@ async function resolveUIDesignSource(
 
       if (!available) {
         return {
-          uiDesignSource: 'figma',
-          designError: {
-            type: 'figma_bridge_unavailable',
-            message: 'Ant Desktop 앱이 연결되지 않았거나 Figma Desktop이 응답하지 않습니다.',
-          },
+          type: 'figma_bridge_unavailable',
+          message: 'Ant Desktop 앱이 연결되지 않았거나 Figma Desktop이 응답하지 않습니다.',
         };
       }
     } catch (err: any) {
       return {
-        uiDesignSource: 'figma',
-        designError: {
-          type: 'figma_bridge_unavailable',
-          message: 'Ant Desktop 앱 연결 상태 확인에 실패했습니다.',
-        },
+        type: 'figma_bridge_unavailable',
+        message: 'Ant Desktop 앱 연결 상태 확인에 실패했습니다.',
       };
     }
   }
 
-  return { uiDesignSource: 'figma' };
+  return undefined;
 }
 
 /**
@@ -359,18 +340,18 @@ export async function detectEnvironment(
     const hasSystemDocs = clarifyDocNames.length > 0;
     
     const choice = parseDetectClarifyChoice(state.overrideDirective, hasSystemDocs);
-    console.log(`✅ [detectEnvironment] User chose: workType=${choice.workType}, jobMode=${choice.jobMode}`);
+    console.log(`✅ [detectEnvironment] User chose: intentGroup=${choice.intentGroup}, mode=${choice.jobMode}`);
     
     let detectionReport: DetectionReport;
-    if (choice.workType === 'spec') {
+    if (choice.intentGroup === 'design-spec') {
       detectionReport = createSpecDetectionReport({
-        jobMode: choice.jobMode,
-        jobModeReasoning: 'User explicitly chose spec document creation.',
+        detectedMode: choice.jobMode,
+        detectedModeReasoning: 'User explicitly chose spec document creation.',
       });
     } else {
       detectionReport = createSystemDesignDetectionReport({
-        jobMode: choice.jobMode,
-        jobModeReasoning: 'User explicitly chose system design modification.',
+        detectedMode: choice.jobMode,
+        detectedModeReasoning: 'User explicitly chose system design modification.',
         environment: 'fullstack',
         environmentReasoning: 'Defaulting to fullstack (will be refined by decompose).',
         domain: 'service',
@@ -386,41 +367,53 @@ export async function detectEnvironment(
     
     // RAC: create from detection (infer path, clarify resume)
     const clarifyActionMetadata = state.actionMetadata;
-    const clarifyRAC = resolveFromInfer(detectionReport, clarifyActionMetadata, state.context.codebaseProfile);
-    console.log(`📋 [detectEnvironment] RAC created (clarify resume): tech=${JSON.stringify(clarifyRAC.tech)}`);
+    const clarifySynthesized = synthesizeDesignIntent(detectionReport, {
+      figmaPopulated: isFigmaDataPopulated(state.figmaConfig),
+      hasReferences: state.uiReferences != null && state.uiReferences.length > 0,
+    });
+    let clarifyRAC = resolveFromInfer(detectionReport, clarifyActionMetadata, state.context.codebaseProfile, undefined, clarifySynthesized);
+    console.log(`📋 [detectEnvironment] RAC created (clarify resume): intent=${clarifyRAC.intent}, tech=${JSON.stringify(clarifyRAC.tech)}`);
+
+    if (state._pendingDocuments?.length) {
+      clarifyRAC = {
+        ...clarifyRAC,
+        documents: [...(clarifyRAC.documents || []), ...state._pendingDocuments],
+      };
+    }
 
     return {
       detectionReport,
       resolvedAction: clarifyRAC,
       awaitingDetectClarify: false,
+      _pendingDocuments: undefined,
       _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
     };
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // ActionMetadata bypass: intent already determines workType/jobMode
+  // ActionMetadata bypass: intent already determines intentGroup/mode
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.actionMetadata?.intent) {
     const { deriveFromIntent } = await import('@ant/shared');
     const intent = state.actionMetadata.intent;
     const derived = deriveFromIntent(intent);
-    console.log(`⚡ [detectEnvironment] ActionMetadata bypass: intent=${intent} → workType=${derived.workType}, jobMode=${derived.jobMode}, env=${derived.environment}`);
+    console.log(`⚡ [detectEnvironment] ActionMetadata bypass: intent=${intent} → intentGroup=${derived.intentGroup}, mode=${derived.mode}, env=${derived.environment}`);
 
     let detectionReport: DetectionReport;
-    if (derived.workType === 'ui-design') {
+    if (derived.intentGroup === 'design-ui') {
       detectionReport = createUiDesignDetectionReport({
-        jobMode: derived.jobMode as any,
-        jobModeReasoning: `Determined by actionMetadata intent: ${intent}`,
+        detectedMode: derived.mode as any,
+        detectedModeReasoning: `Determined by actionMetadata intent: ${intent}`,
       });
-    } else if (derived.workType === 'spec') {
+    } else if (derived.intentGroup === 'design-spec') {
       detectionReport = createSpecDetectionReport({
-        jobMode: derived.jobMode as any,
-        jobModeReasoning: `Determined by actionMetadata intent: ${intent}`,
+        detectedMode: derived.mode as any,
+        detectedModeReasoning: `Determined by actionMetadata intent: ${intent}`,
       });
     } else {
       detectionReport = createSystemDesignDetectionReport({
-        jobMode: derived.jobMode as any,
-        jobModeReasoning: `Determined by actionMetadata intent: ${intent}`,
+        detectedMode: derived.mode as any,
+        detectedModeReasoning: `Determined by actionMetadata intent: ${intent}`,
         environment: (derived.environment || 'fullstack') as any,
         environmentReasoning: `Determined by actionMetadata intent: ${intent}`,
         domain: 'service',
@@ -437,6 +430,7 @@ export async function detectEnvironment(
     return {
       detectionReport,
       resolvedAction: state.resolvedAction,
+      _pendingDocuments: undefined,
       _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
     };
   }
@@ -454,8 +448,8 @@ export async function detectEnvironment(
     
     // Default DetectionReport for system-design
     const defaultReport = createSystemDesignDetectionReport({
-      jobMode: "generate",
-      jobModeReasoning: "promptEngine or llm not available; defaulting.",
+      detectedMode: "generate",
+      detectedModeReasoning: "promptEngine or llm not available; defaulting.",
       environment: "fullstack",
       environmentReasoning: "Defaulting to fullstack.",
       domain: "service",
@@ -653,11 +647,11 @@ export async function detectEnvironment(
     
     if (capturedUsage) {
       const { accumulateTokenUsage, logTokenUsageToFile } = await import("../../../../common/graph/llmHelpers");
-      accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
+      accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
       console.log(`   Tokens: ${capturedUsage.totalTokens} total`);
       // ✅ Push live token update to Kanban UI during estimating phase
-      if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
       }
       
       logTokenUsageToFile(
@@ -679,14 +673,14 @@ export async function detectEnvironment(
 
     // Structural override: skipTriage (redirect/proceedAnyway) implies active work intent.
     // explain mode is for passive document understanding — incompatible with redirect context.
-    if (state.skipTriage && parsed.jobMode === 'explain' && parsed.workType !== 'error' && parsed.workType !== 'clarify') {
+    if (state.skipTriage && parsed.jobMode === 'explain' && parsed.intentGroup !== 'error' && parsed.intentGroup !== 'clarify') {
       console.log('⚠️  [detectEnvironment] Override: explain → generate (skipTriage implies active work intent)');
       parsed.jobMode = 'generate';
       parsed.jobModeReasoning = 'Overridden from explain: skipTriage flag indicates redirect/proceedAnyway — active work intent.';
     }
 
     // Handle error case
-    if (parsed.workType === 'error') {
+    if (parsed.intentGroup === 'error') {
       console.log(`\n❌ Error: ${parsed.errorType}`);
       console.log(`   Message: ${parsed.errorMessage}`);
       
@@ -705,8 +699,8 @@ export async function detectEnvironment(
     }
 
     // Handle clarify case (ambiguous between spec and system-design, or parse failure)
-    if (parsed.workType === 'clarify') {
-      console.log(`\n💬 Clarify needed: ${parsed.workTypeReasoning}`);
+    if (parsed.intentGroup === 'clarify') {
+      console.log(`\n💬 Clarify needed: ${parsed.intentGroupReasoning}`);
       
       await sendDetectClarifyCard();
       await saveDetectClarifyToSession(state);
@@ -717,7 +711,7 @@ export async function detectEnvironment(
       
       return {
         awaitingDetectClarify: true,
-        tokenUsage: (state as any).tokenUsage,
+        tokenUsage: state.tokenUsage,
         _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
       };
     }
@@ -725,20 +719,20 @@ export async function detectEnvironment(
     // Create DetectionReport
     let detectionReport: DetectionReport;
     
-    if (parsed.workType === 'ui-design') {
+    if (parsed.intentGroup === 'design-ui') {
       detectionReport = createUiDesignDetectionReport({
-        jobMode: parsed.jobMode,
-        jobModeReasoning: parsed.jobModeReasoning,
+        detectedMode: parsed.jobMode,
+        detectedModeReasoning: parsed.jobModeReasoning,
       });
-    } else if (parsed.workType === 'spec') {
+    } else if (parsed.intentGroup === 'design-spec') {
       detectionReport = createSpecDetectionReport({
-        jobMode: parsed.jobMode,
-        jobModeReasoning: parsed.jobModeReasoning,
+        detectedMode: parsed.jobMode,
+        detectedModeReasoning: parsed.jobModeReasoning,
       });
     } else {
       detectionReport = createSystemDesignDetectionReport({
-        jobMode: parsed.jobMode,
-        jobModeReasoning: parsed.jobModeReasoning,
+        detectedMode: parsed.jobMode,
+        detectedModeReasoning: parsed.jobModeReasoning,
         environment: parsed.environment!,
         environmentReasoning: parsed.environmentReasoning!,
         domain: parsed.domain!,
@@ -747,20 +741,20 @@ export async function detectEnvironment(
     }
 
     // Resolve targetFiles (single source of truth for chat + decompose)
-    if (detectionReport.workType === 'system-design') {
+    if (detectionReport.detectedIntentGroup === 'design-system') {
       const existingFiles = existingDocNames;
 
-      const { targetFiles, effectiveJobMode } = resolveDesignTargetFiles(
+      const { targetFiles, effectiveMode } = resolveDesignTargetFiles(
         detectionReport.environment,
-        detectionReport.jobMode,
+        detectionReport.detectedMode,
         existingFiles
       );
 
       detectionReport.targetFiles = targetFiles;
-      if (effectiveJobMode !== detectionReport.jobMode) {
-        console.log(`ℹ️  [Detect] jobMode corrected: ${detectionReport.jobMode} → ${effectiveJobMode} (no same-tier docs for ${detectionReport.environment})`);
-        detectionReport.jobMode = effectiveJobMode;
-        detectionReport.jobModeReasoning += ` (corrected: no same-tier docs for ${detectionReport.environment})`;
+      if (effectiveMode !== detectionReport.detectedMode) {
+        console.log(`ℹ️  [Detect] mode corrected: ${detectionReport.detectedMode} → ${effectiveMode} (no same-tier docs for ${detectionReport.environment})`);
+        detectionReport.detectedMode = effectiveMode;
+        detectionReport.detectedModeReasoning += ` (corrected: no same-tier docs for ${detectionReport.environment})`;
       }
     }
 
@@ -770,11 +764,11 @@ export async function detectEnvironment(
     await chatAPI.finalizeMessage();
 
     // Log result
-    console.log(`\n✅ Job Mode: ${detectionReport.jobMode}`);
-    console.log(`   Reasoning: ${detectionReport.jobModeReasoning}`);
-    console.log(`✅ Work Type: ${detectionReport.workType}`);
+    console.log(`\n✅ Job Mode: ${detectionReport.detectedMode}`);
+    console.log(`   Reasoning: ${detectionReport.detectedModeReasoning}`);
+    console.log(`✅ Intent Group: ${detectionReport.detectedIntentGroup}`);
     
-    if (detectionReport.workType === 'system-design') {
+    if (detectionReport.detectedIntentGroup === 'design-system') {
       console.log(`✅ Domain: ${detectionReport.domain}`);
       console.log(`✅ Environment: ${detectionReport.environment}`);
       if (detectionReport.targetFiles) {
@@ -807,14 +801,12 @@ export async function detectEnvironment(
       }
     }
 
-    // SSOT mode resolution for ui-design
-    let uiDesignSource: UIDesignSource | undefined;
+    // Figma MCP reachability check for ui-design with Figma intent
     let figmaDesignError: DesignGraphState['designError'] | undefined;
+    const figmaPopulated = isFigmaDataPopulated(state.figmaConfig);
     
-    if (detectionReport.workType === 'ui-design') {
-      const sourceResult = await resolveUIDesignSource(state);
-      uiDesignSource = sourceResult.uiDesignSource;
-      figmaDesignError = sourceResult.designError;
+    if (detectionReport.detectedIntentGroup === 'design-ui' && figmaPopulated) {
+      figmaDesignError = await checkFigmaMCPReachable(state);
       
       if (figmaDesignError) {
         console.log(`\n❌ Figma MCP unavailable: ${figmaDesignError.message}`);
@@ -825,33 +817,41 @@ export async function detectEnvironment(
         
         // RAC: create even on error path (downstream may need it)
         const errorActionMetadata = state.actionMetadata;
-        const errorRAC = state.resolvedAction || resolveFromInfer(detectionReport, errorActionMetadata, state.context.codebaseProfile);
+        const errorSynthesized = synthesizeDesignIntent(detectionReport, {
+          figmaPopulated,
+          hasReferences,
+        });
+        let errorRAC = state.resolvedAction || resolveFromInfer(detectionReport, errorActionMetadata, state.context.codebaseProfile, undefined, errorSynthesized);
+
+        if (state._pendingDocuments?.length) {
+          errorRAC = {
+            ...errorRAC,
+            documents: [...(errorRAC.documents || []), ...state._pendingDocuments],
+          };
+        }
 
         return {
           detectionReport,
           resolvedAction: errorRAC,
-          uiDesignSource,
           designError: figmaDesignError,
-          tokenUsage: (state as any).tokenUsage,
+          tokenUsage: state.tokenUsage,
+          _pendingDocuments: undefined,
           _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
         };
       }
       
-      console.log(`✅ UI Design Source: ${uiDesignSource}`);
-      
-      if (uiDesignSource === 'figma') {
-        // Figma mode: suppress references pipeline
-        uiReferences = undefined;
-      }
+      console.log(`✅ Figma MCP reachable — pipeline=figma`);
+      // Figma mode: suppress references pipeline
+      uiReferences = undefined;
     }
 
-    // Spec workType: Figma MCP availability (tools enabled, no figmaExplore)
+    // Spec intentGroup: Figma MCP availability (tools enabled, no figmaExplore)
     // Graceful: MCP unavailable → no designError, just proceed without Figma tools
     let specFigmaAvailable: boolean | undefined;
     let specFigmaFileKey: string | undefined;
     let specFigmaStartNodeId: string | undefined;
 
-    if (detectionReport.workType === 'spec' && isFigmaDataPopulated(state.figmaConfig)) {
+    if (detectionReport.detectedIntentGroup === 'design-spec' && isFigmaDataPopulated(state.figmaConfig)) {
       const serverMode = process.env.ANT_SERVER_MODE || 'local';
       let mcpReachable = false;
       try {
@@ -889,20 +889,31 @@ export async function detectEnvironment(
     let inferRAC: ResolvedActionContext | undefined = state.resolvedAction;
     if (!inferRAC) {
       const inferActionMetadata = state.actionMetadata;
-      inferRAC = resolveFromInfer(detectionReport, inferActionMetadata, state.context.codebaseProfile);
-      console.log(`📋 [detectEnvironment] RAC created (infer): workType=${inferRAC.workType}, tech=${JSON.stringify(inferRAC.tech)}`);
+      const inferSynthesized = synthesizeDesignIntent(detectionReport, {
+        figmaPopulated: isFigmaDataPopulated(state.figmaConfig),
+        hasReferences,
+      });
+      inferRAC = resolveFromInfer(detectionReport, inferActionMetadata, state.context.codebaseProfile, undefined, inferSynthesized);
+      console.log(`📋 [detectEnvironment] RAC created (infer): intent=${inferRAC.intent}, intentGroup=${inferRAC.intentGroup}, tech=${JSON.stringify(inferRAC.tech)}`);
+    }
+
+    if (state._pendingDocuments?.length) {
+      inferRAC = {
+        ...inferRAC!,
+        documents: [...(inferRAC!.documents || []), ...state._pendingDocuments],
+      };
     }
 
     return {
       detectionReport,
       resolvedAction: inferRAC,
-      uiDesignSource,
-      uiReferences: detectionReport.workType === 'ui-design' ? uiReferences : undefined,
-      uiAssetsList: detectionReport.workType === 'ui-design' ? uiAssetsList : undefined,
+      uiReferences: detectionReport.detectedIntentGroup === 'design-ui' ? uiReferences : undefined,
+      uiAssetsList: detectionReport.detectedIntentGroup === 'design-ui' ? uiAssetsList : undefined,
       figmaAvailable: specFigmaAvailable,
       figmaFileKey: specFigmaFileKey,
       figmaStartNodeId: specFigmaStartNodeId,
-      tokenUsage: (state as any).tokenUsage,
+      tokenUsage: state.tokenUsage,
+      _pendingDocuments: undefined,
       _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
     };
   } finally {

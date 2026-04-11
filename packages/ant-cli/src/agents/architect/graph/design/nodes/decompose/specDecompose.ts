@@ -150,7 +150,7 @@ export async function decomposeSpec(
   ctx: DecomposeContext
 ): Promise<DesignGraphState> {
   const directive = state.overrideDirective || state.directive || '';
-  const jobMode = state.detectionReport?.jobMode || 'generate';
+  const jobMode = state.detectionReport?.detectedMode || 'generate';
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('📋 SPEC DECOMPOSE');
@@ -202,8 +202,8 @@ export async function decomposeSpec(
     completedTasksDetails: [],
     jobId: ctx.newJobId,
     jobTiming: ctx.newJobTiming,
-    tokenUsage: (state as any).tokenUsage,
-    estimatingTokenUsage: (state as any).tokenUsage,
+    tokenUsage: state.tokenUsage,
+    estimatingTokenUsage: state.tokenUsage,
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     userLanguage: state.context.userLanguage,
@@ -217,7 +217,7 @@ export async function decomposeSpec(
     _httpJobId: state._httpJobId,
     jobId: ctx.newJobId,
     jobTiming: ctx.newJobTiming,
-    _estimatingTokenUsage: (state as any).tokenUsage,
+    _estimatingTokenUsage: state.tokenUsage,
     _phaseTimings: {
       ...(state._phaseTimings || {}),
       decompose: Date.now() - ctx.phaseStart,

@@ -8,6 +8,7 @@
 export type {
   JobMode,
   JobEnvironment,
+  IntentGroup,
   DesignWorkType,
   DesignDomain,
   ProjectProfile,
@@ -15,7 +16,7 @@ export type {
   DetectionReport,
 } from '@ant/shared';
 
-import type { JobMode, JobEnvironment, DesignWorkType, DesignDomain } from '@ant/shared';
+import type { JobMode, JobEnvironment, IntentGroup, DesignDomain } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FE-only Helper Functions
@@ -46,11 +47,12 @@ export function getEnvironmentEmoji(env: JobEnvironment): string {
   }
 }
 
-export function getWorkTypeEmoji(workType: DesignWorkType): string {
-  switch (workType) {
-    case 'ui-design': return '🎨';
-    case 'system-design': return '🏗️';
-    case 'spec': return '📋';
+export function getIntentGroupEmoji(intentGroup: IntentGroup): string {
+  switch (intentGroup) {
+    case 'design-ui': return '🎨';
+    case 'design-system': return '🏗️';
+    case 'design-spec': return '📋';
+    default: return '📄';
   }
 }
 

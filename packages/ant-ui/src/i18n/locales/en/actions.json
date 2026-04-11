@@ -80,7 +80,6 @@
 
   "intent": {
     "pickTitle": "What would you like to do?",
-    "basis": "Basis",
     "refs": "Reference Files",
     "context": "Additional Context",
     "outputDir": "Output directory"
@@ -95,14 +94,16 @@
   },
 
   "buildDirective": {
-    "create-fe": "Please design the frontend system architecture based on the source materials",
-    "create-be": "Please design the backend system architecture and API contracts based on the source materials",
-    "create-fullstack": "Please design the full-stack system architecture based on the source materials",
-    "create-figma": "Please extract the UI design from the Figma file",
-    "create-ref": "Please design the UI based on the reference images",
-    "create-desc": "Please design the UI based on the text description",
-    "create-code": "Please generate code based on the prepared materials",
-    "refactor-code": "Please refactor the existing codebase"
+    "gen-sys-fe": "Please design the frontend system architecture based on the source materials",
+    "gen-sys-be": "Please design the backend system architecture and API contracts based on the source materials",
+    "gen-sys-full": "Please design the full-stack system architecture based on the source materials",
+    "gen-ui-figma": "Please extract the UI design from the Figma file",
+    "gen-ui-ref": "Please design the UI based on the reference images",
+    "gen-ui-desc": "Please design the UI based on the text description",
+    "gen-code-sys": "Please generate code based on the system design documents",
+    "gen-code-spec": "Please generate code based on the spec documents",
+    "gen-code-directive": "Please generate code based on the directive",
+    "rev-code": "Please refactor the existing codebase"
   },
 
   "status": {

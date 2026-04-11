@@ -47,7 +47,7 @@ function buildInferDocuments(opts: {
 function buildExplicitRAC(docs: ResolvedDocument[]): ResolvedActionContext {
   return {
     source: 'explicit',
-    jobMode: 'generate',
+    mode: 'generate',
     tech: { language: 'typescript', environment: 'frontend' },
     hasExplicitFields: true,
     documents: docs,
@@ -57,7 +57,7 @@ function buildExplicitRAC(docs: ResolvedDocument[]): ResolvedActionContext {
 function buildInferRAC(): ResolvedActionContext {
   return {
     source: 'infer',
-    jobMode: 'generate',
+    mode: 'generate',
     tech: {},
     hasExplicitFields: false,
   };
@@ -85,7 +85,7 @@ describe('Audit 3A: promptBuilder documents composition (code execute)', () => {
     it('when explicit RAC has no documents, designDoc/prd/uiDoc are synthesized', () => {
       const rac: ResolvedActionContext = {
         source: 'explicit',
-        jobMode: 'generate',
+        mode: 'generate',
         tech: {},
         hasExplicitFields: true,
         documents: [],
@@ -187,7 +187,7 @@ describe('Audit 3A: promptBuilder documents composition (code execute)', () => {
       const resolvedActionWithDocs = docs.length > 0
         ? {
             source: 'infer' as const,
-            jobMode: 'generate' as const,
+            mode: 'generate' as const,
             tech: {},
             hasExplicitFields: false,
             documents: docs,

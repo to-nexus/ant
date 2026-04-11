@@ -8,6 +8,7 @@
 /** Categorizes why a job was interrupted */
 export type InterruptionReason =
   | 'recursion_limit'       // Hit recursion limit
+  | 'verification_failed'   // Last code task failed verification after max retries
   | 'user_stopped'          // User clicked Stop button
   | 'api_error'             // LLM API error (overloaded, rate limit, etc.)
   | 'process_crash'         // Child process crashed unexpectedly
@@ -30,5 +31,9 @@ export interface InterruptionDetails {
   message: string;
   timestamp: string;
   canResume: boolean;
+  /** Code job: task name when verification failed (learn node) */
+  failedTask?: string;
+  /** Code job: sample violations when verification failed */
+  violations?: Array<{ type: string; message: string }>;
   metadata?: Record<string, any>;
 }

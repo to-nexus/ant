@@ -191,15 +191,12 @@ describe('Audit 6C: TemplateComposer getInjectionVars integrity', () => {
 
   it('all RAC injection keys are present in varMap', () => {
     expect(composerSource).toContain("'action-context'");
-    expect(composerSource).toContain("'basis-guidance'");
     expect(composerSource).toContain("'refactor-guidance'");
   });
 
-  it('varMap maps action-context, basis-guidance, refactor-guidance to resolvedAction', () => {
+  it('varMap maps action-context, refactor-guidance to resolvedAction', () => {
     const actionContextBlock = composerSource.match(/'action-context'[\s\S]*?resolvedAction/);
     expect(actionContextBlock).toBeTruthy();
-    const basisBlock = composerSource.match(/'basis-guidance'[\s\S]*?resolvedAction/);
-    expect(basisBlock).toBeTruthy();
     const refactorBlock = composerSource.match(/'refactor-guidance'[\s\S]*?resolvedAction/);
     expect(refactorBlock).toBeTruthy();
   });

@@ -281,6 +281,17 @@ export function logTokenUsageToFile(
   });
 }
 
+export interface KanbanUpdatableState extends TokenTrackingState {
+  _httpJobId?: string;
+  currentTask?: any;
+  deps?: { kanbanUpdate?: any; [key: string]: any };
+  workerId?: number;
+  taskQueue?: any;
+  completedTasksDetails?: any[];
+  recursionCount?: number;
+  recursionLimit?: number;
+}
+
 /**
  * Update Kanban with real-time token usage for in-progress task.
  * Call this after each LLM interaction to reflect token consumption immediately.
@@ -288,9 +299,7 @@ export function logTokenUsageToFile(
  * Copies task-level usage onto currentTask so individual task cards update,
  * and passes job-level usage to the broadcaster for the header badge.
  */
-export function updateKanbanTokenUsage(
-  state: any  // ArchitectGraphState or DesignGraphState
-): void {
+export function updateKanbanTokenUsage(state: KanbanUpdatableState): void {
   if (!state._httpJobId || !state.deps?.kanbanUpdate || !state.currentTask) {
     return;
   }
@@ -298,7 +307,7 @@ export function updateKanbanTokenUsage(
   const taskTokens = getTaskTokenUsage(state);
   const jobTokens = getJobTokenUsage(state);
 
-  const isWorkerCtx = (state as any).workerId !== undefined && (state as any).workerId !== null;
+  const isWorkerCtx = state.workerId !== undefined && state.workerId !== null;
   if (isWorkerCtx) {
     state.currentTask.tokenUsage = { ...taskTokens };
     state.deps.kanbanUpdate.updateInProgressTaskTokenUsage?.(
@@ -316,9 +325,9 @@ export function updateKanbanTokenUsage(
   // broadcaster's snapshot includes per-task token counts.
   state.currentTask.tokenUsage = { ...taskTokens };
   
-  const taskQueue = (state as any).taskQueue;
+  const taskQueue = state.taskQueue;
   const queue = taskQueue ? (taskQueue.getRemaining?.() ?? taskQueue.getAll?.() ?? []) : [];
-  const completedTasks = (state as any).completedTasksDetails || [];
+  const completedTasks = state.completedTasksDetails || [];
   
   state.deps.kanbanUpdate.updateTaskQueue(
     state._httpJobId,

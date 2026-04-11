@@ -33,7 +33,6 @@ interface RuntimeCase {
   jobType: string;
   agent: string;
   intent: string;
-  basis: string;
   directive: string;
 }
 
@@ -41,37 +40,37 @@ const RUNTIME_CASES: RuntimeCase[] = [
   {
     label: 'ts-frontend-code',
     jobType: 'code', agent: 'architect',
-    intent: 'create-code', basis: 'directive',
+    intent: 'gen-code-directive',
     directive: DIRECTIVES['_runtime:ts-frontend'],
   },
   {
     label: 'ts-backend-code',
     jobType: 'code', agent: 'architect',
-    intent: 'create-code', basis: 'directive',
+    intent: 'gen-code-directive',
     directive: DIRECTIVES['_runtime:ts-backend'],
   },
   {
     label: 'ts-fullstack-code',
     jobType: 'code', agent: 'architect',
-    intent: 'create-code', basis: 'directive',
+    intent: 'gen-code-directive',
     directive: DIRECTIVES['_runtime:ts-fullstack'],
   },
   {
     label: 'go-backend-code',
     jobType: 'code', agent: 'architect',
-    intent: 'create-code', basis: 'directive',
+    intent: 'gen-code-directive',
     directive: DIRECTIVES['_runtime:go-backend'],
   },
   {
     label: 'go-frontend-design',
     jobType: 'design', agent: 'architect',
-    intent: 'create-fe', basis: 'directive',
+    intent: 'gen-sys-fe',
     directive: DIRECTIVES['_runtime:go-fe-design'],
   },
   {
     label: 'ts-backend-design',
     jobType: 'design', agent: 'architect',
-    intent: 'create-be', basis: 'directive',
+    intent: 'gen-sys-be',
     directive: DIRECTIVES['_runtime:ts-be-design'],
   },
 ];
@@ -92,7 +91,6 @@ describe('E2E Runtime Variations', () => {
         actionMetadata: {
           explicit: true,
           intent: rc.intent,
-          basis: rc.basis,
         },
         feature: featureName,
       });

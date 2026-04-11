@@ -21,9 +21,11 @@ import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../graph/llmHelp
 import { runAskGraph } from '../../../architect/graph/ask/runner.js';
 import { ChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
-import { getEstimatingLabel } from '../../graph/timing/estimatingLabels.js';
+import { getEstimatingLabel, type UILocale } from '../../graph/timing/estimatingLabels.js';
 import { getSessionDebugDir } from '../../../../core/utils/sessionPaths.js';
 import { extractLLMInfo } from '../../../../core/ports/workflow.js';
+import { synthesizeAskIntent, resolveFromInfer } from '@ant/shared';
+import type { ResolvedActionContext, DetectionReport } from '@ant/shared';
 
 // Cache for loaded templates
 let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
@@ -83,9 +85,9 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   
   // ✅ Node activity banner (only when kanbanUpdate is available — learn job has none)
-  if ((state as any).deps?.kanbanUpdate?.setEstimatingActivity) {
-    const locale = (state as any)._uiLocale || 'en';
-    (state as any).deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('triage', locale), 'triage');
+  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    const locale = (state._uiLocale ?? 'en') as UILocale;
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('triage', locale), 'triage');
   }
   
   // ✅ Skip triage if explicitly requested or intent is already determined
@@ -135,7 +137,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   
   const userInput = state.overrideDirective || state.directive || '';
-  const currentJob = state.currentJob || (state as any).jobType || 'unknown';
+  const currentJob = state.currentJob || 'unknown';
   const currentAgent = state.currentAgent || 'architect';
   
   // Detect language from user input (for LLM to respond in same language)
@@ -172,8 +174,8 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     if (response.usage) {
       accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
       upsertPhaseTokenUsage(state as any, 'triage', response.usage);
-      if ((state as any).deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
-        (state as any).deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
       }
     }
   } else {
@@ -238,6 +240,16 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // Step 5: Handle Ask Intent with Agentic Ask System
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (triageResult.intent === 'ask' && triageResult.inScope) {
+    // Synthesize ask intent and create RAC
+    const askIntent = synthesizeAskIntent(triageResult.askSubType);
+    const askReport: DetectionReport = {
+      detectedMode: 'explain',
+      detectedModeReasoning: 'ask intent from triage',
+      sourceJob: 'code',
+    };
+    const askRAC = resolveFromInfer(askReport, state.actionMetadata, undefined, undefined, askIntent);
+    console.log(`📋 [Triage] Ask RAC created: intent=${askRAC.intent}, askSubType=${triageResult.askSubType || 'general'}`);
+
     // Run Agentic Ask Graph (explores Ant source code to answer)
     const askResult = await runAskGraph({
       question: userInput,
@@ -250,13 +262,14 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
       currentAgent,
       deps: { llm },
       _httpJobId: state._httpJobId,
+      resolvedAction: askRAC,
     });
 
     if (askResult.tokenUsage) {
       accumulateTokenUsage(state as any, askResult.tokenUsage, { taskLevel: true, jobLevel: true });
       upsertPhaseTokenUsage(state as any, 'triage', askResult.tokenUsage);
-      if ((state as any).deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
-        (state as any).deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
       }
     }
     
@@ -331,12 +344,12 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     triageResult.workStatus === 'redirect' ||
     triageResult.workStatus === 'blocked';
   
-  if (willTerminate && (state as any).deps?.kanbanUpdate?.clearEstimatingActivity) {
-    (state as any).deps.kanbanUpdate.clearEstimatingActivity();
+  if (willTerminate && state.deps?.kanbanUpdate?.clearEstimatingActivity) {
+    state.deps.kanbanUpdate.clearEstimatingActivity();
   }
   
   // ✅ Record phase timing
-  const _phaseTimings = { ...((state as any)._phaseTimings || {}), triage: Date.now() - phaseStart };
+  const _phaseTimings = { ...(state._phaseTimings || {}), triage: Date.now() - phaseStart };
   
   // ✅ Workflow instrumentation: Exit node
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -431,8 +444,9 @@ function logTriageResult(result: TriageResult): void {
  */
 export function routeAfterTriage<T extends TriageableState>(state: T): string {
   const result = state.triageResult;
-  const isResume = (state as any).isResume === true;
-  const hasTaskQueue = (state as any).taskQueue && !(state as any).taskQueue.isEmpty();
+  const isResume = state.isResume === true;
+  const taskQueue = (state as any).taskQueue;
+  const hasTaskQueue = taskQueue && !taskQueue.isEmpty();
   
   if (!result) {
     if (isResume && hasTaskQueue) {

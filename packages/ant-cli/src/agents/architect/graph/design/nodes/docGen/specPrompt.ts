@@ -56,7 +56,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const task = state.currentTask;
   const targetFile = task?.targetFile || 'spec-feature.md';
   const directive = state.overrideDirective || state.directive || '';
-  const jobMode = state.detectionReport?.jobMode || 'generate';
+  const jobMode = state.detectionReport?.detectedMode || 'generate';
 
   // System prompt is ALWAYS rebuilt (prevents context loss from history pruning)
   {
@@ -92,7 +92,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     const systemPrompt = await renderSpecSystemPrompt(state, {
       targetFile,
       title,
-      jobMode,
+      detectedMode: jobMode,
       isFirstSection,
       sectionIndex,
       totalSections,
@@ -205,7 +205,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
             ],
             injectedVariables: {
               targetFile,
-              jobMode,
+              detectedMode: jobMode,
               isFirstSection,
               sectionIndex,
               totalSections,

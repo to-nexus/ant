@@ -427,7 +427,7 @@ export class XMLStreamParser implements IStreamParser {
       
       // 16e. Check for <function_calls> opening (SAFETY NET)
       // ⚠️ LLM outputs <function_calls><invoke name="..."> XML when structured tool_use is unavailable.
-      // This happens when detectionReport.jobMode is missing (tools not passed to LLM API).
+      // This happens when detectionReport.detectedMode is missing (tools not passed to LLM API).
       // Suppress entirely: these are hallucinated tool calls that won't execute.
       if (!this.context.insideFunctionCalls && this.buffer.includes('<function_calls>')) {
         const startIdx = this.buffer.indexOf('<function_calls>');
@@ -443,7 +443,7 @@ export class XMLStreamParser implements IStreamParser {
         
         console.error(`🚨 [XMLParser] CRITICAL: LLM outputting <function_calls> XML as text!`);
         console.error(`   This means structured tool_use was not enabled for this LLM call.`);
-        console.error(`   Check detectionReport.jobMode and tool activation in execute.`);
+        console.error(`   Check detectionReport.detectedMode and tool activation in execute.`);
         
         this.buffer = this.buffer.substring(startIdx + '<function_calls>'.length);
         this.context.insideFunctionCalls = true;

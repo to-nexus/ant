@@ -21,7 +21,7 @@ import {
   formatDetectionReportForChat,
   JobMode,
 } from '../../../../../../core/types/detection';
-import { DESIGN_DIR, DESIGN_SUBDIR, DESIGN_SUBDIRS, resolveFromInfer } from '@ant/shared';
+import { DESIGN_DIR, DESIGN_SUBDIR, DESIGN_SUBDIRS, resolveFromInfer, synthesizeCodeIntent } from '@ant/shared';
 import type { ActionMetadata, EnvironmentHints } from '@ant/shared';
 
 // Import submodules
@@ -45,11 +45,15 @@ export async function detectEnvironment(
   // Skip LLM call, pass all design docs through
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.detectionReport) {
+    // Normalize deprecated field names from old session checkpoints
+    const { normalizeDetectionReport } = await import('../../../../../../core/types/detection');
+    state.detectionReport = normalizeDetectionReport(state.detectionReport);
+
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔍 DETECT ENVIRONMENT: Resume — using existing detectionReport (LLM skip)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-    console.log(`✅ Job Mode: ${state.detectionReport.jobMode} (from existing detectionReport)`);
+    console.log(`✅ Job Mode: ${state.detectionReport.detectedMode} (from existing detectionReport)`);
     console.log(`   Require RAG: ${state.detectionReport.requireRag}`);
 
     // Workflow exit (if instrumented)
@@ -229,21 +233,21 @@ export async function detectEnvironment(
   // ✅ Accumulate token usage to job-level (not task-level, as detectEnvironment runs before tasks)
   if (capturedUsage) {
     const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-    accumulateTokenUsage(state as any, capturedUsage, { taskLevel: false, jobLevel: true });
+    accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
     console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
     // ✅ Push live token update to Kanban UI during estimating phase
-    if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
-      state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+    if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+      state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
     }
   }
   
-  // 3. Parse Response (jobMode + requireRag + keywords only)
+  // 3. Parse Response (mode + requireRag + keywords only)
   const parsed = parseDetectResponse(response);
   
   // 4. Create DetectionReport (without environment/profile — decompose fills those)
   const detectionReport = createCodeDetectionReport({
-    jobMode: parsed.mode as JobMode,
-    jobModeReasoning: parsed.modeReasoning,
+    detectedMode: parsed.mode as JobMode,
+    detectedModeReasoning: parsed.modeReasoning,
     requireRag: parsed.requireRagForDecompose,
     primarySources: parsed.primarySources,
     primarySourcesReasoning: parsed.primarySourcesReasoning,
@@ -271,8 +275,8 @@ export async function detectEnvironment(
   }
   
   // 7. Log Analysis
-  console.log(`✅ Job Mode: ${detectionReport.jobMode}`);
-  console.log(`   Reasoning: ${detectionReport.jobModeReasoning}`);
+  console.log(`✅ Job Mode: ${detectionReport.detectedMode}`);
+  console.log(`   Reasoning: ${detectionReport.detectedModeReasoning}`);
   console.log(`   Require RAG: ${detectionReport.requireRag}`);
   
   // ✅ Display keywords in Chat UI (analyzed status - keywords only)
@@ -379,8 +383,16 @@ export async function detectEnvironment(
     const fallbackHints: EnvironmentHints = {
       designDocPath: state.designDocPath,
     };
-    resolvedAction = resolveFromInfer(detectionReport, inferActionMetadata, codebaseProfile, fallbackHints);
-    console.log(`📋 [DetectEnv] RAC created (infer): jobMode=${resolvedAction.jobMode}, tech=${JSON.stringify(resolvedAction.tech)}`);
+    const synthesizedIntent = synthesizeCodeIntent(detectionReport);
+    resolvedAction = resolveFromInfer(detectionReport, inferActionMetadata, codebaseProfile, fallbackHints, synthesizedIntent);
+    console.log(`📋 [DetectEnv] RAC created (infer): intent=${synthesizedIntent || 'N/A'}, mode=${resolvedAction.mode}, tech=${JSON.stringify(resolvedAction.tech)}`);
+  }
+
+  if (state._pendingDocuments?.length) {
+    resolvedAction = {
+      ...resolvedAction,
+      documents: [...(resolvedAction.documents || []), ...state._pendingDocuments],
+    };
   }
 
   return {
@@ -390,9 +402,10 @@ export async function detectEnvironment(
     designDocs: state.designDocs,
     design: state.design,
     profile: state.profile,
-    tokenUsage: (state as any).tokenUsage,
+    tokenUsage: state.tokenUsage,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
+    _pendingDocuments: undefined,
     _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
   };
 }

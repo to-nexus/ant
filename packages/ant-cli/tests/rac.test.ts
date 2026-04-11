@@ -6,10 +6,14 @@ import {
   inferEnvironmentFromHints,
   buildTechContext,
   getIntentDescription,
-  getBasisDescription,
-  getUiSourceFromIntent,
   resolveFromExplicit,
   resolveFromInfer,
+  synthesizeLearnIntent,
+  synthesizeDesignIntent,
+  synthesizeCodeIntent,
+  synthesizePlanIntent,
+  synthesizeVisualIntent,
+  synthesizeAskIntent,
   INTENT_DEFINITIONS,
   deriveFromIntent,
 } from '@ant/shared';
@@ -18,7 +22,7 @@ import type {
   EnvironmentHints,
   ActionMetadata,
   DetectionReport,
-  Basis,
+  ResolvedDocument,
 } from '@ant/shared';
 
 // ============================================
@@ -306,92 +310,43 @@ describe('getIntentDescription', () => {
   });
 
   it('returns undefined for unknown intent', () => {
-    expect(getIntentDescription('nonexistent')).toBeUndefined();
+    expect(getIntentDescription('nonexistent' as any)).toBeUndefined();
   });
 
-  it('returns description for refactor-code', () => {
-    expect(getIntentDescription('refactor-code')).toBe('Refactor existing codebase');
-  });
-});
-
-// ============================================
-// getBasisDescription
-// ============================================
-
-describe('getBasisDescription', () => {
-  const allBases: Basis[] = ['prd', 'directive', 'existing-doc', 'figma', 'references', 'spec', 'design-doc'];
-
-  it('returns non-empty string for all basis types', () => {
-    for (const basis of allBases) {
-      const desc = getBasisDescription(basis);
-      expect(typeof desc).toBe('string');
-      expect(desc.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('returns specific descriptions', () => {
-    expect(getBasisDescription('prd')).toContain('PRD');
-    expect(getBasisDescription('figma')).toContain('Figma');
-    expect(getBasisDescription('references')).toContain('Reference');
-    expect(getBasisDescription('directive')).toContain('directive');
-    expect(getBasisDescription('existing-doc')).toContain('design documents');
-    expect(getBasisDescription('spec')).toContain('spec');
-    expect(getBasisDescription('design-doc')).toContain('design');
-  });
-
-  it('returns actual description, not raw basis string (no fallback)', () => {
-    for (const basis of allBases) {
-      const desc = getBasisDescription(basis);
-      expect(desc).not.toBe(basis);
-    }
+  it('returns description for rev-code', () => {
+    expect(getIntentDescription('rev-code')).toBe('Refactor existing codebase');
   });
 });
 
 // ============================================
-// getUiSourceFromIntent
+// deriveFromIntent rev-code
 // ============================================
 
-describe('getUiSourceFromIntent', () => {
-  it('create-figma -> figma', () => {
-    expect(getUiSourceFromIntent('create-figma')).toBe('figma');
-  });
-
-  it('create-ref -> references', () => {
-    expect(getUiSourceFromIntent('create-ref')).toBe('references');
-  });
-
-  it('create-desc -> description', () => {
-    expect(getUiSourceFromIntent('create-desc')).toBe('description');
-  });
-
-  it('revise-ui -> null (runtime resolution needed)', () => {
-    expect(getUiSourceFromIntent('revise-ui')).toBeNull();
-  });
-
-  it('non-UI intents -> null', () => {
-    expect(getUiSourceFromIntent('create-code')).toBeNull();
-    expect(getUiSourceFromIntent('create-plan')).toBeNull();
-    expect(getUiSourceFromIntent('create-fe')).toBeNull();
-  });
-});
-
-// ============================================
-// deriveFromIntent (refactor-code addition)
-// ============================================
-
-describe('deriveFromIntent refactor-code', () => {
-  it('returns refactor mode for refactor-code', () => {
-    const result = deriveFromIntent('refactor-code');
+describe('deriveFromIntent rev-code', () => {
+  it('returns refactor mode for rev-code', () => {
+    const result = deriveFromIntent('rev-code');
     expect(result).toEqual({
-      jobMode: 'refactor',
+      mode: 'refactor',
       agent: 'architect',
       jobType: 'code',
     });
   });
 
-  it('create-code returns generate mode', () => {
-    const result = deriveFromIntent('create-code');
-    expect(result.jobMode).toBe('generate');
+  it('gen-code-sys returns generate mode', () => {
+    const result = deriveFromIntent('gen-code-sys');
+    expect(result.mode).toBe('generate');
+    expect(result.jobType).toBe('code');
+  });
+
+  it('gen-code-spec returns generate mode', () => {
+    const result = deriveFromIntent('gen-code-spec');
+    expect(result.mode).toBe('generate');
+    expect(result.jobType).toBe('code');
+  });
+
+  it('gen-code-directive returns generate mode', () => {
+    const result = deriveFromIntent('gen-code-directive');
+    expect(result.mode).toBe('generate');
     expect(result.jobType).toBe('code');
   });
 });
@@ -401,32 +356,29 @@ describe('deriveFromIntent refactor-code', () => {
 // ============================================
 
 describe('resolveFromExplicit', () => {
-  it('creates RAC for create-fe intent', () => {
+  it('creates RAC for gen-sys-fe intent', () => {
     const metadata: ActionMetadata = {
       explicit: true,
-      intent: 'create-fe',
-      basis: 'prd',
+      intent: 'gen-sys-fe',
       refs: ['/docs/prd.md'],
     };
     const rac = resolveFromExplicit(metadata, { language: 'TypeScript', framework: 'Next.js' });
 
     expect(rac.source).toBe('explicit');
-    expect(rac.intent).toBe('create-fe');
-    expect(rac.workType).toBe('system-design');
-    expect(rac.jobMode).toBe('generate');
+    expect(rac.intent).toBe('gen-sys-fe');
+    expect(rac.intentGroup).toBe('design-system');
+    expect(rac.mode).toBe('generate');
     expect(rac.tech.language).toBe('typescript');
     expect(rac.tech.framework).toBe('nextjs');
     expect(rac.tech.environment).toBe('frontend');
     expect(rac.tech.runtime).toBe('browser');
-    expect(rac.basis).toBe('prd');
     expect(rac.refs).toEqual(['/docs/prd.md']);
     expect(rac.intentDescription).toBeDefined();
-    expect(rac.basisDescription).toContain('PRD');
     expect(rac.hasExplicitFields).toBe(true);
   });
 
-  it('creates RAC for create-be intent with Go', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'create-be' };
+  it('creates RAC for gen-sys-be intent with Go', () => {
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-sys-be' };
     const rac = resolveFromExplicit(metadata, { language: 'Go' });
 
     expect(rac.tech.environment).toBe('backend');
@@ -434,85 +386,81 @@ describe('resolveFromExplicit', () => {
     expect(rac.tech.language).toBe('go');
   });
 
-  it('creates RAC for create-fullstack', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'create-fullstack' };
+  it('creates RAC for gen-sys-full', () => {
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-sys-full' };
     const rac = resolveFromExplicit(metadata);
 
     expect(rac.tech.environment).toBe('fullstack');
     expect(rac.tech.runtime).toBeUndefined();
-    expect(rac.workType).toBe('system-design');
+    expect(rac.intentGroup).toBe('design-system');
   });
 
-  it('creates RAC for create-figma UI intent', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'create-figma' };
+  it('creates RAC for gen-ui-figma UI intent', () => {
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-ui-figma' };
     const rac = resolveFromExplicit(metadata);
 
-    expect(rac.workType).toBe('ui-design');
-    expect(rac.jobMode).toBe('generate');
+    expect(rac.intentGroup).toBe('design-ui');
+    expect(rac.mode).toBe('generate');
   });
 
-  it('creates RAC for revise-system intent (refactor mode)', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'revise-system' };
+  it('creates RAC for rev-sys intent (refactor mode)', () => {
+    const metadata: ActionMetadata = { explicit: true, intent: 'rev-sys' };
     const rac = resolveFromExplicit(metadata);
 
-    expect(rac.jobMode).toBe('refactor');
-    expect(rac.workType).toBe('system-design');
+    expect(rac.mode).toBe('refactor');
+    expect(rac.intentGroup).toBe('design-system');
   });
 
-  it('creates RAC for refactor-code intent', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'refactor-code' };
+  it('creates RAC for rev-code intent', () => {
+    const metadata: ActionMetadata = { explicit: true, intent: 'rev-code' };
     const rac = resolveFromExplicit(metadata, { language: 'TypeScript' });
 
-    expect(rac.intent).toBe('refactor-code');
-    expect(rac.jobMode).toBe('refactor');
+    expect(rac.intent).toBe('rev-code');
+    expect(rac.mode).toBe('refactor');
     expect(rac.tech.language).toBe('typescript');
     expect(rac.intentDescription).toBe('Refactor existing codebase');
   });
 
-  it('creates RAC for create-plan intent', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'create-plan', basis: 'directive' };
+  it('creates RAC for gen-plan intent', () => {
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-plan' };
     const rac = resolveFromExplicit(metadata);
 
-    expect(rac.jobMode).toBe('generate');
-    expect(rac.basisDescription).toContain('directive');
+    expect(rac.mode).toBe('generate');
   });
 
-  it('creates RAC for create-spec intent', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'create-spec' };
+  it('creates RAC for gen-spec intent', () => {
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-spec' };
     const rac = resolveFromExplicit(metadata);
 
-    expect(rac.workType).toBe('spec');
-    expect(rac.jobMode).toBe('generate');
+    expect(rac.intentGroup).toBe('design-spec');
+    expect(rac.mode).toBe('generate');
   });
 
   it('hasExplicitFields false when no descriptive fields', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'create-visual' };
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-visual' };
     const rac = resolveFromExplicit(metadata);
 
-    // create-visual has intentDescription, so hasExplicitFields should be true
     expect(rac.hasExplicitFields).toBe(true);
   });
 
   it('includes all user-specified fields', () => {
     const metadata: ActionMetadata = {
       explicit: true,
-      intent: 'create-code',
+      intent: 'gen-code-sys',
       target: ['src/app.ts'],
-      basis: 'existing-doc',
       refs: ['docs/spec.md'],
       context: ['docs/notes.md'],
     };
     const rac = resolveFromExplicit(metadata);
 
     expect(rac.target).toEqual(['src/app.ts']);
-    expect(rac.basis).toBe('existing-doc');
     expect(rac.refs).toEqual(['docs/spec.md']);
     expect(rac.context).toEqual(['docs/notes.md']);
     expect(rac.hasExplicitFields).toBe(true);
   });
 
   it('uses fallbackHints when intent has no environment', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'create-code' };
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-code-sys' };
     const rac = resolveFromExplicit(
       metadata,
       { language: 'TypeScript' },
@@ -524,7 +472,7 @@ describe('resolveFromExplicit', () => {
   });
 
   it('intent environment takes priority over fallbackHints', () => {
-    const metadata: ActionMetadata = { explicit: true, intent: 'create-be' };
+    const metadata: ActionMetadata = { explicit: true, intent: 'gen-sys-be' };
     const rac = resolveFromExplicit(
       metadata,
       { language: 'TypeScript' },
@@ -537,7 +485,7 @@ describe('resolveFromExplicit', () => {
 
   it('does NOT include documents (resolve node adds them separately)', () => {
     const metadata: ActionMetadata = {
-      explicit: true, intent: 'create-code',
+      explicit: true, intent: 'gen-code-sys',
       refs: ['inputs/sources/prd.md'], context: ['outputs/design/system/fe-system-main.md'],
     };
     const rac = resolveFromExplicit(metadata);
@@ -554,7 +502,7 @@ describe('resolveFromExplicit', () => {
       expect(rac.source).toBe('explicit');
       expect(rac.intent).toBe(def.id);
       expect(rac.intentDescription).toBe(def.description.en);
-      expect(['generate', 'refactor', 'explain']).toContain(rac.jobMode);
+      expect(['generate', 'refactor', 'explain']).toContain(rac.mode);
     }
   });
 });
@@ -565,15 +513,15 @@ describe('resolveFromExplicit', () => {
 
 describe('resolveFromInfer', () => {
   const baseReport: DetectionReport = {
-    jobMode: 'generate',
-    jobModeReasoning: 'test',
+    detectedMode: 'generate',
+    detectedModeReasoning: 'test',
     sourceJob: 'design',
   };
 
   it('creates RAC for design detection', () => {
     const report: DetectionReport = {
       ...baseReport,
-      workType: 'system-design',
+      detectedIntentGroup: 'design-system',
       environment: 'frontend',
       domain: 'service',
     };
@@ -581,8 +529,8 @@ describe('resolveFromInfer', () => {
 
     expect(rac.source).toBe('infer');
     expect(rac.intent).toBeUndefined();
-    expect(rac.workType).toBe('system-design');
-    expect(rac.jobMode).toBe('generate');
+    expect(rac.intentGroup).toBe('design-system');
+    expect(rac.mode).toBe('generate');
     expect(rac.domain).toBe('service');
     expect(rac.tech.language).toBe('typescript');
     expect(rac.tech.framework).toBe('nextjs');
@@ -606,20 +554,17 @@ describe('resolveFromInfer', () => {
   });
 
   it('merges actionMetadata fields into RAC', () => {
-    const report: DetectionReport = { ...baseReport, jobMode: 'refactor' };
+    const report: DetectionReport = { ...baseReport, detectedMode: 'refactor' };
     const metadata: ActionMetadata = {
-      basis: 'prd',
       refs: ['docs/spec.md'],
       target: ['src/main.ts'],
       context: ['docs/notes.md'],
     };
     const rac = resolveFromInfer(report, metadata);
 
-    expect(rac.basis).toBe('prd');
     expect(rac.refs).toEqual(['docs/spec.md']);
     expect(rac.target).toEqual(['src/main.ts']);
     expect(rac.context).toEqual(['docs/notes.md']);
-    expect(rac.basisDescription).toContain('PRD');
     expect(rac.hasExplicitFields).toBe(true);
   });
 
@@ -706,7 +651,7 @@ describe('resolveFromInfer', () => {
   it('game domain passes through', () => {
     const report: DetectionReport = {
       ...baseReport,
-      workType: 'system-design',
+      detectedIntentGroup: 'design-system',
       domain: 'game',
     };
     const rac = resolveFromInfer(report);
@@ -726,7 +671,257 @@ describe('ResolvedDocument', () => {
   });
 
   it('label is optional', () => {
-    const doc = { path: 'prd.md', content: '# PRD', role: 'context' as const };
+    const doc: ResolvedDocument = { path: 'prd.md', content: '# PRD', role: 'context' };
     expect(doc.label).toBeUndefined();
+  });
+});
+
+// ============================================
+// synthesizeLearnIntent
+// ============================================
+
+describe('synthesizeLearnIntent', () => {
+  it('always returns gen-learn', () => {
+    expect(synthesizeLearnIntent()).toBe('gen-learn');
+  });
+
+  it('return type is string (never undefined)', () => {
+    const result: string = synthesizeLearnIntent();
+    expect(result).toBeDefined();
+    expect(typeof result).toBe('string');
+  });
+
+  it('aligns with deriveFromIntent gen-learn', () => {
+    const intent = synthesizeLearnIntent();
+    const derived = deriveFromIntent(intent);
+    expect(derived).toEqual({
+      mode: 'generate',
+      agent: 'architect',
+      jobType: 'learn',
+    });
+  });
+
+  it('produces valid RAC via resolveFromExplicit (infer pattern)', () => {
+    const intent = synthesizeLearnIntent();
+    const rac = resolveFromExplicit({ intent });
+    expect(rac.intent).toBe('gen-learn');
+    expect(rac.mode).toBe('generate');
+    expect(rac.source).toBe('explicit');
+    expect(rac.intentDescription).toBeDefined();
+
+    const inferRac = { ...rac, source: 'infer' as const, hasExplicitFields: false };
+    expect(inferRac.source).toBe('infer');
+    expect(inferRac.hasExplicitFields).toBe(false);
+  });
+});
+
+// ============================================
+// Explain intent synthesis (Phase 6a)
+// ============================================
+
+describe('synthesizeDesignIntent explain', () => {
+  const baseReport: DetectionReport = {
+    detectedMode: 'explain',
+    detectedModeReasoning: 'test',
+    sourceJob: 'design',
+  };
+
+  it('returns explain-ui for ui-design intentGroup', () => {
+    const intent = synthesizeDesignIntent({ ...baseReport, detectedIntentGroup: 'design-ui' }, {});
+    expect(intent).toBe('explain-ui');
+  });
+
+  it('returns explain-spec for spec intentGroup', () => {
+    const intent = synthesizeDesignIntent({ ...baseReport, detectedIntentGroup: 'design-spec' }, {});
+    expect(intent).toBe('explain-spec');
+  });
+
+  it('returns explain-sys for system-design intentGroup', () => {
+    const intent = synthesizeDesignIntent({ ...baseReport, detectedIntentGroup: 'design-system' }, {});
+    expect(intent).toBe('explain-sys');
+  });
+
+  it('returns explain-sys when intentGroup is undefined (default)', () => {
+    const intent = synthesizeDesignIntent(baseReport, {});
+    expect(intent).toBe('explain-sys');
+  });
+
+  it('return type is always string (never undefined)', () => {
+    const result: string = synthesizeDesignIntent(baseReport, {});
+    expect(typeof result).toBe('string');
+  });
+});
+
+describe('synthesizeCodeIntent explain', () => {
+  it('returns explain-code for explain mode', () => {
+    const report: DetectionReport = { detectedMode: 'explain', detectedModeReasoning: 'test', sourceJob: 'code' };
+    const intent = synthesizeCodeIntent(report);
+    expect(intent).toBe('explain-code');
+  });
+
+  it('return type is always string (never undefined)', () => {
+    const result: string = synthesizeCodeIntent({ detectedMode: 'explain', detectedModeReasoning: 'test', sourceJob: 'code' });
+    expect(typeof result).toBe('string');
+  });
+});
+
+describe('synthesizePlanIntent explain', () => {
+  it('returns explain-plan for explain mode', () => {
+    const intent = synthesizePlanIntent('explain');
+    expect(intent).toBe('explain-plan');
+  });
+
+  it('return type is always string (never undefined)', () => {
+    const result: string = synthesizePlanIntent('explain');
+    expect(typeof result).toBe('string');
+  });
+});
+
+describe('synthesizeVisualIntent explain', () => {
+  it('returns explain-visual for explain mode', () => {
+    const intent = synthesizeVisualIntent('explain');
+    expect(intent).toBe('explain-visual');
+  });
+
+  it('return type is always string (never undefined)', () => {
+    const result: string = synthesizeVisualIntent('explain');
+    expect(typeof result).toBe('string');
+  });
+});
+
+describe('deriveFromIntent explain intents', () => {
+  it('explain-code maps correctly', () => {
+    expect(deriveFromIntent('explain-code')).toEqual({
+      mode: 'explain', agent: 'architect', jobType: 'code',
+    });
+  });
+
+  it('explain-ui maps correctly', () => {
+    expect(deriveFromIntent('explain-ui')).toEqual({
+      intentGroup: 'design-ui', mode: 'explain', agent: 'architect', jobType: 'design',
+    });
+  });
+
+  it('explain-sys maps correctly', () => {
+    expect(deriveFromIntent('explain-sys')).toEqual({
+      intentGroup: 'design-system', mode: 'explain', agent: 'architect', jobType: 'design',
+    });
+  });
+
+  it('explain-spec maps correctly', () => {
+    expect(deriveFromIntent('explain-spec')).toEqual({
+      intentGroup: 'design-spec', mode: 'explain', agent: 'architect', jobType: 'design',
+    });
+  });
+
+  it('explain-plan maps correctly', () => {
+    expect(deriveFromIntent('explain-plan')).toEqual({
+      mode: 'explain', agent: 'planner', jobType: 'plan',
+    });
+  });
+
+  it('explain-visual maps correctly', () => {
+    expect(deriveFromIntent('explain-visual')).toEqual({
+      mode: 'explain', agent: 'creator', jobType: 'visual',
+    });
+  });
+
+  it('all explain intents round-trip through synthesize -> derive', () => {
+    const codeReport: DetectionReport = { detectedMode: 'explain', detectedModeReasoning: 'test', sourceJob: 'code' };
+    expect(deriveFromIntent(synthesizeCodeIntent(codeReport)).mode).toBe('explain');
+
+    expect(deriveFromIntent(synthesizePlanIntent('explain')).mode).toBe('explain');
+    expect(deriveFromIntent(synthesizeVisualIntent('explain')).mode).toBe('explain');
+
+    const designReport: DetectionReport = { detectedMode: 'explain', detectedModeReasoning: 'test', sourceJob: 'design', detectedIntentGroup: 'design-ui' };
+    expect(deriveFromIntent(synthesizeDesignIntent(designReport, {})).mode).toBe('explain');
+  });
+});
+
+// ============================================
+// Ask intent synthesis (Phase 6b)
+// ============================================
+
+describe('synthesizeAskIntent', () => {
+  it('returns ask-evaluate for evaluate subType', () => {
+    expect(synthesizeAskIntent('evaluate')).toBe('ask-evaluate');
+  });
+
+  it('returns ask-ant for ant subType', () => {
+    expect(synthesizeAskIntent('ant')).toBe('ask-ant');
+  });
+
+  it('returns ask-general for general subType', () => {
+    expect(synthesizeAskIntent('general')).toBe('ask-general');
+  });
+
+  it('defaults to ask-general when undefined', () => {
+    expect(synthesizeAskIntent()).toBe('ask-general');
+    expect(synthesizeAskIntent(undefined)).toBe('ask-general');
+  });
+
+  it('return type is always string', () => {
+    const result: string = synthesizeAskIntent();
+    expect(typeof result).toBe('string');
+  });
+});
+
+describe('deriveFromIntent ask intents', () => {
+  it('ask-evaluate maps correctly', () => {
+    expect(deriveFromIntent('ask-evaluate')).toEqual({
+      mode: 'explain', agent: 'architect', jobType: 'ask',
+    });
+  });
+
+  it('ask-ant maps correctly', () => {
+    expect(deriveFromIntent('ask-ant')).toEqual({
+      mode: 'explain', agent: 'architect', jobType: 'ask',
+    });
+  });
+
+  it('ask-general maps correctly', () => {
+    expect(deriveFromIntent('ask-general')).toEqual({
+      mode: 'explain', agent: 'architect', jobType: 'ask',
+    });
+  });
+
+  it('all ask intents round-trip through synthesize -> derive', () => {
+    for (const subType of ['evaluate', 'ant', 'general'] as const) {
+      const intent = synthesizeAskIntent(subType);
+      const derived = deriveFromIntent(intent);
+      expect(derived.mode).toBe('explain');
+      expect(derived.agent).toBe('architect');
+      expect(derived.jobType).toBe('ask');
+    }
+  });
+});
+
+// ============================================
+// resolveFromInfer with workspaceState
+// ============================================
+
+describe('resolveFromInfer with workspaceState', () => {
+  const baseReport: DetectionReport = {
+    detectedMode: 'generate',
+    detectedModeReasoning: 'test',
+    sourceJob: 'design',
+    detectedIntentGroup: 'design-ui',
+    targetFiles: ['outputs/design/ui/ui-spec.json'],
+    primarySources: ['inputs/sources/prd.md'],
+  };
+
+  it('auto-maps targetFiles from report', () => {
+    const rac = resolveFromInfer(baseReport, undefined, undefined, undefined, 'gen-ui-figma', {});
+    expect(rac.target).toEqual(['outputs/design/ui/ui-spec.json']);
+  });
+
+  it('auto-maps primarySources to refs', () => {
+    const rac = resolveFromInfer(baseReport, undefined, undefined, undefined, 'gen-ui-figma', {});
+    expect(rac.refs).toEqual(['inputs/sources/prd.md']);
+  });
+
+  it('actionMetadata target takes priority over report.targetFiles', () => {
+    const rac = resolveFromInfer(baseReport, { target: ['custom.ts'] }, undefined, undefined, 'gen-ui-figma', {});
+    expect(rac.target).toEqual(['custom.ts']);
   });
 });

@@ -112,7 +112,7 @@ describe('buildRuntimeContext (design)', () => {
 
   it('includes existing document in refactor mode', () => {
     const result = buildDesignRuntimeContext(makeDesignState({
-      detectionReport: { jobMode: 'refactor' },
+      detectionReport: { detectedMode: 'refactor' },
       existingDesignDocs: {
         'be-system-main.md': '# Existing Design\nPrevious content here',
       },

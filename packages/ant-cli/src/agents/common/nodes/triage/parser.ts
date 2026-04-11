@@ -43,6 +43,11 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
     if (result.intent === 'ask') {
       result.inScope = parsed.inScope;
       result.askResponse = parsed.askResponse;
+      if (parsed.askSubType === 'evaluate' || parsed.askSubType === 'ant' || parsed.askSubType === 'general') {
+        result.askSubType = parsed.askSubType;
+      } else {
+        result.askSubType = 'general';
+      }
     }
     
     // Continuation assessment (Step 0.5 — present when existing task context was provided)
@@ -143,12 +148,12 @@ function buildRedirectChoice(parsed: any, currentJob?: string, workspaceState?: 
   const designMode = detectDesignMode(workspaceState);
 
   const labels: Record<string, { positive: string; neutral: string }> = {
-    'ui-design':      { positive: 'UI 디자인부터 시작', neutral: '바로 진행' },
-    'system-design':  { positive: '시스템 설계부터 시작', neutral: '바로 진행' },
-    'spec':           { positive: '스펙 설계부터 시작', neutral: '바로 개발' },
+    'design-ui':      { positive: 'UI 디자인부터 시작', neutral: '바로 진행' },
+    'design-system':  { positive: '시스템 설계부터 시작', neutral: '바로 진행' },
+    'design-spec':    { positive: '스펙 설계부터 시작', neutral: '바로 개발' },
   };
 
-  const label = labels[designMode] || labels['spec'];
+  const label = labels[designMode] || labels['design-spec'];
 
   return {
     positive: { label: label.positive, action: 'redirect' },
@@ -159,11 +164,11 @@ function buildRedirectChoice(parsed: any, currentJob?: string, workspaceState?: 
 
 /**
  * Detect design mode from workspace state.
- * Falls back to 'spec' when AgentRegistry or workspaceState is unavailable.
+ * Falls back to 'design-spec' when AgentRegistry or workspaceState is unavailable.
  */
 function detectDesignMode(workspaceState?: WorkspaceState): string {
-  if (!workspaceState) return 'spec';
-  return AgentRegistry.detectMode('design', workspaceState) || 'spec';
+  if (!workspaceState) return 'design-spec';
+  return AgentRegistry.detectMode('design', workspaceState) || 'design-spec';
 }
 
 /**
@@ -223,9 +228,9 @@ function resolveDesignJobDisplayName(suggestedJob?: string, workspaceState?: Wor
 
   const designMode = detectDesignMode(workspaceState);
   const displayNames: Record<string, string> = {
-    'ui-design': 'UI 디자인',
-    'system-design': '시스템 설계',
-    'spec': '스펙 설계',
+    'design-ui': 'UI 디자인',
+    'design-system': '시스템 설계',
+    'design-spec': '스펙 설계',
   };
   return displayNames[designMode] || 'design';
 }

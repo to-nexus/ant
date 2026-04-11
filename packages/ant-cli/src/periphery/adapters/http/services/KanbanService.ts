@@ -4,6 +4,7 @@ import { WorkspaceResolver } from '../../../../infrastructure/workspace/Workspac
 import { UserContext } from '../../../../core/types/user';
 import { StateStorePort } from '../../../../core/ports/stateStore';
 import type { TaskQueueSnapshot, KanbanData } from '../../../../core/types/task';
+import type { SessionState } from '../../../../core/types/session';
 import { getSessionFilePathByJob, getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
 
 /**
@@ -193,7 +194,7 @@ export class KanbanService {
       sessionData = this.lastGoodSessionByPath.get(sessionPath) || null;
     }
     
-    const sessionState = sessionData?.state || {};
+    const sessionState: Partial<SessionState> = sessionData?.state || {};
     let sessionJobId = sessionState.jobId;
     const sessionTaskQueue = sessionState.taskQueue || [];
     const completedTaskIds = sessionState.completedTasks || [];
@@ -308,7 +309,7 @@ export class KanbanService {
           recursionLimit: sessionState.recursionLimit || finalLimit,
           jobTiming: liveSnapshot.jobTiming ?? sessionState.jobTiming,
           tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
-          estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? (sessionState as any).estimatingTokenUsage,
+          estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? sessionState.estimatingTokenUsage,
           estimatingLabel: liveSnapshot.estimatingLabel,
           estimatingStartedAt: liveSnapshot.estimatingStartedAt,
           estimatingNodeId: liveSnapshot.estimatingNodeId,
@@ -336,7 +337,7 @@ export class KanbanService {
         tasksRemaining: sessionState.tasksRemaining || 0,
         jobTiming: liveSnapshot.jobTiming ?? sessionState.jobTiming,
         tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
-        estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? (sessionState as any).estimatingTokenUsage,
+        estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? sessionState.estimatingTokenUsage,
         jobType,
         agent: getAgentForJobSafe(jobType),
       };
@@ -361,10 +362,10 @@ export class KanbanService {
         recursionLimit: sessionState.recursionLimit || finalLimit,
         jobTiming: sessionState.jobTiming,
         tokenUsage: sessionState.tokenUsage,
-        estimatingTokenUsage: (sessionState as any).estimatingTokenUsage,
-        estimatingLabel: (sessionState as any).estimatingLabel,
-        estimatingStartedAt: (sessionState as any).estimatingStartedAt,
-        estimatingNodeId: (sessionState as any).estimatingNodeId,
+        estimatingTokenUsage: sessionState.estimatingTokenUsage,
+        estimatingLabel: sessionState.estimatingLabel,
+        estimatingStartedAt: sessionState.estimatingStartedAt,
+        estimatingNodeId: sessionState.estimatingNodeId,
         jobType,
         agent: getAgentForJobSafe(jobType),
       };
@@ -392,7 +393,7 @@ export class KanbanService {
       recursionLimit: sessionState.recursionLimit || finalLimit,
       jobTiming: sessionState.jobTiming,
       tokenUsage: sessionState.tokenUsage,
-      estimatingTokenUsage: (sessionState as any).estimatingTokenUsage,
+      estimatingTokenUsage: sessionState.estimatingTokenUsage,
       jobType,
       agent: getAgentForJobSafe(jobType),
     };

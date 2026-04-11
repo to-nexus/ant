@@ -1,13 +1,12 @@
 import { useEffect, useRef, Fragment } from 'react';
 import type { MentionSuggestion } from './hooks/useMentionAutocomplete';
-import { Target, Crosshair, FileText, BookOpen, Layers, Zap } from 'lucide-react';
+import { Target, Crosshair, FileText, BookOpen, Zap } from 'lucide-react';
 
 const TYPE_ICONS: Record<string, any> = {
   intent: Target,
   target: Crosshair,
   ref: FileText,
   context: BookOpen,
-  basis: Layers,
   explicit: Zap,
 };
 
@@ -16,7 +15,6 @@ const TYPE_COLORS: Record<string, string> = {
   target: 'text-orange-500',
   ref: 'text-emerald-500',
   context: 'text-gray-500',
-  basis: 'text-purple-500',
   explicit: 'text-indigo-500',
 };
 
@@ -25,7 +23,6 @@ const COMMAND_ICON_MAP: Record<string, { icon: any; color: string }> = {
   '@target:':  { icon: Crosshair, color: 'text-orange-500' },
   '@ref:':     { icon: FileText,  color: 'text-emerald-500' },
   '@ctx:':     { icon: BookOpen,  color: 'text-gray-500' },
-  '@basis:':   { icon: Layers,    color: 'text-purple-500' },
   '@explicit': { icon: Zap,       color: 'text-indigo-500' },
 };
 

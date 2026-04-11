@@ -1,7 +1,7 @@
 import { SessionPort, FileTreeUpdatePort } from "../../../core/ports";
 import { SessionableJobType } from '@ant/shared';
 import * as crypto from "crypto";
-import { Session, SessionRun, SessionArtifacts } from "../../../core/types";
+import { Session, SessionRun, SessionArtifacts, SessionState } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -234,7 +234,7 @@ export class FileSessionAdapter implements SessionPort {
     project: string,
     feature: string,
     job: SessionableJobType,
-    artifacts: Partial<SessionArtifacts> & { state?: any }
+    artifacts: Partial<SessionArtifacts> & { state?: Partial<SessionState> }
   ): Promise<void> {
     const lock = this.getFileLock(job);
     await lock.runExclusive(async () => {

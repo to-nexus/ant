@@ -30,7 +30,8 @@ export class MessageManager {
     featureName: string, 
     content: string, 
     jobId?: string, 
-    userContext?: UserContext
+    userContext?: UserContext,
+    actionMetadata?: import('@ant/shared').ActionMetadata,
   ): Promise<string> {
     const session = this.sessionManager.getOrCreateSession(projectId, featureName, jobId, userContext);
     
@@ -43,7 +44,8 @@ export class MessageManager {
         content
       }],
       timestamp: new Date().toISOString(),
-      jobId
+      jobId,
+      ...(actionMetadata && Object.keys(actionMetadata).length > 0 && { actionMetadata }),
     };
     
     session.messages.push(userMessage);

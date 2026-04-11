@@ -464,7 +464,7 @@ Continue writing code files and output <done>true</done> when complete.`);
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Dep-hash skip guard: skip bare install when declaration files are unchanged
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const isRetrying = !!(state as any).retries && (state as any).retries > 0;
+  const isRetrying = !!(state.retries && state.retries > 0);
   if (isBareInstallCommand(command) && !isRetrying) {
     const currentHash = await computeDepFileHash(featureRootPath);
     const savedHash = state._depFileHash;

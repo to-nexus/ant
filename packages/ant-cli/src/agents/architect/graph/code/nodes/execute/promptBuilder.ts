@@ -170,7 +170,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
     if (docs.length > 0) {
       resolvedActionWithDocs = {
-        ...(state.resolvedAction || { source: 'infer' as const, jobMode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+        ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
         documents: docs,
       };
     }
@@ -198,7 +198,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       figmaStartNodeId: state.figmaStartNodeId,
       resolvedAction: resolvedActionWithDocs,
     },
-    state.detectionReport?.jobMode,
+    state.detectionReport?.detectedMode,
     state.currentTask.type
   );
   
@@ -641,7 +641,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
             uiDocSections: uiDocForTask ? (state.currentTask?.uiSections ?? ['all']) : undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
-            jobMode: state.detectionReport?.jobMode,
+            detectedMode: state.detectionReport?.detectedMode,
             taskType: state.currentTask?.type,
             detectedEnvironment: state.detectionReport?.environment,
             projectCodeContextFiles: executeProjectCodeContext?.files?.length || 0,

@@ -8,6 +8,7 @@
 import { WorkspaceState } from '../../../common/nodes/triage/types.js';
 import { TokenUsage } from '../../../common/graph/llmHelpers.js';
 import type { MessageContentBlock } from '../../../../core/ports/llm.js';
+import type { ResolvedActionContext } from '@ant/shared';
 
 /**
  * Tool call record for debugging
@@ -54,9 +55,12 @@ export interface AskGraphState {
   response?: string;
   streamingCompleted?: boolean;
   
+  // Intent-based context (from triage RAC synthesis)
+  resolvedAction?: ResolvedActionContext;
+  
   // Evaluation state (set by agent node when evaluation request is detected)
   isEvaluation?: boolean;
-  evalType?: 'prd' | 'system-design' | 'ui-design' | 'code' | 'all';
+  evalType?: 'prd' | 'design-system' | 'design-ui' | 'code' | 'all';
   
   // Chat streaming state (to prevent starting new message after tool calls)
   chatMessageStarted?: boolean;

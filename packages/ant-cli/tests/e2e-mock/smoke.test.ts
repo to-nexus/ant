@@ -42,7 +42,7 @@ describe('E2E Mock Smoke', () => {
     const jobId = await enqueueJob({
       jobType: 'code',
       directive: 'E2E smoke: hello world',
-      actionMetadata: { explicit: true, intent: 'create-code', basis: 'directive' },
+      actionMetadata: { explicit: true, intent: 'gen-code-directive' },
     });
     expect(jobId).toBeTruthy();
   });
@@ -52,7 +52,7 @@ describe('E2E Mock Smoke', () => {
     const jobId = await enqueueJob({
       jobType: 'design',
       directive: 'E2E smoke: frontend system design',
-      actionMetadata: { explicit: true, intent: 'create-fe', basis: 'directive' },
+      actionMetadata: { explicit: true, intent: 'gen-sys-fe' },
     });
     expect(jobId).toBeTruthy();
   });
@@ -63,7 +63,7 @@ describe('E2E Mock Smoke', () => {
       jobType: 'plan',
       agent: 'planner',
       directive: 'E2E smoke: create a project plan',
-      actionMetadata: { explicit: true, intent: 'create-plan', basis: 'directive' },
+      actionMetadata: { explicit: true, intent: 'gen-plan' },
     });
     expect(jobId).toBeTruthy();
   });

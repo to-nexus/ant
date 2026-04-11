@@ -4,7 +4,7 @@ export function detectResponse(jobType?: string): string {
   if (jobType === 'design') {
     return `<detect>
 {
-  "workType": "system-design",
+  "intentGroup": "design-system",
   "jobMode": "generate",
   "jobModeReasoning": "Mock: generating new design from directive.",
   "domain": "service",

@@ -2,21 +2,20 @@ import { useState, useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import {
   INTENT_DEFINITIONS,
-  getAvailableBases,
   getConfigSlots,
-  type ActionMetadata,
+  type IntentId,
 } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
 
 export interface MentionSuggestion {
-  type: 'intent' | 'target' | 'ref' | 'context' | 'basis' | 'explicit' | 'command';
+  type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'command';
   id: string;
   label: string;
   description?: string;
   group?: 'suggested' | 'all';
 }
 
-const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@basis:', '@explicit'] as const;
+const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@explicit'] as const;
 type MentionPrefix = (typeof MENTION_PREFIXES)[number];
 
 type FileMentionPrefix = '@target:' | '@ref:' | '@ctx:';
@@ -26,7 +25,6 @@ const COMMAND_MENU: MentionSuggestion[] = [
   { type: 'command', id: '@target:', label: 'target', description: '대상 파일을 지정' },
   { type: 'command', id: '@ref:',    label: 'ref',    description: '참조 문서를 추가' },
   { type: 'command', id: '@ctx:',    label: 'ctx',    description: '컨텍스트 문서를 추가' },
-  { type: 'command', id: '@basis:',  label: 'basis',  description: '작업 근거를 설정' },
   { type: 'command', id: '@explicit',label: 'explicit',description: '추론 생략, 직접 지정' },
 ];
 
@@ -44,19 +42,16 @@ function flattenFilePaths(nodes: FileNode[], prefix = ''): string[] {
   return paths;
 }
 
-function getSuggestedDirs(intent: string, prefix: FileMentionPrefix): string[] {
-  const bases = getAvailableBases(intent);
+function getSuggestedDirs(intent: IntentId, prefix: FileMentionPrefix): string[] {
+  const slots = getConfigSlots(intent);
+  if (!slots) return [];
   const dirs = new Set<string>();
-  for (const basis of bases) {
-    const slots = getConfigSlots(intent, basis);
-    if (!slots) continue;
-    if (prefix === '@ref:') {
-      slots.refs.forEach(s => { if (s.path && !s.codebase) dirs.add(s.path); });
-    } else if (prefix === '@ctx:') {
-      slots.context.forEach(s => { if (s.path && !s.codebase) dirs.add(s.path); });
-    } else if (prefix === '@target:') {
-      if (slots.target.dir) dirs.add(slots.target.dir);
-    }
+  if (prefix === '@ref:') {
+    slots.refs.forEach(s => { if (s.path && !s.codebase) dirs.add(s.path); });
+  } else if (prefix === '@ctx:') {
+    slots.context.forEach(s => { if (s.path && !s.codebase) dirs.add(s.path); });
+  } else if (prefix === '@target:') {
+    if (slots.target.dir) dirs.add(slots.target.dir);
   }
   return [...dirs];
 }
@@ -70,7 +65,7 @@ function buildGroupedFileSuggestions(
   prefix: FileMentionPrefix,
   allFilePaths: string[],
   query: string,
-  intent: string | undefined,
+  intent: IntentId | undefined,
 ): MentionSuggestion[] {
   const q = query.toLowerCase();
   const baseFilter = prefix === '@target:'
@@ -131,7 +126,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
   }, [message, cursorPos]);
 
   const suggestions = useMemo((): MentionSuggestion[] => {
-    // Level 1: command menu (@ or @partial)
     if (commandQuery !== null) {
       if (commandQuery === '') return COMMAND_MENU;
       return COMMAND_MENU.filter(c => c.label.startsWith(commandQuery));
@@ -140,7 +134,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     if (!prefix) return [];
     const q = query.toLowerCase();
 
-    // Level 2: prefix-specific autocomplete
     switch (prefix) {
       case '@intent:':
         return INTENT_DEFINITIONS
@@ -156,14 +149,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
 
       case '@ctx:':
         return buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent);
-
-      case '@basis:': {
-        const intent = actionMetadata.intent;
-        const validBases: string[] = intent ? getAvailableBases(intent) : ['prd', 'directive', 'existing-doc', 'figma', 'references', 'spec', 'design-doc'];
-        return validBases
-          .filter(b => b.includes(q))
-          .map(b => ({ type: 'basis' as const, id: b, label: b }));
-      }
 
       case '@explicit':
         if (q === '') return [{ type: 'explicit', id: 'true', label: 'Explicit', description: 'Skip triage, use metadata as-is' }];
@@ -188,7 +173,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         setSelectedIndex(0);
         return { newMessage, newCursorPos: Math.max(0, beforeMention.length) };
       }
-      // Replace @ partial with the full prefix, triggering Level 2 on next render
       const newMessage = beforeMention + suggestion.id + afterCursor;
       setIsOpen(false);
       setSelectedIndex(0);
@@ -199,7 +183,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
 
     switch (suggestion.type) {
       case 'intent':
-        updateActionMetadata({ intent: suggestion.id });
+        updateActionMetadata({ intent: suggestion.id as IntentId });
         break;
       case 'target':
         updateActionMetadata({
@@ -215,9 +199,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         updateActionMetadata({
           context: [...(actionMetadata.context || []).filter(c => c !== suggestion.id), suggestion.id],
         });
-        break;
-      case 'basis':
-        updateActionMetadata({ basis: suggestion.id as ActionMetadata['basis'] });
         break;
       case 'explicit':
         updateActionMetadata({ explicit: suggestion.id === 'true' });

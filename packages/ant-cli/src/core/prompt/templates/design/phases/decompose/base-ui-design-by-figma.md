@@ -6,9 +6,9 @@
 
 You are analyzing UI complexity to break it into tasks.
 
-**Job Mode**: {{jobMode}}
+**Job Mode**: {{detectedMode}}
 
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 🔧 REFACTOR MODE - Modify Existing Documents
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -63,7 +63,7 @@ You are analyzing UI complexity to break it into tasks.
 
 ---
 
-{{#unless (eq jobMode "refactor")}}
+{{#unless (eq detectedMode "refactor")}}
 ## 🎯 SELECTIVE DOCUMENT GENERATION
 
 **Check the Requirements above for explicit document requests.**

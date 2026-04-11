@@ -61,7 +61,7 @@ The documents you generate serve different authority levels in code implementati
 ## XML Tag Reference for UI Design Documents
 ════════════════════════════════════════════════════════════════════════════════
 
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 ### Scenario: MODIFY EXISTING SECTION (Refactor Mode)
 
 **You are modifying an EXISTING section of the document, NOT creating new content.**

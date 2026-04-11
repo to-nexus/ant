@@ -83,8 +83,8 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     const { jobId: newJobId, jobTiming: newJobTiming } = JobTimingManager.initializeNewJob(state._httpJobId);
     
     // Store on state for downstream nodes (decompose will finalize estimating phase)
-    (state as any).jobId = newJobId;
-    (state as any).jobTiming = newJobTiming;
+    state.jobId = newJobId;
+    state.jobTiming = newJobTiming;
     
     // Set on broadcaster so every subsequent broadcast includes timing
     if (state.deps?.kanbanUpdate?.setJobTiming) {
@@ -122,7 +122,7 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('resolve', state._uiLocale), 'resolve');
   }
   
-  const jobMode = state.detectionReport?.jobMode;
+  const jobMode = state.detectionReport?.detectedMode;
   const context = state.context;
   
   // ✅ Increment recursion count (track node execution for UI gauge)
@@ -468,21 +468,30 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     const codebaseProfile = state.context.codebaseProfile;
     resolvedAction = resolveFromExplicit(actionMetadata, codebaseProfile);
     console.log(`📋 [Design Resolve] RAC created (explicit): intent=${actionMetadata.intent}, tech=${JSON.stringify(resolvedAction.tech)}`);
+  }
 
-    // Load documents for explicit path: ActionMetadata.refs/context → ResolvedDocument[]
-    if (fileSystem && featurePath) {
-      const documents: ResolvedDocument[] = [];
-      for (const refPath of actionMetadata.refs || []) {
-        const content = await loadFeatureFile(refPath, fileSystem, featurePath);
-        if (content) documents.push({ path: refPath, content, role: 'ref' });
-      }
-      for (const ctxPath of actionMetadata.context || []) {
-        const content = await loadFeatureFile(ctxPath, fileSystem, featurePath);
-        if (content) documents.push({ path: ctxPath, content, role: 'context' });
-      }
-      if (documents.length > 0) {
+  // Additive document loading: refs/context loaded regardless of intent presence.
+  // For explicit path → attach to RAC immediately.
+  // For infer path → store in _pendingDocuments for detectEnvironment to merge after RAC creation.
+  let pendingDocuments: ResolvedDocument[] | undefined;
+  if (fileSystem && featurePath && (actionMetadata?.refs?.length || actionMetadata?.context?.length)) {
+    const documents: ResolvedDocument[] = [];
+    for (const refPath of actionMetadata!.refs || []) {
+      const content = await loadFeatureFile(refPath, fileSystem, featurePath);
+      if (content) documents.push({ path: refPath, content, role: 'ref' });
+    }
+    for (const ctxPath of actionMetadata!.context || []) {
+      const content = await loadFeatureFile(ctxPath, fileSystem, featurePath);
+      if (content) documents.push({ path: ctxPath, content, role: 'context' });
+    }
+
+    if (documents.length > 0) {
+      if (resolvedAction) {
         resolvedAction = { ...resolvedAction, documents };
         console.log(`📋 [Design Resolve] RAC documents loaded: ${documents.length} (${documents.filter(d => d.role === 'ref').length} ref, ${documents.filter(d => d.role === 'context').length} context)`);
+      } else {
+        pendingDocuments = documents;
+        console.log(`📋 [Design Resolve] Pending documents stored for infer merge: ${documents.length}`);
       }
     }
   }
@@ -496,12 +505,13 @@ export async function resolve(state: DesignGraphState): Promise<DesignGraphState
     existingDesignDocs,
     figmaConfig,
     resolvedAction,
+    _pendingDocuments: pendingDocuments,
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     _httpJobId: state._httpJobId,
     _phaseTimings: { ...(state._phaseTimings || {}), resolve: Date.now() - phaseStart },
-    jobId: (state as any).jobId,
-    jobTiming: (state as any).jobTiming,
+    jobId: state.jobId,
+    jobTiming: state.jobTiming,
     jobConversation: processedJobConversation,
   };
 }

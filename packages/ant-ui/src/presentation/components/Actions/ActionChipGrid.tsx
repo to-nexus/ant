@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, type ActionId, type ActionReadiness } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, type IntentGroup, type ActionReadiness } from '@ant/shared';
 import { ActionChip } from './ActionChip';
 
 const EMPTY_READINESS: ActionReadiness = {
@@ -13,9 +13,9 @@ const EMPTY_READINESS: ActionReadiness = {
 };
 
 interface ActionChipGridProps {
-  readiness: Record<ActionId, ActionReadiness>;
+  readiness: Record<IntentGroup, ActionReadiness>;
   variant: 'compact' | 'large';
-  onSelect: (actionId: ActionId) => void;
+  onSelect: (actionId: IntentGroup) => void;
   agentFilter?: string;
   title?: string;
   subtitle?: string;

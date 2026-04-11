@@ -34,7 +34,7 @@ const baseCtx = { project: 'test', featurePath: '/tmp/test', featureFolder: 'tes
 
 function rac(overrides?: Partial<ResolvedActionContext>): ResolvedActionContext {
   return {
-    source: 'infer', jobMode: 'generate',
+    source: 'infer', mode: 'generate',
     tech: { language: 'typescript', environment: 'frontend' },
     hasExplicitFields: false,
     ...overrides,

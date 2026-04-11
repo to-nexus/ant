@@ -6,8 +6,8 @@
     "visual-source-authority": [],
     "ui-design-policy": [],
     "action-context": ["resolvedAction"],
-    "basis-guidance": ["resolvedAction"],
-    "refactor-guidance": ["resolvedAction"]
+    "refactor-guidance": ["resolvedAction"],
+    "explain-guidance": ["resolvedAction"]
   },
   "code/base/injections": {
     "git-diff": ["gitDiff"],

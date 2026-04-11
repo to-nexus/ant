@@ -25,16 +25,18 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 | `ui-design` | `inputs/figma.json` populated **또는** `inputs/references/` 존재 | ui-tokens.json, ui-assets.json, ui-spec.json |
 | `spec` | spec 모드로 명시적 지정 시 | spec 문서 |
 
-## UI Design Source Mode (SSOT)
+## UI Design Pipeline Mode (Intent-Based)
 
-`ui-design` workType은 두 가지 상호배타적 소스 모드를 갖는다. `detectEnvironment`에서 `state.uiDesignSource`를 결정한다.
+`ui-design` workType의 파이프라인 모드는 `resolvedAction.intent`로 결정된다. `isFigmaPipeline(intent, figmaPopulated)` 헬퍼가 분기 판정을 담당한다.
 
-| 모드 | 조건 | 방법론 | 도구 세트 |
-|------|------|--------|----------|
-| `figma` | `inputs/figma.json`에 files가 populated | Figma MCP 구조적 데이터 추출 | `TOOL_SETS.uiDesignFigma` |
-| `references` | figma.json 비어있고 references/ 존재 | 스크린샷 멀티모달 시각 분석 | `TOOL_SETS.uiDesign` |
+| Intent | 조건 | 방법론 | 도구 세트 |
+|--------|------|--------|----------|
+| `gen-ui-figma` | `inputs/figma.json` populated + MCP 가용 | Figma MCP 구조적 데이터 추출 | `TOOL_SETS.uiDesignFigma` |
+| `gen-ui-ref` | references/ 존재 | 스크린샷 멀티모달 시각 분석 | `TOOL_SETS.uiDesign` |
+| `gen-ui-desc` | 텍스트 설명만 | 텍스트 기반 UI 설계 | `TOOL_SETS.uiDesign` |
+| `rev-ui` | 기존 UI 문서 수정 | figmaConfig 여부에 따라 Figma/Ref 모드 | 상황에 따라 결정 |
 
-Figma 모드가 우선한다. 양쪽 모두 입력이 있으면 Figma를 사용하고 references는 무시된다. 상세 파이프라인은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
+Figma intent(`gen-ui-figma`)가 합성되면 references는 무시된다. 상세 파이프라인은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
 
 ## documentType (System Design)
 
@@ -52,8 +54,8 @@ decompose가 프로젝트 환경에 따라 문서 구조를 결정한다.
 
 ```
 __start__ -> resolve -> [4-way router]
-    +-> triage -> detectEnvironment -> [source router]
-         +-> uiDesignSource === 'figma': figmaExplore -> decompose
+    +-> triage -> detectEnvironment -> [intent router]
+         +-> isFigmaPipeline(intent): figmaExplore -> decompose
          +-> otherwise: decompose
     +-> revise -> plan
     +-> plan (직행)

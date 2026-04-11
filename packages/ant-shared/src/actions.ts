@@ -7,12 +7,14 @@
 
 import type { JobType } from './job';
 import type { DesignSubdir } from './canonical';
+import type { IntentGroup } from './detection';
 
 // ============================================
 // Action Definitions
 // ============================================
 
-export type ActionId = 'plan' | 'system-design' | 'ui-design' | 'spec' | 'code' | 'visual' | 'learn';
+/** @deprecated Use IntentGroup instead */
+export type ActionId = IntentGroup;
 
 export type ActionStatus = 'active' | 'coming-soon';
 
@@ -23,7 +25,7 @@ export type ActionStatus = 'active' | 'coming-soon';
  * per-Intent via deriveFromIntent() and the config matrix.
  */
 export interface ActionDefinition {
-  readonly id: ActionId;
+  readonly id: IntentGroup;
   readonly label: { en: string; ko: string };
   readonly description: { en: string; ko: string };
   readonly status: ActionStatus;
@@ -37,19 +39,19 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
     status: 'active',
   },
   {
-    id: 'system-design',
+    id: 'design-system',
     label: { en: 'System Design', ko: '시스템 설계' },
     description: { en: 'Design architecture, API contracts, and data models', ko: '아키텍처, API 계약, 데이터 모델을 설계합니다' },
     status: 'active',
   },
   {
-    id: 'ui-design',
+    id: 'design-ui',
     label: { en: 'UI Design', ko: 'UI 설계' },
     description: { en: 'Design tokens, assets, and UI specifications', ko: '디자인 토큰, 에셋, UI 스펙을 설계합니다' },
     status: 'active',
   },
   {
-    id: 'spec',
+    id: 'design-spec',
     label: { en: 'Feature Spec', ko: '기능 스펙' },
     description: { en: 'Create implementation specs for a feature scope', ko: '특정 기능의 구현 계획을 작성합니다' },
     status: 'active',
@@ -67,40 +69,16 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
     status: 'active',
   },
   {
-    id: 'learn',
+    id: 'learn-codebase',
     label: { en: 'Learn Codebase', ko: '코드베이스 학습' },
     description: { en: 'Analyze and index existing codebase', ko: '기존 코드를 분석하고 인덱싱합니다' },
     status: 'coming-soon',
   },
-];
-
-// ============================================
-// Sub-modes (UI Design)
-// ============================================
-
-export type UIDesignModeId = 'figma' | 'references' | 'description';
-
-export interface SubModeDefinition {
-  readonly id: string;
-  readonly label: { en: string; ko: string };
-  readonly description: { en: string; ko: string };
-}
-
-export const UI_DESIGN_SUB_MODES: ReadonlyArray<SubModeDefinition> = [
   {
-    id: 'figma',
-    label: { en: 'Figma-based', ko: 'Figma 기반' },
-    description: { en: 'Extract tokens, assets, and specs from Figma file', ko: 'Figma 파일에서 토큰, 에셋, 스펙을 추출합니다' },
-  },
-  {
-    id: 'references',
-    label: { en: 'Screenshot-based', ko: '스크린샷 기반' },
-    description: { en: 'Analyze reference images to design UI', ko: '레퍼런스 이미지를 분석하여 UI를 설계합니다' },
-  },
-  {
-    id: 'description',
-    label: { en: 'Description-based', ko: '설명 기반' },
-    description: { en: 'Design UI from text description (lower accuracy)', ko: '텍스트 설명으로 UI를 설계합니다 (정확도가 낮을 수 있음)' },
+    id: 'ask',
+    label: { en: 'Ask', ko: '질문' },
+    description: { en: 'Ask questions and get evaluations', ko: '질문하고 평가를 받습니다' },
+    status: 'active',
   },
 ];
 
@@ -108,131 +86,168 @@ export const UI_DESIGN_SUB_MODES: ReadonlyArray<SubModeDefinition> = [
 // Detected execution modes (auto-detected, not user-selected)
 // ============================================
 
-export type CodeExecutionMode = 'spec-based' | 'design-doc-based' | 'directive-based';
 export type DesignExecutionMode = 'generate' | 'refactor';
 
 // ============================================
 // Intent Definitions (first-class concept)
 // ============================================
 
-export interface IntentDefinition {
+export interface IntentDefinitionShape {
   readonly id: string;
-  readonly actionId: ActionId;
+  readonly intentGroup: IntentGroup;
   readonly label: { en: string; ko: string };
   readonly description: { en: string; ko: string };
 }
 
-export const INTENT_DEFINITIONS: ReadonlyArray<IntentDefinition> = [
+const INTENT_DEFINITIONS_INTERNAL = [
   // Plan
-  { id: 'create-plan', actionId: 'plan', label: { en: 'Create PRD', ko: '기획서 작성' }, description: { en: 'Generate a new product requirements document', ko: '새 기획서를 작성합니다' } },
-  { id: 'revise-plan', actionId: 'plan', label: { en: 'Update PRD', ko: '기획서 업데이트' }, description: { en: 'Revise existing PRD document', ko: '기존 기획서를 업데이트합니다' } },
+  { id: 'gen-plan', intentGroup: 'plan', label: { en: 'Create PRD', ko: '기획서 작성' }, description: { en: 'Generate a new product requirements document', ko: '새 기획서를 작성합니다' } },
+  { id: 'rev-plan', intentGroup: 'plan', label: { en: 'Update PRD', ko: '기획서 업데이트' }, description: { en: 'Revise existing PRD document', ko: '기존 기획서를 업데이트합니다' } },
+  { id: 'explain-plan', intentGroup: 'plan', label: { en: 'Explain PRD', ko: '기획서 설명' }, description: { en: 'Explain PRD content and requirements', ko: '기획서 내용과 요구사항을 설명합니다' } },
 
-  // System Design
-  { id: 'create-fe', actionId: 'system-design', label: { en: 'Frontend System', ko: '프론트엔드 시스템' }, description: { en: 'Design frontend architecture', ko: '프론트엔드 아키텍처를 설계합니다' } },
-  { id: 'create-be', actionId: 'system-design', label: { en: 'Backend System', ko: '백엔드 시스템' }, description: { en: 'Design backend architecture and API contracts', ko: '백엔드 아키텍처와 API 계약을 설계합니다' } },
-  { id: 'create-fullstack', actionId: 'system-design', label: { en: 'Fullstack System', ko: '풀스택 시스템' }, description: { en: 'Design full-stack architecture', ko: '풀스택 아키텍처를 설계합니다' } },
-  { id: 'revise-system', actionId: 'system-design', label: { en: 'Update Design', ko: '설계 업데이트' }, description: { en: 'Revise existing system design documents', ko: '기존 시스템 설계 문서를 업데이트합니다' } },
+  // Design — System
+  { id: 'gen-sys-fe', intentGroup: 'design-system', label: { en: 'Frontend System', ko: '프론트엔드 시스템' }, description: { en: 'Design frontend architecture', ko: '프론트엔드 아키텍처를 설계합니다' } },
+  { id: 'gen-sys-be', intentGroup: 'design-system', label: { en: 'Backend System', ko: '백엔드 시스템' }, description: { en: 'Design backend architecture and API contracts', ko: '백엔드 아키텍처와 API 계약을 설계합니다' } },
+  { id: 'gen-sys-full', intentGroup: 'design-system', label: { en: 'Fullstack System', ko: '풀스택 시스템' }, description: { en: 'Design full-stack architecture', ko: '풀스택 아키텍처를 설계합니다' } },
+  { id: 'rev-sys', intentGroup: 'design-system', label: { en: 'Update Design', ko: '설계 업데이트' }, description: { en: 'Revise existing system design documents', ko: '기존 시스템 설계 문서를 업데이트합니다' } },
+  { id: 'explain-sys', intentGroup: 'design-system', label: { en: 'Explain System Design', ko: '시스템 설계 설명' }, description: { en: 'Explain system architecture and design', ko: '시스템 아키텍처와 설계를 설명합니다' } },
 
-  // UI Design
-  { id: 'create-figma', actionId: 'ui-design', label: { en: 'Figma-based', ko: 'Figma 기반' }, description: { en: 'Extract design from Figma file', ko: 'Figma 파일에서 디자인을 추출합니다' } },
-  { id: 'create-ref', actionId: 'ui-design', label: { en: 'Screenshot-based', ko: '스크린샷 기반' }, description: { en: 'Design UI from reference images', ko: '레퍼런스 이미지로 UI를 설계합니다' } },
-  { id: 'create-desc', actionId: 'ui-design', label: { en: 'Description-based', ko: '설명 기반' }, description: { en: 'Design UI from text description', ko: '텍스트 설명으로 UI를 설계합니다' } },
-  { id: 'revise-ui', actionId: 'ui-design', label: { en: 'Update UI Design', ko: 'UI 설계 업데이트' }, description: { en: 'Revise existing UI design documents', ko: '기존 UI 설계 문서를 업데이트합니다' } },
+  // Design — UI
+  { id: 'gen-ui-figma', intentGroup: 'design-ui', label: { en: 'Figma-based', ko: 'Figma 기반' }, description: { en: 'Extract design from Figma file', ko: 'Figma 파일에서 디자인을 추출합니다' } },
+  { id: 'gen-ui-ref', intentGroup: 'design-ui', label: { en: 'Screenshot-based', ko: '스크린샷 기반' }, description: { en: 'Design UI from reference images', ko: '레퍼런스 이미지로 UI를 설계합니다' } },
+  { id: 'gen-ui-desc', intentGroup: 'design-ui', label: { en: 'Description-based', ko: '설명 기반' }, description: { en: 'Design UI from text description', ko: '텍스트 설명으로 UI를 설계합니다' } },
+  { id: 'rev-ui', intentGroup: 'design-ui', label: { en: 'Update UI Design', ko: 'UI 설계 업데이트' }, description: { en: 'Revise existing UI design documents', ko: '기존 UI 설계 문서를 업데이트합니다' } },
+  { id: 'explain-ui', intentGroup: 'design-ui', label: { en: 'Explain UI Design', ko: 'UI 설계 설명' }, description: { en: 'Explain UI design decisions and specs', ko: 'UI 설계 결정과 스펙을 설명합니다' } },
 
-  // Spec
-  { id: 'create-spec', actionId: 'spec', label: { en: 'Create Spec', ko: '스펙 작성' }, description: { en: 'Write implementation spec for a feature', ko: '기능의 구현 스펙을 작성합니다' } },
-  { id: 'revise-spec', actionId: 'spec', label: { en: 'Update Spec', ko: '스펙 업데이트' }, description: { en: 'Revise existing spec document', ko: '기존 스펙 문서를 업데이트합니다' } },
+  // Design — Spec
+  { id: 'gen-spec', intentGroup: 'design-spec', label: { en: 'Create Spec', ko: '스펙 작성' }, description: { en: 'Write implementation spec for a feature', ko: '기능의 구현 스펙을 작성합니다' } },
+  { id: 'rev-spec', intentGroup: 'design-spec', label: { en: 'Update Spec', ko: '스펙 업데이트' }, description: { en: 'Revise existing spec document', ko: '기존 스펙 문서를 업데이트합니다' } },
+  { id: 'explain-spec', intentGroup: 'design-spec', label: { en: 'Explain Spec', ko: '스펙 설명' }, description: { en: 'Explain feature specification details', ko: '기능 스펙 상세를 설명합니다' } },
 
   // Code
-  { id: 'create-code', actionId: 'code', label: { en: 'Generate Code', ko: '코드 생성' }, description: { en: 'Generate code from design or directive', ko: '설계 또는 지시사항으로 코드를 생성합니다' } },
-  { id: 'refactor-code', actionId: 'code', label: { en: 'Refactor Code', ko: '코드 리팩토링' }, description: { en: 'Refactor existing codebase', ko: '기존 코드를 리팩토링합니다' } },
+  { id: 'gen-code-sys', intentGroup: 'code', label: { en: 'Code from System Design', ko: '시스템 설계 기반 코드' }, description: { en: 'Generate code from system design documents', ko: '시스템 설계 문서를 기반으로 코드를 생성합니다' } },
+  { id: 'gen-code-spec', intentGroup: 'code', label: { en: 'Code from Spec', ko: '스펙 기반 코드' }, description: { en: 'Generate code from feature spec documents', ko: '기능 스펙 문서를 기반으로 코드를 생성합니다' } },
+  { id: 'gen-code-directive', intentGroup: 'code', label: { en: 'Code from Directive', ko: '지시사항 기반 코드' }, description: { en: 'Generate code from chat directive', ko: '채팅 지시사항으로 코드를 생성합니다' } },
+  { id: 'rev-code', intentGroup: 'code', label: { en: 'Refactor Code', ko: '코드 리팩토링' }, description: { en: 'Refactor existing codebase', ko: '기존 코드를 리팩토링합니다' } },
+  { id: 'explain-code', intentGroup: 'code', label: { en: 'Explain Code', ko: '코드 설명' }, description: { en: 'Explain and answer questions about code', ko: '코드에 대해 설명하고 질문에 답합니다' } },
 
   // Visual
-  { id: 'create-visual', actionId: 'visual', label: { en: 'Generate Images', ko: '이미지 생성' }, description: { en: 'Generate images and visual assets', ko: '이미지와 비주얼 에셋을 생성합니다' } },
+  { id: 'gen-visual', intentGroup: 'visual', label: { en: 'Generate Images', ko: '이미지 생성' }, description: { en: 'Generate images and visual assets', ko: '이미지와 비주얼 에셋을 생성합니다' } },
+  { id: 'explain-visual', intentGroup: 'visual', label: { en: 'Explain Visual', ko: '이미지 설명' }, description: { en: 'Explain visual assets and images', ko: '이미지와 비주얼 에셋을 설명합니다' } },
 
-  // Learn (coming-soon)
-  { id: 'create-learn', actionId: 'learn', label: { en: 'Learn Codebase', ko: '코드베이스 학습' }, description: { en: 'Analyze and index codebase', ko: '코드를 분석하고 인덱싱합니다' } },
-];
+  // Learn
+  { id: 'gen-learn', intentGroup: 'learn-codebase', label: { en: 'Learn Codebase', ko: '코드베이스 학습' }, description: { en: 'Analyze and index codebase', ko: '코드를 분석하고 인덱싱합니다' } },
 
-/** Get intents available for a given action */
-export function getIntentsForAction(actionId: ActionId): ReadonlyArray<IntentDefinition> {
-  return INTENT_DEFINITIONS.filter(d => d.actionId === actionId);
+  // Ask
+  { id: 'ask-evaluate', intentGroup: 'ask', label: { en: 'Evaluate', ko: '평가' }, description: { en: 'Evaluate artifacts against rubrics', ko: '산출물을 루브릭에 따라 평가합니다' } },
+  { id: 'ask-ant', intentGroup: 'ask', label: { en: 'Ask Ant', ko: 'Ant 질문' }, description: { en: 'Ask questions about Ant system', ko: 'Ant 시스템에 대해 질문합니다' } },
+  { id: 'ask-general', intentGroup: 'ask', label: { en: 'General Question', ko: '일반 질문' }, description: { en: 'Ask general questions about the project', ko: '프로젝트에 대한 일반적인 질문을 합니다' } },
+] as const satisfies ReadonlyArray<IntentDefinitionShape>;
+
+/** Union of all valid intent ID strings, derived from INTENT_DEFINITIONS. */
+export type IntentId = typeof INTENT_DEFINITIONS_INTERNAL[number]['id'];
+
+/** Runtime intent definition with literal id type. */
+export type IntentDefinition = typeof INTENT_DEFINITIONS_INTERNAL[number];
+
+export const INTENT_DEFINITIONS: ReadonlyArray<IntentDefinition> = INTENT_DEFINITIONS_INTERNAL;
+
+/** Get intents available for a given intent group */
+export function getIntentsForAction(group: IntentGroup): ReadonlyArray<IntentDefinition> {
+  return INTENT_DEFINITIONS.filter(d => d.intentGroup === group);
 }
 
 // ============================================
 // ActionMetadata (passed from FE to BE for explicit/infer pipeline)
 // ============================================
 
-export type Basis = 'prd' | 'directive' | 'existing-doc' | 'figma' | 'references' | 'spec' | 'design-doc';
-
 export interface ActionMetadata {
   /** true = explicit pipeline (no inference, use only provided values). Set only via ActionsPanel "Start via Chat". */
   explicit?: boolean;
   /** When present, determines agent/job and bypasses triage */
-  intent?: string;
+  intent?: IntentId;
   /** Target output file paths */
   target?: string[];
-  /** What drives the generation */
-  basis?: Basis;
   /** Primary reference file paths */
   refs?: string[];
   /** Secondary context file paths */
   context?: string[];
-  /** User's UI language (e.g. 'ko', 'en'). Overrides auto-detection when present. Not displayed in UI badges. */
+  /** User's UI locale (e.g. 'ko', 'en'). Overrides auto-detection when present. Not displayed in UI badges. */
+  locale?: string;
+  /** @deprecated Use locale */
   language?: string;
 }
 
 /**
- * Derive workType, jobMode, and environment from an intent string.
+ * Derive intentGroup, mode, and environment from an intent string.
  * Used by detect node to bypass LLM when intent is provided.
  */
-export function deriveFromIntent(intent: string): {
-  workType?: 'ui-design' | 'system-design' | 'spec';
-  jobMode: 'generate' | 'refactor' | 'explain';
+export function deriveFromIntent(intent: IntentId): {
+  intentGroup?: IntentGroup;
+  mode: 'generate' | 'refactor' | 'explain';
   environment?: 'frontend' | 'backend' | 'fullstack';
   agent: string;
   jobType: string;
 } {
   switch (intent) {
-    case 'create-plan':
-      return { jobMode: 'generate', agent: 'planner', jobType: 'plan' };
-    case 'revise-plan':
-      return { jobMode: 'refactor', agent: 'planner', jobType: 'plan' };
+    case 'gen-plan':
+      return { mode: 'generate', agent: 'planner', jobType: 'plan' };
+    case 'rev-plan':
+      return { mode: 'refactor', agent: 'planner', jobType: 'plan' };
+    case 'explain-plan':
+      return { mode: 'explain', agent: 'planner', jobType: 'plan' };
 
-    case 'create-fe':
-      return { workType: 'system-design', jobMode: 'generate', environment: 'frontend', agent: 'architect', jobType: 'design' };
-    case 'create-be':
-      return { workType: 'system-design', jobMode: 'generate', environment: 'backend', agent: 'architect', jobType: 'design' };
-    case 'create-fullstack':
-      return { workType: 'system-design', jobMode: 'generate', environment: 'fullstack', agent: 'architect', jobType: 'design' };
-    case 'revise-system':
-      return { workType: 'system-design', jobMode: 'refactor', agent: 'architect', jobType: 'design' };
+    case 'gen-sys-fe':
+      return { intentGroup: 'design-system', mode: 'generate', environment: 'frontend', agent: 'architect', jobType: 'design' };
+    case 'gen-sys-be':
+      return { intentGroup: 'design-system', mode: 'generate', environment: 'backend', agent: 'architect', jobType: 'design' };
+    case 'gen-sys-full':
+      return { intentGroup: 'design-system', mode: 'generate', environment: 'fullstack', agent: 'architect', jobType: 'design' };
+    case 'rev-sys':
+      return { intentGroup: 'design-system', mode: 'refactor', agent: 'architect', jobType: 'design' };
+    case 'explain-sys':
+      return { intentGroup: 'design-system', mode: 'explain', agent: 'architect', jobType: 'design' };
 
-    case 'create-figma':
-    case 'create-ref':
-    case 'create-desc':
-      return { workType: 'ui-design', jobMode: 'generate', agent: 'architect', jobType: 'design' };
-    case 'revise-ui':
-      return { workType: 'ui-design', jobMode: 'refactor', agent: 'architect', jobType: 'design' };
+    case 'gen-ui-figma':
+    case 'gen-ui-ref':
+    case 'gen-ui-desc':
+      return { intentGroup: 'design-ui', mode: 'generate', agent: 'architect', jobType: 'design' };
+    case 'rev-ui':
+      return { intentGroup: 'design-ui', mode: 'refactor', agent: 'architect', jobType: 'design' };
+    case 'explain-ui':
+      return { intentGroup: 'design-ui', mode: 'explain', agent: 'architect', jobType: 'design' };
 
-    case 'create-spec':
-      return { workType: 'spec', jobMode: 'generate', agent: 'architect', jobType: 'design' };
-    case 'revise-spec':
-      return { workType: 'spec', jobMode: 'refactor', agent: 'architect', jobType: 'design' };
+    case 'gen-spec':
+      return { intentGroup: 'design-spec', mode: 'generate', agent: 'architect', jobType: 'design' };
+    case 'rev-spec':
+      return { intentGroup: 'design-spec', mode: 'refactor', agent: 'architect', jobType: 'design' };
+    case 'explain-spec':
+      return { intentGroup: 'design-spec', mode: 'explain', agent: 'architect', jobType: 'design' };
 
-    case 'create-code':
-      return { jobMode: 'generate', agent: 'architect', jobType: 'code' };
-    case 'refactor-code':
-      return { jobMode: 'refactor', agent: 'architect', jobType: 'code' };
+    case 'gen-code-sys':
+    case 'gen-code-spec':
+    case 'gen-code-directive':
+      return { mode: 'generate', agent: 'architect', jobType: 'code' };
+    case 'rev-code':
+      return { mode: 'refactor', agent: 'architect', jobType: 'code' };
+    case 'explain-code':
+      return { mode: 'explain', agent: 'architect', jobType: 'code' };
 
-    case 'create-visual':
-      return { jobMode: 'generate', agent: 'creator', jobType: 'visual' };
+    case 'gen-visual':
+      return { mode: 'generate', agent: 'creator', jobType: 'visual' };
+    case 'explain-visual':
+      return { mode: 'explain', agent: 'creator', jobType: 'visual' };
 
-    case 'create-learn':
-      return { jobMode: 'generate', agent: 'architect', jobType: 'learn' };
+    case 'gen-learn':
+      return { mode: 'generate', agent: 'architect', jobType: 'learn' };
+
+    case 'ask-evaluate':
+    case 'ask-ant':
+    case 'ask-general':
+      return { mode: 'explain', agent: 'architect', jobType: 'ask' };
 
     default:
-      return { jobMode: 'generate', agent: 'architect', jobType: 'design' };
+      return { mode: 'generate', agent: 'architect', jobType: 'design' };
   }
 }
 

@@ -32,7 +32,7 @@ const baseContext = {
 function buildRAC(docs?: ResolvedDocument[]): ResolvedActionContext {
   return {
     source: 'infer' as const,
-    jobMode: 'generate' as const,
+    mode: 'generate' as const,
     tech: { language: 'typescript', environment: 'frontend' },
     hasExplicitFields: false,
     documents: docs,

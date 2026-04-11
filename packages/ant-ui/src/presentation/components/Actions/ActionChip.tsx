@@ -1,5 +1,5 @@
 import { ACTION_VISUALS, type VisualDef } from './actionVisuals';
-import type { ActionId, ActionReadiness } from '@ant/shared';
+import type { IntentGroup, ActionReadiness } from '@ant/shared';
 
 export { ACTION_VISUALS };
 
@@ -15,7 +15,7 @@ interface ActionChipProps {
   animationDelay?: number;
 
   /** Lookup-based: resolve icon/bg/text from ACTION_VISUALS */
-  actionId?: ActionId;
+  actionId?: IntentGroup;
   readiness?: ActionReadiness;
 
   /** Direct injection: override or supply icon/bg/text explicitly */

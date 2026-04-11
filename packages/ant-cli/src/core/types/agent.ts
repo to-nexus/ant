@@ -45,6 +45,8 @@ export interface TaskArtifacts {
   design?: string;
   designDocPath?: string;
   code?: string;
+  /** Git HEAD snapshot for prompts when diff summary is unavailable */
+  codeHead?: string;
   parsedUiDocs?: ParsedUiDocs;
   profile?: CodebaseProfile;
   lessons?: any;

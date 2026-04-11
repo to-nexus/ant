@@ -5,7 +5,7 @@
  * conforming to TriageableState for triage node compatibility.
  */
 
-import { TriageableState, TriageResult, WorkspaceState } from '../../../common/nodes/triage/types.js';
+import { TriageableState, TriageableContext } from '../../../common/nodes/triage/types.js';
 import { LLMClient } from '../../../../core/ports/llm.js';
 import { ImageGenerationPort, GeneratedImage } from '../../../../core/ports/imageGeneration.js';
 import { BackgroundRemovalPort } from '../../../../core/ports/backgroundRemoval.js';
@@ -16,7 +16,7 @@ import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers
 import { VisualSettings } from '../../../../core/types/workspace.js';
 import type { ConversationEntry } from '../../../../core/types/session.js';
 import type { ConversationCompaction } from '../../../../core/context/compactJob.js';
-import type { JobMode } from '@ant/shared';
+import type { JobMode, ResolvedActionContext } from '@ant/shared';
 
 export type { JobMode };
 
@@ -104,20 +104,12 @@ export interface VisualGraphDeps {
  * Visual Graph State — conforms to TriageableState
  */
 export interface VisualGraphState extends TriageableState, PhaseTrackingState {
-  // TriageableState fields
+  // TriageableState overrides
   featurePath: string;
-  context: any;
-  directive?: string;
+  context: TriageableContext;
   deps: VisualGraphDeps;
-  _httpJobId?: string;
-  tokenUsage?: TokenUsage;
-  skipTriage?: boolean;
-  triageResult?: TriageResult;
-  workspaceState?: WorkspaceState;
   currentAgent: string;
   currentJob: string;
-  overrideDirective?: string;
-  chatSource?: boolean;
 
   // Visual-specific state
   conversation: ConversationEntry[];
@@ -132,6 +124,9 @@ export interface VisualGraphState extends TriageableState, PhaseTrackingState {
   assetType?: VisualAssetType;
   jobMode?: JobMode;
   skipClassify?: boolean;
+
+  // RAC (Intent-Centric)
+  resolvedAction?: ResolvedActionContext;
 
   // Session carry-over (preserved across invocations)
   lastEngineeredPrompt?: string;

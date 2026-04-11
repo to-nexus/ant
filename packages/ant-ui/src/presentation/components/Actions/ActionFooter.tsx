@@ -1,13 +1,13 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { deriveFromIntent, type ActionId } from '@ant/shared';
+import { deriveFromIntent, type IntentGroup } from '@ant/shared';
 import { MessageSquare, Zap, Loader2 } from 'lucide-react';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { addChatUserMessage } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 
 interface ActionFooterProps {
-  actionId: ActionId;
+  actionId: IntentGroup;
 }
 
 export function ActionFooter({ actionId }: ActionFooterProps) {
@@ -38,7 +38,7 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
     store.updateActionMetadata({ explicit: true });
     store.setRunning(true, undefined, 'generate');
 
-    const metadata = { ...useStore.getState().actionMetadata, language: i18n.language };
+    const metadata = { ...useStore.getState().actionMetadata, locale: i18n.language };
     const hasMetadata = Object.keys(metadata).length > 0;
     const intentId = metadata.intent || '';
     const buildDirective = t(`buildDirective.${intentId}`, { defaultValue: t('footer.build') });

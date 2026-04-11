@@ -55,7 +55,6 @@ export const executeJobSchema = z.object({
   actionMetadata: z.object({
     intent: z.string().optional(),
     target: z.array(z.string()).optional(),
-    basis: z.string().optional(),
     refs: z.array(z.string()).optional(),
     context: z.array(z.string()).optional(),
     language: z.string().optional(),

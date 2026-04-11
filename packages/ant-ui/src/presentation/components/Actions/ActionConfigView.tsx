@@ -4,10 +4,9 @@ import { useStore } from '@/domain/store';
 import {
   INTENT_DEFINITIONS,
   getIntentsForAction,
-  type ActionId,
-  type Basis,
+  type IntentGroup,
+  type IntentId,
   getConfigSlots,
-  getAvailableBases,
   matchesExpectedFile,
   formatExpectedFile,
   type ConfigSlots,
@@ -32,7 +31,6 @@ import {
   Eye,
   Unplug,
   Info,
-  Layers,
   FileText,
   BookOpen,
   Crosshair,
@@ -40,26 +38,15 @@ import {
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
 interface ActionConfigViewProps {
-  actionId: ActionId;
-  intentId: string;
+  actionId: IntentGroup;
+  intentId: IntentId;
   onBack: () => void;
 }
-
-const BASIS_LABELS: Record<Basis, { en: string; ko: string }> = {
-  prd: { en: 'PRD', ko: 'PRD' },
-  directive: { en: 'Directive', ko: '지시사항' },
-  'existing-doc': { en: 'Existing Design', ko: '기존 설계' },
-  figma: { en: 'Figma', ko: 'Figma' },
-  references: { en: 'Reference Images', ko: '레퍼런스 이미지' },
-  spec: { en: 'Spec Documents', ko: '스펙 문서' },
-  'design-doc': { en: 'Design Documents', ko: '설계 문서' },
-};
 
 export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigViewProps) {
   const { i18n } = useTranslation('actions');
   const lang = i18n.language as 'en' | 'ko';
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
-  const actionMetadata = useStore(s => s.actionMetadata);
   const fileTree = useStore(s => s.fileTree);
   const highlightArtifactDirs = useStore(s => s.highlightArtifactDirs);
   const spotlightTarget = useStore(s => s.spotlightTarget);
@@ -105,20 +92,11 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const intentDef = INTENT_DEFINITIONS.find(d => d.id === intentId);
   if (!intentDef) return null;
 
-  const availableBases = getAvailableBases(intentId);
-  const selectedBasis = actionMetadata.basis;
-  const slots = selectedBasis ? getConfigSlots(intentId, selectedBasis) : null;
+  const slots = getConfigSlots(intentId);
 
   const [selectedRefs, setSelectedRefs] = useState<Set<string>>(new Set());
   const [selectedCtx, setSelectedCtx] = useState<Set<string>>(new Set());
   const [_selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (availableBases.length > 0 && !selectedBasis) {
-      updateActionMetadata({ basis: availableBases[0] });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [intentId, actionId]);
 
   useEffect(() => {
     if (!slots) {
@@ -148,12 +126,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       updateActionMetadata({ target: undefined });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [intentId, selectedBasis]);
-
-  const handleBasisSelect = (basis: Basis) => {
-    if (basis === selectedBasis) return;
-    updateActionMetadata({ basis, refs: undefined, context: undefined, target: undefined });
-  };
+  }, [intentId]);
 
   const handleOpenIde = useCallback(() => {
     setMainView('codeIde');
@@ -186,7 +159,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     if (!targetIntentDef) return;
     const fromLabel = intentDef?.label[lang] || intentDef?.label.en || intentId;
     const toLabel = targetIntentDef.label[lang] || targetIntentDef.label.en;
-    openActionsPanel(targetIntentDef.actionId);
+    openActionsPanel(targetIntentDef.intentGroup);
     selectIntent(targetIntentId);
     setActionsStep('config');
     toast.info(lang === 'ko'
@@ -237,32 +210,6 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       </div>
 
       <PageTransition pageKey={intentId} direction={directionRef.current} className="flex-1 overflow-y-auto p-5 space-y-5">
-
-        {/* Basis */}
-        {availableBases.length > 0 && (
-          <Section title={lang === 'ko' ? '기반 소스' : 'Basis'} icon={Layers} iconColor="text-purple-500 dark:text-purple-400">
-            <div className="flex flex-wrap gap-2">
-              {availableBases.map(basis => {
-                const label = BASIS_LABELS[basis];
-                const isSelected = selectedBasis === basis;
-                return (
-                  <button
-                    key={basis}
-                    type="button"
-                    onClick={() => handleBasisSelect(basis)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                      isSelected
-                        ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-                  >
-                    {label?.[lang] || label?.en || basis}
-                  </button>
-                );
-              })}
-            </div>
-          </Section>
-        )}
 
         {slots && (
           <>

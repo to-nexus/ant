@@ -2,7 +2,7 @@ import { useRef, useMemo, useCallback } from 'react';
 import { useStore } from '@/domain/store';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, type ActionId } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, type IntentGroup } from '@ant/shared';
 import { ActionChipGrid, IntentChipGrid, type ChipItem } from './ActionChipGrid';
 import { ActionConfigView } from './ActionConfigView';
 import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
@@ -16,7 +16,7 @@ export function ActionsPanel() {
   const lang = i18n.language as 'en' | 'ko';
   const readiness = useActionReadiness();
   const step = useStore(s => s.actionsStep);
-  const selectedActionId = useStore(s => s.selectedActionId) as ActionId | null;
+  const selectedActionId = useStore(s => s.selectedActionId) as IntentGroup | null;
   const selectedIntentId = useStore(s => s.selectedIntentId);
   const setActionsStep = useStore(s => s.setActionsStep);
   const selectAction = useStore(s => s.selectAction);
@@ -33,7 +33,7 @@ export function ActionsPanel() {
     prevStepRef.current = step;
   }
 
-  const handleActionSelect = useCallback((actionId: ActionId) => {
+  const handleActionSelect = useCallback((actionId: IntentGroup) => {
     if (selectedActionId) {
       const oldIdx = ACTION_DEFINITIONS.findIndex(d => d.id === selectedActionId);
       const newIdx = ACTION_DEFINITIONS.findIndex(d => d.id === actionId);
@@ -49,7 +49,7 @@ export function ActionsPanel() {
       const newIdx = ACTION_DEFINITIONS.findIndex(d => d.id === actionId);
       actionDirRef.current = newIdx >= oldIdx ? 1 : -1;
     }
-    selectAction(actionId as ActionId);
+    selectAction(actionId as IntentGroup);
   }, [selectedActionId, selectAction]);
 
   const handleIntentSelect = useCallback((intentId: string) => {

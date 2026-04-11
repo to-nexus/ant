@@ -20,6 +20,7 @@ import {
 import { decomposeUiDesign } from "./uiDesignDecompose";
 import { decomposeSystemDesign } from "./systemDesignDecompose";
 import { decomposeSpec } from "./specDecompose";
+import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 
 // ============================================
 // UI Design Prerequisites Validation
@@ -27,7 +28,7 @@ import { decomposeSpec } from "./specDecompose";
 
 function validateUiDesignPrerequisites(state: DesignGraphState): void {
   // Figma mode: references come from Figma MCP, not local files
-  if (state.uiDesignSource === 'figma') {
+  if (isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig))) {
     if (!state.figmaConfig?.file) {
       throw new Error(
         "No Figma file configured for UI document generation.\n\n" +
@@ -71,8 +72,8 @@ interface TimingContext {
 }
 
 function initializeJobTiming(state: DesignGraphState): TimingContext {
-  const existingJobTiming = (state as any).jobTiming;
-  const existingJobId = (state as any).jobId;
+  const existingJobTiming = state.jobTiming;
+  const existingJobId = state.jobId;
 
   if (existingJobTiming && existingJobId) {
     return {
@@ -174,8 +175,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   const phaseStart = Date.now();
 
   console.log('\n📋 ══════════════════════════ DESIGN DECOMPOSE PHASE ══════════════════════════');
-  console.log(`   Work type: ${state.detectionReport?.workType || 'unknown'}`);
-  console.log(`   Job mode: ${state.detectionReport?.jobMode || 'unknown'}`);
+  console.log(`   Intent group: ${state.detectionReport?.detectedIntentGroup || 'unknown'}`);
+  console.log(`   Job mode: ${state.detectionReport?.detectedMode || 'unknown'}`);
   console.log('═══════════════════════════════════════════════════════════════════════════════\n');
 
   // Activity banner
@@ -184,7 +185,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   }
 
   // Validate UI design prerequisites
-  if (state.detectionReport?.workType === 'ui-design') {
+  if (state.detectionReport?.detectedIntentGroup === 'design-ui') {
     validateUiDesignPrerequisites(state);
   }
 
@@ -202,14 +203,14 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Explain mode: skip decompose, create single explain task
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (state.detectionReport?.jobMode === 'explain') {
+    if (state.detectionReport?.detectedMode === 'explain') {
       return handleExplainMode(state, timing);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // UI Design mode: LLM-driven decomposition
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (state.detectionReport?.workType === 'ui-design') {
+    if (state.detectionReport?.detectedIntentGroup === 'design-ui') {
       return decomposeUiDesign(state, {
         phaseStart,
         newJobId: timing.newJobId,
@@ -220,7 +221,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Spec mode: single task for spec document generation
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (state.detectionReport?.workType === 'spec') {
+    if (state.detectionReport?.detectedIntentGroup === 'design-spec') {
       return decomposeSpec(state, {
         phaseStart,
         newJobId: timing.newJobId,

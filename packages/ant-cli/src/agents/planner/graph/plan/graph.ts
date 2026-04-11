@@ -12,7 +12,7 @@
  * No separate write node — same pattern as design job's docGen.
  */
 
-import { StateGraph, END } from '@langchain/langgraph';
+import { Annotation, StateGraph, END } from '@langchain/langgraph';
 import { PlanGraphState } from './state';
 import { resolveNode } from './nodes/resolve';
 import { generateNode, routeAfterGenerate } from './nodes/generate';
@@ -55,44 +55,43 @@ function routeAfterPlannerTriage(state: PlanGraphState): string {
   return 'generate';
 }
 
+const PlanAnnotation = Annotation.Root({
+  directive: Annotation<any>,
+  language: Annotation<any>,
+  workspaceState: Annotation<any>,
+  featurePath: Annotation<any>,
+  plannerPhase: Annotation<any>,
+  isResume: Annotation<any>,
+  existingDocument: Annotation<any>,
+  evalReport: Annotation<any>,
+  rubricContent: Annotation<any>,
+  recentTurnSummaries: Annotation<any>,
+  conversation: Annotation<any>,
+  isConversationContinuation: Annotation<any>,
+  conversationHistory: Annotation<any>,
+  pendingToolCalls: Annotation<any>,
+  generatedDocument: Annotation<any>,
+  resolvedAction: Annotation<any>,
+  context: Annotation<any>,
+  triageResult: Annotation<any>,
+  skipTriage: Annotation<any>,
+  actionMetadata: Annotation<any>,
+  currentAgent: Annotation<any>,
+  currentJob: Annotation<any>,
+  overrideDirective: Annotation<any>,
+  chatSource: Annotation<any>,
+  _uiLocale: Annotation<any>,
+  _phaseTimings: Annotation<any>,
+  deps: Annotation<any>,
+  _httpJobId: Annotation<any>,
+  tokenUsage: Annotation<any>,
+  phaseTokenUsages: Annotation<any>,
+  recursionCount: Annotation<any>,
+  recursionLimit: Annotation<any>,
+});
+
 export function buildPlanGraph() {
-  const graph = new StateGraph<PlanGraphState>({
-    channels: {
-      directive: null as any,
-      language: null as any,
-      workspaceState: null as any,
-      featurePath: null as any,
-      mode: null as any,
-      isResume: null as any,
-      existingDocument: null as any,
-      evalReport: null as any,
-      rubricContent: null as any,
-      recentTurnSummaries: null as any,
-      conversation: null as any,
-      isConversationContinuation: null as any,
-      conversationHistory: null as any,
-      pendingToolCalls: null as any,
-      generatedDocument: null as any,
-      // TriageableState fields
-      context: null as any,
-      triageResult: null as any,
-      skipTriage: null as any,
-      actionMetadata: null as any,
-      currentAgent: null as any,
-      currentJob: null as any,
-      overrideDirective: null as any,
-      chatSource: null as any,
-      // UI locale
-      _uiLocale: null as any,
-      // Dependencies
-      deps: null as any,
-      _httpJobId: null as any,
-      tokenUsage: null as any,
-      phaseTokenUsages: null as any,
-      recursionCount: null as any,
-      recursionLimit: null as any,
-    },
-  });
+  const graph = new StateGraph(PlanAnnotation);
   
   // Add nodes (no separate write node — generate handles everything like design job's docGen)
   graph.addNode('resolve', resolveNode as any);

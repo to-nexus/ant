@@ -19,7 +19,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
   console.log('\n✏️ [Visual:Sketch] Generating sketch candidates...');
 
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('sketch', state._uiLocale as any), 'sketch');
+    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('sketch', state._uiLocale === 'ko' ? 'ko' : 'en'), 'sketch');
   }
 
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -62,10 +62,11 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
         });
 
         if (generated.length > 0) {
-          if (generated[0].tokenUsage) {
-            accumulateTokenUsage(state as any, generated[0].tokenUsage, { taskLevel: false, jobLevel: true });
-            phaseInputTokens += generated[0].tokenUsage.inputTokens;
-            phaseOutputTokens += generated[0].tokenUsage.outputTokens;
+          const genUsage = generated[0].tokenUsage;
+          if (genUsage) {
+            accumulateTokenUsage(state, genUsage, { taskLevel: false, jobLevel: true });
+            phaseInputTokens += genUsage.inputTokens;
+            phaseOutputTokens += genUsage.outputTokens;
           }
           sketchImages.push({
             data: generated[0].data,
@@ -91,10 +92,11 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
       });
 
       for (let i = 0; i < generated.length; i++) {
-        if (generated[i].tokenUsage) {
-          accumulateTokenUsage(state as any, generated[i].tokenUsage, { taskLevel: false, jobLevel: true });
-          phaseInputTokens += generated[i].tokenUsage.inputTokens;
-          phaseOutputTokens += generated[i].tokenUsage.outputTokens;
+        const genUsage = generated[i].tokenUsage;
+        if (genUsage) {
+          accumulateTokenUsage(state, genUsage, { taskLevel: false, jobLevel: true });
+          phaseInputTokens += genUsage.inputTokens;
+          phaseOutputTokens += genUsage.outputTokens;
         }
         sketchImages.push({
           data: generated[i].data,
@@ -112,15 +114,15 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
 
     console.log(`✏️ [Visual:Sketch] Generated ${sketchImages.length} sketches`);
 
-    if ((phaseInputTokens > 0 || phaseOutputTokens > 0) && state.deps?.kanbanUpdate?.updateTokenUsage) {
-      state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+    if ((phaseInputTokens > 0 || phaseOutputTokens > 0) && state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+      state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
     }
     if (phaseInputTokens > 0 || phaseOutputTokens > 0) {
       upsertPhaseTokenUsage(state, 'sketch', {
         inputTokens: phaseInputTokens,
         outputTokens: phaseOutputTokens,
         totalTokens: phaseInputTokens + phaseOutputTokens,
-      }, getEstimatingLabel('sketch', state._uiLocale as any));
+      }, getEstimatingLabel('sketch', state._uiLocale === 'ko' ? 'ko' : 'en'));
     }
 
     if (state._httpJobId && state.featurePath) {

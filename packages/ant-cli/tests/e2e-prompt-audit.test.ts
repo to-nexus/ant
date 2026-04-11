@@ -109,8 +109,8 @@ function makeRAC(
   const langMap: Record<string, string> = { frontend: 'typescript', backend: 'go', fullstack: 'typescript' };
   return {
     source,
-    intent: source === 'explicit' ? 'create-code' : undefined,
-    jobMode: 'generate',
+    intent: source === 'explicit' ? 'gen-code-sys' : undefined,
+    mode: 'generate',
     tech: { language: langMap[env] as any, environment: env as any },
     hasExplicitFields: source === 'explicit',
     intentDescription: source === 'explicit' ? 'Generate code from design' : undefined,
@@ -245,21 +245,19 @@ describe('Audit 5: E2E Code Execute', () => {
     });
   });
 
-  it('S11: infer+metadata + frontend + feature + full docs (basis-guidance)', async () => {
+  it('S11: infer+metadata + frontend + feature + full docs (action-context)', async () => {
     const rac = makeRAC('infer', 'frontend', fullDocs, {
-      basis: 'prd',
-      basisDescription: 'PRD and product requirements',
       hasExplicitFields: true,
     });
     const { text, injections } = await renderCodeExecute('frontend', 'feature', fullDocs, rac);
     assertPromptInvariants(text, injections, {
       name: 'S11', expectedDocLabels: ['System Design'],
-      requiredInjections: ['action-context', 'basis-guidance'],
+      requiredInjections: ['action-context'],
     });
   });
 
   it('S12: explicit + frontend + feature + refactor mode', async () => {
-    const rac = makeRAC('explicit', 'frontend', fullDocs, { jobMode: 'refactor' });
+    const rac = makeRAC('explicit', 'frontend', fullDocs, { mode: 'refactor' });
     const { text, injections } = await renderCodeExecute('frontend', 'feature', fullDocs, rac, 'refactor');
     assertPromptInvariants(text, injections, {
       name: 'S12', expectedDocLabels: ['System Design'],
@@ -279,8 +277,8 @@ describe('Audit 5: E2E Design Execute', () => {
   ) {
     const rac: ResolvedActionContext = {
       source: 'explicit',
-      intent: 'create-fe',
-      jobMode: 'generate',
+      intent: 'gen-sys-fe',
+      mode: 'generate',
       tech: { language: 'typescript', environment: 'frontend', framework: profileOverrides?.framework },
       hasExplicitFields: true,
       documents: designOnlyDocs,
@@ -303,15 +301,15 @@ describe('Audit 5: E2E Design Execute', () => {
     };
   }
 
-  it('S13: create-fe + fe-system-main.md → frontend-guide + nextjs-augmentation', async () => {
+  it('S13: gen-sys-fe + fe-system-main.md → frontend-guide + nextjs-augmentation', async () => {
     const { injections } = await renderDesignExecute('fe-system-main.md');
     expect(injections.some(i => i.includes('frontend-guide'))).toBe(true);
     expect(injections.some(i => i.includes('nextjs-augmentation'))).toBe(true);
   });
 
-  it('S14: create-be + be-system-main.md → backend-guide + go-api-augmentation', async () => {
+  it('S14: gen-sys-be + be-system-main.md → backend-guide + go-api-augmentation', async () => {
     const rac: ResolvedActionContext = {
-      source: 'explicit', intent: 'create-be', jobMode: 'generate',
+      source: 'explicit', intent: 'gen-sys-be', mode: 'generate',
       tech: { language: 'go', environment: 'backend' },
       hasExplicitFields: true, documents: designOnlyDocs,
     };

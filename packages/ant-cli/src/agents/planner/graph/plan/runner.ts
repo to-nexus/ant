@@ -35,7 +35,7 @@ export interface PlanRunnerParams {
 
 export interface PlanRunnerResult {
   generatedDocument?: string;
-  mode: string;
+  plannerPhase: string;
   tokenUsage?: any;
   interruption?: {
     reason: string;
@@ -70,7 +70,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     language: params.language,
     workspaceState: params.workspaceState,
     featurePath: params.featurePath,
-    mode: params.mode,
+    plannerPhase: params.mode,
     isResume: params.isResume,
     chatSource: params.chatSource,
     skipTriage: params.skipTriage,
@@ -166,8 +166,8 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   if (params.deps?.session && params.featurePath && initialState.directive) {
     try {
       const session = await params.deps.session.load(projectId, featureName, 'plan');
-      const existingDirective = (session.state as any)?.directive;
-      const existingOverride = (session.state as any)?.overrideDirective;
+      const existingDirective = session.state?.directive;
+      const existingOverride = session.state?.overrideDirective;
       const hasNewOverride = initialState.overrideDirective &&
         initialState.overrideDirective !== existingOverride &&
         initialState.overrideDirective !== existingDirective;
@@ -179,7 +179,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
             directive: initialState.directive || existingDirective,
             overrideDirective: initialState.overrideDirective || initialState.directive,
             chatSource: params.chatSource,
-            mode: initialState.mode,
+            plannerPhase: initialState.plannerPhase,
             jobId: params._httpJobId || session.state?.jobId,
             // ✅ Clear stale interruption from previous job.
             // Without this, JobCleanupManager's fallback logic reuses the old
@@ -334,7 +334,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               directive: initialState.directive,
               overrideDirective: initialState.overrideDirective || initialState.directive,
               chatSource: initialState.chatSource,
-              mode: initialState.mode,
+              plannerPhase: initialState.plannerPhase,
               tokenUsage: stateSnapshot?.tokenUsage || initialState.tokenUsage,
               jobTiming: jobTimingRef || session.state?.jobTiming,
               // ✅ Save latest conversationHistory from stateSnapshot for resume
@@ -365,7 +365,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       unregisterActiveOrchestrator();
       return {
         generatedDocument,
-        mode: initialState.mode,
+        plannerPhase: initialState.plannerPhase,
         tokenUsage: initialState.tokenUsage,
         interruption: {
           reason: 'recursion_limit',
@@ -429,12 +429,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   }
 
   console.log('\n✅ Planner Agent completed');
-  console.log(`   Mode: ${finalState.mode}`);
+  console.log(`   Planner phase: ${finalState.plannerPhase}`);
   console.log(`   Document length: ${finalState.generatedDocument?.length || 0} chars`);
   
   return {
     generatedDocument: finalState.generatedDocument,
-    mode: finalState.mode,
+    plannerPhase: finalState.plannerPhase,
     tokenUsage: finalState.tokenUsage,
   };
 }

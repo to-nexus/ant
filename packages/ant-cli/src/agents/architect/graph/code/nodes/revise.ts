@@ -131,9 +131,9 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
       // ✅ Track token usage for revise node
       if (result.usage) {
         const { accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
-        accumulateTokenUsage(state as any, result.usage, { taskLevel: false, jobLevel: true });
-        if (state.deps?.kanbanUpdate?.updateTokenUsage && (state as any).tokenUsage) {
-          state.deps.kanbanUpdate.updateTokenUsage((state as any).tokenUsage);
+        accumulateTokenUsage(state, result.usage, { taskLevel: false, jobLevel: true });
+        if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
+          state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
         }
       }
     } else {

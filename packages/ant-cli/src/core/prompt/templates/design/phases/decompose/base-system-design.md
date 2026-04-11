@@ -6,9 +6,9 @@
 
 You are analyzing requirements to break them into design tasks.
 
-**Job Mode**: {{jobMode}}
+**Job Mode**: {{detectedMode}}
 
-{{#if (eq jobMode "refactor")}}
+{{#if (eq detectedMode "refactor")}}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 🔧 REFACTOR MODE - Modify Existing Documents
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
