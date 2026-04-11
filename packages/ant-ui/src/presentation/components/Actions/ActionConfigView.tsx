@@ -110,8 +110,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       .flatMap(e => e.files)
       .filter(f => f.warnings.length === 0)
       .map(f => f.path);
-    if (slots.refsMaxSelection && defaultRefPaths.length > slots.refsMaxSelection) {
-      defaultRefPaths = defaultRefPaths.slice(0, slots.refsMaxSelection);
+    if (slots.refsSingleSelect && defaultRefPaths.length > 1) {
+      defaultRefPaths = defaultRefPaths.slice(0, 1);
     }
     updateActionMetadata({ refs: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
     updateActionMetadata({ context: undefined });
@@ -176,7 +176,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       next = current.filter(p => p !== path);
     } else {
       if (field === 'refs' && slots) {
-        if (slots.refsMaxSelection && current.length >= slots.refsMaxSelection) {
+        if (slots.refsSingleSelect) {
           next = [path];
         } else {
           next = [...current, path];
