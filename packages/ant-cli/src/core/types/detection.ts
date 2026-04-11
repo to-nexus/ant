@@ -12,11 +12,11 @@ export type {
   IntentGroup,
   DesignDomain,
   ProjectProfile,
-  JobSource,
+  DetectionSummary,
   DetectionReport,
 } from '@ant/shared';
 
-import type { Mode, JobEnvironment, DesignDomain, JobSource, DetectionReport, ProjectProfile } from '@ant/shared';
+import type { Mode, JobEnvironment, DesignDomain, DetectionReport, ProjectProfile } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Factory Functions
@@ -31,9 +31,6 @@ export function createCodeDetectionReport(params: {
   environment?: JobEnvironment;
   environmentReasoning?: string;
   profile?: ProjectProfile;
-  requireRag?: boolean;
-  primarySources?: string[];
-  primarySourcesReasoning?: string;
 }): DetectionReport {
   return {
     sourceJob: 'code',
@@ -42,9 +39,6 @@ export function createCodeDetectionReport(params: {
     environment: params.environment,
     environmentReasoning: params.environmentReasoning,
     profile: params.profile,
-    requireRag: params.requireRag,
-    primarySources: params.primarySources,
-    primarySourcesReasoning: params.primarySourcesReasoning,
     detectedAt: new Date().toISOString(),
   };
 }
@@ -155,17 +149,21 @@ export function resolveDesignTargetFiles(
 import type { UserLanguage } from '../utils/languageDetector';
 
 /**
- * DetectionReport를 Chat UI용 마크다운으로 변환
+ * DetectionReport를 Chat UI용 마크다운으로 변환.
+ * Handles all job types (code, design, visual) via a single function.
+ * Visual-specific sections render when report.assetType is present.
  */
 export function formatDetectionReportForChat(
   report: DetectionReport,
   language: UserLanguage = 'ko'
 ): string {
   const isKorean = language === 'ko';
-  
-  let formatted = isKorean
-    ? `\n🔍 **환경 분석 완료**\n\n`
-    : `\n🔍 **Environment Analysis Complete**\n\n`;
+  const isVisual = report.sourceJob === 'visual';
+
+  // Header: visual gets "Asset Classification", others get "Environment Analysis"
+  let formatted = isVisual
+    ? (isKorean ? `\n🏷️ **에셋 분류 완료**\n\n` : `\n🏷️ **Asset Classification Complete**\n\n`)
+    : (isKorean ? `\n🔍 **환경 분석 완료**\n\n` : `\n🔍 **Environment Analysis Complete**\n\n`);
   
   // ━━━ 1. Mode (공통) ━━━
   const modeEmoji = report.detectedMode === 'generate' ? '✨' 
@@ -179,6 +177,9 @@ export function formatDetectionReportForChat(
   if (report.detectedModeReasoning) {
     formatted += `   └ ${report.detectedModeReasoning}\n\n`;
   }
+  
+  // Visual reports are compact — stop here
+  if (isVisual) return formatted + '\n';
   
   // ━━━ 2. Intent Group (Design Job only) ━━━
   const intentGroup = report.detectedIntentGroup;
@@ -274,45 +275,6 @@ export function formatDetectionReportForChat(
 }
 
 /**
- * Visual Job의 classify 결과를 Chat UI용 마크다운으로 변환
- */
-export function formatVisualClassifyForChat(
-  assetType: string,
-  jobMode: string,
-  reasoning: string,
-  language: UserLanguage = 'ko'
-): string {
-  const isKorean = language === 'ko';
-
-  const assetEmoji: Record<string, string> = {
-    logo: '🏷️', icon: '🔷', hero: '🖼️', illustration: '🎨', general: '📦',
-  };
-
-  const modeEmoji: Record<string, string> = {
-    generate: '✨', explain: '💡',
-  };
-
-  let formatted = isKorean
-    ? `\n🏷️ **에셋 분류 완료**\n\n`
-    : `\n🏷️ **Asset Classification Complete**\n\n`;
-
-  formatted += isKorean
-    ? `${assetEmoji[assetType] || '📦'} **에셋 유형**: ${assetType}\n`
-    : `${assetEmoji[assetType] || '📦'} **Asset Type**: ${assetType}\n`;
-
-  formatted += isKorean
-    ? `${modeEmoji[jobMode] || '✨'} **작업 모드**: ${jobMode}\n`
-    : `${modeEmoji[jobMode] || '✨'} **Job Mode**: ${jobMode}\n`;
-
-  if (reasoning) {
-    formatted += `   └ ${reasoning}\n`;
-  }
-
-  formatted += '\n';
-  return formatted;
-}
-
-/**
  * Profile-only display for decompose node (environment + language + framework).
  * Avoids re-displaying detectedMode already shown by detectEnvironment.
  */
@@ -363,7 +325,7 @@ export function formatProfileForChat(
  */
 export function parseDetectionReportFromLLM(
   response: string,
-  sourceJob: JobSource
+  sourceJob: string
 ): DetectionReport | null {
   try {
     // Extract from <detect> XML tag
@@ -421,9 +383,6 @@ export function parseDetectionReportFromLLM(
           framework: parsed.profile.framework,
         };
       }
-      if (parsed.requireRag !== undefined || parsed.requireRagForDecompose !== undefined) {
-        report.requireRag = parsed.requireRag ?? parsed.requireRagForDecompose;
-      }
     }
     
     return report;
@@ -431,42 +390,6 @@ export function parseDetectionReportFromLLM(
     console.error('[DetectionReport] Failed to parse LLM response:', error);
     return null;
   }
-}
-
-/**
- * DetectionReport를 <detect> 태그용 JSON으로 직렬화
- */
-export function serializeDetectionReportToJson(report: DetectionReport): string {
-  const json: Record<string, any> = {
-    detectedMode: report.detectedMode,
-    detectedModeReasoning: report.detectedModeReasoning,
-  };
-  
-  if (report.environment) {
-    json.environment = report.environment;
-    json.environmentReasoning = report.environmentReasoning;
-  }
-  
-  const ig = report.detectedIntentGroup;
-  if (ig) {
-    json.intentGroup = ig;
-    json.intentGroupReasoning = report.detectedIntentGroupReasoning;
-  }
-  
-  if (report.domain) {
-    json.domain = report.domain;
-    json.domainReasoning = report.domainReasoning;
-  }
-  
-  if (report.profile) {
-    json.profile = report.profile;
-  }
-  
-  if (report.requireRag !== undefined) {
-    json.requireRag = report.requireRag;
-  }
-  
-  return JSON.stringify(json, null, 2);
 }
 
 /**

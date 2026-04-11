@@ -66,7 +66,7 @@ export type MessageContentType =
   // Triage System - User choice
   | 'triage_choice'     // Triage choice card (with buttons)
   // Generic Choice Cards
-  | 'choice_card'      // Generic choice card (eval_save, prd_apply, etc.)
+  | 'choice_card'      // Generic choice card (eval_save, clarifying, spec_complete, etc.)
   // Plan Card - Real-time streaming (code job plan node)
   | 'plan_generating'  // Plan generation in progress (streaming)
   | 'plan'             // Plan generation complete
@@ -121,7 +121,7 @@ export interface MessageContent {
     resolvedLabel?: string;   // Label to display after choice is made
     resolved?: boolean;       // For cancelled: marked true when user resumes/continues (server-set)
     // Generic Choice Card
-    cardType?: string;        // For choice_card: 'eval_save' | 'prd_apply' | 'clarifying' | 'spec_complete'
+    cardType?: string;        // For choice_card: 'eval_save' | 'clarifying' | 'spec_complete'
     specFile?: string;         // For spec_complete: spec filename (e.g. spec-social-login.md)
     title?: string;           // For choice_card: card title
     evalType?: string;        // For eval_save: type of evaluation

@@ -6,23 +6,23 @@
 
 // Re-export shared detection types (canonical source: @ant/shared)
 export type {
+  Mode,
   JobMode,
   JobEnvironment,
   IntentGroup,
-  DesignWorkType,
   DesignDomain,
   ProjectProfile,
-  JobSource,
+  DetectionSummary,
   DetectionReport,
 } from '@ant/shared';
 
-import type { JobMode, JobEnvironment, IntentGroup, DesignDomain } from '@ant/shared';
+import type { Mode, JobEnvironment, IntentGroup, DesignDomain } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FE-only Helper Functions
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export function getJobModeEmoji(mode: JobMode): string {
+export function getJobModeEmoji(mode: Mode): string {
   switch (mode) {
     case 'generate': return '✨';
     case 'refactor': return '🔧';
@@ -30,7 +30,7 @@ export function getJobModeEmoji(mode: JobMode): string {
   }
 }
 
-export function getJobModeLabel(mode: JobMode, isKorean = true): string {
+export function getJobModeLabel(mode: Mode, isKorean = true): string {
   switch (mode) {
     case 'generate': return isKorean ? '생성' : 'Generate';
     case 'refactor': return isKorean ? '수정' : 'Refactor';

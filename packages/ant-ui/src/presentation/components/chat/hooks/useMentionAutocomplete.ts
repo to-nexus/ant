@@ -51,7 +51,7 @@ function getSuggestedDirs(intent: IntentId, prefix: FileMentionPrefix): string[]
   } else if (prefix === '@ctx:') {
     slots.context.forEach(s => { if (s.path && !s.codebase) dirs.add(s.path); });
   } else if (prefix === '@target:') {
-    if (slots.target.dir) dirs.add(slots.target.dir);
+    if (slots.target.kind === 'generate') dirs.add(slots.target.dir);
   }
   return [...dirs];
 }
@@ -139,7 +139,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         return INTENT_DEFINITIONS
           .filter(d => d.id.toLowerCase().includes(q) || d.label.en.toLowerCase().includes(q) || d.label.ko.includes(q))
           .slice(0, 8)
-          .map(d => ({ type: 'intent', id: d.id, label: d.id, description: d.label.ko || d.label.en }));
+          .map(d => ({ type: 'intent', id: d.id, label: d.id, description: d.label.ko }));
 
       case '@target:':
         return buildGroupedFileSuggestions('target', '@target:', allFilePaths, query, actionMetadata.intent);

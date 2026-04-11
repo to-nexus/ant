@@ -105,7 +105,6 @@ SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지
 | `triage_choice` | 작업 라우팅 선택 |
 | `cancelled` | 작업 취소 후 재개/무시 |
 | `eval_save` | 평가 리포트 저장 |
-| `prd_apply` | PRD 적용 |
 | `spec_complete` | 스펙 완료 확인 |
 | `clarifying` | PRD 생성 시 다수 질문 (Compound Card) |
 

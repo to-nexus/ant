@@ -5,7 +5,7 @@
  *
  * Flow:
  *   __start__ → resolve → triage → (conditional)
- *     triage:proceed → direct → (conditional)
+ *     triage:proceed → detect → direct → (conditional)
  *       direct:sketch  → sketch  → (conditional: deliver | direct)
  *       direct:render  → render  → (conditional: deliver | direct)
  *       direct:engrave → engrave → (conditional: deliver | __end__)
@@ -23,8 +23,10 @@
 
 import { Annotation, StateGraph, END } from '@langchain/langgraph';
 import { RunVisualGraphParams, VisualGraphState } from './types.js';
-import { resolveNode } from './nodes/resolve.js';
-import { classifyNode } from './nodes/classify.js';
+import { visualResolveStrategy } from './nodes/resolve.js';
+import { createResolveNode } from '../../../common/nodes/resolve/index.js';
+import { createDetectNode } from '../../../common/nodes/detect/index.js';
+import { visualDetectStrategy } from './nodes/detectStrategy.js';
 import { directNode, routeAfterDirect } from './nodes/direct.js';
 import { sketchNode, routeAfterSketch } from './nodes/sketch.js';
 import { renderNode, routeAfterRender } from './nodes/render.js';
@@ -40,14 +42,14 @@ import type { JobTiming } from '../../../common/graph/timing/JobTimingManager.js
 
 /**
  * Router after triage for visual job.
- * Proceeds to 'direct' instead of architect's 'detectEnvironment'.
+ * Proceeds to 'detect' on work:proceed, ends on ask/redirect/blocked.
  */
 function routeAfterVisualTriage(state: VisualGraphState): string {
   const result = state.triageResult;
 
   if (!result) {
-    console.log('[VisualTriageRouter] No triage result → classify');
-    return 'classify';
+    console.log('[VisualTriageRouter] No triage result → detect');
+    return 'detect';
   }
 
   if (result.intent === 'ask') {
@@ -65,20 +67,20 @@ function routeAfterVisualTriage(state: VisualGraphState): string {
     return '__end__';
   }
 
-  console.log('[VisualTriageRouter] proceed → classify');
-  return 'classify';
+  console.log('[VisualTriageRouter] proceed → detect');
+  return 'detect';
 }
 
-function routeAfterClassify(state: VisualGraphState): string {
+function routeAfterDetect(state: VisualGraphState): string {
   if (state.sketchIntent) {
-    console.log(`[ClassifyRouter] sketchIntent=${state.sketchIntent} → direct`);
+    console.log(`[DetectRouter] sketchIntent=${state.sketchIntent} → direct`);
     return 'direct';
   }
   if (state.jobMode === 'explain') {
-    console.log('[ClassifyRouter] explain mode → explain');
+    console.log('[DetectRouter] explain mode → explain');
     return 'explain';
   }
-  console.log('[ClassifyRouter] generate mode → direct');
+  console.log('[DetectRouter] generate mode → direct');
   return 'direct';
 }
 
@@ -113,7 +115,8 @@ const VisualGraphAnnotation = Annotation.Root({
   jobMode: Annotation<any>,
   skipClassify: Annotation<any>,
 
-  // RAC (Intent-Centric)
+  // Detection & RAC (Intent-Centric)
+  detectionReport: Annotation<any>,
   resolvedAction: Annotation<any>,
 
   // Session carry-over
@@ -158,6 +161,10 @@ const VisualGraphAnnotation = Annotation.Root({
   // Phase-level token tracking
   phaseTokenUsages: Annotation<any>,
 
+  // Detect node tracking
+  recursionCount: Annotation<any>,
+  recursionLimit: Annotation<any>,
+
   // TriageableState compat
   pendingToolCalls: Annotation<any>,
 });
@@ -166,9 +173,9 @@ export function buildVisualGraph() {
   const graph = new StateGraph(VisualGraphAnnotation);
 
   // Add nodes
-  graph.addNode('resolve', resolveNode as any);
+  graph.addNode('resolve', createResolveNode(visualResolveStrategy) as any);
   graph.addNode('triage', triage as any);
-  graph.addNode('classify', classifyNode as any);
+  graph.addNode('detect', createDetectNode(visualDetectStrategy) as any);
   graph.addNode('direct', directNode as any);
   graph.addNode('sketch', sketchNode as any);
   graph.addNode('render', renderNode as any);
@@ -180,20 +187,20 @@ export function buildVisualGraph() {
   graph.addEdge('__start__' as any, 'resolve' as any);
   graph.addEdge('resolve' as any, 'triage' as any);
 
-  // Triage → classify (handles its own skip via skipClassify) | __end__
+  // Triage → detect (handles its own skip via skipClassify) | __end__
   graph.addConditionalEdges(
     'triage' as any,
     routeAfterVisualTriage as any,
     {
-      classify: 'classify',
+      detect: 'detect',
       __end__: END,
     } as any
   );
 
-  // Classify → direct | explain (conditional based on jobMode + sketchIntent)
+  // Detect → direct | explain (conditional based on jobMode + sketchIntent)
   graph.addConditionalEdges(
-    'classify' as any,
-    routeAfterClassify as any,
+    'detect' as any,
+    routeAfterDetect as any,
     { explain: 'explain', direct: 'direct' } as any
   );
 

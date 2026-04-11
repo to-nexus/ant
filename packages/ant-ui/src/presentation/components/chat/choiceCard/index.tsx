@@ -14,7 +14,6 @@ import type { ChoiceVariant } from './shared';
 import { TriageChoiceVariant } from './TriageChoiceVariant';
 import { CancelledVariant } from './CancelledVariant';
 import { EvalSaveVariant } from './EvalSaveVariant';
-import { PrdApplyVariant } from './PrdApplyVariant';
 import { SpecCompleteVariant } from './SpecCompleteVariant';
 import { ClarifyingVariant } from './ClarifyingVariant';
 
@@ -32,8 +31,6 @@ export function ChoiceCard({ content, variant, messageId }: ChoiceCardProps) {
       return <CancelledVariant content={content} messageId={messageId} />;
     case 'eval_save':
       return <EvalSaveVariant content={content} messageId={messageId} />;
-    case 'prd_apply':
-      return <PrdApplyVariant content={content} messageId={messageId} />;
     case 'clarifying':
       return <ClarifyingVariant content={content} messageId={messageId} />;
     case 'spec_complete':

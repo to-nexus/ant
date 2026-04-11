@@ -2,7 +2,10 @@
  * Plan Graph State
  * 
  * State for the plan (PRD) generation/refinement graph.
- * Follows PRD-as-State pattern: existing PRD is loaded as context.
+ * Document content is injected via resolvedAction.documents (not stored in state).
+ * 
+ * Plan mode is determined by detectionReport.detectedMode + intentId
+ * (the old plannerPhase field is removed; 'refine' → Mode.refactor).
  * 
  * Implements TriageableState-compatible fields for shared triage node.
  */
@@ -11,7 +14,7 @@ import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers
 import { TriageableState, WorkspaceState } from '../../../common/nodes/triage/types';
 import { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
-import type { ResolvedActionContext, ActionMetadata } from '@ant/shared';
+import type { ResolvedActionContext, ActionMetadata, DetectionReport } from '@ant/shared';
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   // Input
@@ -19,12 +22,11 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   language: 'ko' | 'en';
   featurePath: string;
   
-  // Planner phase (distinct from universal RAC `Mode`)
-  plannerPhase: 'generate' | 'refine' | 'explain';
+  // Detection (replaces the old plannerPhase field)
+  detectionReport?: DetectionReport;
   
   // Context (loaded by resolve node)
   context: { featurePath?: string; [key: string]: any };
-  existingDocument?: string;
   evalReport?: string;
   rubricContent?: string;
   recentTurnSummaries?: string[];
@@ -40,9 +42,6 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
     name: string;
     args: Record<string, any>;
   }>;
-  
-  // Output
-  generatedDocument?: string;
   
   /** Intent-centric resolved context (passed from FE actionMetadata, consumed by templates) */
   resolvedAction?: ResolvedActionContext;
@@ -72,12 +71,16 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   recursionLimit: number;
 }
 
+/** Helper to read planMode from detectionReport (replaces state.plannerPhase) */
+export function getPlanMode(state: PlanGraphState): 'generate' | 'refactor' | 'explain' {
+  return state.detectionReport?.detectedMode || 'generate';
+}
+
 export function createInitialPlanState(params: {
   directive: string;
   language: 'ko' | 'en';
   workspaceState: WorkspaceState;
   featurePath: string;
-  plannerPhase?: 'generate' | 'refine' | 'explain';
   isResume?: boolean;
   deps?: PlanGraphState['deps'];
   _httpJobId?: string;
@@ -90,7 +93,6 @@ export function createInitialPlanState(params: {
     language: params.language,
     workspaceState: params.workspaceState,
     featurePath: params.featurePath,
-    plannerPhase: params.plannerPhase || 'generate',
     isResume: params.isResume,
     conversationHistory: [],
     pendingToolCalls: [],

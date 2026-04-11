@@ -1,8 +1,12 @@
 /**
  * Detection Types
  * 
- * Environment/mode detection results shared between BE and FE.
- * Type definitions only - factory functions and formatters stay in each package.
+ * Two-layer hierarchy:
+ *   DetectionSummary — FE-facing minimal type (Chat UI display)
+ *   DetectionReport  — extends DetectionSummary with BE-specific fields
+ * 
+ * Both layers live in @ant/shared so rac.ts can reference DetectionReport.
+ * FE should only import DetectionSummary; DetectionReport is conceptually BE-only.
  */
 
 /** Universal mode — shared vocabulary across all jobs */
@@ -37,36 +41,42 @@ export interface ProjectProfile {
   framework?: string;
 }
 
-/** Job source type */
+/** @deprecated Use string literal for sourceJob instead */
 export type JobSource = 'code' | 'design';
 
-/** Unified detection result (Code Job & Design Job) */
-export interface DetectionReport {
-  // Common (Code & Design)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DetectionSummary — FE-facing minimal type
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export interface DetectionSummary {
   detectedMode: Mode;
   detectedModeReasoning: string;
+  intentId?: string;
+  detectedIntentGroup?: IntentGroup;
+  environment?: JobEnvironment;
+  domain?: DesignDomain;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DetectionReport — full report with BE-specific fields
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export interface DetectionReport extends DetectionSummary {
   /** @deprecated Use detectedMode */
   jobMode?: Mode;
   /** @deprecated Use detectedModeReasoning */
   jobModeReasoning?: string;
-  environment?: JobEnvironment;
   environmentReasoning?: string;
 
-  // Design Job only
-  detectedIntentGroup?: IntentGroup;
+  // Design Job
   detectedIntentGroupReasoning?: string;
-  domain?: DesignDomain;
   domainReasoning?: string;
   targetFiles?: string[];
 
-  // Code Job only
+  // Code Job
   profile?: ProjectProfile;
-  requireRag?: boolean;
-  /** Primary document sources identified by detectEnvironment LLM analysis */
-  primarySources?: string[];
-  primarySourcesReasoning?: string;
 
-  // Meta
-  sourceJob: JobSource;
+  // Meta (string, not restricted to 'code'|'design')
+  sourceJob: string;
   detectedAt?: string;
 }

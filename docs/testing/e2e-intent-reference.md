@@ -30,8 +30,8 @@ curl -X POST http://localhost:4100/api/jobs \
 ```
 
 - **예상 Triage**: agent=planner, jobType=plan
-- **예상 산출물**: `outputs/plan/prd-refine.md`
-- **PASS 기준**: prd-refine.md 생성되고 "프로젝트 관리" 키워드 포함
+- **예상 산출물**: `inputs/sources/prd.md`
+- **PASS 기준**: prd.md 생성되고 "프로젝트 관리" 키워드 포함
 
 ### rev-plan
 

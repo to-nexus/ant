@@ -22,7 +22,7 @@ import type { MessageContent } from '@/domain/models/chat';
 
 export type ChoiceVariant =
   | 'triage_choice' | 'cancelled' | 'eval_save'
-  | 'prd_apply' | 'clarifying' | 'spec_complete';
+  | 'clarifying' | 'spec_complete';
 
 export interface ChoiceCardProps {
   content: MessageContent;

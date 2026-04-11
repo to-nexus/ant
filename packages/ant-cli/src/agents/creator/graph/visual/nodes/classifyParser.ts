@@ -5,13 +5,14 @@
  * Fallback: { assetType: 'general', jobMode: 'generate' } on any parse failure.
  */
 
-import { VisualAssetType, VISUAL_ASSET_TYPES } from '../types.js';
-import type { JobMode } from '@ant/shared';
+import { VISUAL_ASSET_TYPES } from '../types.js';
+import type { VisualAssetType, JobMode } from '../types.js';
 
 const VALID_JOB_MODES: readonly string[] = ['generate', 'explain'] as const;
 
 export interface ClassifyResponse {
   assetType: VisualAssetType;
+  intentId?: string;
   jobMode: JobMode;
   reasoning: string;
 }
@@ -57,6 +58,7 @@ export function parseClassifyResponse(response: string): ClassifyResponse {
 
     return {
       assetType,
+      intentId: parsed.intentId || undefined,
       jobMode,
       reasoning: parsed.reasoning || '',
     };

@@ -2,7 +2,7 @@ import { StateCreator } from 'zustand';
 import { UIState } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import { type ActionMetadata, deriveFromIntent } from '@ant/shared';
+import { type ActionMetadata, deriveFromIntent, getConfigSlots } from '@ant/shared';
 import i18n from '@/i18n';
 
 export interface UIActions {
@@ -422,6 +422,13 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
           const derived = deriveFromIntent(patch.intent);
           updates.selectedAgent = derived.agent;
           updates.selectedJobType = derived.jobType;
+        }
+      }
+
+      if ('refs' in patch && next.intent) {
+        const slots = getConfigSlots(next.intent);
+        if (slots?.target.kind === 'revise') {
+          next.target = patch.refs;
         }
       }
 

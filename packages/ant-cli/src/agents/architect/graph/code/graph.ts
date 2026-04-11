@@ -2,9 +2,11 @@ import path from 'node:path';
 import { Annotation, StateGraph, END } from "@langchain/langgraph";
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
-import { resolve } from "./nodes/resolve";
+import { codeResolveStrategy } from "./nodes/resolve";
+import { createResolveNode } from "../../../common/nodes/resolve";
 import { triage, routeAfterTriage } from "../../../common/nodes/triage";  // ✅ Triage System
-import { detectEnvironment } from "./nodes/detectEnvironment/index";
+import { createDetectNode } from '../../../common/nodes/detect/index.js';
+import { codeDetectStrategy } from './nodes/detect/strategy.js';
 import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";
 import { execute } from "./nodes/execute/index";
@@ -471,7 +473,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     deps: state.deps,
     gitPort: state.gitPort,
     detectionReport: state.detectionReport,
-    decomposeKeywords: state.decomposeKeywords,
     selectedDesignFiles: state.selectedDesignFiles,
     decomposeFilePaths: state.decomposeFilePaths,
     prd: state.prd,
@@ -979,12 +980,7 @@ const ArchitectCodeGraphStateAnnotation = Annotation.Root({
       deps: Annotation<any>,
       gitPort: Annotation<any>,
       
-      // ✅ CRITICAL: Detection Report (unified environment detection result)
-      // Contains: detectedMode, environment, profile, requireRag
       detectionReport: Annotation<any>,
-      
-      // Environment Detection outputs
-      decomposeKeywords: Annotation<any>,
       selectedDesignFiles: Annotation<any>,
       decomposeFilePaths: Annotation<any>,
       
@@ -1160,9 +1156,9 @@ export function buildCodeGraph() {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Node Registration
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  graph.addNode("resolve", resolve as any);
+  graph.addNode("resolve", createResolveNode(codeResolveStrategy) as any);
   graph.addNode("triage", triage as any);
-  graph.addNode("detectEnvironment", detectEnvironment as any);
+  graph.addNode('detect', createDetectNode(codeDetectStrategy) as any);
   graph.addNode("decompose", decompose as any);
   graph.addNode("revise", revise as any);  // ✅ Task queue revision (continue/modify)
   graph.addNode("plan", plan as any);
@@ -1198,7 +1194,7 @@ export function buildCodeGraph() {
       
       if (hasTaskQueue && hasNewDirective) {
         // Resume with new chat input → triage first (may redirect to design for spec).
-        // If triage says proceed, routeAfterTriage routes to revise (not detectEnvironment).
+        // If triage says proceed, routeAfterTriage routes to revise (not detect).
         console.log(`[RouteAfterResolve] Resume + new directive → triage (then revise if proceed)`);
         return 'triage';
       }
@@ -1222,14 +1218,14 @@ export function buildCodeGraph() {
       }
 
       if (hasDetectionReport) {
-        // Interrupted after detectEnvironment but before decompose
-        // Route through detectEnvironment again (LLM skip, pass-through only)
-        // Then detectEnvironment → decompose → plan via hardcoded edges
-        console.log(`[RouteAfterResolve] Resume after detectEnv → detectEnvironment (LLM skip, pass-through)`);
-        return 'detectEnvironment';
+        // Interrupted after detect but before decompose
+        // Route through detect again (LLM skip, pass-through only)
+        // Then detect → decompose → plan via hardcoded edges
+        console.log(`[RouteAfterResolve] Resume with detectionReport → detect (pass-through)`);
+        return 'detect';
       }
       
-      // Interrupted very early (before detectEnvironment) → start from triage
+      // Interrupted very early (before detect) → start from triage
       console.log(`[RouteAfterResolve] Resume (no tasks, no detection) → triage`);
       return 'triage';
     }) as any,
@@ -1239,24 +1235,24 @@ export function buildCodeGraph() {
       plan: "plan",
       parallelOrchestrator: "parallelOrchestrator",
       decompose: "decompose",
-      detectEnvironment: "detectEnvironment"
+      detect: "detect"
     } as any
   );
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Triage → detectEnvironment or end
+  // Triage → detect or end
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   graph.addConditionalEdges(
     "triage" as any,
     routeAfterTriage as any,
     {
-      detectEnvironment: "detectEnvironment",
+      detectEnvironment: "detect",
       revise: "revise",
       __end__: "__end__"
     } as any
   );
   
-  graph.addEdge("detectEnvironment" as any, "decompose" as any);
+  graph.addEdge("detect" as any, "decompose" as any);
   
   // ✅ Decompose → conditional: clarify pause, parallel, or sequential
   graph.addConditionalEdges(

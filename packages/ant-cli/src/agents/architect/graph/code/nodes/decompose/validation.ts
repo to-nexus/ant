@@ -1,7 +1,7 @@
 import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import type { TaskType } from '@ant/shared';
-import { DesignDocs, getDesignDocByPackage } from "../detectEnvironment/designSelector";
+import { DesignDocs, getDesignDocByPackage } from "../designSelector";
 
 /**
  * Post-validation: Check if LLM correctly classified error vs feature

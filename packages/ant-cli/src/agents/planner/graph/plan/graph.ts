@@ -1,9 +1,9 @@
 /**
  * Plan LangGraph
  * 
- * All runs:  __start__ → resolve → triage → (conditional) → generate ⟷ tool → END
+ * All runs:  __start__ → resolve → triage → (conditional) → detect → generate ⟷ tool → END
  * 
- * Triage branches:  ask → __end__, redirect → __end__, blocked → __end__, proceed → generate
+ * Triage branches:  ask → __end__, redirect → __end__, blocked → __end__, proceed → detect
  * 
  * Triage always runs — even for conversation continuations — so the system can
  * detect agent/job switches (e.g., user requests code work mid-planner session).
@@ -14,21 +14,24 @@
 
 import { Annotation, StateGraph, END } from '@langchain/langgraph';
 import { PlanGraphState } from './state';
-import { resolveNode } from './nodes/resolve';
+import { planResolveStrategy } from './nodes/resolve';
+import { createResolveNode } from '../../../common/nodes/resolve';
 import { generateNode, routeAfterGenerate } from './nodes/generate';
 import { toolNode } from './nodes/tool';
 import { triage } from '../../../common/nodes/triage';
+import { createDetectNode } from '../../../common/nodes/detect/index.js';
+import { planDetectStrategy } from './nodes/detectStrategy.js';
 
 /**
  * Route after triage for planner agent.
- * Proceeds to 'generate' instead of architect's 'detectEnvironment'.
+ * Proceeds to 'detect' for mode detection + RAC creation before generate.
  */
 function routeAfterPlannerTriage(state: PlanGraphState): string {
   const result = state.triageResult;
   
   if (!result) {
-    console.log('[PlannerTriageRouter] No triage result, proceeding to generate');
-    return 'generate';
+    console.log('[PlannerTriageRouter] No triage result, proceeding to detect');
+    return 'detect';
   }
   
   if (result.intent === 'ask') {
@@ -37,8 +40,8 @@ function routeAfterPlannerTriage(state: PlanGraphState): string {
   }
   
   if (result.workStatus === 'proceed') {
-    console.log('[PlannerTriageRouter] work:proceed → generate');
-    return 'generate';
+    console.log('[PlannerTriageRouter] work:proceed → detect');
+    return 'detect';
   }
   
   if (result.workStatus === 'redirect') {
@@ -51,8 +54,8 @@ function routeAfterPlannerTriage(state: PlanGraphState): string {
     return '__end__';
   }
   
-  console.log('[PlannerTriageRouter] default → generate');
-  return 'generate';
+  console.log('[PlannerTriageRouter] default → detect');
+  return 'detect';
 }
 
 const PlanAnnotation = Annotation.Root({
@@ -60,9 +63,8 @@ const PlanAnnotation = Annotation.Root({
   language: Annotation<any>,
   workspaceState: Annotation<any>,
   featurePath: Annotation<any>,
-  plannerPhase: Annotation<any>,
+  detectionReport: Annotation<any>,
   isResume: Annotation<any>,
-  existingDocument: Annotation<any>,
   evalReport: Annotation<any>,
   rubricContent: Annotation<any>,
   recentTurnSummaries: Annotation<any>,
@@ -70,7 +72,6 @@ const PlanAnnotation = Annotation.Root({
   isConversationContinuation: Annotation<any>,
   conversationHistory: Annotation<any>,
   pendingToolCalls: Annotation<any>,
-  generatedDocument: Annotation<any>,
   resolvedAction: Annotation<any>,
   context: Annotation<any>,
   triageResult: Annotation<any>,
@@ -94,12 +95,13 @@ export function buildPlanGraph() {
   const graph = new StateGraph(PlanAnnotation);
   
   // Add nodes (no separate write node — generate handles everything like design job's docGen)
-  graph.addNode('resolve', resolveNode as any);
+  graph.addNode('resolve', createResolveNode(planResolveStrategy) as any);
   graph.addNode('triage', triage as any);
+  graph.addNode('detect', createDetectNode(planDetectStrategy) as any);
   graph.addNode('generate', generateNode as any);
   graph.addNode('tool', toolNode as any);
   
-  // Edges: resolve → triage → (conditional) → generate → ... → END
+  // Edges: resolve → triage → (conditional) → detect → generate → ... → END
   graph.addEdge('__start__' as any, 'resolve' as any);
   
   // After resolve: always run triage (detects agent/job switches even in continuations)
@@ -109,10 +111,11 @@ export function buildPlanGraph() {
     'triage' as any,
     routeAfterPlannerTriage as any,
     {
-      generate: 'generate',
+      detect: 'detect',
       __end__: END,
     } as any
   );
+  graph.addEdge('detect' as any, 'generate' as any);
   graph.addConditionalEdges(
     'generate' as any,
     routeAfterGenerate as any,

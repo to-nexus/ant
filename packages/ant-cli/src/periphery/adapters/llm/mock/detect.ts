@@ -16,15 +16,7 @@ export function detectResponse(jobType?: string): string {
   return `<detect>
 {
   "jobMode": "generate",
-  "jobModeReasoning": "Mock: generating new code from directive.",
-  "requireRagForDecompose": false,
-  "primarySources": [],
-  "primarySourcesReasoning": "Mock: no sources needed.",
-  "decomposeKeywords": {
-    "errorFiles": [],
-    "keywords": ["mock"],
-    "references": []
-  }
+  "jobModeReasoning": "Mock: generating new code from directive."
 }
 </detect>`;
 }

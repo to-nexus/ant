@@ -1,35 +1,39 @@
 /**
- * Resolve Node (Visual Graph)
+ * Visual Resolve Strategy
  *
  * Loads session state and determines if this is a continuation or fresh start.
- * Pattern aligned with planner resolve node.
+ * No workspace validation or jobTiming (visual is a lightweight job).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
 import type { ConversationEntry } from '../../../../../core/types/session.js';
-import { getEstimatingLabel, detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
+import { detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
 import { resolveFromExplicit } from '@ant/shared';
+import type { ResolveStrategy } from '../../../../common/nodes/resolve/types.js';
 
-export async function resolveNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
-  const phaseStart = Date.now();
+export const visualResolveStrategy: ResolveStrategy<VisualGraphState> = {
+  async loadArtifacts(state) {
+    return loadVisualState(state);
+  },
 
+  async onResume(state) {
+    return loadVisualState(state);
+  },
+};
+
+/**
+ * Shared logic for both new and resume paths.
+ * Visual resolve doesn't distinguish between the two — it always loads session.
+ */
+async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
   console.log('\n📂 [Visual:Resolve] Loading session state...');
-
-  if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-    const locale = state._uiLocale || detectUILocale(state.directive);
-    state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('resolve', locale as any), 'resolve');
-  }
-
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.enterNode(state._httpJobId, 'resolve', 0);
-  }
 
   const featurePath = state.featurePath;
   if (!featurePath) {
     console.warn('⚠️ [Visual:Resolve] No featurePath — starting fresh');
-    return { _phaseTimings: { resolve: Date.now() - phaseStart } };
+    return {};
   }
 
   const sessionPath = path.join(featurePath, 'sessions/creator/visual.json');
@@ -52,7 +56,6 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
         conversation = sessionData.state.conversation;
         console.log(`📂 [Visual:Resolve] Loaded ${conversation.length} conversation entries`);
       }
-
       if (sessionData.state?.lastEngineeredPrompt) {
         lastEngineeredPrompt = sessionData.state.lastEngineeredPrompt;
         console.log(`📂 [Visual:Resolve] Restored lastEngineeredPrompt (${lastEngineeredPrompt!.length} chars)`);
@@ -81,15 +84,12 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
         lastSketchVariations = sessionData.state.sketchVariations;
         console.log(`📂 [Visual:Resolve] Restored sketchVariations (${lastSketchVariations!.length} variations)`);
       }
-
-      // Restore clarify count from conversation (count assistant→user pairs)
       if (conversation.length > 0) {
         clarifyCount = conversation.filter((e, i) =>
           e.role === 'assistant' && !e.metadata?.savedAsset && conversation[i + 1]?.role === 'user'
         ).length;
         console.log(`📂 [Visual:Resolve] Restored clarifyCount: ${clarifyCount}`);
       }
-
       if (sessionData.state?.interruption) {
         isResume = true;
         console.log('🔄 [Visual:Resolve] Found interrupted session — resuming');
@@ -99,7 +99,7 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     console.warn('⚠️ [Visual:Resolve] Failed to load session:', err);
   }
 
-  // Fallback: scan sketches directory only if session didn't provide availableSketchPaths
+  // Fallback: scan sketches directory
   if (!availableSketchPaths) {
     const sketchesDir = path.join(featurePath, 'inputs/assets/gen/sketches');
     try {
@@ -108,7 +108,6 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
           .filter(f => /^sketch-\d+-\d+\.(jpeg|jpg|png|webp|svg)$/i.test(f))
           .sort();
         if (files.length > 0) {
-          // Only keep the latest batch (highest timestamp) to prevent cross-batch index mismatch
           const timestamps = files.map(f => f.match(/^sketch-(\d+)-/)?.[1]).filter(Boolean) as string[];
           const latestTs = timestamps.sort().pop();
           const latestFiles = latestTs ? files.filter(f => f.startsWith(`sketch-${latestTs}-`)) : files;
@@ -158,11 +157,7 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     console.log('📝 [Visual:Resolve] Appended user directive to conversation');
   }
 
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'resolve', 0);
-  }
-
-  // RAC creation: explicit path only (infer path creates RAC in classify node)
+  // RAC creation: explicit path only (infer path creates RAC in detect node)
   const actionMetadata = state.actionMetadata;
   let resolvedAction = state.resolvedAction;
   if (!resolvedAction && actionMetadata?.intent) {
@@ -182,33 +177,24 @@ export async function resolveNode(state: VisualGraphState): Promise<Partial<Visu
     directive: parsedDirective || state.overrideDirective || state.directive,
     overrideDirective: parsedDirective || state.overrideDirective,
     _uiLocale: state._uiLocale || detectUILocale(state.directive),
-    _phaseTimings: { ...state._phaseTimings, resolve: Date.now() - phaseStart },
     ...(resolvedAction ? { resolvedAction } : {}),
   };
 
-  // Detect clarify response: last session conversation entry is an assistant clarify question (not a sketch delivery)
+  // Detect clarify response
   const lastConvBeforeUser = conversation.length >= 2 ? conversation[conversation.length - 2] : null;
   const isClarifyResponse = !!lastConvBeforeUser
     && lastConvBeforeUser.role === 'assistant'
     && !lastConvBeforeUser.metadata?.savedAsset
     && !sketchIntent;
 
-  // Skip triage + classify for all visual continuations (sketch interactions + clarify responses)
+  // Skip triage + classify for visual continuations
   if (sketchIntent || isClarifyResponse) {
     result.skipTriage = true;
     result.skipClassify = true;
-    if (lastAssetType) {
-      result.assetType = lastAssetType as any;
-    }
-    if (lastJobMode) {
-      result.jobMode = lastJobMode as any;
-    }
-    if (lastBasePrompt) {
-      result.basePrompt = lastBasePrompt;
-    }
-    if (lastSketchVariations) {
-      result.sketchVariations = lastSketchVariations;
-    }
+    if (lastAssetType) result.assetType = lastAssetType as any;
+    if (lastJobMode) result.jobMode = lastJobMode as any;
+    if (lastBasePrompt) result.basePrompt = lastBasePrompt;
+    if (lastSketchVariations) result.sketchVariations = lastSketchVariations;
     const bypassReason = sketchIntent ? `sketch:${sketchIntent}` : 'clarifyResponse';
     console.log(`📂 [Visual:Resolve] skipTriage+skipClassify=true (reason=${bypassReason}, assetType=${lastAssetType || 'general'}, jobMode=${lastJobMode || 'generate'})`);
   }

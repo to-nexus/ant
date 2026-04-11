@@ -305,19 +305,18 @@ export class PromptEngine {
 
   /**
    * Build prompt for DetectEnvironment node (code graph)
-   * Determines: jobMode + requireRag + keywords (lightweight router)
-   * Note: environment and profile are now determined by decompose node
+   * Determines: jobMode + intentId (lightweight router)
    */
   async buildDetectEnvironmentPrompt(
     directive: string,
-    documents?: ResolvedDocument[],
-    artifactAvailability?: string
+    artifactAvailability?: string,
+    workspaceHints?: { hasDesignDoc?: boolean; hasSpecDocs?: boolean },
   ): Promise<string> {
     return await this.deps.promptPort.render('code/phases/detect/base', {
       directive,
-      documents: documents || [],
-      hasDocuments: (documents?.length ?? 0) > 0,
       artifactAvailability: artifactAvailability || '',
+      hasDesignDoc: workspaceHints?.hasDesignDoc || false,
+      hasSpecDocs: workspaceHints?.hasSpecDocs || false,
     });
   }
 
@@ -330,8 +329,6 @@ export class PromptEngine {
    */
   async buildDesignDomainPrompt(args: {
     directive: string;
-    documents?: ResolvedDocument[];
-    hasDocuments?: boolean;
     hasReferences?: boolean;
     hasAssets?: boolean;
     referencesList?: string;
@@ -346,16 +343,15 @@ export class PromptEngine {
     hasFeSystemDesign?: boolean;
     hasBeSystemDesign?: boolean;
     systemDesignFiles?: string[];
+    figmaPopulated?: boolean;
   }): Promise<string> {
     return await this.deps.promptPort.render('design/phases/detect/base', {
       directive: args.directive,
-      documents: args.documents || [],
-      hasDocuments: args.hasDocuments || false,
       hasReferences: args.hasReferences || false,
       hasAssets: args.hasAssets || false,
       referencesList: args.referencesList || '',
       assetsList: args.assetsList || '',
-      // ✅ Pass document completion status to prompt
+      figmaPopulated: args.figmaPopulated || false,
       hasUiDocs: args.hasUiDocs || false,
       hasUiTokens: args.hasUiTokens || false,
       hasUiAssets: args.hasUiAssets || false,

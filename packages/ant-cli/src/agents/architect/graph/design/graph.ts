@@ -1,14 +1,16 @@
 import { Annotation, StateGraph } from "@langchain/langgraph";
 import { DesignGraphState } from "./state";
 import { DesignTask } from "../../types/task";
-import { resolve } from "./nodes/resolve";
+import { designResolveStrategy } from "./nodes/resolve";
+import { createResolveNode } from "../../../common/nodes/resolve";
 import { triage, routeAfterTriage } from "../../../common/nodes/triage";  // ✅ Triage System
 import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
 import { docGen } from "./nodes/docGen/index";  // ✅ XML streaming + immediate file writes
 import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design multimodal)
 import { learn } from "./nodes/learn";
-import { detectEnvironment } from "./nodes/detectEnvironment";
+import { createDetectNode } from '../../../common/nodes/detect/index.js';
+import { designDetectStrategy } from './nodes/detect/strategy.js';
 import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "../code/parallel/types";
@@ -914,7 +916,7 @@ const DesignGraphAnnotation = Annotation.Root({
   uiReferences: Annotation<any>,
   uiAssetsList: Annotation<any>,
 
-  // Figma integration (resolve -> detectEnvironment -> figmaExplore -> docGen)
+  // Figma integration (resolve -> detect -> figmaExplore -> docGen)
   figmaConfig: Annotation<any>,
   figmaExplorationResult: Annotation<any>,
   figmaAvailable: Annotation<any>,
@@ -955,9 +957,9 @@ const DesignGraphAnnotation = Annotation.Root({
 export function buildDesignGraph() {
   const graph = new StateGraph(DesignGraphAnnotation);
 
-  graph.addNode("resolve" as const, resolve as any);
+  graph.addNode("resolve" as const, createResolveNode(designResolveStrategy) as any);
   graph.addNode("triage" as const, triage as any);  // ✅ Triage: analyze intent and prerequisites
-  graph.addNode("detectEnvironment" as const, detectEnvironment as any);
+  graph.addNode('detect' as const, createDetectNode(designDetectStrategy) as any);
   graph.addNode("figmaExplore" as const, figmaExplore as any);  // ✅ Figma exploration (Phase 0)
   graph.addNode("decompose" as const, decompose as any);
   graph.addNode("revise" as const, revise as any);  // ✅ Task queue revision (on resume with new directive)
@@ -990,8 +992,8 @@ export function buildDesignGraph() {
       
       // Path 0: Detect clarify resume — user chose spec vs system-design
       if (isResume && s.awaitingDetectClarify && hasNewDirective) {
-        console.log(`🔀 [Resolve→Router] isResume + awaitingDetectClarify + newDirective → detectEnvironment (clarify resume)`);
-        return "detectEnvironment";
+        console.log(`🔀 [Resolve→Router] isResume + awaitingDetectClarify + newDirective → detect (clarify resume)`);
+        return "detect";
       }
       
       // Path 1: Clarify response — skip straight to docGen with conversation history
@@ -1027,26 +1029,26 @@ export function buildDesignGraph() {
       console.log(`🔀 [Resolve→Router] New job → triage`);
       return "triage";
     }) as any,
-    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose", docGen: "docGen", detectEnvironment: "detectEnvironment" } as any
+    { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose", docGen: "docGen", detect: "detect" } as any
   );
   
-  // ✅ Triage → Conditional (proceed to detectEnvironment or end)
+  // ✅ Triage → Conditional (proceed to detect or end)
   graph.addConditionalEdges(
     "triage" as any,
     routeAfterTriage as any,
     {
-      detectEnvironment: "detectEnvironment",  // work:proceed → continue
+      detectEnvironment: "detect",  // work:proceed → continue (routeAfterTriage returns 'detectEnvironment')
       __end__: "__end__"  // ask, redirect, blocked → end (await choice or show message)
     } as any
   );
   
-  // ✅ Conditional routing from detectEnvironment
+  // ✅ Conditional routing from detect
   // - designError → learn (cleanup, error message, endJob)
   // - awaitingDetectClarify → END (paused for user choice between spec/system-design)
   // - Figma pipeline (intent=gen-ui-figma or rev-ui+figma) → figmaExplore → decompose
   // - otherwise → decompose (reference mode or non-UI)
   graph.addConditionalEdges(
-    "detectEnvironment" as any,
+    "detect" as any,
     ((s: DesignGraphState) => {
       if (s.designError) {
         console.log(`❌ [Graph] Design error detected → routing to learn for cleanup`);

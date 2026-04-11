@@ -10,7 +10,7 @@
  * - writeFiles: Tool node writes immediately
  */
 
-export { resolve } from "./resolve";
+export { designResolveStrategy } from "./resolve";
 export { decompose } from "./decompose/index";
 export { plan } from "./plan";
 export { docGen } from "./docGen/index";  // ✅ Refactored: docGen/ directory
