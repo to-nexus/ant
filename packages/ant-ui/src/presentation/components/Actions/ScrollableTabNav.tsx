@@ -114,11 +114,10 @@ export function ScrollableTabNav({ items, selectedId, onSelect, onBack }: Scroll
                       {item.label}
                     </span>
                   </span>
-                  {/* Uniform touch height: invisible description on unselected tabs */}
                   <span className={`block text-xs mt-0.5 whitespace-nowrap ${
                     isSelected
                       ? 'text-gray-500 dark:text-gray-400'
-                      : 'invisible'
+                      : 'hidden'
                   }`}>
                     {item.description}
                   </span>
