@@ -28,6 +28,7 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
   const defs = useMemo(() => {
     if (!agentFilter) return ACTION_DEFINITIONS;
     return ACTION_DEFINITIONS.filter(def => {
+      if (def.agentScoped === false) return false;
       const intents = getIntentsForAction(def.id);
       return intents.some(intent => deriveFromIntent(intent.id).agent === agentFilter);
     });
