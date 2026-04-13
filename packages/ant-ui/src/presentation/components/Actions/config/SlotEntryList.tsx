@@ -1,7 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Plus, Upload } from 'lucide-react';
+import { Plus, Upload, FolderOpen } from 'lucide-react';
 import { getFileDescription, getDirDescription } from '@ant/shared';
-import { HintBadge } from '@/presentation/components/common/HintBadge';
 import { FileCard } from './FileCard';
 import type { SlotEntry } from './types';
 
@@ -31,11 +30,25 @@ export function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onC
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
               {entry.def.humanLabel?.[lang] || entry.def.humanLabel?.en || entry.def.label[lang] || entry.def.label.en}
             </span>
-            {entry.def.required && (
-              <HintBadge label={t('slot.required')} tooltip={t('slot.requiredHint')} colorScheme="amber" />
-            )}
           </div>
         ) : null;
+
+        if (entry.def.codebase) {
+          const card = (
+            <FileCard
+              key="codebase-ref"
+              name={entry.def.humanLabel?.[lang] || entry.def.humanLabel?.en || t('target.codebase')}
+              path={entry.hasFiles ? t('target.codebaseDetected') : t('target.codebaseEmpty')}
+              selected={entry.hasFiles}
+              locked={entry.hasFiles}
+              empty={!entry.hasFiles}
+              emptyStyle={!entry.hasFiles ? 'amber' : undefined}
+              icon={<FolderOpen className={`w-4 h-4 ${entry.hasFiles ? 'text-emerald-500' : 'text-amber-400'} shrink-0`} />}
+              lang={lang}
+            />
+          );
+          return slotLabel ? [slotLabel, card] : card;
+        }
 
         if (!entry.hasFiles) {
           const humanName = entry.def.humanLabel?.[lang] || entry.def.humanLabel?.en || entry.def.label[lang] || entry.def.label.en;

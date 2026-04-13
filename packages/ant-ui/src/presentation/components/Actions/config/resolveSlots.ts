@@ -64,10 +64,15 @@ export function resolveSlotEntries(
   fileTree: FileNode[],
   excludePaths?: Set<string>,
   warningCtx?: FileWarningContext,
+  codebaseHasFiles?: boolean,
 ): SlotEntry[] {
   return defs
     .filter(def => !def.emptyHint || def.path)
     .map(def => {
+      if (def.codebase) {
+        const hasFiles = !!codebaseHasFiles;
+        return { def, files: [], hasFiles, hasValidFiles: hasFiles };
+      }
       let files: SlotFileEntry[] = [];
       if (def.type === 'file') {
         const node = findFileNode(fileTree, def.path);
