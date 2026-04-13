@@ -29,6 +29,13 @@ export interface ActionDefinition {
   readonly label: { en: string; ko: string };
   readonly description: { en: string; ko: string };
   readonly status: ActionStatus;
+  /**
+   * Whether this action belongs to a specific agent's workflow.
+   * `false` = cross-cutting action (e.g. ask) — only shown in unfiltered "all actions" view,
+   * hidden in per-agent filtered views.
+   * Defaults to `true` when omitted.
+   */
+  readonly agentScoped?: boolean;
 }
 
 export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
@@ -79,6 +86,7 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
     label: { en: 'Ask', ko: '질문' },
     description: { en: 'Ask questions and get evaluations', ko: '질문하고 평가를 받습니다' },
     status: 'active',
+    agentScoped: false,
   },
 ];
 
