@@ -30,7 +30,7 @@ export class EnvironmentDetector {
   /**
    * Detect project environment from working directory and codebase profile
    */
-  async detectEnvironment(
+  async detect(
     workingDir: string,
     codebaseProfile?: CodebaseProfile
   ): Promise<EnvironmentDetection> {

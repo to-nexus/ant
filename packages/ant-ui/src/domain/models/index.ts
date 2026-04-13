@@ -9,7 +9,7 @@
  *   - session.ts    : Session, SessionState, Task (FE view models)
  *   - task.ts       : UnifiedTask, normalizeTask (FE normalization)
  *   - chat.ts       : ChatMessage, MessageContent, MessageContentType
- *   - detection.ts  : DetectionReport + FE helpers
+ *   - detection.ts  : Mode, IntentGroup, DesignDomain + FE helpers
  *   - workflow.ts   : WorkflowRealtimeState + FE graph types
  */
 

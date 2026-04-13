@@ -7,10 +7,10 @@
  * - Implements PreviewUpdatePort for compatibility
  * - Broadcasts structureType via Redis Pub/Sub as SSE 'preview' message
  * - Persists structureType to Redis PREVIEW_CONFIG key for durability
- * - Used by detectEnvironment node to notify frontend immediately
+ * - Used by detect node to notify frontend immediately
  * 
  * Flow:
- *   detectEnvironment → PreviewBroadcaster → Redis Pub/Sub → Realtime Server → SSE
+ *   detect → PreviewBroadcaster → Redis Pub/Sub → Realtime Server → SSE
  *                                          → Redis SET (PREVIEW_CONFIG) → GET /preview-config
  */
 

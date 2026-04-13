@@ -20,7 +20,7 @@ import {
   trackTokenUsage,
 } from "./helpers";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
-import type { JobEnvironment, JobMode } from "../../../../../../core/types/detection";
+import { type Mode, buildTechTier, type Stack, resolveTaskTechTiers as resolveTaskTechTiersShared, type PackageTierEntry } from "@ant/shared";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -38,7 +38,8 @@ interface SystemDesignResponse {
   services?: string[];
   fePackages?: string[];
   targetFiles: string[];
-  profiles?: Record<string, { language: string; framework?: string }>;
+  techTier?: { stack: string; language: string; framework?: string };
+  packageTiers?: Record<string, PackageTierEntry>;
   tasks: Array<{
     id: string;
     name: string;
@@ -96,7 +97,7 @@ function validateAndFixTargetFiles(
   response: SystemDesignResponse,
   resolvedTargetFiles: string[],
   _detectedEnv: string | undefined,
-  jobMode: JobMode = 'generate'
+  jobMode: Mode = 'generate'
 ): SystemDesignResponse {
   // Step 1: MSA expansion FIRST (before any task validation)
   // Replaces -main.md with per-service/package files when MSA is detected
@@ -229,32 +230,11 @@ function targetFileToTag(targetFile: string): string | undefined {
   return `${tier}-${name}`;
 }
 
-/**
- * Resolve a technology profile for a task based on its targetFile.
- * Two-stage lookup: exact tag match → tier default (be-main / fe-main).
- */
-function resolveTaskProfile(
-  targetFile: string | undefined,
-  profiles?: Record<string, { language: string; framework?: string }>,
-): { language: string; framework?: string } | undefined {
-  if (!targetFile || !profiles || Object.keys(profiles).length === 0) return undefined;
-
-  const tag = targetFileToTag(targetFile);
-  if (!tag) return undefined;
-  const tier = tag.split('-')[0]; // "be" or "fe"
-
-  if (profiles[tag]) return profiles[tag];
-  const defaultKey = `${tier}-main`;
-  if (profiles[defaultKey]) return profiles[defaultKey];
-
-  return undefined;
-}
-
 // ============================================
 // Task Queue Population
 // ============================================
 
-function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[] = []): TaskQueue<DesignTask> {
+function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[] = [], graphTechTier: import('@ant/shared').TechTier): TaskQueue<DesignTask> {
   const taskQueue = new TaskQueue<DesignTask>();
   
   // Pre-compute isLastTaskForDocument per targetFile group
@@ -280,7 +260,9 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
       ? taskData.parallelGroup
       : undefined;
     
-    const resolvedProfile = resolveTaskProfile(taskData.targetFile, response.profiles);
+    const tag = targetFileToTag(taskData.targetFile);
+    const packages = tag ? [tag] : undefined;
+    const taskTechTiers = resolveTaskTechTiersShared(packages, graphTechTier, response.packageTiers);
 
     taskQueue.push({
       id: taskData.id,
@@ -293,7 +275,8 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
       assignedSections: taskData.assignedSections,
       sourceFiles: Array.isArray((taskData as any).sourceFiles) ? (taskData as any).sourceFiles : undefined,
       isLastTaskForDocument: lastTaskIdPerFile.has(taskData.id),
-      ...(resolvedProfile && { profile: resolvedProfile }),
+      packages,
+      techTiers: taskTechTiers,
       exclusive: exclusive || undefined,
       parallelGroup,
       completed: false
@@ -308,12 +291,12 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
     }
   }
 
-  if (response.profiles && Object.keys(response.profiles).length > 0) {
-    const profileSummary = taskQueue.getAll()
-      .filter(t => t.profile)
-      .map(t => `${t.id}→${t.profile!.language}${t.profile!.framework ? `/${t.profile!.framework}` : ''}`)
+  if (response.packageTiers && Object.keys(response.packageTiers).length > 0) {
+    const tierSummary = taskQueue.getAll()
+      .filter(t => t.techTiers?.length)
+      .map(t => `${t.id}→${t.techTiers!.map(tier => `${tier.language}${tier.framework ? `/${tier.framework}` : ''}`).join('+')}`)
       .join(', ');
-    console.log(`🔧 [Decompose] Profiles resolved: ${profileSummary || 'none'}`);
+    console.log(`🔧 [Decompose] TechTiers resolved: ${tierSummary || 'none'}`);
   }
   
   return taskQueue;
@@ -372,9 +355,9 @@ export async function decomposeSystemDesign(
   const existingDesignFiles = state.existingDesignDocs
     ? Object.keys(state.existingDesignDocs).filter(isSystemDesignFile)
     : [];
-  const jobMode = state.detectionReport?.detectedMode || 'generate';
-  const resolvedTargetFiles = state.detectionReport?.targetFiles;
-  const detectedEnv = state.detectionReport?.environment;
+  const jobMode = state.resolvedAction?.mode || 'generate';
+  const resolvedTargetFiles = state.resolvedAction?.target;
+  const detectedEnv: Stack = state.resolvedAction?.intent?.includes('-fe') ? 'frontend' : state.resolvedAction?.intent?.includes('-be') ? 'backend' : 'fullstack';
 
   // For prompt: use resolvedTargetFiles as the authority for file constraints
   const promptExistingFiles = jobMode === 'refactor'
@@ -486,9 +469,10 @@ export async function decomposeSystemDesign(
       throw new Error('Invalid task breakdown format from LLM');
     }
 
+    const intentId = state.resolvedAction?.intent || 'gen-sys-full';
     const effectiveResolvedFiles = resolvedTargetFiles
-      || resolveDesignTargetFiles(detectedEnv as JobEnvironment, jobMode as JobMode, existingDesignFiles).targetFiles;
-    response = validateAndFixTargetFiles(response, effectiveResolvedFiles, detectedEnv, jobMode as JobMode);
+      || resolveDesignTargetFiles(intentId, jobMode as Mode, existingDesignFiles).targetFiles;
+    response = validateAndFixTargetFiles(response, effectiveResolvedFiles, detectedEnv, jobMode as Mode);
 
     const { valid, uncovered } = validateTaskCoverage(response);
     if (!valid) {
@@ -562,8 +546,14 @@ export async function decomposeSystemDesign(
 
   console.log(`✅ System decompose: ${response.documentType}, ${response.tasks.length} tasks → [${response.targetFiles.join(', ')}]`);
 
+  // Build graph-level TechTier: prefer LLM-provided techTier, fallback to detected stack
+  const graphTechTier = response.techTier
+    ? buildTechTier({ language: response.techTier.language, framework: response.techTier.framework }, (response.techTier.stack as Stack) || detectedEnv)
+    : buildTechTier(undefined, detectedEnv);
+  console.log(`✅ TechTier: stack=${graphTechTier.stack || detectedEnv}, language=${graphTechTier.language}, framework=${graphTechTier.framework || 'none'}`);
+
   // Build task queue
-  const taskQueue = buildTaskQueue(response, sourceFileNames);
+  const taskQueue = buildTaskQueue(response, sourceFileNames, graphTechTier);
 
   // Log decompose result
   await safeLogPrompt(
@@ -576,7 +566,7 @@ export async function decomposeSystemDesign(
       injectedVariables: {
         documentType: response.documentType,
         services: response.services || [],
-        profiles: response.profiles || {},
+        packageTiers: response.packageTiers || {},
         targetFiles: response.targetFiles,
         taskCount: response.tasks.length,
         tasks: response.tasks.map(t => ({ id: t.id, name: t.name, targetFile: t.targetFile, priority: t.priority }))
@@ -617,6 +607,7 @@ export async function decomposeSystemDesign(
     tokenUsage: state.tokenUsage,
     estimatingTokenUsage,
     userLanguage: state.context.userLanguage,
+    techTier: graphTechTier,
   });
 
   // Update Kanban (tasks in queue, no in-progress yet)
@@ -625,6 +616,7 @@ export async function decomposeSystemDesign(
   return {
     ...state,
     taskQueue,
+    techTier: graphTechTier,
     currentTask: undefined,
     completedTasks: [],
     _httpJobId: state._httpJobId,

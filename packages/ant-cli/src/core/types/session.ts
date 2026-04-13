@@ -6,7 +6,7 @@
  */
 
 import type { AgentJob, CodebaseProfile } from './agent';
-import type { TaskTokenUsage, JobTiming, InterruptionDetails, DetectionReport } from '@ant/shared';
+import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, TechTier, InferredAction } from '@ant/shared';
 import type { MessageContentBlock } from '../ports/llm';
 
 // Re-export shared types
@@ -187,9 +187,11 @@ export interface SessionState {
   // Inter-Job Context Bridge (cross-job directive+result history)
   jobConversation?: ConversationEntry[];
 
-  // Environment Detection & Profile
-  detectionReport?: DetectionReport;
+  // Detection & Profile
+  resolvedAction?: ResolvedActionContext;
+  techTier?: TechTier;
   profile?: CodebaseProfile;
+  lastInferredAction?: InferredAction;
 
   // Artifact Restoration
   directive?: string;
@@ -208,6 +210,9 @@ export interface SessionState {
   // Design Job: Figma & UI
   figmaConfig?: any;
   figmaExplorationResult?: any;
+  figmaAvailable?: boolean;
+  figmaFileKey?: string;
+  figmaStartNodeId?: string;
   awaitingDetectClarify?: boolean;
   awaitingClarify?: boolean;
 }

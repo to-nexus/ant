@@ -17,7 +17,7 @@ import { PlanGraphState } from '../state';
 import { ConversationEntry } from '../../../../../core/types/session';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
-import type { ResolvedDocument } from '@ant/shared';
+import type { ResolvedArtifact } from '@ant/shared';
 import type { ResolveStrategy } from '../../../../common/nodes/resolve/types';
 
 export const planResolveStrategy: ResolveStrategy<PlanGraphState> = {
@@ -80,7 +80,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
   }
 
   // 4. Load refs/context content
-  const documents: ResolvedDocument[] = [];
+  const documents: ResolvedArtifact[] = [];
   const refPaths = actionMetadata?.refs || (targets.length ? targets : []);
   for (const refPath of refPaths) {
     try {

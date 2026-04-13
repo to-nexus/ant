@@ -385,7 +385,7 @@ Static analysis cannot validate behavioral correctness.
 - You MAY run the project's build and dev commands to verify fix
 - Apply EARLY-EXIT RULE: If build passes but dev server fails once, acknowledge and complete
 
-**Note:** Detailed behavioral debugging guidance is conditionally included by ModeController for refactor mode.
+**Note:** Detailed behavioral debugging guidance is conditionally included by PromptResolver for refactor mode.
 
 {{/if}}
 {{/if}}

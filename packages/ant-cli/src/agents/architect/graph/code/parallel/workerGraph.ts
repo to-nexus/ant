@@ -303,7 +303,6 @@ const CodeWorkerSubgraphAnnotation = Annotation.Root({
   workspaceConfig: Annotation<any>,
   deps: Annotation<any>,
   gitPort: Annotation<any>,
-  detectionReport: Annotation<any>,
   selectedDesignFiles: Annotation<any>,
   decomposeFilePaths: Annotation<any>,
   prd: Annotation<any>,

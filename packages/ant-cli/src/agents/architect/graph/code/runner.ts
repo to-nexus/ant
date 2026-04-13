@@ -66,8 +66,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
         initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
         
-        if (session.state.detectionReport) {
-          initial.detectionReport = session.state.detectionReport;
+        if (session.state.resolvedAction) {
+          initial.resolvedAction = session.state.resolvedAction;
         }
         
         if (session.state.referenceRequests) {
@@ -78,10 +78,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.designDocUnknownPackages = session.state.designDocUnknownPackages;
         }
         
-        const restoredProfile = session.state.profile
-          ?? session.state.detectionReport?.profile;
-        if (restoredProfile) {
-          initial.profile = restoredProfile;
+        if (session.state.profile) {
+          initial.profile = session.state.profile;
         }
         
         if (session.state.projectCodeContext) {
@@ -141,9 +139,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           console.log(`🔄 [CodeRunner] Restoring directive from early-interrupted session`);
           initial.directive = savedDirective;
         }
-        if (session.state.detectionReport && !initial.detectionReport) {
-          console.log(`🔄 [CodeRunner] Restoring detectionReport from session`);
-          initial.detectionReport = session.state.detectionReport;
+        if (session.state.resolvedAction && !initial.resolvedAction) {
+          console.log(`🔄 [CodeRunner] Restoring resolvedAction from session`);
+          initial.resolvedAction = session.state.resolvedAction;
         }
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
@@ -176,7 +174,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   }
   
   // ✅ FIX: Save directive to session EARLY (before graph invoke)
-  // Ensures directive survives early interruptions (triage/detectEnvironment stage)
+  // Ensures directive survives early interruptions (triage/detect stage)
   // Without this, if job is interrupted before decompose, directive is lost
   if (initial.deps?.session && initial.context.featureFolder && initial.directive) {
     try {
@@ -246,12 +244,11 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             resolvedCategories: (session.state.resolvedCategories || []) as any,
             recursionCount: session.state.recursionCount || 0,
             recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),
-            ...(session.state.profile || session.state.detectionReport?.profile) && {
-              profile: session.state.profile ?? session.state.detectionReport?.profile
-            },
+            ...(session.state.techTier && { techTier: session.state.techTier }),
+            ...(session.state.profile && { profile: session.state.profile }),
             ...(session.state.jobId && { jobId: session.state.jobId }),
             ...(session.state.jobTiming && { jobTiming: session.state.jobTiming }),
-            ...(session.state.detectionReport && { detectionReport: session.state.detectionReport }),
+            ...(session.state.resolvedAction && { resolvedAction: session.state.resolvedAction }),
             ...(session.state.referenceRequests && { referenceRequests: session.state.referenceRequests }),
             ...(session.state.designDocUnknownPackages && { designDocUnknownPackages: session.state.designDocUnknownPackages }),
             ...(session.state.projectCodeContext && { projectCodeContext: session.state.projectCodeContext }),

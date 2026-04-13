@@ -11,7 +11,7 @@
  * They use the same data flow patterns as the real code.
  */
 import { describe, it, expect } from 'vitest';
-import type { ResolvedActionContext, ResolvedDocument } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact } from '@ant/shared';
 
 // ============================================
 // Shared helpers — mirror real code logic
@@ -25,8 +25,8 @@ function buildInferDocuments(opts: {
   isError?: boolean;
   selectedSpec?: string;
   specContent?: string;
-}): ResolvedDocument[] {
-  const docs: ResolvedDocument[] = [];
+}): ResolvedArtifact[] {
+  const docs: ResolvedArtifact[] = [];
 
   if (opts.designDoc) {
     docs.push({ path: 'system-design', content: opts.designDoc, role: 'ref', label: 'System Design' });
@@ -44,11 +44,10 @@ function buildInferDocuments(opts: {
   return docs;
 }
 
-function buildExplicitRAC(docs: ResolvedDocument[]): ResolvedActionContext {
+function buildExplicitRAC(docs: ResolvedArtifact[]): ResolvedActionContext {
   return {
     source: 'explicit',
     mode: 'generate',
-    tech: { language: 'typescript', environment: 'frontend' },
     hasExplicitFields: true,
     documents: docs,
   };
@@ -58,7 +57,6 @@ function buildInferRAC(): ResolvedActionContext {
   return {
     source: 'infer',
     mode: 'generate',
-    tech: {},
     hasExplicitFields: false,
   };
 }
@@ -70,7 +68,7 @@ function buildInferRAC(): ResolvedActionContext {
 describe('Audit 3A: promptBuilder documents composition (code execute)', () => {
   describe('explicit + documents present → RAC.documents used as-is', () => {
     it('explicit RAC documents are preserved, infer docs not generated', () => {
-      const explicitDocs: ResolvedDocument[] = [
+      const explicitDocs: ResolvedArtifact[] = [
         { path: 'user-file.md', content: 'User content', role: 'ref', label: 'User File' },
       ];
       const rac = buildExplicitRAC(explicitDocs);
@@ -86,7 +84,6 @@ describe('Audit 3A: promptBuilder documents composition (code execute)', () => {
       const rac: ResolvedActionContext = {
         source: 'explicit',
         mode: 'generate',
-        tech: {},
         hasExplicitFields: true,
         documents: [],
       };
@@ -188,7 +185,6 @@ describe('Audit 3A: promptBuilder documents composition (code execute)', () => {
         ? {
             source: 'infer' as const,
             mode: 'generate' as const,
-            tech: {},
             hasExplicitFields: false,
             documents: docs,
           }
@@ -207,7 +203,7 @@ describe('Audit 3A: promptBuilder documents composition (code execute)', () => {
 
 describe('Audit 3B: systemDesignPrompt documents composition (design execute)', () => {
   it('explicit + documents → RAC.documents as-is, useSourceFileTool=false', () => {
-    const explicitDocs: ResolvedDocument[] = [
+    const explicitDocs: ResolvedArtifact[] = [
       { path: 'user-prd.md', content: 'Explicit PRD', role: 'ref' },
     ];
     const rac = buildExplicitRAC(explicitDocs);
@@ -220,7 +216,7 @@ describe('Audit 3B: systemDesignPrompt documents composition (design execute)', 
 
   it('infer + prdSpec present → 1 document (source-docs)', () => {
     const prdSpec = '# PRD Specification\nFeature details...';
-    const docs: ResolvedDocument[] = [];
+    const docs: ResolvedArtifact[] = [];
     if (prdSpec) {
       docs.push({ path: 'source-docs', content: prdSpec, role: 'context', label: 'PRD Specification' });
     }
@@ -232,7 +228,7 @@ describe('Audit 3B: systemDesignPrompt documents composition (design execute)', 
 
   it('infer + prdSpec absent → no documents', () => {
     const prdSpec = undefined;
-    const docs: ResolvedDocument[] = [];
+    const docs: ResolvedArtifact[] = [];
     if (prdSpec) {
       docs.push({ path: 'source-docs', content: prdSpec, role: 'context', label: 'PRD Specification' });
     }
@@ -254,8 +250,8 @@ describe('Audit 3B: systemDesignPrompt documents composition (design execute)', 
 // ============================================
 
 describe('Audit 3C: planGeneration planDocs composition (code plan)', () => {
-  function buildPlanDocs(designDoc?: string, uiDoc?: string, isSpecDriven?: boolean): ResolvedDocument[] {
-    const planDocs: ResolvedDocument[] = [];
+  function buildPlanDocs(designDoc?: string, uiDoc?: string, isSpecDriven?: boolean): ResolvedArtifact[] {
+    const planDocs: ResolvedArtifact[] = [];
     if (designDoc) {
       const docLabel = isSpecDriven ? 'Feature Specification' : 'Design Specification';
       planDocs.push({ path: 'system-design', content: designDoc, role: 'ref', label: docLabel });
@@ -297,7 +293,7 @@ describe('Audit 3C: planGeneration planDocs composition (code plan)', () => {
   });
 
   it('planDocs are independent of resolvedAction.documents', () => {
-    const racDocs: ResolvedDocument[] = [
+    const racDocs: ResolvedArtifact[] = [
       { path: 'ref-file', content: 'UNIQUE_REF_CONTENT', role: 'ref' },
     ];
     const planDocs = buildPlanDocs('# Design', '# UI');
@@ -319,7 +315,7 @@ describe('Audit 3D: designSelector documents composition (code decompose)', () =
     apiContracts: Record<string, string>;
     feDesigns: Record<string, string>;
     beDesigns: Record<string, string>;
-  }, design?: string): ResolvedDocument[] {
+  }, design?: string): ResolvedArtifact[] {
     if (!designDocs) {
       if (design) {
         return [{ path: 'design', content: design, role: 'ref', label: 'Design Document' }];
@@ -327,7 +323,7 @@ describe('Audit 3D: designSelector documents composition (code decompose)', () =
       return [];
     }
 
-    const docs: ResolvedDocument[] = [];
+    const docs: ResolvedArtifact[] = [];
     for (const [name, content] of Object.entries(designDocs.apiContracts)) {
       docs.push({ path: `api-contract-${name}.md`, content, role: 'ref', label: `API Contract: ${name}` });
     }
@@ -340,7 +336,7 @@ describe('Audit 3D: designSelector documents composition (code decompose)', () =
     return docs;
   }
 
-  it('inline mode: multiple design documents as individual ResolvedDocument[]', () => {
+  it('inline mode: multiple design documents as individual ResolvedArtifact[]', () => {
     const docs = selectDesignDocumentsAsResolved({
       apiContracts: { main: '# API' },
       feDesigns: { main: '# FE' },
@@ -356,7 +352,7 @@ describe('Audit 3D: designSelector documents composition (code decompose)', () =
     const isToolMode = largeDesign.length > DECOMPOSE_SOURCE_THRESHOLD;
     expect(isToolMode).toBe(true);
 
-    const docs: ResolvedDocument[] = [
+    const docs: ResolvedArtifact[] = [
       { path: 'design-index', content: '## Index\n...', role: 'ref', label: 'Design Documents (Index)' },
     ];
     expect(docs).toHaveLength(1);

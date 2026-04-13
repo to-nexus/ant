@@ -27,14 +27,14 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'engrave', 0, undefined, llm ? extractLLMInfo(llm) : undefined);
   }
-  const promptPort = state.deps.promptPort;
+  const pb = state.deps.promptBuilder;
   const basePrompt = state.basePrompt;
   const variations = state.sketchVariations;
   const fallbackPrompt = state.engineeredPrompt || state.directive || '';
   const candidateCount = state.visualSettings?.candidateCount ?? 3;
   const usePerSketchPrompts = !!basePrompt && Array.isArray(variations) && variations.length > 0;
 
-  const systemPrompt = await promptPort.render('visual/nodes/engrave/base', {});
+  const systemPrompt = await pb.render('visual/nodes/engrave/base', {});
 
   const svgSketches: SvgSketch[] = [];
   const sketchCount = usePerSketchPrompts ? variations!.length : candidateCount;

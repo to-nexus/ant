@@ -13,8 +13,11 @@ import { compactAndPruneHistory } from '../../../../../../core/utils/historyMana
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { buildSourceDocsForTask, buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from './sourceSelector';
 import { DesignTask } from '../../../../types/task';
-import { designDirOf } from '@ant/shared';
-import type { ResolvedDocument } from '@ant/shared';
+import { designDirOf, effectiveTechTier, getRACDocuments } from '@ant/shared';
+import type { ResolvedArtifact } from '@ant/shared';
+import { PromptBuilder } from '../../../../../../core/prompt/builder/PromptBuilder';
+import { deriveArtifactPolicies } from '../../../../../../core/prompt/builder/ArtifactRoleResolver';
+import type { PromptBuildConfig } from '../../../../../../core/prompt/builder/PromptBuildConfig';
 
 export interface BuildMessagesResult {
   messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
@@ -37,12 +40,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
   // ✅ System prompt is ALWAYS rebuilt (prevents context loss from history pruning)
   {
     console.log(`📄 [DocGen] Building system prompt`);
-    const promptEngine = state.deps?.promptEngine;
-    
-    if (!promptEngine) {
-      throw new Error('[DocGen] PromptEngine is required but not available in state.deps');
-    }
-    
+
     if (!state.currentTask) {
       throw new Error('[DocGen] currentTask is required but not available in state');
     }
@@ -145,7 +143,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     prdSpecForLog = prdSpec;
 
     const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
-      && (state.resolvedAction?.documents?.length ?? 0) > 0;
+      && ((state.resolvedAction?.artifacts?.length ?? state.resolvedAction?.documents?.length ?? 0) > 0);
     if (hasExplicitDocs) {
       useSourceFileTool = false;
     }
@@ -153,44 +151,92 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     // Build resolvedAction with Infer documents[] when no explicit docs present
     let resolvedActionWithDocs = state.resolvedAction;
     if (!hasExplicitDocs && prdSpec) {
-      const docs: ResolvedDocument[] = [];
-      docs.push({ path: 'source-docs', content: prdSpec, role: 'context', label: 'PRD Specification' });
+      const docs: ResolvedArtifact[] = [];
+      docs.push({ path: 'inputs/sources', content: prdSpec, role: 'context', label: 'PRD Specification' });
       if (docs.length > 0) {
         resolvedActionWithDocs = {
           ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+          artifacts: docs,
           documents: docs,
         };
       }
     }
 
-    const promptResult = await promptEngine.buildExecutePrompt(
-      'design',
-      state.context,
-      {
-        directive: state.directive || '',
-        lastSectionNumber,
-        sectionPattern,
-        documents: resolvedActionWithDocs?.documents,
-        designDomain: state.detectionReport?.domain,
-        currentTask: {
+    const taskTechTiers = (state.currentTask as DesignTask).techTiers ?? (state.techTier ? [state.techTier] : []);
+    const contextWithTechTier = {
+      ...state.context,
+      techTier: effectiveTechTier(taskTechTiers),
+      techTiers: taskTechTiers,
+    };
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Build prompt via PromptBuilder (4-tier injection resolution)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const intent = state.resolvedAction?.intent;
+    const effectiveTier = effectiveTechTier(taskTechTiers);
+
+    const promptBuilder = state.deps?.promptBuilder;
+    if (!promptBuilder) throw new Error('[DocGen] PromptBuilder is required but not available in state.deps');
+
+    const designConfig: PromptBuildConfig = {
+      templates: {
+        base: 'design/phases/execute/base-system-design',
+        rules: 'design/phases/execute/rules-system-design',
+        system: 'design/base/system',
+      },
+      intent,
+      artifactPolicies: intent
+        ? deriveArtifactPolicies(intent, getRACDocuments(resolvedActionWithDocs))
+        : [],
+      techContext: {
+        techTier: effectiveTier,
+        techTiers: taskTechTiers,
+        mode: state.resolvedAction?.mode,
+        resolvedAction: resolvedActionWithDocs,
+      },
+      pipeline: {
+        sanitizeInput: true,
+        includeTechProfile: true,
+        includeExamples: false,
+        applyPolicyGuardrails: true,
+        formatForLLM: true,
+      },
+      artifacts: getRACDocuments(resolvedActionWithDocs),
+      vars: {
+        currentTask: state.currentTask ? {
           name: state.currentTask.name,
           type: state.currentTask.type,
           priority: state.currentTask.priority,
           description: state.currentTask.description,
           ...(state.currentTask.targetFile && { targetFile: state.currentTask.targetFile }),
-          ...((state.currentTask as DesignTask).profile && { profile: (state.currentTask as DesignTask).profile }),
-        } as any,
+        } : null,
+        directive: state.directive || '',
+        lastSectionNumber: lastSectionNumber ?? undefined,
+        sectionPattern: sectionPattern ?? undefined,
         isLastTaskForDocument,
-        sectionScope,
-        filteredCatalog,
-        resolvedAction: resolvedActionWithDocs,
+        sectionScope: sectionScope || undefined,
+        filteredCatalog: filteredCatalog || undefined,
+        hasUiInDocuments: false,
+        isSpecDriven: false,
+        referenceRequests: [],
+        resolvedAction: resolvedActionWithDocs || null,
+        userLanguage: state.context?.userLanguage || 'en',
+        designDomain: state.resolvedAction?.domain,
       },
-      undefined,
-      undefined
-    );
-    
-    // ✅ Extract composed sections for granular caching
-    const composed = promptResult.composed;
+    };
+
+    const promptResult = await promptBuilder.build(designConfig);
+
+    // Map PromptBuilder sections to composed structure for cache block compatibility
+    const composed = {
+      system: promptResult.sections.systemBase,
+      profiles: promptResult.sections.profiles,
+      rules: promptResult.sections.rules,
+      injections: promptResult.sections.injections,
+      examples: promptResult.sections.examples,
+      base: promptResult.user,
+      failedTemplates: promptResult.sections.failedTemplates,
+    };
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Block 1: System Prompt + Rules (CACHED - static)
@@ -264,7 +310,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
               sectionPattern,
               prdSpec: prdSpec ? `[${prdSpec.length} chars]` : undefined,
               planText: state.planText ? `[${state.planText.length} chars]` : undefined,
-              designDomain: state.detectionReport?.domain,
+              designDomain: state.resolvedAction?.domain,
               currentTask: state.currentTask?.id,
               isLastTaskForDocument,
               isMSAServiceDoc: targetFile.startsWith('be-system-') && !targetFile.includes('be-system-main'),
@@ -389,8 +435,8 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
             prdSpec: prdSpecForLog ? `[${prdSpecForLog.length} chars]` : undefined,
             design: state.design ? `[${state.design.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            detectedMode: state.detectionReport?.detectedMode,
-            designDomain: state.detectionReport?.domain,
+            detectedMode: state.resolvedAction?.mode,
+            designDomain: state.resolvedAction?.domain,
             isMSAServiceDoc: targetFileForLog.startsWith('be-system-') && !targetFileForLog.includes('be-system-main'),
           },
         }
@@ -446,7 +492,7 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   // - generate: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
   // - refactor: FULL document needed (LLM must understand structure to modify specific sections)
   //   Use content matching targetFile from existingDesignDocs (not state.design which may be a different file)
-  if (state.detectionReport?.detectedMode === 'refactor') {
+  if (state.resolvedAction?.mode === 'refactor') {
     const targetFileName = task?.targetFile || 'be-system-main.md';
     const existingContent = state.existingDesignDocs?.[targetFileName] || state.design;
     if (existingContent) {
@@ -464,7 +510,7 @@ export function buildRuntimeContext(state: DesignGraphState): string {
 
 /**
  * Detect all templates that would be used, including framework augmentations.
- * Mirrors ModeController.detectFrameworkAugmentation logic for accurate logging.
+ * Mirrors PromptResolver.detectFrameworkAugmentation logic for accurate logging.
  */
 function detectUsedTemplates(state: DesignGraphState, targetFile: string): string[] {
   const templates: string[] = ['design/phases/execute/rules-system-design'];
@@ -478,40 +524,43 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
   }
   
   // Domain-specific guides
-  if (state.detectionReport?.domain === 'game') {
+  if (state.resolvedAction?.domain === 'game') {
     templates.push('design/phases/execute/injections/game-domain-guide');
-  } else if (state.detectionReport?.domain === 'service') {
+  } else if (state.resolvedAction?.domain === 'service') {
     templates.push('design/phases/execute/injections/service-domain-guide');
   }
   
-  // Framework augmentation detection (mirrors ModeController.detectFrameworkAugmentation)
+  // Framework augmentation detection (mirrors PromptResolver.detectFrameworkAugmentation)
   // Filter by targetFile: nextjs → frontend docs only, go-api → backend docs only
   const isFrontendDoc = targetFile.includes('fe-system-') || targetFile.includes('frontend');
   const isBackendDoc = targetFile.includes('be-system-') || targetFile.includes('backend');
 
-  // Priority 0: Task-level structured profile (from decompose)
-  const taskProfile = (state.currentTask as DesignTask)?.profile;
-  if (taskProfile) {
-    const fw = taskProfile.framework?.toLowerCase();
-    const lang = taskProfile.language?.toLowerCase();
+  // Priority 0: Task-level TechTiers (from decompose)
+  const taskTechTiers = (state.currentTask as DesignTask)?.techTiers ?? [];
+  if (taskTechTiers.length > 0) {
+    for (const tier of taskTechTiers) {
+      const fw = tier.framework?.toLowerCase();
+      if ((fw?.includes('next') || fw?.includes('nextjs')) && isFrontendDoc) {
+        templates.push('design/phases/execute/injections/nextjs-augmentation');
+        break;
+      }
+      if (tier.language === 'go' && isBackendDoc) {
+        templates.push('design/phases/execute/injections/go-api-augmentation');
+        break;
+      }
+    }
+  } else if (state.techTier) {
+    // Priority 1: Graph-level techTier (set by decompose)
+    const fw = state.techTier.framework?.toLowerCase();
+    const lang = state.techTier.language;
     if ((fw?.includes('next') || fw?.includes('nextjs')) && isFrontendDoc) {
       templates.push('design/phases/execute/injections/nextjs-augmentation');
-    } else if ((lang === 'go' || lang === 'golang') && isBackendDoc) {
+    } else if (lang === 'go' && isBackendDoc) {
       templates.push('design/phases/execute/injections/go-api-augmentation');
     }
   } else {
-    // Priority 1/2: codebaseProfile or text search fallback
-    const framework = (state.context as any)?.codebaseProfile?.framework?.toLowerCase();
-    const language = (state.context as any)?.codebaseProfile?.language?.toLowerCase();
-    
-    if ((framework?.includes('next') || framework?.includes('nextjs')) && isFrontendDoc) {
-      templates.push('design/phases/execute/injections/nextjs-augmentation');
-    } else if ((language?.includes('go') || language?.includes('golang')) && isBackendDoc) {
-      const env = state.detectionReport?.environment;
-      if (!env || env === 'backend' || env === 'fullstack') {
-        templates.push('design/phases/execute/injections/go-api-augmentation');
-      }
-    } else {
+    // Priority 2: Text search fallback (no techTier available)
+    {
       const allSourceDocs = state.sourceDocuments
         ? Object.values(state.sourceDocuments).join(' ')
         : state.prd || '';

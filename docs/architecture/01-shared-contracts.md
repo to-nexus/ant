@@ -52,38 +52,36 @@ Workflow SSE 타입.
 
 ### detection.ts
 
-환경 감지 결과. 공통 어휘는 **Mode** / **IntentGroup**으로 통일했고, 이전 이름은 타입 별칭·필드로 하위 호환된다.
+Detect 파이프라인의 공통 어휘와 LLM 추론 출력 타입.
 
 | 타입 | 정의 |
 |------|------|
 | `Mode` | `'generate' \| 'refactor' \| 'explain'` — 모든 Job에서 공유하는 보편 모드 어휘 |
-| `JobMode` | `@deprecated` — `Mode`와 동일한 별칭 |
-| `JobEnvironment` | `'frontend' \| 'backend' \| 'fullstack' \| 'unknown'` |
-| `IntentGroup` | `'plan' \| 'design-system' \| 'design-ui' \| 'design-spec' \| 'code' \| 'visual' \| 'learn-codebase' \| 'ask'` — 전 Job 포괄 universal enum. `ActionId`를 대체. |
-| `DesignWorkType` | `@deprecated` — `IntentGroup`과 동일한 별칭 |
+| `IntentGroup` | `'plan' \| 'design-system' \| 'design-ui' \| 'design-spec' \| 'code' \| 'visual' \| 'learn-codebase' \| 'ask'` |
 | `DesignDomain` | `'game' \| 'service'` |
-| `ProjectProfile` | `language`, `framework` |
-| `JobSource` | `'code' \| 'design'` |
-| `DetectionReport` | 아래 표 참고 |
+| `InferredAction` | `strategy.run()` 출력 (infer 경로). 아래 표 참고 |
 
-**`DetectionReport` 필드 (이름 변경 및 하위 호환)**
+**`InferredAction` 필드**
 
-| 구역 | 필드 | 비고 |
+| 필드 | 타입 | 비고 |
 |------|------|------|
-| 공통 | `detectedMode`, `detectedModeReasoning` | Code·Design 공통 |
-| | `jobMode?`, `jobModeReasoning?` | `@deprecated` — 각각 `detectedMode`, `detectedModeReasoning`에 대응 |
-| | `environment?`, `environmentReasoning?` | |
-| Design 전용 | `detectedIntentGroup?`, `detectedIntentGroupReasoning?` | |
-| | `workType?`, `workTypeReasoning?` | `@deprecated` — 각각 `detectedIntentGroup`, `detectedIntentGroupReasoning`에 대응 |
-| | `domain?`, `domainReasoning?`, `targetFiles?` | |
-| Code 전용 | `profile?`, `requireRag?`, `primarySources?`, `primarySourcesReasoning?` | |
-| 메타 | `sourceJob`, `detectedAt?` | |
+| `intentId` | `string` | 반드시 유효한 IntentId. 무효 시 재시도 + hard fail |
+| `target?` | `string[]` | 출력 대상 파일 경로 |
+| `refs?` | `string[]` | LLM이 식별한 참조 파일 |
+| `context?` | `string[]` | LLM이 식별한 컨텍스트 파일 |
+| `domain?` | `DesignDomain` | design-system 전용 |
+| `reasoning?` | `{ intent?, domain? }` | 채팅 표시 전용. RAC에 저장 안 함 |
+| `sourceJob` | `string` | 원래 job 식별자 |
+
+**제거된 타입**: `DetectionReport`, `DetectionSummary`, `ProjectProfile`, `JobEnvironment`, `JobMode`, `DesignWorkType`, `JobSource` — RAC 단일 파이프라인 전환으로 폐기.
 
 **백엔드 전용 (`packages/ant-cli/src/core/types/detection.ts`)**
 
-| 함수 | 시그니처 | 역할 |
-|------|----------|------|
-| `normalizeDetectionReport` | `(raw: any) => DetectionReport` | 세션 JSON 등에서 로드한 객체의 폐기 필드명을 정규 필드로 매핑 (`jobMode`→`detectedMode`, `workType`→`detectedIntentGroup` 등). ant-cli 전용 — `@ant/shared`의 `DetectionReport` 타입과 함께 사용 |
+| 함수 | 역할 |
+|------|------|
+| `formatRACForChat()` | RAC + transient reasoning → 채팅 마크다운 |
+| `resolveDesignTargetFiles()` | intentId → target files (system-design용) |
+| `parseInferredActionFromLLM()` | `<detect>` XML 태그 → InferredAction |
 
 ### actions.ts
 
@@ -91,14 +89,14 @@ Workflow SSE 타입.
 
 | 타입/함수 | 정의 |
 |-----------|------|
-| `ActionId` | `@deprecated` — `IntentGroup`의 별칭. `'plan' \| 'design-system' \| 'design-ui' \| 'design-spec' \| 'code' \| 'visual' \| 'learn-codebase' \| 'ask'` |
 | `ActionDefinition` | 액션 카드 정의 (`id`, `label`, `description`, `status`) |
 | `ACTION_DEFINITIONS` | 전체 액션 정의 배열 |
 | `IntentDefinition` | 인텐트 정의 (`id`, `intentGroup`, `label`, `description`) |
 | `INTENT_DEFINITIONS` | 전체 인텐트 정의 배열 — **고유 인텐트 ID 27개** (intentGroup별 개수는 아래 표) |
+| `IntentId` | `INTENT_DEFINITIONS`에서 파생된 유효 인텐트 ID 유니온 타입 |
 | `getIntentsForAction()` | `(intentGroup: IntentGroup) => ReadonlyArray<IntentDefinition>` |
-| `ActionMetadata` | `explicit?`, `intent?`, `target?`, `refs?`, `context?`, **`locale?`**, `language?` (`@deprecated`, `locale`과 동일 용도) |
-| `deriveFromIntent()` | `(intent: IntentId) => { intentGroup?, mode, environment?, agent, jobType }` — 반환의 **`mode`**는 구 `jobMode`에 대응. Design 계열은 `intentGroup`으로 `design-system` \| `design-ui` \| `design-spec` 구분 |
+| `ActionMetadata` | `explicit?`, `intent?`, `target?`, `refs?`, `context?`, `locale?` |
+| `deriveFromIntent()` | `(intent: IntentId) => { intentGroup?, mode, agent, jobType, targetTier? }` — mode/intentGroup은 항상 intentId에서 파생 |
 | `ActionReadiness` | FE 액션 실행 가능 여부 (`buildReady`, `hasOutput`, `detectedMode`, `subModes?`, `namingIssues`, …) |
 | `SubModeStatus` | FE 서브모드 활성 상태 (`id`, `active`, `blockReason?`) |
 | `validateDesignFileName()` | 설계 출력 파일명 규칙 검증 |
@@ -120,28 +118,38 @@ Workflow SSE 타입.
 
 ### rac.ts
 
-ResolvedActionContext (RAC) — Intent-Centric 프롬프트 시스템의 SSOT. resolve/detect 노드에서 생성, ModeController와 프롬프트 템플릿에서 소비.
+ResolvedActionContext (RAC) — Detect 노드의 불변 출력. 단일 `resolveToRAC()` 퍼널로 explicit/infer 경로 모두 생성.
+
+**단일 파이프라인 구조:**
+```
+Explicit: metadata → intentId + slots → resolveToRAC() → RAC
+Infer:    strategy.run() → InferredAction → mergeWithMetadata() → resolveToRAC() → RAC
+```
 
 | 타입/함수 | 정의 |
 |-----------|------|
-| `InferWorkspaceState` | infer 경로 보조: `hasFigmaConfig?`, `hasScreens?`, `hasComponents?`, `hasPrd?`, `hasDesignDoc?`, `hasSpecDocs?`, `targetFiles?`, `primarySources?` |
-| `ResolvedActionContext` | `intent?`, **`intentGroup?`** (`IntentGroup`), **`mode`** (`Mode`), `tech`, `target?`, `refs?`, `context?`, `documents?`, `domain?`, `intentDescription?`, `source`, `hasExplicitFields` — 구 필드명 `workType`/`jobMode`는 각각 **`intentGroup`** / **`mode`** 로 정렬 |
-| `ResolvedDocument` | role-labeled 문서 (`path`, `content`, `role: 'ref' \| 'context'`, `label?`) |
-| `TechContext` | `language`, `framework`, `environment`, `runtime` |
-| `resolveFromExplicit()` | `(actionMetadata, codebaseProfile?, fallbackHints?) => ResolvedActionContext` |
-| `resolveFromInfer()` | `(report, actionMetadata?, codebaseProfile?, fallbackHints?, synthesizedIntent?, workspaceState?) => ResolvedActionContext` — `target`/`refs`는 메타데이터 우선, 없으면 `report.targetFiles` / `report.primarySources`. `context`는 메타데이터에서 병합 |
-| `synthesizeDesignIntent()` | `(report, hints: { figmaPopulated?, hasReferences? }) => IntentId` |
-| `synthesizeCodeIntent()` | `(report, workspaceState?) => IntentId` |
-| `synthesizePlanIntent()` | `(mode: string) => IntentId` — `explain`→`explain-plan`, `refine`→`rev-plan`, 그 외→`gen-plan` |
-| `synthesizeVisualIntent()` | `(jobMode: string) => IntentId` — `explain`→`explain-visual`, 그 외→`gen-visual` |
-| `synthesizeAskIntent()` | `(subType?: 'evaluate' \| 'ant' \| 'general') => IntentId` — `ask-evaluate` / `ask-ant` / `ask-general`(기본) |
-| `synthesizeLearnIntent()` | `() => IntentId` — 항상 `'gen-learn'` |
+| `ResolvedActionContext` | `intent?`, `intentGroup?`, `mode`, `target?`, `refs?`, `context?`, `documents?`, `domain?`, `intentDescription?`, `source`, `hasExplicitFields` |
+| `ResolvedArtifact` | role-labeled 문서 (`path`, `content`, `role: 'ref' \| 'context' \| 'directive'`, `label?`) |
+| `TechTier` | `language?`, `framework?`, `stack?`, `runtime?`, `packageManager?` — decompose가 채움, RAC 밖 `state.techTier`에 배치 |
+| `InferWorkspaceState` | infer 경로 보조: `hasFigmaConfig?`, `hasScreens?`, `hasComponents?`, `hasPrd?`, `hasDesignDoc?`, `hasSpecDocs?`, `targetFiles?` |
+| `resolveToRAC()` | `(intentId, slots?, source?) => ResolvedActionContext` — mode/intentGroup은 `deriveFromIntent()`로 파생 |
+| `mergeWithMetadata()` | `(inferred, metadata?) => { intentId, target?, refs?, context?, domain? }` — infer 경로에서 metadata 보충 |
+| `buildTechTier()` | `(profile?, stack?, taskProfile?) => TechTier` — decompose에서 사용 |
 | `isFigmaPipeline()` | `(intent, figmaPopulated) => boolean` |
-| `buildTechContext()` | profile + env + hints → `TechContext` |
 
-**인텐트 합성 함수**: `synthesize*` 계열은 **`IntentId`**를 반환한다 (`@ant/shared/actions`의 유효 인텐트 ID 유니온).
+**RAC 필드 상세**
 
-**RAC 커버리지**: design, code, plan, visual, learn에 더해 **ask** Job도 triage 등에서 `synthesizeAskIntent`·`resolveFromExplicit`/`resolveFromInfer` 경로와 맞물려 RAC를 사용한다.
+| 필드 | 타입 | 비고 |
+|------|------|------|
+| `intent` | `IntentId?` | 유효 인텐트 ID |
+| `intentGroup` | `IntentGroup?` | `deriveFromIntent()`에서 파생 |
+| `mode` | `Mode` | `deriveFromIntent()`에서 파생 |
+| `target`, `refs`, `context` | `string[]?` | 파일 슬롯 |
+| `documents` | `ResolvedArtifact[]?` | plan/execute 단계에서 주입되는 materialized 문서 |
+| `domain` | `DesignDomain?` | design-system 전용 |
+| `source` | `'explicit' \| 'infer'` | 생성 경로 |
+
+**제거된 항목**: `resolveFromExplicit()`, `resolveFromInfer()`, `synthesize*()` 6개, `TechContext`, `ResolvedDocument`, `buildTechContext()` — 단일 `resolveToRAC()` 퍼널과 `TechTier` 분리로 대체.
 
 ### action-config-matrix.ts
 
@@ -174,7 +182,7 @@ UI(`ActionConfigView`)가 intent 선택 시점에 `actionMetadata.target`을 세
 |------|------|
 | **Intent** | 불투명한 문자열 키(인텐트 ID). 파이프라인 분기·템플릿 선택의 1차 축. `INTENT_DEFINITIONS`가 SSOT. |
 | **Mode (`Mode`)** | `generate` \| `refactor` \| `explain` — **보편 어휘**이지 Job마다 다른 계약이 아니다. 모든 Job이 세 모드를 구현하는 것은 아니다. |
-| **`intentGroup` (`IntentGroup`)** | 전 Job 포괄 universal enum: `plan`, `design-system`, `design-ui`, `design-spec`, `code`, `visual`, `learn-codebase`, `ask`. `ActionId`를 대체. RAC·감지 리포트의 `detectedIntentGroup`과 대응. |
+| **`intentGroup` (`IntentGroup`)** | 전 Job 포괄 universal enum: `plan`, `design-system`, `design-ui`, `design-spec`, `code`, `visual`, `learn-codebase`, `ask`. `deriveFromIntent()`에서 파생. |
 | **인텐트 네이밍** | **접두 패턴**: `gen-*`(생성), `rev-*`(수정), `explain-*`, `ask-*` 등. Code는 산출 경로별 `gen-code-sys` / `gen-code-spec` / `gen-code-directive`로 구분. |
 
 **전체 인텐트 ID 목록 (`INTENT_DEFINITIONS` 기준 27개)**

@@ -73,6 +73,7 @@ export interface CheckpointData {
   overrideDirective?: string;
   chatSource?: any;
   userLanguage?: string;
+  techTier?: import('@ant/shared').TechTier;
 }
 
 /**
@@ -102,6 +103,7 @@ export async function saveCheckpoint(
           overrideDirective: data.overrideDirective,
           chatSource: data.chatSource,
           userLanguage: data.userLanguage,
+          techTier: data.techTier,
         }
       }
     );
@@ -162,7 +164,7 @@ export function createExplainTask(state: DesignGraphState): DesignTask {
     name: 'Explain: Design documents',
     type: 'doc',
     priority: 200,
-    targetFile: state.detectionReport?.detectedIntentGroup === 'design-ui' ? 'ui-spec.json' : 'be-system-main.md',
+    targetFile: state.resolvedAction?.intentGroup === 'design-ui' ? 'ui-spec.json' : 'be-system-main.md',
     description: state.directive || 'Analyze and explain the design documents'
   };
 }

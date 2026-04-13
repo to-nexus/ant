@@ -1,5 +1,5 @@
 import type { ActionMetadata } from '@ant/shared';
-import type { ResolvedDocument } from '@ant/shared';
+import type { ResolvedArtifact } from '@ant/shared';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -11,7 +11,7 @@ export interface IntentFixture {
   intent: string;
   directive: string;
   metadata: ActionMetadata;
-  /** refs/context 경로 → 문서 내용 매핑. 테스트 시 ResolvedDocument로 변환 */
+  /** refs/context 경로 → 문서 내용 매핑. 테스트 시 ResolvedArtifact로 변환 */
   documents: Record<string, { content: string; role: 'ref' | 'context' }>;
   /** design job에서 decompose가 설정하는 targetFile (injection 결정에 영향) */
   targetFile?: string;

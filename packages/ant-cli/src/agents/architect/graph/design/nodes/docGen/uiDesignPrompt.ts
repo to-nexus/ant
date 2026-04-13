@@ -519,10 +519,10 @@ async function loadPreviousUiDocs(
  * - Injects siblingTasks for MECE awareness in parallel chapters
  */
 export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promise<string> {
-  const promptPort = state.deps?.promptEngine;
+  const promptBuilder = state.deps?.promptBuilder;
   
-  if (!promptPort) {
-    throw new Error('[DocGen] PromptEngine is required but not available in state.deps');
+  if (!promptBuilder) {
+    throw new Error('[DocGen] PromptBuilder is required but not available in state.deps');
   }
   
   let previousChaptersSummary = '';
@@ -621,7 +621,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     forceAppend,
     pathPattern,
     siblingTasks: siblingTasks || '',
-    detectedMode: state.detectionReport?.detectedMode,
+    detectedMode: state.resolvedAction?.mode,
     userLanguage: state.context.userLanguage || 'en',
     resolvedAction: state.resolvedAction,
   };
@@ -630,7 +630,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   const templateSuffix = sysFigmaMode ? 'by-figma' : 'by-ref';
   const templatePath = `design/phases/execute/base-ui-design-${templateSuffix}`;
 
-  const template = await (promptPort as any).deps?.promptPort?.render(templatePath, injectedVariables);
+  const template = await promptBuilder.render(templatePath, injectedVariables);
   
   if (!template) {
     throw new Error(`[DocGen] Failed to load ${templatePath}.md template`);

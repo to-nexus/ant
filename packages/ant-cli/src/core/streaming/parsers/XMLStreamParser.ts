@@ -22,7 +22,7 @@ interface ParserContext {
   tasksContent: string;  // ✅ NEW: Accumulate tasks content
   insideReferences: boolean;  // ✅ NEW: <references> tag
   referencesContent: string;  // ✅ NEW: Accumulate references content
-  insideProfile: boolean;  // ✅ NEW: <profile> tag (decompose node — suppress from chat)
+  insideTechTier: boolean;  // <techTier> tag (decompose node — suppress from chat)
   insideClarify: boolean;  // ✅ NEW: <clarify> tag (planner mode — suppress from chat)
   clarifyContent: string;  // ✅ NEW: Accumulate clarify content (discarded)
   clarifyStartEmitted: boolean;  // ✅ Track if clarify_start action was already emitted
@@ -44,7 +44,7 @@ export class XMLStreamParser implements IStreamParser {
     tasksContent: '',  // ✅ NEW
     insideReferences: false,  // ✅ NEW
     referencesContent: '',  // ✅ NEW
-    insideProfile: false,  // ✅ NEW
+    insideTechTier: false,
     insideClarify: false,  // ✅ NEW
     clarifyContent: '',  // ✅ NEW
     clarifyStartEmitted: false,  // ✅ NEW
@@ -336,11 +336,11 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 16aa. Check for <profile> opening (suppress from chat — parsed post-stream by responseParser)
-      if (!this.context.insideProfile && this.buffer.includes('<profile>')) {
-        const startIdx = this.buffer.indexOf('<profile>');
+      // 16aa. Check for <techTier> opening (suppress from chat — parsed post-stream by responseParser)
+      if (!this.context.insideTechTier && this.buffer.includes('<techTier>')) {
+        const startIdx = this.buffer.indexOf('<techTier>');
         
-        // Emit any text before <profile> as response
+        // Emit any text before <techTier> as response
         const beforeTag = this.buffer.substring(0, startIdx);
         if (beforeTag.trim()) {
           actions.push({
@@ -349,29 +349,26 @@ export class XMLStreamParser implements IStreamParser {
           });
         }
         
-        this.buffer = this.buffer.substring(startIdx + '<profile>'.length);
-        this.context.insideProfile = true;
+        this.buffer = this.buffer.substring(startIdx + '<techTier>'.length);
+        this.context.insideTechTier = true;
         
         continueParsingLoop = true;
         continue;
       }
       
-      // 16ab. Check for </profile> closing (discard content)
-      if (this.context.insideProfile && this.buffer.includes('</profile>')) {
-        const endIdx = this.buffer.indexOf('</profile>');
+      // 16ab. Check for </techTier> closing (discard content)
+      if (this.context.insideTechTier && this.buffer.includes('</techTier>')) {
+        const endIdx = this.buffer.indexOf('</techTier>');
         
-        this.buffer = this.buffer.substring(endIdx + '</profile>'.length);
-        this.context.insideProfile = false;
-        
-        // ✅ DISCARD: <profile> content suppressed from chat UI.
-        // decompose/index.ts displays formatted profile via formatDetectionReportForChat().
+        this.buffer = this.buffer.substring(endIdx + '</techTier>'.length);
+        this.context.insideTechTier = false;
         
         continueParsingLoop = true;
         continue;
       }
       
-      // 16ac. Accumulate content inside <profile> (suppress)
-      if (this.context.insideProfile && this.buffer.length > 0) {
+      // 16ac. Accumulate content inside <techTier> (suppress)
+      if (this.context.insideTechTier && this.buffer.length > 0) {
         this.buffer = '';  // Suppress
         continue;
       }
@@ -427,7 +424,7 @@ export class XMLStreamParser implements IStreamParser {
       
       // 16e. Check for <function_calls> opening (SAFETY NET)
       // ⚠️ LLM outputs <function_calls><invoke name="..."> XML when structured tool_use is unavailable.
-      // This happens when detectionReport.detectedMode is missing (tools not passed to LLM API).
+      // This happens when resolvedAction.mode is missing (tools not passed to LLM API).
       // Suppress entirely: these are hallucinated tool calls that won't execute.
       if (!this.context.insideFunctionCalls && this.buffer.includes('<function_calls>')) {
         const startIdx = this.buffer.indexOf('<function_calls>');
@@ -443,7 +440,7 @@ export class XMLStreamParser implements IStreamParser {
         
         console.error(`🚨 [XMLParser] CRITICAL: LLM outputting <function_calls> XML as text!`);
         console.error(`   This means structured tool_use was not enabled for this LLM call.`);
-        console.error(`   Check detectionReport.detectedMode and tool activation in execute.`);
+        console.error(`   Check resolvedAction.mode and tool activation in execute.`);
         
         this.buffer = this.buffer.substring(startIdx + '<function_calls>'.length);
         this.context.insideFunctionCalls = true;
@@ -878,7 +875,7 @@ export class XMLStreamParser implements IStreamParser {
       // 21. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
-          !this.context.insideProfile &&
+          !this.context.insideTechTier &&
           !this.context.insideLearnCommand &&
           !this.context.insideClarify &&
           !this.context.insideFunctionCalls &&
@@ -1029,7 +1026,7 @@ export class XMLStreamParser implements IStreamParser {
         });
       }
       // If inside profile, discard (responseParser handles it post-stream)
-      else if (this.context.insideProfile) {
+      else if (this.context.insideTechTier) {
         // ✅ DISCARD: profile content suppressed from UI
       }
       // If inside clarify, discard (post-hoc parsing handles it)
@@ -1068,7 +1065,7 @@ export class XMLStreamParser implements IStreamParser {
       tasksContent: '',  // ✅ NEW
       insideReferences: false,  // ✅ NEW
       referencesContent: '',  // ✅ NEW
-      insideProfile: false,  // ✅ NEW
+      insideTechTier: false,
       insideClarify: false,  // ✅ NEW
       clarifyContent: '',  // ✅ NEW
       clarifyStartEmitted: false,  // ✅ NEW

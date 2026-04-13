@@ -19,7 +19,7 @@ First, analyze step by step (think through):
 - Does test-code apply? (setup task exists OR codebase has test files → MUST include test-code tasks)
 - Does doc apply? (setup task exists OR 3+ feature tasks → MUST include doc tasks)
 
-Then output the results in order: `<profile>`, `<tasks>`, `<references>`, `<prescribedDependencies>`.
+Then output the results in order: `<techTier>`, `<tasks>`, `<references>`, `<prescribedDependencies>`.
 
 ---
 
@@ -348,7 +348,7 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 **Constraint**: Do NOT include concrete file paths, directory names, or language-specific directory conventions in descriptions. Reference design document sections instead.
 
-⚠️ **Blind spot**: Design documents use directory-like names (`app/`, `handlers/`, `internal/`) to describe architectural layers. Copying these into task descriptions creates a path specification that bypasses the Plan phase — where the language/framework profile determines actual filesystem paths. Use section references: "route definitions (fe-system §2.1)" not "route definitions in app/ directory".
+⚠️ **Blind spot**: Design documents use directory-like names (`app/`, `handlers/`, `internal/`) to describe architectural layers. Copying these into task descriptions creates a path specification that bypasses the Plan phase — where the language/framework techTier determines actual filesystem paths. Use section references: "route definitions (fe-system §2.1)" not "route definitions in app/ directory".
 
 **Blind spot**: Copying implementation details into descriptions — whether from design documents, PRD, or directive — creates a parallel specification. When parallel tasks reference the same copied details, they generate conflicting implementations. The description marks scope; the Plan phase extracts implementation details from available sources.
 
@@ -583,19 +583,19 @@ Output in this exact order:
 {{#if needsBoundaryClassification}}
 **0. `<boundary>` tag** (see Boundary Classification above)
 
-**1. `<profile>` tag** (project profile -- see Step 1 above):
+**1. `<techTier>` tag** (technology tier -- see Step 1 above):
 {{else}}
-**0. `<profile>` tag** (project profile -- see Step 1 above):
+**0. `<techTier>` tag** (technology tier -- see Step 1 above):
 {{/if}}
 
-<profile>
+<techTier>
 {
-  "environment": "backend",
-  "environmentReasoning": "Only be-system- documents present, no fe- documents",
+  "stack": "backend",
+  "stackReasoning": "Only be-system- documents present, no fe- documents",
   "language": "go",
   "framework": "gin"
 }
-</profile>
+</techTier>
 
 **{{#if needsBoundaryClassification}}2{{else}}1{{/if}}. `<tasks>` tag** (task array -- see Task Schema above)
 

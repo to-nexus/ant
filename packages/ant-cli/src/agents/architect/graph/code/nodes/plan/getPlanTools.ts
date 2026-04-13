@@ -12,6 +12,6 @@ export async function getPlanTools(state: ArchitectGraphState): Promise<ToolDefi
   if (state.referenceRequests && state.referenceRequests.length > 0) {
     names.push('search_reference_code');
   }
-  const promptPort = state.deps?.promptEngine?.deps?.promptPort;
+  const promptPort = state.deps?.promptBuilder;
   return getToolsByNamesWithTemplates(names, promptPort);
 }

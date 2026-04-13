@@ -149,7 +149,8 @@ Key types for cross-package contracts:
 - `KanbanData`, `BaseTask`, `TaskStatus` — task queue state
 - `WorkflowRealtimeState` — real-time workflow SSE events
 - `InterruptionDetails`, `InterruptionReason` — job interruption metadata
-- `DetectionReport`, `JobMode`, `JobEnvironment` — environment detection results
+- `InferredAction`, `Mode`, `IntentGroup` — detection types
+- `ResolvedActionContext`, `TechTier`, `ResolvedArtifact` — RAC and tech tier
 
 ### Environment Variables
 

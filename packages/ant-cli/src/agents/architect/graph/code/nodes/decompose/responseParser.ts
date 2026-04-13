@@ -26,17 +26,20 @@ function sanitizeJsonControlChars(jsonStr: string): string {
   });
 }
 
-export interface ParsedProfile {
-  environment: string;
-  environmentReasoning: string;
+import type { PackageTierEntry } from '@ant/shared';
+
+export interface ParsedTechTier {
+  stack: string;
+  stackReasoning: string;
   language: string;
   framework?: string | null;
+  packageTiers?: Record<string, PackageTierEntry>;
 }
 
 export interface ParsedDecomposeResponse {
   tasks: CodeTask[];
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>;
-  profile?: ParsedProfile;
+  techTier?: ParsedTechTier;
   selectedSpec?: string | null;
   unknownPackages?: string[];
   boundary?: 'heavyweight' | 'lightweight';
@@ -66,34 +69,34 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       throw new Error('Invalid response: tasks must be an array');
     }
     
-    // ✅ Extract profile from <profile> tag (environment + language + framework)
-    let profile: ParsedProfile | undefined;
-    const profileMatch = rawResponse.match(/<profile>\s*([\s\S]*?)\s*<\/profile>/);
+    // ✅ Extract techTier from <techTier> tag (stack + language + framework + packageTiers)
+    let techTier: ParsedTechTier | undefined;
+    const techTierMatch = rawResponse.match(/<techTier>\s*([\s\S]*?)\s*<\/techTier>/);
     
-    if (profileMatch) {
+    if (techTierMatch) {
       try {
-        const parsedProfile = JSON.parse(sanitizeJsonControlChars(profileMatch[1]));
-        profile = {
-          environment: parsedProfile.environment || 'unknown',
-          environmentReasoning: parsedProfile.environmentReasoning || '',
-          language: normalizeLanguage(parsedProfile.language || 'typescript'),
-          framework: normalizeFramework(parsedProfile.framework || null),
+        const parsed = JSON.parse(sanitizeJsonControlChars(techTierMatch[1]));
+        techTier = {
+          stack: parsed.stack || 'unknown',
+          stackReasoning: parsed.stackReasoning || '',
+          language: normalizeLanguage(parsed.language || 'typescript'),
+          framework: normalizeFramework(parsed.framework || null),
+          packageTiers: parsed.packageTiers || undefined,
         };
       } catch (error) {
-        console.warn('⚠️  [Decompose] Failed to parse <profile> tag content:', error);
-        // Default profile when parsing fails
-        profile = {
-          environment: 'unknown',
-          environmentReasoning: 'Failed to parse profile',
+        console.warn('⚠️  [Decompose] Failed to parse <techTier> tag content:', error);
+        techTier = {
+          stack: 'unknown',
+          stackReasoning: 'Failed to parse techTier',
           language: 'typescript',
           framework: null,
         };
       }
     } else {
-      console.warn('⚠️  [Decompose] No <profile> tag found, using defaults');
-      profile = {
-        environment: 'unknown',
-        environmentReasoning: 'No profile tag in response',
+      console.warn('⚠️  [Decompose] No <techTier> tag found, using defaults');
+      techTier = {
+        stack: 'unknown',
+        stackReasoning: 'No techTier tag in response',
         language: 'typescript',
         framework: null,
       };
@@ -160,7 +163,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     return {
       tasks,
       referenceRequests,
-      profile,
+      techTier,
       selectedSpec,
       unknownPackages,
       boundary,

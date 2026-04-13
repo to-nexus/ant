@@ -522,9 +522,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
           chatSource: state.chatSource,  // ✅ Save chat source flag
           referenceRequests: state.referenceRequests || [],  // ✅ Save reference repositories for analysis
-          // ✅ CRITICAL: Save detectionReport for resume (required for tool calling in codexecuteeGen)
-          // Without this, execute disables tool calling on resume → XML tags rendered as text
-          detectionReport: state.detectionReport,
+          // ✅ CRITICAL: Save resolvedAction for resume (required for tool calling in execute)
+          resolvedAction: state.resolvedAction,
           // ✅ projectCodeContext is NOT saved to checkpoint
           // Plan node always regenerates it via RAG - no need to persist
           jobConversation: updatedJobConversation,
@@ -791,9 +790,9 @@ ${tags.join(', ')}
 ### Context
 - **Project**: ${state.context.project}
 - **Feature**: ${state.context.featureFolder || 'main'}
-- **Mode**: ${state.detectionReport?.detectedMode || 'auto'}
-- **Language**: ${state.profile?.language || 'unknown'}
-- **Framework**: ${state.profile?.framework || 'N/A'}
+- **Mode**: ${state.resolvedAction?.mode || 'auto'}
+- **Language**: ${state.techTier?.language || 'unknown'}
+- **Framework**: ${state.techTier?.framework || 'N/A'}
 - **Timestamp**: ${new Date().toISOString()}
   `.trim();
 }
@@ -824,11 +823,10 @@ function extractSolution(state: ArchitectGraphState): string {
   }
   
   // Mode applied
-  parts.push(`using ${state.detectionReport?.detectedMode || 'generate'} mode`);
+  parts.push(`using ${state.resolvedAction?.mode || 'generate'} mode`);
   
-  // Profile info
-  if (state.profile) {
-    parts.push(`with ${state.profile.language}${state.profile.framework ? ` + ${state.profile.framework}` : ''}`);
+  if (state.techTier) {
+    parts.push(`with ${state.techTier.language}${state.techTier.framework ? ` + ${state.techTier.framework}` : ''}`);
   }
   
   return parts.join(', ') + '.';
@@ -933,13 +931,13 @@ function extractDirectiveId(state: ArchitectGraphState): string {
 function extractPatterns(state: ArchitectGraphState): string[] {
   const patterns: string[] = [];
   
-  // Infer patterns from profile and files
-  if (state.profile?.framework) {
-    patterns.push(state.profile.framework);
+  // Infer patterns from techTier and files
+  if (state.techTier?.framework) {
+    patterns.push(state.techTier.framework);
   }
   
-  if (state.detectionReport?.detectedMode) {
-    patterns.push(state.detectionReport.detectedMode);
+  if (state.resolvedAction?.mode) {
+    patterns.push(state.resolvedAction.mode);
   }
   
   // Infer from file structures

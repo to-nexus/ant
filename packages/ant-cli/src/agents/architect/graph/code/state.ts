@@ -1,13 +1,13 @@
-import { CodebaseProfile, TaskArtifacts, DetectionReport } from "../../../../core/types";
+import { CodebaseProfile, TaskArtifacts } from "../../../../core/types";
 import type { ConversationEntry } from "../../../../core/types/session";
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
-import { PromptEngine } from "../../../../core/prompt/engine";
+import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
 import { ProjectContext } from "../../types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/nodes/triage/types';
-import type { ResolvedActionContext } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, TechTier } from '@ant/shared';
 
 // Re-export for convenience (so files can still import TaskQueue from code/state)
 export { TaskQueue } from "../../types/task";
@@ -178,10 +178,11 @@ export interface ArchitectGraphState extends TaskArtifacts, TriageableState {
   workspaceConfig?: any;  // Workspace config for job/node-specific model selection
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🔥 DetectionReport (통합 환경 감지 결과)
+  // RAC (detect output, immutable) + TechTier (decompose output)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  detectionReport?: DetectionReport;
   resolvedAction?: ResolvedActionContext;
+  resolvedArtifacts?: ResolvedArtifact[];
+  techTier?: TechTier;
 
   selectedDesignFiles?: string[];
   decomposeFilePaths?: string[];
@@ -224,7 +225,7 @@ export interface ArchitectGraphState extends TaskArtifacts, TriageableState {
     fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;
     memory?: MemoryPort; 
     llm?: LLMClient;
-    promptEngine?: PromptEngine;
+    promptBuilder?: PromptBuilder;
     analyzer?: CodebaseAnalyzerPort;
     chunk?: ChunkPort;
     session?: SessionPort;

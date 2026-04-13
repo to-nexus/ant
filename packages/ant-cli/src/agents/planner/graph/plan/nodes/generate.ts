@@ -14,11 +14,9 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
-import Handlebars from 'handlebars';
 import { PlanGraphState, getPlanMode } from '../state';
 import { ConversationEntry } from '../../../../../core/types/session';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers';
-import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { v4 as uuidv4 } from 'uuid';
 import { PLANNER_TOOLS, PLANNER_EXPLAIN_TOOLS } from '../../tools';
@@ -105,27 +103,6 @@ function stripClarifyBlocks(text: string): string {
   return text.replace(/<clarify\s+question="[^"]*">[\s\S]*?<\/clarify>/g, '').trim();
 }
 
-// Template cache
-let planBaseTemplate: Handlebars.TemplateDelegate | null = null;
-let planRulesContent: string | null = null;
-
-function loadPlanTemplates(): { base: Handlebars.TemplateDelegate; rules: string } {
-  if (planBaseTemplate && planRulesContent) {
-    return { base: planBaseTemplate, rules: planRulesContent };
-  }
-  
-  const templateDir = path.join(WorkspacePathResolver.getPromptTemplatesPath(), 'planner', 'plan');
-  
-  const basePath = path.join(templateDir, 'base.md');
-  const rulesPath = path.join(templateDir, 'rules.md');
-  
-  const baseContent = fs.readFileSync(basePath, 'utf-8');
-  planRulesContent = fs.readFileSync(rulesPath, 'utf-8');
-  planBaseTemplate = Handlebars.compile(baseContent);
-  
-  return { base: planBaseTemplate, rules: planRulesContent };
-}
-
 /**
  * Format conversation entries for the system prompt.
  * Excludes the last user message (which goes into the messages array).
@@ -141,7 +118,6 @@ function formatConversationForPrompt(conversation: ConversationEntry[]): string 
     const artifactNote = entry.metadata?.hasArtifact
       ? ` [produced ${entry.metadata.mode || 'artifact'}]`
       : '';
-    // Truncate very long assistant responses (system entries are already compressed)
     const content = entry.role === 'assistant' && entry.content.length > 500
       ? entry.content.substring(0, 500) + '...(truncated)'
       : entry.content;
@@ -159,16 +135,21 @@ function getStagingPath(state: PlanGraphState): string | undefined {
   return `outputs/plan/${path.basename(target)}`;
 }
 
-function buildSystemPrompt(
+/**
+ * Build system prompt via PromptBuilder pipeline.
+ */
+async function buildSystemPrompt(
   state: PlanGraphState,
   compaction: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean },
-): string {
-  const { base, rules } = loadPlanTemplates();
+): Promise<string> {
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!promptBuilder) throw new Error('[Planner:Generate] PromptBuilder not available in state.deps');
+
   const stagingPath = getStagingPath(state);
   const hasTargets = (state.resolvedAction?.target?.length ?? 0) > 0;
-  
   const planMode = getPlanMode(state);
-  const basePrompt = base({
+
+  const vars = {
     isKorean: state.language === 'ko',
     directive: state.directive,
     mode: planMode,
@@ -185,8 +166,13 @@ function buildSystemPrompt(
     conversationSummary: compaction.summary || '',
     hasConversationSummary: !!compaction.summary,
     resolvedAction: state.resolvedAction,
-  });
-  
+  };
+
+  const [basePrompt, rules] = await Promise.all([
+    promptBuilder.render('planner/plan/base', vars),
+    promptBuilder.render('planner/plan/rules', {}),
+  ]);
+
   return `${basePrompt}\n\n---\n\n${rules}`;
 }
 
@@ -225,10 +211,13 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     ? state.conversation.slice(0, -1)
     : [];
   
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!promptBuilder) throw new Error('[Planner:Generate] PromptBuilder not available');
+
   let compactionResult: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean; tokensBefore: number; tokensAfter: number; tokenUsage?: import('@ant/shared').TaskTokenUsage };
   try {
     compactionResult = allButLast.length > 0
-      ? await compactJob(allButLast, llm, state.deps!.promptPort!, {
+      ? await compactJob(allButLast, llm, promptBuilder, {
           threshold: PLAN_COMPACTION_THRESHOLD,
           recentWindowSize: PLAN_COMPACTION_WINDOW,
           maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
@@ -246,8 +235,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     ? { summary: compactionResult.summary!, summarizedCount: allButLast.length - PLAN_COMPACTION_WINDOW }
     : undefined;
   
-  // Step 2: buildSystemPrompt is sync
-  const systemPrompt = buildSystemPrompt(state, compactionResult);
+  // Step 2: buildSystemPrompt via PromptBuilder
+  const systemPrompt = await buildSystemPrompt(state, compactionResult);
   
   // ✅ Log prompt structure to debug directory (aligned with code/design agents)
   if (state._httpJobId && state.featurePath) {
@@ -745,7 +734,7 @@ async function saveConversationToSession(
     sessionData.state.directive = state.directive;
     sessionData.state.overrideDirective = state.overrideDirective;
     sessionData.state.chatSource = state.chatSource;
-    sessionData.state.detectionReport = state.detectionReport;
+    sessionData.state.resolvedAction = state.resolvedAction;
     sessionData.state.tokenUsage = state.tokenUsage;
     sessionData.state.jobTiming = state.deps?.stateSnapshot?.jobTiming;
     sessionData.state.recursionCount = state.recursionCount;

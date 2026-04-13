@@ -128,7 +128,7 @@ GNB 인디케이터: `bridgeStatusChecked && bridgeConnected !== true`일 때만
 | 로컬 | Worker → `localhost:3845` 직접 호출 | Figma Desktop 실행 중 |
 | 클라우드 | Worker → Redis → Realtime Server → Ant Desktop → Figma Desktop MCP | Ant Desktop + Figma Desktop 연결 |
 
-`detectEnvironment`에서 MCP 가용성 검증. 불가 시 `designError`로 잡 차단.
+`detect`에서 MCP 가용성 검증. 불가 시 `designError`로 잡 차단.
 
 ## 관련 코드 경로
 

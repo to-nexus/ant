@@ -180,7 +180,7 @@ classify.md → { conversationContext, currentDirective }
 → classifyParser.ts → state.assetType (VisualAssetType)
 ```
 
-- 코드 잡의 `detectEnvironment` 노드와 동일한 정규화 응답 패턴
+- 코드 잡의 `detect` 노드와 동일한 정규화 응답 패턴
 - 실패 시 `'general'`로 fallback
 
 **Direct 노드** (별도 LangGraph 노드, deps.directLLM 사용):

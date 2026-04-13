@@ -112,10 +112,9 @@ Handlebars를 사용하며, 조건부 섹션(`{{#if}}`)과 반복(`{{#each}}`)�
 | 변수 | 출처 |
 |------|------|
 | `directive` | 사용자 입력 또는 overrideDirective |
-| `detectionReport` | detectEnvironment 노드 |
+| `resolvedAction` | detect 노드 — RAC 객체 (intent, mode, target, refs, context, documents) |
 | `taskDescription` | decompose에서 생성된 태스크 설명 |
 | `previousChaptersSummary` | 이전 챕터 요약 (Design Job) |
-| `resolvedAction` | RAC 객체 (intent, target, refs, context, documents) — `action-context.md` partial에서 렌더링 |
 
 ## FPOP 원칙
 

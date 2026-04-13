@@ -7,28 +7,36 @@
 
 import type { DetectStrategy, DetectResult } from '../../../../common/nodes/detect/types.js';
 import type { VisualGraphState } from '../types.js';
-import type { DetectionReport } from '@ant/shared';
-import { synthesizeVisualIntent } from '@ant/shared';
+import type { InferredAction } from '@ant/shared';
 import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { parseClassifyResponse } from './classifyParser.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
-import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
-import { formatDetectionReportForChat } from '../../../../../core/types/detection.js';
-import type { VisualAssetType, JobMode } from '../types.js';
+import type { VisualAssetType } from '../types.js';
+import type { Mode } from '@ant/shared';
+
+function mapVisualIntentId(mode: string, assetType?: string): string {
+  if (mode === 'explain') return 'explain-visual';
+  switch (assetType) {
+    case 'logo': return 'gen-visual-logo';
+    case 'icon': return 'gen-visual-icon';
+    case 'hero': return 'gen-visual-hero';
+    case 'illustration': return 'gen-visual-illustration';
+    default: return 'gen-visual-illustration';
+  }
+}
 
 export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
   async run(state): Promise<DetectResult<VisualGraphState>> {
     if (state.skipClassify) {
       console.log(`⏭️ [Visual:Detect] Skipped (skipClassify=true, assetType=${state.assetType || 'general'})`);
-      const mode = (state.jobMode as DetectionReport['detectedMode']) || 'generate';
-      const report: DetectionReport = {
-        detectedMode: mode,
-        detectedModeReasoning: 'Classification skipped — using existing values.',
+      const mode = state.jobMode || 'generate';
+      const inferred: InferredAction = {
+        intentId: mapVisualIntentId(mode, state.assetType),
+        reasoning: { intent: 'Classification skipped — using existing values.' },
         sourceJob: 'visual',
-        intentId: synthesizeVisualIntent(mode, state.assetType),
       };
       return {
-        detectionReport: report,
+        inferred,
         stateUpdates: {} as Partial<VisualGraphState>,
       };
     }
@@ -36,7 +44,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
     console.log('\n🏷️ [Visual:Detect] Asset type classification...');
 
     const llm = state.deps.llm;
-    const promptPort = state.deps.promptPort;
+    const pb = state.deps.promptBuilder;
 
     const conversationContext = state.conversation
       .slice(-10)
@@ -46,7 +54,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
     const currentDirective = state.overrideDirective || state.directive || '';
 
     try {
-      const classifyPrompt = await promptPort.render('visual/nodes/direct/classify', {
+      const classifyPrompt = await pb.render('visual/nodes/direct/classify', {
         conversationContext: conversationContext || '(no previous conversation)',
         currentDirective,
       });
@@ -68,23 +76,6 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
       const classified = parseClassifyResponse(rawContent);
       console.log(`🏷️ [Visual:Detect] Result: type=${classified.assetType}, mode=${classified.jobMode} (${classified.reasoning})`);
 
-      // Display in Chat UI when classification changed
-      const previousAssetType = state.assetType;
-      const previousJobMode = state.jobMode;
-      const isUnchanged = previousAssetType === classified.assetType && previousJobMode === classified.jobMode;
-
-      if (!isUnchanged) {
-        const chatAPI = getChatAPIClient();
-        const chatReport: DetectionReport = {
-          detectedMode: classified.jobMode as DetectionReport['detectedMode'],
-          detectedModeReasoning: classified.reasoning,
-          sourceJob: 'visual',
-        };
-        const formatted = formatDetectionReportForChat(chatReport, (state._uiLocale as any) || 'ko');
-        await chatAPI.sendLLMEvent({ type: 'text', text: formatted });
-        await chatAPI.finalizeMessage();
-      }
-
       // Log prompt
       if (state._httpJobId && state.featurePath) {
         try {
@@ -100,15 +91,14 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage as any);
       }
 
-      const detectionReport: DetectionReport = {
-        detectedMode: classified.jobMode as DetectionReport['detectedMode'],
-        detectedModeReasoning: classified.reasoning,
+      const inferred: InferredAction = {
+        intentId: classified.intentId || mapVisualIntentId(classified.jobMode, classified.assetType),
+        reasoning: { intent: classified.reasoning },
         sourceJob: 'visual',
-        intentId: classified.intentId || synthesizeVisualIntent(classified.jobMode, classified.assetType),
       };
 
       return {
-        detectionReport,
+        inferred,
         stateUpdates: {
           assetType: classified.assetType,
           jobMode: classified.jobMode,
@@ -116,23 +106,18 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
       };
     } catch (err: any) {
       console.warn(`⚠️ [Visual:Detect] Classification failed, using defaults: ${err.message}`);
-      const fallbackReport: DetectionReport = {
-        detectedMode: 'generate',
-        detectedModeReasoning: 'Classification failed — using defaults.',
+      const fallbackInferred: InferredAction = {
+        intentId: mapVisualIntentId('generate'),
+        reasoning: { intent: 'Classification failed — using defaults.' },
         sourceJob: 'visual',
-        intentId: synthesizeVisualIntent('generate'),
       };
       return {
-        detectionReport: fallbackReport,
+        inferred: fallbackInferred,
         stateUpdates: {
           assetType: 'general' as VisualAssetType,
-          jobMode: 'generate' as JobMode,
+          jobMode: 'generate' as Mode,
         } as Partial<VisualGraphState>,
       };
     }
-  },
-
-  synthesizeFallback(report, state) {
-    return synthesizeVisualIntent(report.detectedMode, (state as VisualGraphState).assetType);
   },
 };

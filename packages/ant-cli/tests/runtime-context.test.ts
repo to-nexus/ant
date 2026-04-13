@@ -25,7 +25,7 @@ function makeDesignState(overrides: Record<string, any> = {}): any {
     currentTask: { id: 'design-1', name: 'System Design', targetFile: 'be-system-main.md', description: 'Design a REST API system' },
     directive: 'Design a REST API',
     existingDocument: null,
-    detectionReport: null,
+    resolvedAction: undefined,
     existingDesignDocs: {},
     design: null,
     ...overrides,
@@ -112,7 +112,7 @@ describe('buildRuntimeContext (design)', () => {
 
   it('includes existing document in refactor mode', () => {
     const result = buildDesignRuntimeContext(makeDesignState({
-      detectionReport: { detectedMode: 'refactor' },
+      resolvedAction: { mode: 'refactor', source: 'infer', hasExplicitFields: false },
       existingDesignDocs: {
         'be-system-main.md': '# Existing Design\nPrevious content here',
       },

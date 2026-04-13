@@ -336,6 +336,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
           type: 'verification' as const,
           priority: TASK_PRIORITIES.FINAL_VERIFICATION,
           description: 'Re-verify all errors are resolved after error fixes',
+          techTiers: state.techTier ? [state.techTier] : [],
         };
         state.taskQueue.push(finalTask);
         console.log(`📋 Added Final Verification to confirm all errors resolved\n`);
@@ -472,7 +473,8 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     workspaceConfig: state.workspaceConfig,
     deps: state.deps,
     gitPort: state.gitPort,
-    detectionReport: state.detectionReport,
+    resolvedArtifacts: state.resolvedArtifacts,
+    techTier: state.techTier,
     selectedDesignFiles: state.selectedDesignFiles,
     decomposeFilePaths: state.decomposeFilePaths,
     prd: state.prd,
@@ -526,6 +528,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               type: 'verification' as const,
               priority: TASK_PRIORITIES.FINAL_VERIFICATION,
               description: 'Re-verify all errors are resolved after error fixes',
+              techTiers: state.techTier ? [state.techTier] : [],
             };
             taskQueue.push(finalTask);
             console.log(`📋 [ParallelOrchestrator] Added Final Verification to confirm all errors resolved`);
@@ -641,8 +644,9 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   // onCheckpoint does a full replace of session.state, so any field
                   // not listed here is lost on session reload / resume.
                   designDocUnknownPackages: state.designDocUnknownPackages,
+                  techTier: state.techTier,
                   profile: state.profile,
-                  detectionReport: state.detectionReport,
+                  resolvedAction: state.resolvedAction,
                   referenceRequests: state.referenceRequests,
                   userLanguage: state.context.userLanguage,
                   // ✅ FIX: Preserve interruption details in checkpoint.
@@ -980,7 +984,8 @@ const ArchitectCodeGraphStateAnnotation = Annotation.Root({
       deps: Annotation<any>,
       gitPort: Annotation<any>,
       
-      detectionReport: Annotation<any>,
+      resolvedArtifacts: Annotation<any>,
+      techTier: Annotation<any>,
       selectedDesignFiles: Annotation<any>,
       decomposeFilePaths: Annotation<any>,
       
@@ -1172,17 +1177,17 @@ export function buildCodeGraph() {
   graph.addEdge("__start__" as any, "resolve" as any);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Resolve → Router (4-way: isResume x hasTaskQueue x hasDetectionReport x overrideDirective)
+  // Resolve → Router (4-way: isResume x hasTaskQueue x hasResolvedAction x overrideDirective)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   graph.addConditionalEdges(
     "resolve" as any,
     ((state: ArchitectGraphState) => {
       const isResume = state.isResume === true;
       const hasTaskQueue = state.taskQueue && !state.taskQueue.isEmpty();
-      const hasDetectionReport = !!state.detectionReport;
+      const hasResolvedAction = !!state.resolvedAction;
       const hasNewDirective = !!state.overrideDirective;
       
-      console.log(`[RouteAfterResolve] isResume=${isResume}, hasTaskQueue=${hasTaskQueue}, hasDetectionReport=${hasDetectionReport}, hasNewDirective=${hasNewDirective}`);
+      console.log(`[RouteAfterResolve] isResume=${isResume}, hasTaskQueue=${hasTaskQueue}, hasResolvedAction=${hasResolvedAction}, hasNewDirective=${hasNewDirective}`);
       
       if (!isResume) {
         // New job → always start with triage
@@ -1217,11 +1222,10 @@ export function buildCodeGraph() {
         return 'decompose';
       }
 
-      if (hasDetectionReport) {
+      if (hasResolvedAction) {
         // Interrupted after detect but before decompose
-        // Route through detect again (LLM skip, pass-through only)
-        // Then detect → decompose → plan via hardcoded edges
-        console.log(`[RouteAfterResolve] Resume with detectionReport → detect (pass-through)`);
+        // Route through detect again (resume fast path, pass-through)
+        console.log(`[RouteAfterResolve] Resume with resolvedAction → detect (pass-through)`);
         return 'detect';
       }
       
@@ -1246,7 +1250,7 @@ export function buildCodeGraph() {
     "triage" as any,
     routeAfterTriage as any,
     {
-      detectEnvironment: "detect",
+      detect: "detect",
       revise: "revise",
       __end__: "__end__"
     } as any

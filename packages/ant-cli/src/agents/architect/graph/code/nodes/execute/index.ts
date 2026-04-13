@@ -211,28 +211,20 @@ export async function execute(
     }
   }
   
-  // ✅ Tool activation control
-  // - Explain mode: NO tools (just explanation)
-  // - All other modes in code graph: YES tools (generate/refactor/unknown)
-  // 
-  // ⚠️ DEFENSIVE: Default to tools ENABLED in code graph.
-  // Previously, tools were disabled when detectionReport.detectedMode was undefined,
-  // causing LLM to output <function_calls><invoke> XML as text instead of
-  // using structured tool_use blocks. This happened when detectionReport was
-  // not properly restored on resume.
-  const isExplainMode = state.detectionReport?.detectedMode === 'explain';
+  // Tool activation: explain mode → read-only tools, otherwise full tools.
+  const isExplainMode = state.resolvedAction?.mode === 'explain';
   const tools = isExplainMode
-    ? await getToolsByNamesWithTemplates(TOOL_SETS.codeExplain, state.deps?.promptEngine?.deps?.promptPort)
+    ? await getToolsByNamesWithTemplates(TOOL_SETS.codeExplain, state.deps?.promptBuilder)
     : await getAvailableTools(state);
   
-  if (!state.detectionReport?.detectedMode) {
-    console.warn(`⚠️ [CodeGen] detectionReport.detectedMode is missing — defaulting to tools enabled`);
+  if (!state.resolvedAction?.mode) {
+    console.warn(`⚠️ [CodeGen] resolvedAction.mode is missing — defaulting to tools enabled`);
   }
   
   if (isExplainMode) {
     console.log(`💡 [CodeGen] Explain mode - read-only tools enabled`);
   } else {
-    console.log(`🔧 [CodeGen] Tool calling enabled (code job, mode=${state.detectionReport?.detectedMode || 'unknown'})`);
+    console.log(`🔧 [CodeGen] Tool calling enabled (code job, mode=${state.resolvedAction?.mode || 'unknown'})`);
   }
   
   // ✅ Workflow update
@@ -650,6 +642,7 @@ export async function execute(
         _finalTaskLoopCount: 0,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
+        techTier: state.techTier,
         profile: state.profile,
       };
     }
@@ -818,6 +811,7 @@ export async function execute(
           _finalTaskLoopCount: newFinalTaskLoopCount,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
+          techTier: state.techTier,
           profile: state.profile,
         };
       }
@@ -838,6 +832,7 @@ export async function execute(
       _finalTaskLoopCount: newFinalTaskLoopCount,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
+      techTier: state.techTier,
       profile: state.profile,
     };
   } catch (error) {

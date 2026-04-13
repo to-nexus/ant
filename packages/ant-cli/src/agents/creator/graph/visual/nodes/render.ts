@@ -44,7 +44,8 @@ export async function renderNode(state: VisualGraphState): Promise<Partial<Visua
   if (refImage) {
     genOptions.referenceImage = refImage;
     try {
-      prompt = await state.deps.promptPort.render('visual/nodes/render/fidelity-prefix', { engineeredPrompt: prompt });
+      const pb = state.deps.promptBuilder;
+      prompt = await pb.render('visual/nodes/render/fidelity-prefix', { engineeredPrompt: prompt });
     } catch (err: any) {
       console.warn(`🎨 [Visual:Render] Fidelity template failed, using raw prompt: ${err.message}`);
     }

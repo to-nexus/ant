@@ -9,12 +9,13 @@
 // Re-export core types for convenience (consumers can import from here)
 export type { TaskType, TaskTiming, TaskTokenUsage, BaseTask } from '../../../core/types/task';
 import type { TaskType, TaskTiming, TaskTokenUsage, BaseTask } from '../../../core/types/task';
+import type { TechTier } from '@ant/shared';
 
 /**
  * Token Usage Breakdown (for job-level analytics)
  */
 export interface TokenUsageBreakdown {
-  detectEnvironment?: TaskTokenUsage;  // detectEnvironment node
+  detect?: TaskTokenUsage;
   decompose?: TaskTokenUsage;          // decompose node
   tasks: {                             // Per-task breakdown
     [taskId: string]: TaskTokenUsage;
@@ -45,6 +46,13 @@ export interface TaskResumeState {
  * Code-specific Task
  */
 export interface CodeTask extends BaseTask {
+  /**
+   * Per-task technology tiers resolved from decompose's packageTiers map.
+   * In fullstack projects, each task inherits techTiers from the
+   * packageTiers mapping based on task.packages.
+   * Array preserves per-package stack info (e.g., [frontend/ts, backend/go]).
+   */
+  techTiers?: TechTier[];
   errors?: string[];               // Error messages (for error tasks)
   category?: string;               // Error category (for error tasks)
   /**
@@ -165,15 +173,15 @@ export interface DesignTask extends BaseTask {
   sectionScope?: string;           // Description of what this section covers
 
   /**
-   * Technology profile resolved from decompose's profiles map.
-   * Used by ModeController to deterministically select framework augmentations.
-   * 
-   * Resolved at buildTaskQueue time via targetFile → tag → profiles lookup:
-   * - be-system-auth.md → tag "be-auth" → profiles["be-auth"] || profiles["be-main"]
-   * - fe-system-main.md → tag "fe-main" → profiles["fe-main"]
-   * - api-contract-auth.md → tag "be-auth" → profiles["be-auth"] || profiles["be-main"]
+   * Per-task technology tiers resolved from decompose's packageTiers map.
+   * Used by PromptResolver to deterministically select framework augmentations.
+   * Array preserves per-package stack info (e.g., [frontend/ts, backend/go]).
+   *
+   * Resolved at buildTaskQueue time via targetFile → tag → packageTiers lookup:
+   * - be-system-auth.md → packages: ["be-auth"] → packageTiers["be-auth"]
+   * - fe-system-main.md → packages: ["fe-main"] → packageTiers["fe-main"]
    */
-  profile?: { language: string; framework?: string };
+  techTiers?: TechTier[];
 
   /**
    * Per-task resume state (exists only when interrupted during parallel execution).

@@ -187,13 +187,14 @@ export interface ActionMetadata {
 }
 
 /**
- * Derive intentGroup, mode, and environment from an intent string.
- * Used by detect node to bypass LLM when intent is provided.
+ * Derive intentGroup, mode, and routing info from an intent string.
+ * Used by resolveToRAC() to derive mode/intentGroup from intentId.
+ * environment is NOT returned — target tier uses intentId→target file mapping,
+ * tech tier is decompose's responsibility.
  */
 export function deriveFromIntent(intent: IntentId): {
   intentGroup?: IntentGroup;
   mode: 'generate' | 'refactor' | 'explain';
-  environment?: 'frontend' | 'backend' | 'fullstack';
   agent: string;
   jobType: string;
   targetTier?: string;
@@ -207,11 +208,9 @@ export function deriveFromIntent(intent: IntentId): {
       return { mode: 'explain', agent: 'planner', jobType: 'plan' };
 
     case 'gen-sys-fe':
-      return { intentGroup: 'design-system', mode: 'generate', environment: 'frontend', agent: 'architect', jobType: 'design' };
     case 'gen-sys-be':
-      return { intentGroup: 'design-system', mode: 'generate', environment: 'backend', agent: 'architect', jobType: 'design' };
     case 'gen-sys-full':
-      return { intentGroup: 'design-system', mode: 'generate', environment: 'fullstack', agent: 'architect', jobType: 'design' };
+      return { intentGroup: 'design-system', mode: 'generate', agent: 'architect', jobType: 'design' };
     case 'rev-sys':
       return { intentGroup: 'design-system', mode: 'refactor', agent: 'architect', jobType: 'design' };
     case 'explain-sys':

@@ -3,10 +3,8 @@ import {
   INTENT_DEFINITIONS,
   deriveFromIntent,
   getConfigSlots,
-  resolveFromInfer,
-  resolveFromExplicit,
+  resolveToRAC,
 } from '@ant/shared';
-import type { DetectionReport } from '@ant/shared';
 
 describe('Action Config Matrix completeness', () => {
   it('every INTENT_DEFINITIONS.id has a MATRIX entry', () => {
@@ -101,61 +99,45 @@ describe('Action Config Matrix completeness', () => {
 
 });
 
-describe('resolveFromInfer merging', () => {
-  const makeReport = (overrides: Partial<DetectionReport> = {}): DetectionReport => ({
-    detectedMode: 'generate',
-    detectedModeReasoning: 'test',
-    sourceJob: 'code',
-    ...overrides,
-  });
-
-  it('refs: metadata only', () => {
-    const report = makeReport();
-    const rac = resolveFromInfer(report, { refs: ['x.md'] });
+describe('resolveToRAC merging', () => {
+  it('refs propagate from slots', () => {
+    const rac = resolveToRAC('gen-code-sys', { refs: ['x.md'] });
     expect(rac.refs).toEqual(['x.md']);
   });
 
-  it('refs: undefined when no metadata refs', () => {
-    const report = makeReport();
-    const rac = resolveFromInfer(report);
+  it('refs: undefined when no slots', () => {
+    const rac = resolveToRAC('gen-code-sys');
     expect(rac.refs).toBeUndefined();
   });
 
-  it('targets: metadata replaces inferred (not additive)', () => {
-    const report = makeReport({ targetFiles: ['inferred.md'] });
-    const rac = resolveFromInfer(report, { target: ['explicit.md'] });
+  it('target propagates from slots', () => {
+    const rac = resolveToRAC('gen-code-sys', { target: ['explicit.md'] });
     expect(rac.target).toEqual(['explicit.md']);
   });
 
-  it('targets: inferred used when no metadata', () => {
-    const report = makeReport({ targetFiles: ['inferred.md'] });
-    const rac = resolveFromInfer(report);
-    expect(rac.target).toEqual(['inferred.md']);
-  });
-
-  it('context: additive from metadata', () => {
-    const rac = resolveFromInfer(makeReport(), { context: ['ctx1.md', 'ctx2.md'] });
+  it('context propagates from slots', () => {
+    const rac = resolveToRAC('gen-code-sys', { context: ['ctx1.md', 'ctx2.md'] });
     expect(rac.context).toEqual(['ctx1.md', 'ctx2.md']);
   });
 
 });
 
-describe('resolveFromInfer with optional DetectionReport', () => {
-  it('works with report=undefined + synthesizedIntent', () => {
-    const rac = resolveFromInfer(undefined, undefined, undefined, undefined, 'gen-plan');
+describe('resolveToRAC with intentId variations', () => {
+  it('gen-plan produces correct RAC', () => {
+    const rac = resolveToRAC('gen-plan');
     expect(rac.intent).toBe('gen-plan');
     expect(rac.mode).toBe('generate');
     expect(rac.source).toBe('infer');
   });
 
-  it('derives mode from synthesizedIntent when report is undefined', () => {
-    const rac = resolveFromInfer(undefined, undefined, undefined, undefined, 'rev-plan');
+  it('rev-plan produces refactor mode', () => {
+    const rac = resolveToRAC('rev-plan');
     expect(rac.mode).toBe('refactor');
   });
 
-  it('falls back to generate mode when both report and intent are undefined', () => {
-    const rac = resolveFromInfer(undefined);
+  it('default source is infer', () => {
+    const rac = resolveToRAC('gen-code-sys');
+    expect(rac.source).toBe('infer');
     expect(rac.mode).toBe('generate');
   });
 });
-

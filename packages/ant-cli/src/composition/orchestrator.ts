@@ -388,6 +388,8 @@ export async function orchestrator(params: {
       const language = /[가-힣]/.test(input) ? 'ko' : 'en';
 
       const planPromptPort = new FilePromptAdapter();
+      const { PromptBuilder } = await import('../core/prompt/builder/PromptBuilder');
+      const planPromptBuilder = new PromptBuilder(planPromptPort);
 
       const result = await runPlanGraph({
         directive: input,
@@ -398,7 +400,7 @@ export async function orchestrator(params: {
         chatSource: chatSource,
         skipTriage: skipTriage,
         actionMetadata: actionMetadata,
-        deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate, promptPort: planPromptPort },
+        deps: { llm, session, kanbanUpdate, fileTreeUpdate, workflowUpdate, promptPort: planPromptPort, promptBuilder: planPromptBuilder },
         _httpJobId: jobId,
       });
 
@@ -430,7 +432,7 @@ export async function orchestrator(params: {
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
 
-      const promptPort = new FilePromptAdapter();
+      const visualPromptPort = new FilePromptAdapter();
       const llm = createLLMClient('creator', undefined, { jobType: 'visual' }, configData);
       const directLLM = createLLMClient('creator', undefined, { jobType: 'visual', nodeType: 'direct' }, configData);
       const explainLLM = createLLMClient('creator', undefined, { jobType: 'visual', nodeType: 'explain' }, configData);
@@ -486,7 +488,7 @@ export async function orchestrator(params: {
           engraveLLM,
           sketchImageClient,
           renderImageClient,
-          promptPort,
+          promptBuilder: new (await import('../core/prompt/builder/PromptBuilder')).PromptBuilder(visualPromptPort),
           session,
           kanbanUpdate,
           fileTreeUpdate,

@@ -10,7 +10,8 @@ import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
 import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
-import { resolveFromExplicit } from '@ant/shared';
+import { resolveToRAC } from '@ant/shared';
+import type { IntentId } from '@ant/shared';
 import type { ResolveStrategy } from '../../../../common/nodes/resolve/types.js';
 
 export const visualResolveStrategy: ResolveStrategy<VisualGraphState> = {
@@ -161,7 +162,11 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
   const actionMetadata = state.actionMetadata;
   let resolvedAction = state.resolvedAction;
   if (!resolvedAction && actionMetadata?.intent) {
-    resolvedAction = resolveFromExplicit(actionMetadata);
+    resolvedAction = resolveToRAC(
+      actionMetadata.intent as IntentId,
+      { target: actionMetadata.target, refs: actionMetadata.refs, context: actionMetadata.context },
+      'explicit',
+    );
     console.log(`📋 [Visual:Resolve] RAC created (explicit): intent=${actionMetadata.intent}, mode=${resolvedAction.mode}`);
   }
 

@@ -3,6 +3,7 @@ import { join } from "path";
 import { CodebaseAnalyzerPort } from "../../../core/ports";
 import { CodebaseProfile } from "../../../core/types";
 import { EnvironmentDetector } from "./EnvironmentDetector";
+import { buildTechTier, type TechTier, type Stack } from "@ant/shared";
 
 /**
  * CodebaseAnalyzer - Detects language, framework, and environment from source code
@@ -41,7 +42,7 @@ export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
       conventions
     };
     
-    const environment = await this.environmentDetector.detectEnvironment(
+    const environment = await this.environmentDetector.detect(
       workingDir,
       baseProfile
     );
@@ -51,8 +52,27 @@ export class CodebaseAnalyzer implements CodebaseAnalyzerPort {
     
     return {
       ...baseProfile,
-      environment  // ✅ Add environment detection result
+      environment
     };
+  }
+
+  /**
+   * Analyze codebase and return a normalized TechTier.
+   * Wraps analyze() output through buildTechTier() for consistent normalization.
+   */
+  async analyzeAsTechTier(filesBlock: string, workingDir: string): Promise<TechTier> {
+    const profile = await this.analyze(filesBlock, workingDir);
+    const { ProjectEnvironment } = await import('../../../core/types/environment');
+    const stack: Stack | undefined = profile.environment?.primary === ProjectEnvironment.BROWSER ? 'frontend'
+      : profile.environment?.primary === ProjectEnvironment.NODE_API ? 'backend'
+      : profile.environment?.primary === ProjectEnvironment.FULLSTACK ? 'fullstack'
+      : undefined;
+    
+    const techTier = buildTechTier(profile, stack);
+    if (profile.packageManager) {
+      techTier.packageManager = profile.packageManager as TechTier['packageManager'];
+    }
+    return techTier;
   }
   
   /**

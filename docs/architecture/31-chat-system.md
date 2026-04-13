@@ -80,7 +80,7 @@ Placeholder는 contents[] 배열의 **어느 위치에나** 존재할 수 있다
 |------|----------|
 | 새 assistant 메시지 시작 | `LLMResponseService.startMessage()` -> `showChatStatus('placeholder')` |
 | `<clarify>` 태그 감지 | `XMLStreamParser` -> `clarify_start` -> `showChatStatus('placeholder')` |
-| 환경 감지 시작 | `detectEnvironment()` -> `showChatStatus('placeholder')` |
+| 환경 감지 시작 | `detect()` -> `showChatStatus('placeholder')` |
 
 ### 프론트엔드 TypingIndicator 출현 조건
 

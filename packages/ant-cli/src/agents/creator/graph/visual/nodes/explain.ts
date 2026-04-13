@@ -27,7 +27,7 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.enterNode(state._httpJobId, 'explain', 0, undefined, llm ? extractLLMInfo(llm) : undefined);
   }
-  const promptPort = state.deps.promptPort;
+  const pb = state.deps.promptBuilder;
 
   const conversationContext = state.conversation
     .slice(-10)
@@ -47,9 +47,9 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
   const sketchCount = state.availableSketchPaths?.length || 0;
 
   try {
-    const systemPrompt = await promptPort.render('visual/nodes/explain/base', {});
+    const systemPrompt = await pb.render('visual/nodes/explain/base', {});
 
-    const userPrompt = await promptPort.render('visual/nodes/explain/context', {
+    const userPrompt = await pb.render('visual/nodes/explain/context', {
       conversationContext: conversationContext || '(no previous conversation)',
       currentDirective,
       lastEngineeredPrompt: state.lastEngineeredPrompt,
