@@ -2,25 +2,16 @@
  * Design Detect Strategy
  *
  * LLM-based detection of intentGroup, mode, environment, domain.
+ * Returns InferredAction (intentId + slots) consumed by the unified detect node.
  * Handles clarify pause, error exit, and Figma MCP check.
- * Extracted from the former design detectEnvironment node.
  */
 
 import type { DetectStrategy, DetectResult } from '../../../../../common/nodes/detect/types.js';
 import type { DesignGraphState } from '../../state.js';
-import type { DetectionReport, CodebaseProfileLike } from '@ant/shared';
-import { isFigmaDataPopulated, DESIGN_DIR, DESIGN_SUBDIR, synthesizeDesignIntent } from '@ant/shared';
+import type { InferredAction, Mode, DesignDomain } from '@ant/shared';
+import { isFigmaDataPopulated, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
-import {
-  createUiDesignDetectionReport,
-  createSystemDesignDetectionReport,
-  createSpecDetectionReport,
-  formatDetectionReportForChat,
-  resolveDesignTargetFiles,
-  type JobMode,
-  type JobEnvironment,
-  type DesignDomain,
-} from '../../../../../../core/types/detection.js';
+import { resolveDesignTargetFiles } from '../../../../../../core/types/detection.js';
 import { logPrompt } from '../../../../../../core/utils/promptLogger.js';
 import * as path from 'path';
 import * as fsp from 'fs/promises';
@@ -33,11 +24,11 @@ interface ParsedDesignResponse {
   intentGroup: 'design-ui' | 'design-system' | 'design-spec' | 'clarify' | 'error';
   intentGroupReasoning: string;
   intentId?: string;
-  jobMode: JobMode;
+  jobMode: Mode;
   jobModeReasoning: string;
   domain?: DesignDomain;
   domainReasoning?: string;
-  environment?: JobEnvironment;
+  environment?: 'frontend' | 'backend' | 'fullstack';
   environmentReasoning?: string;
   errorMessage?: string;
   errorType?: string;
@@ -55,18 +46,17 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     }
 
     const llm = state.deps?.llm;
-    const engine = state.deps?.promptEngine;
-    if (!llm || !engine) {
-      console.warn('[Design:Detect] Missing llm or promptEngine dependency.');
-      const defaultReport = createSystemDesignDetectionReport({
-        detectedMode: 'generate',
-        detectedModeReasoning: 'promptEngine or llm not available; defaulting.',
-        environment: 'fullstack',
-        environmentReasoning: 'Defaulting to fullstack.',
-        domain: 'service',
-        domainReasoning: 'Defaulting to service.',
-      });
-      return { detectionReport: defaultReport };
+    const pb = state.deps?.promptBuilder;
+    if (!llm || !pb) {
+      console.warn('[Design:Detect] Missing llm or promptBuilder dependency.');
+      return {
+        inferred: {
+          intentId: 'gen-sys-full',
+          domain: 'service',
+          reasoning: { intent: 'promptBuilder or llm not available; defaulting.', domain: 'Defaulting to service.' },
+          sourceJob: 'design',
+        },
+      };
     }
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -85,12 +75,13 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     const hasSystemDocs = existingDocNames.length > 0;
 
     // Build prompt
-    const prompt = await engine.buildDesignDomainPrompt({
+    const prompt = await pb.render('design/phases/detect/base', {
       directive,
-      hasReferences,
-      hasAssets,
-      referencesList,
-      assetsList,
+      hasReferences: hasReferences || false,
+      hasAssets: hasAssets || false,
+      referencesList: referencesList || '',
+      assetsList: assetsList || '',
+      figmaPopulated: figmaPopulated || false,
       hasUiDocs: await hasUiDocsOnDisk(featurePath),
       hasUiTokens: await fileExistsInDirs('ui-tokens.json', featurePath),
       hasUiAssets: await fileExistsInDirs('ui-assets.json', featurePath),
@@ -100,8 +91,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       hasApiContract: existingDocNames.some(f => f.startsWith('api-contract-')),
       hasFeSystemDesign: existingDocNames.some(f => f.startsWith('fe-system-')),
       hasBeSystemDesign: existingDocNames.some(f => f.startsWith('be-system-')),
-      systemDesignFiles: existingDocNames,
-      figmaPopulated,
+      systemDesignFiles: existingDocNames || [],
     });
 
     // Log prompt
@@ -162,7 +152,6 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       return {
         skipRACCreation: true,
         stateUpdates: {
-          detectionReport: undefined,
           designError: { type: parsed.errorType || 'unknown_error', message: parsed.errorMessage || 'An error occurred' },
         } as Partial<DesignGraphState>,
       };
@@ -185,38 +174,35 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       };
     }
 
-    // ━━━ Build DetectionReport ━━━
-    const detectionReport = buildDesignReport(parsed);
+    // ━━━ Build InferredAction ━━━
+    const inferred = buildInferredAction(parsed, { figmaPopulated, hasReferences });
 
     // Resolve targetFiles for system-design
-    if (detectionReport.detectedIntentGroup === 'design-system') {
+    if (parsed.intentGroup === 'design-system') {
       const { targetFiles, effectiveMode } = resolveDesignTargetFiles(
-        detectionReport.environment,
-        detectionReport.detectedMode,
+        inferred.intentId,
+        parsed.jobMode,
         existingDocNames,
       );
-      detectionReport.targetFiles = targetFiles;
-      if (effectiveMode !== detectionReport.detectedMode) {
-        detectionReport.detectedMode = effectiveMode;
-        detectionReport.detectedModeReasoning += ` (corrected: no same-tier docs for ${detectionReport.environment})`;
+      inferred.target = targetFiles;
+
+      if (effectiveMode !== parsed.jobMode) {
+        const correctedIntentId = mapToIntentId(parsed.intentGroup, effectiveMode, { environment: parsed.environment });
+        inferred.intentId = correctedIntentId;
+        if (inferred.reasoning) {
+          inferred.reasoning.intent = (inferred.reasoning.intent || '') +
+            ` (corrected: no same-tier docs for ${parsed.environment})`;
+        }
       }
     }
 
-    // Display in Chat UI
-    const formatted = formatDetectionReportForChat(detectionReport, 'ko');
-    await chatAPI.sendLLMEvent({ type: 'text', text: formatted });
-    await chatAPI.finalizeMessage();
-
-    console.log(`\n✅ Job Mode: ${detectionReport.detectedMode}`);
-    console.log(`✅ Intent Group: ${detectionReport.detectedIntentGroup}`);
-
-    // Save to session
-    await saveDetectionToSession(state, detectionReport);
+    console.log(`\n✅ Mode: ${parsed.jobMode}`);
+    console.log(`✅ IntentId: ${inferred.intentId}`);
 
     // ━━━ Figma MCP check ━━━
     const stateUpdates: Partial<DesignGraphState> = {};
 
-    if (detectionReport.detectedIntentGroup === 'design-ui' && figmaPopulated) {
+    if (parsed.intentGroup === 'design-ui' && figmaPopulated) {
       const figmaError = await checkFigmaMCPReachable(state);
       if (figmaError) {
         console.log(`\n❌ Figma MCP unavailable: ${figmaError.message}`);
@@ -225,16 +211,16 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
         await chatAPI.finalizeMessage();
         stateUpdates.designError = figmaError;
         stateUpdates.tokenUsage = state.tokenUsage;
-        return { detectionReport, stateUpdates };
+        return { inferred, stateUpdates };
       }
       console.log(`✅ Figma MCP reachable — pipeline=figma`);
-    } else if (detectionReport.detectedIntentGroup === 'design-ui') {
+    } else if (parsed.intentGroup === 'design-ui') {
       stateUpdates.uiReferences = uiReferences;
       stateUpdates.uiAssetsList = uiAssetsList;
     }
 
     // Spec Figma availability (graceful)
-    if (detectionReport.detectedIntentGroup === 'design-spec' && isFigmaDataPopulated(state.figmaConfig)) {
+    if (parsed.intentGroup === 'design-spec' && isFigmaDataPopulated(state.figmaConfig)) {
       const specFigma = await checkSpecFigma(state);
       if (specFigma) {
         stateUpdates.figmaAvailable = specFigma.available;
@@ -244,18 +230,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     }
 
     stateUpdates.tokenUsage = state.tokenUsage;
-    return { detectionReport, stateUpdates };
-  },
-
-  synthesizeFallback(report, state) {
-    return synthesizeDesignIntent(report, {
-      figmaPopulated: isFigmaDataPopulated(state.figmaConfig),
-      hasReferences: state.uiReferences != null && state.uiReferences.length > 0,
-    });
-  },
-
-  getCodebaseProfile(state): CodebaseProfileLike | undefined {
-    return state.context?.codebaseProfile;
+    return { inferred, stateUpdates };
   },
 
   isAwaitingInput(state): boolean {
@@ -273,53 +248,72 @@ async function handleClarifyResume(state: DesignGraphState): Promise<DetectResul
   const choice = parseDetectClarifyChoice(state.overrideDirective!, hasSystemDocs);
   console.log(`✅ User chose: intentGroup=${choice.intentGroup}, mode=${choice.jobMode}`);
 
-  const report = choice.intentGroup === 'design-spec'
-    ? createSpecDetectionReport({ detectedMode: choice.jobMode, detectedModeReasoning: 'User explicitly chose spec.' })
-    : createSystemDesignDetectionReport({
-        detectedMode: choice.jobMode,
-        detectedModeReasoning: 'User explicitly chose system design.',
-        environment: 'fullstack',
-        environmentReasoning: 'Defaulting to fullstack.',
-        domain: 'service',
-        domainReasoning: 'Defaulting to service.',
-      });
+  const intentId = mapToIntentId(choice.intentGroup, choice.jobMode, {
+    environment: choice.intentGroup === 'design-system' ? 'fullstack' : undefined,
+  });
 
-  // Display in Chat UI
-  try {
-    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient.js');
-    const chatAPI = getChatAPIClient();
-    const formatted = formatDetectionReportForChat(report, 'ko');
-    await chatAPI.sendLLMEvent({ type: 'text', text: formatted });
-    await chatAPI.finalizeMessage();
-  } catch { /* non-critical */ }
+  const inferred: InferredAction = {
+    intentId,
+    domain: choice.intentGroup === 'design-system' ? 'service' : undefined,
+    reasoning: {
+      intent: `User explicitly chose ${choice.intentGroup} (${choice.jobMode}).`,
+      domain: choice.intentGroup === 'design-system' ? 'Defaulting to service.' : undefined,
+    },
+    sourceJob: 'design',
+  };
 
   return {
-    detectionReport: report,
+    inferred,
     stateUpdates: { awaitingDetectClarify: false } as Partial<DesignGraphState>,
   };
 }
 
-function buildDesignReport(parsed: ParsedDesignResponse): DetectionReport {
-  if (parsed.intentGroup === 'design-ui') {
-    const r = createUiDesignDetectionReport({ detectedMode: parsed.jobMode, detectedModeReasoning: parsed.jobModeReasoning });
-    if (parsed.intentId) r.intentId = parsed.intentId;
-    return r;
+function mapToIntentId(
+  intentGroup: 'design-ui' | 'design-system' | 'design-spec',
+  mode: Mode,
+  options?: { environment?: string; figmaPopulated?: boolean; hasReferences?: boolean },
+): string {
+  if (intentGroup === 'design-ui') {
+    if (mode === 'refactor') return 'rev-ui';
+    if (mode === 'explain') return 'explain-ui';
+    if (options?.figmaPopulated) return 'gen-ui-figma';
+    if (options?.hasReferences) return 'gen-ui-ref';
+    return 'gen-ui-desc';
   }
-  if (parsed.intentGroup === 'design-spec') {
-    const r = createSpecDetectionReport({ detectedMode: parsed.jobMode, detectedModeReasoning: parsed.jobModeReasoning });
-    if (parsed.intentId) r.intentId = parsed.intentId;
-    return r;
+  if (intentGroup === 'design-spec') {
+    if (mode === 'refactor') return 'rev-spec';
+    if (mode === 'explain') return 'explain-spec';
+    return 'gen-spec';
   }
-  const r = createSystemDesignDetectionReport({
-    detectedMode: parsed.jobMode,
-    detectedModeReasoning: parsed.jobModeReasoning,
-    environment: parsed.environment!,
-    environmentReasoning: parsed.environmentReasoning!,
-    domain: parsed.domain!,
-    domainReasoning: parsed.domainReasoning!,
+  // design-system
+  if (mode === 'refactor') return 'rev-sys';
+  if (mode === 'explain') return 'explain-sys';
+  if (options?.environment === 'frontend') return 'gen-sys-fe';
+  if (options?.environment === 'backend') return 'gen-sys-be';
+  return 'gen-sys-full';
+}
+
+function buildInferredAction(
+  parsed: ParsedDesignResponse,
+  options: { figmaPopulated: boolean; hasReferences: boolean },
+): InferredAction {
+  const intentGroup = parsed.intentGroup as 'design-ui' | 'design-system' | 'design-spec';
+
+  const intentId = parsed.intentId || mapToIntentId(intentGroup, parsed.jobMode, {
+    environment: parsed.environment,
+    figmaPopulated: options.figmaPopulated,
+    hasReferences: options.hasReferences,
   });
-  if (parsed.intentId) r.intentId = parsed.intentId;
-  return r;
+
+  return {
+    intentId,
+    domain: parsed.domain,
+    reasoning: {
+      intent: parsed.jobModeReasoning || parsed.intentGroupReasoning,
+      domain: parsed.domainReasoning,
+    },
+    sourceJob: 'design',
+  };
 }
 
 function parseDesignDetectResponse(raw: string): ParsedDesignResponse {
@@ -358,7 +352,7 @@ function parseDesignDetectResponse(raw: string): ParsedDesignResponse {
       };
     }
 
-    const jobMode: JobMode =
+    const jobMode: Mode =
       (parsed.jobMode || parsed.designMode) === 'refactor' ? 'refactor' :
       (parsed.jobMode || parsed.designMode) === 'explain' ? 'explain' : 'generate';
     const jobModeReasoning = parsed.jobModeReasoning || parsed.designModeReasoning
@@ -396,7 +390,7 @@ function parseDesignDetectResponse(raw: string): ParsedDesignResponse {
 
 function parseDetectClarifyChoice(
   directive: string, hasSystemDocs: boolean,
-): { intentGroup: 'design-spec' | 'design-system'; jobMode: JobMode } {
+): { intentGroup: 'design-spec' | 'design-system'; jobMode: Mode } {
   const lower = directive.toLowerCase();
   if (lower.includes('spec') || lower.includes('스펙 문서'))
     return { intentGroup: 'design-spec', jobMode: 'generate' };
@@ -420,16 +414,6 @@ async function saveDetectClarifyToSession(state: DesignGraphState): Promise<void
   try {
     await state.deps.session.updateArtifacts(state.context.project, state.context.featureFolder, 'design', {
       state: { awaitingDetectClarify: true, directive: state.directive, overrideDirective: state.overrideDirective, chatSource: state.chatSource, prd: state.prd },
-    });
-  } catch { /* non-critical */ }
-}
-
-async function saveDetectionToSession(state: DesignGraphState, report: DetectionReport): Promise<void> {
-  if (!state.deps?.session || !state.context.featureFolder) return;
-  try {
-    const session = await state.deps.session.load(state.context.project, state.context.featureFolder, 'design');
-    await state.deps.session.updateArtifacts(state.context.project, state.context.featureFolder, 'design', {
-      state: { ...session.state, detectionReport: report },
     });
   } catch { /* non-critical */ }
 }

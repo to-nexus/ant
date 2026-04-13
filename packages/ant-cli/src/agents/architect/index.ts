@@ -1,4 +1,4 @@
-import { ProjectContext, AgentJob, JobMode, ArchitectResult } from "./types";
+import { ProjectContext, AgentJob, Mode, ArchitectResult } from "./types";
 import type { InterruptionReason } from "../../core/types/session";
 import { retrieve } from "./memory";
 import { ArtifactService } from "../../infrastructure/workspace/ArtifactService";
@@ -10,7 +10,7 @@ import { runDesignGraph } from "./graph/design/runner";
 import { DesignGraphState } from "./graph/design/state";
 import { runLearnGraph } from "./graph/learn/runner";
 import { LearnGraphState } from "./graph/learn/state";
-import { PromptEngine } from "../../core/prompt/engine";
+import { PromptBuilder } from "../../core/prompt/builder/PromptBuilder";
 
 export async function architectAgent(
   input: string, 
@@ -43,7 +43,7 @@ export async function architectAgent(
     actionMetadata?: import('@ant/shared').ActionMetadata;
     redis?: any;  // Raw ioredis client for cloud Figma MCP bridge
   },
-  mode?: JobMode,
+  mode?: Mode,
   enableEvaluation?: boolean,
   jobId?: string  // ✅ Existing jobId for resume or real-time tracking
 ): Promise<ArchitectResult> {
@@ -222,32 +222,7 @@ export async function architectAgent(
       if (!deps?.promptPort) {
         throw new Error("PromptPort not provided for design generation");
       }
-      const designEngine = new PromptEngine({
-        promptPort: deps.promptPort,
-        profilePort: deps.profilePort,
-        analyzer: deps.analyzer,
-        git: deps.git,
-        memory: deps.memory,
-        contextLoader: async (task, ctx) => {
-          // ✅ FIX: task parameter is a Task object, not AgentJob string!
-          // For design job, we need to pass 'design' as the AgentJob type
-          const agentJob: AgentJob = 'design';
-          
-          const gitPort = deps.git;
-          const fileSystem = deps.fileSystem;
-          if (!gitPort || !fileSystem) return {};
-          
-          const directive = await ArtifactService.getDirective(ctx, agentJob, gitPort, fileSystem);
-          const designResult = await ArtifactService.findLatestDesign(ctx, gitPort, fileSystem);
-          const source = await ArtifactService.getSource(ctx, gitPort, fileSystem);
-          
-          return {
-            directive: directive || undefined,
-            previousDesign: designResult?.content || undefined,
-            sourceDocuments: source?.sourceDocuments || undefined
-          };
-        }
-      });
+      const designBuilder = new PromptBuilder(deps.promptPort, deps.profilePort);
 
       const dInitial: DesignGraphState = {
         context,
@@ -255,7 +230,7 @@ export async function architectAgent(
         workspaceConfig: config,
         deps: {
           llm: deps?.llm,
-          promptEngine: designEngine,
+          promptBuilder: designBuilder,
           chunk: deps?.chunk,
           session: deps?.session,
           git: deps?.git,
@@ -380,8 +355,8 @@ export async function architectAgent(
         throw new Error("PromptPort not provided for code generation");
       }
 
-      // === ✅ Mode inference is handled by LLM in detectEnvironment node ===
-      // Do NOT infer mode here - let detectEnvironment decide
+      // === ✅ Mode inference is handled by LLM in detect node ===
+      // Do NOT infer mode here - let detect decide
       const inferredMode = mode;  // Use explicit mode if provided, otherwise undefined
       
       // UNIFIED: Always use Task Queue Mode with LLM validation
@@ -396,39 +371,7 @@ export async function architectAgent(
 
       console.log(`🚀 Starting CODE job (~${estimation.estimatedFiles} files)`);
         
-        const codeEngine = new PromptEngine({
-          promptPort: deps.promptPort,
-          profilePort: deps.profilePort,
-          analyzer: deps.analyzer,
-          git: deps.git,
-          memory: deps.memory,
-          contextLoader: async (task, ctx) => {
-            // ✅ FIX: task parameter is a Task object, not AgentJob string!
-            // For code job, we need to pass 'code' as the AgentJob type
-            const agentJob: AgentJob = 'code';
-            
-            const gitPort = deps.git;
-            const fileSystem = deps.fileSystem;
-            if (!gitPort || !fileSystem) return {};
-            
-            const directive = await ArtifactService.getDirective(ctx, agentJob, gitPort, fileSystem);
-            
-            // ✅ Load all available design documents
-            // TemplateComposer will filter by environment before sending to LLM
-            const designDocs = await ArtifactService.loadDesignDocuments(ctx, gitPort, fileSystem, 'unknown');
-            
-            // ✅ Also load unified design as fallback
-            // This will be used if designDocs filtering doesn't find environment-specific docs
-            const designResult = await ArtifactService.findLatestDesign(ctx, gitPort, fileSystem);
-            
-            return {
-              directive: directive || undefined,
-              designDocPath: designResult?.filePath || undefined,
-              designDocs
-            };
-          }
-        });
-        
+        const codeBuilder = new PromptBuilder(deps.promptPort, deps.profilePort);
         // ✅ Resolve jobId: orchestrator param > env var (child process) > undefined
         const resolvedJobId = jobId || process.env.ANT_JOB_ID;
         
@@ -443,7 +386,7 @@ export async function architectAgent(
           deps: { 
             memory: deps?.memory, 
             llm: deps?.llm,
-            promptEngine: codeEngine,
+            promptBuilder: codeBuilder,
             analyzer: deps?.analyzer,
             git: deps?.git,
             fileSystem: deps?.fileSystem,  // ✅ NEW: FileSystemPort

@@ -7,35 +7,21 @@ import {
   type IntentGroup,
   type IntentId,
   getConfigSlots,
-  matchesOutputSpec,
   formatOutputSpec,
-  type SlotDef,
-  type TargetDef,
-  getFileDescription,
-  getDirDescription,
-  getPatternDescription,
 } from '@ant/shared';
-import type { FileNode } from '@/infrastructure/http/api';
 import { IntentTabNav } from './IntentTabNav';
 import { PageTransition } from './PageTransition';
 import { ActionFooter } from './ActionFooter';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
+import { FileText, BookOpen, Crosshair } from 'lucide-react';
 import {
-  CheckCircle2,
-  Circle,
-  Lock,
-  AlertTriangle,
-  FolderOpen,
-  Plus,
-  Upload,
-  Eye,
-  Unplug,
-  Info,
-  FileText,
-  BookOpen,
-  Crosshair,
-} from 'lucide-react';
-import { Tooltip } from '@/presentation/components/common/Tooltip';
+  Section,
+  SlotEntryList,
+  TargetDisplay,
+  resolveSlotEntries,
+  listDir,
+} from './config';
+import type { FileWarningContext } from './config';
 
 interface ActionConfigViewProps {
   actionId: IntentGroup;
@@ -44,7 +30,7 @@ interface ActionConfigViewProps {
 }
 
 export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigViewProps) {
-  const { i18n } = useTranslation('actions');
+  const { t, i18n } = useTranslation('actions');
   const lang = i18n.language as 'en' | 'ko';
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const fileTree = useStore(s => s.fileTree);
@@ -164,9 +150,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     openActionsPanel(targetIntentDef.intentGroup);
     selectIntent(targetIntentId);
     setActionsStep('config');
-    toast.info(lang === 'ko'
-      ? `${fromLabel} → ${toLabel}(으)로 이동했습니다`
-      : `Navigated from ${fromLabel} to ${toLabel}`);
+    toast.info(t('toast.navigated', { from: fromLabel, to: toLabel }));
   };
 
   const toggleFile = (path: string, field: 'refs' | 'context') => {
@@ -198,6 +182,16 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const hasRefSlots = slots ? slots.refs.some(r => !r.emptyHint) : false;
   const hasCtxSlots = slots ? slots.context.length > 0 : false;
 
+  const refsHint = hasRefSlots
+    ? slots!.refsSingleSelect
+      ? { label: t('section.singleSelect'), tooltip: t('section.singleSelectHint'), colorScheme: 'amber' as const }
+      : { label: t('section.multiSelect'), tooltip: t('section.multiSelectHint'), colorScheme: 'gray' as const }
+    : undefined;
+
+  const targetHint = slots?.target.kind === 'revise'
+    ? { label: t('section.mirrorsRefs'), tooltip: t('section.mirrorsRefsHint'), colorScheme: 'blue' as const }
+    : undefined;
+
   return (
     <div className="flex flex-col h-full">
       <div className="shrink-0 px-5 pt-5">
@@ -216,7 +210,12 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
         {slots && (
           <>
             {/* Refs (primary) */}
-            <Section title={lang === 'ko' ? '참조' : 'References'} icon={FileText} iconColor="text-emerald-500 dark:text-emerald-400">
+            <Section
+              title={t('section.refs')}
+              icon={FileText}
+              iconColor="text-emerald-500 dark:text-emerald-400"
+              hint={refsHint}
+            >
               {hasRefSlots ? (
                 <SlotEntryList
                   entries={refEntries}
@@ -238,7 +237,12 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
             </Section>
 
             {/* Context (secondary) */}
-            <Section title={lang === 'ko' ? '컨텍스트' : 'Context'} icon={BookOpen} iconColor="text-gray-500 dark:text-gray-400">
+            <Section
+              title={t('section.context')}
+              icon={BookOpen}
+              iconColor="text-gray-500 dark:text-gray-400"
+              hint={hasCtxSlots ? { label: t('section.optional'), tooltip: t('section.optionalHint'), colorScheme: 'gray' as const } : undefined}
+            >
               {hasCtxSlots ? (
                 <SlotEntryList
                   entries={ctxEntries}
@@ -253,14 +257,19 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   lang={lang}
                 />
               ) : (
-                <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
-                  {lang === 'ko' ? '없음' : 'None'}
+                <p className="text-xs text-gray-400 dark:text-gray-500 italic px-1">
+                  {t('section.none')}
                 </p>
               )}
             </Section>
 
             {/* Target */}
-            <Section title={lang === 'ko' ? '타겟' : 'Target'} icon={Crosshair} iconColor="text-orange-500 dark:text-orange-400">
+            <Section
+              title={t('section.target')}
+              icon={Crosshair}
+              iconColor="text-orange-500 dark:text-orange-400"
+              hint={targetHint}
+            >
               <TargetDisplay
                 target={slots.target}
                 selectedRefs={selectedRefs}
@@ -279,597 +288,4 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       <ActionFooter actionId={actionId} />
     </div>
   );
-}
-
-// ============================================
-// Sub-components
-// ============================================
-
-function Section({ title, icon: Icon, iconColor, children }: { title: string; icon?: React.ComponentType<{ className?: string }>; iconColor?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-        {Icon && <Icon className={`w-3.5 h-3.5 ${iconColor || 'text-gray-400'}`} />}
-        {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
-
-function WarningIcon({ warning, onViewFile, lang }: {
-  warning: SlotWarning;
-  onViewFile?: () => void;
-  lang: 'en' | 'ko';
-}) {
-  const isFile = warning.type === 'invalid-file';
-  const Icon = isFile ? AlertTriangle : Unplug;
-  const iconColor = isFile ? 'text-amber-500' : 'text-red-400';
-  const viewLabel = lang === 'ko' ? '보러가기' : 'View file';
-
-  return (
-    <Tooltip
-      content={
-        <div className="space-y-2 max-w-[220px]">
-          <p className="text-xs">{warning.message[lang] || warning.message.en}</p>
-          <div className="flex items-center gap-2">
-            {isFile && onViewFile && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onViewFile(); }}
-                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                {viewLabel}
-              </button>
-            )}
-            {warning.onFix && warning.fixLabel && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); warning.onFix!(); }}
-                className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                {warning.fixLabel[lang] || warning.fixLabel.en}
-              </button>
-            )}
-          </div>
-        </div>
-      }
-      placement="top"
-    >
-      <span className={`inline-flex items-center justify-center shrink-0 p-1.5 rounded-lg ${iconColor} cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}>
-        <Icon className="w-4.5 h-4.5" />
-      </span>
-    </Tooltip>
-  );
-}
-
-function InfoIcon({ description, lang }: { description: { en: string; ko: string }; lang: 'en' | 'ko' }) {
-  return (
-    <Tooltip
-      content={<p className="text-sm leading-relaxed">{description[lang] || description.en}</p>}
-      className="max-w-sm !px-5 !py-4 !text-base !rounded-xl"
-      placement="top"
-    >
-      <span className="inline-flex items-center justify-center shrink-0 p-1.5 rounded-lg text-gray-400 dark:text-gray-500 cursor-pointer hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-        <Info className="w-4.5 h-4.5" />
-      </span>
-    </Tooltip>
-  );
-}
-
-function SpotlightToggle({ active, onClick, title }: { active: boolean; onClick: () => void; title: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 p-2 rounded-lg transition-colors ${
-        active
-          ? 'bg-amber-200 dark:bg-amber-700/50 text-amber-700 dark:text-amber-300'
-          : 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50'
-      }`}
-      title={title}
-    >
-      <Eye className="w-4.5 h-4.5" />
-    </button>
-  );
-}
-
-/** Unified file card used across refs, context, and target sections */
-interface FileCardProps {
-  name: string;
-  path: string;
-  warnings?: SlotWarning[];
-  description?: { en: string; ko: string } | null;
-  icon?: React.ReactNode;
-  selected?: boolean;
-  locked?: boolean;
-  disabled?: boolean;
-  empty?: boolean;
-  emptyStyle?: 'amber' | 'gray';
-  onToggle?: () => void;
-  onViewFile?: () => void;
-  spotlight?: { active: boolean; onClick: () => void; title: string };
-  actions?: React.ReactNode;
-  lang: 'en' | 'ko';
-}
-
-function FileCard({ name, path, warnings, description, icon, selected, locked, disabled, empty, emptyStyle, onToggle, onViewFile, spotlight, actions, lang }: FileCardProps) {
-  const hasWarnings = warnings && warnings.length > 0;
-  const isDisabled = disabled || hasWarnings;
-  const isEmpty = empty || false;
-  const isAmber = emptyStyle === 'amber';
-
-  const borderClass = isEmpty
-    ? isAmber
-      ? 'border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/10'
-      : 'border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/20 opacity-50'
-    : hasWarnings || isDisabled
-      ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 opacity-60'
-      : locked
-        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
-        : selected
-          ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
-          : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 opacity-60';
-
-  const nameClass = isEmpty && isAmber
-    ? 'text-sm truncate block text-amber-700 dark:text-amber-300 font-medium'
-    : `text-sm truncate block ${hasWarnings ? 'text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-200'}`;
-
-  return (
-    <div className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all border ${borderClass}`}>
-      {/* Toggle icon */}
-      <button
-        type="button"
-        onClick={() => !isDisabled && !locked && onToggle?.()}
-        disabled={!!isDisabled || !!locked || !onToggle}
-        className="shrink-0"
-      >
-        {icon ?? (
-          isEmpty
-            ? <Circle className={`w-4 h-4 ${isAmber ? 'text-amber-400' : 'text-gray-400'}`} />
-            : hasWarnings
-              ? <Circle className="w-4 h-4 text-gray-300" />
-              : locked
-                ? <Lock className="w-4 h-4 text-emerald-500" />
-                : selected
-                  ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  : <Circle className="w-4 h-4 text-gray-400" />
-        )}
-      </button>
-      {/* Text + inline status icons (sticks to text) */}
-      <div className="flex items-center gap-1.5 min-w-0">
-        <div className="min-w-0">
-          <span className={nameClass}>{name}</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500 truncate block">{path}</span>
-        </div>
-        {description && <InfoIcon description={description} lang={lang} />}
-        {warnings?.filter(w => w.type === 'invalid-file').map((w, i) => (
-          <WarningIcon key={`warn-file-${i}`} warning={w} onViewFile={onViewFile} lang={lang} />
-        ))}
-        {warnings?.filter(w => w.type === 'invalid-env').map((w, i) => (
-          <WarningIcon key={`warn-env-${i}`} warning={w} lang={lang} />
-        ))}
-      </div>
-      {/* Action buttons (pushed to right edge) */}
-      {(actions || spotlight) && (
-        <div className="ml-auto flex items-center gap-1.5 shrink-0">
-          {actions}
-          {spotlight && (
-            <SpotlightToggle active={spotlight.active} onClick={spotlight.onClick} title={spotlight.title} />
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface SlotWarning {
-  type: 'invalid-file' | 'invalid-env';
-  message: { en: string; ko: string };
-  fixLabel?: { en: string; ko: string };
-  onFix?: () => void;
-}
-
-interface SlotFileEntry {
-  name: string;
-  path: string;
-  size?: number;
-  warnings: SlotWarning[];
-}
-
-interface SlotEntry {
-  def: SlotDef;
-  files: SlotFileEntry[];
-  hasFiles: boolean;
-  hasValidFiles: boolean;
-}
-
-function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onCreateIntent, onUploadDir, onToggleSpotlight, onViewFile, spotlightPath, showEmptyActions = true, lang }: {
-  entries: SlotEntry[];
-  selected: Set<string>;
-  onToggle: (path: string) => void;
-  onHighlightDir: (dir: string) => void;
-  onCreateIntent: (intentId: string) => void;
-  onUploadDir?: (dir: string) => void;
-  onToggleSpotlight: (type: 'file' | 'dir', path: string) => void;
-  onViewFile?: (path: string) => void;
-  spotlightPath?: string | null;
-  showEmptyActions?: boolean;
-  lang: 'en' | 'ko';
-}) {
-  const { t } = useTranslation('actions');
-
-  return (
-    <div className="space-y-1.5">
-      {entries.map(entry => {
-        if (!entry.hasFiles) {
-          const humanName = entry.def.humanLabel?.[lang] || entry.def.humanLabel?.en || entry.def.label[lang] || entry.def.label.en;
-          const showWarningStyle = showEmptyActions && entry.def.required;
-          const hasCreateIntent = showEmptyActions && !!entry.def.createIntent;
-          const hasPath = !!entry.def.path;
-          const dirDesc = hasPath ? getDirDescription(entry.def.path) : null;
-
-          return (
-            <FileCard
-              key={entry.def.path || entry.def.label.en}
-              name={showWarningStyle ? t('emptySlot.missing', { name: humanName }) : (entry.def.label[lang] || entry.def.label.en)}
-              path={hasPath ? `${entry.def.path}/` : `— ${t('emptySlot.noFiles')}`}
-              description={dirDesc?.description}
-              empty
-              emptyStyle={showWarningStyle ? 'amber' : 'gray'}
-              spotlight={hasPath ? {
-                active: spotlightPath === entry.def.path,
-                onClick: () => onToggleSpotlight('dir', entry.def.path),
-                title: t('emptySlot.viewInExplorer'),
-              } : undefined}
-              actions={showEmptyActions ? (
-                <>
-                  {hasCreateIntent && (
-                    <button
-                      type="button"
-                      onClick={() => onCreateIntent(entry.def.createIntent!)}
-                      className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors"
-                      title={t('emptySlot.create')}
-                    >
-                      <Plus className="w-4.5 h-4.5" />
-                    </button>
-                  )}
-                  {hasPath && (
-                    <button
-                      type="button"
-                      onClick={() => onUploadDir ? onUploadDir(entry.def.path) : onHighlightDir(entry.def.path)}
-                      className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
-                      title={t('emptySlot.upload')}
-                    >
-                      <Upload className="w-4.5 h-4.5" />
-                    </button>
-                  )}
-                </>
-              ) : undefined}
-              lang={lang}
-            />
-          );
-        }
-
-        const fileCards = entry.files.map(f => {
-          const dirPath = f.path.includes('/') ? f.path.substring(0, f.path.lastIndexOf('/')) : undefined;
-          return (
-            <FileCard
-              key={f.path}
-              name={f.name}
-              path={f.path}
-              warnings={f.warnings}
-              description={getFileDescription(f.name, dirPath)}
-              selected={f.warnings.length === 0 && selected.has(f.path)}
-              locked={entry.def.locked}
-              onToggle={() => onToggle(f.path)}
-              onViewFile={onViewFile ? () => onViewFile(f.path) : undefined}
-              spotlight={{
-                active: spotlightPath === f.path,
-                onClick: () => onToggleSpotlight('file', f.path),
-                title: t('emptySlot.viewInExplorer'),
-              }}
-              lang={lang}
-            />
-          );
-        });
-
-        if (entry.def.type === 'dir' && showEmptyActions && entry.def.path) {
-          const hasCreateIntent = !!entry.def.createIntent;
-          fileCards.push(
-            <FileCard
-              key={`${entry.def.path}-add`}
-              name={lang === 'ko' ? '파일 추가...' : 'Add file...'}
-              path={entry.def.path + '/'}
-              empty
-              emptyStyle="gray"
-              actions={
-                <>
-                  {hasCreateIntent && (
-                    <button
-                      type="button"
-                      onClick={() => onCreateIntent(entry.def.createIntent!)}
-                      className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors"
-                      title={t('emptySlot.create')}
-                    >
-                      <Plus className="w-4.5 h-4.5" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onUploadDir ? onUploadDir(entry.def.path) : onHighlightDir(entry.def.path)}
-                    className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
-                    title={t('emptySlot.upload')}
-                  >
-                    <Upload className="w-4.5 h-4.5" />
-                  </button>
-                </>
-              }
-              lang={lang}
-            />
-          );
-        }
-
-        return fileCards;
-      })}
-    </div>
-  );
-}
-
-function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight, spotlightPath, onOpenIde, codebaseHasFiles, lang }: {
-  target: TargetDef;
-  selectedRefs: Set<string>;
-  targetExisting: { name: string; path: string }[];
-  onToggleSpotlight: (type: 'file' | 'dir', path: string) => void;
-  spotlightPath?: string | null;
-  onOpenIde?: () => void;
-  codebaseHasFiles: boolean;
-  lang: 'en' | 'ko';
-}) {
-  const { t } = useTranslation('actions');
-
-  switch (target.kind) {
-    case 'revise': {
-      if (selectedRefs.size === 0) {
-        return (
-          <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
-            {lang === 'ko' ? '참조(Refs)에서 파일을 선택하면 타겟이 결정됩니다' : 'Select files in Refs to determine targets'}
-          </p>
-        );
-      }
-      return (
-        <div className="space-y-1.5">
-          {Array.from(selectedRefs).map(p => {
-            const fileName = p.split('/').pop() || p;
-            const dirPath = p.includes('/') ? p.substring(0, p.lastIndexOf('/')) : undefined;
-            return (
-              <FileCard
-                key={p}
-                name={fileName}
-                path={p}
-                description={getFileDescription(fileName, dirPath)}
-                locked
-                selected
-                icon={<Lock className="w-4 h-4 text-gray-500 shrink-0" />}
-                lang={lang}
-              />
-            );
-          })}
-        </div>
-      );
-    }
-
-    case 'codebase':
-      return (
-        <FileCard
-          name={lang === 'ko' ? '코드베이스' : 'Codebase'}
-          path={lang === 'ko' ? (codebaseHasFiles ? '소스 코드 감지됨' : '소스 코드 없음 — 코드를 먼저 생성하세요') : (codebaseHasFiles ? 'Source code detected' : 'No source code — generate code first')}
-          selected={codebaseHasFiles}
-          locked={codebaseHasFiles}
-          empty={!codebaseHasFiles}
-          emptyStyle={!codebaseHasFiles ? 'amber' : undefined}
-          icon={<FolderOpen className={`w-4 h-4 ${codebaseHasFiles ? 'text-emerald-500' : 'text-amber-400'} shrink-0`} />}
-          description={{ en: 'Source code generated in the codebase/ directory.', ko: 'codebase/ 디렉터리에 생성된 소스 코드입니다.' }}
-          actions={onOpenIde ? (
-            <button
-              type="button"
-              onClick={onOpenIde}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
-              title={lang === 'ko' ? 'IDE에서 보기' : 'View in IDE'}
-            >
-              <Eye className="w-4.5 h-4.5" />
-            </button>
-          ) : undefined}
-          lang={lang}
-        />
-      );
-
-    case 'generate': {
-      if (target.outputs.length > 0) {
-        return (
-          <div className="space-y-1.5">
-            {target.outputs.map(os => {
-              const displayName = formatOutputSpec(os);
-              const fullPath = `${target.dir}/${displayName}`;
-              const hasConflict = targetExisting.some(f => matchesOutputSpec(f.name, os));
-              const conflictWarning: SlotWarning | undefined = hasConflict
-                ? { type: 'invalid-file', message: { en: 'May overwrite existing file', ko: '기존 파일이 덮어쓰여질 수 있습니다' } }
-                : undefined;
-              return (
-                <FileCard
-                  key={os.prefix}
-                  name={displayName}
-                  path={fullPath}
-                  warnings={conflictWarning ? [conflictWarning] : undefined}
-                  description={getPatternDescription(displayName)}
-                  disabled
-                  icon={<FolderOpen className="w-4 h-4 text-gray-400 shrink-0" />}
-                  spotlight={{
-                    active: spotlightPath === target.dir,
-                    onClick: () => onToggleSpotlight('dir', target.dir),
-                    title: t('emptySlot.viewInExplorer'),
-                  }}
-                  lang={lang}
-                />
-              );
-            })}
-          </div>
-        );
-      }
-      return (
-        <FileCard
-          name={`${target.dir}/`}
-          path={lang === 'ko' ? '생성 예정' : 'will be created'}
-          description={getDirDescription(target.dir)?.description}
-          disabled
-          icon={<FolderOpen className="w-4 h-4 text-gray-400 shrink-0" />}
-          spotlight={{
-            active: spotlightPath === target.dir,
-            onClick: () => onToggleSpotlight('dir', target.dir),
-            title: t('emptySlot.viewInExplorer'),
-          }}
-          lang={lang}
-        />
-      );
-    }
-
-    case 'chat-only':
-      return (
-        <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
-          {target.hint[lang] || target.hint.en}
-        </p>
-      );
-  }
-}
-
-// ============================================
-// File resolution helpers
-// ============================================
-
-interface FileWarningContext {
-  figmaPopulated: boolean | null;
-  bridgeConnected: boolean | null;
-  figmaDesktopReachable: boolean;
-  onOpenFigmaSettings: () => void;
-}
-
-function resolveFileWarnings(
-  filePath: string,
-  fileSize: number | undefined,
-  ctx: FileWarningContext,
-  isTemplate?: boolean,
-  templateReason?: string,
-  templateContentLength?: number,
-  templateThreshold?: number,
-): SlotWarning[] {
-  const warnings: SlotWarning[] = [];
-  const fileName = filePath.split('/').pop() || '';
-
-  if (fileName === 'figma.json') {
-    if (ctx.figmaPopulated === false) {
-      warnings.push({
-        type: 'invalid-file',
-        message: { en: 'Figma URL is not configured', ko: 'Figma URL이 설정되지 않았습니다' },
-      });
-    }
-    if (!ctx.bridgeConnected || !ctx.figmaDesktopReachable) {
-      warnings.push({
-        type: 'invalid-env',
-        message: { en: 'Figma Desktop connection required', ko: 'Figma Desktop 연결이 필요합니다' },
-        fixLabel: { en: 'Connect', ko: '연결하기' },
-        onFix: ctx.onOpenFigmaSettings,
-      });
-    }
-  } else if (isTemplate) {
-    if (templateReason === 'marker_and_short_content' && templateContentLength !== undefined && templateThreshold !== undefined) {
-      warnings.push({
-        type: 'invalid-file',
-        message: {
-          en: `Template marker present — content ${templateContentLength}/${templateThreshold} chars. Remove marker or add more content.`,
-          ko: `템플릿 마커 존재 — 실질 콘텐츠 ${templateContentLength}/${templateThreshold}자. 마커를 삭제하거나 내용을 추가하세요.`,
-        },
-      });
-    } else if (templateReason === 'file_empty') {
-      warnings.push({
-        type: 'invalid-file',
-        message: { en: 'File is empty (0 bytes)', ko: '파일이 비어있습니다 (0 bytes)' },
-      });
-    } else {
-      warnings.push({
-        type: 'invalid-file',
-        message: { en: 'File contains only placeholder content — needs real data', ko: '실제 데이터가 없는 빈 파일입니다 — 내용을 작성해주세요' },
-      });
-    }
-  } else if (fileSize === 0) {
-    warnings.push({
-      type: 'invalid-file',
-      message: { en: 'File is empty', ko: '파일이 비어있습니다' },
-    });
-  }
-
-  return warnings;
-}
-
-function resolveSlotEntries(
-  defs: SlotDef[],
-  fileTree: FileNode[],
-  excludePaths?: Set<string>,
-  warningCtx?: FileWarningContext,
-): SlotEntry[] {
-  return defs
-    .filter(def => !def.emptyHint || def.path)
-    .map(def => {
-      let files: SlotFileEntry[] = [];
-      if (def.type === 'file') {
-        const node = findFileNode(fileTree, def.path);
-        if (node) {
-          const warnings = warningCtx ? resolveFileWarnings(def.path, node.size, warningCtx, node.isTemplate, node.templateReason, node.templateContentLength, node.templateThreshold) : [];
-          files = [{ name: def.path.split('/').pop() || def.path, path: def.path, size: node.size, warnings }];
-        }
-      } else if (def.path) {
-        files = listDirWithMeta(fileTree, def.path).map(f => {
-          const warnings = warningCtx ? resolveFileWarnings(f.path, f.size, warningCtx, f.isTemplate, f.templateReason, f.templateContentLength, f.templateThreshold) : [];
-          return { name: f.name, path: f.path, size: f.size, warnings };
-        });
-      }
-      if (def.excludeFiles && def.excludeFiles.length > 0) {
-        files = files.filter(f => !def.excludeFiles!.includes(f.name));
-      }
-      if (excludePaths && excludePaths.size > 0) {
-        files = files.filter(f => !excludePaths.has(f.path));
-      }
-      const hasFiles = files.length > 0;
-      const hasValidFiles = files.some(f => f.warnings.length === 0);
-      return { def, files, hasFiles, hasValidFiles };
-    });
-}
-
-function findFileNode(tree: FileNode[], path: string): FileNode | null {
-  const parts = path.split('/');
-  let nodes = tree;
-  for (let i = 0; i < parts.length; i++) {
-    const node = nodes.find(n => n.name === parts[i]);
-    if (!node) return null;
-    if (i === parts.length - 1) return node.type === 'file' ? node : null;
-    if (!node.children) return null;
-    nodes = node.children;
-  }
-  return null;
-}
-
-function listDir(fileTree: FileNode[], dirPath: string): { name: string; path: string; size?: number }[] {
-  return listDirWithMeta(fileTree, dirPath);
-}
-
-function listDirWithMeta(fileTree: FileNode[], dirPath: string): { name: string; path: string; size?: number; isTemplate?: boolean; templateReason?: string; templateContentLength?: number; templateThreshold?: number }[] {
-  const parts = dirPath.split('/');
-  let nodes: FileNode[] = fileTree;
-  for (const part of parts) {
-    const found = nodes.find(n => n.name === part);
-    if (!found || found.type !== 'directory' || !found.children) return [];
-    nodes = found.children;
-  }
-  return nodes
-    .filter(n => n.type === 'file')
-    .map(n => ({ name: n.name, path: `${dirPath}/${n.name}`, size: n.size, isTemplate: n.isTemplate, templateReason: n.templateReason, templateContentLength: n.templateContentLength, templateThreshold: n.templateThreshold }));
 }

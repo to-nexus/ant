@@ -63,8 +63,11 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.tokenUsage = session.state.tokenUsage;
         initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
 
-        if (session.state.detectionReport) {
-          initial.detectionReport = session.state.detectionReport;
+        if (session.state.resolvedAction) {
+          initial.resolvedAction = session.state.resolvedAction;
+        }
+        if (session.state.techTier) {
+          initial.techTier = session.state.techTier;
         }
         
         if (session.state.figmaConfig) {
@@ -156,8 +159,8 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if (session.state.conversationHistory?.length) {
           initial.conversationHistory = session.state.conversationHistory;
         }
-        if (session.state.detectionReport) {
-          initial.detectionReport = session.state.detectionReport;
+        if (session.state.resolvedAction) {
+          initial.resolvedAction = session.state.resolvedAction;
         }
         if (session.state.directive) {
           initial.directive = session.state.directive;
@@ -176,9 +179,9 @@ export async function runDesignGraph(initial: DesignGraphState) {
           console.log(`🔄 [DesignRunner] Restoring directive from early-interrupted session`);
           initial.directive = savedDirective;
         }
-        if (session.state.detectionReport && !initial.detectionReport) {
-          console.log(`🔄 [DesignRunner] Restoring detectionReport from session`);
-          initial.detectionReport = session.state.detectionReport;
+        if (session.state.resolvedAction && !initial.resolvedAction) {
+          console.log(`🔄 [DesignRunner] Restoring resolvedAction from session`);
+          initial.resolvedAction = session.state.resolvedAction;
         }
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
@@ -211,7 +214,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
   }
   
   // ✅ FIX: Save directive to session EARLY (before graph invoke)
-  // Ensures directive survives early interruptions (triage/detectEnvironment stage)
+  // Ensures directive survives early interruptions (triage/detect stage)
   if (initial.deps?.session && initial.context.featureFolder && initial.directive) {
     try {
       const session = await initial.deps.session.load(
@@ -330,7 +333,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
                 chatSource: state.chatSource,
                 files: state.files || [],
                 filesToDelete: state.filesToDelete || [],
-                detectionReport: state.detectionReport,
+                resolvedAction: state.resolvedAction,
                 planText: state.planText,
                 conversationHistory: state.conversationHistory || [],
                 userLanguage: state.context.userLanguage,

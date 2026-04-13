@@ -22,7 +22,11 @@ import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
 import { condenseContent } from "../../../../../../core/utils/contentCondenser";
 import { buildAllSourceDocs } from "../../../../../../core/utils/sourceDocuments";
-import type { ResolvedDocument } from "@ant/shared";
+import { effectiveTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
+import { PromptBuilder } from "../../../../../../core/prompt/builder/PromptBuilder";
+import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
+import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
+import { formatGitDiffForPrompt } from "../../../../../../core/codebase/GitDiffSummary";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -52,12 +56,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     }
   }
   
-  const promptEngine = state.deps?.promptEngine;
-  
-  if (!promptEngine) {
-    throw new Error('[Execute] PromptEngine is required but not available in state.deps');
-  }
-  
   if (!state.currentTask) {
     throw new Error('[Execute] currentTask is required but not available in state');
   }
@@ -70,7 +68,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const executeProjectCodeContext = state.projectCodeContext
     ? condenseProjectCodeContext(
         state.projectCodeContext as ProjectCodeContext,
-        state.profile?.language || state.detectionReport?.profile?.language,
+        state.techTier?.language,
       )
     : undefined;
 
@@ -83,13 +81,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     console.log(`   🎨 [Execute] UI doc injection: ${uiDocForTask.length} chars (${sectionInfo})`);
   }
   
-  // Pass profile to context for TypeScript/React templates on new projects
-  // ✅ Also pass detectionReport.profile as fallback for ModeController language detection
-  const contextWithProfile = {
+  const taskTechTiers = state.currentTask.techTiers ?? (state.techTier ? [state.techTier] : []);
+  const contextWithTechTier = {
     ...state.context,
-    codebaseProfile: state.profile,
-    detectedEnvironment: state.detectionReport?.environment,
-    detectionReportProfile: state.detectionReport?.profile,
+    techTier: effectiveTechTier(taskTechTiers),
+    techTiers: taskTechTiers,
   };
   
   const isVerificationTask = state.currentTask.type === 'verification';
@@ -110,7 +106,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   if (designDocForTask && !isUiTask && !isErrorTask && !isVerificationTask) {
     if (state.currentTask.packages?.length && state.designDocs && !state.selectedSpec) {
       // Packages-based: condense large system design docs.
-      // Outline preserves heading keywords (framework names etc.) so ModeController .includes() checks still work.
+      // Outline preserves heading keywords (framework names etc.) so PromptResolver .includes() checks still work.
       const designResult = condenseContent(designDocForTask, {
         threshold: 30_000,
         label: 'System Design',
@@ -152,58 +148,149 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   }
   
   const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
-    && (state.resolvedAction?.documents?.length ?? 0) > 0;
+    && ((state.resolvedAction?.artifacts?.length ?? state.resolvedAction?.documents?.length ?? 0) > 0);
 
-  // Build resolvedAction with Infer documents[] when no explicit docs present
+  // Build resolvedAction with infer artifacts when no explicit docs present
   let resolvedActionWithDocs = state.resolvedAction;
   if (!hasExplicitDocs) {
-    const docs: ResolvedDocument[] = [];
+    const docs: ResolvedArtifact[] = [];
     if (designDocForTask)
-      docs.push({ path: 'system-design', content: designDocForTask, role: 'ref', label: 'System Design' });
+      docs.push({ path: 'outputs/design/system', content: designDocForTask, role: 'ref', label: 'System Design' });
     const prdContent = !isVerificationTask && !isErrorTask
       ? (buildAllSourceDocs(state.sourceDocuments) || state.prd)
       : undefined;
     if (prdContent)
-      docs.push({ path: 'prd', content: prdContent, role: 'context', label: 'PRD Specification' });
+      docs.push({ path: 'inputs/sources', content: prdContent, role: 'context', label: 'PRD Specification' });
     if (uiDocForTask && !isVerificationTask && !isErrorTask)
-      docs.push({ path: 'ui-spec', content: uiDocForTask, role: 'context', label: 'UI Specification' });
+      docs.push({ path: 'outputs/design/ui', content: uiDocForTask, role: 'context', label: 'UI Specification' });
 
     if (docs.length > 0) {
       resolvedActionWithDocs = {
         ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+        artifacts: docs,
         documents: docs,
       };
     }
   }
 
-  const promptResult = await promptEngine.buildExecutePrompt(
-    'code',
-    contextWithProfile,
-    {
-      directive: isVerificationTask ? undefined : state.directive,
-      documents: resolvedActionWithDocs?.documents,
-      projectCodeContext: executeProjectCodeContext,
-      referenceCodeContexts: state.referenceCodeContexts,
-      lessons: Array.isArray(state.lessons) ? state.lessons : undefined,
-      sessionContext: state.sessionContext,
-      referenceRequests: state.referenceRequests,
-      currentTask: {
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Build prompt via PromptBuilder (4-tier injection resolution)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const taskType = state.currentTask.type;
+  const isTestCode = taskType === 'test-code';
+  const isDoc = taskType === 'doc';
+  const skipHeavyContext = isVerificationTask || isTestCode || isDoc || isErrorTask;
+
+  const intent = state.resolvedAction?.intent;
+  const effectiveTier = effectiveTechTier(taskTechTiers);
+
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!promptBuilder) throw new Error('[Execute] PromptBuilder is required but not available in state.deps');
+
+  // Determine template paths (mirrors PromptResolver logic)
+  let templateBase: string;
+  let templateRules: string;
+  const executeTasksPrefix = 'code/phases/execute/tasks';
+  if (isVerificationTask) {
+    templateBase = `${executeTasksPrefix}/verification/base`;
+    templateRules = `${executeTasksPrefix}/verification/rules`;
+  } else if (isErrorTask) {
+    templateBase = `${executeTasksPrefix}/error/base`;
+    templateRules = `${executeTasksPrefix}/error/rules`;
+  } else if (isTestCode) {
+    templateBase = `${executeTasksPrefix}/test-code/base`;
+    templateRules = `${executeTasksPrefix}/test-code/rules`;
+  } else if (isDoc) {
+    templateBase = `${executeTasksPrefix}/docgen/base`;
+    templateRules = `${executeTasksPrefix}/docgen/rules`;
+  } else {
+    templateBase = 'code/phases/execute/base';
+    templateRules = 'code/phases/execute/rules';
+  }
+
+  // Pre-format injection data
+  const formattedGitDiff = executeProjectCodeContext?.gitDiff
+    ? formatGitDiffForPrompt(executeProjectCodeContext.gitDiff)
+    : '';
+  const formattedLessons = formatLessonsForPrompt(state.lessons);
+
+  const config: PromptBuildConfig = {
+    templates: {
+      base: templateBase,
+      rules: templateRules,
+      system: 'code/base/system',
+    },
+    intent,
+    artifactPolicies: intent
+      ? deriveArtifactPolicies(intent, getRACDocuments(resolvedActionWithDocs))
+      : [],
+    techContext: {
+      techTier: effectiveTier,
+      techTiers: taskTechTiers,
+      taskType,
+      mode: state.resolvedAction?.mode,
+      resolvedAction: resolvedActionWithDocs,
+    },
+    pipeline: {
+      sanitizeInput: true,
+      includeTechProfile: true,
+      includeExamples: !skipHeavyContext && taskType !== 'setup',
+      applyPolicyGuardrails: true,
+      formatForLLM: true,
+    },
+    artifacts: getRACDocuments(resolvedActionWithDocs),
+    vars: {
+      currentTask: state.currentTask ? {
         name: state.currentTask.name,
         type: state.currentTask.type,
         priority: state.currentTask.priority,
         description: state.currentTask.description,
-      },
+      } : null,
+      directive: isVerificationTask ? '' : (state.directive || ''),
+      modificationMode: executeProjectCodeContext?.files && executeProjectCodeContext.files.length > 0
+        ? 'MODIFICATION MODE: Modify existing code'
+        : 'CREATION MODE: Build from scratch',
+      referenceRequests: state.referenceRequests || [],
+      hasUiInDocuments: getRACDocuments(resolvedActionWithDocs).some(
+        d => d.path?.startsWith('outputs/design/ui') || d.path?.includes('ui-'),
+      ),
       isSpecDriven: !!state.selectedSpec,
       figmaAvailable: (state.figmaAvailable && !state.parsedUiDocs) || false,
-      figmaStartNodeId: state.figmaStartNodeId,
-      resolvedAction: resolvedActionWithDocs,
+      figmaStartNodeId: state.figmaStartNodeId || undefined,
+
+      // Injection-specific vars (pre-formatted)
+      gitDiff: formattedGitDiff,
+      files: executeProjectCodeContext?.files || [],
+      filePaths: executeProjectCodeContext?.filePaths || [],
+      stats: executeProjectCodeContext?.stats,
+      projectCodeContext: executeProjectCodeContext,
+      hasProjectCode: !!(executeProjectCodeContext?.files && executeProjectCodeContext.files.length > 0),
+      contexts: state.referenceCodeContexts || [],
+      referenceCodeContexts: state.referenceCodeContexts || [],
+      lessons: formattedLessons,
+      content: formattedLessons, // for memory.md
+      sessionContext: state.sessionContext ? formatSessionContextForPrompt(state.sessionContext) : '',
+      retryContext: null,
+      resolvedAction: resolvedActionWithDocs || null,
+      userLanguage: state.context?.userLanguage || 'en',
+      filteredCatalog: undefined,
+      hasRuntimeError: state.directive ? containsRuntimeErrorPattern(state.directive) : false,
+      hasMissingDependency: false,
     },
-    state.detectionReport?.detectedMode,
-    state.currentTask.type
-  );
+  };
+
+  const promptResult = await promptBuilder.build(config);
   
-  // ✅ Extract composed sections for granular caching
-  const composed = promptResult.composed;
+  // Map PromptBuilder sections to composed structure for cache block compatibility
+  const composed = {
+    system: promptResult.sections.systemBase,
+    profiles: promptResult.sections.profiles,
+    rules: promptResult.sections.rules,
+    injections: promptResult.sections.injections,
+    examples: promptResult.sections.examples,
+    base: promptResult.user,
+    failedTemplates: promptResult.sections.failedTemplates,
+  };
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Block 1: System Prompt + Rules + Profiles (CACHED - static)
@@ -624,13 +711,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             : state.currentTask?.type === 'error' ? 'code/phases/execute/tasks/error/base'
             : 'code/phases/execute/base',
           usedTemplates: [
-            promptResult.modeConfig.templates.base,
-            promptResult.modeConfig.templates.rules,
-            ...(promptResult.modeConfig.templates.injections || []),
+            templateBase,
+            templateRules,
+            ...promptResult.injections,
           ].filter(Boolean),
           resolvedPartials: collectResolvedPartials([
-            promptResult.modeConfig.templates.base,
-            promptResult.modeConfig.templates.rules,
+            templateBase,
+            templateRules,
           ].filter(Boolean)),
           injectedVariables: {
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
@@ -641,9 +728,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
             uiDocSections: uiDocForTask ? (state.currentTask?.uiSections ?? ['all']) : undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
-            detectedMode: state.detectionReport?.detectedMode,
+            detectedMode: state.resolvedAction?.mode,
             taskType: state.currentTask?.type,
-            detectedEnvironment: state.detectionReport?.environment,
             projectCodeContextFiles: executeProjectCodeContext?.files?.length || 0,
             projectCodeContextFilePaths: executeProjectCodeContext?.filePaths?.length || 0,
             referenceCodeContexts: state.referenceCodeContexts?.length || 0,
@@ -653,8 +739,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             messageCount: messages.length,
             conversationHistoryLength: state.conversationHistory?.length || 0,
             runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
-            profileLanguage: state.profile?.language || null,
-            profileFramework: state.profile?.framework || null,
+            profileLanguage: state.techTier?.language || null,
+            profileFramework: state.techTier?.framework || null,
             profilesLoaded: !!composed.profiles,
             failedTemplates: composed.failedTemplates.length > 0 ? composed.failedTemplates : undefined,
           },
@@ -929,7 +1015,7 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) return null;
 
-  const language = state.profile?.language || state.detectionReport?.profile?.language;
+  const language = state.techTier?.language;
 
   const sections: string[] = [];
   sections.push('# Foundation Contract (read-only, do NOT modify these files)\n');
@@ -1217,3 +1303,56 @@ function extractTableSchemas(sql: string): string[] {
 // Spec Document Condensation — now uses shared condenseContent()
 // from core/utils/contentCondenser.ts.  See call site above.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Helpers for PromptBuilder vars (pre-formatting injection data)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function formatLessonsForPrompt(
+  lessons?: Array<{ content: string; score: number; relatedFiles: string[]; tags: string[]; timestamp: string; directive?: string }>,
+): string {
+  if (!lessons?.length) return '';
+  return lessons
+    .map((l, i) => `### Lesson ${i + 1} (score: ${l.score})\n${l.content}`)
+    .join('\n\n');
+}
+
+function formatSessionContextForPrompt(sessionContext?: {
+  recentRuns: Array<{ runId: number; directive: string; mode: string; output: string }>;
+  summary?: string;
+  totalRuns: number;
+  currentRun: number;
+  currentMode: string;
+  windowSize: number;
+  compressionRatio: number;
+}): string {
+  if (!sessionContext || sessionContext.totalRuns === 0) return '';
+
+  const parts: string[] = [];
+  parts.push(`**Session Run ${sessionContext.currentRun}/${sessionContext.totalRuns}** (mode: ${sessionContext.currentMode})`);
+  if (sessionContext.summary) {
+    parts.push(`\n**Session Summary:**\n${sessionContext.summary}`);
+  }
+  if (sessionContext.recentRuns.length > 0) {
+    parts.push('\n**Recent Runs:**');
+    for (const run of sessionContext.recentRuns) {
+      const truncated = run.output.length > 500 ? `${run.output.substring(0, 500)}...` : run.output;
+      parts.push(`- Run ${run.runId} (${run.mode}): ${run.directive}\n  Output: ${truncated}`);
+    }
+  }
+  return parts.join('\n');
+}
+
+function containsRuntimeErrorPattern(directive: string): boolean {
+  const errorPatterns = [
+    /Error:/i, /TypeError/i, /ReferenceError/i, /SyntaxError/i,
+    /RangeError/i, /ELIFECYCLE/i, /npm ERR!/i,
+    /\s+at\s+\S+\s+\(/i, /node_modules/i,
+    /failed to/i, /cannot find/i, /undefined is not/i,
+    /unexpected token/i, /module not found/i, /command failed/i,
+    /compilation error/i, /\$ npm run/i, /\$ node /i,
+    /Process exited with code/i, /test.*failed/i,
+    /assertion.*failed/i, /expected.*but got/i,
+  ];
+  return errorPatterns.some(pattern => pattern.test(directive));
+}

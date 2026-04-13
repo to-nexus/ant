@@ -151,15 +151,11 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     
     const designDirRel = path.join(featureDirRel, DESIGN_DIR);
     
-    const isUiDesign = state.detectionReport?.detectedIntentGroup === 'design-ui'
+    const isUiDesign = state.resolvedAction?.intentGroup === 'design-ui'
       || state.resolvedAction?.intent === 'gen-ui-figma'
       || state.resolvedAction?.intent === 'gen-ui-ref'
       || state.resolvedAction?.intent === 'gen-ui-desc'
       || state.resolvedAction?.intent === 'rev-ui';
-    
-    if (!state.detectionReport?.detectedIntentGroup && state.resolvedAction?.intent) {
-      console.warn(`⚠️  [Learn] detectionReport.detectedIntentGroup missing — falling back to intent="${state.resolvedAction.intent}"`);
-    }
 
     const targetSubdir = isUiDesign ? DESIGN_SUBDIR.UI : DESIGN_SUBDIR.SYSTEM;
     const subDirRel = path.join(designDirRel, targetSubdir);
@@ -323,7 +319,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   
   // ✅ Spec completion choice card: offer to start development
   // Skip in worker context (main graph's learn handles it) and when orchestrator had failures
-  if (!_isWorkerContext && !hasEarlyTermination && state.detectionReport?.detectedIntentGroup === 'design-spec' && !state.awaitingClarify) {
+  if (!_isWorkerContext && !hasEarlyTermination && state.resolvedAction?.intentGroup === 'design-spec' && !state.awaitingClarify) {
     try {
       const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');
       const chatAPI = getChatAPIClient();
@@ -468,7 +464,7 @@ async function saveSessionRun(state: DesignGraphState): Promise<void> {
         directives: directivesArray,  // ✅ Save directives array (newest first)
         overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
         chatSource: state.chatSource,  // ✅ Save chat source flag
-        detectionReport: state.detectionReport,  // ✅ Save for resume routing
+        resolvedAction: state.resolvedAction,  // ✅ Save for resume routing
         jobConversation: updatedJobConversation,
       }
     }

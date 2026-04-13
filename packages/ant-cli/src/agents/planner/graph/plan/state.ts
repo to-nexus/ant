@@ -4,8 +4,8 @@
  * State for the plan (PRD) generation/refinement graph.
  * Document content is injected via resolvedAction.documents (not stored in state).
  * 
- * Plan mode is determined by detectionReport.detectedMode + intentId
- * (the old plannerPhase field is removed; 'refine' → Mode.refactor).
+ * Plan mode is determined by resolvedAction.mode (derived from intentId).
+ * The old plannerPhase field is removed. resolvedAction replaces detectionReport.
  * 
  * Implements TriageableState-compatible fields for shared triage node.
  */
@@ -14,16 +14,13 @@ import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers
 import { TriageableState, WorkspaceState } from '../../../common/nodes/triage/types';
 import { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
-import type { ResolvedActionContext, ActionMetadata, DetectionReport } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata } from '@ant/shared';
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   // Input
   directive?: string;
   language: 'ko' | 'en';
   featurePath: string;
-  
-  // Detection (replaces the old plannerPhase field)
-  detectionReport?: DetectionReport;
   
   // Context (loaded by resolve node)
   context: { featurePath?: string; [key: string]: any };
@@ -43,8 +40,10 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
     args: Record<string, any>;
   }>;
   
-  /** Intent-centric resolved context (passed from FE actionMetadata, consumed by templates) */
+  /** Intent-centric resolved context (detect output, immutable) */
   resolvedAction?: ResolvedActionContext;
+  /** Materialized file contents from resolvedAction refs/context */
+  resolvedArtifacts?: ResolvedArtifact[];
   
   // Dependencies (extends TriageableState.deps)
   deps?: {
@@ -54,6 +53,7 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
     fileTreeUpdate?: any;
     workflowUpdate?: any;
     promptPort?: PromptPort;
+    promptBuilder?: import('../../../../core/prompt/builder/PromptBuilder').PromptBuilder;
     stateSnapshot?: {
       conversationHistory: Array<{ role: string; content: any }>;
       directive?: string;
@@ -71,9 +71,9 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   recursionLimit: number;
 }
 
-/** Helper to read planMode from detectionReport (replaces state.plannerPhase) */
+/** Helper to read planMode from resolvedAction */
 export function getPlanMode(state: PlanGraphState): 'generate' | 'refactor' | 'explain' {
-  return state.detectionReport?.detectedMode || 'generate';
+  return state.resolvedAction?.mode || 'generate';
 }
 
 export function createInitialPlanState(params: {

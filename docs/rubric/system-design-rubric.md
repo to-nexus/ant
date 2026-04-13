@@ -56,7 +56,7 @@
 PRD (inputs/sources/prd.md)
     ↓ read by Design Job
 Design Job
-    ├─ detectEnvironment: determines domain/environment from PRD
+    ├─ detect: determines domain/environment from PRD
     ├─ decompose: breaks into document generation tasks
     └─ docGen: generates design documents treating PRD as "ABSOLUTE TRUTH"
         └─► outputs/design/

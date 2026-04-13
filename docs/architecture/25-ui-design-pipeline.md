@@ -8,7 +8,7 @@ UI Design 파이프라인은 design job의 `workType === 'ui-design'`일 때 실
 
 ### 모드 결정
 
-`detectEnvironment` 노드에서 `resolvedAction.intent`와 `isFigmaPipeline()` 헬퍼로 파이프라인을 결정한다.
+`detect` 노드에서 `resolvedAction.intent`와 `isFigmaPipeline()` 헬퍼로 파이프라인을 결정한다.
 
 ```
 isFigmaPipeline(resolvedAction.intent, isFigmaDataPopulated(figmaConfig))
@@ -35,7 +35,7 @@ Figma 파이프라인이 우선한다. `gen-ui-figma` intent이거나, `rev-ui`�
 ### 그래프 흐름
 
 ```
-detectEnvironment
+detect
   → [figma 모드] figmaExplore → decompose → plan → docGen ⇄ tool → checkTaskStatus → ...
   → [ref 모드]                   decompose → plan → docGen ⇄ tool → checkTaskStatus → ...
 ```
@@ -85,7 +85,7 @@ LLM이 멀티모달 입력으로 스크린샷 이미지를 직접 분석하여 �
 
 ```
 inputs/references/ (이미지)
-  → detectEnvironment: uiReferences = [파일 경로 목록]
+  → detect: uiReferences = [파일 경로 목록]
   → decompose: referenceCount 기반 복잡도 평가 → taskQueue
   → docGen: buildResourcesSummary(uiReferences) → LLM 프롬프트 주입
   → LLM: read_reference_image 도구로 이미지 분석 → JSON 문서 생성
@@ -128,7 +128,7 @@ Figma Desktop MCP 도구로 디자인 데이터를 구조적으로 추출한다.
 ### 그래프 흐름 (figmaExplore 포함)
 
 ```
-detectEnvironment (isFigmaPipeline → true)
+detect (isFigmaPipeline → true)
   → figmaExplore (Phase 0: 프로그래밍적 구조 탐색 + 매트릭스 생성)
   → decompose (매트릭스 기반 태스크 분해)
   → plan → docGen ⇄ tool (Phase 1-3: 문서 생성)
@@ -200,7 +200,7 @@ detectEnvironment (isFigmaPipeline → true)
 ```
 inputs/figma.json
   → resolve: state.figmaConfig 로드
-  → detectEnvironment: isFigmaPipeline(intent, figmaPopulated) → true
+  → detect: isFigmaPipeline(intent, figmaPopulated) → true
   → figmaExplore: MCP 어댑터 직접 호출 → state.figmaExplorationResult
   → decompose: 매트릭스 기반 복잡도 평가 → taskQueue
   → docGen: buildResourcesSummary(figmaExplorationResult) → LLM 프롬프트 주입
@@ -300,7 +300,7 @@ Figma 연동의 유일한 정규 입력 파일. 피처 생성 시 빈 문서로 
 
 ### Figma 연동 조건 (All-or-Nothing)
 
-Figma 모드는 Full MCP 접근이 필수다. `detectEnvironment`에서 MCP 가용성을 검증한다. MCP 불완전 시 `designError`로 잡을 차단하고 연동 완료를 안내한다. MCP 전송 경로(로컬/클라우드)는 [26-figma-integration-infra.md](26-figma-integration-infra.md) 참조.
+Figma 모드는 Full MCP 접근이 필수다. `detect`에서 MCP 가용성을 검증한다. MCP 불완전 시 `designError`로 잡을 차단하고 연동 완료를 안내한다. MCP 전송 경로(로컬/클라우드)는 [26-figma-integration-infra.md](26-figma-integration-infra.md) 참조.
 
 ### FigmaExplorationResult
 

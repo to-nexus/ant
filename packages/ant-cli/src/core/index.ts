@@ -12,7 +12,7 @@
 
 export * from "./ports";
 export * from "./types";
-export * from "./prompt/engine";
+export * from "./prompt";
 export * from "./policies/validations";
 export * from "./policies/retrieval";
 

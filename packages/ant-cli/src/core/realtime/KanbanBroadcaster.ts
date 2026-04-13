@@ -148,7 +148,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   /**
    * Update job-level token usage and re-broadcast if in estimating mode.
    * Called after accumulateTokenUsage() during estimating phase nodes
-   * (triage, detectEnvironment, decompose) so the frontend badge updates in real-time.
+   * (triage, detect, decompose) so the frontend badge updates in real-time.
    */
   updateTokenUsage(tokenUsage: TaskTokenUsage): void {
     this.cachedTokenUsage = tokenUsage;

@@ -246,6 +246,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'revise' },
+    refsSingleSelect: true,
   },
 
   // ── UI Design: Gen ─────────────────────────
@@ -270,18 +271,26 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'revise' },
+    refsSingleSelect: true,
   },
 
   // ── Spec ──────────────────────────────────
   'gen-spec': {
-    refs: [refDir(DESIGN_DIR, L.designAll, { createIntent: 'gen-sys-full', humanLabel: HL.designAll })],
-    context: [ctxDir(DESIGN_DIR, L.designAll, { excludeSelectedRefs: true })],
+    refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [
+      ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
+      ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign }),
+    ],
     target: { kind: 'generate', dir: SPEC_DIR, outputs: SPEC_OUTPUTS },
   },
   'rev-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
-    context: [ctxDir(DESIGN_DIR, L.designAll, { createIntent: 'gen-sys-full', humanLabel: HL.designAll })],
+    context: [
+      ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
+      ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
+    ],
     target: { kind: 'revise' },
+    refsSingleSelect: true,
   },
 
   // ── Code: Gen (3 pipeline-specific intents) ──

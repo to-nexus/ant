@@ -22,6 +22,7 @@ import {
   showChatPlaceholder,
   trackTokenUsage,
 } from "./helpers";
+import { buildTechTier } from "@ant/shared";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -150,7 +151,7 @@ export async function decomposeSpec(
   ctx: DecomposeContext
 ): Promise<DesignGraphState> {
   const directive = state.overrideDirective || state.directive || '';
-  const jobMode = state.detectionReport?.detectedMode || 'generate';
+  const jobMode = state.resolvedAction?.mode || 'generate';
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('📋 SPEC DECOMPOSE');
@@ -207,11 +208,20 @@ export async function decomposeSpec(
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     userLanguage: state.context.userLanguage,
+    techTier: specTechTier,
   });
+
+  // Spec uses project-level profile; stack inferred from intent
+  const specStack = state.resolvedAction?.intent?.includes('-fe') ? 'frontend' as const
+    : state.resolvedAction?.intent?.includes('-be') ? 'backend' as const
+    : undefined;
+  const specTechTier = buildTechTier(state.profile, specStack);
+  console.log(`✅ TechTier: stack=${specStack || 'unset'}, language=${specTechTier.language}, framework=${specTechTier.framework || 'none'}`);
 
   return {
     ...state,
     taskQueue,
+    techTier: specTechTier,
     completedTasks: [],
     completedTasksDetails: [],
     _httpJobId: state._httpJobId,

@@ -57,7 +57,7 @@ Please mention the reference project in your directive to register it.`;
       {
         maxFiles: Math.min(maxFiles, 10),  // Cap at 10
         maxTokens: 15000,  // Reasonable limit
-        mode: state.detectionReport?.detectedMode || 'generate'
+        mode: state.resolvedAction?.mode || 'generate'
       }
     );
     

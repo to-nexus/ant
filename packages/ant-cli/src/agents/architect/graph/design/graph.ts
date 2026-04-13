@@ -166,7 +166,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               tokenUsage: state.tokenUsage,
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
-              detectionReport: state.detectionReport,
+              resolvedAction: state.resolvedAction,
+              techTier: state.techTier,
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -265,7 +266,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               tokenUsage: state.tokenUsage,
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
-              detectionReport: state.detectionReport,
+              resolvedAction: state.resolvedAction,
+              techTier: state.techTier,
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -438,7 +440,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               tokenUsage: state.tokenUsage,  // ✅ Save job-level token usage
               overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
               chatSource: state.chatSource,  // ✅ Save chat source flag
-              detectionReport: state.detectionReport,  // ✅ Save for resume routing
+              resolvedAction: state.resolvedAction,
+              techTier: state.techTier,
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -483,7 +486,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     const nextTask = state.taskQueue?.peek();
     const retainedHistory = applyRetention({
       jobType: 'design',
-      intentGroup: (state.detectionReport?.detectedIntentGroup as any) || 'design-system',
+      intentGroup: (state.resolvedAction?.intentGroup as any) || 'design-system',
       currentTask: { targetFile: state.currentTask.targetFile, id: state.currentTask.id },
       nextTask: nextTask ? { targetFile: (nextTask as any).targetFile, id: nextTask.id } : undefined,
       conversationHistory: state.conversationHistory || [],
@@ -548,13 +551,13 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   }
 
   // Build shared context
-  console.log(`🔧 [Design ParallelOrchestrator] detectionReport.detectedIntentGroup=${state.detectionReport?.detectedIntentGroup || 'MISSING'}, intent=${state.resolvedAction?.intent || 'N/A'}`);
+  console.log(`🔧 [Design ParallelOrchestrator] resolvedAction.intentGroup=${state.resolvedAction?.intentGroup || 'MISSING'}, intent=${state.resolvedAction?.intent || 'N/A'}`);
   const sharedContext = {
     context: state.context,
     workspaceConfig: state.workspaceConfig,
     deps: state.deps,
-    detectionReport: state.detectionReport,
     resolvedAction: state.resolvedAction,
+    techTier: state.techTier,
     prd: state.prd,
     sourceDocuments: state.sourceDocuments,
     directive: state.directive,
@@ -686,7 +689,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   figmaAvailable: state.figmaAvailable,
                   figmaFileKey: state.figmaFileKey,
                   figmaStartNodeId: state.figmaStartNodeId,
-                  detectionReport: state.detectionReport,
+                  resolvedAction: state.resolvedAction,
+                  techTier: state.techTier,
                   userLanguage: state.context.userLanguage,
                   ...(checkpoint.interruption ? {
                     interruption: {
@@ -795,7 +799,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
             figmaAvailable: state.figmaAvailable,
             figmaFileKey: state.figmaFileKey,
             figmaStartNodeId: state.figmaStartNodeId,
-            detectionReport: state.detectionReport,
+            resolvedAction: state.resolvedAction,
+            techTier: state.techTier,
             interruption: {
               reason: 'tasks_failed',
               message: [
@@ -856,9 +861,9 @@ const DesignGraphAnnotation = Annotation.Root({
   // Dependencies (MUST be in channels to be passed between nodes!)
   deps: Annotation<any>,
 
-  // ✅ CRITICAL: Detection Report (unified environment detection result)
-  // Contains: detectedIntentGroup (design-ui/design-system/design-spec), detectedMode, environment, domain
-  detectionReport: Annotation<any>,
+  // RAC (detect output, immutable) + TechTier (decompose output)
+  resolvedAction: Annotation<any>,
+  techTier: Annotation<any>,
 
   // ✅ Error handling for invalid requests (e.g., modify without documents)
   designError: Annotation<any>,
@@ -980,14 +985,14 @@ export function buildDesignGraph() {
   // 2. isResume + spec intentGroup + overrideDirective + !hasTaskQueue → decompose (spec iterative modification)
   // 3. isResume + hasTaskQueue + hasNewDirective → revise (task queue modification)
   // 4. isResume + hasTaskQueue (no new directive) → plan (continue from where we left off)
-  // 5. isResume + !hasTaskQueue + hasDetectionReport → decompose (interrupted after detect but before decompose)
+  // 5. isResume + !hasTaskQueue + hasResolvedAction → decompose (interrupted after detect but before decompose)
   // 6. !isResume (new job) → triage (full flow)
   graph.addConditionalEdges(
     "resolve" as any,
     ((s: DesignGraphState) => {
       const isResume = s.isResume === true;
       const hasTaskQueue = Boolean(s.taskQueue && !s.taskQueue.isEmpty());
-      const hasDetectionReport = Boolean(s.detectionReport);
+      const hasResolvedAction = Boolean(s.resolvedAction);
       const hasNewDirective = Boolean(s.overrideDirective);
       
       // Path 0: Detect clarify resume — user chose spec vs system-design
@@ -1003,7 +1008,7 @@ export function buildDesignGraph() {
       }
       
       // Path 2: Spec iterative modification — simplified decompose for single-task spec update
-      if (isResume && hasNewDirective && !hasTaskQueue && s.detectionReport?.detectedIntentGroup === 'design-spec') {
+      if (isResume && hasNewDirective && !hasTaskQueue && s.resolvedAction?.intentGroup === 'design-spec') {
         console.log(`🔀 [Resolve→Router] isResume + spec + newDirective (no tasks) → decompose (spec modification)`);
         return "decompose";
       }
@@ -1021,8 +1026,8 @@ export function buildDesignGraph() {
         console.log(`🔀 [Resolve→Router] isResume + taskQueue → plan (continue)`);
         return "plan";
       }
-      if (isResume && hasDetectionReport) {
-        console.log(`🔀 [Resolve→Router] isResume + detectionReport (no tasks) → decompose`);
+      if (isResume && hasResolvedAction) {
+        console.log(`🔀 [Resolve→Router] isResume + resolvedAction (no tasks) → decompose`);
         return "decompose";
       }
       
@@ -1037,7 +1042,7 @@ export function buildDesignGraph() {
     "triage" as any,
     routeAfterTriage as any,
     {
-      detectEnvironment: "detect",  // work:proceed → continue (routeAfterTriage returns 'detectEnvironment')
+      detect: "detect",
       __end__: "__end__"  // ask, redirect, blocked → end (await choice or show message)
     } as any
   );

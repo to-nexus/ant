@@ -60,12 +60,12 @@ export interface TaskQueueUpdatePort {
   /**
    * Update job-level token usage and re-broadcast if in estimating mode.
    * Called after accumulateTokenUsage() during the estimating phase
-   * (triage, detectEnvironment, decompose) so the frontend badge updates in real-time.
+   * (triage, detect, decompose) so the frontend badge updates in real-time.
    */
   updateTokenUsage?(tokenUsage: TaskTokenUsage): void;
 
   /**
-   * Snapshot estimating phase token usage (decompose + detectEnvironment, before tasks).
+   * Snapshot estimating phase token usage (detect + decompose, before tasks).
    * Called once at end of decompose, included in all subsequent broadcasts
    * so the frontend can show estimating vs task breakdown without subtraction.
    */

@@ -118,10 +118,10 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
           initialState.tokenUsage = session.state.tokenUsage;
         }
         
-        // ✅ Restore detectionReport from session (determines plan mode: generate/refactor/explain)
-        if (session.state.detectionReport) {
-          initialState.detectionReport = session.state.detectionReport;
-          console.log(`🔄 [PlanRunner] Restoring detectionReport (mode=${session.state.detectionReport.detectedMode})`);
+        // ✅ Restore resolvedAction from session (determines plan mode: generate/refactor/explain)
+        if (session.state.resolvedAction) {
+          initialState.resolvedAction = session.state.resolvedAction;
+          console.log(`🔄 [PlanRunner] Restoring resolvedAction (mode=${session.state.resolvedAction.mode})`);
         }
         
         // ✅ Restore conversationHistory from session (enables LLM to continue from exact interruption point)
@@ -182,7 +182,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
             directive: initialState.directive || existingDirective,
             overrideDirective: initialState.overrideDirective || initialState.directive,
             chatSource: params.chatSource,
-            detectionReport: initialState.detectionReport,
+            resolvedAction: initialState.resolvedAction,
             jobId: params._httpJobId || session.state?.jobId,
             // ✅ Clear stale interruption from previous job.
             // Without this, JobCleanupManager's fallback logic reuses the old
@@ -341,7 +341,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               directive: initialState.directive,
               overrideDirective: initialState.overrideDirective || initialState.directive,
               chatSource: initialState.chatSource,
-              detectionReport: initialState.detectionReport,
+              resolvedAction: initialState.resolvedAction,
               tokenUsage: stateSnapshot?.tokenUsage || initialState.tokenUsage,
               jobTiming: jobTimingRef || session.state?.jobTiming,
               // ✅ Save latest conversationHistory from stateSnapshot for resume

@@ -48,7 +48,7 @@
 ```
 Stage 1: Config Matrix      getConfigSlots(intent) → null 아닌지
 
-Stage 2: RAC Routing         resolveFromExplicit(metadata) → RAC 생성
+Stage 2: RAC Routing         resolveToRAC(intentId, slots, source) → RAC 생성
                              deriveFromIntent(intent) → agent/jobType 일치
                              RAC.mode, intentGroup, tech.environment 일치
                              refs/context 필드 보존
@@ -68,7 +68,7 @@ Stage 3: Prompt Build        buildExecutePrompt() → PromptBuildResult
 테스트는 파이프라인의 가운데 두 함수만 직접 호출한다:
 
 ```
-resolveFromExplicit(metadata)      ← 순수 함수, ActionMetadata → RAC
+resolveToRAC(intentId, slots)       ← 순수 함수, IntentId + slots → RAC
 engine.buildExecutePrompt(...)     ← 템플릿 렌더링 + ModeController injection 결정
 ```
 
@@ -212,7 +212,7 @@ RAC 생성 ─→ Documents 파이프라인 ─→ 6-Layer Pipeline (execute) �
 | ContextAssembler.assemble | artifacts, resolvedAction 불변 |
 | prepareDesignDocument | state.designDocs 불변 |
 | condenseContent | options 불변 |
-| resolveFromExplicit / resolveFromInfer | inputs 불변 |
+| resolveToRAC | inputs 불변 |
 
 ### 통합 (prompt-integration, 17 tests)
 
@@ -224,7 +224,7 @@ RAC 생성 ─→ Documents 파이프라인 ─→ 6-Layer Pipeline (execute) �
 | 4 | error + selectedSpec | spec + apiContract 조합 |
 | 5 | design + source-docs | base-system-design 템플릿 |
 | 6 | plan + documents | plan prompt에 문서 포함 |
-| 7 | decompose fe+be | 개별 ResolvedDocument |
+| 7 | decompose fe+be | 개별 ResolvedArtifact |
 | 8 | sourceDocuments | 소스문서 합성 |
 
 ### Golden Prompt (template-golden, 12 tests)

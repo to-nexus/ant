@@ -24,8 +24,8 @@ import { WorkspacePathResolver } from '../../../../infrastructure/workspace/Work
 import { getEstimatingLabel, type UILocale } from '../../graph/timing/estimatingLabels.js';
 import { getSessionDebugDir } from '../../../../core/utils/sessionPaths.js';
 import { extractLLMInfo } from '../../../../core/ports/workflow.js';
-import { synthesizeAskIntent, resolveFromInfer } from '@ant/shared';
-import type { ResolvedActionContext, DetectionReport } from '@ant/shared';
+import { resolveToRAC } from '@ant/shared';
+import type { ResolvedActionContext, IntentId } from '@ant/shared';
 
 // Cache for loaded templates
 let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
@@ -240,14 +240,10 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // Step 5: Handle Ask Intent with Agentic Ask System
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (triageResult.intent === 'ask' && triageResult.inScope) {
-    // Synthesize ask intent and create RAC
-    const askIntent = synthesizeAskIntent(triageResult.askSubType);
-    const askReport: DetectionReport = {
-      detectedMode: 'explain',
-      detectedModeReasoning: 'ask intent from triage',
-      sourceJob: 'code',
-    };
-    const askRAC = resolveFromInfer(askReport, state.actionMetadata, undefined, undefined, askIntent);
+    const askIntent = triageResult.askSubType === 'evaluate' ? 'ask-evaluate'
+      : triageResult.askSubType === 'ant' ? 'ask-ant'
+      : 'ask-general';
+    const askRAC = resolveToRAC(askIntent as IntentId);
     console.log(`📋 [Triage] Ask RAC created: intent=${askRAC.intent}, askSubType=${triageResult.askSubType || 'general'}`);
 
     // Run Agentic Ask Graph (explores Ant source code to answer)
@@ -453,8 +449,8 @@ export function routeAfterTriage<T extends TriageableState>(state: T): string {
       console.log('[TriageRouter] No triage result (resume with tasks) → revise');
       return 'revise';
     }
-    console.log('[TriageRouter] No triage result, proceeding to detectEnvironment');
-    return 'detectEnvironment';
+    console.log('[TriageRouter] No triage result, proceeding to detect');
+    return 'detect';
   }
   
   if (result.intent === 'ask') {
@@ -467,8 +463,8 @@ export function routeAfterTriage<T extends TriageableState>(state: T): string {
       console.log('[TriageRouter] work:proceed (resume with tasks) → revise');
       return 'revise';
     }
-    console.log('[TriageRouter] work:proceed → detectEnvironment');
-    return 'detectEnvironment';
+    console.log('[TriageRouter] work:proceed → detect');
+    return 'detect';
   }
   
   if (result.workStatus === 'redirect') {
@@ -489,8 +485,8 @@ export function routeAfterTriage<T extends TriageableState>(state: T): string {
     console.log('[TriageRouter] default (resume with tasks) → revise');
     return 'revise';
   }
-  console.log('[TriageRouter] default → detectEnvironment');
-  return 'detectEnvironment';
+  console.log('[TriageRouter] default → detect');
+  return 'detect';
 }
 
 /**

@@ -10,7 +10,6 @@ import type { DetectableState } from '../../../common/nodes/detect/types.js';
 import { LLMClient } from '../../../../core/ports/llm.js';
 import { ImageGenerationPort, GeneratedImage } from '../../../../core/ports/imageGeneration.js';
 import { BackgroundRemovalPort } from '../../../../core/ports/backgroundRemoval.js';
-import { PromptPort } from '../../../../core/ports/prompt.js';
 import { TaskQueueUpdatePort, FileTreeUpdatePort } from '../../../../core/ports/index.js';
 import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow.js';
 import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers.js';
@@ -19,10 +18,8 @@ import type { ConversationEntry } from '../../../../core/types/session.js';
 import type { ConversationCompaction } from '../../../../core/context/compactJob.js';
 import type { Mode } from '@ant/shared';
 
-/** @deprecated Use Mode instead */
-export type JobMode = Mode;
 
-/** Visual-pipeline-local asset type (removed from @ant/shared DetectionReport) */
+/** Visual-pipeline-local asset type */
 export type VisualAssetType = 'logo' | 'icon' | 'hero' | 'illustration' | 'general';
 
 /**
@@ -92,7 +89,7 @@ export interface VisualGraphDeps {
   engraveLLM: LLMClient;
   sketchImageClient: ImageGenerationPort;
   renderImageClient: ImageGenerationPort;
-  promptPort: PromptPort;
+  promptBuilder: import('../../../../core/prompt/builder/PromptBuilder').PromptBuilder;
   session: any;
   kanbanUpdate?: TaskQueueUpdatePort;
   fileTreeUpdate?: FileTreeUpdatePort;
@@ -122,7 +119,7 @@ export interface VisualGraphState extends DetectableState, PhaseTrackingState {
 
   // Asset classification & job mode
   assetType?: VisualAssetType;
-  jobMode?: JobMode;
+  jobMode?: Mode;
   skipClassify?: boolean;
 
   // resolvedAction inherited from DetectableState

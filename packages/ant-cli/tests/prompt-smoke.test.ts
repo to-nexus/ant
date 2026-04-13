@@ -3,10 +3,6 @@ import { promises as fs } from 'fs';
 import { join, basename } from 'path';
 import { FilePromptAdapter, initPartials, collectResolvedPartials } from '../src/periphery/adapters/prompt/FilePromptAdapter';
 
-// TemplateComposer registers extra helpers (includes, lower, etc.)
-// Import it to trigger helper registration before tests run.
-import '../src/core/prompt/engine/TemplateComposer';
-
 const TEMPLATES_DIR = join(__dirname, '../src/core/prompt/templates');
 
 async function collectTemplateNames(dir: string, prefix = ''): Promise<string[]> {
@@ -37,7 +33,7 @@ const SAMPLE_VARS: Record<string, any> = {
   taskDescription: 'Sample task description',
   modificationMode: 'CREATION MODE: Build from scratch',
   referenceRequests: [],
-  detectionReport: '## Detection\nNode.js environment detected',
+  resolvedAction: undefined,
   existingCode: '',
   hasExistingCode: false,
   projectFileTree: 'src/\n  index.ts',

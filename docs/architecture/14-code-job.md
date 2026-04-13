@@ -10,7 +10,7 @@ Code Job은 사용자의 directive를 받아 소스 코드를 생성하는 archi
 
 ```
 __start__ -> resolve -> [4-way router]
-    +-> triage -> detectEnvironment -> decompose -> plan (순차 루프)
+    +-> triage -> detect -> decompose -> plan (순차 루프)
     +-> revise -> plan
     +-> plan (직행, plain resume)
     +-> decompose (detectEnv 이후 중단 resume)
@@ -40,19 +40,50 @@ decompose 이후 `parallelOrchestrator` 노드로 분기한다. TaskOrchestrator
 
 ### resolve
 
-초기 상태 로드 및 resume 분기를 결정한다. 세션에서 taskQueue, detectionReport, directive 등을 복원한다.
+초기 상태 로드 및 resume 분기를 결정한다. 세션에서 taskQueue, resolvedAction, directive 등을 복원한다.
 
 ### triage
 
 공유 Triage 노드. 의도 분류, work status 판정, 선택지 제공.
 
-### detectEnvironment
+### detect
 
-프로젝트 환경(frontend/backend/fullstack)을 감지하고 `detectionReport`를 생성한다. 도구 활성화와 프롬프트 구성에 사용된다.
+사용자 의도를 분석하여 `resolvedAction` (RAC)을 생성한다. explicit 경로는 metadata에서 직접, infer 경로는 LLM이 `InferredAction`을 반환한 뒤 `resolveToRAC()`로 변환. 프롬프트 구성과 ModeController에서 소비.
 
 ### decompose
 
-directive와 detectionReport를 기반으로 태스크를 분해한다. 각 태스크에 type, priority, exclusive, parallelGroup을 지정한다.
+directive와 resolvedAction을 기반으로 태스크를 분해한다. 각 태스크에 type, priority, exclusive, parallelGroup을 지정한다.
+
+#### TechTier 판별
+
+decompose는 LLM에게 태스크 분해와 함께 `<profile>` 태그로 기술 프로필을 출력하도록 요구한다. 프롬프트 템플릿(`code/phases/decompose/base.md` + `profile-rules.md`)이 관찰 우선순위와 제약 조건을 정의한다.
+
+**LLM 응답 → TechTier 변환 흐름:**
+
+```
+LLM 출력 <profile>              코드 파싱               buildTechTier()
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│ environment      │───>│ parsedProfile    │───>│ state.techTier   │
+│ language         │    │   .environment   │    │   .stack         │
+│ framework        │    │   .language      │    │   .language      │
+│ environmentReason│    │   .framework     │    │   .framework     │
+└──────────────────┘    └──────────────────┘    │   .runtime       │
+                                                └──────────────────┘
+```
+
+| TechTier 필드 | 판별 소스 | 정규화 |
+|---|---|---|
+| `language` | LLM constrained response (enum 제시) | `resolveLanguage()`: `javascript` → `typescript`, `golang` → `go` |
+| `framework` | LLM constrained response (예시 제시, null 허용) | `resolveFramework()`: `Next.js` → `nextjs` 등 |
+| `stack` | LLM constrained response (`environment` 필드) | `frontend` / `backend` / `fullstack` 직접 매핑 |
+| `runtime` | 시스템 파생 (LLM 판단 없음) | `resolveRuntime(stack, language)`: `frontend→browser`, `backend+go→go-api` |
+| `packageManager` | 현재 code decompose에서 미설정 | `CodebaseAnalyzer.analyzeAsTechTier()`에서 설정 가능 |
+
+**LLM 관찰 우선순위** (`profile-rules.md`에 정의):
+
+1. 디자인 문서 존재 여부 — `fe-`/`be-` 접두어로 tier scope 결정 (FINAL)
+2. 디자인 문서 내용 — 명시된 기술 스택
+3. directive/PRD — 디자인 문서 부재 시에만 참조
 
 ### plan
 
@@ -111,7 +142,7 @@ batch split은 단일 검증 실패를 여러 독립 error 태스크로 쪼개�
 
 runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다:
 - taskQueue, completedTasks, completedTasksDetails
-- detectionReport
+- resolvedAction, techTier
 - referenceRequests, projectCodeContext (경로만)
 - planText, conversationHistory
 - directive, overrideDirective, chatSource

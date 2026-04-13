@@ -51,7 +51,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
   },
 
   async onResume(state) {
-    console.log(`🔄 Resume: tasks=${state.taskQueue?.size() || 0}, detection=${!!state.detectionReport}, completed=${state.completedTasks?.length || 0}`);
+    console.log(`🔄 Resume: tasks=${state.taskQueue?.size() || 0}, detection=${!!state.resolvedAction}, completed=${state.completedTasks?.length || 0}`);
     
     if (!state.workspaceConfig) {
       try {
@@ -98,9 +98,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
 
         state.parsedUiDocs = await ArtifactService.loadParsedUiContext(state.context, gitPort, fileSystem) || undefined;
 
-        if (!state.profile && state.detectionReport?.profile) {
-          state.profile = state.detectionReport.profile;
-        }
+        // profile comes from codebase analysis (resolve), not detect
 
         console.log(`📄 [Resolve/Resume] design=${!!state.design}, designDocs=${!!state.designDocs}, prd=${!!state.prd}, ui=${!!state.parsedUiDocs}`);
       } catch (error) {
@@ -162,6 +160,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       sourceDocuments: state.sourceDocuments,
       parsedUiDocs: state.parsedUiDocs,
       profile: state.profile,
+      techTier: state.techTier,
       figmaAvailable: state.figmaAvailable,
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
@@ -284,8 +283,9 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     // Inter-Job Context Bridge: Load & compact jobConversation
     const rawJobConversation: ConversationEntry[] = session?.state?.jobConversation || [];
     let processedJobConversation = rawJobConversation;
-    if (rawJobConversation.length > 0 && state.deps?.llm && state.deps?.promptEngine?.deps?.promptPort) {
-      const promptPort = state.deps.promptEngine.deps.promptPort;
+    const promptBuilder = state.deps?.promptBuilder;
+    if (rawJobConversation.length > 0 && state.deps?.llm && promptBuilder) {
+      const promptPort = promptBuilder;
       if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
         state.deps.kanbanUpdate.setEstimatingActivity('Compacting previous context...', 'resolve');
       }

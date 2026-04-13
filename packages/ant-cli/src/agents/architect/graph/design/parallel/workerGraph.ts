@@ -216,7 +216,7 @@ const DesignWorkerSubgraphAnnotation = Annotation.Root({
   context: Annotation<any>,
   workspaceConfig: Annotation<any>,
   deps: Annotation<any>,
-  detectionReport: Annotation<any>,
+  resolvedAction: Annotation<any>,
   designError: Annotation<any>,
   prd: Annotation<any>,
   directive: Annotation<any>,

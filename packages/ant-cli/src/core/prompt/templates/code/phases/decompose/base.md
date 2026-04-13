@@ -68,27 +68,35 @@ If no spec doc is relevant: `<selectedSpec>null</selectedSpec>`
 
 YOUR TASK:
 
-**Step 1: Determine Project Profile**
+**Step 1: Determine TechTier**
 
-Before breaking tasks, you MUST determine the project profile from the available context.
+Before breaking tasks, you MUST determine the technology tier from the available context.
 
 Observe the following in order:
 1. **Design Document Availability** (above) — document name prefixes indicate tier scope
 2. **Design Document Content** (in specification) — technology stack is stated in the documents
 3. **Directive and PRD** — only when design documents are absent
 
-Output the profile in `<profile>` tags before `<tasks>`:
+Output the tech tier in `<techTier>` tags before `<tasks>`:
 
-<profile>
+<techTier>
 {
-  "environment": "frontend" | "backend" | "fullstack" | "unknown",
-  "environmentReasoning": "Why this environment? (1 sentence)",
+  "stack": "frontend" | "backend" | "fullstack" | "unknown",
+  "stackReasoning": "Why this stack? (1 sentence)",
   "language": "typescript" | "javascript" | "python" | "go" | "rust" | "java",
-  "framework": "react" | "vue" | "nextjs" | "express" | "fastapi" | "gin" | ... (or null)
+  "framework": "react" | "vue" | "nextjs" | "express" | "fastapi" | "gin" | ... (or null),
+  "packageTiers": {
+    "fe-main": { "language": "typescript", "framework": "nextjs", "stack": "frontend" },
+    "be-api": { "language": "go", "framework": "gin", "stack": "backend" }
+  }
 }
-</profile>
+</techTier>
 
-{{> code/phases/decompose/profile-rules}}
+- `packageTiers` is REQUIRED when `stack` is `"fullstack"` and packages use different languages/frameworks.
+- `packageTiers` is OPTIONAL otherwise (omit when all packages share the same stack).
+- Each key is a package tag (e.g. `fe-main`, `be-auth`, `be-order`).
+
+{{> code/phases/decompose/techTier-rules}}
 
 **Step 2: Break into Tasks**
 

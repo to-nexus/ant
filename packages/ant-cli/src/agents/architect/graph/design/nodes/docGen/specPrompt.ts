@@ -30,17 +30,12 @@ async function renderSpecSystemPrompt(
   state: DesignGraphState,
   vars: Record<string, any>
 ): Promise<string> {
-  const promptEngine = state.deps?.promptEngine;
-  if (!promptEngine) {
-    throw new Error('[DocGen/Spec] PromptEngine is required but not available in state.deps');
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!promptBuilder) {
+    throw new Error('[DocGen/Spec] PromptBuilder is required but not available in state.deps');
   }
   
-  const promptPort = (promptEngine as any).deps?.promptPort;
-  if (!promptPort) {
-    throw new Error('[DocGen/Spec] PromptPort is required but not available in PromptEngine.deps');
-  }
-  
-  const rendered = await promptPort.render(TEMPLATE_PATH, vars);
+  const rendered = await promptBuilder.render(TEMPLATE_PATH, vars);
   if (!rendered) {
     throw new Error(`[DocGen/Spec] Failed to render template: ${TEMPLATE_PATH}`);
   }
@@ -56,7 +51,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const task = state.currentTask;
   const targetFile = task?.targetFile || 'spec-feature.md';
   const directive = state.overrideDirective || state.directive || '';
-  const jobMode = state.detectionReport?.detectedMode || 'generate';
+  const jobMode = state.resolvedAction?.mode || 'generate';
 
   // System prompt is ALWAYS rebuilt (prevents context loss from history pruning)
   {

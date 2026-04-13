@@ -36,7 +36,13 @@ import { extractFilesFromPlanToolLoop, computeBudgetFromPlanText } from "./utils
 import { detectTestFilesFromDisk } from "./testFileDetector";
 
 function isTypeScriptProject(state: ArchitectGraphState): boolean {
-  const lang = (state.profile?.language || state.detectionReport?.profile?.language || '').toLowerCase();
+  const taskTiers = state.currentTask?.techTiers;
+  const lang = (
+    taskTiers?.length
+      ? taskTiers[0].language
+      : state.techTier?.language
+    ?? ''
+  ).toLowerCase();
   return lang.includes('typescript');
 }
 

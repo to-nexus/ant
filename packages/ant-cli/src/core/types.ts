@@ -10,7 +10,7 @@
  *   - task.ts      : JobType, TaskType, BaseTask, KanbanData, TaskQueueSnapshot
  *   - workspace.ts : WorkspaceConfig, FeatureConfig
  *   - environment.ts: EnvironmentDetection
- *   - detection.ts : DetectionReport, JobMode
+ *   - detection.ts : Mode, IntentGroup, InferredAction
  *   - uiDoc.ts     : ParsedUiDocs, UiDocSection
  *   - user.ts      : UserContext
  *   - processEnv.ts: CHILD_PROCESS_ENV

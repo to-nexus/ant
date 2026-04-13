@@ -13,7 +13,7 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import type { ResolvedDocument } from "@ant/shared";
+import { effectiveTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { resolveDesignDocForTask } from "../documentResolver";
@@ -65,15 +65,15 @@ export async function buildPlanPrompt(
   remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined,
   options?: { hasTools?: boolean },
 ): Promise<string> {
-  const promptEngine = state.deps?.promptEngine;
-  if (!promptEngine) throw new Error('[Plan] PromptEngine not available');
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!promptBuilder) throw new Error('[Plan] PromptBuilder not available');
 
   if (task.type === 'verification') {
-    const profile = state.profile || state.detectionReport?.profile;
-    if (!profile) {
-      console.warn(`⚠️ [Plan] Verification task "${task.name}": profile is null (state.profile=${!!state.profile}, detectionReport.profile=${!!state.detectionReport?.profile})`);
+    const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
+    if (!techTier) {
+      console.warn(`⚠️ [Plan] Verification task "${task.name}": techTier is null`);
     } else {
-      console.log(`🔧 [Plan] Verification profile: language=${profile.language}, framework=${profile.framework || 'none'}`);
+      console.log(`🔧 [Plan] Verification techTier: language=${techTier.language}, framework=${techTier.framework || 'none'}`);
     }
     const installNeeded = state._installNeeded;
     let dependencyStatus: string | undefined;
@@ -83,68 +83,94 @@ export async function buildPlanPrompt(
       dependencyStatus = 'Dependency declaration files have changed since last successful install. Run the project\'s install command before build verification.';
     }
 
-    return await promptEngine.buildVerificationPlanPrompt(
-      task,
-      state.directive || '',
-      projectCodeContext,
-      violationsText,
-      { hasTools: options?.hasTools ?? false },
-      profile,
-      dependencyStatus,
-      state.resolvedAction,
-    );
+    const fmtCtx = formatCodeContext(projectCodeContext);
+    let languageHints = '';
+    if (techTier?.language) {
+      try { languageHints = await promptBuilder.render(`code/phases/plan/tasks/verification/languages/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
+    }
+    return await promptBuilder.render('code/phases/plan/tasks/verification/base', {
+      taskId: task.id, taskName: task.name, taskDescription: task.description,
+      directive: state.directive || '', isErrorTask: false, runTests: true,
+      projectCodeContext: fmtCtx, directoryTree: projectCodeContext?.directoryTree || '',
+      violationsText, isRetry: !!violationsText, hasTools: options?.hasTools ?? false,
+      languageHints, hasLanguageHints: !!languageHints, dependencyStatus,
+      resolvedAction: state.resolvedAction,
+    });
   }
 
   if (task.type === 'error') {
-    const profile = state.profile || state.detectionReport?.profile;
-    return await promptEngine.buildErrorPlanPrompt(
-      task,
-      state.directive || '',
-      projectCodeContext,
-      violationsText,
-      { hasTools: options?.hasTools ?? false },
-      profile,
-      state.resolvedAction,
-    );
+    const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
+    const fmtCtx = formatCodeContext(projectCodeContext);
+    let languageHints = '';
+    if (techTier?.language) {
+      try { languageHints = await promptBuilder.render(`code/phases/plan/tasks/verification/languages/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
+    }
+    return await promptBuilder.render('code/phases/plan/tasks/error/base', {
+      taskId: task.id, taskName: task.name, taskDescription: task.description,
+      directive: state.directive || '', projectCodeContext: fmtCtx,
+      directoryTree: projectCodeContext?.directoryTree || '',
+      violationsText, isRetry: !!violationsText, hasTools: options?.hasTools ?? false,
+      languageHints, hasLanguageHints: !!languageHints,
+      resolvedAction: state.resolvedAction,
+    });
   }
 
   const designDoc = resolveDesignDoc(state, task);
   const isSpecDriven = !!state.selectedSpec;
 
   // Merge plan-specific docs into resolvedAction.documents (role-labeled)
-  const planDocs: ResolvedDocument[] = [];
+  const planDocs: ResolvedArtifact[] = [];
   if (designDoc) {
     const docLabel = isSpecDriven ? 'Feature Specification' : 'Design Specification';
-    planDocs.push({ path: 'system-design', content: designDoc, role: 'ref', label: docLabel });
+    planDocs.push({ path: 'outputs/design/system', content: designDoc, role: 'ref', label: docLabel });
   }
   if (uiDoc) {
-    planDocs.push({ path: 'ui-spec', content: uiDoc, role: 'context', label: 'UI Specification' });
+    planDocs.push({ path: 'outputs/design/ui', content: uiDoc, role: 'context', label: 'UI Specification' });
   }
 
   const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
-    && (state.resolvedAction?.documents?.length ?? 0) > 0;
+    && ((state.resolvedAction?.artifacts?.length ?? state.resolvedAction?.documents?.length ?? 0) > 0);
 
   let resolvedActionWithDocs = state.resolvedAction;
   if (!hasExplicitDocs && planDocs.length > 0) {
     resolvedActionWithDocs = {
       ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+      artifacts: planDocs,
       documents: planDocs,
     };
   }
 
-  const prompt = await promptEngine.buildTaskPlanPrompt(
-    task,
-    state.directive || '',
-    planDocs,
-    projectCodeContext,
-    violationsText,
-    state.profile,
-    remainingTasks,
-    { hasTools: options?.hasTools ?? false },
-    state.designDocUnknownPackages,
-    isSpecDriven,
-    resolvedActionWithDocs,
+  const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
+  const fmtCtx = formatCodeContext(projectCodeContext);
+
+  let setupConstraints = '';
+  if (task.type === 'setup' && techTier?.language) {
+    try { setupConstraints = await promptBuilder.render(`code/phases/execute/languages/${mapLang(techTier.language)}/setup/constraints`, {}); } catch { /* no constraints */ }
+  }
+
+  const effectiveRA = planDocs.length > 0
+    ? { ...(resolvedActionWithDocs || { source: 'infer' as const, mode: 'generate' as const, hasExplicitFields: false }), documents: planDocs }
+    : resolvedActionWithDocs;
+  const allDocs = effectiveRA?.documents ?? [];
+  const hasDesignDoc = allDocs.some(
+    d => d.role === 'ref' && (d.label === 'Design Specification' || d.label === 'Feature Specification'),
   );
+
+  const prompt = await promptBuilder.render('code/phases/plan/base', {
+    taskName: task.name, taskDescription: task.description,
+    directive: state.directive || '', taskType: task.type,
+    documents: planDocs, hasDocuments: allDocs.length > 0,
+    isSpecDriven: isSpecDriven || false,
+    projectCodeContext: fmtCtx, directoryTree: projectCodeContext?.directoryTree || '',
+    hasProjectCodeContext: !!fmtCtx,
+    violationsText, isRetry: !!violationsText,
+    setupConstraints, hasSetupConstraints: !!setupConstraints,
+    remainingTasks, hasRemainingTasks: remainingTasks && remainingTasks.length > 0,
+    hasTools: options?.hasTools ?? false,
+    designDocUnknownPackages: state.designDocUnknownPackages,
+    hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
+    resolvedAction: effectiveRA, hasDesignDoc,
+  });
 
   return prompt;
 }
@@ -875,4 +901,18 @@ export async function finalizePlanFromExploration(
 
   console.warn(`⚠️ [Plan] finalizePlanFromExploration failed to produce valid <plan>, falling back`);
   return null;
+}
+
+function formatCodeContext(ctx: any): string {
+  if (!ctx?.files || !Array.isArray(ctx.files) || ctx.files.length === 0) return '';
+  return `**Retrieved Files** (${ctx.files.length} files):\n\n${ctx.files.map((f: any) => `- \`${f.path}\``).join('\n')}`;
+}
+
+function mapLang(language: string): string {
+  const l = language.toLowerCase();
+  if (l.includes('go')) return 'go';
+  if (l.includes('python')) return 'python';
+  if (l.includes('rust')) return 'rust';
+  if (l.includes('java')) return 'java';
+  return 'typescript';
 }

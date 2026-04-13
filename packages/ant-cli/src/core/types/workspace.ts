@@ -23,7 +23,7 @@ export interface JobLLMConfig {
   tool?: string;              // Tool execution node
   validate?: string;          // Validation node (code job only)
   learn?: string;             // Learning node
-  detectEnvironment?: string; // Environment detection node
+  detect?: string;
   direct?: string;            // Art Direction node (visual job)
   sketch?: string;            // Sketch exploration node (visual job)
   render?: string;            // Final render node (visual job)

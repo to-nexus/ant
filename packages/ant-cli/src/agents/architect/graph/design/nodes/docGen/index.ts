@@ -51,6 +51,10 @@ export async function docGen(
     throw new Error('LLM client or GitPort not available');
   }
   
+  // ✅ Build messages based on intent group
+  const intentGroup = state.resolvedAction?.intentGroup;
+  const isExplainMode = state.resolvedAction?.mode === 'explain';
+
   // ✅ Log iteration start info (per-call debugging, like code job's execute)
   const taskTokensSoFar = state._currentTaskTokenUsage;
   console.log(`\n💭 [DocGen] Starting iteration ${newCallIndex} for task "${state.currentTask?.name || 'unknown'}"`);
@@ -59,10 +63,6 @@ export async function docGen(
   if (taskTokensSoFar?.totalTokens) {
     console.log(`   Task tokens so far: ${taskTokensSoFar.totalTokens} (in=${taskTokensSoFar.inputTokens} out=${taskTokensSoFar.outputTokens})`);
   }
-  
-  // ✅ Build messages based on intent group
-  const intentGroup = state.detectionReport?.detectedIntentGroup;
-  const isExplainMode = state.detectionReport?.detectedMode === 'explain';
   
   // ✅ Spec clarify continuation: append user's clarify response to conversation history
   if (intentGroup === 'design-spec' && state.awaitingClarify && state.overrideDirective) {
@@ -380,7 +380,7 @@ export async function docGen(
                 state: {
                   awaitingClarify: true,
                   conversationHistory,
-                  detectionReport: state.detectionReport,
+                  resolvedAction: state.resolvedAction,
                   directive: state.directive,
                   overrideDirective: state.overrideDirective,
                   chatSource: state.chatSource,

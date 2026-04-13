@@ -1,28 +1,22 @@
 /**
- * DetectionReport - Frontend helpers
- * 
- * Shared types from @ant/shared + FE-only helper/formatter functions.
+ * Detection helpers — FE-only formatters for shared detection types.
  */
 
 // Re-export shared detection types (canonical source: @ant/shared)
 export type {
   Mode,
-  JobMode,
-  JobEnvironment,
   IntentGroup,
   DesignDomain,
-  ProjectProfile,
-  DetectionSummary,
-  DetectionReport,
+  InferredAction,
 } from '@ant/shared';
 
-import type { Mode, JobEnvironment, IntentGroup, DesignDomain } from '@ant/shared';
+import type { Mode, IntentGroup, DesignDomain } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FE-only Helper Functions
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export function getJobModeEmoji(mode: Mode): string {
+export function getModeEmoji(mode: Mode): string {
   switch (mode) {
     case 'generate': return '✨';
     case 'refactor': return '🔧';
@@ -30,20 +24,11 @@ export function getJobModeEmoji(mode: Mode): string {
   }
 }
 
-export function getJobModeLabel(mode: Mode, isKorean = true): string {
+export function getModeLabel(mode: Mode, isKorean = true): string {
   switch (mode) {
     case 'generate': return isKorean ? '생성' : 'Generate';
     case 'refactor': return isKorean ? '수정' : 'Refactor';
     case 'explain': return isKorean ? '설명' : 'Explain';
-  }
-}
-
-export function getEnvironmentEmoji(env: JobEnvironment): string {
-  switch (env) {
-    case 'frontend': return '🎨';
-    case 'backend': return '⚙️';
-    case 'fullstack': return '🌐';
-    case 'unknown': return '❓';
   }
 }
 

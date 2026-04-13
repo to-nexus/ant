@@ -1,27 +1,24 @@
 /**
- * Detect Node — Common Factory
+ * Detect Node — Unified Pipeline
  *
- * Unified detect node replacing per-job detectEnvironment/classify.
- * Uses Strategy pattern: job-specific LLM logic is injected, common
- * infrastructure (explicit bypass, resume, RAC creation) is handled here.
+ * Single detect node for all jobs. Two mutually exclusive paths converge
+ * into one resolveToRAC() funnel:
  *
- * Invariant: after detect completes normally, state.detectionReport
- * and state.resolvedAction are ALWAYS populated.
+ *   explicit (metadata.explicit=true) → metadata provides all slots → resolveToRAC
+ *   infer    → strategy.run() → InferredAction → merge with metadata → resolveToRAC
  *
- * Pattern: Factory (not generic function like triage) because job-specific
- * LLM calling/parsing accounts for 30-40% of detect logic.
+ * Invariant: after detect completes normally, state.resolvedAction is ALWAYS populated
+ * and immutable. state.resolvedArtifacts holds materialized file contents.
  */
 
 import type { DetectableState, DetectStrategy } from './types.js';
-import type { DetectionReport, IntentId } from '@ant/shared';
+import type { InferredAction, IntentId } from '@ant/shared';
 import {
-  deriveFromIntent,
-  resolveFromExplicit,
-  resolveFromInfer,
+  resolveToRAC,
+  mergeWithMetadata,
   isValidIntentId,
 } from '@ant/shared';
-import { mergeDocumentsIntoRAC } from '../../graph/loadDocumentsForRAC.js';
-import { normalizeDetectionReport, formatDetectionReportForChat } from '../../../../core/types/detection.js';
+import { loadResolvedArtifacts } from '../../graph/loadDocumentsForRAC.js';
 import { getEstimatingLabel, type UILocale } from '../../graph/timing/estimatingLabels.js';
 import { extractLLMInfo } from '../../../../core/ports/workflow.js';
 
@@ -30,10 +27,6 @@ export { type DetectableState, type DetectStrategy, type DetectResult } from './
 /**
  * Create a detect node bound to a job-specific strategy.
  * The returned function is added directly to the LangGraph as a node.
- *
- * ```ts
- * graph.addNode('detect', createDetectNode(codeDetectStrategy));
- * ```
  */
 export function createDetectNode<T extends DetectableState>(
   strategy: DetectStrategy<T>,
@@ -41,7 +34,6 @@ export function createDetectNode<T extends DetectableState>(
   return async (state: T): Promise<Partial<T>> => {
     const phaseStart = Date.now();
 
-    // Activity banner
     if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
       state.deps.kanbanUpdate.setEstimatingActivity(
         getEstimatingLabel('detect', state._uiLocale as UILocale | undefined),
@@ -51,7 +43,6 @@ export function createDetectNode<T extends DetectableState>(
 
     state.recursionCount = (state.recursionCount || 0) + 1;
 
-    // Workflow instrumentation: enter
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.enterNode(
         state._httpJobId,
@@ -66,84 +57,117 @@ export function createDetectNode<T extends DetectableState>(
 
     try {
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Phase 1: Explicit path (actionMetadata.intent present)
+      // Phase 0: Resume fast path
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      if (state.actionMetadata?.intent) {
-        return buildExplicitDetection(state, strategy, phaseStart);
-      }
+      if (state.resolvedAction && !strategy.isAwaitingInput?.(state)) {
+        console.log(`🔍 [detect] Resume — using existing resolvedAction (LLM skip)`);
+        console.log(`   mode=${state.resolvedAction.mode}, intent=${state.resolvedAction.intent}`);
 
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Phase 2: Resume fast path (detectionReport already exists)
-      // Skip when strategy signals it needs user input (e.g., Design clarify)
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      if (state.detectionReport && !strategy.isAwaitingInput?.(state)) {
-        return buildResumeDetection(state, strategy, phaseStart);
-      }
+        const strategyResumeUpdates = strategy.onResume?.(state) || {};
 
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Phase 3: Strategy-driven LLM detection
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      const result = await strategy.run(state);
-
-      // Early return: clarify, error, or any case where RAC shouldn't be built
-      if (result.skipRACCreation || !result.detectionReport) {
         return {
-          ...result.stateUpdates,
-          tokenUsage: state.tokenUsage,
+          resolvedAction: state.resolvedAction,
+          ...strategyResumeUpdates,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
         } as unknown as Partial<T>;
       }
 
-      const detectionReport = result.detectionReport;
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // Phase 1: Branch on explicit
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      let intentId: string;
+      let slots: { target?: string[]; refs?: string[]; context?: string[]; domain?: import('@ant/shared').DesignDomain };
+      let source: 'explicit' | 'infer';
+      let reasoning: InferredAction['reasoning'] | undefined;
+      let inferStateUpdates: Partial<T> | undefined;
 
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Phase 4: Intent resolution (validate + fallback)
-      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      let intentId: IntentId;
-      if (detectionReport.intentId && isValidIntentId(detectionReport.intentId)) {
-        intentId = detectionReport.intentId;
-        console.log(`📋 [detect] Using LLM intentId: ${intentId}`);
-      } else {
-        intentId = strategy.synthesizeFallback(detectionReport, state);
-        if (detectionReport.intentId) {
-          console.log(`⚠️  [detect] Invalid LLM intentId "${detectionReport.intentId}" → fallback: ${intentId}`);
+      if (state.actionMetadata?.explicit) {
+        // ── Explicit path: metadata provides all slots. No LLM. ──
+        const metadata = state.actionMetadata;
+        if (!metadata.intent) {
+          throw new Error('[detect] explicit=true but no intent provided in actionMetadata');
         }
-        detectionReport.intentId = intentId;
+        intentId = metadata.intent;
+        slots = {
+          target: metadata.target,
+          refs: metadata.refs,
+          context: metadata.context,
+        };
+        source = 'explicit';
+        console.log(`⚡ [detect] Explicit: intent=${intentId}`);
+
+      } else {
+        // ── Infer path: strategy.run() → InferredAction ──
+        const result = await strategy.run(state);
+
+        if (result.skipRACCreation || !result.inferred) {
+          return {
+            ...result.stateUpdates,
+            tokenUsage: state.tokenUsage,
+            recursionCount: state.recursionCount,
+            recursionLimit: state.recursionLimit,
+            _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
+          } as unknown as Partial<T>;
+        }
+
+        const inferred = result.inferred;
+        inferStateUpdates = result.stateUpdates;
+
+        // Validate intentId
+        if (!isValidIntentId(inferred.intentId)) {
+          console.error(`❌ [detect] Invalid intentId "${inferred.intentId}" from strategy. Hard fail.`);
+          throw new Error(`[detect] Strategy returned invalid intentId: "${inferred.intentId}"`);
+        }
+
+        // Merge with metadata supplements
+        const merged = mergeWithMetadata(inferred, state.actionMetadata);
+        intentId = merged.intentId;
+        slots = {
+          target: merged.target,
+          refs: merged.refs,
+          context: merged.context,
+          domain: merged.domain,
+        };
+        source = 'infer';
+        reasoning = inferred.reasoning;
+
+        console.log(`📋 [detect] Infer: intentId=${intentId}`);
       }
 
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // Phase 5: RAC creation (sole creation point)
+      // Phase 2: Unified funnel — resolveToRAC
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      const profile = strategy.getCodebaseProfile?.(state);
-      const hints = strategy.getExplicitHints?.(state);
-      let resolvedAction = resolveFromInfer(
-        detectionReport,
-        state.actionMetadata,
-        profile,
-        hints,
-        intentId,
-      );
+      if (!isValidIntentId(intentId)) {
+        throw new Error(`[detect] No valid intentId after merge: "${intentId}"`);
+      }
 
+      const resolvedAction = resolveToRAC(intentId as IntentId, slots, source);
+      console.log(`📋 [detect] RAC created: intent=${intentId}, mode=${resolvedAction.mode}, source=${source}`);
+
+      // Load resolved artifacts (materialized file contents from refs/context)
       const featurePath = resolveFeaturePath(state);
+      let resolvedArtifacts = state.resolvedArtifacts;
       if (featurePath) {
-        resolvedAction = mergeDocumentsIntoRAC(resolvedAction, featurePath);
+        resolvedArtifacts = loadResolvedArtifacts(resolvedAction, featurePath);
       }
 
-      console.log(`📋 [detect] RAC created (infer): intent=${intentId}, mode=${resolvedAction.mode}`);
+      // Display in chat (reasoning is transient, not persisted in RAC)
+      if (reasoning) {
+        displayRACInChat(resolvedAction, reasoning, state._uiLocale).catch(() => {});
+      }
 
       return {
-        detectionReport,
         resolvedAction,
-        ...result.stateUpdates,
+        resolvedArtifacts,
+        ...inferStateUpdates,
         tokenUsage: state.tokenUsage,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
       } as unknown as Partial<T>;
     } finally {
-      // Workflow instrumentation: exit
       if (state.deps?.workflowUpdate && state._httpJobId) {
         state.deps.workflowUpdate.exitNode(state._httpJobId, 'detect', 0);
       }
@@ -155,105 +179,20 @@ export function createDetectNode<T extends DetectableState>(
 // Internal helpers
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function buildExplicitDetection<T extends DetectableState>(
-  state: T,
-  strategy: DetectStrategy<T>,
-  phaseStart: number,
-): Partial<T> {
-  const intent = state.actionMetadata!.intent!;
-  const derived = deriveFromIntent(intent);
-
-  const detectionReport: DetectionReport = {
-    detectedMode: derived.mode,
-    detectedModeReasoning: `Determined by explicit intent: ${intent}`,
-    sourceJob: state.currentJob || 'unknown',
-    intentId: intent,
-    detectedIntentGroup: derived.intentGroup,
-    environment: derived.environment as any,
-    detectedAt: new Date().toISOString(),
-  };
-
-  const profile = strategy.getCodebaseProfile?.(state);
-  const hints = strategy.getExplicitHints?.(state);
-  let resolvedAction = resolveFromExplicit(state.actionMetadata!, profile, hints);
-
-  const featurePath = resolveFeaturePath(state);
-  if (featurePath) {
-    resolvedAction = mergeDocumentsIntoRAC(resolvedAction, featurePath);
-  }
-
-  console.log(`⚡ [detect] Explicit bypass: intent=${intent}, mode=${derived.mode}`);
-
-  // Display in Chat UI
-  displayReportInChat(detectionReport, state._uiLocale).catch(() => {});
-
-  return {
-    detectionReport,
-    resolvedAction,
-    recursionCount: state.recursionCount,
-    recursionLimit: state.recursionLimit,
-    _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
-  } as unknown as Partial<T>;
-}
-
-function buildResumeDetection<T extends DetectableState>(
-  state: T,
-  strategy: DetectStrategy<T>,
-  phaseStart: number,
-): Partial<T> {
-  const report = normalizeDetectionReport(state.detectionReport!);
-
-  console.log(`🔍 [detect] Resume — using existing detectionReport (LLM skip)`);
-  console.log(`   mode=${report.detectedMode}`);
-
-  let resolvedAction = state.resolvedAction;
-  if (!resolvedAction) {
-    const profile = strategy.getCodebaseProfile?.(state);
-    const hints = strategy.getExplicitHints?.(state);
-    const intentId = resolveIntentFromReport(report, strategy, state);
-    resolvedAction = resolveFromInfer(report, state.actionMetadata, profile, hints, intentId);
-
-    const featurePath = resolveFeaturePath(state);
-    if (featurePath) {
-      resolvedAction = mergeDocumentsIntoRAC(resolvedAction, featurePath);
-    }
-  }
-
-  const strategyResumeUpdates = strategy.onResume?.(state) || {};
-
-  return {
-    detectionReport: report,
-    resolvedAction,
-    ...strategyResumeUpdates,
-    recursionCount: state.recursionCount,
-    recursionLimit: state.recursionLimit,
-    _phaseTimings: { ...(state._phaseTimings || {}), detect: Date.now() - phaseStart },
-  } as unknown as Partial<T>;
-}
-
-function resolveIntentFromReport<T extends DetectableState>(
-  report: DetectionReport,
-  strategy: DetectStrategy<T>,
-  state: T,
-): IntentId {
-  if (report.intentId && isValidIntentId(report.intentId)) {
-    return report.intentId;
-  }
-  return strategy.synthesizeFallback(report, state);
-}
-
 function resolveFeaturePath<T extends DetectableState>(state: T): string | undefined {
   return state.featurePath || (state as any).context?.featurePath;
 }
 
-async function displayReportInChat(
-  report: DetectionReport,
+async function displayRACInChat(
+  rac: import('@ant/shared').ResolvedActionContext,
+  reasoning: NonNullable<InferredAction['reasoning']>,
   locale?: string,
 ): Promise<void> {
   try {
+    const { formatRACForChat } = await import('../../../../core/types/detection.js');
     const { getChatAPIClient } = await import('../../../../core/adapters/ChatAPIClient.js');
     const chatAPI = getChatAPIClient();
-    const formatted = formatDetectionReportForChat(report, (locale as any) || 'ko');
+    const formatted = formatRACForChat(rac, reasoning, (locale as any) || 'ko');
     await chatAPI.sendLLMEvent({ type: 'text', text: formatted });
     await chatAPI.finalizeMessage();
   } catch {

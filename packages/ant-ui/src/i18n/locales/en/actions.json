@@ -72,10 +72,45 @@
     "directory": "Output directory"
   },
 
+  "section": {
+    "refs": "References",
+    "context": "Context",
+    "target": "Target",
+    "none": "None",
+    "optional": "Optional",
+    "optionalHint": "Select additional files to provide as context",
+    "singleSelect": "Single select",
+    "singleSelectHint": "Only one file can be selected at a time",
+    "multiSelect": "Multi-select",
+    "multiSelectHint": "Multiple files can be selected",
+    "mirrorsRefs": "Updates Refs",
+    "mirrorsRefsHint": "The selected reference documents will be updated in place"
+  },
+
+  "slot": {
+    "required": "Required",
+    "requiredHint": "These files are required for execution"
+  },
+
+  "target": {
+    "reviseHint": "Select files in Refs to determine targets",
+    "codebase": "Codebase",
+    "codebaseDetected": "Source code detected",
+    "codebaseEmpty": "No source code — generate code first",
+    "willBeCreated": "will be created",
+    "viewInIde": "View in IDE"
+  },
+
+  "toast": {
+    "navigated": "Navigated from {{from}} to {{to}}"
+  },
+
   "footer": {
     "chatStart": "Start via Chat",
     "build": "BUILD",
-    "building": "BUILDING..."
+    "building": "BUILDING...",
+    "contextRequired": "Context files are required",
+    "refsRequired": "Reference files are required"
   },
 
   "intent": {
@@ -87,6 +122,8 @@
 
   "emptySlot": {
     "missing": "No {{name}} found",
+    "addFile": "Add file...",
+    "optionalEmpty": "{{name}} — available but none found",
     "create": "Create",
     "upload": "Upload",
     "noFiles": "no files",

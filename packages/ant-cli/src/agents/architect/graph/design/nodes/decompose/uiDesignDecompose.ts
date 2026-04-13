@@ -20,6 +20,7 @@ import {
   showChatPlaceholder,
   trackTokenUsage,
 } from "./helpers";
+import { buildTechTier } from "@ant/shared";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -86,7 +87,7 @@ export async function decomposeUiDesign(
     assetCount: state.uiAssetsList
       ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
       : 0,
-    detectedMode: state.detectionReport?.detectedMode || 'generate',
+    detectedMode: state.resolvedAction?.mode || 'generate',
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
     nodeSummary: isFigmaMode && state.figmaExplorationResult?.nodeSummary
       ? state.figmaExplorationResult.nodeSummary
@@ -247,14 +248,20 @@ export async function decomposeUiDesign(
       overrideDirective: state.overrideDirective,
       chatSource: state.chatSource,
       userLanguage: state.context.userLanguage,
+      techTier: uiTechTier,
     });
 
     // Update Kanban
     updateKanban(state, null, taskQueue.getAll());
 
+    // UI design is always frontend
+    const uiTechTier = buildTechTier(state.profile, 'frontend');
+    console.log(`✅ TechTier: stack=frontend, language=${uiTechTier.language}, framework=${uiTechTier.framework || 'none'}`);
+
     return {
       ...state,
       taskQueue,
+      techTier: uiTechTier,
       completedTasks: [],
       completedTasksDetails: [],
       _httpJobId: state._httpJobId,

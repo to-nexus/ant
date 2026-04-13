@@ -54,7 +54,7 @@ export async function getAvailableTools(state: ArchitectGraphState): Promise<Too
     }
   }
 
-  const promptPort = state.deps?.promptEngine?.deps?.promptPort;
+  const promptPort = state.deps?.promptBuilder;
   let tools = await getToolsByNamesWithTemplates(toolNames, promptPort);
 
   if (figmaToolsEnabled) {
