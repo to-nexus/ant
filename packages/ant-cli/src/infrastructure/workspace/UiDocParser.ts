@@ -15,7 +15,7 @@ import {
   UiSpecSection,
   UiSpecTocEntry,
 } from '../../core/types/uiDoc';
-import { condenseContent } from '../../core/utils/contentCondenser';
+// compactContent import removed (getUiSectionsForTask/getAllUiContent deleted)
 
 /**
  * Estimate token count from text
@@ -203,150 +203,8 @@ export function parseUiDocs(
   return result;
 }
 
-/**
- * Get UI sections for a specific task based on uiSections array
- * 
- * @param parsedDocs - Parsed UI documents
- * @param requestedSections - Section IDs requested by the task
- * @returns Combined content string for the requested sections
- */
-export function getUiSectionsForTask(
-  parsedDocs: ParsedUiDocs,
-  requestedSections: string[]
-): string {
-  const parts: string[] = [];
-  
-  // Normalize requested sections
-  const normalizedRequests = new Set(
-    requestedSections.map(s => s.toLowerCase().trim())
-  );
-  
-  // Add tokens if requested or if any UI section is requested
-  if (normalizedRequests.has('tokens') || normalizedRequests.size > 0) {
-    if (parsedDocs.tokens) {
-      parts.push(`## 🎯 DESIGN TOKENS (JSON)
-> Reference these tokens in your styles for consistency.
-
-\`\`\`json
-${parsedDocs.tokens}
-\`\`\``);
-    }
-  }
-  
-  // Add assets if requested (condense if large)
-  if (normalizedRequests.has('assets') && parsedDocs.assets) {
-    const assetsResult = condenseContent(parsedDocs.assets, {
-      threshold: 20_000,
-      label: 'ui-assets.json',
-      filePath: 'outputs/design/ui/ui-assets.json',
-      contentType: 'json',
-    });
-    if (assetsResult.wasCondensed) {
-      parts.push(`## 📦 ASSET MAPPING (condensed — use read_file for details)
-> SVG assets → copy to \`src/assets/\` and import as SVGR component (NOT to \`public/\`).
-> Raster assets (png, jpg, webp) → copy to \`public/\` and reference via framework image component.
-
-${assetsResult.content}`);
-    } else {
-      parts.push(`## 📦 ASSET MAPPING (JSON)
-> SVG assets → copy to \`src/assets/\` and import as SVGR component (NOT to \`public/\`).
-> Raster assets (png, jpg, webp) → copy to \`public/\` and reference via framework image component.
-
-\`\`\`json
-${parsedDocs.assets}
-\`\`\``);
-    }
-  }
-
-  // Add requested spec sections
-  for (const sectionId of requestedSections) {
-    const normalized = sectionId.toLowerCase().trim();
-    
-    // Skip special sections (handled above)
-    if (normalized === 'tokens' || normalized === 'assets') {
-      continue;
-    }
-    
-    // Look up section
-    const section = parsedDocs.specSections.get(normalized);
-    if (section) {
-      parts.push(`## 🎨 UI SPEC: ${section.title} (JSON)
-
-\`\`\`json
-${section.content}
-\`\`\``);
-    } else {
-      // Try partial match
-      for (const [id, sec] of parsedDocs.specSections) {
-        if (id.includes(normalized) || normalized.includes(id)) {
-          parts.push(`## 🎨 UI SPEC: ${sec.title} (JSON)
-
-\`\`\`json
-${sec.content}
-\`\`\``);
-          break;
-        }
-      }
-    }
-  }
-  
-  return parts.join('\n\n---\n\n');
-}
-
-/**
- * Get all UI content
- * Used when task.uiSections is undefined (type is 'ui' or 'design-system' but no sections specified)
- */
-export function getAllUiContent(parsedDocs: ParsedUiDocs): string {
-  const parts: string[] = [];
-  
-  if (parsedDocs.tokens) {
-    parts.push(`## 🎯 DESIGN TOKENS (JSON)
-> Reference these tokens in your styles for consistency.
-
-\`\`\`json
-${parsedDocs.tokens}
-\`\`\``);
-  }
-  
-  if (parsedDocs.assets) {
-    const assetsResult = condenseContent(parsedDocs.assets, {
-      threshold: 20_000,
-      label: 'ui-assets.json',
-      filePath: 'outputs/design/ui/ui-assets.json',
-      contentType: 'json',
-    });
-    if (assetsResult.wasCondensed) {
-      parts.push(`## 📦 ASSET MAPPING (condensed — use read_file for details)
-> SVG assets → copy to \`src/assets/\` and import as SVGR component (NOT to \`public/\`).
-> Raster assets (png, jpg, webp) → copy to \`public/\` and reference via framework image component.
-
-${assetsResult.content}`);
-    } else {
-      parts.push(`## 📦 ASSET MAPPING (JSON)
-> SVG assets → copy to \`src/assets/\` and import as SVGR component (NOT to \`public/\`).
-> Raster assets (png, jpg, webp) → copy to \`public/\` and reference via framework image component.
-
-\`\`\`json
-${parsedDocs.assets}
-\`\`\``);
-    }
-  }
-  
-  // Add all spec sections in document order
-  for (const entry of parsedDocs.specToc) {
-    const section = parsedDocs.specSections.get(entry.id);
-    if (section) {
-      parts.push(`## 🎨 UI SPEC: ${section.title} (JSON)
-
-\`\`\`json
-${section.content}
-\`\`\``);
-    }
-  }
-  
-  return parts.join('\n\n---\n\n');
-}
+// getUiSectionsForTask and getAllUiContent removed (Phase 2).
+// UI doc selection is now handled by ArtifactPipeline + resolveArtifacts().
 
 /**
  * Generate UI sections summary for decompose prompt

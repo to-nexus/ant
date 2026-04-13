@@ -16,11 +16,11 @@ import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, TaskQueue } from "../../state";
 import { CodeTask } from "../../../../types/task";
-import { resolveTaskTechTiers as resolveTaskTechTiersShared } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiers as resolveTaskTechTiersShared, type Boundary } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
+// ArtifactService no longer needed — metadata extracted from state.artifacts
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 
 // Import submodules
@@ -105,7 +105,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       subtaskIndex: 0,
       completedTasks: [],
       completedTasksDetails: [],
-      boundary: 'lightweight' as const,
+      boundary: BOUNDARY.LIGHTWEIGHT,
     };
   }
   
@@ -153,11 +153,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const { documents, hasDocuments, useToolMode } = prepareDesignDocument(state);
 
   // Inter-Job Context Bridge: pre-determine boundary classification
-  const suggestedBoundary: 'heavyweight' | 'lightweight' | 'pending' =
-    state.resolvedAction?.mode === 'explain' ? 'lightweight'
-    : hasDocuments ? 'heavyweight'
-    : (state.specDocs && Object.keys(state.specDocs).length > 0) ? 'pending'
-    : 'lightweight';
+  const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
+  const pool = new ArtifactPoolView(state.artifacts || []);
+  const suggestedBoundary =
+    state.resolvedAction?.mode === 'explain' ? SUGGESTED_BOUNDARY.LIGHTWEIGHT
+    : hasDocuments ? SUGGESTED_BOUNDARY.HEAVYWEIGHT
+    : pool.hasSpec() ? SUGGESTED_BOUNDARY.PENDING
+    : SUGGESTED_BOUNDARY.LIGHTWEIGHT;
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Build prompt and call LLM
@@ -224,56 +226,33 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
   
-  // ✅ Generate UI sections summary for split injection (shows available sections without full content)
-  const uiSectionsSummary = state.parsedUiDocs 
-    ? ArtifactService.getUiSectionsSummary(state.parsedUiDocs) 
+  // ✅ Extract metadata from artifact pool via ArtifactPoolView
+  const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
+
+  const uiArtifacts = pool.ui;
+  const uiSectionsSummary = uiArtifacts.length > 0
+    ? uiArtifacts.map(a => {
+        const id = a.path.slice(AP.UI.length);
+        return `- ${id} (${(a.content?.length || 0).toLocaleString()} chars)`;
+      }).join('\n')
     : undefined;
-  
-  // ✅ Build design document availability metadata for profile detection
+
+  const systemArtifacts = pool.systemDesigns;
   let designDocsMeta = '';
-  if (state.designDocs) {
-    const docs = state.designDocs;
-    const lines: string[] = [];
-
-    // API Contracts
-    const apiKeys = Object.keys(docs.apiContracts);
-    if (apiKeys.length > 0) {
-      for (const name of apiKeys) {
-        lines.push(`- api-contract-${name}: present`);
-      }
-    } else {
-      lines.push(`- api-contract: absent`);
-    }
-
-    // Frontend
-    const feKeys = Object.keys(docs.feDesigns);
-    if (feKeys.length > 0) {
-      for (const name of feKeys) {
-        lines.push(`- fe-system-${name}: present`);
-      }
-    } else {
-      lines.push(`- fe-system: absent`);
-    }
-
-    // Backend
-    const beKeys = Object.keys(docs.beDesigns);
-    if (beKeys.length > 0) {
-      for (const name of beKeys) {
-        lines.push(`- be-system-${name}: present`);
-      }
-    } else {
-      lines.push(`- be-system: absent`);
-    }
-
-    designDocsMeta = lines.join('\n');
+  if (systemArtifacts.length > 0) {
+    designDocsMeta = systemArtifacts.map(a => {
+      const name = a.path.slice(AP.SYSTEM_DESIGN.length).replace(/\.md$/, '');
+      return `- ${name}: present`;
+    }).join('\n');
   }
-  
-  // ✅ Build spec docs metadata for LLM selection
+
+  const specArtifacts = pool.specs;
   let specDocsMeta = '';
-  if (state.specDocs && Object.keys(state.specDocs).length > 0) {
-    const specLines = Object.entries(state.specDocs).map(([filename, content]) => {
-      const firstLine = content.split('\n').find(l => l.startsWith('# '))?.replace('# ', '') || filename;
-      return `- ${filename}: "${firstLine}" (${content.length} chars)`;
+  if (specArtifacts.length > 0) {
+    const specLines = specArtifacts.map(a => {
+      const filename = a.path.slice(AP.SPEC.length);
+      const firstLine = a.content?.split('\n').find(l => l.startsWith('# '))?.replace('# ', '') || filename;
+      return `- ${filename}: "${firstLine}" (${(a.content?.length || 0)} chars)`;
     });
     specDocsMeta = specLines.join('\n');
   }
@@ -307,7 +286,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     // Inter-Job Context Bridge
     jobConversation: state.jobConversation,
     hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
-    needsBoundaryClassification: suggestedBoundary === 'pending',
+    needsBoundaryClassification: suggestedBoundary === SUGGESTED_BOUNDARY.PENDING,
   };
   
   if (!state.deps.promptBuilder) throw new Error('[Decompose] PromptBuilder not available');
@@ -481,21 +460,24 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const { tasks, referenceRequests, techTier: parsedTechTier, selectedSpec, unknownPackages, boundary: parsedBoundary } = parsed;
 
   // Inter-Job Context Bridge: finalize boundary
-  const finalBoundary: 'heavyweight' | 'lightweight' = suggestedBoundary === 'pending'
-    ? (parsedBoundary || 'lightweight')
-    : suggestedBoundary;
+  const finalBoundary: Boundary = suggestedBoundary === SUGGESTED_BOUNDARY.PENDING
+    ? ((parsedBoundary as Boundary) || BOUNDARY.LIGHTWEIGHT)
+    : suggestedBoundary as Boundary;
   
   // Store LLM-selected spec in state (used by plan/execute for spec injection)
-  if (selectedSpec && state.specDocs?.[selectedSpec]) {
+  const selectedSpecArtifact = selectedSpec
+    ? pool.findSpec(selectedSpec)
+    : undefined;
+  if (selectedSpec && selectedSpecArtifact?.content) {
     state.selectedSpec = selectedSpec;
-    specDoc = state.specDocs[selectedSpec];
-    const allContracts = Object.values(state.designDocs?.apiContracts || {});
-    if (allContracts.length > 0) {
-      specApiContract = allContracts.join('\n\n---\n\n');
+    specDoc = selectedSpecArtifact.content;
+    const contractArtifacts = pool.apiContracts;
+    if (contractArtifacts.length > 0) {
+      specApiContract = contractArtifacts.map(a => a.content).join('\n\n---\n\n');
     }
     console.log(`📋 [Decompose] LLM selected spec: ${selectedSpec} (${specDoc.length} chars)`);
   } else if (selectedSpec) {
-    console.warn(`⚠️  [Decompose] selectedSpec "${selectedSpec}" not found in specDocs, ignoring`);
+    console.warn(`⚠️  [Decompose] selectedSpec "${selectedSpec}" not found in artifact pool, ignoring`);
     state.selectedSpec = null;
   } else {
     state.selectedSpec = null;
@@ -504,9 +486,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  validateTasks(tasks, state.resolvedAction?.mode, state.directive, state.designDocs);
+  validateTasks(tasks, state.resolvedAction?.mode, state.directive, state.artifacts);
   
-  const { taskQueue, featureTasks } = createTaskQueue(tasks);
+  const { taskQueue, featureTasks } = createTaskQueue(tasks, selectedSpec);
   logTaskSummary(tasks, referenceRequests);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

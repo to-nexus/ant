@@ -6,18 +6,19 @@
  * - buildRuntimeContext: Task and directive context
  */
 
-import { DesignGraphState } from '../../state';
-import { CacheableContent, MessageContentBlock } from '../../../../../../core/ports/llm';
-import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
-import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
-import { logPrompt } from '../../../../../../core/utils/promptLogger';
-import { buildSourceDocsForTask, buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from './sourceSelector';
-import { DesignTask } from '../../../../types/task';
-import { designDirOf, effectiveTechTier, getRACDocuments } from '@ant/shared';
+import { DesignGraphState } from '../../../state';
+import { CacheableContent, MessageContentBlock } from '../../../../../../../core/ports/llm';
+import { logPrompt } from '../../../../../../../core/utils/promptLogger';
+import { buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from '../sourceSelector';
+import { DesignTask } from '../../../../../types/task';
+import { designDirOf, effectiveTechTier, getRACDocuments, ARTIFACT_PREFIX } from '@ant/shared';
 import type { ResolvedArtifact } from '@ant/shared';
-import { PromptBuilder } from '../../../../../../core/prompt/builder/PromptBuilder';
-import { deriveArtifactPolicies } from '../../../../../../core/prompt/builder/ArtifactRoleResolver';
-import type { PromptBuildConfig } from '../../../../../../core/prompt/builder/PromptBuildConfig';
+import { PromptBuilder } from '../../../../../../../core/prompt/builder/PromptBuilder';
+import { deriveArtifactPolicies } from '../../../../../../../core/prompt/builder/ArtifactRoleResolver';
+import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
+import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
+import { composeMessages } from '../../../../../../../core/utils/messageComposer';
+import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 
 export interface BuildMessagesResult {
   messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
@@ -30,9 +31,9 @@ export interface BuildMessagesResult {
  * Handles system-design work type (fe-system, be-system, api-contract, etc.)
  */
 export async function buildMessages(state: DesignGraphState): Promise<BuildMessagesResult> {
-  const messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }> = [];
   let useSourceFileTool = false;
   let prdSpecForLog = '';
+  let blocks: CacheableContent[] = [];
   
   // NOTE: UI Design mode is handled separately in docGen() entry point
   // This function handles system-design messages only
@@ -115,30 +116,31 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       console.error(`[DocGen] Error reading design document:`, error);
     }
     
-    const sourceDocsForTask = buildSourceDocsForTask(
-      (state.currentTask as DesignTask)?.sourceFiles,
-      state.sourceDocuments
-    );
-    
-    const taskSourceFiles = (state.currentTask as DesignTask)?.sourceFiles;
-    if (taskSourceFiles?.length && !sourceDocsForTask) {
-      console.warn(`⚠️ [DocGen] sourceFiles assigned [${taskSourceFiles.join(', ')}] but matched 0 documents in sourceDocuments`);
+    // Select source artifacts from pool (include policy set by decompose)
+    const currentTask = state.currentTask as DesignTask | undefined;
+    const taskSourceFiles = currentTask?.sourceFiles;
+    let sourceArtifacts = selectArtifacts(state.artifacts || [], { include: currentTask?.include || [ARTIFACT_PREFIX.SOURCES] });
+    if (taskSourceFiles?.length) {
+      sourceArtifacts = sourceArtifacts.filter(a =>
+        taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
+      );
     }
+    const combinedSourceContent = sourceArtifacts.map(a => a.content).join('\n\n');
 
-    let prdSpec = sourceDocsForTask;
-    if (sourceDocsForTask.length > EXECUTE_SOURCE_THRESHOLD) {
-      const filteredDocs = taskSourceFiles && taskSourceFiles.length > 0
-        ? Object.fromEntries(
-            taskSourceFiles.filter(f => state.sourceDocuments?.[f]).map(f => [f, state.sourceDocuments![f]])
-          )
-        : state.sourceDocuments || {};
+    let prdSpec = combinedSourceContent;
+    if (combinedSourceContent.length > EXECUTE_SOURCE_THRESHOLD) {
+      const filteredDocs: Record<string, string> = {};
+      for (const a of sourceArtifacts) {
+        const name = a.path.replace(/^inputs\/sources\//, '');
+        filteredDocs[name] = a.content;
+      }
       prdSpec = buildSourceFileIndex(filteredDocs, 8, { includeLineNumbers: true })
         + `\n\n> Source documents are large. Use \`read_source_doc\` with \`startLine\`/\`endLine\` to read broad ranges (300-500+ lines per call).`
         + ` The outline above shows line numbers (e.g., L120) for each heading.`
         + ` Prioritize breadth: read large sections in few calls, then START WRITING by call 5-7.`
         + ` Do NOT read every section — gather enough context and begin output immediately.`;
       useSourceFileTool = true;
-      console.log(`📄 [DocGen] Source docs (${sourceDocsForTask.length.toLocaleString()} chars) > threshold (${EXECUTE_SOURCE_THRESHOLD.toLocaleString()}) → tool-use mode`);
+      console.log(`📄 [DocGen] Source docs (${combinedSourceContent.length.toLocaleString()} chars) > threshold (${EXECUTE_SOURCE_THRESHOLD.toLocaleString()}) → tool-use mode`);
     }
     prdSpecForLog = prdSpec;
 
@@ -148,18 +150,17 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       useSourceFileTool = false;
     }
 
-    // Build resolvedAction with Infer documents[] when no explicit docs present
+    // Build resolvedAction with pool-derived documents when no explicit docs present
     let resolvedActionWithDocs = state.resolvedAction;
     if (!hasExplicitDocs && prdSpec) {
-      const docs: ResolvedArtifact[] = [];
-      docs.push({ path: 'inputs/sources', content: prdSpec, role: 'context', label: 'PRD Specification' });
-      if (docs.length > 0) {
-        resolvedActionWithDocs = {
-          ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
-          artifacts: docs,
-          documents: docs,
-        };
-      }
+      const docs: ResolvedArtifact[] = sourceArtifacts.length > 0
+        ? sourceArtifacts.map(a => ({ ...a, content: prdSpec.length !== combinedSourceContent.length ? prdSpec : a.content }))
+        : [{ path: 'inputs/sources', content: prdSpec, role: 'context' as const, label: 'PRD Specification' }];
+      resolvedActionWithDocs = {
+        ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+        artifacts: docs,
+        documents: docs,
+      };
     }
 
     const taskTechTiers = (state.currentTask as DesignTask).techTiers ?? (state.techTier ? [state.techTier] : []);
@@ -177,6 +178,9 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
 
     const promptBuilder = state.deps?.promptBuilder;
     if (!promptBuilder) throw new Error('[DocGen] PromptBuilder is required but not available in state.deps');
+
+    // Build runtime context → vars.runtimeContext
+    const runtimeContext = buildRuntimeContext(state);
 
     const designConfig: PromptBuildConfig = {
       templates: {
@@ -222,64 +226,20 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         resolvedAction: resolvedActionWithDocs || null,
         userLanguage: state.context?.userLanguage || 'en',
         designDomain: state.resolvedAction?.domain,
+        runtimeContext,
       },
     };
 
     const promptResult = await promptBuilder.build(designConfig);
 
-    // Map PromptBuilder sections to composed structure for cache block compatibility
-    const composed = {
-      system: promptResult.sections.systemBase,
-      profiles: promptResult.sections.profiles,
-      rules: promptResult.sections.rules,
-      injections: promptResult.sections.injections,
-      examples: promptResult.sections.examples,
-      base: promptResult.user,
-      failedTemplates: promptResult.sections.failedTemplates,
-    };
-    
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Block 1: System Prompt + Rules (CACHED - static)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const systemPromptParts = [
-      composed.system,
-      composed.profiles,
-      composed.rules,
-      composed.examples
-    ].filter(Boolean);
-    
-    const systemPromptBlock: CacheableContent = {
-      type: 'text',
-      text: systemPromptParts.join('\n\n'),
-      cache_control: { type: 'ephemeral' }
-    };
-    
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Block 2: Context (CACHED - changes per task)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const contextParts = [
-      composed.injections,
-    ].filter(Boolean);
-    
-    const contextBlock: CacheableContent = {
-      type: 'text',
-      text: contextParts.join('\n\n'),
-      cache_control: { type: 'ephemeral' }
-    };
-    
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Block 3: Runtime Context (NOT CACHED - changes frequently)
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const runtimeContext = buildRuntimeContext(state);
-    
-    const runtimeBlock: CacheableContent = {
-      type: 'text',
-      text: runtimeContext
-      // No cache_control - changes every turn
-    };
-    
+    // Assemble blocks via CacheBlockMapper
+    blocks = buildCacheableBlocks(promptResult);
+
     // ✅ Validate: Ensure XML output format instructions are present
-    const allContent = [systemPromptParts.join(''), contextParts.join(''), runtimeContext].join('');
+    const allContent = blocks
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map(b => b.text)
+      .join('');
     const hasMarkdownFormat = allContent.includes('<file path=') || allContent.includes('Markdown File Output Format');
     
     if (!hasMarkdownFormat) {
@@ -323,80 +283,13 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         console.warn(`⚠️  [DocGen] Failed to log prompt:`, logError);
       }
     }
-    
-    messages.push({
-      role: 'user',
-      content: [systemPromptBlock, contextBlock, runtimeBlock]
-    });
   }
-  
-  // ✅ Add conversation history (if exists)
-  if (state.conversationHistory && state.conversationHistory.length > 0) {
-    console.log(`📄 [DocGen] Using existing conversation history (${state.conversationHistory.length} messages)`);
-    
-    // Skip initial user messages (old system prompt — replaced by fresh rebuild above)
-    let skipInitialUserMessages = true;
-    const filteredHistory: typeof state.conversationHistory = [];
-    for (const msg of state.conversationHistory) {
-      if (msg.role === 'assistant') {
-        skipInitialUserMessages = false;
-      }
-      if (skipInitialUserMessages && msg.role === 'user') {
-        continue;
-      }
-      filteredHistory.push(msg);
-    }
-    
-    const tokenManager = new TokenBudgetManager();
-    
-    // Universal 3-step compaction on tool conversation only (system prompt excluded)
-    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(filteredHistory, tokenManager);
-    
-    // Convert history to CacheableContent format
-    let isFirstMsg = true;
-    for (const msg of prunedHistory) {
-      if (typeof msg.content === 'string') {
-        const shouldCache = wasCompacted && isFirstMsg && msg.role === 'assistant'
-          && msg.content.startsWith('[Auto-compacted:');
-        messages.push({
-          role: msg.role as 'user' | 'assistant',
-          content: [{
-            type: 'text',
-            text: msg.content,
-            ...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
-          }]
-        });
-      } else {
-        messages.push({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content
-        });
-      }
-      isFirstMsg = false;
-    }
-    
-    // Anthropic API requires conversation to end with a user message.
-    // If history ends with assistant (e.g., retry after no <done>), append continuation.
-    if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
-      messages.push({
-        role: 'user',
-        content: [{ type: 'text', text: 'Continue.' }]
-      });
-    }
 
-    const estimation = tokenManager.checkBudget(messages as any);
-    
-    if (estimation.isOverBudget) {
-      throw new Error(
-        `[DocGen] Token budget exceeded after compaction! ` +
-        `${estimation.totalTokens.toLocaleString()} tokens > ` +
-        `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
-      );
-    }
-  } else {
-    const tokenManager = new TokenBudgetManager();
-    tokenManager.checkBudget(messages as any);
-  }
+  // Compose messages via MessageComposer
+  const { messages } = composeMessages({
+    initialBlocks: blocks,
+    priorTurns: state.conversationHistory,
+  });
   
   // ✅ Log prompt structure (not content) - full message
   const jobIdFinal = state.jobId || state._httpJobId || 'unknown';

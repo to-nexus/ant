@@ -1,7 +1,7 @@
 import { DesignGraphState } from "../state";
 import { SessionRun, ConversationEntry } from "../../../../../core/types";
 import { saveFigmaMCPDebugLog } from '../../../tools/figmaMCPHandler';
-import { DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
+import { BOUNDARY, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
 
 /**
  * Inter-Job Context Bridge: Build raw job completion record.
@@ -13,7 +13,7 @@ function buildDesignJobRecord(state: DesignGraphState): { user: ConversationEntr
   const files = state.files || [];
   const taskNames = tasks.map((t: any) => t.name).join(', ');
   const timestamp = new Date().toISOString();
-  const boundary = state.boundary || 'lightweight';
+  const boundary = state.boundary || BOUNDARY.LIGHTWEIGHT;
 
   const user: ConversationEntry = {
     role: 'user',
@@ -440,7 +440,7 @@ async function saveSessionRun(state: DesignGraphState): Promise<void> {
     const { user: jobUser, assistant: jobAssistant } = buildDesignJobRecord(state);
     const existingJobConv: ConversationEntry[] = existingSession.state?.jobConversation || [];
     updatedJobConversation = [...existingJobConv, jobUser, jobAssistant];
-    console.log(`📋 [Design Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || 'lightweight'})`);
+    console.log(`📋 [Design Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || BOUNDARY.LIGHTWEIGHT})`);
   }
 
   // Update artifacts with latest design and state

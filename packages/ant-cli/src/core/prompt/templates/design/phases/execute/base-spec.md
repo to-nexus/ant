@@ -99,3 +99,5 @@ Write the complete spec document with all sections (Overview, Requirements, Scop
 
 **Constraint**: The content above is already written. Your task is to ADD the next section only.
 {{/if}}
+
+{{{runtimeContext}}}

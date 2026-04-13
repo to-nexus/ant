@@ -106,23 +106,31 @@ export async function execute(
       return false;
     })();
 
-    // Best-effort: (re)load parsedUiDocs once, in case state was restored without it or inputs changed.
-    // NOTE: This mutates state directly, which is an anti-pattern in LangGraph, but necessary here
-    // because promptBuilder needs access to parsedUiDocs immediately. The proper fix would be
-    // to pass parsedUiDocs as a separate parameter to buildMessages.
-    if (!state.parsedUiDocs && state.deps?.git && state.deps?.fileSystem) {
+    // Best-effort: if no UI artifacts in pool, try loading from disk and appending
+    const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
+    const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
+    if (!new ArtifactPoolView(state.artifacts || []).hasUi() && state.deps?.git && state.deps?.fileSystem) {
       try {
         const parsed = await ArtifactService.loadParsedUiContext(state.context, state.deps.git, state.deps.fileSystem);
         if (parsed) {
-          // Channel is now defined in graph.ts, so direct assignment is type-safe
-          state.parsedUiDocs = parsed;
+          const uiPool: import('@ant/shared').ResolvedArtifact[] = [];
+          if (parsed.tokens) uiPool.push({ path: `${AP.UI}tokens`, content: parsed.tokens, role: 'context' });
+          if (parsed.assets) uiPool.push({ path: `${AP.UI}assets`, content: parsed.assets, role: 'context' });
+          if (parsed.specSections) {
+            for (const [id, section] of parsed.specSections) {
+              if (section.content) uiPool.push({ path: `${AP.UI_SPEC}${id}`, content: section.content, role: 'context' });
+            }
+          }
+          if (uiPool.length > 0) {
+            state.artifacts = [...(state.artifacts || []), ...uiPool];
+          }
         }
       } catch {
-        // ignore (we'll fail below if still missing)
+        // ignore
       }
     }
 
-    if (uiDocsExist && !state.parsedUiDocs) {
+    if (uiDocsExist && !new ArtifactPoolView(state.artifacts || []).hasUi()) {
       const msg =
         `UI task requires UI specification docs to be loaded and injected, but none were available.\n` +
         `Docs appear to exist under inputs/sources, but UI-doc injection did not occur.\n` +

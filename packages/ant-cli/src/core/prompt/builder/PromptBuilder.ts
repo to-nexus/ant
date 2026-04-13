@@ -10,7 +10,7 @@
  */
 
 import type { PromptPort, ProfilePort } from '../../ports';
-import type { PolicyKey, TechTier } from '@ant/shared';
+import type { PolicyKey, TechTier, ResolvedArtifact } from '@ant/shared';
 import { getPromptPolicies, POLICY_TEMPLATE_MAP } from '@ant/shared';
 import type { PromptBuildConfig, PromptBuildResult } from './PromptBuildConfig';
 import { AutoInjectionResolver } from './AutoInjectionResolver';
@@ -62,18 +62,18 @@ export class PromptBuilder implements PromptPort {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     let vars = { ...config.vars };
 
-    if (config.artifacts?.length) {
-      vars['documents'] = config.artifacts;
+    const processedArtifacts = config.artifacts?.length ? config.artifacts : undefined;
+
+    if (processedArtifacts?.length) {
+      vars['documents'] = processedArtifacts;
       vars['hasDocuments'] = true;
     }
 
-    // Normalize resolvedAction.documents to stay in sync with artifacts
-    // (Handlebars templates reference resolvedAction.documents)
-    if (vars['resolvedAction'] && config.artifacts?.length) {
+    if (vars['resolvedAction'] && processedArtifacts?.length) {
       vars['resolvedAction'] = {
         ...(vars['resolvedAction'] as Record<string, unknown>),
-        documents: config.artifacts,
-        artifacts: config.artifacts,
+        documents: processedArtifacts,
+        artifacts: processedArtifacts,
       };
     }
 
@@ -130,12 +130,14 @@ export class PromptBuilder implements PromptPort {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const systemParts = [systemBase, profiles, rules, injectionsMerged, examples].filter(Boolean);
 
+    let guardrail = '';
+    let policy = '';
     if (config.pipeline.applyPolicyGuardrails) {
       const ruleset = this.getRuleset();
       const job = this.inferJob(config);
       const phase = this.inferPhase(config);
-      const guardrail = buildGuardrailSection(ruleset, job);
-      const policy = buildPolicySection(ruleset, job, phase, config.pipeline.strictValidation);
+      guardrail = buildGuardrailSection(ruleset, job);
+      policy = buildPolicySection(ruleset, job, phase, config.pipeline.strictValidation);
       systemParts.unshift(guardrail);
       systemParts.push(policy);
     }
@@ -151,6 +153,8 @@ export class PromptBuilder implements PromptPort {
         injections: injectionsMerged,
         profiles,
         examples,
+        guardrail,
+        policy,
         failedTemplates,
       },
       injections: allInjections,

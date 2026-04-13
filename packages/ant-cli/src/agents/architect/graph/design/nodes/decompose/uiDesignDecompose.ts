@@ -19,8 +19,9 @@ import {
   resolveLLMClient,
   showChatPlaceholder,
   trackTokenUsage,
+  type CheckpointData,
 } from "./helpers";
-import { buildTechTier } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier } from "@ant/shared";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -199,6 +200,7 @@ export async function decomposeUiDesign(
         priority: task.priority,
         description: task.description,
         sourceFiles: sf.length > 0 ? sf : undefined,
+        include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI],
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,
@@ -237,6 +239,10 @@ export async function decomposeUiDesign(
       state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
     }
 
+    // UI design is always frontend
+    const uiTechTier = buildTechTier(state.profile, 'frontend');
+    console.log(`✅ TechTier: stack=frontend, language=${uiTechTier.language}, framework=${uiTechTier.framework || 'none'}`);
+
     // Save checkpoint
     await saveCheckpoint(state, {
       taskQueue: taskQueue.getAll(),
@@ -247,16 +253,12 @@ export async function decomposeUiDesign(
       tokenUsage: state.tokenUsage,
       overrideDirective: state.overrideDirective,
       chatSource: state.chatSource,
-      userLanguage: state.context.userLanguage,
+      userLanguage: state.context.userLanguage as CheckpointData['userLanguage'],
       techTier: uiTechTier,
     });
 
     // Update Kanban
     updateKanban(state, null, taskQueue.getAll());
-
-    // UI design is always frontend
-    const uiTechTier = buildTechTier(state.profile, 'frontend');
-    console.log(`✅ TechTier: stack=frontend, language=${uiTechTier.language}, framework=${uiTechTier.framework || 'none'}`);
 
     return {
       ...state,
@@ -267,7 +269,7 @@ export async function decomposeUiDesign(
       _httpJobId: state._httpJobId,
       jobId: ctx.newJobId,
       jobTiming: finalJobTiming,
-      boundary: 'heavyweight' as const,
+      boundary: BOUNDARY.HEAVYWEIGHT,
     };
   } catch (error: any) {
     logErrorHeader('decompose');

@@ -194,7 +194,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     : undefined;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-x-hidden">
       <div className="shrink-0 px-5 pt-5">
         <IntentTabNav
           actionId={actionId}

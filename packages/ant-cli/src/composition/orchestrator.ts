@@ -1,7 +1,5 @@
-import { reviewerAgent } from "../agents/reviewer";
 import { architectAgent } from "../agents/architect/index";
 import { runPlanGraph } from "../agents/planner";
-import { docAgent } from "../agents/doc";
 import { runInlineAsk } from "../agents/architect/graph/ask/inlineAskRunner";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
 import { createLLMClient, createImageGenerationClient } from "../periphery/adapters/llm/LLMClientFactory";
@@ -341,14 +339,6 @@ export async function orchestrator(params: {
       throw new Error(`Unknown architect jobType: ${jobType}`);
     }
 
-    case "reviewer": {
-      const memory = AdapterFactory.createMemoryAdapter();
-      const config = new FileConfigAdapter();
-      const configData = await config.load(project || "default");
-      const llm = createLLMClient('reviewer', undefined, { jobType: 'reviewer' }, configData);
-      return await reviewerAgent(input, project || "default", { memory, llm });
-    }
-
     case "planner": {
       const config = new FileConfigAdapter();
       const configData = await config.load(project || "default");
@@ -410,14 +400,6 @@ export async function orchestrator(params: {
       await closeBroadcasters?.();
 
       return result;
-    }
-
-    case "doc": {
-      const memory = AdapterFactory.createMemoryAdapter();
-      const config = new FileConfigAdapter();
-      const configData = await config.load(project || "default");
-      const llm = createLLMClient('doc', undefined, { jobType: 'doc' }, configData);
-      return await docAgent(input, project || "default", { memory, llm });
     }
 
     case "creator": {

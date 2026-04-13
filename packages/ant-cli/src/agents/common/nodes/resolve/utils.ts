@@ -6,6 +6,7 @@
  */
 
 import type { ConversationEntry } from '../../../../core/types/session.js';
+import { BOUNDARY } from '@ant/shared';
 
 /**
  * Compress uncompressed heavyweight entries in jobConversation via LLM summarization.
@@ -22,7 +23,7 @@ export async function compressHeavyweightEntries(
     const entry = entries[i];
     if (
       entry.role === 'assistant' &&
-      entry.metadata?.boundary === 'heavyweight' &&
+      entry.metadata?.boundary === BOUNDARY.HEAVYWEIGHT &&
       !entry.metadata?.chapterSummary
     ) {
       const userEntry = result[result.length - 1];

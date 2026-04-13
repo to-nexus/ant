@@ -158,3 +158,38 @@ export function designSubdirOf(filename: string): DesignSubdir {
 export function designDirOf(filename: string): string {
   return `${DESIGN_DIR}/${designSubdirOf(filename)}`;
 }
+
+// ============================================
+// Artifact path prefixes (for ArtifactPoolView matching)
+// ============================================
+
+export const ARTIFACT_PREFIX = {
+  SYSTEM_DESIGN: `${DESIGN_DIR}/system/` as const,
+  SPEC: `${DESIGN_DIR}/spec/` as const,
+  UI: `${DESIGN_DIR}/ui/` as const,
+  UI_SPEC: `${DESIGN_DIR}/ui/spec/` as const,
+  DESIGN: `${DESIGN_DIR}/` as const,
+  SOURCES: 'inputs/sources' as const,
+  API_CONTRACT: `${DESIGN_DIR}/system/api-contract-` as const,
+  FE_SYSTEM: `${DESIGN_DIR}/system/fe-system-` as const,
+  BE_SYSTEM: `${DESIGN_DIR}/system/be-system-` as const,
+} as const;
+
+// ============================================
+// Boundary classification (inter-job context bridge)
+// ============================================
+
+export const BOUNDARY = {
+  HEAVYWEIGHT: 'heavyweight',
+  LIGHTWEIGHT: 'lightweight',
+} as const;
+
+export type Boundary = typeof BOUNDARY[keyof typeof BOUNDARY];
+
+/** Internal decompose state: pending means "spec exists but no design doc yet". */
+export const SUGGESTED_BOUNDARY = {
+  ...BOUNDARY,
+  PENDING: 'pending',
+} as const;
+
+export type SuggestedBoundary = typeof SUGGESTED_BOUNDARY[keyof typeof SUGGESTED_BOUNDARY];

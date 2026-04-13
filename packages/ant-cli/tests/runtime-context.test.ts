@@ -5,7 +5,7 @@ import {
 } from '../src/agents/architect/graph/code/nodes/execute/promptBuilder';
 import {
   buildRuntimeContext as buildDesignRuntimeContext,
-} from '../src/agents/architect/graph/design/nodes/docGen/systemDesignPrompt';
+} from '../src/agents/architect/graph/design/nodes/docGen/intent/system';
 
 function makeCodeState(overrides: Record<string, any> = {}): any {
   return {

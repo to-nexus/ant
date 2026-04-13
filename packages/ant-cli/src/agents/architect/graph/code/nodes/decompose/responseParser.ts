@@ -2,6 +2,7 @@ import { TaskQueue, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
+import { ARTIFACT_PREFIX, BOUNDARY, type Boundary } from '@ant/shared';
 
 /**
  * Escape unescaped control characters inside JSON string literals.
@@ -26,7 +27,60 @@ function sanitizeJsonControlChars(jsonStr: string): string {
   });
 }
 
-import type { PackageTierEntry } from '@ant/shared';
+import type { PackageTierEntry, TaskType } from '@ant/shared';
+
+/**
+ * Derive `include` artifact path prefixes from legacy task fields.
+ * Backward-compatible fallback when the LLM does not output `include` explicitly.
+ */
+function deriveIncludeFromLegacyFields(
+  taskType: TaskType,
+  packages?: string[],
+  uiSections?: string[],
+  selectedSpec?: string | null,
+): string[] | undefined {
+  if (taskType === 'verification') return undefined;
+
+  const paths: string[] = [];
+
+  if (taskType === 'ui' || taskType === 'design-system') {
+    if (uiSections?.length) {
+      paths.push(`${ARTIFACT_PREFIX.UI}tokens`);
+      for (const sec of uiSections) {
+        if (sec === 'tokens') continue;
+        if (sec === 'assets') {
+          paths.push(`${ARTIFACT_PREFIX.UI}assets`);
+        } else {
+          paths.push(`${ARTIFACT_PREFIX.UI_SPEC}${sec}`);
+        }
+      }
+    } else {
+      paths.push(`${ARTIFACT_PREFIX.UI}*`);
+    }
+    return paths.length > 0 ? paths : undefined;
+  }
+
+  if (selectedSpec) {
+    paths.push(`${ARTIFACT_PREFIX.SPEC}${selectedSpec}`);
+  }
+
+  if (packages?.length) {
+    for (const pkg of packages) {
+      if (pkg.startsWith('fe-')) {
+        paths.push(`${ARTIFACT_PREFIX.FE_SYSTEM}${pkg.slice(3)}.md`);
+      } else if (pkg.startsWith('be-')) {
+        paths.push(`${ARTIFACT_PREFIX.BE_SYSTEM}${pkg.slice(3)}.md`);
+      } else if (pkg === 'shared') {
+        paths.push(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
+      }
+    }
+    if (!packages.includes('shared')) {
+      paths.push(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
+    }
+  }
+
+  return paths.length > 0 ? paths : undefined;
+}
 
 export interface ParsedTechTier {
   stack: string;
@@ -42,7 +96,7 @@ export interface ParsedDecomposeResponse {
   techTier?: ParsedTechTier;
   selectedSpec?: string | null;
   unknownPackages?: string[];
-  boundary?: 'heavyweight' | 'lightweight';
+  boundary?: Boundary;
 }
 
 /**
@@ -152,11 +206,10 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       }
     }
 
-    // Extract boundary classification from <boundary> tag (OPTIONAL, only when LLM is asked)
-    let boundary: 'heavyweight' | 'lightweight' | undefined;
+    let boundary: Boundary | undefined;
     const boundaryMatch = rawResponse.match(/<boundary>\s*(heavyweight|lightweight)\s*<\/boundary>/i);
     if (boundaryMatch) {
-      boundary = boundaryMatch[1].toLowerCase() as 'heavyweight' | 'lightweight';
+      boundary = boundaryMatch[1].toLowerCase() as Boundary;
       console.log(`📋 [Decompose] Boundary classification: ${boundary}`);
     }
 
@@ -186,7 +239,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
  *   graph.ts checkTaskStatus() auto-adds final verification after the first error task completes
  *   as a safety net. Error tasks always delegate build verification to verification.
  */
-export function createTaskQueue(tasks: CodeTask[]): {
+export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null): {
   taskQueue: TaskQueue<CodeTask>;
   featureTasks: Map<string, CodeTask>;
 } {
@@ -240,7 +293,13 @@ export function createTaskQueue(tasks: CodeTask[]): {
       ? 'verification' as const
       : (task.type || 'feature');
 
-    // Ensure task has required fields
+    const uiSections: string[] | undefined = Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined;
+    const packages: string[] | undefined = Array.isArray((task as any).packages) ? (task as any).packages : undefined;
+
+    // include: LLM-provided artifact path prefixes, or auto-derived fallback
+    const explicitInclude: string[] | undefined = Array.isArray((task as any).include) ? (task as any).include : undefined;
+    const include = explicitInclude ?? deriveIncludeFromLegacyFields(resolvedType, packages, uiSections, selectedSpec);
+
     const normalizedTask: CodeTask = {
       id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: task.name,
@@ -249,11 +308,9 @@ export function createTaskQueue(tasks: CodeTask[]): {
       description: task.description,
       errors: task.errors,
       category: task.category,
-      // UI sections for split injection (ui and design-system task types)
-      uiSections: Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined,
-      // Package-based design doc injection (fe, fe-*, be, be-*)
-      packages: Array.isArray((task as any).packages) ? (task as any).packages : undefined,
-      // Parallel execution hints
+      uiSections,
+      packages,
+      include,
       exclusive: exclusive || undefined,
       parallelGroup,
     };

@@ -1,10 +1,10 @@
 /**
- * Content Condenser
+ * Content Compactor
  *
- * Unified utility for condensing large documents before prompt injection.
+ * Unified utility for compacting large documents before prompt injection.
  * When content exceeds a character threshold, it is replaced with a
  * structural outline (line-numbered TOC) plus an instruction to use
- * read_file(path, startLine, endLine) for on-demand access.
+ * read_file(path, startLine, endLine) for on-demand decompaction.
  *
  * Reuses generateFileOutline() from fileOutline.ts which already supports
  * JSON, Markdown, TypeScript, Go, and YAML outline extraction.
@@ -18,14 +18,14 @@
 import * as path from 'path';
 import { generateFileOutline } from './fileOutline';
 
-export interface CondenseOptions {
+export interface CompactOptions {
   /** Character-count threshold. Content at or below this is returned as-is. */
   threshold: number;
-  /** Human-readable document label shown in the condensed header. */
+  /** Human-readable document label shown in the compacted header. */
   label: string;
   /**
    * File path for read_file instruction (e.g. "outputs/design/ui/ui-assets.json").
-   * When omitted the condensed output omits the read_file hint.
+   * When omitted the compacted output omits the read_file hint.
    */
   filePath?: string;
   /**
@@ -37,11 +37,11 @@ export interface CondenseOptions {
   toolHint?: string;
 }
 
-export interface CondenseResult {
+export interface CompactResult {
   content: string;
-  wasCondensed: boolean;
+  wasCompacted: boolean;
   originalChars: number;
-  condensedChars: number;
+  compactedChars: number;
 }
 
 /**
@@ -86,15 +86,15 @@ function ensurePrettyJson(content: string): string {
 }
 
 /**
- * Condense content that exceeds `threshold` characters into a structural
+ * Compact content that exceeds `threshold` characters into a structural
  * outline with line numbers and a read_file access hint.
  *
  * When the content is within budget it is returned unchanged.
  */
-export function condenseContent(
+export function compactContent(
   content: string,
-  options: CondenseOptions,
-): CondenseResult {
+  options: CompactOptions,
+): CompactResult {
   const {
     threshold,
     label,
@@ -106,9 +106,9 @@ export function condenseContent(
   if (content.length <= threshold) {
     return {
       content,
-      wasCondensed: false,
+      wasCompacted: false,
       originalChars: content.length,
-      condensedChars: content.length,
+      compactedChars: content.length,
     };
   }
 
@@ -125,7 +125,7 @@ export function condenseContent(
   const lineCount = outlineInput.split('\n').length;
 
   const parts: string[] = [
-    `# ${label} (${lineCount} lines, condensed)`,
+    `# ${label} (${lineCount} lines, compacted)`,
     '',
     '> Full content exceeds token budget. Section outline below.',
   ];
@@ -142,17 +142,17 @@ export function condenseContent(
   parts.push('');
   parts.push(outline || '(no structure found)');
 
-  const condensed = parts.join('\n');
+  const compacted = parts.join('\n');
 
   console.log(
-    `📦 [Condense] "${label}": ${content.length.toLocaleString()} chars → ${condensed.length.toLocaleString()} chars (${lineCount} lines)`,
+    `📦 [Compact] "${label}": ${content.length.toLocaleString()} chars → ${compacted.length.toLocaleString()} chars (${lineCount} lines)`,
   );
 
   return {
-    content: condensed,
-    wasCondensed: true,
+    content: compacted,
+    wasCompacted: true,
     originalChars: content.length,
-    condensedChars: condensed.length,
+    compactedChars: compacted.length,
   };
 }
 

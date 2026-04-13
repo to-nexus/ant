@@ -10,22 +10,20 @@
 import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
-import { compactAndPruneHistory } from "../../../../../../core/utils/historyManager";
 import { formatViolations } from "../shared/violationFormatter";
 import { CacheableContent, MessageContentBlock } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
-import { selectDesignFilesByPackages } from "../designSelector";
-import { resolveDesignDocForTask, resolveUiDocForTask } from "../documentResolver";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
-import { condenseContent } from "../../../../../../core/utils/contentCondenser";
-import { buildAllSourceDocs } from "../../../../../../core/utils/sourceDocuments";
+import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { effectiveTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
 import { PromptBuilder } from "../../../../../../core/prompt/builder/PromptBuilder";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
+import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
+import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { formatGitDiffForPrompt } from "../../../../../../core/codebase/GitDiffSummary";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
@@ -42,7 +40,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   role: 'user' | 'assistant';
   content: MessageContentBlock[];
 }>> {
-  const messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }> = [];
   
   // planText check (empty is normal for verification and explain tasks)
   if (state.planText) {
@@ -64,23 +61,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // Staleness is handled by edit_file's search/replace validation against disk.
   // System prompt content is cached (cache_control: ephemeral), making this
   // more token-efficient than stripping content and forcing read_file tool calls.
-  // When total content exceeds CODE_CONTEXT_THRESHOLD, condense to skeleton mode.
+  // When total content exceeds CODE_CONTEXT_THRESHOLD, compact to skeleton mode.
   const executeProjectCodeContext = state.projectCodeContext
-    ? condenseProjectCodeContext(
+    ? compactProjectCodeContext(
         state.projectCodeContext as ProjectCodeContext,
         state.techTier?.language,
       )
     : undefined;
 
-  // UI doc injection via resolver: only for 'ui' and 'design-system' task types
-  const uiDocForTask = resolveUiDocForTask(state.currentTask, state);
-  if (uiDocForTask) {
-    const sectionInfo = state.currentTask.uiSections?.length
-      ? `sections: ${state.currentTask.uiSections.join(', ')}`
-      : 'all sections';
-    console.log(`   🎨 [Execute] UI doc injection: ${uiDocForTask.length} chars (${sectionInfo})`);
-  }
-  
   const taskTechTiers = state.currentTask.techTiers ?? (state.techTier ? [state.techTier] : []);
   const contextWithTechTier = {
     ...state.context,
@@ -90,88 +78,37 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   
   const isVerificationTask = state.currentTask.type === 'verification';
   const isErrorTask = state.currentTask.type === 'error';
-  
-  // ✅ Select design doc based on task.packages (split injection)
-  // All tasks MUST have packages set by decompose (fe, be, fe-*, be-*, shared).
-  // If missing, fall back to state.design but warn — this indicates a decompose bug.
-  let designDocForTask: string | undefined;
-  let designDocFiles: string[] = [];
 
-  const isUiTask = state.currentTask.type === 'ui' || state.currentTask.type === 'design-system';
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Artifact selection via ArtifactPipeline
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const poolView = new ArtifactPoolView(state.artifacts || []);
+  const pool = poolView.all;
 
-  // Design doc injection via resolver
-  const resolvedDesign = resolveDesignDocForTask(state.currentTask, state);
-  designDocForTask = resolvedDesign || undefined;
-
-  if (designDocForTask && !isUiTask && !isErrorTask && !isVerificationTask) {
-    if (state.currentTask.packages?.length && state.designDocs && !state.selectedSpec) {
-      // Packages-based: condense large system design docs.
-      // Outline preserves heading keywords (framework names etc.) so PromptResolver .includes() checks still work.
-      const designResult = condenseContent(designDocForTask, {
-        threshold: 30_000,
-        label: 'System Design',
-        filePath: state.currentTask.packages
-          .filter(p => p.startsWith('fe-') || p.startsWith('be-'))
-          .map(p => `outputs/design/system/${p.startsWith('fe') ? 'fe' : 'be'}-system-${p.slice(3)}.md`)
-          .join(', '),
-      });
-      designDocForTask = designResult.content || undefined;
-      designDocFiles = selectDesignFilesByPackages(state.currentTask.packages, state.designDocs);
-      console.log(`📄 [Execute] Split injection: packages=${state.currentTask.packages.join(', ')} → [${designDocFiles.join(', ')}] → ${designDocForTask?.length ?? 0} chars${designResult.wasCondensed ? ' (condensed)' : ''}`);
-    }
-  } else if (!isUiTask && !isErrorTask && !isVerificationTask && !state.currentTask.packages?.length) {
-    // Fallback: packages missing — indicates decompose bug
-    console.warn('⚠️ [Execute] Fallback to state.design: task.packages or state.designDocs missing (decompose bug)');
-    console.warn(`   task.id=${state.currentTask?.id}, task.packages=${JSON.stringify(state.currentTask?.packages)}, hasDesignDocs=${!!state.designDocs}`);
-  }
-
-  // For error tasks with a selected spec doc, inject the spec into documents.
-  // resolver returns '' for error tasks; this post-resolver override handles the spec case.
-  if (isErrorTask && state.selectedSpec && state.specDocs?.[state.selectedSpec]) {
-    const specContent = state.specDocs[state.selectedSpec];
-    const parts: string[] = [];
-    parts.push(`# Feature Specification (Primary)\n\n${specContent}`);
-    if (state.designDocs?.apiContracts) {
-      for (const [name, content] of Object.entries(state.designDocs.apiContracts)) {
-        parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
-      }
-    }
-    designDocForTask = condenseContent(
-      parts.join('\n\n────────────────────────────────────────\n\n'),
-      {
-        threshold: 30_000,
-        label: `Spec Document: ${state.selectedSpec}`,
-        filePath: `outputs/design/spec/${state.selectedSpec}`,
-      },
-    ).content;
-    console.log(`📋 [Execute] Error task with spec "${state.selectedSpec}" — injecting specDoc (${designDocForTask.length} chars)`);
-  }
-  
   const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
     && ((state.resolvedAction?.artifacts?.length ?? state.resolvedAction?.documents?.length ?? 0) > 0);
 
-  // Build resolvedAction with infer artifacts when no explicit docs present
   let resolvedActionWithDocs = state.resolvedAction;
   if (!hasExplicitDocs) {
-    const docs: ResolvedArtifact[] = [];
-    if (designDocForTask)
-      docs.push({ path: 'outputs/design/system', content: designDocForTask, role: 'ref', label: 'System Design' });
-    const prdContent = !isVerificationTask && !isErrorTask
-      ? (buildAllSourceDocs(state.sourceDocuments) || state.prd)
-      : undefined;
-    if (prdContent)
-      docs.push({ path: 'inputs/sources', content: prdContent, role: 'context', label: 'PRD Specification' });
-    if (uiDocForTask && !isVerificationTask && !isErrorTask)
-      docs.push({ path: 'outputs/design/ui', content: uiDocForTask, role: 'context', label: 'UI Specification' });
+    const inferred = resolveArtifacts(pool,
+      { taskType: state.currentTask.type, include: state.currentTask.include },
+      { threshold: 30_000 });
 
-    if (docs.length > 0) {
+    if (inferred.length > 0) {
       resolvedActionWithDocs = {
         ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
-        artifacts: docs,
-        documents: docs,
+        artifacts: inferred,
+        documents: inferred,
       };
+      const totalChars = inferred.reduce((s, a) => s + (a.content?.length || 0), 0);
+      console.log(`📄 [Execute] Pipeline: ${pool.length} pool → ${inferred.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(state.currentTask.include ?? 'default')})`);
     }
   }
+
+  const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
+  const hasUiArtifacts = getRACDocuments(resolvedActionWithDocs).some(
+    a => a.path.startsWith(AP.UI),
+  );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Build prompt via PromptBuilder (4-tier injection resolution)
@@ -214,6 +151,26 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     : '';
   const formattedLessons = formatLessonsForPrompt(state.lessons);
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Build runtime context → vars.runtimeContext (rendered into Block 3 via base template)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const runtimeContextParts: string[] = [];
+
+  if (state.violations && state.violations.length > 0) {
+    const violationsText = state.violationMessage || formatViolations(state.violations);
+    runtimeContextParts.push(
+      `──────────────────────────────────────────────────────────────\n` +
+      `⚠️  PREVIOUS ATTEMPT FAILED - FIX REQUIRED\n` +
+      `──────────────────────────────────────────────────────────────\n\n` +
+      `${violationsText}\n\n` +
+      `Focus on fixing the root cause, not workarounds.\n\n` +
+      `──────────────────────────────────────────────────────────────`,
+    );
+  }
+
+  const runtimeContext = buildRuntimeContext(state);
+  if (runtimeContext) runtimeContextParts.push(runtimeContext);
+
   const config: PromptBuildConfig = {
     templates: {
       base: templateBase,
@@ -252,11 +209,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         : 'CREATION MODE: Build from scratch',
       referenceRequests: state.referenceRequests || [],
       hasUiInDocuments: getRACDocuments(resolvedActionWithDocs).some(
-        d => d.path?.startsWith('outputs/design/ui') || d.path?.includes('ui-'),
+        d => d.path?.startsWith(AP.UI) || d.path?.includes('ui-'),
       ),
       isSpecDriven: !!state.selectedSpec,
-      figmaAvailable: (state.figmaAvailable && !state.parsedUiDocs) || false,
+      figmaAvailable: (state.figmaAvailable && !poolView.hasUi()) || false,
       figmaStartNodeId: state.figmaStartNodeId || undefined,
+      runtimeContext: runtimeContextParts.join('\n\n'),
 
       // Injection-specific vars (pre-formatted)
       gitDiff: formattedGitDiff,
@@ -280,139 +238,22 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   };
 
   const promptResult = await promptBuilder.build(config);
-  
-  // Map PromptBuilder sections to composed structure for cache block compatibility
-  const composed = {
-    system: promptResult.sections.systemBase,
-    profiles: promptResult.sections.profiles,
-    rules: promptResult.sections.rules,
-    injections: promptResult.sections.injections,
-    examples: promptResult.sections.examples,
-    base: promptResult.user,
-    failedTemplates: promptResult.sections.failedTemplates,
-  };
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Block 1: System Prompt + Rules + Profiles (CACHED - static)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const systemPromptParts = [
-    composed.system,
-    composed.profiles,
-    composed.rules,
-    composed.examples
-  ].filter(Boolean);
-  
-  const systemPromptBlock: CacheableContent = {
-    type: 'text',
-    text: systemPromptParts.join('\n\n'),
-    cache_control: { type: 'ephemeral' }
-  };
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Block 2: Project Context (CACHED - changes per task)
-  // Verification tasks skip document context (irrelevant to build checks)
+  // Additional context parts for Block 2
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const foundationContract = isVerificationTask ? null : await buildFoundationContract(state);
   const schemaAnchor = isVerificationTask ? null : await buildSchemaAnchor(state);
 
-  const projectContextParts = [
-    composed.injections,
-    foundationContract,
-    schemaAnchor,
-  ].filter(Boolean);
-  
-  const projectContextBlock: CacheableContent = {
-    type: 'text',
-    text: projectContextParts.join('\n\n'),
-    cache_control: { type: 'ephemeral' }
-  };
-
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Cache stability check: detect non-deterministic block content
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  {
-    const currentTaskId = state.currentTask?.id || 'unknown';
-    if (_lastCacheBlockHashes.taskId !== currentTaskId) {
-      _lastCacheBlockHashes = { taskId: currentTaskId };
-    }
-
-    const b1Hash = createHash('md5').update(systemPromptBlock.text).digest('hex').slice(0, 12);
-    const b2Hash = createHash('md5').update(projectContextBlock.text).digest('hex').slice(0, 12);
-    const b1Len = systemPromptBlock.text.length;
-    const b2Len = projectContextBlock.text.length;
-    const histLen = state.conversationHistory?.length || 0;
-
-    if (_lastCacheBlockHashes.block1 && _lastCacheBlockHashes.block1 !== b1Hash) {
-      console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${_lastCacheBlockHashes.block1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
-      if (state.context?.featurePath && state._httpJobId) {
-        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-          getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
-            .logCacheInstability(currentTaskId, { block: 'block1', prevHash: _lastCacheBlockHashes.block1!, currHash: b1Hash, contentLength: b1Len, historyLength: histLen })
-            .catch(() => {});
-        }).catch(() => {});
-      }
-    }
-    if (_lastCacheBlockHashes.block2 && _lastCacheBlockHashes.block2 !== b2Hash) {
-      console.warn(`⚠️  [CacheStability] Block2 CHANGED between calls! prev=${_lastCacheBlockHashes.block2} curr=${b2Hash} len=${b2Len} (task=${currentTaskId}, hist=${histLen})`);
-      if (state.context?.featurePath && state._httpJobId) {
-        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-          getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
-            .logCacheInstability(currentTaskId, { block: 'block2', prevHash: _lastCacheBlockHashes.block2!, currHash: b2Hash, contentLength: b2Len, historyLength: histLen })
-            .catch(() => {});
-        }).catch(() => {});
-      }
-    }
-
-    if (histLen === 0) {
-      console.log(`🔑 [CacheStability] New task → Block1=${b1Hash}(${b1Len}) Block2=${b2Hash}(${b2Len})`);
-    }
-    _lastCacheBlockHashes = { block1: b1Hash, block2: b2Hash, taskId: currentTaskId };
-  }
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Area Budget Preflight: enforce per-area token limits
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  {
-    const preflightManager = new TokenBudgetManager();
-    const budgets = preflightManager.getAreaBudgets();
-
-    const block1Tokens = preflightManager.estimateTokens(systemPromptBlock.text);
-    const block2Tokens = preflightManager.estimateTokens(projectContextBlock.text);
-
-    console.log(`📐 [Preflight] Block1(system)=${block1Tokens.toLocaleString()} Block2(project)=${block2Tokens.toLocaleString()} / projectBudget=${budgets.projectContext.toLocaleString()}`);
-
-    if (block2Tokens > budgets.projectContext) {
-      const overBy = block2Tokens - budgets.projectContext;
-      console.warn(`⚠️  [Preflight] Block2 (projectContext) over budget by ${overBy.toLocaleString()} tokens — trimming injections`);
-
-      const trimmedParts = projectContextParts.map(part => {
-        if (!part || typeof part !== 'string') return part;
-        const partTokens = preflightManager.estimateTokens(part);
-        if (partTokens > budgets.projectContext * 0.6) {
-          const maxChars = Math.floor(budgets.projectContext * 0.6 * 2.8);
-          const truncated = part.slice(0, maxChars);
-          const lastNewline = truncated.lastIndexOf('\n');
-          const cleanCut = lastNewline > maxChars * 0.5 ? truncated.slice(0, lastNewline) : truncated;
-          console.log(`   ✂️  Truncated large injection: ${partTokens.toLocaleString()} → ~${preflightManager.estimateTokens(cleanCut).toLocaleString()} tokens`);
-          return cleanCut + `\n\n[... truncated (${(part.length - cleanCut.length).toLocaleString()} chars omitted to fit budget)]`;
-        }
-        return part;
-      });
-
-      projectContextBlock.text = trimmedParts.filter(Boolean).join('\n\n');
-    }
-  }
-
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Block 2.5: UI Images (NOT CACHED - multimodal blocks)
+  // UI Images (NOT CACHED - multimodal blocks)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const uiImageBlocks: CacheableContent[] = [];
   try {
     const llmProvider = state.deps?.llm?.provider;
     const canSendImages = llmProvider === 'anthropic';
 
-    // ✅ Load reference images on-demand if this is a UI task
-    if (uiDocForTask && canSendImages && state.deps?.fileSystem) {
+    if (hasUiArtifacts && canSendImages && state.deps?.fileSystem) {
       const uiReferenceImages = await ArtifactService.loadUiReferenceImages(state.context, state.deps.fileSystem);
       
       if (uiReferenceImages) {
@@ -422,8 +263,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         const rootPath = state.deps.fileSystem.getRootPath();
 
         const maxImages = parseInt(process.env.ANT_UI_IMAGE_MAX || '4', 10);
-        const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10); // 2MB
-        const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10); // 8MB
+        const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10);
+        const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10);
 
         const candidates: string[] = uiReferenceImages
           .filter(Boolean)
@@ -432,7 +273,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
         let totalBytes = 0;
 
-        // Add a small text header before images (helps LLM interpret upcoming blocks)
         if (candidates.length > 0) {
           const previewList = candidates.slice(0, maxImages).map(p => `- ${p}`).join('\n');
           uiImageBlocks.push({
@@ -450,7 +290,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         for (const rel of candidates) {
           if (uiImageBlocks.filter(b => (b as any).type === 'image').length >= maxImages) break;
 
-          // Resolve to absolute path safely within workspace root
           const abs = path.resolve(rootPath, rel);
           if (!abs.startsWith(rootPath)) continue;
           if (!fs.existsSync(abs)) continue;
@@ -496,200 +335,82 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   } catch (e) {
     console.warn(`⚠️  [UI Images] Failed to build image blocks (non-fatal):`, e);
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Block 3: Task Context (NOT CACHED - changes frequently)
+  // Assemble blocks via CacheBlockMapper
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const taskContextParts = [];
-  
-  // Add violations if present (retry scenario)
-  if (state.violations && state.violations.length > 0) {
-    const violationsText = state.violationMessage || formatViolations(state.violations);
-    const enforcementHeader = 
-      `──────────────────────────────────────────────────────────────\n` +
-      `⚠️  PREVIOUS ATTEMPT FAILED - FIX REQUIRED\n` +
-      `──────────────────────────────────────────────────────────────\n\n` +
-      `${violationsText}\n\n` +
-      `Focus on fixing the root cause, not workarounds.\n\n` +
-      `──────────────────────────────────────────────────────────────\n\n`;
-    taskContextParts.push(enforcementHeader);
-  }
-  
-  // Add runtime context (task description, plan, file tree)
-  const runtimeContext = buildRuntimeContext(state);
-  if (runtimeContext) {
-    taskContextParts.push(runtimeContext);
-  }
-  
-  const taskContextBlock: CacheableContent = {
-    type: 'text',
-    text: taskContextParts.join('\n\n')
-    // No cache_control - changes every turn
-  };
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Assemble First Message with Caching
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const contentBlocks: CacheableContent[] = [
-    systemPromptBlock,
-    projectContextBlock,
-    ...uiImageBlocks,
-    taskContextBlock
-  ];
-  
-  messages.push({
-    role: 'user',
-    content: contentBlocks
+  const preflightManager = new TokenBudgetManager();
+  const blocks = buildCacheableBlocks(promptResult, {
+    contextParts: [foundationContract, schemaAnchor].filter(Boolean) as string[],
+    mediaBlocks: uiImageBlocks.length > 0 ? uiImageBlocks : undefined,
+    tokenPreflight: {
+      maxBlock2Tokens: preflightManager.getAreaBudgets().projectContext,
+      estimateTokens: (t) => preflightManager.estimateTokens(t),
+    },
   });
-  
-  // ✅ Add conversation history (if exists)
-  if (state.conversationHistory && state.conversationHistory.length > 0) {
-    const tokenManager = new TokenBudgetManager();
-    
-    // Filter out initial user prompts (replaced by fresh prompt)
-    let skipInitialUserMessages = true;
-    const filteredHistory: typeof state.conversationHistory = [];
-    
-    for (const msg of state.conversationHistory) {
-      if (msg.role === 'assistant') {
-        skipInitialUserMessages = false;
-      }
-      
-      if (skipInitialUserMessages && msg.role === 'user') {
-        continue;
-      }
-      
-      // Remove code XML tags from assistant messages for token efficiency
-      if (msg.role === 'assistant' && typeof msg.content === 'string') {
-        filteredHistory.push({
-          ...msg,
-          content: cleanFileContentFromResponse(msg.content)
-        });
-      } else {
-        filteredHistory.push(msg);
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Cache stability check
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  {
+    const currentTaskId = state.currentTask?.id || 'unknown';
+    if (_lastCacheBlockHashes.taskId !== currentTaskId) {
+      _lastCacheBlockHashes = { taskId: currentTaskId };
+    }
+
+    const block1Text = blocks[0]?.type === 'text' ? blocks[0].text : '';
+    const block2Text = blocks[1]?.type === 'text' ? blocks[1].text : '';
+    const b1Hash = createHash('md5').update(block1Text).digest('hex').slice(0, 12);
+    const b2Hash = createHash('md5').update(block2Text).digest('hex').slice(0, 12);
+    const b1Len = block1Text.length;
+    const b2Len = block2Text.length;
+    const histLen = state.conversationHistory?.length || 0;
+
+    if (_lastCacheBlockHashes.block1 && _lastCacheBlockHashes.block1 !== b1Hash) {
+      console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${_lastCacheBlockHashes.block1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
+      if (state.context?.featurePath && state._httpJobId) {
+        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+          getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
+            .logCacheInstability(currentTaskId, { block: 'block1', prevHash: _lastCacheBlockHashes.block1!, currHash: b1Hash, contentLength: b1Len, historyLength: histLen })
+            .catch(() => {});
+        }).catch(() => {});
       }
     }
-    
-    // Universal 3-step compaction: microcompact → auto-compact → prune
-    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(filteredHistory, tokenManager);
-    
-    // Convert history to CacheableContent format
-    // If auto-compaction occurred, mark the summary block for prompt caching
-    // (it stays identical across turns until next compaction trigger)
-    let isFirstMsg = true;
-    for (const msg of prunedHistory) {
-      if (typeof msg.content === 'string') {
-        const shouldCache = wasCompacted && isFirstMsg && msg.role === 'assistant'
-          && msg.content.startsWith('[Auto-compacted:');
-        messages.push({
-          role: msg.role as 'user' | 'assistant',
-          content: [{
-            type: 'text',
-            text: msg.content,
-            ...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
-          }]
-        });
-      } else {
-        // Already in array format (tool results)
-        messages.push({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content
-        });
+    if (_lastCacheBlockHashes.block2 && _lastCacheBlockHashes.block2 !== b2Hash) {
+      console.warn(`⚠️  [CacheStability] Block2 CHANGED between calls! prev=${_lastCacheBlockHashes.block2} curr=${b2Hash} len=${b2Len} (task=${currentTaskId}, hist=${histLen})`);
+      if (state.context?.featurePath && state._httpJobId) {
+        import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+          getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
+            .logCacheInstability(currentTaskId, { block: 'block2', prevHash: _lastCacheBlockHashes.block2!, currHash: b2Hash, contentLength: b2Len, historyLength: histLen })
+            .catch(() => {});
+        }).catch(() => {});
       }
-      isFirstMsg = false;
     }
-    
-    // Check final token budget
-    let estimation = tokenManager.checkBudget(messages as any);
-    
-    if (estimation.isOverBudget) {
-      console.warn(`⚠️  [Execute] Over budget after standard pruning (${estimation.totalTokens.toLocaleString()} tokens). Attempting aggressive reduction...`);
 
-      // Aggressive step 1: re-prune history with minimal hot tail (1 turn)
-      const { result: aggressiveHistory } = compactAndPruneHistory(filteredHistory, tokenManager, {
-        microcompactHotTail: 1,
-        autoCompactThreshold: 20000,
-        autoCompactHotTail: 1,
-      });
-
-      // Rebuild messages: keep first message (system+context), replace history
-      const firstMsg = messages[0];
-      messages.length = 0;
-      messages.push(firstMsg);
-
-      for (const msg of aggressiveHistory) {
-        if (typeof msg.content === 'string') {
-          messages.push({
-            role: msg.role as 'user' | 'assistant',
-            content: [{ type: 'text', text: msg.content }]
-          });
-        } else {
-          messages.push({
-            role: msg.role as 'user' | 'assistant',
-            content: msg.content
-          });
-        }
-      }
-
-      estimation = tokenManager.checkBudget(messages as any);
-
-      // Aggressive step 2: strip project context content blocks if still over
-      if (estimation.isOverBudget && messages[0] && Array.isArray(messages[0].content)) {
-        console.warn(`⚠️  [Execute] Still over budget (${estimation.totalTokens.toLocaleString()}). Stripping project context block...`);
-        const contentBlocks = messages[0].content as MessageContentBlock[];
-        // Block 2 (index 1) is project context — replace with minimal stub
-        if (contentBlocks.length >= 2 && contentBlocks[1].type === 'text') {
-          const original = contentBlocks[1].text;
-          contentBlocks[1] = {
-            ...contentBlocks[1],
-            text: `[Project context omitted to fit token budget — use read_file and search_code tools to access codebase. Original size: ${original.length.toLocaleString()} chars]`
-          };
-        }
-        estimation = tokenManager.checkBudget(messages as any);
-      }
-
-      if (estimation.isOverBudget) {
-        throw new Error(
-          `[Execute] Token budget exceeded after aggressive reduction! ` +
-          `${estimation.totalTokens.toLocaleString()} tokens > ` +
-          `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
-        );
-      }
-
-      console.log(`✅ [Execute] Budget recovered after aggressive reduction: ${estimation.totalTokens.toLocaleString()} tokens`);
+    if (histLen === 0) {
+      console.log(`🔑 [CacheStability] New task → Block1=${b1Hash}(${b1Len}) Block2=${b2Hash}(${b2Len})`);
     }
-  } else {
-    // No history - just check base prompt tokens
-    const tokenManager = new TokenBudgetManager();
-    const estimation = tokenManager.checkBudget(messages as any);
-
-    if (estimation.isOverBudget && messages[0] && Array.isArray(messages[0].content)) {
-      console.warn(`⚠️  [Execute] First message over budget (no history). Stripping project context...`);
-      const contentBlocks = messages[0].content as MessageContentBlock[];
-      if (contentBlocks.length >= 2 && contentBlocks[1].type === 'text') {
-        const original = (contentBlocks[1] as { type: 'text'; text: string }).text;
-        contentBlocks[1] = {
-          ...contentBlocks[1],
-          text: `[Project context omitted to fit token budget — use read_file and search_code tools to access codebase. Original size: ${original.length.toLocaleString()} chars]`
-        };
-      }
-      const retryEstimation = tokenManager.checkBudget(messages as any);
-      if (retryEstimation.isOverBudget) {
-        throw new Error(
-          `[Execute] Token budget exceeded even without project context! ` +
-          `${retryEstimation.totalTokens.toLocaleString()} tokens > ` +
-          `${tokenManager['config'].maxTokens.toLocaleString()} limit.`
-        );
-      }
-      console.log(`✅ [Execute] Budget recovered: ${retryEstimation.totalTokens.toLocaleString()} tokens`);
-    }
+    _lastCacheBlockHashes = { block1: b1Hash, block2: b2Hash, taskId: currentTaskId };
   }
-  
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Compose messages via MessageComposer
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const { messages } = composeMessages({
+    initialBlocks: blocks,
+    priorTurns: state.conversationHistory,
+    cleanAssistantContent: cleanFileContentFromResponse,
+    budgetRecovery: {
+      aggressiveParams: { microcompactHotTail: 1, autoCompactThreshold: 20000, autoCompactHotTail: 1 },
+      stubBlockIndex: 1,
+      stubText: '[Project context omitted to fit token budget — use read_file and search_code tools to access codebase]',
+    },
+  });
+
   // ✅ Log prompt structure (not content)
   const jobId = state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
-      // Calculate total prompt length
       const totalPromptLength = messages.reduce((sum: number, m: any) => {
         if (Array.isArray(m.content)) {
           return sum + m.content.reduce((s: number, c: any) => s + (c.type === 'text' ? c.text.length : 0), 0);
@@ -721,12 +442,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           ].filter(Boolean)),
           injectedVariables: {
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            designDoc: designDocForTask ? `[${designDocForTask.length} chars]` : undefined,
-            designDocFiles: designDocFiles.length > 0 ? designDocFiles : undefined,
+            artifactPool: pool.length,
+            artifactsSelected: getRACDocuments(resolvedActionWithDocs).length,
+            include: state.currentTask?.include || undefined,
             packages: state.currentTask?.packages || undefined,
-            prdSpec: (state.sourceDocuments || state.prd) ? `[${(buildAllSourceDocs(state.sourceDocuments) || state.prd || '').length} chars]` : undefined,
-            uiDoc: uiDocForTask ? `[${uiDocForTask.length} chars]` : undefined,
-            uiDocSections: uiDocForTask ? (state.currentTask?.uiSections ?? ['all']) : undefined,
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
             detectedMode: state.resolvedAction?.mode,
             taskType: state.currentTask?.type,
@@ -741,21 +460,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
             profileLanguage: state.techTier?.language || null,
             profileFramework: state.techTier?.framework || null,
-            profilesLoaded: !!composed.profiles,
-            failedTemplates: composed.failedTemplates.length > 0 ? composed.failedTemplates : undefined,
+            profilesLoaded: !!promptResult.sections.profiles,
+            failedTemplates: promptResult.sections.failedTemplates.length > 0 ? promptResult.sections.failedTemplates : undefined,
           },
         }
       );
     } catch (logError) {
       console.warn(`⚠️  [Execute] Failed to log prompt:`, logError);
     }
-  }
-  
-  // Anthropic API requires conversation to end with a user message.
-  // After resume from interrupt, history may end with assistant turn.
-  if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
-    console.warn(`⚠️ [Execute] Messages end with assistant role — appending user continuation`);
-    messages.push({ role: 'user', content: [{ type: 'text', text: 'Continue.' }] });
   }
 
   return messages;
@@ -1051,8 +763,8 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Project Code Context Condensation
-// Mirrors Design job's buildCondensedSourceDocs pattern:
+// Project Code Context Compaction
+// Mirrors Design job's buildCompactedSourceDocs pattern:
 // when total content exceeds threshold, switch to skeleton mode
 // (signatures + line counts) and let LLM use read_file on demand.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1060,11 +772,11 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
 const CODE_CONTEXT_THRESHOLD = 200_000; // chars (~70K tokens at 2.8 ratio)
 
 /**
- * Condense projectCodeContext when total content exceeds threshold.
+ * Compact projectCodeContext when total content exceeds threshold.
  * Priority-based: error-source files keep full content, others get skeleton.
  * Two-pass budget redistribution inspired by sourceSelector.ts.
  */
-function condenseProjectCodeContext(
+function compactProjectCodeContext(
   context: ProjectCodeContext,
   language?: string,
 ): ProjectCodeContext {
@@ -1073,7 +785,7 @@ function condenseProjectCodeContext(
   const totalChars = context.files.reduce((sum, f) => sum + (f.content?.length || 0), 0);
   if (totalChars <= CODE_CONTEXT_THRESHOLD) return context;
 
-  console.log(`📦 [CodeContext] Condensing: ${totalChars.toLocaleString()} chars > ${CODE_CONTEXT_THRESHOLD.toLocaleString()} threshold (${context.files.length} files)`);
+  console.log(`📦 [CodeContext] Compacting: ${totalChars.toLocaleString()} chars > ${CODE_CONTEXT_THRESHOLD.toLocaleString()} threshold (${context.files.length} files)`);
 
   const errorSourcePaths = new Set<string>();
   if (context.stats.errorFilesCount > 0) {
@@ -1083,12 +795,12 @@ function condenseProjectCodeContext(
   }
 
   let usedChars = 0;
-  const condensedFiles: typeof context.files = [];
+  const compactedFiles: typeof context.files = [];
 
   // Pass 1: error-source files keep full content (highest priority)
   for (const file of context.files) {
     if (errorSourcePaths.has(file.path)) {
-      condensedFiles.push(file);
+      compactedFiles.push(file);
       usedChars += file.content?.length || 0;
     }
   }
@@ -1103,30 +815,30 @@ function condenseProjectCodeContext(
     for (const file of nonErrorFiles) {
       const contentLen = file.content?.length || 0;
       if (contentLen <= perFileBudget) {
-        condensedFiles.push(file);
+        compactedFiles.push(file);
         usedChars += contentLen;
       } else {
         const skeleton = buildFileSkeleton(file.path, file.content || '', language);
-        condensedFiles.push({ ...file, content: skeleton });
+        compactedFiles.push({ ...file, content: skeleton });
         usedChars += skeleton.length;
       }
     }
   } else {
     for (const file of nonErrorFiles) {
       const skeleton = buildFileSkeleton(file.path, file.content || '', language);
-      condensedFiles.push({ ...file, content: skeleton });
+      compactedFiles.push({ ...file, content: skeleton });
       usedChars += skeleton.length;
     }
   }
 
-  const skeletonCount = condensedFiles.filter(f =>
+  const skeletonCount = compactedFiles.filter(f =>
     f.content?.startsWith('[skeleton]')
   ).length;
-  console.log(`   ✅ Condensed: ${usedChars.toLocaleString()} chars (${skeletonCount} skeleton, ${condensedFiles.length - skeletonCount} full)`);
+  console.log(`   ✅ Compacted: ${usedChars.toLocaleString()} chars (${skeletonCount} skeleton, ${compactedFiles.length - skeletonCount} full)`);
 
   return {
     ...context,
-    files: condensedFiles,
+    files: compactedFiles,
     stats: {
       ...context.stats,
       estimatedTokens: Math.ceil(usedChars / 2.8),
@@ -1298,11 +1010,6 @@ function extractTableSchemas(sql: string): string[] {
 
   return results;
 }
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Spec Document Condensation — now uses shared condenseContent()
-// from core/utils/contentCondenser.ts.  See call site above.
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Helpers for PromptBuilder vars (pre-formatting injection data)

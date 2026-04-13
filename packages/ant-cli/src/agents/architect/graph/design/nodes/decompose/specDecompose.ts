@@ -21,8 +21,9 @@ import {
   resolveLLMClient,
   showChatPlaceholder,
   trackTokenUsage,
+  type CheckpointData,
 } from "./helpers";
-import { buildTechTier } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier } from "@ant/shared";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -181,6 +182,7 @@ export async function decomposeSpec(
       sectionIndex: index,
       totalSections: sections.length,
       sectionScope: section.scope,
+      include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
       parallelGroup: `spec-${slug}`,
       completed: false,
     };
@@ -197,6 +199,13 @@ export async function decomposeSpec(
     { targetFile, slug, title, sectionCount: sections.length, jobMode }
   );
 
+  // Spec uses project-level profile; stack inferred from intent
+  const specStack = state.resolvedAction?.intent?.includes('-fe') ? 'frontend' as const
+    : state.resolvedAction?.intent?.includes('-be') ? 'backend' as const
+    : undefined;
+  const specTechTier = buildTechTier(state.profile, specStack);
+  console.log(`✅ TechTier: stack=${specStack || 'unset'}, language=${specTechTier.language}, framework=${specTechTier.framework || 'none'}`);
+
   await saveCheckpoint(state, {
     taskQueue: taskQueue.getAll(),
     completedTasks: [],
@@ -207,16 +216,9 @@ export async function decomposeSpec(
     estimatingTokenUsage: state.tokenUsage,
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
-    userLanguage: state.context.userLanguage,
+    userLanguage: state.context.userLanguage as CheckpointData['userLanguage'],
     techTier: specTechTier,
   });
-
-  // Spec uses project-level profile; stack inferred from intent
-  const specStack = state.resolvedAction?.intent?.includes('-fe') ? 'frontend' as const
-    : state.resolvedAction?.intent?.includes('-be') ? 'backend' as const
-    : undefined;
-  const specTechTier = buildTechTier(state.profile, specStack);
-  console.log(`✅ TechTier: stack=${specStack || 'unset'}, language=${specTechTier.language}, framework=${specTechTier.framework || 'none'}`);
 
   return {
     ...state,
@@ -232,6 +234,6 @@ export async function decomposeSpec(
       ...(state._phaseTimings || {}),
       decompose: Date.now() - ctx.phaseStart,
     },
-    boundary: 'lightweight' as const,
+    boundary: BOUNDARY.LIGHTWEIGHT,
   } as any;
 }
