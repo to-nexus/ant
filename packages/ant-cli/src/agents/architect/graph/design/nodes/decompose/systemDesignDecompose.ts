@@ -10,6 +10,7 @@ import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../code/state";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
+import { ARTIFACT_PREFIX } from '@ant/shared';
 import {
   parseLLMJsonResponse,
   saveCheckpoint,
@@ -20,7 +21,7 @@ import {
   trackTokenUsage,
 } from "./helpers";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
-import { type Mode, buildTechTier, type Stack, resolveTaskTechTiers as resolveTaskTechTiersShared, type PackageTierEntry } from "@ant/shared";
+import { BOUNDARY, type Mode, buildTechTier, type Stack, resolveTaskTechTiers as resolveTaskTechTiersShared, type PackageTierEntry } from "@ant/shared";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -274,6 +275,7 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
       targetService: taskData.targetService,
       assignedSections: taskData.assignedSections,
       sourceFiles: Array.isArray((taskData as any).sourceFiles) ? (taskData as any).sourceFiles : undefined,
+      include: [ARTIFACT_PREFIX.SOURCES],
       isLastTaskForDocument: lastTaskIdPerFile.has(taskData.id),
       packages,
       techTiers: taskTechTiers,
@@ -623,6 +625,6 @@ export async function decomposeSystemDesign(
     jobId: ctx.newJobId,
     jobTiming: finalJobTiming,
     _estimatingTokenUsage: estimatingTokenUsage,
-    boundary: 'heavyweight' as const,
+    boundary: BOUNDARY.HEAVYWEIGHT,
   } as any;
 }

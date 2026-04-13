@@ -1,4 +1,5 @@
-import { CodebaseProfile, TaskArtifacts } from "../../../../core/types";
+import { CodebaseProfile } from "../../../../core/types";
+import type { ParsedUiDocs } from "../../../../core/types/uiDoc";
 import type { ConversationEntry } from "../../../../core/types/session";
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
@@ -7,7 +8,7 @@ import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/promp
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/nodes/triage/types';
-import type { ResolvedActionContext, ResolvedArtifact, TechTier } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, TechTier, Boundary } from '@ant/shared';
 
 // Re-export for convenience (so files can still import TaskQueue from code/state)
 export { TaskQueue } from "../../types/task";
@@ -165,21 +166,37 @@ export interface ValidationResult {
 /**
  * Code Task State (REFACTORED)
  * State for code generation graph (generate/refactor/explain)
- * 
- * Inherits TaskArtifacts which provides:
- * - prd: PRD document
- * - directive: User instruction
- * - design: Latest design document
- * - profile: Codebase profile (language/framework)
+ *
+ * Legacy artifact fields are declared directly below.
+ * Pool-based nodes use `artifacts: ResolvedArtifact[]`; the legacy fields
+ * are retained only until all consumers migrate to the pool.
  */
-export interface ArchitectGraphState extends TaskArtifacts, TriageableState {
+export interface ArchitectGraphState extends TriageableState {
   // Context (narrowed from TriageableContext)
   context: ProjectContext & { enableEvaluation?: boolean };
-  workspaceConfig?: any;  // Workspace config for job/node-specific model selection
-  
+  workspaceConfig?: any;
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Legacy artifact fields (previously inherited, now declared directly)
+  // Note: `directive` is inherited from ResolvableState via TriageableState.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  prd?: string;
+  sourceDocuments?: Record<string, string>;
+  design?: string;
+  designDocPath?: string;
+  code?: string;
+  codeHead?: string;
+  parsedUiDocs?: ParsedUiDocs;
+  profile?: CodebaseProfile;
+  hasUiDoc?: boolean;
+  isSpecDriven?: boolean;
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Unified artifact pool (resolve output, consumed by all downstream nodes)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  artifacts?: ResolvedArtifact[];
+
   // RAC (detect output, immutable) + TechTier (decompose output)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   resolvedAction?: ResolvedActionContext;
   resolvedArtifacts?: ResolvedArtifact[];
   techTier?: TechTier;
@@ -457,7 +474,7 @@ export interface ArchitectGraphState extends TaskArtifacts, TriageableState {
   _infraProjectPath?: string;
 
   // Inter-Job Context Bridge
-  boundary?: 'heavyweight' | 'lightweight';
+  boundary?: Boundary;
   jobConversation?: ConversationEntry[];
 }
 

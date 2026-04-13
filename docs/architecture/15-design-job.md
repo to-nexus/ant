@@ -136,6 +136,7 @@ runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다
 ## 경계
 
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
+- Tool 시스템 (도구 카탈로그, 레지스트리, 오케스트레이터): [19-tool-system.md](19-tool-system.md)
 - Code Job: [14-code-job.md](14-code-job.md)
 - 프롬프트 템플릿: [13-prompt-system.md](13-prompt-system.md)
 - UI Design 파이프라인 상세: [25-ui-design-pipeline.md](25-ui-design-pipeline.md)

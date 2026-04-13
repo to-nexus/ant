@@ -16,9 +16,11 @@ import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "../code/parallel/types";
 import { routeAfterDocGen } from "./routers/docGenRouter";
 import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
+import type { InterruptionReason } from '../../../../core/types/session';
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { designSubdirOf } from "@ant/shared";
 import path from "node:path";
+import { toFeatureRelative, appendOrUpdatePool, scanDesignOutputs } from '../../../../core/prompt/builder/ArtifactPipeline';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -481,6 +483,17 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       );
     }
     
+    // Pool update: append generated files to artifact pool before clearing files[]
+    const featurePath = state.context.featurePath || '';
+    const newOutputs = (state.files || [])
+      .filter(f => f.content && f.path && f.actionType !== 'delete')
+      .map(f => ({
+        path: toFeatureRelative(f.path, featurePath),
+        content: f.content,
+        role: 'ref' as const,
+      }));
+    const updatedPool = appendOrUpdatePool(state.artifacts || [], newOutputs);
+
     // Apply conversation retention policy (compact or discard based on context)
     const { applyRetention } = await import('../../../../core/utils/conversationRetention');
     const nextTask = state.taskQueue?.peek();
@@ -499,6 +512,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       planText: '',
       conversationHistory: retainedHistory,
       files: [],
+      artifacts: updatedPool,
       fileErrors: undefined,
       tokenUsage: state.tokenUsage,
       _docGenCallIndex: 0,
@@ -558,6 +572,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     deps: state.deps,
     resolvedAction: state.resolvedAction,
     techTier: state.techTier,
+    artifacts: state.artifacts,
     prd: state.prd,
     sourceDocuments: state.sourceDocuments,
     directive: state.directive,
@@ -694,7 +709,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   userLanguage: state.context.userLanguage,
                   ...(checkpoint.interruption ? {
                     interruption: {
-                      reason: checkpoint.interruption.reason,
+                      reason: checkpoint.interruption.reason as InterruptionReason,
                       message: `Design paused: ${checkpoint.interruption.reason}`,
                       timestamp: new Date().toISOString(),
                       canResume: checkpoint.interruption.canResume,
@@ -819,10 +834,19 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     }
   }
 
+  // Refresh artifact pool from disk after parallel execution (workers operate on separate copies)
+  const parallelFeaturePath = state.context.featurePath || '';
+  const refreshedOutputs = parallelFeaturePath ? scanDesignOutputs(parallelFeaturePath) : [];
+  const refreshedPool = appendOrUpdatePool(
+    (state.artifacts || []).filter(a => !a.path.startsWith('outputs/design/')),
+    refreshedOutputs,
+  );
+
   return {
     completedTasks: result.completedTasks.map(t => t.id),
     completedTasksDetails: result.completedTasks,
     currentTask: undefined,
+    artifacts: refreshedPool,
     tokenUsage: result.tokenUsage || state.tokenUsage,
     interruption: result.hasInterruptedTasks ? {
       reason: result.interruptReason || 'recursion_limit',
@@ -868,12 +892,16 @@ const DesignGraphAnnotation = Annotation.Root({
   // ✅ Error handling for invalid requests (e.g., modify without documents)
   designError: Annotation<any>,
 
-  // Artifacts
+  // Unified artifact pool (Phase 3: cross-job unification)
+  artifacts: Annotation<any>,
+
+  // Artifacts (legacy — retained for decompose/learn)
   prd: Annotation<any>,
   directive: Annotation<any>,
   design: Annotation<any>,
   existingDesignDocs: Annotation<any>,
   sourceDocuments: Annotation<any>,
+  profile: Annotation<any>,
 
   // Task Queue (like code graph)
   taskQueue: Annotation<any>,
@@ -945,6 +973,10 @@ const DesignGraphAnnotation = Annotation.Root({
   _noOutputCallCount: Annotation<any>,
   _toolResultCache: Annotation<any>,
   fileErrors: Annotation<any>,
+
+  // ✅ Asset validation (checkTaskStatus ↔ docGenRouter)
+  _assetValidationFailed: Annotation<any>,
+  _assetValidationRetried: Annotation<any>,
 
   // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
   awaitingDetectClarify: Annotation<any>,

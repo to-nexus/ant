@@ -8,6 +8,7 @@ import type { ConversationEntry } from "../../../../../core/types/session";
 import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
 import type { ResolveStrategy } from '../../../../common/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/nodes/resolve/utils';
+import { scanDesignOutputs, buildDesignArtifactPool } from '../../../../../core/prompt/builder/ArtifactPipeline';
 
 const DESIGN_FILE_PATTERNS = [
   /^api-contract-.+\.md$/,
@@ -103,8 +104,17 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       }
     }
 
+    // Build artifact pool from disk (restores previous task outputs including UI docs)
+    const designOutputs = featurePath ? scanDesignOutputs(featurePath) : [];
+    const artifacts = buildDesignArtifactPool({
+      sourceDocuments,
+      designOutputs,
+    });
+    console.log(`📄 [Design Resolve] Resume pool: ${artifacts.length} artifacts (${designOutputs.length} from disk)`);
+
     return {
       existingDesignDocs,
+      artifacts,
       ...(prd !== undefined ? { prd } : {}),
       ...(sourceDocuments !== undefined ? { sourceDocuments } : {}),
     } as Partial<DesignGraphState>;
@@ -283,6 +293,15 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       throw new Error("Generate mode requires source documents in inputs/sources/");
     }
 
+    // Build artifact pool from sources + existing design outputs
+    const designOutputs = context.featurePath ? scanDesignOutputs(context.featurePath) : [];
+    const artifacts = buildDesignArtifactPool({
+      sourceDocuments,
+      designOutputs,
+      design,
+    });
+    console.log(`📄 [Design Resolve] Initial pool: ${artifacts.length} artifacts (${designOutputs.length} outputs, ${Object.keys(sourceDocuments || {}).length} sources)`);
+
     return {
       context,
       featurePath: context.featurePath,
@@ -291,6 +310,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       directive,
       design,
       existingDesignDocs,
+      artifacts,
       figmaConfig,
       resolvedAction: state.resolvedAction,
       overrideDirective: state.overrideDirective,

@@ -118,6 +118,10 @@ export interface PromptBuildResult {
     profiles: string;
     /** Examples section (if includeExamples). */
     examples: string;
+    /** Guardrail section (when applyPolicyGuardrails). Prepended to system. */
+    guardrail: string;
+    /** Policy section (when applyPolicyGuardrails). Appended to system. */
+    policy: string;
     /** Templates that failed to render (for diagnostics). */
     failedTemplates: string[];
   };

@@ -7,10 +7,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { join } from 'path';
 import { FilePromptAdapter, initPartials } from '../src/periphery/adapters/prompt/FilePromptAdapter';
-import { resolveDesignDocForTask } from '../src/agents/architect/graph/code/nodes/documentResolver';
-import { prepareDesignDocument } from '../src/agents/architect/graph/code/nodes/decompose/designSelector';
-import { condenseContent } from '../src/core/utils/contentCondenser';
-import { buildAllSourceDocs } from '../src/core/utils/sourceDocuments';
+import { selectArtifacts } from '../src/core/prompt/builder/ArtifactPipeline';
+import { compactContent } from '../src/core/utils/contentCompactor';
 import type { ResolvedArtifact, ResolvedActionContext } from '@ant/shared';
 
 const TEMPLATES_DIR = join(__dirname, '../src/core/prompt/templates');
@@ -31,66 +29,73 @@ function rac(overrides?: Partial<ResolvedActionContext>): ResolvedActionContext 
 }
 
 // ============================================================================
-// A. Resolver Tests — what documents go into the prompt
+// A. Pipeline Tests — pool builder + artifact selection
 // ============================================================================
 
-describe('Integration A: resolveDesignDocForTask', () => {
-  const featureTask = { id: 't1', name: 'Build', type: 'feature', priority: 200, description: 'Build', packages: ['fe-main'] } as any;
-  const verifyTask = { id: 't2', name: 'Verify', type: 'verification', priority: 1000, description: 'Verify' } as any;
-  const errorTask = { id: 't3', name: 'Fix', type: 'error', priority: 500, description: 'Fix error' } as any;
-  const uiTask = { id: 't4', name: 'UI', type: 'ui', priority: 200, description: 'UI impl', uiSections: ['header'] } as any;
+describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', () => {
+  it('feature task with design artifacts → selected by default', () => {
+    const pool: ResolvedArtifact[] = [
+      { path: 'outputs/design/system/fe-system-main.md', content: '# Frontend System Design\nNext.js app', role: 'ref' },
+    ];
+    expect(pool.some(a => a.path.includes('fe-system-main'))).toBe(true);
 
-  it('feature task with designDocs and packages → design doc content', () => {
-    const state = {
-      designDocs: {
-        feDesigns: { main: '# Frontend System Design\nNext.js app' },
-        apiContracts: {},
-        beDesigns: {},
-      },
-    } as any;
-    const result = resolveDesignDocForTask(featureTask, state);
-    expect(result).toContain('Frontend System Design');
-    expect(result.length).toBeGreaterThan(0);
+    const selected = selectArtifacts(pool, { taskType: 'feature' });
+    expect(selected.some(a => a.content.includes('Frontend System Design'))).toBe(true);
   });
 
-  it('verification task → empty (no design context)', () => {
-    const state = {
-      designDocs: { feDesigns: { main: 'Design' }, apiContracts: {}, beDesigns: {} },
-    } as any;
-    const result = resolveDesignDocForTask(verifyTask, state);
-    expect(result).toBe('');
+  it('verification task → empty selection regardless of pool', () => {
+    const pool: ResolvedArtifact[] = [
+      { path: 'outputs/design/system/fe-system-main.md', content: 'Design', role: 'ref' },
+    ];
+    expect(pool.length).toBeGreaterThan(0);
+
+    const selected = selectArtifacts(pool, { taskType: 'verification' });
+    expect(selected).toHaveLength(0);
   });
 
-  it('error task → empty (selectedSpec handled post-resolver)', () => {
-    const state = {
-      designDocs: { feDesigns: { main: 'Design' }, apiContracts: {}, beDesigns: {} },
-      selectedSpec: 'login',
-      specDocs: { login: 'Login feature spec' },
-    } as any;
-    const result = resolveDesignDocForTask(errorTask, state);
-    expect(result).toBe('');
+  it('error task without spec → empty selection', () => {
+    const pool: ResolvedArtifact[] = [
+      { path: 'outputs/design/system/fe-system-main.md', content: 'Design', role: 'ref' },
+    ];
+    const selected = selectArtifacts(pool, { taskType: 'error' });
+    expect(selected).toHaveLength(0);
   });
 
-  it('ui task → empty (uses ui-doc, not design doc)', () => {
-    const state = {} as any;
-    const result = resolveDesignDocForTask(uiTask, state);
-    expect(result).toBe('');
+  it('error task with specDocs in pool → spec selected', () => {
+    const pool: ResolvedArtifact[] = [
+      { path: 'outputs/design/system/api-contract-main.md', content: 'API contract', role: 'ref' },
+      { path: 'outputs/design/spec/spec-login', content: 'Login feature spec', role: 'ref' },
+    ];
+    const selected = selectArtifacts(pool, { taskType: 'error' });
+    expect(selected.some(a => a.path.includes('spec-login'))).toBe(true);
+    expect(selected.some(a => a.path.includes('api-contract'))).toBe(true);
   });
 
-  it('spec-driven task → selectedSpec + apiContracts', () => {
-    const specTask = { ...featureTask, packages: ['fe-main'] };
-    const state = {
-      selectedSpec: 'auth',
-      specDocs: { auth: 'Authentication specification' },
-      designDocs: {
-        apiContracts: { main: 'API contract content' },
-        feDesigns: { main: 'FE design' },
-        beDesigns: {},
-      },
-    } as any;
-    const result = resolveDesignDocForTask(specTask, state);
-    expect(result).toContain('Authentication specification');
-    expect(result).toContain('API contract content');
+  it('ui task → only UI docs selected', () => {
+    const pool: ResolvedArtifact[] = [
+      { path: 'outputs/design/system/fe-system-main.md', content: 'FE design', role: 'ref' },
+      { path: 'outputs/design/ui/tokens', content: '{ "colors": {} }', role: 'context' },
+      { path: 'outputs/design/ui/spec/header', content: 'Header spec', role: 'context' },
+    ];
+    const selected = selectArtifacts(pool, { taskType: 'ui' });
+    expect(selected.every(a => a.path.startsWith('outputs/design/ui/'))).toBe(true);
+    expect(selected.length).toBeGreaterThan(0);
+  });
+
+  it('include patterns → exact path matching', () => {
+    const pool: ResolvedArtifact[] = [
+      { path: 'outputs/design/system/fe-system-main.md', content: 'FE design', role: 'ref' },
+      { path: 'outputs/design/system/api-contract-auth.md', content: 'Auth contract', role: 'ref' },
+      { path: 'outputs/design/system/be-system-auth.md', content: 'BE auth design', role: 'ref' },
+      { path: 'outputs/design/spec/spec-auth', content: 'Auth specification', role: 'ref' },
+    ];
+    const selected = selectArtifacts(pool, {
+      taskType: 'feature',
+      include: ['outputs/design/spec/spec-auth', 'outputs/design/system/api-contract-'],
+    });
+    expect(selected.some(a => a.path.includes('spec-auth'))).toBe(true);
+    expect(selected.some(a => a.path.includes('api-contract-auth'))).toBe(true);
+    expect(selected.some(a => a.path.includes('fe-system'))).toBe(false);
   });
 });
 
@@ -160,136 +165,11 @@ describe('Integration B: Document assembly logic', () => {
       parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
     }
     const combined = parts.join('\n\n────────────────────────────────────────\n\n');
-    const condensed = condenseContent(combined, { threshold: 30_000, label: 'Spec Document: login', filePath: 'outputs/design/spec/login' });
+    const compacted = compactContent(combined, { threshold: 30_000, label: 'Spec Document: login', filePath: 'outputs/design/spec/login' });
 
-    expect(condensed.wasCondensed).toBe(false);
-    expect(condensed.content).toContain('Login feature specification');
-    expect(condensed.content).toContain('API contract');
+    expect(compacted.wasCompacted).toBe(false);
+    expect(compacted.content).toContain('Login feature specification');
+    expect(compacted.content).toContain('API contract');
   });
 });
 
-// ============================================================================
-// C. Full Pipeline — buildExecutePrompt with assembled documents
-// ============================================================================
-
-// TODO: Rewrite this test for PromptBuilder pipeline
-describe.skip('Integration C: buildExecutePrompt with documents', () => {
-  it('Scenario 1: infer + 3 documents → text contains all documents', async () => {
-    const docs: ResolvedArtifact[] = [
-      { path: 'system-design', content: '# Frontend Design\nNext.js app with SSR', role: 'ref', label: 'System Design' },
-      { path: 'prd', content: '# PRD\nBuild a dashboard app', role: 'context', label: 'PRD Specification' },
-      { path: 'ui-spec', content: '# UI Spec\nDashboard layout', role: 'context', label: 'UI Specification' },
-    ];
-    const result = await engine.buildExecutePrompt('code', baseCtx, {
-      directive: 'Build the dashboard',
-      documents: docs,
-      resolvedAction: rac({ documents: docs }),
-      currentTask: { name: 'Build', type: 'feature', priority: 200, description: 'Build' },
-    }, undefined, 'feature');
-
-    const text = engine.extractPromptText(result);
-    expect(text).toContain('System Design');
-    expect(text).toContain('PRD Specification');
-    expect(text).toContain('UI Specification');
-    expect(result.modeConfig.templates.injections).toContain('common/injections/action-context');
-  });
-
-  it('Scenario 2: explicit + documents → action-context injected', async () => {
-    const docs: ResolvedArtifact[] = [
-      { path: 'inputs/spec.md', content: '# Feature Spec\nUser feature', role: 'ref', label: 'Feature Spec' },
-    ];
-    const result = await engine.buildExecutePrompt('code', baseCtx, {
-      directive: 'Implement feature',
-      documents: docs,
-      resolvedAction: rac({ source: 'explicit', hasExplicitFields: true, documents: docs }),
-      currentTask: { name: 'Impl', type: 'feature', priority: 200, description: 'Implement' },
-    }, undefined, 'feature');
-
-    expect(result.modeConfig.templates.injections).toContain('common/injections/action-context');
-  });
-
-  it('Scenario 3: verification task → no design/prd injections, uses verify templates', async () => {
-    const result = await engine.buildExecutePrompt('code', baseCtx, {
-      currentTask: { name: 'Verify', type: 'verification', priority: 1000, description: 'Verify build' },
-    }, undefined, 'verification');
-
-    expect(result.modeConfig.templates.base).toContain('verification');
-    expect(result.modeConfig.templates.rules).toContain('verification');
-    const inj = result.modeConfig.templates.injections;
-    expect(inj.some(i => i.includes('browser/rules'))).toBe(false);
-    expect(inj.some(i => i.includes('tool-calling'))).toBe(false);
-  });
-
-  it('Scenario 4: error + frontend → preview-setup injected', async () => {
-    const ctx = { ...baseCtx, detectedEnvironment: 'frontend' };
-    const result = await engine.buildExecutePrompt('code', ctx, {
-      directive: 'Fix the error in login page',
-      documents: [{ path: 'spec', content: '# Spec\nLogin spec', role: 'ref', label: 'Spec' }],
-      resolvedAction: rac({ documents: [{ path: 'spec', content: '# Spec', role: 'ref' }] }),
-      currentTask: { name: 'Fix', type: 'error', priority: 500, description: 'Fix error' },
-    }, undefined, 'error');
-
-    expect(result.modeConfig.templates.base).toContain('error');
-    expect(result.modeConfig.templates.injections.some(i => i.includes('preview-setup'))).toBe(true);
-  });
-
-  it('Scenario 5: design job + source-docs document', async () => {
-    const docs: ResolvedArtifact[] = [
-      { path: 'source-docs', content: '# PRD for design\nBuild an API', role: 'context', label: 'PRD Specification' },
-    ];
-    const result = await engine.buildExecutePrompt('design', baseCtx, {
-      directive: 'Design the backend API',
-      documents: docs,
-      resolvedAction: rac({ documents: docs }),
-      currentTask: { name: 'Design BE', type: 'feature', priority: 200, description: 'Design', targetFile: 'be-system-main.md' } as any,
-    }, undefined, undefined);
-
-    expect(result.modeConfig.templates.base).toBe('design/phases/execute/base-system-design');
-    expect(result.modeConfig.templates.rules).toBe('design/phases/execute/rules-system-design');
-  });
-
-  it('Scenario 6: plan phase with documents', async () => {
-    const docs: ResolvedArtifact[] = [
-      { path: 'fe-system-main.md', content: '# Frontend System Design', role: 'ref', label: 'Design' },
-      { path: 'ui-spec', content: '# UI Specification', role: 'context', label: 'UI Spec' },
-    ];
-    const rendered = await engine.buildTaskPlanPrompt(
-      { id: 't1', name: 'Setup', description: 'Setup project', type: 'setup' },
-      'Build an app',
-      docs,
-      { files: [], stats: { filesLoaded: 0, estimatedTokens: 0 } },
-    );
-    expect(rendered).toContain('Frontend System Design');
-    expect(rendered).toContain('UI Specification');
-  });
-
-  it('Scenario 7: decompose with fe+be designDocs → individual documents', () => {
-    const state = {
-      designDocs: {
-        apiContracts: { main: '# API Contract\nREST endpoints' },
-        feDesigns: { main: '# Frontend\nReact dashboard' },
-        beDesigns: { main: '# Backend\nNode.js API' },
-      },
-      design: '',
-    } as any;
-
-    const result = prepareDesignDocument(state);
-    expect(result.hasDocuments).toBe(true);
-    expect(result.documents.length).toBe(3);
-    const paths = result.documents.map(d => d.path);
-    expect(paths).toContain('api-contract-main.md');
-    expect(paths).toContain('fe-system-main.md');
-    expect(paths).toContain('be-system-main.md');
-  });
-
-  it('Scenario 8: sourceDocuments → buildAllSourceDocs', () => {
-    const sourceDocuments: Record<string, string> = {
-      'feature-spec.md': '# Feature Spec\nDashboard feature',
-      'api-reference.md': '# API Reference\nEndpoints list',
-    };
-    const result = buildAllSourceDocs(sourceDocuments);
-    expect(result).toContain('Feature Spec');
-    expect(result).toContain('API Reference');
-    expect(result!.length).toBeGreaterThan(0);
-  });
-});

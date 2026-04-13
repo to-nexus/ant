@@ -412,3 +412,5 @@ NONE available.
 {{/if}}
 
 **For XML tag syntax and output format details, see execute/rules.md**
+
+{{{runtimeContext}}}

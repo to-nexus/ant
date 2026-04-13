@@ -77,8 +77,6 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       userLanguage: state.context.userLanguage,
       resolvedAction: state.resolvedAction,
       directive: state.directive,
-      design: state.design,
-      prd: state.prd,
       projectCodeContext: state.projectCodeContext ? {
         source: state.projectCodeContext.source,
         filePaths: state.projectCodeContext.filePaths || [],

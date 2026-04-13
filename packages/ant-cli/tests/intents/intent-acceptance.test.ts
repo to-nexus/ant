@@ -1,4 +1,3 @@
-// TODO: Rewrite PromptEngine-dependent tests for PromptBuilder pipeline
 import { describe, it, expect, beforeAll } from 'vitest';
 import { join } from 'path';
 import { FilePromptAdapter, initPartials } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
@@ -6,18 +5,26 @@ import {
   resolveToRAC,
   getConfigSlots,
   deriveFromIntent,
+  getPromptPolicies,
+  POLICY_TEMPLATE_MAP,
 } from '@ant/shared';
-import type { IntentId } from '@ant/shared';
-import type { ResolvedArtifact } from '@ant/shared';
+import type { IntentId, ResolvedArtifact, PolicyKey } from '@ant/shared';
+import { PromptBuilder } from '../../src/core/prompt/builder/PromptBuilder';
+import { deriveArtifactPolicies } from '../../src/core/prompt/builder/ArtifactRoleResolver';
+import type { PromptBuildConfig } from '../../src/core/prompt/builder/PromptBuildConfig';
 import { FIXTURES, IntentFixture } from './dataset';
 
 const TEMPLATES_DIR = join(__dirname, '../../src/core/prompt/templates');
 
+let promptBuilder: PromptBuilder;
+
 beforeAll(async () => {
   await initPartials(TEMPLATES_DIR);
+  const adapter = new FilePromptAdapter(TEMPLATES_DIR);
+  promptBuilder = new PromptBuilder(adapter);
 });
 
-function buildPromptArgs(fixture: IntentFixture, label: string) {
+function buildPromptArgs(fixture: IntentFixture) {
   const docs: ResolvedArtifact[] = Object.entries(fixture.documents).map(
     ([path, { content, role }]) => ({ path, content, role }),
   );
@@ -26,23 +33,50 @@ function buildPromptArgs(fixture: IntentFixture, label: string) {
     { target: fixture.metadata.target, refs: fixture.metadata.refs, context: fixture.metadata.context },
     'explicit',
   );
-  if (docs.length) rac.documents = docs;
 
-  const ctx = {
-    project: 'test',
-    featurePath: '/tmp/test',
-    featureFolder: 'test',
-  } as any;
+  return { docs, rac };
+}
 
-  const currentTask = {
-    name: label,
-    type: 'feature',
-    priority: 200,
-    description: fixture.directive,
-    ...(fixture.targetFile ? { targetFile: fixture.targetFile } : {}),
-  } as any;
+function buildConfig(fixture: IntentFixture): PromptBuildConfig {
+  const { docs, rac } = buildPromptArgs(fixture);
+  const intent = fixture.metadata.intent as IntentId;
+  const derived = deriveFromIntent(intent);
 
-  return { docs, rac, ctx, currentTask };
+  const artifactPolicies: PolicyKey[] = docs.length
+    ? deriveArtifactPolicies(intent, docs)
+    : [];
+
+  return {
+    templates: {
+      base: fixture.prompt.templateBase,
+      rules: fixture.prompt.templateBase.replace(/\/base/, '/rules').replace(/base-/, 'rules-'),
+      system: derived.jobType === 'code'
+        ? 'code/base/system'
+        : derived.jobType === 'design'
+          ? 'design/base/system'
+          : undefined,
+    },
+    intent,
+    artifactPolicies,
+    techContext: {
+      taskType: 'feature',
+      mode: rac.mode,
+      resolvedAction: rac,
+    },
+    pipeline: {
+      sanitizeInput: false,
+      includeTechProfile: false,
+      includeExamples: false,
+      applyPolicyGuardrails: false,
+    },
+    vars: {
+      directive: fixture.directive,
+      resolvedAction: rac,
+      ...(docs.length > 0 ? { documents: docs, hasDocuments: true } : {}),
+      ...(fixture.targetFile ? { targetFile: fixture.targetFile } : {}),
+    },
+    artifacts: docs.length > 0 ? docs : undefined,
+  };
 }
 
 describe('Intent Acceptance', () => {
@@ -86,14 +120,35 @@ describe('Intent Acceptance', () => {
 
       // ── Stage 3: Prompt Build (code/design only) ──
 
-      // TODO: Rewrite this test for PromptBuilder pipeline
       if (['code', 'design'].includes(fixture.routing.jobType)) {
-        it.skip('prompt build: injections match', async () => {
-          // Requires PromptBuilder rewrite
+        it('prompt build: required injections present', async () => {
+          const config = buildConfig(fixture);
+          const result = await promptBuilder.build(config);
+
+          for (const required of fixture.prompt.requiredInjections) {
+            expect(
+              result.injections,
+              `${label}: missing required injection "${required}"`,
+            ).toContain(required);
+          }
         });
 
-        it.skip('prompt text snapshot', async () => {
-          // Requires PromptBuilder rewrite
+        it('prompt build: forbidden injections absent', async () => {
+          const config = buildConfig(fixture);
+          const result = await promptBuilder.build(config);
+
+          for (const forbidden of fixture.prompt.forbiddenInjections) {
+            expect(
+              result.injections,
+              `${label}: should not contain forbidden injection "${forbidden}"`,
+            ).not.toContain(forbidden);
+          }
+        });
+
+        it('prompt build: injection list snapshot', async () => {
+          const config = buildConfig(fixture);
+          const result = await promptBuilder.build(config);
+          expect(result.injections).toMatchSnapshot();
         });
       }
     });

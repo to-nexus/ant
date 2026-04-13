@@ -21,6 +21,7 @@ import {
 import { loadResolvedArtifacts } from '../../graph/loadDocumentsForRAC.js';
 import { getEstimatingLabel, type UILocale } from '../../graph/timing/estimatingLabels.js';
 import { extractLLMInfo } from '../../../../core/ports/workflow.js';
+import { appendOrUpdatePool } from '../../../../core/prompt/builder/ArtifactPipeline.js';
 
 export { type DetectableState, type DetectStrategy, type DetectResult } from './types.js';
 
@@ -146,10 +147,10 @@ export function createDetectNode<T extends DetectableState>(
       const resolvedAction = resolveToRAC(intentId as IntentId, slots, source);
       console.log(`📋 [detect] RAC created: intent=${intentId}, mode=${resolvedAction.mode}, source=${source}`);
 
-      // Load resolved artifacts (materialized file contents from refs/context)
+      // Load resolved artifacts (skip if planner resolve already populated them)
       const featurePath = resolveFeaturePath(state);
       let resolvedArtifacts = state.resolvedArtifacts;
-      if (featurePath) {
+      if (!resolvedArtifacts?.length && featurePath) {
         resolvedArtifacts = loadResolvedArtifacts(resolvedAction, featurePath);
       }
 
@@ -158,9 +159,15 @@ export function createDetectNode<T extends DetectableState>(
         displayRACInChat(resolvedAction, reasoning, state._uiLocale).catch(() => {});
       }
 
+      // Merge RAC docs into design pool (no-op for jobs without state.artifacts)
+      const updatedArtifacts = (state as any).artifacts
+        ? appendOrUpdatePool((state as any).artifacts, resolvedArtifacts || [])
+        : undefined;
+
       return {
         resolvedAction,
         resolvedArtifacts,
+        ...(updatedArtifacts !== undefined ? { artifacts: updatedArtifacts } : {}),
         ...inferStateUpdates,
         tokenUsage: state.tokenUsage,
         recursionCount: state.recursionCount,

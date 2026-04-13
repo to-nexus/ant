@@ -97,7 +97,7 @@ LLM이 도구 호출(read_file, write_file, search 등)을 통해 코드를 생�
 
 ### tool
 
-execute 도구 호출을 실행하고 결과를 반환한다.
+execute/plan의 도구 호출을 배치 실행하고 결과를 대화 히스토리에 추가한다. Code job은 `RUN_COMMAND`에 `CodeCommandPolicy`(Go build 차단, verification loop guard 등)를 적용한다. 도구 카탈로그, 핸들러 아키텍처, 오케스트레이터 상세는 [19-tool-system.md](19-tool-system.md) 참조.
 
 ### checkTaskStatus
 
@@ -188,15 +188,19 @@ interface ParsedUiDocs {
 
 ### 태스크별 주입
 
-`documentResolver.ts`가 task type에 따라 주입할 문서를 결정한다:
+`ArtifactPipeline`이 태스크별 문서 선택 + 컴팩션을 처리한다:
 
-| task.type | 주입 |
-|-----------|------|
-| `ui`, `design-system` | `resolveUiDocForTask()` → parsedUiDocs에서 해당 섹션만 |
-| `feature`, `setup`, `test-code`, `doc` | `resolveDesignDocForTask()` → system design 문서 |
-| `error`, `verification` | 없음 |
+1. `buildCodeArtifactPool(state)` — 레거시 state 변수(`designDocs`, `specDocs`, `parsedUiDocs`, `sourceDocuments`, `prd`)를 `ResolvedArtifact[]` 풀로 변환
+2. `resolveArtifacts(pool, { taskType, include }, { threshold })` — `task.include` 패턴 또는 taskType 기본 규칙으로 필터링 + 컴팩션
 
-`ui`/`design-system` 태스크에는 `task.uiSections` 배열이 있다. 이 배열은 decompose LLM이 `uiSectionsSummary` (TOC)를 참조하여 할당한다. `ArtifactService.getUiDocForTask(parsedDocs, uiSections)`가 해당 섹션만 추출하여 프롬프트에 주입한다. `uiSections`가 없으면 전체 UI 문서를 주입한다.
+| task.type | 기본 선택 규칙 |
+|-----------|---------------|
+| `ui`, `design-system` | `outputs/design/ui/*` |
+| `feature`, `setup`, `test-code`, `doc` | `outputs/design/*` + `inputs/sources` 전체 |
+| `error` | spec + api-contract (spec 존재 시) |
+| `verification` | 빈 배열 |
+
+`task.include`가 지정되면 기본 규칙 대신 정확한 path-prefix 매칭이 적용된다. `include`는 decompose LLM이 출력하거나, `packages`/`uiSections`/`selectedSpec`에서 자동 유도된다.
 
 ### Document Authority
 
@@ -264,5 +268,6 @@ Cloud mode에서 `BridgeMCPTransport`는 Redis Pub/Sub을 사용한다. `orchest
 
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
 - Job 실행/중단/재개: [10-job-lifecycle.md](10-job-lifecycle.md)
+- Tool 시스템 (도구 카탈로그, 레지스트리, CodeCommandPolicy): [19-tool-system.md](19-tool-system.md)
 - Design Job: [15-design-job.md](15-design-job.md)
 - UI Design 파이프라인 상세: [25-ui-design-pipeline.md](25-ui-design-pipeline.md)

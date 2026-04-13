@@ -473,19 +473,15 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     workspaceConfig: state.workspaceConfig,
     deps: state.deps,
     gitPort: state.gitPort,
+    artifacts: state.artifacts,
     resolvedArtifacts: state.resolvedArtifacts,
     techTier: state.techTier,
     selectedDesignFiles: state.selectedDesignFiles,
     decomposeFilePaths: state.decomposeFilePaths,
-    prd: state.prd,
     directive: state.directive,
-    design: state.design,
-    designDocPath: state.designDocPath,
-    designDocs: state.designDocs,
     code: state.code,
     codeHead: state.codeHead,
     profile: state.profile,
-    parsedUiDocs: state.parsedUiDocs,
     runtimeAssetsIndex: state.runtimeAssetsIndex,
     referenceCodeContexts: state.referenceCodeContexts,
     sessionContext: state.sessionContext,
@@ -984,24 +980,20 @@ const ArchitectCodeGraphStateAnnotation = Annotation.Root({
       deps: Annotation<any>,
       gitPort: Annotation<any>,
       
+      artifacts: Annotation<any>,
       resolvedArtifacts: Annotation<any>,
       techTier: Annotation<any>,
       selectedDesignFiles: Annotation<any>,
       decomposeFilePaths: Annotation<any>,
       
-      // Artifacts (from TaskArtifacts)
-      prd: Annotation<any>,
+      // Artifacts (legacy fields)
       directive: Annotation<any>,
-      design: Annotation<any>,
-      designDocPath: Annotation<any>,  // ✅ Design document file path (from TaskArtifacts)
-      designDocs: Annotation<any>,  // ✅ Structured design docs for environment detection
       code: Annotation<any>,
       codeHead: Annotation<any>,
       profile: Annotation<any>({
         reducer: (x: any, y: any) => y ?? x,
         default: () => undefined,
       }),
-      parsedUiDocs: Annotation<any>,  // ✅ CRITICAL: Parsed UI docs for split injection (from TaskArtifacts)
       
       // ✅ Runtime Assets Index (for asset copying tasks)
       runtimeAssetsIndex: Annotation<any>,
@@ -1061,8 +1053,7 @@ const ArchitectCodeGraphStateAnnotation = Annotation.Root({
       evaluationReport: Annotation<any>,
       lessons: Annotation<any>,
       
-      // Spec Documents (feature-scoped specifications)
-      specDocs: Annotation<any>,
+      // selectedSpec is set by decompose, consumed by plan/execute/learn
       selectedSpec: Annotation<any>,
       
       // Reference Projects (for cross-project tool calling)

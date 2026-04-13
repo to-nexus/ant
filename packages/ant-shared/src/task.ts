@@ -97,6 +97,18 @@ export interface BaseTask {
    * When undefined, the task runs alone (conservative default).
    */
   parallelGroup?: string;
+
+  /**
+   * Artifact path prefix patterns for task-level document selection.
+   * When set, only artifacts matching these prefixes are injected into the prompt.
+   * When unset, taskType-based default rules apply (backward compatible).
+   *
+   * Examples:
+   * - `['outputs/design/spec/spec-auth']` → specific spec only
+   * - `['outputs/design/system/fe-system-main.md']` → specific system design
+   * - `['outputs/design/ui/tokens', 'outputs/design/ui/spec/header']` → UI subset
+   */
+  include?: string[];
 }
 
 // ============================================

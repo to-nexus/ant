@@ -110,6 +110,7 @@ Ask 실행 중 Kanban, Workflow UI에는 변화가 없다. 채팅 응답만 스�
 
 ## 경계
 
+- Tool 시스템 (도구 카탈로그, 레지스트리, 오케스트레이터): [19-tool-system.md](19-tool-system.md)
 - Triage 분류: [12-triage-routing.md](12-triage-routing.md)
 - YAML Job 정의: `core/data/triage/jobs/*.yaml`
 - 프롬프트 구조: [13-prompt-system.md](13-prompt-system.md)

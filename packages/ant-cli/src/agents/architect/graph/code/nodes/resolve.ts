@@ -6,6 +6,9 @@ import type { ConversationEntry } from "../../../../../core/types/session";
 import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
 import type { ResolveStrategy } from '../../../../common/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/nodes/resolve/utils';
+import type { ResolvedArtifact } from '@ant/shared';
+import { ARTIFACT_PREFIX } from '@ant/shared';
+import type { ParsedUiDocs } from '../../../../../core/types/uiDoc';
 
 /**
  * Code Resolve Strategy
@@ -75,32 +78,25 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       );
     }
 
+    let artifacts: ResolvedArtifact[] = state.artifacts || [];
     const gitPort = state.deps?.git;
     const fileSystem = state.deps?.fileSystem;
     if (gitPort && fileSystem) {
       try {
-        state.designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, 'unknown');
-        
+        const designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, 'unknown');
         const resumeSpecDocs = await ArtifactService.loadSpecDocuments(state.context, gitPort, fileSystem);
-        if (Object.keys(resumeSpecDocs).length > 0) {
-          state.specDocs = resumeSpecDocs;
-        }
-
+        const specDocs = Object.keys(resumeSpecDocs).length > 0 ? resumeSpecDocs : undefined;
         const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem);
-        if (designResult?.content) {
-          state.design = designResult.content;
-          state.designDocPath = designResult.filePath;
-        }
-
+        const design = designResult?.content || undefined;
         const source = await ArtifactService.getSource(state.context, gitPort, fileSystem);
-        if (source?.prd) state.prd = source.prd;
-        if (source?.sourceDocuments) state.sourceDocuments = source.sourceDocuments;
+        const prd = source?.prd || undefined;
+        const sourceDocuments = source?.sourceDocuments || undefined;
+        const parsedUiDocs = await ArtifactService.loadParsedUiContext(state.context, gitPort, fileSystem) || undefined;
 
-        state.parsedUiDocs = await ArtifactService.loadParsedUiContext(state.context, gitPort, fileSystem) || undefined;
+        console.log(`📄 [Resolve/Resume] design=${!!design}, designDocs=${!!designDocs}, prd=${!!prd}, ui=${!!parsedUiDocs}`);
 
-        // profile comes from codebase analysis (resolve), not detect
-
-        console.log(`📄 [Resolve/Resume] design=${!!state.design}, designDocs=${!!state.designDocs}, prd=${!!state.prd}, ui=${!!state.parsedUiDocs}`);
+        artifacts = buildArtifactPool({ designDocs, specDocs, parsedUiDocs, sourceDocuments, prd, design });
+        console.log(`📦 [Resolve/Resume] Artifact pool: ${artifacts.length} artifacts (${artifacts.reduce((s, a) => s + (a.content?.length || 0), 0).toLocaleString()} chars)`);
       } catch (error) {
         console.warn(`⚠️  [Resolve/Resume] Failed to reload design artifacts:`, error);
       }
@@ -152,13 +148,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     return {
       workspaceConfig: state.workspaceConfig,
       context: state.context,
-      designDocs: state.designDocs,
-      specDocs: state.specDocs,
-      design: state.design,
-      designDocPath: state.designDocPath,
-      prd: state.prd,
-      sourceDocuments: state.sourceDocuments,
-      parsedUiDocs: state.parsedUiDocs,
+      artifacts,
       profile: state.profile,
       techTier: state.techTier,
       figmaAvailable: state.figmaAvailable,
@@ -253,6 +243,18 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
 
     const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
     const specDocs = await ArtifactService.loadSpecDocuments(context, gitPort, fileSystem);
+    const specDocsOrUndefined = Object.keys(specDocs).length > 0 ? specDocs : undefined;
+
+    // Build unified artifact pool
+    const artifacts = buildArtifactPool({
+      designDocs,
+      specDocs: specDocsOrUndefined,
+      parsedUiDocs: parsedUiDocs || undefined,
+      sourceDocuments,
+      prd,
+      design,
+    });
+    console.log(`📦 [Resolve] Artifact pool: ${artifacts.length} artifacts (${artifacts.reduce((s, a) => s + (a.content?.length || 0), 0).toLocaleString()} chars)`);
 
     // Load directive (overrideDirective > file)
     let directive: string | undefined;
@@ -332,13 +334,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       context,
       featurePath: context.featurePath,
       directive,
-      prd,
-      sourceDocuments,
-      parsedUiDocs: parsedUiDocs || undefined,
-      design,
-      designDocPath,
-      designDocs,
-      specDocs: Object.keys(specDocs).length > 0 ? specDocs : undefined,
+      artifacts,
       sessionContext,
       profile: undefined,
       referenceContexts,
@@ -352,6 +348,77 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     } as Partial<ArchitectGraphState>;
   },
 };
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Helper: Build ResolvedArtifact[] pool from loaded materials
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface DesignDocsShape {
+  apiContracts: Record<string, string>;
+  feDesigns: Record<string, string>;
+  beDesigns: Record<string, string>;
+}
+
+function buildArtifactPool(opts: {
+  designDocs?: DesignDocsShape;
+  specDocs?: Record<string, string>;
+  parsedUiDocs?: ParsedUiDocs;
+  sourceDocuments?: Record<string, string>;
+  prd?: string;
+  design?: string;
+}): ResolvedArtifact[] {
+  const pool: ResolvedArtifact[] = [];
+
+  if (opts.designDocs) {
+    const { feDesigns, beDesigns, apiContracts } = opts.designDocs;
+    for (const [name, content] of Object.entries(feDesigns)) {
+      if (content) pool.push({ path: `${ARTIFACT_PREFIX.FE_SYSTEM}${name}.md`, content, role: 'ref' });
+    }
+    for (const [name, content] of Object.entries(beDesigns)) {
+      if (content) pool.push({ path: `${ARTIFACT_PREFIX.BE_SYSTEM}${name}.md`, content, role: 'ref' });
+    }
+    for (const [name, content] of Object.entries(apiContracts)) {
+      if (content) pool.push({ path: `${ARTIFACT_PREFIX.API_CONTRACT}${name}.md`, content, role: 'ref' });
+    }
+  }
+
+  if (opts.specDocs) {
+    for (const [name, content] of Object.entries(opts.specDocs)) {
+      if (content) pool.push({ path: `${ARTIFACT_PREFIX.SPEC}${name}`, content, role: 'ref' });
+    }
+  }
+
+  if (opts.parsedUiDocs) {
+    if (opts.parsedUiDocs.tokens) {
+      pool.push({ path: `${ARTIFACT_PREFIX.UI}tokens`, content: opts.parsedUiDocs.tokens, role: 'context' });
+    }
+    if (opts.parsedUiDocs.assets) {
+      pool.push({ path: `${ARTIFACT_PREFIX.UI}assets`, content: opts.parsedUiDocs.assets, role: 'context' });
+    }
+    if (opts.parsedUiDocs.specSections) {
+      for (const [id, section] of opts.parsedUiDocs.specSections) {
+        if (section.content) {
+          pool.push({ path: `${ARTIFACT_PREFIX.UI_SPEC}${id}`, content: section.content, role: 'context' });
+        }
+      }
+    }
+  }
+
+  if (opts.sourceDocuments && Object.keys(opts.sourceDocuments).length > 0) {
+    const combined = Object.entries(opts.sourceDocuments)
+      .map(([name, content]) => `# ${name}\n\n${content}`)
+      .join('\n\n────────────────────────────────────────\n\n');
+    pool.push({ path: ARTIFACT_PREFIX.SOURCES, content: combined, role: 'context' });
+  } else if (opts.prd) {
+    pool.push({ path: ARTIFACT_PREFIX.SOURCES, content: opts.prd, role: 'context' });
+  }
+
+  if (opts.design && !opts.designDocs) {
+    pool.push({ path: `${ARTIFACT_PREFIX.SYSTEM_DESIGN}full`, content: opts.design, role: 'ref' });
+  }
+
+  return pool;
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Helper: index runtime assets under inputs/assets/

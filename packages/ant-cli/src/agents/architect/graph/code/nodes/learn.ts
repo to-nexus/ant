@@ -4,7 +4,7 @@ import { SessionRun, ConversationEntry } from "../../../../../core/types";
 import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
 import { getChatAPIClient } from "../../../../../core/adapters/ChatAPIClient";
 import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../core/utils/docMetadata";
-import { designSubdirOf, DESIGN_DIR } from "@ant/shared";
+import { designSubdirOf, DESIGN_DIR, BOUNDARY } from "@ant/shared";
 
 /**
  * Inter-Job Context Bridge: Build raw job completion record.
@@ -16,7 +16,7 @@ function buildJobRecord(state: ArchitectGraphState): { user: ConversationEntry; 
   const filePaths = state.projectCodeContext?.filePaths || [];
   const taskNames = tasks.map((t: any) => t.name).join(', ');
   const timestamp = new Date().toISOString();
-  const boundary = state.boundary || 'lightweight';
+  const boundary = state.boundary || BOUNDARY.LIGHTWEIGHT;
 
   const user: ConversationEntry = {
     role: 'user',
@@ -361,8 +361,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
     sessionId = session.sessionId;
     
-    const inputSummary = state.design 
-      ? `Design: ${state.design.substring(0, 150)}...`
+    const { ArtifactPoolView } = await import('../../../../../core/prompt/builder/ArtifactPipeline');
+    const poolView = new ArtifactPoolView(state.artifacts || []);
+    const firstDesign = poolView.firstDesignContent();
+    const inputSummary = firstDesign
+      ? `Design: ${firstDesign.substring(0, 150)}...`
       : `Directive: ${(state.directive || '').substring(0, 150)}...`;
     
     const run: SessionRun = {
@@ -371,9 +374,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       timestamp: new Date().toISOString(),
       input: {
         type: 'design',
-        source: state.design ? 'outputs/design/system/[latest]' : 'directive',
+        source: firstDesign ? 'outputs/design/system/[latest]' : 'directive',
         summary: inputSummary.substring(0, 200),
-        size: state.design?.length || (state.directive || '').length,
+        size: firstDesign?.length || (state.directive || '').length,
       },
       output: {
         branch: branch,
@@ -450,7 +453,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       const { user: jobUser, assistant: jobAssistant } = buildJobRecord(state);
       const existingJobConv: ConversationEntry[] = existingSession.state?.jobConversation || [];
       updatedJobConversation = [...existingJobConv, jobUser, jobAssistant];
-      console.log(`📋 [Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || 'lightweight'})`);
+      console.log(`📋 [Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || BOUNDARY.LIGHTWEIGHT})`);
 
       // Mark consumed documents with metadata
       if (state.deps?.fileSystem && state.context.featurePath) {
@@ -882,22 +885,22 @@ function extractRelatedFiles(state: ArchitectGraphState): string[] {
  * Extract references to documents
  */
 function extractReferences(state: ArchitectGraphState): string[] {
+  const { ArtifactPoolView } = require('../../../../../core/prompt/builder/ArtifactPipeline');
+  const poolView = new ArtifactPoolView(state.artifacts || []);
   const refs: string[] = [];
   
-  // Design document reference
-  if (state.design) {
-    const designTitle = extractDesignTitle(state.design);
+  const firstDesign = poolView.firstDesignContent();
+  if (firstDesign) {
+    const designTitle = extractDesignTitle(firstDesign);
     refs.push(`Design: ${designTitle}`);
   }
   
-  // Directive reference
   if (state.directive) {
     const directiveId = extractDirectiveId(state);
     refs.push(`Directive: ${directiveId}`);
   }
   
-  // PRD reference
-  if (state.prd) {
+  if (poolView.hasSources()) {
     refs.push(`PRD: Available in documents collection`);
   }
   

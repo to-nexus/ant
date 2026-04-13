@@ -149,6 +149,12 @@ async function buildSystemPrompt(
   const hasTargets = (state.resolvedAction?.target?.length ?? 0) > 0;
   const planMode = getPlanMode(state);
 
+  // Merge resolvedArtifacts into resolvedAction for action-context partial injection
+  const resolvedArtifacts = state.resolvedArtifacts || [];
+  const resolvedActionWithDocs = resolvedArtifacts.length > 0
+    ? { ...(state.resolvedAction || {}), documents: resolvedArtifacts, artifacts: resolvedArtifacts }
+    : state.resolvedAction;
+
   const vars = {
     isKorean: state.language === 'ko',
     directive: state.directive,
@@ -165,7 +171,7 @@ async function buildSystemPrompt(
     hasConversation: compaction.entries.length > 0,
     conversationSummary: compaction.summary || '',
     hasConversationSummary: !!compaction.summary,
-    resolvedAction: state.resolvedAction,
+    resolvedAction: resolvedActionWithDocs,
   };
 
   const [basePrompt, rules] = await Promise.all([

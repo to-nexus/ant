@@ -89,3 +89,5 @@ Use `search_reference_code` tool to query these projects. See rules for constrai
 {{/if}}
 
 **For XML tag syntax and output format details, see execute/tasks/verification/rules.md**
+
+{{{runtimeContext}}}

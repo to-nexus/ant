@@ -1,7 +1,6 @@
-import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
-import type { TaskType } from '@ant/shared';
-import { DesignDocs, getDesignDocByPackage } from "../designSelector";
+import type { TaskType, ResolvedArtifact } from '@ant/shared';
+import { getDesignDocByPackageFromPool } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 
 /**
  * Post-validation: Check if LLM correctly classified error vs feature
@@ -47,7 +46,7 @@ export function validateTasks(
   tasks: CodeTask[],
   mode: string | undefined,
   directive: string | undefined,
-  designDocs?: DesignDocs
+  artifacts?: ResolvedArtifact[],
 ): void {
   // Validate task type is one of the known types
   const VALID_TYPES: TaskType[] = [
@@ -65,12 +64,12 @@ export function validateTasks(
   }
 
   // Warn about packages referencing non-existent design docs
-  if (designDocs) {
+  if (artifacts && artifacts.length > 0) {
     for (const t of tasks) {
       if (!t.packages) continue;
       for (const pkg of t.packages) {
         if (pkg === 'shared') continue;
-        const content = getDesignDocByPackage(pkg, designDocs);
+        const content = getDesignDocByPackageFromPool(pkg, artifacts);
         if (!content) {
           console.warn(
             `⚠️  [Decompose Validation] Task "${t.id}" references package "${pkg}" ` +

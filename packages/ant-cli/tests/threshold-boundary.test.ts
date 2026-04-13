@@ -2,7 +2,7 @@
  * Task 1: Threshold Boundary Tests
  *
  * Validates that inline↔tool mode switching occurs at the exact threshold.
- * Tests EXECUTE_SOURCE_THRESHOLD, DECOMPOSE_SOURCE_THRESHOLD, and condenseContent.
+ * Tests EXECUTE_SOURCE_THRESHOLD, DECOMPOSE_SOURCE_THRESHOLD, and compactContent.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -13,7 +13,7 @@ import {
   getDesignDocsSize,
   prepareDesignDocument,
 } from '../src/agents/architect/graph/code/nodes/decompose/designSelector';
-import { condenseContent } from '../src/core/utils/contentCondenser';
+import { compactContent } from '../src/core/utils/contentCompactor';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,12 +25,9 @@ function makeString(len: number): string {
 
 function makeDesignDocsState(totalChars: number) {
   return {
-    designDocs: {
-      apiContracts: {} as Record<string, string>,
-      feDesigns: { main: makeString(totalChars) },
-      beDesigns: {} as Record<string, string>,
-    },
-    design: '',
+    artifacts: [
+      { path: 'outputs/design/system/fe-system-main.md', content: makeString(totalChars), role: 'ref' },
+    ],
   } as any;
 }
 
@@ -90,11 +87,11 @@ describe('DECOMPOSE_SOURCE_THRESHOLD boundary', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. condenseContent boundary
+// 3. compactContent boundary
 // ---------------------------------------------------------------------------
 
-describe('condenseContent boundary', () => {
-  const CONDENSE_THRESHOLD = 30_000;
+describe('compactContent boundary', () => {
+  const COMPACT_THRESHOLD = 30_000;
   const opts = (threshold: number) => ({
     threshold,
     label: 'Test Doc',
@@ -102,51 +99,51 @@ describe('condenseContent boundary', () => {
   });
 
   it('at threshold → original preserved', () => {
-    const content = makeString(CONDENSE_THRESHOLD);
-    const result = condenseContent(content, opts(CONDENSE_THRESHOLD));
-    expect(result.wasCondensed).toBe(false);
+    const content = makeString(COMPACT_THRESHOLD);
+    const result = compactContent(content, opts(COMPACT_THRESHOLD));
+    expect(result.wasCompacted).toBe(false);
     expect(result.content).toBe(content);
-    expect(result.originalChars).toBe(CONDENSE_THRESHOLD);
-    expect(result.condensedChars).toBe(CONDENSE_THRESHOLD);
+    expect(result.originalChars).toBe(COMPACT_THRESHOLD);
+    expect(result.compactedChars).toBe(COMPACT_THRESHOLD);
   });
 
-  it('at threshold+1 → condensed outline', () => {
-    const content = makeString(CONDENSE_THRESHOLD + 1);
-    const result = condenseContent(content, opts(CONDENSE_THRESHOLD));
-    expect(result.wasCondensed).toBe(true);
+  it('at threshold+1 → compacted outline', () => {
+    const content = makeString(COMPACT_THRESHOLD + 1);
+    const result = compactContent(content, opts(COMPACT_THRESHOLD));
+    expect(result.wasCompacted).toBe(true);
     expect(result.content).not.toBe(content);
-    expect(result.originalChars).toBe(CONDENSE_THRESHOLD + 1);
-    expect(result.condensedChars).toBeLessThan(result.originalChars);
-    expect(result.content).toContain('condensed');
+    expect(result.originalChars).toBe(COMPACT_THRESHOLD + 1);
+    expect(result.compactedChars).toBeLessThan(result.originalChars);
+    expect(result.content).toContain('compacted');
   });
 
-  it('empty content → not condensed', () => {
-    const result = condenseContent('', opts(CONDENSE_THRESHOLD));
-    expect(result.wasCondensed).toBe(false);
+  it('empty content → not compacted', () => {
+    const result = compactContent('', opts(COMPACT_THRESHOLD));
+    expect(result.wasCompacted).toBe(false);
     expect(result.content).toBe('');
   });
 
-  it('threshold=0 with non-empty content → always condensed', () => {
+  it('threshold=0 with non-empty content → always compacted', () => {
     const content = 'hello';
-    const result = condenseContent(content, opts(0));
-    expect(result.wasCondensed).toBe(true);
-    expect(result.content).toContain('condensed');
+    const result = compactContent(content, opts(0));
+    expect(result.wasCompacted).toBe(true);
+    expect(result.content).toContain('compacted');
   });
 
-  it('design condense at 30_000 boundary', () => {
+  it('design compact at 30_000 boundary', () => {
     const mdContent = '# Design\n\n' + makeString(30_000 - 12);
     expect(mdContent.length).toBe(30_000 - 2);
 
-    const atThreshold = condenseContent(
+    const atThreshold = compactContent(
       mdContent + 'ab',
       opts(30_000),
     );
-    expect(atThreshold.wasCondensed).toBe(false);
+    expect(atThreshold.wasCompacted).toBe(false);
 
-    const overThreshold = condenseContent(
+    const overThreshold = compactContent(
       mdContent + 'abc',
       opts(30_000),
     );
-    expect(overThreshold.wasCondensed).toBe(true);
+    expect(overThreshold.wasCompacted).toBe(true);
   });
 });
