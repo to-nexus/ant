@@ -7,7 +7,8 @@
  * Policy (from matrix):
  *   - Default: refs not selected → chat only; refs selected → chat + build
  *   - chatRequiresRefs: true → refs required for BOTH chat and build
- *   - codebaseRef (locked) counts as "selected" automatically
+ *   - codebaseRef (locked) counts as "selected" for chat
+ *   - When codebase coexists with non-codebase ref slots, build requires non-codebase refs
  *   - context selection does not affect chat/build by default
  *   - buildRequiresContext: true → context must be selected for build
  */
@@ -68,12 +69,18 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   }
 
   const hasRealRefs = slots.refs.some(r => !r.emptyHint && (r.path || r.codebase));
-  const hasSelectedRefs = hasLockedCodebaseRef || !!(actionMetadata.refs && actionMetadata.refs.length > 0);
+  const hasUserSelectedRefs = !!(actionMetadata.refs && actionMetadata.refs.length > 0);
+  const hasSelectedRefs = hasLockedCodebaseRef || hasUserSelectedRefs;
   const hasSelectedContext = !!(actionMetadata.context && actionMetadata.context.length > 0);
+
+  const hasNonCodebaseRefSlots = slots.refs.some(r => !r.codebase && !r.emptyHint && r.path);
+  const buildRefsOk = hasLockedCodebaseRef && hasNonCodebaseRefSlots
+    ? hasUserSelectedRefs
+    : hasSelectedRefs;
 
   const canStartChat = slots.chatRequiresRefs ? hasSelectedRefs : true;
   const contextGate = slots.buildRequiresContext ? hasSelectedContext : true;
-  const canBuild = hasRealRefs && hasSelectedRefs && contextGate;
+  const canBuild = hasRealRefs && buildRefsOk && contextGate;
 
   const buildDisabledReason = !canBuild
     ? (slots.buildRequiresContext && !hasSelectedContext ? 'context-not-selected' : 'refs-not-selected')
