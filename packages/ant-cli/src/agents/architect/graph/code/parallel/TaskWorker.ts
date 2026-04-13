@@ -167,8 +167,8 @@ export class TaskWorker<T extends BaseTask> {
       task.interrupted = false;
     }
 
-    if (!workerState.detectionReport) {
-      console.warn(`⚠️  [Worker ${this.workerId}] detectionReport missing from workerState (task: ${task.name})`);
+    if (!workerState.resolvedAction) {
+      console.warn(`⚠️  [Worker ${this.workerId}] resolvedAction missing from workerState (task: ${task.name})`);
     }
 
     // Execute the subgraph

@@ -1,13 +1,13 @@
-import { CodebaseProfile, TaskArtifacts, DetectionReport } from "../../../../core/types";
+import { CodebaseProfile, TaskArtifacts } from "../../../../core/types";
 import type { ConversationEntry } from "../../../../core/types/session";
 import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
-import { PromptEngine } from "../../../../core/prompt/engine";
+import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
 import { ProjectContext } from "../../types";
 import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageableState } from '../../../common/nodes/triage/types';
-import type { FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext } from '@ant/shared';
+import type { FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, TechTier } from '@ant/shared';
 
 /**
  * Design Task State
@@ -26,7 +26,7 @@ export interface DesignGraphState extends TaskArtifacts, TriageableState {
   // Dependencies (extends TriageableState.deps)
   deps?: {
     llm?: LLMClient;
-    promptEngine?: PromptEngine;
+    promptBuilder?: PromptBuilder;
     chunk?: ChunkPort;
     session?: SessionPort;
     git?: GitPort;
@@ -41,10 +41,10 @@ export interface DesignGraphState extends TaskArtifacts, TriageableState {
   };
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🔥 DetectionReport (통합 환경 감지 결과)
+  // RAC (detect output, immutable) + TechTier (decompose output)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  detectionReport?: DetectionReport;
   resolvedAction?: ResolvedActionContext;
+  techTier?: TechTier;
 
   // ✅ NEW: Task Queue (for task breakdown like code)
   taskQueue?: TaskQueue<DesignTask>;
@@ -157,14 +157,14 @@ export interface DesignGraphState extends TaskArtifacts, TriageableState {
   };
   
   // ✅ UI document generation context
-  // Populated when detectionReport.detectedIntentGroup === 'design-ui'
+  // Populated when resolvedAction?.intentGroup === 'design-ui'
   uiReferences?: string[];  // All image paths under inputs/references/ (recursive)
   uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under inputs/assets/
   
   // ✅ Figma Integration (All-or-Nothing: Full MCP required)
   figmaConfig?: FigmaDataConfig;        // Loaded from inputs/figma.json at resolve
   figmaExplorationResult?: FigmaExplorationResult;  // Output of figmaExplore node
-  figmaAvailable?: boolean;              // MCP reachable — set by detectEnvironment (spec: tools only, ui-design: full pipeline)
+  figmaAvailable?: boolean;              // MCP reachable — set by detect node
   figmaFileKey?: string;                 // Parsed from figmaConfig.file URL
   figmaStartNodeId?: string;             // Parsed nodeId from URL (optional)
 

@@ -5,11 +5,19 @@
  * Both @ant/cli and @ant/ui import from this package.
  * 
  * Modules:
- *   - job.ts          : JobType, DecomposableJobType, SessionableJobType, JobTiming
- *   - task.ts         : TaskType, BaseTask, KanbanData, TaskTiming, TaskTokenUsage
- *   - interruption.ts : InterruptionReason, InterruptionDetails
- *   - detection.ts    : DetectionReport, JobMode, JobEnvironment
- *   - workflow.ts     : WorkflowRealtimeState, NodeHistoryEntry, TaskInfo, LLMInfo
+ *   - job.ts                : JobType, DecomposableJobType, SessionableJobType, JobTiming
+ *   - task.ts               : TaskType, BaseTask, KanbanData, TaskTiming, TaskTokenUsage
+ *   - interruption.ts       : InterruptionReason, InterruptionDetails
+ *   - detection.ts          : Mode, IntentGroup, DesignDomain, InferredAction
+ *   - rac.ts                : ResolvedActionContext, TechTier, ResolvedArtifact, resolveToRAC, mergeWithMetadata, buildTechTier
+ *   - actions.ts            : IntentId, ActionMetadata, deriveFromIntent, INTENT_DEFINITIONS
+ *   - action-config-matrix.ts : ConfigSlots, getConfigSlots
+ *   - workflow.ts           : WorkflowRealtimeState, NodeHistoryEntry, TaskInfo
+ *   - figma.ts              : FigmaDataConfig, FigmaExplorationResult
+ *   - bridge.ts             : BridgeMessage, BridgeSession
+ *   - canonical.ts          : CANONICAL_FEATURE_DIRS, isCanonicalDir
+ *   - file-descriptions.ts  : FILE_DESCRIPTIONS
+ *   - deploy.ts             : DeployConfig
  */
 
 export * from './job';
@@ -24,4 +32,5 @@ export * from './actions';
 export * from './action-config-matrix';
 export * from './file-descriptions';
 export * from './rac';
+export * from './prompt-policy-matrix';
 export * from './deploy';

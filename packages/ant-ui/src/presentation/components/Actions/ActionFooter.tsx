@@ -56,6 +56,7 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
         featureName: selectedFeature,
         jobType: derived.jobType as any,
         agent: derived.agent,
+        overrideDirective: buildDirective,
         chatSource: true,
         actionMetadata: hasMetadata ? metadata : undefined,
       });
@@ -118,9 +119,11 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
 
       {policy.buildDisabledReason && !policy.isBuilding && (
         <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">
-          {policy.buildDisabledReason === 'context-missing'
-            ? (t('footer.contextMissing', { defaultValue: '컨텍스트 파일이 필요합니다' }))
-            : ''}
+          {policy.buildDisabledReason === 'context-not-selected'
+            ? t('footer.contextRequired')
+            : policy.buildDisabledReason === 'refs-not-selected'
+              ? t('footer.refsRequired')
+              : ''}
         </span>
       )}
     </div>

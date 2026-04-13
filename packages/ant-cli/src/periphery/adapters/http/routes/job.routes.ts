@@ -391,7 +391,7 @@ export function createJobRoutes(deps: {
         }
       }
       
-      // ✅ Resume always sets isResume=true. Graph router uses this + hasTaskQueue + hasDetectionReport
+      // ✅ Resume always sets isResume=true. Graph router uses this + hasTaskQueue + hasResolvedAction
       // to determine correct entry point (plan, decompose, or triage)
       const hasTaskQueue = (sessionData.state?.taskQueue?.length || 0) > 0;
       

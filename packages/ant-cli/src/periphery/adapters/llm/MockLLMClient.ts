@@ -96,7 +96,7 @@ export class MockLLMClient implements LLMClient {
     const nodeType = this.context?.nodeType;
     const jobType = this.context?.jobType;
 
-    if (nodeType === 'detectEnvironment') {
+    if (nodeType === 'detect') {
       return detectResponse(jobType);
     }
     if (nodeType === 'decompose') {

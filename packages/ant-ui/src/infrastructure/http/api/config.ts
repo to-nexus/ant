@@ -9,7 +9,7 @@ export interface JobLLMConfig {
   tool?: string;
   validate?: string;
   learn?: string;
-  detectEnvironment?: string;
+  detect?: string;
   direct?: string;
   sketch?: string;
   render?: string;

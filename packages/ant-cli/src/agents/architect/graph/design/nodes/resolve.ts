@@ -49,11 +49,11 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     console.log('🔄 DESIGN AGENT - RESUME (Skip Resolve)');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     const hasTaskQueue = state.taskQueue && !state.taskQueue.isEmpty();
-    const hasDetectionReport = Boolean(state.detectionReport);
+    const hasResolvedAction = Boolean(state.resolvedAction);
     const hasNewDirective = Boolean(state.overrideDirective);
     console.log(`   isResume: true`);
     console.log(`   hasTaskQueue: ${hasTaskQueue} (${state.taskQueue?.size() || 0} tasks)`);
-    console.log(`   hasDetectionReport: ${hasDetectionReport}`);
+    console.log(`   hasResolvedAction: ${hasResolvedAction}`);
     console.log(`   hasNewDirective: ${hasNewDirective}`);
     console.log(`   → Router will decide next node\n`);
 
@@ -111,7 +111,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
   },
 
   async loadArtifacts(state) {
-    const jobMode = state.detectionReport?.detectedMode;
+    const jobMode = state.resolvedAction?.mode;
     const context = state.context;
 
     const gitPort = state.deps?.git;
@@ -234,8 +234,9 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       const rawJobConversation: ConversationEntry[] = designSession?.state?.jobConversation || [];
       processedJobConversation = rawJobConversation;
 
-      if (rawJobConversation.length > 0 && state.deps?.llm && state.deps?.promptEngine?.deps?.promptPort) {
-        const promptPort = state.deps.promptEngine.deps.promptPort;
+      const promptBuilder = state.deps?.promptBuilder;
+      if (rawJobConversation.length > 0 && state.deps?.llm && promptBuilder) {
+        const promptPort = promptBuilder;
         if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
           state.deps.kanbanUpdate.setEstimatingActivity('Compacting previous context...', 'resolve');
         }

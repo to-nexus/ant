@@ -1,54 +1,41 @@
 /**
  * Plan Detect Strategy
  *
- * Rule-based + optional LLM mode detection for plan jobs.
- * Extracted from the former resolve node's inline detect logic.
+ * Rule-based + optional LLM intent detection for plan jobs.
+ * Returns InferredAction with intentId ('gen-plan' | 'rev-plan' | 'explain-plan').
+ * Target is always resolved to the PRD file path.
  *
  * Flow:
- *   - explain intent → mode='explain'
- *   - gen-plan intent or no existing target → mode='generate'
- *   - existing target → LLM detectPlanMode (refactor vs explain)
+ *   - no existing target → intentId='gen-plan'
+ *   - existing target → LLM determines 'rev-plan' vs 'explain-plan'
  */
 
 import type { DetectStrategy, DetectResult } from '../../../../common/nodes/detect/types.js';
 import type { PlanGraphState } from '../state.js';
-import type { DetectionReport, Mode } from '@ant/shared';
-import { synthesizePlanIntent } from '@ant/shared';
+import type { InferredAction } from '@ant/shared';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 
 export const planDetectStrategy: DetectStrategy<PlanGraphState> = {
   async run(state): Promise<DetectResult<PlanGraphState>> {
-    const detectedMode = await determinePlanMode(state);
-    console.log(`📋 [Plan:Detect] Determined mode: ${detectedMode}`);
+    const { intentId, reasoning } = await determinePlanIntent(state);
+    console.log(`📋 [Plan:Detect] Determined intentId: ${intentId}`);
 
-    const detectionReport: DetectionReport = {
-      detectedMode,
-      detectedModeReasoning: detectedMode === 'explain' ? 'User intent is to understand/analyze the document'
-        : detectedMode === 'refactor' ? 'Existing target document detected — modification expected'
-        : 'No existing target — generating new document',
+    const targets = resolveTargets(state);
+
+    const inferred: InferredAction = {
+      intentId,
+      target: targets.length > 0 ? targets : ['inputs/sources/prd.md'],
+      reasoning: { intent: reasoning },
       sourceJob: 'plan',
-      intentId: state.actionMetadata?.intent,
-      detectedAt: new Date().toISOString(),
     };
 
-    return { detectionReport };
-  },
-
-  synthesizeFallback(report) {
-    return synthesizePlanIntent(report.detectedMode);
+    return { inferred };
   },
 };
 
-/**
- * Detect plan mode when existing documents are present.
- * Uses lightweight LLM call to distinguish refactor vs explain.
- */
-async function determinePlanMode(state: PlanGraphState): Promise<Mode> {
-  const actionMetadata = state.actionMetadata;
-  if (actionMetadata?.intent === 'explain-plan') return 'explain';
-  if (actionMetadata?.intent === 'gen-plan') return 'generate';
-
-  // Check if target documents exist
+async function determinePlanIntent(
+  state: PlanGraphState,
+): Promise<{ intentId: string; reasoning: string }> {
   const fs = await import('fs');
   const path = await import('path');
   const { normalizeTemplateDoc } = await import('../../../../../core/utils/templateDetector.js');
@@ -61,9 +48,11 @@ async function determinePlanMode(state: PlanGraphState): Promise<Mode> {
     } catch { return false; }
   });
 
-  if (!hasExistingTarget) return 'generate';
+  if (!hasExistingTarget) {
+    return { intentId: 'gen-plan', reasoning: 'No existing target — generating new document' };
+  }
 
-  return await detectPlanModeViaLLM(state);
+  return await detectPlanIntentViaLLM(state);
 }
 
 function resolveTargets(state: PlanGraphState): string[] {
@@ -74,24 +63,29 @@ function resolveTargets(state: PlanGraphState): string[] {
   return [];
 }
 
-async function detectPlanModeViaLLM(state: PlanGraphState): Promise<'refactor' | 'explain'> {
+async function detectPlanIntentViaLLM(
+  state: PlanGraphState,
+): Promise<{ intentId: string; reasoning: string }> {
   const directive = state.overrideDirective || state.directive || '';
-  if (!directive) return 'refactor';
+  if (!directive) return { intentId: 'rev-plan', reasoning: 'Existing target present, no directive' };
 
   const llm = state.deps?.llm;
-  if (!llm) return 'refactor';
+  if (!llm) return { intentId: 'rev-plan', reasoning: 'No LLM available, defaulting to refactor' };
 
   const prompt = `Classify the following user directive about an existing document.
 
 Directive: "${directive}"
 
-Is the user asking to:
-A) UNDERSTAND/ANALYZE the content (explain, describe, query, check what's in it) — no modification expected
-B) MODIFY/IMPROVE the document (refactor, add, fix, update, expand, improve) — changes expected
+Select the appropriate intentId:
 
-Respond with ONLY a JSON object:
+| intentId | When to select |
+|----------|---------------|
+| rev-plan | User wants to MODIFY, IMPROVE, UPDATE, FIX, EXPAND the document |
+| explain-plan | User wants to UNDERSTAND, ANALYZE, QUERY, SUMMARIZE the document (no modification) |
+
+Respond with ONLY a JSON object inside <detect> tags:
 <detect>
-{ "mode": "explain" | "refactor", "reasoning": "one sentence" }
+{ "intentId": "rev-plan" or "explain-plan", "reasoning": "one sentence" }
 </detect>`;
 
   try {
@@ -114,16 +108,15 @@ Respond with ONLY a JSON object:
     const match = response.match(/<detect>\s*([\s\S]*?)\s*<\/detect>/);
     if (match) {
       const parsed = JSON.parse(match[1]);
-      const mode = parsed.mode === 'explain' ? 'explain' : 'refactor';
-      console.log(`   DetectPlanMode: ${mode} (${parsed.reasoning || 'no reasoning'})`);
-      return mode;
+      const intentId = parsed.intentId === 'explain-plan' ? 'explain-plan' : 'rev-plan';
+      return { intentId, reasoning: parsed.reasoning || '' };
     }
 
-    const jsonMatch = response.match(/\{[\s\S]*?"mode"\s*:\s*"(explain|refactor)"[\s\S]*?\}/);
-    if (jsonMatch) return jsonMatch[1] as 'explain' | 'refactor';
+    const jsonMatch = response.match(/\{[\s\S]*?"intentId"\s*:\s*"(explain-plan|rev-plan)"[\s\S]*?\}/);
+    if (jsonMatch) return { intentId: jsonMatch[1], reasoning: '' };
   } catch (err) {
-    console.warn(`   ⚠️ DetectPlanMode failed, defaulting to refactor:`, err);
+    console.warn(`   ⚠️ DetectPlanIntent failed, defaulting to rev-plan:`, err);
   }
 
-  return 'refactor';
+  return { intentId: 'rev-plan', reasoning: 'LLM parse failed, defaulting to refactor' };
 }

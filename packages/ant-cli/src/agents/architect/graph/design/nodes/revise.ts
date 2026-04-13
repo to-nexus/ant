@@ -78,9 +78,9 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
   console.log('   Analyzing...\n');
   
   try {
-    const promptEngine = state.deps?.promptEngine;
-    if (!promptEngine) {
-      throw new Error('[Design Revise] PromptEngine not available');
+    const promptBuilder = state.deps?.promptBuilder;
+    if (!promptBuilder) {
+      throw new Error('[Design Revise] PromptBuilder not available');
     }
     
     // Prepare template data
@@ -96,7 +96,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     })) || [];
     
     // Generate prompt via PromptEngine
-    const prompt = await promptEngine.buildRevisePrompt('design', {
+    const prompt = await promptBuilder.render('design/phases/revise/base', {
       context: state.context,
       completedCount,
       totalTasks,
@@ -237,7 +237,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
                 tokenUsage: updatedState.tokenUsage,
                 overrideDirective: updatedState.overrideDirective,
                 chatSource: updatedState.chatSource,
-                detectionReport: updatedState.detectionReport,
+                resolvedAction: updatedState.resolvedAction,
               }
             }
           );

@@ -44,7 +44,7 @@ export function buildLearnGraph() {
     "triage" as any,
     (state: LearnGraphState) => {
       const route = routeAfterTriage(state);
-      if (route === 'detectEnvironment') {
+      if (route === 'detect') {
         return 'decompose';
       }
       return route;

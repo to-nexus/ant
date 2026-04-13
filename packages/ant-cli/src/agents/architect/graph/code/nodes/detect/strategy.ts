@@ -1,16 +1,15 @@
 /**
  * Code Detect Strategy
  *
- * Lightweight LLM-based detection of job mode + intentId.
- * PRD/keywords/primarySources removed — decompose uses git.listFiles() directly.
+ * LLM-based detection: returns InferredAction with valid intentId.
+ * Profile/environment determination is NOT done here — that's decompose's responsibility (tech tier).
  */
 
 import type { DetectStrategy, DetectResult } from '../../../../../common/nodes/detect/types.js';
 import type { ArchitectGraphState } from '../../state.js';
-import type { DetectionReport, EnvironmentHints, CodebaseProfileLike } from '@ant/shared';
-import { DESIGN_DIR, DESIGN_SUBDIRS, synthesizeCodeIntent } from '@ant/shared';
+import type { InferredAction } from '@ant/shared';
+import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
-import { createCodeDetectionReport, formatDetectionReportForChat } from '../../../../../../core/types/detection.js';
 import { logPrompt } from '../../../../../../core/utils/promptLogger.js';
 import { parseDetectResponse } from './responseParser.js';
 
@@ -25,17 +24,15 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
 
     const artifactAvailability = scanArtifacts(state);
 
-    const promptEngine = state.deps?.promptEngine;
-    if (!promptEngine) throw new Error('[Code:Detect] PromptEngine not available');
+    const promptBuilder = state.deps?.promptBuilder;
+    if (!promptBuilder) throw new Error('[Code:Detect] PromptBuilder not available');
 
-    const prompt = await promptEngine.buildDetectEnvironmentPrompt(
-      state.directive || '',
-      artifactAvailability,
-      {
-        hasDesignDoc: !!(state.design || (state.designDocs && Object.keys(state.designDocs).length > 0)),
-        hasSpecDocs: !!(state.specDocs && Object.keys(state.specDocs).length > 0),
-      },
-    );
+    const prompt = await promptBuilder.render('code/phases/detect/base', {
+      directive: state.directive || '',
+      artifactAvailability: artifactAvailability || '',
+      hasDesignDoc: !!(state.design || (state.designDocs && Object.keys(state.designDocs).length > 0)),
+      hasSpecDocs: !!(state.specDocs && Object.keys(state.specDocs).length > 0),
+    });
 
     const jobId = state._httpJobId || 'unknown';
     if (state.context.featurePath) {
@@ -80,37 +77,23 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
 
     const parsed = parseDetectResponse(response);
 
-    const detectionReport = createCodeDetectionReport({
-      detectedMode: parsed.mode as 'generate' | 'refactor' | 'explain',
-      detectedModeReasoning: parsed.modeReasoning,
-    });
-    if (parsed.intentId) detectionReport.intentId = parsed.intentId;
+    if (!parsed.intentId) {
+      console.error('❌ [Code:Detect] No valid intentId from LLM. Hard fail.');
+      throw new Error('[Code:Detect] LLM returned no valid intentId');
+    }
 
-    const formattedReport = formatDetectionReportForChat(detectionReport, (state._uiLocale as any) || 'ko');
-    await chatAPI.sendLLMEvent({ type: 'text', text: formattedReport });
-    await chatAPI.finalizeMessage();
+    console.log(`✅ IntentId: ${parsed.intentId}`);
+    if (parsed.reasoning) console.log(`   Reasoning: ${parsed.reasoning}`);
 
-    console.log(`✅ Job Mode: ${detectionReport.detectedMode}`);
-    console.log(`   Reasoning: ${detectionReport.detectedModeReasoning}`);
+    const inferred: InferredAction = {
+      intentId: parsed.intentId,
+      reasoning: { intent: parsed.reasoning },
+      sourceJob: 'code',
+    };
 
-    await saveToSession(state, detectionReport);
+    await saveToSession(state, inferred);
 
-    return { detectionReport };
-  },
-
-  synthesizeFallback(report, state) {
-    return synthesizeCodeIntent(report, {
-      hasDesignDoc: !!(state.design || (state.designDocs && Object.keys(state.designDocs).length > 0)),
-      hasSpecDocs: !!(state.specDocs && Object.keys(state.specDocs).length > 0),
-    });
-  },
-
-  getCodebaseProfile(state): CodebaseProfileLike | undefined {
-    return state.context?.codebaseProfile;
-  },
-
-  getExplicitHints(state): EnvironmentHints | undefined {
-    return { designDocPath: state.designDocPath };
+    return { inferred };
   },
 
   onResume(): Partial<ArchitectGraphState> {
@@ -157,12 +140,12 @@ function scanArtifacts(state: ArchitectGraphState): string {
   return '';
 }
 
-async function saveToSession(state: ArchitectGraphState, report: DetectionReport): Promise<void> {
+async function saveToSession(state: ArchitectGraphState, inferred: InferredAction): Promise<void> {
   if (!state.deps?.session || !state.context.featureFolder) return;
   try {
     const session = await state.deps.session.load(state.context.project, state.context.featureFolder, 'code');
     await state.deps.session.updateArtifacts(state.context.project, state.context.featureFolder, 'code', {
-      state: { ...session.state, detectionReport: report },
+      state: { ...session.state, lastInferredAction: inferred },
     });
   } catch { /* non-critical */ }
 }

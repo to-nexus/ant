@@ -569,7 +569,7 @@ sessions/debug/prompts/prompt-design-{jobId}.md
 
 | 노드                 | 검증 포인트                                           |
 | ------------------ | ------------------------------------------------ |
-| detectEnvironment  | directive, prdSpec 주입됨?                          |
+| detect  | directive, prdSpec 주입됨?                          |
 | decompose-uiDesign | uiContext, screenCount 주입됨?                      |
 | docGen (ch1)       | taskDescription, documentType 주입됨?               |
 | docGen (ch2+)      | previousChaptersSummary, existingDocContent 주입됨? |

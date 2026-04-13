@@ -116,7 +116,6 @@ const VisualGraphAnnotation = Annotation.Root({
   skipClassify: Annotation<any>,
 
   // Detection & RAC (Intent-Centric)
-  detectionReport: Annotation<any>,
   resolvedAction: Annotation<any>,
 
   // Session carry-over

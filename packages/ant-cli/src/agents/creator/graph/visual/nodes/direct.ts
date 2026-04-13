@@ -105,7 +105,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   }
 
   const directLLM = state.deps.directLLM;
-  const promptPort = state.deps.promptPort;
+  const pb = state.deps.promptBuilder;
 
   const { compactJob, VISUAL_COMPACTION_THRESHOLD, VISUAL_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } = await import('../../../../../core/context');
   const allButLast = state.conversation.length > 1
@@ -116,7 +116,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   let compactionMeta: import('../../../../../core/context').ConversationCompaction | undefined;
   try {
     const result = allButLast.length > 0
-      ? await compactJob(allButLast, directLLM, promptPort, {
+      ? await compactJob(allButLast, directLLM, pb, {
           threshold: VISUAL_COMPACTION_THRESHOLD,
           recentWindowSize: VISUAL_COMPACTION_WINDOW,
           maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
@@ -147,7 +147,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   console.log(`🎬 [Visual:Direct] jobMode=${state.jobMode || 'generate'}, assetType=${assetType}`);
 
-  const systemPrompt = await promptPort.render('visual/nodes/direct/base', {
+  const systemPrompt = await pb.render('visual/nodes/direct/base', {
     isLogo: assetType === 'logo',
     isIcon: assetType === 'icon',
     isHero: assetType === 'hero',
@@ -195,7 +195,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     }
   }
 
-  const userPrompt = await promptPort.render('visual/nodes/direct/context', {
+  const userPrompt = await pb.render('visual/nodes/direct/context', {
     conversationContext: conversationContext || '(no previous conversation)',
     currentDirective,
     lastEngineeredPrompt: state.lastEngineeredPrompt,

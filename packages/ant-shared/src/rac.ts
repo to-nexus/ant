@@ -1,13 +1,20 @@
 /**
- * ResolvedActionContext (RAC) — Intent-Centric Prompt System
+ * ResolvedActionContext (RAC) — Intent-Centric Action Specification
  *
- * Single source of truth for user intent, tech stack, and action context.
- * Created in resolve/detect nodes, consumed by ModeController and prompt templates.
+ * Detect node's immutable output. Describes WHAT the user wants:
+ *   intent, mode, file slots (target/refs/context), domain.
+ *
+ * Does NOT contain tech/runtime concerns — those live in state.techTier
+ * (filled by decompose, consumed by ModeController/prompt templates).
+ *
+ * Created via resolveToRAC() — the single unified funnel for both
+ * explicit and infer paths. mode/intentGroup are always derived from
+ * intentId via deriveFromIntent(), never provided as raw input.
  */
 
 import type { ActionMetadata, IntentId } from './actions';
 import { deriveFromIntent, INTENT_DEFINITIONS } from './actions';
-import type { Mode, IntentGroup, DesignDomain, DetectionReport, JobEnvironment } from './detection';
+import type { Mode, IntentGroup, DesignDomain, InferredAction } from './detection';
 
 // ============================================
 // Workspace State (minimal, for infer path)
@@ -24,58 +31,30 @@ export interface InferWorkspaceState {
 }
 
 // ============================================
-// TechContext Types
+// TechTier (decompose output, NOT in RAC)
 // ============================================
 
 export type Language = 'typescript' | 'go' | 'python' | 'rust' | 'java';
-export type Environment = 'frontend' | 'backend' | 'fullstack';
+export type Stack = 'frontend' | 'backend' | 'fullstack';
 export type RuntimePlatform = 'browser' | 'node-api' | 'go-api';
 
-export interface TechContext {
+/**
+ * Technology tier — decompose's output describing HOW to execute.
+ * Lives on state.techTier, not inside RAC.
+ *
+ * Single source of truth for all tech-stack information.
+ * Replaces legacy CodebaseProfile, state.profile, and context.codebaseProfile.
+ */
+export interface TechTier {
   language?: Language;
   framework?: string;
-  environment?: Environment;
+  stack?: Stack;
   runtime?: RuntimePlatform;
+  packageManager?: 'npm' | 'yarn' | 'pnpm' | 'bun';
 }
 
 // ============================================
-// ResolvedDocument (role-labeled file content for action-context rendering)
-// ============================================
-
-export interface ResolvedDocument {
-  path: string;
-  content: string;
-  role: 'ref' | 'context';
-  label?: string;
-}
-
-// ============================================
-// ResolvedActionContext
-// ============================================
-
-export interface ResolvedActionContext {
-  intent?: IntentId;
-  intentGroup?: IntentGroup;
-  mode: Mode;
-
-  tech: TechContext;
-
-  target?: string[];
-  refs?: string[];
-  context?: string[];
-
-  documents?: ResolvedDocument[];
-
-  domain?: DesignDomain;
-
-  intentDescription?: string;
-
-  source: 'explicit' | 'infer';
-  hasExplicitFields: boolean;
-}
-
-// ============================================
-// Profile interfaces (minimal, for parameter typing)
+// TechTier Helpers (used by decompose)
 // ============================================
 
 export interface CodebaseProfileLike {
@@ -88,20 +67,6 @@ export interface TaskProfileLike {
   framework?: string;
 }
 
-export interface EnvironmentHints {
-  designDocPath?: string;
-  hasNextConfig?: boolean;
-  hasBrowserEntrypoint?: boolean;
-}
-
-// ============================================
-// TechContext Helpers
-// ============================================
-
-/**
- * Normalize codebaseProfile language to canonical Language type.
- * Mirrors ModeController.detectLanguage() logic.
- */
 export function resolveLanguage(profile?: CodebaseProfileLike): Language {
   const raw = profile?.language?.toLowerCase();
   if (!raw) return 'typescript';
@@ -113,10 +78,6 @@ export function resolveLanguage(profile?: CodebaseProfileLike): Language {
   return 'typescript';
 }
 
-/**
- * Normalize framework string. taskProfile takes priority over codebaseProfile.
- * Mirrors ModeController.detectFrameworkAugmentation() normalization.
- */
 export function resolveFramework(
   profile?: CodebaseProfileLike,
   taskProfile?: TaskProfileLike,
@@ -129,16 +90,12 @@ export function resolveFramework(
   return fw;
 }
 
-/**
- * Derive concrete RuntimePlatform from abstract Environment + Language.
- * frontend → browser, backend + go → go-api, backend + * → node-api, fullstack → undefined (composite).
- */
 export function resolveRuntime(
-  env?: Environment | string,
+  stack?: Stack | string,
   language?: Language | string,
 ): RuntimePlatform | undefined {
-  if (!env) return undefined;
-  switch (env) {
+  if (!stack) return undefined;
+  switch (stack) {
     case 'frontend': return 'browser';
     case 'backend': return language === 'go' ? 'go-api' : 'node-api';
     case 'fullstack': return undefined;
@@ -147,53 +104,156 @@ export function resolveRuntime(
 }
 
 /**
- * Fallback environment inference from file naming conventions and framework files.
- * Mirrors ModeController.detectEnvironment() fallback chain (after LLM pre-detection).
+ * Build a complete TechTier from codebase analysis results.
+ * Called by decompose, NOT by detect.
  */
-export function inferEnvironmentFromHints(
-  hints?: EnvironmentHints,
-  _language?: Language,
-): Environment | undefined {
-  if (!hints) return undefined;
-
-  const path = hints.designDocPath?.toLowerCase();
-  if (path) {
-    if (path.includes('fe-system-') || path.includes('frontend-design') || path.includes('fe-design')) {
-      return 'frontend';
-    }
-    if (path.includes('be-system-') || path.includes('backend-design') || path.includes('be-design') || path.includes('api-design')) {
-      return 'backend';
-    }
-    if (path.includes('fullstack-design') || path.includes('fs-design')) {
-      return 'fullstack';
-    }
-  }
-
-  if (hints.hasNextConfig || hints.hasBrowserEntrypoint) {
-    return 'frontend';
-  }
-
-  return undefined;
-}
-
-/**
- * Build a complete TechContext in one call.
- * env param takes priority; falls back to inferEnvironmentFromHints when env is undefined.
- */
-export function buildTechContext(
+export function buildTechTier(
   profile?: CodebaseProfileLike,
-  env?: Environment,
+  stack?: Stack,
   taskProfile?: TaskProfileLike,
-  fallbackHints?: EnvironmentHints,
-): TechContext {
+): TechTier {
   const language = resolveLanguage(profile || taskProfile);
-  const resolvedEnv = env || inferEnvironmentFromHints(fallbackHints, language);
   return {
     language,
     framework: resolveFramework(profile, taskProfile),
-    environment: resolvedEnv,
-    runtime: resolveRuntime(resolvedEnv, language),
+    stack,
+    runtime: resolveRuntime(stack, language),
   };
+}
+
+// ============================================
+// PackageTier (per-package breakdown from decompose)
+// ============================================
+
+export interface PackageTierEntry {
+  language: string;
+  framework?: string;
+  stack: string;
+}
+
+/**
+ * Resolve task-level TechTiers (plural) from task.packages via packageTiers mapping.
+ * Returns all unique TechTiers for the task's packages, preserving per-package stack info.
+ *
+ * Rules:
+ *  - No packages or no mapping → [jobTechTier]
+ *  - Deduplicate by stack+language+framework
+ */
+export function resolveTaskTechTiers(
+  packages: string[] | undefined,
+  jobTechTier: TechTier,
+  packageTiers?: Record<string, PackageTierEntry>,
+): TechTier[] {
+  if (!packages?.length || !packageTiers || Object.keys(packageTiers).length === 0) {
+    return [jobTechTier];
+  }
+
+  const resolved = packages
+    .map(pkg => packageTiers[pkg])
+    .filter((entry): entry is PackageTierEntry => !!entry);
+
+  if (resolved.length === 0) return [jobTechTier];
+
+  const seen = new Set<string>();
+  const tiers: TechTier[] = [];
+  for (const entry of resolved) {
+    const key = `${entry.stack}|${entry.language}|${entry.framework ?? ''}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      tiers.push(buildTechTier(entry, entry.stack as Stack));
+    }
+  }
+  return tiers;
+}
+
+/**
+ * Compute a single representative TechTier from an array of TechTiers.
+ * Used where a single TechTier is needed (language resolution, framework detection).
+ *
+ * Rules:
+ *  - 0 tiers → empty object
+ *  - 1 tier → as-is
+ *  - N tiers, same stack → that stack + first language/framework
+ *  - N tiers, mixed stacks → fullstack + first language/framework
+ */
+export function effectiveTechTier(tiers: TechTier[]): TechTier {
+  if (tiers.length === 0) return {};
+  if (tiers.length === 1) return tiers[0];
+
+  const stacks = new Set(tiers.map(t => t.stack).filter(Boolean));
+  const effectiveStack: Stack | undefined =
+    stacks.size === 1 ? (tiers[0].stack as Stack) : 'fullstack';
+
+  return {
+    ...tiers[0],
+    stack: effectiveStack,
+    runtime: effectiveStack === 'fullstack' ? undefined : tiers[0].runtime,
+  };
+}
+
+// ============================================
+// ResolvedArtifact (materialized file content)
+// ============================================
+
+export interface ResolvedArtifact {
+  path: string;
+  role: 'ref' | 'context' | 'directive';
+  /** Default: 'text'. When 'image', use base64/mimeType instead of content. */
+  mediaType?: 'text' | 'image';
+  /** Text content (mediaType='text' or omitted). */
+  content: string;
+  /** Image MIME type (mediaType='image'). */
+  mimeType?: string;
+  /** Base64-encoded image data (mediaType='image'). */
+  base64?: string;
+  /** @deprecated Intent-based role resolution replaces label-based matching. */
+  label?: string;
+}
+
+// ============================================
+// ResolvedActionContext (RAC)
+// ============================================
+
+export interface ResolvedActionContext {
+  intent?: IntentId;
+  intentGroup?: IntentGroup;
+  mode: Mode;
+
+  target?: string[];
+  refs?: string[];
+  context?: string[];
+
+  domain?: DesignDomain;
+
+  intentDescription?: string;
+
+  /** Role-labeled file content (preferred field — replaces `documents`). */
+  artifacts?: ResolvedArtifact[];
+  /** @deprecated Use `artifacts` instead. Kept during migration for backward compat. */
+  documents?: ResolvedArtifact[];
+
+  /**
+   * MCP connection sources (not prompt-injected artifacts).
+   * figma.json is a bootstrap config, not a document — it belongs here, not in artifacts.
+   */
+  mcpSources?: {
+    figma?: { fileUrl: string; fileKey: string; nodeId?: string };
+  };
+
+  source: 'explicit' | 'infer';
+  hasExplicitFields: boolean;
+}
+
+// ============================================
+// Artifact Accessor
+// ============================================
+
+/**
+ * Read artifacts from a RAC, preferring `artifacts` field over deprecated `documents`.
+ */
+export function getRACDocuments(rac: ResolvedActionContext | null | undefined): ResolvedArtifact[] {
+  if (!rac) return [];
+  return rac.artifacts ?? rac.documents ?? [];
 }
 
 // ============================================
@@ -206,139 +266,81 @@ export function getIntentDescription(intent: IntentId): string | undefined {
 }
 
 // ============================================
-// RAC Creation Functions
+// Unified Funnel: resolveToRAC
 // ============================================
 
-function mapJobEnvironmentToEnvironment(env?: JobEnvironment): Environment | undefined {
-  if (!env || env === 'unknown') return undefined;
-  return env as Environment;
-}
-
 /**
- * Create RAC from explicit ActionMetadata (user selected intent via ActionsPanel).
- * Called in resolve node when actionMetadata.intent is present.
+ * Single entry point for RAC creation. Both explicit and infer paths converge here.
+ * mode and intentGroup are ALWAYS derived from intentId — never provided as raw input.
  */
-export function resolveFromExplicit(
-  actionMetadata: ActionMetadata,
-  codebaseProfile?: CodebaseProfileLike,
-  fallbackHints?: EnvironmentHints,
+export function resolveToRAC(
+  intentId: IntentId,
+  slots?: {
+    target?: string[];
+    refs?: string[];
+    context?: string[];
+    domain?: DesignDomain;
+  },
+  source?: 'explicit' | 'infer',
 ): ResolvedActionContext {
-  const intent = actionMetadata.intent!;
-  const derived = deriveFromIntent(intent);
-
-  const env = derived.environment as Environment | undefined;
-  const tech = buildTechContext(codebaseProfile, env, undefined, fallbackHints);
-
-  const intentDescription = getIntentDescription(intent);
-
-  const hasExplicitFields = !!(
-    intentDescription ||
-    (actionMetadata.target && actionMetadata.target.length > 0) ||
-    (actionMetadata.refs && actionMetadata.refs.length > 0) ||
-    (actionMetadata.context && actionMetadata.context.length > 0)
-  );
+  const derived = deriveFromIntent(intentId);
 
   return {
-    intent,
+    intent: intentId,
     intentGroup: derived.intentGroup,
     mode: derived.mode,
-    tech,
-    target: actionMetadata.target,
-    refs: actionMetadata.refs,
-    context: actionMetadata.context,
-    intentDescription,
-    source: 'explicit',
-    hasExplicitFields,
+    intentDescription: getIntentDescription(intentId),
+    target: slots?.target,
+    refs: slots?.refs,
+    context: slots?.context,
+    domain: slots?.domain,
+    source: source ?? 'infer',
+    hasExplicitFields: !!(
+      slots?.target?.length || slots?.refs?.length || slots?.context?.length
+    ),
   };
 }
 
-/**
- * Create RAC from LLM DetectionReport (infer path).
- * Merges actionMetadata fields with inferred values:
- *  - intent/targets: metadata replaces inferred (if present)
- *  - refs/context: additive (dedup merge of inferred + metadata)
- *
- * @param report - Optional: DetectionReport from LLM analysis. When undefined
- *   (e.g. plan/learn jobs), mode/env are derived from synthesizedIntent.
- * @param synthesizedIntent - Optional intent ID synthesized from DetectionReport
- *   or determined by job-specific logic. When provided, the returned RAC
- *   carries intent + intentDescription.
- */
-export function resolveFromInfer(
-  report: DetectionReport | undefined,
-  actionMetadata?: ActionMetadata,
-  codebaseProfile?: CodebaseProfileLike,
-  fallbackHints?: EnvironmentHints,
-  synthesizedIntent?: IntentId,
-  _workspaceState?: InferWorkspaceState,
-): ResolvedActionContext {
-  const derivedFromIntent = synthesizedIntent ? deriveFromIntent(synthesizedIntent) : undefined;
-
-  const env = report
-    ? mapJobEnvironmentToEnvironment(report.environment)
-    : (derivedFromIntent?.environment as Environment | undefined);
-  const tech = buildTechContext(
-    codebaseProfile || report?.profile,
-    env,
-    undefined,
-    fallbackHints,
-  );
-
-  const mode: Mode = report?.detectedMode
-    ?? derivedFromIntent?.mode
-    ?? 'generate';
-
-  // targets: metadata replaces inferred (if present)
-  const target = (actionMetadata?.target?.length)
-    ? actionMetadata.target
-    : (report?.targetFiles?.length ? report.targetFiles : undefined);
-
-  // refs: metadata only (primarySources removed from DetectionReport)
-  const metadataRefs = actionMetadata?.refs ?? [];
-  const refs = metadataRefs.length > 0 ? metadataRefs : undefined;
-
-  // context: metadata only (DetectionReport has no contextFiles field)
-  const metadataCtx = actionMetadata?.context ?? [];
-  const mergedCtx = dedup([...metadataCtx]);
-  const context = mergedCtx.length > 0 ? mergedCtx : undefined;
-
-  const hasExplicitFields = !!(
-    (actionMetadata?.target && actionMetadata.target.length > 0) ||
-    (actionMetadata?.refs && actionMetadata.refs.length > 0) ||
-    (actionMetadata?.context && actionMetadata.context.length > 0)
-  );
-
-  return {
-    intent: synthesizedIntent,
-    intentDescription: synthesizedIntent
-      ? getIntentDescription(synthesizedIntent)
-      : undefined,
-    intentGroup: report?.detectedIntentGroup ?? derivedFromIntent?.intentGroup,
-    mode,
-    tech,
-    target,
-    refs,
-    context,
-    domain: report?.domain,
-    source: 'infer',
-    hasExplicitFields,
-  };
-}
+// ============================================
+// Merge Helper (infer path only)
+// ============================================
 
 /** Deduplicate string array, preserving order of first occurrence. */
 function dedup(arr: string[]): string[] {
   return [...new Set(arr)];
 }
 
+/**
+ * Merge InferredAction with ActionMetadata supplements (infer path only).
+ * Explicit path does NOT call this — metadata is already complete.
+ *
+ * Rules:
+ *   intentId: metadata.intent replaces inferred (if present)
+ *   target:   metadata.target replaces inferred (if present)
+ *   refs:     additive (dedup)
+ *   context:  additive (dedup)
+ *   domain:   from inferred only
+ */
+export function mergeWithMetadata(
+  inferred: InferredAction,
+  metadata?: ActionMetadata,
+): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: DesignDomain } {
+  const mergedRefs = dedup([...(inferred.refs || []), ...(metadata?.refs || [])]);
+  const mergedCtx = dedup([...(inferred.context || []), ...(metadata?.context || [])]);
+
+  return {
+    intentId: metadata?.intent ?? inferred.intentId,
+    target: metadata?.target?.length ? metadata.target : inferred.target,
+    refs: mergedRefs.length > 0 ? mergedRefs : undefined,
+    context: mergedCtx.length > 0 ? mergedCtx : undefined,
+    domain: inferred.domain,
+  };
+}
+
 // ============================================
 // Intent-based Pipeline Helpers
 // ============================================
 
-/**
- * Determine whether the Figma MCP pipeline should be used.
- *
- * Returns true when the intent is gen-ui-figma or rev-ui with populated figmaConfig.
- */
 export function isFigmaPipeline(
   intent: IntentId | undefined,
   figmaPopulated: boolean,
@@ -346,110 +348,4 @@ export function isFigmaPipeline(
   if (intent === 'gen-ui-figma') return true;
   if (intent === 'rev-ui' && figmaPopulated) return true;
   return false;
-}
-
-// ============================================
-// Intent Synthesis (reverse of deriveFromIntent)
-// ============================================
-
-/**
- * Synthesize an intent ID for design jobs from a DetectionReport + environment hints.
- * Inverse of deriveFromIntent(): given observed detection results, pick the
- * closest matching intent ID from INTENT_DEFINITIONS.
- *
- * Called in design detectEnvironment after LLM analysis, passed to resolveFromInfer().
- */
-export function synthesizeDesignIntent(
-  report: DetectionReport,
-  hints: { figmaPopulated?: boolean; hasReferences?: boolean },
-): IntentId {
-  const intentGroup = report.detectedIntentGroup;
-  const { detectedMode } = report;
-
-  if (detectedMode === 'explain') {
-    if (intentGroup === 'design-ui') return 'explain-ui';
-    if (intentGroup === 'design-spec') return 'explain-spec';
-    return 'explain-sys';
-  }
-
-  if (intentGroup === 'design-ui') {
-    if (detectedMode === 'refactor') return 'rev-ui';
-    if (hints.figmaPopulated) return 'gen-ui-figma';
-    if (hints.hasReferences) return 'gen-ui-ref';
-    return 'gen-ui-desc';
-  }
-  if (intentGroup === 'design-spec') {
-    return detectedMode === 'refactor' ? 'rev-spec' : 'gen-spec';
-  }
-  // design-system (default)
-  if (detectedMode === 'refactor') return 'rev-sys';
-  const env = report.environment;
-  if (env === 'frontend') return 'gen-sys-fe';
-  if (env === 'backend') return 'gen-sys-be';
-  return 'gen-sys-full';
-}
-
-/**
- * Synthesize an intent ID for code jobs from a DetectionReport.
- * Called in code detectEnvironment after LLM analysis, passed to resolveFromInfer().
- */
-export function synthesizeCodeIntent(
-  report: DetectionReport,
-  workspaceState?: InferWorkspaceState,
-): IntentId {
-  if (report.detectedMode === 'explain') return 'explain-code';
-  if (report.detectedMode === 'refactor') return 'rev-code';
-  if (workspaceState?.hasDesignDoc) return 'gen-code-sys';
-  if (workspaceState?.hasSpecDocs) return 'gen-code-spec';
-  return 'gen-code-directive';
-}
-
-/**
- * Synthesize an intent ID for plan jobs from the detected mode.
- * Called in planner resolve node after DetectionReport creation.
- */
-export function synthesizePlanIntent(
-  mode: string,
-): IntentId {
-  if (mode === 'explain') return 'explain-plan';
-  // 'refine' accepted for backward compat with legacy session data
-  return (mode === 'refactor' || mode === 'refine') ? 'rev-plan' : 'gen-plan';
-}
-
-/**
- * Synthesize an intent ID for visual jobs from the classified jobMode + targetTier.
- * Maps targetTier to gen-visual-{tier}; explain always returns 'explain-visual'.
- * Called in visual classify node after LLM classification.
- */
-export function synthesizeVisualIntent(
-  jobMode: string,
-  targetTier?: string,
-): IntentId {
-  if (jobMode === 'explain') return 'explain-visual';
-  const tier = (!targetTier || targetTier === 'general') ? 'illustration' : targetTier;
-  return `gen-visual-${tier}` as IntentId;
-}
-
-/**
- * Synthesize an intent ID for ask jobs from the triage sub-type.
- * Ask has three intents mapped 1:1 from askSubType.
- * Called in triage node when intent is 'ask'.
- */
-export function synthesizeAskIntent(
-  subType?: 'evaluate' | 'ant' | 'general',
-): IntentId {
-  switch (subType) {
-    case 'evaluate': return 'ask-evaluate';
-    case 'ant': return 'ask-ant';
-    default: return 'ask-general';
-  }
-}
-
-/**
- * Synthesize an intent ID for learn jobs.
- * Learn has a single generative intent ('gen-learn'); no explain/refactor modes.
- * Called in learn decompose node before LLM classification.
- */
-export function synthesizeLearnIntent(): IntentId {
-  return 'gen-learn';
 }

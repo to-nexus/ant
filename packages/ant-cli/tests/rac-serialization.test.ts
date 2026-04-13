@@ -6,14 +6,11 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  resolveFromExplicit,
-  resolveFromInfer,
+  resolveToRAC,
 } from '@ant/shared';
 import type {
   ResolvedActionContext,
-  ActionMetadata,
-  DetectionReport,
-  ResolvedDocument,
+  ResolvedArtifact,
 } from '@ant/shared';
 
 function roundtrip<T>(obj: T): T {
@@ -21,29 +18,16 @@ function roundtrip<T>(obj: T): T {
 }
 
 // ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
-
-const fullExplicitMetadata: ActionMetadata = {
-  intent: 'gen-sys-fe',
-  target: ['src/components/Button.tsx', 'src/pages/Home.tsx'],
-  refs: ['docs/design.md'],
-  context: ['Use TailwindCSS for styling'],
-};
-
-const baseReport: DetectionReport = {
-  environment: 'frontend',
-  detectedMode: 'generate',
-  profile: { language: 'TypeScript', framework: 'React' },
-} as DetectionReport;
-
-// ---------------------------------------------------------------------------
 // 1. Explicit RAC with full fields
 // ---------------------------------------------------------------------------
 
 describe('RAC serialization roundtrip', () => {
   it('explicit RAC with all fields survives roundtrip', () => {
-    const original = resolveFromExplicit(fullExplicitMetadata, { language: 'TypeScript', framework: 'React' });
+    const original = resolveToRAC('gen-sys-fe', {
+      target: ['src/components/Button.tsx', 'src/pages/Home.tsx'],
+      refs: ['docs/design.md'],
+      context: ['Use TailwindCSS for styling'],
+    }, 'explicit');
     original.documents = [
       { path: 'design.md', content: 'Design spec content', role: 'ref', label: 'Design Spec' },
       { path: 'prd.md', content: 'PRD content here', role: 'context', label: 'PRD' },
@@ -55,7 +39,6 @@ describe('RAC serialization roundtrip', () => {
     expect(restored.intent).toBe(original.intent);
     expect(restored.source).toBe('explicit');
     expect(restored.hasExplicitFields).toBe(true);
-    expect(restored.tech.language).toBe(original.tech.language);
     expect(restored.documents).toHaveLength(2);
     expect(restored.documents![0].content).toBe('Design spec content');
   });
@@ -65,14 +48,13 @@ describe('RAC serialization roundtrip', () => {
   // ---------------------------------------------------------------------------
 
   it('infer RAC with minimal fields survives roundtrip', () => {
-    const original = resolveFromInfer(baseReport);
+    const original = resolveToRAC('gen-code-sys');
 
     const restored = roundtrip(original);
     expect(restored).toEqual(original);
 
     expect(restored.source).toBe('infer');
     expect(restored.mode).toBe('generate');
-    expect(restored.tech).toBeDefined();
   });
 
   // ---------------------------------------------------------------------------
@@ -80,7 +62,11 @@ describe('RAC serialization roundtrip', () => {
   // ---------------------------------------------------------------------------
 
   it('documents with special chars survive roundtrip', () => {
-    const original = resolveFromExplicit(fullExplicitMetadata);
+    const original = resolveToRAC('gen-sys-fe', {
+      target: ['src/components/Button.tsx', 'src/pages/Home.tsx'],
+      refs: ['docs/design.md'],
+      context: ['Use TailwindCSS for styling'],
+    }, 'explicit');
     original.documents = [
       {
         path: 'special.md',
@@ -108,23 +94,19 @@ describe('RAC serialization roundtrip', () => {
   // ---------------------------------------------------------------------------
 
   it('undefined fields disappear but never become null', () => {
-    const original = resolveFromInfer(baseReport);
+    const original = resolveToRAC('gen-code-sys');
 
-    expect(original.intent).toBeUndefined();
     expect(original.target).toBeUndefined();
     expect(original.refs).toBeUndefined();
     expect(original.context).toBeUndefined();
     expect(original.documents).toBeUndefined();
-    expect(original.intentDescription).toBeUndefined();
 
     const restored = roundtrip(original);
 
-    expect(restored.intent).toBeUndefined();
     expect(restored.target).toBeUndefined();
     expect(restored.refs).toBeUndefined();
     expect(restored.context).toBeUndefined();
     expect(restored.documents).toBeUndefined();
-    expect(restored.intentDescription).toBeUndefined();
 
     for (const [key, value] of Object.entries(restored)) {
       expect(value).not.toBeNull();
@@ -136,7 +118,11 @@ describe('RAC serialization roundtrip', () => {
   // ---------------------------------------------------------------------------
 
   it('roundtrip preserves defined keys, drops undefined keys (no null ghosts)', () => {
-    const original = resolveFromExplicit(fullExplicitMetadata, { language: 'TypeScript' });
+    const original = resolveToRAC('gen-sys-fe', {
+      target: ['src/components/Button.tsx', 'src/pages/Home.tsx'],
+      refs: ['docs/design.md'],
+      context: ['Use TailwindCSS for styling'],
+    }, 'explicit');
     const restored = roundtrip(original);
 
     const definedKeys = Object.entries(original)
@@ -156,7 +142,9 @@ describe('RAC serialization roundtrip', () => {
   // ---------------------------------------------------------------------------
 
   it('empty documents array survives roundtrip', () => {
-    const original = resolveFromExplicit(fullExplicitMetadata);
+    const original = resolveToRAC('gen-sys-fe', {
+      target: ['src/components/Button.tsx'],
+    }, 'explicit');
     original.documents = [];
 
     const restored = roundtrip(original);
@@ -170,7 +158,7 @@ describe('RAC serialization roundtrip', () => {
 
   it('large document content survives roundtrip', () => {
     const largeContent = 'A'.repeat(500_000);
-    const original = resolveFromInfer(baseReport);
+    const original = resolveToRAC('gen-code-sys');
     (original as any).documents = [
       { path: 'large.md', content: largeContent, role: 'context' },
     ];

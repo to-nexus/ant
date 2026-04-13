@@ -17,7 +17,7 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 
 ## workType
 
-`detectEnvironment`에서 결정되며 문서 생성 전략을 결정한다.
+`detect`에서 결정되며 문서 생성 전략을 결정한다.
 
 | workType | 조건 | 출력 파일 |
 |----------|------|----------|
@@ -54,7 +54,7 @@ decompose가 프로젝트 환경에 따라 문서 구조를 결정한다.
 
 ```
 __start__ -> resolve -> [4-way router]
-    +-> triage -> detectEnvironment -> [intent router]
+    +-> triage -> detect -> [intent router]
          +-> isFigmaPipeline(intent): figmaExplore -> decompose
          +-> otherwise: decompose
     +-> revise -> plan
@@ -73,7 +73,7 @@ checkTaskStatus -> [router]
 
 ### figmaExplore 노드
 
-Figma 모드 전용 노드. `detectEnvironment` 이후, `decompose` 이전에 실행된다. LLM 호출 없이 프로그래밍적으로 Figma MCP 어댑터를 직접 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다. 상세 알고리즘은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
+Figma 모드 전용 노드. `detect` 이후, `decompose` 이전에 실행된다. LLM 호출 없이 프로그래밍적으로 Figma MCP 어댑터를 직접 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다. 상세 알고리즘은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
 
 ### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
 
@@ -95,7 +95,21 @@ XML 스트리밍 방식으로 설계 문서를 생성한다. `conversationHistor
 
 ### decompose
 
-system-design은 LLM 기반 태스크 분해(documentType + targetFiles)를 수행한다. ui-design은 LLM 기반 UI 복잡도 분석 후 태스크를 분해한다. explain 모드는 단일 explain 태스크를 생성한다(LLM 호출 없음).
+system-design은 LLM 기반 태스크 분해(documentType + targetFiles + profiles)를 수행한다. ui-design은 LLM 기반 UI 복잡도 분석 후 태스크를 분해한다. explain 모드는 단일 explain 태스크를 생성한다(LLM 호출 없음).
+
+#### TechTier 설정
+
+Design Job의 3개 decompose 함수 모두 `state.techTier`를 설정한다. Code Job과 달리 Design Job은 graph-level TechTier와 per-task TechTier를 분리한다.
+
+| workType | graph-level TechTier | per-task TechTier |
+|---|---|---|
+| system-design | `profiles` 맵의 대표 프로필 + intent에서 파생한 stack | `resolveTaskTechTier()`: targetFile → profiles 맵 lookup → `buildTechTier()` |
+| ui-design | `state.profile` + stack=`frontend` (항상) | 없음 (단일 tier) |
+| spec | `state.profile` + intent에서 파생한 stack | 없음 |
+
+**system-design의 profiles 맵**: LLM이 decompose 응답에서 `profiles` 필드를 JSON으로 출력한다. 키는 `{tier}-{name}` 형식(`be-main`, `fe-main`, `be-auth` 등)이며 값은 `{ language, framework }`. 이 맵은 `resolveTaskTechTier()`에서 각 DesignTask의 `targetFile` → 태그 → profiles 2단계 lookup으로 per-task `techTier`를 빌드한다.
+
+**per-task TechTier 소비**: `ModeController.detectFrameworkAugmentation()`과 `systemDesignPrompt.detectUsedTemplates()`가 `currentTask.techTier`를 참조하여 프레임워크 augmentation(nextjs, go-api)을 결정론적으로 주입한다.
 
 ## UI Design 문서 의존 체인
 
@@ -108,6 +122,16 @@ ui-assets.json (의존 없음, tokens와 병렬)
 ```
 
 각 챕터 태스크는 자신의 범위만 생성한다. `lastSectionNumber`로 이전 섹션 번호를 추적하고, JSON `_meta.lastSection`으로 마지막 섹션을 기록한다. 이어쓰기 시 전체 파일을 프롬프트에 넣지 않고 `previousChaptersSummary`(키 이름 목록)만 주입하며, LLM이 필요하면 `read_file`로 드릴링한다.
+
+## State 복원
+
+runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다:
+- taskQueue, completedTasks, completedTasksDetails
+- resolvedAction, techTier
+- figmaConfig, figmaExplorationResult, figmaAvailable, figmaFileKey, figmaStartNodeId
+- planText, conversationHistory
+- directive, overrideDirective, chatSource
+- jobTiming, tokenUsage
 
 ## 경계
 

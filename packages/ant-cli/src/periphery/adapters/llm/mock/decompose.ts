@@ -18,9 +18,9 @@ export function decomposeCodeResponse(): string {
     },
   ]);
 
-  const profile = JSON.stringify({
-    environment: 'webapp',
-    environmentReasoning: 'Mock: web application environment.',
+  const techTier = JSON.stringify({
+    stack: 'frontend',
+    stackReasoning: 'Mock: web application environment.',
     language: 'typescript',
     framework: 'react',
   });
@@ -28,9 +28,9 @@ export function decomposeCodeResponse(): string {
   return `<tasks>
 ${tasks}
 </tasks>
-<profile>
-${profile}
-</profile>
+<techTier>
+${techTier}
+</techTier>
 <references>[]</references>`;
 }
 

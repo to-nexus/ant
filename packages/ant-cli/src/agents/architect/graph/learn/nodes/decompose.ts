@@ -7,8 +7,8 @@
 import { LearnGraphState, LearnCommand } from "../state";
 import * as fs from "fs";
 import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
-import { resolveFromExplicit, synthesizeLearnIntent } from '@ant/shared';
-import type { ResolvedActionContext } from '@ant/shared';
+import { resolveToRAC } from '@ant/shared';
+import type { ResolvedActionContext, IntentId } from '@ant/shared';
 
 export async function decompose(state: LearnGraphState): Promise<Partial<LearnGraphState>> {
   const llm = state.deps?.llm;
@@ -16,24 +16,16 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
     throw new Error("LLM not provided for analysis");
   }
 
-  // ── RAC creation (explicit + infer, plan pattern) ──
+  // ── RAC creation ──
   const actionMetadata = state.actionMetadata;
-  let resolvedAction: ResolvedActionContext | undefined;
-
-  if (actionMetadata?.intent) {
-    resolvedAction = resolveFromExplicit(actionMetadata);
-    console.log(`🔍 [Learn:Decompose] RAC created (explicit): intent=${actionMetadata.intent}, mode=${resolvedAction.mode}`);
-  } else {
-    const synthesizedIntent = synthesizeLearnIntent();
-    resolvedAction = resolveFromExplicit({ ...actionMetadata, intent: synthesizedIntent });
-    const inferHasExplicit = !!(
-      (actionMetadata?.target && actionMetadata.target.length > 0) ||
-      (actionMetadata?.refs && actionMetadata.refs.length > 0) ||
-      (actionMetadata?.context && actionMetadata.context.length > 0)
-    );
-    resolvedAction = { ...resolvedAction, source: 'infer', hasExplicitFields: inferHasExplicit };
-    console.log(`🔍 [Learn:Decompose] RAC created (infer): intent=${synthesizedIntent}, mode=${resolvedAction.mode}`);
-  }
+  const intentId: IntentId = (actionMetadata?.intent as IntentId) || 'gen-learn';
+  const source = actionMetadata?.intent ? 'explicit' : 'infer';
+  const resolvedAction = resolveToRAC(intentId, {
+    target: actionMetadata?.target,
+    refs: actionMetadata?.refs,
+    context: actionMetadata?.context,
+  }, source);
+  console.log(`🔍 [Learn:Decompose] RAC created (${source}): intent=${intentId}, mode=${resolvedAction.mode}`);
 
   // Get ChatAPI for status updates
   const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient');

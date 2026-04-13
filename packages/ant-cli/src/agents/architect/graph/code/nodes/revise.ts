@@ -78,9 +78,9 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
   console.log('   Analyzing...\n');
   
   try {
-    const promptEngine = state.deps?.promptEngine;
-    if (!promptEngine) {
-      throw new Error('[Revise] PromptEngine not available');
+    const promptBuilder = state.deps?.promptBuilder;
+    if (!promptBuilder) {
+      throw new Error('[Revise] PromptBuilder not available');
     }
     
     // Prepare template data
@@ -96,7 +96,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     })) || [];
     
     // Generate prompt via PromptEngine
-    const prompt = await promptEngine.buildRevisePrompt('code', {
+    const prompt = await promptBuilder.render('code/phases/revise/base', {
       context: state.context,
       completedCount,
       totalTasks,

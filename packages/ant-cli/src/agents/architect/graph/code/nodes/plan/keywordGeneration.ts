@@ -14,9 +14,10 @@ import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
+import { effectiveTechTier } from "@ant/shared";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { TaskKeywords } from "./combineCodeContext";
-import { KeywordDeduplicator } from "../../../../../../core/prompt/engine/InputSanitizer";
+import { KeywordDeduplicator } from "../../../../../../core/prompt/builder/InputSanitizer";
 
 export type { TaskKeywords };
 
@@ -50,9 +51,9 @@ export async function generateTaskKeywords(
     };
   }
 
-  const promptEngine = state.deps?.promptEngine;
-  if (!promptEngine) {
-    console.warn('[Plan] PromptEngine not available, skipping keyword generation');
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!promptBuilder) {
+    console.warn('[Plan] PromptBuilder not available, skipping keyword generation');
     return {
       errorFiles: [],
       keywords: [],
@@ -61,14 +62,19 @@ export async function generateTaskKeywords(
     };
   }
 
-  const prompt = await promptEngine.buildTaskKeywordsPrompt(
-    { name: task.name, description: task.description },
-    state.directive || '',
-    state.profile,
-    state.detectionReport?.detectedMode || 'unknown',
-    state.referenceRequests,
-    directoryTree
-  );
+  const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
+  const prompt = await promptBuilder.render('code/phases/plan/base-keyword', {
+    taskName: task.name,
+    taskDescription: task.description,
+    directive: state.directive || '',
+    language: techTier?.language || 'unknown',
+    framework: techTier?.framework || 'unknown',
+    mode: state.resolvedAction?.mode || 'unknown',
+    hasReferences: state.referenceRequests && state.referenceRequests.length > 0,
+    referenceProjects: state.referenceRequests?.map(r => `- ${r.project}`).join('\n') || '',
+    directoryTree: directoryTree || '',
+    hasDirectoryTree: !!directoryTree,
+  });
 
   // ✅ Log prompt structure (not content)
   const jobId = state._httpJobId || 'unknown';
@@ -89,7 +95,7 @@ export async function generateTaskKeywords(
             taskName: task.name,
             taskDescription: task.description ? `[${task.description.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            detectedMode: state.detectionReport?.detectedMode,
+            mode: state.resolvedAction?.mode,
             hasReferences: !!(state.referenceRequests?.length),
             hasDirectoryTree: !!directoryTree,
           },

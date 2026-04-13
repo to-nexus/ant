@@ -175,8 +175,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   const phaseStart = Date.now();
 
   console.log('\n📋 ══════════════════════════ DESIGN DECOMPOSE PHASE ══════════════════════════');
-  console.log(`   Intent group: ${state.detectionReport?.detectedIntentGroup || 'unknown'}`);
-  console.log(`   Job mode: ${state.detectionReport?.detectedMode || 'unknown'}`);
+  console.log(`   Intent group: ${state.resolvedAction?.intentGroup || 'unknown'}`);
+  console.log(`   Job mode: ${state.resolvedAction?.mode || 'unknown'}`);
   console.log('═══════════════════════════════════════════════════════════════════════════════\n');
 
   // Activity banner
@@ -185,7 +185,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
   }
 
   // Validate UI design prerequisites
-  if (state.detectionReport?.detectedIntentGroup === 'design-ui') {
+  if (state.resolvedAction?.intentGroup === 'design-ui') {
     validateUiDesignPrerequisites(state);
   }
 
@@ -203,14 +203,14 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Explain mode: skip decompose, create single explain task
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (state.detectionReport?.detectedMode === 'explain') {
+    if (state.resolvedAction?.mode === 'explain') {
       return handleExplainMode(state, timing);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // UI Design mode: LLM-driven decomposition
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (state.detectionReport?.detectedIntentGroup === 'design-ui') {
+    if (state.resolvedAction?.intentGroup === 'design-ui') {
       return decomposeUiDesign(state, {
         phaseStart,
         newJobId: timing.newJobId,
@@ -221,7 +221,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Spec mode: single task for spec document generation
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (state.detectionReport?.detectedIntentGroup === 'design-spec') {
+    if (state.resolvedAction?.intentGroup === 'design-spec') {
       return decomposeSpec(state, {
         phaseStart,
         newJobId: timing.newJobId,

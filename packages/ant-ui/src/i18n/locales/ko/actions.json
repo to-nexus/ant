@@ -90,11 +90,41 @@
     "directory": "산출물 위치"
   },
 
+  "section": {
+    "refs": "참조",
+    "context": "컨텍스트",
+    "target": "타겟",
+    "none": "없음",
+    "optional": "선택사항",
+    "optionalHint": "추가로 전달할 파일을 선택할 수 있습니다",
+    "singleSelect": "단일 선택",
+    "singleSelectHint": "파일을 하나만 선택할 수 있습니다",
+    "multiSelect": "복수 선택",
+    "multiSelectHint": "여러 파일을 선택할 수 있습니다",
+    "mirrorsRefs": "참조 문서 수정",
+    "mirrorsRefsHint": "참조(Refs)에서 선택한 문서가 수정 대상이 됩니다"
+  },
+
+  "target": {
+    "reviseHint": "참조(Refs)에서 파일을 선택하면 타겟이 결정됩니다",
+    "codebase": "코드베이스",
+    "codebaseDetected": "소스 코드 감지됨",
+    "codebaseEmpty": "소스 코드 없음 — 코드를 먼저 생성하세요",
+    "willBeCreated": "생성 예정",
+    "viewInIde": "IDE에서 보기"
+  },
+
+  "toast": {
+    "navigated": "{{from}} → {{to}}(으)로 이동했습니다"
+  },
+
   "footer": {
     "chatStart": "채팅으로 시작",
     "build": "BUILD",
     "building": "BUILDING...",
-    "buildBlocked": "{{reason}}"
+    "buildBlocked": "{{reason}}",
+    "contextRequired": "컨텍스트 파일이 필요합니다",
+    "refsRequired": "참조 파일이 필요합니다"
   },
 
   "intent": {
@@ -106,6 +136,8 @@
 
   "emptySlot": {
     "missing": "{{name}} 파일이 없습니다",
+    "addFile": "파일 추가...",
+    "optionalEmpty": "{{name}} — 첨부 가능하지만 현재 없음",
     "create": "만들기",
     "upload": "업로드",
     "noFiles": "파일 없음",

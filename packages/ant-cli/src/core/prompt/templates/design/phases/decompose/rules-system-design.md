@@ -198,22 +198,25 @@ Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
   "documentType": "unified" | "contract-first" | "msa-contract-first",
   "services": [],
   "fePackages": [],
-  "profiles": {},
+  "techTier": { "stack": "<frontend | backend | fullstack>", "language": "<language>", "framework": "<framework or omit>" },
+  "packageTiers": {},
   "targetFiles": ["..."],
   "tasks": [...]
 }
 </decompose>
 
-### Technology Profiles
+### Technology Tiers
 
-The `profiles` map captures language/framework for each tier or service, enabling deterministic framework-specific prompt injection at execute time.
+The `techTier` object describes the job-level technology stack (singular). When `stack` is `"fullstack"`, the `packageTiers` map provides per-package breakdowns so each task inherits the correct technology context.
 
-**Key convention** (same as Code Job `packages` tag format):
+**`techTier` (required):** Job-level summary — `stack`, `language`, `framework`.
+
+**`packageTiers` (optional, fullstack/monorepo only):**
 
 | Key pattern | Meaning |
 |-------------|---------|
-| `be-main` | Backend default profile (non-MSA: exact match; MSA: tier fallback) |
-| `fe-main` | Frontend default profile (non-MSA: exact match; MSA: tier fallback) |
+| `be-main` | Backend default tier (non-MSA: exact match; MSA: tier fallback) |
+| `fe-main` | Frontend default tier (non-MSA: exact match; MSA: tier fallback) |
 | `be-{service}` | MSA backend service override (only if different from `be-main`) |
 | `fe-{package}` | Frontend package override (only if different from `fe-main`) |
 
@@ -221,7 +224,8 @@ The `profiles` map captures language/framework for each tier or service, enablin
 - Observe language/framework mentions in directive and source documents — do NOT assume or infer technologies not explicitly stated
 - If no technology is mentioned for a tier, omit that tier's key entirely
 - For MSA: if ALL backend services share the same stack, a single `be-main` entry suffices — add `be-{service}` overrides only for services that differ
-- Value shape: `{ "language": "<language>", "framework": "<framework or omit>" }`
+- Value shape: `{ "language": "<language>", "framework": "<framework or omit>", "stack": "frontend" | "backend" }`
+- Do NOT include `packageTiers` when all packages share the same language and framework
 
 ### Document Type Rules
 
@@ -281,7 +285,8 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
   "documentType": "<unified | contract-first | msa-contract-first>",
   "services": [],
   "fePackages": [],
-  "profiles": {},
+  "techTier": { "stack": "<stack>", "language": "<language>", "framework": "<framework or omit>" },
+  "packageTiers": {},
   "targetFiles": ["<target-file>.md"],
   "tasks": [
     {
@@ -353,8 +358,9 @@ Before outputting, verify:
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
 {{#if sourceFileNames}}- ✅ Every task has `sourceFiles` with relevant source filenames
-{{/if}}- ✅ `profiles` keys use `{tier}-main` or `{tier}-{name}` format (e.g., `be-main`, `fe-main`, `be-auth`)
-- ✅ `profiles` contains only explicitly mentioned technologies — no assumptions
+{{/if}}- ✅ `techTier` present with `stack`, `language` (and `framework` if applicable)
+- ✅ `packageTiers` keys use `{tier}-main` or `{tier}-{name}` format (e.g., `be-main`, `fe-main`, `be-auth`) — only when fullstack/monorepo
+- ✅ `packageTiers` contains only explicitly mentioned technologies — no assumptions
 - ✅ If reference project mentioned → `references` array included
 - ✅ Every task has `parallelGroup: "<id>"`
 - ✅ Tasks targeting the same file share the same `parallelGroup`

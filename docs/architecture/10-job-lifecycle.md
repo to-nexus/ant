@@ -236,7 +236,7 @@ resolve 노드에서 4-way 분기:
 | `!isResume` | triage (신규 Job) |
 | `isResume + hasTaskQueue + overrideDirective` | revise (태스크 재구성 판단) |
 | `isResume + hasTaskQueue` | plan (중단 지점부터 재개) |
-| `isResume + hasDetectionReport` | decompose (환경 감지 후 중단) |
+| `isResume + hasResolvedAction` | decompose (환경 감지 후 중단) |
 
 ### Resume 라우팅 (Plan Job)
 
@@ -262,7 +262,7 @@ Resume 시 overrideDirective가 있으면 revise 노드에서 기존 태스크 �
 | 시점 | 저장 내용 |
 |------|----------|
 | runner.ts (초기) | directive 조기 저장 |
-| detectEnvironment | detectionReport |
+| detect | resolvedAction |
 | decompose ~ runtimeValidate | 전체 state (saveCheckpoint) |
 | runner.ts (recursion limit) | 전체 state + interruption |
 | learn | 최종 state |

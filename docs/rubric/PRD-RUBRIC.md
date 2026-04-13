@@ -98,13 +98,13 @@ External Author
 inputs/sources/prd.md (PRD)
     ↓ read by ArtifactService
 Design Job
-    ├─ detectEnvironment: determines domain/environment from PRD alone
+    ├─ detect: determines domain/environment from PRD alone
     ├─ decompose: breaks down into system design tasks based on PRD
     └─ docGen: generates system design treating PRD as "ABSOLUTE TRUTH"
         └─► outputs/design/ (system design, UI design documents)
             ↓
 Code Job (consumes PRD + system design simultaneously)
-    ├─ detectEnvironment: uses PRD + directive only (no system design)
+    ├─ detect: uses PRD + directive only (no system design)
     ├─ decompose: plans implementation tasks
     └─ execute: generates code from prdSpec + designDoc + directive
 ```
@@ -113,7 +113,7 @@ Code Job (consumes PRD + system design simultaneously)
 
 | Stage | What it reads from PRD | Why it matters |
 |-------|----------------------|----------------|
-| **detectEnvironment** | Domain hints, platform signals | Determines frontend/backend/fullstack routing |
+| **detect** | Domain hints, platform signals | Determines frontend/backend/fullstack routing |
 | **System Design generation** | Functional requirements, business constraints, NFRs | Produces architecture, API contracts, domain models |
 | **UI Design generation** | Visual intent, interaction requirements, content | Produces UI specs, tokens, assets |
 | **Code decompose** | Scope, feature boundaries | Plans implementation tasks |

@@ -11,7 +11,7 @@
  *   - triage/parser.ts (<triage>)
  *   - detection.ts (<detect>)
  *   - decompose/helpers.ts (<decompose>)
- *   - decompose/responseParser.ts (<tasks>, <profile>, etc.)
+ *   - decompose/responseParser.ts (<tasks>, <techTier>, etc.)
  *   - direct.ts (raw JSON only — the motivation for this module)
  */
 

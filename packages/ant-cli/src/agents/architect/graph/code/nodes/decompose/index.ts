@@ -16,6 +16,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, TaskQueue } from "../../state";
 import { CodeTask } from "../../../../types/task";
+import { resolveTaskTechTiers as resolveTaskTechTiersShared } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -74,7 +75,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🔥 EXPLAIN MODE: Skip decompose, create single explain task
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state.detectionReport?.detectedMode === 'explain') {
+  if (state.resolvedAction?.mode === 'explain') {
     console.log('💡 [Decompose] Explain mode detected - creating single explanation task\n');
     
     const explainTask: CodeTask = {
@@ -153,7 +154,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   // Inter-Job Context Bridge: pre-determine boundary classification
   const suggestedBoundary: 'heavyweight' | 'lightweight' | 'pending' =
-    state.detectionReport?.detectedMode === 'explain' ? 'lightweight'
+    state.resolvedAction?.mode === 'explain' ? 'lightweight'
     : hasDocuments ? 'heavyweight'
     : (state.specDocs && Object.keys(state.specDocs).length > 0) ? 'pending'
     : 'lightweight';
@@ -161,8 +162,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4: Build prompt and call LLM
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (!state.deps?.promptEngine) {
-    throw new Error('[Decompose] PromptEngine not available');
+  if (!state.deps?.promptBuilder) {
+    throw new Error('[Decompose] PromptBuilder not available');
   }
   
   // ✅ CRITICAL: Check if project has existing code via git (fallback if Vector DB empty)
@@ -294,8 +295,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     hasDocuments,
     specDoc,
     specApiContract,
-    mode: state.detectionReport?.detectedMode || 'unknown',
-    profile: state.profile,
+    mode: state.resolvedAction?.mode || 'unknown',
+    techTier: state.techTier,
     designDocsMeta,
     specDocsMeta,
     codebaseFilePaths,
@@ -309,7 +310,31 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     needsBoundaryClassification: suggestedBoundary === 'pending',
   };
   
-  const prompts = await state.deps.promptEngine.buildDecomposePrompt(decomposeVars);
+  if (!state.deps.promptBuilder) throw new Error('[Decompose] PromptBuilder not available');
+
+  const hasExistingCode = decomposeVars.hasProjectCode ?? 
+    (decomposeVars.codebaseFilePaths && decomposeVars.codebaseFilePaths.length > 0);
+  const fileList = (decomposeVars.codebaseFilePaths && decomposeVars.codebaseFilePaths.length > 0)
+    ? decomposeVars.codebaseFilePaths.map((f: string) => `- ${f}`).join('\n') : '';
+  const uiHint = decomposeVars.uiSectionsSummary ? `\n\n${decomposeVars.uiSectionsSummary}\n` : '';
+  const assetsHint = decomposeVars.runtimeAssetsIndex && decomposeVars.runtimeAssetsIndex.count > 0
+    ? `\n\n## Runtime Assets Available (inputs/assets)\nThere are ${decomposeVars.runtimeAssetsIndex.count} runtime asset file(s) under inputs/assets.\nThese are NOT auto-copied. You MUST add a task to copy them into the correct static asset root for the target app (monorepo-aware).\nCopy rule: preserve relative paths under inputs/assets.\nPlacement rule by format:\n- SVG (.svg) → <app>/src/assets/ (source tree, for SVGR import)\n- Raster (png, jpg, webp) → <app>/public/ (static serving)\nExamples:\n- inputs/assets/icons/x.svg -> <app>/src/assets/icons/x.svg\n- inputs/assets/bg/hero.webp -> <app>/public/bg/hero.webp\nAsset file list (first 50):\n${decomposeVars.runtimeAssetsIndex.files.slice(0, 50).map((f: string) => `- ${f}`).join('\n')}\n`
+    : '';
+  const enrichedVars = {
+    ...decomposeVars,
+    hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
+    hasErrorInDirective: decomposeVars.hasErrorInDirective || false,
+    hasUiDocs: Boolean(decomposeVars.uiSectionsSummary),
+    hasSpecDocs: Boolean(decomposeVars.specDocsMeta),
+    documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
+    uiHint, assetsHint,
+  };
+  const decomposeSystem = await state.deps.promptBuilder.render('code/phases/decompose/rules', enrichedVars);
+  let envContract = '';
+  try { envContract = await state.deps.promptBuilder.render('code/base/injections/preview-env-contract', {}); } catch { /* skip */ }
+  const fullSystem = envContract ? `${decomposeSystem}\n\n---\n\n${envContract}` : decomposeSystem;
+  const decomposeUser = await state.deps.promptBuilder.render('code/phases/decompose/base', enrichedVars);
+  const prompts = { system: fullSystem, user: decomposeUser };
   
   const jobId = state._httpJobId || 'unknown';
   if (state.context.featurePath) {
@@ -324,7 +349,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           templatePath: 'code/phases/decompose/base (user) + code/phases/decompose/rules (system)',
           usedTemplates: [
             'code/phases/decompose/rules',
-            'code/phases/decompose/profile-rules',
+            'code/phases/decompose/techTier-rules',
             'code/phases/decompose/mode-guide',
             'code/phases/decompose/error-or-general',
             'code/phases/decompose/existing-code-check',
@@ -424,7 +449,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           {
             state: {
               awaitingDecomposeClarify: true,
-              detectionReport: state.detectionReport,
+              resolvedAction: state.resolvedAction,
               directive: state.directive,
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
@@ -453,7 +478,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     throw error;
   }
   
-  const { tasks, referenceRequests, profile: parsedProfile, selectedSpec, unknownPackages, boundary: parsedBoundary } = parsed;
+  const { tasks, referenceRequests, techTier: parsedTechTier, selectedSpec, unknownPackages, boundary: parsedBoundary } = parsed;
 
   // Inter-Job Context Bridge: finalize boundary
   const finalBoundary: 'heavyweight' | 'lightweight' = suggestedBoundary === 'pending'
@@ -479,66 +504,42 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  validateTasks(tasks, state.detectionReport?.detectedMode, state.directive, state.designDocs);
+  validateTasks(tasks, state.resolvedAction?.mode, state.directive, state.designDocs);
   
   const { taskQueue, featureTasks } = createTaskQueue(tasks);
   logTaskSummary(tasks, referenceRequests);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 6.5: Apply profile from decompose response
+  // STEP 6.5: Apply techTier from decompose response
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (parsedProfile) {
-    // Update state.profile
-    state.profile = {
-      language: parsedProfile.language,
-      framework: parsedProfile.framework || undefined,
-    };
+  if (parsedTechTier) {
+    const { buildTechTier } = await import('@ant/shared');
+    const stack = parsedTechTier.stack as 'frontend' | 'backend' | 'fullstack' | undefined;
+    state.techTier = buildTechTier(
+      { language: parsedTechTier.language, framework: parsedTechTier.framework },
+      stack,
+    );
     
-    // Update detectionReport with environment + profile (decompose is the authoritative source)
-    if (state.detectionReport) {
-      state.detectionReport = {
-        ...state.detectionReport,
-        environment: parsedProfile.environment as any,
-        environmentReasoning: parsedProfile.environmentReasoning,
-        profile: {
-          language: parsedProfile.language,
-          framework: parsedProfile.framework || undefined,
-        },
-      };
+    console.log(`✅ TechTier: stack=${stack}, language=${state.techTier.language}, framework=${state.techTier.framework || 'none'}`);
+    if (parsedTechTier.stackReasoning) {
+      console.log(`   Reasoning: ${parsedTechTier.stackReasoning}`);
     }
-    
-    console.log(`✅ Profile: ${parsedProfile.language}${parsedProfile.framework ? ` + ${parsedProfile.framework}` : ''}`);
-    console.log(`✅ Environment: ${parsedProfile.environment}`);
-    console.log(`   Reasoning: ${parsedProfile.environmentReasoning}`);
-    
-    // ✅ Display profile in Chat UI (environment + language/framework only; detectedMode already shown by detectEnv)
-    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
-    const { formatProfileForChat } = await import('../../../../../../core/types/detection');
-    const chatAPI = getChatAPIClient();
-    
-    if (state.detectionReport) {
-      const formattedProfile = formatProfileForChat(state.detectionReport, 'ko');
-      if (formattedProfile) {
-        await chatAPI.sendLLMEvent({
-          type: 'text',
-          text: formattedProfile
-        });
-        await chatAPI.finalizeMessage();
-      }
+    if (parsedTechTier.packageTiers) {
+      console.log(`   PackageTiers: ${Object.keys(parsedTechTier.packageTiers).join(', ')}`);
     }
     
     // ✅ Broadcast structureType + projectProfile to frontend via SSE (for Preview Config)
     if (state.deps?.previewUpdate && state.context) {
-      const envToStructure: Record<string, 'frontend-only' | 'backend-only' | 'fullstack'> = {
+      const stackToStructure: Record<string, 'frontend-only' | 'backend-only' | 'fullstack'> = {
         frontend: 'frontend-only',
         backend: 'backend-only',
         fullstack: 'fullstack',
       };
-      const structureType = envToStructure[parsedProfile.environment];
+      const structureType = stack ? stackToStructure[stack] : undefined;
       if (structureType) {
         const projectProfile = {
-          language: parsedProfile.language,
-          framework: parsedProfile.framework || undefined,
+          language: parsedTechTier.language,
+          framework: parsedTechTier.framework || undefined,
         };
         state.deps.previewUpdate.broadcastStructureType(
           state.context.project,
@@ -551,7 +552,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       }
     }
     
-    // ✅ Save updated detectionReport to session
+    // ✅ Save updated resolvedAction + techTier to session
     if (state.deps?.session && state.context.featureFolder) {
       try {
         const session = await state.deps.session.load(
@@ -566,7 +567,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           {
             state: {
               ...session.state,
-              detectionReport: state.detectionReport,
+              resolvedAction: state.resolvedAction,
+              techTier: state.techTier,
             }
           }
         );
@@ -577,7 +579,24 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 6.6: Exit decompose node for workflow tracking
+  // STEP 6.7: Assign task-level techTier (packageTiers mapping)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.techTier) {
+    const jobTechTier = state.techTier;
+    for (const task of taskQueue.getAll()) {
+      task.techTiers = resolveTaskTechTiersShared(task.packages, jobTechTier, parsedTechTier?.packageTiers);
+    }
+    const narrowedCount = taskQueue.getAll().filter(t => {
+      const first = t.techTiers?.[0];
+      return first && first.stack !== jobTechTier.stack;
+    }).length;
+    if (narrowedCount > 0) {
+      console.log(`🎯 [Decompose] Task-level techTier: ${narrowedCount} task(s) narrowed from ${jobTechTier.stack}`);
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 6.8: Exit decompose node for workflow tracking
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose', 0);
@@ -624,7 +643,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     timingJobId = sessionData?.state?.jobId || state._httpJobId!;
     const existingJobTiming = sessionData?.state?.jobTiming || JobTimingManager.initializeNewJob(state._httpJobId!).jobTiming;
     
-    // ✅ CRITICAL: Finalize estimating phase (detectEnvironment + decompose)
+    // ✅ CRITICAL: Finalize estimating phase (detect + decompose)
     const estimatingStartTime = existingJobTiming.startedAt || new Date().toISOString();
     jobTiming = JobTimingManager.finalizeEstimatingPhase(existingJobTiming, estimatingStartTime, finalPhaseTimings);
     
@@ -636,7 +655,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // STEP 8.5: Snapshot estimating phase token usage
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Capture job-level tokenUsage BEFORE tasks begin. At this point, state.tokenUsage
-  // contains only estimating phase tokens (detectEnvironment + decompose).
+  // contains only estimating phase tokens (detect + decompose).
   const estimatingTokenUsage = state.tokenUsage
     ? { ...state.tokenUsage }
     : undefined;
@@ -686,3 +705,4 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   return updatedState;
 }
+

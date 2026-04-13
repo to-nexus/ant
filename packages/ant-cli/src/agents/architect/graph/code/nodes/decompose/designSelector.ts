@@ -1,7 +1,7 @@
 import { ArchitectGraphState } from "../../state";
 import type { ToolDefinition } from "../../../../../../core/ports/llm";
 import { DECOMPOSE_SOURCE_THRESHOLD } from '../../../design/nodes/docGen/sourceSelector';
-import type { ResolvedDocument } from "@ant/shared";
+import type { ResolvedArtifact } from "@ant/shared";
 
 export const READ_DESIGN_DOC_TOOL: ToolDefinition = {
   name: 'read_design_doc',
@@ -141,7 +141,7 @@ export function selectDesignDocuments(state: ArchitectGraphState): string {
 export function prepareDesignDocument(state: ArchitectGraphState): {
   designDoc: string;
   hasDesignDoc: boolean;
-  documents: ResolvedDocument[];
+  documents: ResolvedArtifact[];
   hasDocuments: boolean;
   useToolMode: boolean;
 } {
@@ -152,7 +152,7 @@ export function prepareDesignDocument(state: ArchitectGraphState): {
     console.log(`📊 [DesignSelector] Tool-use mode: ${totalSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
     const docIndex = buildDesignDocIndex(state);
     const designDoc = `DESIGN DOCUMENTS (index only — use read_design_doc tool for full content):\n\n${docIndex}\n\n⚠️ Read selectively: only documents relevant to task decomposition decisions.`;
-    const documents: ResolvedDocument[] = [{ path: 'design-index', content: designDoc, role: 'ref', label: 'Design Documents (Index)' }];
+    const documents: ResolvedArtifact[] = [{ path: 'design-index', content: designDoc, role: 'ref', label: 'Design Documents (Index)' }];
     return { designDoc, hasDesignDoc: true, documents, hasDocuments: true, useToolMode };
   }
 
@@ -168,16 +168,16 @@ export function prepareDesignDocument(state: ArchitectGraphState): {
 }
 
 /**
- * Build design documents as individual ResolvedDocument entries.
+ * Build design documents as individual ResolvedArtifact entries.
  */
-function selectDesignDocumentsAsResolved(state: ArchitectGraphState): ResolvedDocument[] {
+function selectDesignDocumentsAsResolved(state: ArchitectGraphState): ResolvedArtifact[] {
   const designDocs = state.designDocs;
   if (!designDocs) {
     const fallback = state.design || '';
     return fallback ? [{ path: 'design', content: fallback, role: 'ref', label: 'Design Document' }] : [];
   }
 
-  const docs: ResolvedDocument[] = [];
+  const docs: ResolvedArtifact[] = [];
 
   for (const [name, content] of Object.entries(designDocs.apiContracts)) {
     docs.push({ path: `api-contract-${name}.md`, content, role: 'ref', label: `API Contract: ${name}` });

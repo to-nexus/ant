@@ -10,7 +10,8 @@
  */
 
 import { UserLanguage, getCompletionMessage } from '../../utils/languageDetector';
-import { parseDetectionReportFromLLM, formatDetectionReportForChat } from '../../types/detection';
+import { formatRACForChat } from '../../types/detection';
+import type { ResolvedActionContext } from '@ant/shared';
 
 export interface TransformResult {
   /** 변환된 텍스트 (없으면 undefined) */
@@ -79,7 +80,7 @@ export class SpecialTagTransformer {
       transform: (match, language) => this.transformReferences(match, language)
     });
     
-    // 5. <detect> 태그 변환기 (detectEnvironment 노드의 JSON 응답)
+    // 5. <detect> 태그 변환기 (detect 노드의 JSON 응답)
     this.register({
       pattern: /<detect>\s*([\s\S]*?)\s*<\/detect>/,
       transform: (match, language) => this.transformDetect(match, language)
@@ -295,64 +296,40 @@ export class SpecialTagTransformer {
   }
   
   /**
-   * <detect> 태그 변환 (detectEnvironment 노드)
+   * <detect> 태그 변환 (detect 노드)
    * 
    * 환경 감지 결과를 사용자 친화적인 메시지로 변환
-   * ✅ Uses unified DetectionReport + formatDetectionReportForChat
+   * ✅ Uses unified RAC + formatRACForChat
    */
   private transformDetect(match: RegExpMatchArray, language: UserLanguage): TransformResult {
     try {
       const detectJson = match[1].trim();
       const parsed = JSON.parse(detectJson);
-      
-      // Determine source job from JSON structure
-      // - Code job: has 'jobMode' or 'mode' WITHOUT 'intentGroup'/'workType'
-      // - Design job: has 'intentGroup' or 'workType'
+
       const isDesignJob = 'intentGroup' in parsed || 'workType' in parsed;
-      const sourceJob = isDesignJob ? 'design' : 'code';
-      
-      // Build DetectionReport from parsed JSON (inline conversion)
-      const report: any = {
-        sourceJob,
-        detectedMode: parsed.detectedMode || parsed.jobMode || parsed.mode || parsed.designMode || 'generate',
-        detectedModeReasoning: parsed.detectedModeReasoning || parsed.jobModeReasoning || parsed.modeReasoning || parsed.designModeReasoning || '',
-        detectedAt: new Date().toISOString(),
+      const intentGroup = isDesignJob
+        ? (parsed.intentGroup ?? parsed.workType)
+        : undefined;
+
+      const mode = parsed.detectedMode || parsed.jobMode || parsed.mode || parsed.designMode || 'generate';
+
+      const rac: ResolvedActionContext = {
+        mode,
+        intentGroup: intentGroup && intentGroup !== 'error' ? intentGroup : undefined,
+        intent: parsed.intentId,
+        domain: parsed.domain,
+        source: 'infer',
+        hasExplicitFields: false,
       };
-      
-      // Environment (common)
-      if (parsed.environment) {
-        report.environment = parsed.environment;
-        report.environmentReasoning = parsed.environmentReasoning;
-      }
-      
-      // Design-specific fields
-      if (sourceJob === 'design') {
-        const ig = parsed.intentGroup ?? parsed.workType;
-        if (ig && ig !== 'error') {
-          report.detectedIntentGroup = ig;
-          report.detectedIntentGroupReasoning = parsed.intentGroupReasoning ?? parsed.workTypeReasoning;
-        }
-        if (parsed.domain) {
-          report.domain = parsed.domain;
-          report.domainReasoning = parsed.domainReasoning;
-        }
-      }
-      
-      // Code-specific fields
-      if (sourceJob === 'code') {
-        if (parsed.profile) {
-          report.profile = {
-            language: parsed.profile.language || 'typescript',
-            framework: parsed.profile.framework,
-          };
-        }
-      }
-      
-      // Use unified formatter
-      const formatted = formatDetectionReportForChat(report, language);
-      
+
+      const reasoning: { intent?: string; domain?: string } = {
+        intent: parsed.detectedModeReasoning || parsed.jobModeReasoning || parsed.modeReasoning || parsed.designModeReasoning || undefined,
+        domain: parsed.domainReasoning || undefined,
+      };
+
+      const formatted = formatRACForChat(rac, reasoning, language);
       return { text: formatted, consumed: true };
-      
+
     } catch (error) {
       console.warn('[SpecialTagTransformer] Failed to parse detect tag:', error);
       const isKorean = language === 'ko';

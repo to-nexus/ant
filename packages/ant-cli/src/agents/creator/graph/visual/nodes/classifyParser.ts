@@ -6,14 +6,15 @@
  */
 
 import { VISUAL_ASSET_TYPES } from '../types.js';
-import type { VisualAssetType, JobMode } from '../types.js';
+import type { VisualAssetType } from '../types.js';
+import type { Mode } from '@ant/shared';
 
 const VALID_JOB_MODES: readonly string[] = ['generate', 'explain'] as const;
 
 export interface ClassifyResponse {
   assetType: VisualAssetType;
   intentId?: string;
-  jobMode: JobMode;
+  jobMode: Mode;
   reasoning: string;
 }
 
@@ -48,8 +49,8 @@ export function parseClassifyResponse(response: string): ClassifyResponse {
       console.warn(`⚠️ [ClassifyParser] Unknown asset type "${rawType}" — falling back to general`);
     }
 
-    const jobMode: JobMode = VALID_JOB_MODES.includes(rawMode)
-      ? rawMode as JobMode
+    const jobMode: Mode = VALID_JOB_MODES.includes(rawMode)
+      ? rawMode as Mode
       : 'generate';
 
     if (!VALID_JOB_MODES.includes(rawMode) && rawMode) {

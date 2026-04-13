@@ -1,19 +1,22 @@
 /**
  * Detect Node Types
  *
- * Common types for the unified detect node (replaces detectEnvironment/classify per job).
+ * Common types for the unified detect node.
  *
  * State chain: ResolvableState → TriageableState → DetectableState
- * detect node consumes DetectableState and populates detectionReport + resolvedAction.
+ * detect node consumes DetectableState and populates resolvedAction (RAC).
+ *
+ * Pipeline:
+ *   explicit (metadata.explicit=true) → resolveToRAC directly
+ *   infer → strategy.run() → InferredAction → merge with metadata → resolveToRAC
  */
 
 import type { TriageableState } from '../triage/types.js';
 import type {
-  DetectionReport,
+  InferredAction,
   ResolvedActionContext,
+  ResolvedArtifact,
   IntentId,
-  EnvironmentHints,
-  CodebaseProfileLike,
 } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -21,22 +24,21 @@ import type {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface DetectableState extends TriageableState {
-  detectionReport?: DetectionReport;
   resolvedAction?: ResolvedActionContext;
-  // recursionCount/recursionLimit: inherited from ResolvableState
+  resolvedArtifacts?: ResolvedArtifact[];
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// DetectResult — strategy run() output
+// DetectResult — strategy run() output (infer path only)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface DetectResult<T extends DetectableState = DetectableState> {
-  /** LLM-produced detection report. Undefined signals early return (clarify/error). */
-  detectionReport?: DetectionReport;
+  /** LLM-produced inference. Undefined signals early return (clarify/error). */
+  inferred?: InferredAction;
   /** Job-specific state updates (merged into graph state alongside common fields) */
   stateUpdates?: Partial<T>;
   /**
-   * When true, the factory skips common RAC creation and returns stateUpdates as-is.
+   * When true, the factory skips RAC creation and returns stateUpdates as-is.
    * Use for: clarify pauses, error exits, any case where RAC shouldn't be built yet.
    */
   skipRACCreation?: boolean;
@@ -47,27 +49,18 @@ export interface DetectResult<T extends DetectableState = DetectableState> {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface DetectStrategy<T extends DetectableState = DetectableState> {
-  /** Job-specific LLM detection (prompt build → call → parse → DetectionReport) */
+  /** Job-specific LLM detection → InferredAction with valid intentId */
   run(state: T): Promise<DetectResult<T>>;
 
-  /** Fallback intent synthesis when LLM intentId is invalid or missing */
-  synthesizeFallback(report: DetectionReport, state: T): IntentId;
-
-  /** Codebase profile for RAC tech context (code/design have it, plan/visual don't) */
-  getCodebaseProfile?(state: T): CodebaseProfileLike | undefined;
-
-  /** Environment hints for RAC creation fallback (e.g., designDocPath for code job) */
-  getExplicitHints?(state: T): EnvironmentHints | undefined;
-
-  /** Job-specific state updates when resuming with an existing detectionReport */
+  /** Job-specific state updates when resuming with an existing resolvedAction */
   onResume?(state: T): Partial<T>;
 
   /**
    * When true, the factory skips the resume fast path and calls run() instead.
    * Used by Design strategy to handle awaitingDetectClarify → resume must
-   * go through strategy.run(), not the factory's Phase 2.
+   * go through strategy.run(), not the factory's resume path.
    */
   isAwaitingInput?(state: T): boolean;
 }
 
-export type { DetectionReport, ResolvedActionContext, IntentId };
+export type { InferredAction, ResolvedActionContext, ResolvedArtifact, IntentId };
