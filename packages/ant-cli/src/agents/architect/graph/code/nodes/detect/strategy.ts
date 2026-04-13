@@ -27,11 +27,13 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
     const promptBuilder = state.deps?.promptBuilder;
     if (!promptBuilder) throw new Error('[Code:Detect] PromptBuilder not available');
 
+    const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
+    const pool = new ArtifactPoolView(state.artifacts || []);
     const prompt = await promptBuilder.render('code/phases/detect/base', {
       directive: state.directive || '',
       artifactAvailability: artifactAvailability || '',
-      hasDesignDoc: !!(state.design || (state.designDocs && Object.keys(state.designDocs).length > 0)),
-      hasSpecDocs: !!(state.specDocs && Object.keys(state.specDocs).length > 0),
+      hasDesignDoc: pool.hasSystemDesign(),
+      hasSpecDocs: pool.hasSpec(),
     });
 
     const jobId = state._httpJobId || 'unknown';

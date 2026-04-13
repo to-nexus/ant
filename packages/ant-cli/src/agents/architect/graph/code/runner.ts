@@ -104,21 +104,11 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         
         // CRITICAL: workspaceConfig is already set in initial state (from orchestrator)
         
-        // Restore directive/design/prd from session
+        // Restore directive from session (design/prd are rebuilt by resolve from disk)
         if (session.state.overrideDirective) {
           initial.directive = session.state.overrideDirective;
         } else if (session.state.directives && session.state.directives.length > 0) {
           initial.directive = session.state.directives[0];
-        }
-        
-        if (session.state.design) {
-          initial.design = session.state.design;
-        } else if (session.artifacts?.design) {
-          initial.design = session.artifacts.design;
-        }
-        
-        if (session.state.prd) {
-          initial.prd = session.state.prd;
         }
         
         if (session.state.userLanguage) {
@@ -286,10 +276,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       console.log('✅ Recursion limit reached but all tasks completed - treating as success\n');
       // Continue to learn node execution below (don't set isRecursionLimit)
       // LangGraph will have already executed learn node, so state should be final
-      return {
-        ...state,
-        design: state.design || ''
-      };
+      return state;
     }
     
     isRecursionLimit = true;

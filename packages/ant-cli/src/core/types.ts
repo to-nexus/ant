@@ -5,7 +5,7 @@
  * Import from '@core/types' or '../../core/types' to access any core type.
  * 
  * Type Modules:
- *   - agent.ts     : AgentJob, CodebaseProfile, TaskArtifacts, ProjectContext, CollectionType
+ *   - agent.ts     : AgentJob, CodebaseProfile, ProjectContext, CollectionType
  *   - session.ts   : Session, SessionState, SessionRun, InterruptionDetails
  *   - task.ts      : JobType, TaskType, BaseTask, KanbanData, TaskQueueSnapshot
  *   - workspace.ts : WorkspaceConfig, FeatureConfig

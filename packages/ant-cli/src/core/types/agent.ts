@@ -1,11 +1,10 @@
 /**
  * Agent & Project Types
  * 
- * Defines agent job types, codebase profiles, task artifacts, and project context.
+ * Defines agent job types, codebase profiles, and project context.
  * These are fundamental to how agents interact with the codebase.
  */
 
-import type { ParsedUiDocs } from './uiDoc';
 import type { EnvironmentDetection } from './environment';
 
 // ============================================
@@ -30,30 +29,6 @@ export interface CodebaseProfile {
   packageManager?: string;
   environment?: EnvironmentDetection;
   [key: string]: any;
-}
-
-// ============================================
-// Task Artifacts
-// ============================================
-
-/** Common input materials for both design and code tasks */
-export interface TaskArtifacts {
-  prd?: string;
-  /** All text files from inputs/sources/ keyed by filename. */
-  sourceDocuments?: Record<string, string>;
-  directive?: string;
-  design?: string;
-  designDocPath?: string;
-  code?: string;
-  /** Git HEAD snapshot for prompts when diff summary is unavailable */
-  codeHead?: string;
-  parsedUiDocs?: ParsedUiDocs;
-  profile?: CodebaseProfile;
-  lessons?: any;
-  hasUiDoc?: boolean;
-  isSpecDriven?: boolean;
-  figmaAvailable?: boolean;
-  figmaStartNodeId?: string;
 }
 
 // ============================================

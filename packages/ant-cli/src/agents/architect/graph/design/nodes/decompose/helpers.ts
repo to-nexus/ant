@@ -9,6 +9,7 @@ import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
+import { ARTIFACT_PREFIX } from "@ant/shared";
 
 // ============================================
 // JSON Response Parsing
@@ -72,7 +73,7 @@ export interface CheckpointData {
   estimatingTokenUsage?: any;
   overrideDirective?: string;
   chatSource?: any;
-  userLanguage?: string;
+  userLanguage?: 'en' | 'ko' | 'ja' | 'zh';
   techTier?: import('@ant/shared').TechTier;
 }
 
@@ -151,6 +152,7 @@ export function createDefaultTask(): DesignTask {
     type: 'doc',
     priority: 250,
     description: 'Create design document based on requirements',
+    include: [ARTIFACT_PREFIX.SOURCES],
     completed: false
   };
 }
@@ -159,12 +161,16 @@ export function createDefaultTask(): DesignTask {
  * Create explain mode task.
  */
 export function createExplainTask(state: DesignGraphState): DesignTask {
+  const isUi = state.resolvedAction?.intentGroup === 'design-ui';
   return {
     id: 'explain-1',
     name: 'Explain: Design documents',
     type: 'doc',
     priority: 200,
-    targetFile: state.resolvedAction?.intentGroup === 'design-ui' ? 'ui-spec.json' : 'be-system-main.md',
+    targetFile: isUi ? 'ui-spec.json' : 'be-system-main.md',
+    include: isUi
+      ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI]
+      : [ARTIFACT_PREFIX.SOURCES],
     description: state.directive || 'Analyze and explain the design documents'
   };
 }

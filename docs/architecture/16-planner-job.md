@@ -145,6 +145,7 @@ agents/planner/
 ## 경계
 
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
+- Tool 시스템 (도구 카탈로그, 레지스트리, 오케스트레이터): [19-tool-system.md](19-tool-system.md)
 - Triage 분류: [12-triage-routing.md](12-triage-routing.md)
 - Chat/ChoiceCard UI: [31-chat-system.md](31-chat-system.md)
 - Action Config Matrix: [01-shared-contracts.md](01-shared-contracts.md)

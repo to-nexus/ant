@@ -16,7 +16,8 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { effectiveTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
-import { resolveDesignDocForTask } from "../documentResolver";
+import { resolveArtifacts } from "../../../../../../core/prompt/builder/ArtifactPipeline";
+import { getRACDocuments } from "@ant/shared";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -29,7 +30,6 @@ async function selectLLMForTask(
   task: CodeTask,
   state: ArchitectGraphState
 ): Promise<LLMClient> {
-  // If no workspaceConfig, use default LLM
   if (!state.workspaceConfig) {
     return defaultLLM;
   }
@@ -42,15 +42,6 @@ async function selectLLMForTask(
     { jobType: 'code', nodeType: 'plan' },
     state.workspaceConfig
   );
-}
-
-/**
- * Resolve the designDoc string for a given task from state.
- * Shared by buildPlanPrompt and buildPlanPromptBlocks to guarantee identical output.
- * Delegates to resolveDesignDocForTask (documentResolver.ts).
- */
-function resolveDesignDoc(state: ArchitectGraphState, task: CodeTask): string {
-  return resolveDesignDocForTask(task, state);
 }
 
 /**
@@ -115,29 +106,29 @@ export async function buildPlanPrompt(
     });
   }
 
-  const designDoc = resolveDesignDoc(state, task);
   const isSpecDriven = !!state.selectedSpec;
 
-  // Merge plan-specific docs into resolvedAction.documents (role-labeled)
-  const planDocs: ResolvedArtifact[] = [];
-  if (designDoc) {
-    const docLabel = isSpecDriven ? 'Feature Specification' : 'Design Specification';
-    planDocs.push({ path: 'outputs/design/system', content: designDoc, role: 'ref', label: docLabel });
-  }
-  if (uiDoc) {
-    planDocs.push({ path: 'outputs/design/ui', content: uiDoc, role: 'context', label: 'UI Specification' });
-  }
-
+  // Artifact selection via ArtifactPipeline (task-level)
+  const pool = state.artifacts || [];
   const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
     && ((state.resolvedAction?.artifacts?.length ?? state.resolvedAction?.documents?.length ?? 0) > 0);
 
+  let planDocs: ResolvedArtifact[] = [];
   let resolvedActionWithDocs = state.resolvedAction;
-  if (!hasExplicitDocs && planDocs.length > 0) {
-    resolvedActionWithDocs = {
-      ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
-      artifacts: planDocs,
-      documents: planDocs,
-    };
+  if (!hasExplicitDocs) {
+    planDocs = resolveArtifacts(pool,
+      { taskType: task.type, include: task.include },
+      { threshold: 30_000 });
+
+    if (planDocs.length > 0) {
+      resolvedActionWithDocs = {
+        ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
+        artifacts: planDocs,
+        documents: planDocs,
+      };
+      const totalChars = planDocs.reduce((s, a) => s + (a.content?.length || 0), 0);
+      console.log(`📄 [Plan] Pipeline: ${pool.length} pool → ${planDocs.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(task.include ?? 'default')})`);
+    }
   }
 
   const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
@@ -148,12 +139,10 @@ export async function buildPlanPrompt(
     try { setupConstraints = await promptBuilder.render(`code/phases/execute/languages/${mapLang(techTier.language)}/setup/constraints`, {}); } catch { /* no constraints */ }
   }
 
-  const effectiveRA = planDocs.length > 0
-    ? { ...(resolvedActionWithDocs || { source: 'infer' as const, mode: 'generate' as const, hasExplicitFields: false }), documents: planDocs }
-    : resolvedActionWithDocs;
-  const allDocs = effectiveRA?.documents ?? [];
+  const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
+  const allDocs = getRACDocuments(resolvedActionWithDocs);
   const hasDesignDoc = allDocs.some(
-    d => d.role === 'ref' && (d.label === 'Design Specification' || d.label === 'Feature Specification'),
+    d => d.role === 'ref' && d.path.startsWith(AP.DESIGN),
   );
 
   const prompt = await promptBuilder.render('code/phases/plan/base', {
@@ -169,7 +158,7 @@ export async function buildPlanPrompt(
     hasTools: options?.hasTools ?? false,
     designDocUnknownPackages: state.designDocUnknownPackages,
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
-    resolvedAction: effectiveRA, hasDesignDoc,
+    resolvedAction: resolvedActionWithDocs, hasDesignDoc,
   });
 
   return prompt;
@@ -194,28 +183,30 @@ export async function buildPlanPromptBlocks(
   remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined,
   options?: { hasTools?: boolean },
 ): Promise<TextContentBlock[]> {
-  const designDoc = resolveDesignDoc(state, task);
   const fullPrompt = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks, options);
+
+  // Cache split: use the SAME compacted artifacts that buildPlanPrompt rendered
+  // into fullPrompt. Using un-compacted originals would cause replace() mismatches.
+  const pipelineArtifacts = resolveArtifacts(state.artifacts || [],
+    { taskType: task.type, include: task.include },
+    { threshold: 30_000 });
+  const artifactContents = pipelineArtifacts
+    .filter(a => a.content && a.content.length > 0)
+    .map(a => a.content);
+  const totalDocSize = artifactContents.reduce((sum, c) => sum + c.length, 0);
 
   const blocks: TextContentBlock[] = [];
 
-  // Cache split: use total document content size (covers designDoc + uiDoc combined)
-  // Anthropic requires ~1024 tokens minimum for caching; 3000 chars is a safe threshold
-  const docParts: string[] = [];
-  if (designDoc) docParts.push(designDoc);
-  if (uiDoc) docParts.push(uiDoc);
-  const totalDocSize = docParts.reduce((sum, d) => sum + d.length, 0);
-
   if (totalDocSize > 3000) {
-    const combinedDocs = docParts.join('\n\n---\n\n');
+    const combinedDocs = artifactContents.join('\n\n---\n\n');
     blocks.push({
       type: 'text',
       text: combinedDocs,
       cache_control: { type: 'ephemeral' },
     });
     let promptWithoutDocs = fullPrompt;
-    for (const doc of docParts) {
-      promptWithoutDocs = promptWithoutDocs.replace(doc, '[See document in previous block]');
+    for (const content of artifactContents) {
+      promptWithoutDocs = promptWithoutDocs.replace(content, '[See document in previous block]');
     }
     blocks.push({
       type: 'text',
@@ -290,8 +281,8 @@ export async function generatePlanText(
             taskType: task.type,
             taskDescription: task.description ? `[${task.description.length} chars]` : undefined,
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
-            designDoc: state.designDocs ? '[split]' : undefined,
-            uiDoc: uiDoc ? `[${uiDoc.length} chars]` : undefined,
+            include: task.include || undefined,
+            packages: task.packages || undefined,
             hasProjectCodeContext: !!projectCodeContext,
             isRetry: !!violationsText,
           },
@@ -414,7 +405,7 @@ export async function generatePlanText(
   // Validate JSON structure and prescribedPackages
   try {
     const parsed = JSON.parse(planText);
-    validatePrescribedPackages(parsed, state);
+    await validatePrescribedPackages(parsed, state);
   } catch (jsonError) {
     console.warn(`⚠️  [Plan] Failed to parse plan JSON for validation — prescribedPackages check skipped. Error: ${(jsonError as Error).message}`);
   }
@@ -502,8 +493,9 @@ async function savePlanTextForDebug(
  * Validate prescribedPackages structure within a single task plan.
  * Checks for missing field and declared-but-unused packages (empty usedBy).
  */
-function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): void {
-  if (!state.designDocs || Object.keys(state.designDocs).length === 0) return;
+async function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): Promise<void> {
+  const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
+  if (!new ArtifactPoolView(state.artifacts || []).hasSystemDesign()) return;
 
   const prescribed: any[] | undefined = parsed.prescribedPackages;
   if (!prescribed || !Array.isArray(prescribed)) {
@@ -880,7 +872,7 @@ export async function finalizePlanFromExploration(
 
       try {
         const parsed = JSON.parse(planText);
-        validatePrescribedPackages(parsed, state);
+        await validatePrescribedPackages(parsed, state);
 
         // Diagnostic shortcut: no errors → empty planText for immediate done
         if (isDiagnostic &&

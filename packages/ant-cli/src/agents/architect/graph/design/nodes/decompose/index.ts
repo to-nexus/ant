@@ -20,7 +20,7 @@ import {
 import { decomposeUiDesign } from "./uiDesignDecompose";
 import { decomposeSystemDesign } from "./systemDesignDecompose";
 import { decomposeSpec } from "./specDecompose";
-import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
+import { BOUNDARY, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 
 // ============================================
 // UI Design Prerequisites Validation
@@ -138,7 +138,7 @@ function handleExplainMode(
     completedTasksDetails: [],
     jobId: timing.newJobId,
     jobTiming: timing.newJobTiming,
-    boundary: 'lightweight' as const,
+    boundary: BOUNDARY.LIGHTWEIGHT,
   };
 }
 
@@ -163,7 +163,7 @@ async function handleDefaultTask(
     _httpJobId: state._httpJobId,
     jobId: timing.newJobId,
     jobTiming: timing.newJobTiming,
-    boundary: 'lightweight' as const,
+    boundary: BOUNDARY.LIGHTWEIGHT,
   } as any;
 }
 

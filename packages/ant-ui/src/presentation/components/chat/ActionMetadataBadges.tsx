@@ -42,6 +42,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const resetActionMetadata = useStore(s => s.resetActionMetadata);
   const setActionsStep = useStore(s => s.setActionsStep);
+  const selectAction = useStore(s => s.selectAction);
   const selectedActionId = useStore(s => s.selectedActionId);
   const storeMetadata = useStore(s => s.actionMetadata);
 
@@ -73,11 +74,11 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
 
   const handleRemoveIntent = () => {
     if (readOnly) return;
-    resetActionMetadata();
     if (selectedActionId) {
+      selectAction(selectedActionId);
       setActionsStep('pick-intent');
     } else {
-      setActionsStep('pick-action');
+      resetActionMetadata();
     }
   };
 

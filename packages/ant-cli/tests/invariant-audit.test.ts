@@ -134,29 +134,3 @@ describe('Audit 6B: template legacy variable absence', () => {
   });
 });
 
-// ============================================
-// 6C. TemplateComposer getInjectionVars integrity
-// ============================================
-
-// TODO: Rewrite this test for PromptBuilder pipeline (TemplateComposer removed)
-describe.skip('Audit 6C: TemplateComposer getInjectionVars integrity', () => {
-  it('placeholder', () => { expect(true).toBe(true); });
-});
-
-// ============================================
-// 6D. AssembledContext.stats type contract
-// ============================================
-
-// TODO: Rewrite this test for PromptBuilder pipeline (ContextAssembler removed)
-describe.skip('Audit 6D: AssembledContext.stats type contract', () => {
-  it('placeholder', () => { expect(true).toBe(true); });
-});
-
-// ============================================
-// 6E. documents reference identity
-// ============================================
-
-// TODO: Rewrite this test for PromptBuilder pipeline (ContextAssembler/PromptResolver/TemplateComposer removed)
-describe.skip('Audit 6E: documents reference identity', () => {
-  it('placeholder', () => { expect(true).toBe(true); });
-});

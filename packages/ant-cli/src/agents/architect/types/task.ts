@@ -165,6 +165,15 @@ export interface DesignTask extends BaseTask {
   sourceFiles?: string[];
 
   /**
+   * Artifact pool include patterns (set by decompose, consumed by docGen).
+   * Path-prefix patterns matching ARTIFACT_PREFIX values.
+   * When set, docGen uses `selectArtifacts(pool, { include: task.include })`
+   * instead of hardcoded per-intent defaults.
+   * e.g. ["inputs/sources", "outputs/design/system/api-contract-"]
+   */
+  include?: string[];
+
+  /**
    * Spec chapter decomposition fields.
    * When a spec document is split into sections, each task carries its section context.
    */

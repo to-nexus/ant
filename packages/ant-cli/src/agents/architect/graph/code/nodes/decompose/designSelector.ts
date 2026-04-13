@@ -2,6 +2,8 @@ import { ArchitectGraphState } from "../../state";
 import type { ToolDefinition } from "../../../../../../core/ports/llm";
 import { DECOMPOSE_SOURCE_THRESHOLD } from '../../../design/nodes/docGen/sourceSelector';
 import type { ResolvedArtifact } from "@ant/shared";
+import { ARTIFACT_PREFIX } from "@ant/shared";
+import { ArtifactPoolView, flattenDesignArtifacts } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 
 export const READ_DESIGN_DOC_TOOL: ToolDefinition = {
   name: 'read_design_doc',
@@ -19,38 +21,17 @@ export const READ_DESIGN_DOC_TOOL: ToolDefinition = {
 };
 
 /**
- * Build a flat map of all design documents { displayName -> content }.
- */
-function flattenDesignDocs(state: ArchitectGraphState): Record<string, string> {
-  const designDocs = state.designDocs;
-  if (!designDocs) return {};
-
-  const flat: Record<string, string> = {};
-  for (const [name, content] of Object.entries(designDocs.apiContracts)) {
-    flat[`api-contract-${name}`] = content;
-  }
-  for (const [name, content] of Object.entries(designDocs.feDesigns)) {
-    flat[`fe-system-${name}`] = content;
-  }
-  for (const [name, content] of Object.entries(designDocs.beDesigns)) {
-    flat[`be-system-${name}`] = content;
-  }
-  return flat;
-}
-
-/**
- * Total character size of all design documents.
+ * Total character size of all system-design artifacts in the pool.
  */
 export function getDesignDocsSize(state: ArchitectGraphState): number {
-  const flat = flattenDesignDocs(state);
-  return Object.values(flat).reduce((sum, c) => sum + c.length, 0);
+  return new ArtifactPoolView(state.artifacts || []).systemDesignSize();
 }
 
 /**
  * Build a compact index of design documents (name + size + preview).
  */
 export function buildDesignDocIndex(state: ArchitectGraphState, previewLines: number = 6): string {
-  const flat = flattenDesignDocs(state);
+  const flat = flattenDesignArtifacts(state.artifacts || []);
   if (Object.keys(flat).length === 0) return '';
 
   const names = Object.keys(flat).sort();
@@ -80,13 +61,13 @@ export function buildDesignDocIndex(state: ArchitectGraphState, previewLines: nu
 }
 
 /**
- * Handle read_design_doc tool call from in-memory design documents.
+ * Handle read_design_doc tool call from artifact pool.
  */
 export function handleReadDesignDoc(
   name: string,
   state: ArchitectGraphState,
 ): string {
-  const flat = flattenDesignDocs(state);
+  const flat = flattenDesignArtifacts(state.artifacts || []);
   const content = flat[name];
   if (!content) {
     const available = Object.keys(flat).join(', ');
@@ -96,35 +77,23 @@ export function handleReadDesignDoc(
 }
 
 /**
- * Combine all design documents into a single string for the decompose prompt.
- * Uses unified map-only DesignDocs structure.
+ * Combine all system-design artifacts into a single string for the decompose prompt.
  */
 export function selectDesignDocuments(state: ArchitectGraphState): string {
-  const designDocs = state.designDocs;
+  const poolView = new ArtifactPoolView(state.artifacts || []);
+  const systemDocs = poolView.systemDesigns.filter(a => a.content);
 
-  if (!designDocs) {
-    return state.design || '';
-  }
+  if (systemDocs.length === 0) return '';
 
-  const parts: string[] = [];
-
-  for (const [name, content] of Object.entries(designDocs.apiContracts)) {
-    parts.push(`# API Contract: ${name}\n\n${content}`);
-  }
-
-  for (const [name, content] of Object.entries(designDocs.feDesigns)) {
-    parts.push(`# Frontend: ${name}\n\n${content}`);
-  }
-
-  for (const [name, content] of Object.entries(designDocs.beDesigns)) {
-    parts.push(`# Backend: ${name}\n\n${content}`);
-  }
-
-  if (parts.length === 0) {
-    return state.design || '';
-  }
-
-  return parts.join('\n\n────────────────────────────────────────\n\n');
+  return systemDocs.map(a => {
+    const name = a.path.slice(ARTIFACT_PREFIX.SYSTEM_DESIGN.length).replace(/\.md$/, '');
+    let prefix = 'Design';
+    if (name.startsWith('fe-system-')) prefix = `Frontend: ${name.replace('fe-system-', '')}`;
+    else if (name.startsWith('be-system-')) prefix = `Backend: ${name.replace('be-system-', '')}`;
+    else if (name.startsWith('api-contract-')) prefix = `API Contract: ${name.replace('api-contract-', '')}`;
+    else prefix = name;
+    return `# ${prefix}\n\n${a.content}`;
+  }).join('\n\n────────────────────────────────────────\n\n');
 }
 
 /**
@@ -133,10 +102,6 @@ export function selectDesignDocuments(state: ArchitectGraphState): string {
  * Hybrid strategy:
  *   - Small (< DECOMPOSE_SOURCE_THRESHOLD): return full designDoc inline
  *   - Large: return index only + set useToolMode flag
- *
- * Design docs are always provided as reference context regardless of
- * whether spec documents exist. The decompose prompt's scope-rules
- * (source vs reference) guide the LLM on how to interpret them.
  */
 export function prepareDesignDocument(state: ArchitectGraphState): {
   designDoc: string;
@@ -171,23 +136,17 @@ export function prepareDesignDocument(state: ArchitectGraphState): {
  * Build design documents as individual ResolvedArtifact entries.
  */
 function selectDesignDocumentsAsResolved(state: ArchitectGraphState): ResolvedArtifact[] {
-  const designDocs = state.designDocs;
-  if (!designDocs) {
-    const fallback = state.design || '';
-    return fallback ? [{ path: 'design', content: fallback, role: 'ref', label: 'Design Document' }] : [];
-  }
+  const poolView = new ArtifactPoolView(state.artifacts || []);
+  const systemDocs = poolView.systemDesigns.filter(a => a.content);
 
-  const docs: ResolvedArtifact[] = [];
+  if (systemDocs.length === 0) return [];
 
-  for (const [name, content] of Object.entries(designDocs.apiContracts)) {
-    docs.push({ path: `api-contract-${name}.md`, content, role: 'ref', label: `API Contract: ${name}` });
-  }
-  for (const [name, content] of Object.entries(designDocs.feDesigns)) {
-    docs.push({ path: `fe-system-${name}.md`, content, role: 'ref', label: `Frontend System Design: ${name}` });
-  }
-  for (const [name, content] of Object.entries(designDocs.beDesigns)) {
-    docs.push({ path: `be-system-${name}.md`, content, role: 'ref', label: `Backend System Design: ${name}` });
-  }
-
-  return docs;
+  return systemDocs.map(a => {
+    const name = a.path.slice(ARTIFACT_PREFIX.SYSTEM_DESIGN.length).replace(/\.md$/, '');
+    let label = name;
+    if (name.startsWith('fe-system-')) label = `Frontend System Design: ${name.replace('fe-system-', '')}`;
+    else if (name.startsWith('be-system-')) label = `Backend System Design: ${name.replace('be-system-', '')}`;
+    else if (name.startsWith('api-contract-')) label = `API Contract: ${name.replace('api-contract-', '')}`;
+    return { path: a.path, content: a.content!, role: 'ref' as const, label };
+  });
 }

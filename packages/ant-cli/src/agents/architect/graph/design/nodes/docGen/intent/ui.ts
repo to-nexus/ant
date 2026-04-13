@@ -13,15 +13,14 @@
  * - rules-ui-design-by-figma.md (figma mode: MCP tool usage rules)
  */
 
-import { DesignGraphState } from '../../state';
-import { logPrompt } from '../../../../../../core/utils/promptLogger';
-import { CacheableContent, MessageContentBlock } from '../../../../../../core/ports/llm';
-import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
-import { compactAndPruneHistory } from '../../../../../../core/utils/historyManager';
-import { buildSourceDocsForTask } from './sourceSelector';
-import { DesignTask } from '../../../../types/task';
+import { DesignGraphState } from '../../../state';
+import { logPrompt } from '../../../../../../../core/utils/promptLogger';
+import { CacheableContent, MessageContentBlock } from '../../../../../../../core/ports/llm';
+import { DesignTask } from '../../../../../types/task';
 import type { FigmaNodeSummary } from '@ant/shared';
-import { designDirOf, DESIGN_DIR, DESIGN_SUBDIR, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
+import { designDirOf, DESIGN_DIR, DESIGN_SUBDIR, ARTIFACT_PREFIX, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
+import { composeMessages } from '../../../../../../../core/utils/messageComposer';
+import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -46,71 +45,14 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   if (isAfterToolCall) {
     console.log(`🎨 [DocGen] UI Design continuing with existing conversation (${conversationHistory.length} messages)`);
     
-    // ✅ Code job pattern: Build fresh prompt + append history (skip initial user messages)
-    const messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }> = [];
-    
-    // 1. Build fresh user prompt (always needed as first message)
+    // Build fresh user prompt as initial blocks
     const freshPrompt = await buildUiDesignFreshPrompt(state);
-    messages.push({
-      role: 'user',
-      content: freshPrompt
-    });
-    
-    // 2. Filter out initial user messages (replaced by fresh prompt)
-    let skipInitialUserMessages = true;
-    const filteredHistory: typeof conversationHistory = [];
-    for (const msg of conversationHistory) {
-      if (msg.role === 'assistant') {
-        skipInitialUserMessages = false;
-      }
-      if (skipInitialUserMessages && msg.role === 'user') {
-        continue;
-      }
-      filteredHistory.push(msg);
-    }
-    
-    // 3. Universal 3-step compaction: microcompact → auto-compact → prune
-    const tokenManager = new TokenBudgetManager();
-    const { result: prunedHistory, wasCompacted } = compactAndPruneHistory(filteredHistory, tokenManager);
-    
-    let isFirstMsg = true;
-    for (const msg of prunedHistory) {
-      if (typeof msg.content === 'string') {
-        const shouldCache = wasCompacted && isFirstMsg && msg.role === 'assistant'
-          && msg.content.startsWith('[Auto-compacted:');
-        messages.push({
-          role: msg.role as 'user' | 'assistant',
-          content: [{
-            type: 'text',
-            text: msg.content,
-            ...(shouldCache ? { cache_control: { type: 'ephemeral' as const } } : {}),
-          }]
-        });
-      } else {
-        messages.push({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content as MessageContentBlock[]
-        });
-      }
-      isFirstMsg = false;
-    }
-    
-    // Anthropic API requires conversation to end with a user message.
-    // If history ends with assistant (e.g., retry after no <done>), append continuation.
-    if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
-      messages.push({
-        role: 'user',
-        content: [{ type: 'text', text: 'Continue.' }]
-      });
-    }
 
-    // 4. Budget check
-    const estimation = tokenManager.checkBudget(messages as any);
-    if (estimation.isOverBudget) {
-      throw new Error(
-        `[DocGen/UI] Token budget exceeded after compaction: ${estimation.totalTokens.toLocaleString()} tokens`
-      );
-    }
+    // Compose messages via MessageComposer (handles history skip, compaction, budget)
+    const { messages } = composeMessages({
+      initialBlocks: freshPrompt,
+      priorTurns: conversationHistory,
+    });
     
     return messages;
   }
@@ -134,36 +76,40 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     text: resourcesSummary
   });
   
-  // ✅ 3. PRD Context (if available) — per-task selective injection
+  // ✅ 3. PRD Context (if available) — from artifact pool
   const figmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
-  const effectiveSourceDocs = state.sourceDocuments ? { ...state.sourceDocuments } : {};
-  if (figmaMode && state.figmaConfig) {
-    effectiveSourceDocs['figma.json'] = JSON.stringify(state.figmaConfig, null, 2);
-  }
   const taskSourceFiles = (task as DesignTask)?.sourceFiles
     ? [...(task as DesignTask).sourceFiles!]
     : undefined;
   if (figmaMode && taskSourceFiles && !taskSourceFiles.includes('figma.json')) {
     taskSourceFiles.push('figma.json');
   }
-  const sourceDocsForTask = buildSourceDocsForTask(
-    taskSourceFiles,
-    Object.keys(effectiveSourceDocs).length > 0 ? effectiveSourceDocs : undefined
-  );
-  if (taskSourceFiles?.length && !sourceDocsForTask) {
-    console.warn(`⚠️ [DocGen] sourceFiles assigned [${taskSourceFiles.join(', ')}] but matched 0 documents in sourceDocuments`);
+
+  const taskInclude = (task as DesignTask | undefined)?.include;
+  let sourceDocs = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
+  if (taskSourceFiles?.length) {
+    sourceDocs = sourceDocs.filter(a =>
+      taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
+    );
   }
 
-  if (sourceDocsForTask) {
+  // Figma config injection (may not be in pool)
+  if (figmaMode && state.figmaConfig && !sourceDocs.some(a => a.path.endsWith('figma.json'))) {
+    sourceDocs.push({ path: 'inputs/sources/figma.json', content: JSON.stringify(state.figmaConfig, null, 2), role: 'context' });
+  }
+
+  const combinedSource = sourceDocs.map(a => a.content).join('\n\n');
+  if (combinedSource) {
     content.push({
       type: 'text',
-      text: `\n\n# PRD (Requirements)\n\n${sourceDocsForTask}`
+      text: `\n\n# PRD (Requirements)\n\n${combinedSource}`
     });
   }
   
-  // ✅ 4. Inject previously generated UI docs (each task has fresh conversationHistory)
-  // NOTE: conversationHistory resets between tasks, so prior docs must be loaded from disk
-  const previousDocs = await loadPreviousUiDocs(state, task?.id || '');
+  // ✅ 4. Inject previously generated UI docs from pool (gated by task.include from decompose)
+  const previousDocs = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.UI))
+    ? buildPreviousUiDocsFromPool(state.artifacts || [], task?.id || '')
+    : '';
   if (previousDocs) {
     content.push({
       type: 'text',
@@ -200,8 +146,8 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
-            sourceDocs: sourceDocsForTask ? `[${sourceDocsForTask.length} chars]` : undefined,
-            previousDocs: previousDocs ? `[${previousDocs.length} chars]` : undefined,
+            sourceDocs: combinedSource ? `[${combinedSource.length} chars]` : undefined,
+            previousDocs: previousDocs ? `[${(previousDocs as string).length} chars]` : undefined,
             uiReferences: state.uiReferences ? {
               count: state.uiReferences.length,
             } : undefined,
@@ -243,25 +189,31 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     text: resourcesSummary
   });
   
-  // ✅ 3. PRD Context (if available) — per-task selective injection
-  const freshSourceDocs = buildSourceDocsForTask(
-    (task as DesignTask)?.sourceFiles,
-    state.sourceDocuments
-  );
-
-  if (freshSourceDocs) {
+  // ✅ 3. PRD Context (if available) — from artifact pool (include policy set by decompose)
+  const freshTaskInclude = (task as DesignTask | undefined)?.include;
+  const freshTaskSourceFiles = (task as DesignTask)?.sourceFiles;
+  let freshSourceArtifacts = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
+  if (freshTaskSourceFiles?.length) {
+    freshSourceArtifacts = freshSourceArtifacts.filter(a =>
+      freshTaskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
+    );
+  }
+  const freshCombinedSource = freshSourceArtifacts.map(a => a.content).join('\n\n');
+  if (freshCombinedSource) {
     content.push({
       type: 'text',
-      text: `\n\n# PRD (Requirements)\n\n${freshSourceDocs}`
+      text: `\n\n# PRD (Requirements)\n\n${freshCombinedSource}`
     });
   }
   
-  // ✅ 4. Inject previously generated UI docs
-  const previousDocs = await loadPreviousUiDocs(state, task?.id || '');
-  if (previousDocs) {
+  // ✅ 4. Inject previously generated UI docs from pool (gated by task.include from decompose)
+  const freshPreviousDocs = (!freshTaskInclude || freshTaskInclude.includes(ARTIFACT_PREFIX.UI))
+    ? buildPreviousUiDocsFromPool(state.artifacts || [], task?.id || '')
+    : '';
+  if (freshPreviousDocs) {
     content.push({
       type: 'text',
-      text: previousDocs
+      text: freshPreviousDocs
     });
   }
   
@@ -280,7 +232,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   if (isUiTokensTask || isUiSpecTask) {
     const targetDoc = isUiTokensTask ? 'ui-tokens.json' : 'ui-spec.json';
     console.log(`🔔 [FreshPrompt] Adding "Next Steps" instruction for ${task?.id} → ${targetDoc}`);
-    const { FilePromptAdapter } = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
+    const { FilePromptAdapter } = await import('../../../../../../../periphery/adapters/prompt/FilePromptAdapter');
     const adapter = new FilePromptAdapter();
     const freshFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
     const continuationTemplate = freshFigmaMode
@@ -301,7 +253,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
-      const freshLogSuffix = freshFigmaMode ? 'by-figma' : 'by-ref';
+      const freshLogSuffix = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig)) ? 'by-figma' : 'by-ref';
       await logPrompt(
         state.context.featurePath,
         jobIdFresh,
@@ -321,8 +273,8 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
-            sourceDocs: freshSourceDocs ? `[${freshSourceDocs.length} chars]` : undefined,
-            previousDocs: previousDocs ? `[${previousDocs.length} chars]` : undefined,
+            sourceDocs: freshCombinedSource ? `[${freshCombinedSource.length} chars]` : undefined,
+            previousDocs: freshPreviousDocs ? `[${freshPreviousDocs.length} chars]` : undefined,
             isUiTokensTask,
             isUiSpecTask,
             isFreshPrompt: true,
@@ -437,6 +389,39 @@ function buildResourcesSummary(state: DesignGraphState): string {
   }
   
   return resourcesSummary;
+}
+
+/**
+ * Build previous UI docs context from artifact pool (replaces disk-based loadPreviousUiDocs).
+ * Only ui-spec tasks need tokens + assets as REFERENCE.
+ */
+function buildPreviousUiDocsFromPool(
+  pool: import('@ant/shared').ResolvedArtifact[],
+  taskId: string,
+): string {
+  if (!taskId.startsWith('ui-spec')) return '';
+
+  const uiDocs = selectArtifacts(pool, { include: [ARTIFACT_PREFIX.UI] });
+  let injectedDocs = '';
+
+  for (const a of uiDocs) {
+    const filename = a.path.split('/').pop() || '';
+    if (filename === 'ui-tokens.json' && a.content && !a.content.includes('ant:template')) {
+      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
+      injectedDocs += `# REFERENCE: ui-tokens.json (ALL chapters completed)\n`;
+      injectedDocs += `> Use these token keys. Do NOT use raw values that are defined here.\n`;
+      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
+      injectedDocs += '```json\n' + a.content + '\n```';
+    } else if (filename === 'ui-assets.json' && a.content && !a.content.includes('ant:template')) {
+      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
+      injectedDocs += `# REFERENCE: ui-assets.json (ALL chapters completed)\n`;
+      injectedDocs += `> Reference these asset identifiers when documenting components.\n`;
+      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
+      injectedDocs += '```json\n' + a.content + '\n```';
+    }
+  }
+
+  return injectedDocs;
 }
 
 /**

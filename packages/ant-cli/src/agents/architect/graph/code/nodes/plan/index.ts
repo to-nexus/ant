@@ -24,7 +24,7 @@ import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
-import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
+// ArtifactService import removed — UI doc injection handled by ArtifactPipeline
 
 // Import submodules
 import { generateTaskKeywords, displayKeywords, logKeywords } from "./keywordGeneration";
@@ -934,28 +934,9 @@ const hasPrePlanText =
   // STEP 3: Generate implementation plan (LLM 2nd request)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   
-  // ✅ Split injection: Extract only needed UI sections for this task
-  const uiDocForPlan = (() => {
-    if (!state.parsedUiDocs) return undefined;
-    if (nextTask.type === 'doc') return undefined;
-    
-    // UI injection needed for ui and design-system task types only
-    const needsUi = nextTask.type === 'ui' || nextTask.type === 'design-system';
-    
-    if (!needsUi) return undefined;
-    
-    // ✅ Split injection: Use task.uiSections if available
-    const uiDoc = ArtifactService.getUiDocForTask(state.parsedUiDocs, nextTask.uiSections);
-    
-    if (uiDoc) {
-      const sectionInfo = nextTask.uiSections?.length 
-        ? `sections: ${nextTask.uiSections.join(', ')}` 
-        : 'all sections (no uiSections specified)';
-      console.log(`🎨 [Plan] UI doc split injection: ${uiDoc.length} chars (${sectionInfo})`);
-    }
-    
-    return uiDoc;
-  })();
+  // UI doc injection is now handled by ArtifactPipeline in planGeneration.ts
+  // (task.include selects the right UI artifacts, no separate uiDoc needed)
+  const uiDocForPlan: string | undefined = undefined;
   
   // ✅ Extract remaining tasks for cross-task awareness in plan prompt
   const remainingTasks = (state.taskQueue?.getAll() || [])

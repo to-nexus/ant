@@ -87,11 +87,6 @@
     "mirrorsRefsHint": "The selected reference documents will be updated in place"
   },
 
-  "slot": {
-    "required": "Required",
-    "requiredHint": "These files are required for execution"
-  },
-
   "target": {
     "reviseHint": "Select files in Refs to determine targets",
     "codebase": "Codebase",

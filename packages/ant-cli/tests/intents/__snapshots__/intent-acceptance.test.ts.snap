@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`Intent Acceptance > gen-code-directive > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-code-directive > prompt build: injection list snapshot 1`] = `
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
@@ -13,7 +13,7 @@ exports[`Intent Acceptance > gen-code-directive > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > gen-code-spec > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-code-spec > prompt build: injection list snapshot 1`] = `
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
@@ -26,21 +26,21 @@ exports[`Intent Acceptance > gen-code-spec > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > gen-code-sys > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-code-sys > prompt build: injection list snapshot 1`] = `
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
+  "code/phases/execute/languages/typescript/environments/browser/rules",
+  "code/base/injections/preview-setup",
+  "code/base/injections/tool-calling-rules-compact",
+  "code/base/injections/preview-env-contract",
+  "code/phases/execute/injections/port-management",
+  "common/injections/action-context",
   "common/injections/ui-design-policy",
-  "code/phases/execute/languages/typescript/environments/browser/rules",
-  "code/base/injections/preview-setup",
-  "code/base/injections/tool-calling-rules-compact",
-  "code/base/injections/preview-env-contract",
-  "code/phases/execute/injections/port-management",
-  "common/injections/action-context",
 ]
 `;
 
-exports[`Intent Acceptance > gen-spec > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-spec > prompt build: injection list snapshot 1`] = `
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
@@ -49,28 +49,19 @@ exports[`Intent Acceptance > gen-spec > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > gen-sys-be > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-sys-be > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
   "design/base/injections/backend-guide",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
+  "design/base/injections/document-language",
   "common/injections/action-context",
 ]
 `;
 
-exports[`Intent Acceptance > gen-sys-fe > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-sys-fe > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
   "design/base/injections/frontend-guide",
-  "common/injections/action-context",
-]
-`;
-
-exports[`Intent Acceptance > gen-sys-full > prompt text snapshot 1`] = `
-[
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "design/base/injections/document-language",
@@ -78,8 +69,11 @@ exports[`Intent Acceptance > gen-sys-full > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > gen-ui-desc > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-sys-full > prompt build: injection list snapshot 1`] = `
 [
+  "design/base/injections/frontend-guide",
+  "design/base/injections/backend-guide",
+  "design/base/injections/api-contract-guide",
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "design/base/injections/document-language",
@@ -87,8 +81,9 @@ exports[`Intent Acceptance > gen-ui-desc > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > gen-ui-figma > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-ui-desc > prompt build: injection list snapshot 1`] = `
 [
+  "common/injections/ui-design-policy",
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "design/base/injections/document-language",
@@ -96,8 +91,9 @@ exports[`Intent Acceptance > gen-ui-figma > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > gen-ui-ref > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-ui-figma > prompt build: injection list snapshot 1`] = `
 [
+  "common/injections/ui-design-policy",
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "design/base/injections/document-language",
@@ -105,7 +101,17 @@ exports[`Intent Acceptance > gen-ui-ref > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > rev-code > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > gen-ui-ref > prompt build: injection list snapshot 1`] = `
+[
+  "common/injections/ui-design-policy",
+  "common/injections/visual-source-authority",
+  "common/injections/directive",
+  "design/base/injections/document-language",
+  "common/injections/action-context",
+]
+`;
+
+exports[`Intent Acceptance > rev-code > prompt build: injection list snapshot 1`] = `
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
@@ -120,7 +126,7 @@ exports[`Intent Acceptance > rev-code > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > rev-spec > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > rev-spec > prompt build: injection list snapshot 1`] = `
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
@@ -130,22 +136,21 @@ exports[`Intent Acceptance > rev-spec > prompt text snapshot 1`] = `
 ]
 `;
 
-exports[`Intent Acceptance > rev-sys > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > rev-sys > prompt build: injection list snapshot 1`] = `
 [
   "common/injections/directive",
   "common/injections/visual-source-authority",
   "design/base/injections/document-language",
-  "design/base/injections/frontend-guide",
   "common/injections/action-context",
   "common/injections/refactor-guidance",
 ]
 `;
 
-exports[`Intent Acceptance > rev-ui > prompt text snapshot 1`] = `
+exports[`Intent Acceptance > rev-ui > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
   "common/injections/ui-design-policy",
+  "common/injections/directive",
+  "common/injections/visual-source-authority",
   "design/base/injections/document-language",
   "common/injections/action-context",
   "common/injections/refactor-guidance",

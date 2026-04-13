@@ -44,7 +44,8 @@ export async function getAvailableTools(state: ArchitectGraphState): Promise<Too
     toolNames.push('search_reference_code');
   }
 
-  const figmaToolsEnabled = state.figmaAvailable && !state.parsedUiDocs;
+  const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
+  const figmaToolsEnabled = state.figmaAvailable && !new ArtifactPoolView(state.artifacts || []).hasUi();
   if (figmaToolsEnabled) {
     const taskType = state.currentTask?.type;
     const isFrontendTask = taskType === 'ui' || taskType === 'feature' || taskType === 'design-system';

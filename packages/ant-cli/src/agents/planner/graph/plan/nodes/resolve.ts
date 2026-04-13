@@ -229,6 +229,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     recentTurnSummaries,
     conversation,
     isConversationContinuation,
+    resolvedArtifacts: documents.length > 0 ? documents : undefined,
     ...(conversationHistoryReset ? { conversationHistory: [] } : {}),
   } as Partial<PlanGraphState>;
 }

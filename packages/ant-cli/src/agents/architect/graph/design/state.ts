@@ -1,4 +1,4 @@
-import { CodebaseProfile, TaskArtifacts } from "../../../../core/types";
+import { CodebaseProfile } from "../../../../core/types";
 import type { ConversationEntry } from "../../../../core/types/session";
 import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
@@ -7,21 +7,29 @@ import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageableState } from '../../../common/nodes/triage/types';
-import type { FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, TechTier } from '@ant/shared';
+import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, TechTier } from '@ant/shared';
 
 /**
  * Design Task State
  * State for design generation graph (generate/refactor/explain)
- * 
- * Inherits TaskArtifacts which provides:
- * - prd: PRD document
- * - directive: User instruction
- * - design: Previous design document (single string for docGen)
+ *
+ * Legacy artifact fields are declared directly below.
+ * Pool-based nodes use `artifacts: ResolvedArtifact[]`; the legacy fields
+ * are retained only until all consumers migrate to the pool.
  */
-export interface DesignGraphState extends TaskArtifacts, TriageableState {
+export interface DesignGraphState extends TriageableState {
   // Context (narrowed from TriageableContext)
   context: ProjectContext;
   workspaceConfig?: any;  // Workspace config for job/node-specific model selection
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Legacy artifact fields (previously inherited, now declared directly)
+  // Note: `directive` is inherited from ResolvableState via TriageableState.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  prd?: string;
+  sourceDocuments?: Record<string, string>;
+  design?: string;
+  profile?: CodebaseProfile;
   
   // Dependencies (extends TriageableState.deps)
   deps?: {
@@ -39,6 +47,11 @@ export interface DesignGraphState extends TaskArtifacts, TriageableState {
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;
     redis?: any;
   };
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Unified artifact pool (resolve output, consumed by all downstream nodes)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  artifacts?: import('@ant/shared').ResolvedArtifact[];
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // RAC (detect output, immutable) + TechTier (decompose output)
@@ -92,9 +105,8 @@ export interface DesignGraphState extends TaskArtifacts, TriageableState {
     content: string | import('../../../../core/ports/llm').MessageContentBlock[];
   }>;
   
-  // ✅ Token usage (per-turn and job-level)
+  // ✅ Token usage (per-turn tracking; job-level is `tokenUsage` from ResolvableState)
   _currentTaskTokenUsage?: TokenUsage;
-  jobTokenUsage?: TokenUsage;
   _estimatingTokenUsage?: TokenUsage;
   
   
@@ -184,6 +196,6 @@ export interface DesignGraphState extends TaskArtifacts, TriageableState {
   _isStopRequested?: (() => boolean);
 
   // Inter-Job Context Bridge
-  boundary?: 'heavyweight' | 'lightweight';
+  boundary?: Boundary;
   jobConversation?: ConversationEntry[];
 }

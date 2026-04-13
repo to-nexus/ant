@@ -11,3 +11,6 @@ export * from './ArtifactRoleResolver';
 export * from './AutoInjectionResolver';
 export * from './InputSanitizer';
 export * from './policyRules';
+export * from './NodeCallPattern';
+export * from './CacheBlockMapper';
+export * from './ArtifactPipeline';

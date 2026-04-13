@@ -30,9 +30,9 @@ import { READ_SOURCE_DOC_TOOL } from './sourceSelector';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 
 // ✅ Import prompt builders from sub-modules
-import { buildMessages } from './systemDesignPrompt';
-import { buildUiDesignMessages } from './uiDesignPrompt';
-import { buildSpecMessages } from './specPrompt';
+import { buildMessages } from './intent/system';
+import { buildUiDesignMessages } from './intent/ui';
+import { buildSpecMessages } from './intent/spec';
 
 const MAX_NO_OUTPUT_CALLS = 15;
 

@@ -19,8 +19,6 @@ import { ParsedUiDocs } from "../../core/types/uiDoc";
 import type { AgentJob } from "../../core/types/agent";
 import {
   parseUiDocs,
-  getUiSectionsForTask,
-  getAllUiContent,
   generateUiSectionsSummary,
 } from "./UiDocParser";
 import { normalizeTemplateDoc } from "../../core/utils/templateDetector";
@@ -282,32 +280,8 @@ export class ArtifactService {
   }
 
   /**
-   * Get UI document content for a specific task based on uiSections array.
-   * 
-   * @param parsedDocs - ParsedUiDocs from loadParsedUiContext
-   * @param uiSections - Array of section IDs requested by the task
-   * @returns Combined content string for the requested sections
-   */
-  static getUiDocForTask(
-    parsedDocs: ParsedUiDocs,
-    uiSections?: string[]
-  ): string {
-    if (!uiSections || uiSections.length === 0) {
-      // No specific sections requested - return all content
-      console.log(`   📄 [getUiDocForTask] No uiSections specified - returning all UI content`);
-      return getAllUiContent(parsedDocs);
-    }
-    
-    console.log(`   📄 [getUiDocForTask] Extracting ${uiSections.length} sections: ${uiSections.join(', ')}`);
-    return getUiSectionsForTask(parsedDocs, uiSections);
-  }
-
-  /**
-   * Generate UI sections summary for decompose prompt.
-   * Provides section names and token estimates without full content.
-   * 
-   * @param parsedDocs - ParsedUiDocs from loadParsedUiContext
-   * @returns Summary text suitable for decompose prompt
+   * @deprecated Use ArtifactPipeline + resolveArtifacts() instead.
+   * Kept only for backward compatibility with design job (Phase 3 migration).
    */
   static getUiSectionsSummary(parsedDocs: ParsedUiDocs): string {
     return generateUiSectionsSummary(parsedDocs);

@@ -6,7 +6,7 @@
  */
 
 import type { AgentJob, CodebaseProfile } from './agent';
-import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, TechTier, InferredAction } from '@ant/shared';
+import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, TechTier, InferredAction, Boundary } from '@ant/shared';
 import type { MessageContentBlock } from '../ports/llm';
 
 // Re-export shared types
@@ -95,7 +95,7 @@ export interface ConversationEntry {
     mode?: string;           // generate, refine, etc.
     savedAsset?: string;     // Visual: deliver node saved asset path
     chapterSummary?: string; // Visual: chapter marker summary / persist pruning summary
-    boundary?: 'heavyweight' | 'lightweight';  // Inter-Job Context Bridge: job complexity classification
+    boundary?: Boundary;  // Inter-Job Context Bridge: job complexity classification
     jobId?: string;          // Inter-Job Context Bridge: originating job ID
     taskCount?: number;      // Inter-Job Context Bridge: number of tasks completed
     filesWritten?: number;   // Inter-Job Context Bridge: number of files written

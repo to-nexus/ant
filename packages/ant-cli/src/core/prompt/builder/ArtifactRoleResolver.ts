@@ -1,37 +1,17 @@
 /**
  * ArtifactRoleResolver
  *
- * Programmatically derives artifact roles and conditional policies
- * from action-config-matrix — no document-peeking required.
+ * Derives conditional policies from action-config-matrix — no document-peeking required.
  *
- * resolveArtifactRole():   config-matrix slots → 'ref' | 'context'
+ * Role resolution is upstream (FE slot assignment or loadResolvedArtifacts),
+ * NOT determined here. See design principle: "Role은 upstream 결정이다".
+ *
  * deriveArtifactPolicies(): config-matrix slots × policy-matrix conditionals → PolicyKey[]
  */
 
 import type { IntentId, PolicyKey, ResolvedArtifact } from '@ant/shared';
 import { getConfigSlots } from '@ant/shared';
 import { getPromptPolicies } from '@ant/shared';
-
-/**
- * Determine an artifact's role by checking whether its path falls
- * under a refs slot or a context slot in the config matrix.
- *
- * @param intent  - Current intent (determines which matrix entry to use)
- * @param artifactPath - Feature-relative path (e.g. 'outputs/design/ui/ui-spec.json')
- * @returns 'ref' if path matches a refs slot, 'context' otherwise
- */
-export function resolveArtifactRole(
-  intent: IntentId,
-  artifactPath: string,
-): 'ref' | 'context' {
-  const slots = getConfigSlots(intent);
-  if (!slots) return 'context';
-
-  const isRef = slots.refs.some(
-    slot => slot.path !== '' && artifactPath.startsWith(slot.path),
-  );
-  return isRef ? 'ref' : 'context';
-}
 
 /**
  * Derive Tier N (artifact-conditional) policies by cross-referencing

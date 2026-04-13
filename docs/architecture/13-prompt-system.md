@@ -2,7 +2,7 @@
 
 ## 개요
 
-ANT의 프롬프트 시스템은 WHAT/HOW 분리 원칙으로 설계된다. 템플릿은 Handlebars 기반이며, 용도에 따라 6단계 엔진 파이프라인 또는 `promptPort.render()` 직접 호출로 최종 프롬프트가 조립된다.
+ANT의 프롬프트 시스템은 **선언적 설정(PromptBuildConfig) + 4-Tier 주입(Injection) 모델**로 설계된다. 템플릿은 Handlebars 기반이며, 용도에 따라 `PromptBuilder.build()` 파이프라인 또는 `promptBuilder.render()` 직접 호출로 최종 프롬프트가 조립된다.
 
 ## 대원칙: 프롬프트 하드코딩 금지
 
@@ -10,7 +10,7 @@ ANT의 프롬프트 시스템은 WHAT/HOW 분리 원칙으로 설계된다. 템�
 
 코드에서 허용되는 것:
 - 동적 데이터 조립 (conversation slice, state 값 추출 등)
-- `promptPort.render()` 호출과 변수 전달
+- `promptBuilder.render()` 또는 `promptBuilder.build()` 호출과 변수 전달
 - LLM 응답 파싱 로직
 
 코드에서 금지되는 것:
@@ -41,29 +41,26 @@ core/prompt/templates/
         phases/
             decompose/      (base.md, rules.md)
             detect/         (base.md, rules.md)
-            docgen/         (base.md, rules.md)
-            enforce/        (base.md, rules.md)
-            error/          (base.md, rules.md)
-            execute/        (base.md, rules.md)
-            plan/           (base.md, rules.md)
+            enforce/        (rules-enforcement.md)
+            execute/        (base.md, rules.md, tasks/*, languages/*)
+            plan/           (base.md, rules.md, tasks/*)
             revise/         (base.md, rules.md)
-            testgen/        (base.md, rules.md)
-            tool/           (base.md, rules.md)
-            verify/         (base.md, rules.md)
         base/
             system.md
             examples.md
-            injections/     (각종 injection 파셜)
+            injections/     (git-diff, retrieved-code, preview-setup 등)
             tools/          (도구별 파셜)
     design/
         phases/
-            decompose/      (base.md, rules.md)
+            decompose/      (base.md, rules.md, 변형별 base-*.md)
             detect/         (base.md, rules.md)
-            execute/        (base.md, rules.md)
-            plan/           (base.md, rules.md)
-            revise/         (base.md, rules.md)
+            execute/        (base-*.md, rules-*.md, injections/*)
+        base/
+            system.md
+            injections/     (document-language, frontend-guide, backend-guide 등)
     common/
-        injections/         (공통 injection 파셜)
+        injections/         (directive, memory, action-context, refactor-guidance 등)
+        compaction/         (압축 관련 파셜)
     agents/
         architect/          (base.md, rules.md)
         creator/            (base.md, rules.md)
@@ -74,9 +71,12 @@ core/prompt/templates/
         injections/         (asset-logo.md, asset-icon.md, asset-hero.md)
     planner/
         plan/               (base.md, rules.md)
+    profiles/
+        languages/          (typescript.md, go.md, python.md 등)
+        frameworks/         (nextjs.md, react.md 등)
     triage/                 (base.md, rules.md)
     ask/                    (base.md, rules.md)
-    learn/                  (base.md, rules.md)
+    learn/                  (system.md)
 ```
 
 ## 프롬프트 조립 경로
@@ -85,23 +85,198 @@ core/prompt/templates/
 
 | 경로 | 사용처 | 설명 |
 |------|--------|------|
-| A: PromptEngine 6-phase | code job, design system-design | 전체 파이프라인 (정규화, 컨텍스트, 모드, 템플릿, 정책, 형식) |
-| B: promptPort.render() 직접 | ui-design, spec, visual job | 6-phase를 거치지 않고 템플릿 직접 렌더링. 템플릿 내부에서 partial로 조립 |
+| A: `PromptBuilder.build(config)` | code execute, design system-design | 4-tier injection + 프로필 + 가드레일 포함 전체 파이프라인 |
+| B: `promptBuilder.render(template, vars)` | decompose, detect, plan, revise, ui-design, spec, visual, ask, triage | 직접 템플릿 렌더링. 템플릿 내부 `{{> partial}}` 조립 |
 
-경로 B는 대화형 워크플로우나 단일 노드에 특화된 프롬프트처럼 6-phase 오케스트레이션이 과한 경우에 적합하다. 템플릿 내에서 `{{> partial_name}}`으로 rules/injections를 조립하므로 구조화 수준은 동일하다.
+경로 B는 injection 해석이 불필요하거나 대화형 노드처럼 파이프라인이 과한 경우에 적합하다.
 
-## 엔진 파이프라인 (경로 A)
+## PromptBuilder 아키텍처 (경로 A)
 
-PromptEngine은 6단계로 프롬프트를 조립한다.
+`PromptBuilder`는 `PromptBuildConfig`를 받아 4단계로 프롬프트를 조립한다.
 
-| 단계 | 컴포넌트 | 역할 |
-|------|----------|------|
-| 1 | InputNormalizer | 입력 정규화 |
-| 2 | ContextAssembler | 컨텍스트 수집 및 조합 |
-| 3 | ModeController | 모드별 분기 제어 |
-| 4 | TemplateComposer | Handlebars 템플릿 렌더링 |
-| 5 | PolicyInjector | 정책 주입 |
-| 6 | PromptFormatter | 최종 형식 정리 |
+### PromptBuildConfig (선언적 설정)
+
+호출자는 WHAT을 선언하고, PromptBuilder가 HOW를 결정한다:
+
+```
+PromptBuildConfig
+├── templates: { base, rules?, system? }     ← 렌더할 템플릿 경로
+├── intent?: IntentId                         ← Tier I 정책 결정
+├── artifactPolicies?: PolicyKey[]            ← Tier N 사전 계산 결과
+├── techContext?                              ← Tier A+D 입력 신호
+│   ├── techTier / techTiers                  ← 기술 스택 (decompose에서 도출)
+│   ├── taskType                              ← feature/setup/verification/error/test-code/doc
+│   ├── mode                                  ← generate/refactor/explain
+│   └── resolvedAction                        ← RAC 객체
+├── pipeline                                  ← 기능 플래그
+│   ├── sanitizeInput                         ← 사용자 입력 경계 태그
+│   ├── includeTechProfile                    ← 언어/프레임워크 프로필
+│   ├── includeExamples                       ← 예시 섹션
+│   ├── applyPolicyGuardrails                 ← 가드레일 + 품질 정책
+│   └── strictValidation                      ← strict mode
+├── vars: Record<string, unknown>             ← Handlebars 변수
+└── artifacts?: ResolvedArtifact[]            ← 역할 라벨 아티팩트
+```
+
+### Build 4단계
+
+| 단계 | 설명 |
+|------|------|
+| 1. Injection Resolution | 4-tier 모델로 주입 템플릿 목록 결정 (아래 상세) |
+| 2. Variable Preparation | artifacts → documents/hasDocuments, resolvedAction 동기화, 선택적 sanitize |
+| 3. Section Rendering | system → profiles → rules → injections → examples → base(user) 순서로 렌더 |
+| 4. Assembly | 섹션 병합 + 가드레일/품질정책 래핑 → system/user 문자열 + 분리 sections 반환 |
+
+### PromptBuildResult
+
+```
+PromptBuildResult
+├── system: string                ← 전체 시스템 프롬프트 (병합)
+├── user: string                  ← 사용자 프롬프트 (base 템플릿)
+├── sections                      ← 캐시 블록 분리용 (Anthropic prompt caching 등)
+│   ├── systemBase                ← 시스템 템플릿 (변경 빈도 낮음)
+│   ├── rules                     ← 규칙 템플릿
+│   ├── injections                ← 주입 병합 텍스트
+│   ├── profiles                  ← 기술 프로필
+│   ├── examples                  ← 예시
+│   └── failedTemplates           ← 렌더 실패 진단
+├── injections: string[]          ← 적용된 injection 경로 목록
+└── buildTimeMs: number           ← 빌드 소요 시간
+```
+
+## 4-Tier Injection 모델
+
+PromptBuilder는 4개의 독립 Tier에서 injection 템플릿을 수집하고 중복 제거한다.
+
+```
+Tier I (Intent)        → prompt-policy-matrix[intent].policies
+Tier A (Auto-tech)     → AutoInjectionResolver (techTier, taskType, mode, phase, job)
+Tier D (Data-presence) → AutoInjectionResolver (vars에서 추출한 데이터 플래그)
+Tier N (Artifact-cond) → deriveArtifactPolicies() (config-matrix 슬롯 × 실제 아티팩트)
+```
+
+### Tier I: Intent 정책
+
+`@ant/shared`의 `prompt-policy-matrix.ts`가 `IntentId → IntentPromptPolicy` 매핑을 정의한다.
+
+| 필드 | 설명 |
+|------|------|
+| `policies: PolicyKey[]` | 해당 intent에 무조건 적용되는 정적 정책 |
+| `conditionalPolicies` | 아티팩트 존재 시에만 적용 (Tier N에서 처리) |
+| `refMediaHints` | ref 아티팩트의 미디어 타입 힌트 (text, image) |
+
+`POLICY_TEMPLATE_MAP`이 `PolicyKey → 템플릿 경로`를 매핑한다:
+
+| PolicyKey | 템플릿 경로 |
+|-----------|-------------|
+| `ui-design-policy` | `common/injections/ui-design-policy` |
+| `visual-source-authority` | `common/injections/visual-source-authority` |
+| `frontend-guide` | `design/base/injections/frontend-guide` |
+| `backend-guide` | `design/base/injections/backend-guide` |
+| `api-contract-guide` | `design/base/injections/api-contract-guide` |
+
+예: `gen-sys-full` intent → `['frontend-guide', 'backend-guide', 'api-contract-guide']` 정적 주입.
+
+### Tier A: Auto-tech (정적 기술/워크플로우 컨텍스트)
+
+`AutoInjectionResolver`가 `techTier`, `taskType`, `mode`, `job`, `phase`를 기반으로 결정:
+
+| 조건 | 주입 |
+|------|------|
+| frontend 스택 + feature/setup/error 타입 | `visual-source-authority` |
+| setup 타입 + 언어 감지 | `languages/{lang}/setup/constraints` |
+| execute phase + code job + 환경 | `languages/{lang}/environments/{env}/rules` |
+| frontend + execute | `preview-setup` |
+| code job + execute | `tool-calling-rules-compact`, `preview-env-contract`, `port-management` |
+| backend 스택 | `backend-safety` |
+| test-code + 언어 | `languages/{lang}/test-code/hints` |
+| design job + execute | `document-language` |
+
+### Tier D: Data-presence (데이터 존재 플래그)
+
+`PromptBuilder.extractDataSignals()`가 `vars`에서 플래그를 추출하고, `AutoInjectionResolver`가 처리:
+
+| 플래그 | 주입 |
+|--------|------|
+| `hasDirective` | `common/injections/directive` |
+| `hasMemory` | `common/injections/memory` |
+| `hasGitDiff` | `code/base/injections/git-diff` |
+| `hasRetrievedCode` | `code/base/injections/retrieved-code` |
+| `hasReferenceCode` | `code/base/injections/reference-code` |
+| `hasRetryContext` | `code/phases/execute/injections/retry-context` |
+| `hasLessons` | `code/phases/execute/injections/lessons` |
+| `hasSessionContext` | `code/phases/execute/injections/session-context` |
+| `hasMissingDependency` | `code/phases/execute/injections/missing-dependency-fix` |
+| `hasRuntimeError` | `code/phases/execute/injections/runtime-error-fix` |
+
+RAC 기반 주입도 Tier D에 포함:
+
+| 조건 | 주입 |
+|------|------|
+| `resolvedAction` 존재 | `common/injections/action-context` |
+| `resolvedAction.mode === 'refactor'` | `common/injections/refactor-guidance` |
+| `resolvedAction.mode === 'explain'` | `common/injections/explain-guidance` |
+
+### Tier N: Artifact-conditional 정책
+
+`ArtifactRoleResolver.deriveArtifactPolicies(intent, artifacts)`가 담당:
+
+1. `prompt-policy-matrix`에서 해당 intent의 `conditionalPolicies` 조회
+2. `action-config-matrix`의 슬롯과 교차 — `slotPath`에 매칭되는 슬롯이 있고, 해당 경로로 시작하는 아티팩트가 실제로 존재하면 정책 적용
+
+예: `gen-code-sys` intent + `outputs/design/ui` 경로에 UI 설계 문서가 있으면 → `ui-design-policy` 주입.
+
+## ArtifactRoleResolver
+
+아티팩트의 `role`은 upstream에서 결정된다 (FE 슬롯 배치 또는 `loadResolvedArtifacts`). ArtifactRoleResolver는 역할을 재도출하지 않으며, Tier N 조건부 정책 도출만 담당한다.
+
+| 함수 | 입력 | 출력 | 용도 |
+|------|------|------|------|
+| `deriveArtifactPolicies(intent, artifacts)` | IntentId + 아티팩트 배열 | `PolicyKey[]` | Tier N 조건부 정책 도출 |
+
+## Injection Manifest
+
+`injection-manifest.json`이 injection 템플릿과 기대 변수의 계약을 선언한다:
+
+```json
+{
+  "common/injections": {
+    "directive": ["directive"],
+    "action-context": ["resolvedAction"]
+  },
+  "code/base/injections": {
+    "git-diff": ["gitDiff"],
+    "retrieved-code": ["files", "filePaths", "stats"]
+  }
+}
+```
+
+빈 배열(`[]`)은 변수 없이 렌더 가능한 정책 템플릿을 의미한다. 스모크 테스트가 이 manifest를 기반으로 모든 injection 파일의 존재를 검증한다.
+
+## Policy Guardrails
+
+`PromptBuilder`는 `pipeline.applyPolicyGuardrails`가 true일 때 `ruleset.json` 기반으로 가드레일과 품질 정책을 시스템 프롬프트에 래핑한다:
+
+- **Guardrail section** (`<guardrails>...</guardrails>`): job별 사전 검증 규칙 → 시스템 **앞**에 삽입
+- **Quality policy section** (`<quality_policies>...</quality_policies>`): 포맷/금지/품질 규칙 → 시스템 **뒤**에 삽입
+
+strict mode가 활성화되면 추가 엄격 규칙이 삽입된다.
+
+## InputSanitizer
+
+`pipeline.sanitizeInput`가 true일 때 사용자 제공 콘텐츠에 경계 태그를 래핑하여 프롬프트 인젝션을 방지한다:
+
+- `directive` 필드 → `<user_provided_content type="directive">...</user_provided_content>`
+- `documents` 배열의 각 `content` → `<user_provided_content type="{label|path}">...</user_provided_content>`
+
+## Tech Profile
+
+`pipeline.includeTechProfile`이 true이고 `techTier`가 있을 때:
+
+1. `ProfilePort.loadLanguage(techTier.language)` → `<tech_profile>` 섹션
+2. `ProfilePort.loadFramework(techTier.framework)` → `<framework_profile>` 섹션
+
+`techTier`는 **decompose 노드에서 도출**된다. decompose를 경유하지 않는 job(plan, ask, visual)은 techTier가 없으므로 프로필이 주입되지 않는다.
 
 ## 템플릿 렌더링
 
@@ -112,9 +287,10 @@ Handlebars를 사용하며, 조건부 섹션(`{{#if}}`)과 반복(`{{#each}}`)�
 | 변수 | 출처 |
 |------|------|
 | `directive` | 사용자 입력 또는 overrideDirective |
-| `resolvedAction` | detect 노드 — RAC 객체 (intent, mode, target, refs, context, documents) |
+| `resolvedAction` | detect 노드 — RAC 객체 (intent, mode, target, refs, context, artifacts) |
 | `taskDescription` | decompose에서 생성된 태스크 설명 |
 | `previousChaptersSummary` | 이전 챕터 요약 (Design Job) |
+| `projectCodeContext` | plan 노드의 RAG + 파일 트리 |
 
 ## FPOP 원칙
 
@@ -139,11 +315,6 @@ Handlebars를 사용하며, 조건부 섹션(`{{#if}}`)과 반복(`{{#each}}`)�
 | prod 모드 (`node dist/...`) | `dist/` | `dist/core/prompt/templates/` |
 | 자식 프로세스 (job-runner) | `ANT_CLI_ROOT` 환경변수 | JobWorker가 설정 |
 
-경로 해석 방식:
-- prod: `import.meta.url` 경로에서 `/dist/`를 찾아 추출 (번들 깊이 무관)
-- dev: `WorkspaceResolver.ts`의 실제 위치 기준으로 `src/` 반환
-- `ANT_CLI_ROOT` 환경변수가 설정된 경우 무조건 우선 사용
-
 이 경로에 의존하는 파생 메서드:
 - `getPromptTemplatesPath()` → `{root}/core/prompt/templates`
 - `getPoliciesPath()` → `{root}/core/policies/prompts`
@@ -156,42 +327,48 @@ Handlebars를 사용하며, 조건부 섹션(`{{#if}}`)과 반복(`{{#each}}`)�
 
 ### initPartials()
 
-서버 시작 시 `initPartials()`를 await하여 모든 Handlebars partial을 자동 탐색/등록한다.
-`templates/` 하위의 모든 `.md` 파일을 재귀 탐색하여 partial로 등록하므로, 템플릿 추가/삭제/이름변경 시 코드 수정이 필요 없다.
+서버 시작 시 `initPartials()`를 await하여 모든 Handlebars partial을 자동 탐색/등록한다. `templates/` 하위의 모든 `.md` 파일을 재귀 탐색하여 partial로 등록하므로, 템플릿 추가/삭제/이름변경 시 코드 수정이 필요 없다.
 
 ## 빌드/테스트 파이프라인
 
 ```
-npm test          → vitest run (14개 테스트, ~0.3초, 인프라 불필요)
-npm run build     → prebuild(=test) → esbuild → cp templates to dist/
-npm run start:cloud → dist/ 기반 실행 (이미 검증됨)
+pnpm test:cli     → vitest run (인프라 불필요, ~0.3초)
+pnpm build        → prebuild(=test) → esbuild → cp templates to dist/
 ```
 
 | 스크립트 | 위치 | 설명 |
 |----------|------|------|
-| `test` | ant-cli | vitest run (템플릿 스모크 + 런타임 조립 유닛) |
+| `test` | ant-cli | vitest run (스모크 + RAC 감사 + injection 검증) |
 | `prebuild` | ant-cli | build 전 자동 실행 (= test) |
-| `test:cli` | root | `pnpm --filter @ant/cli test` (루트에서 실행 편의) |
+| `test:cli` | root | `pnpm --filter @ant/cli test` |
 
-테스트가 실패하면 빌드가 중단된다. `start:cloud`은 이미 빌드된 산출물을 실행하므로 별도 테스트를 포함하지 않는다.
-
-## 프롬프트 주입 경로
-
-모든 LLM 프롬프트는 2가지 경로를 통해 조립된다:
-
-| 경로 | 설명 | 안전장치 |
-|------|------|----------|
-| A: 템플릿 렌더링 | `.md` 템플릿을 FilePromptAdapter로 렌더 | 스모크 테스트 (90개 전수검사) |
-| B: 런타임 조립 | TypeScript 함수가 state에서 동적 컨텍스트 조립 | 유닛 테스트 (buildRuntimeContext, generateFileTree) |
+테스트가 실패하면 빌드가 중단된다.
 
 ## 안전 메커니즘
 
-- **Fail-fast**: base/rules 템플릿 실패 시 TemplateComposer가 throw (job 즉시 실패)
+- **Fail-fast**: critical 템플릿(base/rules) 실패 시 에러 로그 + failedTemplates에 기록
 - **Contract logging**: PromptLogger가 `contractViolations` 필드로 누락 변수 기록
 - **Injection manifest**: `injection-manifest.json`이 injection 템플릿 → 변수 매핑을 선언
-- **`npm test` 게이트**: 템플릿 스모크 + 런타임 조립 유닛 테스트 (CI에서 자동 실행)
+- **Input sanitization**: 사용자 콘텐츠 경계 태그 래핑 (프롬프트 인젝션 방지)
+- **테스트 게이트**: 스모크 + RAC 감사 + injection 검증 (CI에서 자동 실행)
 
 자세한 내용은 [docs/testing/prompt-test-spec.md](../testing/prompt-test-spec.md) 참고.
+
+## 소스 파일 맵
+
+| 파일 | 역할 |
+|------|------|
+| `core/prompt/builder/PromptBuilder.ts` | 4-tier injection + 렌더 + 조립 메인 클래스 |
+| `core/prompt/builder/PromptBuildConfig.ts` | 선언적 설정 + 결과 타입 |
+| `core/prompt/builder/AutoInjectionResolver.ts` | Tier A + D injection 해석 |
+| `core/prompt/builder/ArtifactRoleResolver.ts` | Tier N 조건부 정책 도출 |
+| `core/prompt/builder/InputSanitizer.ts` | 경계 태그 + 키워드 중복 |
+| `core/prompt/builder/policyRules.ts` | guardrail + quality policy 로드/포맷 |
+| `core/prompt/injection-manifest.json` | injection 템플릿 → 변수 계약 |
+| `periphery/adapters/prompt/FilePromptAdapter.ts` | Handlebars 렌더러 + partial 등록 |
+| `@ant/shared: prompt-policy-matrix.ts` | IntentId → 정책 매핑 (Tier I + N) |
+| `@ant/shared: action-config-matrix.ts` | IntentId → 슬롯 정의 (refs/context/target) |
+| `@ant/shared: rac.ts` | ResolvedActionContext 타입 + resolveToRAC() |
 
 ## 경계
 
