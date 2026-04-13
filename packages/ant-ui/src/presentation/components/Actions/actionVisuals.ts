@@ -6,6 +6,8 @@ import {
   Figma, Camera, MessageSquareText, Paintbrush,
   ClipboardList, ClipboardPenLine,
   Wrench,
+  MessageCircleQuestion, ClipboardCheck, Bot, MessageCircle,
+  BookOpenText,
 } from 'lucide-react';
 
 // ============================================
@@ -30,6 +32,7 @@ export const ACTION_VISUALS: Record<IntentGroup, VisualDef> = {
   code:              { icon: Code2,     bg: 'bg-emerald-100 dark:bg-emerald-900/50', text: 'text-emerald-600 dark:text-emerald-400' },
   visual:            { icon: ImageIcon, bg: 'bg-violet-100 dark:bg-violet-900/50', text: 'text-violet-600 dark:text-violet-400' },
   'learn-codebase':  { icon: BookOpen,  bg: 'bg-amber-100 dark:bg-amber-900/50',  text: 'text-amber-600 dark:text-amber-400' },
+  ask:               { icon: MessageCircleQuestion, bg: 'bg-cyan-100 dark:bg-cyan-900/50', text: 'text-cyan-600 dark:text-cyan-400' },
 };
 
 // ============================================
@@ -40,31 +43,41 @@ export const ACTION_VISUALS: Record<IntentGroup, VisualDef> = {
 const INTENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   'gen-plan':           FilePlus2,
   'rev-plan':           FilePen,
+  'explain-plan':       BookOpenText,
 
   'gen-sys-fe':         Monitor,
   'gen-sys-be':         Server,
   'gen-sys-full':       Layers,
   'rev-sys':            PenLine,
+  'explain-sys':        BookOpenText,
 
   'gen-ui-figma':       Figma,
   'gen-ui-ref':         Camera,
   'gen-ui-desc':        MessageSquareText,
   'rev-ui':             Paintbrush,
+  'explain-ui':         BookOpenText,
 
   'gen-spec':           ClipboardList,
   'rev-spec':           ClipboardPenLine,
+  'explain-spec':       BookOpenText,
 
   'gen-code-sys':       Server,
   'gen-code-spec':      ClipboardList,
   'gen-code-directive': MessageSquareText,
   'rev-code':           Wrench,
+  'explain-code':       BookOpenText,
 
   'gen-visual-logo':          ImageIcon,
   'gen-visual-icon':          ImageIcon,
   'gen-visual-hero':          ImageIcon,
   'gen-visual-illustration':  ImageIcon,
+  'explain-visual':           BookOpenText,
 
   'gen-learn':          BookOpen,
+
+  'ask-evaluate':       ClipboardCheck,
+  'ask-ant':            Bot,
+  'ask-general':        MessageCircle,
 };
 
 /**

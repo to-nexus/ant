@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
+import { getIntentVisual } from './actionVisuals';
 import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import type { IntentGroup, IntentDefinition } from '@ant/shared';
 
@@ -13,8 +13,6 @@ interface IntentTabNavProps {
 }
 
 export function IntentTabNav({ actionId, intents, selectedIntentId, onSelect, onBack, lang }: IntentTabNavProps) {
-  const visual = ACTION_VISUALS[actionId];
-
   const items: TabItem[] = useMemo(() =>
     intents.map(intent => {
       const v = getIntentVisual(intent.id, actionId);
@@ -29,8 +27,6 @@ export function IntentTabNav({ actionId, intents, selectedIntentId, onSelect, on
     }),
     [intents, lang, actionId],
   );
-
-  if (!visual) return null;
 
   return (
     <ScrollableTabNav
