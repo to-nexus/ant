@@ -97,6 +97,45 @@ describe('Action Config Matrix completeness', () => {
     }
   });
 
+  it('chatRequiresRefs intents have real (non-empty) ref slots', () => {
+    for (const def of INTENT_DEFINITIONS) {
+      const slots = getConfigSlots(def.id);
+      if (slots?.chatRequiresRefs) {
+        const hasRealRef = slots.refs.some(r => !r.emptyHint && (r.path || r.codebase));
+        expect(
+          hasRealRef,
+          `${def.id} has chatRequiresRefs but no real ref slots`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('basis-dependent intents require refs for chat (gen-code-sys, gen-code-spec, gen-ui-ref)', () => {
+    const basisIntents = ['gen-code-sys', 'gen-code-spec', 'gen-ui-ref'] as const;
+    for (const id of basisIntents) {
+      const slots = getConfigSlots(id);
+      expect(slots, `${id} should have MATRIX entry`).not.toBeNull();
+      expect(
+        slots!.chatRequiresRefs,
+        `${id} must have chatRequiresRefs: true — refs are the basis, not supplementary`,
+      ).toBe(true);
+    }
+  });
+
+  it('explain intents with real refs require refs for chat', () => {
+    const explainIntents = INTENT_DEFINITIONS.filter(d => deriveFromIntent(d.id).mode === 'explain');
+    for (const def of explainIntents) {
+      const slots = getConfigSlots(def.id);
+      const hasRealRef = slots!.refs.some(r => !r.emptyHint && (r.path || r.codebase));
+      if (hasRealRef) {
+        expect(
+          slots!.chatRequiresRefs,
+          `${def.id} (explain with real refs) must have chatRequiresRefs: true`,
+        ).toBe(true);
+      }
+    }
+  });
+
 });
 
 describe('resolveToRAC merging', () => {

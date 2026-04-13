@@ -172,7 +172,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     updateActionMetadata({ [field]: next.length > 0 ? next : undefined });
   };
 
-  const refEntries = useMemo(() => slots ? resolveSlotEntries(slots.refs, fileTree, selectedCtx, warningCtx) : [], [slots, fileTree, selectedCtx, warningCtx]);
+  const codebaseHasFiles = gitStatus?.codebaseHasFiles ?? false;
+  const refEntries = useMemo(() => slots ? resolveSlotEntries(slots.refs, fileTree, selectedCtx, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedCtx, warningCtx, codebaseHasFiles]);
   const ctxEntries = useMemo(() => slots ? resolveSlotEntries(slots.context, fileTree, selectedRefs, warningCtx) : [], [slots, fileTree, selectedRefs, warningCtx]);
   const targetExisting = useMemo(() => {
     if (!slots || slots.target.kind !== 'generate') return [];
