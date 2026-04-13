@@ -8,6 +8,7 @@ import {
   Wrench,
   MessageCircleQuestion, ClipboardCheck, Bot, MessageCircle,
   BookOpenText,
+  Gem, Shapes, PanelTop, PenTool,
 } from 'lucide-react';
 
 // ============================================
@@ -67,10 +68,10 @@ const INTENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   'rev-code':           Wrench,
   'explain-code':       BookOpenText,
 
-  'gen-visual-logo':          ImageIcon,
-  'gen-visual-icon':          ImageIcon,
-  'gen-visual-hero':          ImageIcon,
-  'gen-visual-illustration':  ImageIcon,
+  'gen-visual-logo':          Gem,
+  'gen-visual-icon':          Shapes,
+  'gen-visual-hero':          PanelTop,
+  'gen-visual-illustration':  PenTool,
   'explain-visual':           BookOpenText,
 
   'gen-learn':          BookOpen,
