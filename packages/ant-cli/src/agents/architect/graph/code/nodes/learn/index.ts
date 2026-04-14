@@ -1,60 +1,14 @@
 import * as path from "path";
-import { ArchitectGraphState } from "../state";
-import { SessionRun, ConversationEntry } from "../../../../../core/types";
-import { errorStatsCollector, formatStatistics } from "./diagnostics/errorStats";
-import { getChatAPIClient } from "../../../../../core/adapters/ChatAPIClient";
-import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../core/utils/docMetadata";
+import { ArchitectGraphState } from "../../state";
+import { SessionRun, ConversationEntry } from "../../../../../../core/types";
+import { errorStatsCollector, formatStatistics } from "../diagnostics/errorStats";
+import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
+import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../core/utils/docMetadata";
 import { designSubdirOf, DESIGN_DIR, BOUNDARY } from "@ant/shared";
 
-/**
- * Inter-Job Context Bridge: Build raw job completion record.
- * Always saves raw content without LLM summarization.
- * Compression is deferred to next job's resolve node.
- */
-function buildJobRecord(state: ArchitectGraphState): { user: ConversationEntry; assistant: ConversationEntry } {
-  const tasks = state.completedTasksDetails || [];
-  const filePaths = state.projectCodeContext?.filePaths || [];
-  const taskNames = tasks.map((t: any) => t.name).join(', ');
-  const timestamp = new Date().toISOString();
-  const boundary = state.boundary || BOUNDARY.LIGHTWEIGHT;
+import { buildJobRecord } from './jobRecord';
+import { extractCodeLessons, extractTags } from './lessonExtractor';
 
-  const user: ConversationEntry = {
-    role: 'user',
-    content: state.directive || state.overrideDirective || '',
-    timestamp,
-    metadata: { jobId: state.jobId, boundary },
-  };
-
-  // Collect consumed document references for next job's context
-  const consumedDesignRefs = new Set<string>();
-  for (const t of tasks) {
-    if ((t as any).packages) {
-      for (const pkg of (t as any).packages) {
-        consumedDesignRefs.add(pkg);
-      }
-    }
-  }
-
-  const assistant: ConversationEntry = {
-    role: 'assistant',
-    content: [
-      taskNames && `Tasks: ${taskNames}`,
-      filePaths.length > 0 && `Files: ${filePaths.slice(0, 20).join(', ')}${filePaths.length > 20 ? '...' : ''}`,
-      state.selectedSpec && `Based on: ${state.selectedSpec}`,
-      consumedDesignRefs.size > 0 && `Design refs: ${[...consumedDesignRefs].join(', ')}`,
-      state.planText && `Plan: ${state.planText.substring(0, 500)}`,
-    ].filter(Boolean).join('\n'),
-    timestamp,
-    metadata: { jobId: state.jobId, boundary, taskCount: tasks.length, filesWritten: filePaths.length },
-  };
-
-  return { user, assistant };
-}
-
-/**
- * ✅ Global queue for async lesson storage tasks to prevent memory explosion
- * Limits concurrent lesson operations to 2 at a time
- */
 class LessonQueue {
   private queue: Array<() => Promise<void>> = [];
   private running = 0;
@@ -87,7 +41,7 @@ class LessonQueue {
     const task = this.queue.shift();
     if (task) {
       this.running++;
-      task().catch(() => {}); // Errors are handled in wrappedTask
+      task().catch(() => {});
     }
   }
 
@@ -109,30 +63,21 @@ const lessonQueue = new LessonQueue();
  * 3. Save turn to session file (for context continuity)
  * 4. Route to next task or end
  * 
- * ✅ NEW: Called after EVERY task completion (not just at the end)
- * ✅ NEW: Async lesson storage - doesn't block workflow progression
+ * Called after EVERY task completion (not just at the end).
+ * Async lesson storage - doesn't block workflow progression.
  * 
  * NOTE: File saving happens in writeFiles node (before validation)
  * This node focuses purely on lesson extraction/metadata artifacts.
- * 
- * ✅ Hexagonal Architecture Compliance:
- * - Uses GitPort for branch management (not fs directly)
- * - Uses SessionPort for session persistence
- * - Uses ChunkPort for chunking operations
- * - Uses MemoryPort for vector DB storage
- * - No direct infrastructure dependencies
  */
 export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphState> {
-  // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
   
-  // ✅ CRITICAL: Clean up running servers before completing
+  // Clean up running servers before completing
   if (state.runningServers && state.runningServers.length > 0) {
     console.log(`\n🧹 [Learn] Cleaning up ${state.runningServers.length} running server(s)...`);
     
     for (const server of state.runningServers) {
       try {
-        // Try to kill the entire process tree/group (shell wrappers can leave child servers orphaned)
         if (process.platform === 'win32') {
           try {
             const { spawn } = await import('child_process');
@@ -148,7 +93,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
             process.kill(server.pid, 'SIGTERM');
           }
         } else {
-          // POSIX: first try process group (requires detached=true at spawn)
           try {
             process.kill(-server.pid, 'SIGTERM');
           } catch {
@@ -157,12 +101,10 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         }
         console.log(`   ✅ Killed: ${server.command} (PID ${server.pid})`);
         
-        // Give it a moment to terminate
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Check if still running, escalate to SIGKILL
         try {
-          process.kill(server.pid, 0);  // Check if process exists
+          process.kill(server.pid, 0);
           console.log(`   ⚠️  Process still running, escalating to SIGKILL...`);
           if (process.platform === 'win32') {
             try {
@@ -197,7 +139,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     }
     
-    // Clear the list
     state.runningServers = [];
     console.log(`   ✅ Server cleanup complete\n`);
   }
@@ -205,7 +146,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // Clean up Docker infrastructure if started during task execution
   if (state._infraManager && state._infraProjectPath) {
     try {
-      const infraManager = state._infraManager as import('../../../../../infrastructure/docker').InfrastructureManager;
+      const infraManager = state._infraManager as import('../../../../../../infrastructure/docker').InfrastructureManager;
       const infraPath = state._infraProjectPath as string;
       
       console.log(`\n🐳 [Learn] Cleaning up Docker infrastructure...`);
@@ -217,7 +158,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       
       await infraManager.stopInfrastructure(infraPath, onLog);
       
-      // Clear references
       delete state._infraManager;
       delete state._infraProjectPath;
       
@@ -227,7 +167,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
   }
   
-  // ✅ Workflow instrumentation: Enter node
+  // Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {
       id: state.currentTask.id,
@@ -241,21 +181,20 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       'learn', 
       state.workerId ?? 0,
       taskInfo, 
-      undefined, // llmInfo
+      undefined,
       state.recursionCount,
       state.recursionLimit
     );
   }
   
-  // 0. Generate quality evaluation report (optional, if files were generated)
-  // Use filePaths (always populated) instead of files array (empty for memory optimization)
+  // Generate quality evaluation report
   const filePaths = state.projectCodeContext?.filePaths || [];
   if (filePaths.length > 0) {
     try {
       const gitPort = state.gitPort || state.deps?.git;
       const fileSystem = state.deps?.fileSystem;
       if (gitPort && fileSystem) {
-        const { generateQualityReport } = await import('./utils/qualityReport');
+        const { generateQualityReport } = await import('../utils/qualityReport');
         const report = await generateQualityReport(state, gitPort, fileSystem);
         if (report) {
           state.evaluationReport = report;
@@ -266,11 +205,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
   }
   
-  // 1. Extract lessons
+  // Extract lessons
   const lessons = extractCodeLessons(state);
-  
-  // Note: Files are already written to disk in writeFiles node
-  // This node focuses on lesson artifacts: vector DB + session storage
   
   const gitPort = state.gitPort || state.deps?.git;
   if (!gitPort) {
@@ -281,7 +217,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     ? `feature/${state.context.featureFolder}`
     : `feature/${state.context.project}-arch-${Date.now()}`;
   
-  // ✅ Enhanced metadata for lesson storage
   const lessonMetadata = {
     relatedFiles: filePaths,
     tags: extractTags(lessons, state.directive || ''),
@@ -290,10 +225,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     branch: branch
   };
   
-  // ✅ Branch is already created by ProjectService.createFeature() when feature is initialized
-  // learn node only handles lesson extraction and metadata storage
-  
-  // Log files that were written in writeFiles
   if (filePaths.length > 0) {
     console.log(`\n✏️  ${filePaths.length} files modified:`);
     for (const fp of filePaths) {
@@ -303,29 +234,19 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   
   const filesWritten = filePaths.length;
   
-  // 3. Save run to session file first (to get sessionId and runId)
-  // Skip run recording in worker context (only main orchestrator should record)
+  // Save run to session file first (to get sessionId and runId)
   const _workerId = state.workerId;
   const isWorkerContext = _workerId !== undefined && _workerId !== null;
 
   if (!isWorkerContext && state.figmaAvailable) {
     try {
-      const { saveFigmaMCPDebugLog } = await import('../../../tools/figmaMCPHandler');
+      const { saveFigmaMCPDebugLog } = await import('../../../../../../periphery/adapters/figma/figmaMCPHandler');
       await saveFigmaMCPDebugLog(state.context?.featurePath || '', state._httpJobId || '');
     } catch { /* non-blocking */ }
   }
 
-  // Determine whether this is the final learn invocation (all tasks completed).
-  // Must be computed before hasOrchestratorFailure so we can clear stale interruptions.
   const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
 
-  // Clear stale orchestrator interruption when all remaining tasks completed
-  // after an earlier parallel failure/interruption. Without this, runner.ts propagates
-  // the old interruption → JobWorker reports hasInterruption=true → failed choice card.
-  // CRITICAL: Only clear when failedTasks is empty (genuinely stale). If failedTasks
-  // exist, the interruption reflects a real failure and must be preserved so that
-  // hasOrchestratorFailure=true → learn skips session write → orchestrator's saved
-  // state (with correct interruption + no completedAt) is kept intact.
   const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts'];
   const orchestratorInterruptionReason = state.interruption?.reason;
   if (
@@ -342,10 +263,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
   }
 
-  // ✅ FIX: Skip session write when parallelOrchestrator already saved
-  // failure/interruption state. The orchestrator's updateArtifacts includes
-  // failed tasks, interruption details, and correct taskQueue. If the learn
-  // node overwrites it, all that data is lost (session.state = full replace).
   const hasOrchestratorFailure = state.interruption?.reason === 'tasks_failed'
     || state.interruption?.reason === 'recursion_limit'
     || state.interruption?.reason === 'consecutive_timeouts';
@@ -361,7 +278,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
     sessionId = session.sessionId;
     
-    const { ArtifactPoolView } = await import('../../../../../core/prompt/builder/ArtifactPipeline');
+    const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
     const poolView = new ArtifactPoolView(state.artifacts || []);
     const firstDesign = poolView.firstDesignContent();
     const inputSummary = firstDesign
@@ -369,7 +286,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       : `Directive: ${(state.directive || '').substring(0, 150)}...`;
     
     const run: SessionRun = {
-      runId: 0, // Will be set by adapter
+      runId: 0,
       job: 'code',
       timestamp: new Date().toISOString(),
       input: {
@@ -400,28 +317,21 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
     runId = updatedSession.runs[updatedSession.runs.length - 1]?.runId;
     
-    // ✅ Get error statistics
     const errorStats = errorStatsCollector.getStatistics();
     console.log('\n' + formatStatistics(errorStats) + '\n');
     
-    // ✅ Load existing session to preserve interruption details
     const existingSession = await state.deps.session.load(
       state.context.project,
       state.context.featureFolder || 'default',
-      'code'  // ✅ Specify job type
+      'code'
     );
     
-    // ✨ Mark job as completed — ONLY set completedAt on the LAST task
-    // AND only if the task succeeded (no unresolved violations).
-    // Without the violation check, a failed verification task gets
-    // completedAt set → frontend shows "completed" despite build failure.
     const taskFailed = state.violations && state.violations.length > 0;
     const completedJobTiming = state.jobTiming ? {
       ...state.jobTiming,
       ...(isLastTask && !taskFailed && { completedAt: new Date().toISOString() })
     } : undefined;
     
-    // If the last task failed, set interruption so the frontend shows failure
     if (isLastTask && taskFailed) {
       state.interruption = {
         reason: 'verification_failed',
@@ -437,7 +347,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       console.warn(`⚠️  [Learn] Last task failed with ${state.violations!.length} violation(s) — NOT marking job as completed`);
     }
     
-    // ✅ Build directives array from state.directive (split by separator)
     let directivesArray: string[] = [];
     if (state.directive) {
       if (state.directive.includes('\n\n---\n\n')) {
@@ -491,21 +400,18 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     }
 
-    // Update artifacts and save state snapshot for resuming
     await state.deps.session.updateArtifacts(
       state.context.project,
       state.context.featureFolder || 'default',
-      'code',  // ✅ Specify job type
+      'code',
       {
         activeBranch: branch,
-        // ✅ Save error statistics
         errorStatistics: errorStats,
-        // ✅ Save execution state snapshot for resuming after recursion limit
         state: {
           taskQueue: state.taskQueue?.getAll() || [],
           currentTask: state.currentTask,
           completedTasks: state.completedTasks || [],
-          completedTasksDetails: state.completedTasksDetails || [],  // ✅ CRITICAL: Preserve completed task details
+          completedTasksDetails: state.completedTasksDetails || [],
           retries: state.retries,
           maxRetries: state.maxRetries,
           previousAttempts: state.previousAttempts || [],
@@ -513,22 +419,19 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           lastViolations: state.lastViolations || [],
           previousFileCount: state.previousFileCount,
           resolvedCategories: state.resolvedCategories || [],
-          recursionCount: state.recursionCount,  // ✅ Preserve recursion tracking
+          recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           interruption: isLastTask
             ? (taskFailed ? state.interruption : undefined)
             : (existingSession.state?.interruption || state.interruption),
-          jobId: state.jobId,  // ✨ Preserve jobId
-          jobTiming: completedJobTiming,  // ✨ Mark as completed
-          tokenUsage: state.tokenUsage,  // ✅ Preserve token usage
-          directives: directivesArray,  // ✅ Save directives array (newest first)
-          overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
-          chatSource: state.chatSource,  // ✅ Save chat source flag
-          referenceRequests: state.referenceRequests || [],  // ✅ Save reference repositories for analysis
-          // ✅ CRITICAL: Save resolvedAction for resume (required for tool calling in execute)
+          jobId: state.jobId,
+          jobTiming: completedJobTiming,
+          tokenUsage: state.tokenUsage,
+          directives: directivesArray,
+          overrideDirective: state.overrideDirective,
+          chatSource: state.chatSource,
+          referenceRequests: state.referenceRequests || [],
           resolvedAction: state.resolvedAction,
-          // ✅ projectCodeContext is NOT saved to checkpoint
-          // Plan node always regenerates it via RAG - no need to persist
           jobConversation: updatedJobConversation,
         }
       }
@@ -540,10 +443,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
   }
   
-  // 4. 🚀 ASYNC lesson storage - Store to vector DB without blocking workflow
-  // This allows the agent to move to the next task immediately while lesson extraction happens in background
+  // ASYNC lesson storage - Store to vector DB without blocking workflow
   if (state.deps?.memory && state.deps?.chunk) {
-    // ✅ Capture dependencies in closure to avoid holding onto entire state
     const deps = {
       chunk: state.deps.chunk,
       memory: state.deps.memory
@@ -554,8 +455,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       feature: state.context.featureFolder || 'default'
     };
     
-    // ✅ Add to queue instead of firing immediately
-    // Queue limits concurrent lesson operations to prevent memory explosion
     const queueStats = lessonQueue.getStats();
     console.log(`\n🎓 [Async Lesson] Queuing lesson storage for: ${taskName}`);
     console.log(`   Queue status: ${queueStats.running} running, ${queueStats.queued} queued`);
@@ -564,9 +463,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       try {
         console.log(`\n🎓 [Async Learning] Processing task: ${taskName}`);
         
-        // Process through chunking pipeline (via ChunkPort)
         const result = await deps.chunk.process({
-          source: 'code-lesson',  // ✅ Changed from 'code-learning'
+          source: 'code-lesson',
           sourceType: 'text',
           content: lessons,
           metadata: {
@@ -576,12 +474,10 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
             feature: contextData.feature,
             timestamp: new Date().toISOString(),
             taskName: taskName,
-            // 🔗 Session tracking for traceability
             sessionId: sessionId,
             runId: runId,
-            // ✅ Enhanced metadata (arrays converted to strings for ChromaDB)
-            relatedFiles: (lessonMetadata.relatedFiles || []).join(','),  // ✅ Convert array to string
-            tags: (lessonMetadata.tags || []).join(','),                    // ✅ Convert array to string
+            relatedFiles: (lessonMetadata.relatedFiles || []).join(','),
+            tags: (lessonMetadata.tags || []).join(','),
             directive: lessonMetadata.directive,
             taskType: lessonMetadata.taskType,
             branch: lessonMetadata.branch
@@ -590,13 +486,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         
         console.log(`📚 [Async Learning] Chunked into ${result.chunks.length} pieces (avg ${result.stats.avgTokens} tokens)`);
         
-        // ✅ BATCH STORE: Convert all chunks to documents and store in ONE call
         const documents = result.chunks.map(chunk => ({
           content: chunk.text,
           metadata: chunk.metadata
         }));
         
-        // Single batch store operation (reduces HTTP overhead and memory pressure)
         if (!deps.memory) {
           throw new Error('Memory adapter not available');
         }
@@ -610,36 +504,27 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           console.log(`🔗 [Async Learning] Linked to session: ${sessionId}, run: ${runId}`);
         }
       } catch (error) {
-        // Non-fatal: log error but don't fail the entire workflow
         console.error('⚠️  [Async Lesson] Failed to store lessons to memory:', error instanceof Error ? error.message : error);
         console.log('   Workflow continues without memory storage...');
       }
-    }).catch(() => {
-      // Queue already handles errors, this is just to prevent unhandled rejection
-    });
+    }).catch(() => {});
     
-    // ✅ Don't wait - continue to next task immediately
     console.log(`🚀 [Learn] Background lesson storage queued, continuing workflow...\n`);
   } else {
     console.log(`ℹ️  [Learn] Memory/Chunk ports not available, skipping lesson storage\n`);
   }
   
-  // ✅ Chat UI: Show learning → learned status (must be consecutive for proper merge!)
-  // NOTE: This node extracts/stores "lessons" (vector DB), not full codebase indexing.
-  // Only show in main context: worker learn should NOT emit chat status (causes duplicates).
-  // Also skip when orchestrator reported failure — "Lessons learned" on a failed job is misleading.
+  // Chat UI: Show learning -> learned status
   if (!isWorkerContext && !hasOrchestratorFailure) {
     const chatAPI = getChatAPIClient();
     
     try {
-      // ✅ Send learning first and get index
       const learningIndex = await chatAPI.showChatStatus('learning', {
         taskName: state.currentTask?.name || 'Unknown task',
-        filesWritten: 0,  // ✅ Initialize with 0 for progress
+        filesWritten: 0,
         branch: null
       });
       
-      // Then send learned with _mergeIndex
       await chatAPI.showChatStatus('learned', {
         filesWritten: filesWritten,
         branch: branch,
@@ -649,7 +534,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       console.log(`   ✅ Chat UI update successful (learning → learned)\n`);
     } catch (error: any) {
       console.error(`   ❌ Chat UI update FAILED:`, error.message);
-      // Continue execution even if chat update fails
     }
   } else if (isWorkerContext) {
     console.log(`   ℹ️  [Learn] Skipping chat status in worker context (worker ${state.workerId})\n`);
@@ -657,16 +541,12 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     console.log(`   ℹ️  [Learn] Skipping chat status — orchestrator reported failure\n`);
   }
   
-  // ✅ Workflow instrumentation: Exit node (success path)
+  // Workflow instrumentation: Exit node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn', state.workerId ?? 0);
   }
   
-  // ✅ CRITICAL: Update Kanban when transitioning to learn (all tasks completed)
-  // This clears the live snapshot and ensures UI shows completed state
-  // Skip in worker context — orchestrator handles kanban for parallel mode
-  // ✅ FIX: Also skip when orchestrator already saved failure state — broadcasting
-  // empty kanban here would erase the failed tasks from the UI.
+  // Update Kanban when transitioning to learn (all tasks completed)
   const _learnWorkerId = state.workerId;
   const _isLearnWorkerContext = _learnWorkerId !== undefined && _learnWorkerId !== null;
   if (!_isLearnWorkerContext && !hasOrchestratorFailure && state.deps?.kanbanUpdate && state._httpJobId) {
@@ -676,22 +556,19 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     
     state.deps.kanbanUpdate.updateTaskQueue(
       state._httpJobId,
-      null,  // No current task (all done)
-      [],    // Empty queue (all done)
+      null,
+      [],
       state.completedTasksDetails || [],
       state.recursionCount,
       state.recursionLimit
     );
   }
   
-  // ✅ Log job_complete event and finalize debug loggers
-  // Only on the very last task (queue empty) in the main graph context.
-  // Without the isLastTask guard, orchestrator failures trigger premature logging
-  // and clear the loggers before remaining tasks have a chance to run on resume.
+  // Log job_complete event and finalize debug loggers
   if (isLastTask && !_isLearnWorkerContext && state.context?.featurePath && state._httpJobId) {
-    const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../core/utils/executionLogger');
-    const { clearTokenLogger } = await import('../../../../../core/utils/tokenLogger');
-    const { clearPromptLogger } = await import('../../../../../core/utils/promptLogger');
+    const { getExecutionLogger, clearExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
+    const { clearTokenLogger } = await import('../../../../../../core/utils/tokenLogger');
+    const { clearPromptLogger } = await import('../../../../../../core/utils/promptLogger');
     const execLogger = getExecutionLogger({
       featurePath: state.context.featurePath,
       jobId: state._httpJobId,
@@ -713,249 +590,5 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     clearPromptLogger('code', state._httpJobId);
   }
 
-  // Note: lessons string is used for session/vector DB storage, not returned in state
-  // State.lessons is for structured lesson objects (different type)
   return { ...state, branch, filesWritten };
 }
-
-/**
- * Extract tags from lessons and directive
- */
-function extractTags(lessons: string, directive: string = ''): string[] {
-  const text = (lessons + ' ' + directive).toLowerCase();
-  
-  const keywords = [
-    'auth', 'authentication', 'login', 'jwt', 'bcrypt', 'session',
-    'api', 'endpoint', 'rest', 'graphql', 'http',
-    'database', 'sql', 'orm', 'prisma', 'mongodb',
-    'react', 'component', 'hook', 'state', 'redux',
-    'async', 'await', 'promise', 'callback',
-    'error', 'validation', 'security', 'encryption',
-    'test', 'testing', 'jest', 'unit-test',
-    'performance', 'optimization', 'cache',
-    'ui', 'ux', 'design', 'css', 'style',
-    'typescript', 'javascript', 'python', 'go',
-    'docker', 'kubernetes', 'deploy', 'ci/cd',
-    'git', 'github', 'version-control',
-    'refactor', 'clean-code', 'architecture'
-  ];
-  
-  return keywords.filter(k => text.includes(k));
-}
-
-/**
- * Extract structured lessons from code generation state
- * 
- * ✅ NEW FORMAT: Problem-Solution-Outcome
- * - Focus on actionable knowledge
- * - Reference documents, don't include full content
- * - Keep under 1KB to prevent OOM
- */
-function extractCodeLessons(state: ArchitectGraphState): string {
-  // Extract components
-  const problem = extractProblem(state);
-  const solution = extractSolution(state);
-  const outcome = extractOutcome(state);
-  const patterns = extractPatterns(state);
-  const antipatterns = extractAntipatterns(state);
-  const relatedFiles = extractRelatedFiles(state);
-  const references = extractReferences(state);
-  const tags = extractTags(problem + solution, state.directive || '');
-  
-  // Build structured lesson
-  return `
-## Lesson: ${state.currentTask?.name || 'Unknown Task'}
-
-### Problem
-${problem}
-
-### Solution
-${solution}
-
-### Outcome
-${outcome}
-
-### Patterns Applied
-${patterns.length > 0 ? patterns.map(p => `- ${p}`).join('\n') : '- None'}
-
-### Mistakes Avoided
-${antipatterns.length > 0 ? antipatterns.map(a => `- ${a}`).join('\n') : '- None'}
-
-### Related Files
-${relatedFiles.length > 0 ? relatedFiles.map(f => `- ${f}`).join('\n') : '- None'}
-
-### References
-${references.map(r => `- ${r}`).join('\n')}
-
-### Tags
-${tags.join(', ')}
-
-### Context
-- **Project**: ${state.context.project}
-- **Feature**: ${state.context.featureFolder || 'main'}
-- **Mode**: ${state.resolvedAction?.mode || 'auto'}
-- **Language**: ${state.techTier?.language || 'unknown'}
-- **Framework**: ${state.techTier?.framework || 'N/A'}
-- **Timestamp**: ${new Date().toISOString()}
-  `.trim();
-}
-
-/**
- * Extract problem description from state
- */
-function extractProblem(state: ArchitectGraphState): string {
-  // Use directive as problem description (max 300 chars)
-  const directive = state.directive || state.currentTask?.description || 'No problem description';
-  return directive.substring(0, 300) + (directive.length > 300 ? '...' : '');
-}
-
-/**
- * Extract solution description from state
- */
-function extractSolution(state: ArchitectGraphState): string {
-  const parts: string[] = [];
-  const filePaths = state.projectCodeContext?.filePaths || [];
-  
-  // File operations
-  const filesToDelete = state.filesToDelete || [];
-  if (filePaths.length > 0) {
-    parts.push(`Generated ${filePaths.length} file(s)`);
-  }
-  if (filesToDelete.length > 0) {
-    parts.push(`deleted ${filesToDelete.length} file(s)`);
-  }
-  
-  // Mode applied
-  parts.push(`using ${state.resolvedAction?.mode || 'generate'} mode`);
-  
-  if (state.techTier) {
-    parts.push(`with ${state.techTier.language}${state.techTier.framework ? ` + ${state.techTier.framework}` : ''}`);
-  }
-  
-  return parts.join(', ') + '.';
-}
-
-/**
- * Extract outcome from state
- */
-function extractOutcome(state: ArchitectGraphState): string {
-  const violations = state.violations || [];
-  if (violations.length === 0 && state.retries === 0) {
-    return '✅ **Success** - All quality checks passed on first attempt';
-  } else if (state.retries > 0 && violations.length === 0) {
-    return `✅ **Success** - Issues resolved after ${state.retries} retry(ies)`;
-  } else if (state.retries > 0 && violations.length > 0) {
-    return `⚠️ **Partial** - ${violations.length} issue(s) remain after ${state.retries} retry(ies)`;
-  } else {
-    return `❌ **Issues** - ${violations.length} unresolved issue(s)`;
-  }
-}
-
-/**
- * Extract anti-patterns (mistakes avoided) from violations
- */
-function extractAntipatterns(state: ArchitectGraphState): string[] {
-  const antipatterns: string[] = [];
-  const violations: any[] = state.violations || [];
-  
-  // Extract from violations (max 3)
-  for (const v of violations.slice(0, 3)) {
-    if (typeof v === 'string') {
-      const text: string = v;
-      antipatterns.push(text.substring(0, 80) + (text.length > 80 ? '...' : ''));
-    } else if (v && typeof v === 'object') {
-      // v is Violation object
-      const msg = `${v.type}: ${v.message}`.substring(0, 80);
-      antipatterns.push(msg + (msg.length >= 80 ? '...' : ''));
-    }
-  }
-  
-  return antipatterns;
-}
-
-/**
- * Extract related files (max 5)
- */
-function extractRelatedFiles(state: ArchitectGraphState): string[] {
-  const filePaths = state.projectCodeContext?.filePaths || [];
-  return filePaths.slice(0, 5);
-}
-
-/**
- * Extract references to documents
- */
-function extractReferences(state: ArchitectGraphState): string[] {
-  const { ArtifactPoolView } = require('../../../../../core/prompt/builder/ArtifactPipeline');
-  const poolView = new ArtifactPoolView(state.artifacts || []);
-  const refs: string[] = [];
-  
-  const firstDesign = poolView.firstDesignContent();
-  if (firstDesign) {
-    const designTitle = extractDesignTitle(firstDesign);
-    refs.push(`Design: ${designTitle}`);
-  }
-  
-  if (state.directive) {
-    const directiveId = extractDirectiveId(state);
-    refs.push(`Directive: ${directiveId}`);
-  }
-  
-  if (poolView.hasSources()) {
-    refs.push(`PRD: Available in documents collection`);
-  }
-  
-  return refs.length > 0 ? refs : ['No references'];
-}
-
-/**
- * Extract design document title from content
- */
-function extractDesignTitle(designContent: string): string {
-  // Try to extract title from markdown h1
-  const titleMatch = designContent.match(/^#\s+(.+)$/m);
-  if (titleMatch) {
-    return titleMatch[1].substring(0, 50);
-  }
-  return 'Design Document';
-}
-
-/**
- * Extract directive ID from state
- */
-function extractDirectiveId(state: ArchitectGraphState): string {
-  const sessionId = (state as any).sessionId || 'unknown';
-  const runId = (state as any).runId || 0;
-  return `${sessionId.substring(0, 8)}-run-${runId}`;
-}
-
-/**
- * Extract patterns from state
- */
-function extractPatterns(state: ArchitectGraphState): string[] {
-  const patterns: string[] = [];
-  
-  // Infer patterns from techTier and files
-  if (state.techTier?.framework) {
-    patterns.push(state.techTier.framework);
-  }
-  
-  if (state.resolvedAction?.mode) {
-    patterns.push(state.resolvedAction.mode);
-  }
-  
-  // Infer from file structures
-  const filePaths = state.projectCodeContext?.filePaths || [];
-  const hasTests = filePaths.some(fp => fp.includes('test') || fp.includes('spec'));
-  if (hasTests) {
-    patterns.push('test-driven-development');
-  }
-  
-  const hasComponents = filePaths.some(fp => fp.includes('component'));
-  if (hasComponents) {
-    patterns.push('component-based-architecture');
-  }
-  
-  return patterns.length > 0 ? patterns : ['general-implementation'];
-}
-
-

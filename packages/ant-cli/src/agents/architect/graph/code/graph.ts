@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { Annotation, StateGraph, END } from "@langchain/langgraph";
+import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
 import { codeResolveStrategy } from "./nodes/resolve";
@@ -20,6 +21,7 @@ import { routeAfterTool } from "./routers/toolRouter";
 import { saveCheckpoint } from "./nodes/checkpoint";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "./parallel/types";
+import * as routing from "./routing";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import type { InterruptionReason } from '../../../../core/types/session';
 
@@ -970,156 +972,80 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
 }
 
 const ArchitectCodeGraphStateAnnotation = Annotation.Root({
-      // Context & Input
-      context: Annotation<any>,
+      ...DetectableFields,
+
+      // Job-specific fields (not in common chain)
       workspaceConfig: Annotation<any>,
-      featurePath: Annotation<any>,
-      isResume: Annotation<any>,
-      
-      // Dependencies
-      deps: Annotation<any>,
       gitPort: Annotation<any>,
-      
       artifacts: Annotation<any>,
-      resolvedArtifacts: Annotation<any>,
       techTier: Annotation<any>,
       selectedDesignFiles: Annotation<any>,
       decomposeFilePaths: Annotation<any>,
-      
-      // Artifacts (legacy fields)
-      directive: Annotation<any>,
       code: Annotation<any>,
       codeHead: Annotation<any>,
       profile: Annotation<any>({
         reducer: (x: any, y: any) => y ?? x,
         default: () => undefined,
       }),
-      
-      // ✅ Runtime Assets Index (for asset copying tasks)
       runtimeAssetsIndex: Annotation<any>,
-      
-      
-      // ✅ Code Context (CRITICAL for file operations!)
-      projectCodeContext: Annotation<any>,      // Main project code
-      referenceCodeContexts: Annotation<any>,   // Reference projects
-      sessionContext: Annotation<any>,          // Session context
-      // Execution
+      projectCodeContext: Annotation<any>,
+      referenceCodeContexts: Annotation<any>,
+      sessionContext: Annotation<any>,
       planText: Annotation<any>({
-        reducer: (x: any, y: any) => y ?? x,  // ✅ FIX: Explicit reducer for state propagation
+        reducer: (x: any, y: any) => y ?? x,
         default: () => '',
       }),
       codePrompt: Annotation<any>,
       rawResponse: Annotation<any>,
       responseSection: Annotation<any>,
-      // ✅ REMOVED: files (replaced by projectCodeContext.files)
       filesToDelete: Annotation<any>,
       modifications: Annotation<any>,
-      featureName: Annotation<any>,          // Feature name for buffer manager
-      
-      // Integrations & Validation
+      featureName: Annotation<any>,
       requiredIntegrations: Annotation<any>,
       violations: Annotation<any>,
       fileErrors: Annotation<any>,
       retries: Annotation<any>,
       maxRetries: Annotation<any>,
-      
-      // Progress tracking
       lastViolations: Annotation<any>,
       previousFileCount: Annotation<any>,
-      
-      // Attempt history
       previousAttempts: Annotation<any>,
-      
-      // Enforcement feedback history
       enforcementHistory: Annotation<any>,
-      
-      // Task Queue System
       taskQueue: Annotation<any>,
       currentTask: Annotation<any>,
       featureTasks: Annotation<any>,
       completedTasks: Annotation<any>,
-      completedTasksDetails: Annotation<any>,  // ✅ Full task objects for completed tasks
+      completedTasksDetails: Annotation<any>,
       resolvedCategories: Annotation<any>,
-      
-      // ✅ Job tracking (for timing and continuity)
       jobId: Annotation<any>,
       jobTiming: Annotation<any>,
-      
-      // Error Handling & Final Verification
       failedTasks: Annotation<any>,
       unresolvedErrors: Annotation<any>,
-      
-      // Evaluation & Learning
       evaluationReport: Annotation<any>,
       lessons: Annotation<any>,
-      
-      // selectedSpec is set by decompose, consumed by plan/execute/learn
       selectedSpec: Annotation<any>,
-      
-      // Reference Projects (for cross-project tool calling)
       referenceRequests: Annotation<any>,
-      
-      // Design-prescribed dependencies (extracted by decompose LLM, injected into plan prompts)
       designDocUnknownPackages: Annotation<any>,
-      
-      // Results
       branch: Annotation<any>,
       filesWritten: Annotation<any>,
       reportFile: Annotation<any>,
-      
-      // Real-time Kanban tracking
-      _httpJobId: Annotation<any>,  // ✅ HTTP task ID for live updates
-      _phaseTimings: Annotation<any>,  // ✅ Per-node timing for phaseBreakdown
-      _uiLocale: Annotation<any>,     // ✅ UI locale (ko/en) from directive
-      
-      
-      // ✅ Revise Support
-      directives: Annotation<any>,       // Multiple directives
-      // ✅ Chat integration
-      overrideDirective: Annotation<any>,  // ✅ Chat input as directive (highest priority)
-      chatSource: Annotation<any>,  // ✅ Flag for Chat SSE
-      
-      // ✅ Triage System
-      skipTriage: Annotation<any>,       // Skip triage if true
-      actionMetadata: Annotation<any>,   // Explicit action context from Actions panel
-      triageResult: Annotation<any>,     // Triage analysis result
-      workspaceState: Annotation<any>,   // Workspace state snapshot
-      currentAgent: Annotation<any>,     // Current agent name
-      currentJob: Annotation<any>,       // Current job name
-      
-      // ✅ Error repetition tracking
-      _errorIsRepeating: Annotation<any>,  // Flag to indicate if errors are repeating
-      
-      // ✅ Token tracking (internal, accumulated across LLM calls)
-      _currentTaskTokenUsage: Annotation<any>,  // Task-level token usage (reset per task)
-      tokenUsage: Annotation<any>,              // Job-level token usage (accumulated across all tasks + decompose)
-      _estimatingTokenUsage: Annotation<any>,   // Estimating phase snapshot (captured at end of decompose)
-      
-      // ✅ execute call counter (per task, reset in checkTaskStatus)
+      directives: Annotation<any>,
+      _errorIsRepeating: Annotation<any>,
+      _currentTaskTokenUsage: Annotation<any>,
+      _estimatingTokenUsage: Annotation<any>,
       _executeCallIndex: Annotation<any>({
         reducer: (_prev: any, next: any) => next,
         default: () => 0,
       }),
-
-      // Safety Net C: final task loop counter (computed by execute node, read by router)
       _finalTaskLoopCount: Annotation<any>({
         reducer: (_prev: any, next: any) => next,
         default: () => 0,
       }),
-
-      // Recursion tracking
-      recursionCount: Annotation<any>,  // ✅ Current iteration count
-      recursionLimit: Annotation<any>,  // ✅ Maximum allowed iterations
-      
-      // Verification & command tracking
       _verificationTracker: Annotation<any>,
       commandHistory: Annotation<any>,
-
-      // ✅ NEW: Tool Calling support
-      llmResponse: Annotation<any>,     // LLM response (thinking, text, tool calls)
-      toolResults: Annotation<any>,     // Tool execution results
-      conversationHistory: Annotation<any>,  // Multi-turn conversation
-      interruption: Annotation<any>,         // Interruption details
+      llmResponse: Annotation<any>,
+      toolResults: Annotation<any>,
+      conversationHistory: Annotation<any>,
+      interruption: Annotation<any>,
       _activePhase: Annotation<any>,
       _planEntryReason: Annotation<any>,
       _executeModifiedFiles: Annotation<any>,
@@ -1127,23 +1053,17 @@ const ArchitectCodeGraphStateAnnotation = Annotation.Root({
       _appliedPlanHistory: Annotation<any>,
       _otherWorkerFiles: Annotation<any>,
       planConversationHistory: Annotation<any>,
-
-      // Figma MCP state
       figmaAvailable: Annotation<any>,
       figmaFileKey: Annotation<any>,
       figmaStartNodeId: Annotation<any>,
-
-      // Inter-Job Context Bridge
       boundary: Annotation<any>,
       jobConversation: Annotation<any>,
-
-      // Decompose clarify
       awaitingDecomposeClarify: Annotation<any>,
-
-      // Worker/cancel support (runtime-injected but consumed by checkTaskStatus in main graph)
       workerId: Annotation<any>,
       _isStopRequested: Annotation<any>,
-
+      _depFileHash: Annotation<any>,
+      _batchSplitRequeued: Annotation<any>,
+      verifiedTasks: Annotation<any>,
 });
 
 export function buildCodeGraph() {
@@ -1172,58 +1092,7 @@ export function buildCodeGraph() {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   graph.addConditionalEdges(
     "resolve" as any,
-    ((state: ArchitectGraphState) => {
-      const isResume = state.isResume === true;
-      const hasTaskQueue = state.taskQueue && !state.taskQueue.isEmpty();
-      const hasResolvedAction = !!state.resolvedAction;
-      const hasNewDirective = !!state.overrideDirective;
-      
-      console.log(`[RouteAfterResolve] isResume=${isResume}, hasTaskQueue=${hasTaskQueue}, hasResolvedAction=${hasResolvedAction}, hasNewDirective=${hasNewDirective}`);
-      
-      if (!isResume) {
-        // New job → always start with triage
-        console.log(`[RouteAfterResolve] New job → triage`);
-        return 'triage';
-      }
-      
-      // === isResume === true ===
-      
-      if (hasTaskQueue && hasNewDirective) {
-        // Resume with new chat input → triage first (may redirect to design for spec).
-        // If triage says proceed, routeAfterTriage routes to revise (not detect).
-        console.log(`[RouteAfterResolve] Resume + new directive → triage (then revise if proceed)`);
-        return 'triage';
-      }
-      
-      if (hasTaskQueue) {
-        // Plain resume with existing tasks
-        const queueSize = state.taskQueue?.size?.() || 0;
-        const completedCount = state.completedTasks?.length || 0;
-        const concurrency = getTaskConcurrency();
-        if (concurrency > 1) {
-          console.log(`[RouteAfterResolve] Plain resume: ${queueSize} tasks, ${completedCount} completed, concurrency=${concurrency} → parallelOrchestrator`);
-          return 'parallelOrchestrator';
-        }
-        console.log(`[RouteAfterResolve] Plain resume: ${queueSize} tasks, ${completedCount} completed → plan`);
-        return 'plan';
-      }
-      
-      if (state.awaitingDecomposeClarify && state.overrideDirective) {
-        console.log(`[RouteAfterResolve] Decompose clarify resume → decompose`);
-        return 'decompose';
-      }
-
-      if (hasResolvedAction) {
-        // Interrupted after detect but before decompose
-        // Route through detect again (resume fast path, pass-through)
-        console.log(`[RouteAfterResolve] Resume with resolvedAction → detect (pass-through)`);
-        return 'detect';
-      }
-      
-      // Interrupted very early (before detect) → start from triage
-      console.log(`[RouteAfterResolve] Resume (no tasks, no detection) → triage`);
-      return 'triage';
-    }) as any,
+    routing.routeAfterResolve as any,
     {
       triage: "triage",
       revise: "revise",
@@ -1252,19 +1121,7 @@ export function buildCodeGraph() {
   // ✅ Decompose → conditional: clarify pause, parallel, or sequential
   graph.addConditionalEdges(
     "decompose" as any,
-    ((s: ArchitectGraphState) => {
-      if (s.awaitingDecomposeClarify) {
-        console.log(`⏸️  [Decompose→Router] awaitingDecomposeClarify → __end__`);
-        return "__end__";
-      }
-      const concurrency = getTaskConcurrency();
-      if (concurrency > 1) {
-        console.log(`[Decompose→Router] ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
-        return "parallelOrchestrator";
-      }
-      console.log(`[Decompose→Router] ANT_TASK_CONCURRENCY=1 → sequential plan`);
-      return "plan";
-    }) as any,
+    routing.routeAfterDecompose as any,
     { __end__: "__end__", parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
   
@@ -1274,13 +1131,7 @@ export function buildCodeGraph() {
   // ✅ Revise → conditional: parallel or sequential (same logic)
   graph.addConditionalEdges(
     "revise" as any,
-    ((s: ArchitectGraphState) => {
-      const concurrency = getTaskConcurrency();
-      if (concurrency > 1) {
-        return "parallelOrchestrator";
-      }
-      return "plan";
-    }) as any,
+    routing.routeAfterRevise as any,
     { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
   
@@ -1314,28 +1165,7 @@ export function buildCodeGraph() {
   // All task types: execute(done) → checkTaskStatus
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
-    ((s: ArchitectGraphState) => {
-      const hasViolations = (s.violations && s.violations.length > 0);
-      
-      if (!hasViolations) {
-        return "learn";
-      }
-    
-      // Has violations - check recursion budget before allowing retry
-      const remaining = (s.recursionLimit || 200) - (s.recursionCount || 0);
-      if (remaining < 20) {
-        console.warn(`⚠️  Insufficient recursion budget (${remaining}) for retry — moving to learn`);
-        return "learn";
-      }
-
-      if (s.retries < s.maxRetries) {
-        return "enforce";
-      }
-      
-      console.log(`⚠️  Task "${s.currentTask?.name}" exhausted retries (${s.retries}/${s.maxRetries})`);
-      console.log(`   Unresolved violations remain — moving on to prevent infinite loop.\n`);
-      return "learn";
-    }) as any,
+    routing.routeAfterCheckTaskStatus as any,
     { enforce: "enforce", learn: "learn" } as any
   );
 
@@ -1348,20 +1178,7 @@ export function buildCodeGraph() {
   // user stop), respect the decision and stop. Queue data is preserved for resume.
   graph.addConditionalEdges(
     "learn" as any,
-    ((s: ArchitectGraphState) => {
-      if (s.interruption) {
-        const reason = s.interruption.reason;
-        console.log(`\n⛔ [Learn] Interruption detected (${reason}) → stopping execution\n`);
-        return "__end__";
-      }
-      if (s.taskQueue && !s.taskQueue.isEmpty()) {
-        console.log(`\n📋 [Learn] More tasks in queue (${s.taskQueue.size()} remaining) → continuing to plan\n`);
-        return "plan";
-      } else {
-        console.log(`\n✅ [Learn] All tasks completed! Workflow finished.\n`);
-        return "__end__";
-      }
-    }) as any,
+    routing.routeAfterLearn as any,
     { plan: "plan", __end__: "__end__" } as any
   );
   

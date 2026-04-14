@@ -1,8 +1,11 @@
 import { ArchitectGraphState } from "./state";
 import { TaskQueue, CodeTask } from "../../types/task";
 import { buildCodeGraph } from "./graph";
-import { getChatAPIClient } from "../../../../core/adapters/ChatAPIClient";
 import { resetKeywordDedup } from "./nodes/plan/keywordGeneration";
+import {
+  loadRecursionLimit, isRecursionLimitError, cleanupChat,
+  isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
+} from "../../../common/graph/runnerHelpers";
 
 /**
  * Code Graph Runner
@@ -19,15 +22,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
   const app = buildCodeGraph();
   let state: ArchitectGraphState = initial;
   let isRecursionLimit = false;
-  
-  // ✅ Read recursion limit from environment variable
-  const MIN_RECURSION_LIMIT = 5;
-  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
-  const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
-    ? 200 
-    : recursionLimit;
-  
-  // Recursion limit configured
+  const finalLimit = loadRecursionLimit();
   
   // ✅ CRITICAL: Check for resumable session BEFORE invoke
   if (initial.deps?.session && initial.context.featureFolder) {
@@ -151,56 +146,20 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     initial.deps.kanbanUpdate.setJobTiming(initial.jobTiming);
   }
   
-  // ✅ Also set isResume from env var (for cloud mode where session restoration may be partial)
-  if (!initial.isResume && process.env.ANT_IS_RESUME === 'true') {
+  if (!initial.isResume && isEnvResume()) {
     initial.isResume = true;
   }
 
-  // Write resume marker to token log so run boundaries are visible
   if (initial.isResume && initial.context?.featurePath && initial.jobId) {
-    const { getTokenLogger } = await import('../../../../core/utils/tokenLogger');
-    const logger = getTokenLogger({ featurePath: initial.context.featurePath, jobId: initial.jobId });
-    logger.logResumeMarker().catch(() => {});
+    await logResumeMarker(initial.context.featurePath, initial.jobId);
   }
   
-  // ✅ FIX: Save directive to session EARLY (before graph invoke)
-  // Ensures directive survives early interruptions (triage/detect stage)
-  // Without this, if job is interrupted before decompose, directive is lost
-  if (initial.deps?.session && initial.context.featureFolder && initial.directive) {
-    try {
-      const session = await initial.deps.session.load(
-        initial.context.project,
-        initial.context.featureFolder,
-        'code'
-      );
-      if (!session.state?.directive) {
-        await initial.deps.session.updateArtifacts(
-          initial.context.project,
-          initial.context.featureFolder,
-          'code',
-          {
-            state: {
-              ...session.state,
-              directive: initial.directive,
-              overrideDirective: initial.overrideDirective,
-              userLanguage: initial.context.userLanguage,
-            }
-          }
-        );
-        console.log(`💾 [CodeRunner] Saved directive to session (early checkpoint)`);
-      }
-    } catch (err) {
-      // Non-critical: directive save is a safety net
-    }
-  }
+  await saveEarlyDirective(initial, 'code');
   
   try {
-    state = await (app as any).invoke(initial as any, {
-      recursionLimit: finalLimit  // ✅ LangGraph RunnableConfig uses camelCase (NOT snake_case!)
-    }) as ArchitectGraphState;
+    state = await invokeGraph(app, initial, finalLimit) as ArchitectGraphState;
   } catch (error: any) {
-    // Recursion limit or other errors
-    if (error.message.includes('Recursion limit')) {
+    if (isRecursionLimitError(error)) {
       console.log(`⚠️ Recursion limit reached (${finalLimit} nodes)`);
     } else {
       console.log(`⚠️ Execution interrupted: ${error.message}`);
@@ -252,19 +211,8 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       }
     }
     
-    // Re-throw if not recursion limit
-    if (!error.message.includes('Recursion limit')) {
-      // ✅ CRITICAL: Cleanup any active chat message before re-throwing
-      // This prevents stale currentMessage in Redis when the job fails
-      try {
-        const chatAPI = getChatAPIClient();
-        if (chatAPI.hasActiveMessage()) {
-          console.log('🧹 [CodeRunner] Cleaning up active message after error...');
-          await chatAPI.finalizeMessage(true); // cancelled = true
-        }
-      } catch (cleanupError) {
-        console.warn('⚠️ [CodeRunner] Failed to cleanup message:', cleanupError);
-      }
+    if (!isRecursionLimitError(error)) {
+      await cleanupChat();
       throw error;
     }
     
