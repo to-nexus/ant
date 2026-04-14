@@ -16,7 +16,7 @@ import { buildPlanGraph } from './graph';
 import { PlanGraphState, createInitialPlanState, getPlanMode } from './state';
 import { WorkspaceState } from '../../../common/nodes/triage/types';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
-import { setPlannerWorkspaceFeaturePath, setPlannerFileTreeUpdate } from '../tools';
+import { loadRecursionLimit, isRecursionLimitError, cleanupChat, invokeGraph, isEnvResume } from '../../../common/graph/runnerHelpers';
 import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../../composition/gracefulShutdown';
 
 export interface PlanRunnerParams {
@@ -56,11 +56,6 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   console.log(`🌐 Language: ${params.language}`);
   console.log(`📂 Feature: ${params.featurePath}\n`);
   
-  // Set workspace path for planner tools (read_workspace_file, list_workspace_files)
-  setPlannerWorkspaceFeaturePath(params.featurePath);
-  // Set file tree update port for planner tools (edit_file → notify file tree)
-  setPlannerFileTreeUpdate(params.deps?.fileTreeUpdate);
-  
   const graph = buildPlanGraph();
   
   const initialState = createInitialPlanState({
@@ -76,7 +71,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     _httpJobId: params._httpJobId,
   });
   
-  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '200', 10);
+  const recursionLimit = loadRecursionLimit(200);
   
   // ✅ Resolve project/feature identifiers for session operations
   const projectId = params.deps?.session?.projectId || process.env.ANT_PROJECT_ID || 'default';
@@ -142,7 +137,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
           console.warn('⚠️ [PlanRunner] Failed to clear stale interruption:', clearErr);
         }
         
-      } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
+      } else if (session?.state && isEnvResume()) {
         // ✅ Early-interrupted session fallback (cancelled before generate completed)
         // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)
         const savedDirective = session.state.directive || session.state.overrideDirective;
@@ -158,7 +153,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   }
   
   // ✅ Also set isResume from env var (for cloud mode where session restoration may be partial)
-  if (!initialState.isResume && process.env.ANT_IS_RESUME === 'true') {
+  if (!initialState.isResume && isEnvResume()) {
     initialState.isResume = true;
   }
   
@@ -285,15 +280,9 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   try {
     await chatAPI.startMessage();
     
-    finalState = await (graph as any).invoke(initialState as any, {
-      recursionLimit,
-    }) as PlanGraphState;
+    finalState = await invokeGraph(graph, initialState, recursionLimit);
   } catch (error: any) {
-    const isRecursionLimit = error.message?.includes('Recursion limit')
-      || error.message?.includes('recursion limit')
-      || error.message?.includes('recursionLimit');
-    
-    if (isRecursionLimit) {
+    if (isRecursionLimitError(error)) {
       console.log(`⚠️ [Planner] Recursion limit reached (${recursionLimit}). Finalizing with current progress.`);
       
       // Read staging file (edited by tool calls so far) — path derived from target
@@ -310,14 +299,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
         }
       }
       
-      // Finalize any active message NORMALLY (not cancelled)
-      if (chatAPI.hasActiveMessage()) {
-        try {
-          await chatAPI.finalizeMessage(false);
-        } catch (cleanupError) {
-          console.warn('⚠️ [Planner] Failed to finalize message:', cleanupError);
-        }
-      }
+      await cleanupChat(false);
       
       // ✅ FIX: Mark jobTiming as paused so ElapsedTimeBadge stops ticking
       if (JobTimingManagerRef && jobTimingRef && kanbanUpdate?.setJobTiming) {
@@ -395,13 +377,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       if (stateSnapshot) stateSnapshot.jobTiming = jobTimingRef;
     }
     
-    if (chatAPI.hasActiveMessage()) {
-      try {
-        await chatAPI.finalizeMessage(true);
-      } catch (cleanupError) {
-        console.warn('⚠️ [Planner] Failed to cleanup message:', cleanupError);
-      }
-    }
+    await cleanupChat(true);
     
     unregisterActiveOrchestrator();
     throw error;
@@ -429,7 +405,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       [],
       [],
       finalState.recursionCount ?? 0,
-      finalState.recursionLimit ?? parseInt(process.env.RECURSION_LIMIT || '200', 10),
+      finalState.recursionLimit ?? recursionLimit,
       finalState.tokenUsage,
     );
   }
