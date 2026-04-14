@@ -1,4 +1,5 @@
-import { TaskQueue, TASK_PRIORITIES } from "../../state";
+import { TASK_PRIORITIES } from "../../state";
+import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";

@@ -10,9 +10,6 @@ import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/nodes/triage/types';
 import type { ResolvedActionContext, ResolvedArtifact, TechTier, Boundary } from '@ant/shared';
 
-// Re-export for convenience (so files can still import TaskQueue from code/state)
-export { TaskQueue } from "../../types/task";
-
 export interface IntegrationRequirement {
   name: string;
   type?: 'database' | 'api' | 'auth' | 'other';
