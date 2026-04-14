@@ -157,22 +157,28 @@ Infer:    strategy.run() → InferredAction → mergeWithMetadata() → resolveT
 
 | 타입 | 정의 |
 |------|------|
-| `ConfigSlots` | `refs: SlotDef[]`, `context: SlotDef[]`, `target: TargetDef`, `chatRequiresRefs?`, `refsSingleSelect?` |
+| `ConfigSlots` | `refs: SlotDef[]`, `context: SlotDef[]`, `target: TargetDef`, `chatRequiresRefs?`, `buildRequiresRefs?`, `buildRequiresContext?`, `buildDisabled?`, `refsSingleSelect?` |
 | `SlotDef` | `path`, `label`, `type: 'dir'\|'file'`, `required`, `locked?`, `excludeSelectedRefs?`, `createIntent?`, `humanLabel?`, `codebase?`, `excludeFiles?` |
-| `TargetDef` | `dir?`, `expectedFiles?`, `codebase?`, `mirrorRefs?`, `emptyHint?` |
-| `ExpectedFile` | `prefix`, `ext`, `label`, `warnIfExists`, `isPattern` |
+| `TargetDef` | `kind: 'generate'\|'revise'\|'codebase'\|'chat-only'` + kind별 필드 |
+| `OutputSpec` | `prefix`, `ext`, `label`, `isPattern`, `warnIfExists?` |
+
+#### Activation Policy
+
+`deriveChatNeedsRefs`: 기본값 = `deriveBuildNeedsRefs`. `chatRequiresRefs`로 오버라이드.
+`deriveBuildNeedsRefs`: real ref slots 존재 시 true. `buildRequiresRefs: false`로 opt-out.
+
+Resolved 매트릭스 (30개 intent 전체)는 [32-action-activation-policy.md](./32-action-activation-policy.md) 참조.
 
 #### Target 결정 규칙 (explicit)
 
-UI(`ActionConfigView`)가 intent 선택 시점에 `actionMetadata.target`을 세팅한다. explicit에서 target이 없으면 시스템 오류 (codebase/emptyHint 제외).
+UI(`ActionConfigView`)가 intent 선택 시점에 `actionMetadata.target`을 세팅한다. explicit에서 target이 없으면 시스템 오류 (codebase/chat-only 제외).
 
-| TargetDef 패턴 | `actionMetadata.target` | 시점 |
+| TargetDef kind | `actionMetadata.target` | 시점 |
 |---|---|---|
-| `mirrorRefs: true` | refs 배열과 동일 | refs 선택 시 |
-| `dir` + `expectedFiles` | `["{dir}/{prefix}{ext}"]` | intent 선택 시 |
-| `dir` only | `["{dir}"]` | intent 선택 시 |
-| `codebase: true` | 없음 (해당 없음) | — |
-| `emptyHint` only | 없음 (채팅 응답) | — |
+| `revise` | refs 배열과 동일 (toggleFile 동기화) | refs 선택 시 |
+| `generate` | `["{dir}/{prefix}{ext}"]` | intent 선택 시 |
+| `codebase` | 없음 (해당 없음) | — |
+| `chat-only` | 없음 (채팅 응답) | — |
 
 `refsSingleSelect`: `ConfigSlots`에 true로 지정 시 refs를 하나만 선택 가능 (예: rev-plan). `required`: `SlotDef` 필드로, true면 파일 있을 때 자동 선택 + 없을 때 amber 경고, false면 수동 선택 + gray 표시.
 

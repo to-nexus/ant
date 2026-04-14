@@ -2,19 +2,12 @@
  * Action Footer UI Policy Hook
  *
  * Centralized logic for ActionFooter button states.
- * All policy decisions are driven by the ConfigSlots matrix — no mode/target special cases here.
- *
- * Policy (from matrix):
- *   - Default: refs not selected → chat only; refs selected → chat + build
- *   - chatRequiresRefs: true → refs required for BOTH chat and build
- *   - codebaseRef (locked) counts as "selected" for chat
- *   - When codebase coexists with non-codebase ref slots, build requires non-codebase refs
- *   - context selection does not affect chat/build by default
- *   - buildRequiresContext: true → context must be selected for build
+ * All decisions are driven by ConfigSlots system rules + override flags.
+ * See action-config-matrix.ts header for the 2-layer activation policy.
  */
 
 import { useStore } from '@/domain/store';
-import { getConfigSlots } from '@ant/shared';
+import { getConfigSlots, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasMixedCodebaseRefs, hasRealRefSlots } from '@ant/shared';
 
 export interface ActionFooterPolicy {
   canStartChat: boolean;
@@ -54,6 +47,7 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'invalid-config', buildDisabledReason: 'invalid-config' };
   }
 
+  // System rule: revise target → both chat and build need target selected
   if (slots.target.kind === 'revise') {
     const hasTarget = actionMetadata.target && actionMetadata.target.length > 0;
     if (!hasTarget) {
@@ -68,19 +62,43 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'codebase-empty', buildDisabledReason: 'codebase-empty' };
   }
 
-  const hasRealRefs = slots.refs.some(r => !r.emptyHint && (r.path || r.codebase));
+  // --- Selection state ---
   const hasUserSelectedRefs = !!(actionMetadata.refs && actionMetadata.refs.length > 0);
   const hasSelectedRefs = hasLockedCodebaseRef || hasUserSelectedRefs;
   const hasSelectedContext = !!(actionMetadata.context && actionMetadata.context.length > 0);
 
-  const hasNonCodebaseRefSlots = slots.refs.some(r => !r.codebase && !r.emptyHint && r.path);
-  const buildRefsOk = hasLockedCodebaseRef && hasNonCodebaseRefSlots
-    ? hasUserSelectedRefs
-    : hasSelectedRefs;
+  // --- Layer 1+2: chat gate ---
+  const chatNeedsRefs = deriveChatNeedsRefs(slots);
+  const canStartChat = chatNeedsRefs ? hasSelectedRefs : true;
 
-  const canStartChat = slots.chatRequiresRefs ? hasSelectedRefs : true;
+  // --- Layer 1+2: build gate ---
+
+  // buildDisabled: directive-required intents (e.g. gen-visual-*, gen-code-directive)
+  if (slots.buildDisabled) {
+    return {
+      canStartChat,
+      canBuild: false,
+      isBuilding: false,
+      chatDisabledReason: canStartChat ? undefined : 'refs-not-selected',
+    };
+  }
+
+  // chat-only + no selectable refs → build impossible (ask-*)
+  if (slots.target.kind === 'chat-only' && !hasRealRefSlots(slots)) {
+    return {
+      canStartChat,
+      canBuild: false,
+      isBuilding: false,
+      chatDisabledReason: canStartChat ? undefined : 'refs-not-selected',
+    };
+  }
+
+  const buildNeedsRefs = deriveBuildNeedsRefs(slots);
+  const buildRefsOk = !buildNeedsRefs
+    ? true
+    : hasMixedCodebaseRefs(slots) ? hasUserSelectedRefs : hasSelectedRefs;
   const contextGate = slots.buildRequiresContext ? hasSelectedContext : true;
-  const canBuild = hasRealRefs && buildRefsOk && contextGate;
+  const canBuild = buildRefsOk && contextGate;
 
   const buildDisabledReason = !canBuild
     ? (slots.buildRequiresContext && !hasSelectedContext ? 'context-not-selected' : 'refs-not-selected')
