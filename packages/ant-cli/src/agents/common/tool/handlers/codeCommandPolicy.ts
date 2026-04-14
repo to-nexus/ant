@@ -12,7 +12,7 @@
  */
 
 import type { ToolExecutionContext, ToolResult } from '../types';
-import { isBuildCommand, isTestCommand, isTypecheckCommand } from '../../../architect/graph/code/nodes/tool/constants';
+import { isBuildCommand, isTestCommand, isTypecheckCommand } from '../constants';
 
 export interface CodeCommandPolicyResult {
   rejected: boolean;

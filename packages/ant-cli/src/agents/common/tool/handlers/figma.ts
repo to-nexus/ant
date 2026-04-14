@@ -13,7 +13,7 @@ export async function handleFigmaTool(
   toolName: string,
 ): Promise<ToolResult> {
   const { callFigmaMCPTool, isFigmaImageResult, isFigmaCompositeResult, saveFigmaScreenshot } =
-    await import('../../../architect/tools/figmaMCPHandler');
+    await import('../../../../periphery/adapters/figma/figmaMCPHandler');
 
   if (!ctx.figmaFileKey) {
     return { content: 'Figma fileKey not configured', error: 'Figma fileKey not configured' };
