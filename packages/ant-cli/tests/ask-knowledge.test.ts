@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { AgentRegistry } from '../src/agents/common/nodes/triage/AgentRegistry';
+import { AgentRegistry } from '../src/agents/common/graph/nodes/triage/AgentRegistry';
 
 /**
  * Verifies that YAML job definitions stay in sync with the system.

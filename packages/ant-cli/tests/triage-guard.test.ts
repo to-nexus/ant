@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { hasTargetJobPrerequisites } from '../src/agents/common/nodes/triage/index';
-import type { WorkspaceState } from '../src/agents/common/nodes/triage/types';
+import { hasTargetJobPrerequisites } from '../src/agents/common/graph/nodes/triage/index';
+import type { WorkspaceState } from '../src/agents/common/graph/nodes/triage/types';
 
 function makeWs(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
   return {

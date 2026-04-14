@@ -25,7 +25,7 @@ import { CommandExecutionHandler } from './CommandExecutionHandler';
 import { ChatStatusHandler } from './ChatStatusHandler';
 import { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import { ContentMerger } from '../chat/ContentMerger';
-import { getChatSyncChannel } from '../../infrastructure/state/redisConstants';
+import { getChatSyncChannel } from '../constants/redis';
 import { logger } from '../../utils/logger';
 
 export class LLMResponseService {

@@ -16,7 +16,7 @@
 import type { BaseTask, TaskTokenUsage } from '@ant/shared';
 import { TaskQueue } from '../../../types/task';
 import { TASK_PRIORITIES } from '../state';
-import { AsyncMutex } from './AsyncMutex';
+import { AsyncMutex } from '../../../../../core/utils/AsyncMutex';
 import { TaskWorker } from './TaskWorker';
 import type {
   OrchestratorResult,

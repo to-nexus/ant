@@ -18,7 +18,7 @@ import {
   ToolResultContentBlock,
   ToolUseContentBlock,
 } from '../../../core/ports/llm';
-import { TaskTokenUsage } from '../../../agents/architect/types/task';
+import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetry } from '../../../core/utils/retry';
 
 export class GeminiLLMClient implements LLMClient {

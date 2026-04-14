@@ -16,7 +16,7 @@ import {
   PrerequisiteCheckResult,
   DetectionCondition,
   DetectionItem,
-} from '../../../../core/data/triage/index.js';
+} from '../../../../../core/data/triage/index.js';
 import { WorkspaceState } from './types.js';
 
 /**

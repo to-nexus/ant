@@ -6,7 +6,7 @@ import {
   PrerequisitesValidationResult,
 } from '../../../core/ports/jobPrerequisites';
 import { DecomposableJobType } from '../../../core/types/task';
-import { WorkspaceResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspaceResolver } from '../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../core/types/user';
 
 /**

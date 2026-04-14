@@ -8,7 +8,7 @@
 import { Annotation } from '@langchain/langgraph';
 import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import type { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers';
-import type { TriageableState, WorkspaceState } from '../../../common/nodes/triage/types';
+import type { TriageableState, WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import type { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
 import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata } from '@ant/shared';

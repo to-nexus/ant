@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspacePathResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspacePathResolver } from '../../config/WorkspacePathResolver';
 
 export interface PolicyRuleset {
   common: {

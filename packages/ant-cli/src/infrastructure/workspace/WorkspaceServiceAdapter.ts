@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspaceResolver, resolveLocalPath } from './WorkspaceResolver';
+import { WorkspaceResolver, resolveLocalPath } from '../../core/config/WorkspacePathResolver';
 import { WorkspaceServicePort } from '../../core/ports/workspace';
 import { UserContext } from '../../core/types/user';
 import { isBaseBranch } from '../../core/utils/branchUtils';

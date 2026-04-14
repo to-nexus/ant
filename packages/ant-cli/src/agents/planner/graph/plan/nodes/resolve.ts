@@ -18,7 +18,7 @@ import { ConversationEntry } from '../../../../../core/types/session';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import type { ResolvedArtifact } from '@ant/shared';
-import type { ResolveStrategy } from '../../../../common/nodes/resolve/types';
+import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 
 export const planResolveStrategy: ResolveStrategy<PlanGraphState> = {
   async loadArtifacts(state) {

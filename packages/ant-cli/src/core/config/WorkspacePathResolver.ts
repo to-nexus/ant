@@ -12,8 +12,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
-import { UserContext } from '../../core/types/user';
-import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
+import { UserContext } from '../types/user';
+import { RESERVED_FEATURE_NAME } from '../utils/branchUtils';
 
 export interface WorkspaceResolver {
   /**
@@ -189,7 +189,7 @@ export class WorkspacePathResolver {
     }
     
     // 3. Not in dist — dev mode (tsx runs from src/ directly)
-    //    WorkspaceResolver.ts is at src/infrastructure/workspace/
+    //    WorkspacePathResolver.ts is at src/core/config/
     //    Go up 2 levels to reach src/
     return path.resolve(currentDir, '../..');
   }
@@ -318,5 +318,3 @@ export function resolveLocalPath(localPath: string): string {
   }
   return path.resolve(process.cwd(), localPath);
 }
-
-

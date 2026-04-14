@@ -1,13 +1,13 @@
 import { ArtifactService } from "../../../../../infrastructure/workspace/ArtifactService";
-import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
+import { WorkspacePathResolver } from "../../../../../core/config/WorkspacePathResolver";
 import { DesignGraphState } from "../state";
 import * as path from "path";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
 import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
 import type { ConversationEntry } from "../../../../../core/types/session";
 import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
-import type { ResolveStrategy } from '../../../../common/nodes/resolve/types';
-import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/nodes/resolve/utils';
+import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
+import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
 import { scanDesignOutputs, buildDesignArtifactPool } from '../../../../../core/prompt/builder/ArtifactPipeline';
 
 const DESIGN_FILE_PATTERNS = [

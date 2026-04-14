@@ -14,7 +14,7 @@
 
 import * as path from "path";
 import { GitPort, FileSystemPort } from "../../core/ports";
-import { WorkspacePathResolver } from "./WorkspaceResolver";
+import { WorkspacePathResolver } from "../../core/config/WorkspacePathResolver";
 import { ParsedUiDocs } from "../../core/types/uiDoc";
 import type { AgentJob } from "../../core/types/agent";
 import {

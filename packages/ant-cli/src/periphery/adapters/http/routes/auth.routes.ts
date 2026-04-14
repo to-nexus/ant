@@ -4,7 +4,7 @@ import * as crypto from 'crypto';
 import { AuthService } from '../../../../infrastructure/auth/AuthService';
 import { GoogleOIDCService, OIDCUser } from '../../../../infrastructure/auth/GoogleOIDCService';
 import { JwtService } from '../../../../infrastructure/auth/JwtService';
-import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { StateStorePort } from '../../../../core/ports/stateStore';
 import { authRateLimiter } from '../middleware/rateLimiter';
 import { logger } from '../../../../utils/logger';

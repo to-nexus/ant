@@ -13,8 +13,8 @@ import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
 import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
 import { buildAssistantMessage } from '../../../../common/tool/messageBuilder';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
-import { formatWorkspaceState } from '../../../../common/nodes/triage/workspaceAnalyzer.js';
-import { AgentRegistry } from '../../../../common/nodes/triage/AgentRegistry.js';
+import { formatWorkspaceState } from '../../../../common/graph/nodes/triage/workspaceAnalyzer.js';
+import { AgentRegistry } from '../../../../common/graph/nodes/triage/AgentRegistry.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { v4 as uuidv4 } from 'uuid';
 

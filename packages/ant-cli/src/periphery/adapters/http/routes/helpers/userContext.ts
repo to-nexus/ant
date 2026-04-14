@@ -2,7 +2,7 @@ import { Request } from 'express';
 import { UserContext } from '../../../../../core/types/user';
 import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspacePathResolver } from '../../../../../core/config/WorkspacePathResolver';
 
 let inferredLocalDefault: { organizationId: string; userId: string } | null | undefined;
 

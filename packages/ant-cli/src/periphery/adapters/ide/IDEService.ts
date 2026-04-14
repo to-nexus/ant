@@ -13,7 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as net from 'net';
 import { logger } from '../../../utils/logger';
-import { WorkspacePathResolver } from '../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspacePathResolver } from '../../../core/config/WorkspacePathResolver';
 import { GitHelper } from '../http/services/GitService/helper/GitHelper';
 import { RESERVED_FEATURE_NAME } from '../../../core/utils/branchUtils';
 

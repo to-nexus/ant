@@ -12,7 +12,7 @@
  * existingFiles Set, tool handlers, and FileRegistry.
  */
 
-import { AsyncMutex } from './AsyncMutex';
+import { AsyncMutex } from '../../../../../core/utils/AsyncMutex';
 import { normalizeToCodebasePath } from '../../../../../core/utils/pathNormalizer';
 import type { FileSystemPort } from '../../../../../core/ports/filesystem';
 

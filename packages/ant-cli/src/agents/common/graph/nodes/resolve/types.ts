@@ -7,7 +7,7 @@
  * resolve node consumes ResolvableState: loads workspace artifacts into state.
  */
 
-import type { TokenUsage } from '../../graph/llmHelpers.js';
+import type { TokenUsage } from '../../llmHelpers.js';
 import type { ActionMetadata } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

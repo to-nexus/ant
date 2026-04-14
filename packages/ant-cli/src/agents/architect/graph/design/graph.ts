@@ -3,14 +3,14 @@ import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import { DesignGraphState } from "./state";
 import { DesignTask } from "../../types/task";
 import { designResolveStrategy } from "./nodes/resolve";
-import { createResolveNode } from "../../../common/nodes/resolve";
-import { triage, routeAfterTriage } from "../../../common/nodes/triage";  // ✅ Triage System
+import { createResolveNode } from "../../../common/graph/nodes/resolve";
+import { triage, routeAfterTriage } from "../../../common/graph/nodes/triage";  // ✅ Triage System
 import { decompose } from "./nodes/decompose/index";
 import { plan } from "./nodes/plan";
 import { docGen } from "./nodes/docGen/index";  // ✅ XML streaming + immediate file writes
 import { tool } from "./nodes/tool";  // ✅ Tool execution node (for UI Design multimodal)
 import { learn } from "./nodes/learn";
-import { createDetectNode } from '../../../common/nodes/detect/index.js';
+import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
 import { designDetectStrategy } from './nodes/detect/strategy.js';
 import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";

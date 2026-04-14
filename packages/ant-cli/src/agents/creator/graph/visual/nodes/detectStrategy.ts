@@ -5,7 +5,7 @@
  * Extracted from the former classify node.
  */
 
-import type { DetectStrategy, DetectResult } from '../../../../common/nodes/detect/types.js';
+import type { DetectStrategy, DetectResult } from '../../../../common/graph/nodes/detect/types.js';
 import type { VisualGraphState } from '../types.js';
 import type { InferredAction } from '@ant/shared';
 import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';

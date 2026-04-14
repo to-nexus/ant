@@ -6,7 +6,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
+import type { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import type { UserContext } from '../../../../../core/types/user';
 import type { ChatSessionFile, ChatMessage } from './types';
 import { isBaseBranch, readBranchBaseFromConfig } from '../../../../../core/utils/branchUtils';
