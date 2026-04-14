@@ -119,6 +119,11 @@ export interface ToolExecutionContext {
   // === Artifact read handlers ===
   sourceDocuments?: any;
   files?: Map<string, any>;
+
+  // === Design-specific (populated by design buildContext) ===
+  uiReferences?: string[];
+  uiAssetsList?: Record<string, string[]>;
+  existingDesignDocs?: Record<string, string>;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -175,6 +180,7 @@ export interface ToolExecutionEvent {
 
 export interface BatchExecutionResult {
   events: ToolExecutionEvent[];
+  toolUseBlocks: any[];
   toolResultBlocks: any[];
   updatedCache?: Record<string, string>;
 }

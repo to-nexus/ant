@@ -26,7 +26,8 @@ import { ToolName, TOOL_DISPLAY_NAMES } from './toolCatalog';
 
 export interface OrchestratorConfig {
   registry: ToolRegistry;
-  resultManager: ToolResultManager;
+  /** Optional for lightweight graphs that don't need truncation. */
+  resultManager?: ToolResultManager;
   cacheEnabled?: boolean;
   cacheableTools?: ReadonlySet<ToolName | string>;
   toolDisplayNames?: Record<string, string>;
@@ -34,7 +35,7 @@ export interface OrchestratorConfig {
 
 export interface WorkflowUpdate {
   enterNode(jobId: string, nodeName: string, workerId: number, taskInfo?: any, extra?: any, recursionCount?: number, recursionLimit?: number): Promise<void>;
-  exitNode(jobId: string, nodeName: string, workerId: number): Promise<void>;
+  exitNode(jobId: string, nodeName: string, workerId: number): void | Promise<void>;
 }
 
 export interface OrchestratorBatchOptions {
@@ -180,6 +181,7 @@ export class ToolOrchestrator {
 
     return {
       events,
+      toolUseBlocks,
       toolResultBlocks,
       updatedCache: this.config.cacheEnabled ? updatedCache : undefined,
     };
@@ -191,6 +193,9 @@ export class ToolOrchestrator {
     args: Record<string, any>,
     figmaContext?: FigmaContext,
   ): ToolResult {
+    // No resultManager → passthrough (lightweight graphs skip truncation)
+    if (!this.config.resultManager) return result;
+
     // Skip truncation for multimodal (array) content
     if (Array.isArray(result.content)) {
       // For composite Figma results, truncate only the text part
