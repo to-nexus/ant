@@ -3,11 +3,17 @@
  * 
  * State for Agentic Ask system that explores Ant source code to answer questions.
  * Uses Anthropic native message format (same as Code Job) for tool calling compatibility.
+ *
+ * Extends ResolvableFields from the common annotation chain, inheriting:
+ * featurePath, context, directive, deps, _httpJobId, tokenUsage,
+ * currentAgent, currentJob, recursionCount, recursionLimit, etc.
  */
 
-import { WorkspaceState } from '../../../common/nodes/triage/types.js';
-import { TokenUsage } from '../../../common/graph/llmHelpers.js';
-import type { MessageContentBlock } from '../../../../core/ports/llm.js';
+import { Annotation } from '@langchain/langgraph';
+import { ResolvableFields } from '../../../common/graph/annotationHelpers';
+import type { ResolvableState } from '../../../common/graph/annotationHelpers';
+import { WorkspaceState } from '../../../common/nodes/triage/types';
+import type { MessageContentBlock } from '../../../../core/ports/llm';
 import type { ResolvedActionContext } from '@ant/shared';
 
 /**
@@ -30,55 +36,43 @@ export interface ConversationMessage {
 }
 
 /**
- * Ask Graph State
+ * Ask Graph State — extends ResolvableState with ask-specific fields
  */
-export interface AskGraphState {
-  // Input
+export interface AskGraphState extends ResolvableState {
   question: string;
   language: 'ko' | 'en';
   workspaceState: WorkspaceState;
-  currentJob?: string;
-  currentAgent?: string;
-  
-  // LLM conversation (Anthropic native format - same as Code Job)
   conversationHistory: ConversationMessage[];
-  
-  // Tool execution tracking
   toolCalls: AskToolCall[];
   pendingToolCalls: Array<{
     id: string;
     name: string;
     args: Record<string, any>;
   }>;
-  
-  // Output
   response?: string;
   streamingCompleted?: boolean;
-  
-  // Intent-based context (from triage RAC synthesis)
   resolvedAction?: ResolvedActionContext;
-  
-  // Evaluation state (set by agent node when evaluation request is detected)
   isEvaluation?: boolean;
   evalType?: 'prd' | 'design-system' | 'design-ui' | 'code' | 'all';
-  
-  // Chat streaming state (to prevent starting new message after tool calls)
   chatMessageStarted?: boolean;
-  
-  // Dependencies
-  deps?: {
-    llm?: any;
-  };
-  
-  // HTTP context
-  _httpJobId?: string;
-  
-  // Feature path (for eval save)
-  featurePath?: string;
-  
-  // Token tracking
-  tokenUsage?: TokenUsage;
 }
+
+export const AskAnnotation = Annotation.Root({
+  ...ResolvableFields,
+  // Ask-specific fields only:
+  question: Annotation<string>,
+  language: Annotation<'ko' | 'en'>,
+  workspaceState: Annotation<WorkspaceState>,
+  conversationHistory: Annotation<ConversationMessage[]>,
+  toolCalls: Annotation<AskToolCall[]>,
+  pendingToolCalls: Annotation<Array<{ id: string; name: string; args: Record<string, any> }>>,
+  response: Annotation<string | undefined>,
+  streamingCompleted: Annotation<boolean | undefined>,
+  chatMessageStarted: Annotation<boolean | undefined>,
+  resolvedAction: Annotation<ResolvedActionContext | undefined>,
+  isEvaluation: Annotation<boolean | undefined>,
+  evalType: Annotation<'prd' | 'design-system' | 'design-ui' | 'code' | 'all' | undefined>,
+} as const);
 
 /**
  * Initial state factory
@@ -89,19 +83,27 @@ export function createInitialAskState(params: {
   workspaceState: WorkspaceState;
   currentJob?: string;
   currentAgent?: string;
-  deps?: { llm?: any };
+  deps?: {
+    llm?: any;
+    promptBuilder?: import('../../../../core/prompt/builder/PromptBuilder').PromptBuilder;
+  };
   _httpJobId?: string;
+  featurePath?: string;
 }): AskGraphState {
   return {
+    // ResolvableState fields
+    featurePath: params.featurePath,
+    context: {} as any,
+    deps: params.deps as any,
+    _httpJobId: params._httpJobId,
+    currentJob: params.currentJob,
+    currentAgent: params.currentAgent,
+    // Ask-specific fields
     question: params.question,
     language: params.language,
     workspaceState: params.workspaceState,
-    currentJob: params.currentJob,
-    currentAgent: params.currentAgent,
-    conversationHistory: [],  // Anthropic native format
+    conversationHistory: [],
     toolCalls: [],
     pendingToolCalls: [],
-    deps: params.deps,
-    _httpJobId: params._httpJobId,
-  };
+  } as AskGraphState;
 }
