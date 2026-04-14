@@ -454,7 +454,7 @@ export async function orchestrator(params: {
       const featureName = featurePath.split(path.sep).filter(Boolean).pop() || 'unknown';
       const session = new FileSessionAdapter(featurePath, 'creator', project, featureName, fileTreeUpdate);
 
-      const { runVisualGraph } = await import("../agents/creator/graph/visual/graph");
+      const { runVisualGraph } = await import("../agents/creator/graph/visual/runner");
 
       const result = await runVisualGraph({
         directive: input,
