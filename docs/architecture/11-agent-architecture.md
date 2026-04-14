@@ -18,6 +18,53 @@ ANT의 에이전트는 LangGraph StateGraph로 구현된다. 각 에이전트는
 
 planner의 산출물(`inputs/sources/prd.md`)이 architect의 입력이 된다. creator는 독립적으로 동작하며, PRD나 directive를 참조하여 프로젝트 에셋을 생산한다. 현재 visual job이 구현되어 있으며, audible/animation 등은 향후 추가 예정이다. planner -> architect -> reviewer 순서로 워크플로우가 진행된다.
 
+## 디렉토리 규약
+
+### 배치 원칙
+
+> **2개 이상의 sub-graph에서 사용하면 agent root, 1개 sub-graph에서만 사용하면 해당 graph 내부.**
+
+### 정규 구조
+
+```
+agents/<agent>/
+  index.ts              # Entry point
+  types/                # Agent-level types (2+ sub-graph에서 공유)
+    index.ts
+    [domain].ts         # 도메인별 타입 (예: task.ts)
+  [memory/]             # Vector memory (optional, 2+ sub-graph에서 사용 시)
+  graph/
+    <jobType>/
+      graph.ts          # StateGraph 정의
+      runner.ts         # Graph runner
+      state.ts          # State + Annotation
+      nodes/            # Graph 노드
+      [session/]        # Graph-specific (1개 graph 전용)
+      [utils/]          # Graph-specific (1개 graph 전용)
+      [parallel/]       # 병렬 실행
+      [routers/]        # 라우팅 로직
+      [config/]         # 설정
+
+agents/common/
+  graph/                # 전 에이전트 공유 그래프 노드/헬퍼
+  tool/                 # 전 에이전트 공유 툴 시스템
+```
+
+`[]`로 표기된 디렉토리는 필요 시에만 생성한다.
+
+### 배치 판정표
+
+| 조건 | 위치 | 예시 |
+|------|------|------|
+| 2+ sub-graph에서 import | `<agent>/` root | `memory/`, `types/task.ts` |
+| 1개 sub-graph에서만 import | `graph/<jobType>/` 내부 | `graph/code/session/`, `graph/code/utils/` |
+| 전 에이전트 공유 | `common/` | triage, tool handlers |
+
+### 금지 패턴
+
+- `<agent>/types.ts`(파일)과 `<agent>/types/`(디렉토리) 공존 — `types/index.ts`로 통일
+- 1개 graph 전용 코드를 agent root에 배치 (참조 범위 원칙 위반)
+
 ## LangGraph 패턴
 
 ### StateGraph 구조
