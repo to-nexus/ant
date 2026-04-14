@@ -10,32 +10,11 @@
  *       respond (stream to chat)
  */
 
-import { Annotation, StateGraph } from '@langchain/langgraph';
-import { AskGraphState } from './state.js';
-import { agentNode, routeAfterAgent } from './nodes/agent.js';
-import { toolNode } from './nodes/tool.js';
-import { respondNode } from './nodes/respond.js';
-
-const AskAnnotation = Annotation.Root({
-  question: Annotation<any>,
-  language: Annotation<any>,
-  workspaceState: Annotation<any>,
-  currentJob: Annotation<any>,
-  currentAgent: Annotation<any>,
-  conversationHistory: Annotation<any>,
-  toolCalls: Annotation<any>,
-  pendingToolCalls: Annotation<any>,
-  response: Annotation<any>,
-  streamingCompleted: Annotation<any>,
-  chatMessageStarted: Annotation<any>,
-  resolvedAction: Annotation<any>,
-  isEvaluation: Annotation<any>,
-  evalType: Annotation<any>,
-  featurePath: Annotation<any>,
-  deps: Annotation<any>,
-  _httpJobId: Annotation<any>,
-  tokenUsage: Annotation<any>,
-});
+import { StateGraph } from '@langchain/langgraph';
+import { AskAnnotation } from './state';
+import { agentNode, routeAfterAgent } from './nodes/agent';
+import { toolNode } from './nodes/tool';
+import { respondNode } from './nodes/respond';
 
 /**
  * Build Ask LangGraph
