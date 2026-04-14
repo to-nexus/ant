@@ -227,6 +227,36 @@ export class ArtifactPoolView {
     return this.pool.find(a => a.path === ARTIFACT_PREFIX.SOURCES)?.content;
   }
 
+  /** Source artifacts as Record<filename, content> (legacy compat). */
+  sourcesAsRecord(): Record<string, string> {
+    const map: Record<string, string> = {};
+    for (const a of this.sources) {
+      const name = a.path.startsWith('inputs/sources/')
+        ? a.path.slice('inputs/sources/'.length)
+        : a.path;
+      if (a.content) map[name] = a.content;
+    }
+    return map;
+  }
+
+  /** Source filenames list. */
+  sourceFileNames(): string[] {
+    return this.sources.map(a => {
+      const p = a.path;
+      return p.startsWith('inputs/sources/') ? p.slice('inputs/sources/'.length) : p;
+    });
+  }
+
+  /** Total character count across all source artifacts. */
+  sourcesSize(): number {
+    return this.sources.reduce((s, a) => s + (a.content?.length || 0), 0);
+  }
+
+  /** prd.md content (replaces sourceDocuments['prd.md']). */
+  prdContent(): string | undefined {
+    return this.pool.find(a => a.path === 'inputs/sources/prd.md')?.content;
+  }
+
   /** Find a spec artifact by filename (e.g. `spec-login.md`). */
   findSpec(filename: string): ResolvedArtifact | undefined {
     return this.pool.find(a => a.path === `${ARTIFACT_PREFIX.SPEC}${filename}`);
