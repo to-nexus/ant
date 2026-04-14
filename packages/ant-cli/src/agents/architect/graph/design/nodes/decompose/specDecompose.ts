@@ -12,7 +12,7 @@
 
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
-import { TaskQueue } from "../../../code/state";
+import { TaskQueue } from "../../../../types/task";
 import { LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
 import {
   saveCheckpoint,
