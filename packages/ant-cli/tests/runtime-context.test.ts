@@ -27,7 +27,7 @@ function makeDesignState(overrides: Record<string, any> = {}): any {
     existingDocument: null,
     resolvedAction: undefined,
     existingDesignDocs: {},
-    design: null,
+    artifacts: [],
     ...overrides,
   };
 }
