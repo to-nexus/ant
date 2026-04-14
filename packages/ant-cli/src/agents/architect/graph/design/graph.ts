@@ -1,4 +1,5 @@
 import { Annotation, StateGraph } from "@langchain/langgraph";
+import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import { DesignGraphState } from "./state";
 import { DesignTask } from "../../types/task";
 import { designResolveStrategy } from "./nodes/resolve";
@@ -13,9 +14,10 @@ import { createDetectNode } from '../../../common/nodes/detect/index.js';
 import { designDetectStrategy } from './nodes/detect/strategy.js';
 import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
-import { getTaskConcurrency } from "../code/parallel/types";
+import { getTaskConcurrency } from '../../../common/graph/parallelTypes';
 import { routeAfterDocGen } from "./routers/docGenRouter";
 import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
+import * as designRouting from "./routing";
 import type { InterruptionReason } from '../../../../core/types/session';
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { designSubdirOf } from "@ant/shared";
@@ -573,10 +575,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     resolvedAction: state.resolvedAction,
     techTier: state.techTier,
     artifacts: state.artifacts,
-    prd: state.prd,
-    sourceDocuments: state.sourceDocuments,
     directive: state.directive,
-    design: state.design,
     existingDesignDocs: state.existingDesignDocs,
     uiReferences: state.uiReferences,
     uiAssetsList: state.uiAssetsList,
@@ -877,118 +876,53 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
 }
 
 const DesignGraphAnnotation = Annotation.Root({
-  // Context & Input
-  context: Annotation<any>,
+  ...DetectableFields,
+
+  // Job-specific fields (not in common chain)
   workspaceConfig: Annotation<any>,
-  featurePath: Annotation<any>,
-
-  // Dependencies (MUST be in channels to be passed between nodes!)
-  deps: Annotation<any>,
-
-  // RAC (detect output, immutable) + TechTier (decompose output)
-  resolvedAction: Annotation<any>,
-  techTier: Annotation<any>,
-
-  // ✅ Error handling for invalid requests (e.g., modify without documents)
   designError: Annotation<any>,
-
-  // Unified artifact pool (Phase 3: cross-job unification)
   artifacts: Annotation<any>,
-
-  // Artifacts (legacy — retained for decompose/learn)
-  prd: Annotation<any>,
-  directive: Annotation<any>,
-  design: Annotation<any>,
+  techTier: Annotation<any>,
   existingDesignDocs: Annotation<any>,
-  sourceDocuments: Annotation<any>,
   profile: Annotation<any>,
-
-  // Task Queue (like code graph)
   taskQueue: Annotation<any>,
   currentTask: Annotation<any>,
   completedTasks: Annotation<any>,
   completedTasksDetails: Annotation<any>,
-
-  // Job tracking (for timing and continuity)
   jobId: Annotation<any>,
   jobTiming: Annotation<any>,
-
-  // Token usage tracking (task-level and job-level)
   _currentTaskTokenUsage: Annotation<any>,
-  tokenUsage: Annotation<any>,
   _estimatingTokenUsage: Annotation<any>,
-
-  // Execution
   planText: Annotation<any>,
   files: Annotation<any>,
   filesToDelete: Annotation<any>,
   lessons: Annotation<any>,
-
-  // Tool Calling Support
   llmResponse: Annotation<any>,
   conversationHistory: Annotation<any>,
-
-  // For tracking in UI
-  _httpJobId: Annotation<any>,
-  _phaseTimings: Annotation<any>, // ✅ Per-node timing for phaseBreakdown
-  _uiLocale: Annotation<any>, // ✅ UI locale (ko/en) from directive
-
-  // Chat integration
-  overrideDirective: Annotation<any>,
-  chatSource: Annotation<any>,
-
-  // Triage System
-  skipTriage: Annotation<any>,
-  actionMetadata: Annotation<any>,
-  triageResult: Annotation<any>,
-  workspaceState: Annotation<any>,
-  currentAgent: Annotation<any>,
-  currentJob: Annotation<any>,
-
-  // UI document generation context
   uiReferences: Annotation<any>,
   uiAssetsList: Annotation<any>,
-
-  // Figma integration (resolve -> detect -> figmaExplore -> docGen)
   figmaConfig: Annotation<any>,
   figmaExplorationResult: Annotation<any>,
   figmaAvailable: Annotation<any>,
   figmaFileKey: Annotation<any>,
   figmaStartNodeId: Annotation<any>,
-
-  // ✅ Resume flag (set by runner before graph invoke)
-  isResume: Annotation<any>,
-
-  // ✅ Recursion tracking (for UI gauge display)
-  recursionCount: Annotation<any>,
-  recursionLimit: Annotation<any>,
-
-  // ✅ Parallel orchestrator failure signal (propagated to learn for failure-aware handling)
   interruption: Annotation<any>,
   failedTasks: Annotation<any>,
-
-  // ✅ DocGen call budget tracking
   _docGenCallIndex: Annotation<any>,
   _callLimitReached: Annotation<any>,
   _noOutputCallCount: Annotation<any>,
   _toolResultCache: Annotation<any>,
   fileErrors: Annotation<any>,
-
-  // ✅ Asset validation (checkTaskStatus ↔ docGenRouter)
   _assetValidationFailed: Annotation<any>,
   _assetValidationRetried: Annotation<any>,
-
-  // ✅ Clarify state (MUST be in channels for LangGraph state propagation)
   awaitingDetectClarify: Annotation<any>,
   awaitingClarify: Annotation<any>,
-
-  // ✅ Figma MCP connection health (tool → docGenRouter → checkTaskStatus)
   _figmaConsecutiveErrors: Annotation<any>,
   _figmaConnectionLost: Annotation<any>,
-
-  // Inter-Job Context Bridge
   boundary: Annotation<any>,
   jobConversation: Annotation<any>,
+  workerId: Annotation<any>,
+  _isStopRequested: Annotation<any>,
 });
 
 export function buildDesignGraph() {
@@ -1021,51 +955,7 @@ export function buildDesignGraph() {
   // 6. !isResume (new job) → triage (full flow)
   graph.addConditionalEdges(
     "resolve" as any,
-    ((s: DesignGraphState) => {
-      const isResume = s.isResume === true;
-      const hasTaskQueue = Boolean(s.taskQueue && !s.taskQueue.isEmpty());
-      const hasResolvedAction = Boolean(s.resolvedAction);
-      const hasNewDirective = Boolean(s.overrideDirective);
-      
-      // Path 0: Detect clarify resume — user chose spec vs system-design
-      if (isResume && s.awaitingDetectClarify && hasNewDirective) {
-        console.log(`🔀 [Resolve→Router] isResume + awaitingDetectClarify + newDirective → detect (clarify resume)`);
-        return "detect";
-      }
-      
-      // Path 1: Clarify response — skip straight to docGen with conversation history
-      if (isResume && s.awaitingClarify && hasNewDirective) {
-        console.log(`🔀 [Resolve→Router] isResume + awaitingClarify + newDirective → docGen (clarify direct)`);
-        return "docGen";
-      }
-      
-      // Path 2: Spec iterative modification — simplified decompose for single-task spec update
-      if (isResume && hasNewDirective && !hasTaskQueue && s.resolvedAction?.intentGroup === 'design-spec') {
-        console.log(`🔀 [Resolve→Router] isResume + spec + newDirective (no tasks) → decompose (spec modification)`);
-        return "decompose";
-      }
-      
-      if (isResume && hasTaskQueue && hasNewDirective) {
-        console.log(`🔀 [Resolve→Router] isResume + taskQueue + newDirective → revise`);
-        return "revise";
-      }
-      if (isResume && hasTaskQueue) {
-        const concurrency = getTaskConcurrency();
-        if (concurrency > 1) {
-          console.log(`🔀 [Resolve→Router] isResume + taskQueue, concurrency=${concurrency} → parallelOrchestrator`);
-          return "parallelOrchestrator";
-        }
-        console.log(`🔀 [Resolve→Router] isResume + taskQueue → plan (continue)`);
-        return "plan";
-      }
-      if (isResume && hasResolvedAction) {
-        console.log(`🔀 [Resolve→Router] isResume + resolvedAction (no tasks) → decompose`);
-        return "decompose";
-      }
-      
-      console.log(`🔀 [Resolve→Router] New job → triage`);
-      return "triage";
-    }) as any,
+    designRouting.routeAfterResolve as any,
     { triage: "triage", revise: "revise", plan: "plan", parallelOrchestrator: "parallelOrchestrator", decompose: "decompose", docGen: "docGen", detect: "detect" } as any
   );
   
@@ -1086,49 +976,21 @@ export function buildDesignGraph() {
   // - otherwise → decompose (reference mode or non-UI)
   graph.addConditionalEdges(
     "detect" as any,
-    ((s: DesignGraphState) => {
-      if (s.designError) {
-        console.log(`❌ [Graph] Design error detected → routing to learn for cleanup`);
-        return "learn";
-      }
-      if (s.awaitingDetectClarify) {
-        console.log(`⏸️  [Graph] Detect clarify — paused for user choice`);
-        return "__end__";
-      }
-      if (isFigmaPipeline(s.resolvedAction?.intent, isFigmaDataPopulated(s.figmaConfig))) {
-        console.log(`🎨 [Graph] Figma pipeline (intent=${s.resolvedAction?.intent}) → figmaExplore`);
-        return "figmaExplore";
-      }
-      return "decompose";
-    }) as any,
+    designRouting.routeAfterDetect as any,
     { learn: "learn", __end__: "__end__", decompose: "decompose", figmaExplore: "figmaExplore" } as any
   );
   
   // ✅ figmaExplore → conditional: designError → learn, otherwise → decompose
   graph.addConditionalEdges(
     "figmaExplore" as any,
-    ((s: DesignGraphState) => {
-      if (s.designError) {
-        console.log(`❌ [Graph] Figma explore failed (${s.designError.type}) → routing to learn for cleanup`);
-        return "learn";
-      }
-      return "decompose";
-    }) as any,
+    designRouting.routeAfterFigmaExplore as any,
     { learn: "learn", decompose: "decompose" } as any
   );
   
   // ✅ Decompose → conditional: parallel or sequential
   graph.addConditionalEdges(
     "decompose" as any,
-    ((s: DesignGraphState) => {
-      const concurrency = getTaskConcurrency();
-      if (concurrency > 1) {
-        console.log(`[Design Decompose→Router] ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
-        return "parallelOrchestrator";
-      }
-      console.log(`[Design Decompose→Router] ANT_TASK_CONCURRENCY=1 → sequential plan`);
-      return "plan";
-    }) as any,
+    designRouting.routeAfterDecompose as any,
     { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
   
@@ -1138,13 +1000,7 @@ export function buildDesignGraph() {
   // ✅ Revise → conditional: parallel or sequential
   graph.addConditionalEdges(
     "revise" as any,
-    ((s: DesignGraphState) => {
-      const concurrency = getTaskConcurrency();
-      if (concurrency > 1) {
-        return "parallelOrchestrator";
-      }
-      return "plan";
-    }) as any,
+    designRouting.routeAfterRevise as any,
     { parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
   );
   (graph as any).addEdge("plan", "docGen");
@@ -1162,19 +1018,7 @@ export function buildDesignGraph() {
   // ✅ Conditional routing: validation retry → docGen, interrupted → learn, more tasks → plan, all done → learn
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
-    ((s: DesignGraphState) => {
-      if (s._assetValidationFailed) {
-        return "docGen";  // ← Asset validation failed — retry with guidance
-      }
-      if (s.interruption) {
-        return "learn";  // ← Interrupted (call limit / recursion) — skip to cleanup
-      }
-      if (s.taskQueue && !s.taskQueue.isEmpty()) {
-        return "plan";  // ← Next task
-      } else {
-        return "learn";  // ← All done
-      }
-    }) as any,
+    designRouting.routeAfterCheckTaskStatus as any,
     { plan: "plan", learn: "learn", docGen: "docGen" } as any
   );
   

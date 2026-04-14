@@ -7,7 +7,7 @@
 
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
-import { TaskQueue } from "../../../code/state";
+import { TaskQueue } from "../../../../types/task";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 import {
@@ -21,6 +21,7 @@ import { decomposeUiDesign } from "./uiDesignDecompose";
 import { decomposeSystemDesign } from "./systemDesignDecompose";
 import { decomposeSpec } from "./specDecompose";
 import { BOUNDARY, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
+import { ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 
 // ============================================
 // UI Design Prerequisites Validation
@@ -232,8 +233,8 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // System Design: check spec availability
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const hasSourceDocs = state.sourceDocuments && Object.keys(state.sourceDocuments).length > 0;
-    const hasSpec = Boolean(state.prd || hasSourceDocs || state.design || state.directive);
+    const pool = new ArtifactPoolView(state.artifacts || []);
+    const hasSpec = Boolean(pool.hasSources() || pool.hasSystemDesign() || state.directive);
     if (!hasSpec) {
       return handleDefaultTask(state, timing);
     }

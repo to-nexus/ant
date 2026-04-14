@@ -1,10 +1,13 @@
 import { buildDesignGraph } from "./graph";
 import { DesignGraphState } from "./state";
 import { DesignTask } from "../../types/task";
-import { getChatAPIClient } from "../../../../core/adapters/ChatAPIClient";
 import path from 'node:path';
 import * as fs from 'fs/promises';
 import { getSessionRuntimeDir } from '../../../../core/utils/sessionPaths';
+import {
+  loadRecursionLimit, isRecursionLimitError, cleanupChat,
+  isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
+} from "../../../common/graph/runnerHelpers";
 
 /**
  * Design Graph Runner
@@ -19,14 +22,7 @@ import { getSessionRuntimeDir } from '../../../../core/utils/sessionPaths';
  */
 export async function runDesignGraph(initial: DesignGraphState) {
   const app = buildDesignGraph();
-  
-  // ✅ Read recursion limit from environment variable
-  const MIN_RECURSION_LIMIT = 5;
-  const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
-  const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT) 
-    ? 200 
-    : recursionLimit;
-  
+  const finalLimit = loadRecursionLimit();
   console.log(`🔍 [DesignRunner] Recursion limit: ${finalLimit}`);
   
   // ✅ CRITICAL: Check for resumable session BEFORE invoke
@@ -55,7 +51,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.isResume = true;
         
         // Reconstruct TaskQueue from saved array
-        const { TaskQueue } = await import('../code/state');
+        const { TaskQueue } = await import('../../types/task');
         initial.taskQueue = TaskQueue.from<DesignTask>(session.state.taskQueue);
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];
@@ -117,13 +113,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.overrideDirective = session.state.overrideDirective;
         initial.chatSource = session.state.chatSource;
         
-        if (session.state.design) {
-          initial.design = session.state.design;
-        }
-        if (session.state.prd) {
-          initial.prd = session.state.prd;
-        }
-        
         if (session.state.jobId) {
           initial.jobId = session.state.jobId;
         }
@@ -145,9 +134,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
         }
         initial.overrideDirective = session.state.overrideDirective;
         initial.chatSource = session.state.chatSource;
-        if (session.state.prd) {
-          initial.prd = session.state.prd;
-        }
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
         }
@@ -167,9 +153,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
         }
         initial.overrideDirective = session.state.overrideDirective;
         initial.chatSource = session.state.chatSource;
-        if (session.state.prd) {
-          initial.prd = session.state.prd;
-        }
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
         }
@@ -192,16 +175,12 @@ export async function runDesignGraph(initial: DesignGraphState) {
     }
   }
   
-  // ✅ Also set isResume from env var (for cloud mode where session restoration may be partial)
-  if (!initial.isResume && process.env.ANT_IS_RESUME === 'true') {
+  if (!initial.isResume && isEnvResume()) {
     initial.isResume = true;
   }
-  
-  // ✅ Write resume marker to token log so run boundaries are visible
+
   if (initial.isResume && initial.context?.featurePath && initial.jobId) {
-    const { getTokenLogger } = await import('../../../../core/utils/tokenLogger');
-    const tLogger = getTokenLogger({ featurePath: initial.context.featurePath, jobId: initial.jobId });
-    tLogger.logResumeMarker().catch(() => {});
+    await logResumeMarker(initial.context.featurePath, initial.jobId);
   }
   
   // ✅ Initialize recursion tracking in state (for UI gauge display)
@@ -213,47 +192,17 @@ export async function runDesignGraph(initial: DesignGraphState) {
     initial.deps.kanbanUpdate.setJobTiming(initial.jobTiming);
   }
   
-  // ✅ FIX: Save directive to session EARLY (before graph invoke)
-  // Ensures directive survives early interruptions (triage/detect stage)
-  if (initial.deps?.session && initial.context.featureFolder && initial.directive) {
-    try {
-      const session = await initial.deps.session.load(
-        initial.context.project,
-        initial.context.featureFolder,
-        'design'
-      );
-      if (!session.state?.directive) {
-        await initial.deps.session.updateArtifacts(
-          initial.context.project,
-          initial.context.featureFolder,
-          'design',
-          {
-            state: {
-              ...session.state,
-              directive: initial.directive,
-              overrideDirective: initial.overrideDirective,
-              userLanguage: initial.context.userLanguage,
-            }
-          }
-        );
-        console.log(`💾 [DesignRunner] Saved directive to session (early checkpoint)`);
-      }
-    } catch (err) {
-      // Non-critical
-    }
-  }
+  await saveEarlyDirective(initial, 'design');
   
   try {
-    const state = await (app as any).invoke(initial as any, {
-      recursionLimit: finalLimit  // ✅ LangGraph RunnableConfig uses camelCase (NOT snake_case!)
-    }) as DesignGraphState;
+    const state = await invokeGraph(app, initial, finalLimit) as DesignGraphState;
     
     // ✅ Return minimal results (all files were saved in writeFiles node)
     // No need to return paths - they are deterministic from context
     return state;
   } catch (error: any) {
     // ✅ Handle recursion limit (same pattern as code runner)
-    if (error.message?.includes('Recursion limit')) {
+    if (isRecursionLimitError(error)) {
       console.log(`⚠️ [DesignRunner] Recursion limit reached (${finalLimit} nodes)`);
       
       let state: DesignGraphState = error.state || initial;
@@ -268,7 +217,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
           );
           
           if (session.state?.taskQueue) {
-            const { TaskQueue } = await import('../code/state');
+            const { TaskQueue } = await import('../../types/task');
             state = {
               ...initial,
               taskQueue: TaskQueue.from<DesignTask>(session.state.taskQueue),
@@ -295,7 +244,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
         const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
         pausedTask.interrupted = true;
         
-        const { TaskQueue } = await import('../code/state');
+        const { TaskQueue } = await import('../../types/task');
         const remaining = state.taskQueue.getAll().filter((t: any) => t.id !== state.currentTask!.id);
         state.taskQueue = TaskQueue.from<DesignTask>([pausedTask, ...remaining]);
         state.currentTask = undefined;
@@ -364,20 +313,8 @@ export async function runDesignGraph(initial: DesignGraphState) {
       return state;
     }
     
-    // Non-recursion-limit error
     console.error(`❌ [DesignRunner] Graph execution failed:`, error);
-    
-    // ✅ CRITICAL: Cleanup any active chat message before re-throwing
-    try {
-      const chatAPI = getChatAPIClient();
-      if (chatAPI.hasActiveMessage()) {
-        console.log('🧹 [DesignRunner] Cleaning up active message after error...');
-        await chatAPI.finalizeMessage(true); // cancelled = true
-      }
-    } catch (cleanupError) {
-      console.warn('⚠️ [DesignRunner] Failed to cleanup message:', cleanupError);
-    }
-    
+    await cleanupChat();
     throw error;
   }
 }

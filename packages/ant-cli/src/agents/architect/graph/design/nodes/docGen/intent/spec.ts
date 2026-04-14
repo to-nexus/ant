@@ -19,7 +19,7 @@ import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
-import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 
 export async function buildSpecMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -226,7 +226,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
             totalSections,
             sectionScope: sectionScope.slice(0, 80),
             hasExistingSpec: jobMode === 'refactor',
-            hasPrd: !!state.prd,
+            hasPrd: new ArtifactPoolView(state.artifacts || []).hasSources(),
             hasApiContract: state.existingDesignDocs ? Object.keys(state.existingDesignDocs).some(f => f.startsWith('api-contract-')) : false,
           },
         }

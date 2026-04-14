@@ -413,7 +413,7 @@ async function saveDetectClarifyToSession(state: DesignGraphState): Promise<void
   if (!state.deps?.session || !state.context.featureFolder) return;
   try {
     await state.deps.session.updateArtifacts(state.context.project, state.context.featureFolder, 'design', {
-      state: { awaitingDetectClarify: true, directive: state.directive, overrideDirective: state.overrideDirective, chatSource: state.chatSource, prd: state.prd },
+      state: { awaitingDetectClarify: true, directive: state.directive, overrideDirective: state.overrideDirective, chatSource: state.chatSource },
     });
   } catch { /* non-critical */ }
 }

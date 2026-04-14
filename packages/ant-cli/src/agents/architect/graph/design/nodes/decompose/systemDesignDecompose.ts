@@ -7,10 +7,11 @@
 
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
-import { TaskQueue } from "../../../code/state";
+import { TaskQueue } from "../../../../types/task";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { ARTIFACT_PREFIX } from '@ant/shared';
+import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import {
   parseLLMJsonResponse,
   saveCheckpoint,
@@ -325,33 +326,37 @@ export async function decomposeSystemDesign(
     handleReadSourceFile,
   } = await import('../docGen/sourceSelector');
 
+  const pool = new ArtifactPoolView(state.artifacts || []);
+  const sourceRecord = pool.sourcesAsRecord();
+
   // Hybrid strategy: small projects → inline, large projects → tool-use (RAG)
-  const sourceDocsSize = getSourceDocsSize(state.sourceDocuments);
+  const sourceDocsSize = pool.sourcesSize();
   const useToolMode = sourceDocsSize > DECOMPOSE_SOURCE_THRESHOLD;
 
+  const designContent = pool.firstDesignContent();
   let spec: string;
   if (useToolMode) {
     console.log(`📊 [SystemDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const fileIndex = buildSourceFileIndex(state.sourceDocuments!);
+    const fileIndex = buildSourceFileIndex(sourceRecord);
     const specParts = [
       `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to architecture decisions, service boundaries, and task decomposition. Prioritize files about service decomposition, bounded contexts, and domain boundaries — these determine MSA detection.`,
-      state.design ? `PREVIOUS DESIGN:\n${state.design.split('\n').slice(0, 50).join('\n')}\n...` : null,
+      designContent ? `PREVIOUS DESIGN:\n${designContent.split('\n').slice(0, 50).join('\n')}\n...` : null,
       state.directive ? `DIRECTIVE:\n${state.directive}` : null,
     ].filter(Boolean);
     spec = specParts.join('\n\n---\n\n');
   } else {
     console.log(`📊 [SystemDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
+    const allSourceDocs = buildAllSourceDocs(sourceRecord);
     const specParts = [
       allSourceDocs ? `SOURCE DOCUMENTS:\n${allSourceDocs}` : null,
-      state.design ? `PREVIOUS DESIGN:\n${state.design}` : null,
+      designContent ? `PREVIOUS DESIGN:\n${designContent}` : null,
       state.directive ? `DIRECTIVE:\n${state.directive}` : null
     ].filter(Boolean);
     spec = specParts.join('\n\n---\n\n');
   }
 
-  const hasExistingDesign = Boolean(state.design && state.design.trim().length > 0);
-  const designPreview = state.design ? state.design.split('\n').slice(0, 50).join('\n') + '\n...' : '';
+  const hasExistingDesign = Boolean(designContent && designContent.trim().length > 0);
+  const designPreview = designContent ? designContent.split('\n').slice(0, 50).join('\n') + '\n...' : '';
 
   // Extract existing system design file names (pattern-filtered, not all .md)
   const existingDesignFiles = state.existingDesignDocs
@@ -368,7 +373,7 @@ export async function decomposeSystemDesign(
   const promptPrimaryFile = resolvedTargetFiles?.[0]
     || (existingDesignFiles.length > 0 ? existingDesignFiles[0] : 'be-system-main.md');
 
-  const sourceFileNames = state.sourceDocuments ? Object.keys(state.sourceDocuments) : [];
+  const sourceFileNames = pool.sourceFileNames();
 
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
@@ -417,14 +422,14 @@ export async function decomposeSystemDesign(
    * Large projects: multi-turn stream with read_source_doc tool (RAG)
    */
   async function callLLM(): Promise<string> {
-    if (useToolMode && state.sourceDocuments) {
+    if (useToolMode && pool.hasSources()) {
       const { response, usage } = await decomposeWithToolLoop(
         llmToUse,
         [{ role: 'user', content: prompt }],
         [READ_SOURCE_DOC_TOOL],
         (name, args) => {
           if (name === 'read_source_doc') {
-            return handleReadSourceFile(args.filename, state.sourceDocuments!, args.startLine, args.endLine);
+            return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
           }
           return `Error: Unknown tool "${name}"`;
         },

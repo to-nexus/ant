@@ -13,22 +13,14 @@ import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionC
  * Design Task State
  * State for design generation graph (generate/refactor/explain)
  *
- * Legacy artifact fields are declared directly below.
- * Pool-based nodes use `artifacts: ResolvedArtifact[]`; the legacy fields
- * are retained only until all consumers migrate to the pool.
+ * All source/design data flows through `artifacts: ResolvedArtifact[]` pool.
+ * The pool is built by resolve and consumed by all downstream nodes.
  */
 export interface DesignGraphState extends TriageableState {
   // Context (narrowed from TriageableContext)
   context: ProjectContext;
   workspaceConfig?: any;  // Workspace config for job/node-specific model selection
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Legacy artifact fields (previously inherited, now declared directly)
-  // Note: `directive` is inherited from ResolvableState via TriageableState.
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  prd?: string;
-  sourceDocuments?: Record<string, string>;
-  design?: string;
   profile?: CodebaseProfile;
   
   // Dependencies (extends TriageableState.deps)
