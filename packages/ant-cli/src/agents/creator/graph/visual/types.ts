@@ -7,8 +7,8 @@
 
 import { Annotation } from '@langchain/langgraph';
 import { DetectableFields } from '../../../common/graph/annotationHelpers.js';
-import { TriageableState, TriageableContext } from '../../../common/nodes/triage/types.js';
-import type { DetectableState } from '../../../common/nodes/detect/types.js';
+import { TriageableState, TriageableContext } from '../../../common/graph/nodes/triage/types.js';
+import type { DetectableState } from '../../../common/graph/nodes/detect/types.js';
 import { LLMClient } from '../../../../core/ports/llm.js';
 import { ImageGenerationPort, GeneratedImage } from '../../../../core/ports/imageGeneration.js';
 import { BackgroundRemovalPort } from '../../../../core/ports/backgroundRemoval.js';

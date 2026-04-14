@@ -12,7 +12,7 @@ import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
 import { resolveToRAC } from '@ant/shared';
 import type { IntentId } from '@ant/shared';
-import type { ResolveStrategy } from '../../../../common/nodes/resolve/types.js';
+import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types.js';
 
 export const visualResolveStrategy: ResolveStrategy<VisualGraphState> = {
   async loadArtifacts(state) {

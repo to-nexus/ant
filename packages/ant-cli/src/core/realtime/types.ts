@@ -18,7 +18,7 @@ import {
   REDIS_TTL,
   getRealtimeBroadcastChannel,
   getRealtimeWorkflowChannel
-} from '../../infrastructure/state';
+} from '../constants/redis';
 import type { 
   TaskQueueSnapshot, 
   KanbanBroadcastMessage, 

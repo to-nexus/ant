@@ -4,9 +4,9 @@ import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
 import { codeResolveStrategy } from "./nodes/resolve";
-import { createResolveNode } from "../../../common/nodes/resolve";
-import { triage, routeAfterTriage } from "../../../common/nodes/triage";  // ✅ Triage System
-import { createDetectNode } from '../../../common/nodes/detect/index.js';
+import { createResolveNode } from "../../../common/graph/nodes/resolve";
+import { triage, routeAfterTriage } from "../../../common/graph/nodes/triage";  // ✅ Triage System
+import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
 import { codeDetectStrategy } from './nodes/detect/strategy.js';
 import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";

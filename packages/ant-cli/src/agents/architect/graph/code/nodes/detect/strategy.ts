@@ -5,7 +5,7 @@
  * Profile/environment determination is NOT done here — that's decompose's responsibility (tech tier).
  */
 
-import type { DetectStrategy, DetectResult } from '../../../../../common/nodes/detect/types.js';
+import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { ArchitectGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
 import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';

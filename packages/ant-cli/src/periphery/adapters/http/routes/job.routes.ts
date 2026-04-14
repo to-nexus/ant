@@ -5,7 +5,7 @@ import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
 import type { InterruptionDetails } from '../../../../core/types';
 import type { StateStorePort, JobStatusData } from '../../../../core/ports/stateStore';
 import type { JobProjectMapping } from '../../../../core/types/task';
-import { WorkspaceResolver } from '../../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';

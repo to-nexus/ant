@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { WorkspaceResolver } from '../../../../../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';

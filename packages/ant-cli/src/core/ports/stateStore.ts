@@ -101,7 +101,7 @@ export interface ChatSessionData {
 /**
  * Triage result stored in Redis for pending choices
  * Simplified version for Redis storage
- * Mirrors TriageResult from agents/common/nodes/triage/types.ts
+ * Mirrors TriageResult from agents/common/graph/nodes/triage/types.ts
  */
 export interface PendingChoiceTriageResult {
   intent: string;

@@ -4,7 +4,7 @@ import path from 'path';
 import { detectProject, resolveInputFile } from './resolver';
 import { orchestrator } from '../composition/orchestrator';
 import { TaskLogger } from './logger';
-import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../infrastructure/workspace/WorkspaceResolver';
+import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../core/config/WorkspacePathResolver';
 import { getSessionDebugDir } from '../core/utils/sessionPaths';
 
 /**

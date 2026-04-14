@@ -15,11 +15,11 @@
 import { StateGraph, END } from '@langchain/langgraph';
 import { PlanAnnotation, PlanGraphState } from './state';
 import { planResolveStrategy } from './nodes/resolve';
-import { createResolveNode } from '../../../common/nodes/resolve';
+import { createResolveNode } from '../../../common/graph/nodes/resolve';
 import { generateNode, routeAfterGenerate } from './nodes/generate';
 import { toolNode } from './nodes/tool';
-import { triage } from '../../../common/nodes/triage';
-import { createDetectNode } from '../../../common/nodes/detect/index.js';
+import { triage } from '../../../common/graph/nodes/triage';
+import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
 import { planDetectStrategy } from './nodes/detect/strategy.js';
 
 /**

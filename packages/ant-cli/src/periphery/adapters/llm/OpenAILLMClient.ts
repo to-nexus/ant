@@ -17,7 +17,7 @@ import {
   ToolResultContentBlock,
   ImageContentBlock,
 } from '../../../core/ports/llm';
-import { TaskTokenUsage } from '../../../agents/architect/types/task';
+import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream } from '../../../core/utils/retry';
 
 export class OpenAILLMClient implements LLMClient {

@@ -9,8 +9,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceState } from './types';
 import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
-import { MemoryPort } from '../../../../core/ports';
-import { isTemplateContent } from '../../../../core/utils/templateDetector';
+import { MemoryPort } from '../../../../../core/ports';
+import { isTemplateContent } from '../../../../../core/utils/templateDetector';
 import { migrateFigmaConfig, isFigmaDataPopulated } from '@ant/shared';
 
 /**

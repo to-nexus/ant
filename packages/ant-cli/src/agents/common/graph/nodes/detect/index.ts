@@ -18,10 +18,10 @@ import {
   mergeWithMetadata,
   isValidIntentId,
 } from '@ant/shared';
-import { loadResolvedArtifacts } from '../../graph/loadDocumentsForRAC.js';
-import { getEstimatingLabel, type UILocale } from '../../graph/timing/estimatingLabels.js';
-import { extractLLMInfo } from '../../../../core/ports/workflow.js';
-import { appendOrUpdatePool } from '../../../../core/prompt/builder/ArtifactPipeline.js';
+import { loadResolvedArtifacts } from '../../loadDocumentsForRAC.js';
+import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
+import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
+import { appendOrUpdatePool } from '../../../../../core/prompt/builder/ArtifactPipeline.js';
 
 export { type DetectableState, type DetectStrategy, type DetectResult } from './types.js';
 
@@ -196,8 +196,8 @@ async function displayRACInChat(
   locale?: string,
 ): Promise<void> {
   try {
-    const { formatRACForChat } = await import('../../../../core/types/detection.js');
-    const { getChatAPIClient } = await import('../../../../core/adapters/ChatAPIClient.js');
+    const { formatRACForChat } = await import('../../../../../core/types/detection.js');
+    const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient.js');
     const chatAPI = getChatAPIClient();
     const formatted = formatRACForChat(rac, reasoning, (locale as any) || 'ko');
     await chatAPI.sendLLMEvent({ type: 'text', text: formatted });

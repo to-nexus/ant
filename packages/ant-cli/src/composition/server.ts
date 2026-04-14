@@ -32,7 +32,7 @@ if (envPath) {
 }
 
 import { ExpressServerAdapter } from "../periphery/adapters/http/express";
-import { WorkspacePathResolver } from "../infrastructure/workspace/WorkspaceResolver";
+import { WorkspacePathResolver } from "../core/config/WorkspacePathResolver";
 import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
 import { initPartials } from "../periphery/adapters/prompt/FilePromptAdapter";
 

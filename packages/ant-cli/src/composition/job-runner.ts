@@ -34,7 +34,7 @@ import 'dotenv/config';
 import * as path from 'path';
 import Redis from 'ioredis';
 import { orchestrator } from './orchestrator';
-import { UnifiedWorkspaceResolver } from '../infrastructure/workspace/WorkspaceResolver';
+import { UnifiedWorkspaceResolver } from '../core/config/WorkspacePathResolver';
 import { initPartials } from '../periphery/adapters/prompt/FilePromptAdapter';
 import { logger } from '../utils/logger';
 import { handleGracefulShutdown } from './gracefulShutdown';

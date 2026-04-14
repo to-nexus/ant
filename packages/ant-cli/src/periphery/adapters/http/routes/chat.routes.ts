@@ -4,7 +4,7 @@ import * as path from 'path';
 import { ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { ChoiceService } from '../../../../infrastructure/choice';
-import { ChoiceAction } from '../../../../agents/common/nodes/triage/types';
+import { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
 import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, chatUserMessageSchema } from '../middleware/validateBody';

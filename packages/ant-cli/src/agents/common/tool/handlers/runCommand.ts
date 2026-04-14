@@ -16,7 +16,7 @@ import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/util
 import { splitOnShellOperators, hasActualPipe } from '../../../../core/utils/shellParser';
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
 import { cleanCommandEnv } from '../../../../periphery/adapters/command/NodeCommandAdapter';
-import { AsyncMutex } from '../../../architect/graph/code/parallel/AsyncMutex';
+import { AsyncMutex } from '../../../../core/utils/AsyncMutex';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Constants — imported from canonical source to prevent drift

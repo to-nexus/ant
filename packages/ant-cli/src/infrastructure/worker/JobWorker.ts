@@ -26,7 +26,7 @@ import { RedisStateStore } from '../state/RedisStateStore';
 import { REDIS_CHANNELS } from '../state/redisConstants';
 import { LOCK_DURATION, LOCK_EXTENSION_INTERVAL, STALLED_INTERVAL, CANCELLATION_POLL_INTERVAL } from '../queue/constants';
 import { logger } from '../../utils/logger';
-import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../workspace/WorkspaceResolver';
+import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../../core/config/WorkspacePathResolver';
 import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchUtils';
 import { parseRedisUrl } from '../utils/redis';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';

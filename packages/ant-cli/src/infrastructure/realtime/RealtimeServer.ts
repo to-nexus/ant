@@ -29,7 +29,7 @@ import {
   GitWatcherService
 } from '../../periphery/adapters/http/services';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
-import { UnifiedWorkspaceResolver } from '../workspace/WorkspaceResolver';
+import { UnifiedWorkspaceResolver } from '../../core/config/WorkspacePathResolver';
 import { BridgeWebSocketHandler } from './BridgeWebSocketHandler';
 import { logger } from '../../utils/logger';
 import http from 'http';

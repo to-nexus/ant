@@ -10,7 +10,7 @@
  */
 
 import type { ResolvableState, ResolveStrategy } from './types.js';
-import { detectUILocale, getEstimatingLabel, type UILocale } from '../../graph/timing/estimatingLabels.js';
+import { detectUILocale, getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
 
 export { type ResolvableState, type ResolveStrategy } from './types.js';
 

@@ -3,7 +3,7 @@ import { LearnAnnotation, LearnGraphState } from "./state";
 import { decompose } from "./nodes/decompose";
 import { processCommand as processNode } from "./nodes/resolve";
 import { store } from "./nodes/store";
-import { triage, routeAfterTriage } from "../../../common/nodes/triage";
+import { triage, routeAfterTriage } from "../../../common/graph/nodes/triage";
 
 export function buildLearnGraph() {
   const graph = new StateGraph(LearnAnnotation);
