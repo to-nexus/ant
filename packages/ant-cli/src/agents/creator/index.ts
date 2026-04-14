@@ -5,4 +5,4 @@
  * The creator agent handles visual asset generation (images, icons, SVG).
  */
 
-export { runVisualGraph } from './graph/visual/graph.js';
+export { runVisualGraph } from './graph/visual/runner.js';

@@ -1,10 +1,12 @@
 /**
  * Visual Graph State Types
  *
- * Defines the state shape for the visual job LangGraph,
- * conforming to DetectableState for triage + detect node compatibility.
+ * Annotation.Root = SSOT. VisualGraphState interface kept for node signatures
+ * (too many fields for typeof Annotation.State to be ergonomic).
  */
 
+import { Annotation } from '@langchain/langgraph';
+import { DetectableFields } from '../../../common/graph/annotationHelpers.js';
 import { TriageableState, TriageableContext } from '../../../common/nodes/triage/types.js';
 import type { DetectableState } from '../../../common/nodes/detect/types.js';
 import { LLMClient } from '../../../../core/ports/llm.js';
@@ -166,6 +168,38 @@ export interface VisualGraphState extends DetectableState, PhaseTrackingState {
   // Pending tool calls (TriageableState compat)
   pendingToolCalls?: any[];
 }
+
+export const VisualGraphAnnotation = Annotation.Root({
+  ...DetectableFields,
+  conversation: Annotation<any>,
+  engineeredPrompt: Annotation<any>,
+  sketchImages: Annotation<any>,
+  svgSketches: Annotation<any>,
+  selectedSketchIndex: Annotation<any>,
+  finalImage: Annotation<any>,
+  outputPath: Annotation<any>,
+  assetType: Annotation<any>,
+  jobMode: Annotation<any>,
+  skipClassify: Annotation<any>,
+  lastEngineeredPrompt: Annotation<any>,
+  lastOutputPath: Annotation<any>,
+  resolvedAspectRatio: Annotation<any>,
+  availableSketchPaths: Annotation<any>,
+  basePrompt: Annotation<any>,
+  sketchVariations: Annotation<any>,
+  variationAxis: Annotation<any>,
+  clarifyCount: Annotation<any>,
+  sketchIntent: Annotation<any>,
+  routeDecision: Annotation<any>,
+  needsSketches: Annotation<any>,
+  isSvgRequest: Annotation<any>,
+  visualError: Annotation<any>,
+  safetyBlocked: Annotation<any>,
+  visualSettings: Annotation<any>,
+  _conversationCompaction: Annotation<any>,
+  phaseTokenUsages: Annotation<any>,
+  pendingToolCalls: Annotation<any>,
+} as const);
 
 /**
  * Params for runVisualGraph
