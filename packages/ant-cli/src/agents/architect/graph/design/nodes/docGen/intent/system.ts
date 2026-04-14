@@ -18,7 +18,7 @@ import { deriveArtifactPolicies } from '../../../../../../../core/prompt/builder
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
-import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 
 export interface BuildMessagesResult {
   messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
@@ -326,7 +326,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
             hasConversationHistory: !!(state.conversationHistory?.length),
             conversationHistoryLength: state.conversationHistory?.length || 0,
             prdSpec: prdSpecForLog ? `[${prdSpecForLog.length} chars]` : undefined,
-            design: state.design ? `[${state.design.length} chars]` : undefined,
+            design: (() => { const d = new ArtifactPoolView(state.artifacts || []).firstDesignContent(); return d ? `[${d.length} chars]` : undefined; })(),
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             detectedMode: state.resolvedAction?.mode,
             designDomain: state.resolvedAction?.domain,
@@ -384,17 +384,17 @@ export function buildRuntimeContext(state: DesignGraphState): string {
   // ✅ 4. Existing Design Document (ONLY for refactor mode)
   // - generate: NO document needed (lastSectionNumber is sufficient for sequential chapter generation)
   // - refactor: FULL document needed (LLM must understand structure to modify specific sections)
-  //   Use content matching targetFile from existingDesignDocs (not state.design which may be a different file)
+  //   Use content matching targetFile from existingDesignDocs (pool fallback for missing docs)
   if (state.resolvedAction?.mode === 'refactor') {
     const targetFileName = task?.targetFile || 'be-system-main.md';
-    const existingContent = state.existingDesignDocs?.[targetFileName] || state.design;
+    const existingContent = state.existingDesignDocs?.[targetFileName] || new ArtifactPoolView(state.artifacts || []).firstDesignContent();
     if (existingContent) {
       lines.push(`# Existing Design Document`);
       lines.push(existingContent);
       lines.push('');
     }
   }
-  // ❌ For generate mode: DO NOT include state.design
+  // ❌ For generate mode: DO NOT include previous design content
   // Reason: Including old document content causes LLM confusion with outdated metadata
   // The lastSectionNumber in the base prompt is sufficient for sequential chapter numbering
   
@@ -454,9 +454,10 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
   } else {
     // Priority 2: Text search fallback (no techTier available)
     {
-      const allSourceDocs = state.sourceDocuments
-        ? Object.values(state.sourceDocuments).join(' ')
-        : state.prd || '';
+      const _pool = new ArtifactPoolView(state.artifacts || []);
+      const allSourceDocs = _pool.hasSources()
+        ? _pool.sources.map(a => a.content).join(' ')
+        : '';
       const textSources = [allSourceDocs, state.directive].filter(Boolean);
       const combined = textSources.join(' ').toLowerCase();
       if ((combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) && isFrontendDoc) {

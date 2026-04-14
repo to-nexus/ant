@@ -115,8 +115,6 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     return {
       existingDesignDocs,
       artifacts,
-      ...(prd !== undefined ? { prd } : {}),
-      ...(sourceDocuments !== undefined ? { sourceDocuments } : {}),
     } as Partial<DesignGraphState>;
   },
 
@@ -154,6 +152,9 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
           if (allowedPaths.has(`inputs/sources/${name}`) || allowedPaths.has(name)) {
             filtered[name] = content;
           }
+        }
+        if (sourceDocuments['prd.md'] && !filtered['prd.md']) {
+          filtered['prd.md'] = sourceDocuments['prd.md'];
         }
         if (Object.keys(filtered).length > 0) {
           sourceDocuments = filtered;
@@ -305,10 +306,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     return {
       context,
       featurePath: context.featurePath,
-      prd,
-      sourceDocuments,
       directive,
-      design,
       existingDesignDocs,
       artifacts,
       figmaConfig,

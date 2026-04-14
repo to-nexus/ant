@@ -19,7 +19,7 @@ import { docGen } from '../nodes/docGen/index';
 import { tool } from '../nodes/tool';
 import path from 'node:path';
 import { learn } from '../nodes/learn';
-import type { WorkerGraphBuilder } from '../../code/parallel/types';
+import type { WorkerGraphBuilder } from '../../../../common/graph/parallelTypes';
 import { routeAfterDocGen } from '../routers/docGenRouter';
 import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
 import { designSubdirOf } from '@ant/shared';

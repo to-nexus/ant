@@ -7,7 +7,7 @@
 
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
-import { TaskQueue } from "../../../code/state";
+import { TaskQueue } from "../../../../types/task";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { logErrorHeader } from "../../../code/nodes/shared/errorHandler";
@@ -22,6 +22,7 @@ import {
   type CheckpointData,
 } from "./helpers";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier } from "@ant/shared";
+import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 
 interface DecomposeContext {
   phaseStart: number;
@@ -46,14 +47,17 @@ export async function decomposeUiDesign(
     handleReadSourceFile,
   } = await import('../docGen/sourceSelector');
 
+  const pool = new ArtifactPoolView(state.artifacts || []);
+  const sourceRecord = pool.sourcesAsRecord();
+
   // Hybrid strategy: small → inline, large → tool-use (RAG)
-  const sourceDocsSize = getSourceDocsSize(state.sourceDocuments);
+  const sourceDocsSize = pool.sourcesSize();
   const useToolMode = sourceDocsSize > DECOMPOSE_SOURCE_THRESHOLD;
 
   let uiContext: string;
   if (useToolMode) {
     console.log(`📊 [UIDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const fileIndex = buildSourceFileIndex(state.sourceDocuments!);
+    const fileIndex = buildSourceFileIndex(sourceRecord);
     const parts = [
       `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to UI design decisions.`,
       state.directive ? `DIRECTIVE:\n${state.directive}` : null,
@@ -61,7 +65,7 @@ export async function decomposeUiDesign(
     uiContext = parts.join('\n\n---\n\n');
   } else {
     console.log(`📊 [UIDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const allSourceDocs = buildAllSourceDocs(state.sourceDocuments) || state.prd;
+    const allSourceDocs = buildAllSourceDocs(sourceRecord);
     const parts = [
       allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
       state.directive ? `DIRECTIVE:\n${state.directive}` : null,
@@ -70,7 +74,7 @@ export async function decomposeUiDesign(
   }
 
   const { isFigmaPipeline, isFigmaDataPopulated } = await import('@ant/shared');
-  const sourceFileNames = state.sourceDocuments ? Object.keys(state.sourceDocuments) : [];
+  const sourceFileNames = pool.sourceFileNames();
   const isFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   if (isFigmaMode && !sourceFileNames.includes('figma.json')) {
     sourceFileNames.push('figma.json');
@@ -125,14 +129,14 @@ export async function decomposeUiDesign(
     
     let textResponse: string;
 
-    if (useToolMode && state.sourceDocuments) {
+    if (useToolMode && pool.hasSources()) {
       const { response, usage } = await decomposeWithToolLoop(
         llmToUse,
         [{ role: 'user', content: uiDecomposePrompt }],
         [READ_SOURCE_DOC_TOOL],
         (name, args) => {
           if (name === 'read_source_doc') {
-            return handleReadSourceFile(args.filename, state.sourceDocuments!, args.startLine, args.endLine);
+            return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
           }
           return `Error: Unknown tool "${name}"`;
         },
