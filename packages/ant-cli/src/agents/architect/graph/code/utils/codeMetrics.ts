@@ -231,4 +231,3 @@ export function generateRecommendations(metrics: CodeMetrics): string[] {
 
   return recommendations;
 }
-
