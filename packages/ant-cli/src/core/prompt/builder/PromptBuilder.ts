@@ -77,7 +77,7 @@ export class PromptBuilder implements PromptPort {
       };
     }
 
-    if (config.pipeline.sanitizeInput) {
+    if (config.pipeline?.sanitizeInput) {
       vars = sanitizeInjectionVars(vars);
     }
 
@@ -93,7 +93,7 @@ export class PromptBuilder implements PromptPort {
 
     // 3b. Tech profile (language + framework)
     let profiles = '';
-    if (config.pipeline.includeTechProfile) {
+    if (config.pipeline?.includeTechProfile) {
       const techTier = config.techContext?.techTier;
       profiles = await this.buildProfileSection(techTier);
     }
@@ -113,7 +113,7 @@ export class PromptBuilder implements PromptPort {
 
     // 3e. Examples (optional)
     let examples = '';
-    if (config.pipeline.includeExamples) {
+    if (config.pipeline?.includeExamples) {
       const job = this.inferJob(config);
       examples = await this.renderTemplate(`${job}/base/examples`, {}, failedTemplates);
     }
@@ -132,12 +132,12 @@ export class PromptBuilder implements PromptPort {
 
     let guardrail = '';
     let policy = '';
-    if (config.pipeline.applyPolicyGuardrails) {
+    if (config.pipeline?.applyPolicyGuardrails) {
       const ruleset = this.getRuleset();
       const job = this.inferJob(config);
       const phase = this.inferPhase(config);
       guardrail = buildGuardrailSection(ruleset, job);
-      policy = buildPolicySection(ruleset, job, phase, config.pipeline.strictValidation);
+      policy = buildPolicySection(ruleset, job, phase, config.pipeline?.strictValidation);
       systemParts.unshift(guardrail);
       systemParts.push(policy);
     }

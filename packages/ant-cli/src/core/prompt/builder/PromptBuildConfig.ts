@@ -51,8 +51,8 @@ export interface PromptBuildConfig {
     resolvedAction?: ResolvedActionContext;
   };
 
-  /** Pipeline feature flags. Omitted flags default to false. */
-  pipeline: {
+  /** Pipeline feature flags. Omitted flags default to false. When omitted entirely, all pipeline stages are skipped. */
+  pipeline?: {
     sanitizeInput?: boolean;
     includeTechProfile?: boolean;
     includeExamples?: boolean;
