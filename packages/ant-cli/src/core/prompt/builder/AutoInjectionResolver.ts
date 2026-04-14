@@ -1,9 +1,8 @@
 /**
  * AutoInjectionResolver — Tier A + Tier D injection resolution.
  *
- * Extracted from PromptResolver.selectInjections().
  * Determines which injection templates to include based on:
- *   Tier A: techTier, taskType, mode, job, phase (static tech/workflow context)
+ *   Tier A: techTier, taskType, mode, job, node (static tech/workflow context)
  *   Tier D: data-presence flags (directive, memory, git-diff, etc.)
  *
  * Does NOT handle Tier I (intent policies) or Tier N (artifact-conditional policies).
@@ -18,7 +17,7 @@ import type { ResolvedActionContext, TechTier, Mode } from '@ant/shared';
 
 export interface AutoInjectionInput {
   job: string;
-  phase: 'plan' | 'execute';
+  node: 'plan' | 'execute';
   taskType?: string;
   mode?: Mode;
   resolvedAction?: ResolvedActionContext;
@@ -54,7 +53,7 @@ export class AutoInjectionResolver {
    */
   resolve(input: AutoInjectionInput): string[] {
     const injections: string[] = [];
-    const { job, phase, taskType, mode, resolvedAction, data } = input;
+    const { job, node, taskType, mode, resolvedAction, data } = input;
 
     const tiers = input.techTiers ?? (input.techTier ? [input.techTier] : []);
     const stacks = new Set(tiers.map(t => t.stack).filter(Boolean));
@@ -67,8 +66,8 @@ export class AutoInjectionResolver {
     const isDoc = taskType === 'doc';
     const skipStaticPolicy = isVerification || isTestCode || isDoc;
 
-    const commonPrefix = 'common/injections';
-    const jobPrefix = `${job}/base/injections`;
+    const commonPrefix = 'jobs/shared/injections';
+    const jobPrefix = `jobs/${job}/base/injections`;
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Tier D: Data Presence
@@ -88,12 +87,12 @@ export class AutoInjectionResolver {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Tier A: Setup task constraints
+    // Tier A: Setup task constraints (code job only)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (taskType === 'setup') {
+    if (taskType === 'setup' && job === 'code') {
       const language = this.resolveLanguage(tiers);
       if (language) {
-        injections.push(`${job}/phases/execute/languages/${language}/setup/constraints`);
+        injections.push(`jobs/${job}/nodes/execute/basis/techTier/${language}/setup/constraints`);
       }
     }
 
@@ -113,9 +112,9 @@ export class AutoInjectionResolver {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Phase: execute
+    // Node: execute
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (phase === 'execute') {
+    if (node === 'execute') {
       const language = this.resolveLanguage(tiers);
       const skipEnvRules = isVerification || isError || isTestCode || isDoc;
 
@@ -128,41 +127,41 @@ export class AutoInjectionResolver {
         this.pushUnique(injections, `${jobPrefix}/tool-calling-rules-compact`);
       }
 
-      if (isError && hasFrontend) {
+      if (isError && hasFrontend && job === 'code') {
         this.pushUnique(injections, `${jobPrefix}/preview-setup`);
       }
 
       if (isTestCode && language && job === 'code') {
-        injections.push(`${job}/phases/execute/tasks/test-code/languages/${language}/hints`);
+        injections.push(`jobs/${job}/nodes/execute/variants/test-code/basis/techTier/${language}/hints`);
       }
 
       if (job === 'code' && !isVerification && !isDoc && hasBackend) {
-        injections.push('code/phases/execute/injections/backend-safety');
+        injections.push('jobs/code/nodes/execute/injections/backend-safety');
       }
 
       if (job === 'code' && !isTestCode && !isDoc) {
         this.pushUnique(injections, `${jobPrefix}/preview-env-contract`);
-        injections.push('code/phases/execute/injections/port-management');
+        injections.push('jobs/code/nodes/execute/injections/port-management');
       }
 
       // Design job injections
       if (job === 'design') {
-        injections.push('design/base/injections/document-language');
+        injections.push('jobs/design/base/injections/document-language');
       }
 
-      // Tier D: execute-phase data-presence
-      if (data.hasRetryContext) injections.push('code/phases/execute/injections/retry-context');
-      if (data.hasLessons) injections.push('code/phases/execute/injections/lessons');
-      if (data.hasSessionContext) injections.push('code/phases/execute/injections/session-context');
+      // Tier D: execute-node data-presence
+      if (data.hasRetryContext) injections.push('jobs/code/nodes/execute/injections/retry-context');
+      if (data.hasLessons) injections.push('jobs/code/nodes/execute/injections/lessons');
+      if (data.hasSessionContext) injections.push('jobs/code/nodes/execute/injections/session-context');
       if (data.hasMissingDependency && language && job === 'code') {
-        injections.push('code/phases/execute/injections/missing-dependency-fix');
+        injections.push('jobs/code/nodes/execute/injections/missing-dependency-fix');
       }
       if (data.hasRuntimeError) {
-        injections.push('code/phases/execute/injections/runtime-error-fix');
+        injections.push('jobs/code/nodes/execute/injections/runtime-error-fix');
       }
 
       if (!data.hasProjectCode && job === 'code' && taskType === 'setup' && language) {
-        injections.push(`${job}/phases/execute/languages/${language}/setup/config`);
+        injections.push(`jobs/${job}/nodes/execute/basis/techTier/${language}/setup/config`);
       }
     }
 
@@ -170,12 +169,12 @@ export class AutoInjectionResolver {
     // RAC-driven injections
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (resolvedAction) {
-      injections.push('common/injections/action-context');
+      injections.push('jobs/shared/injections/action-context');
       if (resolvedAction.mode === 'refactor') {
-        injections.push('common/injections/refactor-guidance');
+        injections.push('jobs/shared/injections/refactor-guidance');
       }
       if (resolvedAction.mode === 'explain') {
-        injections.push('common/injections/explain-guidance');
+        injections.push('jobs/shared/injections/explain-guidance');
       }
     }
 
@@ -194,29 +193,40 @@ export class AutoInjectionResolver {
     hasFrontend: boolean,
     hasBackend: boolean,
   ): void {
+    const base = `jobs/${job}/nodes/execute/basis/techTier`;
+
     if (tiers.length === 0) {
-      const envPath = `${job}/phases/execute/languages/${fallbackLanguage}/environments/browser/rules`;
-      this.pushUnique(injections, envPath);
+      // Go has no browser environment rules; only TypeScript does
+      if (fallbackLanguage !== 'go') {
+        this.pushUnique(injections, `${base}/${fallbackLanguage}/environments/browser/rules`);
+      }
       return;
     }
 
     for (const tier of tiers) {
       const lang = tier.language ?? 'typescript';
       if (tier.stack === 'fullstack') {
-        this.pushUnique(injections, `${job}/phases/execute/languages/${lang}/environments/browser/rules`);
+        if (lang !== 'go') {
+          this.pushUnique(injections, `${base}/${lang}/environments/browser/rules`);
+        }
         const backendEnv = lang === 'go' ? 'go-api' : 'node-api';
-        this.pushUnique(injections, `${job}/phases/execute/languages/${lang}/environments/${backendEnv}/rules`);
+        this.pushUnique(injections, `${base}/${lang}/environments/${backendEnv}/rules`);
       } else {
-        const env = tier.stack === 'frontend' ? 'browser'
+        const env = tier.stack === 'frontend'
+          ? (lang === 'go' ? null : 'browser')
           : tier.stack === 'backend' ? (lang === 'go' ? 'go-api' : 'node-api')
-          : 'browser';
-        this.pushUnique(injections, `${job}/phases/execute/languages/${lang}/environments/${env}/rules`);
+          : (lang === 'go' ? null : 'browser');
+        if (env) {
+          this.pushUnique(injections, `${base}/${lang}/environments/${env}/rules`);
+        }
       }
     }
 
     if (hasFrontend && hasBackend) {
       const primaryLang = tiers[0]?.language ?? 'typescript';
-      this.pushUnique(injections, `${job}/phases/execute/languages/${primaryLang}/environments/fullstack/rules`);
+      if (primaryLang !== 'go') {
+        this.pushUnique(injections, `${base}/${primaryLang}/environments/fullstack/rules`);
+      }
     }
   }
 
