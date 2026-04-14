@@ -28,10 +28,11 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 // Import submodules
 import { buildMessages } from './promptBuilder';
 import { getAvailableTools } from './toolDefinitions';
-import { getToolsByNamesWithTemplates, TOOL_SETS } from '../../../../tools/definitions';
+import { getToolsByNamesWithTemplates, TOOL_SETS } from '../../../../../common/tool/toolSchemas';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
+import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { isFinalVerificationTask } from '../../utils/taskClassification';
 import type { CodeTask } from '../../../../types/task';
@@ -825,6 +826,15 @@ export async function execute(
       }
     }
     
+    // When tool calls exist, push assistant message so tool node receives
+    // a complete [assistant, user(tool_result)] pair in conversation history.
+    const toolCallHistory = toolCalls.length > 0
+      ? [...(state.conversationHistory || []), buildAssistantMessage({
+          text: cleanFileContentFromResponse(textResponse) || undefined,
+          toolCalls,
+        })]
+      : undefined;
+
     return {
       llmResponse: {
         thinking,
@@ -834,6 +844,7 @@ export async function execute(
         done: explicitDone,
         tokenUsage: capturedUsage,
       },
+      ...(toolCallHistory ? { conversationHistory: toolCallHistory } : {}),
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       projectCodeContext: updatedProjectCodeContext,
       _executeCallIndex: newCallIndex,

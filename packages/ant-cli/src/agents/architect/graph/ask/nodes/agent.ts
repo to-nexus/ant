@@ -8,14 +8,11 @@
  * Uses Anthropic native format (same as Code Job) for reliable tool calling.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import Handlebars from 'handlebars';
 import { AskGraphState, ConversationMessage } from '../state.js';
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
 import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
+import { buildAssistantMessage } from '../../../../common/tool/messageBuilder';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
-import { WorkspacePathResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver.js';
 import { formatWorkspaceState } from '../../../../common/nodes/triage/workspaceAnalyzer.js';
 import { AgentRegistry } from '../../../../common/nodes/triage/AgentRegistry.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
@@ -287,22 +284,10 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     }
   }
 
-  // Add assistant response (use cleaned text so eval tag doesn't leak into history)
   if (toolCalls.length > 0) {
-    newHistory.push({
-      role: 'assistant',
-      content: toolCalls.map(tc => ({
-        type: 'tool_use' as const,
-        id: tc.id,
-        name: tc.name,
-        input: tc.args,
-      })),
-    });
+    newHistory.push(buildAssistantMessage({ toolCalls }));
   } else if (cleanedResponseText) {
-    newHistory.push({
-      role: 'assistant',
-      content: cleanedResponseText,
-    });
+    newHistory.push(buildAssistantMessage({ text: cleanedResponseText }));
   }
 
   return {

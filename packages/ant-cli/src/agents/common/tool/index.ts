@@ -23,6 +23,7 @@ export {
   TOOL_DISPLAY_NAMES,
   TOOL_HANDLERS,
   JOB_TOOL_MATRIX,
+  TOOL_SETS,
   SHADOW_ALIASES,
   CACHEABLE_TOOLS,
   FIGMA_TOOLS,
@@ -46,7 +47,8 @@ export {
 export { ToolOrchestrator } from './orchestrator';
 export type { OrchestratorConfig, OrchestratorBatchOptions, WorkflowUpdate } from './orchestrator';
 
-export { buildToolResultMessage } from './messageBuilder';
+export { buildToolResultMessage, buildAssistantMessage } from './messageBuilder';
+export type { AssistantMessageOptions } from './messageBuilder';
 
 export { createToolNode } from './createToolNode';
 export type { ToolNodeConfig } from './createToolNode';

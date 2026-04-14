@@ -1,13 +1,69 @@
 /**
- * MessageBuilder — constructs Anthropic-format tool result messages
+ * MessageBuilder — constructs Anthropic-format messages for conversation history
  *
- * Builds the user message containing tool_result blocks from a batch
- * of tool execution events. Optionally appends extra content blocks
- * (e.g., task reminders).
+ * Two directions:
+ * - buildAssistantMessage: LLM node → history (assistant turn)
+ * - buildToolResultMessage: tool node → history (user turn)
  */
 
 import type { ToolExecutionEvent, ToolResult } from './types';
-import type { ToolResultContentBlock, ToolUseContentBlock } from '../../../core/ports/llm';
+import type {
+  ThinkingContentBlock,
+  TextContentBlock,
+  ToolUseContentBlock,
+  ToolResultContentBlock,
+} from '../../../core/ports/llm';
+
+export interface AssistantMessageOptions {
+  thinking?: string;
+  thinkingSignature?: string;
+  text?: string;
+  toolCalls?: Array<{ id: string; name: string; args: Record<string, any> }>;
+}
+
+/**
+ * Build an Anthropic-format assistant message from LLM response components.
+ *
+ * Content block order follows Anthropic API convention:
+ *   thinking (optional) → text (optional) → tool_use[] (optional)
+ *
+ * When the result is a single text block with no thinking,
+ * returns content as a plain string (Anthropic API shorthand).
+ */
+export function buildAssistantMessage(
+  options: AssistantMessageOptions,
+): { role: 'assistant'; content: string | (ThinkingContentBlock | TextContentBlock | ToolUseContentBlock)[] } {
+  const content: (ThinkingContentBlock | TextContentBlock | ToolUseContentBlock)[] = [];
+
+  if (options.thinking) {
+    content.push({
+      type: 'thinking',
+      thinking: options.thinking,
+      signature: options.thinkingSignature || '',
+    });
+  }
+
+  if (options.text) {
+    content.push({ type: 'text', text: options.text });
+  }
+
+  if (options.toolCalls?.length) {
+    for (const tc of options.toolCalls) {
+      content.push({
+        type: 'tool_use',
+        id: tc.id,
+        name: tc.name,
+        input: tc.args,
+      });
+    }
+  }
+
+  if (content.length === 1 && content[0].type === 'text') {
+    return { role: 'assistant' as const, content: options.text! };
+  }
+
+  return { role: 'assistant' as const, content };
+}
 
 export interface ToolResultMessageParts {
   toolUseBlocks: ToolUseContentBlock[];
