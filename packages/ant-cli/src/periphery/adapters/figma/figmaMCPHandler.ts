@@ -10,9 +10,9 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { createMCPAdapter, extractMCPTextContent, extractMCPImageContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from '../../../periphery/adapters/figma/MCPTransport';
-import type { FigmaMCPAdapter } from '../../../periphery/adapters/figma/FigmaMCPAdapter';
-import { FigmaRateLimitError, isRateLimitResponse } from '../../../periphery/adapters/figma/errors';
+import { createMCPAdapter, extractMCPTextContent, extractMCPImageContent, isFigmaMCPSoftError, isLikelyMCPErrorResponse } from './MCPTransport';
+import type { FigmaMCPAdapter } from './FigmaMCPAdapter';
+import { FigmaRateLimitError, isRateLimitResponse } from './errors';
 import { getSessionDebugDir } from '../../../core/utils/sessionPaths';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
