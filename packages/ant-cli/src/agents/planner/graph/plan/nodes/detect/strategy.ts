@@ -10,10 +10,10 @@
  *   - existing target → LLM determines 'rev-plan' vs 'explain-plan'
  */
 
-import type { DetectStrategy, DetectResult } from '../../../../common/nodes/detect/types.js';
-import type { PlanGraphState } from '../state.js';
+import type { DetectStrategy, DetectResult } from '../../../../../common/nodes/detect/types.js';
+import type { PlanGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
-import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers.js';
 
 export const planDetectStrategy: DetectStrategy<PlanGraphState> = {
   async run(state): Promise<DetectResult<PlanGraphState>> {
@@ -38,7 +38,7 @@ async function determinePlanIntent(
 ): Promise<{ intentId: string; reasoning: string }> {
   const fs = await import('fs');
   const path = await import('path');
-  const { normalizeTemplateDoc } = await import('../../../../../core/utils/templateDetector.js');
+  const { normalizeTemplateDoc } = await import('../../../../../../core/utils/templateDetector.js');
 
   const targets = resolveTargets(state);
   const hasExistingTarget = targets.length > 0 && targets.some(t => {

@@ -1,35 +1,30 @@
 /**
  * Planner Tools
- * 
+ *
  * Tools available to the planner agent for research:
  * - read_workspace_file: Read files from user workspace
  * - list_workspace_files: List files in workspace directories
  * - search_web: Search the web for technical information
+ * - edit_file: Edit files via search-replace
+ * - write_file / append_file: Shadow tools for LLM hallucination recovery
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { FileTreeUpdatePort } from '../../../core/ports/fileTree';
-import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
+import type { FileTreeUpdatePort } from '../../../../../core/ports/fileTree';
+import type { ChatStatusReporter } from '../../../../common/tool/types';
 
 interface ToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, any>;
-  execute: (args: Record<string, any>) => Promise<string>;
+  execute: (args: Record<string, any>, ctx: PlannerToolContext) => Promise<string>;
 }
 
-// Workspace feature path (set by runner before graph execution)
-let workspaceFeaturePath: string | undefined;
-// File tree update port (set by runner before graph execution)
-let fileTreeUpdatePort: FileTreeUpdatePort | undefined;
-
-export function setPlannerWorkspaceFeaturePath(featurePath?: string) {
-  workspaceFeaturePath = featurePath;
-}
-
-export function setPlannerFileTreeUpdate(fileTreeUpdate?: FileTreeUpdatePort) {
-  fileTreeUpdatePort = fileTreeUpdate;
+export interface PlannerToolContext {
+  featurePath: string;
+  fileTreeUpdate?: FileTreeUpdatePort;
+  chatStatus: ChatStatusReporter;
 }
 
 const readWorkspaceFile: ToolDefinition = {
@@ -42,18 +37,13 @@ const readWorkspaceFile: ToolDefinition = {
     },
     required: ['path'],
   },
-  execute: async (args) => {
-    if (!workspaceFeaturePath) {
-      return 'Error: No workspace context available';
-    }
-    
-    const filePath = path.join(workspaceFeaturePath, args.path);
-    
-    // Security: prevent path traversal
-    if (!filePath.startsWith(workspaceFeaturePath)) {
+  execute: async (args, ctx) => {
+    const filePath = path.join(ctx.featurePath, args.path);
+
+    if (!filePath.startsWith(ctx.featurePath)) {
       return 'Error: Path traversal not allowed';
     }
-    
+
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const maxLen = 10000;
@@ -77,20 +67,16 @@ const listWorkspaceFiles: ToolDefinition = {
     },
     required: ['directory'],
   },
-  execute: async (args) => {
-    if (!workspaceFeaturePath) {
-      return 'Error: No workspace context available';
-    }
-    
-    const dirPath = path.join(workspaceFeaturePath, args.directory);
-    
-    if (!dirPath.startsWith(workspaceFeaturePath)) {
+  execute: async (args, ctx) => {
+    const dirPath = path.join(ctx.featurePath, args.directory);
+
+    if (!dirPath.startsWith(ctx.featurePath)) {
       return 'Error: Path traversal not allowed';
     }
-    
+
     try {
       const items = fs.readdirSync(dirPath, { withFileTypes: true });
-      return items.map(item => 
+      return items.map(item =>
         `${item.isDirectory() ? '📁' : '📄'} ${item.name}`
       ).join('\n');
     } catch (error: any) {
@@ -99,10 +85,6 @@ const listWorkspaceFiles: ToolDefinition = {
   },
 };
 
-/**
- * Web search via Tavily API.
- * Delegates to shared executeSearchWeb (architect/tools/searchWeb.ts).
- */
 const searchWeb: ToolDefinition = {
   name: 'search_web',
   description: 'Search the web for technical information, SDK documentation, API references, or technology comparisons. Use when you need current information about technologies, frameworks, or best practices.',
@@ -114,16 +96,11 @@ const searchWeb: ToolDefinition = {
     required: ['query'],
   },
   execute: async (args) => {
-    const { executeSearchWeb } = await import('../../architect/tools/searchWeb');
+    const { executeSearchWeb } = await import('../../../../common/tool/handlers/searchWeb');
     return executeSearchWeb(args as { query: string });
   },
 };
 
-/**
- * edit_file — same interface as architect's edit_file (path, old_str, new_str).
- * Uses applySearchReplace from EditOperations.ts for consistency.
- * Paths are relative to feature root, same as read_workspace_file.
- */
 const editFile: ToolDefinition = {
   name: 'edit_file',
   description: 'Edit a file by replacing exact text. Provide the relative path from feature root, the exact text to find (old_str), and its replacement (new_str). The old_str must match character-for-character. Use read_workspace_file first if needed.',
@@ -136,45 +113,26 @@ const editFile: ToolDefinition = {
     },
     required: ['path', 'old_str', 'new_str'],
   },
-  execute: async (args) => {
-    if (!workspaceFeaturePath) {
-      return 'Error: No workspace context available';
-    }
+  execute: async (args, ctx) => {
+    const filePath = path.join(ctx.featurePath, args.path);
 
-    const filePath = path.join(workspaceFeaturePath, args.path);
-
-    // Security: prevent path traversal
-    if (!filePath.startsWith(workspaceFeaturePath)) {
+    if (!filePath.startsWith(ctx.featurePath)) {
       return 'Error: Path traversal not allowed';
     }
 
-    // ✅ NOTE: Loading card (file_editing) is already created by tool_use event handler
-    // in generate.ts via chatAPI.sendLLMEvent(event) → LLMEventHandler.handleFileToolUse()
-    const chatAPI = getChatAPIClient();
-    
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
-      const { applySearchReplace } = await import('../../../core/streaming/strategies/common/EditOperations');
+      const { applySearchReplace } = await import('../../../../../core/streaming/strategies/common/EditOperations');
       const newContent = applySearchReplace(content, args.old_str, args.new_str, args.path);
       fs.writeFileSync(filePath, newContent, 'utf-8');
-      
-      // ✅ Notify file tree update after edit
-      if (fileTreeUpdatePort) {
-        const projectId = process.env.ANT_PROJECT_ID;
-        const featureName = process.env.ANT_FEATURE_NAME;
-        if (projectId && featureName) {
-          fileTreeUpdatePort.notifyFileTreeUpdate(projectId, featureName);
-        }
-      }
-      
-      // ✅ UI notification: file edit complete (file_editing → file_edit with diff)
-      await chatAPI.completeFileEdit(args.path, args.old_str, args.new_str);
-      
+
+      notifyFileTree(ctx);
+      await ctx.chatStatus.completeFileEdit(args.path, args.old_str, args.new_str);
+
       return `✅ Edited ${args.path}. Replaced ${args.old_str.length} → ${args.new_str.length} chars.`;
     } catch (error: any) {
-      // ✅ UI notification: file edit failed (file_editing → file_edit_failed)
-      await chatAPI.failFileEdit(args.path, (error as Error).message);
-      
+      await ctx.chatStatus.failFileEdit(args.path, (error as Error).message);
+
       if (error.code === 'ENOENT') {
         return `Error: File not found: ${args.path}`;
       }
@@ -183,13 +141,6 @@ const editFile: ToolDefinition = {
   },
 };
 
-/**
- * write_file — Shadow tool for LLM hallucination recovery.
- *
- * LLM sometimes hallucinates write_file instead of using <file> XML tag.
- * Instead of returning an error and wasting a retry cycle, we intercept
- * and execute the file write directly since the content is already available.
- */
 const writeFile: ToolDefinition = {
   name: 'write_file',
   description: 'Shadow tool for LLM hallucination recovery (write_file → <file> tag)',
@@ -201,16 +152,11 @@ const writeFile: ToolDefinition = {
     },
     required: ['path', 'content'],
   },
-  execute: async (args) => {
-    return handleHallucinatedFileWrite(args.path, args.content, false);
+  execute: async (args, ctx) => {
+    return handleHallucinatedFileWrite(args.path, args.content, false, ctx);
   },
 };
 
-/**
- * append_file — Shadow tool for LLM hallucination recovery.
- *
- * LLM sometimes hallucinates append_file instead of using <append> XML tag.
- */
 const appendFile: ToolDefinition = {
   name: 'append_file',
   description: 'Shadow tool for LLM hallucination recovery (append_file → <append> tag)',
@@ -222,41 +168,39 @@ const appendFile: ToolDefinition = {
     },
     required: ['path', 'content'],
   },
-  execute: async (args) => {
-    return handleHallucinatedFileWrite(args.path, args.content, true);
+  execute: async (args, ctx) => {
+    return handleHallucinatedFileWrite(args.path, args.content, true, ctx);
   },
 };
 
-/**
- * Handle hallucinated append_file/write_file tool calls in planner.
- *
- * Uses direct fs access (same as editFile) since planner has no fileSystem port.
- */
+function notifyFileTree(ctx: PlannerToolContext): void {
+  if (!ctx.fileTreeUpdate) return;
+  const projectId = process.env.ANT_PROJECT_ID;
+  const featureName = process.env.ANT_FEATURE_NAME;
+  if (projectId && featureName) {
+    ctx.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
+  }
+}
+
 async function handleHallucinatedFileWrite(
   filePath: string,
   content: string,
   isAppend: boolean,
+  ctx: PlannerToolContext,
 ): Promise<string> {
-  if (!workspaceFeaturePath) {
-    return 'Error: No workspace context available';
-  }
+  const toolName = isAppend ? 'append_file' : 'write_file';
 
   if (!content) {
-    return `Error: ${isAppend ? 'append_file' : 'write_file'} called without content. Use ${isAppend ? '<append>' : '<file>'} XML tag instead.`;
+    return `Error: ${toolName} called without content. Use ${isAppend ? '<append>' : '<file>'} XML tag instead.`;
   }
 
-  const resolvedPath = path.join(workspaceFeaturePath, filePath);
+  const resolvedPath = path.join(ctx.featurePath, filePath);
 
-  // Security: prevent path traversal
-  if (!resolvedPath.startsWith(workspaceFeaturePath)) {
+  if (!resolvedPath.startsWith(ctx.featurePath)) {
     return 'Error: Path traversal not allowed';
   }
 
-  const chatAPI = getChatAPIClient();
-  const toolName = isAppend ? 'append_file' : 'write_file';
-
   try {
-    // Ensure parent directory exists
     const dir = path.dirname(resolvedPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -269,17 +213,8 @@ async function handleHallucinatedFileWrite(
       fs.writeFileSync(resolvedPath, content, 'utf-8');
     }
 
-    // Notify file tree update
-    if (fileTreeUpdatePort) {
-      const projectId = process.env.ANT_PROJECT_ID;
-      const featureName = process.env.ANT_FEATURE_NAME;
-      if (projectId && featureName) {
-        fileTreeUpdatePort.notifyFileTreeUpdate(projectId, featureName);
-      }
-    }
-
-    // Chat UI notification: file card
-    await chatAPI.completeFileEdit(filePath, '', content);
+    notifyFileTree(ctx);
+    await ctx.chatStatus.completeFileEdit(filePath, '', content);
 
     console.warn(`⚠️  [Tool] LLM hallucinated ${toolName} → auto-converted to file ${isAppend ? 'append' : 'write'} for ${filePath}`);
 
@@ -287,7 +222,7 @@ async function handleHallucinatedFileWrite(
     return `File ${action} successfully: ${filePath} (auto-recovered from ${toolName} tool call).\n\n` +
       `⚠️ IMPORTANT: "${toolName}" is not a real tool. For future file operations, use the <file path="...">content</file> XML tag format instead.`;
   } catch (error: any) {
-    await chatAPI.failFileEdit(filePath, error.message);
+    await ctx.chatStatus.failFileEdit(filePath, error.message);
     return `Error ${isAppend ? 'appending to' : 'writing'} file: ${error.message}`;
   }
 }
@@ -307,9 +242,14 @@ export const PLANNER_EXPLAIN_TOOLS: ToolDefinition[] = [
   searchWeb,
 ];
 
-/** All tools including shadow tools for hallucination recovery (used in tool node execution) */
+/** All tools including shadow tools for hallucination recovery */
 export const ALL_PLANNER_TOOLS: ToolDefinition[] = [
   ...PLANNER_TOOLS,
   writeFile,
   appendFile,
 ];
+
+/** Map-based dispatch for efficient tool lookup */
+export const PLANNER_TOOL_MAP: ReadonlyMap<string, ToolDefinition> = new Map(
+  ALL_PLANNER_TOOLS.map(t => [t.name, t]),
+);

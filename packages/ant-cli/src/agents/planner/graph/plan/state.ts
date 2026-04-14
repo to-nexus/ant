@@ -1,51 +1,45 @@
 /**
  * Plan Graph State
  * 
- * State for the plan (PRD) generation/refinement graph.
- * Document content is injected via resolvedAction.documents (not stored in state).
- * 
- * Plan mode is determined by resolvedAction.mode (derived from intentId).
- * The old plannerPhase field is removed. resolvedAction replaces detectionReport.
- * 
- * Implements TriageableState-compatible fields for shared triage node.
+ * PlanAnnotation = SSOT for LangGraph graph registration.
+ * PlanGraphState = mutable interface for node/runner code.
  */
 
-import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers';
-import { TriageableState, WorkspaceState } from '../../../common/nodes/triage/types';
-import { ConversationEntry } from '../../../../core/types/session';
+import { Annotation } from '@langchain/langgraph';
+import { DetectableFields } from '../../../common/graph/annotationHelpers';
+import type { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers';
+import type { TriageableState, WorkspaceState } from '../../../common/nodes/triage/types';
+import type { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
 import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata } from '@ant/shared';
 
+export const PlanAnnotation = Annotation.Root({
+  ...DetectableFields,
+  language: Annotation<any>,
+  evalReport: Annotation<any>,
+  rubricContent: Annotation<any>,
+  recentTurnSummaries: Annotation<any>,
+  conversation: Annotation<any>,
+  isConversationContinuation: Annotation<any>,
+  conversationHistory: Annotation<any>,
+  pendingToolCalls: Annotation<any>,
+  phaseTokenUsages: Annotation<any>,
+} as const);
+
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
-  // Input
   directive?: string;
   language: 'ko' | 'en';
   featurePath: string;
-  
-  // Context (loaded by resolve node)
   context: { featurePath?: string; [key: string]: any };
   evalReport?: string;
   rubricContent?: string;
   recentTurnSummaries?: string[];
-  
-  // Multi-turn conversation (cross-run semantic history)
   conversation?: ConversationEntry[];
   isConversationContinuation?: boolean;
-  
-  // LLM conversation (ReAct loop)
   conversationHistory: Array<{ role: string; content: any }>;
-  pendingToolCalls: Array<{
-    id: string;
-    name: string;
-    args: Record<string, any>;
-  }>;
-  
-  /** Intent-centric resolved context (detect output, immutable) */
+  pendingToolCalls: Array<{ id: string; name: string; args: Record<string, any> }>;
   resolvedAction?: ResolvedActionContext;
-  /** Materialized file contents from resolvedAction refs/context */
   resolvedArtifacts?: ResolvedArtifact[];
-  
-  // Dependencies (extends TriageableState.deps)
   deps?: {
     llm?: any;
     session?: any;
@@ -62,11 +56,7 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
       jobTiming?: import('@ant/shared').JobTiming;
     };
   };
-  
-  // ✅ UI locale (narrowed from TriageableState.string to literal union)
   _uiLocale?: 'ko' | 'en';
-  
-  // Recursion tracking (for kanban badge display)
   recursionCount: number;
   recursionLimit: number;
 }
@@ -98,7 +88,6 @@ export function createInitialPlanState(params: {
     pendingToolCalls: [],
     conversation: [],
     isConversationContinuation: false,
-    // TriageableState fields
     context: { featurePath: params.featurePath },
     currentAgent: 'planner',
     currentJob: 'plan',
@@ -106,10 +95,8 @@ export function createInitialPlanState(params: {
     chatSource: params.chatSource,
     skipTriage: params.skipTriage,
     actionMetadata: params.actionMetadata,
-    // Dependencies
     deps: params.deps,
     _httpJobId: params._httpJobId,
-    // Recursion tracking
     recursionCount: 0,
     recursionLimit: parseInt(process.env.RECURSION_LIMIT || '200', 10),
   };

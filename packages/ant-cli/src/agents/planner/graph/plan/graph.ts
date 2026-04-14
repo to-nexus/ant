@@ -12,15 +12,15 @@
  * No separate write node — same pattern as design job's docGen.
  */
 
-import { Annotation, StateGraph, END } from '@langchain/langgraph';
-import { PlanGraphState } from './state';
+import { StateGraph, END } from '@langchain/langgraph';
+import { PlanAnnotation, PlanGraphState } from './state';
 import { planResolveStrategy } from './nodes/resolve';
 import { createResolveNode } from '../../../common/nodes/resolve';
 import { generateNode, routeAfterGenerate } from './nodes/generate';
 import { toolNode } from './nodes/tool';
 import { triage } from '../../../common/nodes/triage';
 import { createDetectNode } from '../../../common/nodes/detect/index.js';
-import { planDetectStrategy } from './nodes/detectStrategy.js';
+import { planDetectStrategy } from './nodes/detect/strategy.js';
 
 /**
  * Route after triage for planner agent.
@@ -57,39 +57,6 @@ function routeAfterPlannerTriage(state: PlanGraphState): string {
   console.log('[PlannerTriageRouter] default → detect');
   return 'detect';
 }
-
-const PlanAnnotation = Annotation.Root({
-  directive: Annotation<any>,
-  language: Annotation<any>,
-  workspaceState: Annotation<any>,
-  featurePath: Annotation<any>,
-  isResume: Annotation<any>,
-  evalReport: Annotation<any>,
-  rubricContent: Annotation<any>,
-  recentTurnSummaries: Annotation<any>,
-  conversation: Annotation<any>,
-  isConversationContinuation: Annotation<any>,
-  conversationHistory: Annotation<any>,
-  pendingToolCalls: Annotation<any>,
-  resolvedAction: Annotation<any>,
-  resolvedArtifacts: Annotation<any>,
-  context: Annotation<any>,
-  triageResult: Annotation<any>,
-  skipTriage: Annotation<any>,
-  actionMetadata: Annotation<any>,
-  currentAgent: Annotation<any>,
-  currentJob: Annotation<any>,
-  overrideDirective: Annotation<any>,
-  chatSource: Annotation<any>,
-  _uiLocale: Annotation<any>,
-  _phaseTimings: Annotation<any>,
-  deps: Annotation<any>,
-  _httpJobId: Annotation<any>,
-  tokenUsage: Annotation<any>,
-  phaseTokenUsages: Annotation<any>,
-  recursionCount: Annotation<any>,
-  recursionLimit: Annotation<any>,
-});
 
 export function buildPlanGraph() {
   const graph = new StateGraph(PlanAnnotation);
