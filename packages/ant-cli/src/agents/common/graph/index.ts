@@ -24,6 +24,17 @@ export {
   updateKanbanTokenUsage,
 } from './llmHelpers.js';
 
+// Runner Helpers
+export {
+  loadRecursionLimit, isRecursionLimitError, cleanupChat,
+  isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
+} from './runnerHelpers.js';
+
+// Annotation Helpers (Fields only — State types live in nodes/*/types.ts to avoid name collisions)
+export {
+  ResolvableFields, TriageableFields, DetectableFields,
+} from './annotationHelpers.js';
+
 // Timing
 export type { UILocale } from './timing/estimatingLabels.js';
 export { getEstimatingLabel, detectUILocale } from './timing/estimatingLabels.js';
