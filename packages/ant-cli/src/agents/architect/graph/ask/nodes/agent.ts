@@ -20,52 +20,31 @@ import { v4 as uuidv4 } from 'uuid';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
 
-// Template cache
-let askBaseTemplate: Handlebars.TemplateDelegate | null = null;
-let askRulesContent: string | null = null;
-
 /**
- * Load ask templates from files
- * Uses WHAT/HOW separation: base.md (WHAT) + rules.md (HOW)
+ * Build system prompt for Ask agent via PromptBuilder.build()
  */
-function loadAskTemplates(): { base: Handlebars.TemplateDelegate; rules: string } {
-  if (askBaseTemplate && askRulesContent) {
-    return { base: askBaseTemplate, rules: askRulesContent };
-  }
-  
-  const templateDir = path.join(WorkspacePathResolver.getPromptTemplatesPath(), 'ask');
-  
-  const basePath = path.join(templateDir, 'base.md');
-  const rulesPath = path.join(templateDir, 'rules.md');
-  
-  const baseContent = fs.readFileSync(basePath, 'utf-8');
-  askRulesContent = fs.readFileSync(rulesPath, 'utf-8');
-  askBaseTemplate = Handlebars.compile(baseContent);
-  
-  return { base: askBaseTemplate, rules: askRulesContent };
-}
+async function buildSystemPrompt(state: AskGraphState): Promise<string> {
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!promptBuilder) throw new Error('[Ask:Agent] PromptBuilder not available');
 
-/**
- * Build system prompt for Ask agent
- */
-function buildSystemPrompt(state: AskGraphState): string {
-  const { base, rules } = loadAskTemplates();
-  
   const hasWorkspace = !!state.workspaceState?.featurePath;
-  
-  const basePrompt = base({
-    isKorean: state.language === 'ko',
-    currentJob: state.currentJob || 'Not selected',
-    currentAgent: state.currentAgent || 'architect',
-    question: state.question,
-    jobKnowledge: AgentRegistry.generateAskKnowledge(),
-    // Workspace context
-    hasWorkspace,
-    workspaceState: hasWorkspace ? formatWorkspaceState(state.workspaceState) : '',
-    featurePath: state.workspaceState?.featurePath || '',
+
+  const result = await promptBuilder.build({
+    templates: { base: 'ask/base', rules: 'ask/rules' },
+    intent: state.resolvedAction?.intent,
+    vars: {
+      isKorean: state.language === 'ko',
+      currentJob: state.currentJob || 'Not selected',
+      currentAgent: state.currentAgent || 'architect',
+      question: state.question,
+      jobKnowledge: AgentRegistry.generateAskKnowledge(),
+      hasWorkspace,
+      workspaceState: hasWorkspace ? formatWorkspaceState(state.workspaceState) : '',
+      featurePath: state.workspaceState?.featurePath || '',
+    },
   });
-  
-  return `${basePrompt}\n\n---\n\n${rules}`;
+
+  return [result.user, result.system].filter(Boolean).join('\n\n---\n\n');
 }
 
 /**
@@ -96,7 +75,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   }
   
   // Build system prompt
-  const systemPrompt = buildSystemPrompt(state);
+  const systemPrompt = await buildSystemPrompt(state);
   
   // Build messages for LLM (Anthropic native format)
   // System message is passed separately via options
