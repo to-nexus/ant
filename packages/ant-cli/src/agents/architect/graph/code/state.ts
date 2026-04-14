@@ -7,7 +7,7 @@ import { ProjectContext } from "../../types";
 import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
-import { TriageableState } from '../../../common/nodes/triage/types';
+import { TriageableState } from '../../../common/graph/nodes/triage/types';
 import type { ResolvedActionContext, ResolvedArtifact, TechTier, Boundary } from '@ant/shared';
 
 export interface IntegrationRequirement {
@@ -246,7 +246,7 @@ export interface ArchitectGraphState extends TriageableState {
     command?: CommandPort;
     retriever?: import('../../../../core/codebase/CodebaseRetriever').CodebaseRetriever;
     vectorDB?: MemoryPort;
-    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;
+    workspaceResolver?: import('../../../../core/config/WorkspacePathResolver').WorkspaceResolver;
     kanbanUpdate?: TaskQueueUpdatePort;
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports').WorkflowStateUpdatePort;

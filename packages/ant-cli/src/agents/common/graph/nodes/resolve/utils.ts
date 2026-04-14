@@ -5,7 +5,7 @@
  * Extracted to avoid duplication between code and design resolve.
  */
 
-import type { ConversationEntry } from '../../../../core/types/session.js';
+import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { BOUNDARY } from '@ant/shared';
 
 /**
@@ -113,7 +113,7 @@ export async function initJobTiming(params: {
   jobType: string;
   extraSessionState?: Record<string, any>;
 }): Promise<{ jobId: string; jobTiming: any }> {
-  const { JobTimingManager } = await import('../../graph/timing/JobTimingManager.js');
+  const { JobTimingManager } = await import('../../timing/JobTimingManager.js');
   const { jobId, jobTiming } = JobTimingManager.initializeNewJob(params.httpJobId);
 
   if (params.kanbanUpdate?.setJobTiming) {

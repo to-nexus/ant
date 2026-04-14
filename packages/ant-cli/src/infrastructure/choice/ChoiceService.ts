@@ -7,7 +7,7 @@
  */
 
 import { ChoiceRequest, ChoiceResponse, PendingChoice } from './types';
-import { TriageResult, ChoiceAction } from '../../agents/common/nodes/triage/types';
+import { TriageResult, ChoiceAction } from '../../agents/common/graph/nodes/triage/types';
 import { StateStorePort, PendingChoiceData, PendingChoiceTriageResult } from '../../core/ports/stateStore';
 
 // 기본 만료 시간: 30분

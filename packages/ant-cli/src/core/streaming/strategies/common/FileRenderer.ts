@@ -11,7 +11,7 @@ import { ParsedAction, FileStreamInfo } from '../../types';
 import { FileRegistry } from '../../state/FileRegistry';
 import { LineBufferManager } from './LineBuffer';
 import { normalizeToCodebasePath } from '../../../utils/pathNormalizer';
-import { AsyncMutex } from '../../../../agents/architect/graph/code/parallel/AsyncMutex';
+import { AsyncMutex } from '../../../utils/AsyncMutex';
 
 const designFileLocks = new Map<string, AsyncMutex>();
 function getDesignFileLock(fsPath: string): AsyncMutex {

@@ -10,7 +10,7 @@
  *   - existing target → LLM determines 'rev-plan' vs 'explain-plan'
  */
 
-import type { DetectStrategy, DetectResult } from '../../../../../common/nodes/detect/types.js';
+import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { PlanGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers.js';

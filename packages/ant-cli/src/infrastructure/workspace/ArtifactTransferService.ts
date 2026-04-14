@@ -16,7 +16,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { WorkspaceResolver } from './WorkspaceResolver';
+import { WorkspaceResolver } from '../../core/config/WorkspacePathResolver';
 import { RedisStateStore } from '../state/RedisStateStore';
 import { REDIS_KEYS, REDIS_TTL } from '../state/redisConstants';
 import { logger } from '../../utils/logger';

@@ -231,7 +231,7 @@ async function deliverSketchImages(
   const variations = state.sketchVariations;
 
   try {
-    const { sendClarify } = await import('../../../../common/clarifyTool');
+    const { sendClarify } = await import('../../../../common/clarify');
     await sendClarify([{
       question: `${sketchEntries.length} sketch candidates`,
       options: sketchEntries.map(d => ({
@@ -380,7 +380,7 @@ async function deliverSvgSketches(
   const svgVariations = state.sketchVariations;
 
   try {
-    const { sendClarify } = await import('../../../../common/clarifyTool');
+    const { sendClarify } = await import('../../../../common/clarify');
     await sendClarify([{
       question: `${sketchEntries.length} sketch candidates`,
       options: sketchEntries.map(d => ({

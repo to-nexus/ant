@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseTriageResponse } from '../src/agents/common/nodes/triage/parser';
-import { AgentRegistry } from '../src/agents/common/nodes/triage/AgentRegistry';
-import { WorkspaceState } from '../src/agents/common/nodes/triage/types';
+import { parseTriageResponse } from '../src/agents/common/graph/nodes/triage/parser';
+import { AgentRegistry } from '../src/agents/common/graph/nodes/triage/AgentRegistry';
+import { WorkspaceState } from '../src/agents/common/graph/nodes/triage/types';
 
 function wrap(json: Record<string, unknown>): string {
   return `<triage>${JSON.stringify(json)}</triage>`;

@@ -7,7 +7,7 @@
 
 import { Annotation } from '@langchain/langgraph';
 import { TriageableFields } from '../../../common/graph/annotationHelpers';
-import type { TriageableState } from '../../../common/nodes/triage/types';
+import type { TriageableState } from '../../../common/graph/nodes/triage/types';
 import type { ProjectContext } from '../../types';
 import type { ResolvedActionContext } from '@ant/shared';
 

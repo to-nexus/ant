@@ -6,7 +6,7 @@ import { ProjectContext } from "../../types";
 import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
-import { TriageableState } from '../../../common/nodes/triage/types';
+import { TriageableState } from '../../../common/graph/nodes/triage/types';
 import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, TechTier } from '@ant/shared';
 
 /**
@@ -33,7 +33,7 @@ export interface DesignGraphState extends TriageableState {
     fileSystem?: import('../../../../core/ports/filesystem').FileSystemPort;
     analyzer?: CodebaseAnalyzerPort;
     memory?: MemoryPort;
-    workspaceResolver?: import('../../../../infrastructure/workspace/WorkspaceResolver').WorkspaceResolver;
+    workspaceResolver?: import('../../../../core/config/WorkspacePathResolver').WorkspaceResolver;
     kanbanUpdate?: TaskQueueUpdatePort;
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;

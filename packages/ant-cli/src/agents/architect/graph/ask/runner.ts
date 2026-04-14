@@ -11,7 +11,7 @@
 
 import { buildAskGraph } from './graph';
 import { AskGraphState, createInitialAskState } from './state';
-import { WorkspaceState } from '../../../common/nodes/triage/types';
+import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import { setWorkspaceFeaturePath } from './tools';
 import { loadRecursionLimit, isRecursionLimitError, cleanupChat, invokeGraph } from '../../../common/graph/runnerHelpers';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';

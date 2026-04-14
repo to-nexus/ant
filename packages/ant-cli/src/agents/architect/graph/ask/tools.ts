@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspacePathResolver } from '../../../../infrastructure/workspace/WorkspaceResolver.js';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver.js';
 
 // ============================================================
 // Path Security (Blacklist approach)

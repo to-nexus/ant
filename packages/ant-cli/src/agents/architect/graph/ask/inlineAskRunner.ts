@@ -15,8 +15,8 @@
  * - Only streams chat responses via ChatAPIClient
  */
 
-import { analyzeWorkspace, AgentRegistry, parseTriageResponse, buildTriagePrompt, hasTargetJobPrerequisites } from '../../../common/nodes/triage/index.js';
-import { WorkspaceState } from '../../../common/nodes/triage/types.js';
+import { analyzeWorkspace, AgentRegistry, parseTriageResponse, buildTriagePrompt, hasTargetJobPrerequisites } from '../../../common/graph/nodes/triage/index.js';
+import { WorkspaceState } from '../../../common/graph/nodes/triage/types.js';
 import { runAskGraph } from './runner.js';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 

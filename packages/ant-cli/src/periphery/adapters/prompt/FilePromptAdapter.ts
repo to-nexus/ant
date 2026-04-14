@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import { join } from "path";
 import Handlebars from "handlebars";
 import { PromptPort } from "../../../core/ports";
-import { WorkspacePathResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
+import { WorkspacePathResolver } from "../../../core/config/WorkspacePathResolver";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Handlebars helpers — single source of truth

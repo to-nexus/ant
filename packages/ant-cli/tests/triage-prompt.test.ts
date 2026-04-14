@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { buildTriagePrompt } from '../src/agents/common/nodes/triage/index';
-import { AgentRegistry } from '../src/agents/common/nodes/triage/AgentRegistry';
-import type { WorkspaceState } from '../src/agents/common/nodes/triage/types';
+import { buildTriagePrompt } from '../src/agents/common/graph/nodes/triage/index';
+import { AgentRegistry } from '../src/agents/common/graph/nodes/triage/AgentRegistry';
+import type { WorkspaceState } from '../src/agents/common/graph/nodes/triage/types';
 
 function makeWs(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
   return {

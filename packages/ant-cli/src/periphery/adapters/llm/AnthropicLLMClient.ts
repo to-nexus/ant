@@ -12,7 +12,7 @@ import {
   CacheableContent, MessageContentBlock,
   TextContentBlock, ImageContentBlock, ToolUseContentBlock, ToolResultContentBlock, ThinkingContentBlock,
 } from '../../../core/ports/llm';
-import { TaskTokenUsage } from '../../../agents/architect/types/task';
+import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, withRetry, withStreamIdleTimeout } from '../../../core/utils/retry';
 
 /**

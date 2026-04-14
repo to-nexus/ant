@@ -18,7 +18,7 @@ import { Redis } from 'ioredis';
 import { PreviewUpdatePort, PreviewStructureType } from '../ports/preview';
 import { UserContext } from '../types/user';
 import { getRealtimeBroadcastChannel, BroadcasterOptions } from './types';
-import { REDIS_KEYS, REDIS_TTL } from '../../infrastructure/state/redisConstants';
+import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
 
 export class PreviewBroadcaster implements PreviewUpdatePort {
   private pubRedis: Redis;

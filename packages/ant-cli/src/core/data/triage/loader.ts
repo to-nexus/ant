@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { JobDefinition } from './types.js';
-import { WorkspacePathResolver } from '../../../infrastructure/workspace/WorkspaceResolver.js';
+import { WorkspacePathResolver } from '../../config/WorkspacePathResolver.js';
 
 export class TriageDataLoader {
   private static instance: TriageDataLoader;

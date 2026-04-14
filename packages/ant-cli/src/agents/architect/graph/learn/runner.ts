@@ -1,6 +1,6 @@
 import { buildLearnGraph } from "./graph";
 import { LearnGraphState } from "./state";
-import { TriageResult } from "../../../common/nodes/triage/types";
+import { TriageResult } from "../../../common/graph/nodes/triage/types";
 import { loadRecursionLimit, cleanupChat, invokeGraph } from "../../../common/graph/runnerHelpers";
 
 export interface LearnGraphResult {

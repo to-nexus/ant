@@ -12,7 +12,7 @@
 import { Annotation } from '@langchain/langgraph';
 import { ResolvableFields } from '../../../common/graph/annotationHelpers';
 import type { ResolvableState } from '../../../common/graph/annotationHelpers';
-import { WorkspaceState } from '../../../common/nodes/triage/types';
+import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import type { MessageContentBlock } from '../../../../core/ports/llm';
 import type { ResolvedActionContext } from '@ant/shared';
 

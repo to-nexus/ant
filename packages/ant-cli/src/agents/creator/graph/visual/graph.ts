@@ -24,8 +24,8 @@
 import { StateGraph, END } from '@langchain/langgraph';
 import { VisualGraphAnnotation, VisualGraphState } from './types.js';
 import { visualResolveStrategy } from './nodes/resolve.js';
-import { createResolveNode } from '../../../common/nodes/resolve/index.js';
-import { createDetectNode } from '../../../common/nodes/detect/index.js';
+import { createResolveNode } from '../../../common/graph/nodes/resolve/index.js';
+import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
 import { visualDetectStrategy } from './nodes/detectStrategy.js';
 import { directNode, routeAfterDirect } from './nodes/direct.js';
 import { sketchNode, routeAfterSketch } from './nodes/sketch.js';
@@ -33,7 +33,7 @@ import { renderNode, routeAfterRender } from './nodes/render.js';
 import { engraveNode, routeAfterEngrave } from './nodes/engrave.js';
 import { deliverNode } from './nodes/deliver.js';
 import { explainNode } from './nodes/explain.js';
-import { triage } from '../../../common/nodes/triage/index.js';
+import { triage } from '../../../common/graph/nodes/triage/index.js';
 
 /**
  * Router after triage for visual job.

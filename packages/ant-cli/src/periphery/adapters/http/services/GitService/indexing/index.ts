@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { SimpleGit } from 'simple-git';
-import { WorkspaceResolver } from '../../../../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { ChatService } from '../../ChatService';
 import { GitHelper } from '../helper/GitHelper';

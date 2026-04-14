@@ -6,7 +6,7 @@
 
 import { LearnGraphState, LearnCommand } from "../state";
 import * as fs from "fs";
-import { WorkspacePathResolver } from "../../../../../infrastructure/workspace/WorkspaceResolver";
+import { WorkspacePathResolver } from "../../../../../core/config/WorkspacePathResolver";
 import { resolveToRAC } from '@ant/shared';
 import type { ResolvedActionContext, IntentId } from '@ant/shared';
 

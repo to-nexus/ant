@@ -279,7 +279,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     const cleanedResponseText = stripClarifyBlocks(responseText);
     
     try {
-      const { sendClarify } = await import('../../../../../common/clarifyTool');
+      const { sendClarify } = await import('../../../../../common/clarify');
       await sendClarify(clarifyBlocks);
     } catch (error) {
       console.warn('⚠️ [Planner:Generate] Failed to send clarify card:', error);

@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { buildPlanGraph } from './graph';
 import { PlanGraphState, createInitialPlanState, getPlanMode } from './state';
-import { WorkspaceState } from '../../../common/nodes/triage/types';
+import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { loadRecursionLimit, isRecursionLimitError, cleanupChat, invokeGraph, isEnvResume } from '../../../common/graph/runnerHelpers';
 import { registerActiveOrchestrator, unregisterActiveOrchestrator } from '../../../../composition/gracefulShutdown';

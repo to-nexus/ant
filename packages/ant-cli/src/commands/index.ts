@@ -10,7 +10,7 @@
 
 import { CodebaseIndexer } from '../core/codebase/CodebaseIndexer';
 import { AdapterFactory } from '../infrastructure/adapters/AdapterFactory';
-import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../infrastructure/workspace/WorkspaceResolver';
+import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../core/config/WorkspacePathResolver';
 import { UserContext } from '../core/types/user';
 import * as path from 'path';
 import * as fs from 'fs';

@@ -28,6 +28,7 @@ export {
   getRealtimeBroadcastChannel,
   getRealtimeWorkflowChannel,
   parseChannelUserContext,
+  getChatSyncChannel,
 } from './redisConstants';
 
 // Re-export types from port

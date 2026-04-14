@@ -9,7 +9,7 @@
 
 import type { LLMStreamEvent } from '../../../../../core/ports/llm';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
-import type { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
+import type { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import type { UserContext } from '../../../../../core/types/user';
 import type { ChatMessage, MessageContent, FileOperationPhase, CommandExecutionPhase } from './types';
 

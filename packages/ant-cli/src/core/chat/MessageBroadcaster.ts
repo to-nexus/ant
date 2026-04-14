@@ -8,7 +8,7 @@
 import type { StateStorePort } from '../ports/stateStore';
 import type { UserContext } from '../types/user';
 import { logger } from '../../utils/logger';
-import { getRealtimeBroadcastChannel } from '../../infrastructure/state';
+import { getRealtimeBroadcastChannel } from '../constants/redis';
 
 /**
  * Broadcast message structure for Redis Pub/Sub

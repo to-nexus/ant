@@ -3,7 +3,7 @@
  * Interface for Large Language Model interactions
  */
 
-import { TaskTokenUsage } from '../../agents/architect/types/task';
+import { TaskTokenUsage } from '../types/task';
 
 /**
  * Cacheable content block for Anthropic Prompt Caching

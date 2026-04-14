@@ -6,7 +6,7 @@
  * Handles clarify pause, error exit, and Figma MCP check.
  */
 
-import type { DetectStrategy, DetectResult } from '../../../../../common/nodes/detect/types.js';
+import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { DesignGraphState } from '../../state.js';
 import type { InferredAction, Mode, DesignDomain } from '@ant/shared';
 import { isFigmaDataPopulated, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
@@ -402,7 +402,7 @@ function parseDetectClarifyChoice(
 }
 
 async function sendDetectClarifyCard(): Promise<void> {
-  const { sendClarify } = await import('../../../../../common/clarifyTool.js');
+  const { sendClarify } = await import('../../../../../common/clarify.js');
   await sendClarify([{
     question: '어떤 작업을 수행할까요?',
     options: ['새로운 스펙 문서 생성 (spec-*.md)', '기존 시스템 기획서 수정'],

@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import { ProfilePort } from "../../../core/ports";
-import { WorkspacePathResolver } from "../../../infrastructure/workspace/WorkspaceResolver";
+import { WorkspacePathResolver } from "../../../core/config/WorkspacePathResolver";
 
 /**
  * FileProfileAdapter - File system implementation of ProfilePort

@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { ToolDefinition } from '../../../../../../core/ports/llm';
 import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
-import { CLARIFY_TOOL, handleClarify, ClarifyContext, createClarifyContext } from '../../../../../common/clarifyTool';
+import { CLARIFY_TOOL, handleClarify, ClarifyContext, createClarifyContext } from '../../../../../common/clarify';
 
 export { CLARIFY_TOOL, createClarifyContext };
 export type { ClarifyContext };

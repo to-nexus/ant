@@ -23,7 +23,7 @@ import {
   FileTreeBroadcastMessage,
   BroadcasterOptions 
 } from './types';
-import { REDIS_KEYS, REDIS_TTL } from '../../infrastructure/state/redisConstants';
+import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
 import { isTemplateContent, getTemplateReason } from '../utils/templateDetector';
 
 // File patterns to exclude from tree

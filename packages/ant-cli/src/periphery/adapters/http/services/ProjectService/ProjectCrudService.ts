@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import simpleGit from 'simple-git';
-import { WorkspaceResolver } from '../../../../../infrastructure/workspace/WorkspaceResolver';
+import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { OrgConfig, buildDefaultGitHubRepoUrl } from '../../../../../core/types/orgConfig';
 import { logger } from '../../../../../utils/logger';

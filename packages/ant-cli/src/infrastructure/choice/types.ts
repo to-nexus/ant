@@ -4,7 +4,7 @@
  * Triage 결과에 따른 사용자 선택 처리
  */
 
-import { ChoiceAction, TriageResult } from '../../agents/common/nodes/triage/types';
+import { ChoiceAction, TriageResult } from '../../agents/common/graph/nodes/triage/types';
 
 /**
  * Choice Request
