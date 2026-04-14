@@ -87,4 +87,3 @@ export async function indexCommand(
     process.exit(1);
   }
 }
-
