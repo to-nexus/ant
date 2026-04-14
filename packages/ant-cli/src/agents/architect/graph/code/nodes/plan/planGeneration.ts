@@ -13,7 +13,7 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import { effectiveTechTier, type ResolvedArtifact } from "@ant/shared";
+import { effectiveTechTier, getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { resolveArtifacts } from "../../../../../../core/prompt/builder/ArtifactPipeline";
@@ -61,7 +61,7 @@ export async function buildPlanPrompt(
   if (!promptBuilder) throw new Error('[Plan] PromptBuilder not available');
 
   if (task.type === 'verification') {
-    const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
+    const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
     if (!techTier) {
       console.warn(`⚠️ [Plan] Verification task "${task.name}": techTier is null`);
     } else {
@@ -78,9 +78,9 @@ export async function buildPlanPrompt(
     const fmtCtx = formatCodeContext(projectCodeContext);
     let languageHints = '';
     if (techTier?.language) {
-      try { languageHints = await promptBuilder.render(`code/phases/plan/tasks/verification/languages/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
+      try { languageHints = await promptBuilder.render(`jobs/code/nodes/plan/variants/verification/basis/techTier/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
     }
-    return await promptBuilder.render('code/phases/plan/tasks/verification/base', {
+    return await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
       taskId: task.id, taskName: task.name, taskDescription: task.description,
       directive: state.directive || '', isErrorTask: false, runTests: true,
       projectCodeContext: fmtCtx, directoryTree: projectCodeContext?.directoryTree || '',
@@ -91,13 +91,13 @@ export async function buildPlanPrompt(
   }
 
   if (task.type === 'error') {
-    const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
+    const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
     const fmtCtx = formatCodeContext(projectCodeContext);
     let languageHints = '';
     if (techTier?.language) {
-      try { languageHints = await promptBuilder.render(`code/phases/plan/tasks/verification/languages/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
+      try { languageHints = await promptBuilder.render(`jobs/code/nodes/plan/variants/verification/basis/techTier/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
     }
-    return await promptBuilder.render('code/phases/plan/tasks/error/base', {
+    return await promptBuilder.render('jobs/code/nodes/plan/variants/error/base', {
       taskId: task.id, taskName: task.name, taskDescription: task.description,
       directive: state.directive || '', projectCodeContext: fmtCtx,
       directoryTree: projectCodeContext?.directoryTree || '',
@@ -132,12 +132,12 @@ export async function buildPlanPrompt(
     }
   }
 
-  const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
+  const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
   const fmtCtx = formatCodeContext(projectCodeContext);
 
   let setupConstraints = '';
   if (task.type === 'setup' && techTier?.language) {
-    try { setupConstraints = await promptBuilder.render(`code/phases/execute/languages/${mapLang(techTier.language)}/setup/constraints`, {}); } catch { /* no constraints */ }
+    try { setupConstraints = await promptBuilder.render(`jobs/code/nodes/execute/basis/techTier/${mapLang(techTier.language)}/setup/constraints`, {}); } catch { /* no constraints */ }
   }
 
   const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
@@ -146,7 +146,7 @@ export async function buildPlanPrompt(
     d => d.role === 'ref' && d.path.startsWith(AP.DESIGN),
   );
 
-  const prompt = await promptBuilder.render('code/phases/plan/base', {
+  const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type,
     documents: planDocs, hasDocuments: allDocs.length > 0,
@@ -274,9 +274,9 @@ export async function generatePlanText(
         {
           taskId: task.id,
           taskName: task.name,
-          templatePath: 'code/phases/plan/base',
-          usedTemplates: ['code/phases/plan/rules'],
-          resolvedPartials: collectResolvedPartials(['code/phases/plan/base', 'code/phases/plan/rules']),
+          templatePath: 'jobs/code/nodes/plan/base',
+          usedTemplates: ['jobs/code/nodes/plan/rules'],
+          resolvedPartials: collectResolvedPartials(['jobs/code/nodes/plan/base', 'jobs/code/nodes/plan/rules']),
           injectedVariables: {
             taskName: task.name,
             taskType: task.type,
@@ -652,10 +652,10 @@ export async function runPlanLLMWithTools(
         (n, m) => n + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0,
       );
       const logTemplate = task.type === 'verification'
-        ? 'code/phases/plan/tasks/verification/rules'
+        ? 'jobs/code/nodes/plan/variants/verification/rules'
         : task.type === 'error'
-          ? 'code/phases/plan/tasks/error/base'
-          : 'code/base/injections/plan-tools-batch';
+          ? 'jobs/code/nodes/plan/variants/error/base'
+          : 'jobs/code/base/injections/plan-tools-batch';
       await logPrompt(
         state.context.featurePath,
         jobId,
