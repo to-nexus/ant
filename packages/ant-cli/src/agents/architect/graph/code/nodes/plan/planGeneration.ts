@@ -19,6 +19,7 @@ import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../.
 import { resolveArtifacts } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { getRACDocuments } from "@ant/shared";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
+import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -713,9 +714,17 @@ export async function runPlanLLMWithTools(
 
   if (toolCalls.length > 0) {
     await orchestrator.finalize(true);
+
+    const assistantMsg = buildAssistantMessage({
+      thinking: thinking || undefined,
+      thinkingSignature: thinkingSignature || undefined,
+      text: textResponse || undefined,
+      toolCalls,
+    });
+
     return {
       llmResponse: { toolCalls, textResponse, thinking: thinking || undefined, thinkingSignature: thinkingSignature || undefined, done: false, tokenUsage },
-      planConversationHistory: messages,
+      planConversationHistory: [...messages, assistantMsg],
       _activePhase: 'plan' as const,
     };
   }

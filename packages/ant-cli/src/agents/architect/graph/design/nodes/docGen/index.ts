@@ -19,12 +19,13 @@
  */
 
 import type { MessageContentBlock } from '../../../../../../core/ports/llm';
+import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { DesignGraphState } from '../../state';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
-import { getToolsByNames, TOOL_SETS } from '../../../../tools/definitions';
+import { getToolsByNames, TOOL_SETS } from '../../../../../common/tool/toolSchemas';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { READ_SOURCE_DOC_TOOL } from './sourceSelector';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
@@ -292,7 +293,7 @@ export async function docGen(
     const explicitDone = finalizeResult.explicitDone || false;
     
     // Build conversation history for resume
-    const conversationHistory = buildConversationHistory(state, messages, thinking, thinkingSignature, textResponse, hasToolCalls);
+    const conversationHistory = buildConversationHistory(state, messages, thinking, thinkingSignature, textResponse, hasToolCalls, pendingToolCalls);
     
     // Accumulate token usage to state
     if (capturedUsage) {
@@ -508,7 +509,8 @@ function buildConversationHistory(
   thinkingContent: string,
   thinkingSig: string,
   textResponse: string,
-  hasToolCalls: boolean
+  hasToolCalls: boolean,
+  pendingToolCalls: Array<{ id: string; name: string; args: Record<string, any> }>,
 ): Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }> {
   let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>;
   
@@ -526,38 +528,20 @@ function buildConversationHistory(
     }
   }
   
-  // ✅ Add assistant's response with thinking block (if present)
-  // CRITICAL: When thinking is enabled, assistant message MUST start with thinking block
-  if (!hasToolCalls) {
-    const assistantContent: any[] = [];
-    
-    // ✅ Add thinking block first (if present)
-    // signature is required by Anthropic API for multi-turn conversations
-    if (thinkingContent) {
-      assistantContent.push({
-        type: 'thinking',
-        thinking: thinkingContent,
-        signature: thinkingSig || '',
-      });
-    }
-    
-    // ✅ Add text response
-    if (textResponse) {
-      assistantContent.push({
-        type: 'text',
-        text: textResponse
-      });
-    }
-    
-    conversationHistory.push({
-      role: 'assistant',
-      content: assistantContent.length === 1 && assistantContent[0].type === 'text'
-        ? textResponse  // Simple text-only response (no thinking)
-        : assistantContent  // Array with thinking + text
-    });
+  if (hasToolCalls) {
+    conversationHistory.push(buildAssistantMessage({
+      thinking: thinkingContent || undefined,
+      thinkingSignature: thinkingSig || undefined,
+      toolCalls: pendingToolCalls,
+    }));
+  } else {
+    // Non-tool path: thinking + text (string shorthand handled by buildAssistantMessage)
+    conversationHistory.push(buildAssistantMessage({
+      thinking: thinkingContent || undefined,
+      thinkingSignature: thinkingSig || undefined,
+      text: textResponse || undefined,
+    }));
   }
-  // NOTE: When hasToolCalls=true, don't add to history here.
-  // tool.ts will add the complete tool_use + tool_result sequence.
   
   return conversationHistory;
 }

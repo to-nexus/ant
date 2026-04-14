@@ -1,87 +1,90 @@
 /**
- * Tool Node
- * 
- * Executes pending tool calls and adds results to conversation history.
- * Uses Anthropic native format (tool_use + tool_result) - same as Code Job.
- * Supports batch execution of multiple tool calls.
+ * Tool Node (Ask Job)
+ *
+ * Executes pending tool calls using createToolNode factory from common/tool/.
+ * Agent node pushes the assistant message; this node appends tool_result only.
+ *
+ * No ToolResultManager needed (small results, no truncation).
  */
 
-import type { ToolResultContentBlock } from '../../../../../core/ports/llm.js';
-import { AskGraphState, AskToolCall, ConversationMessage } from '../state.js';
-import { executeTool } from '../tools.js';
+import { AskGraphState, AskToolCall } from '../state';
+import { createToolNode } from '../../../../common/tool/createToolNode';
+import { createAskToolRegistry } from '../../../../common/tool/presets';
+import { ToolRegistry } from '../../../../common/tool/registry';
+import { createNoopChatStatusReporter } from '../../../../common/tool/chatStatusAdapter';
+import type { ToolHandler } from '../../../../common/tool/types';
+import { ToolName } from '../../../../common/tool/toolCatalog';
+import {
+  readAntSource,
+  listAntFiles,
+  searchAntCode,
+  readWorkspaceFile,
+  listWorkspaceFiles,
+} from '../tools';
 
-const DEBUG = process.env.ASK_DEBUG === 'true';
+let _registry: ToolRegistry | null = null;
 
-/**
- * Tool node - execute all pending tool calls
- */
-export async function toolNode(state: AskGraphState): Promise<Partial<AskGraphState>> {
-  const pending = state.pendingToolCalls || [];
-  
-  if (pending.length === 0) {
-    console.warn('[Tool] No pending tool calls');
-    return { pendingToolCalls: [] };
-  }
-  
-  const toolResultBlocks: ToolResultContentBlock[] = [];
-  const toolCallRecords: AskToolCall[] = [];
+function getRegistry(): ToolRegistry {
+  if (_registry) return _registry;
+  _registry = createAskToolRegistry();
 
-  if (DEBUG) {
-    console.log(`\n🔧 [Tool] Executing ${pending.length} tool call(s)`);
-  }
+  const wrap = (fn: (args: any) => Promise<{ success: boolean; content?: string; error?: string }>): ToolHandler =>
+    async (_ctx, args) => {
+      const result = await fn(args);
+      return {
+        content: result.success ? (result.content || 'No content returned') : `Error: ${result.error}`,
+        error: result.success ? undefined : result.error,
+      };
+    };
 
-  for (const tc of pending) {
-    if (DEBUG) {
-      console.log(`🔧 [Tool] Executing: ${tc.name}`);
-      console.log(`   Args: ${JSON.stringify(tc.args)}`);
-    }
-    
-    const startTime = Date.now();
-    const result = await executeTool(tc.name, tc.args);
-    const duration = Date.now() - startTime;
-    
-    if (DEBUG) {
-      console.log(`   Duration: ${duration}ms`);
-      console.log(`   Success: ${result.success}`);
-      if (result.error) {
-        console.log(`   Error: ${result.error}`);
-      } else if (result.content) {
-        console.log(`   Content length: ${result.content.length}`);
-      }
-    }
-    
-    toolCallRecords.push({
+  _registry.register(ToolName.READ_ANT_SOURCE, wrap(readAntSource));
+  _registry.register(ToolName.LIST_ANT_FILES, wrap(listAntFiles));
+  _registry.register(ToolName.SEARCH_ANT_CODE, wrap(searchAntCode));
+  _registry.register(ToolName.READ_WORKSPACE_FILE, wrap(readWorkspaceFile));
+  _registry.register(ToolName.LIST_WORKSPACE_FILES, wrap(listWorkspaceFiles));
+
+  return _registry;
+}
+
+const toolNodeFn = createToolNode<AskGraphState>({
+  getPendingCalls(state) {
+    return (state.pendingToolCalls || []).map(tc => ({
+      id: tc.id,
       name: tc.name,
       args: tc.args,
-      result: result.content,
-      error: result.error,
+    }));
+  },
+
+  buildContext(state) {
+    return {
+      fileSystem: {} as any,
+      chatStatus: createNoopChatStatusReporter(),
+      workingDir: state.featurePath || process.cwd(),
+    };
+  },
+
+  registry: getRegistry(),
+  // No resultManager — lightweight graph, no truncation needed
+
+  getHistory(state) {
+    return state.conversationHistory;
+  },
+
+  buildReturn(state, { updatedHistory, executionEvents }) {
+    const toolCallRecords: AskToolCall[] = executionEvents.map(e => ({
+      name: e.toolName,
+      args: e.args,
+      result: typeof e.result.content === 'string' ? e.result.content : JSON.stringify(e.result.content),
+      error: e.result.error,
       timestamp: Date.now(),
-    });
-    
-    const toolResultContent = result.success
-      ? result.content || 'No content returned'
-      : `Error: ${result.error}`;
-    
-    toolResultBlocks.push({
-      type: 'tool_result',
-      tool_use_id: tc.id,
-      tool_name: tc.name,
-      content: toolResultContent,
-    });
-  }
-  
-  // Add batch tool_result to conversation history
-  const newHistory: ConversationMessage[] = [
-    ...state.conversationHistory,
-    {
-      role: 'user',
-      content: toolResultBlocks,
-    },
-  ];
-  
-  return {
-    conversationHistory: newHistory,
-    toolCalls: [...state.toolCalls, ...toolCallRecords],
-    pendingToolCalls: [],
-  };
-}
+    }));
+
+    return {
+      conversationHistory: updatedHistory,
+      toolCalls: [...state.toolCalls, ...toolCallRecords],
+      pendingToolCalls: [],
+    };
+  },
+});
+
+export { toolNodeFn as toolNode };

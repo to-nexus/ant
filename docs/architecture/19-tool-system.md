@@ -14,7 +14,7 @@ agents/common/tool/
 ├── presets.ts          # Job별 registry 팩토리 (createCodeToolRegistry 등)
 ├── orchestrator.ts     # ToolOrchestrator (배치 실행, 캐시, truncation, UI)
 ├── createToolNode.ts   # createToolNode<TState> 팩토리 (LangGraph 노드 생성)
-├── messageBuilder.ts   # Anthropic tool_use/tool_result 메시지 빌더
+├── messageBuilder.ts   # Anthropic 메시지 빌더 (buildAssistantMessage + buildToolResultMessage)
 ├── chatStatusAdapter.ts# ChatAPIClient → ChatStatusReporter 어댑터
 ├── index.ts            # public API
 └── handlers/
@@ -198,7 +198,26 @@ interface ToolResult {
 | `hooks.buildExtraUserContent` | task reminder 등 추가 컨텐츠 |
 | `buildReturn(state, result)` | 최종 `Partial<TState>` 조립 |
 
-user-only 패턴: assistant 메시지(tool_use 블록)는 실행 노드(execute/docGen)가 구성한다. tool 노드는 user 메시지(tool_result 블록)만 추가한다.
+### 메시지 책임 분리
+
+tool 노드는 user 메시지(tool_result 블록)만 추가한다. assistant 메시지(thinking + text + tool_use)는 LLM 노드가 `buildAssistantMessage()`를 사용하여 직접 구성한다. 이 분리는 모든 Job에 동일하게 적용된다:
+
+| Job | LLM 노드 (assistant push) | tool 노드 (user push) |
+|-----|---------------------------|----------------------|
+| Code (execute) | `execute/index.ts` | `tool/index.ts` |
+| Code (plan) | `planGeneration.ts` | `tool/index.ts` |
+| Design | `docGen/index.ts` | `tool/index.ts` |
+| Ask | `ask/nodes/agent.ts` | `ask/nodes/tool.ts` |
+| Plan | `generate/index.ts` | `plan/nodes/tool.ts` |
+
+## MessageBuilder
+
+`messageBuilder.ts` — 양방향 Anthropic 포맷 메시지 빌더.
+
+| 함수 | 방향 | 역할 |
+|------|------|------|
+| `buildAssistantMessage(options)` | LLM 노드 → history | thinking + text + tool_use 블록을 Anthropic assistant 메시지로 조립. 단일 text만 있으면 string shorthand 반환 |
+| `buildToolResultMessage(events)` | tool 노드 → history | `ToolExecutionEvent[]` → tool_use + tool_result 블록 쌍 반환 |
 
 ## CodeCommandPolicy
 
