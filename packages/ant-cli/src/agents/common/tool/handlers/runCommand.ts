@@ -32,7 +32,7 @@ import {
   SERVER_DETECTION_TIMEOUT,
   SERVER_OUTPUT_PATTERNS,
   ORCHESTRATOR_PORT,
-} from '../../../architect/graph/code/nodes/tool/constants';
+} from '../constants';
 
 const INTERACTIVE_COMMAND_PATTERNS = [
   /\bnpm\s+init\b(?!\s+(-y|--yes))/i,

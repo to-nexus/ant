@@ -232,6 +232,71 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TOOL_SETS — phase/context-level tool groupings
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// JOB_TOOL_MATRIX is the full tool set per job type.
+// TOOL_SETS provides finer-grained sub-selections used by
+// specific phases/contexts within a job (e.g., plan exploration,
+// explain mode, UI design variants).
+
+export const TOOL_SETS = {
+  fileOps: [ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.DELETE_FILE, ToolName.MKDIR] as ToolName[],
+  fileBrowsing: [ToolName.LIST_FILES, ToolName.SEARCH_CODE] as ToolName[],
+  shell: [ToolName.RUN_COMMAND] as ToolName[],
+  reference: [ToolName.SEARCH_REFERENCE] as ToolName[],
+
+  codeBasic: [
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.RUN_COMMAND,
+  ] as ToolName[],
+
+  planExplore: [
+    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
+    ToolName.SEARCH_WEB, ToolName.RUN_COMMAND,
+  ] as ToolName[],
+
+  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
+  codeExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB] as ToolName[],
+
+  design: [
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB,
+  ] as ToolName[],
+
+  uiDesignBase: [
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
+  ] as ToolName[],
+
+  uiDesign: [
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.READ_REF_IMAGE,
+    ToolName.LIST_REF_IMAGES, ToolName.LIST_ASSETS,
+  ] as ToolName[],
+
+  uiDesignFigma: [
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
+    ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
+    ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+  ] as ToolName[],
+
+  specFigma: [
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
+    ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.LIST_ASSETS,
+    ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
+    ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+  ] as ToolName[],
+
+  figmaExplore: [
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES, ToolName.MKDIR,
+    ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX,
+    ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+  ] as ToolName[],
+} as const;
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TOOL_HANDLERS — ToolName → default handler function
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
