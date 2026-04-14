@@ -1,17 +1,19 @@
 /**
- * Learn Resolve Node
+ * Learn Process Node
  * 
  * LLM이 분해한 명령을 실행:
  * - index_branch: 특정 브랜치 인덱싱
  * - index_codebase: 전체 코드베이스 인덱싱
  * - learn_files: 특정 파일들 학습
  * - learn_text: 텍스트 학습
+ *
+ * Renamed from "resolve" to "process" to avoid collision with common createResolveNode.
  */
 
 import * as path from "path";
 import { LearnGraphState } from "../state";
 
-export async function resolve(state: LearnGraphState): Promise<Partial<LearnGraphState>> {
+export async function processCommand(state: LearnGraphState): Promise<Partial<LearnGraphState>> {
   const command = state.command;
   if (!command) {
     throw new Error("No command provided from decompose node");

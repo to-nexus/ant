@@ -9,11 +9,12 @@
  * (env vars, auth implementation as project spec, etc.).
  */
 
-import { buildAskGraph } from './graph.js';
-import { AskGraphState, createInitialAskState } from './state.js';
-import { WorkspaceState } from '../../../common/nodes/triage/types.js';
-import { setWorkspaceFeaturePath } from './tools.js';
-import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
+import { buildAskGraph } from './graph';
+import { AskGraphState, createInitialAskState } from './state';
+import { WorkspaceState } from '../../../common/nodes/triage/types';
+import { setWorkspaceFeaturePath } from './tools';
+import { loadRecursionLimit, isRecursionLimitError, cleanupChat, invokeGraph } from '../../../common/graph/runnerHelpers';
+import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import type { ResolvedActionContext } from '@ant/shared';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
@@ -24,7 +25,10 @@ export interface AskRunnerParams {
   workspaceState: WorkspaceState;
   currentJob?: string;
   currentAgent?: string;
-  deps?: { llm?: any };
+  deps?: {
+    llm?: any;
+    promptBuilder?: import('../../../../core/prompt/builder/PromptBuilder').PromptBuilder;
+  };
   _httpJobId?: string;
   resolvedAction?: ResolvedActionContext;
 }
@@ -52,6 +56,14 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
   // Set workspace context for workspace tools
   setWorkspaceFeaturePath(params.workspaceState.featurePath);
   
+  // Ensure promptBuilder is available (triage passes only { llm })
+  let promptBuilder = params.deps?.promptBuilder;
+  if (!promptBuilder) {
+    const { FilePromptAdapter } = await import('../../../../periphery/adapters/prompt/FilePromptAdapter');
+    const { PromptBuilder } = await import('../../../../core/prompt/builder/PromptBuilder');
+    promptBuilder = new PromptBuilder(new FilePromptAdapter());
+  }
+
   // Create initial state
   const initialState = createInitialAskState({
     question: params.question,
@@ -59,58 +71,46 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
     workspaceState: params.workspaceState,
     currentJob: params.currentJob,
     currentAgent: params.currentAgent,
-    deps: params.deps,
+    deps: { ...params.deps, promptBuilder },
     _httpJobId: params._httpJobId,
+    featurePath: params.workspaceState.featurePath,
   });
-  
-  // Set featurePath for eval save
-  initialState.featurePath = params.workspaceState.featurePath;
   
   // Pass RAC from triage
   if (params.resolvedAction) {
     initialState.resolvedAction = params.resolvedAction;
   }
   
-  // Run graph with recursion limit (default: 100 for Ask job, can be overridden via ASK_RECURSION_LIMIT)
-  const recursionLimit = parseInt(process.env.ASK_RECURSION_LIMIT || '100', 10);
+  const recursionLimit = loadRecursionLimit('ask', 100);
   
   if (DEBUG) {
     console.log(`🔄 Recursion limit: ${recursionLimit}`);
   }
   
-  // ✅ CRITICAL: Use try-finally to ensure message finalization on error
-  // This prevents stale currentMessage in Redis when graph fails
   const chatAPI = getChatAPIClient();
   let finalState: AskGraphState;
-  let graphError: Error | null = null;
-  
+
   try {
-    finalState = await (graph as any).invoke(initialState as any, {
-      recursionLimit,
-    }) as AskGraphState;
-  } catch (error) {
-    graphError = error as Error;
-    console.error(`❌ [Ask] Graph execution failed: ${graphError.message}`);
-    
-    // ✅ CRITICAL: Finalize any active message to prevent stale state in Redis
-    // This ensures the next job won't be affected by this job's failure
+    finalState = await invokeGraph(graph, initialState, recursionLimit) as AskGraphState;
+  } catch (error: any) {
+    console.error(`❌ [Ask] Graph execution failed: ${error.message}`);
+
     if (chatAPI.hasActiveMessage()) {
       console.log('🧹 [Ask] Cleaning up active message after error...');
       try {
-        // ✅ Send user-friendly message before finalizing (especially for recursion limit)
-        if (graphError.message.includes('Recursion limit')) {
+        if (isRecursionLimitError(error)) {
           const limitMessage = params.language === 'ko'
             ? '\n\n⚠️ 질문에 답하기 위해 더 많은 정보를 확인하던 중 처리 한도에 도달했습니다. 더 구체적인 질문을 해주시거나, 필요한 정보를 직접 알려주세요.'
             : '\n\n⚠️ Reached processing limit while gathering information to answer your question. Please try asking a more specific question or provide the needed information directly.';
           await chatAPI.sendLLMEvent({ type: 'text', text: limitMessage });
         }
-        await chatAPI.finalizeMessage(true); // cancelled = true
+        await chatAPI.finalizeMessage(true);
       } catch (cleanupError) {
         console.warn('⚠️ [Ask] Failed to cleanup message:', cleanupError);
       }
     }
-    
-    throw graphError;
+
+    throw error;
   }
   
   // Log summary
