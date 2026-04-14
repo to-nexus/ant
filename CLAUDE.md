@@ -78,12 +78,13 @@ Inter-process communication is exclusively via Redis (Pub/Sub, Key-Value, BullMQ
 
 ```
 src/
-  composition/       # Entry points (server.ts, job-runner.ts, orchestrator.ts)
+  composition/       # Entry points (server.ts, job-runner.ts, orchestrator.ts, gracefulShutdown.ts)
   core/              # Domain logic: usecases, ports (interfaces), prompt engine, types
-  agents/            # LangGraph agent implementations (architect, planner)
+  agents/            # LangGraph agent implementations (architect, planner, creator, common)
   infrastructure/    # Technical adapters: queue, worker, realtime, IDE, preview, workspace
-  periphery/         # External adapters: HTTP (Express), auth, git, LLM, memory, filesystem
-  commands/          # CLI command handlers
+  periphery/         # External adapters: HTTP (Express), auth, git, LLM, memory, filesystem, integrations
+  cli/               # CLI runtime: Commander.js parser, command handlers, init, help
+  utils/             # Shared utilities: logger, humanId, languageUtils, userConfig
 ```
 
 ### Job Lifecycle

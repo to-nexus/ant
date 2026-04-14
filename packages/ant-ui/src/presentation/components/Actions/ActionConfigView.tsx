@@ -170,6 +170,10 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       }
     }
     updateActionMetadata({ [field]: next.length > 0 ? next : undefined });
+
+    if (field === 'refs' && slots?.target.kind === 'revise') {
+      updateActionMetadata({ target: next.length > 0 ? next : undefined });
+    }
   };
 
   const codebaseHasFiles = gitStatus?.codebaseHasFiles ?? false;

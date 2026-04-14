@@ -335,7 +335,7 @@ async function runDoc(inputPath: string, options: any) {
  */
 async function runIndex(project: string, options: any) {
   try {
-    const { indexCommand } = await import('../commands/index');
+    const { indexCommand } = await import('./index-command');
     await indexCommand(project, {
       incremental: options.incremental || false
     });

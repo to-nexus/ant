@@ -18,11 +18,31 @@
  *   - required + empty → amber warning + Create/Upload
  *   - optional + empty → gray quiet + Create/Upload
  *
- * Build/Chat policy (driven by matrix):
- *   - Default: refs not selected → chat only; refs selected → chat + build
- *   - chatRequiresRefs: true → refs required for BOTH chat and build
- *   - context selection does not affect chat/build by default
+ * Activation policy (2 layers):
+ *
+ * Design principles:
+ *   - canBuild implies canStartChat (build reachable → chat reachable)
+ *   - Build requires refs/codebase (primary). Context-only build is invalid.
+ *   - Directive-only intents (no real refs) → buildDisabled
+ *
+ * Layer 1 — System rules (derived from slot structure):
+ *   - Default: chat ref gate = build ref gate (chatNeedsRefs = buildNeedsRefs)
+ *   - chat-only target → build always disabled
+ *   - buildDisabled: true → build always disabled (directive-only, visual gen, revise)
+ *   - revise target → chat and build both need target selected
+ *   - real ref slots → chat and build both require refs (default)
+ *
+ * Layer 2 — Override flags (per-intent):
+ *   - chatRequiresRefs: false → chat without refs (directive-capable: gen-plan, gen-ui-desc, gen-spec)
+ *   - buildRequiresRefs: false → build without refs even when real ref slots exist
  *   - buildRequiresContext: true → context must be selected for build
+ *   - buildDisabled: true → build always disabled regardless of selections
+ *
+ * Terminology:
+ *   - explicit chat: Actions panel "Start via Chat" — gated by canStartChat
+ *   - build: Actions panel "Build" — gated by canBuild
+ *   - implicit chat: general chat without Actions panel — bypasses this policy
+ *   - chat-only target: explain/ask intents producing chat responses, not file artifacts
  */
 
 // ============================================
@@ -33,11 +53,17 @@ export interface ConfigSlots {
   refs: SlotDef[];
   context: SlotDef[];
   target: TargetDef;
-  /** When true, refs must be selected for BOTH chat and build (e.g. explain intents) */
+  /** Override chat ref gating. Default: same as build ref gate.
+   *  false → chat without refs (directive-capable intent).
+   *  true → chat needs refs even when build doesn't (rare). */
   chatRequiresRefs?: boolean;
-  /** When true, context must be selected for build (e.g. rev-plan needs background docs) */
+  /** Build without ref selection. Default true (= build needs refs). Set false to opt out. */
+  buildRequiresRefs?: boolean;
+  /** Context must be selected for build (e.g. rev-plan needs background docs). */
   buildRequiresContext?: boolean;
-  /** When true, only one ref file can be selected at a time (e.g. rev-plan: pick one document to revise) */
+  /** Build is always disabled. Intent requires user directive via chat. */
+  buildDisabled?: boolean;
+  /** Only one ref file can be selected at a time (e.g. rev-plan: pick one document to revise). */
   refsSingleSelect?: boolean;
 }
 
@@ -182,6 +208,7 @@ const HL = {
   figmaConfig: { en: 'Figma Configuration', ko: 'Figma 설정 파일' },
   references: { en: 'Reference Images', ko: '레퍼런스 이미지' },
   assets: { en: 'Asset Files', ko: '에셋 파일' },
+  visual: { en: 'Generated Images', ko: '생성 이미지' },
 } as const;
 
 // ============================================
@@ -212,15 +239,16 @@ import type { IntentId } from './actions';
 const MATRIX: Record<IntentId, ConfigSlots> = {
   // ── Plan ──────────────────────────────────
   'gen-plan': {
-    refs: [refDir(SOURCES_DIR, L.sources, { humanLabel: HL.prd, excludeFiles: ['prd.md'] })],
-    context: [ctxDir(SOURCES_DIR, L.sources, { excludeSelectedRefs: true, excludeFiles: ['prd.md'] })],
+    refs: [refDir(SOURCES_DIR, L.sources, { required: false, humanLabel: HL.prd, excludeFiles: ['prd.md'] })],
+    context: [],
     target: { kind: 'generate', dir: SOURCES_DIR, outputs: [output('prd', '.md', L.prd, false)] },
+    chatRequiresRefs: false,
   },
   'rev-plan': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SOURCES_DIR, L.sources, { excludeSelectedRefs: true })],
     target: { kind: 'revise' },
-    buildRequiresContext: true,
+    buildDisabled: true,
     refsSingleSelect: true,
   },
 
@@ -246,6 +274,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'revise' },
+    buildDisabled: true,
     refsSingleSelect: true,
   },
 
@@ -259,12 +288,12 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
-    chatRequiresRefs: true,
   },
   'gen-ui-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
+    chatRequiresRefs: false,
   },
 
   // ── UI Design: Rev ─────────────────────────
@@ -272,6 +301,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'revise' },
+    buildDisabled: true,
     refsSingleSelect: true,
   },
 
@@ -283,6 +313,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign }),
     ],
     target: { kind: 'generate', dir: SPEC_DIR, outputs: SPEC_OUTPUTS },
+    chatRequiresRefs: false,
   },
   'rev-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
@@ -291,6 +322,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
       ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
     ],
     target: { kind: 'revise' },
+    buildDisabled: true,
     refsSingleSelect: true,
   },
 
@@ -299,19 +331,18 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), refDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
-    chatRequiresRefs: true,
   },
   'gen-code-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     refsSingleSelect: true,
-    chatRequiresRefs: true,
   },
   'gen-code-directive': {
     refs: [emptyRef()],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
+    buildDisabled: true,
   },
 
   // ── Code: Rev (codebase required; spec docs as opt-in ref, design docs as context) ──
@@ -319,7 +350,6 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [codebaseRef(), refDir(SPEC_DIR, L.specDocs, { required: false, createIntent: 'gen-spec', humanLabel: HL.specDocs })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
     target: { kind: 'codebase' },
-    chatRequiresRefs: true,
   },
 
   // ── Visual ────────────────────────────────
@@ -327,24 +357,28 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [emptyRef()],
     context: [],
     target: { kind: 'generate', dir: ASSETS_GEN_DIR, outputs: [] },
+    buildDisabled: true,
   },
   'gen-visual-icon': {
     refs: [emptyRef()],
     context: [],
     target: { kind: 'generate', dir: ASSETS_GEN_DIR, outputs: [] },
+    buildDisabled: true,
   },
   'gen-visual-hero': {
     refs: [emptyRef()],
     context: [],
     target: { kind: 'generate', dir: ASSETS_GEN_DIR, outputs: [] },
+    buildDisabled: true,
   },
   'gen-visual-illustration': {
     refs: [emptyRef()],
     context: [],
     target: { kind: 'generate', dir: ASSETS_GEN_DIR, outputs: [] },
+    buildDisabled: true,
   },
   'explain-visual': {
-    refs: [emptyRef()],
+    refs: [refDir(ASSETS_GEN_DIR, L.visual, { humanLabel: HL.visual })],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
   },
@@ -354,7 +388,6 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [codebaseRef()],
     context: [],
     target: { kind: 'codebase' },
-    chatRequiresRefs: true,
   },
 
   // ── Explain (cross-domain) ────────────────
@@ -362,31 +395,26 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [codebaseRef()],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
-    chatRequiresRefs: true,
   },
   'explain-ui': {
     refs: [refDir(UI_DIR, L.uiDesign, { humanLabel: HL.uiDesign })],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
-    chatRequiresRefs: true,
   },
   'explain-sys': {
     refs: [refDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
-    chatRequiresRefs: true,
   },
   'explain-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { humanLabel: HL.specDocs })],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
-    chatRequiresRefs: true,
   },
   'explain-plan': {
     refs: [refDir(SOURCES_DIR, L.sources, { humanLabel: HL.prd })],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
-    chatRequiresRefs: true,
   },
 
   // ── Ask ─────────────────────────────────
@@ -429,6 +457,46 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
 
 /** @deprecated Use matchesOutputSpec */
 export const matchesExpectedFile = matchesOutputSpec;
+
+// ============================================
+// Activation Policy — System Rules
+// ============================================
+// These functions encode Layer 1 rules derivable from slot structure.
+// They are consumed by the FE policy hook (useActionFooterPolicy).
+
+/** Whether the slots contain selectable (non-empty, non-directive) ref definitions. */
+export function hasRealRefSlots(slots: ConfigSlots): boolean {
+  return slots.refs.some(r => !r.emptyHint && (r.path || r.codebase));
+}
+
+/**
+ * Default: chat ref gate mirrors build ref gate.
+ * Explicit `chatRequiresRefs` flag overrides when present.
+ */
+export function deriveChatNeedsRefs(slots: ConfigSlots): boolean {
+  if (slots.chatRequiresRefs !== undefined) return slots.chatRequiresRefs;
+  return deriveBuildNeedsRefs(slots);
+}
+
+/**
+ * System rule: build requires refs when real ref slots exist AND not explicitly opted out.
+ * Returns false when: no real ref slots (directive-only), OR `buildRequiresRefs: false`.
+ */
+export function deriveBuildNeedsRefs(slots: ConfigSlots): boolean {
+  if (slots.buildRequiresRefs === false) return false;
+  return hasRealRefSlots(slots);
+}
+
+/**
+ * Whether locked codebase ref coexists with non-codebase ref slots.
+ * When true, build requires user-selected (non-codebase) refs — locked codebase alone is insufficient.
+ * Currently applies to rev-code (codebase + optional spec docs).
+ */
+export function hasMixedCodebaseRefs(slots: ConfigSlots): boolean {
+  const hasLockedCodebase = slots.refs.some(r => r.codebase && r.locked);
+  const hasNonCodebase = slots.refs.some(r => !r.codebase && !r.emptyHint && r.path);
+  return hasLockedCodebase && hasNonCodebase;
+}
 
 // ============================================
 // TargetDef Type Guards
