@@ -14,7 +14,8 @@
 
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
-import { ArchitectGraphState, TaskQueue } from "../../state";
+import { ArchitectGraphState } from "../../state";
+import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiers as resolveTaskTechTiersShared, type Boundary } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";

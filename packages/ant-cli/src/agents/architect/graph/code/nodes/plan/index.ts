@@ -395,7 +395,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const featureRoot = state.deps?.fileSystem?.getRootPath();
       if (featureRoot) {
         try {
-          const { computeDepFileHash, hasInstalledDeps } = await import('../tool/handlers/runCommand');
+          const { computeDepFileHash, hasInstalledDeps } = await import('../../../../../common/tool/handlers/runCommand');
           const currentHash = await computeDepFileHash(featureRoot);
           const savedHash = state._depFileHash;
           const depsExist = await hasInstalledDeps(featureRoot);
@@ -456,7 +456,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const featureRoot = state.deps?.fileSystem?.getRootPath();
       if (featureRoot) {
         try {
-          const { computeDepFileHash, hasInstalledDeps } = await import('../tool/handlers/runCommand');
+          const { computeDepFileHash, hasInstalledDeps } = await import('../../../../../common/tool/handlers/runCommand');
           const currentHash = await computeDepFileHash(featureRoot);
           const savedHash = state._depFileHash;
           const depsExist = await hasInstalledDeps(featureRoot);

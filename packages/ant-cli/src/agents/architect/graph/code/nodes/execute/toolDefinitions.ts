@@ -7,7 +7,7 @@
 
 import { ArchitectGraphState } from "../../state";
 import type { ToolDefinition } from "../../../../../../core/ports/llm";
-import { getToolsByNamesWithTemplates, TOOL_SETS, ToolName } from "../../../../tools/definitions";
+import { getToolsByNamesWithTemplates, TOOL_SETS, ToolName } from "../../../../../common/tool/toolSchemas";
 
 /**
  * Remove `fileKey` from a Figma tool schema so the LLM doesn't need to supply it.
@@ -41,7 +41,7 @@ export async function getAvailableTools(state: ArchitectGraphState): Promise<Too
   let toolNames: ToolName[] = [...TOOL_SETS.codeBasic];
   
   if (hasReferences) {
-    toolNames.push('search_reference_code');
+    toolNames.push(ToolName.SEARCH_REFERENCE);
   }
 
   const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
@@ -50,8 +50,8 @@ export async function getAvailableTools(state: ArchitectGraphState): Promise<Too
     const taskType = state.currentTask?.type;
     const isFrontendTask = taskType === 'ui' || taskType === 'feature' || taskType === 'design-system';
     if (isFrontendTask) {
-      toolNames.push('figma_get_design_context', 'figma_get_screenshot',
-        'figma_get_variable_defs', 'figma_get_metadata');
+      toolNames.push(ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT,
+        ToolName.FIGMA_VARIABLES, ToolName.FIGMA_METADATA);
     }
   }
 

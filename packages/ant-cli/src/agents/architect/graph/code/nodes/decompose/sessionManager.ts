@@ -1,4 +1,5 @@
-import { ArchitectGraphState, TaskQueue } from "../../state";
+import { ArchitectGraphState } from "../../state";
+import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import type { Session } from '../../../../../../core/types/session';
 
