@@ -273,7 +273,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     }
 
     // Session context for LLM
-    const { SessionContextBuilder } = await import('../../../../../agents/architect/session/SessionContextBuilder');
+    const { SessionContextBuilder } = await import('../session/SessionContextBuilder');
     const sessionBuilder = new SessionContextBuilder();
     const session = state.deps?.session
       ? await state.deps.session.load(context.project, context.featureFolder, 'code')

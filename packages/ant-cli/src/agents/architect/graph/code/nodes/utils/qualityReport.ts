@@ -7,7 +7,7 @@
 
 import * as path from 'path';
 import { ArchitectGraphState } from '../../state';
-import { analyzeFiles, categorizeQuality, generateRecommendations, AggregateMetrics } from '../../../../utils/codeMetrics';
+import { analyzeFiles, categorizeQuality, generateRecommendations, AggregateMetrics } from '../../utils/codeMetrics';
 import { GitPort } from '../../../../../../core/ports';
 
 export interface EvaluationReport {

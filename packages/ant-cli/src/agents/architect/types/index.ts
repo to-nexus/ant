@@ -1,4 +1,4 @@
-import { AgentJob as CoreAgentJob, Mode, ProjectContext as CoreProjectContext, SessionRun as CoreSessionRun } from "../../core/types";
+import { AgentJob as CoreAgentJob, Mode, ProjectContext as CoreProjectContext, SessionRun as CoreSessionRun } from "../../../core/types";
 
 export const DIRECTIVE_TYPES = {
   CODE: 'code',
@@ -32,6 +32,6 @@ export interface ArchitectResult {
   job: AgentJob;
   reportFile?: string;  // Only for code jobs (report.md)
   filesAnalyzed?: number;
-  interruption?: import('../../core/types').InterruptionDetails;  // ✅ Unified interruption details
+  interruption?: import('../../../core/types').InterruptionDetails;  // ✅ Unified interruption details
   message: string;
 }
