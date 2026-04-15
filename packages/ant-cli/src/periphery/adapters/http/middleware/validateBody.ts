@@ -58,6 +58,28 @@ export const executeJobSchema = z.object({
     refs: z.array(z.string()).optional(),
     context: z.array(z.string()).optional(),
     language: z.string().optional(),
+    locale: z.string().optional(),
+    explicit: z.boolean().optional(),
+    basis: z.object({
+      techTier: z.object({
+        stack: z.string().optional(),
+        frontend: z.object({
+          language: z.string().optional(),
+          framework: z.string().optional(),
+          stack: z.string().optional(),
+          packageManager: z.string().optional(),
+        }).optional(),
+        backend: z.object({
+          language: z.string().optional(),
+          framework: z.string().optional(),
+          stack: z.string().optional(),
+          packageManager: z.string().optional(),
+        }).optional(),
+      }).optional(),
+      visualTier: z.object({
+        designSystem: z.string().optional(),
+      }).optional(),
+    }).optional(),
   }).optional(),
 }).passthrough();
 

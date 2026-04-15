@@ -56,18 +56,35 @@ directive와 resolvedAction을 기반으로 태스크를 분해한다. 각 태�
 
 #### TechTier 판별
 
-decompose는 LLM에게 태스크 분해와 함께 `<profile>` 태그로 기술 프로필을 출력하도록 요구한다. 프롬프트 템플릿(`code/phases/decompose/base.md` + `profile-rules.md`)이 관찰 우선순위와 제약 조건을 정의한다.
+decompose는 LLM에게 태스크 분해와 함께 `<techTier>` 태그로 기술 스택 정보를 출력하도록 요구한다. 프롬프트 템플릿(`code/nodes/decompose/variants/default/base.md` + `techTier-rules.md`)이 관찰 우선순위와 제약 조건을 정의한다.
+
+**Preset vs Inferred 이중 경로:**
+
+```
+UI BasisSelector → ActionMetadata.basis → detect → RAC.basis.techTier (preset)
+                                                       ↓
+                                             decompose prompt에 주입
+                                                       ↓
+                                        LLM이 preset 필드 보존 + 빈 필드 추론
+                                                       ↓
+                                           mergeTechTier(preset, inferred)
+                                                       ↓
+                                              RAC.basis.techTier (final)
+```
+
+사용자가 UI에서 techTier preset을 설정한 경우(`gen-code-directive` 인텐트의 BasisSelector), decompose 프롬프트에 사전 결정 필드가 주입되어 LLM이 해당 값을 그대로 사용한다. 미설정 필드만 추론한다.
 
 **LLM 응답 → TechTier 변환 흐름:**
 
 ```
-LLM 출력 <profile>              코드 파싱               buildTechTier()
+LLM 출력 <techTier>             코드 파싱               mergeTechTier(preset, inferred)
 ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│ environment      │───>│ parsedProfile    │───>│ state.techTier   │
-│ language         │    │   .environment   │    │   .stack         │
-│ framework        │    │   .language      │    │   .language      │
-│ environmentReason│    │   .framework     │    │   .framework     │
-└──────────────────┘    └──────────────────┘    │   .runtime       │
+│ stack            │───>│ parsed           │───>│ RAC.basis        │
+│ language         │    │   .stack         │    │   .techTier      │
+│ framework        │    │   .language      │    │     .stack       │
+│ packageTiers     │    │   .framework     │    │     .language    │
+└──────────────────┘    │   .packageTiers  │    │     .framework   │
+                        └──────────────────┘    │     .runtime     │
                                                 └──────────────────┘
 ```
 
@@ -75,15 +92,17 @@ LLM 출력 <profile>              코드 파싱               buildTechTier()
 |---|---|---|
 | `language` | LLM constrained response (enum 제시) | `resolveLanguage()`: `javascript` → `typescript`, `golang` → `go` |
 | `framework` | LLM constrained response (예시 제시, null 허용) | `resolveFramework()`: `Next.js` → `nextjs` 등 |
-| `stack` | LLM constrained response (`environment` 필드) | `frontend` / `backend` / `fullstack` 직접 매핑 |
+| `stack` | LLM constrained response | `frontend` / `backend` / `fullstack` 직접 매핑 |
 | `runtime` | 시스템 파생 (LLM 판단 없음) | `resolveRuntime(stack, language)`: `frontend→browser`, `backend+go→go-api` |
 | `packageManager` | 현재 code decompose에서 미설정 | `CodebaseAnalyzer.analyzeAsTechTier()`에서 설정 가능 |
 
-**LLM 관찰 우선순위** (`profile-rules.md`에 정의):
+**LLM 관찰 우선순위** (preset이 없을 때):
 
-1. 디자인 문서 존재 여부 — `fe-`/`be-` 접두어로 tier scope 결정 (FINAL)
+1. 디자인 문서 존재 여부 — 문서명 접두어로 tier scope 결정
 2. 디자인 문서 내용 — 명시된 기술 스택
 3. directive/PRD — 디자인 문서 부재 시에만 참조
+
+**TechTier 접근**: `getTechTier(state)` 헬퍼로 RAC.basis.techTier를 읽는다. 레거시 `state.techTier` 직접 접근 대신 이 헬퍼를 사용한다.
 
 ### plan
 
@@ -142,7 +161,7 @@ batch split은 단일 검증 실패를 여러 독립 error 태스크로 쪼개�
 
 runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다:
 - taskQueue, completedTasks, completedTasksDetails
-- resolvedAction, techTier
+- resolvedAction (basis.techTier 포함)
 - referenceRequests, projectCodeContext (경로만)
 - planText, conversationHistory
 - directive, overrideDirective, chatSource

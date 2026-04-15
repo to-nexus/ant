@@ -35,7 +35,7 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   await chatAPI.showChatStatus('placeholder');
 
   // Load system prompt using centralized WorkspacePathResolver
-  const promptPath = WorkspacePathResolver.getPromptTemplatePath('learn/system.md');
+  const promptPath = WorkspacePathResolver.getPromptTemplatePath('jobs/learn/base/system.md');
   const systemPrompt = fs.readFileSync(promptPath, 'utf-8');
 
   // Call LLM with streaming for thinking display

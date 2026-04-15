@@ -71,9 +71,12 @@ core/prompt/templates/
         injections/         (asset-logo.md, asset-icon.md, asset-hero.md)
     planner/
         plan/               (base.md, rules.md)
-    profiles/
-        languages/          (typescript.md, go.md, python.md 등)
-        frameworks/         (nextjs.md, react.md 등)
+    basis/
+        techTier/
+            language/       (typescript.md, go.md)
+            framework/      (react.md, nextjs.md, react-native.md, gin.md)
+        visualTier/
+            design-system/  (.gitkeep)
     triage/                 (base.md, rules.md)
     ask/                    (base.md, rules.md)
     learn/                  (system.md)
@@ -269,14 +272,24 @@ strict mode가 활성화되면 추가 엄격 규칙이 삽입된다.
 - `directive` 필드 → `<user_provided_content type="directive">...</user_provided_content>`
 - `documents` 배열의 각 `content` → `<user_provided_content type="{label|path}">...</user_provided_content>`
 
-## Tech Profile
+## Basis Section (Tech/Visual Profile)
 
-`pipeline.includeTechProfile`이 true이고 `techTier`가 있을 때:
+`pipeline.includeBasis`가 true이고 `config.basis`가 있을 때, `PromptBuilder.buildBasisSection()`이 basis 템플릿을 조립한다.
 
-1. `ProfilePort.loadLanguage(techTier.language)` → `<tech_profile>` 섹션
-2. `ProfilePort.loadFramework(techTier.framework)` → `<framework_profile>` 섹션
+**템플릿 4축 구조**:
 
-`techTier`는 **decompose 노드에서 도출**된다. decompose를 경유하지 않는 job(plan, ask, visual)은 techTier가 없으므로 프로필이 주입되지 않는다.
+```
+templates/basis/
+    techTier/
+        language/       (typescript.md, go.md)
+        framework/      (react.md, nextjs.md, react-native.md, gin.md)
+    visualTier/
+        design-system/  (.gitkeep — 향후 확장)
+```
+
+각 축의 템플릿 존재 여부에 따라 `<basis axis="...">` 섹션이 조건부로 주입된다. 파일 미발견 시 catch로 skip.
+
+`basis.techTier`는 **decompose 노드에서 도출**되거나, UI에서 explicit preset으로 사전 설정된다. decompose를 경유하지 않는 job(plan, ask, visual)은 techTier가 없으므로 주입되지 않는다.
 
 ## 템플릿 렌더링
 

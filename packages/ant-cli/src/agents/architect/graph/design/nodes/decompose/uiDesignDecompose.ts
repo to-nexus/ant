@@ -21,7 +21,7 @@ import {
   trackTokenUsage,
   type CheckpointData,
 } from "./helpers";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 
 interface DecomposeContext {
@@ -84,7 +84,7 @@ export async function decomposeUiDesign(
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   const templateSuffix = isFigmaMode ? 'by-figma' : 'by-ref';
-  const decomposeTemplatePath = `design/phases/decompose/base-ui-design-${templateSuffix}`;
+  const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/ui-design-${templateSuffix}/base`;
 
   const uiDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
     uiContext,
@@ -118,7 +118,7 @@ export async function decomposeUiDesign(
     uiDecomposePrompt.length,
     {
       templatePath: decomposeTemplatePath,
-      usedTemplates: [`design/phases/decompose/rules-ui-design-${templateSuffix}`],
+      usedTemplates: [`jobs/design/nodes/decompose/variants/ui-design-${templateSuffix}/rules`],
     }
   );
 
@@ -246,6 +246,16 @@ export async function decomposeUiDesign(
     // UI design is always frontend
     const uiTechTier = buildTechTier(state.profile, 'frontend');
     console.log(`✅ TechTier: stack=frontend, language=${uiTechTier.language}, framework=${uiTechTier.framework || 'none'}`);
+
+    // Sync to RAC basis.techTier so getTechTier(state) returns it
+    const basisTechTierConfig: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { ...uiTechTier, stack: 'frontend' as const },
+    };
+    state.resolvedAction = {
+      ...state.resolvedAction!,
+      basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
+    };
 
     // Save checkpoint
     await saveCheckpoint(state, {

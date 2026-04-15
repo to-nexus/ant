@@ -4,7 +4,6 @@ import { runInlineAsk } from "../agents/architect/graph/ask/inlineAskRunner";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
 import { createLLMClient, createImageGenerationClient } from "../periphery/adapters/llm/LLMClientFactory";
 import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
-import { FileProfileAdapter } from "../periphery/adapters/profile/FileProfileAdapter";
 import { CodebaseAnalyzer } from "../periphery/adapters/analyzer/CodebaseAnalyzer";
 import { FileConfigAdapter } from "../periphery/adapters/config/FileConfigAdapter";
 import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
@@ -175,7 +174,6 @@ export async function orchestrator(params: {
 
       // Design and Code tasks: full dependencies
       const promptPort = new FilePromptAdapter();
-      const profilePort = new FileProfileAdapter();
       const chunk = AdapterFactory.createChunkAdapter();
       
       // ✅ Require featurePath and projectPath - no fallback
@@ -250,10 +248,10 @@ export async function orchestrator(params: {
           project || "default",
           'design',
           inputFile,
-          { memory, llm, promptPort, profilePort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, feature, featurePath, redis },
+          { memory, llm, promptPort, config, chunk, session, git, fileSystem, analyzer, kanbanUpdate, fileTreeUpdate, workflowUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, feature, featurePath, redis },
           undefined,  // codeMode
           undefined,  // enableEvaluation
-          jobId       // ✅ Pass jobId for real-time Kanban and resume
+          jobId
         );
 
         // Drain pending chat broadcasts before process exits
@@ -322,7 +320,7 @@ export async function orchestrator(params: {
           project || "default",
           'code',
           inputFile,
-          { memory, llm, promptPort, profilePort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, feature, featurePath, redis: codeRedis },
+          { memory, llm, promptPort, analyzer, git, fileSystem, config, chunk, session, command, kanbanUpdate, fileTreeUpdate, workflowUpdate, previewUpdate, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, feature, featurePath, redis: codeRedis },
           mode,
           enableEvaluation,
           jobId

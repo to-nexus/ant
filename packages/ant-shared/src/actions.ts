@@ -8,6 +8,7 @@
 import type { JobType } from './job';
 import type { DesignSubdir } from './canonical';
 import type { IntentGroup } from './detection';
+import type { Basis } from './rac';
 
 // ============================================
 // Action Definitions
@@ -192,6 +193,8 @@ export interface ActionMetadata {
   locale?: string;
   /** @deprecated Use locale */
   language?: string;
+  /** Preset basis from UI action panel (explicit pipeline). */
+  basis?: Basis;
 }
 
 /**

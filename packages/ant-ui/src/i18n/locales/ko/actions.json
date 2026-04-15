@@ -90,6 +90,16 @@
     "directory": "산출물 위치"
   },
 
+  "basis": {
+    "title": "기술 프리셋",
+    "language": "언어",
+    "framework": "프레임워크",
+    "designSystem": "디자인 시스템",
+    "autoDetect": "자동 감지",
+    "noFramework": "사용하지 않음",
+    "none": "없음"
+  },
+
   "section": {
     "refs": "참조",
     "context": "컨텍스트",
@@ -145,16 +155,25 @@
   },
 
   "buildDirective": {
+    "gen-plan": "소스 문서를 기반으로 기획서를 작성해주세요",
     "gen-sys-fe": "소스 문서를 기반으로 프론트엔드 시스템 아키텍처를 설계해주세요",
     "gen-sys-be": "소스 문서를 기반으로 백엔드 시스템 아키텍처와 API 계약을 설계해주세요",
     "gen-sys-full": "소스 문서를 기반으로 풀스택 시스템 아키텍처를 설계해주세요",
     "gen-ui-figma": "Figma 파일에서 UI 설계를 추출해주세요",
     "gen-ui-ref": "레퍼런스 이미지를 분석하여 UI를 설계해주세요",
     "gen-ui-desc": "텍스트 설명을 기반으로 UI를 설계해주세요",
+    "gen-spec": "소스 문서를 기반으로 기능 스펙을 작성해주세요",
     "gen-code-sys": "시스템 설계 문서를 기반으로 코드를 생성해주세요",
     "gen-code-spec": "스펙 문서를 기반으로 코드를 생성해주세요",
     "gen-code-directive": "지시사항을 기반으로 코드를 생성해주세요",
-    "rev-code": "기존 코드를 리팩토링해주세요"
+    "rev-code": "기존 코드를 리팩토링해주세요",
+    "gen-learn": "코드베이스를 분석하고 인덱싱해주세요",
+    "explain-code": "코드를 설명해주세요",
+    "explain-sys": "시스템 설계를 설명해주세요",
+    "explain-ui": "UI 설계를 설명해주세요",
+    "explain-spec": "스펙 문서를 설명해주세요",
+    "explain-plan": "기획서를 설명해주세요",
+    "explain-visual": "이미지 에셋을 설명해주세요"
   },
 
   "status": {

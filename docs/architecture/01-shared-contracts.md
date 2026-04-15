@@ -95,7 +95,7 @@ Detect 파이프라인의 공통 어휘와 LLM 추론 출력 타입.
 | `INTENT_DEFINITIONS` | 전체 인텐트 정의 배열 — **고유 인텐트 ID 27개** (intentGroup별 개수는 아래 표) |
 | `IntentId` | `INTENT_DEFINITIONS`에서 파생된 유효 인텐트 ID 유니온 타입 |
 | `getIntentsForAction()` | `(intentGroup: IntentGroup) => ReadonlyArray<IntentDefinition>` |
-| `ActionMetadata` | `explicit?`, `intent?`, `target?`, `refs?`, `context?`, `locale?` |
+| `ActionMetadata` | `explicit?`, `intent?`, `target?`, `refs?`, `context?`, `locale?`, `basis?: Basis` |
 | `deriveFromIntent()` | `(intent: IntentId) => { intentGroup?, mode, agent, jobType, targetTier? }` — mode/intentGroup은 항상 intentId에서 파생 |
 | `ActionReadiness` | FE 액션 실행 가능 여부 (`buildReady`, `hasOutput`, `detectedMode`, `subModes?`, `namingIssues`, …) |
 | `SubModeStatus` | FE 서브모드 활성 상태 (`id`, `active`, `blockReason?`) |
@@ -128,12 +128,22 @@ Infer:    strategy.run() → InferredAction → mergeWithMetadata() → resolveT
 
 | 타입/함수 | 정의 |
 |-----------|------|
-| `ResolvedActionContext` | `intent?`, `intentGroup?`, `mode`, `target?`, `refs?`, `context?`, `documents?`, `domain?`, `intentDescription?`, `source`, `hasExplicitFields` |
-| `ResolvedArtifact` | role-labeled 문서 (`path`, `content`, `role: 'ref' \| 'context' \| 'directive'`, `label?`) |
-| `TechTier` | `language?`, `framework?`, `stack?`, `runtime?`, `packageManager?` — decompose가 채움, RAC 밖 `state.techTier`에 배치 |
+| `ResolvedActionContext` | `intent?`, `intentGroup?`, `mode`, `target?`, `refs?`, `context?`, `artifacts?`, `documents?`, `domain?`, `intentDescription?`, `basis?`, `source`, `hasExplicitFields` |
+| `ResolvedArtifact` | role-labeled 문서 (`path`, `content`, `role: 'ref' \| 'context' \| 'directive'`, `mediaType?`, `mimeType?`, `base64?`) |
+| `TechTier` | `language?`, `framework?`, `stack?`, `runtime?`, `packageManager?` — RAC.basis.techTier에 배치. decompose가 채우거나 explicit preset |
+| `VisualTier` | `designSystem?` — 향후 확장 예정 |
+| `Basis` | `techTier?: TechTier`, `visualTier?: VisualTier` — progressive basis (detect → decompose 구간에서 점진 확정) |
+| `BasisOption` | `id`, `label: { en, ko }` — UI 드롭다운 옵션 |
+| `TECH_TIER_LANGUAGES` | `BasisOption[]` — 언어 선택 상수 (typescript, go) |
+| `TECH_TIER_FRAMEWORKS` | `Record<string, BasisOption[]>` — 언어별 프레임워크 선택 상수 |
+| `VISUAL_TIER_DESIGN_SYSTEMS` | `BasisOption[]` — 디자인 시스템 선택 상수 (현재 빈 배열) |
+| `buildBasisPreset()` | `(opts) => Basis` — UI에서 basis preset 생성 |
 | `InferWorkspaceState` | infer 경로 보조: `hasFigmaConfig?`, `hasScreens?`, `hasComponents?`, `hasPrd?`, `hasDesignDoc?`, `hasSpecDocs?`, `targetFiles?` |
-| `resolveToRAC()` | `(intentId, slots?, source?) => ResolvedActionContext` — mode/intentGroup은 `deriveFromIntent()`로 파생 |
-| `mergeWithMetadata()` | `(inferred, metadata?) => { intentId, target?, refs?, context?, domain? }` — infer 경로에서 metadata 보충 |
+| `resolveToRAC()` | `(intentId, slots?, source?, basis?) => ResolvedActionContext` — mode/intentGroup은 `deriveFromIntent()`로 파생 |
+| `mergeWithMetadata()` | `(inferred, metadata?) => { intentId, target?, refs?, context?, domain?, basis? }` — infer 경로에서 metadata 보충 |
+| `mergeTechTier()` | `(preset?, inferred?) => TechTier` — preset 필드 우선, 빈 필드는 inferred에서 채움 |
+| `getTechTier()` | `(state) => TechTier \| undefined` — RAC.basis.techTier 읽기 헬퍼 |
+| `getBasis()` | `(state) => Basis \| undefined` — RAC.basis 읽기 헬퍼 |
 | `buildTechTier()` | `(profile?, stack?, taskProfile?) => TechTier` — decompose에서 사용 |
 | `isFigmaPipeline()` | `(intent, figmaPopulated) => boolean` |
 
@@ -145,7 +155,9 @@ Infer:    strategy.run() → InferredAction → mergeWithMetadata() → resolveT
 | `intentGroup` | `IntentGroup?` | `deriveFromIntent()`에서 파생 |
 | `mode` | `Mode` | `deriveFromIntent()`에서 파생 |
 | `target`, `refs`, `context` | `string[]?` | 파일 슬롯 |
-| `documents` | `ResolvedArtifact[]?` | plan/execute 단계에서 주입되는 materialized 문서 |
+| `artifacts` | `ResolvedArtifact[]?` | role-labeled 아티팩트 (preferred) |
+| `documents` | `ResolvedArtifact[]?` | @deprecated — `artifacts` 사용 |
+| `basis` | `Basis?` | progressive basis — techTier(decompose/preset), visualTier(reserved) |
 | `domain` | `DesignDomain?` | design-system 전용 |
 | `source` | `'explicit' \| 'infer'` | 생성 경로 |
 
@@ -157,7 +169,8 @@ Infer:    strategy.run() → InferredAction → mergeWithMetadata() → resolveT
 
 | 타입 | 정의 |
 |------|------|
-| `ConfigSlots` | `refs: SlotDef[]`, `context: SlotDef[]`, `target: TargetDef`, `chatRequiresRefs?`, `buildRequiresRefs?`, `buildRequiresContext?`, `buildDisabled?`, `refsSingleSelect?` |
+| `ConfigSlots` | `refs: SlotDef[]`, `context: SlotDef[]`, `target: TargetDef`, `basis?: BasisSlotConfig`, `chatRequiresRefs?`, `buildRequiresRefs?`, `buildRequiresContext?`, `buildDisabled?`, `refsSingleSelect?` |
+| `BasisSlotConfig` | `techTier?: boolean`, `visualTier?: boolean` — BasisSelector 렌더링 조건 |
 | `SlotDef` | `path`, `label`, `type: 'dir'\|'file'`, `required`, `locked?`, `excludeSelectedRefs?`, `createIntent?`, `humanLabel?`, `codebase?`, `excludeFiles?` |
 | `TargetDef` | `kind: 'generate'\|'revise'\|'codebase'\|'chat-only'` + kind별 필드 |
 | `OutputSpec` | `prefix`, `ext`, `label`, `isPattern`, `warnIfExists?` |

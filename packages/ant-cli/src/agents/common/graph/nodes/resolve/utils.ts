@@ -33,7 +33,7 @@ export async function compressHeavyweightEntries(
       ].join('\n');
 
       try {
-        const systemPrompt = await promptPort.render('common/compaction/job-summary', { jobData });
+        const systemPrompt = await promptPort.render('infra/compaction/job-summary', { jobData });
         const summaryContent = await llm.invoke(
           [{ role: 'user', content: 'Summarize this job.' }],
           { system: systemPrompt, maxTokens: 2048 },

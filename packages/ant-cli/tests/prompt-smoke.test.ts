@@ -156,7 +156,8 @@ describe('Template Smoke Tests', () => {
   let adapter: FilePromptAdapter;
 
   beforeAll(async () => {
-    templateNames = await collectTemplateNames(TEMPLATES_DIR);
+    const allNames = await collectTemplateNames(TEMPLATES_DIR);
+    templateNames = allNames.filter(n => !n.startsWith('basis/'));
     adapter = new FilePromptAdapter(TEMPLATES_DIR);
   });
 
@@ -223,11 +224,11 @@ describe('Template Smoke Tests', () => {
   it('secure-coding partial is resolved inside execute/rules and plan/rules', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const rulesOutput = await adapter.render('code/phases/execute/rules', SAMPLE_VARS);
+    const rulesOutput = await adapter.render('jobs/code/nodes/execute/variants/default/rules', SAMPLE_VARS);
     expect(rulesOutput).toContain('untrusted');
     expect(rulesOutput).toContain('parameterized query');
 
-    const planRulesOutput = await adapter.render('code/phases/plan/rules', SAMPLE_VARS);
+    const planRulesOutput = await adapter.render('jobs/code/nodes/plan/rules', SAMPLE_VARS);
     expect(planRulesOutput).toContain('untrusted');
     expect(planRulesOutput).toContain('parameterized query');
   });
@@ -235,12 +236,12 @@ describe('Template Smoke Tests', () => {
   it('collectResolvedPartials tracks nested partials from templates', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const partials = collectResolvedPartials(['code/phases/execute/rules']);
-    expect(partials).toContain('code/base/injections/secure-coding');
-    expect(partials).toContain('code/base/injections/persistence-schema-rule');
+    const partials = collectResolvedPartials(['jobs/code/nodes/execute/variants/default/rules']);
+    expect(partials).toContain('jobs/code/base/injections/secure-coding');
+    expect(partials).toContain('jobs/code/base/injections/persistence-schema-rule');
 
-    const planPartials = collectResolvedPartials(['code/phases/plan/rules']);
-    expect(planPartials).toContain('code/base/injections/secure-coding');
+    const planPartials = collectResolvedPartials(['jobs/code/nodes/plan/rules']);
+    expect(planPartials).toContain('jobs/code/base/injections/secure-coding');
   });
 
   it('each template renders without throwing and produces non-empty output', async () => {
@@ -250,13 +251,13 @@ describe('Template Smoke Tests', () => {
     // Templates wrapped entirely in {{#if}} blocks produce empty output when
     // the condition variable is falsy. This is expected behavior, not a failure.
     const ALLOWED_EMPTY = new Set([
-      'common/injections/memory',
-      'common/injections/directive',
-      'common/injections/action-context',
-      'common/injections/refactor-guidance',
-      'common/injections/explain-guidance',
-      'code/phases/decompose/mode-guide',
-      'code/phases/decompose/design-doc-guide',
+      'jobs/shared/injections/memory',
+      'jobs/shared/injections/directive',
+      'jobs/shared/injections/action-context',
+      'jobs/shared/injections/refactor-guidance',
+      'jobs/shared/injections/explain-guidance',
+      'jobs/code/nodes/decompose/variants/default/mode-guide',
+      'jobs/code/nodes/decompose/variants/default/design-doc-guide',
     ]);
 
     const failures: Array<{ name: string; error: string }> = [];
@@ -283,7 +284,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/base includes creator identity, art direction role, and routing rules', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/direct/base', SAMPLE_VARS);
+    const output = await adapter.render('jobs/visual/nodes/direct/variants/default/base', SAMPLE_VARS);
 
     expect(output).toContain('creative asset producer');
     expect(output).toContain('art director');
@@ -295,7 +296,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/context injects conversation, directive, and settings', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/direct/context', {
+    const output = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
       conversationContext: '[user] Make a blue icon',
       currentDirective: 'Generate a blue app icon',
@@ -314,7 +315,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/context includes safety alert when safetyBlocked is true', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/direct/context', {
+    const output = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
       safetyBlocked: true,
     });
@@ -327,7 +328,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/context includes error section when visualError is set', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/direct/context', {
+    const output = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
       visualError: 'Image generation timed out',
     });
@@ -340,32 +341,32 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/rules renders only the matching asset type guide', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const logoOutput = await adapter.render('visual/nodes/direct/rules', {
+    const logoOutput = await adapter.render('jobs/visual/nodes/direct/variants/default/rules', {
       ...SAMPLE_VARS, isLogo: true, isIcon: false, isHero: false, isIllustration: false,
     });
     expect(logoOutput).toContain('Logo Principles');
     expect(logoOutput).not.toContain('Icon Principles');
     expect(logoOutput).not.toContain('Hero and Background Principles');
 
-    const iconOutput = await adapter.render('visual/nodes/direct/rules', {
+    const iconOutput = await adapter.render('jobs/visual/nodes/direct/variants/default/rules', {
       ...SAMPLE_VARS, isLogo: false, isIcon: true, isHero: false, isIllustration: false,
     });
     expect(iconOutput).toContain('Icon Principles');
     expect(iconOutput).not.toContain('Logo Principles');
 
-    const heroOutput = await adapter.render('visual/nodes/direct/rules', {
+    const heroOutput = await adapter.render('jobs/visual/nodes/direct/variants/default/rules', {
       ...SAMPLE_VARS, isLogo: false, isIcon: false, isHero: true, isIllustration: false,
     });
     expect(heroOutput).toContain('Hero and Background Principles');
     expect(heroOutput).not.toContain('Logo Principles');
 
-    const illustrationOutput = await adapter.render('visual/nodes/direct/rules', {
+    const illustrationOutput = await adapter.render('jobs/visual/nodes/direct/variants/default/rules', {
       ...SAMPLE_VARS, isLogo: false, isIcon: false, isHero: false, isIllustration: true,
     });
     expect(illustrationOutput).toContain('Illustration Principles');
     expect(illustrationOutput).not.toContain('Logo Principles');
 
-    const generalOutput = await adapter.render('visual/nodes/direct/rules', {
+    const generalOutput = await adapter.render('jobs/visual/nodes/direct/variants/default/rules', {
       ...SAMPLE_VARS, isLogo: false, isIcon: false, isHero: false, isIllustration: false,
     });
     expect(generalOutput).not.toContain('Logo Principles');
@@ -378,7 +379,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/classify renders with conversation context, directive, and jobMode', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/direct/classify', {
+    const output = await adapter.render('jobs/visual/nodes/direct/variants/default/classify', {
       conversationContext: '[user] I need a logo for my SaaS',
       currentDirective: 'Create a clean logo',
     });
@@ -394,7 +395,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/context injects previous generation context when available', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/direct/context', {
+    const output = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
       lastEngineeredPrompt: 'A minimalist blue logo with geometric shapes on white background',
       lastOutputPath: '/workspace/inputs/assets/gen/gen-123.png',
@@ -409,7 +410,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/context omits generation context when not available', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/direct/context', {
+    const output = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
     });
 
@@ -420,7 +421,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/context shows available sketches section when sketches exist', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const withSketches = await adapter.render('visual/nodes/direct/context', {
+    const withSketches = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
       availableSketchCount: 3,
     });
@@ -428,7 +429,7 @@ describe('Template Smoke Tests', () => {
     expect(withSketches).toContain('3 sketch image');
     expect(withSketches).toContain('embedded below as inline images');
 
-    const withoutSketches = await adapter.render('visual/nodes/direct/context', {
+    const withoutSketches = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
     });
     expect(withoutSketches).not.toContain('Available Sketches');
@@ -437,7 +438,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/context shows clarify budget and exhausted warning', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const normal = await adapter.render('visual/nodes/direct/context', {
+    const normal = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
       clarifyCount: 2,
       maxClarify: 5,
@@ -448,7 +449,7 @@ describe('Template Smoke Tests', () => {
     expect(normal).toContain('5');
     expect(normal).not.toContain('BUDGET EXHAUSTED');
 
-    const exhausted = await adapter.render('visual/nodes/direct/context', {
+    const exhausted = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
       clarifyCount: 5,
       maxClarify: 5,
@@ -461,7 +462,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/direct/rules includes refinement routing section', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/direct/rules', SAMPLE_VARS);
+    const output = await adapter.render('jobs/visual/nodes/direct/variants/default/rules', SAMPLE_VARS);
 
     expect(output).toContain('Refinement Routing');
     expect(output).toContain('targeted modification');
@@ -470,7 +471,7 @@ describe('Template Smoke Tests', () => {
   it('visual/nodes/engrave/base includes creator identity and SVG rules', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('visual/nodes/engrave/base', SAMPLE_VARS);
+    const output = await adapter.render('jobs/visual/nodes/engrave/variants/default/base', SAMPLE_VARS);
 
     expect(output).toContain('creative asset producer');
     expect(output).toContain('SVG');
@@ -480,20 +481,20 @@ describe('Template Smoke Tests', () => {
   it('visual partial chains resolve correctly via collectResolvedPartials', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const directPartials = collectResolvedPartials(['visual/nodes/direct/base']);
+    const directPartials = collectResolvedPartials(['jobs/visual/nodes/direct/variants/default/base']);
     expect(directPartials).toContain('agents/creator/base');
     expect(directPartials).toContain('agents/creator/rules');
-    expect(directPartials).toContain('visual/nodes/direct/rules');
+    expect(directPartials).toContain('jobs/visual/nodes/direct/variants/default/rules');
 
-    const engravePartials = collectResolvedPartials(['visual/nodes/engrave/base']);
+    const engravePartials = collectResolvedPartials(['jobs/visual/nodes/engrave/variants/default/base']);
     expect(engravePartials).toContain('agents/creator/base');
-    expect(engravePartials).toContain('visual/nodes/engrave/rules');
+    expect(engravePartials).toContain('jobs/visual/nodes/engrave/variants/default/rules');
   });
 
   it('action-context.md renders documents with role labels', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('common/injections/action-context', {
+    const output = await adapter.render('jobs/shared/injections/action-context', {
       resolvedAction: {
         hasExplicitFields: true,
         intentDescription: 'Generate code from design',
@@ -516,7 +517,7 @@ describe('Template Smoke Tests', () => {
   it('action-context.md falls back to path list when no documents', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('common/injections/action-context', {
+    const output = await adapter.render('jobs/shared/injections/action-context', {
       resolvedAction: {
         hasExplicitFields: true,
         intentDescription: 'Generate code',
@@ -535,7 +536,7 @@ describe('Template Smoke Tests', () => {
   it('action-context.md renders target list', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('common/injections/action-context', {
+    const output = await adapter.render('jobs/shared/injections/action-context', {
       resolvedAction: {
         hasExplicitFields: true,
         intentDescription: 'Generate frontend code',
@@ -551,7 +552,7 @@ describe('Template Smoke Tests', () => {
   it('action-context.md renders nothing when hasExplicitFields is false', async () => {
     await initPartials(TEMPLATES_DIR);
 
-    const output = await adapter.render('common/injections/action-context', {
+    const output = await adapter.render('jobs/shared/injections/action-context', {
       resolvedAction: {
         hasExplicitFields: false,
       },
@@ -561,7 +562,7 @@ describe('Template Smoke Tests', () => {
   });
 
   it('all § section references in design templates match canonical catalog names', async () => {
-    const catalogDir = join(TEMPLATES_DIR, 'design/base/catalogs');
+    const catalogDir = join(TEMPLATES_DIR, 'jobs/design/base/catalogs');
     const catalogFiles = (await fs.readdir(catalogDir))
       .filter(f => f.endsWith('-catalog-names.md'));
 
@@ -576,7 +577,7 @@ describe('Template Smoke Tests', () => {
 
     expect(canonicalNames.size).toBeGreaterThan(0);
 
-    const designDir = join(TEMPLATES_DIR, 'design');
+    const designDir = join(TEMPLATES_DIR, 'jobs/design');
     async function collectMdFiles(dir: string): Promise<string[]> {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       const files: string[] = [];

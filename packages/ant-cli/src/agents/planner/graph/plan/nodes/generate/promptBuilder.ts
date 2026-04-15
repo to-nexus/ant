@@ -51,7 +51,7 @@ export async function buildSystemPrompt(
   const resolvedArtifacts = state.resolvedArtifacts || [];
 
   const result = await promptBuilder.build({
-    templates: { base: 'planner/plan/base', rules: 'planner/plan/rules' },
+    templates: { base: 'jobs/plan/nodes/plan/variants/default/base', rules: 'jobs/plan/nodes/plan/variants/default/rules' },
     intent: state.resolvedAction?.intent,
     artifacts: resolvedArtifacts.length > 0 ? resolvedArtifacts : undefined,
     vars: {

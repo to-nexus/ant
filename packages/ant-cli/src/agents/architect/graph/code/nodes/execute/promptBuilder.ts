@@ -18,7 +18,7 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
-import { effectiveTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
+import { effectiveTechTier, getTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
 import { PromptBuilder } from "../../../../../../core/prompt/builder/PromptBuilder";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
@@ -65,11 +65,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const executeProjectCodeContext = state.projectCodeContext
     ? compactProjectCodeContext(
         state.projectCodeContext as ProjectCodeContext,
-        state.techTier?.language,
+        getTechTier(state)?.language,
       )
     : undefined;
 
-  const taskTechTiers = state.currentTask.techTiers ?? (state.techTier ? [state.techTier] : []);
+  const taskTechTiers = state.currentTask.techTiers ?? (getTechTier(state) ? [getTechTier(state)!] : []);
   const contextWithTechTier = {
     ...state.context,
     techTier: effectiveTechTier(taskTechTiers),
@@ -127,22 +127,22 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // Determine template paths (mirrors PromptResolver logic)
   let templateBase: string;
   let templateRules: string;
-  const executeTasksPrefix = 'code/phases/execute/tasks';
+  const executeVariantsPrefix = 'jobs/code/nodes/execute/variants';
   if (isVerificationTask) {
-    templateBase = `${executeTasksPrefix}/verification/base`;
-    templateRules = `${executeTasksPrefix}/verification/rules`;
+    templateBase = `${executeVariantsPrefix}/verification/base`;
+    templateRules = `${executeVariantsPrefix}/verification/rules`;
   } else if (isErrorTask) {
-    templateBase = `${executeTasksPrefix}/error/base`;
-    templateRules = `${executeTasksPrefix}/error/rules`;
+    templateBase = `${executeVariantsPrefix}/error/base`;
+    templateRules = `${executeVariantsPrefix}/error/rules`;
   } else if (isTestCode) {
-    templateBase = `${executeTasksPrefix}/test-code/base`;
-    templateRules = `${executeTasksPrefix}/test-code/rules`;
+    templateBase = `${executeVariantsPrefix}/test-code/base`;
+    templateRules = `${executeVariantsPrefix}/test-code/rules`;
   } else if (isDoc) {
-    templateBase = `${executeTasksPrefix}/docgen/base`;
-    templateRules = `${executeTasksPrefix}/docgen/rules`;
+    templateBase = `${executeVariantsPrefix}/docgen/base`;
+    templateRules = `${executeVariantsPrefix}/docgen/rules`;
   } else {
-    templateBase = 'code/phases/execute/base';
-    templateRules = 'code/phases/execute/rules';
+    templateBase = 'jobs/code/nodes/execute/variants/default/base';
+    templateRules = 'jobs/code/nodes/execute/variants/default/rules';
   }
 
   // Pre-format injection data
@@ -175,7 +175,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     templates: {
       base: templateBase,
       rules: templateRules,
-      system: 'code/base/system',
+      system: 'jobs/code/base/system',
     },
     intent,
     artifactPolicies: intent
@@ -188,9 +188,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       mode: state.resolvedAction?.mode,
       resolvedAction: resolvedActionWithDocs,
     },
+    basis: state.resolvedAction?.basis,
     pipeline: {
       sanitizeInput: true,
-      includeTechProfile: true,
+      includeBasis: true,
       includeExamples: !skipHeavyContext && taskType !== 'setup',
       applyPolicyGuardrails: true,
       formatForLLM: true,
@@ -428,9 +429,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           callIndex: state._executeCallIndex,
-          templatePath: state.currentTask?.type === 'verification' ? 'code/phases/execute/tasks/verification/base'
-            : state.currentTask?.type === 'error' ? 'code/phases/execute/tasks/error/base'
-            : 'code/phases/execute/base',
+          templatePath: state.currentTask?.type === 'verification' ? 'jobs/code/nodes/execute/variants/verification/base'
+            : state.currentTask?.type === 'error' ? 'jobs/code/nodes/execute/variants/error/base'
+            : 'jobs/code/nodes/execute/variants/default/base',
           usedTemplates: [
             templateBase,
             templateRules,
@@ -458,8 +459,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             messageCount: messages.length,
             conversationHistoryLength: state.conversationHistory?.length || 0,
             runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
-            profileLanguage: state.techTier?.language || null,
-            profileFramework: state.techTier?.framework || null,
+            profileLanguage: getTechTier(state)?.language || null,
+            profileFramework: getTechTier(state)?.framework || null,
             profilesLoaded: !!promptResult.sections.profiles,
             failedTemplates: promptResult.sections.failedTemplates.length > 0 ? promptResult.sections.failedTemplates : undefined,
           },
@@ -727,7 +728,7 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) return null;
 
-  const language = state.techTier?.language;
+  const language = getTechTier(state)?.language;
 
   const sections: string[] = [];
   sections.push('# Foundation Contract (read-only, do NOT modify these files)\n');

@@ -51,9 +51,9 @@ function buildConfig(fixture: IntentFixture): PromptBuildConfig {
       base: fixture.prompt.templateBase,
       rules: fixture.prompt.templateBase.replace(/\/base/, '/rules').replace(/base-/, 'rules-'),
       system: derived.jobType === 'code'
-        ? 'code/base/system'
+        ? 'jobs/code/base/system'
         : derived.jobType === 'design'
-          ? 'design/base/system'
+          ? 'jobs/design/base/system'
           : undefined,
     },
     intent,
@@ -65,7 +65,7 @@ function buildConfig(fixture: IntentFixture): PromptBuildConfig {
     },
     pipeline: {
       sanitizeInput: false,
-      includeTechProfile: false,
+      includeBasis: false,
       includeExamples: false,
       applyPolicyGuardrails: false,
     },

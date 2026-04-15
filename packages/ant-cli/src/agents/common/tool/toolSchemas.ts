@@ -380,7 +380,7 @@ export async function getToolsByNamesWithTemplates(
   for (const tool of tools) {
     if (TOOLS_WITH_TEMPLATES.includes(tool.name as typeof TOOLS_WITH_TEMPLATES[number])) {
       try {
-        const description = await promptPort.render(`code/base/tools/${tool.name}`, {});
+        const description = await promptPort.render(`jobs/code/base/tools/${tool.name}`, {});
         if (description && description.trim()) {
           tool.description = description.trim();
         }

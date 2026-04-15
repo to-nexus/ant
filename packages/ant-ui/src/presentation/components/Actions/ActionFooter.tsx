@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { deriveFromIntent, type IntentGroup } from '@ant/shared';
+import { deriveFromIntent, INTENT_DEFINITIONS, type IntentGroup, type IntentId } from '@ant/shared';
 import { MessageSquare, Zap, Loader2 } from 'lucide-react';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { addChatUserMessage } from '@/infrastructure/http/api';
@@ -41,7 +41,12 @@ export function ActionFooter({ actionId }: ActionFooterProps) {
     const metadata = { ...useStore.getState().actionMetadata, locale: i18n.language };
     const hasMetadata = Object.keys(metadata).length > 0;
     const intentId = metadata.intent || '';
-    const buildDirective = t(`buildDirective.${intentId}`, { defaultValue: t('footer.build') });
+    const lang = i18n.language as 'en' | 'ko';
+    const i18nDirective = intentId ? t(`buildDirective.${intentId}`, { defaultValue: '' }) : '';
+    const buildDirective = i18nDirective
+      || INTENT_DEFINITIONS.find(d => d.id === intentId)?.description[lang]
+      || INTENT_DEFINITIONS.find(d => d.id === intentId)?.description.en
+      || t('footer.build');
 
     try {
       await addChatUserMessage(

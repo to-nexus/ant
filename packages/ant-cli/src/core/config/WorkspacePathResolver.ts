@@ -204,7 +204,7 @@ export class WorkspacePathResolver {
   
   /**
    * Get specific prompt template path
-   * @param templatePath Relative path within templates (e.g., 'learn/system.md')
+   * @param templatePath Relative path within templates (e.g., 'jobs/learn/base/system.md')
    * @returns Full path to the template file
    */
   static getPromptTemplatePath(templatePath: string): string {
@@ -217,14 +217,6 @@ export class WorkspacePathResolver {
    */
   static getPoliciesPath(): string {
     return path.join(WorkspacePathResolver.getCliRoot(), 'core/policies/prompts');
-  }
-  
-  /**
-   * Get profiles directory path
-   * @returns Path to profiles directory
-   */
-  static getProfilesPath(): string {
-    return path.join(WorkspacePathResolver.getCliRoot(), 'core/prompt/profiles');
   }
   
   /**

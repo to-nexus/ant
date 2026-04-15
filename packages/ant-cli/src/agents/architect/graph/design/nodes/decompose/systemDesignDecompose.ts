@@ -22,7 +22,7 @@ import {
   trackTokenUsage,
 } from "./helpers";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
-import { BOUNDARY, type Mode, buildTechTier, type Stack, resolveTaskTechTiers as resolveTaskTechTiersShared, type PackageTierEntry } from "@ant/shared";
+import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTierConfig, resolveTaskTechTiers, type PackageTierEntry } from "@ant/shared";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -264,7 +264,7 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
     
     const tag = targetFileToTag(taskData.targetFile);
     const packages = tag ? [tag] : undefined;
-    const taskTechTiers = resolveTaskTechTiersShared(packages, graphTechTier, response.packageTiers);
+    const taskTechTiers = resolveTaskTechTiers(packages, graphTechTier, response.packageTiers);
 
     taskQueue.push({
       id: taskData.id,
@@ -378,7 +378,7 @@ export async function decomposeSystemDesign(
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
-  const prompt = await promptAdapter.render('design/phases/decompose/base-system-design', {
+  const prompt = await promptAdapter.render('jobs/design/nodes/decompose/variants/system-design/base', {
     spec,
     hasExistingDesign,
     designPreview,
@@ -398,8 +398,8 @@ export async function decomposeSystemDesign(
     'decompose-systemDesign',
     prompt.length,
     {
-      templatePath: 'design/phases/decompose/base-system-design',
-      usedTemplates: ['design/phases/decompose/rules-system-design'],
+      templatePath: 'jobs/design/nodes/decompose/variants/system-design/base',
+      usedTemplates: ['jobs/design/nodes/decompose/variants/system-design/rules'],
       injectedVariables: {
         spec: spec ? `[${spec.length} chars]` : undefined,
         hasExistingDesign,
@@ -559,6 +559,22 @@ export async function decomposeSystemDesign(
     : buildTechTier(undefined, detectedEnv);
   console.log(`✅ TechTier: stack=${graphTechTier.stack || detectedEnv}, language=${graphTechTier.language}, framework=${graphTechTier.framework || 'none'}`);
 
+  // Sync to RAC basis.techTier (TechTierConfig) so getTechTier(state) returns it
+  const tierKey = graphTechTier.stack === 'fullstack' ? undefined : graphTechTier.stack;
+  const basisTechTierConfig: TechTierConfig = {
+    stack: graphTechTier.stack,
+    ...(tierKey === 'frontend' || graphTechTier.stack === 'fullstack'
+      ? { frontend: { ...graphTechTier, stack: 'frontend' as const } } : {}),
+    ...(tierKey === 'backend' || graphTechTier.stack === 'fullstack'
+      ? { backend: { ...graphTechTier, stack: 'backend' as const } } : {}),
+    ...(!tierKey && graphTechTier.stack !== 'fullstack'
+      ? { frontend: graphTechTier } : {}),
+  };
+  state.resolvedAction = {
+    ...state.resolvedAction!,
+    basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
+  };
+
   // Build task queue
   const taskQueue = buildTaskQueue(response, sourceFileNames, graphTechTier);
 
@@ -569,7 +585,7 @@ export async function decomposeSystemDesign(
     'decompose-systemDesign-result',
     JSON.stringify(response).length,
     {
-      templatePath: 'design/phases/decompose/base-system-design',
+      templatePath: 'jobs/design/nodes/decompose/variants/system-design/base',
       injectedVariables: {
         documentType: response.documentType,
         services: response.services || [],

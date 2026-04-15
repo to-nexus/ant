@@ -2,157 +2,153 @@
 
 exports[`Intent Acceptance > gen-code-directive > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "code/phases/execute/languages/typescript/environments/browser/rules",
-  "code/base/injections/preview-setup",
-  "code/base/injections/tool-calling-rules-compact",
-  "code/base/injections/preview-env-contract",
-  "code/phases/execute/injections/port-management",
-  "common/injections/action-context",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/code/base/injections/preview-setup",
+  "jobs/code/base/injections/tool-calling-rules-compact",
+  "jobs/code/base/injections/preview-env-contract",
+  "jobs/code/nodes/execute/injections/port-management",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > gen-code-spec > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "code/phases/execute/languages/typescript/environments/browser/rules",
-  "code/base/injections/preview-setup",
-  "code/base/injections/tool-calling-rules-compact",
-  "code/base/injections/preview-env-contract",
-  "code/phases/execute/injections/port-management",
-  "common/injections/action-context",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/code/base/injections/preview-setup",
+  "jobs/code/base/injections/tool-calling-rules-compact",
+  "jobs/code/base/injections/preview-env-contract",
+  "jobs/code/nodes/execute/injections/port-management",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > gen-code-sys > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "code/phases/execute/languages/typescript/environments/browser/rules",
-  "code/base/injections/preview-setup",
-  "code/base/injections/tool-calling-rules-compact",
-  "code/base/injections/preview-env-contract",
-  "code/phases/execute/injections/port-management",
-  "common/injections/action-context",
-  "common/injections/ui-design-policy",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/code/base/injections/preview-setup",
+  "jobs/code/base/injections/tool-calling-rules-compact",
+  "jobs/code/base/injections/preview-env-contract",
+  "jobs/code/nodes/execute/injections/port-management",
+  "jobs/shared/injections/action-context",
+  "jobs/shared/injections/ui-design-policy",
 ]
 `;
 
 exports[`Intent Acceptance > gen-spec > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > gen-sys-be > prompt build: injection list snapshot 1`] = `
 [
-  "design/base/injections/backend-guide",
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
+  "jobs/design/base/injections/backend-guide",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > gen-sys-fe > prompt build: injection list snapshot 1`] = `
 [
-  "design/base/injections/frontend-guide",
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
+  "jobs/design/base/injections/frontend-guide",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > gen-sys-full > prompt build: injection list snapshot 1`] = `
 [
-  "design/base/injections/frontend-guide",
-  "design/base/injections/backend-guide",
-  "design/base/injections/api-contract-guide",
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
+  "jobs/design/base/injections/frontend-guide",
+  "jobs/design/base/injections/backend-guide",
+  "jobs/design/base/injections/api-contract-guide",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > gen-ui-desc > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/ui-design-policy",
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
+  "jobs/shared/injections/ui-design-policy",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > gen-ui-figma > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/ui-design-policy",
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
+  "jobs/shared/injections/ui-design-policy",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > gen-ui-ref > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/ui-design-policy",
-  "common/injections/visual-source-authority",
-  "common/injections/directive",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
+  "jobs/shared/injections/ui-design-policy",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/shared/injections/directive",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
 ]
 `;
 
 exports[`Intent Acceptance > rev-code > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "code/base/injections/behavioral-debugging",
-  "code/phases/execute/languages/typescript/environments/browser/rules",
-  "code/base/injections/preview-setup",
-  "code/base/injections/tool-calling-rules-compact",
-  "code/base/injections/preview-env-contract",
-  "code/phases/execute/injections/port-management",
-  "common/injections/action-context",
-  "common/injections/refactor-guidance",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/code/base/injections/behavioral-debugging",
+  "jobs/code/base/injections/preview-setup",
+  "jobs/code/base/injections/tool-calling-rules-compact",
+  "jobs/code/base/injections/preview-env-contract",
+  "jobs/code/nodes/execute/injections/port-management",
+  "jobs/shared/injections/action-context",
+  "jobs/shared/injections/refactor-guidance",
 ]
 `;
 
 exports[`Intent Acceptance > rev-spec > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
-  "common/injections/refactor-guidance",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
+  "jobs/shared/injections/refactor-guidance",
 ]
 `;
 
 exports[`Intent Acceptance > rev-sys > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
-  "common/injections/refactor-guidance",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
+  "jobs/shared/injections/refactor-guidance",
 ]
 `;
 
 exports[`Intent Acceptance > rev-ui > prompt build: injection list snapshot 1`] = `
 [
-  "common/injections/ui-design-policy",
-  "common/injections/directive",
-  "common/injections/visual-source-authority",
-  "design/base/injections/document-language",
-  "common/injections/action-context",
-  "common/injections/refactor-guidance",
+  "jobs/shared/injections/ui-design-policy",
+  "jobs/shared/injections/directive",
+  "jobs/shared/injections/visual-source-authority",
+  "jobs/design/base/injections/document-language",
+  "jobs/shared/injections/action-context",
+  "jobs/shared/injections/refactor-guidance",
 ]
 `;

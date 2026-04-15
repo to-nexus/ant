@@ -2,13 +2,17 @@ import { describe, it, expect } from 'vitest';
 import {
   resolveLanguage,
   resolveFramework,
-  resolveRuntime,
   getIntentDescription,
   resolveToRAC,
   INTENT_DEFINITIONS,
   deriveFromIntent,
+  mergeTechTier,
+  mergeTechTierConfigs,
+  getTechTier,
+  getBasis,
+  buildBasisPreset,
 } from '@ant/shared';
-import type { ResolvedArtifact } from '@ant/shared';
+import type { ResolvedArtifact, TechTier, TechTierConfig, ResolvedActionContext } from '@ant/shared';
 
 // ============================================
 // resolveLanguage
@@ -27,17 +31,10 @@ describe('resolveLanguage', () => {
     expect(resolveLanguage({ language: 'Golang' })).toBe('go');
   });
 
-  it('returns python for Python', () => {
-    expect(resolveLanguage({ language: 'Python' })).toBe('python');
-    expect(resolveLanguage({ language: 'python 3' })).toBe('python');
-  });
-
-  it('returns rust for Rust', () => {
-    expect(resolveLanguage({ language: 'Rust' })).toBe('rust');
-  });
-
-  it('returns java for Java', () => {
-    expect(resolveLanguage({ language: 'Java' })).toBe('java');
+  it('falls back unsupported languages to typescript', () => {
+    expect(resolveLanguage({ language: 'Python' })).toBe('typescript');
+    expect(resolveLanguage({ language: 'Rust' })).toBe('typescript');
+    expect(resolveLanguage({ language: 'Java' })).toBe('typescript');
   });
 
   it('defaults to typescript when no profile', () => {
@@ -99,42 +96,6 @@ describe('resolveFramework', () => {
       { framework: 'Express' },
       {},
     )).toBe('express');
-  });
-});
-
-// ============================================
-// resolveRuntime
-// ============================================
-
-describe('resolveRuntime', () => {
-  it('frontend -> browser', () => {
-    expect(resolveRuntime('frontend')).toBe('browser');
-    expect(resolveRuntime('frontend', 'go')).toBe('browser');
-    expect(resolveRuntime('frontend', 'typescript')).toBe('browser');
-  });
-
-  it('backend + go -> go-api', () => {
-    expect(resolveRuntime('backend', 'go')).toBe('go-api');
-  });
-
-  it('backend + non-go -> node-api', () => {
-    expect(resolveRuntime('backend', 'typescript')).toBe('node-api');
-    expect(resolveRuntime('backend', 'python')).toBe('node-api');
-    expect(resolveRuntime('backend')).toBe('node-api');
-  });
-
-  it('fullstack -> undefined (composite)', () => {
-    expect(resolveRuntime('fullstack')).toBeUndefined();
-    expect(resolveRuntime('fullstack', 'typescript')).toBeUndefined();
-  });
-
-  it('undefined env -> undefined', () => {
-    expect(resolveRuntime(undefined)).toBeUndefined();
-    expect(resolveRuntime(undefined, 'go')).toBeUndefined();
-  });
-
-  it('unknown env -> undefined', () => {
-    expect(resolveRuntime('other' as any)).toBeUndefined();
   });
 });
 
@@ -426,5 +387,213 @@ describe('deriveFromIntent ask intents', () => {
     expect(deriveFromIntent('ask-general')).toEqual({
       mode: 'explain', agent: 'architect', jobType: 'ask',
     });
+  });
+});
+
+// ============================================
+// mergeTechTier
+// ============================================
+
+describe('mergeTechTier', () => {
+  it('returns inferred when no preset', () => {
+    const inferred: TechTier = { language: 'typescript', stack: 'frontend' };
+    expect(mergeTechTier(undefined, inferred)).toEqual(inferred);
+  });
+
+  it('returns preset when no inferred', () => {
+    const preset: TechTier = { language: 'go', framework: 'gin' };
+    expect(mergeTechTier(preset, undefined)).toEqual(preset);
+  });
+
+  it('returns empty when both undefined', () => {
+    expect(mergeTechTier(undefined, undefined)).toEqual({});
+  });
+
+  it('preset fields take priority', () => {
+    const preset: TechTier = { language: 'go' };
+    const inferred: TechTier = { language: 'typescript', framework: 'nextjs', stack: 'frontend' };
+    expect(mergeTechTier(preset, inferred)).toEqual({
+      language: 'go',
+      framework: 'nextjs',
+      stack: 'frontend',
+      packageManager: undefined,
+    });
+  });
+
+  it('fills missing preset fields from inferred', () => {
+    const preset: TechTier = { language: 'typescript', packageManager: 'pnpm' };
+    const inferred: TechTier = { language: 'go', framework: 'gin', stack: 'backend' };
+    const merged = mergeTechTier(preset, inferred);
+    expect(merged.language).toBe('typescript');
+    expect(merged.framework).toBe('gin');
+    expect(merged.stack).toBe('backend');
+    expect(merged.packageManager).toBe('pnpm');
+  });
+});
+
+// ============================================
+// getTechTier / getBasis (TechTierConfig)
+// ============================================
+
+describe('getTechTier', () => {
+  it('reads frontend tier from RAC basis (TechTierConfig)', () => {
+    const config: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { language: 'go', stack: 'backend' },
+    };
+    const state = {
+      resolvedAction: { mode: 'generate', source: 'infer', hasExplicitFields: false, basis: { techTier: config } } as ResolvedActionContext,
+    };
+    expect(getTechTier(state)).toEqual({ language: 'go', stack: 'backend' });
+  });
+
+  it('returns backend tier when no frontend', () => {
+    const config: TechTierConfig = {
+      stack: 'backend',
+      backend: { language: 'go', stack: 'backend' },
+    };
+    const state = {
+      resolvedAction: { mode: 'generate', source: 'infer', hasExplicitFields: false, basis: { techTier: config } } as ResolvedActionContext,
+    };
+    expect(getTechTier(state)).toEqual({ language: 'go', stack: 'backend' });
+  });
+
+  it('returns frontend tier for fullstack (frontend priority)', () => {
+    const config: TechTierConfig = {
+      stack: 'fullstack',
+      frontend: { language: 'typescript', framework: 'nextjs', stack: 'frontend' },
+      backend: { language: 'typescript', framework: 'nestjs', stack: 'backend' },
+    };
+    const state = {
+      resolvedAction: { mode: 'generate', source: 'infer', hasExplicitFields: false, basis: { techTier: config } } as ResolvedActionContext,
+    };
+    expect(getTechTier(state)?.framework).toBe('nextjs');
+  });
+
+  it('returns undefined when basis has no techTier', () => {
+    const state = { resolvedAction: { mode: 'generate', source: 'infer', hasExplicitFields: false } as ResolvedActionContext };
+    expect(getTechTier(state)).toBeUndefined();
+  });
+
+  it('returns undefined when no resolvedAction', () => {
+    expect(getTechTier({})).toBeUndefined();
+  });
+
+  it('returns undefined when config has no tiers', () => {
+    const config: TechTierConfig = { stack: 'frontend' };
+    const state = {
+      resolvedAction: { mode: 'generate', source: 'infer', hasExplicitFields: false, basis: { techTier: config } } as ResolvedActionContext,
+    };
+    expect(getTechTier(state)).toBeUndefined();
+  });
+});
+
+describe('getBasis', () => {
+  it('reads basis from RAC', () => {
+    const basis = { techTier: { stack: 'backend' as const, backend: { language: 'go' as const, stack: 'backend' as const } } };
+    const state = { resolvedAction: { mode: 'generate', source: 'infer', hasExplicitFields: false, basis } as ResolvedActionContext };
+    expect(getBasis(state)).toEqual(basis);
+  });
+
+  it('returns undefined when no RAC', () => {
+    expect(getBasis({})).toBeUndefined();
+  });
+});
+
+// ============================================
+// mergeTechTierConfigs
+// ============================================
+
+describe('mergeTechTierConfigs', () => {
+  it('returns inferred when no preset', () => {
+    const inferred: TechTierConfig = { stack: 'frontend', frontend: { language: 'typescript', stack: 'frontend' } };
+    expect(mergeTechTierConfigs(undefined, inferred)).toEqual(inferred);
+  });
+
+  it('returns preset when no inferred', () => {
+    const preset: TechTierConfig = { stack: 'backend', backend: { language: 'go', stack: 'backend' } };
+    expect(mergeTechTierConfigs(preset, undefined)).toEqual(preset);
+  });
+
+  it('returns empty when both undefined', () => {
+    expect(mergeTechTierConfigs(undefined, undefined)).toEqual({});
+  });
+
+  it('preset stack takes priority', () => {
+    const preset: TechTierConfig = { stack: 'fullstack', frontend: { language: 'typescript', stack: 'frontend' } };
+    const inferred: TechTierConfig = { stack: 'frontend', frontend: { language: 'typescript', framework: 'nextjs', stack: 'frontend' } };
+    const merged = mergeTechTierConfigs(preset, inferred);
+    expect(merged.stack).toBe('fullstack');
+  });
+
+  it('merges frontend tiers with preset priority', () => {
+    const preset: TechTierConfig = { stack: 'frontend', frontend: { language: 'go', stack: 'frontend' } };
+    const inferred: TechTierConfig = { stack: 'frontend', frontend: { language: 'typescript', framework: 'nextjs', stack: 'frontend' } };
+    const merged = mergeTechTierConfigs(preset, inferred);
+    expect(merged.frontend?.language).toBe('go');
+    expect(merged.frontend?.framework).toBe('nextjs');
+  });
+
+  it('merges fullstack with both tiers', () => {
+    const preset: TechTierConfig = {
+      stack: 'fullstack',
+      frontend: { language: 'typescript', framework: 'react', stack: 'frontend' },
+    };
+    const inferred: TechTierConfig = {
+      stack: 'fullstack',
+      frontend: { language: 'typescript', stack: 'frontend' },
+      backend: { language: 'typescript', framework: 'nestjs', stack: 'backend' },
+    };
+    const merged = mergeTechTierConfigs(preset, inferred);
+    expect(merged.frontend?.framework).toBe('react');
+    expect(merged.backend?.framework).toBe('nestjs');
+  });
+});
+
+// ============================================
+// buildBasisPreset (new API)
+// ============================================
+
+describe('buildBasisPreset', () => {
+  it('builds frontend-only preset', () => {
+    const basis = buildBasisPreset({
+      stack: 'frontend',
+      tiers: { frontend: { language: 'typescript', framework: 'nextjs' } },
+    });
+    expect(basis.techTier?.stack).toBe('frontend');
+    expect(basis.techTier?.frontend?.language).toBe('typescript');
+    expect(basis.techTier?.frontend?.framework).toBe('nextjs');
+    expect(basis.techTier?.frontend?.stack).toBe('frontend');
+  });
+
+  it('builds fullstack preset', () => {
+    const basis = buildBasisPreset({
+      stack: 'fullstack',
+      tiers: {
+        frontend: { language: 'typescript', framework: 'react' },
+        backend: { language: 'typescript', framework: 'nestjs' },
+      },
+    });
+    expect(basis.techTier?.stack).toBe('fullstack');
+    expect(basis.techTier?.frontend?.framework).toBe('react');
+    expect(basis.techTier?.backend?.framework).toBe('nestjs');
+  });
+
+  it('returns undefined techTier when no stack or tiers', () => {
+    const basis = buildBasisPreset({});
+    expect(basis.techTier).toBeUndefined();
+  });
+
+  it('builds with stack only', () => {
+    const basis = buildBasisPreset({ stack: 'backend' });
+    expect(basis.techTier?.stack).toBe('backend');
+    expect(basis.techTier?.frontend).toBeUndefined();
+    expect(basis.techTier?.backend).toBeUndefined();
+  });
+
+  it('builds with designSystem', () => {
+    const basis = buildBasisPreset({ designSystem: 'material' });
+    expect(basis.visualTier?.designSystem).toBe('material');
+    expect(basis.techTier).toBeUndefined();
   });
 });

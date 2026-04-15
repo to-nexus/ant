@@ -3,7 +3,7 @@
  * 
  * Entry point for running Ask LangGraph from triage node.
  * 
- * Security guardrails are handled at the prompt level (ask/rules.md)
+ * Security guardrails are handled at the prompt level (jobs/ask/nodes/agent/variants/default/rules.md)
  * where the LLM can make context-aware decisions. No hardcoded regex
  * filters — they cause false positives on legitimate code instructions
  * (env vars, auth implementation as project spec, etc.).
