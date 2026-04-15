@@ -83,6 +83,8 @@ decompose 이후 `parallelOrchestrator` 노드로 분기한다. Code Job과 동�
 decompose -> parallelOrchestrator -> learn -> __end__
 ```
 
+Worker Subgraph는 `DesignGraphChannels`를 spread하여 메인 그래프와 채널을 동기화한다. 새 채널 추가 시 `DesignGraphChannels`(`graph.ts`)에만 추가하면 Worker에 자동 반영된다. 상세: [11-agent-architecture.md](11-agent-architecture.md) "Worker Subgraph 채널 정의" 참조.
+
 ## 주요 노드 특성
 
 ### plan

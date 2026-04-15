@@ -875,7 +875,12 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   } as any;
 }
 
-const DesignGraphAnnotation = Annotation.Root({
+/**
+ * SSOT: All channel definitions for the design graph.
+ * Both main graph and worker subgraph spread this to stay in sync.
+ * Worker subgraph adds worker-only fields on top.
+ */
+export const DesignGraphChannels = {
   ...DetectableFields,
 
   // Job-specific fields (not in common chain)
@@ -923,7 +928,9 @@ const DesignGraphAnnotation = Annotation.Root({
   jobConversation: Annotation<any>,
   workerId: Annotation<any>,
   _isStopRequested: Annotation<any>,
-});
+} as const;
+
+const DesignGraphAnnotation = Annotation.Root(DesignGraphChannels);
 
 export function buildDesignGraph() {
   const graph = new StateGraph(DesignGraphAnnotation);

@@ -92,10 +92,15 @@ basis는 detect와 decompose 구간에서 점진적으로 확정된다:
 | 단계 | 확정 내용 | 소스 |
 |------|-----------|------|
 | detect | `RAC.basis.techTier` (preset) | UI BasisSelector → `ActionMetadata.basis` (explicit 경로만) |
-| decompose | `RAC.basis.techTier` (final) | `mergeTechTier(preset, inferred)` — preset 필드 우선, 빈 필드는 LLM 추론으로 채움 |
-| decompose | `RAC.basis.visualTier` | 향후 확장 예정 (구조만 확보) |
+| detect | `RAC.basis.visualTier` (preset) | UI BasisWizard → `ActionMetadata.basis.visualTier` |
+| decompose | `RAC.basis.techTier` (final) | `mergeTechTierConfigs(preset, inferred)` — preset 필드 우선, 빈 필드는 LLM 추론으로 채움 |
+| decompose | `RAC.basis.visualTier` (final) | `resolveVisualTierFromDecompose(llmResponse, preset)` — `gen-code-directive` intent에서만 실행 |
 
-`getTechTier(state)` / `getBasis(state)` 헬퍼로 RAC에서 읽는다.
+`getTechTier(state)` 헬퍼(`@ant/shared`)로 RAC에서 대표 TechTier를 읽는다.
+
+basis는 plan/execute 노드에서 `PromptBuilder`의 `buildBasisSection()`을 통해 프롬프트에 주입된다:
+- **techTier**: stack 템플릿 + language base + framework 템플릿 (`basis/techTier/stack/*.md`, `jobs/code/basis/techTier/framework/*.md`)
+- **visualTier**: 6개 레이어별 템플릿 (`basis/visualTier/{layer}/{variant}.md`)
 
 ### Broadcaster
 
@@ -138,6 +143,35 @@ Job 실행 중 상태 변경은 Redis Pub/Sub를 통해 실시간 전파된다.
    - parallelGroup 미지정 -> running이 0일 때만 할당
    - parallelGroup이 running과 충돌 -> skip
    - 충돌 없음 -> 할당
+
+### Worker Subgraph 채널 정의 (SSOT 패턴)
+
+Worker Subgraph는 메인 그래프의 경량 버전이지만, LangGraph에서 **별도 StateGraph로 invoke**되므로 자체 Annotation이 필요하다. Annotation에 없는 채널은 `graph.invoke(workerState)` 시점에 자동으로 DROP된다.
+
+채널 누락을 방지하기 위해, 메인 그래프의 채널 정의를 export하고 Worker가 spread로 재사용한다:
+
+| Job | 채널 SSOT | Worker Subgraph | 파일 |
+|-----|-----------|-----------------|------|
+| Code | `CodeGraphChannels` | `...CodeGraphChannels` + worker-only | `graph/code/graph.ts` → `graph/code/parallel/workerGraph.ts` |
+| Design | `DesignGraphChannels` | `...DesignGraphChannels` + worker-only | `graph/design/graph.ts` → `graph/design/parallel/workerGraph.ts` |
+
+```typescript
+// graph.ts — 채널 정의 export
+export const CodeGraphChannels = {
+  ...DetectableFields,
+  // ... 모든 job-specific 필드
+} as const;
+const MainAnnotation = Annotation.Root(CodeGraphChannels);
+
+// parallel/workerGraph.ts — spread로 재사용
+import { CodeGraphChannels } from '../graph';
+const WorkerAnnotation = Annotation.Root({
+  ...CodeGraphChannels,        // SSOT에서 자동 상속
+  _taskCompleted: Annotation<any>,  // worker-only
+});
+```
+
+새 채널을 추가할 때 `*GraphChannels`에만 추가하면 메인 그래프와 Worker 모두 자동 반영된다.
 
 ### 오류 처리
 

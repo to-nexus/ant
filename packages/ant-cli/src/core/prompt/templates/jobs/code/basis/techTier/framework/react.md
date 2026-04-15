@@ -1,5 +1,21 @@
 # React Framework Profile
 
+## Runtime: Client-Side Rendering (Vite)
+
+**This profile is for pure React with Vite — a client-side rendered SPA.**
+
+**Constraint**: Do NOT use SSR/hybrid frameworks (Next.js, Remix, Gatsby). This means:
+- No `next`, `remix`, `gatsby` dependencies
+- No file-based routing (`src/app/`, `src/pages/`)
+- No Server Components, no `'use client'` directives
+- No `getServerSideProps`, `generateMetadata`, or server-only APIs
+
+**Constraint**: Use Vite as the build tool and dev server. Entry point is `index.html` + `src/main.tsx`.
+
+**Constraint**: If the existing codebase uses a different framework (e.g., Next.js), follow this profile — not the existing setup. Remove or replace conflicting framework configuration.
+
+**Routing**: Use a client-side router (React Router, TanStack Router) — not file-based routing.
+
 ## Component Structure
 ```typescript
 // Preferred order:
