@@ -369,7 +369,6 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
       let step: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit' = 'pick-action';
       let selectedIntentId: string | null = null;
-      let actionMetadata: ActionMetadata = {};
 
       if (actionId) {
         step = 'pick-intent';
@@ -382,7 +381,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         actionsStep: step,
         selectedActionId: actionId || null,
         selectedIntentId,
-        actionMetadata,
+        actionMetadata: { basis: s.actionMetadata.basis },
       };
     });
   },
@@ -392,20 +391,25 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   selectAction: (actionId: string) => {
-    set({ selectedActionId: actionId, selectedIntentId: null, actionMetadata: {} });
+    set((s: any) => ({
+      selectedActionId: actionId,
+      selectedIntentId: null,
+      actionMetadata: { basis: s.actionMetadata.basis },
+    }));
   },
 
   selectIntent: (intentId: string) => {
     const derived = deriveFromIntent(intentId);
-    set({
+    set((s: any) => ({
       selectedIntentId: intentId,
       actionMetadata: {
         intent: intentId,
+        basis: s.actionMetadata.basis,
       },
       selectedAgent: derived.agent,
       selectedJobType: derived.jobType as any,
       pendingChatInput: { message: '', source: 'intent-change' },
-    });
+    }));
   },
 
   updateActionMetadata: (patch: Partial<ActionMetadata>) => {
@@ -442,7 +446,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const nextOpen = { ...s.mainPanelOpenTabs, actions: false };
       const nextOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'actions');
       return {
-        actionMetadata: {},
+        actionMetadata: { basis: s.actionMetadata.basis },
         selectedIntentId: null,
         actionsStep: 'pick-action' as const,
         selectedActionId: null,

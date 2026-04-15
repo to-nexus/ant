@@ -2,10 +2,10 @@ import { useRef, useMemo, useCallback } from 'react';
 import { Settings2, Palette, AlertCircle } from 'lucide-react';
 import { ScrollableTabNav, type TabItem } from '../ScrollableTabNav';
 import { PageTransition } from '../PageTransition';
+import { ActionFooter } from '../ActionFooter';
 import { useBasisWizard } from './useBasisWizard';
 import { StepHeader } from './StepHeader';
 import { VariantCardGrid } from './VariantCardGrid';
-import { WizardFooter } from './WizardFooter';
 import { BasisSummaryBar } from './BasisSummaryBar';
 import { TIER_TAB_ITEMS } from './constants';
 import type { BasisWizardProps } from './types';
@@ -146,7 +146,8 @@ export function BasisWizard({ basisSlot, onBack, lang }: BasisWizardProps) {
       </PageTransition>
 
       <div className="shrink-0">
-        <WizardFooter
+        <ActionFooter
+          variant="wizard"
           steps={wizard.activeSteps}
           currentIndex={wizard.state.stepIndex}
           onStepClick={handleStepGoTo}
