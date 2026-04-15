@@ -152,12 +152,13 @@ const SAMPLE_VARS: Record<string, any> = {
 };
 
 describe('Template Smoke Tests', () => {
+  let allTemplateNames: string[];
   let templateNames: string[];
   let adapter: FilePromptAdapter;
 
   beforeAll(async () => {
-    const allNames = await collectTemplateNames(TEMPLATES_DIR);
-    templateNames = allNames.filter(n => !n.startsWith('basis/'));
+    allTemplateNames = await collectTemplateNames(TEMPLATES_DIR);
+    templateNames = allTemplateNames.filter(n => !n.startsWith('basis/'));
     adapter = new FilePromptAdapter(TEMPLATES_DIR);
   });
 
@@ -244,7 +245,7 @@ describe('Template Smoke Tests', () => {
     expect(planPartials).toContain('jobs/code/base/injections/secure-coding');
   });
 
-  it('each template renders without throwing and produces non-empty output', async () => {
+  it('each template (including basis/) renders without throwing and produces non-empty output', async () => {
     await initPartials(TEMPLATES_DIR);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -258,11 +259,13 @@ describe('Template Smoke Tests', () => {
       'jobs/shared/injections/explain-guidance',
       'jobs/code/nodes/decompose/variants/default/mode-guide',
       'jobs/code/nodes/decompose/variants/default/design-doc-guide',
+      'basis/techTier/stack/backend',
+      'basis/techTier/stack/frontend',
     ]);
 
     const failures: Array<{ name: string; error: string }> = [];
 
-    for (const name of templateNames) {
+    for (const name of allTemplateNames) {
       try {
         const result = await adapter.render(name, SAMPLE_VARS);
         if ((!result || result.trim().length === 0) && !ALLOWED_EMPTY.has(name)) {
