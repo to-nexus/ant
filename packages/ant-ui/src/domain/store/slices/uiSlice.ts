@@ -39,7 +39,7 @@ export interface UIActions {
   setAccountConfigScrollTarget: (target: string | null) => void;
   // Actions panel
   openActionsPanel: (actionId?: string) => void;
-  setActionsStep: (step: 'pick-action' | 'pick-intent' | 'config') => void;
+  setActionsStep: (step: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit') => void;
   selectAction: (actionId: string) => void;
   selectIntent: (intentId: string) => void;
   updateActionMetadata: (patch: Partial<ActionMetadata>) => void;
@@ -367,7 +367,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const newOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'actions');
       newOrder.push('actions');
 
-      let step: 'pick-action' | 'pick-intent' | 'config' = 'pick-action';
+      let step: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit' = 'pick-action';
       let selectedIntentId: string | null = null;
       let actionMetadata: ActionMetadata = {};
 

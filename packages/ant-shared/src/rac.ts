@@ -95,29 +95,14 @@ export interface Basis {
 
 export {
   type BasisOption,
+  STACK_OPTIONS,
   TECH_TIER_LANGUAGES,
   VISUAL_TIER_DESIGN_SYSTEMS,
 } from './tech-tier-registry';
 
-export {
-  VISUAL_LANGUAGE_VARIANTS,
-  SURFACE_SYSTEM_VARIANTS,
-  SPATIAL_SYSTEM_VARIANTS,
-  INTERACTION_GRAMMAR_VARIANTS,
-  COMPONENT_SEMANTICS_VARIANTS,
-  VISUAL_HIERARCHY_RULES_VARIANTS,
-  VISUAL_LANGUAGE_OPTIONS,
-  SURFACE_SYSTEM_OPTIONS,
-  SPATIAL_SYSTEM_OPTIONS,
-  INTERACTION_GRAMMAR_OPTIONS,
-  COMPONENT_SEMANTICS_OPTIONS,
-  VISUAL_HIERARCHY_RULES_OPTIONS,
-  deriveInteractionGrammar,
-  deriveVisualHierarchyRules,
-  deriveComponentSemantics,
-  resolveVisualTier,
-  VISUAL_TIER_TEMPLATE_PATHS,
-} from './visual-tier-registry';
+// Visual-tier registry symbols are exported from package root via index.ts
+// (`export * from './visual-tier-registry'`). Re-exporting here would create a
+// rac ↔ visual-tier-registry circular dependency (lint: import/no-cycle).
 
 export function buildBasisPreset(opts: {
   stack?: string;

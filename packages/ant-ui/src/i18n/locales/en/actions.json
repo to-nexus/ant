@@ -89,10 +89,21 @@
     "visualHierarchy": "Visual Hierarchy",
     "derivedLayers": "Derived Layers",
     "derivedAtRuntime": "Determined at runtime",
-    "derivedFromAbove": "Derived from selections above"
+    "derivedFromAbove": "Derived from selections above",
+    "configurePreset": "Configure tech/design preset",
+    "wizardTechTier": "Tech Tier",
+    "wizardVisualTier": "Visual Tier",
+    "wizardDone": "Done",
+    "wizardStepStack": "Stack",
+    "wizardStepLanguage": "Language",
+    "wizardStepFramework": "Framework",
+    "wizardStepVisualLanguage": "Visual Language",
+    "wizardStepSurfaceSystem": "Surface System",
+    "wizardStepSpatialSystem": "Spatial System"
   },
 
   "section": {
+    "basis": "Basis",
     "refs": "References",
     "context": "Context",
     "target": "Target",
