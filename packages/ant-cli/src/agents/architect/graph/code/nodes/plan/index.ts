@@ -294,6 +294,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const entryReason = inToolLoop ? undefined : state._planEntryReason;
   if (!inToolLoop) state._planEntryReason = undefined;
   const isRetry = entryReason === 'retry';
+  // Capture retries at entry so tool loop re-entries (where isRetry=false) don't reset it.
+  // Without this, the plan↔tool loop completion path sets retries=0 via `isRetry ? ... : 0`,
+  // causing the retry counter to never reach maxRetries → infinite loop.
+  // inToolLoop: state.retries already carries the correct value from the initial retry entry.
+  const preservedRetries = (inToolLoop || isRetry) ? state.retries : 0;
 
   if (inToolLoop) {
     // Tool loop re-entry — no resets, just continue where we left off
@@ -671,7 +676,7 @@ const hasPrePlanText =
           _executeBudget: computeBudgetFromPlanText(finalizedPlan),
           _activePhase: 'execute' as const,
           planConversationHistory: undefined,
-          retries: isRetry ? state.retries : 0,
+          retries: preservedRetries,
           completedTasksDetails: state.completedTasksDetails || [],
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
@@ -726,7 +731,7 @@ const hasPrePlanText =
           _executeBudget: computeBudgetFromPlanText(planText),
           _activePhase: 'execute' as const,
           planConversationHistory: undefined,
-          retries: isRetry ? state.retries : 0,
+          retries: preservedRetries,
           completedTasksDetails: state.completedTasksDetails || [],
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
@@ -787,7 +792,7 @@ const hasPrePlanText =
       lessons: [],
       planText: setupPlanText,
       _executeBudget: computeBudgetFromPlanText(setupPlanText ?? ''),
-      retries: isRetry ? state.retries : 0,
+      retries: preservedRetries,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
@@ -1102,7 +1107,7 @@ const hasPrePlanText =
       lessons,
       planText,
       _executeBudget: planText ? computeBudgetFromPlanText(planText) : undefined,
-      retries: isRetry ? state.retries : 0,
+      retries: preservedRetries,
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
