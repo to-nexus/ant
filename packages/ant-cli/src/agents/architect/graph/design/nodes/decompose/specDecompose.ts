@@ -183,6 +183,9 @@ export async function decomposeSpec(
       totalSections: sections.length,
       sectionScope: section.scope,
       include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
+      artifactPolicy: {
+        refs: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
+      },
       parallelGroup: `spec-${slug}`,
       completed: false,
     };

@@ -78,6 +78,9 @@ export const executeJobSchema = z.object({
       }).optional(),
       visualTier: z.object({
         designSystem: z.string().optional(),
+        visualLanguage: z.enum(['modernSaas', 'enterprise', 'fintechPremium', 'devtoolDark', 'minimalNeutral']).optional(),
+        surfaceSystem: z.enum(['solid', 'soft', 'borderedSoft', 'tinted', 'glassLight']).optional(),
+        spatialSystem: z.enum(['compact8pt', 'balanced8pt', 'airy8pt', 'dense12ptHybrid']).optional(),
       }).optional(),
     }).optional(),
   }).optional(),

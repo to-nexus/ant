@@ -17,7 +17,7 @@ import { collectResolvedPartials } from "../../../../../../periphery/adapters/pr
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
-import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
+import { selectArtifacts, selectArtifactsWithPolicy, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { effectiveTechTier, getTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
 import { PromptBuilder } from "../../../../../../core/prompt/builder/PromptBuilder";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
@@ -85,14 +85,32 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const poolView = new ArtifactPoolView(state.artifacts || []);
   const pool = poolView.all;
 
-  const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
-    && ((state.resolvedAction?.artifacts?.length ?? state.resolvedAction?.documents?.length ?? 0) > 0);
+  const hasExplicitSelection = state.resolvedAction?.hasExplicitFields
+    && ((state.resolvedAction.refs?.length ?? 0) + (state.resolvedAction.context?.length ?? 0) > 0);
 
   let resolvedActionWithDocs = state.resolvedAction;
-  if (!hasExplicitDocs) {
-    const inferred = resolveArtifacts(pool,
-      { taskType: state.currentTask.type, include: state.currentTask.include },
-      { threshold: 30_000 });
+  if (hasExplicitSelection) {
+    const explicitPolicy = {
+      refs: state.resolvedAction!.refs || [],
+      context: state.resolvedAction!.context || [],
+    };
+    const selected = selectArtifactsWithPolicy(pool, explicitPolicy);
+    if (selected.length > 0) {
+      const compacted = compactArtifacts(selected, { threshold: 30_000 });
+      resolvedActionWithDocs = {
+        ...(state.resolvedAction!),
+        artifacts: compacted,
+        documents: compacted,
+      };
+      const totalChars = compacted.reduce((s, a) => s + (a.content?.length || 0), 0);
+      console.log(`📄 [Execute] Explicit: ${pool.length} pool → ${compacted.length} selected (${totalChars.toLocaleString()} chars, refs=${JSON.stringify(explicitPolicy.refs)}, context=${JSON.stringify(explicitPolicy.context)})`);
+    }
+  } else {
+    const task = state.currentTask;
+    const selected = task.artifactPolicy
+      ? selectArtifactsWithPolicy(pool, task.artifactPolicy)
+      : selectArtifacts(pool, { taskType: task.type, include: task.include });
+    const inferred = compactArtifacts(selected, { threshold: 30_000 });
 
     if (inferred.length > 0) {
       resolvedActionWithDocs = {
@@ -101,7 +119,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         documents: inferred,
       };
       const totalChars = inferred.reduce((s, a) => s + (a.content?.length || 0), 0);
-      console.log(`📄 [Execute] Pipeline: ${pool.length} pool → ${inferred.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(state.currentTask.include ?? 'default')})`);
+      console.log(`📄 [Execute] Pipeline: ${pool.length} pool → ${inferred.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(task.include ?? 'default')})`);
     }
   }
 

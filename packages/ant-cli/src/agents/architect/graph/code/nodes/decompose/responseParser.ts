@@ -29,58 +29,50 @@ function sanitizeJsonControlChars(jsonStr: string): string {
 }
 
 import type { PackageTierEntry, TaskType } from '@ant/shared';
+import { flattenPolicyToInclude } from '../../../../../../core/artifact/ArtifactPipeline';
+
+type ArtifactPolicy = { refs?: string[]; context?: string[] };
 
 /**
- * Derive `include` artifact path prefixes from legacy task fields.
- * Backward-compatible fallback when the LLM does not output `include` explicitly.
+ * Derive role-annotated artifact selection policy from legacy task fields.
+ * Returns undefined for verification tasks (no docs needed).
  */
-function deriveIncludeFromLegacyFields(
+export function deriveArtifactPolicy(
   taskType: TaskType,
   packages?: string[],
   uiSections?: string[],
   selectedSpec?: string | null,
-): string[] | undefined {
+): ArtifactPolicy | undefined {
   if (taskType === 'verification') return undefined;
 
-  const paths: string[] = [];
-
   if (taskType === 'ui' || taskType === 'design-system') {
+    const contextPaths: string[] = [];
     if (uiSections?.length) {
-      paths.push(`${ARTIFACT_PREFIX.UI}tokens`);
+      contextPaths.push(`${ARTIFACT_PREFIX.UI}tokens`);
       for (const sec of uiSections) {
         if (sec === 'tokens') continue;
-        if (sec === 'assets') {
-          paths.push(`${ARTIFACT_PREFIX.UI}assets`);
-        } else {
-          paths.push(`${ARTIFACT_PREFIX.UI_SPEC}${sec}`);
-        }
+        if (sec === 'assets') contextPaths.push(`${ARTIFACT_PREFIX.UI}assets`);
+        else contextPaths.push(`${ARTIFACT_PREFIX.UI_SPEC}${sec}`);
       }
     } else {
-      paths.push(`${ARTIFACT_PREFIX.UI}*`);
+      contextPaths.push(`${ARTIFACT_PREFIX.UI}*`);
     }
-    return paths.length > 0 ? paths : undefined;
+    return contextPaths.length > 0 ? { context: contextPaths } : undefined;
   }
 
-  if (selectedSpec) {
-    paths.push(`${ARTIFACT_PREFIX.SPEC}${selectedSpec}`);
-  }
+  const refPaths: string[] = [];
+  if (selectedSpec) refPaths.push(`${ARTIFACT_PREFIX.SPEC}${selectedSpec}`);
 
   if (packages?.length) {
     for (const pkg of packages) {
-      if (pkg.startsWith('fe-')) {
-        paths.push(`${ARTIFACT_PREFIX.FE_SYSTEM}${pkg.slice(3)}.md`);
-      } else if (pkg.startsWith('be-')) {
-        paths.push(`${ARTIFACT_PREFIX.BE_SYSTEM}${pkg.slice(3)}.md`);
-      } else if (pkg === 'shared') {
-        paths.push(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
-      }
+      if (pkg.startsWith('fe-')) refPaths.push(`${ARTIFACT_PREFIX.FE_SYSTEM}${pkg.slice(3)}.md`);
+      else if (pkg.startsWith('be-')) refPaths.push(`${ARTIFACT_PREFIX.BE_SYSTEM}${pkg.slice(3)}.md`);
+      else if (pkg === 'shared') refPaths.push(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
     }
-    if (!packages.includes('shared')) {
-      paths.push(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
-    }
+    if (!packages.includes('shared')) refPaths.push(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
   }
 
-  return paths.length > 0 ? paths : undefined;
+  return refPaths.length > 0 ? { refs: refPaths } : undefined;
 }
 
 export interface ParsedTechTier {
@@ -297,9 +289,10 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
     const uiSections: string[] | undefined = Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined;
     const packages: string[] | undefined = Array.isArray((task as any).packages) ? (task as any).packages : undefined;
 
-    // include: LLM-provided artifact path prefixes, or auto-derived fallback
+    // artifactPolicy: role-annotated selection; include: flat backward-compat projection
     const explicitInclude: string[] | undefined = Array.isArray((task as any).include) ? (task as any).include : undefined;
-    const include = explicitInclude ?? deriveIncludeFromLegacyFields(resolvedType, packages, uiSections, selectedSpec);
+    const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, selectedSpec);
+    const include = explicitInclude ?? flattenPolicyToInclude(artifactPolicy);
 
     const normalizedTask: CodeTask = {
       id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -312,6 +305,7 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
       uiSections,
       packages,
       include,
+      artifactPolicy,
       exclusive: exclusive || undefined,
       parallelGroup,
     };

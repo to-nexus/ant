@@ -598,6 +598,30 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 6.6: Apply visualTier from decompose response (gen-code-directive)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.resolvedAction?.intent === 'gen-code-directive') {
+    const { resolveVisualTierFromDecompose } = await import('../../../../../common/visualTierResolver');
+    const resolvedVT = resolveVisualTierFromDecompose(
+      rawResponse,
+      state.resolvedAction?.basis?.visualTier,
+    );
+    if (resolvedVT) {
+      state.resolvedAction = {
+        ...state.resolvedAction!,
+        basis: {
+          ...state.resolvedAction?.basis,
+          visualTier: {
+            ...state.resolvedAction?.basis?.visualTier,
+            ...resolvedVT,
+          },
+        },
+      };
+      console.log(`✅ VisualTier: ${resolvedVT.visualLanguage ?? '-'}/${resolvedVT.surfaceSystem ?? '-'}/${resolvedVT.spatialSystem ?? '-'}`);
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6.7: Assign task-level techTier (packageTiers mapping)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const currentTechTierConfig = state.resolvedAction?.basis?.techTier;
