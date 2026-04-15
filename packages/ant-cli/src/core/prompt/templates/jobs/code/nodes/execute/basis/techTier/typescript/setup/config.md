@@ -159,6 +159,12 @@ For each dependency in `package.json`, two decisions must be made in order: (1) 
 
 **Without "moduleResolution":** Cannot resolve imports, compilation fails.
 
+⚠️ **Blind Spot — Build emit polluting source tree:**
+
+**Observation target**: For every `tsconfig*.json` in the project, verify: will `tsc` / `tsc -b` produce any output files (`.js`, `.d.ts`, `.map`) alongside source `.ts` files?
+
+**Constraint**: Build commands must NOT deposit compiled artifacts in the source tree. If a tsconfig enables emit (explicitly or implicitly), output must be directed outside the source tree or suppressed entirely.
+
 ## 3. Build Tool Configuration
 
 **Constraint**: Every build framework has a native config file. This config file MUST be created during setup -- it is not optional.
@@ -207,6 +213,7 @@ Configure as needed for project (styling framework, ESLint, etc).
 ❌ Missing `@types/` packages in devDependencies
 ❌ Wrong `"module"` setting (use "ESNext" not "CommonJS")
 ❌ Not setting `"type": "module"` in package.json
+❌ tsconfig that emits compiled output (`.js`, `.d.ts`) into the source tree (verify every `tsconfig*.json` — implicit emit flags are easy to miss)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
