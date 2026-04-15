@@ -107,10 +107,21 @@
     "visualHierarchy": "비주얼 하이라키",
     "derivedLayers": "파생 레이어",
     "derivedAtRuntime": "실행 시 자동 결정",
-    "derivedFromAbove": "상위 선택에 따라 결정"
+    "derivedFromAbove": "상위 선택에 따라 결정",
+    "configurePreset": "기술/디자인 프리셋 설정",
+    "wizardTechTier": "기술 티어",
+    "wizardVisualTier": "비주얼 티어",
+    "wizardDone": "완료",
+    "wizardStepStack": "스택",
+    "wizardStepLanguage": "언어",
+    "wizardStepFramework": "프레임워크",
+    "wizardStepVisualLanguage": "비주얼 언어",
+    "wizardStepSurfaceSystem": "서피스 시스템",
+    "wizardStepSpatialSystem": "공간 시스템"
   },
 
   "section": {
+    "basis": "베이시스",
     "refs": "참조",
     "context": "컨텍스트",
     "target": "타겟",

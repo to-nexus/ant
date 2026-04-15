@@ -53,26 +53,26 @@ export const VISUAL_HIERARCHY_RULES_VARIANTS: readonly VisualHierarchyRulesVaria
 // ============================================
 
 export const VISUAL_LANGUAGE_OPTIONS: BasisOption[] = [
-  { id: 'modernSaas', label: { en: 'Modern SaaS', ko: 'Modern SaaS' } },
-  { id: 'enterprise', label: { en: 'Enterprise', ko: 'Enterprise' } },
-  { id: 'fintechPremium', label: { en: 'Fintech Premium', ko: 'Fintech Premium' } },
-  { id: 'devtoolDark', label: { en: 'Developer Tool', ko: 'Developer Tool' } },
-  { id: 'minimalNeutral', label: { en: 'Minimal Neutral', ko: 'Minimal Neutral' } },
+  { id: 'modernSaas', label: { en: 'Modern SaaS', ko: 'Modern SaaS' }, description: { en: 'Clean, bright UI with rounded corners and gradients', ko: '라운드 코너와 그라데이션의 밝고 깔끔한 UI' }, accentColor: 'blue' },
+  { id: 'enterprise', label: { en: 'Enterprise', ko: 'Enterprise' }, description: { en: 'Professional, dense UI with sharp edges and structure', ko: '날카로운 엣지와 구조의 프로페셔널 UI' }, accentColor: 'slate' },
+  { id: 'fintechPremium', label: { en: 'Fintech Premium', ko: 'Fintech Premium' }, description: { en: 'Dark luxury with gold and emerald accents', ko: '골드와 에메랄드 악센트의 다크 럭셔리' }, accentColor: 'amber' },
+  { id: 'devtoolDark', label: { en: 'Developer Tool', ko: 'Developer Tool' }, description: { en: 'Terminal-inspired dark theme with neon accents', ko: '네온 악센트의 터미널 영감 다크 테마' }, accentColor: 'green' },
+  { id: 'minimalNeutral', label: { en: 'Minimal Neutral', ko: 'Minimal Neutral' }, description: { en: 'Pure white space with subtle gray borders', ko: '미세한 회색 보더의 순백 여백' }, accentColor: 'gray' },
 ];
 
 export const SURFACE_SYSTEM_OPTIONS: BasisOption[] = [
-  { id: 'solid', label: { en: 'Solid', ko: 'Solid' } },
-  { id: 'soft', label: { en: 'Soft', ko: 'Soft' } },
-  { id: 'borderedSoft', label: { en: 'Bordered Soft', ko: 'Bordered Soft' } },
-  { id: 'tinted', label: { en: 'Tinted', ko: 'Tinted' } },
-  { id: 'glassLight', label: { en: 'Glass Light', ko: 'Glass Light' } },
+  { id: 'solid', label: { en: 'Solid', ko: 'Solid' }, description: { en: 'Flat opaque backgrounds with clear boundaries', ko: '명확한 경계의 불투명 배경' }, accentColor: 'gray' },
+  { id: 'soft', label: { en: 'Soft', ko: 'Soft' }, description: { en: 'Subtle shadows and gentle elevation', ko: '미세한 그림자와 부드러운 입체감' }, accentColor: 'blue' },
+  { id: 'borderedSoft', label: { en: 'Bordered Soft', ko: 'Bordered Soft' }, description: { en: 'Thin borders with soft inner fill', ko: '얇은 보더와 부드러운 내부 채움' }, accentColor: 'slate' },
+  { id: 'tinted', label: { en: 'Tinted', ko: 'Tinted' }, description: { en: 'Color-washed containers with translucent borders', ko: '반투명 보더의 컬러 워시 컨테이너' }, accentColor: 'indigo' },
+  { id: 'glassLight', label: { en: 'Glass Light', ko: 'Glass Light' }, description: { en: 'Frosted glass with backdrop blur', ko: '배경 블러의 프로스티드 글래스' }, accentColor: 'sky' },
 ];
 
 export const SPATIAL_SYSTEM_OPTIONS: BasisOption[] = [
-  { id: 'compact8pt', label: { en: 'Compact 8pt', ko: 'Compact 8pt' } },
-  { id: 'balanced8pt', label: { en: 'Balanced 8pt', ko: 'Balanced 8pt' } },
-  { id: 'airy8pt', label: { en: 'Airy 8pt', ko: 'Airy 8pt' } },
-  { id: 'dense12ptHybrid', label: { en: 'Dense 12pt Hybrid', ko: 'Dense 12pt Hybrid' } },
+  { id: 'compact8pt', label: { en: 'Compact 8pt', ko: 'Compact 8pt' }, description: { en: 'Tight density for data-heavy interfaces', ko: '데이터 중심 인터페이스를 위한 높은 밀도' }, accentColor: 'orange' },
+  { id: 'balanced8pt', label: { en: 'Balanced 8pt', ko: 'Balanced 8pt' }, description: { en: 'Standard spacing rhythm for general use', ko: '범용 표준 간격 리듬' }, accentColor: 'blue' },
+  { id: 'airy8pt', label: { en: 'Airy 8pt', ko: 'Airy 8pt' }, description: { en: 'Generous whitespace for breathing room', ko: '여유로운 여백으로 시원한 느낌' }, accentColor: 'teal' },
+  { id: 'dense12ptHybrid', label: { en: 'Dense 12pt Hybrid', ko: 'Dense 12pt Hybrid' }, description: { en: 'Mixed density with 12pt base grid', ko: '12pt 기본 그리드의 혼합 밀도' }, accentColor: 'purple' },
 ];
 
 export const INTERACTION_GRAMMAR_OPTIONS: BasisOption[] = [

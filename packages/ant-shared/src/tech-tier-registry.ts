@@ -192,14 +192,31 @@ export const TECH_TIER_TEMPLATE_PATHS = {
 export interface BasisOption {
   id: string;
   label: { en: string; ko: string };
+  description?: { en: string; ko: string };
+  icon?: string;
+  accentColor?: string;
 }
 
+export const STACK_OPTIONS: BasisOption[] = [
+  { id: 'frontend', label: { en: 'Frontend', ko: 'Frontend' }, description: { en: 'Client-side web or mobile application', ko: '클라이언트 웹 또는 모바일 앱' }, icon: 'monitor', accentColor: 'blue' },
+  { id: 'backend', label: { en: 'Backend', ko: 'Backend' }, description: { en: 'Server-side API and business logic', ko: '서버 사이드 API 및 비즈니스 로직' }, icon: 'server', accentColor: 'emerald' },
+  { id: 'fullstack', label: { en: 'Fullstack', ko: 'Fullstack' }, description: { en: 'Both frontend and backend together', ko: '프론트엔드와 백엔드 통합' }, icon: 'layers', accentColor: 'violet' },
+];
+
 export const TECH_TIER_LANGUAGES: BasisOption[] = [
-  { id: 'typescript', label: { en: 'TypeScript', ko: 'TypeScript' } },
-  { id: 'go', label: { en: 'Go', ko: 'Go' } },
+  { id: 'typescript', label: { en: 'TypeScript', ko: 'TypeScript' }, description: { en: 'Type-safe JavaScript for scalable applications', ko: '확장 가능한 앱을 위한 타입 안전 JavaScript' }, icon: 'typescript', accentColor: 'blue' },
+  { id: 'go', label: { en: 'Go', ko: 'Go' }, description: { en: 'Fast, efficient language for cloud-native services', ko: '클라우드 네이티브 서비스를 위한 고성능 언어' }, icon: 'go', accentColor: 'cyan' },
 ];
 
 export const VISUAL_TIER_DESIGN_SYSTEMS: BasisOption[] = [];
+
+export const FRAMEWORK_OPTIONS_META: Record<string, Omit<BasisOption, 'id' | 'label'>> = {
+  react: { description: { en: 'Component-driven SPA with virtual DOM', ko: '가상 DOM 기반 컴포넌트 SPA' }, icon: 'react', accentColor: 'cyan' },
+  nextjs: { description: { en: 'Full-stack React with SSR and file-based routing', ko: 'SSR과 파일 기반 라우팅의 풀스택 React' }, icon: 'nextjs', accentColor: 'gray' },
+  'react-native': { description: { en: 'Cross-platform mobile apps with React', ko: 'React 기반 크로스 플랫폼 모바일 앱' }, icon: 'react-native', accentColor: 'cyan' },
+  nestjs: { description: { en: 'Enterprise Node.js framework with decorators', ko: '데코레이터 기반 엔터프라이즈 Node.js 프레임워크' }, icon: 'nestjs', accentColor: 'red' },
+  gin: { description: { en: 'High-performance HTTP framework for Go', ko: 'Go용 고성능 HTTP 프레임워크' }, icon: 'gin', accentColor: 'blue' },
+};
 
 /** UI helper: (tierKey, language) → selectable framework options */
 export function getFrameworkOptions(
@@ -209,5 +226,6 @@ export function getFrameworkOptions(
   return getValidFrameworks(tierKey, lang).map(fw => ({
     id: fw,
     label: FRAMEWORK_LABELS[fw] ?? { en: fw, ko: fw },
+    ...FRAMEWORK_OPTIONS_META[fw],
   }));
 }

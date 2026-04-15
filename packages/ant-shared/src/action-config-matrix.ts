@@ -299,6 +299,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
+    basis: { visualTier: true },
   },
   'gen-ui-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
@@ -315,6 +316,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
+    basis: { visualTier: true },
   },
 
   // ── Spec ──────────────────────────────────
@@ -343,12 +345,14 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), refDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
+    basis: { techTier: true, visualTier: true },
   },
   'gen-code-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     refsSingleSelect: true,
+    basis: { techTier: true, visualTier: true },
   },
   'gen-code-directive': {
     refs: [emptyRef()],
