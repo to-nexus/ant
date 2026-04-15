@@ -156,6 +156,9 @@ export async function buildPlanPrompt(
   const hasDesignDoc = allDocs.some(
     d => d.role === 'ref' && d.path.startsWith(AP.DESIGN),
   );
+  const hasUiDoc = allDocs.some(
+    d => d.path?.startsWith(AP.UI) || d.path?.includes('ui-'),
+  );
 
   const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
     taskName: task.name, taskDescription: task.description,
@@ -170,7 +173,7 @@ export async function buildPlanPrompt(
     hasTools: options?.hasTools ?? false,
     designDocUnknownPackages: state.designDocUnknownPackages,
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
-    resolvedAction: resolvedActionWithDocs, hasDesignDoc,
+    resolvedAction: resolvedActionWithDocs, hasDesignDoc, hasUiDoc,
   });
 
   return basisSection ? `${basisSection}\n\n---\n\n${prompt}` : prompt;

@@ -265,6 +265,7 @@ Use `figma_get_design_context` and `figma_get_screenshot` to inspect visual deta
 Sub-role is determined by priority:
 
 **priority 200 (Token Infrastructure)**
+{{#if hasUiInDocuments}}
 - **Scope**: ui-tokens.json → CSS custom properties / styling framework config / **runtime integration**
 - **Constraint**: Token infrastructure only. Do NOT create components.
 - **Completeness**: Token files without import chain are incomplete. Scope includes:
@@ -274,6 +275,19 @@ Sub-role is determined by priority:
   4. Framework bridge: CSS vars → utility classes via the installed framework's theme/config extension mechanism
 - **⚠️ Blind Spot — Utility prefix collision**: CSS utility frameworks add category prefixes when generating classes. When mapping token keys to framework config, strip any key prefix that duplicates the framework's auto-prefix to avoid double-prefixed class names.
 - **Execution**: Read installed framework config → read tokens → generate files → wire imports → verify entry file initializes framework and imports all token sources
+{{else}}
+{{#if resolvedAction.basis.visualTier}}
+- **Scope**: Derive concrete design tokens from visual tier policies in the basis section.
+- **Token source**: No ui-tokens.json available. Observe each visual tier policy layer in the basis section and translate its constraints into concrete token values.
+- **Constraint**: Token infrastructure only. Do NOT create components.
+- **Constraint**: Do NOT invent values outside what the policy constraints permit. If a visual tier layer is absent, skip that token category.
+- **Completeness**: Token files without import chain are incomplete. Scope includes token file generation, global CSS entry file with framework initialization, and framework theme config extension.
+- **Execution**: Read project styling framework config (from setup output) → observe visual tier policies → derive and generate token infrastructure → wire imports
+{{else}}
+- **Scope**: No token source available. Apply styling framework best practices for theme configuration.
+- **Constraint**: Token infrastructure only. Do NOT create components.
+{{/if}}
+{{/if}}
 
 **priority 201+ (Component Library)**
 - **Scope**: Reusable DS components OR external DS library configuration
@@ -287,7 +301,11 @@ Sub-role is determined by priority:
 **Figma available**: Use Figma MCP tools to supplement design document details.{{#if figmaStartNodeId}} Target node: `{{figmaStartNodeId}}`.{{else}} Use `figma_get_metadata` with nodeId `0:1` to discover available nodes.{{/if}}
 {{/if}}
 
+{{#if hasUiInDocuments}}
 **Actions:** Read ui-doc → implement token/component infrastructure → Output `<done>true</done>`
+{{else}}
+**Actions:** Observe visual tier policies → derive and implement token infrastructure → Output `<done>true</done>`
+{{/if}}
 
 {{/if}}
 {{/if}}
