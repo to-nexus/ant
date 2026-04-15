@@ -236,6 +236,11 @@ class SSEManager {
             
             console.log(`[SSE] unified: reconnecting in ${retryDelay}ms`);
             setTimeout(() => {
+              // Enable grace period before reconnecting so that stale initial
+              // data (estimating/session) doesn't overwrite the kanban state.
+              // Without this, forceReconnect() returns early (unifiedConnection
+              // is null after disconnect) and no grace is set.
+              this.onReconnectCallback?.();
               this.connect(savedProjectId, savedFeatureName, savedJob);
             }, retryDelay);
           }

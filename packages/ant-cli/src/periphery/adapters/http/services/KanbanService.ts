@@ -288,23 +288,31 @@ export class KanbanService {
       const liveCurrentTasks = liveSnapshot.currentTasks || (liveCurrentTask ? [liveCurrentTask] : []);
       const liveCompletedTasks = liveSnapshot.completedTasks || [];
       
-      // SPECIAL CASE: Empty snapshot with NO completed tasks = "estimating started"
-      const isEstimating = liveQueue.length === 0 && liveCurrentTasks.length === 0 && liveCompletedTasks.length === 0;
+      // Estimating = node activity banner is active (explicit signal from KanbanBroadcaster).
+      // Previously checked array-emptiness, but setEstimatingActivity now preserves
+      // completedTasks in the snapshot, so emptiness alone is no longer reliable.
+      const isEstimating = !!liveSnapshot.estimatingLabel;
       
-      if (isEstimating) {
-        dlog(`\n🎬 [KanbanService] ESTIMATING STARTED (empty live snapshot)`);
+      if (isEstimating && liveCurrentTasks.length === 0 && liveQueue.length === 0) {
+        // Use live completedTasks if available (preserved by setEstimatingActivity),
+        // fall back to session for backward compatibility with old snapshots.
+        const estimatingCompleted = liveCompletedTasks.length > 0 ? liveCompletedTasks : completedTasksDetails;
+        // When live completed tasks exist, remaining session todo excludes them.
+        const estimatingTodo = liveCompletedTasks.length > 0
+          ? sessionTaskQueue.filter((task: any) => !liveCompletedTasks.some((c: any) => c.id === task.id))
+          : sessionTaskQueue;
         
-        return {
+        const result = {
           jobId: sessionJobId,
-          todo: sessionTaskQueue,
+          todo: estimatingTodo,
           inProgress: [],
-          completed: completedTasksDetails.map((detail: any) => ({
+          completed: estimatingCompleted.map((detail: any) => ({
             ...detail,
             status: 'completed',
             completed: true
           })),
           isEstimating: true,
-          dataSource: 'estimating',
+          dataSource: 'estimating' as const,
           recursionCount: sessionState.recursionCount || 0,
           recursionLimit: sessionState.recursionLimit || finalLimit,
           jobTiming: liveSnapshot.jobTiming ?? sessionState.jobTiming,
@@ -316,9 +324,13 @@ export class KanbanService {
           jobType,
           agent: getAgentForJobSafe(jobType),
         };
+        dlog(`\n🎬 [KanbanService] ESTIMATING STARTED (estimatingLabel=${liveSnapshot.estimatingLabel})`);
+        console.log(`[KanbanService] RETURN path=ESTIMATING jobId=${sessionJobId} todo=${result.todo.length} ip=0 done=${result.completed.length} ds=estimating`);
+        return result;
       }
       
       dlog(`\n🔴 [KanbanService] LIVE DATA from Redis returned\n`);
+      console.log(`[KanbanService] RETURN path=LIVE jobId=${sessionJobId} todo=${liveQueue.length} ip=${liveCurrentTasks.length} done=${liveCompletedTasks.length} ds=live`);
       
       return {
         jobId: sessionJobId,
@@ -346,6 +358,7 @@ export class KanbanService {
     // Priority 2: ESTIMATING (job running but no live snapshot yet)
     if (sessionJobId && !isJobCompleted && isActuallyRunning && !liveSnapshot) {
       dlog(`\n🎯 [KanbanService] ESTIMATING STATE (no live snapshot yet)`);
+      console.log(`[KanbanService] RETURN path=ESTIMATING_NO_SNAPSHOT jobId=${sessionJobId} todo=${sessionTaskQueue.length} ip=0 done=${completedTasksDetails.length} ds=estimating`);
       
       return {
         jobId: sessionJobId,
@@ -373,6 +386,7 @@ export class KanbanService {
     
     // Priority 3: SESSION DATA (job completed or no session)
     dlog(`\n📁 [KanbanService] SESSION DATA returned`);
+    console.log(`[KanbanService] RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${sessionTaskQueue.length} ip=${currentTask ? 1 : 0} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning}`);
     
     return {
       jobId: sessionJobId,

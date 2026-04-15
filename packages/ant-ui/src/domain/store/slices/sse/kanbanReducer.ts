@@ -9,8 +9,8 @@ import { removeFromStorage, STORAGE_KEYS } from '../../storage';
  * tracking, and localStorage cleanup.
  */
 export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
-  console.log(`[Kanban:recv] ds=${data.dataSource} todo=${data.todo?.length ?? '?'} ip=${data.inProgress?.length ?? '?'} done=${data.completed?.length ?? '?'} jobId=${data.jobId ?? 'none'}`);
   const state = get();
+  console.log(`[Kanban:recv] ds=${data.dataSource} todo=${data.todo?.length ?? '?'} ip=${data.inProgress?.length ?? '?'} done=${data.completed?.length ?? '?'} jobId=${data.jobId ?? 'none'} grace=${state.sseReconnectGrace} existing_ip=${state.kanban?.inProgress?.length ?? 0} isRunning=${state.isRunning}`);
 
   // Preserve jobTiming from existing state if not in incoming data.
   // KanbanBroadcaster (live Redis Pub/Sub) sends task queue updates without job-level timing,
@@ -58,16 +58,36 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
     set({ jobStartPending: false });
   }
 
-  // Cloud multi-pod: Clear SSE reconnect grace when live data arrives
+  // Cloud multi-pod: SSE reconnect grace — protect kanban from stale initial data.
+  // Live data (dataSource='live') is always fresh from Redis and safe to apply.
+  // Estimating/session data may contain stale sessionTaskQueue, so block them
+  // unless the existing kanban is completely empty (page-refresh scenario).
   if (isJobRunning && state.sseReconnectGrace) {
-    set({ sseReconnectGrace: false });
-    if (state.kanban?.inProgress?.length > 0) {
+    if (data.dataSource === 'live') {
+      // Live data is the most recent state from the worker — always accept it.
+      set({ sseReconnectGrace: false });
+      console.log(`[Store] SSE reconnect grace: accepting live data (ip=${data.inProgress?.length ?? 0})`);
+      // Fall through to normal processing below.
+    } else {
+      const existingHasData = (state.kanban?.inProgress?.length ?? 0) > 0 ||
+                              (state.kanban?.todo?.length ?? 0) > 0 ||
+                              (state.kanban?.completed?.length ?? 0) > 0;
+      if (existingHasData) {
+        // Tab switch / screen lock: existing kanban has correct state — preserve it.
+        console.log(
+          `[Store] SSE reconnect grace: keeping existing kanban over ${data.dataSource} ` +
+          `(existing_ip=${state.kanban.inProgress?.length ?? 0}, ` +
+          `incoming_ip=${data.inProgress?.length ?? 0})`
+        );
+        set({ sseReconnectGrace: false });
+        return;
+      }
+      // Page refresh: existing kanban is empty, estimating/session data is better than nothing.
       console.log(
-        `[Store] SSE reconnect grace: keeping existing kanban ` +
-        `(existing_ip=${state.kanban.inProgress.length}, ` +
-        `incoming_ip=${data.inProgress?.length ?? 0}, ds=${data.dataSource})`
+        `[Store] SSE reconnect grace: accepting ${data.dataSource} (empty existing kanban)`
       );
-      return;
+      set({ sseReconnectGrace: false });
+      // Fall through to normal processing below.
     }
   }
 
@@ -109,8 +129,18 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
   if (!isJobRunning && state.isRunning && currentFeatureKey) {
     // Cloud multi-pod: SSE reconnect grace — stale session data must not reset isRunning.
     if (state.sseReconnectGrace && data.dataSource === 'session') {
-      console.log(`[Store] SSE reconnect grace: protecting isRunning from stale session data (ds=${data.dataSource}, ip=${data.inProgress?.length ?? 0})`);
-      set({ kanban: data, runningJobsByFeature: updatedRunningJobs });
+      const existingHasData = (state.kanban?.inProgress?.length ?? 0) > 0 ||
+                              (state.kanban?.todo?.length ?? 0) > 0 ||
+                              (state.kanban?.completed?.length ?? 0) > 0;
+      if (existingHasData) {
+        // Tab switch: preserve existing kanban entirely (don't overwrite with session data)
+        console.log(`[Store] SSE reconnect grace: keeping existing kanban over session data (existing_ip=${state.kanban.inProgress?.length ?? 0})`);
+        set({ runningJobsByFeature: updatedRunningJobs, sseReconnectGrace: false });
+        return;
+      }
+      // Page refresh: existing kanban is empty — apply session data but protect isRunning
+      console.log(`[Store] SSE reconnect grace: accepting session data (empty existing kanban, protecting isRunning)`);
+      set({ kanban: data, runningJobsByFeature: updatedRunningJobs, sseReconnectGrace: false });
       return;
     }
 
