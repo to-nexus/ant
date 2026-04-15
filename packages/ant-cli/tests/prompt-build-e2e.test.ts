@@ -148,7 +148,6 @@ describe('E2E: Code execute — default/feature', () => {
     expect(result.injections).toContain('jobs/shared/injections/action-context');
     expect(result.injections).toContain('jobs/shared/injections/visual-source-authority');
     expect(result.injections).toContain('jobs/code/base/injections/preview-setup');
-    expect(result.injections).toContain('jobs/code/base/injections/tool-calling-rules-compact');
     expect(result.injections).toContain('jobs/shared/injections/directive');
   });
 

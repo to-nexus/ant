@@ -201,16 +201,14 @@ describe('Tier A+D: TaskType × injection matrix (code job, execute node)', () =
     },
   );
 
-  // tool-calling-rules-compact: feature, setup only
-  it.each(['feature', 'setup'] as const)('taskType=%s: tool-calling-rules-compact included', (tt) => {
-    const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).toContain('jobs/code/base/injections/tool-calling-rules-compact');
-  });
-
-  it.each(['verification', 'error', 'test-code', 'doc'] as const)('taskType=%s: NO tool-calling-rules-compact', (tt) => {
-    const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).not.toContain('jobs/code/base/injections/tool-calling-rules-compact');
-  });
+  // tool-calling-rules-compact: removed from AutoInjection — included via rules.md partial in all variants
+  it.each(['feature', 'setup', 'verification', 'error', 'test-code', 'doc'] as const)(
+    'taskType=%s: tool-calling-rules-compact NOT in auto-injections (partial-only)',
+    (tt) => {
+      const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
+      expect(injections).not.toContain('jobs/code/base/injections/tool-calling-rules-compact');
+    },
+  );
 
   // preview-setup: feature, setup, error (when frontend)
   it.each(['feature', 'setup'] as const)('taskType=%s: preview-setup included', (tt) => {
