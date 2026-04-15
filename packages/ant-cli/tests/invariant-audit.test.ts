@@ -82,10 +82,16 @@ describe('Audit 6A: injection-manifest integrity', () => {
     }
   });
 
-  it('manifest entry classification: every entry is used as injection OR partial', async () => {
+  it('manifest entry classification: every entry is used as injection, partial, policy, or render call', async () => {
     const mcSource = readFileSync(AUTO_INJECTION_RESOLVER_PATH, 'utf-8');
     const allTemplates = await collectAllTemplates(TEMPLATES_DIR);
-    const warnings: string[] = [];
+
+    // Also check POLICY_TEMPLATE_MAP and agent TS source code for render() calls
+    const policyValues = new Set(Object.values(POLICY_TEMPLATE_MAP));
+    const agentTsFiles = await collectTsFiles(AGENT_SRC_DIRS[0]);
+    const agentSources = agentTsFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
+
+    const orphans: string[] = [];
 
     for (const [category, entries] of Object.entries(manifest)) {
       if (category.startsWith('$') || typeof entries !== 'object') continue;
@@ -100,14 +106,18 @@ describe('Audit 6A: injection-manifest integrity', () => {
           content.includes(`{{> ${fullPath}\n`)
         );
 
-        if (!isInjectedByMC && !isUsedAsPartial) {
-          warnings.push(`${fullPath} — not found in AutoInjectionResolver or as partial`);
+        const isInPolicyMap = policyValues.has(fullPath);
+
+        const isRenderedByAgent = agentSources.includes(fullPath) || agentSources.includes(name);
+
+        if (!isInjectedByMC && !isUsedAsPartial && !isInPolicyMap && !isRenderedByAgent) {
+          orphans.push(`${fullPath} — not found in AutoInjectionResolver, partials, POLICY_TEMPLATE_MAP, or agent render calls`);
         }
       }
     }
 
-    if (warnings.length > 0) {
-      console.warn(`[6A] Unused manifest entries (not necessarily bugs):\n  ${warnings.join('\n  ')}`);
+    if (orphans.length > 0) {
+      expect.fail(`[6A] ${orphans.length} manifest entry(s) with no usage path:\n  ${orphans.join('\n  ')}`);
     }
   });
 });
@@ -234,6 +244,10 @@ function expandTemplateVars(tmpl: string): string[] {
     'lang': ['typescript', 'go'],
     'fallbackLanguage': ['typescript', 'go'],
     'primaryLang': ['typescript', 'go'],
+    'logSuffix': ['by-figma', 'by-ref'],
+    'templateSuffix': ['by-figma', 'by-ref'],
+    'freshLogSuffix': ['by-figma', 'by-ref'],
+    'tool.name': ['run_command'],
   };
 
   const envExpansions: Record<string, string[]> = {

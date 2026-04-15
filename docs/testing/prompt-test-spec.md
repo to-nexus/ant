@@ -4,220 +4,239 @@
 
 ---
 
-## 테스트 계층
+## 테스트 계층 (MECE)
 
 ```
-├── Intent Acceptance ── intent-acceptance.test.ts
-│                        getConfigSlots(intent) → RAC → PromptBuilder.build() 전체 경로
+A. Coverage (도달성)
+│  template-reverse-matrix.test.ts ─── 148개 .md 역방향 도달성 + JSON 매트릭스 생성
+│  tech-tier-registry.test.ts ──────── TECH_TIER_TEMPLATE_PATHS ↔ 디스크 파일 동기화
 │
-├── Safety Gate ──── prompt-smoke.test.ts           partial 등록, 템플릿 렌더, manifest 무결성
-│                    runtime-context.test.ts         buildRuntimeContext, generateFileTree
+B. Integrity (무결성)
+│  invariant-audit.test.ts ─────────── manifest↔파일 일치, 레거시 변수 금지,
+│                                      TS→템플릿 경로 역참조, resolve() 조합별 파일 존재
+│  prompt-smoke.test.ts ────────────── partial 전수 등록, basis/ 포함 전 템플릿 렌더, manifest 일치
 │
-├── Audit (전수조사) ── injection-resolution-matrix.test.ts  4-tier injection 조합 매트릭스
-│                       rac-creation-audit.test.ts           RAC 생성 (explicit/infer/derive) (~60+)
-│                       rac-matrix.test.ts                   config matrix 완전성 + resolveToRAC
+C. Injection Resolution (주입 경로)
+│  injection-resolution-matrix.test.ts  Tier I/A/D/N 4계층 조합 매트릭스
+│  intents/intent-acceptance.test.ts ── 16개 intent × required/forbidden injection + 스냅샷
 │
-├── Hardening ──── threshold-boundary.test.ts (11)  경계값 전환
-│                  rac-serialization.test.ts   (7)  JSON roundtrip 보존
-│                  prompt-immutability.test.ts       입력 mutation 방지
-│                  techtier-propagation.test.ts      decompose 경유/비경유 techTier 전파
+D. Build Pipeline (빌드 파이프라인)
+│  prompt-build-e2e.test.ts ────────── PromptBuilder.build() 8개 시나리오 E2E
+│                                      Stage 1: 경로 해석 / Stage 2: 렌더 성공 / Stage 3: 내용 주입
+│  prompt-integration.test.ts ──────── ArtifactPipeline, 문서 조립 시나리오
+│  documents-pipeline-audit.test.ts ── 문서 파이프라인 회귀 미러
 │
-└── 기타 ──── rac.test.ts, triage-*.test.ts 등
+E. Hardening (강화)
+│  prompt-immutability.test.ts ─────── resolve/render 입력 불변성
+│  techtier-propagation.test.ts ────── decompose 경유/미경유 techTier 전파
+│  threshold-boundary.test.ts ──────── EXECUTE/DECOMPOSE_SOURCE_THRESHOLD 경계값
+│  rac-serialization.test.ts ───────── RAC JSON roundtrip 보존
+│
+F. Context & Routing (컨텍스트·라우팅)
+│  runtime-context.test.ts ─────────── buildRuntimeContext, generateFileTree
+│  triage-prompt.test.ts ──────────── buildTriagePrompt 구조 + 스냅샷
+│  rac.test.ts ─────────────────────── resolveToRAC, deriveFromIntent
+│  rac-matrix.test.ts ──────────────── config-matrix 완전성
+│  rac-creation-audit.test.ts ──────── RAC 생성 (explicit/infer/derive)
+│
+G. Non-prompt (비프롬프트)
+   triage-parser.test.ts, triage-guard.test.ts, classify-parser.test.ts,
+   tool-registry.test.ts, command-allowlist.test.ts, content-compactor.test.ts,
+   artifact-ownership-routing.test.ts, ask-knowledge.test.ts,
+   batch-split-fix.test.ts, human-id.test.ts
 ```
 
 ---
 
-## Intent Acceptance
+## A. Coverage (도달성)
 
-16개 fixture에 대해 디렉티브·`ActionMetadata`(intent, refs, context 등) 조합을 준비하고, 디렉티브 입력 → RAC 생성 → 프롬프트 빌드 전체 경로를 자동 검증한다. 서버/LLM 없이 순수 함수 호출만으로 실행.
+### template-reverse-matrix.test.ts
 
-| 파일 | 역할 |
+`templates/` 하위 148개 `.md` 파일 각각에 대해 7가지 도달 소스를 역추적한다.
+
+| 소스 | 의미 |
 |------|------|
-| `tests/intents/dataset.ts` | 16개 fixture + 테스트용 샘플 문서 |
-| `tests/intents/intent-acceptance.test.ts` | vitest 자동 테스트 |
-| `tests/intents/documents/` | 테스트용 최소 문서 (prd, fe-system, be-system 등 8개) |
-| `docs/testing/e2e-intent-reference.md` | 수동 E2E curl 레퍼런스 (자동 테스트 아님) |
+| `build-callsite` | `promptBuilder.build()`의 `templates.base/rules/system`에 하드코딩 |
+| `auto-injection` | `AutoInjectionResolver.resolve()` 조합적 전수 실행 결과 |
+| `policy-map` | `POLICY_TEMPLATE_MAP`에 등록 (Tier I/N) |
+| `render-call` | 에이전트 TS 코드에서 `render()`/`readFileSync()` 직접 호출 |
+| `partial-ref` | 다른 템플릿의 `{{> path}}` Handlebars partial 참조 |
+| `basis-registry` | `TECH_TIER_TEMPLATE_PATHS` 기반 `buildBasisSection` 주입 |
+| `manifest` | `injection-manifest.json` 계약 등록 |
 
-### 검증 3단계
+검증:
+- **소스가 0개인 파일 = 고아 → 테스트 실패** (warn이 아닌 fail)
+- injection 템플릿은 manifest에 등록 필수
+- `tests/__generated__/template-matrix.json` 자동 생성 (디버깅·리뷰용)
 
-```
-Stage 1: Config Matrix      getConfigSlots(intent) → null 아닌지
+### tech-tier-registry.test.ts
 
-Stage 2: RAC Routing         resolveToRAC(intentId, slots, source) → RAC 생성
-                             deriveFromIntent(intent) → agent/jobType 일치
-                             RAC.mode, intentGroup 일치
-                             refs/context 필드 보존
-
-Stage 3: Prompt Build        PromptBuilder.build(config) → PromptBuildResult
-  (code/design만)            requiredInjections 포함 확인
-                             forbiddenInjections 배제 확인
-                             mustContain 키워드 프롬프트 텍스트에 포함
-                             injection 목록 스냅샷 비교 (회귀 방지)
-```
-
-- **Stage 1-2**: 모든 16개 fixture에 대해 실행 (plan 포함)
-- **Stage 3**: code/design job만 실행 (plan은 별도 빌더 사용)
-
-### 왜 서버 없이 가능한가
-
-테스트는 파이프라인의 순수 함수들만 직접 호출한다:
-
-```
-resolveToRAC(intentId, slots)                ← 순수 함수, IntentId + slots → RAC
-PromptBuilder.build(PromptBuildConfig)       ← 4-tier injection 해석 + 템플릿 렌더링
-AutoInjectionResolver.resolve(input)         ← Tier A+D injection 결정
-deriveArtifactPolicies(intent, artifacts)    ← Tier N 정책 도출
-```
-
-HTTP, Redis, BullMQ, LLM 호출이 전혀 없다. `AutoInjectionResolver`의 injection 선택 로직(environment 판단, language 감지, refactor/behavioral-debugging 등)이 RAC와 techContext를 기반으로 deterministic하게 동작하므로 스냅샷 테스트가 가능하다.
-
-### 프롬프트 변경 시 워크플로우
-
-```
-1. 템플릿/AutoInjectionResolver/RAC/prompt-policy-matrix 변경
-2. pnpm test:cli → 스냅샷 diff 발생 (FAIL)
-3. diff 검토: 의도한 변경인지 확인
-4. pnpm vitest run tests/intents/intent-acceptance.test.ts --update
-5. 새 스냅샷 커밋
-```
-
-### Fixture 커버리지
-
-| Intent | Stage 3 |
-|--------|---------|
-| gen-plan | - (plan job) |
-| rev-plan | - (plan job) |
-| gen-sys-fe | design |
-| gen-sys-be | design |
-| gen-sys-full | design |
-| rev-sys | design |
-| gen-ui-figma | design |
-| gen-ui-ref | design |
-| gen-ui-desc | design |
-| rev-ui | design |
-| gen-spec | design |
-| rev-spec | design |
-| gen-code-sys | code |
-| gen-code-spec | code |
-| gen-code-directive | code |
-| rev-code | code |
+`@ant/shared`의 `TECH_TIER_TEMPLATE_PATHS` 레지스트리가 가리키는 경로와 디스크 `.md` 파일의 1:1 동기화 검증. 역방향 고아 파일도 탐지.
 
 ---
 
-## Safety Gate
+## B. Integrity (무결성)
 
-프롬프트 변경 시 최소 안전망. 모든 `.md` 템플릿이 렌더 가능한지, manifest와 일치하는지 확인.
+### invariant-audit.test.ts
 
-| 테스트 | 파일 | 검증 |
-|--------|------|------|
-| Partial 등록 | `prompt-smoke.test.ts` | partials 전수 로드 |
-| 템플릿 smoke | `prompt-smoke.test.ts` | 모든 .md 비어있지 않음 |
-| Manifest 무결성 | `prompt-smoke.test.ts` | injection → .md 파일 존재 |
-| 런타임 조립 | `runtime-context.test.ts` | buildRuntimeContext 출력 검증 |
+4개 감사 항목:
 
-### 개발자 워크플로우
+| ID | 검증 | 실패 시 |
+|----|------|---------|
+| 6A | manifest 엔트리가 AutoInjectionResolver, partial, POLICY_TEMPLATE_MAP, agent render 중 하나 이상에서 사용 | **fail** |
+| 6B | 템플릿에 `{{designDoc}}`, `{{prdSpec}}`, `{{uiDoc}}` 레거시 변수 금지 | fail |
+| 6C | 에이전트 TS 코드의 `render('path')`/`templates: { base: 'path' }` 경로에 `.md` 파일 존재 | fail |
+| 6D | `AutoInjectionResolver.resolve()` 조합 전수 실행 결과의 모든 경로에 `.md` 파일 존재 | fail |
 
-```
-1. 템플릿(.md) 또는 조립 함수 수정
-2. pnpm test:cli          ← 수동 확인 (~1초)
-3. PASS → 커밋
-4. pnpm build             ← prebuild가 자동으로 테스트 실행
-5. FAIL → 빌드 중단 (dist/ 미생성)
-```
+6C는 템플릿 리터럴의 `${var}` 변수를 UI suffix(`by-figma`/`by-ref`), 언어(`typescript`/`go`), tool name(`run_command`) 등으로 확장한다.
 
-### 새 템플릿 추가 시
+### prompt-smoke.test.ts
 
-1. `templates/<job>/phases/<phase>/<type>.md` 생성
+| 검증 | 대상 |
+|------|------|
+| partial 전수 로드 | `initPartials()` 실패 0건 |
+| 전 템플릿 렌더 | **basis/ 포함** 148개 전수. `SAMPLE_VARS`로 에러 없이 비어있지 않은 출력 |
+| manifest 일치 | `/injections/` 경로의 모든 `.md`가 manifest에 존재 |
+| partial 참조 무결성 | `{{> path}}`가 가리키는 partial이 등록됨 |
+| 카탈로그 참조 | design 템플릿의 `§` 참조가 정규 카탈로그 이름과 일치 |
+
+---
+
+## C. Injection Resolution (주입 경로)
+
+### injection-resolution-matrix.test.ts
+
+4계층 인젝션 시스템의 조합적 전수 검증:
+
+| 계층 | 검증 |
+|------|------|
+| Tier I (Intent) | 모든 intent에 prompt-policy 존재, PolicyKey→경로 매핑 |
+| Tier N (Artifact) | 아티팩트 유무에 따른 조건부 정책 활성/비활성 |
+| Tier A (Auto-tech) | taskType × stack × mode × node 매트릭스 |
+| Tier D (Data) | 12개 데이터 플래그별 주입 조건 (directive, memory, gitDiff...) |
+
+### intents/intent-acceptance.test.ts
+
+16개 fixture × 3단계:
+
+| Stage | 검증 |
+|-------|------|
+| 1. Config Matrix | `getConfigSlots(intent)` 유효 |
+| 2. RAC Routing | `resolveToRAC()` → agent/jobType/mode/intentGroup 일치 |
+| 3. Prompt Build | `PromptBuilder.build()` → requiredInjections 포함, forbiddenInjections 배제, 스냅샷 |
+
+---
+
+## D. Build Pipeline (빌드 파이프라인)
+
+### prompt-build-e2e.test.ts
+
+프로덕션 5개 호출부를 미러링한 8개 시나리오:
+
+| 시나리오 | pipeline 설정 | 핵심 검증 |
+|----------|---------------|-----------|
+| Code execute (default/feature) | full | system+basis+rules+injections+examples 전부 비어있지 않음 |
+| Code execute (verification) | includeExamples=off | 정적 정책 스킵, injections에 tool-calling 미포함 |
+| Code execute (error+fullstack) | includeExamples=off | preview-setup + backend-safety + behavioral-debugging |
+| Code execute (refactor) | includeBasis=off | refactor-guidance + behavioral-debugging |
+| Design system-design (FE) | includeBasis=on | Tier I frontend-guide, document-language |
+| Design spec | minimal | 인젝션 0건 |
+| Ask | no pipeline | base+rules만 |
+| Plan | no techContext | Tier A/D 비활성 |
+
+각 시나리오에서 **3단계 런타임 주입 검증**:
+
+1. **Stage 1 (경로)**: `result.injections`에 기대 경로 포함/배제
+2. **Stage 2 (렌더)**: `result.sections.failedTemplates` 0건
+3. **Stage 3 (내용)**: `result.system`에 각 인젝션 템플릿의 핑거프린트 텍스트 존재
+
+### prompt-integration.test.ts
+
+`ArtifactPipeline`의 `selectArtifacts`, 문서 조립 시나리오 (taskType별 선택/배제).
+
+### documents-pipeline-audit.test.ts
+
+문서 파이프라인 로직의 회귀 미러 테스트. 실제 코드 패턴을 순수 함수로 복제하여 검증.
+
+---
+
+## E. Hardening (강화)
+
+| 테스트 | 검증 |
+|--------|------|
+| prompt-immutability.test.ts | `resolve()`, `compactContent`, `resolveToRAC` 입력 불변성 |
+| techtier-propagation.test.ts | decompose 경유/미경유 시 techTier 전파 + injection 결과 |
+| threshold-boundary.test.ts | EXECUTE/DECOMPOSE_SOURCE_THRESHOLD 경계값 전환 |
+| rac-serialization.test.ts | RAC JSON roundtrip: explicit/infer, special chars, undefined 필드 |
+
+---
+
+## F. Context & Routing (컨텍스트·라우팅)
+
+| 테스트 | 검증 |
+|--------|------|
+| runtime-context.test.ts | `buildRuntimeContext`, `generateFileTree` 출력 문자열 |
+| triage-prompt.test.ts | `buildTriagePrompt` system/user 구조 + 스냅샷 |
+| rac.test.ts | `resolveToRAC`, `deriveFromIntent` 단위 테스트 |
+| rac-matrix.test.ts | config-matrix 완전성, `resolveToRAC` 전수 |
+| rac-creation-audit.test.ts | RAC 생성 (explicit/infer/derive) 변형 |
+
+---
+
+## 변경 시 워크플로우
+
+### 템플릿(.md) 추가
+
+1. `templates/` 아래 파일 생성
 2. injection이면 `injection-manifest.json`에 추가
-3. `pnpm test:cli`로 검증
+3. `pnpm test:cli` → `template-reverse-matrix`가 도달성 검증
+4. 고아면 fail → 연결 코드(render 호출, partial 참조 등) 추가 필요
+
+### 템플릿 삭제
+
+1. 파일 삭제
+2. `pnpm test:cli` → `invariant-audit` 6C가 참조 무결성 실패 감지
+3. 코드에서 참조 제거 후 재실행
+
+### AutoInjectionResolver 변경
+
+1. 코드 수정
+2. `pnpm test:cli` → injection-resolution-matrix + invariant-audit 6D가 경로 검증
+3. intent-acceptance 스냅샷 diff 발생 시 `--update`
+
+### PromptBuilder / 파이프라인 변경
+
+1. 코드 수정
+2. `pnpm test:cli` → prompt-build-e2e가 8개 시나리오 E2E 검증
+3. intent-acceptance Stage 3이 injection 목록 스냅샷 비교
 
 ---
 
-## Audit (전수조사)
-
-7개 축 기반 전수 검증. 프롬프트 시스템 변경 시 해당 감사 재실행.
-
-| 트리거 | 실행 범위 |
-|--------|-----------|
-| injection-manifest.json 변경 | Smoke + Injection Matrix |
-| AutoInjectionResolver 변경 | Injection Resolution Matrix |
-| rac.ts 변경 | RAC Audit (rac-creation-audit, rac-matrix) |
-| prompt-policy-matrix 변경 | Injection Resolution Matrix + Intent Acceptance |
-| PromptBuilder 변경 | Intent Acceptance Stage 3 |
-| 템플릿 추가/삭제 | Smoke + Injection Resolution Matrix |
-
-### 7개 축
-
-1. **Source**: explicit / infer / infer+metadata / none
-2. **Intent**: 대표 intent → mode/intentGroup 파생
-3. **Stack**: frontend / backend / fullstack / none (techTier 기반)
-4. **Language**: typescript / go / python / rust / java
-5. **TaskType**: feature / setup / verification / error / test-code / doc
-6. **Documents**: none / design-only / design+prd / full / explicit-refs
-7. **Context Flags**: hasMemory, hasDirective, retryContext, lessons, sessionContext 등 12개
-
-### TaskType별 injection 매트릭스
+## TaskType별 injection 매트릭스
 
 | injection | feature | setup | verification | error | test-code | doc |
 |-----------|---------|-------|-------------|-------|-----------|-----|
-| env-specific rules | O | O | X | X | X | X |
 | tool-calling-rules-compact | O | O | X | X | X | X |
-| preview-setup (browser/fs) | O | O | X | O | X | X |
+| preview-setup (frontend) | O | O | X | O | X | X |
 | preview-env-contract | O | O | O | O | X | X |
 | port-management | O | O | O | O | X | X |
-| backend-safety (be/fs) | O | O | X | O | O | X |
+| backend-safety (backend) | O | O | X | O | O | X |
+| visual-source-authority (frontend) | O | O | X | O | X | X |
 | test-code hints | X | X | X | X | O | X |
-| visual-source-authority | O | O | X | O | X | X |
+| ui-design-guide | X(feature) | X | X | X | X | X |
+| ui-design-guide (taskType=ui) | O | - | - | - | - | - |
 
-### 프롬프트 빌드 경로 맵
+---
+
+## 프롬프트 빌드 경로 맵
 
 ```
 RAC 생성 ─→ Documents 파이프라인 ─→ PromptBuilder.build() (execute/docGen) ─→ LLM
                                   └→ promptBuilder.render() (plan/decompose/detect) ─→ LLM
 ```
 
-- **build() 경로**: 4-Tier injection 해석 → system + profiles + rules + injections + examples 조립 → guardrails 래핑
-- **render() 경로**: 단일 템플릿 직접 렌더링 (plan, decompose, detect, revise 등)
-
----
-
-## Hardening
-
-전수조사가 커버하지 못한 영역: 경계값, 직렬화, mutation, techTier 전파.
-
-### 경계값 (threshold-boundary, 11 tests)
-
-| 대상 | at threshold | at threshold+1 |
-|------|-------------|----------------|
-| EXECUTE_SOURCE_THRESHOLD (200K) | inline mode | tool mode |
-| DECOMPOSE_SOURCE_THRESHOLD (200K) | inline, individual docs | tool, index only |
-| condenseContent (30K) | 원본 유지 | condensed outline |
-
-### 직렬화 (rac-serialization, 7 tests)
-
-| RAC 유형 | 검증 |
-|----------|------|
-| explicit + full fields | 모든 필드 동일 |
-| infer + minimal | source, mode 보존 |
-| special chars in documents | newlines, unicode, backticks 무손실 |
-| undefined fields | 키 사라짐 허용, null 변환 금지 |
-
-### Immutability (prompt-immutability)
-
-| 대상 | 검증 |
-|------|------|
-| AutoInjectionResolver.resolve | input 불변 |
-| condenseContent | options 불변 |
-| resolveToRAC | inputs 불변 |
-| sanitizeInjectionVars | 원본 vars 불변 |
-
-### TechTier Propagation (techtier-propagation)
-
-| 시나리오 | 검증 |
-|----------|------|
-| decompose 경유 (code/design) | buildTechTier → state.techTier → effectiveTechTier → profile injection |
-| decompose 미경유 (plan/ask/visual) | techTier 없이도 injection 정상 |
-| resolveTaskTechTiers | 태스크별 techTiers 올바른 선택 |
+- **build() 경로**: Tier I/A/D/N injection 해석 → system + profiles + rules + injections + examples 조립 → guardrails 래핑
+- **render() 경로**: 단일 템플릿 직접 렌더링 (plan, decompose, detect, revise, triage, visual, learn)
 
 ---
 
@@ -230,3 +249,4 @@ RAC 생성 ─→ Documents 파이프라인 ─→ PromptBuilder.build() (execut
 - ArtifactRoleResolver: `packages/ant-cli/src/core/prompt/builder/ArtifactRoleResolver.ts`
 - prompt-policy-matrix: `packages/ant-shared/src/prompt-policy-matrix.ts`
 - injection-manifest: `packages/ant-cli/src/core/prompt/injection-manifest.json`
+- 자동 생성 매트릭스: `packages/ant-cli/tests/__generated__/template-matrix.json`
