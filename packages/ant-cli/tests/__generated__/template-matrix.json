@@ -296,7 +296,6 @@
   },
   "jobs/code/base/injections/tool-calling-rules-compact": {
     "sources": [
-      "auto-injection",
       "partial-ref",
       "manifest"
     ]

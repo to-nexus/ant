@@ -122,7 +122,6 @@ export class AutoInjectionResolver {
         if (hasFrontend) {
           this.pushUnique(injections, `${jobPrefix}/preview-setup`);
         }
-        this.pushUnique(injections, `${jobPrefix}/tool-calling-rules-compact`);
       }
 
       if (isError && hasFrontend && job === 'code') {

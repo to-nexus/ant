@@ -279,7 +279,6 @@ describe('AutoInjectionResolver: techTier presence', () => {
       techTier: tier, data: {},
     });
     expect(injections).toContain('jobs/code/base/injections/preview-setup');
-    expect(injections).toContain('jobs/code/base/injections/tool-calling-rules-compact');
   });
 
   it('code job with techTiers (multi-package) → includes backend safety', () => {
