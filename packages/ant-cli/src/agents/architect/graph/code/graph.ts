@@ -2,7 +2,7 @@ import path from 'node:path';
 import { Annotation, StateGraph, END } from "@langchain/langgraph";
 import { getTechTier } from '@ant/shared';
 import { DetectableFields } from '../../../common/graph/annotationHelpers';
-import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
+import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, Violation, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
 import { codeResolveStrategy } from "./nodes/resolve";
 import { createResolveNode } from "../../../common/graph/nodes/resolve";
@@ -55,8 +55,11 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     );
   }
   
-  // ✅ Convert fileErrors to violations
-  const violations = [...(state.violations || [])];
+  // ✅ Build violations from CURRENT state only.
+  // CRITICAL: Do NOT inherit state.violations — they contain stale violations from
+  // the previous enforce→plan cycle. checkTaskStatus must evaluate independently.
+  // Fresh violations come from: fileErrors conversion, budget guard, tracker checks.
+  const violations: Violation[] = [];
   if (state.fileErrors && state.fileErrors.length > 0) {
     console.log(`⚠️  [checkTaskStatus] Converting ${state.fileErrors.length} file error(s) to violations`);
     for (const errorMsg of state.fileErrors) {

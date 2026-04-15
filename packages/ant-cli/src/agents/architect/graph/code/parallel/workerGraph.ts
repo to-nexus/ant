@@ -9,7 +9,7 @@
  */
 
 import { Annotation, StateGraph, END } from '@langchain/langgraph';
-import type { ArchitectGraphState, ViolationType } from '../state';
+import type { ArchitectGraphState, Violation, ViolationType } from '../state';
 import type { CodeTask } from '../../../types/task';
 import { plan } from '../nodes/plan';
 import { execute } from '../nodes/execute/index';
@@ -51,8 +51,9 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
     );
   }
 
-  // Convert fileErrors to violations (same logic as main graph)
-  const violations = [...(state.violations || [])];
+  // Build violations from CURRENT state only (same fix as main graph).
+  // Do NOT inherit state.violations — they contain stale violations from enforce→plan cycle.
+  const violations: Violation[] = [];
   if (state.fileErrors && state.fileErrors.length > 0) {
     console.log(`⚠️  [Worker checkTaskStatus] Converting ${state.fileErrors.length} file error(s) to violations`);
     for (const errorMsg of state.fileErrors) {
