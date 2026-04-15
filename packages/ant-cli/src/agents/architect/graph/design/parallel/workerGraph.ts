@@ -14,6 +14,7 @@
 
 import { Annotation, StateGraph } from '@langchain/langgraph';
 import type { DesignGraphState } from '../state';
+import { DesignGraphChannels } from '../graph';
 import { plan } from '../nodes/plan';
 import { docGen } from '../nodes/docGen/index';
 import { tool } from '../nodes/tool';
@@ -213,65 +214,15 @@ async function workerLearn(state: DesignGraphState): Promise<Partial<DesignGraph
 }
 
 const DesignWorkerSubgraphAnnotation = Annotation.Root({
-  context: Annotation<any>,
-  workspaceConfig: Annotation<any>,
-  deps: Annotation<any>,
-  resolvedAction: Annotation<any>,
-  designError: Annotation<any>,
+  // Inherit ALL channels from main graph (SSOT — no manual sync needed)
+  ...DesignGraphChannels,
+
+  // Worker-only fields (not in main graph)
   prd: Annotation<any>,
-  directive: Annotation<any>,
   design: Annotation<any>,
-  taskQueue: Annotation<any>,
-  currentTask: Annotation<any>,
-  completedTasks: Annotation<any>,
-  completedTasksDetails: Annotation<any>,
-  jobId: Annotation<any>,
-  jobTiming: Annotation<any>,
-  _currentTaskTokenUsage: Annotation<any>,
-  tokenUsage: Annotation<any>,
-  _estimatingTokenUsage: Annotation<any>,
-  planText: Annotation<any>,
-  files: Annotation<any>,
-  filesToDelete: Annotation<any>,
-  lessons: Annotation<any>,
-  llmResponse: Annotation<any>,
-  conversationHistory: Annotation<any>,
-  _httpJobId: Annotation<any>,
-  _phaseTimings: Annotation<any>,
-  _uiLocale: Annotation<any>,
-  overrideDirective: Annotation<any>,
-  chatSource: Annotation<any>,
-  skipTriage: Annotation<any>,
-  triageResult: Annotation<any>,
-  workspaceState: Annotation<any>,
-  currentAgent: Annotation<any>,
-  currentJob: Annotation<any>,
-  uiReferences: Annotation<any>,
-  uiAssetsList: Annotation<any>,
-  figmaConfig: Annotation<any>,
-  figmaExplorationResult: Annotation<any>,
-  isResume: Annotation<any>,
-  existingDesignDocs: Annotation<any>,
   sourceDocuments: Annotation<any>,
-  recursionCount: Annotation<any>,
-  recursionLimit: Annotation<any>,
-  interruption: Annotation<any>,
-  awaitingDetectClarify: Annotation<any>,
-  awaitingClarify: Annotation<any>,
-  _docGenCallIndex: Annotation<any>,
-  _noOutputCallCount: Annotation<any>,
-  _callLimitReached: Annotation<any>,
-  _toolResultCache: Annotation<any>,
-  fileErrors: Annotation<any>,
-  // Figma MCP connection health
-  _figmaConsecutiveErrors: Annotation<any>,
-  _figmaConnectionLost: Annotation<any>,
-  // MECE: all sibling tasks for scope awareness
   _allTasksSummary: Annotation<any>,
-  // Worker-specific
-  workerId: Annotation<any>,
   _taskCompleted: Annotation<any>,
-  _isStopRequested: Annotation<any>,
 });
 
 /**

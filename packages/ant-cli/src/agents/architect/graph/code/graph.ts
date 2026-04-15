@@ -474,6 +474,12 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   console.log(`📁 [ParallelOrchestrator] SharedFileBuffer created (codebaseRel=${codebaseRel})`);
 
   // Build shared context for workers (everything they need except per-task state)
+  const _parBasis = state.resolvedAction?.basis;
+  if (!_parBasis) {
+    console.warn(`⚠️  [ParallelOrchestrator] state.resolvedAction.basis is ${_parBasis === undefined ? 'undefined' : 'falsy'} — workers will NOT have basis templates`);
+  } else {
+    console.log(`📐 [ParallelOrchestrator] basis present: stack=${_parBasis.techTier?.stack || 'none'}, visualTier=${_parBasis.visualTier ? Object.keys(_parBasis.visualTier).join(',') : 'none'}`);
+  }
   const sharedContext = {
     context: state.context,
     workspaceConfig: state.workspaceConfig,
@@ -481,6 +487,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     gitPort: state.gitPort,
     artifacts: state.artifacts,
     resolvedArtifacts: state.resolvedArtifacts,
+    resolvedAction: state.resolvedAction,
     techTier: getTechTier(state),
     selectedDesignFiles: state.selectedDesignFiles,
     decomposeFilePaths: state.decomposeFilePaths,
@@ -975,7 +982,12 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   } as any;
 }
 
-const ArchitectCodeGraphStateAnnotation = Annotation.Root({
+/**
+ * SSOT: All channel definitions for the code graph.
+ * Both main graph and worker subgraph spread this to stay in sync.
+ * Worker subgraph adds worker-only fields on top.
+ */
+export const CodeGraphChannels = {
       ...DetectableFields,
 
       // Job-specific fields (not in common chain)
@@ -1068,7 +1080,9 @@ const ArchitectCodeGraphStateAnnotation = Annotation.Root({
       _depFileHash: Annotation<any>,
       _batchSplitRequeued: Annotation<any>,
       verifiedTasks: Annotation<any>,
-});
+} as const;
+
+const ArchitectCodeGraphStateAnnotation = Annotation.Root(CodeGraphChannels);
 
 export function buildCodeGraph() {
   const graph = new StateGraph(ArchitectCodeGraphStateAnnotation);

@@ -36,6 +36,8 @@ checkTaskStatus -> [router]
 
 decompose 이후 `parallelOrchestrator` 노드로 분기한다. TaskOrchestrator가 N개의 TaskWorker를 관리하며, 각 Worker는 독립적인 Worker Subgraph를 실행한다.
 
+Worker Subgraph는 `CodeGraphChannels`를 spread하여 메인 그래프와 채널을 동기화한다. 새 채널 추가 시 `CodeGraphChannels`(`graph.ts`)에만 추가하면 Worker에 자동 반영된다. 상세: [11-agent-architecture.md](11-agent-architecture.md) "Worker Subgraph 채널 정의" 참조.
+
 ## 주요 노드
 
 ### resolve

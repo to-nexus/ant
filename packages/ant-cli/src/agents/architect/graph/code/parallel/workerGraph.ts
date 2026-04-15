@@ -11,6 +11,7 @@
 import { Annotation, StateGraph, END } from '@langchain/langgraph';
 import type { ArchitectGraphState, Violation, ViolationType } from '../state';
 import type { CodeTask } from '../../../types/task';
+import { CodeGraphChannels } from '../graph';
 import { plan } from '../nodes/plan';
 import { execute } from '../nodes/execute/index';
 import { tool } from '../nodes/tool';
@@ -299,109 +300,12 @@ async function workerLearn(state: ArchitectGraphState): Promise<Partial<Architec
 }
 
 const CodeWorkerSubgraphAnnotation = Annotation.Root({
-  // Shared context (injected by worker)
-  context: Annotation<any>,
-  workspaceConfig: Annotation<any>,
-  deps: Annotation<any>,
-  gitPort: Annotation<any>,
-  artifacts: Annotation<any>,
-  selectedDesignFiles: Annotation<any>,
-  decomposeFilePaths: Annotation<any>,
-  directive: Annotation<any>,
-  code: Annotation<any>,
-  codeHead: Annotation<any>,
-  profile: Annotation<any>({
-    reducer: (x: any, y: any) => y ?? x,
-    default: () => undefined,
-  }),
-  runtimeAssetsIndex: Annotation<any>,
-  referenceCodeContexts: Annotation<any>,
-  sessionContext: Annotation<any>,
+  // Inherit ALL channels from main graph (SSOT — no manual sync needed)
+  ...CodeGraphChannels,
 
-  // Per-worker state
-  projectCodeContext: Annotation<any>,
-  planText: Annotation<any>({
-    reducer: (x: any, y: any) => y ?? x,
-    default: () => '',
-  }),
-  codePrompt: Annotation<any>,
-  rawResponse: Annotation<any>,
-  responseSection: Annotation<any>,
-  filesToDelete: Annotation<any>,
-  modifications: Annotation<any>,
-  featureName: Annotation<any>,
-  requiredIntegrations: Annotation<any>,
-  violations: Annotation<any>,
-  fileErrors: Annotation<any>,
-  retries: Annotation<any>,
-  maxRetries: Annotation<any>,
-  lastViolations: Annotation<any>,
-  previousFileCount: Annotation<any>,
-  previousAttempts: Annotation<any>,
-  enforcementHistory: Annotation<any>,
-
-  // Task
-  taskQueue: Annotation<any>,
-  currentTask: Annotation<any>,
-  featureTasks: Annotation<any>,
-  completedTasks: Annotation<any>,
-  completedTasksDetails: Annotation<any>,
-  resolvedCategories: Annotation<any>,
-  jobId: Annotation<any>,
-  jobTiming: Annotation<any>,
-  failedTasks: Annotation<any>,
-  unresolvedErrors: Annotation<any>,
-  evaluationReport: Annotation<any>,
-  lessons: Annotation<any>,
-  referenceRequests: Annotation<any>,
-  branch: Annotation<any>,
-  filesWritten: Annotation<any>,
-  reportFile: Annotation<any>,
-  _httpJobId: Annotation<any>,
-  _phaseTimings: Annotation<any>,
-  _uiLocale: Annotation<any>,
-  directives: Annotation<any>,
-  overrideDirective: Annotation<any>,
-  chatSource: Annotation<any>,
-  skipTriage: Annotation<any>,
-  triageResult: Annotation<any>,
-  workspaceState: Annotation<any>,
-  currentAgent: Annotation<any>,
-  currentJob: Annotation<any>,
-  _errorIsRepeating: Annotation<any>,
-  _currentTaskTokenUsage: Annotation<any>,
-  tokenUsage: Annotation<any>,
-  _executeCallIndex: Annotation<any>,
-  _finalTaskLoopCount: Annotation<any>,
-  recursionCount: Annotation<any>,
-  recursionLimit: Annotation<any>,
-  llmResponse: Annotation<any>,
-  toolResults: Annotation<any>,
-  conversationHistory: Annotation<any>,
-  interruption: Annotation<any>,
-  _activePhase: Annotation<any>,
-  _planEntryReason: Annotation<any>,
-  _executeModifiedFiles: Annotation<any>,
-  _installNeeded: Annotation<any>,
-  _appliedPlanHistory: Annotation<any>,
-  _otherWorkerFiles: Annotation<any>,
-  planConversationHistory: Annotation<any>,
-
-  // Verification & command tracking
-  _verificationTracker: Annotation<any>,
-  commandHistory: Annotation<any>,
-
-  // Worker-specific
-  workerId: Annotation<any>,
+  // Worker-only fields (not in main graph)
   _taskCompleted: Annotation<any>,
-  _isStopRequested: Annotation<any>,
-  isResume: Annotation<any>,
-  _batchSplitRequeued: Annotation<any>,
-
-  // Figma MCP state
-  figmaAvailable: Annotation<any>,
-  figmaFileKey: Annotation<any>,
-  figmaStartNodeId: Annotation<any>,
+  _batchSplitCompleted: Annotation<any>,
 });
 
 /**

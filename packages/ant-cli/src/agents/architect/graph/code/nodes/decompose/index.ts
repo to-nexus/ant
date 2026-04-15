@@ -346,6 +346,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             codebaseFilePaths: codebaseFilePaths?.length || 0,
             uiSectionsSummary: uiSectionsSummary ? `[${uiSectionsSummary.length} chars]` : undefined,
             runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
+            techTierLanguage: decomposeVars.techTier?.language || null,
+            techTierFramework: decomposeVars.techTier?.framework || null,
+            hasBasis: !!state.resolvedAction?.basis,
+            hasVisualTier: !!state.resolvedAction?.basis?.visualTier,
+            basisStack: state.resolvedAction?.basis?.techTier?.stack || null,
           },
         }
       );
