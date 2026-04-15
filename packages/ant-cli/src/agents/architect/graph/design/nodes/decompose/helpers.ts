@@ -105,6 +105,7 @@ export async function saveCheckpoint(
           chatSource: data.chatSource,
           userLanguage: data.userLanguage,
           techTier: data.techTier,
+          resolvedAction: state.resolvedAction,
         }
       }
     );

@@ -109,6 +109,19 @@ export interface BaseTask {
    * - `['outputs/design/ui/tokens', 'outputs/design/ui/spec/header']` → UI subset
    */
   include?: string[];
+
+  /**
+   * Role-annotated artifact selection policy. When present, overrides `include`
+   * for role-aware selection via `selectArtifactsWithPolicy`.
+   * - refs: path prefixes → select and inject as role='ref' (primary reference)
+   * - context: path prefixes → select and inject as role='context' (background)
+   *
+   * `include` is kept as backward-compat flat projection of this policy.
+   */
+  artifactPolicy?: {
+    refs?: string[];
+    context?: string[];
+  };
 }
 
 // ============================================

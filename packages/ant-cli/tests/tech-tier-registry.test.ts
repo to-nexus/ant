@@ -27,6 +27,23 @@ import {
   getValidFrameworks,
   getFrameworkOptions,
   getFullstackLanguages,
+  VISUAL_TIER_TEMPLATE_PATHS,
+  VISUAL_TIER_LAYER_KEYS,
+  VISUAL_LANGUAGE_VARIANTS,
+  SURFACE_SYSTEM_VARIANTS,
+  SPATIAL_SYSTEM_VARIANTS,
+  INTERACTION_GRAMMAR_VARIANTS,
+  COMPONENT_SEMANTICS_VARIANTS,
+  VISUAL_HIERARCHY_RULES_VARIANTS,
+  VISUAL_LANGUAGE_OPTIONS,
+  SURFACE_SYSTEM_OPTIONS,
+  SPATIAL_SYSTEM_OPTIONS,
+  INTERACTION_GRAMMAR_OPTIONS,
+  COMPONENT_SEMANTICS_OPTIONS,
+  VISUAL_HIERARCHY_RULES_OPTIONS,
+  deriveInteractionGrammar,
+  deriveVisualHierarchyRules,
+  deriveComponentSemantics,
   type LanguageVariant,
   type SupportedLanguage,
   type SupportedStack,
@@ -295,5 +312,161 @@ describe('getFrameworkOptions', () => {
     const opts = getFrameworkOptions('backend', 'go');
     expect(opts).toHaveLength(1);
     expect(opts[0].id).toBe('gin');
+  });
+});
+
+// ============================================
+// VisualTier Registry — Forward check (registry → files)
+// ============================================
+
+describe('VisualTier: Registry → Template files exist', () => {
+  it('shared preamble exists', () => {
+    expect(templateExists(VISUAL_TIER_TEMPLATE_PATHS.preamble())).toBe(true);
+  });
+
+  const VARIANT_MAP: Record<string, readonly string[]> = {
+    visualLanguage: VISUAL_LANGUAGE_VARIANTS,
+    surfaceSystem: SURFACE_SYSTEM_VARIANTS,
+    spatialSystem: SPATIAL_SYSTEM_VARIANTS,
+    interactionGrammar: INTERACTION_GRAMMAR_VARIANTS,
+    componentSemantics: COMPONENT_SEMANTICS_VARIANTS,
+    visualHierarchyRules: VISUAL_HIERARCHY_RULES_VARIANTS,
+  };
+
+  for (const [layer, variants] of Object.entries(VARIANT_MAP)) {
+    describe(`layer: ${layer}`, () => {
+      const pathFn = VISUAL_TIER_TEMPLATE_PATHS[layer as keyof typeof VARIANT_MAP];
+      it.each([...variants])(`variant "%s" has template file`, (variant) => {
+        expect(templateExists((pathFn as (v: string) => string)(variant))).toBe(true);
+      });
+    });
+  }
+
+  it.each(['code', 'design'])('job "%s" visualTier preamble exists', (job) => {
+    expect(templateExists(VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job))).toBe(true);
+  });
+});
+
+// ============================================
+// VisualTier: Template files → Registry (reverse orphan check)
+// ============================================
+
+describe('VisualTier: Template files → Registry (no orphans)', () => {
+  const registryPaths = new Set<string>();
+
+  // Collect all paths the registry can generate
+  registryPaths.add(VISUAL_TIER_TEMPLATE_PATHS.preamble());
+  for (const [layer, variants] of Object.entries({
+    visualLanguage: VISUAL_LANGUAGE_VARIANTS,
+    surfaceSystem: SURFACE_SYSTEM_VARIANTS,
+    spatialSystem: SPATIAL_SYSTEM_VARIANTS,
+    interactionGrammar: INTERACTION_GRAMMAR_VARIANTS,
+    componentSemantics: COMPONENT_SEMANTICS_VARIANTS,
+    visualHierarchyRules: VISUAL_HIERARCHY_RULES_VARIANTS,
+  })) {
+    const pathFn = VISUAL_TIER_TEMPLATE_PATHS[layer as keyof typeof VISUAL_TIER_TEMPLATE_PATHS];
+    if (typeof pathFn === 'function') {
+      for (const v of variants) {
+        registryPaths.add((pathFn as (v: string) => string)(v));
+      }
+    }
+  }
+  for (const job of ['code', 'design']) {
+    registryPaths.add(VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job));
+  }
+
+  it('every basis/visualTier/ template file is in registry', () => {
+    const vtDir = path.join(TEMPLATES_ROOT, 'basis/visualTier');
+    const files = collectMdFiles(vtDir);
+    for (const file of files) {
+      const rel = path.relative(TEMPLATES_ROOT, file).replace(/\.md$/, '').replace(/\\/g, '/');
+      expect(registryPaths.has(rel)).toBe(true);
+    }
+  });
+
+  it('every jobs/*/basis/visualTier/ template file is in registry', () => {
+    for (const job of ['code', 'design']) {
+      const jobVtDir = path.join(TEMPLATES_ROOT, `jobs/${job}/basis/visualTier`);
+      if (!fs.existsSync(jobVtDir)) continue;
+      const files = collectMdFiles(jobVtDir);
+      for (const file of files) {
+        const rel = path.relative(TEMPLATES_ROOT, file).replace(/\.md$/, '').replace(/\\/g, '/');
+        expect(registryPaths.has(rel)).toBe(true);
+      }
+    }
+  });
+});
+
+function collectMdFiles(dir: string): string[] {
+  const results: string[] = [];
+  if (!fs.existsSync(dir)) return results;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...collectMdFiles(full));
+    } else if (entry.name.endsWith('.md')) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+// ============================================
+// VisualTier: Options arrays match variant constants
+// ============================================
+
+describe('VisualTier: Options ↔ Variants consistency', () => {
+  const PAIRS: [string, readonly string[], { id: string }[]][] = [
+    ['visualLanguage', VISUAL_LANGUAGE_VARIANTS, VISUAL_LANGUAGE_OPTIONS],
+    ['surfaceSystem', SURFACE_SYSTEM_VARIANTS, SURFACE_SYSTEM_OPTIONS],
+    ['spatialSystem', SPATIAL_SYSTEM_VARIANTS, SPATIAL_SYSTEM_OPTIONS],
+    ['interactionGrammar', INTERACTION_GRAMMAR_VARIANTS, INTERACTION_GRAMMAR_OPTIONS],
+    ['componentSemantics', COMPONENT_SEMANTICS_VARIANTS, COMPONENT_SEMANTICS_OPTIONS],
+    ['visualHierarchyRules', VISUAL_HIERARCHY_RULES_VARIANTS, VISUAL_HIERARCHY_RULES_OPTIONS],
+  ];
+
+  it.each(PAIRS)('%s: OPTIONS ids match VARIANTS', (layer, variants, options) => {
+    const optionIds = options.map(o => o.id);
+    expect(optionIds).toEqual([...variants]);
+  });
+
+  it('VISUAL_TIER_LAYER_KEYS covers all 6 layers', () => {
+    expect(VISUAL_TIER_LAYER_KEYS).toHaveLength(6);
+    expect(VISUAL_TIER_LAYER_KEYS).toContain('visualLanguage');
+    expect(VISUAL_TIER_LAYER_KEYS).toContain('visualHierarchyRules');
+  });
+});
+
+// ============================================
+// VisualTier: Derive functions
+// ============================================
+
+describe('VisualTier: Derive functions', () => {
+  it('deriveInteractionGrammar covers all visualLanguage variants', () => {
+    for (const vl of VISUAL_LANGUAGE_VARIANTS) {
+      const result = deriveInteractionGrammar(vl);
+      expect(INTERACTION_GRAMMAR_VARIANTS).toContain(result);
+    }
+  });
+
+  it('deriveVisualHierarchyRules covers all combinations', () => {
+    for (const vl of VISUAL_LANGUAGE_VARIANTS) {
+      for (const ss of SPATIAL_SYSTEM_VARIANTS) {
+        const result = deriveVisualHierarchyRules(vl, ss);
+        expect(VISUAL_HIERARCHY_RULES_VARIANTS).toContain(result);
+      }
+    }
+  });
+
+  it('deriveComponentSemantics returns valid variant for known keywords', () => {
+    expect(COMPONENT_SEMANTICS_VARIANTS).toContain(deriveComponentSemantics('dashboard'));
+    expect(COMPONENT_SEMANTICS_VARIANTS).toContain(deriveComponentSemantics('settings'));
+    expect(COMPONENT_SEMANTICS_VARIANTS).toContain(deriveComponentSemantics('catalog'));
+    expect(COMPONENT_SEMANTICS_VARIANTS).toContain(deriveComponentSemantics('onboarding'));
+  });
+
+  it('deriveComponentSemantics returns fallback for unknown context', () => {
+    const result = deriveComponentSemantics('unknownxyz');
+    expect(COMPONENT_SEMANTICS_VARIANTS).toContain(result);
   });
 });

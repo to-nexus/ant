@@ -64,11 +64,24 @@ export interface TechTierConfig {
 }
 
 // ============================================
-// VisualTier + Basis
+// VisualTier (6-layer visual design policy)
 // ============================================
+
+export type VisualLanguageVariant = 'modernSaas' | 'enterprise' | 'fintechPremium' | 'devtoolDark' | 'minimalNeutral';
+export type SurfaceSystemVariant = 'solid' | 'soft' | 'borderedSoft' | 'tinted' | 'glassLight';
+export type SpatialSystemVariant = 'compact8pt' | 'balanced8pt' | 'airy8pt' | 'dense12ptHybrid';
+export type InteractionGrammarVariant = 'restrained' | 'subtleProduct' | 'calmPremium';
+export type ComponentSemanticsVariant = 'metricFirst' | 'actionGuided' | 'contentPreview' | 'utilityPanel';
+export type VisualHierarchyRulesVariant = 'controlledFocus' | 'taskPriority' | 'summaryFirst' | 'quietLayered';
 
 export interface VisualTier {
   designSystem?: string;
+  visualLanguage?: VisualLanguageVariant;
+  surfaceSystem?: SurfaceSystemVariant;
+  spatialSystem?: SpatialSystemVariant;
+  interactionGrammar?: InteractionGrammarVariant;
+  componentSemantics?: ComponentSemanticsVariant;
+  visualHierarchyRules?: VisualHierarchyRulesVariant;
 }
 
 export interface Basis {
@@ -86,10 +99,35 @@ export {
   VISUAL_TIER_DESIGN_SYSTEMS,
 } from './tech-tier-registry';
 
+export {
+  VISUAL_LANGUAGE_VARIANTS,
+  SURFACE_SYSTEM_VARIANTS,
+  SPATIAL_SYSTEM_VARIANTS,
+  INTERACTION_GRAMMAR_VARIANTS,
+  COMPONENT_SEMANTICS_VARIANTS,
+  VISUAL_HIERARCHY_RULES_VARIANTS,
+  VISUAL_LANGUAGE_OPTIONS,
+  SURFACE_SYSTEM_OPTIONS,
+  SPATIAL_SYSTEM_OPTIONS,
+  INTERACTION_GRAMMAR_OPTIONS,
+  COMPONENT_SEMANTICS_OPTIONS,
+  VISUAL_HIERARCHY_RULES_OPTIONS,
+  deriveInteractionGrammar,
+  deriveVisualHierarchyRules,
+  deriveComponentSemantics,
+  resolveVisualTier,
+  VISUAL_TIER_TEMPLATE_PATHS,
+} from './visual-tier-registry';
+
 export function buildBasisPreset(opts: {
   stack?: string;
   tiers?: Partial<Record<string, { language?: string; framework?: string; packageManager?: string }>>;
   designSystem?: string;
+  visualTier?: {
+    visualLanguage?: VisualLanguageVariant;
+    surfaceSystem?: SurfaceSystemVariant;
+    spatialSystem?: SpatialSystemVariant;
+  };
 }): Basis {
   const tierEntries: Record<string, TechTier> = {};
   if (opts.tiers) {
@@ -105,13 +143,16 @@ export function buildBasisPreset(opts: {
     }
   }
   const hasTiers = Object.keys(tierEntries).length > 0;
+  const hasVisualLayers = opts.visualTier && Object.values(opts.visualTier).some(Boolean);
+
   return {
     techTier: (opts.stack || hasTiers) ? {
       stack: opts.stack as Stack | undefined,
       ...(hasTiers ? tierEntries : {}),
     } as TechTierConfig : undefined,
-    visualTier: opts.designSystem ? {
-      designSystem: opts.designSystem,
+    visualTier: (opts.designSystem || hasVisualLayers) ? {
+      ...(opts.designSystem ? { designSystem: opts.designSystem } : {}),
+      ...(hasVisualLayers ? opts.visualTier : {}),
     } : undefined,
   };
 }

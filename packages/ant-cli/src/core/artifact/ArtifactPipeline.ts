@@ -93,6 +93,48 @@ export function selectArtifacts(
   }
 }
 
+/**
+ * Select artifacts with explicit role assignment from policy.
+ * Refs patterns are matched first; context patterns skip already-seen paths.
+ */
+export function selectArtifactsWithPolicy(
+  candidates: ResolvedArtifact[],
+  policy: { refs?: string[]; context?: string[] },
+): ResolvedArtifact[] {
+  const result: ResolvedArtifact[] = [];
+  const seen = new Set<string>();
+
+  for (const pattern of policy.refs ?? []) {
+    for (const a of candidates) {
+      if (!seen.has(a.path) && matchesInclude(a.path, [pattern])) {
+        result.push({ ...a, role: 'ref' });
+        seen.add(a.path);
+      }
+    }
+  }
+  for (const pattern of policy.context ?? []) {
+    for (const a of candidates) {
+      if (!seen.has(a.path) && matchesInclude(a.path, [pattern])) {
+        result.push({ ...a, role: 'context' });
+        seen.add(a.path);
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Flatten an artifactPolicy into a simple include string[].
+ * Used for backward-compat when only path prefixes (no roles) are needed.
+ */
+export function flattenPolicyToInclude(
+  policy?: { refs?: string[]; context?: string[] },
+): string[] | undefined {
+  if (!policy) return undefined;
+  const all = [...(policy.refs || []), ...(policy.context || [])];
+  return all.length > 0 ? all : undefined;
+}
+
 // ────────────────────────────────────────────────────────────────
 // Compaction
 // ────────────────────────────────────────────────────────────────
@@ -295,7 +337,16 @@ export function appendOrUpdatePool(
   newArtifacts: ResolvedArtifact[],
 ): ResolvedArtifact[] {
   const map = new Map(pool.map(a => [a.path, a]));
-  for (const a of newArtifacts) map.set(a.path, a);
+  for (const a of newArtifacts) {
+    const existing = map.get(a.path);
+    if (existing && existing.role !== a.role) {
+      console.warn(
+        `⚠️ [ArtifactPool] Role conflict on "${a.path}": ` +
+        `existing=${existing.role} -> new=${a.role}. Keeping new.`
+      );
+    }
+    map.set(a.path, a);
+  }
   return Array.from(map.values());
 }
 

@@ -205,6 +205,10 @@ export async function decomposeUiDesign(
         description: task.description,
         sourceFiles: sf.length > 0 ? sf : undefined,
         include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI],
+        artifactPolicy: {
+          refs: [ARTIFACT_PREFIX.SOURCES],
+          context: [ARTIFACT_PREFIX.UI],
+        },
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,
@@ -241,6 +245,28 @@ export async function decomposeUiDesign(
     const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(ctx.newJobTiming, ctx.newJobTiming.startedAt, phaseBreakdown);
     if (state.deps?.kanbanUpdate?.setJobTiming) {
       state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
+    }
+
+    // VisualTier resolution (gen-ui-desc)
+    if (state.resolvedAction?.intent === 'gen-ui-desc') {
+      const { resolveVisualTierFromDecompose } = await import('../../../../../common/visualTierResolver');
+      const resolvedVT = resolveVisualTierFromDecompose(
+        textResponse,
+        state.resolvedAction?.basis?.visualTier,
+      );
+      if (resolvedVT) {
+        state.resolvedAction = {
+          ...state.resolvedAction!,
+          basis: {
+            ...state.resolvedAction?.basis,
+            visualTier: {
+              ...state.resolvedAction?.basis?.visualTier,
+              ...resolvedVT,
+            },
+          },
+        };
+        console.log(`✅ VisualTier: ${resolvedVT.visualLanguage ?? '-'}/${resolvedVT.surfaceSystem ?? '-'}/${resolvedVT.spatialSystem ?? '-'}`);
+      }
     }
 
     // UI design is always frontend

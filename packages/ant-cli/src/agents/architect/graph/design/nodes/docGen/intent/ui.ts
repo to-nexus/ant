@@ -20,7 +20,7 @@ import { DesignTask } from '../../../../../types/task';
 import type { FigmaNodeSummary } from '@ant/shared';
 import { designDirOf, DESIGN_DIR, DESIGN_SUBDIR, ARTIFACT_PREFIX, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
-import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { selectArtifacts, selectArtifactsWithPolicy } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -86,23 +86,37 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   }
 
   const taskInclude = (task as DesignTask | undefined)?.include;
-  let sourceDocs = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
+  const designTask = task as DesignTask | undefined;
+  let selectedDocs = designTask?.artifactPolicy
+    ? selectArtifactsWithPolicy(state.artifacts || [], designTask.artifactPolicy)
+    : selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
   if (taskSourceFiles?.length) {
-    sourceDocs = sourceDocs.filter(a =>
+    selectedDocs = selectedDocs.filter(a =>
       taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
     );
   }
 
   // Figma config injection (may not be in pool)
-  if (figmaMode && state.figmaConfig && !sourceDocs.some(a => a.path.endsWith('figma.json'))) {
-    sourceDocs.push({ path: 'inputs/sources/figma.json', content: JSON.stringify(state.figmaConfig, null, 2), role: 'context' });
+  if (figmaMode && state.figmaConfig && !selectedDocs.some(a => a.path.endsWith('figma.json'))) {
+    selectedDocs.push({ path: 'inputs/sources/figma.json', content: JSON.stringify(state.figmaConfig, null, 2), role: 'context' });
   }
 
-  const combinedSource = sourceDocs.map(a => a.content).join('\n\n');
-  if (combinedSource) {
+  const refs = selectedDocs.filter(a => a.role === 'ref');
+  const ctx = selectedDocs.filter(a => a.role === 'context');
+  // Artifacts without explicit role assignment fall back to context
+  const untagged = selectedDocs.filter(a => a.role !== 'ref' && a.role !== 'context');
+
+  if (refs.length > 0) {
     content.push({
       type: 'text',
-      text: `\n\n# PRD (Requirements)\n\n${combinedSource}`
+      text: `\n\n# Primary References\n\n${refs.map(a => `## ${a.path}\n\n${a.content}`).join('\n\n')}`
+    });
+  }
+  const allContext = [...ctx, ...untagged];
+  if (allContext.length > 0) {
+    content.push({
+      type: 'text',
+      text: `\n\n# PRD (Requirements)\n\n${allContext.map(a => a.content).join('\n\n')}`
     });
   }
   
@@ -146,7 +160,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
-            sourceDocs: combinedSource ? `[${combinedSource.length} chars]` : undefined,
+            sourceDocs: selectedDocs.length > 0 ? `[${selectedDocs.reduce((s, a) => s + (a.content?.length || 0), 0)} chars, refs=${refs.length}, ctx=${allContext.length}]` : undefined,
             previousDocs: previousDocs ? `[${(previousDocs as string).length} chars]` : undefined,
             uiReferences: state.uiReferences ? {
               count: state.uiReferences.length,
@@ -620,6 +634,12 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   if (!template) {
     throw new Error(`[DocGen] Failed to load ${templatePath}.md template`);
   }
+
+  const visualTierBasis = await promptBuilder.buildVisualTierBasis(
+    state.resolvedAction?.basis,
+    'design',
+  );
+  const finalTemplate = visualTierBasis ? `${visualTierBasis}\n\n${template}` : template;
   
   const jobId = state.jobId || state._httpJobId || 'unknown';
   if (state.context.featurePath) {
@@ -629,7 +649,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         jobId,
         'design',
         'docGen-uiDesign-systemPrompt',
-        template.length,
+        finalTemplate.length,
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
@@ -649,6 +669,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
             pathPattern: injectedVariables.pathPattern,
             previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,
             siblingTasks: injectedVariables.siblingTasks ? `[${injectedVariables.siblingTasks.length} chars]` : undefined,
+            visualTierBasis: visualTierBasis ? `[${visualTierBasis.length} chars]` : undefined,
           },
         }
       );
@@ -657,7 +678,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     }
   }
   
-  return template;
+  return finalTemplate;
 }
 
 /**

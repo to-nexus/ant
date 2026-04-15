@@ -9,7 +9,7 @@
  *   (c) POLICY_TEMPLATE_MAP values
  *   (d) render() direct calls from agent TS source
  *   (e) {{> partial}} references from other templates
- *   (f) buildBasisSection via TECH_TIER_TEMPLATE_PATHS
+ *   (f) buildBasisSection via TECH_TIER_TEMPLATE_PATHS + VISUAL_TIER_TEMPLATE_PATHS
  *
  * Outputs a JSON matrix to tests/__generated__/template-matrix.json.
  */
@@ -20,6 +20,14 @@ import { join } from 'path';
 import {
   POLICY_TEMPLATE_MAP,
   TECH_TIER_TEMPLATE_PATHS,
+  VISUAL_TIER_TEMPLATE_PATHS,
+  VISUAL_TIER_LAYER_KEYS,
+  VISUAL_LANGUAGE_VARIANTS,
+  SURFACE_SYSTEM_VARIANTS,
+  SPATIAL_SYSTEM_VARIANTS,
+  INTERACTION_GRAMMAR_VARIANTS,
+  COMPONENT_SEMANTICS_VARIANTS,
+  VISUAL_HIERARCHY_RULES_VARIANTS,
   SUPPORTED_LANGUAGES,
   SUPPORTED_STACKS,
   SUPPORTED_FRAMEWORKS,
@@ -345,11 +353,13 @@ async function collectPartialRefs(): Promise<Set<string>> {
 }
 
 // ============================================
-// Source (f): buildBasisSection — TECH_TIER_TEMPLATE_PATHS
+// Source (f): buildBasisSection — TECH_TIER_TEMPLATE_PATHS + VISUAL_TIER_TEMPLATE_PATHS
 // ============================================
 
 function collectBasisPaths(): Set<string> {
   const paths = new Set<string>();
+
+  // ── TechTier paths ──
 
   // Stack templates
   for (const stack of SUPPORTED_STACKS) {
@@ -397,6 +407,36 @@ function collectBasisPaths(): Set<string> {
     paths.add(TECH_TIER_TEMPLATE_PATHS.setup(lang, 'config'));
     paths.add(TECH_TIER_TEMPLATE_PATHS.setup(lang, 'constraints'));
   }
+
+  // ── VisualTier paths ──
+
+  // Shared preamble
+  paths.add(VISUAL_TIER_TEMPLATE_PATHS.preamble());
+
+  // 6-layer variant templates
+  const VARIANT_MAP: Record<string, readonly string[]> = {
+    visualLanguage: VISUAL_LANGUAGE_VARIANTS,
+    surfaceSystem: SURFACE_SYSTEM_VARIANTS,
+    spatialSystem: SPATIAL_SYSTEM_VARIANTS,
+    interactionGrammar: INTERACTION_GRAMMAR_VARIANTS,
+    componentSemantics: COMPONENT_SEMANTICS_VARIANTS,
+    visualHierarchyRules: VISUAL_HIERARCHY_RULES_VARIANTS,
+  };
+  for (const [layer, variants] of Object.entries(VARIANT_MAP)) {
+    const pathFn = VISUAL_TIER_TEMPLATE_PATHS[layer as keyof typeof VARIANT_MAP];
+    if (typeof pathFn === 'function') {
+      for (const v of variants) {
+        paths.add((pathFn as (v: string) => string)(v));
+      }
+    }
+  }
+
+  // Job-specific visualTier preambles
+  for (const job of JOBS) {
+    paths.add(VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job));
+  }
+
+  // ── Shared paths ──
 
   // PromptBuilder.build() programmatic paths: `jobs/${job}/base/examples`
   for (const job of ['code', 'design']) {

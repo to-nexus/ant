@@ -355,7 +355,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     buildDisabled: true,
-    basis: { techTier: true },
+    basis: { techTier: true, visualTier: true },
   },
 
   // ── Code: Rev (codebase required; spec docs as opt-in ref, design docs as context) ──

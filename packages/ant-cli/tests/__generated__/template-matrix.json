@@ -44,6 +44,136 @@
       "basis-registry"
     ]
   },
+  "basis/visualTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/componentSemantics/actionGuided": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/componentSemantics/contentPreview": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/componentSemantics/metricFirst": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/componentSemantics/utilityPanel": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/interactionGrammar/calmPremium": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/interactionGrammar/restrained": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/interactionGrammar/subtleProduct": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/spatialSystem/airy8pt": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/spatialSystem/balanced8pt": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/spatialSystem/compact8pt": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/spatialSystem/dense12ptHybrid": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/surfaceSystem/borderedSoft": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/surfaceSystem/glassLight": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/surfaceSystem/soft": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/surfaceSystem/solid": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/surfaceSystem/tinted": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualHierarchyRules/controlledFocus": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualHierarchyRules/quietLayered": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualHierarchyRules/summaryFirst": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualHierarchyRules/taskPriority": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/devtoolDark": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/enterprise": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/fintechPremium": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/minimalNeutral": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/modernSaas": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "infra/compaction/job-summary": {
     "sources": [
       "render-call"
@@ -224,6 +354,11 @@
     ]
   },
   "jobs/code/basis/techTier/language/typescript-node": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/visualTier/_preamble": {
     "sources": [
       "basis-registry"
     ]
@@ -583,6 +718,11 @@
   "jobs/design/basis/techTier/framework/nextjs": {
     "sources": [
       "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/visualTier/_preamble": {
+    "sources": [
       "basis-registry"
     ]
   },

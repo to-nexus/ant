@@ -23,6 +23,9 @@ C. Injection Resolution (주입 경로)
 D. Build Pipeline (빌드 파이프라인)
 │  prompt-build-e2e.test.ts ────────── PromptBuilder.build() 8개 시나리오 E2E
 │                                      Stage 1: 경로 해석 / Stage 2: 렌더 성공 / Stage 3: 내용 주입
+│  artifact-injection-e2e.test.ts ──── 아티팩트 role별 주입 + directive 경로별 주입 정방향 E2E (12 시나리오)
+│                                      + JSON 매트릭스 생성 (__generated__/artifact-injection-matrix.json)
+│  artifact-injection-audit.test.ts ── build() 호출부 artifacts 전달 + decompose artifactPolicy 정적 감사 (7 케이스)
 │  prompt-integration.test.ts ──────── ArtifactPipeline, 문서 조립 시나리오
 │  documents-pipeline-audit.test.ts ── 문서 파이프라인 회귀 미러
 │
@@ -150,6 +153,36 @@ G. Non-prompt (비프롬프트)
 2. **Stage 2 (렌더)**: `result.sections.failedTemplates` 0건
 3. **Stage 3 (내용)**: `result.system`에 각 인젝션 템플릿의 핑거프린트 텍스트 존재
 
+### artifact-injection-e2e.test.ts
+
+아티팩트 role(`ref`/`context`/`directive`)별 주입과 directive 경로별 주입을 정방향으로 검증. 12개 시나리오:
+
+| 시나리오 | 템플릿 | 핵심 검증 |
+|----------|--------|-----------|
+| A1. code execute: ref+context | code/execute/default | ref→Primary, context→Background, 교차 없음 |
+| A2. code execute: ref only | code/execute/default | ref→Primary, Background 빈 헤더 |
+| A3. code execute: context only | code/execute/default | context→Background, ref 부재 |
+| A4. no artifacts, no resolvedAction | code/execute/default | Primary/Background 헤더 자체 없음 |
+| A5. defensive bridge | code/execute/default | config.artifacts 없이 resolvedAction.artifacts만 → 브릿지 작동 |
+| A6. spec: partial path | design/spec | result.user에 마커 (injections 아닌 partial 경로) |
+| A7. verification | code/execute/verification | action-context 스킵 |
+| A8. directive role: silent drop | code/execute/default | `role='directive'` 양쪽 모두 누락 |
+| D1. code execute: directive truthy | code/execute/default | sections.injections에 `# Directive` |
+| D2. code execute: directive empty | code/execute/default | directive 인젝션 없음 |
+| D3. spec: runtimeContext | design/spec | result.user에 directive (partial 경로) |
+| D4. plan: base template | plan/default | result.user에 directive (`{{directive}}` 직접) |
+
+`tests/__generated__/artifact-injection-matrix.json` 자동 생성.
+
+### artifact-injection-audit.test.ts
+
+역방향 정적 감사 (7 케이스):
+
+| 그룹 | 대상 파일 | 검증 |
+|------|-----------|------|
+| 2-A. build() 호출부 | code/execute/promptBuilder, design/docGen/intent/system, design/docGen/intent/spec | `artifacts` 키워드 존재 |
+| 2-B. decompose 노드 | code/decompose/responseParser, design/decompose/uiDesign·systemDesign·spec | `artifactPolicy` 키워드 존재 |
+
 ### prompt-integration.test.ts
 
 `ArtifactPipeline`의 `selectArtifacts`, 문서 조립 시나리오 (taskType별 선택/배제).
@@ -210,6 +243,13 @@ G. Non-prompt (비프롬프트)
 2. `pnpm test:cli` → prompt-build-e2e가 8개 시나리오 E2E 검증
 3. intent-acceptance Stage 3이 injection 목록 스냅샷 비교
 
+### 아티팩트/Directive 주입 변경
+
+1. action-context.md, directive.md, PromptBuilder 브릿지, build() 호출부 수정
+2. `pnpm test:cli` → artifact-injection-e2e가 12개 시나리오 role별 렌더 검증
+3. artifact-injection-audit가 호출부 artifacts 전달 + decompose artifactPolicy 설정 감사
+4. `artifact-injection-matrix.json` diff로 주입 경로 변화 추적
+
 ---
 
 ## TaskType별 injection 매트릭스
@@ -250,3 +290,4 @@ RAC 생성 ─→ Documents 파이프라인 ─→ PromptBuilder.build() (execut
 - prompt-policy-matrix: `packages/ant-shared/src/prompt-policy-matrix.ts`
 - injection-manifest: `packages/ant-cli/src/core/prompt/injection-manifest.json`
 - 자동 생성 매트릭스: `packages/ant-cli/tests/__generated__/template-matrix.json`
+- 아티팩트 주입 매트릭스: `packages/ant-cli/tests/__generated__/artifact-injection-matrix.json`

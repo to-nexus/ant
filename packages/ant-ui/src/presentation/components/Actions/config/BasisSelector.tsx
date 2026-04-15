@@ -3,19 +3,26 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   type BasisSlotConfig,
+  type VisualTier,
   TECH_TIER_LANGUAGES,
-  VISUAL_TIER_DESIGN_SYSTEMS,
   VALID_LANGUAGES_BY_STACK,
   SUPPORTED_STACKS,
   FRAMEWORK_NONE,
   buildBasisPreset,
   getFrameworkOptions,
   getFullstackLanguages,
+  VISUAL_LANGUAGE_OPTIONS,
+  SURFACE_SYSTEM_OPTIONS,
+  SPATIAL_SYSTEM_OPTIONS,
+  INTERACTION_GRAMMAR_OPTIONS,
+  VISUAL_HIERARCHY_RULES_OPTIONS,
+  deriveInteractionGrammar,
+  deriveVisualHierarchyRules,
   type SupportedLanguage,
   type SupportedStack,
   type TechTierKey,
 } from '@ant/shared';
-import { Settings2 } from 'lucide-react';
+import { Settings2, Palette } from 'lucide-react';
 
 interface BasisSelectorProps {
   basisSlot: BasisSlotConfig;
@@ -72,12 +79,25 @@ export function BasisSelector({ basisSlot, lang }: BasisSelectorProps) {
     return getFrameworkOptions('backend', 'typescript');
   }, [isFullstack]);
 
+  const currentVisualTier: Partial<VisualTier> = currentBasis?.visualTier ?? {};
+
+  const derivedInteractionGrammar = useMemo(() => {
+    if (!currentVisualTier.visualLanguage) return undefined;
+    return deriveInteractionGrammar(currentVisualTier.visualLanguage);
+  }, [currentVisualTier.visualLanguage]);
+
+  const derivedVisualHierarchy = useMemo(() => {
+    if (!currentVisualTier.visualLanguage || !currentVisualTier.spatialSystem) return undefined;
+    return deriveVisualHierarchyRules(currentVisualTier.visualLanguage, currentVisualTier.spatialSystem);
+  }, [currentVisualTier.visualLanguage, currentVisualTier.spatialSystem]);
+
   const buildAndUpdate = useCallback(
-    (nextStack: string, tiers: Record<string, { language?: string; framework?: string }>, designSystem?: string) => {
+    (nextStack: string, tiers: Record<string, { language?: string; framework?: string }>, designSystem?: string, visualTier?: Partial<VisualTier>) => {
       const basis = buildBasisPreset({
         stack: nextStack || undefined,
         tiers: Object.keys(tiers).length > 0 ? tiers : undefined,
         designSystem: designSystem || undefined,
+        visualTier: visualTier || undefined,
       });
       const hasAnyValue = basis.techTier || basis.visualTier;
       updateActionMetadata({ basis: hasAnyValue ? basis : undefined });
@@ -87,9 +107,12 @@ export function BasisSelector({ basisSlot, lang }: BasisSelectorProps) {
 
   const updateBasis = useCallback(
     (patch: { stack?: string; language?: string; framework?: string; designSystem?: string;
-              feFw?: string; beFw?: string }) => {
+              feFw?: string; beFw?: string; visualTier?: Partial<VisualTier> }) => {
       const nextStack = patch.stack ?? selectedStack;
       const ds = patch.designSystem ?? currentBasis?.visualTier?.designSystem ?? '';
+      const nextVisualTier = patch.visualTier
+        ? { ...currentVisualTier, ...patch.visualTier }
+        : currentVisualTier;
 
       if (nextStack === 'fullstack') {
         const fullstackLangs = getFullstackLanguages();
@@ -101,14 +124,14 @@ export function BasisSelector({ basisSlot, lang }: BasisSelectorProps) {
           buildAndUpdate(nextStack, {
             frontend: { language: fixedLang },
             backend: { language: fixedLang },
-          }, ds);
+          }, ds, nextVisualTier);
         } else {
           const feVal = feFw === FRAMEWORK_NONE ? FRAMEWORK_NONE : (feFw || undefined);
           const beVal = beFw === FRAMEWORK_NONE ? FRAMEWORK_NONE : (beFw || undefined);
           buildAndUpdate(nextStack, {
             frontend: { language: fixedLang, framework: feVal },
             backend: { language: fixedLang, framework: beVal },
-          }, ds);
+          }, ds, nextVisualTier);
         }
         return;
       }
@@ -127,16 +150,16 @@ export function BasisSelector({ basisSlot, lang }: BasisSelectorProps) {
       if (!tierKey) {
         buildAndUpdate(nextStack, nextLang ? {
           frontend: { language: nextLang, framework: nextFw === FRAMEWORK_NONE ? FRAMEWORK_NONE : (nextFw || undefined) },
-        } : {}, ds);
+        } : {}, ds, nextVisualTier);
         return;
       }
 
       const fwValue = nextFw === FRAMEWORK_NONE ? FRAMEWORK_NONE : (nextFw || undefined);
       buildAndUpdate(nextStack, nextLang ? {
         [tierKey]: { language: nextLang, framework: fwValue },
-      } : {}, ds);
+      } : {}, ds, nextVisualTier);
     },
-    [selectedStack, selectedLanguage, selectedFramework, selectedFeFw, selectedBeFw, currentBasis, buildAndUpdate],
+    [selectedStack, selectedLanguage, selectedFramework, selectedFeFw, selectedBeFw, currentBasis, currentVisualTier, buildAndUpdate],
   );
 
   useEffect(() => {
@@ -146,7 +169,7 @@ export function BasisSelector({ basisSlot, lang }: BasisSelectorProps) {
   }, [defaultStack]);
 
   const showTechTier = !!basisSlot.techTier;
-  const showVisualTier = !!basisSlot.visualTier && VISUAL_TIER_DESIGN_SYSTEMS.length > 0;
+  const showVisualTier = !!basisSlot.visualTier;
   const hasStackSelector = showTechTier && !defaultStack;
 
   if (!showTechTier && !showVisualTier) return null;
@@ -287,23 +310,103 @@ export function BasisSelector({ basisSlot, lang }: BasisSelectorProps) {
         )}
 
         {showVisualTier && (
-          <div className="space-y-1 col-span-2">
-            <label className="text-[11px] text-gray-500 dark:text-gray-400">
-              {t('basis.designSystem')}
-            </label>
-            <select
-              className={selectClass}
-              value={currentBasis?.visualTier?.designSystem ?? ''}
-              onChange={e => updateBasis({ designSystem: e.target.value })}
-            >
-              <option value="">{t('basis.autoDetect')}</option>
-              {VISUAL_TIER_DESIGN_SYSTEMS.map(opt => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label[lang] || opt.label.en}
-                </option>
-              ))}
-            </select>
-          </div>
+          <>
+            <div className="col-span-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+              <h4 className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-1 mb-2">
+                <Palette className="w-3 h-3 text-violet-400" />
+                {t('basis.visualDesignPolicy', 'Visual Design Policy')}
+                <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500 ml-0.5">
+                  ({t('section.optional')})
+                </span>
+              </h4>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] text-gray-500 dark:text-gray-400">
+                {t('basis.visualLanguage', 'Visual Language')}
+              </label>
+              <select
+                className={selectClass}
+                value={currentVisualTier.visualLanguage ?? ''}
+                onChange={e => updateBasis({ visualTier: { visualLanguage: (e.target.value || undefined) as any } })}
+              >
+                <option value="">{t('basis.autoDetect')}</option>
+                {VISUAL_LANGUAGE_OPTIONS.map(opt => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label[lang] || opt.label.en}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] text-gray-500 dark:text-gray-400">
+                {t('basis.surfaceSystem', 'Surface System')}
+              </label>
+              <select
+                className={selectClass}
+                value={currentVisualTier.surfaceSystem ?? ''}
+                onChange={e => updateBasis({ visualTier: { surfaceSystem: (e.target.value || undefined) as any } })}
+              >
+                <option value="">{t('basis.autoDetect')}</option>
+                {SURFACE_SYSTEM_OPTIONS.map(opt => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label[lang] || opt.label.en}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1 col-span-2">
+              <label className="text-[11px] text-gray-500 dark:text-gray-400">
+                {t('basis.spatialSystem', 'Spatial System')}
+              </label>
+              <select
+                className={selectClass}
+                value={currentVisualTier.spatialSystem ?? ''}
+                onChange={e => updateBasis({ visualTier: { spatialSystem: (e.target.value || undefined) as any } })}
+              >
+                <option value="">{t('basis.autoDetect')}</option>
+                {SPATIAL_SYSTEM_OPTIONS.map(opt => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label[lang] || opt.label.en}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {(derivedInteractionGrammar || derivedVisualHierarchy) && (
+              <div className="col-span-2 space-y-1">
+                <label className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                  {t('basis.derivedLayers', 'Derived Layers')}
+                </label>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5">
+                  {derivedInteractionGrammar && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-400">Interaction:</span>
+                      <span className="text-gray-600 dark:text-gray-300">
+                        {INTERACTION_GRAMMAR_OPTIONS.find(o => o.id === derivedInteractionGrammar)?.label[lang] ?? derivedInteractionGrammar}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-gray-400">Semantics:</span>
+                    <span className="text-gray-500 dark:text-gray-400 italic">
+                      {t('basis.derivedAtRuntime', 'Determined at runtime')}
+                    </span>
+                  </div>
+                  {derivedVisualHierarchy && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-400">Hierarchy:</span>
+                      <span className="text-gray-600 dark:text-gray-300">
+                        {VISUAL_HIERARCHY_RULES_OPTIONS.find(o => o.id === derivedVisualHierarchy)?.label[lang] ?? derivedVisualHierarchy}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
