@@ -70,6 +70,11 @@ export function BasisWizard({ basisSlot, onBack, lang }: BasisWizardProps) {
   }, [wizard]);
 
   const handleNext = useCallback(() => {
+    if (wizard.hasNextGroup) {
+      wizard.advanceToNextGroup();
+      return;
+    }
+
     const { activeTier } = wizard.state;
     const otherTier = activeTier === 'techTier' ? 'visualTier' : 'techTier';
     const hasOther = activeTier === 'techTier' ? wizard.hasVisualTier : wizard.hasTechTier;
@@ -87,12 +92,12 @@ export function BasisWizard({ basisSlot, onBack, lang }: BasisWizardProps) {
     }
   }, [wizard, onBack]);
 
-  const nextEnabled = !!wizard.savedBasis && (
-    wizard.isTierSaved(wizard.state.activeTier) || !wizard.hasPendingChanges
-  );
+  const nextEnabled = wizard.hasNextGroup
+    ? wizard.currentGroupComplete
+    : (!!wizard.savedBasis && (wizard.isTierSaved(wizard.state.activeTier) || !wizard.hasPendingChanges));
 
   const hasSingleTier = Number(wizard.hasTechTier) + Number(wizard.hasVisualTier) === 1;
-  const nextLabel = (wizard.allTiersSaved || hasSingleTier)
+  const nextLabel = (wizard.allTiersSaved || (hasSingleTier && wizard.isTierSaved(wizard.state.activeTier)))
     ? (lang === 'ko' ? '완료' : 'Done')
     : (lang === 'ko' ? '다음' : 'Next');
 

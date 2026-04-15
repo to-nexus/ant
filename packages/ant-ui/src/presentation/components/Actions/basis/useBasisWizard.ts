@@ -20,7 +20,7 @@ import {
   type VisualLanguageVariant,
   type SpatialSystemVariant,
 } from '@ant/shared';
-import { TECH_STEPS, FULLSTACK_STEPS, VISUAL_STEPS, AUTO_DETECT_OPTION } from './constants';
+import { TECH_STEPS, FULLSTACK_STEPS, VISUAL_STEPS } from './constants';
 import type { BasisWizardState, WizardStepDef } from './types';
 
 const AUTO = '__auto__';
