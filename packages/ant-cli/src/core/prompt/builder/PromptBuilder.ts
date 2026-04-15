@@ -47,6 +47,19 @@ export class PromptBuilder implements PromptPort {
   }
 
   /**
+   * Render only the basis section (stack + language + framework + visualTier).
+   * For nodes that use render() but still need basis context (e.g., plan).
+   */
+  async renderBasis(
+    basis: Basis | undefined,
+    job: string,
+    taskTechTiers?: import('@ant/shared').TechTier[],
+    domain?: string,
+  ): Promise<string> {
+    return this.buildBasisSection(basis, job, taskTechTiers, domain);
+  }
+
+  /**
    * Build a prompt from a declarative config.
    *
    * 1. Merge injections from all 4 tiers
@@ -114,6 +127,8 @@ export class PromptBuilder implements PromptPort {
       const domain = config.techContext?.resolvedAction?.domain;
       const taskTechTiers = config.techContext?.techTiers;
       basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain);
+    } else if (config.pipeline?.includeBasis && !config.basis) {
+      console.warn(`⚠️  [PromptBuilder] includeBasis=true but config.basis is ${config.basis === undefined ? 'undefined' : 'falsy'} — skipping basis section`);
     }
 
     // 3c. Rules template
@@ -246,8 +261,12 @@ export class PromptBuilder implements PromptPort {
     taskTechTiers?: import('@ant/shared').TechTier[],
     domain?: string,
   ): Promise<string> {
-    if (!basis) return '';
+    if (!basis) {
+      console.warn(`⚠️  [PromptBuilder.buildBasisSection] basis is undefined — returning empty`);
+      return '';
+    }
     const sections: string[] = [];
+    console.log(`📐 [PromptBuilder.buildBasisSection] job=${job}, stack=${basis.techTier?.stack || 'none'}, fe=${basis.techTier?.frontend?.language || 'none'}/${basis.techTier?.frontend?.framework || 'none'}, visualTier=${basis.visualTier ? Object.keys(basis.visualTier).join(',') : 'none'}, taskTechTiers=${taskTechTiers?.length || 0}`);
 
     // Root: stack template (shared across all tasks)
     const basisStack = basis.techTier?.stack as SupportedStack | undefined;
@@ -323,6 +342,11 @@ export class PromptBuilder implements PromptPort {
       await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job));
     }
 
+    if (sections.length === 0) {
+      console.warn(`⚠️  [PromptBuilder.buildBasisSection] All template renders resulted in 0 sections`);
+    } else {
+      console.log(`📐 [PromptBuilder.buildBasisSection] Loaded ${sections.length} basis section(s)`);
+    }
     return sections.join('\n\n');
   }
 
@@ -345,8 +369,14 @@ export class PromptBuilder implements PromptPort {
       const content = this.promptPort.renderRaw
         ? await this.promptPort.renderRaw(path)
         : await this.promptPort.render(path, {});
-      if (content) sections.push(`<basis axis="${path}">\n${content}\n</basis>`);
-    } catch { /* file not found — skip */ }
+      if (content) {
+        sections.push(`<basis axis="${path}">\n${content}\n</basis>`);
+      } else {
+        console.warn(`⚠️  [PromptBuilder.pushBasisTemplate] Template rendered empty: ${path}`);
+      }
+    } catch (err) {
+      console.warn(`⚠️  [PromptBuilder.pushBasisTemplate] Failed to render: ${path}`, (err as Error).message);
+    }
   }
 
   private async renderTemplate(

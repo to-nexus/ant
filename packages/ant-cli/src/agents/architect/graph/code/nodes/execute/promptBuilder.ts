@@ -189,6 +189,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const runtimeContext = buildRuntimeContext(state);
   if (runtimeContext) runtimeContextParts.push(runtimeContext);
 
+  const _basisDiag = state.resolvedAction?.basis;
+  if (!_basisDiag) {
+    console.warn(`⚠️  [Execute] state.resolvedAction.basis is ${_basisDiag === undefined ? 'undefined' : 'falsy'} (resolvedAction exists: ${!!state.resolvedAction}, intent: ${state.resolvedAction?.intent})`);
+  } else {
+    console.log(`📐 [Execute] basis present: stack=${_basisDiag.techTier?.stack || 'none'}, visualTier=${_basisDiag.visualTier ? Object.keys(_basisDiag.visualTier).join(',') : 'none'}`);
+  }
+
   const config: PromptBuildConfig = {
     templates: {
       base: templateBase,

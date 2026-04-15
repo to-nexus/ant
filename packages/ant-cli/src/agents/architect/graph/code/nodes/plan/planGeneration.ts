@@ -132,13 +132,24 @@ export async function buildPlanPrompt(
     }
   }
 
-  const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
+  const taskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
+  const techTier = taskTechTiers.length ? effectiveTechTier(taskTechTiers) : getTechTier(state);
   const fmtCtx = formatCodeContext(projectCodeContext);
 
   let setupConstraints = '';
   if (task.type === 'setup' && techTier?.language) {
     try { setupConstraints = await promptBuilder.render(`jobs/code/nodes/execute/basis/techTier/${mapLang(techTier.language)}/setup/constraints`, {}); } catch { /* no constraints */ }
   }
+
+  const _planBasis = state.resolvedAction?.basis;
+  if (!_planBasis) {
+    console.warn(`⚠️  [Plan] state.resolvedAction.basis is ${_planBasis === undefined ? 'undefined' : 'falsy'} (resolvedAction exists: ${!!state.resolvedAction}, intent: ${state.resolvedAction?.intent})`);
+  } else {
+    console.log(`📐 [Plan] basis present: stack=${_planBasis.techTier?.stack || 'none'}, visualTier=${_planBasis.visualTier ? Object.keys(_planBasis.visualTier).join(',') : 'none'}`);
+  }
+  const basisSection = await promptBuilder.renderBasis(
+    state.resolvedAction?.basis, 'code', taskTechTiers,
+  );
 
   const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
   const allDocs = getRACDocuments(resolvedActionWithDocs);
@@ -162,7 +173,7 @@ export async function buildPlanPrompt(
     resolvedAction: resolvedActionWithDocs, hasDesignDoc,
   });
 
-  return prompt;
+  return basisSection ? `${basisSection}\n\n---\n\n${prompt}` : prompt;
 }
 
 /**

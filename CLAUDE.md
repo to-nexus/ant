@@ -115,7 +115,7 @@ All agents are implemented as **LangGraph StateGraphs**. Each graph has:
 
 The **architect** agent has separate sub-graphs for each job type: `runCodeGraph()`, `runDesignGraph()`, `runLearnGraph()`, `runInlineAsk()`. The **planner** agent runs `runPlanGraph()`.
 
-Parallel task execution uses `TaskOrchestrator` / `TaskWorker` pattern (active when `ANT_TASK_CONCURRENCY > 1`, default 3). Tasks have `exclusive`, `parallelGroup`, and `priority` attributes controlling scheduling.
+Parallel task execution uses `TaskOrchestrator` / `TaskWorker` pattern (active when `ANT_TASK_CONCURRENCY > 1`, default 3). Tasks have `exclusive`, `parallelGroup`, and `priority` attributes controlling scheduling. Worker subgraphs are separate `StateGraph` instances — they must declare all channels they need. Channel definitions use the SSOT pattern: main graph exports `CodeGraphChannels` / `DesignGraphChannels`, worker subgraph spreads it (`...CodeGraphChannels`). New channels go in `*GraphChannels` only.
 
 ### Prompt System
 
