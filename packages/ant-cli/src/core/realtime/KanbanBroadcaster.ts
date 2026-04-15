@@ -104,13 +104,15 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.estimatingNodeId = nodeId;
     console.log(`[KanbanBroadcaster] 📊 Activity: ${label} (node: ${nodeId || 'unknown'})`);
     
-    // Broadcast immediately so frontend banner updates in real-time
-    // ✅ Include cached metrics so they don't get overwritten with undefined
+    // Broadcast immediately so frontend banner updates in real-time.
+    // Preserve cached completedTasks in the Redis snapshot so that
+    // KanbanService.getKanbanData() can distinguish "between rounds" from
+    // "truly empty" and avoid returning stale sessionTaskQueue as todo.
     this.broadcastKanbanUpdate(
       this.jobId,
       [],    // no current tasks during estimating
-      [],    // no tasks yet
-      [],    // no completed tasks yet
+      [],    // no tasks in queue during estimating
+      this.cachedCompletedTasks,
       this.cachedRecursionCount,
       this.cachedRecursionLimit,
       this.cachedTokenUsage,
@@ -131,12 +133,13 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.estimatingNodeId = undefined;
     console.log(`[KanbanBroadcaster] 🧹 Estimating activity cleared`);
     
-    // Broadcast immediately so frontend removes the loading banner
+    // Broadcast immediately so frontend removes the loading banner.
+    // Preserve cached completedTasks (same rationale as setEstimatingActivity).
     this.broadcastKanbanUpdate(
       this.jobId,
       [],
       [],
-      [],
+      this.cachedCompletedTasks,
       this.cachedRecursionCount,
       this.cachedRecursionLimit,
       this.cachedTokenUsage,
@@ -157,9 +160,9 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     if (this.estimatingLabel) {
       this.broadcastKanbanUpdate(
         this.jobId,
-        [],    // no current tasks during estimating
-        [],    // no tasks yet
-        [],    // no completed tasks yet
+        [],
+        [],
+        this.cachedCompletedTasks,
         this.cachedRecursionCount,
         this.cachedRecursionLimit,
         tokenUsage,
@@ -181,7 +184,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
         this.jobId,
         [],
         [],
-        [],
+        this.cachedCompletedTasks,
         this.cachedRecursionCount,
         this.cachedRecursionLimit,
         this.cachedTokenUsage,
@@ -325,7 +328,9 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     await this.redis.set(key, JSON.stringify(snapshot), 'EX', TASK_QUEUE_TTL);
 
     // 3. Build KanbanData for broadcast (matches frontend KanbanData interface)
-    const isEstimating = queue.length === 0 && currentTasks.length === 0 && completedTasks.length === 0;
+    // Use estimatingLabel as the signal (not array emptiness) because
+    // setEstimatingActivity now preserves cached completedTasks.
+    const isEstimating = !!this.estimatingLabel;
     
     const kanbanData: KanbanData = {
       jobId: this.jobId,

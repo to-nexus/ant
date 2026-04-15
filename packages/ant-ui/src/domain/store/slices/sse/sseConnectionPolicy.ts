@@ -53,7 +53,10 @@ export function setupConnectionPolicy(manager: any, set: any, get: any): void {
           }
         }
       }
-    // 15s grace: large session files on EFS can take several seconds to read.
+    // 15s grace: initial kanban normally arrives within 1-3s (Redis + EFS read).
+    // This timeout is a safety net for when the server is slow or unreachable.
+    // The grace is cleared early when live kanban data arrives (see kanbanReducer),
+    // so this only fires in genuinely degraded scenarios.
     }, 15000);
   });
 }
