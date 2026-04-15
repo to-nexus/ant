@@ -308,6 +308,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     hasSpecDocs: Boolean(decomposeVars.specDocsMeta),
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
     uiHint, assetsHint,
+    resolvedAction: state.resolvedAction,
   };
   const decomposeSystem = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/rules', enrichedVars);
   let envContract = '';
@@ -353,13 +354,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
   
+  const { createClarifyContext } = await import('./discoveryTools');
+  const clarifyCtx = createClarifyContext();
+
   let rawResponse: string;
   let decomposeTokenUsage: any;
   try {
     const { READ_DESIGN_DOC_TOOL, handleReadDesignDoc } = await import('./designSelector');
-    const { DISCOVERY_TOOLS, createDiscoveryToolHandler, createClarifyContext } = await import('./discoveryTools');
+    const { DISCOVERY_TOOLS, createDiscoveryToolHandler } = await import('./discoveryTools');
 
-    const clarifyCtx = createClarifyContext();
     const discoveryCtx = {
       featurePath: state.context.featurePath || '',
       codebasePath: (state as any).codebasePath || undefined,

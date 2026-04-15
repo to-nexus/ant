@@ -13,15 +13,15 @@ import { IntentTabNav } from './IntentTabNav';
 import { PageTransition } from './PageTransition';
 import { ActionFooter } from './ActionFooter';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
-import { FileText, BookOpen, Crosshair } from 'lucide-react';
+import { FileText, BookOpen, Crosshair, Layers } from 'lucide-react';
 import {
   Section,
   SlotEntryList,
   TargetDisplay,
-  BasisSelector,
   resolveSlotEntries,
   listDir,
 } from './config';
+import { BasisSummaryBar } from './basis';
 import type { FileWarningContext } from './config';
 
 interface ActionConfigViewProps {
@@ -68,6 +68,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
   const intents = getIntentsForAction(actionId);
   const directionRef = useRef<1 | -1>(1);
+  const slots0 = getConfigSlots(intentId);
+  const prevBasisSlotRef = useRef<import('@ant/shared').BasisSlotConfig | undefined>(slots0?.basis);
 
   const handleIntentChange = useCallback((newIntentId: string) => {
     const oldIdx = intents.findIndex(i => i.id === intentId);
@@ -102,7 +104,16 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     }
     updateActionMetadata({ refs: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
     updateActionMetadata({ context: undefined });
-    updateActionMetadata({ basis: undefined });
+
+    const prevBasisSlot = prevBasisSlotRef.current;
+    const currBasisSlot = slots.basis;
+    const structureKey = (s: typeof currBasisSlot) =>
+      s ? `${!!s.techTier}|${!!s.visualTier}` : '';
+    const sameStructure = structureKey(prevBasisSlot) === structureKey(currBasisSlot);
+    if (!sameStructure) {
+      updateActionMetadata({ basis: undefined });
+    }
+    prevBasisSlotRef.current = currBasisSlot;
 
     const { target } = slots;
     if (target.kind === 'revise') {
@@ -218,7 +229,25 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
           <>
             {/* Basis preset (conditional) */}
             {slots.basis && (
-              <BasisSelector basisSlot={slots.basis} lang={lang} />
+              <Section
+                title={t('section.basis')}
+                icon={Layers}
+                iconColor="text-violet-500 dark:text-violet-400"
+              >
+                <BasisSummaryBar
+                  basisSlot={slots.basis}
+                  onEdit={() => setActionsStep('basis-edit')}
+                  onEditTier={() => setActionsStep('basis-edit')}
+                  onResetTier={(tierKey) => {
+                    const current = actionMetadata.basis;
+                    if (!current) return;
+                    const updated = { ...current, [tierKey]: undefined };
+                    const hasAnything = updated.techTier || updated.visualTier;
+                    updateActionMetadata({ basis: hasAnything ? updated : undefined });
+                  }}
+                  lang={lang}
+                />
+              </Section>
             )}
 
             {/* Refs (primary) */}

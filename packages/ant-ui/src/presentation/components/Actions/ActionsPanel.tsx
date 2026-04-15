@@ -2,14 +2,15 @@ import { useRef, useMemo, useCallback } from 'react';
 import { useStore } from '@/domain/store';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, type IntentGroup } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, getConfigSlots, type IntentGroup } from '@ant/shared';
 import { ActionChipGrid, IntentChipGrid, type ChipItem } from './ActionChipGrid';
 import { ActionConfigView } from './ActionConfigView';
 import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
 import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import { PageTransition } from './PageTransition';
+import { BasisWizard } from './basis';
 
-const STEP_ORDER = ['pick-action', 'pick-intent', 'config'] as const;
+const STEP_ORDER = ['pick-action', 'pick-intent', 'config', 'basis-edit'] as const;
 
 export function ActionsPanel() {
   const { t, i18n } = useTranslation('actions');
@@ -52,13 +53,22 @@ export function ActionsPanel() {
     selectAction(actionId as IntentGroup);
   }, [selectedActionId, selectAction]);
 
+  const actionMetadata = useStore(s => s.actionMetadata);
+
   const handleIntentSelect = useCallback((intentId: string) => {
     selectIntent(intentId);
-    setActionsStep('config');
-  }, [selectIntent, setActionsStep]);
+    const slots = getConfigSlots(intentId as Parameters<typeof getConfigSlots>[0]);
+    if (slots?.basis && !actionMetadata.basis) {
+      setActionsStep('basis-edit');
+    } else {
+      setActionsStep('config');
+    }
+  }, [selectIntent, setActionsStep, actionMetadata.basis]);
 
   const handleBack = useCallback(() => {
-    if (step === 'config') {
+    if (step === 'basis-edit') {
+      setActionsStep('config');
+    } else if (step === 'config') {
       const intents = selectedActionId ? getIntentsForAction(selectedActionId) : [];
       if (intents.length > 1) {
         setActionsStep('pick-intent');
@@ -151,6 +161,21 @@ export function ActionsPanel() {
           />
         </div>
       );
+    }
+
+    if (step === 'basis-edit' && selectedIntentId) {
+      const slots = getConfigSlots(selectedIntentId as Parameters<typeof getConfigSlots>[0]);
+      if (slots?.basis) {
+        return (
+          <div className="h-full">
+            <BasisWizard
+              basisSlot={slots.basis}
+              onBack={() => setActionsStep('config')}
+              lang={lang}
+            />
+          </div>
+        );
+      }
     }
 
     return null;

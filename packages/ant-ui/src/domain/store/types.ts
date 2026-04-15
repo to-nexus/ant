@@ -103,7 +103,7 @@ export interface UIState {
   };
   mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions'>;
   // Actions panel state
-  actionsStep: 'pick-action' | 'pick-intent' | 'config';
+  actionsStep: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit';
   selectedActionId: string | null;
   selectedIntentId: string | null;
   actionMetadata: import('@ant/shared').ActionMetadata;
