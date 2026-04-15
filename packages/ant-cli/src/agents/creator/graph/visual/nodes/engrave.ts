@@ -4,7 +4,7 @@
  * SVG code generation using text model (not image model).
  * For simple geometric shapes, icons, and diagrams that are better as SVG.
  * Uses gemini-3.1-pro-preview for code generation.
- * System prompt loaded from visual/nodes/engrave/base.md template.
+ * System prompt loaded from jobs/visual/nodes/engrave/variants/default/base.md template.
  */
 
 import { VisualGraphState, SvgSketch } from '../types.js';
@@ -34,7 +34,7 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
   const candidateCount = state.visualSettings?.candidateCount ?? 3;
   const usePerSketchPrompts = !!basePrompt && Array.isArray(variations) && variations.length > 0;
 
-  const systemPrompt = await pb.render('visual/nodes/engrave/base', {});
+  const systemPrompt = await pb.render('jobs/visual/nodes/engrave/variants/default/base', {});
 
   const svgSketches: SvgSketch[] = [];
   const sketchCount = usePerSketchPrompts ? variations!.length : candidateCount;
@@ -84,8 +84,8 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
       const svgSummary = svgSketches.map((d, i) => `[variation ${i + 1}] ${d.code.length} chars`).join(', ');
       const promptLen = systemPrompt.length + (usePerSketchPrompts ? basePrompt!.length : fallbackPrompt.length);
       await logPrompt(state.featurePath, state._httpJobId, 'visual', 'engrave', promptLen, {
-        templatePath: 'visual/nodes/engrave/base',
-        usedTemplates: ['visual/nodes/engrave/base', 'visual/nodes/engrave/rules'],
+        templatePath: 'jobs/visual/nodes/engrave/variants/default/base',
+        usedTemplates: ['jobs/visual/nodes/engrave/variants/default/base', 'jobs/visual/nodes/engrave/variants/default/rules'],
         injectedVariables: { basePrompt: basePrompt || fallbackPrompt, candidateCount: sketchCount, perSketchVariations: usePerSketchPrompts },
         hardcodedContent: `Generated ${svgSketches.length}/${sketchCount} SVGs: ${svgSummary}`,
       });

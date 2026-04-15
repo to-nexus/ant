@@ -1,6 +1,6 @@
 {
   "$comment": "Injection template -> expected variable mapping. Source of truth for template contracts.",
-  "common/injections": {
+  "jobs/shared/injections": {
     "directive": ["directive"],
     "memory": ["content"],
     "visual-source-authority": [],
@@ -9,7 +9,7 @@
     "refactor-guidance": ["resolvedAction"],
     "explain-guidance": ["resolvedAction"]
   },
-  "code/base/injections": {
+  "jobs/code/base/injections": {
     "git-diff": ["gitDiff"],
     "retrieved-code": ["files", "filePaths", "stats"],
     "reference-code": ["contexts"],
@@ -28,7 +28,7 @@
     "mock-adapter-contract": [],
     "job-history": ["jobConversation"]
   },
-  "code/phases/execute/injections": {
+  "jobs/code/nodes/execute/injections": {
     "lessons": ["lessons"],
     "session-context": ["sessionContext"],
     "retry-context": ["retryContext"],
@@ -37,25 +37,21 @@
     "port-management": [],
     "backend-safety": []
   },
-  "design/base/injections": {
+  "jobs/design/base/injections": {
     "document-language": ["userLanguage"],
     "api-contract-guide": [],
     "backend-guide": [],
     "frontend-guide": [],
     "job-history": ["jobConversation"]
   },
-  "design/phases/execute/injections": {
+  "jobs/design/nodes/execute/injections": {
     "ui-tokens-guide-by-ref": [],
     "ui-tokens-guide-by-figma": [],
     "ui-assets-guide-by-ref": [],
     "ui-assets-guide-by-figma": [],
     "ui-spec-guide-by-ref": [],
     "ui-spec-guide-by-figma": [],
-    "game-domain-guide": [],
-    "service-domain-guide": [],
     "ui-continuation": ["targetDoc"],
-    "ui-continuation-by-figma": ["targetDoc"],
-    "go-api-augmentation": [],
-    "nextjs-augmentation": []
+    "ui-continuation-by-figma": ["targetDoc"]
   }
 }

@@ -17,7 +17,7 @@ import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
 import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiers as resolveTaskTechTiersShared, type Boundary } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -276,7 +276,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     specDoc,
     specApiContract,
     mode: state.resolvedAction?.mode || 'unknown',
-    techTier: state.techTier,
+    techTier: getTechTier(state),
     designDocsMeta,
     specDocsMeta,
     codebaseFilePaths,
@@ -309,11 +309,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
     uiHint, assetsHint,
   };
-  const decomposeSystem = await state.deps.promptBuilder.render('code/phases/decompose/rules', enrichedVars);
+  const decomposeSystem = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/rules', enrichedVars);
   let envContract = '';
-  try { envContract = await state.deps.promptBuilder.render('code/base/injections/preview-env-contract', {}); } catch { /* skip */ }
+  try { envContract = await state.deps.promptBuilder.render('jobs/code/base/injections/preview-env-contract', {}); } catch { /* skip */ }
   const fullSystem = envContract ? `${decomposeSystem}\n\n---\n\n${envContract}` : decomposeSystem;
-  const decomposeUser = await state.deps.promptBuilder.render('code/phases/decompose/base', enrichedVars);
+  const decomposeUser = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/base', enrichedVars);
   const prompts = { system: fullSystem, user: decomposeUser };
   
   const jobId = state._httpJobId || 'unknown';
@@ -326,14 +326,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         'decompose',
         prompts.system.length + prompts.user.length,
         {
-          templatePath: 'code/phases/decompose/base (user) + code/phases/decompose/rules (system)',
+          templatePath: 'jobs/code/nodes/decompose/variants/default/base (user) + jobs/code/nodes/decompose/variants/default/rules (system)',
           usedTemplates: [
-            'code/phases/decompose/rules',
-            'code/phases/decompose/techTier-rules',
-            'code/phases/decompose/mode-guide',
-            'code/phases/decompose/error-or-general',
-            'code/phases/decompose/existing-code-check',
-            'code/phases/decompose/design-doc-guide',
+            'jobs/code/nodes/decompose/variants/default/rules',
+            'jobs/code/nodes/decompose/variants/default/techTier-rules',
+            'jobs/code/nodes/decompose/variants/default/mode-guide',
+            'jobs/code/nodes/decompose/variants/default/error-or-general',
+            'jobs/code/nodes/decompose/variants/default/existing-code-check',
+            'jobs/code/nodes/decompose/variants/default/design-doc-guide',
           ],
           injectedVariables: {
             directive: decomposeVars.directive ? `[${decomposeVars.directive.length} chars]` : undefined,
@@ -496,14 +496,53 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // STEP 6.5: Apply techTier from decompose response
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (parsedTechTier) {
-    const { buildTechTier } = await import('@ant/shared');
+    const { buildTechTier, mergeTechTierConfigs } = await import('@ant/shared');
     const stack = parsedTechTier.stack as 'frontend' | 'backend' | 'fullstack' | undefined;
-    state.techTier = buildTechTier(
+    const defaultTier = buildTechTier(
       { language: parsedTechTier.language, framework: parsedTechTier.framework },
       stack,
     );
-    
-    console.log(`✅ TechTier: stack=${stack}, language=${state.techTier.language}, framework=${state.techTier.framework || 'none'}`);
+
+    const inferredConfig: TechTierConfig = { stack };
+    const pkgTiers = parsedTechTier.packageTiers as Record<string, { language?: string; framework?: string; stack: string }> | undefined;
+
+    if (pkgTiers && stack === 'fullstack') {
+      const feEntries = Object.values(pkgTiers).filter(e => e.stack === 'frontend');
+      const beEntries = Object.values(pkgTiers).filter(e => e.stack === 'backend');
+      const feEntry = feEntries[0];
+      const beEntry = beEntries[0];
+      inferredConfig.frontend = {
+        language: ((feEntry?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
+        framework: feEntry?.framework ?? defaultTier.framework,
+        stack: 'frontend',
+      };
+      inferredConfig.backend = {
+        language: ((beEntry?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
+        framework: beEntry?.framework ?? defaultTier.framework,
+        stack: 'backend',
+      };
+    } else {
+      if (stack === 'fullstack' || stack === 'frontend') {
+        inferredConfig.frontend = { ...defaultTier, stack: 'frontend' };
+      }
+      if (stack === 'fullstack' || stack === 'backend') {
+        inferredConfig.backend = { ...defaultTier, stack: 'backend' };
+      }
+      if (!stack) {
+        inferredConfig.frontend = defaultTier;
+      }
+    }
+
+    const mergedConfig = mergeTechTierConfigs(state.resolvedAction?.basis?.techTier, inferredConfig);
+    state.resolvedAction = {
+      ...state.resolvedAction!,
+      basis: {
+        ...state.resolvedAction?.basis,
+        techTier: mergedConfig,
+      },
+    };
+    const effectiveTier = mergedConfig.frontend ?? mergedConfig.backend;
+    console.log(`✅ TechTier: stack=${stack}, language=${effectiveTier?.language}, framework=${effectiveTier?.framework || 'none'}`);
     if (parsedTechTier.stackReasoning) {
       console.log(`   Reasoning: ${parsedTechTier.stackReasoning}`);
     }
@@ -511,7 +550,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       console.log(`   PackageTiers: ${Object.keys(parsedTechTier.packageTiers).join(', ')}`);
     }
     
-    // ✅ Broadcast structureType + projectProfile to frontend via SSE (for Preview Config)
     if (state.deps?.previewUpdate && state.context) {
       const stackToStructure: Record<string, 'frontend-only' | 'backend-only' | 'fullstack'> = {
         frontend: 'frontend-only',
@@ -535,7 +573,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       }
     }
     
-    // ✅ Save updated resolvedAction + techTier to session
     if (state.deps?.session && state.context.featureFolder) {
       try {
         const session = await state.deps.session.load(
@@ -551,7 +588,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             state: {
               ...session.state,
               resolvedAction: state.resolvedAction,
-              techTier: state.techTier,
             }
           }
         );
@@ -564,17 +600,17 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6.7: Assign task-level techTier (packageTiers mapping)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state.techTier) {
-    const jobTechTier = state.techTier;
+  const currentTechTierConfig = state.resolvedAction?.basis?.techTier;
+  if (currentTechTierConfig) {
     for (const task of taskQueue.getAll()) {
-      task.techTiers = resolveTaskTechTiersShared(task.packages, jobTechTier, parsedTechTier?.packageTiers);
+      task.techTiers = resolveTaskTechTiersFromMap(task.packages, currentTechTierConfig, parsedTechTier?.packageTiers);
     }
     const narrowedCount = taskQueue.getAll().filter(t => {
       const first = t.techTiers?.[0];
-      return first && first.stack !== jobTechTier.stack;
+      return first && first.stack !== currentTechTierConfig.stack;
     }).length;
     if (narrowedCount > 0) {
-      console.log(`🎯 [Decompose] Task-level techTier: ${narrowedCount} task(s) narrowed from ${jobTechTier.stack}`);
+      console.log(`🎯 [Decompose] Task-level techTier: ${narrowedCount} task(s) narrowed from ${currentTechTierConfig.stack}`);
     }
   }
 

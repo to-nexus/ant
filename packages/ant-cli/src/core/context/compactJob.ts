@@ -77,7 +77,7 @@ export async function compactJob<T extends CompactableEntry>(
     };
   }
 
-  const systemPrompt = await promptPort.render('common/compaction/system', {
+  const systemPrompt = await promptPort.render('infra/compaction/system', {
     conversation: formatEntriesForPrompt(oldEntries),
   });
 

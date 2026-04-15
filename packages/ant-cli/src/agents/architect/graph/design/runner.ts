@@ -62,9 +62,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if (session.state.resolvedAction) {
           initial.resolvedAction = session.state.resolvedAction;
         }
-        if (session.state.techTier) {
-          initial.techTier = session.state.techTier;
-        }
         
         if (session.state.figmaConfig) {
           initial.figmaConfig = session.state.figmaConfig;

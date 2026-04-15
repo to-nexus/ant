@@ -22,7 +22,7 @@ export interface PromptLogEntry {
   /** nth LLM call within this task (for cross-reference with tokens/ log) */
   callIndex?: number;
   timestamp: string;
-  /** Main template file path (e.g., 'design/phases/execute/base-ui-design') */
+  /** Main template file path (e.g., 'jobs/design/nodes/execute/variants/ui-design-by-ref/base') */
   templatePath?: string;
   /** Additional template files used (partials, injections) */
   usedTemplates?: string[];
@@ -306,7 +306,7 @@ export function clearPromptLogger(jobType: 'design' | 'code' | 'plan' | 'visual'
  * @param nodeId - Node identifier (e.g., 'decompose', 'execute')
  * @param promptLength - Length of the prompt in chars (for stats)
  * @param options - Additional options
- *   - templatePath: Main template file (e.g., 'design/phases/execute/base-ui-design')
+ *   - templatePath: Main template file (e.g., 'jobs/design/nodes/execute/variants/ui-design-by-ref/base')
  *   - usedTemplates: Additional template files used
  *   - injectedVariables: Summary of injected variables
  *   - hardcodedContent: Content not from template files

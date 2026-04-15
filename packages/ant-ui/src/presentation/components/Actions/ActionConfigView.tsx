@@ -18,6 +18,7 @@ import {
   Section,
   SlotEntryList,
   TargetDisplay,
+  BasisSelector,
   resolveSlotEntries,
   listDir,
 } from './config';
@@ -101,6 +102,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     }
     updateActionMetadata({ refs: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
     updateActionMetadata({ context: undefined });
+    updateActionMetadata({ basis: undefined });
 
     const { target } = slots;
     if (target.kind === 'revise') {
@@ -214,6 +216,11 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
         {slots && (
           <>
+            {/* Basis preset (conditional) */}
+            {slots.basis && (
+              <BasisSelector basisSlot={slots.basis} lang={lang} />
+            )}
+
             {/* Refs (primary) */}
             <Section
               title={t('section.refs')}

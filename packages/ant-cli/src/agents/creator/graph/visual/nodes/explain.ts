@@ -47,9 +47,9 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
   const sketchCount = state.availableSketchPaths?.length || 0;
 
   try {
-    const systemPrompt = await pb.render('visual/nodes/explain/base', {});
+    const systemPrompt = await pb.render('jobs/visual/nodes/explain/variants/default/base', {});
 
-    const userPrompt = await pb.render('visual/nodes/explain/context', {
+    const userPrompt = await pb.render('jobs/visual/nodes/explain/variants/default/context', {
       conversationContext: conversationContext || '(no previous conversation)',
       currentDirective,
       lastEngineeredPrompt: state.lastEngineeredPrompt,
@@ -97,8 +97,8 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
     if (state._httpJobId && state.featurePath) {
       try {
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'explain', systemPrompt.length + userPrompt.length, {
-          templatePath: 'visual/nodes/explain/base',
-          usedTemplates: ['visual/nodes/explain/base', 'visual/nodes/explain/context'],
+          templatePath: 'jobs/visual/nodes/explain/variants/default/base',
+          usedTemplates: ['jobs/visual/nodes/explain/variants/default/base', 'jobs/visual/nodes/explain/variants/default/context'],
           injectedVariables: { currentDirective, conversationEntries: state.conversation.length, hasSketchContext: !!sketchVariationList },
           hardcodedContent: responseText.substring(0, 500),
         });

@@ -23,7 +23,7 @@ import {
   trackTokenUsage,
   type CheckpointData,
 } from "./helpers";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -205,6 +205,17 @@ export async function decomposeSpec(
     : undefined;
   const specTechTier = buildTechTier(state.profile, specStack);
   console.log(`✅ TechTier: stack=${specStack || 'unset'}, language=${specTechTier.language}, framework=${specTechTier.framework || 'none'}`);
+
+  // Sync to RAC basis.techTier so getTechTier(state) returns it
+  const tierKey = specStack ?? 'frontend';
+  const basisTechTierConfig: TechTierConfig = {
+    stack: specStack,
+    [tierKey]: { ...specTechTier, stack: tierKey as 'frontend' | 'backend' },
+  };
+  state.resolvedAction = {
+    ...state.resolvedAction!,
+    basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
+  };
 
   await saveCheckpoint(state, {
     taskQueue: taskQueue.getAll(),

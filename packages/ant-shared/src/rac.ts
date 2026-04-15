@@ -1,11 +1,13 @@
 /**
- * ResolvedActionContext (RAC) — Intent-Centric Action Specification
+ * ResolvedActionContext (RAC) — Progressive Action Specification
  *
- * Detect node's immutable output. Describes WHAT the user wants:
- *   intent, mode, file slots (target/refs/context), domain.
+ * Progressively resolved across detect → decompose:
+ *   detect:    intent, mode, intentGroup, slots (target/refs/context), domain
+ *   detect+:   artifacts (파일 로드 후)
+ *   decompose: basis.techTier (TechTierConfig: { stack, frontend?, backend? })
  *
- * Does NOT contain tech/runtime concerns — those live in state.techTier
- * (filled by decompose, consumed by ModeController/prompt templates).
+ * basis.techTier는 explicit(@-멘션)이면 detect에서, 아니면 decompose에서 확정.
+ * basis.visualTier는 향후 추론 로직 추가 예정 (구조만 확보).
  *
  * Created via resolveToRAC() — the single unified funnel for both
  * explicit and infer paths. mode/intentGroup are always derived from
@@ -31,26 +33,87 @@ export interface InferWorkspaceState {
 }
 
 // ============================================
-// TechTier (decompose output, NOT in RAC)
+// TechTier
 // ============================================
 
-export type Language = 'typescript' | 'go' | 'python' | 'rust' | 'java';
+import type { SupportedLanguage, TechTierKey } from './tech-tier-registry';
+
+export type Language = SupportedLanguage;
 export type Stack = 'frontend' | 'backend' | 'fullstack';
-export type RuntimePlatform = 'browser' | 'node-api' | 'go-api';
 
 /**
- * Technology tier — decompose's output describing HOW to execute.
- * Lives on state.techTier, not inside RAC.
- *
- * Single source of truth for all tech-stack information.
- * Replaces legacy CodebaseProfile, state.profile, and context.codebaseProfile.
+ * Individual technology tier — describes a single tier slot (frontend OR backend).
+ * TechTier.stack is TechTierKey (frontend | backend), NOT fullstack.
+ * fullstack only exists on TechTierConfig.stack as a project structure indicator.
  */
 export interface TechTier {
   language?: Language;
   framework?: string;
   stack?: Stack;
-  runtime?: RuntimePlatform;
   packageManager?: 'npm' | 'yarn' | 'pnpm' | 'bun';
+}
+
+/**
+ * Aggregated tech tier configuration — stack + per-side tiers.
+ * Lives on Basis.techTier.
+ */
+export interface TechTierConfig {
+  stack?: Stack;
+  frontend?: TechTier;
+  backend?: TechTier;
+}
+
+// ============================================
+// VisualTier + Basis
+// ============================================
+
+export interface VisualTier {
+  designSystem?: string;
+}
+
+export interface Basis {
+  techTier?: TechTierConfig;
+  visualTier?: VisualTier;
+}
+
+// ============================================
+// Basis Options — re-exported from tech-tier-registry
+// ============================================
+
+export {
+  type BasisOption,
+  TECH_TIER_LANGUAGES,
+  VISUAL_TIER_DESIGN_SYSTEMS,
+} from './tech-tier-registry';
+
+export function buildBasisPreset(opts: {
+  stack?: string;
+  tiers?: Partial<Record<string, { language?: string; framework?: string; packageManager?: string }>>;
+  designSystem?: string;
+}): Basis {
+  const tierEntries: Record<string, TechTier> = {};
+  if (opts.tiers) {
+    for (const [key, val] of Object.entries(opts.tiers)) {
+      if (val?.language) {
+        tierEntries[key] = {
+          language: val.language as Language,
+          framework: val.framework,
+          stack: key as Stack,
+          packageManager: val.packageManager as TechTier['packageManager'],
+        };
+      }
+    }
+  }
+  const hasTiers = Object.keys(tierEntries).length > 0;
+  return {
+    techTier: (opts.stack || hasTiers) ? {
+      stack: opts.stack as Stack | undefined,
+      ...(hasTiers ? tierEntries : {}),
+    } as TechTierConfig : undefined,
+    visualTier: opts.designSystem ? {
+      designSystem: opts.designSystem,
+    } : undefined,
+  };
 }
 
 // ============================================
@@ -72,9 +135,6 @@ export function resolveLanguage(profile?: CodebaseProfileLike): Language {
   if (!raw) return 'typescript';
   if (raw.includes('typescript') || raw.includes('javascript')) return 'typescript';
   if (raw.includes('go') || raw.includes('golang')) return 'go';
-  if (raw.includes('python')) return 'python';
-  if (raw.includes('rust')) return 'rust';
-  if (raw.includes('java')) return 'java';
   return 'typescript';
 }
 
@@ -88,19 +148,6 @@ export function resolveFramework(
   if (fw.includes('nuxt')) return 'nuxt';
   if (fw.includes('express')) return 'express';
   return fw;
-}
-
-export function resolveRuntime(
-  stack?: Stack | string,
-  language?: Language | string,
-): RuntimePlatform | undefined {
-  if (!stack) return undefined;
-  switch (stack) {
-    case 'frontend': return 'browser';
-    case 'backend': return language === 'go' ? 'go-api' : 'node-api';
-    case 'fullstack': return undefined;
-    default: return undefined;
-  }
 }
 
 /**
@@ -117,7 +164,6 @@ export function buildTechTier(
     language,
     framework: resolveFramework(profile, taskProfile),
     stack,
-    runtime: resolveRuntime(stack, language),
   };
 }
 
@@ -132,13 +178,47 @@ export interface PackageTierEntry {
 }
 
 /**
- * Resolve task-level TechTiers (plural) from task.packages via packageTiers mapping.
- * Returns all unique TechTiers for the task's packages, preserving per-package stack info.
+ * Resolve task-level TechTiers from TechTierConfig + packageTiers mapping.
+ * Returns TechTier[] for the task's packages, preserving per-package stack info.
  *
  * Rules:
- *  - No packages or no mapping → [jobTechTier]
- *  - Deduplicate by stack+language+framework
+ *  - No config → []
+ *  - No packages or no mapping → all tiers from config
+ *  - Package-based: lookup by stack key, deduplicate
  */
+export function resolveTaskTechTiersFromMap(
+  packages: string[] | undefined,
+  techTierConfig: TechTierConfig | undefined,
+  packageTiers?: Record<string, PackageTierEntry>,
+): TechTier[] {
+  if (!techTierConfig) return [];
+  const { frontend, backend } = techTierConfig;
+  const allTiers = [frontend, backend].filter((t): t is TechTier => !!t);
+  if (!packages?.length || !packageTiers || Object.keys(packageTiers).length === 0) {
+    return allTiers;
+  }
+
+  const VALID_KEYS: TechTierKey[] = ['frontend', 'backend'];
+  const seen = new Set<TechTierKey>();
+  const result: TechTier[] = [];
+  for (const pkg of packages) {
+    const entry = packageTiers[pkg];
+    if (!entry) continue;
+    const key = VALID_KEYS.find(k => k === entry.stack);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const configTier = techTierConfig[key];
+    result.push({
+      language: (entry.language as Language) || configTier?.language,
+      framework: entry.framework || configTier?.framework,
+      stack: key,
+      packageManager: configTier?.packageManager,
+    });
+  }
+  return result.length > 0 ? result : allTiers;
+}
+
+/** @deprecated Use resolveTaskTechTiersFromMap instead */
 export function resolveTaskTechTiers(
   packages: string[] | undefined,
   jobTechTier: TechTier,
@@ -174,7 +254,7 @@ export function resolveTaskTechTiers(
  *  - 0 tiers → empty object
  *  - 1 tier → as-is
  *  - N tiers, same stack → that stack + first language/framework
- *  - N tiers, mixed stacks → fullstack + first language/framework
+ *  - N tiers, mixed stacks → stack undefined + first language/framework
  */
 export function effectiveTechTier(tiers: TechTier[]): TechTier {
   if (tiers.length === 0) return {};
@@ -182,12 +262,11 @@ export function effectiveTechTier(tiers: TechTier[]): TechTier {
 
   const stacks = new Set(tiers.map(t => t.stack).filter(Boolean));
   const effectiveStack: Stack | undefined =
-    stacks.size === 1 ? (tiers[0].stack as Stack) : 'fullstack';
+    stacks.size === 1 ? (tiers[0].stack as Stack) : undefined;
 
   return {
     ...tiers[0],
     stack: effectiveStack,
-    runtime: effectiveStack === 'fullstack' ? undefined : tiers[0].runtime,
   };
 }
 
@@ -240,6 +319,9 @@ export interface ResolvedActionContext {
     figma?: { fileUrl: string; fileKey: string; nodeId?: string };
   };
 
+  /** Progressive basis — techTier populated by decompose (or explicit preset), visualTier reserved. */
+  basis?: Basis;
+
   source: 'explicit' | 'infer';
   hasExplicitFields: boolean;
 }
@@ -282,6 +364,7 @@ export function resolveToRAC(
     domain?: DesignDomain;
   },
   source?: 'explicit' | 'infer',
+  basis?: Basis,
 ): ResolvedActionContext {
   const derived = deriveFromIntent(intentId);
 
@@ -294,6 +377,7 @@ export function resolveToRAC(
     refs: slots?.refs,
     context: slots?.context,
     domain: slots?.domain,
+    basis,
     source: source ?? 'infer',
     hasExplicitFields: !!(
       slots?.target?.length || slots?.refs?.length || slots?.context?.length
@@ -320,11 +404,12 @@ function dedup(arr: string[]): string[] {
  *   refs:     additive (dedup)
  *   context:  additive (dedup)
  *   domain:   from inferred only
+ *   basis:    from metadata only (explicit preset from UI)
  */
 export function mergeWithMetadata(
   inferred: InferredAction,
   metadata?: ActionMetadata,
-): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: DesignDomain } {
+): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: DesignDomain; basis?: Basis } {
   const mergedRefs = dedup([...(inferred.refs || []), ...(metadata?.refs || [])]);
   const mergedCtx = dedup([...(inferred.context || []), ...(metadata?.context || [])]);
 
@@ -334,7 +419,89 @@ export function mergeWithMetadata(
     refs: mergedRefs.length > 0 ? mergedRefs : undefined,
     context: mergedCtx.length > 0 ? mergedCtx : undefined,
     domain: inferred.domain,
+    basis: metadata?.basis,
   };
+}
+
+// ============================================
+// Intent-based Pipeline Helpers
+// ============================================
+
+// ============================================
+// mergeTechTierConfigs (additive merge for infer+preset)
+// ============================================
+
+/**
+ * Additively merge two TechTierConfigs.
+ * Preset fields take priority; missing fields are filled from inferred.
+ */
+export function mergeTechTierConfigs(
+  preset?: TechTierConfig,
+  inferred?: TechTierConfig,
+): TechTierConfig {
+  if (!preset) return inferred ?? {};
+  if (!inferred) return preset;
+  const result: TechTierConfig = { stack: preset.stack ?? inferred.stack };
+  for (const key of ['frontend', 'backend'] as const) {
+    const p = preset[key];
+    const i = inferred[key];
+    if (p && i) {
+      result[key] = {
+        language: p.language ?? i.language,
+        framework: p.framework ?? i.framework,
+        stack: key as Stack,
+        packageManager: p.packageManager ?? i.packageManager,
+      };
+    } else if (p) {
+      result[key] = p;
+    } else if (i) {
+      result[key] = { ...i, stack: key as Stack };
+    }
+  }
+  return result;
+}
+
+/** @deprecated Use mergeTechTierConfigs instead */
+export function mergeTechTier(
+  preset?: TechTier,
+  inferred?: TechTier,
+): TechTier {
+  if (!preset) return inferred ?? {};
+  if (!inferred) return preset;
+  return {
+    language:       preset.language       ?? inferred.language,
+    framework:      preset.framework      ?? inferred.framework,
+    stack:          preset.stack          ?? inferred.stack,
+    packageManager: preset.packageManager ?? inferred.packageManager,
+  };
+}
+
+// ============================================
+// State Accessor Helpers
+// ============================================
+
+/** Structural type — ArchitectGraphState, DesignGraphState 등 모두 호환 */
+interface HasResolvedAction {
+  resolvedAction?: ResolvedActionContext;
+}
+
+/**
+ * Read effective TechTier from RAC basis (TechTierConfig).
+ * Returns frontend tier as default for single-tier or fullstack (frontend priority).
+ * For both tiers, access basis.techTier.frontend / .backend directly.
+ */
+export function getTechTier(state: HasResolvedAction): TechTier | undefined {
+  const config = state.resolvedAction?.basis?.techTier;
+  if (!config) return undefined;
+  const { frontend, backend } = config;
+  const entries = [frontend, backend].filter((t): t is TechTier => !!t);
+  if (entries.length === 0) return undefined;
+  return entries[0];
+}
+
+/** Read the full Basis from RAC. */
+export function getBasis(state: HasResolvedAction): Basis | undefined {
+  return state.resolvedAction?.basis;
 }
 
 // ============================================

@@ -81,6 +81,7 @@ export function createDetectNode<T extends DetectableState>(
       let intentId: string;
       let slots: { target?: string[]; refs?: string[]; context?: string[]; domain?: import('@ant/shared').DesignDomain };
       let source: 'explicit' | 'infer';
+      let basis: import('@ant/shared').Basis | undefined;
       let reasoning: InferredAction['reasoning'] | undefined;
       let inferStateUpdates: Partial<T> | undefined;
 
@@ -97,6 +98,7 @@ export function createDetectNode<T extends DetectableState>(
           context: metadata.context,
         };
         source = 'explicit';
+        basis = metadata.basis;
         console.log(`⚡ [detect] Explicit: intent=${intentId}`);
 
       } else {
@@ -132,6 +134,7 @@ export function createDetectNode<T extends DetectableState>(
           domain: merged.domain,
         };
         source = 'infer';
+        basis = merged.basis;
         reasoning = inferred.reasoning;
 
         console.log(`📋 [detect] Infer: intentId=${intentId}`);
@@ -144,7 +147,7 @@ export function createDetectNode<T extends DetectableState>(
         throw new Error(`[detect] No valid intentId after merge: "${intentId}"`);
       }
 
-      const resolvedAction = resolveToRAC(intentId as IntentId, slots, source);
+      const resolvedAction = resolveToRAC(intentId as IntentId, slots, source, basis);
       console.log(`📋 [detect] RAC created: intent=${intentId}, mode=${resolvedAction.mode}, source=${source}`);
 
       // Load resolved artifacts (skip if planner resolve already populated them)

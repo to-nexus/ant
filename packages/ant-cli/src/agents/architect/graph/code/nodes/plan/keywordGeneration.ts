@@ -14,7 +14,7 @@ import { ArchitectGraphState } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import { effectiveTechTier } from "@ant/shared";
+import { effectiveTechTier, getTechTier } from "@ant/shared";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { TaskKeywords } from "./combineCodeContext";
 import { KeywordDeduplicator } from "../../../../../../core/prompt/builder/InputSanitizer";
@@ -62,8 +62,8 @@ export async function generateTaskKeywords(
     };
   }
 
-  const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : state.techTier;
-  const prompt = await promptBuilder.render('code/phases/plan/base-keyword', {
+  const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
+  const prompt = await promptBuilder.render('jobs/code/nodes/plan/base-keyword', {
     taskName: task.name,
     taskDescription: task.description,
     directive: state.directive || '',
@@ -89,8 +89,8 @@ export async function generateTaskKeywords(
         {
           taskId: task.id,
           taskName: task.name,
-          templatePath: 'code/phases/plan/base-keyword',
-          usedTemplates: ['code/phases/plan/rules-keyword'],
+          templatePath: 'jobs/code/nodes/plan/base-keyword',
+          usedTemplates: ['jobs/code/nodes/plan/rules-keyword'],
           injectedVariables: {
             taskName: task.name,
             taskDescription: task.description ? `[${task.description.length} chars]` : undefined,

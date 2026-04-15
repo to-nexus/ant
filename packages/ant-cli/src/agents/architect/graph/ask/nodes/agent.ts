@@ -30,7 +30,7 @@ async function buildSystemPrompt(state: AskGraphState): Promise<string> {
   const hasWorkspace = !!state.workspaceState?.featurePath;
 
   const result = await promptBuilder.build({
-    templates: { base: 'ask/base', rules: 'ask/rules' },
+    templates: { base: 'jobs/ask/nodes/agent/variants/default/base', rules: 'jobs/ask/nodes/agent/variants/default/rules' },
     intent: state.resolvedAction?.intent,
     vars: {
       isKorean: state.language === 'ko',
@@ -294,7 +294,7 @@ export function routeAfterAgent(state: AskGraphState): 'tool' | 'respond' {
 /**
  * Parse <eval type="..."/> tag from LLM response text.
  * The LLM is instructed to output this tag when it produces
- * a rubric-based evaluation report (see ask/rules.md).
+ * a rubric-based evaluation report (see jobs/ask/nodes/agent/variants/default/rules.md).
  */
 export function parseEvalTag(text: string): { type: NonNullable<AskGraphState['evalType']> } | null {
   const match = text.match(/<eval\s+type="(prd|system-design|ui-design|code|all)"\s*\/?>/i);

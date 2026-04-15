@@ -18,6 +18,7 @@ import type {
   ResolvedArtifact,
   TechTier,
   PolicyKey,
+  Basis,
 } from '@ant/shared';
 import type { Mode } from '@ant/shared';
 
@@ -51,10 +52,13 @@ export interface PromptBuildConfig {
     resolvedAction?: ResolvedActionContext;
   };
 
+  /** Basis profiles to inject (language/framework/designSystem). Used with pipeline.includeBasis. */
+  basis?: Basis;
+
   /** Pipeline feature flags. Omitted flags default to false. When omitted entirely, all pipeline stages are skipped. */
   pipeline?: {
     sanitizeInput?: boolean;
-    includeTechProfile?: boolean;
+    includeBasis?: boolean;
     includeExamples?: boolean;
     applyPolicyGuardrails?: boolean;
     strictValidation?: boolean;
@@ -114,7 +118,7 @@ export interface PromptBuildResult {
     rules: string;
     /** All injections merged. */
     injections: string;
-    /** Tech profile section (if includeTechProfile). */
+    /** Basis section (if includeBasis). */
     profiles: string;
     /** Examples section (if includeExamples). */
     examples: string;

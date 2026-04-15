@@ -16,7 +16,7 @@ import { figmaExplore } from "./nodes/figmaExplore";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from '../../../common/graph/parallelTypes';
 import { routeAfterDocGen } from "./routers/docGenRouter";
-import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
+import { isFigmaPipeline, isFigmaDataPopulated, getTechTier } from "@ant/shared";
 import * as designRouting from "./routing";
 import type { InterruptionReason } from '../../../../core/types/session';
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
@@ -171,7 +171,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
               resolvedAction: state.resolvedAction,
-              techTier: state.techTier,
+              techTier: getTechTier(state),
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -271,7 +271,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
               resolvedAction: state.resolvedAction,
-              techTier: state.techTier,
+              techTier: getTechTier(state),
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -445,7 +445,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
               chatSource: state.chatSource,  // ✅ Save chat source flag
               resolvedAction: state.resolvedAction,
-              techTier: state.techTier,
+              techTier: getTechTier(state),
               figmaConfig: state.figmaConfig,
               figmaAvailable: state.figmaAvailable,
               figmaFileKey: state.figmaFileKey,
@@ -573,7 +573,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     workspaceConfig: state.workspaceConfig,
     deps: state.deps,
     resolvedAction: state.resolvedAction,
-    techTier: state.techTier,
+    techTier: getTechTier(state),
     artifacts: state.artifacts,
     directive: state.directive,
     existingDesignDocs: state.existingDesignDocs,
@@ -704,7 +704,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
                   figmaFileKey: state.figmaFileKey,
                   figmaStartNodeId: state.figmaStartNodeId,
                   resolvedAction: state.resolvedAction,
-                  techTier: state.techTier,
+                  techTier: getTechTier(state),
                   userLanguage: state.context.userLanguage,
                   ...(checkpoint.interruption ? {
                     interruption: {
@@ -814,7 +814,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
             figmaFileKey: state.figmaFileKey,
             figmaStartNodeId: state.figmaStartNodeId,
             resolvedAction: state.resolvedAction,
-            techTier: state.techTier,
+            techTier: getTechTier(state),
             interruption: {
               reason: 'tasks_failed',
               message: [

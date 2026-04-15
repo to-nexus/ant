@@ -31,11 +31,11 @@ export type PolicyKey =
  * (relative to templates/ root, without .md extension).
  */
 export const POLICY_TEMPLATE_MAP: Record<PolicyKey, string> = {
-  'ui-design-policy': 'common/injections/ui-design-policy',
-  'visual-source-authority': 'common/injections/visual-source-authority',
-  'frontend-guide': 'design/base/injections/frontend-guide',
-  'backend-guide': 'design/base/injections/backend-guide',
-  'api-contract-guide': 'design/base/injections/api-contract-guide',
+  'ui-design-policy': 'jobs/shared/injections/ui-design-policy',
+  'visual-source-authority': 'jobs/shared/injections/visual-source-authority',
+  'frontend-guide': 'jobs/design/base/injections/frontend-guide',
+  'backend-guide': 'jobs/design/base/injections/backend-guide',
+  'api-contract-guide': 'jobs/design/base/injections/api-contract-guide',
 };
 
 // ============================================

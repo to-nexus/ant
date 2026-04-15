@@ -75,7 +75,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     const hasSystemDocs = existingDocNames.length > 0;
 
     // Build prompt
-    const prompt = await pb.render('design/phases/detect/base', {
+    const prompt = await pb.render('jobs/design/nodes/detect/variants/default/base', {
       directive,
       hasReferences: hasReferences || false,
       hasAssets: hasAssets || false,
@@ -99,7 +99,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     if (featurePath) {
       try {
         await logPrompt(featurePath, jobId, 'design', 'detect', prompt.length, {
-          templatePath: 'design/phases/detect/base',
+          templatePath: 'jobs/design/nodes/detect/variants/default/base',
           injectedVariables: { hasReferences, hasAssets, hasSystemDocs },
         });
       } catch { /* non-critical */ }

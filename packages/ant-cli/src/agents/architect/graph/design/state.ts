@@ -7,7 +7,7 @@ import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, TechTier } from '@ant/shared';
+import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext } from '@ant/shared';
 
 /**
  * Design Task State
@@ -46,10 +46,9 @@ export interface DesignGraphState extends TriageableState {
   artifacts?: import('@ant/shared').ResolvedArtifact[];
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // RAC (detect output, immutable) + TechTier (decompose output)
+  // RAC (detect output → decompose enriches basis.techTier: TechTierConfig)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   resolvedAction?: ResolvedActionContext;
-  techTier?: TechTier;
 
   // ✅ NEW: Task Queue (for task breakdown like code)
   taskQueue?: TaskQueue<DesignTask>;

@@ -81,8 +81,21 @@ agents/common/
 | 노드 | 위치 | 역할 |
 |------|------|------|
 | triage | `agents/common/nodes/triage/` | 의도 분류, 라우팅 |
+| detect | `agents/common/nodes/detect/` | RAC 생성. explicit/infer 경로 모두 `resolveToRAC()` 단일 퍼널 |
 | resolve | 각 에이전트 graph 내 | 초기 상태 로드, resume 판정 |
 | learn | 각 에이전트 graph 내 | 세션 저장, 워크플로우 종료 |
+
+### Progressive Basis (detect → decompose)
+
+basis는 detect와 decompose 구간에서 점진적으로 확정된다:
+
+| 단계 | 확정 내용 | 소스 |
+|------|-----------|------|
+| detect | `RAC.basis.techTier` (preset) | UI BasisSelector → `ActionMetadata.basis` (explicit 경로만) |
+| decompose | `RAC.basis.techTier` (final) | `mergeTechTier(preset, inferred)` — preset 필드 우선, 빈 필드는 LLM 추론으로 채움 |
+| decompose | `RAC.basis.visualTier` | 향후 확장 예정 (구조만 확보) |
+
+`getTechTier(state)` / `getBasis(state)` 헬퍼로 RAC에서 읽는다.
 
 ### Broadcaster
 

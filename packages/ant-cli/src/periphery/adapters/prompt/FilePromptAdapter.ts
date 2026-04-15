@@ -47,7 +47,7 @@ export interface PartialFailure {
 
 /**
  * Recursively discover all .md files under a directory.
- * Returns paths relative to the root (e.g. "code/base/injections/git-diff.md").
+ * Returns paths relative to the root (e.g. "jobs/code/base/injections/git-diff.md").
  */
 async function discoverMdFiles(root: string, prefix = ''): Promise<string[]> {
   const entries = await fs.readdir(join(root, prefix), { withFileTypes: true });
@@ -65,7 +65,7 @@ async function discoverMdFiles(root: string, prefix = ''): Promise<string[]> {
 
 /**
  * Auto-discover and register ALL .md files under templates/ as Handlebars partials.
- * Partial name = relative path minus .md extension (e.g. "code/base/injections/git-diff").
+ * Partial name = relative path minus .md extension (e.g. "jobs/code/base/injections/git-diff").
  * No manual list needed — file existence IS the registry.
  */
 export async function initPartials(basePath?: string): Promise<{ total: number; failed: PartialFailure[] }> {
@@ -73,7 +73,8 @@ export async function initPartials(basePath?: string): Promise<{ total: number; 
 
   let mdFiles: string[];
   try {
-    mdFiles = await discoverMdFiles(templatesPath);
+    const allMdFiles = await discoverMdFiles(templatesPath);
+    mdFiles = allMdFiles.filter(f => !f.startsWith('basis/'));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`📄 [PromptAdapter] Templates directory not accessible: ${templatesPath}`);
@@ -162,6 +163,11 @@ export class FilePromptAdapter implements PromptPort {
 
   clearViolations(): void {
     this._lastViolations = [];
+  }
+
+  async renderRaw(templatePath: string): Promise<string> {
+    const file = join(this.baseDir, `${templatePath}.md`);
+    return await fs.readFile(file, 'utf8');
   }
 
   async render(templateName: string, vars: Record<string, any>): Promise<string> {

@@ -1,3 +1,4 @@
+import { getTechTier } from '@ant/shared';
 import { ArchitectGraphState } from '../../state';
 
 export function extractTags(lessons: string, directive: string = ''): string[] {
@@ -71,8 +72,8 @@ ${tags.join(', ')}
 - **Project**: ${state.context.project}
 - **Feature**: ${state.context.featureFolder || 'main'}
 - **Mode**: ${state.resolvedAction?.mode || 'auto'}
-- **Language**: ${state.techTier?.language || 'unknown'}
-- **Framework**: ${state.techTier?.framework || 'N/A'}
+- **Language**: ${getTechTier(state)?.language || 'unknown'}
+- **Framework**: ${getTechTier(state)?.framework || 'N/A'}
 - **Timestamp**: ${new Date().toISOString()}
   `.trim();
 }
@@ -96,8 +97,9 @@ function extractSolution(state: ArchitectGraphState): string {
   
   parts.push(`using ${state.resolvedAction?.mode || 'generate'} mode`);
   
-  if (state.techTier) {
-    parts.push(`with ${state.techTier.language}${state.techTier.framework ? ` + ${state.techTier.framework}` : ''}`);
+  const _techTier = getTechTier(state);
+  if (_techTier) {
+    parts.push(`with ${_techTier.language}${_techTier.framework ? ` + ${_techTier.framework}` : ''}`);
   }
   
   return parts.join(', ') + '.';
@@ -178,8 +180,9 @@ function extractDirectiveId(state: ArchitectGraphState): string {
 function extractPatterns(state: ArchitectGraphState): string[] {
   const patterns: string[] = [];
   
-  if (state.techTier?.framework) {
-    patterns.push(state.techTier.framework);
+  const _tt = getTechTier(state);
+  if (_tt?.framework) {
+    patterns.push(_tt.framework);
   }
   
   if (state.resolvedAction?.mode) {

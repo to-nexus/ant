@@ -29,7 +29,7 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
 
     const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
     const pool = new ArtifactPoolView(state.artifacts || []);
-    const prompt = await promptBuilder.render('code/phases/detect/base', {
+    const prompt = await promptBuilder.render('jobs/code/nodes/detect/variants/default/base', {
       directive: state.directive || '',
       artifactAvailability: artifactAvailability || '',
       hasDesignDoc: pool.hasSystemDesign(),
@@ -40,8 +40,8 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
     if (state.context.featurePath) {
       try {
         await logPrompt(state.context.featurePath, jobId, 'code', 'detect', prompt.length, {
-          templatePath: 'code/phases/detect/base',
-          usedTemplates: ['code/phases/detect/rules'],
+          templatePath: 'jobs/code/nodes/detect/variants/default/base',
+          usedTemplates: ['jobs/code/nodes/detect/variants/default/rules'],
           injectedVariables: {
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
           },
