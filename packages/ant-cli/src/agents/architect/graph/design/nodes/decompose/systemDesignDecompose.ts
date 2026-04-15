@@ -277,6 +277,9 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
       assignedSections: taskData.assignedSections,
       sourceFiles: Array.isArray((taskData as any).sourceFiles) ? (taskData as any).sourceFiles : undefined,
       include: [ARTIFACT_PREFIX.SOURCES],
+      artifactPolicy: {
+        refs: [ARTIFACT_PREFIX.SOURCES],
+      },
       isLastTaskForDocument: lastTaskIdPerFile.has(taskData.id),
       packages,
       techTiers: taskTechTiers,

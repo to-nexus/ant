@@ -79,7 +79,17 @@
     "designSystem": "Design System",
     "autoDetect": "Auto-detect",
     "noFramework": "Don't use",
-    "none": "None"
+    "none": "None",
+    "visualDesignPolicy": "Visual Design Policy",
+    "visualLanguage": "Visual Language",
+    "surfaceSystem": "Surface System",
+    "spatialSystem": "Spatial System",
+    "interactionGrammar": "Interaction Grammar",
+    "componentSemantics": "Component Semantics",
+    "visualHierarchy": "Visual Hierarchy",
+    "derivedLayers": "Derived Layers",
+    "derivedAtRuntime": "Determined at runtime",
+    "derivedFromAbove": "Derived from selections above"
   },
 
   "section": {

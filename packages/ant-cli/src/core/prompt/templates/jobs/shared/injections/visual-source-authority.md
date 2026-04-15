@@ -8,6 +8,7 @@
 | **ui-assets.json** | Single source of truth for asset mappings (source → destination) | Design Job completed |
 | **ui-spec.json** | Primary reference for layout structure and visual behaviors | Design Job completed |
 | **Figma MCP** | Supplementary — verifies and fills gaps the spec did not capture | Figma Desktop connected |
+| **VisualTier Policy** | Baseline visual design policy (spacing rhythm, surface system, hierarchy) | visualTier active in basis |
 
 ### Authority Rules
 
@@ -21,12 +22,14 @@ When multiple sources describe the same visual property:
 
 ### Source Availability Scenarios
 
-| Scenario | UI Docs | Figma MCP | Strategy |
-|----------|---------|-----------|----------|
-| A | ✅ | ✅ | UI docs are primary. Figma supplements gaps. |
-| B | ✅ | ❌ | UI docs only. |
-| C | ❌ | ✅ | Figma is primary visual source. Extract tokens via `figma_get_variable_defs`. |
-| D | ❌ | ❌ | Plan hints + framework best practices. |
+| Scenario | UI Docs | Figma | VisualTier | Strategy |
+|----------|---------|-------|------------|----------|
+| A | ✅ | ✅ | — | UI docs primary. Figma supplements. |
+| B | ✅ | ❌ | — | UI docs only. |
+| C | ❌ | ✅ | — | Figma primary. Extract tokens via `figma_get_variable_defs`. |
+| D | ❌ | ❌ | ✅ | VisualTier policy guides decisions. |
+| E | ❌ | ❌ | ❌ | Framework best practices only. |
+| F | ✅ | — | ✅ | UI docs primary. VisualTier is background for areas artifacts don't cover. |
 
 ### On-demand Access Paths
 

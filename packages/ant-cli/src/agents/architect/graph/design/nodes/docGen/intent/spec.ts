@@ -19,7 +19,7 @@ import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
-import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { selectArtifacts, selectArtifactsWithPolicy, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 
 export async function buildSpecMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -83,6 +83,22 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   runtimeLines.push('');
 
   const title = task?.name?.replace(/^Spec: .+ — /, 'Spec: ').replace('Spec: ', '') || 'Feature';
+
+  // Artifact selection via artifactPolicy (role-aware) or include (flat)
+  const currentTask = state.currentTask as DesignTask | undefined;
+  const taskSourceFiles = currentTask?.sourceFiles;
+
+  let selectedArtifacts = currentTask?.artifactPolicy
+    ? selectArtifactsWithPolicy(state.artifacts || [], currentTask.artifactPolicy)
+    : selectArtifacts(state.artifacts || [], { include: currentTask?.include || [ARTIFACT_PREFIX.SOURCES] });
+
+  if (taskSourceFiles?.length) {
+    selectedArtifacts = selectedArtifacts.filter(a =>
+      !a.path.startsWith(ARTIFACT_PREFIX.SOURCES) ||
+      taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
+    );
+  }
+
   const config: PromptBuildConfig = {
     templates: {
       base: 'jobs/design/nodes/execute/variants/spec/base',
@@ -93,6 +109,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       sanitizeInput: true,
       applyPolicyGuardrails: false,
     },
+    artifacts: selectedArtifacts,
     vars: {
       targetFile,
       title,
@@ -114,23 +131,9 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const promptResult = await promptBuilder.build(config);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Build context parts for Block 2
+  // Build context parts for Block 2 (disk-only data not in pool)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const contextParts: string[] = [];
-
-  // Source documents from pool (include policy set by decompose)
-  const currentTask = state.currentTask as DesignTask | undefined;
-  const taskInclude = currentTask?.include;
-  const taskSourceFiles = currentTask?.sourceFiles;
-  let sourceDocs = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
-  if (taskSourceFiles?.length) {
-    sourceDocs = sourceDocs.filter(a =>
-      taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
-    );
-  }
-  for (const a of sourceDocs) {
-    contextParts.push(`# Requirements Document (PRD)\n\n${a.content}`);
-  }
 
   // Existing spec for refactor mode (load from disk — pool may not have latest version)
   if (jobMode === 'refactor') {
@@ -154,15 +157,6 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     } catch (error) {
       console.warn(`⚠️  [DocGen/Spec] Failed to load existing spec:`, error);
     }
-  }
-
-  // API contracts from pool (gated by task.include from decompose)
-  const apiContracts = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.API_CONTRACT))
-    ? selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.API_CONTRACT] })
-    : [];
-  for (const a of apiContracts) {
-    const name = a.path.replace(/.*api-contract-/, '').replace(/\.md$/, '');
-    contextParts.push(`# Existing API Contract: ${name} (for reference)\n\n${a.content}`);
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

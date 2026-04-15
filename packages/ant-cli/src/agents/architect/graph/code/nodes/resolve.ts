@@ -413,7 +413,12 @@ function buildArtifactPool(opts: {
     pool.push({ path: ARTIFACT_PREFIX.SOURCES, content: opts.prd, role: 'context' });
   }
 
-  if (opts.design && !opts.designDocs) {
+  const hasDesignContent = opts.designDocs && (
+    Object.values(opts.designDocs.feDesigns).some(v => !!v) ||
+    Object.values(opts.designDocs.beDesigns).some(v => !!v) ||
+    Object.values(opts.designDocs.apiContracts).some(v => !!v)
+  );
+  if (opts.design && !hasDesignContent) {
     pool.push({ path: `${ARTIFACT_PREFIX.SYSTEM_DESIGN}full`, content: opts.design, role: 'ref' });
   }
 

@@ -228,4 +228,26 @@ Before outputting, verify:
 ### Task Descriptions
 - ✅ **ui-spec-ch1 description includes "global settings" or "breakpoints"**
 - ✅ **ch2+ descriptions include "(append)" and "skip documented topics"**
+
+---
+
+## 🎨 VISUAL DESIGN POLICY DETECTION
+
+After the main JSON output, output a `<visualTier>` tag with auto-detected visual design policy.
+Analyze the project context, PRD, Figma structure, and domain to choose the most fitting variant per layer.
+
+Choose ONE variant per layer:
+- `visualLanguage`: overall visual tone — "modernSaas" (clean SaaS), "enterprise" (stable, trustworthy), "fintechPremium" (precise, refined), "devtoolDark" (utility-dense, dark), "minimalNeutral" (quiet, understated)
+- `surfaceSystem`: panel/container treatment — "solid" (opaque, border-separated), "soft" (subtle shadow), "borderedSoft" (border + restrained shadow), "tinted" (light color shifts), "glassLight" (subtle translucency)
+- `spatialSystem`: spacing rhythm — "compact8pt" (dense, 4px base), "balanced8pt" (moderate, 8px base), "airy8pt" (generous whitespace), "dense12ptHybrid" (structured outer + compact inner)
+- `screenContext`: a short keyword for the primary screen type (e.g. "dashboard", "settings", "catalog")
+
+<visualTier>
+{
+  "visualLanguage": "modernSaas",
+  "surfaceSystem": "borderedSoft",
+  "spatialSystem": "balanced8pt",
+  "screenContext": "dashboard"
+}
+</visualTier>
 {{/if}}

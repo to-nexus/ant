@@ -16,6 +16,8 @@ import {
   resolveLanguageVariants,
   TECH_TIER_TEMPLATE_PATHS,
   FRAMEWORK_NONE,
+  VISUAL_TIER_TEMPLATE_PATHS,
+  VISUAL_TIER_LAYER_KEYS,
   type SupportedLanguage,
   type SupportedStack,
 } from '@ant/shared';
@@ -79,6 +81,16 @@ export class PromptBuilder implements PromptPort {
         documents: processedArtifacts,
         artifacts: processedArtifacts,
       };
+    }
+
+    // Defensive bridge: if config.artifacts was not passed but resolvedAction
+    // already has artifacts (e.g. from explicit path), ensure documents is populated
+    if (vars['resolvedAction'] && !processedArtifacts?.length) {
+      const ra = vars['resolvedAction'] as Record<string, unknown>;
+      const existing = (ra.artifacts as unknown[]) ?? (ra.documents as unknown[]);
+      if (existing?.length && !ra.documents) {
+        vars['resolvedAction'] = { ...ra, documents: existing };
+      }
     }
 
     if (config.pipeline?.sanitizeInput) {
@@ -298,6 +310,19 @@ export class PromptBuilder implements PromptPort {
       await this.pushBasisTemplate(sections, `basis/visualTier/design-system/${basis.visualTier.designSystem}`);
     }
 
+    const hasVisualTierLayers = VISUAL_TIER_LAYER_KEYS.some(k => basis.visualTier?.[k]);
+    if (hasVisualTierLayers) {
+      const vt = basis.visualTier!;
+      await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.preamble());
+      for (const layer of VISUAL_TIER_LAYER_KEYS) {
+        const variant = vt[layer];
+        if (variant) {
+          await this.pushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS[layer](variant));
+        }
+      }
+      await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job));
+    }
+
     return sections.join('\n\n');
   }
 
@@ -340,6 +365,28 @@ export class PromptBuilder implements PromptPort {
       }
       return '';
     }
+  }
+
+  /**
+   * Build the visualTier basis section independently.
+   * Used by UI design docGen which assembles prompts manually (not via build()).
+   */
+  async buildVisualTierBasis(basis: Basis | undefined, job: string): Promise<string> {
+    const hasLayers = VISUAL_TIER_LAYER_KEYS.some(k => basis?.visualTier?.[k]);
+    if (!hasLayers) return '';
+    const sections: string[] = [];
+    const vt = basis!.visualTier!;
+
+    await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.preamble());
+    for (const layer of VISUAL_TIER_LAYER_KEYS) {
+      const variant = vt[layer];
+      if (variant) {
+        await this.pushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS[layer](variant));
+      }
+    }
+    await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job));
+
+    return sections.join('\n\n');
   }
 
   async renderEnforcement(violationMessage: string): Promise<string> {
