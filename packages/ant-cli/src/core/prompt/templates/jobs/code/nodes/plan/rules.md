@@ -234,6 +234,7 @@ In your `<analysis>` section, cover:
 **Constraint**: Do NOT use `search_web` for internal architecture decisions or standard language features.
 
 {{#if (eq taskType "design-system")}}
+{{#if hasUiDoc}}
 **FOR `design-system` TASKS:**
 
 1. **TOKEN INVENTORY**
@@ -247,6 +248,24 @@ In your `<analysis>` section, cover:
    - Plan the import chain: entry file → token files, typography files
    - Plan the framework bridge: CSS vars → utility classes
    - Each integration file must appear in `create` or `modify`
+{{else}}
+**FOR `design-system` TASKS (visualTier-driven):**
+
+1. **VISUAL TIER OBSERVATION**
+   - Observe the visual tier policies in the basis section
+   - For each policy layer present, identify the concrete constraints it defines
+
+2. **TOKEN DERIVATION**
+   - For each visual tier layer, derive concrete token values that satisfy the layer's constraints
+   - Token categories to derive: spacing scale, color palette, typography scale, surface treatments, interaction behaviors
+   - Constraint: Do NOT invent values outside what the policy constraints permit
+   - Constraint: If a layer is absent from the basis, do NOT derive tokens for that category
+
+3. **INTEGRATION CHAIN**
+   - Observe the styling framework from project config (installed by setup task)
+   - Plan: framework theme config extension + global CSS entry point with token imports
+   - Each file in `create` list with `purpose`
+{{/if}}
 {{/if}}
 
 {{#if (eq taskType "ui")}}

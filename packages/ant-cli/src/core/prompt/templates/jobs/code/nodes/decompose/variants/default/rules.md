@@ -57,7 +57,7 @@ Each task object MUST follow this schema:
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
 | `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, or `"verification"` |
-| `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra + wiring), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
+| `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra from ui-docs or visualTier policy), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
@@ -267,8 +267,15 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 {{#if hasUiDocs}}
 **Constraint**: When ui-docs exist, create a `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure. If the design system also requires framework-level wiring (import chain setup, component library integration into app shell), create a second `"design-system"` task (priority 201, `parallelGroup: "design-system"`) for wiring. The shared parallelGroup ensures token infra runs before wiring; both run in parallel with shared foundation tasks. Do NOT embed token setup in Setup or UI tasks.
 {{else}}
+{{#if resolvedAction.basis.visualTier}}
+**Constraint**: ui-docs not available but visualTier policy is active.
+Create ONE `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for visual token infrastructure derived from the visualTier policies in the basis section.
+Do NOT create component wiring tasks (201+) — those require ui-spec.
+`uiSections` field is NOT applicable (no ui-docs to inject).
+{{else}}
 **Constraint**: ui-docs not available → do NOT create `"design-system"` tasks.
 `"ui"` tasks are still created — CSS framework + visual hints from system design provide styling guidance.
+{{/if}}
 {{/if}}
 
 ---

@@ -9,6 +9,11 @@
 - DO NOT attempt to read `ui-tokens.json` from `inputs/` or any other directory
 - Use the token values from the prompt directly to configure the styling framework's theme
 
+**If NO `# DESIGN TOKENS` section but visual tier policies exist in the basis:**
+- Create a minimal styling framework config with sensible defaults (standard theme)
+- The design-system task (running after setup) will derive the full theme from visual tier policies
+- Do NOT attempt to derive the full token set in setup — keep configuration generic
+
 ## 📁 PATH CONVENTION (CRITICAL!)
 
 **All files MUST be created under `codebase/` directory.**
