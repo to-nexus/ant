@@ -5,6 +5,8 @@
  * Profile/environment determination is NOT done here — that's decompose's responsibility (tech tier).
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
 import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { ArchitectGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
@@ -108,8 +110,6 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function scanArtifacts(state: ArchitectGraphState): string {
-  const fs = require('fs');
-  const path = require('path');
   const featurePath = state.context.featurePath;
   if (!featurePath) return '';
 
