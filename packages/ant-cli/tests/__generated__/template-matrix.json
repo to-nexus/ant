@@ -1,0 +1,862 @@
+{
+  "agents/architect/base": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "agents/architect/rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "agents/creator/base": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "agents/creator/rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "basis/techTier/language/_typescript-common": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/techTier/language/go": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/techTier/stack/backend": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/techTier/stack/frontend": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/techTier/stack/fullstack": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "infra/compaction/job-summary": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "infra/compaction/system": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/ask/nodes/agent/variants/default/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/ask/nodes/agent/variants/default/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/code/base/examples": {
+    "sources": [
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/code/base/injections/batch-execution": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/batch-gather": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/behavioral-debugging": {
+    "sources": [
+      "auto-injection",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/git-diff": {
+    "sources": [
+      "auto-injection",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/job-history": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/mock-adapter-contract": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/persistence-schema-rule": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/plan-tools-batch": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/preview-env-contract": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/preview-setup": {
+    "sources": [
+      "auto-injection",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/reference-code": {
+    "sources": [
+      "auto-injection",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/retrieved-code": {
+    "sources": [
+      "auto-injection",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/secure-coding": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/system-design-guide": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/text-format-compact": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/tool-calling-rules-compact": {
+    "sources": [
+      "auto-injection",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/ui-design-guide": {
+    "sources": [
+      "auto-injection",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/system": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/code/base/tools/run_command": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/basis/techTier/framework/gin": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/techTier/framework/nestjs": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/techTier/framework/nextjs": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/techTier/framework/react-native": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/techTier/framework/react": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/techTier/language/go": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/techTier/language/typescript-browser": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/techTier/language/typescript-node": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/nodes/decompose/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/decompose/variants/default/design-doc-guide": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/decompose/variants/default/error-or-general": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/decompose/variants/default/existing-code-check": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/decompose/variants/default/mode-guide": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/decompose/variants/default/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/decompose/variants/default/scope-rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/decompose/variants/default/techTier-rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/detect/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/detect/variants/default/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/enforce/variants/default/rules-enforcement": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/basis/techTier/go/setup/config": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/code/nodes/execute/basis/techTier/go/setup/constraints": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/code/nodes/execute/basis/techTier/typescript/setup/config": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/code/nodes/execute/basis/techTier/typescript/setup/constraints": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/backend-safety": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/lessons": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/missing-dependency-fix": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/port-management": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/retry-context": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/runtime-error-fix": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/session-context": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/default/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/docgen/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/docgen/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/error/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/error/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/test-code/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/test-code/basis/techTier/go/hints": {
+    "sources": [
+      "auto-injection",
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/test-code/basis/techTier/typescript/hints": {
+    "sources": [
+      "auto-injection",
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/test-code/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/verification/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/verification/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/base-keyword": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/rules-keyword": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/plan/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/plan/variants/error/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/variants/verification/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/variants/verification/basis/techTier/go/hints": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/variants/verification/basis/techTier/typescript/hints": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/variants/verification/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/code/nodes/revise/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/revise/variants/default/rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/design/base/catalogs/api-contract-catalog-names": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/base/catalogs/api-contract-catalog": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/base/catalogs/backend-catalog-names": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/base/catalogs/backend-catalog": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/base/catalogs/frontend-catalog-names": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/base/catalogs/frontend-catalog": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/base/injections/api-contract-guide": {
+    "sources": [
+      "policy-map",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/design/base/injections/backend-guide": {
+    "sources": [
+      "policy-map",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/design/base/injections/document-language": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/base/injections/frontend-guide": {
+    "sources": [
+      "policy-map",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/design/base/injections/job-history": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/base/system": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/basis/domain/game": {
+    "sources": [
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/domain/service": {
+    "sources": [
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/techTier/framework/go": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/basis/techTier/framework/nextjs": {
+    "sources": [
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/system-design/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/system-design/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/ui-design-by-figma/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/ui-design-by-figma/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/ui-design-by-ref/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/ui-design-by-ref/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/detect/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/ui-assets-guide-by-figma": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/ui-assets-guide-by-ref": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/ui-continuation-by-figma": {
+    "sources": [
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/ui-continuation": {
+    "sources": [
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/ui-spec-guide-by-figma": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/ui-spec-guide-by-ref": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/ui-tokens-guide-by-figma": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/ui-tokens-guide-by-ref": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/spec/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/spec/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/system-design/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/system-design/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/ui-design-by-figma/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/ui-design-by-figma/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/ui-design-by-ref/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/ui-design-by-ref/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/revise/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/revise/variants/default/rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/learn/base/system": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/plan/nodes/plan/variants/default/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/plan/nodes/plan/variants/default/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/shared/injections/action-context": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/directive": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/explain-guidance": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/memory": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/refactor-guidance": {
+    "sources": [
+      "auto-injection",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/ui-design-policy": {
+    "sources": [
+      "policy-map",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/visual-source-authority": {
+    "sources": [
+      "auto-injection",
+      "policy-map",
+      "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/nodes/triage/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/shared/nodes/triage/variants/default/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/visual/nodes/direct/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/visual/nodes/direct/variants/default/classify": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/visual/nodes/direct/variants/default/context": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/visual/nodes/direct/variants/default/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/visual/nodes/engrave/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/visual/nodes/engrave/variants/default/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/visual/nodes/explain/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/visual/nodes/explain/variants/default/context": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/visual/nodes/render/variants/default/fidelity-prefix": {
+    "sources": [
+      "render-call"
+    ]
+  }
+}
