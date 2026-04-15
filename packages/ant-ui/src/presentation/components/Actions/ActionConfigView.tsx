@@ -68,8 +68,6 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
   const intents = getIntentsForAction(actionId);
   const directionRef = useRef<1 | -1>(1);
-  const slots0 = getConfigSlots(intentId);
-  const prevBasisSlotRef = useRef<import('@ant/shared').BasisSlotConfig | undefined>(slots0?.basis);
 
   const handleIntentChange = useCallback((newIntentId: string) => {
     const oldIdx = intents.findIndex(i => i.id === intentId);
@@ -104,16 +102,6 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     }
     updateActionMetadata({ refs: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
     updateActionMetadata({ context: undefined });
-
-    const prevBasisSlot = prevBasisSlotRef.current;
-    const currBasisSlot = slots.basis;
-    const structureKey = (s: typeof currBasisSlot) =>
-      s ? `${!!s.techTier}|${!!s.visualTier}` : '';
-    const sameStructure = structureKey(prevBasisSlot) === structureKey(currBasisSlot);
-    if (!sameStructure) {
-      updateActionMetadata({ basis: undefined });
-    }
-    prevBasisSlotRef.current = currBasisSlot;
 
     const { target } = slots;
     if (target.kind === 'revise') {
@@ -326,7 +314,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
         )}
       </PageTransition>
 
-      <ActionFooter actionId={actionId} />
+      <ActionFooter variant="intent" actionId={actionId} />
     </div>
   );
 }
