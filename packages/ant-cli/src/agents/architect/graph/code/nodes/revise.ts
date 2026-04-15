@@ -96,7 +96,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     })) || [];
     
     // Generate prompt via PromptEngine
-    const prompt = await promptBuilder.render('code/phases/revise/base', {
+    const prompt = await promptBuilder.render('jobs/code/nodes/revise/variants/default/base', {
       context: state.context,
       completedCount,
       totalTasks,

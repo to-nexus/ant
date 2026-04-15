@@ -193,10 +193,9 @@ export interface ArchitectGraphState extends TriageableState {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   artifacts?: ResolvedArtifact[];
 
-  // RAC (detect output, immutable) + TechTier (decompose output)
+  // RAC (detect output → decompose enriches basis.techTier: TechTierConfig)
   resolvedAction?: ResolvedActionContext;
   resolvedArtifacts?: ResolvedArtifact[];
-  techTier?: TechTier;
 
   selectedDesignFiles?: string[];
   decomposeFilePaths?: string[];

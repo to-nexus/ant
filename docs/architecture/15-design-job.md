@@ -99,7 +99,7 @@ system-design은 LLM 기반 태스크 분해(documentType + targetFiles + profil
 
 #### TechTier 설정
 
-Design Job의 3개 decompose 함수 모두 `state.techTier`를 설정한다. Code Job과 달리 Design Job은 graph-level TechTier와 per-task TechTier를 분리한다.
+Design Job의 3개 decompose 함수 모두 RAC.basis.techTier를 설정한다 (`getTechTier(state)` 경유). Code Job과 달리 Design Job은 graph-level TechTier와 per-task TechTier를 분리한다.
 
 | workType | graph-level TechTier | per-task TechTier |
 |---|---|---|
@@ -127,7 +127,7 @@ ui-assets.json (의존 없음, tokens와 병렬)
 
 runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다:
 - taskQueue, completedTasks, completedTasksDetails
-- resolvedAction, techTier
+- resolvedAction (basis.techTier 포함)
 - figmaConfig, figmaExplorationResult, figmaAvailable, figmaFileKey, figmaStartNodeId
 - planText, conversationHistory
 - directive, overrideDirective, chatSource

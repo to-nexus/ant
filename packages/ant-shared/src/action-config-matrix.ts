@@ -49,10 +49,18 @@
 // Types
 // ============================================
 
+export interface BasisSlotConfig {
+  techTier?: boolean;
+  visualTier?: boolean;
+  defaults?: { stack?: 'frontend' | 'backend' | 'fullstack' };
+}
+
 export interface ConfigSlots {
   refs: SlotDef[];
   context: SlotDef[];
   target: TargetDef;
+  /** Basis preset selector visibility. When present, BasisSelector renders for the matching tiers. */
+  basis?: BasisSlotConfig;
   /** Override chat ref gating. Default: same as build ref gate.
    *  false → chat without refs (directive-capable intent).
    *  true → chat needs refs even when build doesn't (rare). */
@@ -257,16 +265,19 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: FE_OUTPUTS },
+    basis: { techTier: true, defaults: { stack: 'frontend' } },
   },
   'gen-sys-be': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: BE_OUTPUTS },
+    basis: { techTier: true, defaults: { stack: 'backend' } },
   },
   'gen-sys-full': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: FULLSTACK_OUTPUTS },
+    basis: { techTier: true, defaults: { stack: 'fullstack' } },
   },
 
   // ── System Design: Rev ─────────────────────
@@ -294,6 +305,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     context: [],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
     chatRequiresRefs: false,
+    basis: { visualTier: true },
   },
 
   // ── UI Design: Rev ─────────────────────────
@@ -343,6 +355,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     buildDisabled: true,
+    basis: { techTier: true },
   },
 
   // ── Code: Rev (codebase required; spec docs as opt-in ref, design docs as context) ──

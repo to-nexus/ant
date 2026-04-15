@@ -2,7 +2,7 @@ import { ProjectContext, AgentJob, Mode, ArchitectResult } from "./types";
 import type { InterruptionReason } from "../../core/types/session";
 import { retrieve } from "./memory";
 import { ArtifactService } from "../../infrastructure/workspace/ArtifactService";
-import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, ProfilePort, SessionPort, ChunkPort, CommandPort, TaskQueueUpdatePort } from "../../core/ports";
+import { MemoryPort, LLMClient, PromptPort, GitPort, ConfigPort, CodebaseAnalyzerPort, SessionPort, ChunkPort, CommandPort, TaskQueueUpdatePort } from "../../core/ports";
 import { FileSystemPort } from "../../core/ports/filesystem";
 import { runCodeGraph } from "./graph/code/runner";
 import { ArchitectGraphState } from "./graph/code/state";
@@ -21,7 +21,6 @@ export async function architectAgent(
     memory?: MemoryPort; 
     llm?: LLMClient; 
     promptPort?: PromptPort; 
-    profilePort?: ProfilePort;
     analyzer?: CodebaseAnalyzerPort;
     git?: GitPort;
     fileSystem?: FileSystemPort;  // ✅ NEW: FileSystemPort for file I/O
@@ -222,7 +221,7 @@ export async function architectAgent(
       if (!deps?.promptPort) {
         throw new Error("PromptPort not provided for design generation");
       }
-      const designBuilder = new PromptBuilder(deps.promptPort, deps.profilePort);
+      const designBuilder = new PromptBuilder(deps.promptPort);
 
       const dInitial: DesignGraphState = {
         context,
@@ -371,7 +370,7 @@ export async function architectAgent(
 
       console.log(`🚀 Starting CODE job (~${estimation.estimatedFiles} files)`);
         
-        const codeBuilder = new PromptBuilder(deps.promptPort, deps.profilePort);
+        const codeBuilder = new PromptBuilder(deps.promptPort);
         // ✅ Resolve jobId: orchestrator param > env var (child process) > undefined
         const resolvedJobId = jobId || process.env.ANT_JOB_ID;
         

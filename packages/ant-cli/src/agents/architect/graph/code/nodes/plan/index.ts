@@ -21,6 +21,7 @@
 import { LLMClient } from "../../../../../../core/ports";
 import type { MessageContentBlock } from "../../../../../../core/ports/llm";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
+import { getTechTier } from '@ant/shared';
 import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
@@ -40,7 +41,7 @@ function isTypeScriptProject(state: ArchitectGraphState): boolean {
   const lang = (
     taskTiers?.length
       ? taskTiers[0].language
-      : state.techTier?.language
+      : getTechTier(state)?.language
     ?? ''
   ).toLowerCase();
   return lang.includes('typescript');

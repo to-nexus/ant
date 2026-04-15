@@ -147,7 +147,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   console.log(`🎬 [Visual:Direct] jobMode=${state.jobMode || 'generate'}, assetType=${assetType}`);
 
-  const systemPrompt = await pb.render('visual/nodes/direct/base', {
+  const systemPrompt = await pb.render('jobs/visual/nodes/direct/variants/default/base', {
     isLogo: assetType === 'logo',
     isIcon: assetType === 'icon',
     isHero: assetType === 'hero',
@@ -195,7 +195,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
     }
   }
 
-  const userPrompt = await pb.render('visual/nodes/direct/context', {
+  const userPrompt = await pb.render('jobs/visual/nodes/direct/variants/default/context', {
     conversationContext: conversationContext || '(no previous conversation)',
     currentDirective,
     lastEngineeredPrompt: state.lastEngineeredPrompt,
@@ -282,8 +282,8 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   if (state._httpJobId && state.featurePath) {
     try {
       await logPrompt(state.featurePath, state._httpJobId, 'visual', 'direct', systemPrompt.length + userPrompt.length, {
-        templatePath: 'visual/nodes/direct/base',
-        usedTemplates: ['visual/nodes/direct/base', 'visual/nodes/direct/rules', 'visual/nodes/direct/context'],
+        templatePath: 'jobs/visual/nodes/direct/variants/default/base',
+        usedTemplates: ['jobs/visual/nodes/direct/variants/default/base', 'jobs/visual/nodes/direct/variants/default/rules', 'jobs/visual/nodes/direct/variants/default/context'],
         injectedVariables: { assetType, currentDirective, conversationEntries: state.conversation.length },
         hardcodedContent: JSON.stringify({ route: result.route, engineeredPrompt: result.engineeredPrompt, reasoning: result.reasoning }),
       });

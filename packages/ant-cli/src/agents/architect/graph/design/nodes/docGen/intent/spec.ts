@@ -85,9 +85,9 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const title = task?.name?.replace(/^Spec: .+ — /, 'Spec: ').replace('Spec: ', '') || 'Feature';
   const config: PromptBuildConfig = {
     templates: {
-      base: 'design/phases/execute/base-spec',
-      rules: 'design/phases/execute/rules-spec',
-      system: 'design/base/system',
+      base: 'jobs/design/nodes/execute/variants/spec/base',
+      rules: 'jobs/design/nodes/execute/variants/spec/rules',
+      system: 'jobs/design/base/system',
     },
     pipeline: {
       sanitizeInput: true,
@@ -201,7 +201,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   });
 
   // ✅ Log prompt structure
-  const TEMPLATE_PATH = 'design/phases/execute/base-spec';
+  const TEMPLATE_PATH = 'jobs/design/nodes/execute/variants/spec/base';
   const jobId = state.jobId || state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
@@ -216,7 +216,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
           taskName: task?.name,
           templatePath: TEMPLATE_PATH,
           usedTemplates: [
-            'design/phases/execute/rules-spec',
+            'jobs/design/nodes/execute/variants/spec/rules',
           ],
           injectedVariables: {
             targetFile,

@@ -3,5 +3,6 @@ export { FileCard } from './FileCard';
 export type { FileCardProps } from './FileCard';
 export { SlotEntryList } from './SlotEntryList';
 export { TargetDisplay } from './TargetDisplay';
+export { BasisSelector } from './BasisSelector';
 export { resolveSlotEntries, listDir } from './resolveSlots';
 export type { SlotWarning, SlotFileEntry, SlotEntry, FileWarningContext } from './types';

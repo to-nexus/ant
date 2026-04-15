@@ -136,12 +136,12 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         {
           taskId: task?.id,
           taskName: task?.name,
-          templatePath: `design/phases/execute/base-ui-design-${logSuffix}`,
+          templatePath: `jobs/design/nodes/execute/variants/ui-design-${logSuffix}/base`,
           usedTemplates: [
-            `design/phases/execute/rules-ui-design-${logSuffix}`,
-            `design/phases/execute/injections/ui-tokens-guide-${logSuffix}`,
-            `design/phases/execute/injections/ui-assets-guide-${logSuffix}`,
-            `design/phases/execute/injections/ui-spec-guide-${logSuffix}`,
+            `jobs/design/nodes/execute/variants/ui-design-${logSuffix}/rules`,
+            `jobs/design/nodes/execute/injections/ui-tokens-guide-${logSuffix}`,
+            `jobs/design/nodes/execute/injections/ui-assets-guide-${logSuffix}`,
+            `jobs/design/nodes/execute/injections/ui-spec-guide-${logSuffix}`,
           ],
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
@@ -236,8 +236,8 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     const adapter = new FilePromptAdapter();
     const freshFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
     const continuationTemplate = freshFigmaMode
-      ? 'design/phases/execute/injections/ui-continuation-by-figma'
-      : 'design/phases/execute/injections/ui-continuation';
+      ? 'jobs/design/nodes/execute/injections/ui-continuation-by-figma'
+      : 'jobs/design/nodes/execute/injections/ui-continuation';
     const continuationText = await adapter.render(continuationTemplate, { targetDoc });
     content.push({
       type: 'text',
@@ -263,12 +263,12 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         {
           taskId: task?.id,
           taskName: task?.name,
-          templatePath: `design/phases/execute/base-ui-design-${freshLogSuffix}`,
+          templatePath: `jobs/design/nodes/execute/variants/ui-design-${freshLogSuffix}/base`,
           usedTemplates: [
-            `design/phases/execute/rules-ui-design-${freshLogSuffix}`,
-            `design/phases/execute/injections/ui-tokens-guide-${freshLogSuffix}`,
-            `design/phases/execute/injections/ui-assets-guide-${freshLogSuffix}`,
-            `design/phases/execute/injections/ui-spec-guide-${freshLogSuffix}`,
+            `jobs/design/nodes/execute/variants/ui-design-${freshLogSuffix}/rules`,
+            `jobs/design/nodes/execute/injections/ui-tokens-guide-${freshLogSuffix}`,
+            `jobs/design/nodes/execute/injections/ui-assets-guide-${freshLogSuffix}`,
+            `jobs/design/nodes/execute/injections/ui-spec-guide-${freshLogSuffix}`,
           ],
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
@@ -498,7 +498,7 @@ async function loadPreviousUiDocs(
 /**
  * Build system prompt for UI Design generation
  * 
- * Loads design/phases/execute/base-ui-design-{by-ref|by-figma}.md based on resolvedAction.intent
+ * Loads jobs/design/nodes/execute/variants/ui-design-{by-ref|by-figma}/base.md based on resolvedAction.intent
  * - Includes corresponding rules and injection guides via partials
  * - Injects previousChaptersSummary to prevent duplicate content
  * - Injects siblingTasks for MECE awareness in parallel chapters
@@ -613,7 +613,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
 
   const sysFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   const templateSuffix = sysFigmaMode ? 'by-figma' : 'by-ref';
-  const templatePath = `design/phases/execute/base-ui-design-${templateSuffix}`;
+  const templatePath = `jobs/design/nodes/execute/variants/ui-design-${templateSuffix}/base`;
 
   const template = await promptBuilder.render(templatePath, injectedVariables);
   
@@ -635,10 +635,10 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
           taskName: state.currentTask?.name,
           templatePath,
           usedTemplates: [
-            `design/phases/execute/rules-ui-design-${templateSuffix}`,
-            `design/phases/execute/injections/ui-tokens-guide-${templateSuffix}`,
-            `design/phases/execute/injections/ui-assets-guide-${templateSuffix}`,
-            `design/phases/execute/injections/ui-spec-guide-${templateSuffix}`,
+            `jobs/design/nodes/execute/variants/ui-design-${templateSuffix}/rules`,
+            `jobs/design/nodes/execute/injections/ui-tokens-guide-${templateSuffix}`,
+            `jobs/design/nodes/execute/injections/ui-assets-guide-${templateSuffix}`,
+            `jobs/design/nodes/execute/injections/ui-spec-guide-${templateSuffix}`,
           ],
           injectedVariables: {
             taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,

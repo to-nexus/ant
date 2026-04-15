@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { Annotation, StateGraph, END } from "@langchain/langgraph";
+import { getTechTier } from '@ant/shared';
 import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
@@ -338,7 +339,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
           type: 'verification' as const,
           priority: TASK_PRIORITIES.FINAL_VERIFICATION,
           description: 'Re-verify all errors are resolved after error fixes',
-          techTiers: state.techTier ? [state.techTier] : [],
+          techTiers: [state.resolvedAction?.basis?.techTier?.frontend, state.resolvedAction?.basis?.techTier?.backend].filter((t): t is import('@ant/shared').TechTier => !!t),
         };
         state.taskQueue.push(finalTask);
         console.log(`📋 Added Final Verification to confirm all errors resolved\n`);
@@ -477,7 +478,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     gitPort: state.gitPort,
     artifacts: state.artifacts,
     resolvedArtifacts: state.resolvedArtifacts,
-    techTier: state.techTier,
+    techTier: getTechTier(state),
     selectedDesignFiles: state.selectedDesignFiles,
     decomposeFilePaths: state.decomposeFilePaths,
     directive: state.directive,
@@ -526,7 +527,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
               type: 'verification' as const,
               priority: TASK_PRIORITIES.FINAL_VERIFICATION,
               description: 'Re-verify all errors are resolved after error fixes',
-              techTiers: state.techTier ? [state.techTier] : [],
+              techTiers: [state.resolvedAction?.basis?.techTier?.frontend, state.resolvedAction?.basis?.techTier?.backend].filter((t): t is import('@ant/shared').TechTier => !!t),
             };
             taskQueue.push(finalTask);
             console.log(`📋 [ParallelOrchestrator] Added Final Verification to confirm all errors resolved`);
@@ -642,7 +643,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   // onCheckpoint does a full replace of session.state, so any field
                   // not listed here is lost on session reload / resume.
                   designDocUnknownPackages: state.designDocUnknownPackages,
-                  techTier: state.techTier,
+                  techTier: getTechTier(state),
                   profile: state.profile,
                   resolvedAction: state.resolvedAction,
                   referenceRequests: state.referenceRequests,

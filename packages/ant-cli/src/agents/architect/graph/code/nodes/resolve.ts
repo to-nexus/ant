@@ -7,7 +7,7 @@ import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_M
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
 import type { ResolvedArtifact } from '@ant/shared';
-import { ARTIFACT_PREFIX } from '@ant/shared';
+import { ARTIFACT_PREFIX, getTechTier } from '@ant/shared';
 import type { ParsedUiDocs } from '../../../../../core/types/uiDoc';
 
 /**
@@ -150,7 +150,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       context: state.context,
       artifacts,
       profile: state.profile,
-      techTier: state.techTier,
+      techTier: getTechTier(state),
       figmaAvailable: state.figmaAvailable,
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,

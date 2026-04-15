@@ -119,8 +119,6 @@ export class AutoInjectionResolver {
       const skipEnvRules = isVerification || isError || isTestCode || isDoc;
 
       if (!skipEnvRules && language && job === 'code') {
-        this.addEnvironmentInjections(injections, job, tiers, language, hasFrontend, hasBackend);
-
         if (hasFrontend) {
           this.pushUnique(injections, `${jobPrefix}/preview-setup`);
         }
@@ -142,6 +140,10 @@ export class AutoInjectionResolver {
       if (job === 'code' && !isTestCode && !isDoc) {
         this.pushUnique(injections, `${jobPrefix}/preview-env-contract`);
         injections.push('jobs/code/nodes/execute/injections/port-management');
+      }
+
+      if (job === 'code' && taskType === 'ui') {
+        injections.push(`${jobPrefix}/ui-design-guide`);
       }
 
       // Design job injections
@@ -184,51 +186,6 @@ export class AutoInjectionResolver {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Private helpers
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  private addEnvironmentInjections(
-    injections: string[],
-    job: string,
-    tiers: TechTier[],
-    fallbackLanguage: string,
-    hasFrontend: boolean,
-    hasBackend: boolean,
-  ): void {
-    const base = `jobs/${job}/nodes/execute/basis/techTier`;
-
-    if (tiers.length === 0) {
-      // Go has no browser environment rules; only TypeScript does
-      if (fallbackLanguage !== 'go') {
-        this.pushUnique(injections, `${base}/${fallbackLanguage}/environments/browser/rules`);
-      }
-      return;
-    }
-
-    for (const tier of tiers) {
-      const lang = tier.language ?? 'typescript';
-      if (tier.stack === 'fullstack') {
-        if (lang !== 'go') {
-          this.pushUnique(injections, `${base}/${lang}/environments/browser/rules`);
-        }
-        const backendEnv = lang === 'go' ? 'go-api' : 'node-api';
-        this.pushUnique(injections, `${base}/${lang}/environments/${backendEnv}/rules`);
-      } else {
-        const env = tier.stack === 'frontend'
-          ? (lang === 'go' ? null : 'browser')
-          : tier.stack === 'backend' ? (lang === 'go' ? 'go-api' : 'node-api')
-          : (lang === 'go' ? null : 'browser');
-        if (env) {
-          this.pushUnique(injections, `${base}/${lang}/environments/${env}/rules`);
-        }
-      }
-    }
-
-    if (hasFrontend && hasBackend) {
-      const primaryLang = tiers[0]?.language ?? 'typescript';
-      if (primaryLang !== 'go') {
-        this.pushUnique(injections, `${base}/${primaryLang}/environments/fullstack/rules`);
-      }
-    }
-  }
 
   private resolveLanguage(tiers: TechTier[]): string {
     const lang = tiers[0]?.language;

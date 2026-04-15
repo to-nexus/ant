@@ -18,6 +18,7 @@
  */
 
 import path from 'node:path';
+import { getTechTier } from '@ant/shared';
 import { ArchitectGraphState } from '../../state';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
@@ -651,7 +652,7 @@ export async function execute(
         _finalTaskLoopCount: 0,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
-        techTier: state.techTier,
+        techTier: getTechTier(state),
         profile: state.profile,
       };
     }
@@ -820,7 +821,7 @@ export async function execute(
           _finalTaskLoopCount: newFinalTaskLoopCount,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
-          techTier: state.techTier,
+          techTier: getTechTier(state),
           profile: state.profile,
         };
       }
@@ -851,7 +852,7 @@ export async function execute(
       _finalTaskLoopCount: newFinalTaskLoopCount,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
-      techTier: state.techTier,
+      techTier: getTechTier(state),
       profile: state.profile,
     };
   } catch (error) {

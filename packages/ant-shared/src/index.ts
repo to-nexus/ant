@@ -31,6 +31,7 @@ export * from './canonical';
 export * from './actions';
 export * from './action-config-matrix';
 export * from './file-descriptions';
+export * from './tech-tier-registry';
 export * from './rac';
 export * from './prompt-policy-matrix';
 export * from './deploy';

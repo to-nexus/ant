@@ -9,9 +9,16 @@
  *   - Granular sections (for cache-block-aware callers like execute promptBuilder)
  */
 
-import type { PromptPort, ProfilePort } from '../../ports';
-import type { PolicyKey, TechTier, ResolvedArtifact } from '@ant/shared';
+import type { PromptPort } from '../../ports';
+import type { PolicyKey, Basis } from '@ant/shared';
 import { getPromptPolicies, POLICY_TEMPLATE_MAP } from '@ant/shared';
+import {
+  resolveLanguageVariants,
+  TECH_TIER_TEMPLATE_PATHS,
+  FRAMEWORK_NONE,
+  type SupportedLanguage,
+  type SupportedStack,
+} from '@ant/shared';
 import type { PromptBuildConfig, PromptBuildResult } from './PromptBuildConfig';
 import { AutoInjectionResolver } from './AutoInjectionResolver';
 import { sanitizeInjectionVars } from './InputSanitizer';
@@ -27,10 +34,7 @@ export class PromptBuilder implements PromptPort {
   private systemPromptCache: Record<string, string> = {};
   private policyRuleset: PolicyRuleset | null = null;
 
-  constructor(
-    private promptPort: PromptPort,
-    private profilePort?: ProfilePort,
-  ) {}
+  constructor(private promptPort: PromptPort) {}
 
   /**
    * Simple render — direct template rendering without injection resolution.
@@ -44,7 +48,7 @@ export class PromptBuilder implements PromptPort {
    * Build a prompt from a declarative config.
    *
    * 1. Merge injections from all 4 tiers
-   * 2. Render templates (system, rules, base, injections, profiles, examples)
+   * 2. Render templates (system, rules, base, injections, basis, examples)
    * 3. Optionally sanitize user-controlled input
    * 4. Return both merged output and granular sections
    */
@@ -91,11 +95,13 @@ export class PromptBuilder implements PromptPort {
       systemBase = await this.getSystemPrompt(config.templates.system);
     }
 
-    // 3b. Tech profile (language + framework)
-    let profiles = '';
-    if (config.pipeline?.includeTechProfile) {
-      const techTier = config.techContext?.techTier;
-      profiles = await this.buildProfileSection(techTier);
+    // 3b. Basis section: root(stack) + task-scoped(lang+variant+fw)
+    let basisSection = '';
+    if (config.pipeline?.includeBasis && config.basis) {
+      const job = this.inferJob(config);
+      const domain = config.techContext?.resolvedAction?.domain;
+      const taskTechTiers = config.techContext?.techTiers;
+      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain);
     }
 
     // 3c. Rules template
@@ -115,7 +121,7 @@ export class PromptBuilder implements PromptPort {
     let examples = '';
     if (config.pipeline?.includeExamples) {
       const job = this.inferJob(config);
-      examples = await this.renderTemplate(`${job}/base/examples`, {}, failedTemplates);
+      examples = await this.renderTemplate(`jobs/${job}/base/examples`, {}, failedTemplates);
     }
 
     // 3f. Base (user) template
@@ -128,16 +134,16 @@ export class PromptBuilder implements PromptPort {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Step 4: Assemble merged output
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const systemParts = [systemBase, profiles, rules, injectionsMerged, examples].filter(Boolean);
+    const systemParts = [systemBase, basisSection, rules, injectionsMerged, examples].filter(Boolean);
 
     let guardrail = '';
     let policy = '';
     if (config.pipeline?.applyPolicyGuardrails) {
       const ruleset = this.getRuleset();
       const job = this.inferJob(config);
-      const phase = this.inferPhase(config);
+      const node = this.inferNode(config);
       guardrail = buildGuardrailSection(ruleset, job);
-      policy = buildPolicySection(ruleset, job, phase, config.pipeline?.strictValidation);
+      policy = buildPolicySection(ruleset, job, node, config.pipeline?.strictValidation);
       systemParts.unshift(guardrail);
       systemParts.push(policy);
     }
@@ -151,7 +157,7 @@ export class PromptBuilder implements PromptPort {
         systemBase,
         rules,
         injections: injectionsMerged,
-        profiles,
+        profiles: basisSection,
         examples,
         guardrail,
         policy,
@@ -182,7 +188,7 @@ export class PromptBuilder implements PromptPort {
     if (config.techContext) {
       const autoInjections = this.autoResolver.resolve({
         job: this.inferJob(config),
-        phase: this.inferPhase(config),
+        node: this.inferNode(config),
         taskType: config.techContext.taskType,
         mode: config.techContext.mode,
         resolvedAction: config.techContext.resolvedAction,
@@ -222,26 +228,100 @@ export class PromptBuilder implements PromptPort {
     return this.systemPromptCache[templatePath];
   }
 
-  private async buildProfileSection(techTier?: TechTier | null): Promise<string> {
-    if (!this.profilePort || !techTier) return '';
-
+  private async buildBasisSection(
+    basis: Basis | undefined,
+    job: string,
+    taskTechTiers?: import('@ant/shared').TechTier[],
+    domain?: string,
+  ): Promise<string> {
+    if (!basis) return '';
     const sections: string[] = [];
 
-    if (techTier.language) {
-      const profile = await this.profilePort.loadLanguage(techTier.language);
-      if (profile) {
-        sections.push(`<tech_profile language="${techTier.language}">\n${profile}\n</tech_profile>`);
+    // Root: stack template (shared across all tasks)
+    const basisStack = basis.techTier?.stack as SupportedStack | undefined;
+    if (basisStack) {
+      await this.pushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.stack(basisStack));
+    }
+
+    // Task-scoped: language base + variant + framework (from taskTechTiers or config tiers)
+    const tiers = taskTechTiers?.length
+      ? taskTechTiers
+      : [basis.techTier?.frontend, basis.techTier?.backend].filter(
+          (t): t is import('@ant/shared').TechTier => !!t,
+        );
+
+    const injectedLangs = new Set<string>();
+    const injectedVariants = new Set<string>();
+    const injectedFrameworks = new Set<string>();
+
+    for (const tier of tiers) {
+      if (!tier.language) continue;
+      const lang = tier.language as SupportedLanguage;
+      const tierStack = tier.stack as SupportedStack | undefined;
+
+      if (!injectedLangs.has(lang)) {
+        injectedLangs.add(lang);
+        const basePath = TECH_TIER_TEMPLATE_PATHS.languageBase(lang);
+        if (basePath) {
+          await this.pushBasisTemplate(sections, basePath);
+        }
+      }
+
+      const variants = resolveLanguageVariants(lang, tierStack);
+      for (const variant of variants) {
+        if (injectedVariants.has(variant)) continue;
+        injectedVariants.add(variant);
+        await this.tryPushBasisTemplate(
+          sections,
+          TECH_TIER_TEMPLATE_PATHS.jobLanguageVariant(job, variant),
+        );
+      }
+
+      if (tier.framework && tier.framework !== FRAMEWORK_NONE && !injectedFrameworks.has(tier.framework)) {
+        injectedFrameworks.add(tier.framework);
+        await this.tryPushBasisTemplate(
+          sections,
+          TECH_TIER_TEMPLATE_PATHS.jobFramework(job, tier.framework),
+        );
       }
     }
 
-    if (techTier.framework) {
-      const profile = await this.profilePort.loadFramework(techTier.framework);
-      if (profile) {
-        sections.push(`<framework_profile framework="${techTier.framework}">\n${profile}\n</framework_profile>`);
+    if (domain) {
+      const jobDomainPath = TECH_TIER_TEMPLATE_PATHS.jobDomain(job, domain);
+      const loaded = await this.tryPushBasisTemplate(sections, jobDomainPath);
+      if (!loaded) {
+        await this.pushBasisTemplate(sections, `basis/domain/${domain}`);
       }
+    }
+
+    if (basis.visualTier?.designSystem) {
+      await this.pushBasisTemplate(sections, `basis/visualTier/design-system/${basis.visualTier.designSystem}`);
     }
 
     return sections.join('\n\n');
+  }
+
+  /** Returns true if template was found and pushed. */
+  private async tryPushBasisTemplate(sections: string[], path: string): Promise<boolean> {
+    try {
+      const content = this.promptPort.renderRaw
+        ? await this.promptPort.renderRaw(path)
+        : await this.promptPort.render(path, {});
+      if (content) {
+        sections.push(`<basis axis="${path}">\n${content}\n</basis>`);
+        return true;
+      }
+      return false;
+    } catch { return false; }
+  }
+
+  private async pushBasisTemplate(sections: string[], path: string): Promise<void> {
+    try {
+      const content = this.promptPort.renderRaw
+        ? await this.promptPort.renderRaw(path)
+        : await this.promptPort.render(path, {});
+      if (content) sections.push(`<basis axis="${path}">\n${content}\n</basis>`);
+    } catch { /* file not found — skip */ }
   }
 
   private async renderTemplate(
@@ -262,11 +342,8 @@ export class PromptBuilder implements PromptPort {
     }
   }
 
-  /**
-   * Render an enforcement/retry prompt for validation failures.
-   */
   async renderEnforcement(violationMessage: string): Promise<string> {
-    return await this.render('code/phases/enforce/rules-enforcement', { errorText: violationMessage });
+    return await this.render('jobs/code/nodes/enforce/variants/default/rules-enforcement', { errorText: violationMessage });
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -274,13 +351,15 @@ export class PromptBuilder implements PromptPort {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   private inferJob(config: PromptBuildConfig): string {
-    return config.templates.base.split('/')[0] || 'code';
+    const parts = config.templates.base.split('/');
+    if (parts[0] === 'jobs' && parts.length > 1) return parts[1];
+    return parts[0] || 'code';
   }
 
-  private inferPhase(config: PromptBuildConfig): 'plan' | 'execute' {
+  private inferNode(config: PromptBuildConfig): 'plan' | 'execute' {
     const basePath = config.templates.base;
-    if (basePath.includes('/phases/execute/') || basePath.includes('/execute/')) return 'execute';
-    if (basePath.includes('/phases/plan/') || basePath.includes('/plan/')) return 'plan';
+    if (basePath.includes('/nodes/execute/') || basePath.includes('/execute/')) return 'execute';
+    if (basePath.includes('/nodes/plan/') || basePath.includes('/plan/')) return 'plan';
     return 'execute';
   }
 

@@ -105,8 +105,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         'generate',
         systemPrompt.length,
         {
-          templatePath: 'planner/plan/base',
-          usedTemplates: ['planner/plan/base', 'planner/plan/rules'],
+          templatePath: 'jobs/plan/nodes/plan/variants/default/base',
+          usedTemplates: ['jobs/plan/nodes/plan/variants/default/base', 'jobs/plan/nodes/plan/variants/default/rules'],
           injectedVariables: {
             directive: state.directive || '',
             mode: planMode,

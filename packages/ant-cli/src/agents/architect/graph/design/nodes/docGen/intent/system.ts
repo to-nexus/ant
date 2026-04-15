@@ -11,7 +11,7 @@ import { CacheableContent, MessageContentBlock } from '../../../../../../../core
 import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import { buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from '../sourceSelector';
 import { DesignTask } from '../../../../../types/task';
-import { designDirOf, effectiveTechTier, getRACDocuments, ARTIFACT_PREFIX } from '@ant/shared';
+import { designDirOf, effectiveTechTier, getTechTier, getRACDocuments, ARTIFACT_PREFIX } from '@ant/shared';
 import type { ResolvedArtifact } from '@ant/shared';
 import { PromptBuilder } from '../../../../../../../core/prompt/builder/PromptBuilder';
 import { deriveArtifactPolicies } from '../../../../../../../core/prompt/builder/ArtifactRoleResolver';
@@ -163,7 +163,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       };
     }
 
-    const taskTechTiers = (state.currentTask as DesignTask).techTiers ?? (state.techTier ? [state.techTier] : []);
+    const taskTechTiers = (state.currentTask as DesignTask).techTiers ?? (getTechTier(state) ? [getTechTier(state)!] : []);
     const contextWithTechTier = {
       ...state.context,
       techTier: effectiveTechTier(taskTechTiers),
@@ -184,9 +184,9 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
 
     const designConfig: PromptBuildConfig = {
       templates: {
-        base: 'design/phases/execute/base-system-design',
-        rules: 'design/phases/execute/rules-system-design',
-        system: 'design/base/system',
+        base: 'jobs/design/nodes/execute/variants/system-design/base',
+        rules: 'jobs/design/nodes/execute/variants/system-design/rules',
+        system: 'jobs/design/base/system',
       },
       intent,
       artifactPolicies: intent
@@ -198,9 +198,10 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         mode: state.resolvedAction?.mode,
         resolvedAction: resolvedActionWithDocs,
       },
+      basis: state.resolvedAction?.basis,
       pipeline: {
         sanitizeInput: true,
-        includeTechProfile: true,
+        includeBasis: true,
         includeExamples: false,
         applyPolicyGuardrails: true,
         formatForLLM: true,
@@ -261,7 +262,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
           {
             taskId: state.currentTask?.id,
             taskName: state.currentTask?.name,
-            templatePath: 'design/phases/execute/base-system-design',
+            templatePath: 'jobs/design/nodes/execute/variants/system-design/base',
             usedTemplates,
             injectedVariables: {
               targetFile,
@@ -318,7 +319,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
-          templatePath: 'design/phases/execute/base-system-design',
+          templatePath: 'jobs/design/nodes/execute/variants/system-design/base',
           usedTemplates: usedTemplatesForLog,
           injectedVariables: {
             targetFile: targetFileForLog,  // ✅ NEW: Critical for MSA debugging
@@ -406,21 +407,21 @@ export function buildRuntimeContext(state: DesignGraphState): string {
  * Mirrors PromptResolver.detectFrameworkAugmentation logic for accurate logging.
  */
 function detectUsedTemplates(state: DesignGraphState, targetFile: string): string[] {
-  const templates: string[] = ['design/phases/execute/rules-system-design'];
+  const templates: string[] = ['jobs/design/nodes/execute/variants/system-design/rules'];
   
   if (targetFile.includes('api-contract')) {
-    templates.push('design/base/injections/api-contract-guide');
+    templates.push('jobs/design/base/injections/api-contract-guide');
   } else if (targetFile.includes('be-system-')) {
-    templates.push('design/base/injections/backend-guide');
+    templates.push('jobs/design/base/injections/backend-guide');
   } else if (targetFile.includes('fe-system-')) {
-    templates.push('design/base/injections/frontend-guide');
+    templates.push('jobs/design/base/injections/frontend-guide');
   }
   
   // Domain-specific guides
   if (state.resolvedAction?.domain === 'game') {
-    templates.push('design/phases/execute/injections/game-domain-guide');
+    templates.push('jobs/design/basis/domain/game');
   } else if (state.resolvedAction?.domain === 'service') {
-    templates.push('design/phases/execute/injections/service-domain-guide');
+    templates.push('jobs/design/basis/domain/service');
   }
   
   // Framework augmentation detection (mirrors PromptResolver.detectFrameworkAugmentation)
@@ -434,22 +435,22 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
     for (const tier of taskTechTiers) {
       const fw = tier.framework?.toLowerCase();
       if ((fw?.includes('next') || fw?.includes('nextjs')) && isFrontendDoc) {
-        templates.push('design/phases/execute/injections/nextjs-augmentation');
+        templates.push('jobs/design/basis/techTier/framework/nextjs');
         break;
       }
       if (tier.language === 'go' && isBackendDoc) {
-        templates.push('design/phases/execute/injections/go-api-augmentation');
+        templates.push('jobs/design/basis/techTier/framework/go');
         break;
       }
     }
-  } else if (state.techTier) {
-    // Priority 1: Graph-level techTier (set by decompose)
-    const fw = state.techTier.framework?.toLowerCase();
-    const lang = state.techTier.language;
+  } else if (getTechTier(state)) {
+    const _techTier = getTechTier(state)!;
+    const fw = _techTier.framework?.toLowerCase();
+    const lang = _techTier.language;
     if ((fw?.includes('next') || fw?.includes('nextjs')) && isFrontendDoc) {
-      templates.push('design/phases/execute/injections/nextjs-augmentation');
+      templates.push('jobs/design/basis/techTier/framework/nextjs');
     } else if (lang === 'go' && isBackendDoc) {
-      templates.push('design/phases/execute/injections/go-api-augmentation');
+      templates.push('jobs/design/basis/techTier/framework/go');
     }
   } else {
     // Priority 2: Text search fallback (no techTier available)
@@ -461,10 +462,10 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
       const textSources = [allSourceDocs, state.directive].filter(Boolean);
       const combined = textSources.join(' ').toLowerCase();
       if ((combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) && isFrontendDoc) {
-        templates.push('design/phases/execute/injections/nextjs-augmentation');
+        templates.push('jobs/design/basis/techTier/framework/nextjs');
       } else if ((combined.includes('go ') || combined.includes('golang')) &&
                  (combined.includes('api') || combined.includes('server') || combined.includes('backend')) && isBackendDoc) {
-        templates.push('design/phases/execute/injections/go-api-augmentation');
+        templates.push('jobs/design/basis/techTier/framework/go');
       }
     }
   }
@@ -479,16 +480,16 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
  */
 const CATALOG_MAP: Record<string, { names: string; full: string }> = {
   'fe-system-': {
-    names: 'design/base/catalogs/frontend-catalog-names.md',
-    full: 'design/base/catalogs/frontend-catalog.md',
+    names: 'jobs/design/base/catalogs/frontend-catalog-names.md',
+    full: 'jobs/design/base/catalogs/frontend-catalog.md',
   },
   'be-system-': {
-    names: 'design/base/catalogs/backend-catalog-names.md',
-    full: 'design/base/catalogs/backend-catalog.md',
+    names: 'jobs/design/base/catalogs/backend-catalog-names.md',
+    full: 'jobs/design/base/catalogs/backend-catalog.md',
   },
   'api-contract-': {
-    names: 'design/base/catalogs/api-contract-catalog-names.md',
-    full: 'design/base/catalogs/api-contract-catalog.md',
+    names: 'jobs/design/base/catalogs/api-contract-catalog-names.md',
+    full: 'jobs/design/base/catalogs/api-contract-catalog.md',
   },
 };
 

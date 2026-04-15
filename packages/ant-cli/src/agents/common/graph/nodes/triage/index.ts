@@ -39,7 +39,7 @@ function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: strin
     return { base: triageBaseTemplate, rules: triageRulesContent };
   }
   
-  const templateDir = path.join(WorkspacePathResolver.getPromptTemplatesPath(), 'triage');
+  const templateDir = path.join(WorkspacePathResolver.getPromptTemplatesPath(), 'jobs/shared/nodes/triage/variants/default');
   
   const basePath = path.join(templateDir, 'base.md');
   const rulesPath = path.join(templateDir, 'rules.md');
@@ -512,8 +512,8 @@ function logTriagePromptAndResponse(params: {
   const content = `## Node: triage
 
 - **Timestamp**: ${new Date().toISOString()}
-- **System Prompt**: \`triage/rules.md\` (${systemPromptLength.toLocaleString()} chars)
-- **User Prompt**: \`triage/base.md\` rendered (${userPromptLength.toLocaleString()} chars)
+- **System Prompt**: \`jobs/shared/nodes/triage/variants/default/rules.md\` (${systemPromptLength.toLocaleString()} chars)
+- **User Prompt**: \`jobs/shared/nodes/triage/variants/default/base.md\` rendered (${userPromptLength.toLocaleString()} chars)
 - **Total**: ${(systemPromptLength + userPromptLength).toLocaleString()} chars (~${tokenEst.toLocaleString()} tokens)
 
 ### LLM Raw Response

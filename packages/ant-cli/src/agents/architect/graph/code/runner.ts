@@ -193,7 +193,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             resolvedCategories: (session.state.resolvedCategories || []) as any,
             recursionCount: session.state.recursionCount || 0,
             recursionLimit: Math.max(session.state.recursionLimit || 0, finalLimit),
-            ...(session.state.techTier && { techTier: session.state.techTier }),
             ...(session.state.profile && { profile: session.state.profile }),
             ...(session.state.jobId && { jobId: session.state.jobId }),
             ...(session.state.jobTiming && { jobTiming: session.state.jobTiming }),

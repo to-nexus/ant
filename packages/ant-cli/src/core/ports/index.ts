@@ -12,7 +12,6 @@ export * from "./reporter";
 export * from "./validation";
 export * from "./config";
 export * from "./analyzer";
-export * from "./profile";
 export * from "./chunk";
 export * from "./session";
 export * from "./command";

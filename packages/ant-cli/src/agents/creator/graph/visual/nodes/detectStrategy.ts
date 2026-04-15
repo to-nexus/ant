@@ -54,7 +54,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
     const currentDirective = state.overrideDirective || state.directive || '';
 
     try {
-      const classifyPrompt = await pb.render('visual/nodes/direct/classify', {
+      const classifyPrompt = await pb.render('jobs/visual/nodes/direct/variants/default/classify', {
         conversationContext: conversationContext || '(no previous conversation)',
         currentDirective,
       });
@@ -80,7 +80,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
       if (state._httpJobId && state.featurePath) {
         try {
           await logPrompt(state.featurePath, state._httpJobId, 'visual', 'detect', classifyPrompt.length, {
-            templatePath: 'visual/nodes/direct/classify',
+            templatePath: 'jobs/visual/nodes/direct/variants/default/classify',
             injectedVariables: { currentDirective, conversationEntries: state.conversation.length },
             hardcodedContent: rawContent,
           });

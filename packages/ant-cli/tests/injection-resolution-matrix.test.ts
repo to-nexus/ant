@@ -4,7 +4,7 @@
  * Tests the 4-tier injection system by directly exercising AutoInjectionResolver
  * and the shared policy matrix functions. Covers:
  *   - Tier I: Intent → static policies (prompt-policy-matrix)
- *   - Tier A: Auto-tech (techTier, taskType, mode, phase, job)
+ *   - Tier A: Auto-tech (techTier, taskType, mode, node, job)
  *   - Tier D: Data-presence flags
  *   - Tier N: Artifact-conditional policies (deriveArtifactPolicies)
  *
@@ -36,7 +36,7 @@ function makeTechTier(overrides?: Partial<TechTier>): TechTier {
 
 function resolveAutoInjections(opts: {
   job: string;
-  phase?: 'plan' | 'execute';
+  node?: 'plan' | 'execute';
   taskType?: string;
   mode?: Mode;
   techTier?: TechTier;
@@ -46,7 +46,7 @@ function resolveAutoInjections(opts: {
 }): string[] {
   return resolver.resolve({
     job: opts.job,
-    phase: opts.phase ?? 'execute',
+    node: opts.node ?? 'execute',
     taskType: opts.taskType,
     mode: opts.mode,
     resolvedAction: opts.resolvedAction,
@@ -89,26 +89,26 @@ describe('Tier I: Intent policies completeness', () => {
   });
 
   it('design system gen intents get domain-specific guides', () => {
-    expect(resolveTierI('gen-sys-fe')).toContain('design/base/injections/frontend-guide');
-    expect(resolveTierI('gen-sys-fe')).not.toContain('design/base/injections/backend-guide');
+    expect(resolveTierI('gen-sys-fe')).toContain('jobs/design/base/injections/frontend-guide');
+    expect(resolveTierI('gen-sys-fe')).not.toContain('jobs/design/base/injections/backend-guide');
 
-    expect(resolveTierI('gen-sys-be')).toContain('design/base/injections/backend-guide');
-    expect(resolveTierI('gen-sys-be')).not.toContain('design/base/injections/frontend-guide');
+    expect(resolveTierI('gen-sys-be')).toContain('jobs/design/base/injections/backend-guide');
+    expect(resolveTierI('gen-sys-be')).not.toContain('jobs/design/base/injections/frontend-guide');
 
-    expect(resolveTierI('gen-sys-full')).toContain('design/base/injections/frontend-guide');
-    expect(resolveTierI('gen-sys-full')).toContain('design/base/injections/backend-guide');
-    expect(resolveTierI('gen-sys-full')).toContain('design/base/injections/api-contract-guide');
+    expect(resolveTierI('gen-sys-full')).toContain('jobs/design/base/injections/frontend-guide');
+    expect(resolveTierI('gen-sys-full')).toContain('jobs/design/base/injections/backend-guide');
+    expect(resolveTierI('gen-sys-full')).toContain('jobs/design/base/injections/api-contract-guide');
   });
 
   it('UI design intents get ui-design-policy', () => {
     const uiIntents: IntentId[] = ['gen-ui-figma', 'gen-ui-ref', 'gen-ui-desc', 'rev-ui'];
     for (const id of uiIntents) {
-      expect(resolveTierI(id), `${id}`).toContain('common/injections/ui-design-policy');
+      expect(resolveTierI(id), `${id}`).toContain('jobs/shared/injections/ui-design-policy');
     }
   });
 
   it('gen-ui-ref gets visual-source-authority via Tier I', () => {
-    expect(resolveTierI('gen-ui-ref')).toContain('common/injections/visual-source-authority');
+    expect(resolveTierI('gen-ui-ref')).toContain('jobs/shared/injections/visual-source-authority');
   });
 
   it('code intents have no static policies (only conditional)', () => {
@@ -146,7 +146,7 @@ describe('Tier N: Artifact-conditional policies', () => {
       { path: 'outputs/design/ui/ui-spec.json', content: 'mock', role: 'context' },
     ];
     const policies = resolveTierN('gen-code-sys', artifacts);
-    expect(policies).toContain('common/injections/ui-design-policy');
+    expect(policies).toContain('jobs/shared/injections/ui-design-policy');
   });
 
   it('gen-code-sys without UI artifact does NOT trigger ui-design-policy', () => {
@@ -154,7 +154,7 @@ describe('Tier N: Artifact-conditional policies', () => {
       { path: 'outputs/design/system/fe-system.md', content: 'mock', role: 'ref' },
     ];
     const policies = resolveTierN('gen-code-sys', artifacts);
-    expect(policies).not.toContain('common/injections/ui-design-policy');
+    expect(policies).not.toContain('jobs/shared/injections/ui-design-policy');
   });
 
   it('gen-code-directive has no conditional policies', () => {
@@ -170,7 +170,7 @@ describe('Tier N: Artifact-conditional policies', () => {
       { path: 'outputs/design/ui/ui-tokens.json', content: 'mock', role: 'context' },
     ];
     const policies = resolveTierN('rev-code', artifacts);
-    expect(policies).toContain('common/injections/ui-design-policy');
+    expect(policies).toContain('jobs/shared/injections/ui-design-policy');
   });
 
   it('design intents have no conditional policies', () => {
@@ -186,78 +186,75 @@ describe('Tier N: Artifact-conditional policies', () => {
 // Tier A+D: AutoInjectionResolver — TaskType matrix
 // ============================================
 
-describe('Tier A+D: TaskType × injection matrix (code job, execute phase)', () => {
+describe('Tier A+D: TaskType × injection matrix (code job, execute node)', () => {
   const feTS = makeTechTier({ language: 'typescript', stack: 'frontend' });
 
   const taskTypes = ['feature', 'setup', 'verification', 'error', 'test-code', 'doc'] as const;
 
-  // env-specific rules: only feature, setup
-  it.each(['feature', 'setup'] as const)('taskType=%s: env-specific rules included', (tt) => {
-    const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    const envRules = injections.filter(i => i.includes('/environments/'));
-    expect(envRules.length, `${tt}: should have environment rules`).toBeGreaterThan(0);
-  });
-
-  it.each(['verification', 'error', 'test-code', 'doc'] as const)('taskType=%s: NO env-specific rules', (tt) => {
-    const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    const envRules = injections.filter(i => i.includes('/environments/'));
-    expect(envRules.length, `${tt}: should not have environment rules`).toBe(0);
-  });
+  // env-specific rules removed from AutoInjectionResolver (now in buildBasisSection)
+  it.each(['feature', 'setup', 'verification', 'error', 'test-code', 'doc'] as const)(
+    'taskType=%s: NO env-specific rules in injection resolver',
+    (tt) => {
+      const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
+      const envRules = injections.filter(i => i.includes('/environments/'));
+      expect(envRules.length, `${tt}: should not have environment rules`).toBe(0);
+    },
+  );
 
   // tool-calling-rules-compact: feature, setup only
   it.each(['feature', 'setup'] as const)('taskType=%s: tool-calling-rules-compact included', (tt) => {
     const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).toContain('code/base/injections/tool-calling-rules-compact');
+    expect(injections).toContain('jobs/code/base/injections/tool-calling-rules-compact');
   });
 
   it.each(['verification', 'error', 'test-code', 'doc'] as const)('taskType=%s: NO tool-calling-rules-compact', (tt) => {
     const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).not.toContain('code/base/injections/tool-calling-rules-compact');
+    expect(injections).not.toContain('jobs/code/base/injections/tool-calling-rules-compact');
   });
 
   // preview-setup: feature, setup, error (when frontend)
   it.each(['feature', 'setup'] as const)('taskType=%s: preview-setup included', (tt) => {
     const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).toContain('code/base/injections/preview-setup');
+    expect(injections).toContain('jobs/code/base/injections/preview-setup');
   });
 
   it('taskType=error + frontend: preview-setup included', () => {
     const injections = resolveAutoInjections({ job: 'code', taskType: 'error', techTier: feTS });
-    expect(injections).toContain('code/base/injections/preview-setup');
+    expect(injections).toContain('jobs/code/base/injections/preview-setup');
   });
 
   it.each(['verification', 'test-code', 'doc'] as const)('taskType=%s: NO preview-setup', (tt) => {
     const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).not.toContain('code/base/injections/preview-setup');
+    expect(injections).not.toContain('jobs/code/base/injections/preview-setup');
   });
 
   // visual-source-authority: feature, setup, error (via Tier A, frontend)
   it.each(['feature', 'setup'] as const)('taskType=%s: visual-source-authority included', (tt) => {
     const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).toContain('common/injections/visual-source-authority');
+    expect(injections).toContain('jobs/shared/injections/visual-source-authority');
   });
 
   it.each(['verification', 'test-code', 'doc'] as const)('taskType=%s: NO visual-source-authority', (tt) => {
     const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).not.toContain('common/injections/visual-source-authority');
+    expect(injections).not.toContain('jobs/shared/injections/visual-source-authority');
   });
 
   // backend-safety: all except verification and doc, when backend
   it('backend-safety included for feature+backend', () => {
     const beTier = makeTechTier({ stack: 'backend' });
     const injections = resolveAutoInjections({ job: 'code', taskType: 'feature', techTier: beTier });
-    expect(injections).toContain('code/phases/execute/injections/backend-safety');
+    expect(injections).toContain('jobs/code/nodes/execute/injections/backend-safety');
   });
 
   it('backend-safety NOT included for feature+frontend-only', () => {
     const injections = resolveAutoInjections({ job: 'code', taskType: 'feature', techTier: feTS });
-    expect(injections).not.toContain('code/phases/execute/injections/backend-safety');
+    expect(injections).not.toContain('jobs/code/nodes/execute/injections/backend-safety');
   });
 
   // test-code hints
   it('test-code: language-specific hints included', () => {
     const injections = resolveAutoInjections({ job: 'code', taskType: 'test-code', techTier: feTS });
-    expect(injections).toContain('code/phases/execute/tasks/test-code/languages/typescript/hints');
+    expect(injections).toContain('jobs/code/nodes/execute/variants/test-code/basis/techTier/typescript/hints');
   });
 
   it('feature: NO test-code hints', () => {
@@ -269,12 +266,12 @@ describe('Tier A+D: TaskType × injection matrix (code job, execute phase)', () 
   // port-management: all except test-code and doc
   it.each(['feature', 'setup', 'verification', 'error'] as const)('taskType=%s: port-management included', (tt) => {
     const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).toContain('code/phases/execute/injections/port-management');
+    expect(injections).toContain('jobs/code/nodes/execute/injections/port-management');
   });
 
   it.each(['test-code', 'doc'] as const)('taskType=%s: NO port-management', (tt) => {
     const injections = resolveAutoInjections({ job: 'code', taskType: tt, techTier: feTS });
-    expect(injections).not.toContain('code/phases/execute/injections/port-management');
+    expect(injections).not.toContain('jobs/code/nodes/execute/injections/port-management');
   });
 });
 
@@ -282,45 +279,36 @@ describe('Tier A+D: TaskType × injection matrix (code job, execute phase)', () 
 // Tier A+D: Stack variations
 // ============================================
 
-describe('Tier A+D: Stack × environment rules', () => {
-  it('frontend-only: browser env rules', () => {
+describe('Tier A+D: Stack × policy injections (env rules moved to buildBasisSection)', () => {
+  it('frontend-only: includes preview-setup', () => {
     const injections = resolveAutoInjections({
       job: 'code', taskType: 'feature',
       techTier: makeTechTier({ stack: 'frontend', language: 'typescript' }),
     });
-    expect(injections).toContain('code/phases/execute/languages/typescript/environments/browser/rules');
-    expect(injections).not.toContain('code/phases/execute/languages/typescript/environments/node-api/rules');
+    expect(injections).toContain('jobs/code/base/injections/preview-setup');
   });
 
-  it('backend-only (typescript): node-api env rules', () => {
-    const injections = resolveAutoInjections({
-      job: 'code', taskType: 'feature',
-      techTier: makeTechTier({ stack: 'backend', language: 'typescript' }),
-    });
-    expect(injections).toContain('code/phases/execute/languages/typescript/environments/node-api/rules');
-  });
-
-  it('backend-only (go): go-api env rules', () => {
+  it('backend-only (go): no preview-setup', () => {
     const injections = resolveAutoInjections({
       job: 'code', taskType: 'feature',
       techTier: makeTechTier({ stack: 'backend', language: 'go' }),
     });
-    expect(injections).toContain('code/phases/execute/languages/go/environments/go-api/rules');
+    expect(injections).not.toContain('jobs/code/base/injections/preview-setup');
   });
 
-  it('fullstack: both browser + node-api + fullstack rules', () => {
+  it('fullstack: includes both frontend and backend injections', () => {
     const injections = resolveAutoInjections({
       job: 'code', taskType: 'feature',
       techTier: makeTechTier({ stack: 'fullstack', language: 'typescript' }),
     });
-    expect(injections).toContain('code/phases/execute/languages/typescript/environments/browser/rules');
-    expect(injections).toContain('code/phases/execute/languages/typescript/environments/node-api/rules');
-    expect(injections).toContain('code/phases/execute/languages/typescript/environments/fullstack/rules');
+    expect(injections).toContain('jobs/code/base/injections/preview-setup');
+    expect(injections).toContain('jobs/code/nodes/execute/injections/backend-safety');
   });
 
-  it('no techTier defaults to browser', () => {
+  it('no environment injection paths from resolver', () => {
     const injections = resolveAutoInjections({ job: 'code', taskType: 'feature' });
-    expect(injections).toContain('code/phases/execute/languages/typescript/environments/browser/rules');
+    const envRules = injections.filter(i => i.includes('/environments/'));
+    expect(envRules).toHaveLength(0);
   });
 });
 
@@ -333,84 +321,84 @@ describe('Tier D: Data presence flags', () => {
     const injections = resolveAutoInjections({
       job: 'code', data: { hasDirective: true },
     });
-    expect(injections).toContain('common/injections/directive');
+    expect(injections).toContain('jobs/shared/injections/directive');
   });
 
   it('no directive → no directive injection', () => {
     const injections = resolveAutoInjections({ job: 'code', data: {} });
-    expect(injections).not.toContain('common/injections/directive');
+    expect(injections).not.toContain('jobs/shared/injections/directive');
   });
 
   it('hasMemory → memory injection', () => {
     const injections = resolveAutoInjections({
       job: 'code', data: { hasMemory: true },
     });
-    expect(injections).toContain('common/injections/memory');
+    expect(injections).toContain('jobs/shared/injections/memory');
   });
 
   it('hasGitDiff → git-diff injection (code only)', () => {
     const injections = resolveAutoInjections({
       job: 'code', data: { hasGitDiff: true },
     });
-    expect(injections).toContain('code/base/injections/git-diff');
+    expect(injections).toContain('jobs/code/base/injections/git-diff');
   });
 
   it('hasGitDiff on design job → NO git-diff injection', () => {
     const injections = resolveAutoInjections({
       job: 'design', data: { hasGitDiff: true },
     });
-    expect(injections).not.toContain('code/base/injections/git-diff');
+    expect(injections).not.toContain('jobs/code/base/injections/git-diff');
   });
 
   it('hasRetrievedCode → retrieved-code injection', () => {
     const injections = resolveAutoInjections({
       job: 'code', data: { hasRetrievedCode: true },
     });
-    expect(injections).toContain('code/base/injections/retrieved-code');
+    expect(injections).toContain('jobs/code/base/injections/retrieved-code');
   });
 
   it('hasReferenceCode → reference-code injection', () => {
     const injections = resolveAutoInjections({
       job: 'code', data: { hasReferenceCode: true },
     });
-    expect(injections).toContain('code/base/injections/reference-code');
+    expect(injections).toContain('jobs/code/base/injections/reference-code');
   });
 
-  it('hasRetryContext → retry-context injection (execute phase)', () => {
+  it('hasRetryContext → retry-context injection (execute node)', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute', data: { hasRetryContext: true },
+      job: 'code', node: 'execute', data: { hasRetryContext: true },
     });
-    expect(injections).toContain('code/phases/execute/injections/retry-context');
+    expect(injections).toContain('jobs/code/nodes/execute/injections/retry-context');
   });
 
   it('hasLessons → lessons injection', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute', data: { hasLessons: true },
+      job: 'code', node: 'execute', data: { hasLessons: true },
     });
-    expect(injections).toContain('code/phases/execute/injections/lessons');
+    expect(injections).toContain('jobs/code/nodes/execute/injections/lessons');
   });
 
   it('hasSessionContext → session-context injection', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute', data: { hasSessionContext: true },
+      job: 'code', node: 'execute', data: { hasSessionContext: true },
     });
-    expect(injections).toContain('code/phases/execute/injections/session-context');
+    expect(injections).toContain('jobs/code/nodes/execute/injections/session-context');
   });
 
   it('hasMissingDependency → missing-dependency-fix (code only)', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute',
+      job: 'code', node: 'execute',
       techTier: makeTechTier(),
       data: { hasMissingDependency: true },
     });
-    expect(injections).toContain('code/phases/execute/injections/missing-dependency-fix');
+    expect(injections).toContain('jobs/code/nodes/execute/injections/missing-dependency-fix');
   });
 
   it('hasRuntimeError → runtime-error-fix', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute', data: { hasRuntimeError: true },
+      job: 'code', node: 'execute', data: { hasRuntimeError: true },
     });
-    expect(injections).toContain('code/phases/execute/injections/runtime-error-fix');
+    expect(injections).toContain('jobs/code/nodes/execute/injections/runtime-error-fix');
   });
 });
 
@@ -424,12 +412,12 @@ describe('RAC-driven injections', () => {
     const injections = resolveAutoInjections({
       job: 'code', resolvedAction: rac, data: {},
     });
-    expect(injections).toContain('common/injections/action-context');
+    expect(injections).toContain('jobs/shared/injections/action-context');
   });
 
   it('no resolvedAction → no action-context', () => {
     const injections = resolveAutoInjections({ job: 'code', data: {} });
-    expect(injections).not.toContain('common/injections/action-context');
+    expect(injections).not.toContain('jobs/shared/injections/action-context');
   });
 
   it('refactor mode → refactor-guidance', () => {
@@ -437,8 +425,8 @@ describe('RAC-driven injections', () => {
     const injections = resolveAutoInjections({
       job: 'code', mode: 'refactor', resolvedAction: rac, data: {},
     });
-    expect(injections).toContain('common/injections/refactor-guidance');
-    expect(injections).not.toContain('common/injections/explain-guidance');
+    expect(injections).toContain('jobs/shared/injections/refactor-guidance');
+    expect(injections).not.toContain('jobs/shared/injections/explain-guidance');
   });
 
   it('explain mode → explain-guidance', () => {
@@ -446,8 +434,8 @@ describe('RAC-driven injections', () => {
     const injections = resolveAutoInjections({
       job: 'code', mode: 'explain', resolvedAction: rac, data: {},
     });
-    expect(injections).toContain('common/injections/explain-guidance');
-    expect(injections).not.toContain('common/injections/refactor-guidance');
+    expect(injections).toContain('jobs/shared/injections/explain-guidance');
+    expect(injections).not.toContain('jobs/shared/injections/refactor-guidance');
   });
 
   it('generate mode → no mode-specific guidance', () => {
@@ -455,8 +443,8 @@ describe('RAC-driven injections', () => {
     const injections = resolveAutoInjections({
       job: 'code', mode: 'generate', resolvedAction: rac, data: {},
     });
-    expect(injections).not.toContain('common/injections/refactor-guidance');
-    expect(injections).not.toContain('common/injections/explain-guidance');
+    expect(injections).not.toContain('jobs/shared/injections/refactor-guidance');
+    expect(injections).not.toContain('jobs/shared/injections/explain-guidance');
   });
 });
 
@@ -469,7 +457,7 @@ describe('Behavioral-debugging injection', () => {
     const injections = resolveAutoInjections({
       job: 'code', mode: 'refactor', data: {},
     });
-    expect(injections).toContain('code/base/injections/behavioral-debugging');
+    expect(injections).toContain('jobs/code/base/injections/behavioral-debugging');
   });
 
   it('explicit refactor via RAC → behavioral-debugging', () => {
@@ -477,7 +465,7 @@ describe('Behavioral-debugging injection', () => {
     const injections = resolveAutoInjections({
       job: 'code', resolvedAction: rac, data: {},
     });
-    expect(injections).toContain('code/base/injections/behavioral-debugging');
+    expect(injections).toContain('jobs/code/base/injections/behavioral-debugging');
   });
 
   it('error + hasProjectCode → behavioral-debugging', () => {
@@ -485,14 +473,46 @@ describe('Behavioral-debugging injection', () => {
       job: 'code', taskType: 'error',
       data: { hasProjectCode: true },
     });
-    expect(injections).toContain('code/base/injections/behavioral-debugging');
+    expect(injections).toContain('jobs/code/base/injections/behavioral-debugging');
   });
 
   it('generate mode without error → no behavioral-debugging', () => {
     const injections = resolveAutoInjections({
       job: 'code', mode: 'generate', data: {},
     });
-    expect(injections).not.toContain('code/base/injections/behavioral-debugging');
+    expect(injections).not.toContain('jobs/code/base/injections/behavioral-debugging');
+  });
+});
+
+// ============================================
+// UI task: ui-design-guide injection
+// ============================================
+
+describe('UI task: ui-design-guide injection', () => {
+  it('code job + taskType=ui → ui-design-guide', () => {
+    const injections = resolveAutoInjections({
+      job: 'code', node: 'execute', taskType: 'ui',
+      techTier: makeTechTier(),
+      data: {},
+    });
+    expect(injections).toContain('jobs/code/base/injections/ui-design-guide');
+  });
+
+  it('code job + taskType=feature → NO ui-design-guide', () => {
+    const injections = resolveAutoInjections({
+      job: 'code', node: 'execute', taskType: 'feature',
+      techTier: makeTechTier(),
+      data: {},
+    });
+    expect(injections).not.toContain('jobs/code/base/injections/ui-design-guide');
+  });
+
+  it('design job + taskType=ui → NO ui-design-guide', () => {
+    const injections = resolveAutoInjections({
+      job: 'design', node: 'execute', taskType: 'ui',
+      data: {},
+    });
+    expect(injections).not.toContain('jobs/code/base/injections/ui-design-guide');
   });
 });
 
@@ -503,42 +523,42 @@ describe('Behavioral-debugging injection', () => {
 describe('Design job execute-phase injections', () => {
   it('design job execute: document-language always injected', () => {
     const injections = resolveAutoInjections({
-      job: 'design', phase: 'execute', data: {},
+      job: 'design', node: 'execute', data: {},
     });
-    expect(injections).toContain('design/base/injections/document-language');
+    expect(injections).toContain('jobs/design/base/injections/document-language');
   });
 
-  it('design job plan phase: NO document-language', () => {
+  it('design job plan node: NO document-language', () => {
     const injections = resolveAutoInjections({
-      job: 'design', phase: 'plan', data: {},
+      job: 'design', node: 'plan', data: {},
     });
-    expect(injections).not.toContain('design/base/injections/document-language');
+    expect(injections).not.toContain('jobs/design/base/injections/document-language');
   });
 });
 
 // ============================================
-// Cross-cutting: plan phase is minimal
+// Cross-cutting: plan node is minimal
 // ============================================
 
-describe('Plan phase: minimal injections', () => {
-  it('plan phase: no env rules, no preview, no port-management', () => {
+describe('Plan node: minimal injections', () => {
+  it('plan node: no env rules, no preview, no port-management', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'plan',
+      job: 'code', node: 'plan',
       techTier: makeTechTier(),
       data: {},
     });
     expect(injections.filter(i => i.includes('/environments/'))).toHaveLength(0);
-    expect(injections).not.toContain('code/base/injections/preview-setup');
-    expect(injections).not.toContain('code/phases/execute/injections/port-management');
+    expect(injections).not.toContain('jobs/code/base/injections/preview-setup');
+    expect(injections).not.toContain('jobs/code/nodes/execute/injections/port-management');
   });
 
-  it('plan phase still gets directive and memory if present', () => {
+  it('plan node still gets directive and memory if present', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'plan',
+      job: 'code', node: 'plan',
       data: { hasDirective: true, hasMemory: true },
     });
-    expect(injections).toContain('common/injections/directive');
-    expect(injections).toContain('common/injections/memory');
+    expect(injections).toContain('jobs/shared/injections/directive');
+    expect(injections).toContain('jobs/shared/injections/memory');
   });
 });
 
@@ -549,7 +569,7 @@ describe('Plan phase: minimal injections', () => {
 describe('Injection deduplication', () => {
   it('no duplicate injection paths', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute', taskType: 'feature',
+      job: 'code', node: 'execute', taskType: 'feature',
       mode: 'refactor',
       techTier: makeTechTier({ stack: 'fullstack' }),
       resolvedAction: resolveToRAC('rev-code', undefined, 'explicit'),
@@ -572,21 +592,21 @@ describe('Injection deduplication', () => {
 describe('Jobs without techTier', () => {
   it('code job with no techTier defaults gracefully', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute', taskType: 'feature',
+      job: 'code', node: 'execute', taskType: 'feature',
       data: { hasDirective: true },
     });
-    expect(injections).toContain('common/injections/directive');
-    expect(injections).toContain('common/injections/visual-source-authority');
-    expect(injections.filter(i => i.includes('/environments/'))).not.toHaveLength(0);
+    expect(injections).toContain('jobs/shared/injections/directive');
+    expect(injections).toContain('jobs/shared/injections/visual-source-authority');
+    expect(injections).toContain('jobs/code/base/injections/preview-setup');
   });
 
   it('design job needs no techTier', () => {
     const injections = resolveAutoInjections({
-      job: 'design', phase: 'execute',
+      job: 'design', node: 'execute',
       data: { hasDirective: true },
     });
-    expect(injections).toContain('common/injections/directive');
-    expect(injections).toContain('design/base/injections/document-language');
+    expect(injections).toContain('jobs/shared/injections/directive');
+    expect(injections).toContain('jobs/design/base/injections/document-language');
   });
 });
 
@@ -597,20 +617,20 @@ describe('Jobs without techTier', () => {
 describe('Setup task: config injection', () => {
   it('setup without projectCode → language/setup/config', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute', taskType: 'setup',
+      job: 'code', node: 'execute', taskType: 'setup',
       techTier: makeTechTier({ language: 'typescript' }),
       data: { hasProjectCode: false },
     });
-    expect(injections).toContain('code/phases/execute/languages/typescript/setup/config');
+    expect(injections).toContain('jobs/code/nodes/execute/basis/techTier/typescript/setup/config');
   });
 
   it('setup with projectCode → NO language/setup/config', () => {
     const injections = resolveAutoInjections({
-      job: 'code', phase: 'execute', taskType: 'setup',
+      job: 'code', node: 'execute', taskType: 'setup',
       techTier: makeTechTier({ language: 'typescript' }),
       data: { hasProjectCode: true },
     });
-    expect(injections).not.toContain('code/phases/execute/languages/typescript/setup/config');
+    expect(injections).not.toContain('jobs/code/nodes/execute/basis/techTier/typescript/setup/config');
   });
 
   it('setup → language/setup/constraints', () => {
@@ -619,6 +639,6 @@ describe('Setup task: config injection', () => {
       techTier: makeTechTier({ language: 'go' }),
       data: {},
     });
-    expect(injections).toContain('code/phases/execute/languages/go/setup/constraints');
+    expect(injections).toContain('jobs/code/nodes/execute/basis/techTier/go/setup/constraints');
   });
 });

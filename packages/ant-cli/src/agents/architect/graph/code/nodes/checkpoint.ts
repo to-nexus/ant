@@ -1,4 +1,5 @@
 import { ArchitectGraphState } from "../state";
+import { getTechTier } from '@ant/shared';
 import type { SessionState } from "../../../../../core/types/session";
 
 /**
@@ -72,7 +73,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       chatSource: state.chatSource,
       referenceRequests: state.referenceRequests || [],
       designDocUnknownPackages: state.designDocUnknownPackages,
-      techTier: state.techTier,
+      techTier: getTechTier(state),
       profile: state.profile,
       userLanguage: state.context.userLanguage,
       resolvedAction: state.resolvedAction,

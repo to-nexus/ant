@@ -72,6 +72,16 @@
     "directory": "Output directory"
   },
 
+  "basis": {
+    "title": "Tech Preset",
+    "language": "Language",
+    "framework": "Framework",
+    "designSystem": "Design System",
+    "autoDetect": "Auto-detect",
+    "noFramework": "Don't use",
+    "none": "None"
+  },
+
   "section": {
     "refs": "References",
     "context": "Context",
@@ -126,16 +136,25 @@
   },
 
   "buildDirective": {
+    "gen-plan": "Please create a product requirements document based on the source materials",
     "gen-sys-fe": "Please design the frontend system architecture based on the source materials",
     "gen-sys-be": "Please design the backend system architecture and API contracts based on the source materials",
     "gen-sys-full": "Please design the full-stack system architecture based on the source materials",
     "gen-ui-figma": "Please extract the UI design from the Figma file",
     "gen-ui-ref": "Please design the UI based on the reference images",
     "gen-ui-desc": "Please design the UI based on the text description",
+    "gen-spec": "Please create an implementation spec based on the source materials",
     "gen-code-sys": "Please generate code based on the system design documents",
     "gen-code-spec": "Please generate code based on the spec documents",
     "gen-code-directive": "Please generate code based on the directive",
-    "rev-code": "Please refactor the existing codebase"
+    "rev-code": "Please refactor the existing codebase",
+    "gen-learn": "Please analyze and index the codebase",
+    "explain-code": "Please explain the codebase",
+    "explain-sys": "Please explain the system design",
+    "explain-ui": "Please explain the UI design",
+    "explain-spec": "Please explain the spec documents",
+    "explain-plan": "Please explain the PRD",
+    "explain-visual": "Please explain the visual assets"
   },
 
   "status": {
