@@ -45,6 +45,7 @@ import { TYPEORM_PATTERNS } from './databases/typeorm';
 // Import testing framework patterns
 import { JEST_PATTERNS } from './testing/jest';
 import { PYTEST_PATTERNS } from './testing/pytest';
+import { TEST_ENVIRONMENT_PATTERNS } from './testing/testEnvironment';
 
 // Import linter patterns
 import { ESLINT_PATTERNS } from './linters/eslint';
@@ -134,6 +135,7 @@ const FRAMEWORK_COMPATIBILITY_RULES: Record<Framework, CompatibilityRule[]> = {
 const CROSS_DOMAIN_PATTERNS: ErrorPattern[] = [
   ...PRISMA_PATTERNS,
   ...TYPEORM_PATTERNS,
+  ...TEST_ENVIRONMENT_PATTERNS,
   ...JEST_PATTERNS,
   ...PYTEST_PATTERNS,
   ...ESLINT_PATTERNS
@@ -402,6 +404,7 @@ export { VITE_PATTERNS } from './buildTools/vite';
 export { NPM_PATTERNS } from './packageManagers/npm';
 export { PRISMA_PATTERNS } from './databases/prisma';
 export { JEST_PATTERNS } from './testing/jest';
+export { TEST_ENVIRONMENT_PATTERNS } from './testing/testEnvironment';
 export { ESLINT_PATTERNS } from './linters/eslint';
 
 // Framework-specific exports

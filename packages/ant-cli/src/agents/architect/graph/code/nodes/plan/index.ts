@@ -327,7 +327,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
       if (isVerificationRetry) {
         state._executeCallIndex = 0;
-        state._finalTaskLoopCount = 0;
+        // NOTE: _finalTaskLoopCount is intentionally NOT reset here (matching
+        // the reverify path at line ~396). Accumulating across retry cycles
+        // lets Safety Net C in executeRouter detect stuck loops faster.
+        // Previously resetting to 0 allowed infinite retry×2-execute cycles.
         state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
         state._executeModifiedFiles = false;
         state._installNeeded = true;
@@ -340,7 +343,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         const _retryMax = state.maxRetries || 3;
         console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
         console.log(`   ♻️  Reset: conversations cleared, _executeCallIndex ${prevCallIndex}→0`);
-        console.log(`   ♻️  Reset: _finalTaskLoopCount → 0\n`);
+        console.log(`   ♻️  Preserved: _finalTaskLoopCount = ${state._finalTaskLoopCount || 0}\n`);
         if (nextTask && state.context?.featurePath && state._httpJobId) {
           const _taskRef = nextTask;
           import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {

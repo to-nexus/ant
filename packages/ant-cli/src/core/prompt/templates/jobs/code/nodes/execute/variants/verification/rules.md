@@ -23,7 +23,14 @@
 - If planText contains a remediation plan: apply ALL specified fixes in batch
 - If planText is empty or indicates no errors: output `<done>true</done>` immediately
 - Do NOT run build or test commands — the plan phase handles diagnostics
+
+### File Scope Restriction
+
+**Constraint**: ONLY interact with files explicitly mentioned in the remediation plan.
+
 - `read_file` is permitted ONLY for files referenced in the remediation plan
+- Do NOT read source files, test files, or other files "for context" — the plan already contains all necessary context
+- Do NOT explore the project structure with `list_files` or `search_code` unless the plan instructs it
 
 ### Verification-Specific Constraints
 
