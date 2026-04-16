@@ -19,10 +19,12 @@ interface TargetDisplayProps {
   spotlightPath?: string | null;
   onOpenIde?: () => void;
   codebaseHasFiles: boolean;
+  /** When true, existing code is required (e.g. rev-code). Derived from slots having a locked codebase ref. */
+  codebaseRequired: boolean;
   lang: 'en' | 'ko';
 }
 
-export function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight, spotlightPath, onOpenIde, codebaseHasFiles, lang }: TargetDisplayProps) {
+export function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSpotlight, spotlightPath, onOpenIde, codebaseHasFiles, codebaseRequired, lang }: TargetDisplayProps) {
   const { t } = useTranslation('actions');
 
   switch (target.kind) {
@@ -56,16 +58,17 @@ export function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSp
       );
     }
 
-    case 'codebase':
+    case 'codebase': {
+      const warnEmpty = codebaseRequired && !codebaseHasFiles;
       return (
         <FileCard
           name={t('target.codebase')}
-          path={codebaseHasFiles ? t('target.codebaseDetected') : t('target.codebaseEmpty')}
+          path={codebaseHasFiles ? t('target.codebaseDetected') : warnEmpty ? t('target.codebaseEmpty') : t('target.codebaseOutputReady')}
           selected={codebaseHasFiles}
           locked={codebaseHasFiles}
           empty={!codebaseHasFiles}
-          emptyStyle={!codebaseHasFiles ? 'amber' : undefined}
-          icon={<FolderOpen className={`w-4 h-4 ${codebaseHasFiles ? 'text-emerald-500' : 'text-amber-400'} shrink-0`} />}
+          emptyStyle={!codebaseHasFiles ? (warnEmpty ? 'amber' : 'gray') : undefined}
+          icon={<FolderOpen className={`w-4 h-4 ${codebaseHasFiles ? 'text-emerald-500' : warnEmpty ? 'text-amber-400' : 'text-gray-400'} shrink-0`} />}
           description={{ en: 'Source code generated in the codebase/ directory.', ko: 'codebase/ 디렉터리에 생성된 소스 코드입니다.' }}
           actions={onOpenIde ? (
             <button
@@ -80,6 +83,7 @@ export function TargetDisplay({ target, selectedRefs, targetExisting, onToggleSp
           lang={lang}
         />
       );
+    }
 
     case 'generate': {
       if (target.outputs.length > 0) {

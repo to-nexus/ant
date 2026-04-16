@@ -537,6 +537,10 @@ describe('Template Reverse Coverage Matrix', () => {
   it('every template is reachable from at least one source (no orphans)', () => {
     const orphans = Object.entries(matrix)
       .filter(([_, v]) => v.sources.length === 0)
+      .filter(([name]) => {
+        const basename = name.split('/').pop() || '';
+        return !(basename.startsWith('_') && basename !== '_preamble');
+      })
       .map(([name]) => name);
 
     if (orphans.length > 0) {

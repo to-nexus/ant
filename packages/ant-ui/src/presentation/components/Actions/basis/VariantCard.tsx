@@ -22,7 +22,7 @@ const STACK_ICONS: Record<string, React.ComponentType<{ className?: string }>> =
   fullstack: Layers,
 };
 
-function VisualLanguageCard({ option, isSelected, onClick, index, lang }: Omit<VariantCardProps, 'tierKey' | 'layerKey'>) {
+function VisualTierCard({ option, isSelected, onClick, index, lang, layerKey }: Omit<VariantCardProps, 'tierKey'>) {
   const accent = ACCENT_COLORS[option.accentColor ?? 'gray'] ?? ACCENT_COLORS.gray;
   const isAuto = option.id === AUTO_DETECT_OPTION.id;
 
@@ -54,7 +54,6 @@ function VisualLanguageCard({ option, isSelected, onClick, index, lang }: Omit<V
         </motion.div>
       )}
 
-      {/* Full-width preview area */}
       <div className="relative w-full bg-gray-100 dark:bg-gray-800">
         {isAuto ? (
           <div className="w-full aspect-[2/1] flex items-center justify-center bg-gray-50 dark:bg-gray-800/80">
@@ -62,14 +61,13 @@ function VisualLanguageCard({ option, isSelected, onClick, index, lang }: Omit<V
           </div>
         ) : (
           <VisualPreview
-            layer="visualLanguage"
+            layer={layerKey as 'visualLanguage' | 'surfaceSystem' | 'spatialSystem'}
             variant={option.id}
             size="full"
           />
         )}
       </div>
 
-      {/* Bottom label area */}
       <div className={`px-3 py-2.5 ${isSelected ? accent.bg : 'bg-white dark:bg-gray-800/50'}`}>
         <p className={`text-sm font-semibold ${
           isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'
@@ -89,14 +87,15 @@ function VisualLanguageCard({ option, isSelected, onClick, index, lang }: Omit<V
 }
 
 export function VariantCard({ option, isSelected, onClick, tierKey, layerKey, index, lang }: VariantCardProps) {
-  if (tierKey === 'visualTier' && layerKey === 'visualLanguage' && option.id !== AUTO_DETECT_OPTION.id) {
+  if (tierKey === 'visualTier') {
     return (
-      <VisualLanguageCard
+      <VisualTierCard
         option={option}
         isSelected={isSelected}
         onClick={onClick}
         index={index}
         lang={lang}
+        layerKey={layerKey}
       />
     );
   }
@@ -107,15 +106,6 @@ export function VariantCard({ option, isSelected, onClick, tierKey, layerKey, in
   const renderIcon = () => {
     if (isAuto) {
       return <AutoDetectIcon className="w-6 h-6 text-gray-400 dark:text-gray-500" />;
-    }
-
-    if (tierKey === 'visualTier') {
-      return (
-        <VisualPreview
-          layer={layerKey as 'visualLanguage' | 'surfaceSystem' | 'spatialSystem'}
-          variant={option.id}
-        />
-      );
     }
 
     if (layerKey === 'stack') {

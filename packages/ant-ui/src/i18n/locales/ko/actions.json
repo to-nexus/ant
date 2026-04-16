@@ -141,6 +141,7 @@
     "codebase": "코드베이스",
     "codebaseDetected": "소스 코드 감지됨",
     "codebaseEmpty": "소스 코드 없음 — 코드를 먼저 생성하세요",
+    "codebaseOutputReady": "코드가 여기에 생성됩니다",
     "willBeCreated": "생성 예정",
     "viewInIde": "IDE에서 보기"
   },

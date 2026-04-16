@@ -67,10 +67,14 @@ export interface TechTierConfig {
 // VisualTier (6-layer visual design policy)
 // ============================================
 
-export type VisualLanguageVariant = 'modernSaas' | 'enterprise' | 'fintechPremium' | 'devtoolDark' | 'minimalNeutral';
+export type VisualLanguageVariant =
+  | 'modernSaas' | 'enterprise' | 'fintechPremium' | 'devtoolDark' | 'minimalNeutral'
+  | 'crispMinimal' | 'cleanBright' | 'neutralPro' | 'warmNatural' | 'softClay'
+  | 'bentoModern' | 'deepMuted' | 'darkLuxury' | 'cinematicDark'
+  | 'boldPlayful' | 'neoBrutalist' | 'editorialBold' | 'cyberpunkNeon' | 'retroFuture';
 export type SurfaceSystemVariant = 'solid' | 'soft' | 'borderedSoft' | 'tinted' | 'glassLight';
 export type SpatialSystemVariant = 'compact8pt' | 'balanced8pt' | 'airy8pt' | 'dense12ptHybrid';
-export type InteractionGrammarVariant = 'restrained' | 'subtleProduct' | 'calmPremium';
+export type InteractionGrammarVariant = 'restrained' | 'subtleProduct' | 'calmPremium' | 'rawInstant' | 'cinematicReveal' | 'expressivePlayful';
 export type ComponentSemanticsVariant = 'metricFirst' | 'actionGuided' | 'contentPreview' | 'utilityPanel';
 export type VisualHierarchyRulesVariant = 'controlledFocus' | 'taskPriority' | 'summaryFirst' | 'quietLayered';
 
