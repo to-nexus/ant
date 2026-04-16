@@ -29,6 +29,7 @@ export const VISUAL_LANGUAGE_VARIANTS: readonly VisualLanguageVariant[] = [
   'crispMinimal', 'cleanBright', 'neutralPro', 'warmNatural', 'softClay',
   'bentoModern', 'deepMuted', 'darkLuxury', 'cinematicDark',
   'boldPlayful', 'neoBrutalist', 'editorialBold', 'cyberpunkNeon', 'retroFuture',
+  'nexusDS',
 ] as const;
 
 export const SURFACE_SYSTEM_VARIANTS: readonly SurfaceSystemVariant[] = [
@@ -75,6 +76,7 @@ export const VISUAL_LANGUAGE_OPTIONS: BasisOption[] = [
   { id: 'editorialBold', label: { en: 'Editorial Bold', ko: 'Editorial Bold' }, description: { en: 'Magazine-style large type and grids', ko: '매거진 스타일 대형 타이포와 그리드' }, accentColor: 'black' },
   { id: 'cyberpunkNeon', label: { en: 'Cyberpunk Neon', ko: 'Cyberpunk Neon' }, description: { en: 'Neon glows on dark, sci-fi aesthetic', ko: '다크 배경의 네온 글로우, SF 미학' }, accentColor: 'fuchsia' },
   { id: 'retroFuture', label: { en: 'Retro Future', ko: 'Retro Future' }, description: { en: '80s retro meets modern tech', ko: '80년대 레트로와 현대 테크의 만남' }, accentColor: 'orange' },
+  { id: 'nexusDS', label: { en: 'NEXUS Design System', ko: 'NEXUS Design System' }, description: { en: 'Data-driven enterprise UI with dark-first functional minimalism', ko: '다크 퍼스트 기능적 미니멀리즘의 데이터 중심 엔터프라이즈 UI' }, accentColor: 'teal' },
 ];
 
 export const SURFACE_SYSTEM_OPTIONS: BasisOption[] = [
@@ -139,6 +141,7 @@ const INTERACTION_GRAMMAR_MAP: Record<VisualLanguageVariant, InteractionGrammarV
   editorialBold: 'rawInstant',
   cyberpunkNeon: 'cinematicReveal',
   retroFuture: 'expressivePlayful',
+  nexusDS: 'restrained',
 };
 
 export function deriveInteractionGrammar(
@@ -224,6 +227,10 @@ const VH_MAP: Record<string, VisualHierarchyRulesVariant> = {
   'retroFuture|balanced8pt': 'summaryFirst',
   'retroFuture|airy8pt': 'summaryFirst',
   'retroFuture|dense12ptHybrid': 'controlledFocus',
+  'nexusDS|compact8pt': 'taskPriority',
+  'nexusDS|balanced8pt': 'taskPriority',
+  'nexusDS|airy8pt': 'summaryFirst',
+  'nexusDS|dense12ptHybrid': 'taskPriority',
 };
 
 export function deriveVisualHierarchyRules(

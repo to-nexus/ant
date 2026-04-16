@@ -71,7 +71,8 @@ export type VisualLanguageVariant =
   | 'modernSaas' | 'enterprise' | 'fintechPremium' | 'devtoolDark' | 'minimalNeutral'
   | 'crispMinimal' | 'cleanBright' | 'neutralPro' | 'warmNatural' | 'softClay'
   | 'bentoModern' | 'deepMuted' | 'darkLuxury' | 'cinematicDark'
-  | 'boldPlayful' | 'neoBrutalist' | 'editorialBold' | 'cyberpunkNeon' | 'retroFuture';
+  | 'boldPlayful' | 'neoBrutalist' | 'editorialBold' | 'cyberpunkNeon' | 'retroFuture'
+  | 'nexusDS';
 export type SurfaceSystemVariant = 'solid' | 'soft' | 'borderedSoft' | 'tinted' | 'glassLight';
 export type SpatialSystemVariant = 'compact8pt' | 'balanced8pt' | 'airy8pt' | 'dense12ptHybrid';
 export type InteractionGrammarVariant = 'restrained' | 'subtleProduct' | 'calmPremium' | 'rawInstant' | 'cinematicReveal' | 'expressivePlayful';

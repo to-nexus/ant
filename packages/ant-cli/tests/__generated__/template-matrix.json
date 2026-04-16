@@ -247,6 +247,11 @@
       "basis-registry"
     ]
   },
+  "basis/visualTier/visualLanguage/nexusDS": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "basis/visualTier/visualLanguage/retroFuture": {
     "sources": [
       "basis-registry"
@@ -1026,6 +1031,12 @@
       "auto-injection",
       "policy-map",
       "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/visual-tier-detection": {
+    "sources": [
+      "partial-ref",
       "manifest"
     ]
   },
