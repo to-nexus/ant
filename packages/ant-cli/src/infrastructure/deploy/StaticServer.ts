@@ -156,6 +156,9 @@ function startNextServer(options: StaticServerOptions): Promise<StaticServerHand
  * Start a static server based on framework type.
  */
 export async function startStaticServer(options: StaticServerOptions): Promise<StaticServerHandle> {
+  if (options.framework === 'nextjs' && !options.outputDir.endsWith('.next')) {
+    return startSpaServer(options);
+  }
   if (options.framework === 'nextjs') {
     return startNextServer(options);
   }
