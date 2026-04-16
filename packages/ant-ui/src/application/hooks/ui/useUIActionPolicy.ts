@@ -157,11 +157,10 @@ export function useUIActionPolicy(): UIActionPolicy {
   
   /**
    * Rule 6: Preview 중단 조건
-   * - Preview running
-   * - NOT preview loading (프리뷰 시작/중단 중 아님)
+   * - Preview running OR in transitional phase (installing/starting)
    * - NOT disconnected
    */
-  const canStopPreview = (previewStatus?.running ?? false) && !isPreviewLoading && canPerformAnyAction;
+  const canStopPreview = ((previewStatus?.running ?? false) || isPreviewTransitioning) && canPerformAnyAction;
 
   /**
    * Rule 7: Feature 생성 조건

@@ -29,6 +29,10 @@ export function DeploySection({
 }) {
   const { t } = useTranslation('explorer');
 
+  const isDeployActive = deployStatus?.phase === 'running'
+    || deployStatus?.phase === 'building'
+    || deployStatus?.phase === 'deploying';
+
   return (
     <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -84,7 +88,7 @@ export function DeploySection({
 
       {/* Deploy controls */}
       <div className="flex items-center gap-2">
-        {deployStatus?.phase !== 'running' ? (
+        {!isDeployActive ? (
           <button
             onClick={onDeploy}
             disabled={isDeployLoading || isJobRunning}
@@ -103,7 +107,6 @@ export function DeploySection({
         ) : (
           <button
             onClick={onStopDeploy}
-            disabled={isDeployLoading}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
                      bg-red-600 text-white hover:bg-red-700
                      disabled:opacity-50 disabled:cursor-not-allowed
