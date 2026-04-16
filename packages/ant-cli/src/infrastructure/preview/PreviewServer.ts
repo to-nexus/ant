@@ -832,6 +832,10 @@ export class PreviewServer {
         }
       } catch (error: any) {
         logger.warn(`[Deploy] Proxy error: ${error.message}`, { component: 'PreviewServer' });
+
+        await this.stateStore.unregisterDeploy(tenantId, userId, projectId, feature).catch(() => {});
+        logger.warn(`[Deploy] Unregistered unreachable deploy: ${urlKey}`, { component: 'PreviewServer' });
+
         res.status(502).json({ error: 'Deploy server unreachable' });
       }
     };
@@ -842,6 +846,7 @@ export class PreviewServer {
    */
   async start(): Promise<void> {
     await this.initialize();
+    await this.deployService.cleanupStaleDeploys();
     this.setupRoutes();
 
     const port = this.options.port || parseInt(process.env.PORT || '8080');
