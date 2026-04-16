@@ -194,18 +194,16 @@ export async function decomposeWithToolLoop(
       toolResults.push({ type: 'tool_result', tool_use_id: tc.id, tool_name: tc.name, content: result });
     }
 
+    const isSecondToLast = maxRounds - round - 2 === 0;
+    const userContent: MessageContentBlock[] = [...toolResults];
+    if (isSecondToLast) {
+      userContent.push({ type: 'text', text: '[SYSTEM] You have 1 tool call remaining. Produce your FINAL output on the next response. Do NOT make additional tool calls.' });
+    }
+
     allMessages.push(
       { role: 'assistant', content: assistantContent },
-      { role: 'user', content: toolResults },
+      { role: 'user', content: userContent },
     );
-
-    const remainingRounds = maxRounds - round - 2;
-    if (remainingRounds === 1) {
-      allMessages.push({
-        role: 'user',
-        content: [{ type: 'text', text: '[SYSTEM] You have 1 tool call remaining. Produce your FINAL output on the next response. Do NOT make additional tool calls.' }],
-      });
-    }
   }
 
   throw new Error(`[Decompose RAG] Exceeded maximum rounds (${maxRounds}) without final response`);

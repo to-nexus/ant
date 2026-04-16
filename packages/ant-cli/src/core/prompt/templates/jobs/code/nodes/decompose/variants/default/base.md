@@ -6,12 +6,33 @@ You are analyzing a software specification to break it into executable tasks.
 
 DIRECTIVE:
 {{{directive}}}
-{{#if hasSourceContent}}
+{{#if hasGenericArtifacts}}
 
 ════════════════════════════════════════════════════════════════════════════════
-## Source Document (PRD)
+## Provided Documents
 
-{{{sourceContent}}}
+**Role guide:**
+- **ref** — Authoritative specification. Implementation MUST conform to this document.
+- **context** — Background information. Use to understand scope and intent; not prescriptive.
+
+{{#if contextArtifacts.length}}
+{{#each contextArtifacts}}
+### [context] {{this.path}}
+
+{{{this.content}}}
+
+{{#unless @last}}────────────────────────────────────────{{/unless}}
+{{/each}}
+{{/if}}
+{{#if refArtifacts.length}}
+{{#each refArtifacts}}
+### [ref] {{this.path}}
+
+{{{this.content}}}
+
+{{#unless @last}}────────────────────────────────────────{{/unless}}
+{{/each}}
+{{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
