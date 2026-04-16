@@ -258,11 +258,20 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     specDocsMeta = specLines.join('\n');
   }
 
-  // Extract PRD / source documents from artifact pool
-  const sourceContent = pool.sourceContent();
-  const hasSourceContent = Boolean(sourceContent && sourceContent.trim().length > 0);
-  if (hasSourceContent) {
-    console.log(`📄 [Decompose] Source/PRD content: ${sourceContent!.length.toLocaleString()} chars`);
+  // Generic role-based artifact injection:
+  // System designs, specs, and UI have decompose-specific handling above.
+  // Everything else is injected generically by role so new categories
+  // never require code changes.
+  const specialPrefixes = [AP.SYSTEM_DESIGN, AP.SPEC, AP.UI];
+  const genericArtifacts = pool.all.filter(a =>
+    a.content?.trim() && !specialPrefixes.some(p => a.path.startsWith(p))
+  );
+  const refArtifacts = genericArtifacts.filter(a => a.role === 'ref');
+  const contextArtifacts = genericArtifacts.filter(a => a.role === 'context');
+  const hasGenericArtifacts = refArtifacts.length > 0 || contextArtifacts.length > 0;
+  if (hasGenericArtifacts) {
+    const totalChars = genericArtifacts.reduce((s, a) => s + (a.content?.length || 0), 0);
+    console.log(`📄 [Decompose] Generic artifacts: ${refArtifacts.length} ref(s) + ${contextArtifacts.length} context(s), ${totalChars.toLocaleString()} chars`);
   }
 
   // Spec content is populated AFTER LLM selects via <selectedSpec> tag.
@@ -280,8 +289,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     directive: state.directive || '',
     documents,
     hasDocuments,
-    sourceContent,
-    hasSourceContent,
+    refArtifacts,
+    contextArtifacts,
+    hasGenericArtifacts,
     specDoc,
     specApiContract,
     mode: state.resolvedAction?.mode || 'unknown',
@@ -347,7 +357,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           ],
           injectedVariables: {
             directive: decomposeVars.directive ? `[${decomposeVars.directive.length} chars]` : undefined,
-            sourceContent: hasSourceContent ? `[${sourceContent!.length} chars]` : undefined,
+            refArtifacts: refArtifacts.length > 0 ? `[${refArtifacts.length} file(s)]` : undefined,
+            contextArtifacts: contextArtifacts.length > 0 ? `[${contextArtifacts.length} file(s)]` : undefined,
             documents: documents.length > 0 ? `[${documents.length} docs]` : undefined,
             designDocsMeta: designDocsMeta ? 'SET' : undefined,
             hasDocuments,
@@ -552,6 +563,25 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
 
     const mergedConfig = mergeTechTierConfigs(state.resolvedAction?.basis?.techTier, inferredConfig);
+
+    // Backfill packageManager from lockfile/package.json for existing codebases (modify mode)
+    const _featureRoot = state.deps?.fileSystem?.getRootPath();
+    if (_featureRoot) {
+      try {
+        const { detectPackageManager } = await import('../../../../../common/tool/handlers/runCommand');
+        const detectedPM = await detectPackageManager(_featureRoot);
+        if (detectedPM) {
+          for (const key of ['frontend', 'backend'] as const) {
+            const tier = mergedConfig[key];
+            if (tier && !tier.packageManager) {
+              tier.packageManager = detectedPM;
+            }
+          }
+          console.log(`📦 [Decompose] Detected package manager: ${detectedPM}`);
+        }
+      } catch { /* non-blocking */ }
+    }
+
     state.resolvedAction = {
       ...state.resolvedAction!,
       basis: {
