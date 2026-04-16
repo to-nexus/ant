@@ -195,6 +195,7 @@ export interface BasisOption {
   description?: { en: string; ko: string };
   icon?: string;
   accentColor?: string;
+  supportedModes?: 'light' | 'dark' | 'both';
 }
 
 export const STACK_OPTIONS: BasisOption[] = [

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Check, Sparkles } from 'lucide-react';
+import { Check, Sparkles, Sun, Moon, SunMoon } from 'lucide-react';
 import { Monitor, Server, Layers } from 'lucide-react';
 import type { BasisOption } from '@ant/shared';
 import { TECH_ICON_COMPONENTS, AutoDetectIcon } from './icons/TechIcons';
@@ -65,6 +65,16 @@ function VisualTierCard({ option, isSelected, onClick, index, lang, layerKey }: 
             variant={option.id}
             size="full"
           />
+        )}
+        {layerKey === 'visualLanguage' && option.supportedModes && !isAuto && (
+          <div className="absolute bottom-1.5 right-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-sm text-white text-[10px] font-medium">
+            {option.supportedModes === 'both' && <SunMoon className="w-3 h-3" />}
+            {option.supportedModes === 'dark' && <Moon className="w-3 h-3" />}
+            {option.supportedModes === 'light' && <Sun className="w-3 h-3" />}
+            <span>
+              {option.supportedModes === 'both' ? 'Dual' : option.supportedModes === 'dark' ? 'Dark' : 'Light'}
+            </span>
+          </div>
         )}
       </div>
 

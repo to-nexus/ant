@@ -21,7 +21,7 @@ import {
   trackTokenUsage,
   type CheckpointData,
 } from "./helpers";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 
 interface DecomposeContext {
@@ -110,6 +110,7 @@ export async function decomposeUiDesign(
     jobConversation: state.jobConversation,
     hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
     availableVisualLanguages: VISUAL_LANGUAGE_VARIANTS.join(', '),
+    availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
   });
