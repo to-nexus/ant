@@ -391,9 +391,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         typecheckRequired: isTypeScriptProject(state),
       };
 
-      // Reset execute state for potential next fix cycle
+      // Reset execute state for potential next fix cycle.
+      // NOTE: _finalTaskLoopCount is intentionally NOT reset here so that
+      // the Safety Net C guard in executeRouter accumulates across reverify
+      // cycles and can break infinite loops.
       state._executeCallIndex = 0;
-      state._finalTaskLoopCount = 0;
       state.conversationHistory = [];
       state._executeModifiedFiles = false;
 
