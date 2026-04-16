@@ -627,22 +627,7 @@ Output in this exact order:
 {{#if resolvedAction.basis.visualTier}}
 **{{#if needsBoundaryClassification}}5{{else}}4{{/if}}. `<visualTier>` tag** (visual design policy detection):
 
-Analyze the project context, PRD, and directive to determine the most appropriate visual design policy.
-
-Choose ONE variant per layer:
-- `visualLanguage`: overall visual tone — "modernSaas" (clean SaaS), "enterprise" (stable, trustworthy), "fintechPremium" (precise, refined), "devtoolDark" (utility-dense, dark), "minimalNeutral" (quiet, understated)
-- `surfaceSystem`: panel/container treatment — "solid" (opaque, border-separated), "soft" (subtle shadow), "borderedSoft" (border + restrained shadow), "tinted" (light color shifts), "glassLight" (subtle translucency)
-- `spatialSystem`: spacing rhythm — "compact8pt" (dense, 4px base), "balanced8pt" (moderate, 8px base), "airy8pt" (generous whitespace), "dense12ptHybrid" (structured outer + compact inner)
-- `screenContext`: a short keyword for the primary screen type (e.g. "dashboard", "settings", "catalog")
-
-<visualTier>
-{
-  "visualLanguage": "modernSaas",
-  "surfaceSystem": "borderedSoft",
-  "spatialSystem": "balanced8pt",
-  "screenContext": "dashboard"
-}
-</visualTier>
+{{> jobs/shared/injections/visual-tier-detection}}
 {{/if}}
 
 **CRITICAL:**
