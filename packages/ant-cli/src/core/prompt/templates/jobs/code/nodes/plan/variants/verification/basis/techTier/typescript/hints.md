@@ -58,3 +58,20 @@
 **Constraint**: Do NOT skip any step. Even if `tsc --noEmit` passes, the project build command must still run — it catches bundler-specific issues that static type checking cannot detect.
 
 ⚠️ **Blind spot**: Framework CLIs often abort after the first few errors. Running `tsc --noEmit` first ensures ALL type errors are collected at once for comprehensive batch remediation.
+
+---
+
+### Config File Property Names
+
+**Principle**: Test runner and framework config files use specific property names. Misspelled keys are silently ignored, causing hard-to-diagnose runtime failures.
+
+**Constraint**: When a remediation plan modifies a config file, use ONLY documented property names from the list below. If uncertain, read the installed package's `.d.ts` type definition.
+
+| Config File | Commonly Confused | Correct Property |
+|-------------|-------------------|-----------------|
+| `jest.config.*` | `setupFilesAfterSetup` | `setupFilesAfterEnv` |
+| `jest.config.*` | `testMatch` vs `testRegex` | Both valid — observe which is already used |
+| `vitest.config.*` | `setupFiles` | `setupFiles` (Vitest) or `setupFilesAfterEnv` (Jest) |
+| `next.config.*` | `basepath` | `basePath` (camelCase) |
+
+⚠️ **Blind spot**: `setupFilesAfterSetup` does NOT exist in any test framework. The correct Jest key is `setupFilesAfterEnv`. This mistake is silent — Jest ignores unknown keys, so the setup file never loads and tests fail with missing matchers or globals.

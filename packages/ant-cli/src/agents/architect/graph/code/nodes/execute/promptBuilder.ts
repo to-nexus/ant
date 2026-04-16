@@ -30,6 +30,34 @@ import { formatGitDiffForPrompt } from "../../../../../../core/codebase/GitDiffS
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
 /**
+ * Build retry context from enforcement history so the LLM knows what was
+ * already tried and failed. Returns null when not in a retry cycle.
+ */
+function buildRetryContext(state: ArchitectGraphState) {
+  if (!state.retries || state.retries === 0 || !state.enforcementHistory?.length) {
+    return null;
+  }
+
+  const history = state.enforcementHistory;
+  const previousAttempts = history.map(h => ({
+    attemptNumber: h.attemptNumber,
+    approach: h.violations.map(v => v.suggestedFix || v.message).join('; ').substring(0, 200),
+    error: h.violations.map(v => v.message).join('; ').substring(0, 200),
+    wasCloseToSuccess: false,
+  }));
+
+  const currentViolations = state.violations || [];
+  return {
+    attemptNumber: state.retries + 1,
+    originalDirective: state.context?.task?.substring(0, 300) || '',
+    originalPlan: state.planText?.substring(0, 500) || '',
+    keyDecisions: [],
+    currentError: formatViolations(currentViolations).substring(0, 500),
+    previousAttempts,
+  };
+}
+
+/**
  * Build messages for LLM using PromptEngine with Prompt Caching
  * 
  * ✅ Caching Strategy:
@@ -255,7 +283,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       lessons: formattedLessons,
       content: formattedLessons, // for memory.md
       sessionContext: state.sessionContext ? formatSessionContextForPrompt(state.sessionContext) : '',
-      retryContext: null,
+      retryContext: buildRetryContext(state),
       resolvedAction: resolvedActionWithDocs || null,
       userLanguage: state.context?.userLanguage || 'en',
       filteredCatalog: undefined,
