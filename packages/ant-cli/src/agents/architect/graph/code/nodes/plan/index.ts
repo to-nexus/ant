@@ -404,13 +404,21 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const featureRoot = state.deps?.fileSystem?.getRootPath();
       if (featureRoot) {
         try {
-          const { computeDepFileHash, hasInstalledDeps } = await import('../../../../../common/tool/handlers/runCommand');
+          const { computeDepFileHash, hasInstalledDeps, detectPackageManager } = await import('../../../../../common/tool/handlers/runCommand');
           const currentHash = await computeDepFileHash(featureRoot);
           const savedHash = state._depFileHash;
           const depsExist = await hasInstalledDeps(featureRoot);
           const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
           state._installNeeded = installNeeded;
           console.log(`📦 [Plan] Post-execute installNeeded: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
+
+          if (!state._detectedPackageManager) {
+            const detectedPM = await detectPackageManager(featureRoot);
+            if (detectedPM) {
+              state._detectedPackageManager = detectedPM;
+              console.log(`📦 [Plan] Detected package manager (retry): ${detectedPM}`);
+            }
+          }
         } catch {
           state._installNeeded = true;
         }
@@ -465,15 +473,21 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const featureRoot = state.deps?.fileSystem?.getRootPath();
       if (featureRoot) {
         try {
-          const { computeDepFileHash, hasInstalledDeps } = await import('../../../../../common/tool/handlers/runCommand');
+          const { computeDepFileHash, hasInstalledDeps, detectPackageManager } = await import('../../../../../common/tool/handlers/runCommand');
           const currentHash = await computeDepFileHash(featureRoot);
           const savedHash = state._depFileHash;
           const depsExist = await hasInstalledDeps(featureRoot);
           const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
           state._installNeeded = installNeeded;
           console.log(`📦 [Plan] Dependency install needed: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
+
+          const detectedPM = await detectPackageManager(featureRoot);
+          if (detectedPM) {
+            state._detectedPackageManager = detectedPM;
+            console.log(`📦 [Plan] Detected package manager: ${detectedPM}`);
+          }
         } catch (err) {
-          state._installNeeded = true; // fail-open: allow install if check fails
+          state._installNeeded = true;
           console.warn(`⚠️ [Plan] Dependency hash check failed, defaulting to installNeeded=true: ${err}`);
         }
       }

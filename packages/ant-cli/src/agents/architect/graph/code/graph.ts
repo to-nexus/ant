@@ -1066,6 +1066,7 @@ export const CodeGraphChannels = {
       _planEntryReason: Annotation<any>,
       _executeModifiedFiles: Annotation<any>,
       _installNeeded: Annotation<any>,
+      _detectedPackageManager: Annotation<any>,
       _appliedPlanHistory: Annotation<any>,
       _otherWorkerFiles: Annotation<any>,
       figmaAvailable: Annotation<any>,

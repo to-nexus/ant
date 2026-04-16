@@ -41,7 +41,7 @@ function startSpaServer(options: StaticServerOptions): Promise<StaticServerHandl
   }));
 
   // SPA fallback: serve index.html for any non-file request under basePath
-  app.get(`${basePath}/*`, (_req, res) => {
+  app.get(`${basePath}/{*splat}`, (_req, res) => {
     const indexPath = path.join(outputDir, 'index.html');
     if (fs.existsSync(indexPath)) {
       res.sendFile(indexPath);
