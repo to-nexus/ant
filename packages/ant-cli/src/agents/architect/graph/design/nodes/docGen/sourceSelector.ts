@@ -107,20 +107,27 @@ export async function decomposeWithToolLoop(
   options: DecomposeToolLoopOptions,
 ): Promise<{ response: string; usage?: TaskTokenUsage }> {
   const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
-  const maxRounds = options.maxRounds ?? 5;
+  const maxRounds = options.maxRounds ?? 10;
   let allMessages = [...messages];
   let totalUsage: TaskTokenUsage | undefined;
   let cumulativeToolResultChars = 0;
 
   for (let round = 0; round < maxRounds; round++) {
+    const isLastRound = round === maxRounds - 1;
+    const roundTools = isLastRound ? [] : tools;
+
     let response = '';
     let thinking = '';
     let thinkingSignature = '';
     const toolCalls: Array<{ id: string; name: string; input: Record<string, any> }> = [];
     let roundUsage: TaskTokenUsage | undefined;
 
+    if (isLastRound) {
+      console.warn(`⚠️ [Decompose RAG] Final round (${round + 1}/${maxRounds}) — tools stripped, forcing final response`);
+    }
+
     for await (const event of llm.stream(allMessages, {
-      tools,
+      tools: roundTools.length > 0 ? roundTools : undefined,
       temperature: options.temperature,
       maxTokens: options.maxTokens,
       enableThinking: options.enableThinking,
@@ -152,6 +159,11 @@ export async function decomposeWithToolLoop(
 
     if (toolCalls.length === 0) {
       return { response, usage: totalUsage };
+    }
+
+    if (isLastRound) {
+      console.warn(`⚠️ [Decompose RAG] LLM returned tool calls on final round despite tools being stripped — returning partial response`);
+      return { response: response || '', usage: totalUsage };
     }
 
     console.log(`🔧 [Decompose RAG] Round ${round + 1}: ${toolCalls.length} tool call(s)`);
@@ -186,6 +198,14 @@ export async function decomposeWithToolLoop(
       { role: 'assistant', content: assistantContent },
       { role: 'user', content: toolResults },
     );
+
+    const remainingRounds = maxRounds - round - 2;
+    if (remainingRounds === 1) {
+      allMessages.push({
+        role: 'user',
+        content: [{ type: 'text', text: '[SYSTEM] You have 1 tool call remaining. Produce your FINAL output on the next response. Do NOT make additional tool calls.' }],
+      });
+    }
   }
 
   throw new Error(`[Decompose RAG] Exceeded maximum rounds (${maxRounds}) without final response`);

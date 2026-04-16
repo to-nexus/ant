@@ -6,6 +6,15 @@ You are analyzing a software specification to break it into executable tasks.
 
 DIRECTIVE:
 {{{directive}}}
+{{#if hasSourceContent}}
+
+════════════════════════════════════════════════════════════════════════════════
+## Source Document (PRD)
+
+{{{sourceContent}}}
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
 {{#if uiHint}}
 {{{uiHint}}}
 {{/if}}

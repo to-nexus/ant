@@ -258,6 +258,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     specDocsMeta = specLines.join('\n');
   }
 
+  // Extract PRD / source documents from artifact pool
+  const sourceContent = pool.sourceContent();
+  const hasSourceContent = Boolean(sourceContent && sourceContent.trim().length > 0);
+  if (hasSourceContent) {
+    console.log(`📄 [Decompose] Source/PRD content: ${sourceContent!.length.toLocaleString()} chars`);
+  }
+
   // Spec content is populated AFTER LLM selects via <selectedSpec> tag.
   // No auto-selection — the decompose LLM decides which spec is relevant.
   let specDoc = '';
@@ -273,6 +280,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     directive: state.directive || '',
     documents,
     hasDocuments,
+    sourceContent,
+    hasSourceContent,
     specDoc,
     specApiContract,
     mode: state.resolvedAction?.mode || 'unknown',
@@ -338,6 +347,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           ],
           injectedVariables: {
             directive: decomposeVars.directive ? `[${decomposeVars.directive.length} chars]` : undefined,
+            sourceContent: hasSourceContent ? `[${sourceContent!.length} chars]` : undefined,
             documents: documents.length > 0 ? `[${documents.length} docs]` : undefined,
             designDocsMeta: designDocsMeta ? 'SET' : undefined,
             hasDocuments,
