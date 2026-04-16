@@ -17,6 +17,7 @@ export { CyberpunkNeonPreview, CyberpunkNeonFullPreview } from './CyberpunkNeon'
 export { CinematicDarkPreview, CinematicDarkFullPreview } from './CinematicDark';
 export { CrispMinimalPreview, CrispMinimalFullPreview } from './CrispMinimal';
 export { RetroFuturePreview, RetroFutureFullPreview } from './RetroFuture';
+export { NexusDSPreview, NexusDSFullPreview } from './NexusDS';
 
 import type { FC } from 'react';
 import { ModernSaasPreview, ModernSaasFullPreview } from './ModernSaas';
@@ -38,6 +39,7 @@ import { CyberpunkNeonPreview, CyberpunkNeonFullPreview } from './CyberpunkNeon'
 import { CinematicDarkPreview, CinematicDarkFullPreview } from './CinematicDark';
 import { CrispMinimalPreview, CrispMinimalFullPreview } from './CrispMinimal';
 import { RetroFuturePreview, RetroFutureFullPreview } from './RetroFuture';
+import { NexusDSPreview, NexusDSFullPreview } from './NexusDS';
 
 type PreviewComponent = FC<{ className?: string }>;
 
@@ -61,6 +63,7 @@ export const VL_ICON_MAP: Record<string, PreviewComponent> = {
   cinematicDark: CinematicDarkPreview,
   crispMinimal: CrispMinimalPreview,
   retroFuture: RetroFuturePreview,
+  nexusDS: NexusDSPreview,
 };
 
 export const VL_FULL_MAP: Record<string, PreviewComponent> = {
@@ -83,4 +86,5 @@ export const VL_FULL_MAP: Record<string, PreviewComponent> = {
   cinematicDark: CinematicDarkFullPreview,
   crispMinimal: CrispMinimalFullPreview,
   retroFuture: RetroFutureFullPreview,
+  nexusDS: NexusDSFullPreview,
 };
