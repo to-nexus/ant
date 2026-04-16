@@ -107,7 +107,7 @@ const editFile: ToolDefinition = {
   parameters: {
     type: 'object',
     properties: {
-      path: { type: 'string', description: 'Relative path from feature root (e.g., "outputs/plan/prd-refine.md")' },
+      path: { type: 'string', description: 'Relative path from feature root (e.g., "inputs/sources/prd.md")' },
       old_str: { type: 'string', description: 'Exact text to find (must match exactly including whitespace/newlines)' },
       new_str: { type: 'string', description: 'Replacement text. Use empty string to delete.' },
     },
