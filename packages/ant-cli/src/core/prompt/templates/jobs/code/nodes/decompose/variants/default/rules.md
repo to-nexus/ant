@@ -82,7 +82,7 @@ CRITICAL:
 | `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
 | `"ui"` | Visual **implementation** | Apply styles to skeleton. Always created, even without ui-doc (priority 650–699) |
 
-**Principle** — `"design-system"` priority ladder (when this type appears in the task list):
+**Principle** — `"design-system"` priority ladder (REQUIRED when visualTier or ui-docs exist):
 - **200**: Token → CSS infrastructure (token variables, CSS custom-property generation, runtime import). Always the first `design-system` task.
 - **201+**: Shared UI components + framework wiring (import chain, framework bridge, component library). Only when ui-design artifacts justify that scope. Do NOT add 201+ when the only token source is visualTier policy (no ui-spec path for component library).
 - Both share `parallelGroup: "design-system"` — same group serializes so token infrastructure (200) completes before wiring/components (201+).
