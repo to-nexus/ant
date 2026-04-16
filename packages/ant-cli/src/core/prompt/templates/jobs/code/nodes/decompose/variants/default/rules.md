@@ -79,8 +79,12 @@ CRITICAL:
 | `"error"` | Something is **broken** | Directive contains error messages, crashes, build failures, or runtime exceptions |
 | `"feature"` | Something **new** — headless | Source code, logic, APIs. Always unstyled structure (skeleton only) |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
-| `"design-system"` | Visual **infrastructure** | ui-doc exists: 200 = token → CSS infrastructure (token variables, runtime import); 201+ = shared UI components + framework wiring (import chain, framework bridge, component library). Both share `parallelGroup: "design-system"` for serial ordering. |
+| `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
 | `"ui"` | Visual **implementation** | Apply styles to skeleton. Always created, even without ui-doc (priority 650–699) |
+
+**Principle** — `"design-system"` priority ladder (when this type appears in the task list):
+- **200**: Token infrastructure — always the first `design-system` task. Use `parallelGroup: "design-system"` so any **201+** task in the same group runs after it (same group serializes token work before wiring).
+- **201+**: Framework wiring or shared component library — only when ui-design artifacts justify that scope. Do NOT add 201+ when the only token source is visualTier policy (no ui-spec path for component library).
 
 **Constraint**: If the directive contains ANY error message, stack trace, or crash report, the task type MUST be `"error"`.
 
@@ -88,9 +92,22 @@ CRITICAL:
 
 **Constraint**: `"feature"` tasks are ALWAYS headless — unstyled structure only. A corresponding `"ui"` task handles visual styling.
 
-**Constraint**: `"design-system"` at priority 200–299 covers visual infrastructure only: framework wiring (import chain, framework bridge) AND shared UI component development (reusable component library from ui-spec). Entity models, API clients, ports, and shared domain logic are `"feature"` type — NEVER `"design-system"`. If there is no design system to wire or build, priority 200–299 tasks are always `"feature"`.
+**Constraint**: `"design-system"` scope is visual infrastructure ONLY — token files, CSS generation, framework theme config, and shared UI components. Entity models, API clients, ports, and shared domain logic are `"feature"` type at priority 200–299 — NEVER `"design-system"`.
 
-**Constraint**: `"design-system"` at priority 200–299 description MUST NOT enumerate specific component names (e.g., "Button, Input, Modal, Toast"). The executor observes ui-spec at runtime to determine which shared components to create. Description should define SCOPE (e.g., "shared component library from ui-spec observation") not a component inventory.
+**Constraint**: `"design-system"` description MUST NOT enumerate specific component names (e.g., "Button, Input, Modal, Toast"). The executor observes ui-spec at runtime to determine which shared components to create. Description should define SCOPE, not a component inventory.
+
+{{#if hasUiDocs}}
+**Constraint**: ui-docs exist — create `"design-system"` task(s):
+- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure. `uiSections: ["tokens"]`.
+- Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. `uiSections: ["tokens", "<component-section>"]`.
+Do NOT embed token setup in setup or ui tasks.
+{{else}}
+{{#if resolvedAction.basis.visualTier}}
+**Constraint**: No ui-docs but visualTier policy is active — create ONE `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure derived from visualTier policies. No `uiSections` field (no ui-docs to inject). Do NOT create 201+ tasks — those require ui-spec.
+{{else}}
+**Constraint**: Neither ui-docs nor visualTier policy is active — do NOT create `"design-system"` tasks. Priority 200–299 tasks are `"feature"` only.
+{{/if}}
+{{/if}}
 
 **Blind spot**: First-time build failures ARE errors. A crash does not require "it worked before" to qualify as `"error"`.
 
@@ -257,25 +274,16 @@ the full path so the executor can copy it directly into the install command.
 
 ## UI Sections (split injection)
 
-When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify which UI doc sections are needed. This enables split injection — only requested sections are loaded into the prompt.
-
-- `"design-system"` tasks (priority 200, token infrastructure): `"uiSections": ["tokens"]` (always fixed)
-- `"design-system"` tasks (priority 201+, wiring): `"uiSections": ["tokens", "<component-section>"]` (framework bridge, import chain, component library integration)
-- `"ui"` tasks: `"uiSections": ["tokens", "<component-section>"]`
-  If omitted, ALL UI docs are injected (not recommended for large docs).
+When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify which UI doc sections are needed.
 
 {{#if hasUiDocs}}
-**Constraint**: When ui-docs exist, create a `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure. If the design system also requires framework-level wiring (import chain setup, component library integration into app shell), create a second `"design-system"` task (priority 201, `parallelGroup: "design-system"`) for wiring. The shared parallelGroup ensures token infra runs before wiring; both run in parallel with shared foundation tasks. Do NOT embed token setup in Setup or UI tasks.
+- `"design-system"` (priority 200): `"uiSections": ["tokens"]`
+- `"design-system"` (priority 201+): `"uiSections": ["tokens", "<component-section>"]`
+- `"ui"` tasks: `"uiSections": ["tokens", "<component-section>"]`
+  If omitted, ALL UI docs are injected (not recommended for large docs).
 {{else}}
-{{#if resolvedAction.basis.visualTier}}
-**Constraint**: ui-docs not available but visualTier policy is active.
-Create ONE `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for visual token infrastructure derived from the visualTier policies in the basis section.
-Do NOT create component wiring tasks (201+) — those require ui-spec.
-`uiSections` field is NOT applicable (no ui-docs to inject).
-{{else}}
-**Constraint**: ui-docs not available → do NOT create `"design-system"` tasks.
-`"ui"` tasks are still created — CSS framework + visual hints from system design provide styling guidance.
-{{/if}}
+- `"design-system"` tasks: `uiSections` is NOT applicable (no ui-docs).
+- `"ui"` tasks: `uiSections` is NOT applicable (no ui-docs).
 {{/if}}
 
 ---
