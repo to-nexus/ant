@@ -15,6 +15,12 @@ You do NOT fix code — a separate execution phase handles that based on your pl
 {{{dependencyStatus}}}
 {{/if}}
 
+{{#if hasPackageManager}}
+## Package Manager
+
+This project uses **{{packageManager}}**. All dependency install and script commands MUST use `{{packageManager}}`. Do NOT use any other package manager.
+{{/if}}
+
 ## Protocol
 
 ### Step 1: Verify Build

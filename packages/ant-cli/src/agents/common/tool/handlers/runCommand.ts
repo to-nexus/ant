@@ -90,6 +90,36 @@ export async function hasInstalledDeps(featureRootPath: string): Promise<boolean
   return false;
 }
 
+/**
+ * Detect the package manager from lockfiles or package.json's packageManager field.
+ * Follows the same featureRootPath convention as computeDepFileHash/hasInstalledDeps.
+ */
+export async function detectPackageManager(
+  featureRootPath: string
+): Promise<'npm' | 'pnpm' | 'yarn' | 'bun' | null> {
+  const codebasePath = path.join(featureRootPath, 'codebase');
+  try {
+    const files = await fs.promises.readdir(codebasePath);
+    if (files.includes('pnpm-lock.yaml')) return 'pnpm';
+    if (files.includes('yarn.lock')) return 'yarn';
+    if (files.includes('bun.lockb') || files.includes('bun.lock')) return 'bun';
+    if (files.includes('package-lock.json')) return 'npm';
+
+    const pkgPath = path.join(codebasePath, 'package.json');
+    try {
+      const pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
+      if (pkg.packageManager) {
+        const pm = pkg.packageManager as string;
+        if (pm.startsWith('pnpm')) return 'pnpm';
+        if (pm.startsWith('yarn')) return 'yarn';
+        if (pm.startsWith('bun')) return 'bun';
+        if (pm.startsWith('npm')) return 'npm';
+      }
+    } catch { /* no package.json or parse error */ }
+  } catch { /* codebase dir not found */ }
+  return null;
+}
+
 function isBareInstallCommand(command: string): boolean {
   if (/\bgo\s+mod\s+(tidy|download)\b/i.test(command)) return false;
   if (/\bgo\s+get\b/i.test(command)) return false;

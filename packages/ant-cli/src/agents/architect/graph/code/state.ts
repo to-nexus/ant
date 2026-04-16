@@ -337,6 +337,8 @@ export interface ArchitectGraphState extends TriageableState {
   _executeModifiedFiles?: boolean;
   /** Whether dependency install is needed (dep-hash guard bypass) */
   _installNeeded?: boolean;
+  /** Package manager detected from lockfile/package.json at verification plan entry */
+  _detectedPackageManager?: string;
   /** Accumulated remediation plans from previous fix cycles */
   _appliedPlanHistory?: string[];
   /** Files written by other parallel tasks/workers (for session manifest in execute) */

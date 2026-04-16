@@ -75,6 +75,7 @@ export async function buildPlanPrompt(
       dependencyStatus = 'Dependency declaration files have changed since last successful install. Run the project\'s install command before build verification.';
     }
 
+    const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
     const fmtCtx = formatCodeContext(projectCodeContext);
     let languageHints = '';
     if (techTier?.language) {
@@ -86,12 +87,14 @@ export async function buildPlanPrompt(
       projectCodeContext: fmtCtx, directoryTree: projectCodeContext?.directoryTree || '',
       violationsText, isRetry: !!violationsText, hasTools: options?.hasTools ?? false,
       languageHints, hasLanguageHints: !!languageHints, dependencyStatus,
+      packageManager, hasPackageManager: !!packageManager,
       resolvedAction: state.resolvedAction,
     });
   }
 
   if (task.type === 'error') {
     const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
+    const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
     const fmtCtx = formatCodeContext(projectCodeContext);
     let languageHints = '';
     if (techTier?.language) {
@@ -103,6 +106,7 @@ export async function buildPlanPrompt(
       directoryTree: projectCodeContext?.directoryTree || '',
       violationsText, isRetry: !!violationsText, hasTools: options?.hasTools ?? false,
       languageHints, hasLanguageHints: !!languageHints,
+      packageManager, hasPackageManager: !!packageManager,
       resolvedAction: state.resolvedAction,
     });
   }
