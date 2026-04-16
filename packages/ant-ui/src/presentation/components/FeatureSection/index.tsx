@@ -121,7 +121,7 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
         features={features}
         selectedFeature={selectedFeature || undefined}
         isPreviewLoading={isLoading}
-        previewRunning={state === 'running'}
+        previewRunning={state === 'running' || state === 'installing' || state === 'starting'}
         canChangeFeature={policy.canChangeFeature}
         canCreateFeature={policy.canCreateFeature}
         canStartPreview={policy.canStartPreview}

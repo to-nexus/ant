@@ -82,7 +82,7 @@ export function PreviewControlsSection({
 
       {/* Control buttons */}
       <div className="flex items-center gap-2">
-        {!isRunning ? (
+        {!isRunning && phase !== 'installing' && phase !== 'starting' ? (
           <button
             onClick={onStart}
             disabled={isPreviewLoading || isJobRunning || !(previewStatus?.canStart ?? false)}
@@ -103,18 +103,17 @@ export function PreviewControlsSection({
           <>
             <button
               onClick={onStop}
-              disabled={isPreviewLoading}
               className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
                        bg-red-600 text-white hover:bg-red-700
                        disabled:opacity-50 disabled:cursor-not-allowed
                        transition-colors"
             >
-              {isPreviewLoading && phase === 'stopping' ? (
+              {phase === 'stopping' ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <Square className="w-3.5 h-3.5" />
               )}
-              {isPreviewLoading && phase === 'stopping' ? t('preview.stopping') : t('preview.stop', 'Stop')}
+              {phase === 'stopping' ? t('preview.stopping') : t('preview.stop', 'Stop')}
             </button>
             <button
               onClick={onRestart}
