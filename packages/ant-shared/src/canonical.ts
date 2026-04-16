@@ -45,7 +45,6 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'outputs/design/ui',                 visibility: 'internal' },
   { path: 'outputs/design/system',             visibility: 'internal' },
   { path: 'outputs/design/spec',               visibility: 'internal' },
-  { path: 'outputs/plan',                      visibility: 'ui:outputs' },
   { path: 'outputs/evals',                     visibility: 'ui:outputs' },
   { path: 'outputs/evals/prd',                 visibility: 'internal' },
   { path: 'outputs/evals/ui-design',           visibility: 'internal' },

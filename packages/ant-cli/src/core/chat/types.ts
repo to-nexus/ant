@@ -27,7 +27,7 @@ export interface MessageContent {
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
      | 'triage_choice'  // Triage redirect/blocked choice
-     | 'choice_card'    // Generic choice card (eval_save, prd_apply, etc.)
+     | 'choice_card'    // Generic choice card (eval_save, etc.)
      // File Operations - Real-time streaming
      | 'file_creating' | 'file_writing' | 'file_create' | 'file_create_failed'
      | 'file_editing' | 'file_updating' | 'file_edit' | 'file_edit_failed'
@@ -253,7 +253,7 @@ export type ChatStatusType =
   | 'tool_action' 
   | 'learning' | 'learned' 
   | 'context_loaded'  // ✅ Context loaded notification (eval report, PRD, design docs, etc.)
-  | 'choice_card'    // ✅ Generic choice card (eval_save, prd_apply, etc.)
+  | 'choice_card'    // ✅ Generic choice card (eval_save, etc.)
   | 'processing' | 'processed'
   | 'downloading' | 'downloaded'
   | 'figma_calling' | 'figma_called'

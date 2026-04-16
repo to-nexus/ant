@@ -402,7 +402,7 @@ export class ChatStatusHandler {
         return metadata?.message || 'Processing...';
       
       case 'choice_card':
-        // ✅ choice_card uses title from metadata (generic choice cards: eval_save, prd_apply)
+        // ✅ choice_card uses title from metadata (generic choice cards: eval_save, etc.)
         return metadata?.title || 'Choice required';
       
       case 'loading': {

@@ -62,10 +62,6 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     allowSubdirs: false,
     acceptedExtensions: ['.md'],
   },
-  'outputs/plan': {
-    allowSubdirs: false,
-    acceptedExtensions: ['.md'],
-  },
 };
 
 /**
