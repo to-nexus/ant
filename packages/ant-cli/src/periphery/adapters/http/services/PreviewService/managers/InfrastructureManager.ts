@@ -69,12 +69,15 @@ export class InfrastructureManager {
     projectPath: string,
     onLog: LogCallback,
     projectName?: string,
+    signal?: AbortSignal,
   ): Promise<boolean> {
     const composeFile = this.findComposeFile(projectPath);
     if (!composeFile) {
       logger.debug('No docker-compose file found, skipping infrastructure startup', { component: 'InfrastructureManager' });
       return true; // No infrastructure needed = success
     }
+
+    if (signal?.aborted) return false;
 
     const dockerAvailable = await this.isDockerAvailable();
     if (!dockerAvailable) {
@@ -87,6 +90,8 @@ export class InfrastructureManager {
     // Pre-cleanup: remove stale containers/volumes from crashed previous runs
     await this.preCleanup(composeFile, projectName, onLog);
 
+    if (signal?.aborted) return false;
+
     const composeDir = path.dirname(composeFile);
     const composeName = path.basename(composeFile);
 
@@ -94,6 +99,11 @@ export class InfrastructureManager {
     onLog('stdout', `🐳 Starting infrastructure services (${composeName})...\n`);
 
     return new Promise((resolve) => {
+      if (signal?.aborted) {
+        resolve(false);
+        return;
+      }
+
       const args = ['compose', '-f', composeFile];
 
       // Use project name for isolation between different projects
@@ -113,9 +123,23 @@ export class InfrastructureManager {
       let stderr = '';
       let settled = false;
 
+      const onAbort = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          logger.info('Infrastructure startup cancelled by user', { component: 'InfrastructureManager' });
+          onLog('stderr', '⏹️ Infrastructure startup cancelled\n');
+          try { child.kill('SIGTERM'); } catch { /* ignore */ }
+          setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
+          resolve(false);
+        }
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+
       const timeoutId = setTimeout(() => {
         if (!settled) {
           settled = true;
+          signal?.removeEventListener('abort', onAbort);
           const msg = `⚠️ Infrastructure startup timed out after ${this.STARTUP_TIMEOUT / 1000}s. Continuing anyway.`;
           logger.warn(msg, { component: 'InfrastructureManager' });
           onLog('stderr', msg + '\n');
@@ -143,6 +167,7 @@ export class InfrastructureManager {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
 
         if (code === 0) {
           logger.info('✅ Infrastructure services started successfully', { component: 'InfrastructureManager' });
@@ -160,6 +185,7 @@ export class InfrastructureManager {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
 
         const msg = `⚠️ Failed to start infrastructure: ${error.message}`;
         logger.warn(msg, { component: 'InfrastructureManager' });
