@@ -178,6 +178,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   };
 
   const codebaseHasFiles = gitStatus?.codebaseHasFiles ?? false;
+  const codebaseRequired = slots ? slots.refs.some(r => r.codebase && r.locked) : false;
   const refEntries = useMemo(() => slots ? resolveSlotEntries(slots.refs, fileTree, selectedCtx, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedCtx, warningCtx, codebaseHasFiles]);
   const ctxEntries = useMemo(() => slots ? resolveSlotEntries(slots.context, fileTree, selectedRefs, warningCtx) : [], [slots, fileTree, selectedRefs, warningCtx]);
   const targetExisting = useMemo(() => {
@@ -306,7 +307,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                 onToggleSpotlight={handleToggleSpotlight}
                 spotlightPath={spotlightTarget?.path}
                 onOpenIde={handleOpenIde}
-                codebaseHasFiles={gitStatus?.codebaseHasFiles ?? false}
+                codebaseHasFiles={codebaseHasFiles}
+                codebaseRequired={codebaseRequired}
                 lang={lang}
               />
             </Section>

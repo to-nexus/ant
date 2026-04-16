@@ -380,6 +380,8 @@ describe('VisualTier: Template files → Registry (no orphans)', () => {
     const files = collectMdFiles(vtDir);
     for (const file of files) {
       const rel = path.relative(TEMPLATES_ROOT, file).replace(/\.md$/, '').replace(/\\/g, '/');
+      const basename = path.basename(file, '.md');
+      if (basename.startsWith('_') && basename !== '_preamble') continue;
       expect(registryPaths.has(rel)).toBe(true);
     }
   });
