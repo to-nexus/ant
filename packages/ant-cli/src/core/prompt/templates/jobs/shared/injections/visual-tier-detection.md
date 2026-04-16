@@ -8,9 +8,13 @@ Output a `<visualTier>` tag with ONE value per layer:
 
 Constraint: Choose from the EXACT variant IDs listed below. Do NOT invent new values.
 
-Available `visualLanguage` values: {{availableVisualLanguages}}
+Available `visualLanguage` values (with supported theme modes):
+{{availableVisualLanguagesWithModes}}
+
 Available `surfaceSystem` values: {{availableSurfaceSystems}}
 Available `spatialSystem` values: {{availableSpatialSystems}}
+
+Constraint: If the project requires dual-theme (light + dark), choose a visualLanguage with mode "both". A "dark"-only or "light"-only variant cannot support dual-theme.
 
 <visualTier>
 {
