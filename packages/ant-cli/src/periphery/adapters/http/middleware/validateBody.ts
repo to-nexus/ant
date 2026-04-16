@@ -60,30 +60,8 @@ export const executeJobSchema = z.object({
     language: z.string().optional(),
     locale: z.string().optional(),
     explicit: z.boolean().optional(),
-    basis: z.object({
-      techTier: z.object({
-        stack: z.string().optional(),
-        frontend: z.object({
-          language: z.string().optional(),
-          framework: z.string().optional(),
-          stack: z.string().optional(),
-          packageManager: z.string().optional(),
-        }).optional(),
-        backend: z.object({
-          language: z.string().optional(),
-          framework: z.string().optional(),
-          stack: z.string().optional(),
-          packageManager: z.string().optional(),
-        }).optional(),
-      }).optional(),
-      visualTier: z.object({
-        designSystem: z.string().optional(),
-        visualLanguage: z.enum(['modernSaas', 'enterprise', 'fintechPremium', 'devtoolDark', 'minimalNeutral']).optional(),
-        surfaceSystem: z.enum(['solid', 'soft', 'borderedSoft', 'tinted', 'glassLight']).optional(),
-        spatialSystem: z.enum(['compact8pt', 'balanced8pt', 'airy8pt', 'dense12ptHybrid']).optional(),
-      }).optional(),
-    }).optional(),
-  }).optional(),
+    basis: z.record(z.any()).optional(),
+  }).passthrough().optional(),
 }).passthrough();
 
 /**

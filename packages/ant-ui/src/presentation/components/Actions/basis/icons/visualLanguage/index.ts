@@ -1,3 +1,8 @@
+export { ModernSaasPreview, ModernSaasFullPreview } from './ModernSaas';
+export { EnterprisePreview, EnterpriseFullPreview } from './Enterprise';
+export { FintechPremiumPreview, FintechPremiumFullPreview } from './FintechPremium';
+export { DevtoolDarkPreview, DevtoolDarkFullPreview } from './DevtoolDark';
+export { MinimalNeutralPreview, MinimalNeutralFullPreview } from './MinimalNeutral';
 export { CleanBrightPreview, CleanBrightFullPreview } from './CleanBright';
 export { NeutralProPreview, NeutralProFullPreview } from './NeutralPro';
 export { WarmNaturalPreview, WarmNaturalFullPreview } from './WarmNatural';
@@ -14,6 +19,11 @@ export { CrispMinimalPreview, CrispMinimalFullPreview } from './CrispMinimal';
 export { RetroFuturePreview, RetroFutureFullPreview } from './RetroFuture';
 
 import type { FC } from 'react';
+import { ModernSaasPreview, ModernSaasFullPreview } from './ModernSaas';
+import { EnterprisePreview, EnterpriseFullPreview } from './Enterprise';
+import { FintechPremiumPreview, FintechPremiumFullPreview } from './FintechPremium';
+import { DevtoolDarkPreview, DevtoolDarkFullPreview } from './DevtoolDark';
+import { MinimalNeutralPreview, MinimalNeutralFullPreview } from './MinimalNeutral';
 import { CleanBrightPreview, CleanBrightFullPreview } from './CleanBright';
 import { NeutralProPreview, NeutralProFullPreview } from './NeutralPro';
 import { WarmNaturalPreview, WarmNaturalFullPreview } from './WarmNatural';
@@ -32,6 +42,11 @@ import { RetroFuturePreview, RetroFutureFullPreview } from './RetroFuture';
 type PreviewComponent = FC<{ className?: string }>;
 
 export const VL_ICON_MAP: Record<string, PreviewComponent> = {
+  modernSaas: ModernSaasPreview,
+  enterprise: EnterprisePreview,
+  fintechPremium: FintechPremiumPreview,
+  devtoolDark: DevtoolDarkPreview,
+  minimalNeutral: MinimalNeutralPreview,
   cleanBright: CleanBrightPreview,
   neutralPro: NeutralProPreview,
   warmNatural: WarmNaturalPreview,
@@ -49,6 +64,11 @@ export const VL_ICON_MAP: Record<string, PreviewComponent> = {
 };
 
 export const VL_FULL_MAP: Record<string, PreviewComponent> = {
+  modernSaas: ModernSaasFullPreview,
+  enterprise: EnterpriseFullPreview,
+  fintechPremium: FintechPremiumFullPreview,
+  devtoolDark: DevtoolDarkFullPreview,
+  minimalNeutral: MinimalNeutralFullPreview,
   cleanBright: CleanBrightFullPreview,
   neutralPro: NeutralProFullPreview,
   warmNatural: WarmNaturalFullPreview,
