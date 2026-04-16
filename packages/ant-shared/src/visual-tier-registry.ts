@@ -26,6 +26,9 @@ import type { BasisOption } from './tech-tier-registry';
 
 export const VISUAL_LANGUAGE_VARIANTS: readonly VisualLanguageVariant[] = [
   'modernSaas', 'enterprise', 'fintechPremium', 'devtoolDark', 'minimalNeutral',
+  'crispMinimal', 'cleanBright', 'neutralPro', 'warmNatural', 'softClay',
+  'bentoModern', 'deepMuted', 'darkLuxury', 'cinematicDark',
+  'boldPlayful', 'neoBrutalist', 'editorialBold', 'cyberpunkNeon', 'retroFuture',
 ] as const;
 
 export const SURFACE_SYSTEM_VARIANTS: readonly SurfaceSystemVariant[] = [
@@ -37,7 +40,7 @@ export const SPATIAL_SYSTEM_VARIANTS: readonly SpatialSystemVariant[] = [
 ] as const;
 
 export const INTERACTION_GRAMMAR_VARIANTS: readonly InteractionGrammarVariant[] = [
-  'restrained', 'subtleProduct', 'calmPremium',
+  'restrained', 'subtleProduct', 'calmPremium', 'rawInstant', 'cinematicReveal', 'expressivePlayful',
 ] as const;
 
 export const COMPONENT_SEMANTICS_VARIANTS: readonly ComponentSemanticsVariant[] = [
@@ -58,6 +61,20 @@ export const VISUAL_LANGUAGE_OPTIONS: BasisOption[] = [
   { id: 'fintechPremium', label: { en: 'Fintech Premium', ko: 'Fintech Premium' }, description: { en: 'Dark luxury with gold and emerald accents', ko: '골드와 에메랄드 악센트의 다크 럭셔리' }, accentColor: 'amber' },
   { id: 'devtoolDark', label: { en: 'Developer Tool', ko: 'Developer Tool' }, description: { en: 'Terminal-inspired dark theme with neon accents', ko: '네온 악센트의 터미널 영감 다크 테마' }, accentColor: 'green' },
   { id: 'minimalNeutral', label: { en: 'Minimal Neutral', ko: 'Minimal Neutral' }, description: { en: 'Pure white space with subtle gray borders', ko: '미세한 회색 보더의 순백 여백' }, accentColor: 'gray' },
+  { id: 'crispMinimal', label: { en: 'Crisp Minimal', ko: 'Crisp Minimal' }, description: { en: 'Ultra-clean with sharp geometry', ko: '날카로운 기하학의 울트라 클린' }, accentColor: 'gray' },
+  { id: 'cleanBright', label: { en: 'Clean Bright', ko: 'Clean Bright' }, description: { en: 'Airy pastels with ample whitespace', ko: '넉넉한 여백의 밝은 파스텔' }, accentColor: 'sky' },
+  { id: 'neutralPro', label: { en: 'Neutral Pro', ko: 'Neutral Pro' }, description: { en: 'Corporate gray palette, utilitarian focus', ko: '기업용 그레이 팔레트, 실용성 중심' }, accentColor: 'slate' },
+  { id: 'warmNatural', label: { en: 'Warm Natural', ko: 'Warm Natural' }, description: { en: 'Earthy tones with organic textures', ko: '어스 톤과 유기적 텍스처' }, accentColor: 'amber' },
+  { id: 'softClay', label: { en: 'Soft Clay', ko: 'Soft Clay' }, description: { en: 'Rounded 3D shapes with matte pastels', ko: '매트 파스텔의 라운드 3D 셰이프' }, accentColor: 'rose' },
+  { id: 'bentoModern', label: { en: 'Bento Modern', ko: 'Bento Modern' }, description: { en: 'Grid-based card layout, bold type hierarchy', ko: '그리드 카드 레이아웃, 대담한 타이포그래피' }, accentColor: 'indigo' },
+  { id: 'deepMuted', label: { en: 'Deep Muted', ko: 'Deep Muted' }, description: { en: 'Low saturation dark palette, subtle contrast', ko: '저채도 다크 팔레트, 은은한 대비' }, accentColor: 'zinc' },
+  { id: 'darkLuxury', label: { en: 'Dark Luxury', ko: 'Dark Luxury' }, description: { en: 'Rich blacks with metallic accents', ko: '메탈릭 악센트의 리치 블랙' }, accentColor: 'amber' },
+  { id: 'cinematicDark', label: { en: 'Cinematic Dark', ko: 'Cinematic Dark' }, description: { en: 'Film-grade gradients with dramatic lighting', ko: '영화급 그라데이션과 드라마틱 라이팅' }, accentColor: 'violet' },
+  { id: 'boldPlayful', label: { en: 'Bold Playful', ko: 'Bold Playful' }, description: { en: 'Saturated primary colors with playful shapes', ko: '고채도 원색과 플레이풀 셰이프' }, accentColor: 'yellow' },
+  { id: 'neoBrutalist', label: { en: 'Neo Brutalist', ko: 'Neo Brutalist' }, description: { en: 'Raw borders, system fonts, high contrast', ko: '거친 보더, 시스템 폰트, 높은 대비' }, accentColor: 'red' },
+  { id: 'editorialBold', label: { en: 'Editorial Bold', ko: 'Editorial Bold' }, description: { en: 'Magazine-style large type and grids', ko: '매거진 스타일 대형 타이포와 그리드' }, accentColor: 'black' },
+  { id: 'cyberpunkNeon', label: { en: 'Cyberpunk Neon', ko: 'Cyberpunk Neon' }, description: { en: 'Neon glows on dark, sci-fi aesthetic', ko: '다크 배경의 네온 글로우, SF 미학' }, accentColor: 'fuchsia' },
+  { id: 'retroFuture', label: { en: 'Retro Future', ko: 'Retro Future' }, description: { en: '80s retro meets modern tech', ko: '80년대 레트로와 현대 테크의 만남' }, accentColor: 'orange' },
 ];
 
 export const SURFACE_SYSTEM_OPTIONS: BasisOption[] = [
@@ -79,6 +96,9 @@ export const INTERACTION_GRAMMAR_OPTIONS: BasisOption[] = [
   { id: 'restrained', label: { en: 'Restrained', ko: 'Restrained' } },
   { id: 'subtleProduct', label: { en: 'Subtle Product', ko: 'Subtle Product' } },
   { id: 'calmPremium', label: { en: 'Calm Premium', ko: 'Calm Premium' } },
+  { id: 'rawInstant', label: { en: 'Raw Instant', ko: 'Raw Instant' } },
+  { id: 'cinematicReveal', label: { en: 'Cinematic Reveal', ko: 'Cinematic Reveal' } },
+  { id: 'expressivePlayful', label: { en: 'Expressive Playful', ko: 'Expressive Playful' } },
 ];
 
 export const COMPONENT_SEMANTICS_OPTIONS: BasisOption[] = [
@@ -105,6 +125,20 @@ const INTERACTION_GRAMMAR_MAP: Record<VisualLanguageVariant, InteractionGrammarV
   fintechPremium: 'calmPremium',
   devtoolDark: 'restrained',
   minimalNeutral: 'calmPremium',
+  crispMinimal: 'restrained',
+  cleanBright: 'subtleProduct',
+  neutralPro: 'restrained',
+  warmNatural: 'calmPremium',
+  softClay: 'expressivePlayful',
+  bentoModern: 'subtleProduct',
+  deepMuted: 'calmPremium',
+  darkLuxury: 'cinematicReveal',
+  cinematicDark: 'cinematicReveal',
+  boldPlayful: 'expressivePlayful',
+  neoBrutalist: 'rawInstant',
+  editorialBold: 'rawInstant',
+  cyberpunkNeon: 'cinematicReveal',
+  retroFuture: 'expressivePlayful',
 };
 
 export function deriveInteractionGrammar(
@@ -134,6 +168,62 @@ const VH_MAP: Record<string, VisualHierarchyRulesVariant> = {
   'minimalNeutral|balanced8pt': 'controlledFocus',
   'minimalNeutral|compact8pt': 'quietLayered',
   'minimalNeutral|dense12ptHybrid': 'controlledFocus',
+  'crispMinimal|compact8pt': 'controlledFocus',
+  'crispMinimal|balanced8pt': 'controlledFocus',
+  'crispMinimal|airy8pt': 'quietLayered',
+  'crispMinimal|dense12ptHybrid': 'controlledFocus',
+  'cleanBright|compact8pt': 'controlledFocus',
+  'cleanBright|balanced8pt': 'summaryFirst',
+  'cleanBright|airy8pt': 'summaryFirst',
+  'cleanBright|dense12ptHybrid': 'controlledFocus',
+  'neutralPro|compact8pt': 'taskPriority',
+  'neutralPro|balanced8pt': 'taskPriority',
+  'neutralPro|airy8pt': 'taskPriority',
+  'neutralPro|dense12ptHybrid': 'taskPriority',
+  'warmNatural|compact8pt': 'summaryFirst',
+  'warmNatural|balanced8pt': 'summaryFirst',
+  'warmNatural|airy8pt': 'quietLayered',
+  'warmNatural|dense12ptHybrid': 'summaryFirst',
+  'softClay|compact8pt': 'controlledFocus',
+  'softClay|balanced8pt': 'summaryFirst',
+  'softClay|airy8pt': 'quietLayered',
+  'softClay|dense12ptHybrid': 'controlledFocus',
+  'bentoModern|compact8pt': 'controlledFocus',
+  'bentoModern|balanced8pt': 'controlledFocus',
+  'bentoModern|airy8pt': 'summaryFirst',
+  'bentoModern|dense12ptHybrid': 'controlledFocus',
+  'deepMuted|compact8pt': 'quietLayered',
+  'deepMuted|balanced8pt': 'quietLayered',
+  'deepMuted|airy8pt': 'quietLayered',
+  'deepMuted|dense12ptHybrid': 'quietLayered',
+  'darkLuxury|compact8pt': 'summaryFirst',
+  'darkLuxury|balanced8pt': 'summaryFirst',
+  'darkLuxury|airy8pt': 'quietLayered',
+  'darkLuxury|dense12ptHybrid': 'summaryFirst',
+  'cinematicDark|compact8pt': 'controlledFocus',
+  'cinematicDark|balanced8pt': 'controlledFocus',
+  'cinematicDark|airy8pt': 'summaryFirst',
+  'cinematicDark|dense12ptHybrid': 'controlledFocus',
+  'boldPlayful|compact8pt': 'controlledFocus',
+  'boldPlayful|balanced8pt': 'controlledFocus',
+  'boldPlayful|airy8pt': 'summaryFirst',
+  'boldPlayful|dense12ptHybrid': 'controlledFocus',
+  'neoBrutalist|compact8pt': 'taskPriority',
+  'neoBrutalist|balanced8pt': 'taskPriority',
+  'neoBrutalist|airy8pt': 'taskPriority',
+  'neoBrutalist|dense12ptHybrid': 'taskPriority',
+  'editorialBold|compact8pt': 'controlledFocus',
+  'editorialBold|balanced8pt': 'summaryFirst',
+  'editorialBold|airy8pt': 'summaryFirst',
+  'editorialBold|dense12ptHybrid': 'controlledFocus',
+  'cyberpunkNeon|compact8pt': 'controlledFocus',
+  'cyberpunkNeon|balanced8pt': 'controlledFocus',
+  'cyberpunkNeon|airy8pt': 'controlledFocus',
+  'cyberpunkNeon|dense12ptHybrid': 'controlledFocus',
+  'retroFuture|compact8pt': 'controlledFocus',
+  'retroFuture|balanced8pt': 'summaryFirst',
+  'retroFuture|airy8pt': 'summaryFirst',
+  'retroFuture|dense12ptHybrid': 'controlledFocus',
 };
 
 export function deriveVisualHierarchyRules(

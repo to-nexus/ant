@@ -123,6 +123,7 @@
     "codebase": "Codebase",
     "codebaseDetected": "Source code detected",
     "codebaseEmpty": "No source code — generate code first",
+    "codebaseOutputReady": "Code will be generated here",
     "willBeCreated": "will be created",
     "viewInIde": "View in IDE"
   },

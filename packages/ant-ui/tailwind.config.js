@@ -8,6 +8,8 @@ export default {
     containers: {
       xs: '280px',
       sm: '420px',
+      md: '640px',
+      lg: '900px',
     },
     extend: {
       fontFamily: {

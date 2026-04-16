@@ -74,6 +74,21 @@
       "basis-registry"
     ]
   },
+  "basis/visualTier/interactionGrammar/cinematicReveal": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/interactionGrammar/expressivePlayful": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/interactionGrammar/rawInstant": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "basis/visualTier/interactionGrammar/restrained": {
     "sources": [
       "basis-registry"
@@ -149,7 +164,55 @@
       "basis-registry"
     ]
   },
+  "basis/visualTier/visualLanguage/_token-rules": {
+    "sources": []
+  },
+  "basis/visualTier/visualLanguage/bentoModern": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/boldPlayful": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/cinematicDark": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/cleanBright": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/crispMinimal": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/cyberpunkNeon": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/darkLuxury": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/deepMuted": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "basis/visualTier/visualLanguage/devtoolDark": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/editorialBold": {
     "sources": [
       "basis-registry"
     ]
@@ -170,6 +233,31 @@
     ]
   },
   "basis/visualTier/visualLanguage/modernSaas": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/neoBrutalist": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/neutralPro": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/retroFuture": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/softClay": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/visualTier/visualLanguage/warmNatural": {
     "sources": [
       "basis-registry"
     ]
