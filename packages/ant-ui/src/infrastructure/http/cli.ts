@@ -190,6 +190,20 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     .catch((error) => {
       console.error('[cli.ts] Failed to start job:', error);
       
+      store.setRunning(false);
+      store.setLastJobFailed(true);
+      
+      try {
+        store.addChatMessage({
+          id: `msg-error-${Date.now()}`,
+          role: 'assistant',
+          contents: [{ type: 'text', content: `❌ Job 실행 실패: ${error instanceof Error ? error.message : String(error)}` }],
+          timestamp: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn('[cli.ts] Failed to add chat error message:', e);
+      }
+      
       if (exitListener) {
         exitListener(1, null);
       }
