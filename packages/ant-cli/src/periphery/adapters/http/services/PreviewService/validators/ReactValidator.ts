@@ -18,20 +18,8 @@ export class ReactValidator {
   private maxFileSizeBytes = 512 * 1024; // 512KB
   
   private async usesReactRouter(codebasePath: string): Promise<boolean> {
-    // Prefer package.json detection (fast, accurate)
-    const pkgPath = path.join(codebasePath, 'package.json');
-    try {
-      if (fs.existsSync(pkgPath)) {
-        const raw = await fs.promises.readFile(pkgPath, 'utf-8');
-        const pkg = JSON.parse(raw);
-        const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
-        if (deps['react-router-dom'] || deps['react-router']) return true;
-      }
-    } catch {
-      // ignore and fall back to code scan
-    }
-    
-    // Fallback: source scan for imports/usages
+    // Always verify actual usage in source code — package.json alone is not enough
+    // because the dependency may be listed but never imported (e.g., LLM added it speculatively).
     const srcPath = path.join(codebasePath, 'src');
     if (!fs.existsSync(srcPath)) return false;
     
@@ -142,7 +130,7 @@ export class ReactValidator {
         return {
           valid: false,
           framework: 'react',
-          reasoning: 'basepath-missing',
+          reasoning: 'basename-missing',
           reason: 'Missing Vite base path configuration for dev server proxy',
           suggestedFix: this.buildViteBaseSuggestedFix(),
         };
@@ -177,7 +165,7 @@ export class ReactValidator {
       return {
         valid: false,
         framework: 'react',
-        reasoning: 'basepath-missing',
+        reasoning: 'basename-missing',
         reason: 'Missing base path configuration for dev server proxy',
         suggestedFix: this.buildFullSuggestedFix(!hasViteBase, !hasBasenameConfig),
       };

@@ -68,7 +68,7 @@ export class VueValidator {
       return {
         valid: false,
         framework: 'vue',
-        reasoning: 'basepath-missing',
+        reasoning: 'basename-missing',
         reason: 'Missing base path configuration for dev server proxy',
         suggestedFix: this.buildSuggestedFix(!hasViteBase, !hasRouterBase),
       };
