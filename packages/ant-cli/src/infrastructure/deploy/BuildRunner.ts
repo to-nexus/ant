@@ -278,7 +278,15 @@ export async function runBuild(
     child.on('close', (code) => {
       if (code === 0) {
         log('✅ Build completed successfully');
-        done({ success: true, framework, outputDir, logs });
+        let finalOutputDir = outputDir;
+        if (framework === 'nextjs') {
+          const outDir = path.join(workspacePath, 'out');
+          if (fs.existsSync(outDir)) {
+            finalOutputDir = outDir;
+            log('📦 Detected Next.js static export (out/)');
+          }
+        }
+        done({ success: true, framework, outputDir: finalOutputDir, logs });
       } else {
         const error = `Build failed with exit code ${code}`;
         log(`❌ ${error}`);
