@@ -83,8 +83,9 @@ CRITICAL:
 | `"ui"` | Visual **implementation** | Apply styles to skeleton. Always created, even without ui-doc (priority 650–699) |
 
 **Principle** — `"design-system"` priority ladder (when this type appears in the task list):
-- **200**: Token infrastructure — always the first `design-system` task. Use `parallelGroup: "design-system"` so any **201+** task in the same group runs after it (same group serializes token work before wiring).
-- **201+**: Framework wiring or shared component library — only when ui-design artifacts justify that scope. Do NOT add 201+ when the only token source is visualTier policy (no ui-spec path for component library).
+- **200**: Token → CSS infrastructure (token variables, CSS custom-property generation, runtime import). Always the first `design-system` task.
+- **201+**: Shared UI components + framework wiring (import chain, framework bridge, component library). Only when ui-design artifacts justify that scope. Do NOT add 201+ when the only token source is visualTier policy (no ui-spec path for component library).
+- Both share `parallelGroup: "design-system"` — same group serializes so token infrastructure (200) completes before wiring/components (201+).
 
 **Constraint**: If the directive contains ANY error message, stack trace, or crash report, the task type MUST be `"error"`.
 
