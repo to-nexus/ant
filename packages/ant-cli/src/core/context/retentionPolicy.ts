@@ -22,7 +22,7 @@ export interface RetentionContext {
   intentGroup?: IntentGroup;
   currentTask: { targetFile?: string; id: string };
   nextTask?: { targetFile?: string; id: string };
-  conversationHistory: ConversationMessage[];
+  nodeHistory: ConversationMessage[];
 }
 
 /**
@@ -78,20 +78,20 @@ export function applyRetention(ctx: RetentionContext): ConversationMessage[] {
       return [];
 
     case 'compact': {
-      if (ctx.conversationHistory.length === 0) return [];
+      if (ctx.nodeHistory.length === 0) return [];
       const tokenManager = new TokenBudgetManager();
-      const { result } = compactRun(ctx.conversationHistory, tokenManager, {
+      const { result } = compactRun(ctx.nodeHistory, tokenManager, {
         microcompactHotTail: 1,
         autoCompactThreshold: 30000,
         autoCompactHotTail: 2,
       });
       console.log(
-        `🗂️  [ConversationRetention] Compacted ${ctx.conversationHistory.length} → ${result.length} messages`,
+        `🗂️  [ConversationRetention] Compacted ${ctx.nodeHistory.length} → ${result.length} messages`,
       );
       return result;
     }
 
     case 'preserve':
-      return ctx.conversationHistory;
+      return ctx.nodeHistory;
   }
 }

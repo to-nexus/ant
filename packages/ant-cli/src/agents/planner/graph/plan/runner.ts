@@ -14,6 +14,8 @@ import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { buildPlanGraph } from './graph';
 import { PlanGraphState, createInitialPlanState, getPlanMode } from './state';
+import { CONV_KEYS } from '../../../common/graph/conversations';
+import type { Conversations } from '../../../common/graph/conversations';
 import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { loadRecursionLimit, isRecursionLimitError, cleanupChat, invokeGraph, isEnvResume } from '../../../common/graph/runnerHelpers';
@@ -119,10 +121,13 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
           console.log(`🔄 [PlanRunner] Restoring resolvedAction (mode=${session.state.resolvedAction.mode})`);
         }
         
-        // ✅ Restore conversationHistory from session (enables LLM to continue from exact interruption point)
-        if (session.state.conversationHistory?.length) {
-          console.log(`🔄 [PlanRunner] Restoring conversationHistory (${session.state.conversationHistory.length} entries)`);
-          initialState.conversationHistory = session.state.conversationHistory;
+        // ✅ Restore conversations from session (enables LLM to continue from exact interruption point)
+        if (session.state.conversations) {
+          const nodeGen = session.state.conversations[CONV_KEYS.NODE_GENERATE];
+          if (nodeGen?.length) {
+            console.log(`🔄 [PlanRunner] Restoring conversations (node:generate=${nodeGen.length} entries)`);
+            initialState.conversations = { ...initialState.conversations, ...session.state.conversations };
+          }
         }
         
         // ✅ Clear stale interruption now that we've consumed it.
@@ -223,7 +228,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   // ✅ Create stateSnapshot: mutable shared reference for SIGTERM handler
   // Graph nodes update this during execution so the SIGTERM handler can access latest state.
   const stateSnapshot: NonNullable<PlanGraphState['deps']>['stateSnapshot'] = {
-    conversationHistory: [...initialState.conversationHistory],
+    conversations: { ...initialState.conversations },
     directive: initialState.directive,
     overrideDirective: initialState.overrideDirective,
     tokenUsage: initialState.tokenUsage,
@@ -236,8 +241,8 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   }
   
   // ✅ Register SIGTERM handler (aligned with code job's registerActiveOrchestrator pattern)
-  // On SIGTERM, saves directive/overrideDirective/conversationHistory from stateSnapshot to session.
-  // NOTE: Always saves state (not gated on conversationHistory.length) because directive and
+  // On SIGTERM, saves directive/overrideDirective/conversations from stateSnapshot to session.
+  // NOTE: Always saves state (not gated on conversations length) because directive and
   // overrideDirective must be persisted even when the job is killed before generate runs
   // (e.g., during triage after a clarify-answer submission).
   registerActiveOrchestrator({
@@ -259,14 +264,15 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               canResume: true,
             },
           };
-          // Only override conversationHistory when non-empty (preserve existing from prior run)
-          if (stateSnapshot.conversationHistory?.length) {
-            updates.conversationHistory = stateSnapshot.conversationHistory;
+          // Only override conversations when non-empty (preserve existing from prior run)
+          const nodeGen = stateSnapshot.conversations?.[CONV_KEYS.NODE_GENERATE];
+          if (nodeGen?.length) {
+            updates.conversations = stateSnapshot.conversations;
           }
           await params.deps.session.updateArtifacts(projectId, featureName, 'plan', {
             state: updates
           });
-          console.log(`💾 [PlanRunner] Saved state on interruption (${stateSnapshot.conversationHistory?.length || 0} history entries)`);
+          console.log(`💾 [PlanRunner] Saved state on interruption (${nodeGen?.length || 0} history entries)`);
         } catch (err) {
           console.warn('⚠️ [PlanRunner] Failed to save interruption state:', err);
         }
@@ -285,17 +291,17 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     if (isRecursionLimitError(error)) {
       console.log(`⚠️ [Planner] Recursion limit reached (${recursionLimit}). Finalizing with current progress.`);
       
-      // Read staging file (edited by tool calls so far) — path derived from target
+      // Read target file (edited by tool calls so far) — path derived from target
       const target = initialState.resolvedAction?.target?.[0];
-      const stagingFile = target ? `outputs/plan/${path.basename(target)}` : undefined;
-      let stagingSize = 0;
-      if (stagingFile) {
+      const targetFile = target || undefined;
+      let targetSize = 0;
+      if (targetFile) {
         try {
-          const content = await fsPromises.readFile(path.join(params.featurePath, stagingFile), 'utf-8');
-          stagingSize = content.length;
-          console.log(`📝 [Planner] Staging file found: ${stagingFile} (${stagingSize} chars)`);
+          const content = await fsPromises.readFile(path.join(params.featurePath, targetFile), 'utf-8');
+          targetSize = content.length;
+          console.log(`📝 [Planner] Target file found: ${targetFile} (${targetSize} chars)`);
         } catch {
-          console.log(`📝 [Planner] No staging file found`);
+          console.log(`📝 [Planner] No target file found`);
         }
       }
       
@@ -309,7 +315,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       }
       
       console.log('\n⏸️ Planner Agent paused (recursion limit)');
-      console.log(`   Staging: ${stagingFile || 'none'} (${stagingSize} chars)`);
+      console.log(`   Target: ${targetFile || 'none'} (${targetSize} chars)`);
       
       // ✅ Save session state on recursion limit (enables resume)
       // Without this, the session only has what saveConversationToSession saved during
@@ -326,10 +332,10 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
               resolvedAction: initialState.resolvedAction,
               tokenUsage: stateSnapshot?.tokenUsage || initialState.tokenUsage,
               jobTiming: jobTimingRef || session.state?.jobTiming,
-              // ✅ Save latest conversationHistory from stateSnapshot for resume
-              conversationHistory: stateSnapshot?.conversationHistory?.length
-                ? stateSnapshot.conversationHistory
-                : session.state?.conversationHistory,
+              // ✅ Save latest conversations from stateSnapshot for resume
+              conversations: stateSnapshot?.conversations?.[CONV_KEYS.NODE_GENERATE]?.length
+                ? stateSnapshot.conversations
+                : session.state?.conversations,
               recursionCount: recursionLimit,  // Hit the limit
               recursionLimit,
               jobId: params._httpJobId || session.state?.jobId,

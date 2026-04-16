@@ -2,6 +2,7 @@ import path from 'node:path';
 import { Annotation, StateGraph, END } from "@langchain/langgraph";
 import { getTechTier } from '@ant/shared';
 import { DetectableFields } from '../../../common/graph/annotationHelpers';
+import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
 import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, Violation, ViolationType } from "./state";
 import { CodeTask } from "../../types/task";
 import { codeResolveStrategy } from "./nodes/resolve";
@@ -288,11 +289,11 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     
     // Apply centralized conversation retention policy (code job always discards)
     const { applyRetention } = await import('../../../../core/utils/conversationRetention');
-    state.conversationHistory = applyRetention({
+    const retainedExecute = applyRetention({
       jobType: 'code',
       currentTask: { id: state.currentTask.id },
       nextTask: state.taskQueue?.peek() ? { id: state.taskQueue.peek()!.id } : undefined,
-      conversationHistory: state.conversationHistory || [],
+      nodeHistory: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     });
     state._executeCallIndex = 0;
     state._finalTaskLoopCount = 0;
@@ -401,7 +402,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       currentTask: undefined,
       retries: 0,
       violations: [],
-      conversationHistory: state.conversationHistory,  // Already processed by retention policy above
+      conversations: { [CONV_KEYS.NODE_EXECUTE]: retainedExecute },
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
@@ -1060,7 +1061,6 @@ export const CodeGraphChannels = {
       commandHistory: Annotation<any>,
       llmResponse: Annotation<any>,
       toolResults: Annotation<any>,
-      conversationHistory: Annotation<any>,
       interruption: Annotation<any>,
       _activePhase: Annotation<any>,
       _planEntryReason: Annotation<any>,
@@ -1068,7 +1068,6 @@ export const CodeGraphChannels = {
       _installNeeded: Annotation<any>,
       _appliedPlanHistory: Annotation<any>,
       _otherWorkerFiles: Annotation<any>,
-      planConversationHistory: Annotation<any>,
       figmaAvailable: Annotation<any>,
       figmaFileKey: Annotation<any>,
       figmaStartNodeId: Annotation<any>,

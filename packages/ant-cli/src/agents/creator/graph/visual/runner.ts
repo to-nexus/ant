@@ -10,8 +10,10 @@ import { RunVisualGraphParams, VisualGraphState } from './types.js';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient.js';
 import { loadRecursionLimit, cleanupChat, invokeGraph } from '../../../common/graph/runnerHelpers.js';
 import { applyCompactionToConversation } from '../../../../core/context/compactJob.js';
+import { CONV_KEYS, getConv } from '../../../common/graph/conversations.js';
 import { JobTimingManager } from '../../../common/graph/timing/JobTimingManager.js';
 import type { ConversationEntry } from '../../../../core/types/session.js';
+import type { ConversationMessage } from '../../../common/graph/conversations.js';
 import type { JobTiming } from '../../../common/graph/timing/JobTimingManager.js';
 
 /**
@@ -66,7 +68,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
     chatSource,
     actionMetadata,
 
-    conversation: [],
+    conversations: {},
     engineeredPrompt: undefined,
     sketchImages: undefined,
     svgSketches: undefined,
@@ -140,11 +142,12 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
       const projectId = deps.session.projectId || process.env.ANT_PROJECT_ID || 'default';
       const featureName = deps.session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
 
+      const sessionMain = getConv(finalState.conversations, CONV_KEYS.SESSION_MAIN);
       const prunedConversation = applyCompactionToConversation(
-        finalState.conversation,
+        sessionMain as any,
         finalState._conversationCompaction,
-        (summary): ConversationEntry => ({
-          role: 'system',
+        (summary) => ({
+          role: 'system' as const,
           content: summary,
           timestamp: new Date().toISOString(),
           metadata: { chapterSummary: 'Conversation history summary' },
@@ -153,6 +156,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
 
       await deps.session.updateArtifacts(projectId, featureName, 'visual', {
         state: {
+          conversations: { [CONV_KEYS.SESSION_MAIN]: prunedConversation },
           conversation: prunedConversation,
           directive: finalState.directive,
           tokenUsage: finalState.tokenUsage,
@@ -167,7 +171,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
           sketchVariations: finalState.sketchVariations,
         },
       });
-      console.log(`💾 [Visual] Session saved (${prunedConversation.length} conversation entries, was ${finalState.conversation?.length || 0})`);
+      console.log(`💾 [Visual] Session saved (${prunedConversation.length} conversation entries, was ${sessionMain.length})`);
 
       if (deps.fileTreeUpdate) {
         deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);

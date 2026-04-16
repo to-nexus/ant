@@ -35,7 +35,7 @@ export interface TokenLogEntry {
   /** Cost-weighted input: input*1.0 + cacheCreation*1.25 + cacheRead*0.1 */
   billableInputTokens: number;
 
-  conversationHistoryLength: number;
+  nodeHistoryLength: number;
   projectCodeContextFiles: number;
   estimatedPromptChars: number;
 
@@ -65,7 +65,7 @@ export interface TokenLogContext {
   taskName: string;
   node: string;
   callIndex: number;
-  conversationHistoryLength?: number;
+  nodeHistoryLength?: number;
   projectCodeContextFiles?: number;
   estimatedPromptChars?: number;
   taskCumulativeInput?: number;
@@ -143,7 +143,7 @@ export class TokenLogger {
         cacheReadTokens,
         cacheCreationTokens,
         billableInputTokens: billable,
-        conversationHistoryLength: context.conversationHistoryLength ?? 0,
+        nodeHistoryLength: context.nodeHistoryLength ?? 0,
         projectCodeContextFiles: context.projectCodeContextFiles ?? 0,
         estimatedPromptChars: context.estimatedPromptChars ?? 0,
         cacheHitRatio,

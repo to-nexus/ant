@@ -138,7 +138,7 @@ export class TaskWorker<T extends BaseTask> {
       },
       // Per-worker independent state
       planText: '',
-      conversationHistory: [],
+      conversations: {},
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       toolResults: [],
@@ -151,7 +151,7 @@ export class TaskWorker<T extends BaseTask> {
       // Restore from resumeState if task was interrupted
       ...(task.interrupted && (task as any).resumeState ? {
         planText: (task as any).resumeState.planText || '',
-        conversationHistory: (task as any).resumeState.conversationHistory || [],
+        conversations: (task as any).resumeState.conversations || {},
         projectCodeContext: (task as any).resumeState.projectCodeContext,
         retries: (task as any).resumeState.retries || 0,
         violations: (task as any).resumeState.violations || [],
@@ -202,7 +202,7 @@ export class TaskWorker<T extends BaseTask> {
 
     return {
       planText: this.currentState.planText,
-      conversationHistory: this.currentState.conversationHistory,
+      conversations: this.currentState.conversations,
       projectCodeContext: this.currentState.projectCodeContext
         ? {
             source: this.currentState.projectCodeContext.source,

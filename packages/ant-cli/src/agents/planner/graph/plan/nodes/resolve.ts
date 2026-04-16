@@ -1,9 +1,9 @@
 /**
  * Plan Resolve Strategy
  *
- * Determines target, loads documents, creates staging copies,
- * loads eval reports and session history. Mode detection and RAC
- * creation are handled by the downstream detect node.
+ * Determines target, loads documents, loads eval reports and
+ * session history. Mode detection and RAC creation are handled
+ * by the downstream detect node.
  *
  * Target resolution (3 cases):
  *   1. Explicit: actionMetadata.target from UI
@@ -14,7 +14,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { PlanGraphState } from '../state';
-import { ConversationEntry } from '../../../../../core/types/session';
+import type { ConversationEntry } from '../../../../../core/types/session';
+import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations';
+import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import type { ResolvedArtifact } from '@ant/shared';
@@ -99,29 +101,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     console.log(`   Documents: ${documents.length} loaded (${documents.filter(d => d.role === 'ref').length} ref, ${documents.filter(d => d.role === 'context').length} context)`);
   }
 
-  // 5. Create staging copies
-  if (hasExistingTarget && !isExplainIntent && actionMetadata?.intent !== 'gen-plan') {
-    const stagingDir = path.join(featurePath, 'outputs/plan');
-    const target = targets[0];
-    const stagingPath = path.join(stagingDir, path.basename(target));
-    try {
-      fs.mkdirSync(stagingDir, { recursive: true });
-      const content = fs.readFileSync(path.join(featurePath, target), 'utf-8');
-      fs.writeFileSync(stagingPath, content, 'utf-8');
-      console.log(`   Staging: Created outputs/plan/${path.basename(target)} (${content.length} chars)`);
-      if (state.deps?.fileTreeUpdate) {
-        const projectId = process.env.ANT_PROJECT_ID;
-        const featureName = process.env.ANT_FEATURE_NAME;
-        if (projectId && featureName) {
-          state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
-        }
-      }
-    } catch (error: any) {
-      console.warn(`   ⚠️ Staging: Failed to create staging copy: ${error.message}`);
-    }
-  }
-
-  // 6. Load eval reports (skip stale evals)
+  // 5. Load eval reports (skip stale evals)
   let evalReport: string | undefined;
   const evalDir = path.join(featurePath, 'outputs/evals/prd');
   try {
@@ -147,35 +127,44 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
 
   const rubricContent: string | undefined = undefined;
 
-  // 8. Load multi-turn conversation + recent session turns
-  let conversation: ConversationEntry[] = [];
+  // 6. Load multi-turn conversation + recent session turns
+  let sessionMain: ConversationMessage[] = [];
+  let nodeGenerate: ConversationMessage[] = [];
   let isConversationContinuation = false;
-  let conversationHistoryReset = false;
+  let nodeHistoryReset = false;
   let recentTurnSummaries: string[] | undefined;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
   try {
     const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
 
-    if (sessionData.state?.conversation && Array.isArray(sessionData.state.conversation)) {
-      conversation = sessionData.state.conversation;
-      console.log(`   Conversation: ${conversation.length} entries loaded from session`);
+    // Load from new format first, fallback to legacy
+    if (sessionData.state?.conversations?.[CONV_KEYS.SESSION_MAIN]) {
+      sessionMain = sessionData.state.conversations[CONV_KEYS.SESSION_MAIN];
+      console.log(`   Conversation: ${sessionMain.length} entries loaded from session`);
     }
 
-    const shouldContinueConversation = conversation.length > 0 && state.overrideDirective && (
+    if (sessionData.state?.conversations?.[CONV_KEYS.NODE_GENERATE]) {
+      nodeGenerate = sessionData.state.conversations[CONV_KEYS.NODE_GENERATE];
+    }
+
+    const shouldContinueConversation = sessionMain.length > 0 && state.overrideDirective && (
       state.isResume || state.chatSource
     );
     if (shouldContinueConversation) {
-      conversation.push({
+      sessionMain.push({
         role: 'user',
         content: state.overrideDirective!,
         timestamp: new Date().toISOString(),
       });
       isConversationContinuation = true;
-      console.log(`   Conversation: Appended new user message (now ${conversation.length} entries)`);
+      console.log(`   Conversation: Appended new user message (now ${sessionMain.length} entries)`);
       try {
         const sessionWriteData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
         sessionWriteData.state = sessionWriteData.state || {};
-        sessionWriteData.state.conversation = conversation;
+        sessionWriteData.state.conversations = {
+          ...sessionWriteData.state.conversations,
+          [CONV_KEYS.SESSION_MAIN]: sessionMain,
+        };
         sessionWriteData.updatedAt = new Date().toISOString();
         fs.writeFileSync(sessionPath, JSON.stringify(sessionWriteData, null, 2), 'utf-8');
         console.log(`   Conversation: Persisted to session (crash-safe)`);
@@ -184,12 +173,12 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
       }
     }
 
-    if (!isConversationContinuation && state.isResume && conversation.length > 0) {
-      const lastEntry = conversation[conversation.length - 1];
+    if (!isConversationContinuation && state.isResume && sessionMain.length > 0) {
+      const lastEntry = sessionMain[sessionMain.length - 1];
       if (lastEntry.role === 'user' && lastEntry.content) {
-        isConversationContinuation = true;
-        conversationHistoryReset = true;
-        console.log(`   Conversation: Resuming pending user turn (${conversation.length} entries)`);
+      isConversationContinuation = true;
+      nodeHistoryReset = true;
+        console.log(`   Conversation: Resuming pending user turn (${sessionMain.length} entries)`);
       }
     }
 
@@ -213,8 +202,8 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     const latestEvalFile = fs.readdirSync(evalDir).filter(f => f.endsWith('.md')).sort().reverse()[0];
     contextItems.push({ label: 'Eval report', detail: latestEvalFile });
   }
-  if (conversation.length > 0) {
-    contextItems.push({ label: 'Conversation', detail: `${conversation.length} messages` });
+  if (sessionMain.length > 0) {
+    contextItems.push({ label: 'Conversation', detail: `${sessionMain.length} messages` });
   } else if (recentTurnSummaries && recentTurnSummaries.length > 0) {
     contextItems.push({ label: 'Session history', detail: `${recentTurnSummaries.length} turns` });
   }
@@ -227,9 +216,14 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     evalReport,
     rubricContent,
     recentTurnSummaries,
-    conversation,
+    conversations: {
+      [CONV_KEYS.SESSION_MAIN]: sessionMain,
+      ...(nodeGenerate.length > 0 && !nodeHistoryReset
+        ? { [CONV_KEYS.NODE_GENERATE]: nodeGenerate }
+        : { [CONV_KEYS.NODE_GENERATE]: [] }),
+    },
     isConversationContinuation,
     resolvedArtifacts: documents.length > 0 ? documents : undefined,
-    ...(conversationHistoryReset ? { conversationHistory: [] } : {}),
+    sessionDigest: buildSessionDigest(sessionMain),
   } as Partial<PlanGraphState>;
 }

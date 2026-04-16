@@ -147,7 +147,6 @@ export interface SessionState {
   
   // Execution Context
   planText?: string;
-  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>;
   files?: Array<{ path: string; content: string }>;
   filesToDelete?: string[];
   
@@ -183,6 +182,9 @@ export interface SessionState {
   
   // Multi-Turn Conversation (cross-run semantic history)
   conversation?: ConversationEntry[];
+
+  // Unified conversations record (new format — node:* + session:* keys)
+  conversations?: Record<string, any[]>;
 
   // Inter-Job Context Bridge (cross-job directive+result history)
   jobConversation?: ConversationEntry[];

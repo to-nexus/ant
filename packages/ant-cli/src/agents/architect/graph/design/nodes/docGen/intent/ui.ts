@@ -14,6 +14,7 @@
  */
 
 import { DesignGraphState } from '../../../state';
+import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations';
 import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import { CacheableContent, MessageContentBlock } from '../../../../../../../core/ports/llm';
 import { DesignTask } from '../../../../../types/task';
@@ -39,11 +40,11 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   const task = state.currentTask;
   
   // ✅ Check if this is a continuation after tool calling
-  const conversationHistory = state.conversationHistory || [];
-  const isAfterToolCall = conversationHistory.length > 0;
+  const nodeDocGen = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
+  const isAfterToolCall = nodeDocGen.length > 0;
   
   if (isAfterToolCall) {
-    console.log(`🎨 [DocGen] UI Design continuing with existing conversation (${conversationHistory.length} messages)`);
+    console.log(`🎨 [DocGen] UI Design continuing with existing conversation (${nodeDocGen.length} messages)`);
     
     // Build fresh user prompt as initial blocks
     const freshPrompt = await buildUiDesignFreshPrompt(state);
@@ -51,7 +52,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     // Compose messages via MessageComposer (handles history skip, compaction, budget)
     const { messages } = composeMessages({
       initialBlocks: freshPrompt,
-      priorTurns: conversationHistory,
+      priorTurns: nodeDocGen as any,
     });
     
     return messages;
@@ -441,7 +442,7 @@ function buildPreviousUiDocsFromPool(
 /**
  * Load previously generated UI documents for dependent tasks
  * 
- * Why needed: conversationHistory resets between tasks (each task = fresh session)
+ * Why needed: node history resets between tasks (each task = fresh session)
  * So prior task outputs must be loaded from disk.
  * 
  * Dependency:

@@ -2,13 +2,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import { PlanGraphState, getPlanMode } from '../../state';
-import { ConversationEntry } from '../../../../../../core/types/session';
+import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
 import { applyCompactionToConversation } from '../../../../../../core/context';
 import type { ConversationCompaction } from '../../../../../../core/context';
-import { getStagingPath } from './promptBuilder';
+import { getTargetPath } from './promptBuilder';
 
 /**
- * Prune conversationHistory (Anthropic-format ReAct messages) via compactRun.
+ * Prune node history (Anthropic-format ReAct messages) via compactRun.
  * Used both before LLM call and before session persist.
  */
 export async function pruneConversationHistory(
@@ -34,7 +34,7 @@ export async function pruneConversationHistory(
  * On first run: adds user directive + assistant response.
  * On continuation: adds assistant response (user message was already appended by resolve).
  * 
- * Also saves conversationHistory (full LLM messages) for resume support.
+ * Also saves node history (full LLM messages) for resume support.
  */
 export async function saveConversationToSession(
   state: PlanGraphState,
@@ -47,7 +47,8 @@ export async function saveConversationToSession(
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
   
   try {
-    const updatedConversation: ConversationEntry[] = [...(state.conversation || [])];
+    const sessionMain = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
+    const updatedConversation: ConversationMessage[] = [...sessionMain];
     
     if (updatedConversation.length === 0 && state.directive) {
       updatedConversation.push({
@@ -63,7 +64,7 @@ export async function saveConversationToSession(
       timestamp: new Date().toISOString(),
       metadata: {
         hasArtifact: !!generatedDocument,
-        artifactPath: generatedDocument ? getStagingPath(state) : undefined,
+        artifactPath: generatedDocument ? getTargetPath(state) : undefined,
         mode: getPlanMode(state),
       },
     });
@@ -87,11 +88,12 @@ export async function saveConversationToSession(
     if (!sessionData.state) {
       sessionData.state = {};
     }
-    sessionData.state.conversation = applyCompactionToConversation(
-      updatedConversation,
+    if (!sessionData.state.conversations) sessionData.state.conversations = {};
+    sessionData.state.conversations[CONV_KEYS.SESSION_MAIN] = applyCompactionToConversation(
+      updatedConversation as any,
       compaction,
-      (summary): ConversationEntry => ({
-        role: 'system',
+      (summary) => ({
+        role: 'system' as const,
         content: summary,
         timestamp: new Date().toISOString(),
         metadata: { chapterSummary: 'Conversation history summary' },
@@ -108,15 +110,18 @@ export async function saveConversationToSession(
     sessionData.state.recursionLimit = state.recursionLimit;
     if (currentConversationHistory?.length) {
       try {
-        sessionData.state.conversationHistory = await pruneConversationHistory(currentConversationHistory);
+        sessionData.state.conversations[CONV_KEYS.NODE_GENERATE] = await pruneConversationHistory(currentConversationHistory);
       } catch {
-        sessionData.state.conversationHistory = currentConversationHistory;
+        sessionData.state.conversations[CONV_KEYS.NODE_GENERATE] = currentConversationHistory;
       }
     }
     sessionData.updatedAt = new Date().toISOString();
     
     if (state.deps?.stateSnapshot) {
-      state.deps.stateSnapshot.conversationHistory = currentConversationHistory || state.conversationHistory;
+      state.deps.stateSnapshot.conversations = {
+        ...state.conversations,
+        [CONV_KEYS.NODE_GENERATE]: (currentConversationHistory || getConv(state.conversations, CONV_KEYS.NODE_GENERATE)) as ConversationMessage[],
+      };
       state.deps.stateSnapshot.directive = state.directive;
       state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
     }

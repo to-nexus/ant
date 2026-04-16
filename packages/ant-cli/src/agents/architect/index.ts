@@ -226,6 +226,7 @@ export async function architectAgent(
       const dInitial: DesignGraphState = {
         context,
         directive: input,
+        conversations: {},
         workspaceConfig: config,
         deps: {
           llm: deps?.llm,
@@ -381,6 +382,7 @@ export async function architectAgent(
         const initial: ArchitectGraphState = {
           context,
           directive: input,
+          conversations: {},
           workspaceConfig: config,
           deps: { 
             memory: deps?.memory, 

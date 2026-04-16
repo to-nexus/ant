@@ -5,7 +5,7 @@
 import type { MessageContentBlock, ToolUseContentBlock, ToolResultContentBlock } from '../../../../../../core/ports/llm';
 
 /**
- * Extract files read during Plan's tool loop from planConversationHistory.
+ * Extract files read during Plan's tool loop from nodePlanHistory.
  *
  * Scans assistant messages for read_file tool_use blocks, matches them with
  * corresponding tool_result blocks in the next user message, and returns

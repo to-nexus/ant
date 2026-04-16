@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
+import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import { accumulateTokenUsage, upsertPhaseTokenUsage, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
@@ -108,24 +109,25 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
   const pb = state.deps.promptBuilder;
 
   const { compactJob, VISUAL_COMPACTION_THRESHOLD, VISUAL_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } = await import('../../../../../core/context');
-  const allButLast = state.conversation.length > 1
-    ? state.conversation.slice(0, -1)
+  const sessionMain = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
+  const allButLast = sessionMain.length > 1
+    ? sessionMain.slice(0, -1)
     : [];
-  let recentConv: typeof state.conversation;
+  let recentConv: typeof sessionMain;
   let convSummary: string | undefined;
   let compactionMeta: import('../../../../../core/context').ConversationCompaction | undefined;
   try {
     const result = allButLast.length > 0
-      ? await compactJob(allButLast, directLLM, pb, {
+      ? await compactJob(allButLast as any, directLLM, pb, {
           threshold: VISUAL_COMPACTION_THRESHOLD,
           recentWindowSize: VISUAL_COMPACTION_WINDOW,
           maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
         })
       : { entries: allButLast, summary: undefined, wasCompacted: false, tokensBefore: 0, tokensAfter: 0 };
-    recentConv = result.entries;
+    recentConv = result.entries as any;
     convSummary = result.summary;
-    if (result.tokenUsage) {
-      accumulateTokenUsage(state, result.tokenUsage, { taskLevel: false, jobLevel: true });
+    if ((result as any).tokenUsage) {
+      accumulateTokenUsage(state, (result as any).tokenUsage, { taskLevel: false, jobLevel: true });
     }
     compactionMeta = result.wasCompacted
       ? { summary: result.summary!, summarizedCount: allButLast.length - VISUAL_COMPACTION_WINDOW }
@@ -250,14 +252,14 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       return {
         routeDecision: 'clarify',
         visualError: undefined,
-        conversation: [
-          ...state.conversation,
+        conversations: { [CONV_KEYS.SESSION_MAIN]: [
+          ...sessionMain,
           {
             role: 'assistant' as const,
             content: fallbackMsg,
             timestamp: new Date().toISOString(),
           },
-        ],
+        ] },
         _phaseTimings: { ...state._phaseTimings, direct: Date.now() - phaseStart },
       };
     }
@@ -284,7 +286,7 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
       await logPrompt(state.featurePath, state._httpJobId, 'visual', 'direct', systemPrompt.length + userPrompt.length, {
         templatePath: 'jobs/visual/nodes/direct/variants/default/base',
         usedTemplates: ['jobs/visual/nodes/direct/variants/default/base', 'jobs/visual/nodes/direct/variants/default/rules', 'jobs/visual/nodes/direct/variants/default/context'],
-        injectedVariables: { assetType, currentDirective, conversationEntries: state.conversation.length },
+        injectedVariables: { assetType, currentDirective, conversationEntries: sessionMain.length },
         hardcodedContent: JSON.stringify({ route: result.route, engineeredPrompt: result.engineeredPrompt, reasoning: result.reasoning }),
       });
     } catch { /* non-critical */ }
@@ -347,14 +349,14 @@ export async function directNode(state: VisualGraphState): Promise<Partial<Visua
 
   if (result.route === 'clarify' && result.clarifyQuestion) {
     updates.clarifyCount = clarifyCount + 1;
-    updates.conversation = [
-      ...state.conversation,
+    updates.conversations = { [CONV_KEYS.SESSION_MAIN]: [
+      ...sessionMain,
       {
         role: 'assistant' as const,
         content: result.clarifyQuestion,
         timestamp: new Date().toISOString(),
       },
-    ];
+    ] };
     await chatAPI.sendLLMEvent({ type: 'text', text: result.clarifyQuestion });
   }
 

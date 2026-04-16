@@ -382,7 +382,7 @@ export async function generatePlanText(
         taskName: state.currentTask?.name || 'unknown',
         node: 'plan-planGen',
         callIndex: 0,
-        conversationHistoryLength: 0,
+        nodeHistoryLength: 0,
         projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
         estimatedPromptChars: prompt.length,
         taskCumulativeInput: 0,
@@ -539,7 +539,7 @@ export const PLAN_TOOL_LOOP_MAX = 15;
 
 export type PlanWithToolsResult =
   | { planText: string }
-  | { llmResponse: { toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; textResponse: string; thinking?: string; thinkingSignature?: string; done: false; tokenUsage?: any }; planConversationHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>; _activePhase: 'plan' }
+  | { llmResponse: { toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; textResponse: string; thinking?: string; thinkingSignature?: string; done: false; tokenUsage?: any }; nodePlanHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>; _activePhase: 'plan' }
   | null;
 
 /**
@@ -649,7 +649,7 @@ export async function runPlanLLMWithTools(
           taskName: state.currentTask?.name || 'unknown',
           node: 'plan-toolLoop',
           callIndex: planRound,
-          conversationHistoryLength: messages.length,
+          nodeHistoryLength: messages.length,
           recursionCount: state.recursionCount,
         }
       );
@@ -738,7 +738,7 @@ export async function runPlanLLMWithTools(
 
     return {
       llmResponse: { toolCalls, textResponse, thinking: thinking || undefined, thinkingSignature: thinkingSignature || undefined, done: false, tokenUsage },
-      planConversationHistory: [...messages, assistantMsg],
+      nodePlanHistory: [...messages, assistantMsg],
       _activePhase: 'plan' as const,
     };
   }
@@ -851,7 +851,7 @@ export async function finalizePlanFromExploration(
           taskName: task.name,
           node: 'plan-finalize',
           callIndex: 0,
-          conversationHistoryLength: finalizeMessage.length,
+          nodeHistoryLength: finalizeMessage.length,
           recursionCount: state.recursionCount,
         },
       );

@@ -188,7 +188,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       currentTask: completedTask as any,
       _taskCompleted: true,
       planText: '',
-      conversationHistory: [],
+      conversations: {},
       files: [],
       fileErrors: undefined,
       tokenUsage: state.tokenUsage,

@@ -30,7 +30,7 @@ export interface TokenUsageBreakdown {
  */
 export interface TaskResumeState {
   planText: string;
-  conversationHistory: any[];
+  conversations: Record<string, any[]>;
   projectCodeContext?: {
     source: string;
     filePaths: string[];

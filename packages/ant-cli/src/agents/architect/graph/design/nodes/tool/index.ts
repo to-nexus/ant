@@ -11,6 +11,7 @@
  */
 
 import { DesignGraphState } from '../../state';
+import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../../core/utils/toolResultManager';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
@@ -74,7 +75,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
   resultManager: designToolResultManager,
 
   getHistory(state) {
-    return state.conversationHistory || [];
+    return getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
   },
 
   getCache(state) {
@@ -111,7 +112,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
 
   buildReturn(state, { updatedHistory, updatedCache, hookUpdates }) {
     return {
-      conversationHistory: updatedHistory,
+      conversations: { [CONV_KEYS.NODE_DOCGEN]: updatedHistory },
       files: state.files,
       _currentTaskTokenUsage: state._currentTaskTokenUsage,
       tokenUsage: state.tokenUsage,

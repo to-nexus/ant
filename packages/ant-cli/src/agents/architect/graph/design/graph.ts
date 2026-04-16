@@ -1,5 +1,6 @@
 import { Annotation, StateGraph } from "@langchain/langgraph";
 import { DetectableFields } from '../../../common/graph/annotationHelpers';
+import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
 import { DesignGraphState } from "./state";
 import { DesignTask } from "../../types/task";
 import { designResolveStrategy } from "./nodes/resolve";
@@ -162,7 +163,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               completedTasksDetails: state.completedTasksDetails || [],
               currentTask: undefined,
               planText: state.planText,
-              conversationHistory: state.conversationHistory || [],
+              conversations: state.conversations,
               files: state.files || [],
               filesToDelete: state.filesToDelete || [],
               jobId: state.jobId,
@@ -262,7 +263,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               completedTasksDetails: state.completedTasksDetails || [],
               currentTask: undefined,
               planText: state.planText,
-              conversationHistory: state.conversationHistory || [],
+              conversations: state.conversations,
               files: state.files || [],
               filesToDelete: state.filesToDelete || [],
               jobId: state.jobId,
@@ -347,7 +348,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       };
 
       return {
-        conversationHistory: [...(state.conversationHistory || []), retryMessage],
+        conversations: { [CONV_KEYS.NODE_DOCGEN]: [...getConv(state.conversations, CONV_KEYS.NODE_DOCGEN), retryMessage] },
         _assetValidationFailed: true,
         _assetValidationRetried: (state._assetValidationRetried || 0) + 1,
         _docGenCallIndex: 0,
@@ -436,7 +437,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
               completedTasksDetails,
               currentTask: undefined,
               planText: state.planText,
-              conversationHistory: [],  // Checkpoint saves empty; runtime state uses retention policy
+              conversations: {},  // Checkpoint saves empty; runtime state uses retention policy
               files: state.files || [],
               filesToDelete: state.filesToDelete || [],
               jobId: state.jobId,
@@ -504,7 +505,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       intentGroup: (state.resolvedAction?.intentGroup as any) || 'design-system',
       currentTask: { targetFile: state.currentTask.targetFile, id: state.currentTask.id },
       nextTask: nextTask ? { targetFile: (nextTask as any).targetFile, id: nextTask.id } : undefined,
-      conversationHistory: state.conversationHistory || [],
+      nodeHistory: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN) as any,
     });
     
     return {
@@ -512,7 +513,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       completedTasksDetails,
       currentTask: undefined,
       planText: '',
-      conversationHistory: retainedHistory,
+      conversations: { [CONV_KEYS.NODE_DOCGEN]: retainedHistory },
       files: [],
       artifacts: updatedPool,
       fileErrors: undefined,
@@ -903,7 +904,6 @@ export const DesignGraphChannels = {
   filesToDelete: Annotation<any>,
   lessons: Annotation<any>,
   llmResponse: Annotation<any>,
-  conversationHistory: Annotation<any>,
   uiReferences: Annotation<any>,
   uiAssetsList: Annotation<any>,
   figmaConfig: Annotation<any>,

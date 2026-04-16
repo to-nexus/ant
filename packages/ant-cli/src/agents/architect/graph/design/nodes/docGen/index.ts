@@ -21,6 +21,7 @@
 import type { MessageContentBlock } from '../../../../../../core/ports/llm';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { DesignGraphState } from '../../state';
+import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
@@ -60,7 +61,8 @@ export async function docGen(
   const taskTokensSoFar = state._currentTaskTokenUsage;
   console.log(`\n💭 [DocGen] Starting iteration ${newCallIndex} for task "${state.currentTask?.name || 'unknown'}"`);
   console.log(`   Intent group: ${intentGroup || 'unknown'}`);
-  console.log(`   Conversation history: ${state.conversationHistory?.length || 0} messages`);
+  const nodeDocGen = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
+  console.log(`   Conversation history: ${nodeDocGen.length} messages`);
   if (taskTokensSoFar?.totalTokens) {
     console.log(`   Task tokens so far: ${taskTokensSoFar.totalTokens} (in=${taskTokensSoFar.inputTokens} out=${taskTokensSoFar.outputTokens})`);
   }
@@ -68,11 +70,13 @@ export async function docGen(
   // ✅ Spec clarify continuation: append user's clarify response to conversation history
   if (intentGroup === 'design-spec' && state.awaitingClarify && state.overrideDirective) {
     console.log(`📋 [DocGen/Spec] Clarify continuation — appending user response to conversation`);
-    if (!state.conversationHistory) state.conversationHistory = [];
-    state.conversationHistory.push({
-      role: 'user',
-      content: state.overrideDirective,
-    });
+    state.conversations = {
+      ...state.conversations,
+      [CONV_KEYS.NODE_DOCGEN]: [...nodeDocGen, {
+        role: 'user',
+        content: state.overrideDirective,
+      }],
+    };
     state.awaitingClarify = false;
   }
   
@@ -202,7 +206,7 @@ export async function docGen(
   let pendingToolCalls: Array<{ id: string; name: string; args: any }> = [];
   
   // ✅ Check if this is a continuation after tool calling (Code job pattern)
-  const isAfterToolCall = state.conversationHistory && state.conversationHistory.length > 0;
+  const isAfterToolCall = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length > 0;
   
   try {
     // ✅ Stream with XML parsing + tool calling support
@@ -292,8 +296,7 @@ export async function docGen(
     // Extract explicitDone from finalize result
     const explicitDone = finalizeResult.explicitDone || false;
     
-    // Build conversation history for resume
-    const conversationHistory = buildConversationHistory(state, messages, thinking, thinkingSignature, textResponse, hasToolCalls, pendingToolCalls);
+    const nodeHistory = buildNodeHistory(state, messages, thinking, thinkingSignature, textResponse, hasToolCalls, pendingToolCalls);
     
     // Accumulate token usage to state
     if (capturedUsage) {
@@ -311,7 +314,7 @@ export async function docGen(
           taskName: state.currentTask?.name || 'unknown',
           node: 'docGen',
           callIndex: newCallIndex - 1,
-          conversationHistoryLength: state.conversationHistory?.length || 0,
+          nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length,
           estimatedPromptChars: (messages as any[]).reduce((sum: number, m: any) => {
             if (typeof m.content === 'string') return sum + m.content.length;
             if (Array.isArray(m.content)) {
@@ -380,7 +383,7 @@ export async function docGen(
               {
                 state: {
                   awaitingClarify: true,
-                  conversationHistory,
+                  conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
                   resolvedAction: state.resolvedAction,
                   directive: state.directive,
                   overrideDirective: state.overrideDirective,
@@ -401,7 +404,7 @@ export async function docGen(
         
         return {
           files,
-          conversationHistory,
+          conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
           awaitingClarify: true,
           llmResponse: { textResponse, done: true },
           _docGenCallIndex: newCallIndex,
@@ -415,7 +418,7 @@ export async function docGen(
     
     return {
       files,
-      conversationHistory,
+      conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _docGenCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
@@ -503,7 +506,7 @@ function calculateMaxTokens(state: DesignGraphState): number {
  * (preceeding the lastmost set of tool_use and tool_result blocks).
  * We recommend you include thinking blocks from previous turns."
  */
-function buildConversationHistory(
+function buildNodeHistory(
   state: DesignGraphState,
   messages: Array<{ role: 'user' | 'assistant'; content: any }>,
   thinkingContent: string,
@@ -512,16 +515,15 @@ function buildConversationHistory(
   hasToolCalls: boolean,
   pendingToolCalls: Array<{ id: string; name: string; args: Record<string, any> }>,
 ): Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }> {
-  let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>;
+  let history: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>;
+  const existingDocGen = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN);
   
-  if (state.conversationHistory && state.conversationHistory.length > 0) {
-    // ✅ Tool loop: Extend existing history
-    conversationHistory = [...state.conversationHistory];
+  if (existingDocGen.length > 0) {
+    history = [...existingDocGen] as any;
   } else {
-    // ✅ Fresh start: Build from messages
-    conversationHistory = [];
+    history = [];
     for (const msg of messages) {
-      conversationHistory.push({
+      history.push({
         role: msg.role,
         content: msg.content
       });
@@ -529,20 +531,19 @@ function buildConversationHistory(
   }
   
   if (hasToolCalls) {
-    conversationHistory.push(buildAssistantMessage({
+    history.push(buildAssistantMessage({
       thinking: thinkingContent || undefined,
       thinkingSignature: thinkingSig || undefined,
       toolCalls: pendingToolCalls,
     }));
   } else {
-    // Non-tool path: thinking + text (string shorthand handled by buildAssistantMessage)
-    conversationHistory.push(buildAssistantMessage({
+    history.push(buildAssistantMessage({
       thinking: thinkingContent || undefined,
       thinkingSignature: thinkingSig || undefined,
       text: textResponse || undefined,
     }));
   }
   
-  return conversationHistory;
+  return history;
 }
 

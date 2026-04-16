@@ -2,11 +2,11 @@
  * Generate Node
  * 
  * ReAct agent that generates or refines documents.
- * Target and staging paths are derived from resolvedAction.target (no hardcoded paths).
+ * Target paths are derived from resolvedAction.target (no hardcoded paths).
  * 
  * Two output modes:
- *  - Generate mode: LLM outputs full document via <file path="{stagingPath}">...</file> tags.
- *  - Refine mode: LLM uses edit_file tool for targeted edits on the staging copy.
+ *  - Generate mode: LLM outputs full document via <file path="{targetPath}">...</file> tags.
+ *  - Refine mode: LLM uses edit_file tool for targeted edits on the target file.
  * 
  * There is no separate write node — this node handles streaming, disk write, choice card, and session.
  */
@@ -14,7 +14,7 @@
 import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { PlanGraphState, getPlanMode } from '../../state';
-import { ConversationEntry } from '../../../../../../core/types/session';
+import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { v4 as uuidv4 } from 'uuid';
@@ -30,7 +30,7 @@ import { PLAN_COMPACTION_THRESHOLD, PLAN_COMPACTION_WINDOW, COMPACTION_MAX_OUTPU
 import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 
-import { buildSystemPrompt, getStagingPath, formatConversationForPrompt } from './promptBuilder';
+import { buildSystemPrompt, getTargetPath, formatConversationForPrompt } from './promptBuilder';
 import { parseClarifyBlocks, stripClarifyBlocks } from './clarify';
 import { saveConversationToSession, pruneConversationHistory } from './sessionWriter';
 
@@ -64,22 +64,24 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   }
   
   // Step 1: async compactJob — LLM-based conversation summary
-  const allButLast = state.isConversationContinuation && state.conversation?.length
-    ? state.conversation.slice(0, -1)
+  const sessionMain = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
+  const nodeGenerate = getConv(state.conversations, CONV_KEYS.NODE_GENERATE);
+  const allButLast = state.isConversationContinuation && sessionMain.length
+    ? sessionMain.slice(0, -1)
     : [];
   
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Planner:Generate] PromptBuilder not available');
 
-  let compactionResult: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean; tokensBefore: number; tokensAfter: number; tokenUsage?: import('@ant/shared').TaskTokenUsage };
+  let compactionResult: { entries: ConversationMessage[]; summary?: string; wasCompacted: boolean; tokensBefore: number; tokensAfter: number; tokenUsage?: import('@ant/shared').TaskTokenUsage };
   try {
-    compactionResult = allButLast.length > 0
-      ? await compactJob(allButLast, llm, promptBuilder, {
+    compactionResult = (allButLast.length > 0
+      ? await compactJob(allButLast as any, llm, promptBuilder, {
           threshold: PLAN_COMPACTION_THRESHOLD,
           recentWindowSize: PLAN_COMPACTION_WINDOW,
           maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
         })
-      : { entries: [] as ConversationEntry[], wasCompacted: false, tokensBefore: 0, tokensAfter: 0 };
+      : { entries: [] as ConversationMessage[], wasCompacted: false, tokensBefore: 0, tokensAfter: 0 }) as any;
   } catch (err) {
     console.warn(`⚠️ [Planner:Generate] compactJob failed, using raw entries:`, err);
     compactionResult = { entries: allButLast, wasCompacted: false, tokensBefore: 0, tokensAfter: 0 };
@@ -125,21 +127,21 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     }
   }
   
-  // Build messages (with conversationHistory pruning)
+  // Build messages (with nodeGenerate pruning)
   const messages: Array<{ role: string; content: any }> = [];
   
-  if (state.conversationHistory.length === 0) {
-    const userMessage = state.isConversationContinuation && state.conversation?.length
-      ? state.conversation[state.conversation.length - 1].content
+  if (nodeGenerate.length === 0) {
+    const userMessage = state.isConversationContinuation && sessionMain.length
+      ? sessionMain[sessionMain.length - 1].content
       : state.directive;
     messages.push({ role: 'user', content: userMessage });
   } else {
     try {
-      const prunedHistory = await pruneConversationHistory(state.conversationHistory);
+      const prunedHistory = await pruneConversationHistory(nodeGenerate);
       messages.push(...prunedHistory);
     } catch (err) {
       console.warn(`⚠️ [Planner:Generate] pruneConversationHistory failed, using raw history:`, err);
-      messages.push(...state.conversationHistory);
+      messages.push(...nodeGenerate);
     }
   }
 
@@ -176,7 +178,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   let responseText = '';
   const toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> = [];
   
-  const isFirstCall = state.conversationHistory.length === 0;
+  const isFirstCall = nodeGenerate.length === 0;
   
   await chatAPI.showChatStatus('placeholder');
   
@@ -232,14 +234,14 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     throw error;
   }
   
-  // Update conversation history
-  const updatedHistory = [...state.conversationHistory];
+  // Update node:generate history
+  const updatedHistory = [...nodeGenerate];
   
-  if (state.conversationHistory.length === 0) {
-    const recordedMessage = state.isConversationContinuation && state.conversation?.length
-      ? state.conversation[state.conversation.length - 1].content
+  if (nodeGenerate.length === 0) {
+    const recordedMessage = state.isConversationContinuation && sessionMain.length
+      ? sessionMain[sessionMain.length - 1].content
       : state.directive;
-    updatedHistory.push({ role: 'user', content: recordedMessage });
+    updatedHistory.push({ role: 'user', content: recordedMessage || '' });
   }
   
   if (toolCalls.length > 0) {
@@ -255,13 +257,13 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     }));
     
     if (state.deps?.stateSnapshot) {
-      state.deps.stateSnapshot.conversationHistory = updatedHistory;
+      state.deps.stateSnapshot.conversations = { ...state.conversations, [CONV_KEYS.NODE_GENERATE]: updatedHistory };
       state.deps.stateSnapshot.directive = state.directive;
       state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
     }
     
     return {
-      conversationHistory: updatedHistory,
+      conversations: { [CONV_KEYS.NODE_GENERATE]: updatedHistory },
       pendingToolCalls: toolCalls,
       tokenUsage: state.tokenUsage,
       recursionCount,
@@ -298,15 +300,15 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     
     updatedHistory.push({ role: 'assistant', content: cleanedResponseText });
     
-    const updatedConversation: ConversationEntry[] = [...(state.conversation || [])];
-    if (updatedConversation.length === 0 && state.directive) {
-      updatedConversation.push({
+    const updatedSessionMain: ConversationMessage[] = [...sessionMain];
+    if (updatedSessionMain.length === 0 && state.directive) {
+      updatedSessionMain.push({
         role: 'user',
         content: state.directive,
         timestamp: new Date().toISOString(),
       });
     }
-    updatedConversation.push({
+    updatedSessionMain.push({
       role: 'assistant',
       content: cleanedResponseText,
       timestamp: new Date().toISOString(),
@@ -317,8 +319,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     });
     
     return {
-      conversationHistory: updatedHistory,
-      conversation: updatedConversation,
+      conversations: { [CONV_KEYS.NODE_GENERATE]: updatedHistory, [CONV_KEYS.SESSION_MAIN]: updatedSessionMain },
       pendingToolCalls: [],
       tokenUsage: state.tokenUsage,
       recursionCount,
@@ -326,7 +327,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   }
   
   // === Explain mode: read-only Q&A — skip extraction, disk write, choice card ===
-  const stagingRelPath = getStagingPath(state);
+  const targetRelPath = getTargetPath(state);
   let generatedDocument: string | undefined;
   
   if (planMode === 'explain') {
@@ -334,23 +335,23 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     await saveConversationToSession(state, responseText, undefined, explainHistory, compactionMeta);
   } else {
     const files = orchestrator.getRegistry().getAllFiles();
-    const matchedFile = stagingRelPath
-      ? files.find(f => f.path.includes(path.basename(stagingRelPath)))
+    const matchedFile = targetRelPath
+      ? files.find(f => f.path.includes(path.basename(targetRelPath)))
       : files[0];
     generatedDocument = matchedFile?.content || undefined;
     
-    if (!generatedDocument && planMode === 'refactor' && stagingRelPath) {
-      const editStagingPath = path.join(state.featurePath, stagingRelPath);
+    if (!generatedDocument && planMode === 'refactor' && targetRelPath) {
+      const editTargetPath = path.join(state.featurePath, targetRelPath);
       try {
-        generatedDocument = await fsPromises.readFile(editStagingPath, 'utf-8');
-        console.log(`📝 [Planner:Generate] Read edited document from staging (${generatedDocument.length} chars)`);
+        generatedDocument = await fsPromises.readFile(editTargetPath, 'utf-8');
+        console.log(`📝 [Planner:Generate] Read edited document from target (${generatedDocument.length} chars)`);
       } catch {
-        console.log(`📝 [Planner:Generate] No staging file found (no edits made)`);
+        console.log(`📝 [Planner:Generate] No target file found (no edits made)`);
       }
     }
     
-    if (generatedDocument && stagingRelPath) {
-      const stagingAbsPath = path.join(state.featurePath, stagingRelPath);
+    if (generatedDocument && targetRelPath) {
+      const targetAbsPath = path.join(state.featurePath, targetRelPath);
       const sourcePath = state.resolvedAction?.target?.[0];
       
       if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
@@ -358,9 +359,9 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       }
       
       try {
-        await fsPromises.mkdir(path.dirname(stagingAbsPath), { recursive: true });
-        await fsPromises.writeFile(stagingAbsPath, generatedDocument, 'utf-8');
-        console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to ${stagingRelPath}`);
+        await fsPromises.mkdir(path.dirname(targetAbsPath), { recursive: true });
+        await fsPromises.writeFile(targetAbsPath, generatedDocument, 'utf-8');
+        console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to ${targetRelPath}`);
       } catch (error: any) {
         console.error(`❌ [Planner:Generate] Failed to write document: ${error.message}`);
         throw error;
@@ -376,7 +377,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
             state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
             if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
               (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
-                projectId, featureName, [stagingRelPath]
+                projectId, featureName, [targetRelPath]
               );
             }
           } catch (error: any) {
@@ -411,30 +412,6 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       const prdHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
       await saveConversationToSession(state, responseText, generatedDocument, prdHistory, compactionMeta);
       
-      try {
-        const displayName = sourcePath ? path.basename(sourcePath) : 'document';
-        await chatAPI.sendChoiceCard({
-          type: 'prd_apply',
-          title: state.language === 'ko'
-            ? `📋 ${displayName}을(를) 원본에 적용하시겠습니까?`
-            : `📋 Apply ${displayName} to source?`,
-          choices: [
-            {
-              id: 'apply',
-              label: state.language === 'ko' ? '적용' : 'Apply',
-              action: 'prd_apply',
-              data: { stagingPath: stagingRelPath, sourcePath },
-            },
-            {
-              id: 'keep_draft',
-              label: state.language === 'ko' ? '초안 유지' : 'Keep as draft',
-              action: 'dismiss',
-            },
-          ],
-        });
-      } catch (error) {
-        console.warn('⚠️ [Planner:Generate] Failed to send choice card:', error);
-      }
     }
     
     if (!generatedDocument) {
@@ -453,28 +430,27 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   updatedHistory.push({ role: 'assistant', content: responseText });
   
-  const updatedConversation: ConversationEntry[] = [...(state.conversation || [])];
-  if (updatedConversation.length === 0 && state.directive) {
-    updatedConversation.push({
+  const updatedSessionMain: ConversationMessage[] = [...sessionMain];
+  if (updatedSessionMain.length === 0 && state.directive) {
+    updatedSessionMain.push({
       role: 'user',
       content: state.directive,
       timestamp: new Date().toISOString(),
     });
   }
-  updatedConversation.push({
+  updatedSessionMain.push({
     role: 'assistant',
     content: responseText,
     timestamp: new Date().toISOString(),
     metadata: {
       hasArtifact: !!generatedDocument,
-      artifactPath: generatedDocument ? stagingRelPath : undefined,
+      artifactPath: generatedDocument ? targetRelPath : undefined,
       mode: planMode,
     },
   });
   
   return {
-    conversationHistory: updatedHistory,
-    conversation: updatedConversation,
+    conversations: { [CONV_KEYS.NODE_GENERATE]: updatedHistory, [CONV_KEYS.SESSION_MAIN]: updatedSessionMain },
     pendingToolCalls: [],
     tokenUsage: state.tokenUsage,
     recursionCount,

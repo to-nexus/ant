@@ -7,6 +7,7 @@
 
 import type { DetectStrategy, DetectResult } from '../../../../common/graph/nodes/detect/types.js';
 import type { VisualGraphState } from '../types.js';
+import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import type { InferredAction } from '@ant/shared';
 import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { parseClassifyResponse } from './classifyParser.js';
@@ -46,7 +47,8 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
     const llm = state.deps.llm;
     const pb = state.deps.promptBuilder;
 
-    const conversationContext = state.conversation
+    const sessionMain = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
+    const conversationContext = sessionMain
       .slice(-10)
       .map(entry => `[${entry.role}] ${entry.content}`)
       .join('\n');
@@ -81,7 +83,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         try {
           await logPrompt(state.featurePath, state._httpJobId, 'visual', 'detect', classifyPrompt.length, {
             templatePath: 'jobs/visual/nodes/direct/variants/default/classify',
-            injectedVariables: { currentDirective, conversationEntries: state.conversation.length },
+            injectedVariables: { currentDirective, conversationEntries: sessionMain.length },
             hardcodedContent: rawContent,
           });
         } catch { /* non-critical */ }

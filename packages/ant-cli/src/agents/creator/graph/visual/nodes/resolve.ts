@@ -8,6 +8,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
+import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations.js';
+import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest.js';
 import type { ConversationEntry } from '../../../../../core/types/session.js';
 import { detectUILocale } from '../../../../common/graph/timing/estimatingLabels.js';
 import { resolveToRAC } from '@ant/shared';
@@ -38,7 +40,7 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
   }
 
   const sessionPath = path.join(featurePath, 'sessions/creator/visual.json');
-  let conversation: ConversationEntry[] = [];
+  let conversation: ConversationMessage[] = [];
   let isResume = state.isResume ?? false;
   let lastEngineeredPrompt: string | undefined;
   let lastOutputPath: string | undefined;
@@ -53,8 +55,8 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
     if (fs.existsSync(sessionPath)) {
       const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
 
-      if (sessionData.state?.conversation && Array.isArray(sessionData.state.conversation)) {
-        conversation = sessionData.state.conversation;
+      if (sessionData.state?.conversations?.[CONV_KEYS.SESSION_MAIN]) {
+        conversation = sessionData.state.conversations[CONV_KEYS.SESSION_MAIN];
         console.log(`📂 [Visual:Resolve] Loaded ${conversation.length} conversation entries`);
       }
       if (sessionData.state?.lastEngineeredPrompt) {
@@ -171,7 +173,8 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
   }
 
   const result: Partial<VisualGraphState> = {
-    conversation,
+    conversations: { [CONV_KEYS.SESSION_MAIN]: conversation },
+    sessionDigest: buildSessionDigest(conversation),
     isResume,
     lastEngineeredPrompt,
     lastOutputPath,
