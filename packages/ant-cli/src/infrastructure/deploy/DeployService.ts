@@ -342,6 +342,40 @@ export class DeployService {
   }
 
   /**
+   * Clean up stale deploys left in Redis from a previous process lifecycle.
+   * On restart, the in-memory activeDeploys Map and StaticServer processes are
+   * gone, but Redis may still hold phase:'running' entries with this pod's ID.
+   * This removes them so requests get a clear 404 instead of a perpetual 502.
+   */
+  async cleanupStaleDeploys(): Promise<void> {
+    const currentPodId = os.hostname();
+    const allDeploys = await this.stateStore.listDeploys();
+
+    const staleDeploys = allDeploys.filter(
+      d => d.podId === currentPodId &&
+        (d.phase === 'running' || d.phase === 'deploying' || d.phase === 'building')
+    );
+
+    for (const deploy of staleDeploys) {
+      logger.warn(
+        `[Deploy] Cleaning stale deploy: ${deploy.tenantId}:${deploy.userId}:${deploy.projectId}:${deploy.feature} (was ${deploy.phase})`,
+        { component: 'DeployService' }
+      );
+      await this.stateStore.unregisterDeploy(
+        deploy.tenantId, deploy.userId, deploy.projectId, deploy.feature
+      );
+      this.portManager.release(deploy.port);
+    }
+
+    if (staleDeploys.length > 0) {
+      logger.warn(
+        `[Deploy] Cleaned ${staleDeploys.length} stale deploy(s) from previous process`,
+        { component: 'DeployService' }
+      );
+    }
+  }
+
+  /**
    * Cleanup all active deploys (shutdown).
    */
   async cleanup(): Promise<void> {
