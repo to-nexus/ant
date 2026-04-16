@@ -1,6 +1,7 @@
 import { CodebaseProfile } from "../../../../core/types";
 import type { ParsedUiDocs } from "../../../../core/types/uiDoc";
 import type { ConversationEntry } from "../../../../core/types/session";
+import type { Conversations } from '../../../common/graph/conversations';
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
 import { ProjectContext } from "../../types";
@@ -314,11 +315,8 @@ export interface ArchitectGraphState extends TriageableState {
   // ✅ REMOVED: fileBuffers (replaced by SharedFileBuffer for cross-worker visibility)
   // SharedFileBuffer is managed at graph level and injected via WorkerFileSystem
   
-  // ✅ NEW: Conversation History (멀티턴 대화)
-  conversationHistory?: Array<{
-    role: 'user' | 'assistant';
-    content: string | import('../../../../core/ports/llm').MessageContentBlock[];
-  }>;
+  // ✅ Unified conversations record (node:execute, node:plan, session:main)
+  conversations: Conversations;
 
   /** Per-task LLM call counter (reset on task transition, used for debug logging) */
   _executeCallIndex?: number;
@@ -343,8 +341,6 @@ export interface ArchitectGraphState extends TriageableState {
   _appliedPlanHistory?: string[];
   /** Files written by other parallel tasks/workers (for session manifest in execute) */
   _otherWorkerFiles?: Array<{ path: string; taskName?: string }>;
-  /** Plan-phase conversation only (separate from execute conversationHistory) */
-  planConversationHistory?: Array<{ role: 'user' | 'assistant'; content: string | import('../../../../core/ports/llm').MessageContentBlock[] }>;
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열

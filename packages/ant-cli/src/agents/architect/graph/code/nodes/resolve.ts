@@ -6,6 +6,7 @@ import type { ConversationEntry } from "../../../../../core/types/session";
 import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
+import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
 import type { ResolvedArtifact } from '@ant/shared';
 import { ARTIFACT_PREFIX, getTechTier } from '@ant/shared';
 import type { ParsedUiDocs } from '../../../../../core/types/uiDoc';
@@ -35,8 +36,8 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       },
     });
 
-    // Clear conversation history for NEW JOB
-    state.conversationHistory = [];
+    // Clear conversations for NEW JOB
+    state.conversations = {};
 
     // Send "estimating started" signal (empty task list)
     if (state._httpJobId && state.deps?.kanbanUpdate) {
@@ -344,7 +345,8 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       figmaStartNodeId,
       jobConversation: processedJobConversation,
       runtimeAssetsIndex,
-      conversationHistory: [],
+      conversations: {},
+      sessionDigest: buildSessionDigest(processedJobConversation),
     } as Partial<ArchitectGraphState>;
   },
 };

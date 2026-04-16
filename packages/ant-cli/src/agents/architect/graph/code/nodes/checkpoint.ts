@@ -65,7 +65,7 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       previousFileCount: state.previousFileCount,
       resolvedCategories: state.resolvedCategories || [],
       planText: state.planText,
-      conversationHistory: state.conversationHistory || [],
+      conversations: state.conversations || {},
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       directives: directivesArray,

@@ -180,6 +180,8 @@ export interface TriageableState extends ResolvableState {
   skipTriage?: boolean;
   triageResult?: TriageResult;
   workspaceState?: WorkspaceState;
+  /** Compact digest of recent session turns — injected into triage prompt for context */
+  sessionDigest?: string;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

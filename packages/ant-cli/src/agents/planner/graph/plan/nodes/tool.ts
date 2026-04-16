@@ -13,6 +13,7 @@ import { createToolNode } from '../../../../common/tool/createToolNode';
 import { createChatStatusReporter } from '../../../../common/tool/chatStatusAdapter';
 import { createPlanToolRegistry } from '../../../../common/tool/presets';
 import { ToolRegistry } from '../../../../common/tool/registry';
+import { CONV_KEYS, getConv } from '../../../../common/graph/conversations';
 
 let _registry: ToolRegistry | null = null;
 
@@ -62,7 +63,7 @@ const toolNodeFn = createToolNode<PlanGraphState>({
   // No resultManager — lightweight graph, no truncation needed
 
   getHistory(state) {
-    return state.conversationHistory;
+    return getConv(state.conversations, CONV_KEYS.NODE_GENERATE);
   },
 
   hooks: {
@@ -73,10 +74,14 @@ const toolNodeFn = createToolNode<PlanGraphState>({
       const fname = session.featureName || process.env.ANT_FEATURE_NAME || 'skeleton';
       try {
         const sessionData = await session.load(pid, fname, 'plan');
+        const updatedConversations = {
+          ...sessionData.state?.conversations,
+          [CONV_KEYS.NODE_GENERATE]: updatedHistory,
+        };
         await session.updateArtifacts(pid, fname, 'plan', {
           state: {
             ...sessionData.state,
-            conversationHistory: updatedHistory,
+            conversations: updatedConversations,
             tokenUsage: state.tokenUsage,
           }
         });
@@ -86,7 +91,7 @@ const toolNodeFn = createToolNode<PlanGraphState>({
       }
 
       if (state.deps?.stateSnapshot) {
-        state.deps.stateSnapshot.conversationHistory = updatedHistory;
+        state.deps.stateSnapshot.conversations = { ...state.conversations, [CONV_KEYS.NODE_GENERATE]: updatedHistory };
         state.deps.stateSnapshot.tokenUsage = state.tokenUsage;
       }
     },
@@ -94,7 +99,7 @@ const toolNodeFn = createToolNode<PlanGraphState>({
 
   buildReturn(state, { updatedHistory }) {
     return {
-      conversationHistory: updatedHistory,
+      conversations: { [CONV_KEYS.NODE_GENERATE]: updatedHistory },
       pendingToolCalls: [],
     };
   },

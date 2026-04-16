@@ -18,7 +18,7 @@ import {
  * ✅ Resume Architecture (aligned with Code Runner):
  * - Loads session state BEFORE graph invoke
  * - Sets isResume flag for graph router (4-way routing after resolve)
- * - Restores: taskQueue, completedTasks, planText, conversationHistory, etc.
+ * - Restores: taskQueue, completedTasks, planText, conversations, etc.
  */
 export async function runDesignGraph(initial: DesignGraphState) {
   const app = buildDesignGraph();
@@ -89,9 +89,9 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.planText = session.state.planText;
         }
         
-        // ✅ Restore conversationHistory for mid-task resume (docGen continues from interruption)
-        if (session.state.conversationHistory && session.state.conversationHistory.length > 0) {
-          initial.conversationHistory = session.state.conversationHistory;
+        // ✅ Restore conversations for mid-task resume (docGen continues from interruption)
+        if (session.state.conversations) {
+          initial.conversations = session.state.conversations;
         }
         
         if (session.state.files) {
@@ -139,8 +139,8 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.isResume = true;
         initial.awaitingClarify = true;
         
-        if (session.state.conversationHistory?.length) {
-          initial.conversationHistory = session.state.conversationHistory;
+        if (session.state.conversations) {
+          initial.conversations = session.state.conversations;
         }
         if (session.state.resolvedAction) {
           initial.resolvedAction = session.state.resolvedAction;
@@ -281,7 +281,7 @@ export async function runDesignGraph(initial: DesignGraphState) {
                 filesToDelete: state.filesToDelete || [],
                 resolvedAction: state.resolvedAction,
                 planText: state.planText,
-                conversationHistory: state.conversationHistory || [],
+                conversations: state.conversations || {},
                 userLanguage: state.context.userLanguage,
               }
             }

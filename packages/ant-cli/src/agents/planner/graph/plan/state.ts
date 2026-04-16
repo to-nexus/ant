@@ -9,9 +9,9 @@ import { Annotation } from '@langchain/langgraph';
 import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import type { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers';
 import type { TriageableState, WorkspaceState } from '../../../common/graph/nodes/triage/types';
-import type { ConversationEntry } from '../../../../core/types/session';
 import type { PromptPort } from '../../../../core/ports/prompt';
 import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata } from '@ant/shared';
+import type { Conversations } from '../../../common/graph/conversations';
 
 export const PlanAnnotation = Annotation.Root({
   ...DetectableFields,
@@ -19,9 +19,7 @@ export const PlanAnnotation = Annotation.Root({
   evalReport: Annotation<any>,
   rubricContent: Annotation<any>,
   recentTurnSummaries: Annotation<any>,
-  conversation: Annotation<any>,
   isConversationContinuation: Annotation<any>,
-  conversationHistory: Annotation<any>,
   pendingToolCalls: Annotation<any>,
   phaseTokenUsages: Annotation<any>,
 } as const);
@@ -34,9 +32,8 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   evalReport?: string;
   rubricContent?: string;
   recentTurnSummaries?: string[];
-  conversation?: ConversationEntry[];
+  conversations: Conversations;
   isConversationContinuation?: boolean;
-  conversationHistory: Array<{ role: string; content: any }>;
   pendingToolCalls: Array<{ id: string; name: string; args: Record<string, any> }>;
   resolvedAction?: ResolvedActionContext;
   resolvedArtifacts?: ResolvedArtifact[];
@@ -49,7 +46,7 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
     promptPort?: PromptPort;
     promptBuilder?: import('../../../../core/prompt/builder/PromptBuilder').PromptBuilder;
     stateSnapshot?: {
-      conversationHistory: Array<{ role: string; content: any }>;
+      conversations: Conversations;
       directive?: string;
       overrideDirective?: string;
       tokenUsage?: TokenUsage;
@@ -84,9 +81,8 @@ export function createInitialPlanState(params: {
     workspaceState: params.workspaceState,
     featurePath: params.featurePath,
     isResume: params.isResume,
-    conversationHistory: [],
+    conversations: {},
     pendingToolCalls: [],
-    conversation: [],
     isConversationContinuation: false,
     context: { featurePath: params.featurePath },
     currentAgent: 'planner',

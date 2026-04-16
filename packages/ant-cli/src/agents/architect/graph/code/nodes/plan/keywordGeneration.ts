@@ -135,7 +135,7 @@ export async function generateTaskKeywords(
         taskName: state.currentTask?.name || 'unknown',
         node: 'plan-keyword',
         callIndex: 0,
-        conversationHistoryLength: 0,
+        nodeHistoryLength: 0,
         projectCodeContextFiles: 0,
         estimatedPromptChars: prompt.length,
         taskCumulativeInput: beforeUsage.inputTokens,

@@ -15,6 +15,7 @@ import type { ResolvableState } from '../../../common/graph/annotationHelpers';
 import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import type { MessageContentBlock } from '../../../../core/ports/llm';
 import type { ResolvedActionContext } from '@ant/shared';
+import type { Conversations } from '../../../common/graph/conversations';
 
 /**
  * Tool call record for debugging
@@ -28,21 +29,13 @@ export interface AskToolCall {
 }
 
 /**
- * Message format for conversation history (same as Code Job)
- */
-export interface ConversationMessage {
-  role: 'user' | 'assistant';
-  content: string | MessageContentBlock[];
-}
-
-/**
  * Ask Graph State — extends ResolvableState with ask-specific fields
  */
 export interface AskGraphState extends ResolvableState {
   question: string;
   language: 'ko' | 'en';
   workspaceState: WorkspaceState;
-  conversationHistory: ConversationMessage[];
+  conversations: Conversations;
   toolCalls: AskToolCall[];
   pendingToolCalls: Array<{
     id: string;
@@ -63,7 +56,6 @@ export const AskAnnotation = Annotation.Root({
   question: Annotation<string>,
   language: Annotation<'ko' | 'en'>,
   workspaceState: Annotation<WorkspaceState>,
-  conversationHistory: Annotation<ConversationMessage[]>,
   toolCalls: Annotation<AskToolCall[]>,
   pendingToolCalls: Annotation<Array<{ id: string; name: string; args: Record<string, any> }>>,
   response: Annotation<string | undefined>,
@@ -102,8 +94,8 @@ export function createInitialAskState(params: {
     question: params.question,
     language: params.language,
     workspaceState: params.workspaceState,
-    conversationHistory: [],
+    conversations: {},
     toolCalls: [],
     pendingToolCalls: [],
-  } as AskGraphState;
+  } as unknown as AskGraphState;
 }

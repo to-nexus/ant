@@ -8,7 +8,9 @@
  */
 
 import { AskGraphState, AskToolCall } from '../state';
+import { CONV_KEYS, getConv } from '../../../../common/graph/conversations';
 import { createToolNode } from '../../../../common/tool/createToolNode';
+
 import { createAskToolRegistry } from '../../../../common/tool/presets';
 import { ToolRegistry } from '../../../../common/tool/registry';
 import { createNoopChatStatusReporter } from '../../../../common/tool/chatStatusAdapter';
@@ -67,7 +69,7 @@ const toolNodeFn = createToolNode<AskGraphState>({
   // No resultManager — lightweight graph, no truncation needed
 
   getHistory(state) {
-    return state.conversationHistory;
+    return getConv(state.conversations, CONV_KEYS.NODE_AGENT);
   },
 
   buildReturn(state, { updatedHistory, executionEvents }) {
@@ -80,7 +82,7 @@ const toolNodeFn = createToolNode<AskGraphState>({
     }));
 
     return {
-      conversationHistory: updatedHistory,
+      conversations: { [CONV_KEYS.NODE_AGENT]: updatedHistory },
       toolCalls: [...state.toolCalls, ...toolCallRecords],
       pendingToolCalls: [],
     };

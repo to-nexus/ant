@@ -92,9 +92,9 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.planText = session.state.planText;
         }
         
-        // ✅ Restore conversationHistory for mid-task resume (execute continues from interruption point)
-        if (session.state.conversationHistory && session.state.conversationHistory.length > 0) {
-          initial.conversationHistory = session.state.conversationHistory;
+        // ✅ Restore conversations for mid-task resume (execute continues from interruption point)
+        if (session.state.conversations) {
+          initial.conversations = session.state.conversations;
         }
         
         // CRITICAL: workspaceConfig is already set in initial state (from orchestrator)

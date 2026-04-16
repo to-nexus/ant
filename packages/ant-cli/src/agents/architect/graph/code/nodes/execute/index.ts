@@ -20,6 +20,7 @@
 import path from 'node:path';
 import { getTechTier } from '@ant/shared';
 import { ArchitectGraphState } from '../../state';
+import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
@@ -376,8 +377,9 @@ export async function execute(
     args: Record<string, any>;
   }> = [];
   
+  const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
   // ✅ Check if this is a continuation after tool calling
-  const isAfterToolCall = state.conversationHistory && state.conversationHistory.length > 0;
+  const isAfterToolCall = nodeExecute.length > 0;
   
   // Diagnostic tasks (verification/error) with a remediation plan don't need extended thinking —
   // the plan node already analyzed errors and produced a concrete fix plan.
@@ -452,7 +454,7 @@ export async function execute(
               taskName: state.currentTask?.name || 'unknown',
               node: 'execute',
               callIndex: callIdx,
-              conversationHistoryLength: state.conversationHistory?.length || 0,
+              nodeHistoryLength: nodeExecute.length,
               projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
               estimatedPromptChars: 0,
               taskCumulativeInput: (taskUsage?.inputTokens || 0) - (capturedUsage.inputTokens || 0),
@@ -618,7 +620,7 @@ export async function execute(
       const cleanedResponse = cleanFileContentWithConflicts(textResponse, conflictPaths);
 
       const newHistory = [
-        ...(state.conversationHistory || []),
+        ...nodeExecute,
         ...(cleanedResponse ? [{ role: 'assistant' as const, content: cleanedResponse }] : []),
         { role: 'user' as const, content: mergeInstruction },
       ];
@@ -645,7 +647,7 @@ export async function execute(
           done: false,
           tokenUsage: capturedUsage,
         },
-        conversationHistory: newHistory,
+        conversations: { [CONV_KEYS.NODE_EXECUTE]: newHistory },
         fileErrors: undefined,
         projectCodeContext: earlyUpdatedProjectCodeContext,
         _executeCallIndex: newCallIndex,
@@ -731,7 +733,7 @@ export async function execute(
     // Thinking-only detection: log when LLM produces thinking but no text/tools
     if (toolCalls.length === 0 && !textResponse.trim() && thinking) {
       const actualEnableThinking = !isAfterToolCall && !isDiagnosticWithPlan;
-      console.warn(`⚠️  [CodeGen] THINKING-ONLY response: thinking=${thinking.length}ch, enableThinking=${actualEnableThinking}, history=${state.conversationHistory?.length ?? 0}, violations=${state.violations?.length ?? 0}`);
+      console.warn(`⚠️  [CodeGen] THINKING-ONLY response: thinking=${thinking.length}ch, enableThinking=${actualEnableThinking}, history=${nodeExecute.length}, violations=${state.violations?.length ?? 0}`);
       if (state.context?.featurePath && state._httpJobId) {
         const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
         getExecutionLogger({
@@ -744,7 +746,7 @@ export async function execute(
           textResponse: textResponse.substring(0, 100),
           enableThinking: actualEnableThinking,
           toolsAvailable: tools?.length ?? 0,
-          conversationHistoryLength: state.conversationHistory?.length ?? 0,
+          nodeHistoryLength: nodeExecute.length,
           violationsCount: state.violations?.length ?? 0,
           callIndex: newCallIndex,
           finalTaskLoopCount: newFinalTaskLoopCount,
@@ -755,7 +757,7 @@ export async function execute(
     if (toolCalls.length === 0 && !explicitDone) {
       console.warn(`⚠️  [execute→execute] No tool calls and no <done>true</done> tag - LLM response may be incomplete`);
       
-      // Preserve LLM response in conversationHistory to prevent amnesia.
+      // Preserve LLM response in node history to prevent amnesia.
       // Without this, execute→execute loop loses all memory of previous response,
       // causing the LLM to repeat the same work indefinitely.
       let cleanedResponse = cleanFileContentFromResponse(textResponse);
@@ -800,7 +802,7 @@ export async function execute(
         );
 
         const newHistory = [
-          ...(state.conversationHistory || []),
+          ...nodeExecute,
           { role: 'assistant' as const, content: cleanedResponse },
           { role: 'user' as const, content: reentryParts.join('\n') },
         ];
@@ -814,7 +816,7 @@ export async function execute(
             done: explicitDone,
             tokenUsage: capturedUsage,
           },
-          conversationHistory: newHistory,
+          conversations: { [CONV_KEYS.NODE_EXECUTE]: newHistory },
           fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
           projectCodeContext: updatedProjectCodeContext,
           _executeCallIndex: newCallIndex,
@@ -830,7 +832,7 @@ export async function execute(
     // When tool calls exist, push assistant message so tool node receives
     // a complete [assistant, user(tool_result)] pair in conversation history.
     const toolCallHistory = toolCalls.length > 0
-      ? [...(state.conversationHistory || []), buildAssistantMessage({
+      ? [...nodeExecute, buildAssistantMessage({
           text: cleanFileContentFromResponse(textResponse) || undefined,
           toolCalls,
         })]
@@ -845,7 +847,7 @@ export async function execute(
         done: explicitDone,
         tokenUsage: capturedUsage,
       },
-      ...(toolCallHistory ? { conversationHistory: toolCallHistory } : {}),
+      ...(toolCallHistory ? { conversations: { [CONV_KEYS.NODE_EXECUTE]: toolCallHistory } } : {}),
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       projectCodeContext: updatedProjectCodeContext,
       _executeCallIndex: newCallIndex,

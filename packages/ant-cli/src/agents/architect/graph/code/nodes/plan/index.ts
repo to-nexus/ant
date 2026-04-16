@@ -20,6 +20,7 @@
 
 import { LLMClient } from "../../../../../../core/ports";
 import type { MessageContentBlock } from "../../../../../../core/ports/llm";
+import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { getTechTier } from '@ant/shared';
 import { ArchitectGraphState, TASK_PRIORITIES } from "../../state";
@@ -60,17 +61,17 @@ function stripMarkdownFences(text: string): string {
 
 /**
  * Enrich projectCodeContext with files discovered during Plan's tool loop.
- * Extracts read_file results from planConversationHistory and merges them
+ * Extracts read_file results from nodePlanHistory and merges them
  * into projectCodeContext.files, deduplicating against existing RAG files.
  */
 function enrichContextFromPlanToolLoop(
   projectCodeContext: any,
-  planConversationHistory: Array<{ role: string; content: string | MessageContentBlock[] }> | undefined,
+  nodePlanHistory: Array<{ role: string; content: string | MessageContentBlock[] }> | undefined,
 ): any {
-  if (!projectCodeContext || !planConversationHistory?.length) return projectCodeContext;
+  if (!projectCodeContext || !nodePlanHistory?.length) return projectCodeContext;
 
   const existingPaths = new Set<string>((projectCodeContext.files || []).map((f: any) => f.path));
-  const newFiles = extractFilesFromPlanToolLoop(planConversationHistory, existingPaths);
+  const newFiles = extractFilesFromPlanToolLoop(nodePlanHistory, existingPaths);
 
   if (newFiles.length === 0) return projectCodeContext;
 
@@ -327,7 +328,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       if (isVerificationRetry) {
         state._executeCallIndex = 0;
         state._finalTaskLoopCount = 0;
-        state.conversationHistory = [];
+        state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
         state._executeModifiedFiles = false;
         state._installNeeded = true;
         if (state._verificationTracker) {
@@ -338,7 +339,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         const _retryAttempt = (state.retries || 0) + 1;
         const _retryMax = state.maxRetries || 3;
         console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
-        console.log(`   ♻️  Reset: conversationHistory cleared, _executeCallIndex ${prevCallIndex}→0`);
+        console.log(`   ♻️  Reset: conversations cleared, _executeCallIndex ${prevCallIndex}→0`);
         console.log(`   ♻️  Reset: _finalTaskLoopCount → 0\n`);
         if (nextTask && state.context?.featurePath && state._httpJobId) {
           const _taskRef = nextTask;
@@ -360,9 +361,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       } else {
         state._executeCallIndex = 0;
         state._finalTaskLoopCount = 0;
-        state.conversationHistory = [];
+        state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
         console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-        console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversationHistory cleared\n`);
+        console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversations cleared\n`);
       }
     } else if (entryReason === 'reverify' && state.currentTask) {
       // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
@@ -396,7 +397,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       // the Safety Net C guard in executeRouter accumulates across reverify
       // cycles and can break infinite loops.
       state._executeCallIndex = 0;
-      state.conversationHistory = [];
+      state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
       state._executeModifiedFiles = false;
 
       // Recompute installNeeded — execute may have modified dependency declaration files
@@ -565,7 +566,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   //   1. Not an enforce retry (retry always needs fresh plan with violation context)
   //   2. Task was previously interrupted (not a fresh task from queue)
   //   3. Valid planText already exists from the previous session
-  // When skipped: preserves planText + conversationHistory → execute continues from interruption point
+  // When skipped: preserves planText + conversations → execute continues from interruption point
   const canSkipPlan = (
     !isRetry &&
     nextTask.interrupted === true &&
@@ -575,7 +576,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   if (canSkipPlan) {
     console.log(`\n⚡ [Plan] Resuming interrupted task "${nextTask.name}" with existing planText (${state.planText!.length} chars)`);
     console.log(`   Skipping: keywords, RAG, planText generation`);
-    console.log(`   ConversationHistory: ${state.conversationHistory?.length || 0} messages preserved`);
+    console.log(`   Conversations: ${getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length} execute messages preserved`);
     
     // Exit node for workflow tracking
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -591,7 +592,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
-      // conversationHistory is preserved in state (not cleared)
+      // conversations preserved in state (not cleared)
     };
   }
 
@@ -627,10 +628,8 @@ const hasPrePlanText =
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
-      conversationHistory: [],
+      conversations: { [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] },
       _activePhase: 'execute' as const,
-      planConversationHistory: undefined,
-      // Error tasks: no VerificationTracker — plan uses error-specific template, not verification diagnostic.
       _verificationTracker: undefined,
     };
   }
@@ -649,11 +648,12 @@ const hasPrePlanText =
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 0.9: Re-entry from tool (plan↔tool loop)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state._activePhase === 'plan' && state.planConversationHistory?.length) {
-    const overLimit = state.planConversationHistory.length >= PLAN_TOOL_LOOP_MAX * 2; // ~2 messages per round
+  const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
+  if (state._activePhase === 'plan' && nodePlan.length > 0) {
+    const overLimit = nodePlan.length >= PLAN_TOOL_LOOP_MAX * 2; // ~2 messages per round
     if (overLimit) {
       console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; finalizing plan from exploration context`);
-      let finalizedPlan = await finalizePlanFromExploration(state, state.planConversationHistory, nextTask);
+      let finalizedPlan = await finalizePlanFromExploration(state, nodePlan as any, nextTask);
       if (finalizedPlan) {
         const preSplitPlan = finalizedPlan;
         finalizedPlan = processDiagnosticBatchSplit(state, finalizedPlan, nextTask);
@@ -661,10 +661,9 @@ const hasPrePlanText =
         const diagnosticPass = isVerificationPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
         const enrichedContext = enrichContextFromPlanToolLoop(
           state.projectCodeContext ,
-          state.planConversationHistory,
+          nodePlan,
         );
         state._activePhase = 'execute';
-        state.planConversationHistory = undefined;
         if (state.deps?.workflowUpdate && state._httpJobId) {
           await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
         }
@@ -677,7 +676,7 @@ const hasPrePlanText =
           planText: finalizedPlan,
           _executeBudget: computeBudgetFromPlanText(finalizedPlan),
           _activePhase: 'execute' as const,
-          planConversationHistory: undefined,
+          conversations: { [CONV_KEYS.NODE_PLAN]: [] },
           retries: preservedRetries,
           completedTasksDetails: state.completedTasksDetails || [],
           recursionCount: state.recursionCount,
@@ -689,24 +688,23 @@ const hasPrePlanText =
         };
       }
       console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
-      if (state.planConversationHistory?.length) {
+      if (nodePlan.length > 0) {
         state.projectCodeContext = enrichContextFromPlanToolLoop(
           state.projectCodeContext ,
-          state.planConversationHistory,
+          nodePlan,
         );
       }
       state._activePhase = 'execute';
-      state.planConversationHistory = undefined;
       forceNoTools = true;
     } else {
-      const result = await runPlanLLMWithTools(state, state.planConversationHistory, nextTask);
+      const result = await runPlanLLMWithTools(state, nodePlan as any, nextTask);
       if (result && '_activePhase' in result) {
         if (state.deps?.workflowUpdate && state._httpJobId) {
           await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
         }
         return {
           ...state,
-          planConversationHistory: result.planConversationHistory,
+          conversations: { [CONV_KEYS.NODE_PLAN]: result.nodePlanHistory },
           _activePhase: 'plan' as const,
           llmResponse: result.llmResponse,
           projectCodeContext: state.projectCodeContext,
@@ -721,7 +719,7 @@ const hasPrePlanText =
         const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
         const enrichedContext = enrichContextFromPlanToolLoop(
           state.projectCodeContext ,
-          state.planConversationHistory,
+          nodePlan,
         );
         const updatedState = {
           ...state,
@@ -732,7 +730,7 @@ const hasPrePlanText =
           planText,
           _executeBudget: computeBudgetFromPlanText(planText),
           _activePhase: 'execute' as const,
-          planConversationHistory: undefined,
+          conversations: { [CONV_KEYS.NODE_PLAN]: [] },
           retries: preservedRetries,
           completedTasksDetails: state.completedTasksDetails || [],
           recursionCount: state.recursionCount,
@@ -748,14 +746,13 @@ const hasPrePlanText =
         return updatedState;
       }
       // null: fall through to normal flow — but first enrich context with any files read during tool loop
-      if (state.planConversationHistory?.length) {
+      if (nodePlan.length > 0) {
         state.projectCodeContext = enrichContextFromPlanToolLoop(
           state.projectCodeContext ,
-          state.planConversationHistory,
+          nodePlan,
         );
       }
       state._activePhase = 'execute';
-      state.planConversationHistory = undefined;
     }
   }
   
@@ -800,7 +797,7 @@ const hasPrePlanText =
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
       _activePhase: 'execute' as const,
-      planConversationHistory: undefined,
+      conversations: { [CONV_KEYS.NODE_PLAN]: [] },
     };
   }
 
@@ -954,7 +951,7 @@ const hasPrePlanText =
   let planText: string | undefined;
   const requiresPlan = taskRequiresPlan(nextTask);
   const isVerificationTask = nextTask.type === 'verification';
-  const planToolRounds = (state.planConversationHistory?.length ?? 0) / 2;
+  const planToolRounds = nodePlan.length / 2;
   // error tasks use tool loop via requiresPlan (true), verification via isVerificationTask
   const tryToolsFirst = llm && (requiresPlan || isVerificationTask) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
@@ -1045,16 +1042,16 @@ const hasPrePlanText =
       if (state.deps?.workflowUpdate && state._httpJobId) {
         await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
       }
-      return {
-        ...state,
-        currentTask: nextTask,
-        planConversationHistory: result.planConversationHistory,
-        _activePhase: 'plan' as const,
-        llmResponse: result.llmResponse,
-        projectCodeContext,
-        referenceCodeContexts,
-        lessons,
-      };
+        return {
+          ...state,
+          currentTask: nextTask,
+          conversations: { [CONV_KEYS.NODE_PLAN]: result.nodePlanHistory },
+          _activePhase: 'plan' as const,
+          llmResponse: result.llmResponse,
+          projectCodeContext,
+          referenceCodeContexts,
+          lessons,
+        };
     }
     if (result && 'planText' in result) {
       planText = result.planText;
@@ -1115,7 +1112,7 @@ const hasPrePlanText =
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
       _activePhase: 'execute' as const,
-      planConversationHistory: undefined,
+      conversations: { [CONV_KEYS.NODE_PLAN]: [] },
       llmResponse: (batchSplitOccurred || diagnosticPass)
         ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
         : { done: false, textResponse: '', thinking: '', toolCalls: [] },

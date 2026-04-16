@@ -12,6 +12,7 @@
  */
 
 import { DesignGraphState } from '../../../state';
+import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations';
 import { MessageContentBlock } from '../../../../../../../core/ports/llm';
 import { DesignTask } from '../../../../../types/task';
 import { designDirOf, ARTIFACT_PREFIX } from '@ant/shared';
@@ -190,7 +191,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { messages } = composeMessages({
     initialBlocks: blocks,
-    priorTurns: state.conversationHistory,
+    priorTurns: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN) as any,
     trailingUserMessage,
   });
 
