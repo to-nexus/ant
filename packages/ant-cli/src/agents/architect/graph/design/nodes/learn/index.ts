@@ -109,10 +109,16 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       || state.resolvedAction?.intent === 'gen-ui-ref'
       || state.resolvedAction?.intent === 'gen-ui-desc'
       || state.resolvedAction?.intent === 'rev-ui';
+    const isSpecDesign = state.resolvedAction?.intentGroup === 'design-spec';
 
-    const targetSubdir = isUiDesign ? DESIGN_SUBDIR.UI : DESIGN_SUBDIR.SYSTEM;
+    const targetSubdir = isUiDesign
+      ? DESIGN_SUBDIR.UI
+      : isSpecDesign
+        ? DESIGN_SUBDIR.SPEC
+        : DESIGN_SUBDIR.SYSTEM;
     const subDirRel = path.join(designDirRel, targetSubdir);
-    console.log(`📂 [Learn] Checking ${isUiDesign ? 'UI Design' : 'System Design'} files in outputs/design/${targetSubdir}/...`);
+    const label = isUiDesign ? 'UI Design' : isSpecDesign ? 'Spec Design' : 'System Design';
+    console.log(`📂 [Learn] Checking ${label} files in outputs/design/${targetSubdir}/...`);
     
     try {
       const filesToProcess: { filename: string; dir: string }[] = [];
