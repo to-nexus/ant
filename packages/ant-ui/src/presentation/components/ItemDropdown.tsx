@@ -309,17 +309,16 @@ export function ItemDropdown({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (playButtonDisabled || playButtonLoading) return;  // ✅ 비활성화 또는 로딩 중이면 무시
                   if (isPlaying && onStopClick) {
                     onStopClick();
-                  } else if (!isPlaying && onPlayClick) {
+                  } else if (!isPlaying && !playButtonDisabled && !playButtonLoading && onPlayClick) {
                     onPlayClick();
                   }
                 }}
-                disabled={playButtonDisabled || playButtonLoading}  // ✅ 버튼 비활성화
+                disabled={playButtonDisabled && !isPlaying}
                 className={`p-1 rounded transition-colors pointer-events-auto ${
-                  playButtonDisabled || playButtonLoading
-                    ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-600'  // ✅ 비활성화 스타일
+                  playButtonDisabled && !isPlaying
+                    ? 'opacity-50 cursor-not-allowed text-gray-400 dark:text-gray-600'
                     : isPlaying 
                       ? 'text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 hover:bg-gray-50 dark:hover:bg-[#30363d]' 
                       : 'text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 hover:bg-gray-50 dark:hover:bg-[#30363d]'
