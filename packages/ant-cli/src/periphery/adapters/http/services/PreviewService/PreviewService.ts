@@ -532,6 +532,7 @@ export class PreviewService {
       this.previewServerPaths.set(serverKey, localPath);
       const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
       await this.infrastructureManager.startInfrastructure(localPath, logCallback, infraProjectName, startSignal);
+      if (startSignal.aborted) throw new Error('Preview start cancelled');
       
       const infraStatus = await this.infrastructureManager.getInfraStatus(localPath, infraProjectName);
 
@@ -778,19 +779,51 @@ export class PreviewService {
       };
       
     } catch (error: any) {
+      const wasCancelled = this.startCancelledServers.has(serverKey);
       this.installingProjects.delete(serverKey);
       this.startingServers.delete(serverKey);
       this.startCancelledServers.delete(serverKey);
       this.startAbortControllers.delete(serverKey);
-      logger.error(`Error starting preview server: ${error.message}`, { component: 'PreviewService' }, error);
-      this.appendLog(serverKey, 'stderr', `❌ Error: ${error.message}`);
       
       // Release distributed lock on failure
       if (this.stateStore && lockAcquired) {
         await this.stateStore.releaseLock(lockKey).catch(() => {});
       }
       
-      // Update Redis + broadcast failure
+      if (wasCancelled) {
+        // User-initiated cancellation — clean up properly and report 'stopped'
+        logger.info(`[Preview] Start cancelled for ${serverKey}, cleaning up`, { component: 'PreviewService' });
+        this.appendLog(serverKey, 'stderr', `⏹️ Preview start cancelled`);
+        
+        // Clean up partially started infrastructure
+        const infraPath = this.previewServerPaths.get(serverKey);
+        if (infraPath) {
+          const logCb = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
+          const cancelInfraName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+          await this.infrastructureManager.stopInfrastructure(infraPath, logCb, cancelInfraName).catch(() => {});
+          this.previewServerPaths.delete(serverKey);
+        }
+        
+        // Unregister from Redis and broadcast stopped
+        if (this.portRegistry) {
+          await this.portRegistry.unregisterPreview(tenantId, userId, projectId, feature).catch(() => {});
+        }
+        this.broadcastStatus(serverKey, {
+          running: false,
+          ready: false,
+          phase: 'stopped',
+          port: null,
+          packages: [],
+          issues: [],
+        });
+        
+        return { success: false, error: 'Preview start was cancelled', serverKey };
+      }
+      
+      // Actual error — report as 'error'
+      logger.error(`Error starting preview server: ${error.message}`, { component: 'PreviewService' }, error);
+      this.appendLog(serverKey, 'stderr', `❌ Error: ${error.message}`);
+      
       await this.updatePhase(serverKey, 'error', {
         running: false, ready: false,
         error: error.message || 'Failed to start preview server'
