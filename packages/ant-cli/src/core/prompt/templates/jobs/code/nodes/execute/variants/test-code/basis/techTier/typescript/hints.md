@@ -41,3 +41,16 @@
 | **No runner configured** | Co-locate with source — Vitest will be added as the default |
 
 **Constraint**: Do NOT mix placements within the same project. Pick one pattern and apply it consistently across all test files written in this task.
+
+---
+
+### Config Property Names
+
+**Principle**: Test runner config files use specific property names. Misspelled keys are silently ignored.
+
+| Config File | Commonly Confused | Correct Property |
+|-------------|-------------------|-----------------|
+| `jest.config.*` | `setupFilesAfterSetup` | `setupFilesAfterEnv` |
+| `vitest.config.*` | `setupFiles` | `setupFiles` (Vitest) or `setupFilesAfterEnv` (Jest) |
+
+⚠️ **Blind spot**: `setupFilesAfterSetup` does NOT exist. The correct Jest key is `setupFilesAfterEnv`. Jest ignores unknown keys silently — the setup file never loads and tests fail with missing matchers.

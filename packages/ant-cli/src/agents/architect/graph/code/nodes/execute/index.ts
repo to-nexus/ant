@@ -722,7 +722,19 @@ export async function execute(
     // ✅ CRITICAL: Only mark done if LLM explicitly output <done>true</done>
     // Use explicitDone from streaming pipeline (detected by SpecialTagTransformer)
     // Previously: done = toolCalls.length === 0 (caused premature completion on truncated responses)
-    const explicitDone = finalizeResult.explicitDone || false;
+    let explicitDone = finalizeResult.explicitDone || false;
+
+    // AUTO-COMPLETE: verification/error tasks that created files via <file> tag
+    // without tool calls or <done> tag. Without this, the router sees no tools
+    // and no done → routes back to execute → infinite file_create loop.
+    // Uses streamedFiles (scoped to THIS iteration) instead of _executeModifiedFiles
+    // (which persists across iterations and causes false positives from prior tool calls).
+    const streamedInThisCall = finalizeResult?.streamedFiles || [];
+    if (!explicitDone && toolCalls.length === 0 && streamedInThisCall.length > 0
+        && (state.currentTask?.type === 'verification' || state.currentTask?.type === 'error')) {
+      explicitDone = true;
+      console.log(`✅ [execute] Auto-completing ${state.currentTask.type} task: ${streamedInThisCall.length} file(s) created via <file> tag`);
+    }
 
     // Safety Net: track final task loop count (MUST go through channel system via return)
     const isFinalTask = state.currentTask ? isFinalVerificationTask(state.currentTask) : false;
