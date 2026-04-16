@@ -17,7 +17,7 @@ import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
 import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -329,6 +329,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     uiHint, assetsHint,
     resolvedAction: state.resolvedAction,
     availableVisualLanguages: VISUAL_LANGUAGE_VARIANTS.join(', '),
+    availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
   };

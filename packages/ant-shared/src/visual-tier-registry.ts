@@ -57,26 +57,26 @@ export const VISUAL_HIERARCHY_RULES_VARIANTS: readonly VisualHierarchyRulesVaria
 // ============================================
 
 export const VISUAL_LANGUAGE_OPTIONS: BasisOption[] = [
-  { id: 'modernSaas', label: { en: 'Modern SaaS', ko: 'Modern SaaS' }, description: { en: 'Clean, bright UI with rounded corners and gradients', ko: '라운드 코너와 그라데이션의 밝고 깔끔한 UI' }, accentColor: 'blue' },
-  { id: 'enterprise', label: { en: 'Enterprise', ko: 'Enterprise' }, description: { en: 'Professional, dense UI with sharp edges and structure', ko: '날카로운 엣지와 구조의 프로페셔널 UI' }, accentColor: 'slate' },
-  { id: 'fintechPremium', label: { en: 'Fintech Premium', ko: 'Fintech Premium' }, description: { en: 'Dark luxury with gold and emerald accents', ko: '골드와 에메랄드 악센트의 다크 럭셔리' }, accentColor: 'amber' },
-  { id: 'devtoolDark', label: { en: 'Developer Tool', ko: 'Developer Tool' }, description: { en: 'Terminal-inspired dark theme with neon accents', ko: '네온 악센트의 터미널 영감 다크 테마' }, accentColor: 'green' },
-  { id: 'minimalNeutral', label: { en: 'Minimal Neutral', ko: 'Minimal Neutral' }, description: { en: 'Pure white space with subtle gray borders', ko: '미세한 회색 보더의 순백 여백' }, accentColor: 'gray' },
-  { id: 'crispMinimal', label: { en: 'Crisp Minimal', ko: 'Crisp Minimal' }, description: { en: 'Ultra-clean with sharp geometry', ko: '날카로운 기하학의 울트라 클린' }, accentColor: 'gray' },
-  { id: 'cleanBright', label: { en: 'Clean Bright', ko: 'Clean Bright' }, description: { en: 'Airy pastels with ample whitespace', ko: '넉넉한 여백의 밝은 파스텔' }, accentColor: 'sky' },
-  { id: 'neutralPro', label: { en: 'Neutral Pro', ko: 'Neutral Pro' }, description: { en: 'Corporate gray palette, utilitarian focus', ko: '기업용 그레이 팔레트, 실용성 중심' }, accentColor: 'slate' },
-  { id: 'warmNatural', label: { en: 'Warm Natural', ko: 'Warm Natural' }, description: { en: 'Earthy tones with organic textures', ko: '어스 톤과 유기적 텍스처' }, accentColor: 'amber' },
-  { id: 'softClay', label: { en: 'Soft Clay', ko: 'Soft Clay' }, description: { en: 'Rounded 3D shapes with matte pastels', ko: '매트 파스텔의 라운드 3D 셰이프' }, accentColor: 'rose' },
-  { id: 'bentoModern', label: { en: 'Bento Modern', ko: 'Bento Modern' }, description: { en: 'Grid-based card layout, bold type hierarchy', ko: '그리드 카드 레이아웃, 대담한 타이포그래피' }, accentColor: 'indigo' },
-  { id: 'deepMuted', label: { en: 'Deep Muted', ko: 'Deep Muted' }, description: { en: 'Low saturation dark palette, subtle contrast', ko: '저채도 다크 팔레트, 은은한 대비' }, accentColor: 'zinc' },
-  { id: 'darkLuxury', label: { en: 'Dark Luxury', ko: 'Dark Luxury' }, description: { en: 'Rich blacks with metallic accents', ko: '메탈릭 악센트의 리치 블랙' }, accentColor: 'amber' },
-  { id: 'cinematicDark', label: { en: 'Cinematic Dark', ko: 'Cinematic Dark' }, description: { en: 'Film-grade gradients with dramatic lighting', ko: '영화급 그라데이션과 드라마틱 라이팅' }, accentColor: 'violet' },
-  { id: 'boldPlayful', label: { en: 'Bold Playful', ko: 'Bold Playful' }, description: { en: 'Saturated primary colors with playful shapes', ko: '고채도 원색과 플레이풀 셰이프' }, accentColor: 'yellow' },
-  { id: 'neoBrutalist', label: { en: 'Neo Brutalist', ko: 'Neo Brutalist' }, description: { en: 'Raw borders, system fonts, high contrast', ko: '거친 보더, 시스템 폰트, 높은 대비' }, accentColor: 'red' },
-  { id: 'editorialBold', label: { en: 'Editorial Bold', ko: 'Editorial Bold' }, description: { en: 'Magazine-style large type and grids', ko: '매거진 스타일 대형 타이포와 그리드' }, accentColor: 'black' },
-  { id: 'cyberpunkNeon', label: { en: 'Cyberpunk Neon', ko: 'Cyberpunk Neon' }, description: { en: 'Neon glows on dark, sci-fi aesthetic', ko: '다크 배경의 네온 글로우, SF 미학' }, accentColor: 'fuchsia' },
-  { id: 'retroFuture', label: { en: 'Retro Future', ko: 'Retro Future' }, description: { en: '80s retro meets modern tech', ko: '80년대 레트로와 현대 테크의 만남' }, accentColor: 'orange' },
-  { id: 'nexusDS', label: { en: 'NEXUS Design System', ko: 'NEXUS Design System' }, description: { en: 'Data-driven enterprise UI with dark-first functional minimalism', ko: '다크 퍼스트 기능적 미니멀리즘의 데이터 중심 엔터프라이즈 UI' }, accentColor: 'teal' },
+  { id: 'modernSaas', label: { en: 'Modern SaaS', ko: 'Modern SaaS' }, description: { en: 'Clean, bright UI with rounded corners and gradients', ko: '라운드 코너와 그라데이션의 밝고 깔끔한 UI' }, accentColor: 'blue', supportedModes: 'both' },
+  { id: 'enterprise', label: { en: 'Enterprise', ko: 'Enterprise' }, description: { en: 'Professional, dense UI with sharp edges and structure', ko: '날카로운 엣지와 구조의 프로페셔널 UI' }, accentColor: 'slate', supportedModes: 'both' },
+  { id: 'fintechPremium', label: { en: 'Fintech Premium', ko: 'Fintech Premium' }, description: { en: 'Dark luxury with gold and emerald accents', ko: '골드와 에메랄드 악센트의 다크 럭셔리' }, accentColor: 'amber', supportedModes: 'dark' },
+  { id: 'devtoolDark', label: { en: 'Developer Tool', ko: 'Developer Tool' }, description: { en: 'Terminal-inspired dark theme with neon accents', ko: '네온 악센트의 터미널 영감 다크 테마' }, accentColor: 'green', supportedModes: 'dark' },
+  { id: 'minimalNeutral', label: { en: 'Minimal Neutral', ko: 'Minimal Neutral' }, description: { en: 'Pure white space with subtle gray borders', ko: '미세한 회색 보더의 순백 여백' }, accentColor: 'gray', supportedModes: 'both' },
+  { id: 'crispMinimal', label: { en: 'Crisp Minimal', ko: 'Crisp Minimal' }, description: { en: 'Ultra-clean with sharp geometry', ko: '날카로운 기하학의 울트라 클린' }, accentColor: 'gray', supportedModes: 'both' },
+  { id: 'cleanBright', label: { en: 'Clean Bright', ko: 'Clean Bright' }, description: { en: 'Airy pastels with ample whitespace', ko: '넉넉한 여백의 밝은 파스텔' }, accentColor: 'sky', supportedModes: 'light' },
+  { id: 'neutralPro', label: { en: 'Neutral Pro', ko: 'Neutral Pro' }, description: { en: 'Corporate gray palette, utilitarian focus', ko: '기업용 그레이 팔레트, 실용성 중심' }, accentColor: 'slate', supportedModes: 'both' },
+  { id: 'warmNatural', label: { en: 'Warm Natural', ko: 'Warm Natural' }, description: { en: 'Earthy tones with organic textures', ko: '어스 톤과 유기적 텍스처' }, accentColor: 'amber', supportedModes: 'light' },
+  { id: 'softClay', label: { en: 'Soft Clay', ko: 'Soft Clay' }, description: { en: 'Rounded 3D shapes with matte pastels', ko: '매트 파스텔의 라운드 3D 셰이프' }, accentColor: 'rose', supportedModes: 'light' },
+  { id: 'bentoModern', label: { en: 'Bento Modern', ko: 'Bento Modern' }, description: { en: 'Grid-based card layout, bold type hierarchy', ko: '그리드 카드 레이아웃, 대담한 타이포그래피' }, accentColor: 'indigo', supportedModes: 'both' },
+  { id: 'deepMuted', label: { en: 'Deep Muted', ko: 'Deep Muted' }, description: { en: 'Low saturation dark palette, subtle contrast', ko: '저채도 다크 팔레트, 은은한 대비' }, accentColor: 'zinc', supportedModes: 'dark' },
+  { id: 'darkLuxury', label: { en: 'Dark Luxury', ko: 'Dark Luxury' }, description: { en: 'Rich blacks with metallic accents', ko: '메탈릭 악센트의 리치 블랙' }, accentColor: 'amber', supportedModes: 'dark' },
+  { id: 'cinematicDark', label: { en: 'Cinematic Dark', ko: 'Cinematic Dark' }, description: { en: 'Film-grade gradients with dramatic lighting', ko: '영화급 그라데이션과 드라마틱 라이팅' }, accentColor: 'violet', supportedModes: 'dark' },
+  { id: 'boldPlayful', label: { en: 'Bold Playful', ko: 'Bold Playful' }, description: { en: 'Saturated primary colors with playful shapes', ko: '고채도 원색과 플레이풀 셰이프' }, accentColor: 'yellow', supportedModes: 'both' },
+  { id: 'neoBrutalist', label: { en: 'Neo Brutalist', ko: 'Neo Brutalist' }, description: { en: 'Raw borders, system fonts, high contrast', ko: '거친 보더, 시스템 폰트, 높은 대비' }, accentColor: 'red', supportedModes: 'both' },
+  { id: 'editorialBold', label: { en: 'Editorial Bold', ko: 'Editorial Bold' }, description: { en: 'Magazine-style large type and grids', ko: '매거진 스타일 대형 타이포와 그리드' }, accentColor: 'black', supportedModes: 'light' },
+  { id: 'cyberpunkNeon', label: { en: 'Cyberpunk Neon', ko: 'Cyberpunk Neon' }, description: { en: 'Neon glows on dark, sci-fi aesthetic', ko: '다크 배경의 네온 글로우, SF 미학' }, accentColor: 'fuchsia', supportedModes: 'dark' },
+  { id: 'retroFuture', label: { en: 'Retro Future', ko: 'Retro Future' }, description: { en: '80s retro meets modern tech', ko: '80년대 레트로와 현대 테크의 만남' }, accentColor: 'orange', supportedModes: 'both' },
+  { id: 'nexusDS', label: { en: 'NEXUS Design System', ko: 'NEXUS Design System' }, description: { en: 'Data-driven enterprise UI with dark-first functional minimalism', ko: '다크 퍼스트 기능적 미니멀리즘의 데이터 중심 엔터프라이즈 UI' }, accentColor: 'teal', supportedModes: 'both' },
 ];
 
 export const SURFACE_SYSTEM_OPTIONS: BasisOption[] = [
@@ -308,3 +308,9 @@ export const VISUAL_TIER_TEMPLATE_PATHS = {
   componentSemantics: (v: string) => `basis/visualTier/componentSemantics/${v}`,
   visualHierarchyRules: (v: string) => `basis/visualTier/visualHierarchyRules/${v}`,
 } as const;
+
+export function getVisualLanguagesWithModes(): string {
+  return VISUAL_LANGUAGE_OPTIONS
+    .map(o => `${o.id} (${o.supportedModes ?? 'both'})`)
+    .join(', ');
+}
