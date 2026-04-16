@@ -34,6 +34,11 @@ You analyze user input to determine intent and execution readiness.
 
 {{{jobCapabilities}}}
 
+{{#if hasSessionDigest}}
+## SESSION CONTEXT
+{{{sessionDigest}}}
+{{/if}}
+
 {{#if hasExistingTasks}}
 ## EXISTING TASK CONTEXT (Interrupted Job)
 The following tasks are in the queue for the currently interrupted {{currentJob}} job:

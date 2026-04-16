@@ -206,13 +206,13 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
       // Update directive with the new one
       updatedState.directive = overrideDirective;
       
-      // ✅ Clear planText + conversationHistory only if the interrupted task itself was affected
+      // ✅ Clear planText + conversations only if the interrupted task itself was affected
       if (isInterruptedTaskAffected) {
-        console.log(`   🔄 Interrupted task "${interruptedTaskId}" was affected → clearing planText + conversationHistory`);
+        console.log(`   🔄 Interrupted task "${interruptedTaskId}" was affected → clearing planText + conversations`);
         updatedState.planText = '';
-        updatedState.conversationHistory = [];
+        updatedState.conversations = {};
       } else {
-        console.log(`   ✅ Interrupted task not affected → preserving planText + conversationHistory`);
+        console.log(`   ✅ Interrupted task not affected → preserving planText + conversations`);
       }
       
       // Save checkpoint
@@ -229,7 +229,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
                 completedTasksDetails: updatedState.completedTasksDetails || [],
                 currentTask: updatedState.currentTask,
                 planText: updatedState.planText,
-                conversationHistory: updatedState.conversationHistory || [],
+                conversations: updatedState.conversations || {},
                 files: updatedState.files || [],
                 filesToDelete: updatedState.filesToDelete || [],
                 jobId: updatedState.jobId,

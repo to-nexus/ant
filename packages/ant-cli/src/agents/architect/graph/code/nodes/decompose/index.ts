@@ -403,7 +403,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           taskName: 'Decompose',
           node: 'decompose',
           callIndex: 0,
-          conversationHistoryLength: 0,
+          nodeHistoryLength: 0,
           projectCodeContextFiles: 0,
           estimatedPromptChars: (prompts.system.length + prompts.user.length) || 0,
           taskCumulativeInput: 0,

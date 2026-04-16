@@ -7,6 +7,7 @@
  */
 
 import { DesignGraphState } from '../../../state';
+import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations';
 import { CacheableContent, MessageContentBlock } from '../../../../../../../core/ports/llm';
 import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import { buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from '../sourceSelector';
@@ -289,7 +290,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
   // Compose messages via MessageComposer
   const { messages } = composeMessages({
     initialBlocks: blocks,
-    priorTurns: state.conversationHistory,
+    priorTurns: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN) as any,
   });
   
   // ✅ Log prompt structure (not content) - full message
@@ -324,8 +325,8 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
           injectedVariables: {
             targetFile: targetFileForLog,  // ✅ NEW: Critical for MSA debugging
             messageCount: messages.length,
-            hasConversationHistory: !!(state.conversationHistory?.length),
-            conversationHistoryLength: state.conversationHistory?.length || 0,
+            hasConversationHistory: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length > 0,
+            nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length,
             prdSpec: prdSpecForLog ? `[${prdSpecForLog.length} chars]` : undefined,
             design: (() => { const d = new ArtifactPoolView(state.artifacts || []).firstDesignContent(); return d ? `[${d.length} chars]` : undefined; })(),
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,

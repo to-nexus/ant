@@ -8,7 +8,8 @@
  * Uses Anthropic native format (same as Code Job) for reliable tool calling.
  */
 
-import { AskGraphState, ConversationMessage } from '../state.js';
+import { AskGraphState } from '../state.js';
+import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations.js';
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
 import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
 import { buildAssistantMessage } from '../../../../common/tool/messageBuilder';
@@ -81,15 +82,15 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   // System message is passed separately via options
   const messages: ConversationMessage[] = [];
   
+  const nodeAgent = getConv(state.conversations, CONV_KEYS.NODE_AGENT);
   // Add question as first user message if no history
-  if (state.conversationHistory.length === 0) {
+  if (nodeAgent.length === 0) {
     messages.push({
       role: 'user',
       content: state.question,
     });
   } else {
-    // Use existing conversation history
-    messages.push(...state.conversationHistory);
+    messages.push(...nodeAgent as any);
   }
 
   // Anthropic API requires conversation to end with a user message.
@@ -121,7 +122,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   
   // Check if this is first call (enable thinking) or continuation (disable thinking)
   // After tool_use, thinking must be disabled (Anthropic API requirement)
-  const isFirstCall = state.conversationHistory.length === 0;
+  const isFirstCall = nodeAgent.length === 0;
   
   try {
     // Use streaming API
@@ -238,10 +239,9 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   }
   
   // Update conversation history (Anthropic native format - same as Code Job)
-  const newHistory: ConversationMessage[] = [...state.conversationHistory];
+  const newHistory: ConversationMessage[] = [...nodeAgent];
   
-  // Add question as first user message if empty
-  if (state.conversationHistory.length === 0) {
+  if (nodeAgent.length === 0) {
     newHistory.push({
       role: 'user',
       content: state.question,
@@ -250,7 +250,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   
   // Detect evaluation from LLM response before building history.
   // The LLM outputs <eval type="..."/> when it produces a rubric-based evaluation report.
-  // Must strip the tag before pushing to conversationHistory to avoid
+  // Must strip the tag before pushing to conversations to avoid
   // leaking it into subsequent LLM calls in multi-turn sessions.
   let cleanedResponseText = responseText;
   if (!isEvaluation && responseText) {
@@ -270,7 +270,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   }
 
   return {
-    conversationHistory: newHistory,
+    conversations: { [CONV_KEYS.NODE_AGENT]: newHistory },
     pendingToolCalls: toolCalls.length > 0 ? toolCalls : [],
     response: toolCalls.length > 0 ? undefined : cleanedResponseText,
     streamingCompleted,

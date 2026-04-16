@@ -17,6 +17,7 @@ import { WorkflowStateUpdatePort } from '../../../../core/ports/workflow.js';
 import { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers.js';
 import { VisualSettings } from '../../../../core/types/workspace.js';
 import type { ConversationEntry } from '../../../../core/types/session.js';
+import type { Conversations } from '../../../common/graph/conversations.js';
 import type { ConversationCompaction } from '../../../../core/context/compactJob.js';
 import type { Mode } from '@ant/shared';
 
@@ -110,8 +111,8 @@ export interface VisualGraphState extends DetectableState, PhaseTrackingState {
   currentAgent: string;
   currentJob: string;
 
-  // Visual-specific state
-  conversation: ConversationEntry[];
+  // Unified conversations record
+  conversations: Conversations;
   engineeredPrompt?: string;
   sketchImages?: SketchImage[];
   svgSketches?: SvgSketch[];
@@ -171,7 +172,6 @@ export interface VisualGraphState extends DetectableState, PhaseTrackingState {
 
 export const VisualGraphAnnotation = Annotation.Root({
   ...DetectableFields,
-  conversation: Annotation<any>,
   engineeredPrompt: Annotation<any>,
   sketchImages: Annotation<any>,
   svgSketches: Annotation<any>,

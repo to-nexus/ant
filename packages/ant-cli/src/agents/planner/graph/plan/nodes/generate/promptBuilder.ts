@@ -1,12 +1,11 @@
-import * as path from 'path';
 import { PlanGraphState, getPlanMode } from '../../state';
-import { ConversationEntry } from '../../../../../../core/types/session';
+import type { ConversationMessage } from '../../../../../common/graph/conversations';
 
 /**
  * Format conversation entries for the system prompt.
  * Excludes the last user message (which goes into the messages array).
  */
-export function formatConversationForPrompt(conversation: ConversationEntry[]): string {
+export function formatConversationForPrompt(conversation: ConversationMessage[]): string {
   if (!conversation || conversation.length === 0) return '';
   
   return conversation.map(entry => {
@@ -17,21 +16,19 @@ export function formatConversationForPrompt(conversation: ConversationEntry[]): 
     const artifactNote = entry.metadata?.hasArtifact
       ? ` [produced ${entry.metadata.mode || 'artifact'}]`
       : '';
-    const content = entry.role === 'assistant' && entry.content.length > 500
-      ? entry.content.substring(0, 500) + '...(truncated)'
-      : entry.content;
+    const rawContent = typeof entry.content === 'string' ? entry.content : JSON.stringify(entry.content);
+    const content = entry.role === 'assistant' && rawContent.length > 500
+      ? rawContent.substring(0, 500) + '...(truncated)'
+      : rawContent;
     return `**${roleLabel}**${artifactNote}: ${content}`;
   }).join('\n\n');
 }
 
 /**
- * Derive staging path from resolvedAction.target[0].
- * Convention: outputs/plan/{basename(target)}
+ * Return the target path from resolvedAction.target[0] directly.
  */
-export function getStagingPath(state: PlanGraphState): string | undefined {
-  const target = state.resolvedAction?.target?.[0];
-  if (!target) return undefined;
-  return `outputs/plan/${path.basename(target)}`;
+export function getTargetPath(state: PlanGraphState): string | undefined {
+  return state.resolvedAction?.target?.[0];
 }
 
 /**
@@ -39,12 +36,12 @@ export function getStagingPath(state: PlanGraphState): string | undefined {
  */
 export async function buildSystemPrompt(
   state: PlanGraphState,
-  compaction: { entries: ConversationEntry[]; summary?: string; wasCompacted: boolean },
+  compaction: { entries: ConversationMessage[]; summary?: string; wasCompacted: boolean },
 ): Promise<string> {
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Planner:Generate] PromptBuilder not available in state.deps');
 
-  const stagingPath = getStagingPath(state);
+  const targetPath = getTargetPath(state);
   const hasTargets = (state.resolvedAction?.target?.length ?? 0) > 0;
   const planMode = getPlanMode(state);
 
@@ -59,7 +56,7 @@ export async function buildSystemPrompt(
       directive: state.directive,
       mode: planMode,
       hasTargets,
-      stagingPath: stagingPath || '',
+      targetPath: targetPath || '',
       evalReport: state.evalReport || '',
       hasEvalReport: !!state.evalReport,
       rubricContent: state.rubricContent || '',

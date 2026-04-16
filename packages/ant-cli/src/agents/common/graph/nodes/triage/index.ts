@@ -153,6 +153,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     currentAgent,
     workspaceState,
     jobCapabilities,
+    sessionDigest: state.sessionDigest,
   });
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -367,8 +368,9 @@ export function buildTriagePrompt(params: {
   workspaceState: WorkspaceState;
   jobCapabilities: string;
   existingTaskSummary?: string;
+  sessionDigest?: string;
 }): { system: string; user: string } {
-  const { userInput, currentJob, currentAgent, workspaceState, jobCapabilities, existingTaskSummary } = params;
+  const { userInput, currentJob, currentAgent, workspaceState, jobCapabilities, existingTaskSummary, sessionDigest } = params;
   
   const { base, rules } = loadTriageTemplates();
   
@@ -400,6 +402,9 @@ export function buildTriagePrompt(params: {
     // Existing task context (for continuation assessment)
     hasExistingTasks: !!existingTaskSummary,
     existingTaskSummary,
+    // Session context digest
+    hasSessionDigest: !!sessionDigest,
+    sessionDigest,
   });
   
   return { system: rules, user };

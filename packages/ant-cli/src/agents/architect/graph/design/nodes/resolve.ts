@@ -8,6 +8,7 @@ import type { ConversationEntry } from "../../../../../core/types/session";
 import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
+import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
 import { scanDesignOutputs, buildDesignArtifactPool } from '../../../../../core/prompt/builder/ArtifactPipeline';
 
 const DESIGN_FILE_PATTERNS = [
@@ -315,6 +316,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       chatSource: state.chatSource,
       _httpJobId: state._httpJobId,
       jobConversation: processedJobConversation,
+      sessionDigest: buildSessionDigest(processedJobConversation),
     } as Partial<DesignGraphState>;
   },
 };

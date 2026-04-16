@@ -1,5 +1,6 @@
 import { CodebaseProfile } from "../../../../core/types";
 import type { ConversationEntry } from "../../../../core/types/session";
+import type { Conversations } from '../../../common/graph/conversations';
 import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
 import { ProjectContext } from "../../types";
@@ -91,10 +92,8 @@ export interface DesignGraphState extends TriageableState {
     done: boolean;
   };
   
-  conversationHistory?: Array<{
-    role: 'user' | 'assistant';
-    content: string | import('../../../../core/ports/llm').MessageContentBlock[];
-  }>;
+  // Unified conversations record
+  conversations: Conversations;
   
   // ✅ Token usage (per-turn tracking; job-level is `tokenUsage` from ResolvableState)
   _currentTaskTokenUsage?: TokenUsage;

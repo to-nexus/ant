@@ -271,7 +271,7 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
       _taskCompleted: true,
       retries: 0,
       violations: [],
-      conversationHistory: [],
+      conversations: {},
       planText: '',
       projectCodeContext: undefined,
       _executeCallIndex: 0,

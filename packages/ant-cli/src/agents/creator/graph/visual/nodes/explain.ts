@@ -7,6 +7,7 @@
  */
 
 import { VisualGraphState } from '../types.js';
+import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
@@ -29,7 +30,8 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
   }
   const pb = state.deps.promptBuilder;
 
-  const conversationContext = state.conversation
+  const sessionMain = getConv(state.conversations, CONV_KEYS.SESSION_MAIN);
+  const conversationContext = sessionMain
     .slice(-10)
     .map(entry => `[${entry.role}] ${entry.content}`)
     .join('\n');
@@ -99,7 +101,7 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
         await logPrompt(state.featurePath, state._httpJobId, 'visual', 'explain', systemPrompt.length + userPrompt.length, {
           templatePath: 'jobs/visual/nodes/explain/variants/default/base',
           usedTemplates: ['jobs/visual/nodes/explain/variants/default/base', 'jobs/visual/nodes/explain/variants/default/context'],
-          injectedVariables: { currentDirective, conversationEntries: state.conversation.length, hasSketchContext: !!sketchVariationList },
+          injectedVariables: { currentDirective, conversationEntries: sessionMain.length, hasSketchContext: !!sketchVariationList },
           hardcodedContent: responseText.substring(0, 500),
         });
       } catch { /* non-critical */ }
@@ -114,14 +116,14 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
     }
 
     return {
-      conversation: [
-        ...state.conversation,
+      conversations: { [CONV_KEYS.SESSION_MAIN]: [
+        ...sessionMain,
         {
           role: 'assistant' as const,
           content: responseText,
           timestamp: new Date().toISOString(),
         },
-      ],
+      ] },
       _phaseTimings: { ...state._phaseTimings, explain: Date.now() - phaseStart },
     };
   } catch (err: any) {

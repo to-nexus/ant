@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
 import { VisualGraphState, ASSET_OUTPUT_SPECS } from '../types.js';
-import type { ConversationEntry } from '../../../../../core/types/session.js';
+import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 
@@ -157,7 +157,7 @@ async function deliverFinalImage(
 
   await notifyFileTree(state);
 
-  const chapterMarker: ConversationEntry = {
+  const chapterMarker: ConversationMessage = {
     role: 'system',
     content: `[Asset saved: inputs/assets/gen/${filename}]`,
     timestamp: new Date().toISOString(),
@@ -171,7 +171,7 @@ async function deliverFinalImage(
     outputPath,
     lastEngineeredPrompt: state.engineeredPrompt,
     lastOutputPath: outputPath,
-    conversation: [...state.conversation, chapterMarker],
+    conversations: { [CONV_KEYS.SESSION_MAIN]: [...getConv(state.conversations, CONV_KEYS.SESSION_MAIN), chapterMarker] },
     sketchImages: undefined,
     svgSketches: undefined,
     engineeredPrompt: undefined,
@@ -253,7 +253,7 @@ async function deliverSketchImages(
     ? `\nVariations: ${state.sketchVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
     : '';
 
-  const chapterMarker: ConversationEntry = {
+  const chapterMarker: ConversationMessage = {
     role: 'system',
     content: `[${sketchEntries.length} sketch candidates saved for selection]${variationSummary}`,
     timestamp: new Date().toISOString(),
@@ -267,7 +267,7 @@ async function deliverSketchImages(
   return {
     lastEngineeredPrompt: state.basePrompt || state.engineeredPrompt,
     availableSketchPaths: savedSketchPaths,
-    conversation: [...state.conversation, chapterMarker],
+    conversations: { [CONV_KEYS.SESSION_MAIN]: [...getConv(state.conversations, CONV_KEYS.SESSION_MAIN), chapterMarker] },
     sketchImages: undefined,
     svgSketches: undefined,
     engineeredPrompt: undefined,
@@ -312,7 +312,7 @@ async function deliverSvgSketches(
 
     await notifyFileTree(state);
 
-    const chapterMarker: ConversationEntry = {
+    const chapterMarker: ConversationMessage = {
       role: 'system',
       content: `[SVG saved: inputs/assets/gen/${filename}]`,
       timestamp: new Date().toISOString(),
@@ -326,7 +326,7 @@ async function deliverSvgSketches(
       outputPath,
       lastEngineeredPrompt: state.engineeredPrompt,
       lastOutputPath: outputPath,
-      conversation: [...state.conversation, chapterMarker],
+      conversations: { [CONV_KEYS.SESSION_MAIN]: [...getConv(state.conversations, CONV_KEYS.SESSION_MAIN), chapterMarker] },
       sketchImages: undefined,
       svgSketches: undefined,
       engineeredPrompt: undefined,
@@ -402,7 +402,7 @@ async function deliverSvgSketches(
     ? `\nVariations: ${state.sketchVariations.map((v, i) => `[${i + 1}] ${v.label}`).join(', ')}`
     : '';
 
-  const chapterMarker: ConversationEntry = {
+  const chapterMarker: ConversationMessage = {
     role: 'system',
     content: `[${sketchEntries.length} SVG sketch candidates saved for selection]${svgVariationSummary}`,
     timestamp: new Date().toISOString(),
@@ -416,7 +416,7 @@ async function deliverSvgSketches(
   return {
     lastEngineeredPrompt: state.basePrompt || state.engineeredPrompt,
     availableSketchPaths: savedSvgSketchPaths,
-    conversation: [...state.conversation, chapterMarker],
+    conversations: { [CONV_KEYS.SESSION_MAIN]: [...getConv(state.conversations, CONV_KEYS.SESSION_MAIN), chapterMarker] },
     sketchImages: undefined,
     svgSketches: undefined,
     engineeredPrompt: undefined,

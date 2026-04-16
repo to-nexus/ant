@@ -203,14 +203,14 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
         updatedState.directive = overrideDirective;
       }
       
-      // ✅ Clear planText + conversationHistory only if the interrupted task itself was affected
+      // ✅ Clear planText + conversations only if the interrupted task itself was affected
       // If only other tasks were added/removed, the current task's plan and progress are still valid
       if (isInterruptedTaskAffected) {
-        console.log(`   🔄 Interrupted task "${interruptedTaskId}" was affected → clearing planText + conversationHistory`);
+        console.log(`   🔄 Interrupted task "${interruptedTaskId}" was affected → clearing planText + conversations`);
         updatedState.planText = '';
-        updatedState.conversationHistory = [];
+        updatedState.conversations = {};
       } else {
-        console.log(`   ✅ Interrupted task not affected → preserving planText + conversationHistory`);
+        console.log(`   ✅ Interrupted task not affected → preserving planText + conversations`);
       }
       
       // Save checkpoint

@@ -11,8 +11,10 @@
 import { Annotation } from '@langchain/langgraph';
 import type { StateDefinition, StateType } from '@langchain/langgraph';
 import type { TokenUsage } from './llmHelpers';
-import type { TriageResult, WorkspaceState } from '../nodes/triage/types';
+import type { TriageResult, WorkspaceState } from './nodes/triage/types';
 import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata } from '@ant/shared';
+import type { Conversations } from './conversations';
+import { conversationsReducer } from './conversations';
 
 export const ResolvableFields = {
   featurePath: Annotation<string | undefined>,
@@ -31,6 +33,11 @@ export const ResolvableFields = {
   currentJob: Annotation<string | undefined>,
   recursionCount: Annotation<number | undefined>,
   recursionLimit: Annotation<number | undefined>,
+  conversations: Annotation<Conversations>({
+    reducer: conversationsReducer,
+    default: () => ({}),
+  }),
+  sessionDigest: Annotation<string | undefined>,
 } as const satisfies StateDefinition;
 
 export const TriageableFields = {

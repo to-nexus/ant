@@ -8,6 +8,7 @@
  */
 
 import { ArchitectGraphState } from '../../state';
+import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
 import { isTypecheckCommand, isBuildCommand, isTestCommand } from '../../../../../common/tool/constants';
@@ -60,8 +61,8 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
 
   getHistory(state) {
     return state._activePhase === 'plan'
-      ? (state.planConversationHistory || [])
-      : (state.conversationHistory || []);
+      ? getConv(state.conversations, CONV_KEYS.NODE_PLAN)
+      : getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
   },
 
   hooks: {
@@ -135,9 +136,9 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
     };
 
     if (state._activePhase === 'plan') {
-      return { ...base, planConversationHistory: updatedHistory };
+      return { ...base, conversations: { [CONV_KEYS.NODE_PLAN]: updatedHistory } };
     }
-    return { ...base, conversationHistory: updatedHistory };
+    return { ...base, conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedHistory } };
   },
 
   getWorkflowUpdate(state) {

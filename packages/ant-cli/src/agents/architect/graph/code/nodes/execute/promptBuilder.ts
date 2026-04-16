@@ -9,6 +9,7 @@
 
 import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
+import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { formatViolations } from "../shared/violationFormatter";
 import { CacheableContent, MessageContentBlock } from "../../../../../../core/ports/llm";
@@ -390,7 +391,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const b2Hash = createHash('md5').update(block2Text).digest('hex').slice(0, 12);
     const b1Len = block1Text.length;
     const b2Len = block2Text.length;
-    const histLen = state.conversationHistory?.length || 0;
+    const histLen = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length;
 
     if (_lastCacheBlockHashes.block1 && _lastCacheBlockHashes.block1 !== b1Hash) {
       console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${_lastCacheBlockHashes.block1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
@@ -424,7 +425,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { messages } = composeMessages({
     initialBlocks: blocks,
-    priorTurns: state.conversationHistory,
+    priorTurns: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     cleanAssistantContent: cleanFileContentFromResponse,
     budgetRecovery: {
       aggressiveParams: { microcompactHotTail: 1, autoCompactThreshold: 20000, autoCompactHotTail: 1 },
@@ -482,7 +483,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             hasViolations: !!(state.violations?.length),
             violationsCount: state.violations?.length || 0,
             messageCount: messages.length,
-            conversationHistoryLength: state.conversationHistory?.length || 0,
+            nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length,
             runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
             profileLanguage: getTechTier(state)?.language || null,
             profileFramework: getTechTier(state)?.framework || null,
