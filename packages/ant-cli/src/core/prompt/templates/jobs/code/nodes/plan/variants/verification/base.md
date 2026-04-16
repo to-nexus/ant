@@ -20,7 +20,7 @@ You do NOT fix code — a separate execution phase handles that based on your pl
 ### Step 1: Verify Build
 
 {{#if hasLanguageHints}}
-Language-specific verification hints are provided below. They define the required verification commands and their execution order for this project.
+Language-specific verification hints are provided below. They define the required verification commands and their execution order for this project. Build is not considered verified until every step defined in those hints has been executed and observed to pass.
 {{else}}
 Observe the project's build system from the pre-loaded context (config files, directory tree).
 Execute the project's primary build command using `run_command`.
@@ -188,15 +188,15 @@ or have cross-file dependencies MUST be in the same batch.)
 
 **Constraint**: List ALL files that need modification across all batches. Do not fix one error and leave others.
 
-**Constraint**: If build{{#if runTests}}/test{{/if}} succeeds with no errors, output an empty plan:
+**Constraint**: If all verification commands pass with no errors, output an empty plan:
 
 ```
-<analysis>Build{{#if runTests}} and tests{{/if}} passed successfully. No fixes needed.</analysis>
+<analysis>All verification commands passed (exit 0). No fixes needed.</analysis>
 
 <plan>
 {
   "task": { "id": "{{taskId}}", "goal": "No errors found" },
-  "diagnostics": { "command": "[command]", "totalErrors": 0, "rootCauses": [] },
+  "diagnostics": { "command": "[last verification command that was run]", "totalErrors": 0, "rootCauses": [] },
   "implementation": { "modify": [], "create": [], "delete": [] }
 }
 </plan>

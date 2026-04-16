@@ -177,6 +177,16 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
       const hasPlan = !!state.planText?.trim();
       const madeFileChanges = state._executeModifiedFiles === true;
 
+      // Empty plan = diagnostic phase found no errors to fix.
+      // Route to checkTaskStatus so the tracker can validate that all
+      // verification objectives (typecheck/build/test) were actually met.
+      // Without this, an empty plan + buildPassed=false creates an
+      // infinite reverify loop because reverify resets the tracker.
+      if (!hasPlan) {
+        console.log(`\n🎯 [Router] Empty plan (no errors found) → checkTaskStatus (tracker validation)\n`);
+        return 'checkTaskStatus';
+      }
+
       if (hasPlan && !madeFileChanges) {
         console.warn(`⚠️  [Router] Execute signaled done but made no file changes despite non-empty plan → checkTaskStatus`);
         return 'checkTaskStatus';
