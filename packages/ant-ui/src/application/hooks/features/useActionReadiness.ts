@@ -122,13 +122,13 @@ function computeReadiness(actionId: IntentGroup, ctx: TreeContext): ActionReadin
 }
 
 function computePlan(ctx: TreeContext): ActionReadiness {
-  const hasOutput = dirHasFiles(ctx.fileTree, 'outputs/plan');
+  const hasOutput = fileExists(ctx.fileTree, 'inputs/sources/prd.md');
   return {
     buildReady: true,
     hasOutput,
     hasCodebase: ctx.hasCodebase,
     detectedMode: { id: 'plan', label: { en: 'PRD', ko: '기획서' } },
-    outputDir: 'outputs/plan',
+    outputDir: 'inputs/sources',
     namingIssues: [],
   };
 }

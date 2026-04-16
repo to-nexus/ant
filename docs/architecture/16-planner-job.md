@@ -42,16 +42,12 @@ resolve가 `workspaceState.sourceFileNames`를 활용하여 추론한다.
 | `prd.md` 없고 다른 파일 있음 | 전체 source 파일 (LLM clarify) |
 | 파일 없음 | `['inputs/sources/prd.md']` (gen-plan 기본값) |
 
-### Staging Path 도출
-
-`outputs/plan/${path.basename(target)}` — target으로부터 자동 도출. state에 저장하지 않음.
-
 ## 모드
 
 | Mode | 조건 | 행동 |
 |------|------|------|
-| `generate` | 기존 target 문서 없음, 또는 explicit gen-plan | `<file path="{stagingPath}">` 태그로 전체 문서 출력 |
-| `refine` | 기존 target 문서 존재 + LLM이 수정 의도 감지 | `edit_file(path="{stagingPath}")` 도구로 targeted editing |
+| `generate` | 기존 target 문서 없음, 또는 explicit gen-plan | `<file path="{targetPath}">` 태그로 전체 문서를 `inputs/sources/`에 직접 출력 |
+| `refine` | 기존 target 문서 존재 + LLM이 수정 의도 감지 | `edit_file(path="{targetPath}")` 도구로 targeted editing |
 | `explain` | 기존 문서 존재 + LLM이 분석/질의 의도 감지 | 읽기 전용 채팅 응답 |
 
 ## 문서 내용 주입
@@ -75,20 +71,9 @@ __start__ -> resolve -> triage -> [router]
 generate -> [router]
     +-> tool_use -> tool -> generate (ReAct 루프)
     +-> <clarify> 감지 -> ChoiceCard 발행 -> __end__
-    +-> <file> 감지 -> 디스크 저장 + Apply ChoiceCard -> __end__
+    +-> <file> 감지 -> inputs/sources/에 직접 저장 -> __end__
     +-> text only -> 대화 저장 -> __end__
 ```
-
-## Apply 흐름
-
-산출물은 staging path에 생성된다. 사용자가 "적용"을 선택하면 staging → source로 복사된다.
-
-| 단계 | 경로 예시 |
-|------|----------|
-| Staging (생성/편집) | `outputs/plan/prd.md` |
-| Apply (적용) | `outputs/plan/prd.md` → `inputs/sources/prd.md` |
-
-`POST /chat/prd-apply`가 body에서 `{ stagingPath, sourcePath }` 매핑을 수신한다.
 
 ## Clarifying Questions
 
@@ -122,8 +107,8 @@ agents/planner/
             runner.ts           (runPlanGraph)
             state.ts            (PlanGraphState — existingDocument 없음)
             nodes/
-                resolve.ts      (target 결정, documents 로드, staging 복사)
-                generate.ts     (ReAct 루프, getStagingPath()로 동적 경로)
+                resolve.ts      (target 결정, documents 로드)
+                generate.ts     (ReAct 루프, target path로 직접 저장)
                 tool.ts         (도구 실행)
 ```
 
@@ -140,7 +125,7 @@ agents/planner/
 `planner/plan/base.md` + `planner/plan/rules.md`. PromptEngine 6단계 파이프라인을 타지 않고 `generate.ts`에서 직접 Handlebars 렌더링한다.
 
 - `base.md`: directive, mode, staging path, eval report, conversation context, `{{> common/injections/action-context}}`
-- `rules.md`: 출력 프로토콜 (staging path 동적 참조), clarify 규칙, mode별 행동
+- `rules.md`: 출력 프로토콜 (target path 직접 참조), clarify 규칙, mode별 행동
 
 ## 경계
 

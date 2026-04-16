@@ -18,7 +18,7 @@ export interface PathItem {
  * normalizePaths([
  *   { path: 'outputs', type: 'directory' },
  *   { path: 'outputs/design/spec/spec-example.md', type: 'file' },
- *   { path: 'outputs/plan', type: 'directory' },
+ *   { path: 'outputs/design', type: 'directory' },
  *   { path: 'inputs/spec.md', type: 'file' },
  * ])
  * // => [

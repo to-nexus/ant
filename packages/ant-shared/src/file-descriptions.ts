@@ -50,7 +50,6 @@ const DIR_DESCRIPTIONS: DirDescription[] = [
   { path: 'outputs/design/system', description: { en: 'System design outputs — frontend/backend architecture and API contracts. Multiple files generated per service scope.', ko: '시스템 설계 산출물 — 프론트/백엔드 아키텍처와 API 계약. 서비스 범위별로 여러 파일이 생성됩니다.' }, expectedFiles: ['fe-system-*.md', 'be-system-*.md', 'api-contract-*.md'] },
   { path: 'outputs/design/ui', description: { en: 'UI design outputs — tokens, assets, and component specs. Generated from Figma, reference images, or text descriptions.', ko: 'UI 설계 산출물 — 토큰, 에셋, 컴포넌트 스펙. Figma, 레퍼런스 이미지, 또는 텍스트 설명으로부터 생성됩니다.' }, expectedFiles: ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json'] },
   { path: 'outputs/design/spec', description: { en: 'Feature implementation specs — one file per feature scope. Used as the primary input for code generation.', ko: '기능 구현 스펙 — 기능 범위별 하나의 파일. 코드 생성의 주요 입력으로 사용됩니다.' }, expectedFiles: ['spec-*.md'] },
-  { path: 'outputs/plan', description: { en: 'PRD output — Ant generates a structured requirements document here.', ko: 'PRD 산출물 — Ant가 구조화된 요구사항 문서를 이곳에 생성합니다.' }, expectedFiles: ['prd.md'] },
 ];
 
 // ============================================

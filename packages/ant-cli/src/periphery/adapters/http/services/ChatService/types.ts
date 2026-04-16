@@ -29,7 +29,7 @@ export interface MessageContent {
      | 'text'
      | 'cancelled'      // Task cancelled (with Resume button)
      | 'triage_choice'  // Triage redirect/blocked choice
-     | 'choice_card'    // Generic choice card (eval_save, prd_apply, etc.)
+     | 'choice_card'    // Generic choice card (eval_save, etc.)
      | 'context_loaded' // Context loaded notification
      // File Operations - Real-time streaming
      | 'file_creating' | 'file_writing' | 'file_create' | 'file_create_failed'
@@ -77,7 +77,7 @@ export interface MessageContent {
     choiceSelected?: string;  // For triage_choice/choice_card: selected action
     resolvedLabel?: string;   // For triage_choice/choice_card: resolved display label
     // Choice card metadata (for choice_card type)
-    cardType?: string;        // For choice_card: subtype (eval_save, prd_apply)
+    cardType?: string;        // For choice_card: subtype (eval_save, etc.)
     title?: string;           // For choice_card: display title
     evalType?: string;        // For eval_save: evaluation type (prd, ui-design, etc.)
     evalContent?: string;     // For eval_save: evaluation content

@@ -16,10 +16,10 @@ The user has given the following directive:
 
 Mode: **{{mode}}**
 
-{{#if stagingPath}}
-## 3. Staging Path
+{{#if targetPath}}
+## 3. Target Path
 
-Edit target (use this path with edit_file or <file> tag): `{{stagingPath}}`
+Edit target (use this path with edit_file or <file> tag): `{{targetPath}}`
 {{/if}}
 
 {{#if hasEvalReport}}
