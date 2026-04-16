@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../../../../../../ant-desktop"
+		},
+		{
+			"path": "../../../../../../nexus-design-system"
 		}
 	],
 	"settings": {}

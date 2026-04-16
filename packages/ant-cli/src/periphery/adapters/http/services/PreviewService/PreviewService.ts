@@ -52,6 +52,7 @@ export class PreviewService {
   // Start/Stop state management
   private startingServers: Set<string> = new Set(); // serverKeys currently in startPreview
   private startCancelledServers: Set<string> = new Set(); // startPreview should abort after spawn
+  private startAbortControllers: Map<string, AbortController> = new Map(); // abort ongoing install/infra during startup
   private stoppingServers: Set<string> = new Set();
   private stoppingPidsByServer: Map<string, Set<number>> = new Map();
   private stoppingCleanupTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -463,6 +464,9 @@ export class PreviewService {
     
     this.installingProjects.add(serverKey);
     this.startingServers.add(serverKey);
+    const startAbort = new AbortController();
+    this.startAbortControllers.set(serverKey, startAbort);
+    const startSignal = startAbort.signal;
     
     try {
       // 0. Register in Redis immediately with phase: 'installing'
@@ -517,15 +521,17 @@ export class PreviewService {
       const logCallback = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
       const credentialEnv = await this.getCredentialEnv(tenantId, userId, projectId, localPath);
       for (const pkg of structure.packages) {
-        await this.dependencyInstaller.installIfNeeded(pkg.path, pkg.name, logCallback, pkg.projectProfile, credentialEnv);
+        if (startSignal.aborted) throw new Error('Preview start cancelled');
+        await this.dependencyInstaller.installIfNeeded(pkg.path, pkg.name, logCallback, pkg.projectProfile, credentialEnv, startSignal);
       }
       
       this.installingProjects.delete(serverKey);
       
       // 2.5. Start infrastructure services (if docker-compose.yml exists)
+      if (startSignal.aborted) throw new Error('Preview start cancelled');
       this.previewServerPaths.set(serverKey, localPath);
       const infraProjectName = `ant-${projectId}-${feature}`.replace(/[^a-zA-Z0-9_-]/g, '-');
-      await this.infrastructureManager.startInfrastructure(localPath, logCallback, infraProjectName);
+      await this.infrastructureManager.startInfrastructure(localPath, logCallback, infraProjectName, startSignal);
       
       const infraStatus = await this.infrastructureManager.getInfraStatus(localPath, infraProjectName);
 
@@ -605,6 +611,8 @@ export class PreviewService {
 
       logger.info(`[Preview] ${connections.length} connections from registry for ${serverKey}`, { component: 'PreviewService' });
 
+      if (startSignal.aborted) throw new Error('Preview start cancelled');
+
       // Spawn processes with connections (filtered by source in ProcessSpawner)
       for (const pkg of orderedPackages) {
         const pkgPort = pkg.port!;
@@ -672,6 +680,7 @@ export class PreviewService {
       // 5. Store processes (port is already in Redis via registerPreview)
       this.previewServers.set(serverKey, processes);
       this.startingServers.delete(serverKey);
+      this.startAbortControllers.delete(serverKey);
       
       // Check if stopPreview was called while we were starting
       if (this.startCancelledServers.has(serverKey)) {
@@ -772,6 +781,7 @@ export class PreviewService {
       this.installingProjects.delete(serverKey);
       this.startingServers.delete(serverKey);
       this.startCancelledServers.delete(serverKey);
+      this.startAbortControllers.delete(serverKey);
       logger.error(`Error starting preview server: ${error.message}`, { component: 'PreviewService' }, error);
       this.appendLog(serverKey, 'stderr', `❌ Error: ${error.message}`);
       
@@ -1087,11 +1097,15 @@ export class PreviewService {
   ): Promise<{ success: boolean; message?: string; error?: string }> {
     const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
     
-    // If startPreview is still running (before previewServers.set), signal it to cancel
+    // If startPreview is still running (before previewServers.set), abort it immediately
     if (this.startingServers.has(serverKey)) {
-      logger.warn(`[Preview] stopPreview called while startPreview is running for ${serverKey}`, { component: 'PreviewService' });
+      logger.warn(`[Preview] stopPreview called while startPreview is running for ${serverKey} — aborting install/infra`, { component: 'PreviewService' });
       this.startCancelledServers.add(serverKey);
-      return { success: true, message: 'Start operation will be cancelled' };
+      const startAbort = this.startAbortControllers.get(serverKey);
+      if (startAbort) {
+        startAbort.abort();
+      }
+      return { success: true, message: 'Start operation is being cancelled' };
     }
     
     const processes = this.previewServers.get(serverKey);
