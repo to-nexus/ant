@@ -21,13 +21,15 @@ export class DependencyInstaller {
   /**
    * Install dependencies if needed.
    * Dispatches to language-specific install based on projectProfile.
+   * Pass an AbortSignal to allow cancellation of long-running installs.
    */
   async installIfNeeded(
     packagePath: string, 
     displayName: string,
     onLog: LogCallback,
     projectProfile?: { language: string; framework?: string },
-    credentialEnv?: Record<string, string>
+    credentialEnv?: Record<string, string>,
+    signal?: AbortSignal
   ): Promise<void> {
     const relativePath = displayName || path.basename(packagePath);
     const lang = (projectProfile?.language || 'typescript').toLowerCase();
@@ -35,12 +37,12 @@ export class DependencyInstaller {
     switch (lang) {
       case 'typescript':
       case 'javascript':
-        return this.installNodeDeps(packagePath, relativePath, onLog, credentialEnv);
+        return this.installNodeDeps(packagePath, relativePath, onLog, credentialEnv, signal);
       case 'go':
       case 'python':
       case 'rust':
       case 'java':
-        return this.installByLanguage(packagePath, relativePath, lang, onLog, credentialEnv);
+        return this.installByLanguage(packagePath, relativePath, lang, onLog, credentialEnv, signal);
       default:
         logger.debug(`No dependency install for language: ${lang}`, { component: 'DependencyInstaller' });
         return;
@@ -54,7 +56,8 @@ export class DependencyInstaller {
     packagePath: string,
     displayName: string,
     onLog: LogCallback,
-    credentialEnv?: Record<string, string>
+    credentialEnv?: Record<string, string>,
+    signal?: AbortSignal
   ): Promise<void> {
     const nodeModulesPath = path.join(packagePath, 'node_modules');
     const projectRoot = this.findProjectRoot(packagePath);
@@ -70,7 +73,7 @@ export class DependencyInstaller {
       const rootNodeModules = path.join(projectRoot, 'node_modules');
       if (!fs.existsSync(rootNodeModules)) {
         logger.info(`Installing workspace dependencies at root: ${projectRoot}`, { component: 'DependencyInstaller' });
-        await this.runInstall(projectRoot, 'workspace root', onLog, credentialEnv);
+        await this.runInstall(projectRoot, 'workspace root', onLog, credentialEnv, signal);
         this.installedRoots.add(projectRoot);
         return;
       }
@@ -78,7 +81,7 @@ export class DependencyInstaller {
       // Check if workspace needs reinstall
       if (this.workspaceNeedsReinstall(projectRoot)) {
         logger.info(`Workspace needs reinstall: ${projectRoot}`, { component: 'DependencyInstaller' });
-        await this.runInstall(projectRoot, 'workspace root', onLog, credentialEnv);
+        await this.runInstall(projectRoot, 'workspace root', onLog, credentialEnv, signal);
         this.installedRoots.add(projectRoot);
         return;
       }
@@ -91,7 +94,7 @@ export class DependencyInstaller {
     // Non-workspace: install per package
     if (!fs.existsSync(nodeModulesPath)) {
       logger.info(`Installing dependencies (no node_modules): ${displayName}`, { component: 'DependencyInstaller' });
-      return this.runInstall(packagePath, displayName, onLog, credentialEnv);
+      return this.runInstall(packagePath, displayName, onLog, credentialEnv, signal);
     }
     
     // Verify critical dependencies are actually installed
@@ -111,7 +114,7 @@ export class DependencyInstaller {
     if (missingDeps.length > 0) {
       logger.info(`Missing critical deps for ${displayName}: ${missingDeps.join(', ')} (re-install)`, { component: 'DependencyInstaller' });
       onLog('stdout', `⚠️  Missing critical dependencies: ${missingDeps.join(', ')}`);
-      return this.runInstall(packagePath, displayName, onLog, credentialEnv);
+      return this.runInstall(packagePath, displayName, onLog, credentialEnv, signal);
     }
     
     logger.debug(`Dependencies already installed: ${packagePath}`, { component: 'DependencyInstaller' });
@@ -125,14 +128,15 @@ export class DependencyInstaller {
     displayName: string,
     language: string,
     onLog: LogCallback,
-    credentialEnv?: Record<string, string>
+    credentialEnv?: Record<string, string>,
+    signal?: AbortSignal
   ): Promise<void> {
     let command: string;
     let args: string[];
     
     switch (language) {
       case 'go':
-        return this.installGoDeps(packagePath, displayName, onLog, credentialEnv);
+        return this.installGoDeps(packagePath, displayName, onLog, credentialEnv, signal);
       case 'python':
         if (fs.existsSync(path.join(packagePath, 'requirements.txt'))) {
           command = 'pip';
@@ -174,6 +178,11 @@ export class DependencyInstaller {
     logger.info(`Running ${command} ${args.join(' ')} in: ${packagePath}`, { component: 'DependencyInstaller' });
     
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error('Installation cancelled'));
+        return;
+      }
+
       let settled = false;
       
       const installProcess = spawn(command, args, {
@@ -184,10 +193,25 @@ export class DependencyInstaller {
           ? { env: { ...process.env, ...credentialEnv } }
           : {}),
       });
+
+      const onAbort = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          const msg = `${command} ${args[0]} cancelled by user`;
+          logger.info(msg, { component: 'DependencyInstaller' });
+          onLog('stderr', `⏹️ ${msg}`);
+          try { installProcess.kill('SIGTERM'); } catch { /* ignore */ }
+          setTimeout(() => { try { installProcess.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
+          reject(new Error(msg));
+        }
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
       
       const timeoutId = setTimeout(() => {
         if (!settled) {
           settled = true;
+          signal?.removeEventListener('abort', onAbort);
           const msg = `${command} ${args[0]} timed out after ${INSTALL_TIMEOUT_MS / 1000}s`;
           logger.error(msg, { component: 'DependencyInstaller' });
           onLog('stderr', `❌ ${msg}`);
@@ -204,6 +228,7 @@ export class DependencyInstaller {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
         if (code === 0) {
           onLog('stdout', `✅ ${language} dependencies installed for ${displayName}`);
           resolve();
@@ -217,6 +242,7 @@ export class DependencyInstaller {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
         logger.error(`Install process error in ${packagePath}`, { component: 'DependencyInstaller' }, err);
         reject(err);
       });
@@ -230,7 +256,8 @@ export class DependencyInstaller {
     packagePath: string, 
     relativePath: string,
     onLog: LogCallback,
-    credentialEnv?: Record<string, string>
+    credentialEnv?: Record<string, string>,
+    signal?: AbortSignal
   ): Promise<void> {
     const projectRoot = this.findProjectRoot(packagePath);
     const pm = this.detectPackageManager(projectRoot);
@@ -253,6 +280,11 @@ export class DependencyInstaller {
     }
     
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error('Installation cancelled'));
+        return;
+      }
+
       let settled = false;
       
       const installProcess = spawn(command, args, {
@@ -263,16 +295,30 @@ export class DependencyInstaller {
           ? { env: { ...process.env, ...credentialEnv } }
           : {}),
       });
+
+      const onAbort = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          const msg = `${pm} install cancelled by user`;
+          logger.info(msg, { component: 'DependencyInstaller' });
+          onLog('stderr', `⏹️ ${msg}`);
+          try { installProcess.kill('SIGTERM'); } catch { /* ignore */ }
+          setTimeout(() => { try { installProcess.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
+          reject(new Error(msg));
+        }
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
       
       // Timeout: kill the process if install takes too long (e.g., EFS network hang)
       const timeoutId = setTimeout(() => {
         if (!settled) {
           settled = true;
+          signal?.removeEventListener('abort', onAbort);
           const msg = `${pm} install timed out after ${INSTALL_TIMEOUT_MS / 1000}s`;
           logger.error(msg, { component: 'DependencyInstaller' });
           onLog('stderr', `❌ ${msg}`);
           try { installProcess.kill('SIGTERM'); } catch { /* ignore */ }
-          // Force kill after 5s if SIGTERM didn't work
           setTimeout(() => {
             try { installProcess.kill('SIGKILL'); } catch { /* ignore */ }
           }, 5000);
@@ -292,6 +338,7 @@ export class DependencyInstaller {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
         
         if (code === 0) {
           onLog('stdout', `✅ Dependencies installed for ${relativePath}`);
@@ -306,6 +353,7 @@ export class DependencyInstaller {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
         
         logger.error(`Install process error in ${packagePath}`, { component: 'DependencyInstaller' }, err);
         reject(err);
@@ -435,7 +483,8 @@ export class DependencyInstaller {
     packagePath: string,
     displayName: string,
     onLog: LogCallback,
-    credentialEnv?: Record<string, string>
+    credentialEnv?: Record<string, string>,
+    signal?: AbortSignal
   ): Promise<void> {
     if (!fs.existsSync(path.join(packagePath, 'go.mod'))) {
       logger.debug(`No go.mod found, skipping Go dep install`, { component: 'DependencyInstaller' });
@@ -459,14 +508,14 @@ export class DependencyInstaller {
 
       onLog('stdout', `📦 Go workspace detected — running go work sync...`);
       logger.info(`Running go work sync in: ${workspaceRoot}`, { component: 'DependencyInstaller' });
-      await this.runGoCommand(['work', 'sync'], workspaceRoot, onLog, '✅ Go workspace synced', credentialEnv);
+      await this.runGoCommand(['work', 'sync'], workspaceRoot, onLog, '✅ Go workspace synced', credentialEnv, signal);
       this.installedRoots.add(workspaceRoot);
       return;
     }
 
     onLog('stdout', `📦 Installing go dependencies for ${displayName}...`);
     logger.info(`Running go mod tidy in: ${packagePath}`, { component: 'DependencyInstaller' });
-    await this.runGoCommand(['mod', 'tidy'], packagePath, onLog, `✅ Go dependencies installed for ${displayName}`, credentialEnv);
+    await this.runGoCommand(['mod', 'tidy'], packagePath, onLog, `✅ Go dependencies installed for ${displayName}`, credentialEnv, signal);
   }
 
   private runGoCommand(
@@ -474,9 +523,15 @@ export class DependencyInstaller {
     cwd: string,
     onLog: LogCallback,
     successMsg: string,
-    env?: Record<string, string>
+    env?: Record<string, string>,
+    signal?: AbortSignal
   ): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new Error('Installation cancelled'));
+        return;
+      }
+
       let settled = false;
 
       const proc = spawn('go', args, {
@@ -486,9 +541,24 @@ export class DependencyInstaller {
         ...(env ? { env: { ...process.env, ...env } } : {}),
       });
 
+      const onAbort = () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          const msg = `go ${args[0]} cancelled by user`;
+          logger.info(msg, { component: 'DependencyInstaller' });
+          onLog('stderr', `⏹️ ${msg}`);
+          try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+          setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* ignore */ } }, 3000);
+          reject(new Error(msg));
+        }
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+
       const timeoutId = setTimeout(() => {
         if (!settled) {
           settled = true;
+          signal?.removeEventListener('abort', onAbort);
           const msg = `go ${args[0]} timed out after ${INSTALL_TIMEOUT_MS / 1000}s`;
           logger.error(msg, { component: 'DependencyInstaller' });
           onLog('stderr', `❌ ${msg}`);
@@ -505,6 +575,7 @@ export class DependencyInstaller {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
         if (code === 0) {
           onLog('stdout', successMsg);
           resolve();
@@ -519,6 +590,7 @@ export class DependencyInstaller {
         if (settled) return;
         settled = true;
         clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', onAbort);
         logger.error(`Go process error in ${cwd}`, { component: 'DependencyInstaller' }, err);
         reject(err);
       });
