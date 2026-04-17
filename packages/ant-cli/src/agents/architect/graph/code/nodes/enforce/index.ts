@@ -13,8 +13,9 @@
  * - Enables pattern matching for future errors
  */
 
-import { ArchitectGraphState, Violation, EnforcementFeedback } from "../state";
-import { formatViolations } from "./shared/violationFormatter";
+import { ArchitectGraphState, Violation, EnforcementFeedback } from "../../state";
+import { formatViolations } from "../shared/violationFormatter";
+import { logErrorPriority, getTopPriorityError, prioritizeViolations } from "./errorPriority";
 
 /**
  * Check if violations are retryable (재시도로 해결 가능한지)
@@ -83,13 +84,6 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   
   console.log(`\n⚠️  ENFORCEMENT triggered (retry ${state.retries + 1}/${state.maxRetries})\n`);
   console.log(`   Violations: ${violations.length}`);
-  
-  // ✅ Apply error priority system
-  const { 
-    logErrorPriority, 
-    getTopPriorityError,
-    prioritizeViolations
-  } = await import('./errorPriority');
   
   const errorContext = {
     directive: state.context.task || '',

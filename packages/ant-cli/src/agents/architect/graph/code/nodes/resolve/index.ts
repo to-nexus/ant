@@ -1,15 +1,15 @@
-import { ArtifactService } from "../../../../../infrastructure/workspace/ArtifactService";
-import { ArchitectGraphState } from "../state";
-import { ReferenceContext } from "../../../../../core/codebase/types";
+import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
+import { ArchitectGraphState } from "../../state";
+import { ReferenceContext } from "../../../../../../core/codebase/types";
 import * as path from "path";
-import type { ConversationEntry } from "../../../../../core/types/session";
-import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
-import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
-import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
-import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
+import type { ConversationEntry } from "../../../../../../core/types/session";
+import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../../core/context/constants";
+import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
+import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
+import { buildSessionDigest } from '../../../../../common/graph/utils/sessionDigest';
 import type { ResolvedArtifact } from '@ant/shared';
 import { ARTIFACT_PREFIX, getTechTier } from '@ant/shared';
-import type { ParsedUiDocs } from '../../../../../core/types/uiDoc';
+import type { ParsedUiDocs } from '../../../../../../core/types/uiDoc';
 
 /**
  * Code Resolve Strategy
@@ -59,7 +59,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     
     if (!state.workspaceConfig) {
       try {
-        const { FileConfigAdapter } = await import('../../../../../periphery/adapters/config/FileConfigAdapter');
+        const { FileConfigAdapter } = await import('../../../../../../periphery/adapters/config/FileConfigAdapter');
         const configAdapter = new FileConfigAdapter();
         state.workspaceConfig = await configAdapter.load(state.context.project);
       } catch (error) {
@@ -120,10 +120,10 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
             const serverMode = process.env.ANT_SERVER_MODE || 'local';
             let figmaUp = false;
             if (serverMode === 'local') {
-              const { checkLocalMCPAvailability } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+              const { checkLocalMCPAvailability } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
               figmaUp = await checkLocalMCPAvailability();
             } else {
-              const { createMCPTransport } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+              const { createMCPTransport } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
               const transport = createMCPTransport({ serverMode: 'cloud', userId: state.context?.userId, redis: state.deps?.redis });
               figmaUp = await transport.isAvailable();
             }
@@ -221,10 +221,10 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
         if (isFigmaDataPopulated(figmaConfig)) {
           const serverMode = process.env.ANT_SERVER_MODE || 'local';
           if (serverMode === 'local') {
-            const { checkLocalMCPAvailability } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+            const { checkLocalMCPAvailability } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
             figmaAvailable = await checkLocalMCPAvailability();
           } else {
-            const { createMCPTransport } = await import('../../../../../periphery/adapters/figma/MCPTransport');
+            const { createMCPTransport } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
             const transport = createMCPTransport({ serverMode: 'cloud', userId: state.context?.userId, redis: state.deps?.redis });
             figmaAvailable = await transport.isAvailable();
           }
@@ -274,7 +274,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     }
 
     // Session context for LLM
-    const { SessionContextBuilder } = await import('../session/SessionContextBuilder');
+    const { SessionContextBuilder } = await import('../../session/SessionContextBuilder');
     const sessionBuilder = new SessionContextBuilder();
     const session = state.deps?.session
       ? await state.deps.session.load(context.project, context.featureFolder, 'code')
@@ -297,7 +297,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       processedJobConversation = trigger2Result.entries;
       compactionChanged = trigger2Result.changed;
 
-      const { compactJob, applyCompactionToConversation } = await import('../../../../../core/context/compactJob');
+      const { compactJob, applyCompactionToConversation } = await import('../../../../../../core/context/compactJob');
       try {
         const compactResult = await compactJob(processedJobConversation, state.deps.llm, promptPort, {
           threshold: CODE_JOB_COMPACTION_THRESHOLD,
