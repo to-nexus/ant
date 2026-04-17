@@ -3,6 +3,7 @@ import { sseManager } from '@/infrastructure/sse/SSEManager';
 import type { HandlerId } from '@/infrastructure/sse/SSEManager';
 import type { ChatMessage } from '@/domain/models/chat';
 import type { KanbanData } from '@/infrastructure/http/api';
+import type { SSEMessageMap } from '@ant/shared';
 
 import { handleKanbanUpdate } from './sse/kanbanReducer';
 import { createChatSseHandler } from './sse/chatSseHandler';
@@ -136,6 +137,30 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sliceHandlerIds.push(sseManager.registerHandlerWithId('unseenArtifacts', createUnseenArtifactsHandler(get)));
     sliceHandlerIds.push(sseManager.registerHandlerWithId('bridge', createBridgeHandler(get)));
     sliceHandlerIds.push(sseManager.registerHandlerWithId('transfer', createTransferHandler(get)));
+
+    // gitChange handler — single registration point for the whole app.
+    // The previous architecture registered this inside useGitChanges, which
+    // (a) created a stale closure over selectedProject/selectedFeature and
+    // (b) re-registered on every hook remount. Reading via get() ensures
+    // feature switches immediately take effect without teardown.
+    sliceHandlerIds.push(
+      sseManager.registerHandlerWithId('gitChange', (data: SSEMessageMap['gitChange']) => {
+        const s = get();
+        const activeProject = s.selectedProject;
+        const activeFeature = s.selectedFeature;
+        if (!activeProject) return;
+        // featureName arrives from BE as string; local-no-feature case stores
+        // undefined on the FE. Normalize both sides before comparing.
+        const eventFeature = data?.feature || undefined;
+        if (
+          data?.project !== activeProject ||
+          eventFeature !== activeFeature
+        ) {
+          return;
+        }
+        s.fetchGitChanges?.(activeProject, activeFeature);
+      })
+    );
 
     setupConnectionPolicy(sseManager, set, get);
 

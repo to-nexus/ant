@@ -28,9 +28,11 @@
  */
 
 import { REALTIME_BASE } from '../http/api';
+import type { SSEMessageType } from '@ant/shared';
 
-// ✅ NOTE: backend unified SSE stream also emits 'preview' and 'deploy' events
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'deploy' | 'gitChange' | 'transfer' | 'unseenArtifacts' | 'bridge';
+// Canonical union is defined in @ant/shared/sse-events and re-exported here
+// so existing consumers (useFileTree, useChat, ...) don't break.
+export type { SSEMessageType };
 export type SSEMessageHandler = (data: any) => void;
 
 // ✅ 핸들러 식별을 위한 고유 ID (중복 등록 방지 및 정확한 해제)
