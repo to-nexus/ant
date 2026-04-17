@@ -269,7 +269,6 @@ Try a different approach. Read error message literally.${dependencyHint}
     retries: state.retries + 1,
     lastViolations: focusedViolations,
     enforcementHistory,
-    _errorIsRepeating: isRepeating,
     _planEntryReason: 'retry' as const,
   };
 }

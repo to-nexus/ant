@@ -148,6 +148,15 @@ export interface WorkerSnapshot {
   violations?: any[];
   enforcementHistory?: any[];
   tokenUsage?: TaskTokenUsage;
+  /** Axis A — survive the dep-file hash across interruption/resume so install skips remain valid. */
+  _depFileHash?: string;
+  /** Axis E — remaining verification budget across resume. */
+  _verificationBudget?: number;
+  /** Axis G — deep-diagnostic bookkeeping. */
+  _diagnosticAttempts?: number;
+  _deepDiagnosticBudgetGranted?: boolean;
+  /** Axis F-4 — last normalized plan JSON hash for repeat detection. */
+  _lastPlanHash?: string;
 }
 
 // ============================================

@@ -472,7 +472,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
           )}
           
           {/* Warning Messages */}
-          {!configExists && (
+          {configExists === false && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>

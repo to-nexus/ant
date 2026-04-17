@@ -5,8 +5,9 @@
  * in parallel mode (WorkerFileSystem + SharedFileBuffer).
  */
 
-import type { ToolExecutionContext, ToolResult } from '../types';
+import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
+import { decideInvalidationScope } from './invalidationScope';
 
 const MAX_IO_RETRIES = 3;
 
@@ -36,6 +37,7 @@ export async function handleEditFile(
     const { FileConflictError } = await import('../../../architect/graph/code/parallel/WorkerFileSystem');
 
     let modifiedContent = '';
+    let originalContentForCompare = '';
 
     for (let attempt = 0; attempt < MAX_IO_RETRIES; attempt++) {
       const originalContent = await fileSystem.readFile(resolved.fsPath);
@@ -44,6 +46,7 @@ export async function handleEditFile(
         await ctx.chatStatus.failFileEdit(filePath, msg);
         return { content: msg, error: msg };
       }
+      originalContentForCompare = originalContent;
 
       try {
         modifiedContent = applySearchReplace(
@@ -87,12 +90,32 @@ export async function handleEditFile(
       await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
     }
 
+    // Axis F-2 — if the edit produced the same content, emit fileNotChanged so the
+    // reverify path can safely skip. Treat as a no-op for tracker invalidation.
+    const contentChanged = modifiedContent !== originalContentForCompare;
+    if (!contentChanged) {
+      console.log(`   ℹ️  [EditFile] Content unchanged after edit — emitting fileNotChanged`);
+      return {
+        content: prependFixMessage(resolved, `File edited (no content change): ${resolved.displayPath}`),
+        sideEffects: [{ type: 'fileNotChanged', path: resolved.displayPath }],
+      };
+    }
+
+    // Axis C — scope the invalidation based on what was touched.
+    const decision = decideInvalidationScope(resolved.displayPath);
+    const sideEffects: ToolSideEffect[] = [
+      { type: 'fileModified', path: resolved.displayPath },
+      {
+        type: 'verificationInvalidated',
+        scope: decision.scope,
+        reason: decision.reason,
+        ...(decision.installNeeded ? { installNeeded: true } : {}),
+      },
+    ];
+
     return {
       content: prependFixMessage(resolved, `File edited successfully: ${resolved.displayPath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.`),
-      sideEffects: [
-        { type: 'fileModified', path: resolved.displayPath },
-        { type: 'verificationInvalidated' },
-      ],
+      sideEffects,
     };
   } catch (e) {
     const errorMsg = (e as Error).message;
