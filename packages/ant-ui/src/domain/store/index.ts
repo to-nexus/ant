@@ -8,6 +8,7 @@ import { createGitSlice, GitSlice } from './slices/gitSlice';
 import { createPreviewSlice, PreviewSlice } from './slices/previewSlice';
 import { createAuthSlice, AuthSlice } from './slices/authSlice';
 import { createConfigSlice, ConfigSlice } from './slices/configSlice';
+import { createProjectConfigSlice, ProjectConfigSlice } from './slices/projectConfigSlice';
 import { createResetSlice, ResetSlice } from './slices/resetSlice';
 import { createChatSlice, ChatSlice } from './slices/chatSlice';
 import { createTransferSlice, TransferSlice } from './slices/transferSlice';
@@ -25,6 +26,7 @@ export type Store = ProjectSlice &
   DeploySlice &
   AuthSlice & 
   ConfigSlice & 
+  ProjectConfigSlice &
   ResetSlice &
   ChatSlice &
   TransferSlice;
@@ -67,6 +69,7 @@ export const useStore = create<Store>((set, get, store) => {
     ...createPreviewSlice(set, get, store),
     ...createAuthSlice(set, get, store),
     ...createConfigSlice(set, get, store),
+    ...createProjectConfigSlice(set, get, store),
     ...createResetSlice(set, get, store),
     ...createChatSlice(set, get, store),
     ...createTransferSlice(set, get, store),
