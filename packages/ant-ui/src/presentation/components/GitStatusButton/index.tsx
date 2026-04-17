@@ -12,11 +12,38 @@ import { Button } from '../common/button';
 
 export function GitStatusButton() {
   const { t } = useTranslation('explorer');
-  const { selectedProject, selectedFeature, isGitStatusLoading, gitStatusPhase } = useStore();
-  
-  const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges(selectedProject, selectedFeature);
+  const {
+    selectedProject,
+    selectedFeature,
+    isGitStatusLoading,
+    gitStatusPhase,
+    gitStatusRefreshTrigger,
+    fetchGitChanges,
+  } = useStore();
+
+  const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges();
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const prevPathsRef = useRef<string>('');
+
+  // Drive `fetchGitChanges` from the single place in the tree that mounts
+  // whenever a project is selected. The slice deduplicates by key, so
+  // redundant calls (SSE gitChange + refresh trigger + phase transition +
+  // initial mount) collapse to at most one network request.
+  //
+  // We intentionally skip while `gitStatusPhase !== null` — an active git
+  // operation (switch/fetch) will call `setGitStatusPhase(null)` at its
+  // end, which auto-triggers a fresh fetch through the slice.
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (gitStatusPhase !== null) return;
+    fetchGitChanges(selectedProject, selectedFeature || undefined);
+  }, [
+    selectedProject,
+    selectedFeature,
+    gitStatusRefreshTrigger,
+    gitStatusPhase,
+    fetchGitChanges,
+  ]);
 
   // Smart sync: preserve user selections, only update when file list actually changes
   useEffect(() => {
@@ -54,6 +81,7 @@ export function GitStatusButton() {
     isDiscarding,
     handleCommit,
     handlePush,
+    handlePublishRepo,
     handlePull,
     handleSync,
     handleDiscard
@@ -71,6 +99,13 @@ export function GitStatusButton() {
     return <PlaceholderButton message={t('config:git.notInitialized')} />;
   }
 
+  // Narrow loading gate: only show spinner when we have NO data to render
+  // (initial load, post-clearGitChanges, or explicit fetch-with-null-slice).
+  // When gitChanges is present we keep showing the live CTA and let the
+  // refetch swap values in silently — otherwise every SSE-driven refresh
+  // would flash the whole button. The stale-commit-label bug that motivated
+  // widening this gate is now prevented by `clearGitChanges` which nulls
+  // the slice synchronously on feature/project switch.
   if (isGitStatusLoading || (isFetchingChanges && !gitChanges)) {
     return <LoadingButton isFetchingChanges={isFetchingChanges} />;
   }
@@ -92,6 +127,7 @@ export function GitStatusButton() {
           isSyncing={isSyncing}
           onCommit={handleCommit}
           onPush={handlePush}
+          onPublishRepo={handlePublishRepo}
           onPull={handlePull}
           onSync={handleSync}
           selectedFiles={selectedFiles}

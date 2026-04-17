@@ -4,9 +4,6 @@ import { Folder, Github, Download, Plus, Upload, Download as DownloadIcon, Refre
 import { useStore } from '@/domain/store';
 import { 
   createProject, 
-  fetchProjectConfig, 
-  createProjectConfig, 
-  ProjectConfig,
   cloneGitHubRepo,
   initializeGitHubRepo,
   pushToGitHub,
@@ -20,6 +17,7 @@ import { GitStatusButton } from './GitStatusButton';
 import { Button } from '@/presentation/components/common/button';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { CreationWizardModal } from './CreationWizardModal';
+import { deriveGitMenuState } from '@/domain/git/selectors';
 
 export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const { t } = useTranslation('explorer');
@@ -35,10 +33,12 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     setGitStatusPhase,
     gitStatusPhase,
     gitStatusRefreshTrigger,
-    backendMode
+    backendMode,
+    projectConfig,
+    projectConfigExists,
+    fetchProjectConfig,
+    createProjectConfig,
   } = useStore();
-  const [configExists, setConfigExists] = useState<boolean | null>(null);
-  const [config, setConfig] = useState<ProjectConfig | null>(null);
   const [showGitMenu, setShowGitMenu] = useState(false);
   const [isGitProcessing, setIsGitProcessing] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
@@ -80,28 +80,18 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     }
   }, [gitStatusRefreshTrigger, selectedProject, selectedFeature]);
 
-  // Check if config exists when project is selected or config editor closes or git status refresh
+  // Fetch project config on:
+  //  - initial mount with a persisted `selectedProject` (setSelectedProject
+  //    is NOT called during localStorage hydration),
+  //  - project change driven by setSelectedProject (the slice also fires its
+  //    own fetch — the in-flight dedup inside projectConfigSlice collapses
+  //    them to one network call),
+  //  - gitStatusRefreshTrigger bumps (e.g. config editor close, git action).
   useEffect(() => {
-    async function checkConfig() {
-      if (!selectedProject) {
-        setConfigExists(null);
-        setConfig(null);
-        return;
-      }
-
-      try {
-        const projectConfig = await fetchProjectConfig(selectedProject);
-        setConfigExists(projectConfig !== null);
-        setConfig(projectConfig);
-      } catch (error) {
-        console.error('[ProjectSection] Failed to check config:', error);
-        setConfigExists(false);
-        setConfig(null);
-      }
+    if (selectedProject) {
+      fetchProjectConfig(selectedProject);
     }
-
-    checkConfig();
-  }, [selectedProject, gitStatusRefreshTrigger]); // ✅ Also refresh config when gitStatusRefreshTrigger changes
+  }, [selectedProject, gitStatusRefreshTrigger, fetchProjectConfig]);
 
   const handleCreateProject = async (projectName: string) => {
     await createProject(projectName);
@@ -112,13 +102,12 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const handleConfigClick = async () => {
     if (!selectedProject) return;
 
-    // If config doesn't exist, create it first
-    if (configExists === false) {
+    // If config doesn't exist, create it first.
+    // projectConfigSlice.createProjectConfig updates `projectConfigExists`
+    // internally — no local setState needed here.
+    if (projectConfigExists === false) {
       try {
         await createProjectConfig(selectedProject, backendMode);
-        setConfigExists(true);
-        // Wait a moment for the backend to write the file
-        await new Promise(resolve => setTimeout(resolve, 100));
       } catch (error) {
         console.error('Failed to create config:', error);
         showError(t('workspace.createFailed'));
@@ -316,7 +305,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
             
             {/* Git Control Button */}
             <div className="relative" ref={gitMenuRef}>
-              {!config?.githubRepo ? (
+              {!projectConfig?.githubRepo ? (
                 // ✅ Disabled state: Show tooltip on click
                 <Tooltip
                   content={
@@ -360,24 +349,44 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
               )}
               
               {/* Git Menu Dropdown */}
-              {showGitMenu && (
+              {showGitMenu && (() => {
+                const menu = deriveGitMenuState({
+                  gitStatus,
+                  githubRepo: projectConfig?.githubRepo ?? null,
+                });
+                const disabledClass = 'opacity-40 cursor-not-allowed';
+                const enabledClass = 'hover:bg-gray-100 dark:hover:bg-gray-700';
+                return (
                 <div className="absolute top-full right-0 mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-[9999]">
-                  {(!gitStatus?.hasGit || !gitStatus?.remoteUrl) ? (
-                    gitStatus?.hasFeatures ? (
-                      // State 1a: Features exist, no remote — Publish (create remote repo + push)
-                      <button
-                        onClick={handlePublish}
-                        className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      >
-                        <Globe className="w-4 h-4" />
-                        <div>
-                          <div className="font-medium">{t('config:git.publish')}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.publishToGitHubDesc')}</div>
+                  {menu.kind === 'loading' && (
+                    <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                      {t('common:status.checking')}
+                    </div>
+                  )}
+                  {menu.kind === 'disabled' && (
+                    <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                      {t('config:git.repoSetupRequired')}
+                    </div>
+                  )}
+                  {menu.kind === 'publishBranch' && (
+                    <button
+                      onClick={menu.source === 'noFeatures' ? handlePublish : handlePush}
+                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <Globe className="w-4 h-4" />
+                      <div>
+                        <div className="font-medium">{t('config:git.publish')}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {menu.source === 'noFeatures'
+                            ? t('config:git.publishToGitHubDesc')
+                            : t('config:git.publishDesc')}
                         </div>
-                      </button>
-                    ) : (
-                      // State 1b: No features, no remote — Clone / Initialize
-                      <>
+                      </div>
+                    </button>
+                  )}
+                  {menu.kind === 'setup' && (
+                    <>
+                      {menu.actions.includes('clone') && (
                         <button
                           onClick={handleClone}
                           className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -388,6 +397,8 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
                             <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.cloneDesc')}</div>
                           </div>
                         </button>
+                      )}
+                      {menu.actions.includes('initialize') && (
                         <button
                           onClick={handleInitialize}
                           className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -398,32 +409,15 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
                             <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.initializeDesc')}</div>
                           </div>
                         </button>
-                      </>
-                    )
-                  ) : gitStatus?.hasUpstream === false ? (
-                    // State 2: .git + no upstream — Publish only
-                    <button
-                      onClick={handlePush}
-                      className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    >
-                      <Globe className="w-4 h-4" />
-                      <div>
-                        <div className="font-medium">{t('config:git.publish')}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">{t('config:git.publishDesc')}</div>
-                      </div>
-                    </button>
-                  ) : (() => {
-                    const pushDisabled = !gitStatus?.ahead || gitStatus.ahead === 0;
-                    const pullDisabled = (!gitStatus?.behind || gitStatus.behind === 0) || gitStatus?.hasUncommittedChanges === true;
-                    const disabledClass = 'opacity-40 cursor-not-allowed';
-                    const enabledClass = 'hover:bg-gray-100 dark:hover:bg-gray-700';
-                    return (
-                    // State 3: .git + upstream — Push / Pull / Fetch
+                      )}
+                    </>
+                  )}
+                  {menu.kind === 'synced' && (
                     <>
                       <button
-                        onClick={pushDisabled ? undefined : handlePush}
-                        className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 ${pushDisabled ? disabledClass : enabledClass}`}
-                        disabled={pushDisabled}
+                        onClick={menu.canPush ? handlePush : undefined}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 ${menu.canPush ? enabledClass : disabledClass}`}
+                        disabled={!menu.canPush}
                       >
                         <Upload className="w-4 h-4" />
                         <div>
@@ -432,16 +426,16 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
                         </div>
                       </button>
                       <button
-                        onClick={pullDisabled ? undefined : handlePull}
-                        className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 ${pullDisabled ? disabledClass : enabledClass}`}
-                        disabled={pullDisabled}
-                        title={gitStatus?.hasUncommittedChanges ? t('git.commitFirstToPull') : undefined}
+                        onClick={menu.canPull ? handlePull : undefined}
+                        className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 border-b border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 ${menu.canPull ? enabledClass : disabledClass}`}
+                        disabled={!menu.canPull}
+                        title={menu.pullBlockedByChanges ? t('git.commitFirstToPull') : undefined}
                       >
                         <DownloadIcon className="w-4 h-4" />
                         <div>
                           <div className="font-medium">{t('config:git.pull')}</div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">
-                            {gitStatus?.hasUncommittedChanges ? t('git.commitFirstToPull') : t('config:git.pullDesc')}
+                            {menu.pullBlockedByChanges ? t('git.commitFirstToPull') : t('config:git.pullDesc')}
                           </div>
                         </div>
                       </button>
@@ -456,10 +450,10 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
                         </div>
                       </button>
                     </>
-                    );
-                  })()}
+                  )}
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
           
@@ -472,7 +466,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
           )}
           
           {/* Warning Messages */}
-          {configExists === false && (
+          {projectConfigExists === false && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
@@ -486,7 +480,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
           )}
           
           {/* Only show localPath warning in local backend mode, for local/github repo types */}
-          {backendMode !== 'cloud' && configExists && !config?.localPath && config?.repoType !== 'cloud' && (
+          {backendMode !== 'cloud' && projectConfigExists && !projectConfig?.localPath && projectConfig?.repoType !== 'cloud' && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
