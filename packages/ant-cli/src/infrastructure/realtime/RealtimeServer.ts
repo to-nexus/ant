@@ -28,6 +28,7 @@ import {
   WorkflowStateService,
   GitWatcherService
 } from '../../periphery/adapters/http/services';
+import { GitChangeBroadcaster } from '../../core/realtime/GitChangeBroadcaster';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { UnifiedWorkspaceResolver } from '../../core/config/WorkspacePathResolver';
 import { BridgeWebSocketHandler } from './BridgeWebSocketHandler';
@@ -178,7 +179,13 @@ export class RealtimeServer {
     const chatService = new ChatService(this.config.workspacesPath, stateStore, workspaceResolver);
     const projectService = new ProjectService(workspaceResolver, undefined, chatService);
     const workflowStateService = new WorkflowStateService(stateStore);
-    const gitWatcherService = new GitWatcherService(workspaceResolver, stateStore);
+    // GitWatcherService now emits `gitChange` exclusively through
+    // GitChangeBroadcaster. We piggyback on the shared stateStore.publish
+    // instead of opening a new Redis connection.
+    const gitChangeBroadcaster = new GitChangeBroadcaster({
+      publisher: (channel, payload) => stateStore.publish(channel, payload),
+    });
+    const gitWatcherService = new GitWatcherService(workspaceResolver, gitChangeBroadcaster);
     
     logger.debug('Services initialized', { component: 'RealtimeServer' });
     
