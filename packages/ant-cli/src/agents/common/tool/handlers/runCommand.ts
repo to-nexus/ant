@@ -29,6 +29,12 @@ import { splitOnShellOperators, hasActualPipe } from '../../../../core/utils/she
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
 import { cleanCommandEnv } from '../../../../periphery/adapters/command/NodeCommandAdapter';
 import { AsyncMutex } from '../../../../core/utils/AsyncMutex';
+import {
+  lookupInjection,
+  buildInjectedResult,
+  overlayResult,
+  describeInjection,
+} from '../../../../utils/commandInject';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Constants — imported from canonical source to prevent drift
@@ -405,6 +411,36 @@ async function executeCommandLogic(
     // Normal command path
     let serverDetectionTimer: NodeJS.Timeout | null = null;
 
+    // Fault injection overlay (test harness only — no-op in production).
+    // Must be checked BEFORE commandPort.execute so 'stub' mode can skip it
+    // entirely. See docs/testing/verification-scenarios.md.
+    const injection = lookupInjection(command);
+    if (injection) {
+      console.log(describeInjection(injection, command));
+      if (injection.mode === 'stub') {
+        const injected = buildInjectedResult(injection.rule);
+        if (injected.stdout) { streamedStdout += injected.stdout; console.log(injected.stdout); }
+        if (injected.stderr) { streamedStderr += injected.stderr; console.error(injected.stderr); }
+        console.log(`   Exit code: ${injected.exitCode}`);
+        // Construct a shape compatible with commandPort.execute's return.
+        const stubbedPromise = Promise.resolve(injected);
+        const raceResult = await stubbedPromise.then(r => ({ type: 'completed' as const, result: r }));
+        invalidateBufferedFiles();
+        const r = raceResult.result;
+        const output = r.stdout + r.stderr;
+        sideEffects.push({ type: 'commandExecuted', exitCode: r.exitCode, command, success: r.success, hasWarnings: false });
+        await ctx.chatStatus.commandComplete(command, r.success, r.exitCode, output, mergeIndex);
+        return {
+          content: r.success
+            ? `✅ COMMAND SUCCEEDED: ${command}\nExit Code: ${r.exitCode}\n\nOutput:\n${output}`
+            : `❌ COMMAND FAILED: ${command}\nExit Code: ${r.exitCode}\n\n📋 ERROR OUTPUT:\n${output}`,
+          error: r.success ? undefined : output,
+          sideEffects,
+        };
+      }
+      // 'overlay' mode falls through to real execution; result is rewritten below.
+    }
+
     const commandPromise = commandPort.execute(command, {
       cwd: workingDir,
       timeout: effectiveTimeout,
@@ -450,6 +486,17 @@ async function executeCommandLogic(
     // Normal completion
     const result = raceResult.result;
     let { stdout, stderr, exitCode, success } = result;
+
+    // Overlay injection: real command ran, now apply rule to override signals.
+    if (injection && injection.mode === 'overlay') {
+      const overlay = overlayResult({ stdout, stderr, exitCode: exitCode ?? 0, success }, injection.rule);
+      stdout = overlay.stdout;
+      stderr = overlay.stderr;
+      exitCode = overlay.exitCode;
+      success = overlay.success;
+      console.log(`🧪 [CommandInject][overlay] real exit=${result.exitCode} → overridden exit=${exitCode}`);
+    }
+
     const output = stdout + stderr;
 
     if (!success && exitCode === 141 && hasActualPipe(command)) {

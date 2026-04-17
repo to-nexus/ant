@@ -59,6 +59,10 @@ function areErrorsRepeating(
 export async function enforce(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
+
+  const { traceNodeEntry } = await import('../../../../../../utils/verificationTrace');
+  traceNodeEntry('enforce', state.currentTask ?? undefined);
+
   
   // ✅ Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {

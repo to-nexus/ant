@@ -43,10 +43,13 @@ export async function execute(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
   console.log('\n💭 [Execute] Starting reasoning...\n');
-  
+
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
-  
+
+  const { traceNodeEntry } = await import('../../../../../../utils/verificationTrace');
+  traceNodeEntry('execute', state.currentTask ?? undefined);
+
   const llmClient = state.deps?.llm;
   if (!llmClient) {
     throw new Error('LLM client not available');

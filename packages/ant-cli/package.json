@@ -23,7 +23,9 @@
     "start:preview-server": "PORT=4102 node dist/infrastructure/preview/start-preview-server.js",
     "start:cloud": "concurrently -n api,realtime,job,preview -c cyan,magenta,yellow,green \"npm run start:server\" \"npm run start:realtime-server\" \"npm run start:job-worker\" \"npm run start:preview-server\"",
     "init:workspace": "tsx src/cli/init-cli.ts workspace",
-    "init:feature": "tsx src/cli/init-cli.ts feature"
+    "init:feature": "tsx src/cli/init-cli.ts feature",
+    "resume-job": "tsx src/cli/resume-job-cli.ts",
+    "scenario": "tsx scripts/verify-scenario.ts"
   },
   "keywords": [],
   "author": "",

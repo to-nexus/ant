@@ -196,5 +196,7 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
 });
 
 export async function tool(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
+  const { traceNodeEntry } = await import('../../../../../../utils/verificationTrace');
+  traceNodeEntry('tool', state.currentTask ?? undefined);
   return toolNodeFn(state);
 }

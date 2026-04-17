@@ -13,28 +13,21 @@
  */
 
 export { CodebaseRetriever } from "./CodebaseRetriever";
-export {
+export type {
   RetrieveOptions,
   CodeContext,
   BatchRetrieveOptions,
   BatchResult
 } from "./types";
 
-export {
-  WorkSizeEstimator,
-  WorkSizeEstimation
-} from "./WorkSizeEstimator";
+export { WorkSizeEstimator } from "./WorkSizeEstimator";
+export type { WorkSizeEstimation } from "./WorkSizeEstimator";
 
-export {
-  ImportGraphAnalyzer,
-  ImportRelation,
-  ImportNode
-} from "./ImportGraphAnalyzer";
+export { ImportGraphAnalyzer } from "./ImportGraphAnalyzer";
+export type { ImportRelation, ImportNode } from "./ImportGraphAnalyzer";
 
-export {
-  ASTAnalyzer,
-  SymbolLocation
-} from "./ASTAnalyzer";
+export { ASTAnalyzer } from "./ASTAnalyzer";
+export type { SymbolLocation } from "./ASTAnalyzer";
 
 export {
   CodebaseCache

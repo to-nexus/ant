@@ -1,0 +1,19 @@
+{
+  "taskQueue": [
+    {
+      "id": "final-verification",
+      "name": "Final Verification",
+      "type": "verification",
+      "priority": 1000,
+      "status": "todo",
+      "description": "Verification task where <done> is emitted before any command runs"
+    }
+  ],
+  "currentTask": null,
+  "completedTasks": [],
+  "retries": 0,
+  "maxRetries": 3,
+  "_verificationBudget": 8,
+  "_verificationTracker": null,
+  "recursionLimit": 100
+}

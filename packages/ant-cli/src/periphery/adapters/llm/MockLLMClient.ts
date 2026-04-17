@@ -23,6 +23,33 @@ import { detectResponse } from './mock/detect';
 import { decomposeCodeResponse, decomposeDesignResponse } from './mock/decompose';
 import { planResponse } from './mock/plan';
 import { executeStreamEvents, executeInvokeResponse } from './mock/execute';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Per-process call counters keyed by nodeType. Used to select
+// `<nodeType>-<callIndex>.md` fixtures deterministically. Reset on process
+// exit which matches one scenario run, so call counts never leak across runs.
+const nodeCallIndex: Map<string, number> = new Map();
+
+function readFixtureFor(nodeType: string | undefined): string | null {
+  const dir = process.env.ANT_LLM_MOCK_RESPONSE_DIR;
+  if (!dir || !nodeType) return null;
+  const index = (nodeCallIndex.get(nodeType) ?? 0) + 1;
+  nodeCallIndex.set(nodeType, index);
+  const indexedPath = path.join(dir, `${nodeType}-${index}.md`);
+  const fallbackPath = path.join(dir, `${nodeType}.md`);
+  for (const candidate of [indexedPath, fallbackPath]) {
+    try {
+      const stat = fs.statSync(candidate);
+      if (stat.isFile()) {
+        return fs.readFileSync(candidate, 'utf-8');
+      }
+    } catch {
+      // candidate does not exist — try the next one
+    }
+  }
+  return null;
+}
 
 export class MockLLMClient implements LLMClient {
   readonly provider = 'mock';
@@ -63,6 +90,20 @@ export class MockLLMClient implements LLMClient {
     const nodeType = this.context?.nodeType;
     console.log(`🧪 [MockLLM] stream ${this.label()}`);
 
+    // Fixture-dir override takes precedence: it always emits as a plain text
+    // stream so scenarios can script execute-node responses without knowing
+    // the hard-coded executeStreamEvents shape.
+    const fixture = readFixtureFor(nodeType);
+    if (fixture !== null) {
+      yield { type: 'text', text: fixture };
+      yield {
+        type: 'done',
+        done: true,
+        usage: { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+      };
+      return;
+    }
+
     if (nodeType === 'execute') {
       for (const event of executeStreamEvents()) {
         yield event;
@@ -95,6 +136,9 @@ export class MockLLMClient implements LLMClient {
   private route(messages: Array<{ role: string; content: string | CacheableContent[] }>): string {
     const nodeType = this.context?.nodeType;
     const jobType = this.context?.jobType;
+
+    const fixture = readFixtureFor(nodeType);
+    if (fixture !== null) return fixture;
 
     if (nodeType === 'detect') {
       return detectResponse(jobType);

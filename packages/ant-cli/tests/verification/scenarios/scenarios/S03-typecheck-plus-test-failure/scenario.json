@@ -1,0 +1,11 @@
+{
+  "name": "typecheck-plus-test-failure",
+  "description": "Verification task with typecheckRequired + testsRequired both true and neither passed — checkTaskStatus raises verification_incomplete; plan enters reverify path. Covers C11 (done-but-incomplete → reverify), C16.",
+  "mode": "stub",
+  "timeoutMs": 30000,
+  "expectedChildExitCode": "any",
+  "expected": {
+    "routeSequence": ["plan", "execute", "checkTaskStatus", "enforce", "plan"],
+    "violations": ["verification_incomplete"]
+  }
+}
