@@ -4,7 +4,7 @@ import {
   summarizeForResume,
   renderRetrySummary,
   TASK_RETRY_RETENTION_DEFAULTS,
-} from '../../src/core/context/taskRetryRetention';
+} from '../../../src/core/context/taskRetryRetention';
 
 describe('Axis D — taskRetryRetention', () => {
   it('summarizeForRetry captures violations and truncates long plan JSON', () => {

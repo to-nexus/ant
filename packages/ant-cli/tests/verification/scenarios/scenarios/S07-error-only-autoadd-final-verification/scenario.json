@@ -1,0 +1,11 @@
+{
+  "name": "error-only-autoadd-final-verification",
+  "description": "Error-only queue (no verification task) → after error task completes checkTaskStatus auto-pushes Final Verification. Covers C13.",
+  "mode": "stub",
+  "timeoutMs": 30000,
+  "expectedChildExitCode": "any",
+  "expected": {
+    "routeSequence": ["plan", "execute", "checkTaskStatus"],
+    "flagSet": ["finalVerificationAutoAdded"]
+  }
+}

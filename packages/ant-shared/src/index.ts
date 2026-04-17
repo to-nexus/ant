@@ -37,3 +37,4 @@ export * from './rac';
 export * from './prompt-policy-matrix';
 export * from './deploy';
 export * from './sse-events';
+export * from './verification-scenario';

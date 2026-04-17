@@ -1,0 +1,11 @@
+{
+  "name": "repeated-plan-hash-force-split",
+  "description": "Overlay mode: plan returns same JSON twice so _lastPlanHash matches thisHash → forceByRepeat escalation to error sub-tasks. Covers C7.",
+  "mode": "overlay",
+  "timeoutMs": 30000,
+  "expectedChildExitCode": "any",
+  "expected": {
+    "routeSequence": ["plan", "*", "plan"],
+    "flagSet": ["_batchSplitRequeued"]
+  }
+}

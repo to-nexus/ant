@@ -1,0 +1,11 @@
+{
+  "name": "single-type-error-reverify",
+  "description": "Verification task with tracker incomplete (buildPassed=false) — after execute <done>, checkTaskStatus raises verification_incomplete → enforce → plan re-entry exercises the single-task reverify branch. Covers C10-adjacent (done → checkTaskStatus routing) plus C14/C16.",
+  "mode": "stub",
+  "timeoutMs": 30000,
+  "expectedChildExitCode": "any",
+  "expected": {
+    "routeSequence": ["plan", "execute", "checkTaskStatus", "enforce", "plan"],
+    "violations": ["verification_incomplete"]
+  }
+}

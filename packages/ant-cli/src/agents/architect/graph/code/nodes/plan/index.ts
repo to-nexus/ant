@@ -38,6 +38,7 @@ import { extractFilesFromPlanToolLoop, computeBudgetFromPlanText } from "./utils
 import { detectTestFilesFromDisk } from "./testFileDetector";
 import { isVerificationComplete } from "../../utils/verificationCompleteness";
 import { summarizeForRetry, renderRetrySummary } from "../../../../../../core/context/taskRetryRetention";
+import { appendTrace } from "../../../../../../utils/verificationTrace";
 import * as crypto from 'node:crypto';
 
 /**
@@ -372,6 +373,12 @@ function processDiagnosticBatchSplit(
       (nextTask as any)._failed = true;
       (nextTask as any)._failureReason = `batch_split_cycle_limit_exceeded (${splitCount} cycles)`;
       state._batchSplitRequeued = true; // release worker slot
+      appendTrace({
+        node: 'plan',
+        taskId: nextTask.id,
+        taskType: nextTask.type,
+        extra: { flagSet: ['_batchSplitRequeued'], reason: 'cycle_limit_failed', splitCount },
+      });
       return ''; // batchSplitOccurred=true → llmResponse.done=true → skip execute
     }
 
@@ -429,6 +436,16 @@ function processDiagnosticBatchSplit(
     } as CodeTask;
     state.taskQueue.push(requeuedTask);
     state._batchSplitRequeued = true;
+    appendTrace({
+      node: 'plan',
+      taskId: nextTask.id,
+      taskType: nextTask.type,
+      extra: {
+        flagSet: ['_batchSplitRequeued'],
+        batchCount: parsed.batches.length,
+        splitCount,
+      },
+    });
 
     logBatchSplit({
       action: 'created',
@@ -448,10 +465,24 @@ function processDiagnosticBatchSplit(
   }
 }
 
+/**
+ * Test-only exports for verification scenario harness L1 unit tests.
+ * Not part of the public API; see docs/testing/verification-scenarios.md.
+ */
+export const __testing__ = {
+  processDiagnosticBatchSplit,
+  normalizePlanForHash,
+  MAX_BATCH_SPLIT_CYCLES,
+};
+
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
-  
+
   state.recursionCount = (state.recursionCount || 0) + 1;
-  
+
+  // Verification scenario harness — no-op in production.
+  const { traceNodeEntry } = await import('../../../../../../utils/verificationTrace');
+  traceNodeEntry('plan', state.currentTask ?? undefined);
+
   const llm = state.deps?.llm as LLMClient;
 
   /** Set when plan↔tool loop limit hit so STEP 3 skips tools and uses generatePlanText only. */
@@ -482,7 +513,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // Without this, the plan↔tool loop completion path sets retries=0 via `isRetry ? ... : 0`,
   // causing the retry counter to never reach maxRetries → infinite loop.
   // inToolLoop: state.retries already carries the correct value from the initial retry entry.
-  const preservedRetries = (inToolLoop || isRetry) ? state.retries : 0;
+  // Scenario harness escape hatch: when ANT_SCENARIO_PRESERVE_RETRIES=1,
+  // never reset retries from a non-retry plan entry either. Without this,
+  // seeded `retries` would survive runCodeGraph's resume hydration only to
+  // be wiped here on the first pop. Production path (env unset) is unaffected.
+  const preserveRetriesAlways = process.env.ANT_SCENARIO_PRESERVE_RETRIES === '1';
+  const preservedRetries = (inToolLoop || isRetry || preserveRetriesAlways) ? state.retries : 0;
 
   if (inToolLoop) {
     // Tool loop re-entry — no resets, just continue where we left off

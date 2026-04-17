@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isDiagnosticInspectCommand } from '../../src/agents/common/tool/handlers/diagnosticInspect';
+import { isDiagnosticInspectCommand } from '../../../src/agents/common/tool/handlers/diagnosticInspect';
 
 describe('Axis G-5 — isDiagnosticInspectCommand', () => {
   it('accepts file inspection commands', () => {

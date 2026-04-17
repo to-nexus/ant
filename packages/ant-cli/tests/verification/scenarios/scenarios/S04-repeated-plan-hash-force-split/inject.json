@@ -1,0 +1,16 @@
+{
+  "rules": [
+    {
+      "pattern": "pnpm (run )?build|npm (run )?build|tsc",
+      "exitCode": 1,
+      "stderr": "src/a.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.\nsrc/b.ts(1,10): error TS2307: Cannot find module './c'.",
+      "tag": "multi-file-build-errors"
+    },
+    {
+      "pattern": ".*",
+      "exitCode": 0,
+      "stdout": "[overlay] command succeeded",
+      "tag": "default-ok"
+    }
+  ]
+}

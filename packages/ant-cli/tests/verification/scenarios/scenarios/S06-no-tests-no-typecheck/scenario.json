@@ -1,0 +1,10 @@
+{
+  "name": "no-tests-no-typecheck",
+  "description": "Verification task with tracker pre-seeded to a complete state (build/test/typecheck not required OR already passed) — happy path: plan → execute → checkTaskStatus → learn without retries. Covers C2, C14.",
+  "mode": "stub",
+  "timeoutMs": 30000,
+  "expectedChildExitCode": "any",
+  "expected": {
+    "routeSequence": ["plan", "execute", "checkTaskStatus", "learn"]
+  }
+}

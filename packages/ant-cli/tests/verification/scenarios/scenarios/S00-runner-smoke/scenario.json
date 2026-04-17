@@ -1,0 +1,9 @@
+{
+  "name": "runner-smoke",
+  "description": "Minimal fixture that validates the runner infrastructure end-to-end. Feeds a seeded verification task through the graph with all commands stubbed out and LLM mocked, then asserts the `plan` node is entered at least once.",
+  "mode": "stub",
+  "timeoutMs": 45000,
+  "expected": {
+    "routeSequence": ["plan"]
+  }
+}

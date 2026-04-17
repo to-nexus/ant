@@ -47,7 +47,12 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.currentTask = undefined;  // Already moved to queue in save
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];
-        initial.retries = 0;  // Resume = user's fresh attempt, reset counter
+        // Scenario harness escape hatch: when set, preserve seeded retries so
+        // `retries >= maxRetries` branches (e.g. S09) can be reproduced.
+        // Production code path leaves the env unset → behaviour unchanged.
+        initial.retries = process.env.ANT_SCENARIO_PRESERVE_RETRIES === '1'
+          ? (session.state.retries ?? 0)
+          : 0;
         initial.maxRetries = session.state.maxRetries || 3;
         initial.previousAttempts = session.state.previousAttempts || [];
         initial.enforcementHistory = session.state.enforcementHistory || [];
@@ -115,6 +120,25 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         }
         if (session.state.jobTiming) {
           initial.jobTiming = session.state.jobTiming;
+        }
+
+        // Scenario harness escape hatch: restore axis-E/axis-F state (tracker,
+        // budget, lastPlanHash) from session so fixture seed values actually
+        // reach the graph. Production path leaves these fields to the plan
+        // node's fresh-initialisation logic.
+        if (process.env.ANT_SCENARIO_PRESERVE_RETRIES === '1') {
+          if (session.state._verificationTracker !== undefined) {
+            initial._verificationTracker = session.state._verificationTracker;
+          }
+          if (session.state._verificationBudget !== undefined) {
+            initial._verificationBudget = session.state._verificationBudget;
+          }
+          if (session.state._lastPlanHash !== undefined) {
+            initial._lastPlanHash = session.state._lastPlanHash;
+          }
+          if (session.state._appliedPlanHistory !== undefined) {
+            initial._appliedPlanHistory = session.state._appliedPlanHistory;
+          }
         }
       } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
         // Restore partial state from early-interrupted session (triage/detectEnv stage)

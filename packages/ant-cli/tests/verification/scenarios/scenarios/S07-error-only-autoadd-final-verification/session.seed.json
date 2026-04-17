@@ -1,0 +1,17 @@
+{
+  "taskQueue": [
+    {
+      "id": "error-fix-a",
+      "name": "Fix error A",
+      "type": "error",
+      "priority": 500,
+      "status": "todo",
+      "prePlanText": "{\"task\":{\"id\":\"error-fix-a\",\"goal\":\"Fix a.ts\"},\"diagnostics\":{\"totalErrors\":1,\"rootCauses\":[]},\"implementation\":{\"modify\":[{\"target\":\"src/a.ts\",\"action\":\"fix\"}],\"create\":[],\"delete\":[]}}"
+    }
+  ],
+  "currentTask": null,
+  "completedTasks": [],
+  "retries": 0,
+  "maxRetries": 3,
+  "recursionLimit": 100
+}

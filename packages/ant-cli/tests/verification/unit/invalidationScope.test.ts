@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decideInvalidationScope } from '../../src/agents/common/tool/handlers/invalidationScope';
+import { decideInvalidationScope } from '../../../src/agents/common/tool/handlers/invalidationScope';
 
 describe('Axis C — decideInvalidationScope', () => {
   it('test files produce test-scope only', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveInstallDecision } from '../../src/agents/common/tool/handlers/invalidationScope';
+import { deriveInstallDecision } from '../../../src/agents/common/tool/handlers/invalidationScope';
 
 describe('Axis A — deriveInstallDecision', () => {
   it('no saved hash + node_modules present → adopt disk hash (no install)', () => {

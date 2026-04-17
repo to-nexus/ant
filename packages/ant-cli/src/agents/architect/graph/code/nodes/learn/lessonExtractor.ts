@@ -1,4 +1,5 @@
 import { getTechTier } from '@ant/shared';
+import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { ArchitectGraphState } from '../../state';
 
 export function extractTags(lessons: string, directive: string = ''): string[] {
@@ -141,7 +142,6 @@ function extractRelatedFiles(state: ArchitectGraphState): string[] {
 }
 
 function extractReferences(state: ArchitectGraphState): string[] {
-  const { ArtifactPoolView } = require('../../../../../../core/prompt/builder/ArtifactPipeline');
   const poolView = new ArtifactPoolView(state.artifacts || []);
   const refs: string[] = [];
   

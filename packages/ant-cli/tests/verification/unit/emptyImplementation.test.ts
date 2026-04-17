@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasEmptyImplementation } from '../../src/agents/architect/graph/code/routers/planRouter';
+import { hasEmptyImplementation } from '../../../src/agents/architect/graph/code/routers/planRouter';
 
 describe('Axis F-1 — hasEmptyImplementation', () => {
   it('detects empty modify/create/delete with no batches', () => {
