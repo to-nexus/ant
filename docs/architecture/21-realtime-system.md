@@ -18,15 +18,43 @@ ANT의 실시간 통신은 Redis Pub/Sub와 Server-Sent Events(SSE)로 구성된
 ## 이벤트 전파 흐름
 
 ```
-Job Worker (자식 프로세스)
-    -> KanbanBroadcaster / WorkflowBroadcaster / MessageBroadcaster
+Publisher (Job Worker child / HTTP Server / Realtime Server)
+    -> Broadcaster 클래스
     -> Redis PUBLISH (user-scoped 채널)
     -> Realtime Server (subscribe)
     -> SSE (클라이언트별 전송)
-    -> ant-ui (메시지 라우팅 -> 핸들러)
+    -> ant-ui (메시지 타입별 핸들러 라우팅)
 ```
 
 Job Worker는 API Server를 거치지 않고 직접 Redis에 접근한다.
+
+## Broadcaster
+
+모든 Pub/Sub 발행은 브로드캐스터 클래스를 통해서만 일어난다. raw `stateStore.publish`나 raw `redis.publish`를 SSE 목적으로 직접 호출하는 코드는 없다.
+
+| 클래스 | 파일 | 발행 타입 | 실행 컨텍스트 |
+|--------|------|-----------|---------------|
+| `KanbanBroadcaster` | `core/realtime/KanbanBroadcaster.ts` | `kanban` | Job Worker 자식 |
+| `WorkflowBroadcaster` | `core/realtime/WorkflowBroadcaster.ts` | `workflow` | Job Worker 자식 |
+| `FileTreeBroadcaster` | `core/realtime/FileTreeBroadcaster.ts` | `fileTree`, `unseenArtifacts` | Job Worker 자식 |
+| `PreviewBroadcaster` | `core/realtime/PreviewBroadcaster.ts` | `preview` | Job Worker 자식 / Preview Server |
+| `GitChangeBroadcaster` | `core/realtime/GitChangeBroadcaster.ts` | `gitChange` | Job Worker 자식 · HTTP Server · Realtime Server |
+| `MessageBroadcaster` | `core/chat/MessageBroadcaster.ts` | `chat` | Job Worker 자식 |
+
+`GitChangeBroadcaster`는 `publisher: (channel, payload) => Promise<unknown>` 콜백을 생성자에서 받는 transport-agnostic 설계이다. Job Worker는 자체 ioredis 연결을 생성하고, HTTP/Realtime Server는 기존 `stateStore.publish`를 재사용한다.
+
+### gitChange 이중 발행 경로
+
+- `FileTreeBroadcaster.notifyFileTreeUpdate`가 항상 `GitChangeBroadcaster.notifyGitChange`를 co-emit. Job 중 워킹트리 파일 생성·수정 커버.
+- `GitWatcherService`가 `.git/index` mtime을 1초 간격으로 폴링하여 `notifyGitChange` 호출. 외부 터미널 Git 조작 커버.
+
+두 경로 모두 동일한 `GitChangeBroadcaster` 인스턴스 또는 동등한 publisher를 사용해 단일 의미의 이벤트를 발행한다. 상세는 [24-git-operations.md](24-git-operations.md#realtime-gitchange-이벤트).
+
+## Job Worker 환경변수 검증
+
+브로드캐스터 초기화(`getBroadcasterOptionsFromEnv`)는 필수 env 7개 중 하나라도 누락되면 `logger.error`로 실패를 기록하고 `null`을 반환한다. 이 경우 Job은 실행되지만 실시간 업데이트는 전달되지 않으며, 누락된 키는 로그의 `missing` 배열에서 확인할 수 있다.
+
+필수 env: `ANT_REDIS_URL`, `ANT_JOB_ID`, `ANT_PROJECT_ID`, `ANT_FEATURE_NAME`, `ANT_FEATURE_PATH`(또는 `ANT_PROJECT_PATH`), `ANT_USER_ID`, `ANT_ORG_ID`. Whitelist는 `JobWorker.spawnJobProcess`에서 관리한다.
 
 ## 초기 상태 전달
 
