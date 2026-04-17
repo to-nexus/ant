@@ -49,43 +49,18 @@ export function useGitActions(
     }
   };
 
-  const doInitializeAndPush = async () => {
-    setIsPushing(true);
-    setGitStatusPhase('initializing');
-    try {
-      const result = await initializeGitHubRepo(selectedProject!, selectedFeature);
-      if (result.success) {
-        toast.success(t('git.repoInitialized'));
-        useStore.getState().refreshGitStatus();
-      } else {
-        showError(result.error || t('git.pushFailed'));
-      }
-    } catch (error: any) {
-      showError(error.message || t('git.pushFailed'));
-    } finally {
-      setIsPushing(false);
-      setGitStatusPhase(null);
-    }
-  };
-
+  // Pure push — BE's PushOperation auto-sets `--set-upstream` when the
+  // current branch has no upstream (see GitService/remote/operations/
+  // PushOperation.ts lines 86-89). Callers no longer need to inspect
+  // `gitStatus.remoteUrl` here: ActionButton/ProjectSection already pick
+  // the correct CTA via `deriveGitActionCta` / `deriveGitMenuState` and
+  // dispatch `handlePublishRepo` separately for the "no remote" case.
   const handlePush = async () => {
     if (!selectedProject) return;
 
-    const hasRemote = !!useStore.getState().gitStatus?.remoteUrl;
-
-    if (!hasRemote) {
-      showConfirm(t('config:git.confirmPublish'), {
-        title: t('config:git.publish'),
-        type: 'info',
-        confirmText: t('config:git.publish'),
-        onConfirm: doInitializeAndPush,
-      });
-      return;
-    }
-
     setIsPushing(true);
     setGitStatusPhase('pushing');
-    
+
     try {
       const result = await pushToGitHub(selectedProject, selectedFeature);
       if (result.success) {
@@ -99,6 +74,36 @@ export function useGitActions(
       setIsPushing(false);
       setGitStatusPhase(null);
     }
+  };
+
+  // "Publish repository" — remote not yet created. Creates the GitHub repo
+  // and pushes the current branch. Always behind a confirm dialog because
+  // it has user-visible side effects (creates a new remote resource).
+  const handlePublishRepo = async () => {
+    if (!selectedProject) return;
+    showConfirm(t('config:git.confirmPublish'), {
+      title: t('config:git.publish'),
+      type: 'info',
+      confirmText: t('config:git.publish'),
+      onConfirm: async () => {
+        setIsPushing(true);
+        setGitStatusPhase('initializing');
+        try {
+          const result = await initializeGitHubRepo(selectedProject, selectedFeature);
+          if (result.success) {
+            toast.success(t('git.repoInitialized'));
+            useStore.getState().refreshGitStatus();
+          } else {
+            showError(result.error || t('git.pushFailed'));
+          }
+        } catch (error: any) {
+          showError(error.message || t('git.pushFailed'));
+        } finally {
+          setIsPushing(false);
+          setGitStatusPhase(null);
+        }
+      },
+    });
   };
 
   const handlePull = async () => {
@@ -182,6 +187,7 @@ export function useGitActions(
     isDiscarding,
     handleCommit,
     handlePush,
+    handlePublishRepo,
     handlePull,
     handleSync,
     handleDiscard
