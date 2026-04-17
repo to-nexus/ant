@@ -5,8 +5,9 @@
  * instead of using <file> XML tag, this handler gracefully creates the file.
  */
 
-import type { ToolExecutionContext, ToolResult } from '../types';
+import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
+import { decideInvalidationScope } from './invalidationScope';
 
 export async function handleCreateFile(
   ctx: ToolExecutionContext,
@@ -60,12 +61,20 @@ export async function handleCreateFile(
       `</file>`,
     ].join('\n');
 
+    const decision = decideInvalidationScope(resolved.displayPath);
+    const sideEffects: ToolSideEffect[] = [
+      { type: 'fileCreated', path: resolved.displayPath },
+      {
+        type: 'verificationInvalidated',
+        scope: decision.scope,
+        reason: decision.reason,
+        ...(decision.installNeeded ? { installNeeded: true } : {}),
+      },
+    ];
+
     return {
       content: prependFixMessage(resolved, resultMsg),
-      sideEffects: [
-        { type: 'fileCreated', path: resolved.displayPath },
-        { type: 'verificationInvalidated' },
-      ],
+      sideEffects,
     };
   } catch (e) {
     const errorMsg = (e as Error).message;

@@ -106,6 +106,10 @@ export interface ToolExecutionContext {
   verificationTracker?: VerificationTracker;
   depFileHash?: string;
   retries?: number;
+  /** Axis G — deep-diagnostic mode active: loosen loop guards so the LLM can
+   *  probe config / dependency variants and re-run verification commands with
+   *  different options once per attempt. */
+  isDeepDiagnostic?: boolean;
 
   // === Reference search handlers ===
   referenceRequests?: any[];
@@ -130,16 +134,30 @@ export interface ToolExecutionContext {
 // ToolResult + ToolSideEffect — handler return types
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/**
+ * Scope of verification invalidation triggered by a file change.
+ * Axis C — lets the tracker retain already-passed steps when the edited file
+ * cannot logically affect them (e.g. changing a test file should not reset
+ * typecheck/build status).
+ */
+export type InvalidationScope = 'typecheck' | 'build' | 'test' | 'all';
+
 export type ToolSideEffect =
   | { type: 'fileModified'; path: string }
   | { type: 'fileCreated'; path: string }
   | { type: 'fileDeleted'; path: string }
+  | { type: 'fileNotChanged'; path: string }
   | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean }
   | { type: 'depFileHashChanged'; newHash: string }
   | { type: 'serverStarted'; pid: number; command: string; workingDir: string }
   | { type: 'figmaError'; category: 'connection' | 'environment' | 'data' | 'rate_limit' | 'other' }
   | { type: 'figmaSuccess' }
-  | { type: 'verificationInvalidated' };
+  | {
+      type: 'verificationInvalidated';
+      scope: InvalidationScope;
+      reason: string;
+      installNeeded?: boolean;
+    };
 
 export interface ToolResult {
   content: string | any[];

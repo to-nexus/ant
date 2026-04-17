@@ -19,6 +19,7 @@
 import { ArchitectGraphState } from '../state';
 import type { CodeTask } from '../../../types/task';
 import { isFinalVerificationTask } from '../utils/taskClassification';
+import { isVerificationComplete } from '../utils/verificationCompleteness';
 
 /**
  * Detect recent tool failures from command history
@@ -192,7 +193,15 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
         return 'checkTaskStatus';
       }
 
-      console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (final build/test verification)\n`);
+      // Axis F-3 — if all verification objectives already pass (e.g. a no-op
+      // execute that didn't actually break anything), skip reverify entirely.
+      const completeness = isVerificationComplete(state._verificationTracker);
+      if (completeness.ok) {
+        console.log(`\n🎯 [Router] ✅ Verification already complete — skipping reverify → checkTaskStatus\n`);
+        return 'checkTaskStatus';
+      }
+
+      console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (final build/test verification, missing=${completeness.missing.join(',')})\n`);
       state._planEntryReason = 'reverify';
       state._executeModifiedFiles = false;
       state.violations = [];

@@ -534,12 +534,14 @@ export class TaskOrchestrator<T extends BaseTask> {
         this.drain();
         this.broadcastKanban();
       } else {
-        // Transient error — re-queue for retry
+        // Transient error — re-queue for retry.
+        // Axis D — preserve any resumeState captured by the worker so the
+        // retried attempt inherits the prior-attempt summary. Fresh-start wipe
+        // was the source of "LLM solution quality collapses on inline retries".
         task.interrupted = true;
-        (task as any).resumeState = undefined; // Fresh start on retry
         this.taskQueue.push(task);
         console.warn(
-          `[Orchestrator] Task "${task.name}" FAILED (attempt ${attempts}/${MAX_TASK_RETRIES}, worker ${workerId}): ${error.message} — re-queued for retry`,
+          `[Orchestrator] Task "${task.name}" FAILED (attempt ${attempts}/${MAX_TASK_RETRIES}, worker ${workerId}): ${error.message} — re-queued for retry (resumeState preserved=${!!(task as any).resumeState})`,
         );
       }
 

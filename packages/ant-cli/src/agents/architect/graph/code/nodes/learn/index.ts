@@ -1,7 +1,6 @@
 import * as path from "path";
 import { ArchitectGraphState } from "../../state";
 import { SessionRun, ConversationEntry } from "../../../../../../core/types";
-import { errorStatsCollector, formatStatistics } from "../diagnostics/errorStats";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../core/utils/docMetadata";
 import { designSubdirOf, DESIGN_DIR, BOUNDARY } from "@ant/shared";
@@ -317,9 +316,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
     runId = updatedSession.runs[updatedSession.runs.length - 1]?.runId;
     
-    const errorStats = errorStatsCollector.getStatistics();
-    console.log('\n' + formatStatistics(errorStats) + '\n');
-    
     const existingSession = await state.deps.session.load(
       state.context.project,
       state.context.featureFolder || 'default',
@@ -406,7 +402,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       'code',
       {
         activeBranch: branch,
-        errorStatistics: errorStats,
         state: {
           taskQueue: state.taskQueue?.getAll() || [],
           currentTask: state.currentTask,

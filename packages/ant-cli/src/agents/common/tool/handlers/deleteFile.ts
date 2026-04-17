@@ -2,8 +2,9 @@
  * delete_file handler — context-injected version
  */
 
-import type { ToolExecutionContext, ToolResult } from '../types';
+import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
+import { decideInvalidationScope } from './invalidationScope';
 
 export async function handleDeleteFile(
   ctx: ToolExecutionContext,
@@ -31,12 +32,20 @@ export async function handleDeleteFile(
       await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
     }
 
+    const decision = decideInvalidationScope(resolved.displayPath);
+    const sideEffects: ToolSideEffect[] = [
+      { type: 'fileDeleted', path: resolved.displayPath },
+      {
+        type: 'verificationInvalidated',
+        scope: decision.scope,
+        reason: decision.reason,
+        ...(decision.installNeeded ? { installNeeded: true } : {}),
+      },
+    ];
+
     return {
       content: prependFixMessage(resolved, `File deleted successfully: ${resolved.displayPath}`),
-      sideEffects: [
-        { type: 'fileDeleted', path: resolved.displayPath },
-        { type: 'verificationInvalidated' },
-      ],
+      sideEffects,
     };
   } catch (e) {
     const errorMsg = (e as Error).message;

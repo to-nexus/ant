@@ -65,3 +65,23 @@ If you are unsure which build command to use, observe:
 - `Cargo.toml` (Rust), `go.mod` (Go), `build.gradle` (Java/Kotlin)
 
 Use `read_file` on the project root's configuration files to determine the correct build command.
+
+### Prior-Attempt Summary
+
+**Principle**: When this task re-enters for a retry, a compact summary of the previous attempt (plan JSON, normalized error signals, command history) is already present as the first system-level message.
+
+**Constraint**: Treat that summary as authoritative context. Do NOT re-read files whose contents were already observed in the prior attempt unless you have an observation-backed reason to believe they changed.
+
+### Cached Verification Steps
+
+**Principle**: A verification step (typecheck, build, test) that already passed in the current diagnostic cycle is retained by the runtime. You will be told when a step is already passed.
+
+**Constraint**: Do not re-run a step that is reported as already passed. Proceed to the next unverified step or, if every required step passes, output an empty plan and signal completion.
+
+{{#if isDeepDiagnostic}}
+### Deep-Diagnostic Variant Commands
+
+**Principle**: In deep-diagnostic mode, re-running a failed verification with different options (different config flag, different project, more verbose output) is permitted so long as the intent is to disambiguate the root cause.
+
+**Constraint**: Every variant run must be justified by a new hypothesis, not by hope. Do NOT cycle through variants of the same command without observation.
+{{/if}}

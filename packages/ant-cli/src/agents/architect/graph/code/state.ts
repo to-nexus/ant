@@ -411,9 +411,6 @@ export interface ArchitectGraphState extends TriageableState {
   
   // ✅ UI locale (narrowed from TriageableState.string to literal union)
   _uiLocale?: 'ko' | 'en';
-  
-  // ✅ Error repetition tracking (internal)
-  _errorIsRepeating?: boolean;  // Flag to indicate if errors are repeating
 
   /** Batch split occurred: original task was re-enqueued, skip completed marking in checkTaskStatus */
   _batchSplitRequeued?: boolean;
@@ -424,6 +421,22 @@ export interface ArchitectGraphState extends TriageableState {
   /** Hash of dependency declaration files at last successful install.
    *  Compared at verification plan entry to determine if install is needed. */
   _depFileHash?: string;
+
+  /** Axis E — single verification budget (initialised from ANT_VERIFICATION_BUDGET,
+   *  default 8). Every verification plan entry decrements this by 1; when it
+   *  reaches 0 the plan node force-splits by file and escalates to error tasks. */
+  _verificationBudget?: number;
+
+  /** Axis G-1 — number of re-entries (retry/reverify) into this verification task.
+   *  Triggers deep-diagnostic mode once the threshold is crossed. */
+  _diagnosticAttempts?: number;
+
+  /** Axis G-7 — one-shot marker so the deep-diagnostic budget bump is applied only once. */
+  _deepDiagnosticBudgetGranted?: boolean;
+
+  /** Axis F-4 — normalized SHA of the last produced plan JSON, used to detect
+   *  "same diagnostic output again" and escalate instead of looping. */
+  _lastPlanHash?: string;
 
   // ✅ Command history tracking (for loop detection)
   commandHistory?: Array<{

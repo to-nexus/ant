@@ -14,12 +14,12 @@ import { decompose } from "./nodes/decompose";
 import { plan } from "./nodes/plan";
 import { execute } from "./nodes/execute/index";
 import { tool } from "./nodes/tool";
-// import { validate } from "./nodes/validate";  // ✅ REMOVED: Static validation no longer needed (prompts handle it)
 import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
 import { routeAfterExecute } from "./routers/executeRouter";
 import { routeAfterPlan } from "./routers/planRouter";
 import { routeAfterTool } from "./routers/toolRouter";
+import { isVerificationComplete, getMissingStepDetail } from "./utils/verificationCompleteness";
 import { saveCheckpoint } from "./nodes/checkpoint";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "./parallel/types";
@@ -119,11 +119,15 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
     });
   }
 
-  // Diagnostic objective guard: build must pass for verification tasks.
+  // Diagnostic objective guard: every required step must have passed for verification tasks.
+  // Axis B — single-source-of-truth completion check via isVerificationComplete.
   // Error tasks are code-fix only — build verification deferred to the re-enqueued verification task.
+  // NOTE: the `llmExplicitlyDone` 1층 가드 above remains authoritative for the `<done>` contract;
+  // the SSOT only decides whether the tracker's objectives were actually met.
   const isDiagnosticTask = state.currentTask?.type === 'verification';
   if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
     const tracker = state._verificationTracker;
+    const completeness = isVerificationComplete(tracker);
 
     if (!tracker) {
       const history = state.commandHistory || [];
@@ -140,47 +144,21 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
           suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
         });
       }
-    } else if (tracker.typecheckRequired && tracker.typecheckAttempted && !tracker.typecheckPassed) {
-      console.warn(`⚠️  [checkTaskStatus] Verification: typecheck objective not met`);
+    } else if (!completeness.ok) {
+      const firstMissing = completeness.missing[0];
+      console.warn(`⚠️  [checkTaskStatus] Verification: ${firstMissing} objective not met (missing: ${completeness.missing.join(', ')})`);
       const history = state.commandHistory || [];
       const lastFailed = [...history].reverse().find(h => !h.success);
-      const typecheckErrorDetail = lastFailed?.errorSnippet
+      const errorDetail = lastFailed?.errorSnippet
         ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
         : '';
+      const detail = getMissingStepDetail(firstMissing);
       violations.push({
         type: 'verification_incomplete' as ViolationType,
         severity: 'critical',
-        message: 'Type check (tsc --noEmit) has not succeeded. Resolve type errors before proceeding to build.' + typecheckErrorDetail,
+        message: detail.message + errorDetail,
         isRetryable: true,
-        suggestedFix: 'Fix type errors found by tsc --noEmit, then re-run type check.',
-      });
-    } else if (!tracker.buildPassed) {
-      console.warn(`⚠️  [checkTaskStatus] Verification: build objective not met`);
-      const history = state.commandHistory || [];
-      const lastFailed = [...history].reverse().find(h => !h.success);
-      const buildErrorDetail = lastFailed?.errorSnippet
-        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
-        : '';
-      violations.push({
-        type: 'verification_incomplete' as ViolationType,
-        severity: 'critical',
-        message: 'Build has not succeeded. A build command must exit 0 with no file modifications after it.' + buildErrorDetail,
-        isRetryable: true,
-        suggestedFix: 'Run the build command and ensure it passes. If you edited files after the last build, re-run the build.',
-      });
-    } else if (tracker.testsRequired && !tracker.testPassed) {
-      console.warn(`⚠️  [checkTaskStatus] Verification: test objective not met`);
-      const history = state.commandHistory || [];
-      const lastFailed = [...history].reverse().find(h => !h.success);
-      const testErrorDetail = lastFailed?.errorSnippet
-        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
-        : '';
-      violations.push({
-        type: 'verification_incomplete' as ViolationType,
-        severity: 'critical',
-        message: 'Tests have not passed. Test files exist in this project — run tests and ensure they pass.' + testErrorDetail,
-        isRetryable: true,
-        suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
+        suggestedFix: detail.fix,
       });
     }
   }
@@ -242,6 +220,14 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       _finalTaskLoopCount: 0,
       planText: '',
       projectCodeContext: undefined,
+      // Axis lifecycle — task boundary clears per-task verification state so the
+      // next verification task pops with a fresh budget/attempt counters. A
+      // resumed task bypasses this path (TaskWorker restores via resumeState).
+      _verificationBudget: undefined,
+      _diagnosticAttempts: undefined,
+      _deepDiagnosticBudgetGranted: undefined,
+      _lastPlanHash: undefined,
+      _appliedPlanHistory: undefined,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     };
@@ -407,6 +393,13 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       _finalTaskLoopCount: 0,
       planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
       projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
+      // Axis lifecycle — task boundary clears. Next verification task pops with
+      // a clean slate; a resumed task bypasses this path (TaskWorker restores).
+      _verificationBudget: undefined,
+      _diagnosticAttempts: undefined,
+      _deepDiagnosticBudgetGranted: undefined,
+      _lastPlanHash: undefined,
+      _appliedPlanHistory: undefined,
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count
       recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
     };
@@ -1046,7 +1039,6 @@ export const CodeGraphChannels = {
       filesWritten: Annotation<any>,
       reportFile: Annotation<any>,
       directives: Annotation<any>,
-      _errorIsRepeating: Annotation<any>,
       _currentTaskTokenUsage: Annotation<any>,
       _estimatingTokenUsage: Annotation<any>,
       _executeCallIndex: Annotation<any>({
@@ -1078,6 +1070,10 @@ export const CodeGraphChannels = {
       workerId: Annotation<any>,
       _isStopRequested: Annotation<any>,
       _depFileHash: Annotation<any>,
+      _verificationBudget: Annotation<any>,
+      _diagnosticAttempts: Annotation<any>,
+      _deepDiagnosticBudgetGranted: Annotation<any>,
+      _lastPlanHash: Annotation<any>,
       _batchSplitRequeued: Annotation<any>,
       verifiedTasks: Annotation<any>,
 } as const;

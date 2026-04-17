@@ -36,14 +36,42 @@ import { generatePlanText, runPlanLLMWithTools, buildPlanPrompt, buildPlanPrompt
 import { extractFilesFromViolations, formatViolations } from "../shared/violationFormatter";
 import { extractFilesFromPlanToolLoop, computeBudgetFromPlanText } from "./utils";
 import { detectTestFilesFromDisk } from "./testFileDetector";
+import { isVerificationComplete } from "../../utils/verificationCompleteness";
+import { summarizeForRetry, renderRetrySummary } from "../../../../../../core/context/taskRetryRetention";
+import * as crypto from 'node:crypto';
+
+/**
+ * Axis F-4 — normalize plan JSON for stable hashing. Sorts object keys,
+ * trims whitespace, and drops trivially-variable metadata so that repeating
+ * the same structural plan produces the same hash across attempts.
+ */
+function normalizePlanForHash(planText: string): string {
+  const body = planText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```$/, '');
+  try {
+    const parsed = JSON.parse(body);
+    const stable = JSON.stringify(parsed, (_k, v) => {
+      if (Array.isArray(v)) return v;
+      if (v && typeof v === 'object') {
+        return Object.keys(v).sort().reduce((acc: Record<string, unknown>, k) => {
+          acc[k] = (v as Record<string, unknown>)[k];
+          return acc;
+        }, {});
+      }
+      return v;
+    });
+    return crypto.createHash('sha1').update(stable).digest('hex');
+  } catch {
+    const collapsed = body.replace(/\s+/g, ' ').trim();
+    return crypto.createHash('sha1').update(collapsed).digest('hex');
+  }
+}
 
 function isTypeScriptProject(state: ArchitectGraphState): boolean {
   const taskTiers = state.currentTask?.techTiers;
   const lang = (
-    taskTiers?.length
+    (taskTiers?.length
       ? taskTiers[0].language
-      : getTechTier(state)?.language
-    ?? ''
+      : getTechTier(state)?.language) ?? ''
   ).toLowerCase();
   return lang.includes('typescript');
 }
@@ -101,10 +129,8 @@ function isVerificationPassWithoutCodeGen(
   if (planText !== '') return false;
   const task = state.currentTask;
   if (task?.type !== 'verification' && task?.type !== 'error') return false;
-  const tracker = state._verificationTracker;
-  if (!tracker || !tracker.buildPassed) return false;
-  if (tracker.testsRequired && !tracker.testPassed) return false;
-  return true;
+  // Axis B — unified completion check via SSOT
+  return isVerificationComplete(state._verificationTracker).ok;
 }
 
 /**
@@ -132,6 +158,100 @@ function computeBatchFileOverlap(batches: any[]): boolean {
 }
 
 const MAX_BATCH_SPLIT_CYCLES = 10;
+
+/**
+ * Axis D — compose the verification prompt's `violationsText` from its three
+ * possible sources (current violations, accumulated diagnostic retry context,
+ * prior-attempt summary). Returning undefined when everything is empty keeps
+ * the prompt template's `{{#if isRetry}}` branch clean.
+ */
+function composeViolationsText(
+  violations: import('../../state').Violation[] | undefined,
+  diagnosticRetryContext: string | undefined,
+  retrySummaryText: string | undefined,
+): string | undefined {
+  const parts: string[] = [];
+  if (violations?.length) parts.push(formatViolations(violations));
+  if (diagnosticRetryContext) parts.push(diagnosticRetryContext);
+  if (retrySummaryText) parts.push(retrySummaryText);
+  return parts.length ? parts.join('\n') : undefined;
+}
+
+/**
+ * Axis E — decrement the verification budget and bump the diagnostic-attempt
+ * counter. Called on every retry/reverify re-entry into a verification task.
+ */
+function consumeVerificationBudget(state: ArchitectGraphState): void {
+  if (typeof state._verificationBudget === 'number') {
+    state._verificationBudget = Math.max(0, state._verificationBudget - 1);
+  }
+  state._diagnosticAttempts = (state._diagnosticAttempts || 0) + 1;
+}
+
+/**
+ * Axis G-7 — one-shot budget top-up when deep-diagnostic mode is engaged.
+ * Must be called AFTER consumeVerificationBudget so _diagnosticAttempts
+ * reflects the current re-entry.
+ */
+function maybeGrantDeepDiagnosticBudget(state: ArchitectGraphState): void {
+  if ((state._diagnosticAttempts || 0) < 2) return;
+  if (state._deepDiagnosticBudgetGranted) return;
+  state._verificationBudget = (state._verificationBudget || 0) + 3;
+  state._deepDiagnosticBudgetGranted = true;
+  console.log(`🧭 [Plan] Deep-diagnostic mode engaged — _verificationBudget += 3 (now ${state._verificationBudget})`);
+}
+
+/**
+ * Axis A — recompute install-needed status from the dep-file hash on disk.
+ * Single source of truth for all plan entry paths (first-entry, retry, reverify).
+ *
+ * Heuristic (fixes parallel-worker first-time install redundancy):
+ *   (disk hash computes) ∧ (node_modules/vendor exists) ∧ (no savedHash yet)
+ *     → adopt disk hash as baseline, installNeeded=false.
+ *   This handles the common case where a previous task/worker already installed
+ *   but the saved hash didn't propagate (e.g. parallel workers or cross-job resume).
+ *
+ * On failure, conservatively defaults to `installNeeded=true`.
+ */
+async function recomputeInstallNeeded(
+  state: ArchitectGraphState,
+  opts?: { detectPmIfMissing?: boolean },
+): Promise<void> {
+  const featureRoot = state.deps?.fileSystem?.getRootPath?.();
+  if (!featureRoot) return;
+  try {
+    const { computeDepFileHash, hasInstalledDeps, detectPackageManager } = await import(
+      '../../../../../common/tool/handlers/runCommand'
+    );
+    const currentHash = await computeDepFileHash(featureRoot);
+    const savedHash = state._depFileHash;
+    const depsExist = await hasInstalledDeps(featureRoot);
+
+    const { deriveInstallDecision } = await import(
+      '../../../../../common/tool/handlers/invalidationScope'
+    );
+    const decision = deriveInstallDecision(savedHash, currentHash, depsExist);
+    state._installNeeded = decision.installNeeded;
+    if (decision.adoptedHash) {
+      state._depFileHash = decision.adoptedHash;
+    }
+    console.log(
+      `📦 [Plan] Dependency install needed: ${decision.installNeeded} (${decision.reason}; ` +
+      `savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`,
+    );
+
+    if (opts?.detectPmIfMissing && !state._detectedPackageManager) {
+      const detectedPM = await detectPackageManager(featureRoot);
+      if (detectedPM) {
+        state._detectedPackageManager = detectedPM;
+        console.log(`📦 [Plan] Detected package manager: ${detectedPM}`);
+      }
+    }
+  } catch (err) {
+    state._installNeeded = true;
+    console.warn(`⚠️ [Plan] Dependency hash check failed, defaulting to installNeeded=true: ${err}`);
+  }
+}
 
 /**
  * Detect batched diagnostic plan and split into sub-tasks.
@@ -181,6 +301,65 @@ function processDiagnosticBatchSplit(
   try {
     const jsonStr = stripMarkdownFences(planText);
     const parsed = JSON.parse(jsonStr);
+
+    // Axis E — force split-by-file when LLM produced a consolidated plan
+    // but the error volume or file fan-out crosses the escalation threshold,
+    // OR when the verification budget is exhausted. This is the safety valve
+    // for "LLM keeps outputting a single plan that we keep failing to apply".
+    const budget = state._verificationBudget;
+    const thresholdErrors = parseInt(process.env.ANT_VERIFICATION_SPLIT_ERRORS || '6', 10);
+    const thresholdFiles = parseInt(process.env.ANT_VERIFICATION_SPLIT_FILES || '4', 10);
+    const totalErrors: number = parsed.diagnostics?.totalErrors ?? 0;
+    const modifyArr: any[] = parsed.implementation?.modify ?? [];
+    const budgetExhausted = typeof budget === 'number' && budget <= 0;
+    const overErrorBudget = totalErrors >= thresholdErrors;
+    const overFileBudget = modifyArr.length >= thresholdFiles;
+    const shouldForceSplit = (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1)
+      && (budgetExhausted || overErrorBudget || overFileBudget);
+
+    // Axis F-4 — repeat detection. If the same plan structure surfaced again
+    // without progress, escalate to force-split to break the loop.
+    let repeatedHash = false;
+    if (planText) {
+      const thisHash = normalizePlanForHash(planText);
+      if (state._lastPlanHash && state._lastPlanHash === thisHash) {
+        repeatedHash = true;
+        console.warn(`🔁 [BatchSplit] Same plan hash as previous attempt (${thisHash.substring(0, 8)}) — escalating`);
+      }
+      state._lastPlanHash = thisHash;
+    }
+    const forceByRepeat = repeatedHash
+      && (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1)
+      && modifyArr.length > 0;
+
+    if ((shouldForceSplit || forceByRepeat) && modifyArr.length > 0) {
+      logBatchSplit({
+        action: 'force_split_escalate',
+        reason: forceByRepeat
+          ? 'repeated_plan_hash'
+          : budgetExhausted
+            ? 'budget_exhausted'
+            : overErrorBudget
+              ? 'over_error_threshold'
+              : 'over_file_threshold',
+        totalErrors,
+        modifyCount: modifyArr.length,
+        taskName: nextTask.name,
+        budget,
+      });
+      console.warn(`🚨 [BatchSplit] Forcing splitByFile escalate (budgetExhausted=${budgetExhausted}, totalErrors=${totalErrors}, modifyCount=${modifyArr.length})`);
+      parsed.batches = modifyArr.map((m: any, i: number) => {
+        const target = typeof m === 'string' ? m : (m.target || m.file || `file-${i}`);
+        return {
+          name: `Fix ${target}`,
+          rationale: (m && m.action) || `Apply modifications to ${target}`,
+          modify: [m],
+          create: [],
+          delete: [],
+        };
+      });
+    }
+
     if (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1) {
       logBatchSplit({ action: 'skipped', reason: 'no_batches', batchCount: parsed.batches?.length ?? 0, taskName: nextTask.name });
       return planText;
@@ -281,6 +460,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   let forceNoTools = false;
   /** Re-verification fast-path: skip keyword/RAG when we only need to re-run build/test. */
   let skipKeywordAndRAG = false;
+  /**
+   * Axis D — rendered prior-attempt summary produced when entering via retry.
+   * Appended to `violationsText` in STEP 3 so it flows through the verification
+   * prompt template instead of hijacking the NODE_PLAN conversation.
+   */
+  let retrySummaryText: string | undefined;
   
   let nextTask: CodeTask | undefined;
   
@@ -326,14 +511,33 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       const isVerificationRetry = nextTask.type === 'verification';
 
       if (isVerificationRetry) {
+        consumeVerificationBudget(state);
+        maybeGrantDeepDiagnosticBudget(state);
         state._executeCallIndex = 0;
         // NOTE: _finalTaskLoopCount is intentionally NOT reset here (matching
-        // the reverify path at line ~396). Accumulating across retry cycles
-        // lets Safety Net C in executeRouter detect stuck loops faster.
-        // Previously resetting to 0 allowed infinite retry×2-execute cycles.
-        state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
+        // the reverify path below). Accumulating across retry cycles lets
+        // Safety Net C in executeRouter detect stuck loops faster. Previously
+        // resetting to 0 allowed infinite retry×2-execute cycles.
+        // Axis D — capture a rendered prior-attempt summary (plan JSON +
+        // error signals + command history) and let it flow through the
+        // prompt via violationsText in STEP 3.
+        retrySummaryText = renderRetrySummary(summarizeForRetry({
+          violations: state.violations,
+          lastPlan: state.planText,
+        }, {
+          attemptCount: (state.retries || 0) + 1,
+          commandHistory: state.commandHistory,
+        }));
+        state.conversations = {
+          ...state.conversations,
+          [CONV_KEYS.NODE_EXECUTE]: [],
+          [CONV_KEYS.NODE_PLAN]: [],
+        };
         state._executeModifiedFiles = false;
-        state._installNeeded = true;
+        // Axis A — recompute installNeeded from the actual dep-file hash
+        // instead of hardcoding true. Keeps cached installs reusable when
+        // package.json/go.mod/etc. have not changed since the last success.
+        await recomputeInstallNeeded(state);
         if (state._verificationTracker) {
           state._verificationTracker.buildAttempted = false;
           state._verificationTracker.testAttempted = false;
@@ -364,15 +568,32 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       } else {
         state._executeCallIndex = 0;
         state._finalTaskLoopCount = 0;
-        state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
+        // Axis D — non-verification retries also receive a prior-attempt
+        // summary (appended to violationsText later) so LLM solution quality
+        // doesn't collapse when previous reasoning is wiped mid-task.
+        retrySummaryText = renderRetrySummary(summarizeForRetry({
+          violations: state.violations,
+          lastPlan: state.planText,
+        }, {
+          attemptCount: (state.retries || 0) + 1,
+          commandHistory: state.commandHistory,
+        }));
+        state.conversations = {
+          ...state.conversations,
+          [CONV_KEYS.NODE_EXECUTE]: [],
+          [CONV_KEYS.NODE_PLAN]: [],
+        };
         console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-        console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversations cleared\n`);
+        console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversations cleared; retry summary flows via violationsText\n`);
       }
     } else if (entryReason === 'reverify' && state.currentTask) {
       // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
       nextTask = state.currentTask;
       console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
       console.log(`   Re-initializing VerificationTracker for fresh build/test check\n`);
+
+      consumeVerificationBudget(state);
+      maybeGrantDeepDiagnosticBudget(state);
 
       skipKeywordAndRAG = true;
 
@@ -383,16 +604,21 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         state._appliedPlanHistory = history;
       }
 
-      // Reset tracker for fresh verification pass
+      // Axis C — reset only attempted flags, preserve already-passed steps
+      // that weren't invalidated by the edited files. The tool hook
+      // (`verificationInvalidated`) already flipped the `*Passed` flags for
+      // the affected scope during execute; reverify should surface exactly
+      // those gaps, not wipe clean state.
+      const prev = state._verificationTracker;
       state._verificationTracker = {
-        buildPassed: false,
-        testPassed: false,
-        testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
+        buildPassed: prev?.buildPassed ?? false,
+        testPassed: prev?.testPassed ?? false,
+        testsRequired: prev?.testsRequired ?? detectTestFilesFromDisk(state.context?.featurePath),
+        typecheckPassed: prev?.typecheckPassed ?? false,
+        typecheckRequired: prev?.typecheckRequired ?? isTypeScriptProject(state),
         buildAttempted: false,
         testAttempted: false,
-        typecheckPassed: false,
         typecheckAttempted: false,
-        typecheckRequired: isTypeScriptProject(state),
       };
 
       // Reset execute state for potential next fix cycle.
@@ -404,28 +630,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       state._executeModifiedFiles = false;
 
       // Recompute installNeeded — execute may have modified dependency declaration files
-      const featureRoot = state.deps?.fileSystem?.getRootPath();
-      if (featureRoot) {
-        try {
-          const { computeDepFileHash, hasInstalledDeps, detectPackageManager } = await import('../../../../../common/tool/handlers/runCommand');
-          const currentHash = await computeDepFileHash(featureRoot);
-          const savedHash = state._depFileHash;
-          const depsExist = await hasInstalledDeps(featureRoot);
-          const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
-          state._installNeeded = installNeeded;
-          console.log(`📦 [Plan] Post-execute installNeeded: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
-
-          if (!state._detectedPackageManager) {
-            const detectedPM = await detectPackageManager(featureRoot);
-            if (detectedPM) {
-              state._detectedPackageManager = detectedPM;
-              console.log(`📦 [Plan] Detected package manager (retry): ${detectedPM}`);
-            }
-          }
-        } catch {
-          state._installNeeded = true;
-        }
-      }
+      await recomputeInstallNeeded(state, { detectPmIfMissing: true });
     } else {
     // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
     // Sequential context: pop next task from queue
@@ -458,42 +663,44 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     // ✅ Initialize verification tracker for verification tasks only.
     // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
     if (nextTask.type === 'verification') {
+      // Axis D/resume — TaskWorker restores axis state from resumeState for
+      // interrupted tasks. A resumed task that did NOT qualify for canSkipPlan
+      // (e.g. stopped mid-tool-loop with short planText) must NOT lose its
+      // budget / diagnostic-attempts / lastPlanHash. `nextTask.interrupted`
+      // is already cleared by TaskWorker right after restore, so we detect
+      // resume by the presence of previously-initialized axis fields.
+      const isResumedVerification = state._verificationBudget !== undefined;
       const tsProject = isTypeScriptProject(state);
-      state._verificationTracker = {
-        buildPassed: false,
-        testPassed: false,
-        testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
-        buildAttempted: false,
-        testAttempted: false,
-        typecheckPassed: false,
-        typecheckAttempted: false,
-        typecheckRequired: tsProject,
-      };
-      state._appliedPlanHistory = [];
-      console.log(`🔍 [Plan] VerificationTracker initialized: testsRequired=${state._verificationTracker.testsRequired}, typecheckRequired=${tsProject}`);
 
-      // Compute installNeeded for dependency status prompt signal
-      const featureRoot = state.deps?.fileSystem?.getRootPath();
-      if (featureRoot) {
-        try {
-          const { computeDepFileHash, hasInstalledDeps, detectPackageManager } = await import('../../../../../common/tool/handlers/runCommand');
-          const currentHash = await computeDepFileHash(featureRoot);
-          const savedHash = state._depFileHash;
-          const depsExist = await hasInstalledDeps(featureRoot);
-          const installNeeded = !savedHash || savedHash !== currentHash || !depsExist;
-          state._installNeeded = installNeeded;
-          console.log(`📦 [Plan] Dependency install needed: ${installNeeded} (savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`);
-
-          const detectedPM = await detectPackageManager(featureRoot);
-          if (detectedPM) {
-            state._detectedPackageManager = detectedPM;
-            console.log(`📦 [Plan] Detected package manager: ${detectedPM}`);
-          }
-        } catch (err) {
-          state._installNeeded = true;
-          console.warn(`⚠️ [Plan] Dependency hash check failed, defaulting to installNeeded=true: ${err}`);
-        }
+      if (!state._verificationTracker) {
+        state._verificationTracker = {
+          buildPassed: false,
+          testPassed: false,
+          testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
+          buildAttempted: false,
+          testAttempted: false,
+          typecheckPassed: false,
+          typecheckAttempted: false,
+          typecheckRequired: tsProject,
+        };
       }
+      if (state._appliedPlanHistory === undefined) {
+        state._appliedPlanHistory = [];
+      }
+      // Axis E — initialise verification budget on first entry into this task.
+      // Only seed when undefined so a resumed task keeps its remaining budget.
+      if (state._verificationBudget === undefined) {
+        const envBudget = parseInt(process.env.ANT_VERIFICATION_BUDGET || '8', 10);
+        state._verificationBudget = Number.isFinite(envBudget) && envBudget > 0 ? envBudget : 8;
+      }
+      if (state._diagnosticAttempts === undefined) state._diagnosticAttempts = 0;
+      if (state._deepDiagnosticBudgetGranted === undefined) state._deepDiagnosticBudgetGranted = false;
+      // _lastPlanHash: undefined on a truly fresh task; preserved on resume.
+      console.log(`🔍 [Plan] VerificationTracker ${isResumedVerification ? 'restored (resume)' : 'initialized'}: testsRequired=${state._verificationTracker.testsRequired}, typecheckRequired=${tsProject}`);
+      console.log(`🎫 [Plan] _verificationBudget=${state._verificationBudget}, _diagnosticAttempts=${state._diagnosticAttempts}`);
+
+      // Axis A — single-source-of-truth dep hash check (same helper as retry/reverify paths)
+      await recomputeInstallNeeded(state, { detectPmIfMissing: true });
     }
 
     // ✅ Log task_start event to debug/logs/
@@ -1048,10 +1255,11 @@ const hasPrePlanText =
   }
 
   if (tryToolsFirst) {
-    const baseViolationsText = state.violations?.length ? formatViolations(state.violations) : undefined;
-    const violationsText = diagnosticRetryContext
-      ? (baseViolationsText || '') + diagnosticRetryContext
-      : baseViolationsText;
+    const violationsText = composeViolationsText(
+      state.violations,
+      diagnosticRetryContext,
+      retrySummaryText,
+    );
     const contentBlocks = await buildPlanPromptBlocks(state, nextTask, projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true });
     const messages = [{ role: 'user' as const, content: contentBlocks }];
     const result = await runPlanLLMWithTools(state, messages, nextTask);
@@ -1091,7 +1299,8 @@ const hasPrePlanText =
         referenceCodeContexts,
         state.violations,
         uiDocForPlan,
-        remainingTasks
+        remainingTasks,
+        retrySummaryText,
       );
     }
   }

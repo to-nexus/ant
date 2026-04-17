@@ -156,6 +156,12 @@ export class TaskWorker<T extends BaseTask> {
         retries: (task as any).resumeState.retries || 0,
         violations: (task as any).resumeState.violations || [],
         enforcementHistory: (task as any).resumeState.enforcementHistory || [],
+        // Axes A/E/F-4/G — preserve diagnostic/verification cache across resume
+        _depFileHash: (task as any).resumeState._depFileHash,
+        _verificationBudget: (task as any).resumeState._verificationBudget,
+        _diagnosticAttempts: (task as any).resumeState._diagnosticAttempts,
+        _deepDiagnosticBudgetGranted: (task as any).resumeState._deepDiagnosticBudgetGranted,
+        _lastPlanHash: (task as any).resumeState._lastPlanHash,
       } : {}),
       // Worker stop signal checker
       _isStopRequested: () => this.stopRequested,
@@ -214,6 +220,12 @@ export class TaskWorker<T extends BaseTask> {
       violations: this.currentState.violations,
       enforcementHistory: this.currentState.enforcementHistory,
       tokenUsage: this.currentState._currentTaskTokenUsage,
+      // Axes A/E/F-4/G — preserve diagnostic/verification cache for resume
+      _depFileHash: this.currentState._depFileHash,
+      _verificationBudget: this.currentState._verificationBudget,
+      _diagnosticAttempts: this.currentState._diagnosticAttempts,
+      _deepDiagnosticBudgetGranted: this.currentState._deepDiagnosticBudgetGranted,
+      _lastPlanHash: this.currentState._lastPlanHash,
     };
   }
 
