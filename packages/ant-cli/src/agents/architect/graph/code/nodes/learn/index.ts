@@ -70,7 +70,10 @@ const lessonQueue = new LessonQueue();
  */
 export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   state.recursionCount = (state.recursionCount || 0) + 1;
-  
+
+  const { traceNodeEntry } = await import('../../../../../../utils/verificationTrace');
+  traceNodeEntry('learn', state.currentTask ?? undefined);
+
   // Clean up running servers before completing
   if (state.runningServers && state.runningServers.length > 0) {
     console.log(`\n🧹 [Learn] Cleaning up ${state.runningServers.length} running server(s)...`);

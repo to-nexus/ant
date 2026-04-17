@@ -1,0 +1,24 @@
+{
+  "taskQueue": [
+    {
+      "id": "final-verification",
+      "name": "Final Verification",
+      "type": "verification",
+      "priority": 1000,
+      "status": "todo"
+    }
+  ],
+  "currentTask": null,
+  "completedTasks": [],
+  "retries": 0,
+  "maxRetries": 3,
+  "_verificationBudget": 8,
+  "_verificationTracker": {
+    "buildPassed": false,
+    "testPassed": true,
+    "testsRequired": false,
+    "typecheckRequired": true,
+    "typecheckPassed": false
+  },
+  "recursionLimit": 100
+}

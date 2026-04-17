@@ -1,0 +1,10 @@
+{
+  "rules": [
+    {
+      "pattern": ".*",
+      "exitCode": 0,
+      "stdout": "[stub] command skipped",
+      "tag": "skip-all"
+    }
+  ]
+}

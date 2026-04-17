@@ -1,0 +1,25 @@
+{
+  "taskQueue": [
+    {
+      "id": "final-verification",
+      "name": "Final Verification",
+      "type": "verification",
+      "priority": 1000,
+      "status": "todo",
+      "description": "Smoke-test verification task"
+    }
+  ],
+  "currentTask": null,
+  "completedTasks": [],
+  "retries": 0,
+  "maxRetries": 3,
+  "_verificationBudget": 8,
+  "_verificationTracker": {
+    "buildPassed": true,
+    "testPassed": true,
+    "testsRequired": false,
+    "typecheckRequired": false,
+    "typecheckPassed": true
+  },
+  "recursionLimit": 100
+}

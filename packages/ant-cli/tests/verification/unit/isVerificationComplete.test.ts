@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isVerificationComplete } from '../../src/agents/architect/graph/code/utils/verificationCompleteness';
+import { isVerificationComplete } from '../../../src/agents/architect/graph/code/utils/verificationCompleteness';
 
 describe('Axis B — isVerificationComplete SSOT', () => {
   it('returns incomplete when tracker is undefined', () => {

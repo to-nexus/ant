@@ -34,7 +34,10 @@ import type { InterruptionReason } from '../../../../core/types/session';
 async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
-  
+
+  const { traceNodeEntry } = await import('../../../../utils/verificationTrace');
+  traceNodeEntry('checkTaskStatus', state.currentTask ?? undefined);
+
   // ✅ Workflow instrumentation: Enter node
   // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -179,6 +182,21 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   }
 
   const hasViolations = (violations && violations.length > 0);
+
+  // Verification scenario harness — no-op in production. Surface raised
+  // violations into the trace so `ScenarioExpectedOutcome.violations` can
+  // assert against types that get cleared from state before it's persisted.
+  if (hasViolations) {
+    const { appendTrace } = await import('../../../../utils/verificationTrace');
+    appendTrace({
+      node: 'checkTaskStatus',
+      taskId: state.currentTask?.id,
+      taskType: state.currentTask?.type,
+      extra: {
+        violations: violations.map(v => ({ type: v.type, severity: v.severity })),
+      },
+    });
+  }
 
   // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
   // Without this, a cancelled job can still mark the current task as "completed"
@@ -333,6 +351,13 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
         };
         state.taskQueue.push(finalTask);
         console.log(`📋 Added Final Verification to confirm all errors resolved\n`);
+        const { appendTrace } = await import('../../../../utils/verificationTrace');
+        appendTrace({
+          node: 'checkTaskStatus',
+          taskId: state.currentTask?.id,
+          taskType: state.currentTask?.type,
+          extra: { flagSet: ['finalVerificationAutoAdded'] },
+        });
       }
     }
     
@@ -542,10 +567,13 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         console.error(`[ParallelOrchestrator] Worker ${workerId} failed: ${task.name} - ${error.message}`);
         // Log task_fail to debug/logs/ for post-mortem analysis
         if (state.context?.featurePath && state._httpJobId) {
-          const { getExecutionLogger: getExecLogFail } = require('../../../../core/utils/executionLogger');
-          const failLogger = getExecLogFail({
-            featurePath: state.context.featurePath,
-            jobId: state._httpJobId,
+          const _failFeaturePath = state.context.featurePath;
+          const _failJobId = state._httpJobId;
+          void (async () => {
+            const { getExecutionLogger: getExecLogFail } = await import('../../../../core/utils/executionLogger');
+            const failLogger = getExecLogFail({
+            featurePath: _failFeaturePath,
+            jobId: _failJobId,
             jobType: 'code',
           });
           const isRecLimit = /recursion limit/i.test(error.message);
@@ -558,6 +586,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             outputTokens: task.tokenUsage?.outputTokens,
             cacheReadTokens: task.tokenUsage?.cacheReadTokens,
           }).catch(() => {});
+          })().catch(() => {});
         }
       },
       onWorkerTerminate: (workerId) => {
