@@ -27,22 +27,28 @@ Presentation -> Application -> Domain <- Infrastructure
 
 ## 상태 관리 (Zustand)
 
-12개 슬라이스로 구성된 단일 스토어:
+14개 슬라이스로 구성된 단일 스토어:
 
 | 슬라이스 | 역할 |
 |----------|------|
-| projectSlice | 프로젝트/피처 선택, 목록 |
+| projectSlice | 프로젝트/피처 선택, 목록. 전환 시 git/config SSOT 스크러브 |
 | fileSlice | 파일 트리, 파일 편집 |
 | jobSlice | Job 실행 상태, currentJobId |
-| sseSlice | SSE 연결, Kanban/Chat/FileTree 핸들러 |
+| sseSlice | SSE 연결, Kanban/Chat/FileTree/GitChange 등 핸들러 단일 등록 지점 |
 | uiSlice | UI 상태 (탭, 레이아웃, pendingClarifyAnswers) |
-| gitSlice | Git 상태 |
+| gitSlice | Git 상태 SSOT (gitStatus · gitChanges · isGitInitialized · isFetchingChanges). fetchGitChanges는 in-flight 키 dedup |
+| projectConfigSlice | `.ant/config.json` 내용 (githubRepo 등) SSOT, 프로젝트별 tri-state exists |
 | previewSlice | Preview 상태 |
 | authSlice | 인증 상태 |
-| configSlice | 프로젝트/계정 설정 |
+| configSlice | 시스템 설정 (backendMode, localBackendPort, recursionLimit) |
 | chatSlice | 채팅 메시지 |
 | transferSlice | 전송 상태 |
+| deploySlice | Deploy 상태 |
 | resetSlice | 상태 초기화 |
+
+### Git / ProjectConfig SSOT
+
+`gitSlice`와 `projectConfigSlice`는 sessionStorage 캐시나 훅·컴포넌트 로컬 state를 두지 않는다. UI 분기는 `src/domain/git/selectors.ts`의 순수 함수(`deriveGitMenuState` · `deriveGitActionCta`)에서만 이루어진다. 상세는 [24-git-operations.md](24-git-operations.md#frontend-git-state).
 
 ### 영속화
 
@@ -64,7 +70,7 @@ Presentation -> Application -> Domain <- Infrastructure
 `infrastructure/sse/SSEManager.ts`가 싱글톤으로 관리:
 - Unified 연결: `REALTIME_BASE()/projects/{project}/features/{feature}/stream`
 - Workflow 연결: `/jobs/{jobId}/workflow/stream`
-- 메시지 타입: `kanban`, `chat`, `fileTree`, `workflow`, `preview`, `gitChange`, `transfer`, `unseenArtifacts`
+- 메시지 타입: `kanban`, `chat`, `fileTree`, `workflow`, `preview`, `deploy`, `gitChange`, `transfer`, `unseenArtifacts`, `bridge` (canonical union은 `@ant/shared/sse-events.ts`의 `SSEMessageType`)
 - 자동 재연결: exponential backoff, 재연결 시 스트리밍 중인 채팅 메시지 유실 방지 로직 포함
 
 ## 에이전트 워터마크
