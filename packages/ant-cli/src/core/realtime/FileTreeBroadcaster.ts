@@ -25,6 +25,7 @@ import {
 } from './types';
 import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
 import { isTemplateContent, getTemplateReason } from '../utils/templateDetector';
+import { GitChangeBroadcaster } from './GitChangeBroadcaster';
 
 // File patterns to exclude from tree
 const EXCLUDE_PATTERNS = [
@@ -56,8 +57,12 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   private pubRedis: Redis;
   private readonly projectPath: string;
   private readonly userContext?: UserContext;
+  private readonly gitChangeBroadcaster?: GitChangeBroadcaster;
   
-  constructor(options: BroadcasterOptions & { projectPath: string }) {
+  constructor(
+    options: BroadcasterOptions & { projectPath: string },
+    gitChangeBroadcaster?: GitChangeBroadcaster
+  ) {
     const isTLS = options.redisUrl.startsWith('rediss://');
     const tlsOptions = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
     this.pubRedis = new Redis(options.redisUrl, {
@@ -67,7 +72,8 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
     });
     this.projectPath = options.projectPath;
     this.userContext = options.userContext;
-    
+    this.gitChangeBroadcaster = gitChangeBroadcaster;
+
     // Error & connection event handlers for diagnostics
     this.pubRedis.on('error', (err) => console.error(`❌ [FileTreeBroadcaster] pubRedis error:`, err.message));
     this.pubRedis.on('ready', () => console.log(`🟢 [FileTreeBroadcaster] pubRedis ready`));
@@ -80,10 +86,22 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
    * Implements FileTreeUpdatePort interface
    */
   notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): void {
+    const ctx = userContext || this.userContext;
     // Fire-and-forget with error logging
-    this.broadcastFileTree(projectId, featureName, userContext || this.userContext)
+    this.broadcastFileTree(projectId, featureName, ctx)
       .catch(err => {
         console.warn(`[FileTreeBroadcaster] Failed to notify file tree update:`, err.message);
+      });
+
+    // Co-emit gitChange so the frontend refetches `getGitChanges` whenever
+    // the working tree is mutated — including plain file writes that don't
+    // touch `.git/index` (GitWatcherService can't detect those).
+    // Covered non-git paths (session JSON writes etc.) simply produce an
+    // inexpensive "no changes" REST response on the frontend.
+    this.gitChangeBroadcaster
+      ?.notifyGitChange(projectId, featureName, ctx)
+      .catch(err => {
+        console.warn(`[FileTreeBroadcaster] Failed to co-emit gitChange:`, err?.message ?? err);
       });
   }
 

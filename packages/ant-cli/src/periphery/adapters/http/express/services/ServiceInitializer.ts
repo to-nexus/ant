@@ -7,6 +7,7 @@ import {
   ChatService,
   GitWatcherService
 } from '../../services';
+import { GitChangeBroadcaster } from '../../../../../core/realtime/GitChangeBroadcaster';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { FileJobPrerequisitesAdapter } from '../../../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceServiceAdapter } from '../../../../../infrastructure/workspace/WorkspaceServiceAdapter';
@@ -87,9 +88,14 @@ export function initializeServices(
   
   // Get stateStore for Redis-based services
   const stateStore = factory.getStateStore();
-  
-  // Initialize core services (SSE handled by dedicated Realtime Server)
-  const gitWatcherService = new GitWatcherService(workspaceResolver, stateStore);
+
+  // GitWatcherService publishes `gitChange` events only through
+  // GitChangeBroadcaster — piggybacking on the shared stateStore.publish so
+  // no extra Redis connection is opened here.
+  const gitChangeBroadcaster = new GitChangeBroadcaster({
+    publisher: (channel, payload) => stateStore.publish(channel, payload),
+  });
+  const gitWatcherService = new GitWatcherService(workspaceResolver, gitChangeBroadcaster);
   
   const chatService = new ChatService(
     config.workspacesPath, 

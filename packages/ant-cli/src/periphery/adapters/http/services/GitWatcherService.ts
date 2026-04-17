@@ -2,30 +2,31 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../core/types/user';
-import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { logger } from '../../../../utils/logger';
-import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state';
+import { GitChangeBroadcaster } from '../../../../core/realtime/GitChangeBroadcaster';
 
 /**
  * GitWatcherService
  * 
  * Watches .git/index file for changes to detect Git operations.
  * Supports both regular repos (.git directory) and worktrees (.git file with gitdir pointer).
- * Broadcasts git change events via Redis Pub/Sub for SSE delivery.
+ * Emits git change events through GitChangeBroadcaster (the single publish
+ * path — FileTreeBroadcaster co-emits through the same class for non-index
+ * working-tree mutations during jobs).
  */
 export class GitWatcherService {
   private readonly workspaceResolver?: WorkspaceResolver;
-  private readonly stateStore?: StateStorePort;
-  
+  private readonly gitChangeBroadcaster?: GitChangeBroadcaster;
+
   private gitWatchers: Map<string, NodeJS.Timeout> = new Map();
   private deferredWatchers: Map<string, { projectId: string; featureName: string; userContext: UserContext }> = new Map();
-  
+
   constructor(
     workspaceResolver?: WorkspaceResolver,
-    stateStore?: StateStorePort
+    gitChangeBroadcaster?: GitChangeBroadcaster
   ) {
     this.workspaceResolver = workspaceResolver;
-    this.stateStore = stateStore;
+    this.gitChangeBroadcaster = gitChangeBroadcaster;
   }
   
   private makeKey(userContext: UserContext, projectId: string, featureName: string): string {
@@ -104,23 +105,18 @@ export class GitWatcherService {
           lastModified = mtime;
         } else if (mtime > lastModified) {
           lastModified = mtime;
-          
+
           logger.debug(`Git changes detected for ${key}`, { component: 'GitWatcher', projectId, featureName });
-          
-          if (this.stateStore && userContext?.organizationId && userContext?.userId) {
-            const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
-            await this.stateStore.publish(channel, {
-              projectId,
-              featureName,
-              userContext,
-              type: 'gitChange',
-              data: {
-                timestamp: new Date().toISOString(),
-                project: projectId,
-                feature: featureName
-              }
-            });
-          }
+
+          // Delegate all gitChange publishing to the broadcaster so the
+          // transport (Redis Pub/Sub / StateStorePort) is decoupled from
+          // this service. userContext is per-watcher, so we pass it
+          // explicitly instead of relying on the broadcaster's default.
+          await this.gitChangeBroadcaster?.notifyGitChange(
+            projectId,
+            featureName,
+            userContext
+          );
         }
       } catch (error: any) {
         if (error.code === 'ENOENT') {

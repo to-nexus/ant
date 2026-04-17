@@ -50,8 +50,9 @@ export const WORKFLOW_STATE_TTL = REDIS_TTL.JOB.WORKFLOW;
 // SSE Transport Types
 // ============================================
 
-/** Message types routed through the unified SSE stream */
-export type SSEMessageType = 'kanban' | 'chat' | 'fileTree' | 'workflow' | 'preview' | 'deploy' | 'gitChange' | 'unseenArtifacts' | 'bridge';
+// Canonical union lives in @ant/shared; re-exported here to avoid drift.
+export type { SSEMessageType, GitChangeEventData, SSEMessageMap } from '@ant/shared';
+import type { SSEMessageType } from '@ant/shared';
 
 /** SSE message envelope sent to frontend */
 export interface SSEMessage {
