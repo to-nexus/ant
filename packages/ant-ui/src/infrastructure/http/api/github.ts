@@ -172,7 +172,14 @@ export interface FileChange {
   status: 'modified' | 'deleted' | 'new' | 'renamed';
 }
 
-export function getGitChanges(projectId: string, feature?: string): Promise<{
+/**
+ * Shape of `GET /projects/:id/git/changes` response.
+ *
+ * Canonical definition lives here (infrastructure layer) because this is
+ * where the REST contract is expressed. Presentation/hook layers re-export
+ * for compatibility but must not define their own copy.
+ */
+export interface GitChanges {
   hasChanges: boolean;
   staged: FileChange[];
   unstaged: FileChange[];
@@ -182,7 +189,9 @@ export function getGitChanges(projectId: string, feature?: string): Promise<{
   currentBranch?: string;
   isGitInitialized?: boolean;
   hasUpstream?: boolean;
-}> {
+}
+
+export function getGitChanges(projectId: string, feature?: string): Promise<GitChanges> {
   const params = feature ? `?feature=${encodeURIComponent(feature)}` : '';
   return apiGet(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/changes${params}`);
 }

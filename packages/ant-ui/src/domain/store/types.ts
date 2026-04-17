@@ -1,5 +1,5 @@
 import { Session } from '@/domain/models/session';
-import { Feature, FileNode, FileContent, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
+import { Feature, FileNode, FileContent, PreviewStatus, KanbanData, GitChanges } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import type { ChatMessage } from '@/domain/models/chat';
 
@@ -148,6 +148,14 @@ export interface GitState {
   gitStatus: GitStatus | null;  // ✅ Single source of truth for Git state
   gitStatusRefreshTrigger: number;
   bypassFetchTimer: boolean;  // ✅ Flag to bypass timer for next fetch
+  // ✅ SSOT for working-tree info (staged/unstaged/untracked, ahead/behind).
+  // Previously owned by useGitChanges hook + sessionStorage; consolidated here.
+  gitChanges: GitChanges | null;
+  isGitInitialized: boolean | null;  // null = unknown/loading, false = no .git, true = git repo
+  isFetchingChanges: boolean;
+  // `${projectId}:${feature||'base'}` — lets consumers detect which feature the
+  // current `gitChanges` belongs to (prevents cross-feature staleness).
+  gitChangesKey: string | null;
 }
 
 export interface PreviewSliceState {
