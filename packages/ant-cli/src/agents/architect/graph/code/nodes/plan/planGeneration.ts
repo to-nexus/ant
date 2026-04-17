@@ -20,8 +20,25 @@ import { resolveArtifacts } from "../../../../../../core/prompt/builder/Artifact
 import { getRACDocuments } from "@ant/shared";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
+import { collectDeepDiagnosticConfigs, renderConfigContextBlock } from '../../utils/deepDiagnosticConfig';
+import type { VerificationTracker } from '../../state';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+
+/**
+ * Axis C helper — render a bullet list of verification steps that have
+ * already passed in the current diagnostic cycle. Returns undefined when
+ * nothing is cached so the template's `{{#if}}` block stays silent.
+ * Exported for unit testing.
+ */
+export function formatCachedPassedSteps(tracker: VerificationTracker | undefined): string | undefined {
+  if (!tracker) return undefined;
+  const lines: string[] = [];
+  if (tracker.typecheckRequired && tracker.typecheckPassed) lines.push('- ✓ typecheck (tsc --noEmit)');
+  if (tracker.buildPassed) lines.push('- ✓ build');
+  if (tracker.testsRequired && tracker.testPassed) lines.push('- ✓ test');
+  return lines.length ? lines.join('\n') : undefined;
+}
 
 /**
  * Select appropriate LLM for plan node
@@ -76,11 +93,26 @@ export async function buildPlanPrompt(
     }
 
     const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
-    const fmtCtx = formatCodeContext(projectCodeContext);
+    // Axis G-2/3/6 — deep-diagnostic mode activates on the second re-entry
+    // into this verification task. We inject config files and a dedicated
+    // prompt signal so the LLM breaks out of "same category of fix" loops.
+    const isDeepDiagnostic = (state._diagnosticAttempts || 0) >= 2;
+    let fmtCtx = formatCodeContext(projectCodeContext);
+    if (isDeepDiagnostic) {
+      const configs = await collectDeepDiagnosticConfigs(state.context?.featurePath);
+      const block = renderConfigContextBlock(configs);
+      if (block) {
+        fmtCtx = `${fmtCtx || ''}\n\n${block}`.trim();
+        console.log(`🧭 [Plan] Deep-diagnostic injected ${configs.length} config file(s)`);
+      }
+    }
     let languageHints = '';
     if (techTier?.language) {
       try { languageHints = await promptBuilder.render(`jobs/code/nodes/plan/variants/verification/basis/techTier/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
     }
+    // Axis C — proactive "already passed" hint so the LLM skips cached steps
+    // instead of hitting the codeCommandPolicy rejection to learn the same.
+    const cachedPassedSteps = formatCachedPassedSteps(state._verificationTracker);
     return await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
       taskId: task.id, taskName: task.name, taskDescription: task.description,
       directive: state.directive || '', isErrorTask: false, runTests: true,
@@ -88,6 +120,9 @@ export async function buildPlanPrompt(
       violationsText, isRetry: !!violationsText, hasTools: options?.hasTools ?? false,
       languageHints, hasLanguageHints: !!languageHints, dependencyStatus,
       packageManager, hasPackageManager: !!packageManager,
+      isDeepDiagnostic,
+      diagnosticAttempts: state._diagnosticAttempts || 0,
+      cachedPassedSteps,
       resolvedAction: state.resolvedAction,
     });
   }
@@ -265,7 +300,8 @@ export async function generatePlanText(
   referenceCodeContexts: any[],
   violations?: Violation[],
   uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
-  remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>  // ✅ Remaining tasks for cross-task awareness
+  remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>,  // ✅ Remaining tasks for cross-task awareness
+  extraViolationContext?: string,  // ✅ Axis D — rendered prior-attempt summary for retry re-entries
 ): Promise<string> {
   if (!taskRequiresPlan(task)) {
     return '';
@@ -276,7 +312,10 @@ export async function generatePlanText(
   }
   
   const llmToUse = await selectLLMForTask(llm, task, state);
-  const violationsText = violations && violations.length > 0 ? formatViolations(violations) : undefined;
+  const baseText = violations && violations.length > 0 ? formatViolations(violations) : undefined;
+  const violationsText = extraViolationContext
+    ? (baseText ? `${baseText}\n${extraViolationContext}` : extraViolationContext)
+    : baseText;
   const prompt = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks);
 
   // ✅ Log prompt structure (not content)

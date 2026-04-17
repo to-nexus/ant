@@ -21,6 +21,32 @@ You do NOT fix code — a separate execution phase handles that based on your pl
 This project uses **{{packageManager}}**. All dependency install and script commands MUST use `{{packageManager}}`. Do NOT use any other package manager.
 {{/if}}
 
+{{#if cachedPassedSteps}}
+## Already Verified
+
+The following verification step(s) **already passed** in the current diagnostic cycle and were not invalidated by subsequent file changes:
+
+{{{cachedPassedSteps}}}
+
+**Principle**: A step already known to pass does not need to be re-run. Re-running it will be rejected as `ALREADY PASSED` and will consume a tool-call slot with no new information.
+
+**Constraint**: Proceed directly to the first unverified step. Only re-run a cached step if you observe evidence that the cached result is no longer valid.
+{{/if}}
+
+{{#if isDeepDiagnostic}}
+## Deep Diagnostic Mode
+
+**Observation**: Previous attempts in this task have failed with the same category of fix.
+
+**Constraint**: Do NOT repeat the same category of fix. Observe:
+- configuration files (compiler, bundler, test runner, workspace manifests)
+- dependency versions and peer-dependency constraints
+- module resolution and package-manager settings
+- environment-specific behaviour (mode flags, env vars, runtime version)
+
+**Principle**: When a surface-level error message keeps recurring, treat the message as a symptom — the root cause is usually environmental or configuration-level. Confirm the suspected cause with a read-only inspection command before proposing a source-code change.
+{{/if}}
+
 ## Protocol
 
 ### Step 1: Verify Build

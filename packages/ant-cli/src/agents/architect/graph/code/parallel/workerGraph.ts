@@ -20,6 +20,7 @@ import { learn } from '../nodes/learn';
 import { routeAfterExecute } from '../routers/executeRouter';
 import { routeAfterPlan } from '../routers/planRouter';
 import { routeAfterTool } from '../routers/toolRouter';
+import { isVerificationComplete, getMissingStepDetail } from '../utils/verificationCompleteness';
 import type { WorkerGraphBuilder } from './types';
 
 /**
@@ -158,12 +159,12 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
     });
   }
 
-  // Diagnostic objective guard: build must pass for verification tasks.
-  // Verification tasks additionally require tests to pass (if test files exist).
+  // Diagnostic objective guard (Axis B — SSOT) — every required step must pass.
   // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
   const isDiagnosticTask = state.currentTask?.type === 'verification';
   if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
     const tracker = state._verificationTracker;
+    const completeness = isVerificationComplete(tracker);
 
     if (!tracker) {
       const history = state.commandHistory || [];
@@ -180,33 +181,21 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
           suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
         });
       }
-    } else if (!tracker.buildPassed) {
-      console.warn(`⚠️  [Worker checkTaskStatus] Verification: build objective not met`);
+    } else if (!completeness.ok) {
+      const firstMissing = completeness.missing[0];
+      console.warn(`⚠️  [Worker checkTaskStatus] Verification: ${firstMissing} objective not met (missing: ${completeness.missing.join(', ')})`);
       const history = state.commandHistory || [];
       const lastFailed = [...history].reverse().find(h => !h.success);
-      const buildErrorDetail = lastFailed?.errorSnippet
+      const errorDetail = lastFailed?.errorSnippet
         ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
         : '';
+      const detail = getMissingStepDetail(firstMissing);
       violations.push({
         type: 'verification_incomplete' as ViolationType,
         severity: 'critical',
-        message: 'Build has not succeeded. A build command must exit 0 with no file modifications after it.' + buildErrorDetail,
+        message: detail.message + errorDetail,
         isRetryable: true,
-        suggestedFix: 'Run the build command and ensure it passes. If you edited files after the last build, re-run the build.',
-      });
-    } else if (tracker.testsRequired && !tracker.testPassed) {
-      console.warn(`⚠️  [Worker checkTaskStatus] Verification: test objective not met`);
-      const history = state.commandHistory || [];
-      const lastFailed = [...history].reverse().find(h => !h.success);
-      const testErrorDetail = lastFailed?.errorSnippet
-        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
-        : '';
-      violations.push({
-        type: 'verification_incomplete' as ViolationType,
-        severity: 'critical',
-        message: 'Tests have not passed. Test files exist in this project — run tests and ensure they pass.' + testErrorDetail,
-        isRetryable: true,
-        suggestedFix: 'Run the test command and ensure all tests pass before marking done.',
+        suggestedFix: detail.fix,
       });
     }
   }

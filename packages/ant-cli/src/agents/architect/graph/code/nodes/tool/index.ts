@@ -2,7 +2,7 @@
  * Tool Node (Code Job)
  *
  * Uses createToolNode factory from common/tool/.
- * Code-specific logic (verificationTracker, commandHistory, diagnostics,
+ * Code-specific logic (verificationTracker, commandHistory,
  * plan/execute dual history) is handled via hooks.
  * Execute/plan nodes push assistant messages; this node appends tool_result only.
  */
@@ -46,6 +46,8 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       verificationTracker: state._verificationTracker as any,
       depFileHash: state._depFileHash,
       retries: state.retries,
+      // Axis G-2 — deep-diagnostic triggers at the second re-entry into the task
+      isDeepDiagnostic: (state._diagnosticAttempts || 0) >= 2,
       referenceRequests: state.referenceRequests,
       resolvedActionMode: state.resolvedAction?.mode,
       retriever: state.deps?.retriever as any,
@@ -70,16 +72,46 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
         switch (effect.type) {
-          case 'verificationInvalidated':
-            if (state._verificationTracker) {
-              state._verificationTracker.typecheckPassed = false;
-              state._verificationTracker.buildPassed = false;
-              state._verificationTracker.testPassed = false;
+          case 'verificationInvalidated': {
+            // Axis C — scope-based selective invalidation. Narrow the reset
+            // to the steps actually affected by the file change so already-passed
+            // steps (e.g. typecheck) remain cached across edits.
+            const tracker = state._verificationTracker;
+            const { scope } = effect;
+            if (tracker) {
+              const invalidateTypecheck = scope === 'typecheck' || scope === 'all';
+              const invalidateBuild = scope === 'build' || scope === 'all';
+              const invalidateTest = scope === 'test' || scope === 'all';
+              if (invalidateTypecheck) {
+                tracker.typecheckPassed = false;
+                tracker.typecheckAttempted = false;
+              }
+              if (invalidateBuild) {
+                tracker.buildPassed = false;
+                tracker.buildAttempted = false;
+              }
+              if (invalidateTest) {
+                tracker.testPassed = false;
+                tracker.testAttempted = false;
+              }
+            }
+            if (effect.installNeeded === true) {
+              state._installNeeded = true;
             }
             if (state._activePhase !== 'plan') {
               state._executeModifiedFiles = true;
             }
             break;
+          }
+
+          case 'depFileHashChanged': {
+            // Axis A — reflect updated dependency hash into state so the
+            // "bare install skipped" guard in runCommand can actually fire
+            // on the next verification cycle.
+            state._depFileHash = effect.newHash;
+            state._installNeeded = false;
+            break;
+          }
 
           case 'commandExecuted': {
             const { exitCode, command, success } = effect;
@@ -96,10 +128,6 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
             );
             if (shouldWarn && warningMessage && typeof event.result.content === 'string') {
               event.result.content = event.result.content + warningMessage;
-            }
-
-            if (!success) {
-              runDiagnostics(command, event.result.error, event.result.content, state);
             }
             break;
           }
@@ -166,26 +194,6 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
     return undefined;
   },
 });
-
-function runDiagnostics(command: string, error: string | undefined, content: any, state: ArchitectGraphState) {
-  try {
-    import('../diagnostics').then(({ diagnoseError }) => {
-      import('../diagnostics/errorStats').then(({ errorStatsCollector }) => {
-        const errorOutput = error || (typeof content === 'string' ? content : '') || '';
-        const diagnosis = diagnoseError(errorOutput, {
-          command,
-          workDir: state.context?.featurePath,
-        });
-        if (diagnosis) {
-          errorStatsCollector.recordError(diagnosis, {
-            command,
-            workDir: state.context?.featurePath,
-          });
-        }
-      }).catch(() => {});
-    }).catch(() => {});
-  } catch { /* non-blocking */ }
-}
 
 export async function tool(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
   return toolNodeFn(state);

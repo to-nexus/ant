@@ -1,7 +1,19 @@
 /**
- * run_command handler — context-injected pure execution layer
+ * run_command handler — context-injected pure execution layer.
  *
- * This is the base execution logic shared across all jobs.
+ * Terminology (Axis terminology):
+ *   - Command Executor = this module. Responsible for spawning shell processes,
+ *     streaming stdout/stderr, detecting long-running servers, and emitting
+ *     structured side effects (commandExecuted, depFileHashChanged, etc.).
+ *   - Command Sequencer = the LLM driving the plan node's tool loop. It
+ *     decides WHICH commands to run and in what ORDER; it does NOT spawn
+ *     anything directly.
+ *
+ * This split is intentional: the Executor is deterministic and always
+ * present, the Sequencer is stochastic and only active during diagnostic
+ * phases. "Retiring the runner" never means retiring the Executor — it
+ * refers to moving sequencing responsibility into the Sequencer (LLM).
+ *
  * Code-specific policy guards (Go build block, verification guards, etc.)
  * are applied externally via CodeCommandPolicy composition in the registry.
  *
