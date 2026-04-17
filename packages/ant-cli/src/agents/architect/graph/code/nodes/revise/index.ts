@@ -1,10 +1,10 @@
-import { LLMClient } from "../../../../../core/ports";
-import { extractLLMInfo } from "../../../../../core/ports/workflow";
-import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
-import { ArchitectGraphState } from "../state";
-import { CodeTask, TaskQueue } from "../../../types/task";
-import { saveCheckpoint } from "./checkpoint";
-import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
+import { LLMClient } from "../../../../../../core/ports";
+import { extractLLMInfo } from "../../../../../../core/ports/workflow";
+import { LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
+import { ArchitectGraphState } from "../../state";
+import { CodeTask, TaskQueue } from "../../../../types/task";
+import { saveCheckpoint } from "../checkpoint";
+import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 
 /**
  * Revise Node (replaces replanDecision + modifyTasks + clearStateForReplan)
@@ -130,7 +130,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
       response = result.content;
       // ✅ Track token usage for revise node
       if (result.usage) {
-        const { accumulateTokenUsage } = await import('../../../../common/graph/llmHelpers');
+        const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers');
         accumulateTokenUsage(state, result.usage, { taskLevel: false, jobLevel: true });
         if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
           state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
