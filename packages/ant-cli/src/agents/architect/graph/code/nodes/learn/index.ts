@@ -193,7 +193,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       const gitPort = state.gitPort || state.deps?.git;
       const fileSystem = state.deps?.fileSystem;
       if (gitPort && fileSystem) {
-        const { generateQualityReport } = await import('../utils/qualityReport');
+        const { generateQualityReport } = await import('./qualityReport');
         const report = await generateQualityReport(state, gitPort, fileSystem);
         if (report) {
           state.evaluationReport = report;

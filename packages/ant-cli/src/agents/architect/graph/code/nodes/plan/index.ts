@@ -68,12 +68,10 @@ function normalizePlanForHash(planText: string): string {
 
 function isTypeScriptProject(state: ArchitectGraphState): boolean {
   const taskTiers = state.currentTask?.techTiers;
-  const lang = (
-    (taskTiers?.length
-      ? taskTiers[0].language
-      : getTechTier(state)?.language) ?? ''
-  ).toLowerCase();
-  return lang.includes('typescript');
+  const firstTierLang = taskTiers && taskTiers.length > 0
+    ? taskTiers[0].language
+    : getTechTier(state)?.language;
+  return (firstTierLang ?? '').toLowerCase().includes('typescript');
 }
 
 /**

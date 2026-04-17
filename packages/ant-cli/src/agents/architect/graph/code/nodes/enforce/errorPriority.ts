@@ -5,8 +5,8 @@
  * and avoid blocking on minor style/lint problems.
  */
 
-import { Violation } from "../state";
-import { TaskType } from "../../../types/task";
+import { Violation } from "../../state";
+import { TaskType } from "../../../../types/task";
 
 export interface ErrorImpact {
   score: number;  // 0-100 (higher = more critical)
