@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
+import { useGitState } from '@/application/hooks/git';
 import type { FileNode } from '@/infrastructure/http/api';
 import {
   type IntentGroup,
@@ -21,7 +22,7 @@ import {
 export function useActionReadiness(): Record<IntentGroup, ActionReadiness> {
   const fileTree = useStore(s => s.fileTree);
   const figmaPopulated = useStore(s => s.figmaPopulated);
-  const gitStatus = useStore(s => s.gitStatus);
+  const { gitStatus } = useGitState();
   const bridgeConnected = useStore(s => s.bridgeConnected);
   const figmaDesktopReachable = useStore(s => s.figmaDesktopReachable);
 

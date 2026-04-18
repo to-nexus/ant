@@ -1,3 +1,4 @@
+import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
@@ -167,26 +168,19 @@ export class ProjectService {
   // Git Status Operations (delegated to GitService)
   // =====================================
   
-  async getGitStatus(projectId: string, userContext: UserContext, featureName?: string): Promise<{
-    hasGit: boolean;
-    hasCodebase: boolean;
-    codebaseHasFiles: boolean;
-    hasFeatures: boolean;
-    currentBranch?: string;
-  }> {
+  async getGitStatus(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+  ): Promise<GitStatusResponse> {
     return this.git.getGitStatus(projectId, userContext, featureName);
   }
-  
-  async getGitChanges(projectId: string, userContext: UserContext, featureName?: string): Promise<{
-    hasChanges: boolean;
-    staged: string[];
-    unstaged: string[];
-    untracked: string[];
-    ahead: number;
-    behind: number;
-    currentBranch?: string;
-    isGitInitialized?: boolean;
-  }> {
+
+  async getGitChanges(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+  ): Promise<GitChangesResponse> {
     return this.git.getGitChanges(projectId, userContext, featureName);
   }
   

@@ -214,7 +214,7 @@ LLM 코드 생성 시 `.git` 파일/디렉터리 손상 방지:
 | `GET /projects/:id/git/status` | `hasGit, hasCodebase, codebaseHasFiles, hasFeatures, currentBranch, remoteUrl` | 디스크/연결 상태 |
 | `GET /projects/:id/git/changes` | 위에 더해 `staged, unstaged, untracked, ahead, behind, isGitInitialized, hasUpstream` | 워킹트리·upstream 상태 |
 
-`ahead/behind`는 로컬이 알고 있는 원격 ref 기준. 최신화는 명시적인 Fetch operation 또는 클라이언트의 `bypassFetchTimer` 경로(피처 전환 시)로 수행한다.
+`ahead/behind`는 로컬이 알고 있는 원격 ref 기준. 최신화는 명시적인 Fetch operation 또는 클라이언트의 `fetchFromRemote` 경로(피처 전환 시 `useGitRefresh`가 드라이브)로 수행한다.
 
 ## Realtime: gitChange 이벤트
 
@@ -236,69 +236,82 @@ LLM 코드 생성 시 `.git` 파일/디렉터리 손상 방지:
 
 ## Frontend Git State
 
-### SSOT 구성
+### 필드별 SSOT
 
-Git 상태의 단일 소스는 Zustand의 `gitSlice`와 `projectConfigSlice`이다. `sessionStorage` 캐시, 훅 로컬 state, 컴포넌트 로컬 `useState`는 사용하지 않는다.
+Git 관련 필드는 백엔드 응답 단위로 소스가 쪼개져 저장된다. 공유 계약 타입(`@ant/shared`)을 그대로 Zustand에 담고, 파생 필드 병합이나 플래그 주입은 하지 않는다.
 
-| 필드 | 출처 | 슬라이스 |
-|------|------|---------|
-| `gitStatus` (hasGit/remoteUrl/currentBranch 등) | `getGitStatus` | gitSlice |
-| `gitStatus.hasUpstream/ahead/behind/hasUncommittedChanges` | `getGitChanges` merge | gitSlice |
-| `gitChanges` (staged/unstaged/untracked) | `getGitChanges` | gitSlice |
-| `isGitInitialized` (null/true/false 3-state) | `getGitChanges` | gitSlice |
-| `isFetchingChanges` | `fetchGitChanges` 액션 내부 | gitSlice |
-| `projectConfig` (githubRepo 등) | `GET /projects/:id/config` | projectConfigSlice |
+| 필드 집합 | 계약 타입 | 소스 엔드포인트 | 저장 위치 |
+|-----------|-----------|-----------------|-----------|
+| `hasGit, hasCodebase, codebaseHasFiles, hasFeatures, currentBranch, remoteUrl` | `GitStatusResponse` | `GET /projects/:id/git/status` | `gitSlice.gitStatus` |
+| `staged, unstaged, untracked, ahead, behind, hasUpstream, isGitInitialized, hasUncommittedChanges, hasChanges` + 위의 status 필드 | `GitChangesResponse` (status 포함) | `GET /projects/:id/git/changes` | `gitSlice.gitChanges` |
+| `githubRepo, branchBase, …` | `ProjectConfig` | `GET /projects/:id/config` | `projectConfigSlice` |
 
-### Fetch 액션
+동일 필드가 `gitStatus`와 `gitChanges` 양쪽에 나타나도 두 객체는 독립적으로 교체된다 — status-only 호출은 `gitStatus`만, changes 호출은 `gitChanges`만 쓰고, `GitStatusResponse` 타입 소비자는 `gitStatus`를, `GitChangesResponse` 타입 소비자는 `gitChanges`를 읽는다. selector가 두 소스를 머지해서 쓰는 경우 `gitChanges`가 있으면 그쪽을, 없으면 `gitStatus`를 사용한다.
+
+### Fetch / phase 액션
 
 | 액션 | 역할 | 중복 제거 |
 |------|------|----------|
-| `fetchGitStatus(projectId, feature?)` | 디스크 상태 조회. 머지 시 `hasUpstream/ahead/behind/hasUncommittedChanges`는 명시적으로 `undefined` 리셋 (stale 방지) | — |
-| `fetchGitChanges(projectId, feature?)` | 워킹트리 상태 조회. 성공 시 gitStatus 파생 필드 주입. 실패 메시지가 `not initialized`면 `isGitInitialized=false` | 키 `${projectId}:${feature\|\|'base'}` 단위 in-flight Map으로 dedup |
-| `clearGitChanges()` | `gitChanges/isGitInitialized/gitChangesKey/isFetchingChanges` 초기화 + gitStatus 파생 4개 필드 undefined 리셋 | — |
+| `fetchGitStatus(projectId, feature?)` | `GET /git/status` 호출 → `gitStatus` 교체. `statusFetchState`(`idle/loading/success/error`) 업데이트 | `${projectId}:${feature\|\|'base'}` 키 in-flight Map |
+| `fetchGitChanges(projectId, feature?)` | `GET /git/changes` 호출 → `gitChanges` 교체. `changesFetchState` 업데이트 | 동일 키 in-flight Map |
+| `fetchGitAll(projectId, feature?)` | status + changes를 병렬 호출 후 두 객체를 한 번에 교체 | 키 단위 in-flight 재사용 |
+| `fetchFromRemote(projectId, feature?)` | `fetchFromGitHub` REST 호출 후 `fetchGitAll` 연쇄. `gitStatusPhase='fetching'`을 자동 세팅 | — |
+| `setGitStatusPhase(phase)` | Git operation 진행 상태(`'fetching'\|'pushing'\|…\|null`). null 전이 자체는 별도 fetch를 트리거하지 않는다 | — |
+| `clearGitState()` | 프로젝트/피처 전환 시 `gitStatus/gitChanges/gitStatusPhase/*FetchState` 전체 초기화 | — |
+
+모든 fetch 액션은 호출 당시 selected project·feature 스냅샷을 찍고, 완료 시점에 `isStillActive(snapshot)`로 선택이 바뀌지 않았는지 확인한 뒤에야 스토어에 반영한다(stale guard). 빠른 feature 전환이 생겨도 이전 fetch 결과가 덮어쓰지 않는다.
+
+### 애플리케이션 레이어 훅
+
+프리젠테이션은 `domain/store`에 직접 접근하지 않고 `application/hooks/git/`의 세 훅만 사용한다.
+
+| 훅 | 반환 | 쓰임 |
+|----|------|------|
+| `useGitState()` | `{gitStatus, gitChanges, gitStatusPhase, statusFetchState, changesFetchState, isFetchBlockingCta}` | 읽기 전용. 모든 컴포넌트/훅이 git 상태를 볼 때 사용 |
+| `useGitActions()` | `{fetchGitStatus, fetchGitChanges, fetchGitAll, fetchFromRemote, setGitStatusPhase, clearGitState}` | Git operation 디스패치 |
+| `useGitRefresh()` | void | `App.tsx`에서 한 번 호출. 프로젝트·피처 변화, SSE `gitChange`, 초기 마운트, 주기적 remote fetch를 단일 훅에서 오케스트레이션 |
+
+`useGitRefresh`는 이전 아키텍처에서 `ProjectSection`/`GitStatusButton`/`useFeatureBranchManager`에 흩어져 있던 fetch 트리거를 단일 지점으로 집약한다.
 
 ### Fetch 트리거 경로
 
-`fetchGitChanges`는 네 경로에서 호출되며 dedup이 중복을 흡수한다.
-
-1. **Mount / project·feature·trigger 변화** — `GitStatusButton`이 effect로 드라이브 (phase null 게이트)
-2. **SSE gitChange 이벤트** — `sseSlice.initializeSSE`가 단일 등록. 핸들러는 `get()`으로 현재 project/feature를 동적 참조 (stale closure 방지)
-3. **Phase 전이** — `setGitStatusPhase(phase)` 내부에서 `prev !== null && phase === null`인 경우 자동 호출 (Git operation 종료 직후)
-4. **Explicit refresh** — `refreshGitStatus()` → `gitStatusRefreshTrigger` 증가 → (1) 경로 재실행
+1. **프로젝트/피처 변화** — `useGitRefresh`가 변화를 감지하고 `clearGitState()` → `fetchGitAll()`. 피처 전환이면 추가로 `fetchFromRemote()`로 원격 refs 동기화.
+2. **SSE gitChange 이벤트** — `sseSlice.initializeSSE`가 `fetchGitChanges`를 등록. 핸들러는 `get()`으로 현재 project/feature를 동적 참조해 stale closure를 피한다.
+3. **Git operation 완료** — `useGitActions` 훅(GitStatusButton용)이 push/pull/commit/discard 성공 후 `fetchGitAll()`을 명시 호출.
+4. **Job 완료 / 계정 설정 변경** — `useJobExecution`, `AccountConfigEditor` 등에서 필요 시 `fetchGitAll()` 직접 호출.
 
 ### Feature 전환 시퀀스
 
 ```
 setSelectedFeature(name)
-  ├─ clearGitChanges()                 ; 이전 피처 데이터 스크러브
-  ├─ setBypassFetchTimer(true)         ; 다음 useFeatureBranchManager 사이클에서 remote fetch 강제
-  └─ initializeSSE() (필요 시)
+  └─ projectSlice에서 clearGitState() 호출          ; 이전 피처 데이터 제거
         ↓
-useFeatureBranchManager (effect)
-  ├─ setGitStatusPhase('fetching')
-  ├─ fetchFromGitHub (필요 시)
-  └─ setGitStatusPhase(null)           ; → gitSlice가 fetchGitChanges 자동 호출
+useGitRefresh (effect)
+  ├─ fetchGitAll(projectId, feature)                 ; 즉시 상태 채움 (Setup 버튼 표시용)
+  └─ fetchFromRemote(projectId, feature)             ; origin/* 동기화 후 재차 fetchGitAll
 ```
+
+`gitStatusPhase`는 `fetchFromRemote` 진입 시 `'fetching'`으로 설정되고 완료 시 `null`로 돌아온다. phase 전이 자체가 fetch를 일으키지는 않는다.
 
 ### UI 분기 selector
 
-UI는 동일한 순수 함수 한 쌍에서만 분기한다. selector 바깥에서 `hasGit/hasUpstream/remoteUrl`로 분기하는 코드는 없다.
+selector 바깥에서 `hasGit/hasUpstream/remoteUrl`로 분기하는 코드는 없다. 두 selector 모두 `gitStatus`(Status 계약)와 `gitChanges`(Changes 계약)를 분리해 받는다.
 
-| Selector | 소비자 | 결과 union |
-|----------|--------|-----------|
-| `deriveGitMenuState({gitStatus, githubRepo})` | ProjectSection 드롭다운 | `loading \| disabled \| setup \| publishBranch \| synced` |
-| `deriveGitActionCta({gitChanges, gitStatus, isLoading})` | GitStatusButton/ActionButton | `loading \| noChanges \| commit \| publish(variant) \| sync \| push \| pull` |
+| Selector | 입력 | 소비자 | 결과 union |
+|----------|------|--------|-----------|
+| `deriveGitMenuState({gitStatus, gitChanges, githubRepo, isFetching})` | Status + Changes + Config | ProjectSection 드롭다운 | `loading \| disabled \| setup \| publishBranch \| synced` |
+| `deriveGitActionCta({gitChanges, gitStatus, isLoading})` | Changes(주) + Status(폴백) | GitStatusButton/ActionButton | `loading \| noChanges \| commit \| publish(variant) \| sync \| push \| pull` |
 
-`hasUpstream === undefined`(미계산)을 `loading`으로 취급하여, 새로고침 직후 State 3 오분류를 방지한다.
+Changes가 아직 없으면 두 selector 모두 `loading`으로 취급해 새로고침 직후 오분류를 방지한다.
 
 ### Publish variant 처리
 
-`ActionButton`은 CTA가 `publish`일 때 `cta.variant`에 따라 서로 다른 핸들러를 호출한다. dispatch 단계에서는 `gitStatus.remoteUrl`을 다시 읽지 않는다.
+`ActionButton`은 CTA가 `publish`일 때 `cta.variant`에 따라 서로 다른 핸들러를 호출한다. dispatch 단계에서는 원본 필드를 다시 읽지 않는다.
 
 | variant | 핸들러 | 동작 |
 |---------|--------|------|
-| `noRemoteWithFeatures` | `handlePublishRepo` | confirm → `initializeGitHubRepo` (remote 생성 + push) |
-| `noUpstream` | `handlePush` | `pushToGitHub` (BE `PushOperation`이 `-u` 자동 설정) |
+| `noRemoteWithFeatures` | `handlePublishRepo` | confirm → `initializeGitHubRepo` (remote 생성 + push) → `fetchGitAll` |
+| `noUpstream` | `handlePush` | `pushToGitHub` (BE `PushOperation`이 `-u` 자동 설정) → `fetchGitAll` |
 
 ## 관련 코드
 
@@ -325,24 +338,26 @@ UI는 동일한 순수 함수 한 쌍에서만 분기한다. selector 바깥에�
 
 | 역할 | 파일 |
 |------|------|
-| gitSlice (status + changes SSOT) | `packages/ant-ui/src/domain/store/slices/gitSlice.ts` |
+| gitSlice (status + changes 분리 SSOT, stale guard) | `packages/ant-ui/src/domain/store/slices/gitSlice.ts` |
 | projectConfigSlice | `packages/ant-ui/src/domain/store/slices/projectConfigSlice.ts` |
 | 메뉴/CTA selector | `packages/ant-ui/src/domain/git/selectors.ts` |
 | SSE gitChange 핸들러 등록 | `packages/ant-ui/src/domain/store/slices/sseSlice.ts` |
-| 프로젝트/피처 전환 훅 | `packages/ant-ui/src/domain/store/slices/projectSlice.ts` |
-| Feature 브랜치 동기화 | `packages/ant-ui/src/presentation/components/FeatureSection/hooks/useFeatureBranchManager.ts` |
+| 프로젝트/피처 전환 훅 (clearGitState 호출) | `packages/ant-ui/src/domain/store/slices/projectSlice.ts` |
+| Git 상태 읽기 훅 | `packages/ant-ui/src/application/hooks/git/useGitState.ts` |
+| Git 액션 디스패치 훅 | `packages/ant-ui/src/application/hooks/git/useGitActions.ts` |
+| Git refresh 오케스트레이션 훅 | `packages/ant-ui/src/application/hooks/git/useGitRefresh.ts` |
 | 드롭다운 | `packages/ant-ui/src/presentation/components/ProjectSection.tsx` |
-| Git 버튼 + fetch 드라이버 | `packages/ant-ui/src/presentation/components/GitStatusButton/index.tsx` |
-| Action dispatch | `packages/ant-ui/src/presentation/components/GitStatusButton/hooks/useGitActions.ts` |
-| Git selector 읽기 훅 | `packages/ant-ui/src/presentation/components/GitStatusButton/hooks/useGitChanges.ts` |
+| Git 버튼 컨테이너 | `packages/ant-ui/src/presentation/components/GitStatusButton/index.tsx` |
+| Git operation dispatch | `packages/ant-ui/src/presentation/components/GitStatusButton/hooks/useGitActions.ts` |
 | 변경 패널 | `packages/ant-ui/src/presentation/components/GitStatusButton/components/GitChangesPanel.tsx` |
-| REST API 클라이언트 | `packages/ant-ui/src/infrastructure/http/api/github.ts` |
+| REST API 클라이언트 (공유 계약 타입 사용) | `packages/ant-ui/src/infrastructure/http/api/github.ts` |
 
 ### Shared
 
 | 역할 | 파일 |
 |------|------|
 | SSE 이벤트 타입 (SSEMessageType, SSEMessageMap) | `packages/ant-shared/src/sse-events.ts` |
+| Git 응답 계약 타입 (GitStatusResponse, GitChangesResponse, FileChange) | `packages/ant-shared/src/git.ts` |
 
 ## 경계
 

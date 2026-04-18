@@ -3,7 +3,7 @@ import { ProjectConfig } from '@/infrastructure/http/api';
 import { ConfigField as ConfigFieldType } from '../configSchema';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { normalizeRepoUrl } from '@/shared/utils/git-utils';
-import type { GitStatus } from '@/domain/store/types';
+import type { GitStatusResponse } from '@ant/shared';
 
 export interface GitHubOwnerInfo {
   orgOwner?: string;      // Organization-level GitHub owner
@@ -23,7 +23,7 @@ interface ConfigFieldProps {
   /** Project name for building default URL */
   projectName?: string;
   /** Git status for connection badge */
-  gitStatus?: GitStatus | null;
+  gitStatus?: GitStatusResponse | null;
 }
 
 export function ConfigField({

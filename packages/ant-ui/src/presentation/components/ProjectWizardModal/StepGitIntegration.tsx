@@ -1,14 +1,14 @@
 import { KeyRound } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
 import { normalizeRepoUrl } from '@/shared/utils/git-utils';
-import type { GitStatus } from '@/domain/store/types';
+import type { GitStatusResponse } from '@ant/shared';
 
 interface StepGitIntegrationProps {
   t: (key: string, opts?: Record<string, unknown>) => string;
   gitEnabled: boolean;
   onGitEnabledChange: (v: boolean) => void;
   readOnly?: boolean;
-  gitStatus?: GitStatus | null;
+  gitStatus?: GitStatusResponse | null;
   patStatus: { configured: boolean; username?: string } | null;
   showPatInput: boolean;
   onShowPatInput: () => void;
@@ -41,12 +41,13 @@ export function StepGitIntegration({
 }: StepGitIntegrationProps) {
   const fieldDisabled = readOnly || !patStatus?.configured;
 
-  // Only derive badge from gitStatus when readOnly (existing project with config URL).
-  // For new projects, gitStatus in the store belongs to a different project.
+  // Only derive badge from gitStatus when readOnly (existing project with
+  // config URL). For new projects, gitStatus in the store belongs to a
+  // different project, so we suppress the badge entirely.
   const badgeState: 'none' | 'not-connected' | 'connected' | 'error' = (() => {
     if (!gitEnabled || !gitUrl) return 'none';
     if (!readOnly) return 'none';
-    if (!gitStatus || gitStatus.hasGit === undefined) return 'none';
+    if (!gitStatus) return 'none';
     if (!gitStatus.hasGit) return 'not-connected';
     const hasRemote = !!gitStatus.remoteUrl;
     if (hasRemote) {

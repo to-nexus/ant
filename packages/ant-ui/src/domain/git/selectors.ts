@@ -8,17 +8,22 @@
  * `gitStatus` + `gitChanges` + `githubRepo` and read off a discriminated union.
  *
  * No imports beyond types — these are pure functions usable from any layer.
+ *
+ * Field-level SSOT:
+ *   - `gitStatus` provides disk-level flags (hasGit, remoteUrl, hasFeatures…)
+ *   - `gitChanges` provides working-tree flags (hasUpstream, ahead, behind,
+ *      staged/unstaged/untracked)
+ * No field is ever read from the wrong object — see `docs/architecture/24-git-operations.md`.
  */
 
-import type { GitStatus } from '@/domain/store/types';
-import type { GitChanges } from '@/infrastructure/http/api';
+import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
 
 // ============================================================================
 // GitMenuState — ProjectSection's dropdown variants
 // ============================================================================
 
 export type GitMenuState =
-  /** Status hasn't arrived yet OR disambiguating fields are still pending. */
+  /** Either endpoint hasn't returned yet. */
   | { kind: 'loading' }
   /** Git + remote config both missing and the user has no features to publish. */
   | { kind: 'disabled'; reason: 'noGit' | 'noConfig' }
@@ -36,16 +41,19 @@ export type GitMenuState =
     };
 
 export interface DeriveGitMenuStateInput {
-  gitStatus: GitStatus | null;
+  gitStatus: GitStatusResponse | null;
+  gitChanges: GitChangesResponse | null;
   /** From projectConfig — declared repo URL before disk state is populated. */
   githubRepo: string | null;
 }
 
 export function deriveGitMenuState(input: DeriveGitMenuStateInput): GitMenuState {
-  const { gitStatus, githubRepo } = input;
+  const { gitStatus, gitChanges, githubRepo } = input;
 
-  // Loading — status hasn't come back yet.
-  if (!gitStatus) return { kind: 'loading' };
+  // Loading — either endpoint hasn't come back yet. Both are required because
+  // the menu reads disk-level flags from `gitStatus` and upstream/ahead/behind
+  // from `gitChanges`.
+  if (!gitStatus || !gitChanges) return { kind: 'loading' };
 
   const hasRemote = !!gitStatus.remoteUrl;
   const hasGit = gitStatus.hasGit === true;
@@ -55,33 +63,25 @@ export function deriveGitMenuState(input: DeriveGitMenuStateInput): GitMenuState
     return { kind: 'disabled', reason: 'noConfig' };
   }
 
-  // Ambiguous: remote exists but hasUpstream hasn't been computed yet.
-  // Falling through would misclassify into State 3 (synced) and show push/pull
-  // based on stale ahead/behind from a different feature.
-  if (hasGit && hasRemote && gitStatus.hasUpstream === undefined) {
-    return { kind: 'loading' };
-  }
-
   if (!hasGit || !hasRemote) {
-    // Repo not set up, but the user has features to preserve.
     if (gitStatus.hasFeatures) return { kind: 'publishBranch', source: 'noFeatures' };
     return { kind: 'setup', actions: ['clone', 'initialize'] };
   }
 
-  if (gitStatus.hasUpstream === false) {
+  if (gitChanges.hasUpstream === false) {
     return { kind: 'publishBranch', source: 'noUpstream' };
   }
 
-  const ahead = gitStatus.ahead ?? 0;
-  const behind = gitStatus.behind ?? 0;
+  const { ahead, behind } = gitChanges;
+  const hasUncommittedChanges =
+    gitChanges.staged.length + gitChanges.unstaged.length + gitChanges.untracked.length > 0;
+
   return {
     kind: 'synced',
     canPush: ahead > 0,
-    // Disallow pull when local changes would be overwritten — the backend
-    // reports `hasUncommittedChanges` after a getGitChanges call.
-    canPull: behind > 0 && gitStatus.hasUncommittedChanges !== true,
+    canPull: behind > 0 && !hasUncommittedChanges,
     canFetch: true,
-    pullBlockedByChanges: behind > 0 && gitStatus.hasUncommittedChanges === true,
+    pullBlockedByChanges: behind > 0 && hasUncommittedChanges,
   };
 }
 
@@ -104,8 +104,8 @@ export type GitActionCta =
   | { kind: 'pull'; behind: number };
 
 export interface DeriveGitActionCtaInput {
-  gitChanges: GitChanges | null;
-  gitStatus: GitStatus | null;
+  gitChanges: GitChangesResponse | null;
+  gitStatus: GitStatusResponse | null;
   isLoading: boolean;
 }
 
@@ -127,11 +127,9 @@ export function deriveGitActionCta(input: DeriveGitActionCtaInput): GitActionCta
 
   const hasRemote = !!gitStatus.remoteUrl;
 
-  // No remote yet, but features exist → the CTA is "create repo".
   if (!hasRemote && gitStatus.hasFeatures) {
     return { kind: 'publish', variant: 'noRemoteWithFeatures' };
   }
-  // Remote exists, but this local branch has no upstream → offer to publish it.
   if (gitChanges.hasUpstream === false && hasRemote) {
     return { kind: 'publish', variant: 'noUpstream' };
   }

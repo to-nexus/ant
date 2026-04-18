@@ -1,19 +1,27 @@
 /**
  * DeployService
- * 
+ *
  * Orchestrates the deploy lifecycle:
  * 1. Detect framework
  * 2. Run production build (with base path injection)
  * 3. Start static server
  * 4. Register deploy state in Redis
- * 5. Broadcast status via SSE
+ * 5. Persist re-hydration metadata to workspace (.deploy/meta.json)
+ * 6. Broadcast status via SSE
+ *
+ * Supports lazy re-hydration: when URL is accessed but the static server
+ * process is gone (pod restart, idle eviction, crash), `ensureRunning()` reads
+ * meta.json and re-spawns the static server without re-building.
  */
 
 import * as os from 'os';
+import * as fs from 'fs';
+import * as path from 'path';
 import { PortManager } from '../networking/PortManager';
 import { StateStorePort, DeployState, DeployPhase } from '../../core/ports/stateStore';
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
+import { DeployMetaStore } from './DeployMetaStore';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import { toUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { logger } from '../../utils/logger';
@@ -29,9 +37,15 @@ interface ActiveDeploy {
   state: DeployState;
 }
 
+const DEFAULT_IDLE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MIN_IDLE_CHECK_MS = 60 * 1000; // 1 min floor
+const MAX_IDLE_CHECK_MS = 10 * 60 * 1000; // 10 min ceiling
+
 export class DeployService {
   private portManager: PortManager;
   private stateStore: StateStorePort;
+  private workspacesBasePath: string;
+  private metaStore = new DeployMetaStore();
   private activeDeploys = new Map<string, ActiveDeploy>();
   /**
    * Monotonically increasing generation per deploy key.
@@ -40,14 +54,36 @@ export class DeployService {
    * a newer deploy or stop was issued and this build should abort.
    */
   private deployGeneration = new Map<string, number>();
+  /**
+   * In-memory rehydrate lock per key — prevents concurrent static-server
+   * spawns for the same deploy. Pod-local only; multi-pod races are harmless
+   * (last `registerDeploy` wins).
+   */
+  private rehydrateLocks = new Map<string, Promise<DeployState | null>>();
+  private idleCheckInterval?: NodeJS.Timeout;
 
   constructor(options: DeployServiceOptions) {
     this.portManager = options.portManager;
     this.stateStore = options.stateStore;
+    this.workspacesBasePath =
+      options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
   }
 
   private makeKey(tenantId: string, userId: string, projectId: string, feature: string): string {
     return `${tenantId}:${userId}:${projectId}:${feature}`;
+  }
+
+  /**
+   * Mirror of PreviewServer.resolveWorkspacePath — needed when we must
+   * rehydrate from scratch and don't have `workspacePath` on the Redis state.
+   */
+  private guessWorkspacePath(
+    tenantId: string, userId: string, projectId: string, feature: string
+  ): string {
+    if (feature && feature !== 'main') {
+      return path.join(this.workspacesBasePath, tenantId, userId, projectId, 'features', feature, 'codebase');
+    }
+    return path.join(this.workspacesBasePath, tenantId, userId, projectId, 'codebase');
   }
 
   private getPodHost(): string {
@@ -67,7 +103,11 @@ export class DeployService {
     return 'localhost';
   }
 
-  private async broadcastStatus(
+  /**
+   * Broadcast a deploy status SSE event. Exposed publicly so the proxy
+   * middleware can notify the UI of host/port failures.
+   */
+  async broadcastStatus(
     tenantId: string, userId: string,
     projectId: string, featureName: string,
     data: Record<string, any>
@@ -155,6 +195,8 @@ export class DeployService {
       framework,
       buildOutputDir: getBuildOutputDir(workspacePath, framework),
       basePath,
+      workspacePath,
+      urlKey,
       startedAt: new Date(),
     };
 
@@ -200,12 +242,10 @@ export class DeployService {
     const isStale = () => this.deployGeneration.get(key) !== generation;
 
     try {
-      // Run build
       const buildResult = await runBuild(workspacePath, basePath, (line) => {
         this.broadcastLog(tenantId, userId, projectId, feature, line);
       });
 
-      // Abort if a newer deploy or stop was issued while building
       if (isStale()) {
         logger.info(`[Deploy] Build completed but deploy generation is stale: ${key}`, { component: 'DeployService' });
         return;
@@ -224,7 +264,7 @@ export class DeployService {
         return;
       }
 
-      // Start static server
+      // Transition to deploying (spawning static server)
       await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'deploying' });
       await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
         phase: 'deploying',
@@ -239,6 +279,24 @@ export class DeployService {
       });
 
       const deployUrl = `/deploy/${urlKey}`;
+      const now = new Date().toISOString();
+
+      // Persist re-hydration meta BEFORE marking running — meta.json is source of truth.
+      try {
+        await this.metaStore.write(workspacePath, {
+          version: 1,
+          tenantId, userId, projectId, feature,
+          framework,
+          workspacePath,
+          buildOutputDir: buildResult.outputDir,
+          basePath,
+          urlKey,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch (err: any) {
+        logger.warn(`[Deploy] Failed to persist meta.json: ${err.message}`, { component: 'DeployService' });
+      }
 
       await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
         phase: 'running',
@@ -251,6 +309,7 @@ export class DeployService {
           ...initialState,
           phase: 'running',
           url: deployUrl,
+          buildOutputDir: buildResult.outputDir,
           lastAccessedAt: new Date(),
         },
       });
@@ -291,10 +350,21 @@ export class DeployService {
   ): Promise<{ success: boolean; message: string }> {
     const key = this.makeKey(tenantId, userId, projectId, feature);
 
-    // Bump generation — any in-flight executeBuild() with an older generation will abort
     this.deployGeneration.set(key, (this.deployGeneration.get(key) ?? 0) + 1);
 
+    // Wait for any in-flight rehydrate to observe the bumped generation and
+    // abort itself, so this stop cannot race with a concurrent wake-up that
+    // would otherwise leave a zombie static server alive.
+    const inflight = this.rehydrateLocks.get(key);
+    if (inflight) {
+      try { await inflight; } catch { /* ignore */ }
+    }
+
     const active = this.activeDeploys.get(key);
+    const workspacePath = active?.state.workspacePath
+      ?? (await this.stateStore.getDeploy(tenantId, userId, projectId, feature))?.workspacePath
+      ?? this.guessWorkspacePath(tenantId, userId, projectId, feature);
+
     if (active) {
       try {
         await active.handle.stop();
@@ -306,6 +376,7 @@ export class DeployService {
     }
 
     await this.stateStore.unregisterDeploy(tenantId, userId, projectId, feature);
+    await this.metaStore.remove(workspacePath);
     await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'stopped' });
 
     logger.info(`[Deploy] Stopped: ${key}`, { component: 'DeployService' });
@@ -313,7 +384,172 @@ export class DeployService {
   }
 
   /**
-   * Get deploy status.
+   * Ensure the deploy's static server is running on this pod. If it is
+   * already healthy, returns the current state. Otherwise performs lazy
+   * re-hydration: reads meta.json, allocates a port, spawns the static
+   * server, and broadcasts phase transitions (starting → running).
+   *
+   * Returns null if the deploy cannot be revived (no meta, artifact missing,
+   * port exhausted). Callers must treat this as "unavailable — user must
+   * re-deploy".
+   */
+  async ensureRunning(
+    tenantId: string, userId: string, projectId: string, feature: string
+  ): Promise<DeployState | null> {
+    const key = this.makeKey(tenantId, userId, projectId, feature);
+    const state = await this.stateStore.getDeploy(tenantId, userId, projectId, feature);
+    const active = this.activeDeploys.get(key);
+    const selfPod = os.hostname();
+
+    // Fast path: we are the owning pod and the process is alive.
+    if (state?.phase === 'running' && active && state.podId === selfPod) {
+      return state;
+    }
+
+    // Another pod owns a running deploy — trust it, no rehydrate.
+    if (state?.phase === 'running' && state.podId && state.podId !== selfPod) {
+      return state;
+    }
+
+    // Dedup concurrent rehydrate requests for the same key.
+    const inflight = this.rehydrateLocks.get(key);
+    if (inflight) return inflight;
+
+    // Capture the generation at the start of rehydrate. If stopDeploy/startDeploy
+    // bumps it mid-flight, rehydrate will detect and abort (disposing of any
+    // freshly spawned static server) instead of leaving a zombie.
+    const genAtStart = this.deployGeneration.get(key) ?? 0;
+
+    const promise = this.rehydrate(tenantId, userId, projectId, feature, state, genAtStart)
+      .finally(() => this.rehydrateLocks.delete(key));
+    this.rehydrateLocks.set(key, promise);
+    return promise;
+  }
+
+  private async rehydrate(
+    tenantId: string, userId: string, projectId: string, feature: string,
+    existing: DeployState | null,
+    genAtStart: number
+  ): Promise<DeployState | null> {
+    const key = this.makeKey(tenantId, userId, projectId, feature);
+    const lockKey = `deploy:rehydrate:${key}`;
+
+    // Multi-pod coordination: only one pod may spawn a static server for this
+    // deploy at a time. If another pod wins the lock, wait briefly and read
+    // Redis to see if it succeeded; otherwise surface unavailable.
+    const acquired = await this.stateStore.acquireLock(lockKey, 30);
+    if (!acquired) {
+      await new Promise((r) => setTimeout(r, 500));
+      const fresh = await this.stateStore.getDeploy(tenantId, userId, projectId, feature);
+      if (fresh?.phase === 'running') return fresh;
+      logger.warn(`[Deploy] Rehydrate skipped — another pod holds the lock: ${key}`, { component: 'DeployService' });
+      return null;
+    }
+
+    try {
+      const workspacePath = existing?.workspacePath
+        ?? this.guessWorkspacePath(tenantId, userId, projectId, feature);
+
+      const meta = await this.metaStore.read(workspacePath);
+      if (!meta) {
+        await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'unavailable' });
+        logger.warn(`[Deploy] Rehydrate aborted — no meta.json: ${key}`, { component: 'DeployService' });
+        return null;
+      }
+
+      if (!fs.existsSync(meta.buildOutputDir)) {
+        await this.broadcastStatus(tenantId, userId, projectId, feature, {
+          phase: 'unavailable',
+          error: 'Build output missing',
+        });
+        await this.metaStore.remove(workspacePath);
+        logger.warn(`[Deploy] Rehydrate aborted — buildOutputDir missing: ${meta.buildOutputDir}`, { component: 'DeployService' });
+        return null;
+      }
+
+      await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'starting' });
+
+      let port: number;
+      try {
+        port = await this.portManager.allocate('deploy');
+      } catch (err: any) {
+        await this.broadcastStatus(tenantId, userId, projectId, feature, {
+          phase: 'unavailable',
+          error: err.message,
+        });
+        return null;
+      }
+
+      const host = this.getPodHost();
+      try {
+        const handle = await startStaticServer({
+          framework: meta.framework,
+          outputDir: meta.buildOutputDir,
+          port,
+          basePath: meta.basePath,
+          workspacePath: meta.workspacePath,
+        });
+
+        // Generation guard: if a stopDeploy/startDeploy landed while we were
+        // spawning, discard the freshly started server so it does not become
+        // a zombie outliving the intended stop.
+        if ((this.deployGeneration.get(key) ?? 0) !== genAtStart) {
+          try { await handle.stop(); } catch { /* ignore */ }
+          this.portManager.release(port);
+          logger.info(`[Deploy] Rehydrate aborted (generation bumped): ${key}`, { component: 'DeployService' });
+          return null;
+        }
+
+        const fullState: Omit<DeployState, 'lastAccessedAt'> = {
+          tenantId, userId, projectId, feature,
+          phase: 'running',
+          port, host, podId: os.hostname(),
+          framework: meta.framework,
+          buildOutputDir: meta.buildOutputDir,
+          basePath: meta.basePath,
+          workspacePath: meta.workspacePath,
+          urlKey: meta.urlKey,
+          url: `/deploy/${meta.urlKey}`,
+          startedAt: new Date(),
+        };
+        await this.stateStore.registerDeploy(fullState);
+        this.activeDeploys.set(key, {
+          handle,
+          state: { ...fullState, lastAccessedAt: new Date() },
+        });
+
+        await this.broadcastStatus(tenantId, userId, projectId, feature, {
+          phase: 'running',
+          url: fullState.url,
+          port,
+          framework: meta.framework,
+        });
+
+        logger.info(`[Deploy] Rehydrated ${key} on ${host}:${port}`, { component: 'DeployService' });
+        return { ...fullState, lastAccessedAt: new Date() };
+      } catch (err: any) {
+        this.portManager.release(port);
+        await this.broadcastStatus(tenantId, userId, projectId, feature, {
+          phase: 'unavailable',
+          error: err.message,
+        });
+        logger.error(`[Deploy] Rehydrate failed: ${err.message}`, { component: 'DeployService' });
+        return null;
+      }
+    } finally {
+      await this.stateStore.releaseLock(lockKey).catch(() => { /* lock may have expired; safe to ignore */ });
+    }
+  }
+
+  /**
+   * Get deploy status — combines in-memory, Redis, and on-disk meta
+   * to report the most accurate phase.
+   *
+   * Priority:
+   *   1. Redis says running + active on this pod → running
+   *   2. meta.json exists                        → hibernated
+   *   3. Redis entry without meta                → unavailable (lost artifact)
+   *   4. Nothing                                 → idle
    */
   async getStatus(
     tenantId: string,
@@ -327,51 +563,174 @@ export class DeployService {
     framework?: string;
     error?: string;
   }> {
+    const key = this.makeKey(tenantId, userId, projectId, feature);
     const state = await this.stateStore.getDeploy(tenantId, userId, projectId, feature);
-    if (!state) {
-      return { phase: 'idle' };
+    const active = this.activeDeploys.get(key);
+    const selfPod = os.hostname();
+
+    // 1. Running on this pod and process alive
+    if (state?.phase === 'running' && active && state.podId === selfPod) {
+      return {
+        phase: 'running',
+        url: state.url,
+        port: state.port,
+        framework: state.framework,
+      };
     }
 
-    return {
-      phase: state.phase,
-      url: state.url,
-      port: state.port,
-      framework: state.framework,
-      error: state.error,
-    };
+    // 2. Running on another pod — trust Redis
+    if (state?.phase === 'running' && state.podId && state.podId !== selfPod) {
+      return {
+        phase: 'running',
+        url: state.url,
+        port: state.port,
+        framework: state.framework,
+      };
+    }
+
+    // 3. In-flight build/deploy/start — surface as-is
+    if (state?.phase === 'building' || state?.phase === 'deploying' || state?.phase === 'starting') {
+      return {
+        phase: state.phase,
+        url: state.url,
+        port: state.port,
+        framework: state.framework,
+      };
+    }
+
+    // 4. Error passed through
+    if (state?.phase === 'error') {
+      return { phase: 'error', error: state.error, framework: state?.framework };
+    }
+
+    // 5. Check meta.json → hibernated (auto-wake eligible)
+    const workspacePath = state?.workspacePath
+      ?? this.guessWorkspacePath(tenantId, userId, projectId, feature);
+    const meta = await this.metaStore.read(workspacePath);
+    if (meta) {
+      return {
+        phase: 'hibernated',
+        url: `/deploy/${meta.urlKey}`,
+        framework: meta.framework,
+      };
+    }
+
+    // 6. Redis entry but no meta → artifact lost
+    if (state) {
+      return { phase: 'unavailable', error: state.error, framework: state.framework };
+    }
+
+    // 7. Nothing at all
+    return { phase: 'idle' };
   }
 
   /**
    * Clean up stale deploys left in Redis from a previous process lifecycle.
-   * On restart, the in-memory activeDeploys Map and StaticServer processes are
-   * gone, but Redis may still hold phase:'running' entries with this pod's ID.
-   * This removes them so requests get a clear 404 instead of a perpetual 502.
+   * On restart, the in-memory activeDeploys Map and StaticServer processes
+   * are gone, but Redis may still hold phase:'running' entries with this
+   * pod's ID. Transition them to 'hibernated' so URL access triggers
+   * lazy re-hydration via ensureRunning().
    */
   async cleanupStaleDeploys(): Promise<void> {
     const currentPodId = os.hostname();
     const allDeploys = await this.stateStore.listDeploys();
 
-    const staleDeploys = allDeploys.filter(
-      d => d.podId === currentPodId &&
-        (d.phase === 'running' || d.phase === 'deploying' || d.phase === 'building')
+    const stale = allDeploys.filter(d =>
+      d.podId === currentPodId &&
+      (d.phase === 'running' || d.phase === 'deploying' || d.phase === 'building' || d.phase === 'starting')
     );
 
-    for (const deploy of staleDeploys) {
+    for (const d of stale) {
+      // Only `running` has a meta.json on disk, so only `running` is eligible
+      // for lazy rehydration. `building`/`deploying`/`starting` were killed
+      // mid-build with no artifact — surface as `error` so the UI shows the
+      // real cause instead of a "Wake up" CTA that would immediately fail.
+      const wasRunning = d.phase === 'running';
+      const nextPhase: DeployPhase = wasRunning ? 'hibernated' : 'error';
+      const errorMsg = wasRunning ? undefined : 'Pod restarted during build';
+
       logger.warn(
-        `[Deploy] Cleaning stale deploy: ${deploy.tenantId}:${deploy.userId}:${deploy.projectId}:${deploy.feature} (was ${deploy.phase})`,
+        `[Deploy] Transitioning stale deploy → ${nextPhase}: ${d.tenantId}:${d.userId}:${d.projectId}:${d.feature} (was ${d.phase})`,
         { component: 'DeployService' }
       );
-      await this.stateStore.unregisterDeploy(
-        deploy.tenantId, deploy.userId, deploy.projectId, deploy.feature
-      );
-      this.portManager.release(deploy.port);
+      try {
+        await this.stateStore.updateDeploy(d.tenantId, d.userId, d.projectId, d.feature, {
+          phase: nextPhase,
+          ...(errorMsg ? { error: errorMsg } : {}),
+        });
+        // NOTE: d.port was allocated by a previous pod process; this pod's
+        // PortManager has no record of it, so release() would be a no-op.
+        // The old OS-level process died with its pod — nothing to free here.
+        await this.broadcastStatus(d.tenantId, d.userId, d.projectId, d.feature, {
+          phase: nextPhase,
+          ...(errorMsg ? { error: errorMsg } : {}),
+        });
+      } catch (err: any) {
+        logger.warn(`[Deploy] cleanupStaleDeploys error for ${d.tenantId}:${d.projectId}:${d.feature}: ${err.message}`, { component: 'DeployService' });
+      }
     }
 
-    if (staleDeploys.length > 0) {
+    if (stale.length > 0) {
       logger.warn(
-        `[Deploy] Cleaned ${staleDeploys.length} stale deploy(s) from previous process`,
+        `[Deploy] Cleaned up ${stale.length} stale deploy(s) from previous process`,
         { component: 'DeployService' }
       );
+    }
+  }
+
+  /**
+   * Periodically evict idle deploys: stop the static server process but
+   * keep meta.json + Redis entry (with phase='hibernated'). Next URL access
+   * will auto-rehydrate via ensureRunning().
+   */
+  startIdleEviction(): void {
+    if (this.idleCheckInterval) {
+      // Double-start would leak the previous interval handle. Caller bug —
+      // log and bail out instead of silently doubling the eviction rate.
+      logger.warn('[Deploy] startIdleEviction called twice — ignoring', { component: 'DeployService' });
+      return;
+    }
+
+    const idleMs = Number(process.env.ANT_DEPLOY_IDLE_TTL_MS || DEFAULT_IDLE_TTL_MS);
+    const checkMs = Math.min(Math.max(idleMs / 10, MIN_IDLE_CHECK_MS), MAX_IDLE_CHECK_MS);
+
+    this.idleCheckInterval = setInterval(async () => {
+      try {
+        const selfPod = os.hostname();
+        const all = await this.stateStore.listDeploys();
+        const now = Date.now();
+
+        for (const d of all) {
+          if (d.phase !== 'running') continue;
+          if (d.podId !== selfPod) continue;
+          const last = new Date(d.lastAccessedAt).getTime();
+          if (now - last <= idleMs) continue;
+
+          const key = this.makeKey(d.tenantId, d.userId, d.projectId, d.feature);
+          const active = this.activeDeploys.get(key);
+          if (active) {
+            try { await active.handle.stop(); } catch { /* ignore */ }
+            this.portManager.release(d.port);
+            this.activeDeploys.delete(key);
+          }
+          await this.stateStore.updateDeploy(d.tenantId, d.userId, d.projectId, d.feature, {
+            phase: 'hibernated',
+          });
+          await this.broadcastStatus(d.tenantId, d.userId, d.projectId, d.feature, { phase: 'hibernated' });
+          logger.info(`[Deploy] Hibernated idle deploy: ${key}`, { component: 'DeployService' });
+        }
+      } catch (err: any) {
+        logger.warn(`[Deploy] Idle eviction error: ${err.message}`, { component: 'DeployService' });
+      }
+    }, checkMs);
+
+    logger.info(`[Deploy] Idle eviction started (ttl=${idleMs}ms, interval=${checkMs}ms)`, { component: 'DeployService' });
+  }
+
+  stopIdleEviction(): void {
+    if (this.idleCheckInterval) {
+      clearInterval(this.idleCheckInterval);
+      this.idleCheckInterval = undefined;
     }
   }
 
@@ -379,6 +738,7 @@ export class DeployService {
    * Cleanup all active deploys (shutdown).
    */
   async cleanup(): Promise<void> {
+    this.stopIdleEviction();
     for (const [key, active] of this.activeDeploys) {
       try {
         await active.handle.stop();

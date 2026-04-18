@@ -1,19 +1,19 @@
 import { useTranslation } from 'react-i18next';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '../../common/button';
-import { useStore } from '@/domain/store';
+import { useGitState } from '@/application/hooks/git';
 
-interface LoadingButtonProps {
-  isFetchingChanges: boolean;
-}
-
-export function LoadingButton({ isFetchingChanges }: LoadingButtonProps) {
+/**
+ * Phase-aware loading label. When a git action is in flight (push/pull/…),
+ * `gitStatusPhase` picks the verb. Otherwise the label falls back to the
+ * generic "checking" text while `changesFetchState` is pending.
+ */
+export function LoadingButton() {
   const { t } = useTranslation('explorer');
-  const { isGitStatusLoading, gitStatusPhase } = useStore();
-  
+  const { gitStatusPhase, changesFetchState } = useGitState();
+
   let loadingMessage = t('git.updating');
-  
-  // ✅ Unified phase-based messages
+
   if (gitStatusPhase === 'fetching') {
     loadingMessage = t('git.fetching');
   } else if (gitStatusPhase === 'pushing') {
@@ -32,10 +32,10 @@ export function LoadingButton({ isFetchingChanges }: LoadingButtonProps) {
     loadingMessage = t('git.cloning');
   } else if (gitStatusPhase === 'discarding') {
     loadingMessage = t('git.discarding');
-  } else if (isFetchingChanges && !isGitStatusLoading) {
+  } else if (changesFetchState === 'pending') {
     loadingMessage = t('git.checking');
   }
-  
+
   return (
     <div className="flex items-center flex-1">
       <Button

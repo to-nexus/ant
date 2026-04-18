@@ -4,6 +4,7 @@ import { Pencil } from 'lucide-react';
 import { ProjectConfig, fetchOrgConfig, fetchUserConfig, checkGitHubPATStatus, renameProject, deleteProject } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
+import { useGitState } from '@/application/hooks/git';
 import { STORAGE_KEYS, loadFromStorage, saveToStorage } from '@/domain/store/storage';
 import { useAvailableModels } from './hooks/useAvailableModels';
 import { useConfigEditor } from './hooks/useConfigEditor';
@@ -39,7 +40,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [githubRepoManuallyEdited, setGithubRepoManuallyEdited] = useState(false);
 
   // Git status (determines if branchBase is editable)
-  const gitStatus = useStore((state) => state.gitStatus);
+  const { gitStatus } = useGitState();
   const isGitInitialized = gitStatus?.hasGit ?? false;
 
   // Project rename state
@@ -51,9 +52,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [isRenaming, setIsRenaming] = useState(false);
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
 
-  // Load GitHub owner info (user override > org > personal) for quick-fill
-  const gitStatusRefreshTrigger = useStore((state) => state.gitStatusRefreshTrigger);
-
+  // Load GitHub owner info (user override > org > personal) for quick-fill.
+  // Re-runs on mount; AccountConfigEditor fires refreshes explicitly via
+  // fetchGitAll once PAT changes propagate through the store.
   useEffect(() => {
     async function loadGithubOwners() {
       try {
@@ -81,7 +82,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       }
     }
     loadGithubOwners();
-  }, [gitStatusRefreshTrigger]);
+  }, []);
 
   const handleChange = (key: keyof ProjectConfig, value: any) => {
     if (key === 'githubRepo') {

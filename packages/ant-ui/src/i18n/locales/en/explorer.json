@@ -227,11 +227,16 @@
       "title": "Deploy",
       "description": "Build and serve a production-optimized static version of your project.",
       "deploy": "Deploy",
+      "redeploy": "Re-deploy",
+      "wake": "Wake up",
       "stop": "Stop",
       "open": "Open",
       "running": "Deployed",
       "building": "Building...",
       "deploying": "Deploying...",
+      "starting": "Waking up...",
+      "hibernated": "Hibernated",
+      "unavailable": "Artifact missing",
       "error": "Deploy Failed",
       "idle": "Not deployed"
     }

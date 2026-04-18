@@ -11,35 +11,26 @@ export function useFeatureActions(
   const fetchFeatures = useStore((state) => state.fetchFeatures);
   const addFeatureOptimistic = useStore((state) => state.addFeatureOptimistic);
   const refreshFileTree = useStore((state) => state.refreshFileTree);
-  const setBypassFetchTimer = useStore((state) => state.setBypassFetchTimer);
 
   const handleCreateFeature = async (featureName: string) => {
     if (!selectedProject) {
       throw new Error('No project selected');
     }
-    
+
     console.log(`[useFeatureActions] 🆕 Creating feature: ${featureName}`);
-    
-    // ✅ Create feature (pass UI language for localized templates)
+
     const language = useStore.getState().language;
     await createFeature(selectedProject, featureName, language);
-    
-    // ✅ Optimistic update: immediately reflect in store (prevents race with fetchFeatures)
+
     addFeatureOptimistic(featureName);
-    
-    // ✅ Background sync: reconcile with backend
     fetchFeatures(selectedProject);
-    
-    // ✅ Refresh file tree
     await refreshFileTree();
-    
-    // ✅ CRITICAL: Bypass fetch timer for newly created feature
-    // New features need immediate fetch to get remote tracking info
-    console.log(`[useFeatureActions] ✅ Feature created, setting bypass flag and auto-selecting: ${featureName}`);
-    setBypassFetchTimer(true);
-    
-    // ✅ Select the newly created feature
-    // This will trigger useFeatureBranchManager to switch to the new branch
+
+    console.log(`[useFeatureActions] ✅ Feature created, auto-selecting: ${featureName}`);
+    // Selecting the feature causes `useGitRefresh` (mounted in App.tsx) to
+    // clear prior git state and run fetchGitAll + fetchFromRemote against the
+    // new worktree. No bypass flag needed — the hook's dedup key (`project:
+    // feature`) changes, which is itself the trigger.
     setSelectedFeature(featureName);
   };
 

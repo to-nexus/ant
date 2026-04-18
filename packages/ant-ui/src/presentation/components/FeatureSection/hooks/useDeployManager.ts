@@ -1,5 +1,11 @@
 import { useEffect, useCallback } from 'react';
 import { useStore } from '@/domain/store';
+import {
+  makeFeatureKey,
+  selectDeployStatus,
+  selectDeployLogs,
+  selectIsDeployLoading,
+} from '@/domain/store/slices/deploySlice';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import {
   startDeploy,
@@ -21,51 +27,81 @@ export interface UseDeployManagerResult {
 /**
  * useDeployManager
  *
- * Manages deploy lifecycle: build → serve → SSE updates.
- * Mirrors the usePreviewManager pattern.
+ * Manages the deploy lifecycle (build → serve → SSE updates) with per-feature
+ * state isolation. Guards against cross-feature log/status leakage by keying
+ * all reads and writes on `${projectId}:${featureName}`.
  */
 export function useDeployManager(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
-  options?: { primary?: boolean }
+  options?: { primary?: boolean },
 ): UseDeployManagerResult {
   const isPrimary = options?.primary ?? false;
-  const deployStatus = useStore((s) => s.deployStatus);
-  const deployLogs = useStore((s) => s.deployLogs);
-  const isDeployLoading = useStore((s) => s.isDeployLoading);
-  const setDeployStatus = useStore((s) => s.setDeployStatus);
-  const setDeployLoading = useStore((s) => s.setDeployLoading);
-  const appendDeployLog = useStore((s) => s.appendDeployLog);
-  const clearDeployLogs = useStore((s) => s.clearDeployLogs);
+  const featureKey = makeFeatureKey(selectedProject, selectedFeature);
 
-  // Initial status fetch
+  const deployStatus = useStore((s: any) => selectDeployStatus(s, featureKey));
+  const deployLogs = useStore((s: any) => selectDeployLogs(s, featureKey));
+  const isDeployLoading = useStore((s: any) => selectIsDeployLoading(s, featureKey));
+
+  const setDeployStatus = useStore((s: any) => s.setDeployStatus);
+  const setDeployLoading = useStore((s: any) => s.setDeployLoading);
+  const appendDeployLog = useStore((s: any) => s.appendDeployLog);
+  const clearDeployLogs = useStore((s: any) => s.clearDeployLogs);
+
+  // Initial status fetch + re-fetch on feature switch (corrects stale 'running')
   useEffect(() => {
-    if (!isPrimary || !selectedProject || !selectedFeature) {
-      if (isPrimary) setDeployStatus(undefined);
-      return;
-    }
-
+    if (!isPrimary || !featureKey || !selectedProject || !selectedFeature) return;
     getDeployStatus(selectedProject, selectedFeature)
-      .then((status) => setDeployStatus(status))
-      .catch(() => setDeployStatus(undefined));
-  }, [isPrimary, selectedProject, selectedFeature, setDeployStatus]);
+      .then((status) => setDeployStatus(featureKey, status))
+      .catch(() => setDeployStatus(featureKey, undefined));
+  }, [isPrimary, featureKey, selectedProject, selectedFeature, setDeployStatus]);
 
-  // SSE handler for deploy events (primary only)
+  // Re-validate on tab focus — catches pod restarts / idle evictions that
+  // happened while the tab was backgrounded.
   useEffect(() => {
-    if (!isPrimary || !selectedProject || !selectedFeature) return;
+    if (!isPrimary || !featureKey || !selectedProject || !selectedFeature) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        getDeployStatus(selectedProject, selectedFeature)
+          .then((status) => setDeployStatus(featureKey, status))
+          .catch(() => { /* silent */ });
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [isPrimary, featureKey, selectedProject, selectedFeature, setDeployStatus]);
+
+  // SSE handler — piped events are already filtered by project/feature at the
+  // SSEManager URL level (EventSource reconnects on feature switch). Redundant
+  // in-memory guard below ensures no stray events land on the wrong feature
+  // during the reconnect transition window.
+  useEffect(() => {
+    if (!isPrimary || !featureKey || !selectedProject || !selectedFeature) return;
 
     const handler = (payload: any) => {
       try {
+        const s = useStore.getState();
+        if (s.selectedProject !== selectedProject || s.selectedFeature !== selectedFeature) {
+          return;
+        }
+
         const messageType = payload?.type;
         const messageData = payload?.data;
 
         if (messageType === 'status') {
-          setDeployStatus(messageData as DeployStatus);
-          if (messageData?.phase === 'running' || messageData?.phase === 'error' || messageData?.phase === 'stopped') {
-            setDeployLoading(false);
+          setDeployStatus(featureKey, messageData as DeployStatus);
+          const phase = (messageData as DeployStatus)?.phase;
+          if (
+            phase === 'running' ||
+            phase === 'error' ||
+            phase === 'stopped' ||
+            phase === 'hibernated' ||
+            phase === 'unavailable'
+          ) {
+            setDeployLoading(featureKey, false);
           }
         } else if (messageType === 'log') {
-          appendDeployLog(messageData as DeployLogEntry);
+          appendDeployLog(featureKey, messageData as DeployLogEntry);
         }
       } catch (err) {
         console.error('[useDeployManager] handler error:', err);
@@ -77,42 +113,41 @@ export function useDeployManager(
     return () => {
       sseManager.unregisterHandlerById(handlerId);
     };
-  }, [isPrimary, selectedProject, selectedFeature, setDeployStatus, setDeployLoading, appendDeployLog]);
+  }, [isPrimary, featureKey, selectedProject, selectedFeature, setDeployStatus, setDeployLoading, appendDeployLog]);
 
   const deploy = useCallback(async () => {
-    if (!selectedProject || !selectedFeature) return;
+    if (!selectedProject || !selectedFeature || !featureKey) return;
 
-    setDeployLoading(true);
-    clearDeployLogs();
-    setDeployStatus({ phase: 'building' });
+    setDeployLoading(featureKey, true);
+    clearDeployLogs(featureKey);
+    setDeployStatus(featureKey, { phase: 'building' });
 
     try {
       const result = await startDeploy(selectedProject, selectedFeature);
       if (!result.success) {
-        setDeployStatus({ phase: 'error', error: result.message });
-        setDeployLoading(false);
+        setDeployStatus(featureKey, { phase: 'error', error: result.message });
+        setDeployLoading(featureKey, false);
       }
       // On success (202): SSE events drive all subsequent state transitions.
-      // loading is cleared by SSE handler when phase reaches running/error/stopped.
     } catch (err: any) {
-      setDeployStatus({ phase: 'error', error: err.message });
-      setDeployLoading(false);
+      setDeployStatus(featureKey, { phase: 'error', error: err.message });
+      setDeployLoading(featureKey, false);
     }
-  }, [selectedProject, selectedFeature, setDeployLoading, clearDeployLogs, setDeployStatus]);
+  }, [selectedProject, selectedFeature, featureKey, setDeployLoading, clearDeployLogs, setDeployStatus]);
 
   const stop = useCallback(async () => {
-    if (!selectedProject || !selectedFeature) return;
+    if (!selectedProject || !selectedFeature || !featureKey) return;
 
-    setDeployLoading(true);
+    setDeployLoading(featureKey, true);
     try {
       await stopDeploy(selectedProject, selectedFeature);
-      setDeployStatus({ phase: 'stopped' });
+      setDeployStatus(featureKey, { phase: 'stopped' });
     } catch (err: any) {
       console.error('[useDeployManager] stop error:', err);
     } finally {
-      setDeployLoading(false);
+      setDeployLoading(featureKey, false);
     }
-  }, [selectedProject, selectedFeature, setDeployLoading, setDeployStatus]);
+  }, [selectedProject, selectedFeature, featureKey, setDeployLoading, setDeployStatus]);
 
   const openDeployUrl = useCallback(() => {
     if (deployStatus?.url) {

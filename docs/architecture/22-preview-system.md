@@ -287,8 +287,94 @@ ALB 라운드 로빈으로 인해 stop 요청이 start를 실행한 Pod가 아�
 |------|------|
 | Preview Dev Server | 30000-39999 |
 | Cloud IDE | 40000-49999 |
+| Deploy Static Server | 50000-54999 |
 
 `PortManager`가 동적 할당을 관리한다.
+
+## Deploy (Static Build Serving)
+
+Deploy는 Preview와 별개의 서빙 경로다. 사용자가 "Deploy" 버튼을 누르면 피처의 프로덕션 빌드를 실행하고, 그 산출물을 정적 서버로 서빙한다. URL은 `/deploy/{urlKey}/...` 형식이며 동일한 `ant-preview` 프로세스 안의 별도 프록시 미들웨어가 처리한다.
+
+### Phase 모델
+
+| Phase | 의미 | 프로세스 | 메타 | 자동 복구 |
+|-------|------|---------|------|----------|
+| `idle` | 배포 이력 없음 | - | - | 사용자가 deploy |
+| `building` | `npm run build` 진행 중 | 빌드 프로세스 | - | - |
+| `deploying` | 빌드 완료 → static server 기동 중 (최초 배포) | - | - | - |
+| `running` | 정상 서빙 | static server alive | meta.json 존재 | - |
+| `hibernated` | 산출물은 있으나 프로세스 없음 | - | meta.json 존재 | URL 접근 시 자동 기동 |
+| `starting` | Lazy re-hydration 중 | spawn 진행 | meta.json 존재 | - |
+| `unavailable` | 산출물도 없음 | - | - | 사용자가 재배포 |
+| `error` | 빌드/서빙 실패 | - | 불확실 | 사용자가 재배포 |
+| `stopped` | 사용자가 중지 | - | 삭제됨 | 사용자가 재배포 |
+
+### 사망 경로
+
+| 경로 | 트리거 | 결과 | 복구 |
+|------|-------|------|------|
+| Pod rolling update | `ant-preview` 배포 시 (`main/dev/ci/*` push) | `activeDeploys` + static server 프로세스 소실 | `cleanupStaleDeploys()`가 시작 시 `running→hibernated` 전환 |
+| Process crash / OOM | static server 자식 프로세스만 죽음 | Redis entry는 남지만 fetch 실패 | 프록시가 fetch 실패 시 `hibernated` 표시 + 1회 `ensureRunning` 재시도 |
+| Idle eviction | `ANT_DEPLOY_IDLE_TTL_MS` 초과 | `startIdleEviction`이 프로세스 정리 + phase `hibernated` broadcast | URL 접근 시 `ensureRunning`이 재기동 |
+| Redis TTL 만료 | 7일 무접근 | Redis entry 삭제 | meta.json이 남아있다면 `ensureRunning`이 재등록 |
+
+### Lazy Re-hydration
+
+EFS `/mnt/workspaces`가 ReadWriteMany이므로 `buildOutputDir`는 pod 교체 후에도 살아있다. 재빌드 없이 static server만 다시 띄우면 복구 가능하다.
+
+```
+Browser → /deploy/{urlKey}/*
+  PreviewServer.createDeployProxyMiddleware
+    → DeployService.ensureRunning()
+        1) Redis + activeDeploys 체크 → hit 시 그대로 프록시
+        2) miss 시 per-key in-memory lock 획득
+        3) workspacePath/.deploy/meta.json 읽기
+           - 없으면 phase='unavailable' broadcast → 404
+           - 있으면 phase='starting' broadcast
+        4) 포트 할당 + startStaticServer(meta.framework, meta.buildOutputDir, ...)
+        5) registerDeploy + phase='running' broadcast
+    → fetch → 성공 시 touchDeploy (lastAccessedAt + TTL 갱신)
+    → 실패 시 phase='hibernated' 갱신 + 1회 ensureRunning 재시도 → 여전히 실패면 phase='unavailable' + 502
+```
+
+### 영속 저장소: `.deploy/meta.json`
+
+`workspacePath/.deploy/meta.json`이 재기동에 필요한 모든 정보를 담는다. Redis는 캐시일 뿐, meta.json이 **source of truth**다.
+
+```json
+{
+  "version": 1,
+  "tenantId": "...",
+  "userId": "...",
+  "projectId": "...",
+  "feature": "...",
+  "framework": "vite",
+  "workspacePath": "/mnt/workspaces/.../codebase",
+  "buildOutputDir": "/mnt/workspaces/.../codebase/dist",
+  "basePath": "/deploy/{urlKey}",
+  "urlKey": "{urlKey}",
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+`DeployMetaStore.write`는 tmp 파일로 쓴 뒤 atomic rename으로 교체한다. `stopDeploy`는 meta.json을 삭제한다. `ensureRunning`은 meta.json이 있어도 `buildOutputDir`이 실제로 존재하는지 별도로 확인한다 — 없으면 `unavailable`로 전환하고 meta도 제거.
+
+### Per-feature UI 상태 분리
+
+프론트엔드의 `deploySlice`는 `Record<featureKey, PerFeatureDeployState>` 구조다. `featureKey = "${projectId}:${featureName}"`. 피처를 전환해도 각 피처의 `status/logs/isLoading`이 독립적으로 유지되어 **다른 피처의 빌드 로그가 보이는 현상이 발생하지 않는다**.
+
+SSE 핸들러는 이중 안전장치를 둔다:
+1. `SSEManager.connect(projectId, feature)`의 EventSource URL이 피처 단위로 재연결되므로 서버가 이미 피처별로 필터링.
+2. 추가로 핸들러 콜백에서 `selectedProject/Feature`와 비교하여 과도기 이벤트 차단.
+
+또한 탭 포커스가 돌아올 때(`visibilitychange`) `getDeployStatus`를 호출해 stale `running`을 교정한다 (pod이 재기동 되었거나 idle evict 되었을 수 있음).
+
+### 환경 변수
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `ANT_DEPLOY_IDLE_TTL_MS` | `86400000` (24시간) | 이 시간 동안 트래픽이 없으면 static server 프로세스만 정리하고 phase='hibernated' 전환 |
 
 ## 경계
 
