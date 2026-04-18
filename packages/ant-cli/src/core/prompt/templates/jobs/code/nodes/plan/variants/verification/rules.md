@@ -18,6 +18,14 @@
 
 **Constraint**: Each verification command type (build, test) must be executed at most once per diagnostic cycle. Re-running a failed command without code changes produces identical results. A separate execution phase applies code fixes, after which a fresh diagnostic cycle re-verifies automatically.
 
+### Verification Gate Ordering
+
+**Principle**: Verification gates are observed in dependency order — type-check, build, test.
+Each gate's output informs whether the next gate is meaningful.
+
+**Constraint**: Do NOT skip a required gate. If the runtime reports a gate as
+already passed, proceed to the next; otherwise execute it.
+
 {{/if}}
 
 ## Diagnostic Protocol Rules

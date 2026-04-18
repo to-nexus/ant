@@ -102,7 +102,12 @@ export async function handleEditFile(
     }
 
     // Axis C — scope the invalidation based on what was touched.
-    const decision = decideInvalidationScope(resolved.displayPath);
+    // F2 — pass the pre/post content so dependency manifests narrow their
+    // scope based on which fields actually changed.
+    const decision = decideInvalidationScope(resolved.displayPath, {
+      oldContent: originalContentForCompare,
+      newContent: modifiedContent,
+    });
     const sideEffects: ToolSideEffect[] = [
       { type: 'fileModified', path: resolved.displayPath },
       {

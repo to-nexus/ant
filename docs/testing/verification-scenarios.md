@@ -62,6 +62,9 @@ code job의 verification 태스크는 `plan → execute ↔ tool → checkTaskSt
 | C14 | `plan` 노드 — verification 진입 시 tracker·budget 초기화 | · | ○ | S01..S09 |
 | C15 | `plan` 노드 — verification retry 시 tracker attempted 리셋 | · | ○ | S08 |
 | C16 | `tool` 노드 — typecheck/build/test 명령 분류 → tracker 갱신 | · | ○ | S01, S03, S06 |
+| C17 | `codeCommandPolicy` — `*Passed` 독립 guard (retry/reverify 경계 캐시 유지) | ✅ | ○ | S10 |
+| C18 | `decideInvalidationScope` — 매니페스트 diff-aware scope (package.json 필드 분기) | ✅ | ○ | S10 |
+| C19 | `codeCommandPolicy` — 3-gate ordering (test는 `buildPassed` 이후만 허용) | ✅ | · | — |
 
 **현재 상태**: L1 컬럼(C1~C9)은 모두 `pnpm test:cli`에서 자동 검증됨.
 L2 컬럼은 스키마 + 인젝션 레이어는 도입 완료, 러너 + fixture는 후속.
@@ -79,6 +82,7 @@ L2 컬럼은 스키마 + 인젝션 레이어는 도입 완료, 러너 + fixture�
 | S07 | error-only-job-final-verification-autoadd | stub | error 태스크 1개만 | 명령 skip | final verification 자동 추가 | C13 |
 | S08 | done-but-incomplete | stub | — | LLM mock이 즉시 `<done>` | verification_incomplete → enforce → retry | C3, C12, C15 |
 | S09 | retries-exhausted-learn-exit | stub | `retries=3, maxRetries=3` | `<done>` + tracker 미완료 | enforce 안 타고 learn으로 | C4 |
+| S10 | dep-manifest-surgical-invalidation | stub | tracker 전부 passed | devDep 1줄 변경 `<file>` | reverify 후 `ALREADY PASSED: tsc --noEmit` 차단 (F1 × F2 결합) | C17, C18 |
 
 ## 6. S02 완전 워크스루
 
@@ -224,7 +228,42 @@ scenarios/S02-multi-file-build-errors-split/
 
 **공용 골든 응답 디렉터리**: `tests/verification/scenarios/fixtures/golden/execute-verification-done.md`.
 
-### 8.4 알려진 compromise
+### 8.4 도입 완료 (본 PR `verification_cache_gap_fix_*`)
+
+**근본 차단 3종 (FPOP Constraints)**:
+- **F1** — `codeCommandPolicy.ts` `*Passed` 독립 runtime guard. retry/reverify 경계에서
+  `*Attempted`가 리셋돼도 `*Passed=true`면 결정론적으로 재실행 차단. 프롬프트의
+  stochastic hint(`cachedPassedSteps`) 대신 관찰 가능한 tracker 상태를 SSOT로 승격.
+- **F2** — `decideInvalidationScope` diff-aware 확장. `package.json`의 devDependencies
+  단독 변경 → `scope:'test'` + install, dependencies/scripts/exports 변경 → `scope:'all'` + install,
+  lockfile(pnpm-lock.yaml/package-lock.json/…) → `scope:'build'` + install. diff 부재 시
+  기존 `scope:'all'` conservative fallback 유지(하위 호환). `editFile`/`createFile` 호출부가
+  `{oldContent, newContent}`를 전달.
+- **F4** — `codeCommandPolicy.ts` 3-gate ordering. test 명령은 `buildPassed=true`에서만 허용.
+  deep-diagnostic 모드에서는 우회 허용. verification 프롬프트 `rules.md`에 "Verification Gate
+  Ordering" 원칙 섹션 추가.
+
+**잡음 제거 2종 (Axis D 정책 정합성)**:
+- **F3a** — retry/reverify 진입 시 `state.violations` 일관 clear. `renderRetrySummary`가
+  normalizedErrors에 압축한 직후 원본 violations는 소진된 것으로 간주. 모든 재진입 경로
+  (verification retry / 일반 retry / reverify)에서 동일 불변식 적용.
+- **F3b** — `composeViolationsText`가 `retrySummaryText` 존재 시 `verification_incomplete`
+  계열 violation을 suppress. summary의 normalizedErrors와 중복되는 contradictory 신호
+  제거. F3a가 적용되면 대부분 자연 해소되지만 방어 심층화.
+
+**관측성**:
+- **F3c** — `logVerificationRetry`에 `retentionMode: 'summary'|'full'|'none'`,
+  `summaryInjected: boolean`, `summaryLen: number`, `passedGatesAtRetry: ('typecheck'|'build'|'test')[]`
+  추가. `preservedHistoryLength: 0` 하드코딩이 "raw history 유실"로 오독되던 문제 해소
+  (Axis D는 애초에 summary 보존 정책).
+
+**회귀 방지**:
+- L1: `tests/verification/unit/codeCommandPolicy.test.ts` 신설 (F1 5건 + F4 3건 + execute-phase 1건).
+  `tests/verification/unit/invalidationScope.test.ts`에 F2 diff-aware 8건 추가.
+- L2: `S10-dep-manifest-surgical-invalidation` fixture 추가 (stub 모드, tracker 전부 passed로
+  seed하고 execute가 devDep 1줄 `<file>`로 덮어쓰는 구성).
+
+### 8.5 알려진 compromise
 
 - **S01/S03은 real 모드 대신 stub**: `feature/` + 실제 tsc/vitest로 재현하려면 scenario당 node_modules 설치가 필요해
   fixture 크기/속도가 비현실적. 대신 세션 seed에 `_verificationTracker`를 원하는 상태로 박제해 동일한 분기(C10/C11)를 적중.
@@ -253,3 +292,55 @@ scenarios/S02-multi-file-build-errors-split/
 | decompose가 verification을 생성하는 경로 (F11) | ❌ | L4 E2E에 위임 |
 | 병렬 task 실행 시 상태 경합 | ❌ | 별도 플랜 |
 | 클라우드 mode 권한/경로 | ❌ | 스테이징 환경 검증 |
+
+---
+
+## 11. Deploy 복구 검증 시나리오 (수동)
+
+Preview Deploy 서비스의 lazy re-hydration + 피처별 상태 격리 동작을 확인하는 수동 절차. [22-preview-system.md#deploy-static-build-serving](../architecture/22-preview-system.md) 참조.
+
+### D1. 피처 간 로그/상태 격리 (버그 1 회귀)
+
+**사전**: 최소 2개의 피처(F1, F2)가 준비된 프로젝트.
+
+1. F1 선택 → Deploy 버튼 클릭 → `phase=building` 진입, 빌드 로그가 콘솔에 쌓이기 시작함
+2. 빌드 진행 중(아직 `running` 전) F2로 전환
+3. **기대**: F2 콘솔은 비어 있어야 하고 F2 상태는 `idle` 또는 F2 자체의 과거 상태여야 함 (F1의 `building` 표시 금지)
+4. F1로 복귀
+5. **기대**: F1의 빌드 로그 + 현재 phase가 그대로 복원
+
+검증 포인트: `deployByFeature` 슬라이스의 키 분리, SSEManager 재연결 시 EventSource URL이 피처 단위.
+
+### D2. Pod 재시작 복구
+
+**사전**: F1에서 `phase=running` 상태의 deploy 확보.
+
+1. `kubectl rollout restart deployment/ant-preview` (클라우드) 또는 로컬에서 `ant-preview` 프로세스 kill
+2. 재기동 완료 후 UI 관찰 — `cleanupStaleDeploys()`가 이전 pod의 `running` 엔트리를 `hibernated`로 전환 + SSE broadcast
+3. **기대**: UI의 phase가 `hibernated`로 갱신, "깨우기"/"Wake up" 버튼 노출
+4. 브라우저에서 deploy URL(`/deploy/{urlKey}/...`) 새로고침 또는 "Wake up" 클릭
+5. **기대**: `phase=starting` SSE 수신 → 수 초 내 `phase=running` + 페이지 정상 렌더
+
+검증 포인트: `ensureRunning()`이 `.deploy/meta.json`을 읽고 static server를 재기동.
+
+### D3. Idle eviction
+
+1. `ANT_DEPLOY_IDLE_TTL_MS=60000` (60초)로 ant-preview 기동
+2. Deploy 성공 후 1분 이상 URL에 접근하지 않고 방치
+3. **기대**: `startIdleEviction()`이 프로세스 정리 + `phase=hibernated` broadcast
+4. URL 클릭
+5. **기대**: D2와 동일한 `starting → running` 전이 후 렌더
+
+### D4. Unavailable (산출물 유실)
+
+1. F1에서 `running` 상태 확보
+2. Static server 프로세스 kill + `workspacePath/.deploy/meta.json` 삭제 + `buildOutputDir` 삭제
+3. URL 접근
+4. **기대**: 프록시가 `phase=unavailable` 전환 + SSE broadcast, 404 응답. UI는 "산출물이 사라짐" 배지 + "다시 배포" 버튼 표시
+
+### D5. 탭 focus 시 stale 교정
+
+1. F1에서 `running` 확보, 탭을 백그라운드로 전환
+2. 다른 탭에서 pod 재시작 유도 (또는 static server kill)
+3. F1 탭으로 돌아옴 (`visibilitychange` 이벤트 발생)
+4. **기대**: `useDeployManager`가 `getDeployStatus` 재호출, UI가 `hibernated` 등 최신 상태로 즉시 교정

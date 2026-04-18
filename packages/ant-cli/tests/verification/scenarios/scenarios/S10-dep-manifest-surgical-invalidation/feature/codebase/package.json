@@ -1,0 +1,7 @@
+{
+  "name": "s10",
+  "version": "1.0.0",
+  "dependencies": { "react": "^18.0.0" },
+  "devDependencies": { "vitest": "^1.0.0", "jsdom": "^27.0.0" },
+  "scripts": { "build": "tsc", "test": "vitest run" }
+}
