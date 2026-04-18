@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { RefreshCw } from 'lucide-react';
 import { Button } from '../../common/button';
+import { Spinner } from '../../common/async';
 import { useGitState } from '@/application/hooks/git';
 
 /**
@@ -48,7 +48,7 @@ export function LoadingButton() {
                    border-gray-300 dark:border-gray-600
                    bg-gray-50 dark:bg-gray-800/50"
       >
-        <RefreshCw className="w-3 h-3 animate-spin" />
+        <Spinner size="sm" tone="inherit" />
         {loadingMessage}
       </Button>
     </div>

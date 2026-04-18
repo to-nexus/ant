@@ -14,42 +14,53 @@ import type { ProjectConfig } from '@/infrastructure/http/api';
 import type { KanbanData } from '@/infrastructure/http/api';
 import type { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { useTranslation } from 'react-i18next';
+import {
+  AsyncBoundary,
+  EmptyFallback,
+  useAsyncResource,
+} from '../common/async';
 
 interface MainContentAreaProps {
-  projectConfigData: ProjectConfig | null;
-  isLoadingProjectConfig: boolean;
-  onSaveProjectConfig: (config: ProjectConfig) => Promise<{ success: boolean; error?: string }>;
-  
-  // Main Content
   connectionStatus: 'connected' | 'disconnected' | 'error';
   splitLayout: 'vertical' | 'horizontal';
   kanbanData: KanbanData;
   workflowState: WorkflowRealtimeState | null;
 }
 
+/**
+ * Host for the main panel's active tab. Resource loading (e.g. project
+ * config) is driven by the store — this component no longer takes
+ * `projectConfigData` / `isLoadingProjectConfig` props. The loading /
+ * empty / error rendering is delegated to <AsyncBoundary>.
+ */
 export function MainContentArea({
-  projectConfigData,
-  isLoadingProjectConfig,
-  onSaveProjectConfig,
   connectionStatus,
   splitLayout,
   kanbanData,
   workflowState,
 }: MainContentAreaProps) {
   const { t } = useTranslation('explorer');
+  const { t: tAsync } = useTranslation('async');
   const activeTab = useStore((s) => s.mainPanelActiveTab);
   const openTabs = useStore((s) => s.mainPanelOpenTabs);
   const isJobTabCleared = useStore((s) => s.isJobTabCleared);
   const selectedFile = useStore((s) => s.selectedFile);
   const showWorkflow = useStore((s) => s.showWorkflow);
-  
-  // For "job tab cleared" we render the same empty state as when no job is selected,
-  // without mutating the underlying kanban/workflow state.
+  const selectedProject = useStore((s) => s.selectedProject);
+  const fetchProjectConfig = useStore((s) => s.fetchProjectConfig);
+  const updateProjectConfig = useStore((s) => s.updateProjectConfig);
+  const projectConfigResource = useAsyncResource<ProjectConfig>((s) => s.projectConfig);
+
   const effectiveKanbanData = isJobTabCleared
     ? { ...kanbanData, jobId: undefined, todo: [], inProgress: [], completed: [] }
     : kanbanData;
   const effectiveWorkflowState = isJobTabCleared ? null : workflowState;
-  
+
+  const handleSaveProjectConfig = async (config: ProjectConfig) => {
+    if (!selectedProject) return { success: false, error: 'No project selected' };
+    return updateProjectConfig(selectedProject, config);
+  };
+
   return (
     <MainPanel headerBar={<MainPanelTabsBar />}>
       {connectionStatus !== 'connected' ? (
@@ -60,7 +71,7 @@ export function MainContentArea({
               {connectionStatus === 'error' ? t('connection.failed') : t('connection.connecting')}
             </h2>
             <p className="text-gray-500 dark:text-gray-400">
-              {connectionStatus === 'error' 
+              {connectionStatus === 'error'
                 ? t('connection.failedDesc')
                 : t('connection.connectingDesc')}
             </p>
@@ -73,22 +84,20 @@ export function MainContentArea({
         </div>
       ) : activeTab === 'projectConfig' && openTabs.projectConfig ? (
         <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22]">
-          {isLoadingProjectConfig ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-gray-500 dark:text-gray-400">{t('connection.noConfig')}</div>
-            </div>
-          ) : projectConfigData ? (
-            <ConfigEditor
-              config={projectConfigData}
-              onSave={onSaveProjectConfig}
-              // Close is handled by tab close button (no side panel close)
-              onClose={() => useStore.getState().closeMainPanelTab('projectConfig')}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-              {t('connection.noConfig')}
-            </div>
-          )}
+          <AsyncBoundary
+            surface="panel"
+            resource={projectConfigResource}
+            retry={() => selectedProject && fetchProjectConfig(selectedProject)}
+            empty={<EmptyFallback description={tAsync('empty.projectConfig')} />}
+          >
+            {(config) => (
+              <ConfigEditor
+                config={config}
+                onSave={handleSaveProjectConfig}
+                onClose={() => useStore.getState().closeMainPanelTab('projectConfig')}
+              />
+            )}
+          </AsyncBoundary>
         </div>
       ) : activeTab === 'accountConfig' && openTabs.accountConfig ? (
         <div className="flex-1 h-full overflow-hidden bg-white dark:bg-[#161b22]">
@@ -101,9 +110,7 @@ export function MainContentArea({
           {selectedFile ? (
             <FileEditorPanel onClose={() => useStore.getState().closeMainPanelTab('fileEdit')} />
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
-              {t('connection.selectFile')}
-            </div>
+            <EmptyFallback description={tAsync('empty.noFile')} />
           )}
         </div>
       ) : activeTab === 'transfer' && openTabs.transfer ? (
@@ -136,4 +143,3 @@ export function MainContentArea({
     </MainPanel>
   );
 }
-

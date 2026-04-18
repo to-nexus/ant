@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Sun, Moon, Monitor, Cloud, Bot, Code2, User, LogOut, Globe } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
+import { AmbientActivityBar } from './common/async';
 import { useStore } from '@/domain/store';
 import { signOut, checkLocalBackend, getBackendMode, getLocalBackendPort } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
@@ -436,7 +437,9 @@ export function AppNavBar({}: AppNavBarProps) {
           </div>
         </div>
       </div>
-      
+      {/* Async UI Policy — ambient progress bar sits flush with the navbar's
+          bottom edge. Does not affect navbar height or body layout. */}
+      <AmbientActivityBar />
     </header>
   );
 }

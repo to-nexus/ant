@@ -243,6 +243,26 @@ export default {
         slideDown: {
           '0%': { opacity: '0', transform: 'translateY(-8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' }
+        },
+        // Async UI Policy — ambient progress indicator (indeterminate bar)
+        'ambient-progress': {
+          '0%':   { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(300%)' }
+        },
+        // Domain "live / active" dot indicator. Visually identical to
+        // tailwind's default animate-pulse but lives under a different name
+        // so the ESLint guard against animate-pulse (loading-only) does not
+        // false-positive on domain indicators (StatusChip, active steps).
+        'status-pulse': {
+          '0%, 100%': { opacity: '1' },
+          '50%':      { opacity: '0.5' }
+        },
+        // Domain "gear turning" indicator for workflow/kanban nodes. Same
+        // behaviour as tailwind's animate-spin but named so the ESLint
+        // guard (loading-only animate-spin) does not false-positive.
+        'cog-spin': {
+          from: { transform: 'rotate(0deg)' },
+          to:   { transform: 'rotate(360deg)' }
         }
       },
       animation: {
@@ -258,7 +278,10 @@ export default {
         'toast-out': 'toast-out 0.25s ease-in forwards',
         fadeIn: 'fadeIn 0.2s ease-out',
         fadeOut: 'fadeOut 0.15s ease-in',
-        slideDown: 'slideDown 0.25s ease-out'
+        slideDown: 'slideDown 0.25s ease-out',
+        'ambient-progress': 'ambient-progress 1.2s ease-in-out infinite',
+        'status-pulse': 'status-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'cog-spin': 'cog-spin 1.5s linear infinite'
       }
     }
   },

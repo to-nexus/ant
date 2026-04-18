@@ -14,6 +14,22 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+/**
+ * Last-line-of-defence error boundary for the entire application tree.
+ *
+ * Role (Async UI Policy — see docs/architecture/ui-async-policy.md):
+ *   - RootErrorBoundary handles UNCAUGHT render-phase crashes that escape
+ *     every downstream boundary. The fallback is a full-screen reload card
+ *     because the app state is assumed unrecoverable at this point.
+ *   - Resource-level failures (HTTP 4xx/5xx, slice `status: 'error'`, etc.)
+ *     MUST NOT bubble here — they surface through the local
+ *     <AsyncBoundary> that owns the resource and render a surface-aware
+ *     error fallback with a Retry affordance.
+ *
+ * Do not add resource-specific retry logic to this component; that belongs
+ * to the slice action (e.g. `fetchProjectConfig` / `fetchProjects`) and the
+ * boundary that subscribes to it.
+ */
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
   ErrorBoundaryState

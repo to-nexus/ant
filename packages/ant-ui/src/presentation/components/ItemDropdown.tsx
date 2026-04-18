@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, LucideIcon, Settings, Play, Square, Loader2 } from 'lucide-react';
+import { ChevronDown, LucideIcon, Settings, Play, Square } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import type { ElementType } from 'react';
 import { Button } from '@/presentation/components/common/button';
 import { CreateItemForm } from './CreateItemForm';
@@ -332,7 +333,7 @@ export function ItemDropdown({
                 }
               >
                 {playButtonLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Spinner size="md" tone="inherit" />
                 ) : isPlaying ? (
                   <Square className="h-4 w-4" />
                 ) : (

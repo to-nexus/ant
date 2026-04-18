@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { deriveFromIntent, INTENT_DEFINITIONS, type IntentGroup } from '@ant/shared';
-import { MessageSquare, Zap, Loader2, Check, X, Save, ArrowRight, CheckCircle } from 'lucide-react';
+import { MessageSquare, Zap, Check, X, Save, ArrowRight, CheckCircle } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { addChatUserMessage } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
@@ -152,7 +153,7 @@ function IntentVariant(_props: IntentFooterProps) {
         }`}
       >
         {policy.isBuilding
-          ? <Loader2 className={`${ICON} animate-spin`} />
+          ? <Spinner size="md" tone="inherit" />
           : <Zap className={ICON} />}
         {policy.isBuilding ? t('footer.building') : t('footer.build')}
       </button>

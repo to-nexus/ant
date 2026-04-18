@@ -46,8 +46,7 @@
     "startServerPlain": "pnpm dev:cli를 실행하여 서버를 시작하세요",
     "error": "연결 오류",
     "disconnected": "연결 끊김",
-    "selectFile": "탐색기에서 파일을 선택하여 편집하세요.",
-    "noConfig": "프로젝트 설정이 로드되지 않았습니다."
+    "selectFile": "탐색기에서 파일을 선택하여 편집하세요."
   },
   "featureDropdown": {
     "featureNamePlaceholder": "피처 이름..."

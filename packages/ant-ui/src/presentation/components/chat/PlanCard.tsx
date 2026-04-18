@@ -6,7 +6,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, ClipboardList, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, ClipboardList, Check } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import type { MessageContent } from '@/domain/models/chat';
 
 interface PlanCardProps {
@@ -77,7 +78,7 @@ export function PlanCard({ content }: PlanCardProps) {
       >
         <div className="flex items-center gap-2">
           {isGenerating ? (
-            <Loader2 className="w-4 h-4 text-indigo-500 dark:text-indigo-400 animate-spin flex-shrink-0" />
+            <Spinner size="md" tone="inherit" className="flex-shrink-0 text-indigo-500 dark:text-indigo-400" />
           ) : (
             <ClipboardList className="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0" />
           )}

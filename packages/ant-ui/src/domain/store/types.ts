@@ -10,7 +10,13 @@ import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
 
 export interface ProjectState {
   projects: string[];
-  projectsLoaded: boolean;  // ✅ true after first fetchProjects completes (prevents QuickStart flash)
+  /**
+   * AsyncStatus of the first `fetchProjects` call. Replaces the legacy
+   * `projectsLoaded: boolean`. `selectProjectsLoaded` preserves the old
+   * "first fetch completed" semantics for consumers that don't care about
+   * success vs. failure.
+   */
+  projectsStatus: import('@/domain/async').AsyncStatus;
   selectedProject: string | undefined;
   selectedFeature: string | undefined;
   features: Feature[];
@@ -189,8 +195,10 @@ export interface AuthState {
 
 export interface ConfigState {
   recursionLimit: number;
+  /** AsyncStatus of `loadSystemConfig`. Unused by UI today but kept as SSOT. */
+  systemConfigStatus: import('@/domain/async').AsyncStatus;
   backendMode: 'local' | 'cloud';
-  localBackendPort: number;  // 로컬 백엔드 포트 (default: 4100)
+  localBackendPort: number;
 }
 
 // ==================

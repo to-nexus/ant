@@ -23,7 +23,8 @@ import { WorkflowRealtimeState } from '@/domain/models/workflow';
 import { useGraphMetadata, useGraphLayout } from './hooks';
 import { WorkflowNode, ActorNode } from './nodes';
 import { NodeType } from '@/domain/models/workflow';
-import { Play } from 'lucide-react';  // ✅ Play 아이콘
+import { Play } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 
 import { fetchProjectConfig } from '@/infrastructure/http/api';
 
@@ -278,7 +279,9 @@ export function WorkflowVisualization({ workflowState }: WorkflowVisualizationPr
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <div className="flex items-center justify-center h-12 mb-4">
+            <Spinner size="lg" tone="accent" />
+          </div>
           <p className="text-gray-600 dark:text-gray-400">{t('workflow.loading')}</p>
         </div>
       </div>

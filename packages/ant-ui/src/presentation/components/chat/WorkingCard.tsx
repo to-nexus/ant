@@ -7,12 +7,19 @@
  */
 
 import { useState } from 'react';
-import { Loader2, Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight, Download, Palette, Eraser } from 'lucide-react';
+import { Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight, Download, Palette, Eraser } from 'lucide-react';
 import type { MessageContent } from '@/domain/models/chat';
 import { useStore } from '@/domain/store';
 import { TruncatableText } from '@/presentation/components/common/TruncatableText';
+import { Spinner } from '@/presentation/components/common/async';
 import { useImagePreview } from './useImagePreview';
 import { ImageLightbox } from './ImageLightbox';
+
+// Sentinel marker returned by getVariantConfig when the progress state
+// should render a <Spinner> (instead of a specific lucide icon). Used to
+// avoid importing the legacy spinner icon outside the primitives directory.
+const SPINNER_MARKER = Symbol.for('working-card.spinner');
+type IconKind = typeof SPINNER_MARKER | React.ComponentType<{ className?: string }>;
 
 const PREVIEW_MAX_H_SCREENSHOT = 160; // figma_called: full screenshot (px)
 const PREVIEW_MAX_H_ASSET = 40;       // downloaded: compact asset thumbnail (px)
@@ -30,184 +37,205 @@ function isProgressState(variant: string): boolean {
 }
 
 /**
- * Get icon and styles based on variant and state
+ * Get icon and styles based on variant and state. The progress icon may be
+ * the `SPINNER_MARKER` sentinel, in which case render <Spinner> instead.
+ * `iconClass` never contains a spinner animation directly — any animation
+ * below is an ambient domain indicator (`animate-status-pulse`).
  */
-function getVariantConfig(variant: string, isProgress: boolean) {
-  // Base variant (remove 'ing'/'ed' suffix to get base)
+function getVariantConfig(
+  variant: string,
+  isProgress: boolean,
+): {
+  Icon: IconKind;
+  iconClass: string;
+  containerClass: string;
+  iconColorClass: string;
+  textClass: string;
+  detailClass: string;
+} {
   const baseVariant = variant.replace(/ing$|ed$/, '');
-  
+
   switch (baseVariant) {
     case 'explor':
       return {
-        Icon: isProgress ? Loader2 : FileSearch,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : FileSearch,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
           : 'bg-blue-50/30 dark:bg-blue-900/20 hover:bg-blue-100/50 dark:hover:bg-blue-800/30',
         iconColorClass: isProgress ? 'text-blue-600 dark:text-blue-400' : 'text-blue-500 dark:text-blue-400',
         textClass: 'text-blue-800 dark:text-blue-300',
-        detailClass: 'text-blue-600 dark:text-blue-400'
+        detailClass: 'text-blue-600 dark:text-blue-400',
       };
     case 'retriev':
       return {
-        Icon: isProgress ? Loader2 : Database,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : Database,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800'
           : 'bg-indigo-50/30 dark:bg-indigo-900/20 hover:bg-indigo-100/50 dark:hover:bg-indigo-800/30',
         iconColorClass: isProgress ? 'text-indigo-600 dark:text-indigo-400' : 'text-indigo-500 dark:text-indigo-400',
         textClass: 'text-indigo-800 dark:text-indigo-300',
-        detailClass: 'text-indigo-600 dark:text-indigo-400'
+        detailClass: 'text-indigo-600 dark:text-indigo-400',
       };
     case 'grepp':
       return {
-        Icon: isProgress ? Search : Search,
-        iconClass: isProgress ? 'animate-pulse' : '',
-        containerClass: isProgress 
+        Icon: Search,
+        iconClass: isProgress ? 'animate-status-pulse' : '',
+        containerClass: isProgress
           ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800'
           : 'bg-purple-50/30 dark:bg-purple-900/20 hover:bg-purple-100/50 dark:hover:bg-purple-800/30',
         iconColorClass: isProgress ? 'text-purple-600 dark:text-purple-400' : 'text-purple-500 dark:text-purple-400',
         textClass: 'text-purple-800 dark:text-purple-300',
-        detailClass: 'text-purple-600 dark:text-purple-400'
+        detailClass: 'text-purple-600 dark:text-purple-400',
       };
     case 'listing_files':
     case 'listed_files':
       return {
-        Icon: isProgress ? Loader2 : FileSearch,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : FileSearch,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800'
           : 'bg-cyan-50/30 dark:bg-cyan-900/20 hover:bg-cyan-100/50 dark:hover:bg-cyan-800/30',
         iconColorClass: isProgress ? 'text-cyan-600 dark:text-cyan-400' : 'text-cyan-500 dark:text-cyan-400',
         textClass: 'text-cyan-800 dark:text-cyan-300',
-        detailClass: 'text-cyan-600 dark:text-cyan-400'
+        detailClass: 'text-cyan-600 dark:text-cyan-400',
       };
     case 'searching_code':
     case 'searched_code':
       return {
-        Icon: isProgress ? Loader2 : Search,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : Search,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800'
           : 'bg-violet-50/30 dark:bg-violet-900/20 hover:bg-violet-100/50 dark:hover:bg-violet-800/30',
         iconColorClass: isProgress ? 'text-violet-600 dark:text-violet-400' : 'text-violet-500 dark:text-violet-400',
         textClass: 'text-violet-800 dark:text-violet-300',
-        detailClass: 'text-violet-600 dark:text-violet-400'
+        detailClass: 'text-violet-600 dark:text-violet-400',
       };
     case 'read':
     case 'reading_source':
     case 'read_source':
       return {
-        Icon: isProgress ? Eye : Eye,
-        iconClass: isProgress ? 'animate-pulse' : '',
-        containerClass: isProgress 
+        Icon: Eye,
+        iconClass: isProgress ? 'animate-status-pulse' : '',
+        containerClass: isProgress
           ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800'
           : 'bg-indigo-50/30 dark:bg-indigo-900/20 hover:bg-indigo-100/50 dark:hover:bg-indigo-800/30',
         iconColorClass: isProgress ? 'text-indigo-600 dark:text-indigo-400' : 'text-indigo-500 dark:text-indigo-400',
         textClass: 'text-indigo-800 dark:text-indigo-300',
-        detailClass: 'text-indigo-600 dark:text-indigo-400'
+        detailClass: 'text-indigo-600 dark:text-indigo-400',
       };
     case 'index':
       return {
-        Icon: isProgress ? Loader2 : Database,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : Database,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800'
           : 'bg-purple-50/30 dark:bg-purple-900/20 hover:bg-purple-100/50 dark:hover:bg-purple-800/30',
         iconColorClass: isProgress ? 'text-purple-600 dark:text-purple-400' : 'text-purple-500 dark:text-purple-400',
         textClass: 'text-purple-800 dark:text-purple-300',
-        detailClass: 'text-purple-600 dark:text-purple-400'
+        detailClass: 'text-purple-600 dark:text-purple-400',
       };
     case 'analyz':
       return {
-        Icon: isProgress ? Loader2 : FileCode,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : FileCode,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800'
           : 'bg-emerald-50/30 dark:bg-emerald-900/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-800/30',
         iconColorClass: isProgress ? 'text-emerald-600 dark:text-emerald-400' : 'text-emerald-500 dark:text-emerald-400',
         textClass: 'text-emerald-800 dark:text-emerald-300',
-        detailClass: 'text-emerald-600 dark:text-emerald-400'
+        detailClass: 'text-emerald-600 dark:text-emerald-400',
       };
     case 'load':
       return {
-        Icon: isProgress ? Loader2 : FileSearch,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : FileSearch,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800'
           : 'bg-teal-50/30 dark:bg-teal-900/20 hover:bg-teal-100/50 dark:hover:bg-teal-800/30',
         iconColorClass: isProgress ? 'text-teal-600 dark:text-teal-400' : 'text-teal-500 dark:text-teal-400',
         textClass: 'text-teal-800 dark:text-teal-300',
-        detailClass: 'text-teal-600 dark:text-teal-400'
+        detailClass: 'text-teal-600 dark:text-teal-400',
       };
     case 'stor':
       return {
-        Icon: isProgress ? Loader2 : Package,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : Package,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800'
           : 'bg-amber-50/30 dark:bg-amber-900/20 hover:bg-amber-100/50 dark:hover:bg-amber-800/30',
         iconColorClass: isProgress ? 'text-amber-600 dark:text-amber-400' : 'text-amber-500 dark:text-amber-400',
         textClass: 'text-amber-800 dark:text-amber-300',
-        detailClass: 'text-amber-600 dark:text-amber-400'
+        detailClass: 'text-amber-600 dark:text-amber-400',
       };
     case 'learn':
       return {
-        Icon: isProgress ? Loader2 : Database,
-        iconClass: isProgress ? 'animate-spin' : '',
+        Icon: isProgress ? SPINNER_MARKER : Database,
+        iconClass: '',
         containerClass: isProgress
           ? 'bg-fuchsia-50 dark:bg-fuchsia-900/20 border border-fuchsia-200 dark:border-fuchsia-800'
           : 'bg-fuchsia-50/30 dark:bg-fuchsia-900/20 hover:bg-fuchsia-100/50 dark:hover:bg-fuchsia-800/30',
         iconColorClass: isProgress ? 'text-fuchsia-600 dark:text-fuchsia-400' : 'text-fuchsia-500 dark:text-fuchsia-400',
         textClass: 'text-fuchsia-800 dark:text-fuchsia-300',
-        detailClass: 'text-fuchsia-600 dark:text-fuchsia-400'
+        detailClass: 'text-fuchsia-600 dark:text-fuchsia-400',
       };
     case 'processing':
     case 'processed':
       return {
-        Icon: isProgress ? Loader2 : Eraser,
-        iconClass: isProgress ? 'animate-spin' : '',
+        Icon: isProgress ? SPINNER_MARKER : Eraser,
+        iconClass: '',
         containerClass: isProgress
           ? 'bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800'
           : 'bg-rose-50/30 dark:bg-rose-900/20 hover:bg-rose-100/50 dark:hover:bg-rose-800/30',
         iconColorClass: isProgress ? 'text-rose-600 dark:text-rose-400' : 'text-rose-500 dark:text-rose-400',
         textClass: 'text-rose-800 dark:text-rose-300',
-        detailClass: 'text-rose-600 dark:text-rose-400'
+        detailClass: 'text-rose-600 dark:text-rose-400',
       };
     case 'download':
       return {
-        Icon: isProgress ? Loader2 : Download,
-        iconClass: isProgress ? 'animate-spin' : '',
+        Icon: isProgress ? SPINNER_MARKER : Download,
+        iconClass: '',
         containerClass: isProgress
           ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
           : 'bg-orange-50/30 dark:bg-orange-900/20 hover:bg-orange-100/50 dark:hover:bg-orange-800/30',
         iconColorClass: isProgress ? 'text-orange-600 dark:text-orange-400' : 'text-orange-500 dark:text-orange-400',
         textClass: 'text-orange-800 dark:text-orange-300',
-        detailClass: 'text-orange-600 dark:text-orange-400'
+        detailClass: 'text-orange-600 dark:text-orange-400',
       };
     case 'figma_call':
       return {
-        Icon: isProgress ? Loader2 : Palette,
-        iconClass: isProgress ? 'animate-spin' : '',
+        Icon: isProgress ? SPINNER_MARKER : Palette,
+        iconClass: '',
         containerClass: isProgress
           ? 'bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-800'
           : 'bg-pink-50/30 dark:bg-pink-900/20 hover:bg-pink-100/50 dark:hover:bg-pink-800/30',
         iconColorClass: isProgress ? 'text-pink-600 dark:text-pink-400' : 'text-pink-500 dark:text-pink-400',
         textClass: 'text-pink-800 dark:text-pink-300',
-        detailClass: 'text-pink-600 dark:text-pink-400'
+        detailClass: 'text-pink-600 dark:text-pink-400',
       };
     default:
       return {
-        Icon: isProgress ? Loader2 : FileSearch,
-        iconClass: isProgress ? 'animate-spin' : '',
-        containerClass: isProgress 
+        Icon: isProgress ? SPINNER_MARKER : FileSearch,
+        iconClass: '',
+        containerClass: isProgress
           ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
           : 'bg-blue-50/30 dark:bg-blue-900/20 hover:bg-blue-100/50 dark:hover:bg-blue-800/30',
         iconColorClass: isProgress ? 'text-blue-600 dark:text-blue-400' : 'text-blue-500 dark:text-blue-400',
         textClass: 'text-blue-800 dark:text-blue-300',
-        detailClass: 'text-blue-600 dark:text-blue-400'
+        detailClass: 'text-blue-600 dark:text-blue-400',
       };
   }
+}
+
+/** Renders either the primitive <Spinner> or the custom lucide icon. */
+function WorkingIcon({ icon, iconClass, colorClass }: { icon: IconKind; iconClass: string; colorClass: string }) {
+  if (icon === SPINNER_MARKER) {
+    return <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${colorClass}`} />;
+  }
+  const IconComp = icon;
+  return <IconComp className={`w-4 h-4 ${colorClass} ${iconClass} flex-shrink-0`} />;
 }
 
 export function WorkingCard({ content, variant }: WorkingCardProps) {
@@ -258,7 +286,7 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
   if (isProgress) {
     return (
       <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${containerClass}`}>
-        <Icon className={`w-4 h-4 ${iconColorClass} ${iconClass} flex-shrink-0`} />
+        <WorkingIcon icon={Icon} iconClass={iconClass} colorClass={iconColorClass} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1">
             <TruncatableText
@@ -307,7 +335,7 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
         onClick={handleCardClick}
         disabled={!hasExpandable && !isDownloadedAsset}
       >
-        <Icon className={`w-4 h-4 flex-shrink-0 ${iconColorClass}`} />
+        <WorkingIcon icon={Icon} iconClass="" colorClass={iconColorClass} />
         <TruncatableText
           text={content.content || ''}
           maxLength={60}

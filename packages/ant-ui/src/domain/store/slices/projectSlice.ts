@@ -30,7 +30,7 @@ export const createProjectSlice: StateCreator<
   // State
   // ==================
   projects: [],
-  projectsLoaded: false,
+  projectsStatus: 'idle',
   selectedProject: undefined,
   selectedFeature: undefined,
   features: [],
@@ -45,21 +45,28 @@ export const createProjectSlice: StateCreator<
   setProjects: (projects) => set({ projects }),
 
   fetchProjects: async () => {
+    const state = get() as any;
+    // Cloud mode requires authentication — mark as empty (not error) so
+    // QuickStart gate doesn't trigger a retry loop.
+    if (state.backendMode === 'cloud' && !state.userEmail) {
+      console.log('[Store] Skipping fetchProjects: Cloud mode requires authentication');
+      set({ projects: [], projectsStatus: 'empty' });
+      return;
+    }
+
+    set({ projectsStatus: 'loading' });
     try {
-      const state = get() as any;
-      // Cloud mode requires authentication
-      if (state.backendMode === 'cloud' && !state.userEmail) {
-        console.log('[Store] Skipping fetchProjects: Cloud mode requires authentication');
-        set({ projects: [], projectsLoaded: true });
-        return;
-      }
-      
       const { listProjects } = await import('@/infrastructure/http/projects');
       const projectList = await listProjects();
-      set({ projects: projectList, projectsLoaded: true });
+      set({
+        projects: projectList,
+        projectsStatus: projectList.length > 0 ? 'ready' : 'empty',
+      });
     } catch (error) {
       console.error('Failed to fetch projects:', error);
-      set({ projects: [], projectsLoaded: true });
+      // `error` is a first-class state. Consumers that only need "first
+      // fetch completed" should use `selectProjectsLoaded`.
+      set({ projects: [], projectsStatus: 'error' });
     }
   },
 

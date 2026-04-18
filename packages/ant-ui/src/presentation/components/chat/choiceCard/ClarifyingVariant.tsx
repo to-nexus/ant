@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Palette, Check, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Palette, Check, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
@@ -369,7 +370,7 @@ function ImageQuestionBlock({
                   ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Spinner size="md" tone="inverse" />
                 ) : (
                   t('draftSelection.send')
                 )}
@@ -437,7 +438,7 @@ function LightboxLoader({
   if (!targetReady) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-        <Loader2 className="w-8 h-8 animate-spin text-white" />
+        <Spinner size="lg" tone="inverse" />
       </div>
     );
   }
@@ -744,7 +745,7 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
               >
                 {cardState.isLoading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Spinner size="md" tone="inverse" />
                     {t('clarify.submitting')}
                   </span>
                 ) : allAnswered ? (

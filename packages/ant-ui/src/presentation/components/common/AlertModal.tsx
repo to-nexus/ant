@@ -16,7 +16,8 @@
 
 import { useRef, useEffect, useState } from 'react';
 import { Modal } from './Modal';
-import { CheckCircle, AlertCircle, XCircle, Info, Loader2 } from 'lucide-react';
+import { CheckCircle, AlertCircle, XCircle, Info } from 'lucide-react';
+import { Spinner } from './async';
 
 export type AlertType = 'info' | 'success' | 'warning' | 'error';
 export type ButtonMode = 'confirm-only' | 'confirm-cancel';
@@ -168,7 +169,7 @@ export function AlertModal({
                        transition-colors flex items-center gap-2
                        ${isProcessing ? 'opacity-75 cursor-not-allowed' : ''} ${styles.confirmButton}`}
           >
-            {isProcessing && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isProcessing && <Spinner size="md" tone="inverse" />}
             {confirmText}
           </button>
         </div>

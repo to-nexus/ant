@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Loader2, Package, ExternalLink, AlertCircle, CheckCircle, Wrench, X } from 'lucide-react';
+import { Package, ExternalLink, AlertCircle, CheckCircle, Wrench, X } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { getProgressMessage } from '../utils/preview';
 import type { PreviewState, PreviewError, PreviewProgress, SetupFailureReasoning } from '../types/preview';
 
@@ -88,7 +89,7 @@ export function PreviewStatusPanel({
     return (
       <div className="p-3 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-md">
         <div className="flex items-start gap-2">
-          <Package className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-pulse mt-0.5 flex-shrink-0" />
+          <Package className="w-4 h-4 text-purple-600 dark:text-purple-400 animate-status-pulse mt-0.5 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-purple-900 dark:text-purple-100">
               {progressMsg}
@@ -100,7 +101,7 @@ export function PreviewStatusPanel({
                     <div
                       key={idx}
                       className={`h-1.5 flex-1 rounded-full ${
-                        pkg.state === 'installing' ? 'bg-purple-400 dark:bg-purple-600 animate-pulse' :
+                        pkg.state === 'installing' ? 'bg-purple-400 dark:bg-purple-600 animate-status-pulse' :
                         pkg.state === 'starting' || pkg.state === 'running' ? 'bg-purple-600 dark:bg-purple-400' :
                         'bg-purple-200 dark:bg-purple-800'
                       }`}
@@ -121,7 +122,7 @@ export function PreviewStatusPanel({
     return (
       <div className="p-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
         <div className="flex items-center gap-2">
-          <Loader2 className="w-4 h-4 text-orange-600 dark:text-orange-400 animate-spin flex-shrink-0" />
+          <Spinner size="md" tone="inherit" className="text-orange-600 dark:text-orange-400 flex-shrink-0" />
           <span className="text-sm font-medium text-orange-900 dark:text-orange-100">
             {t('preview.stopping')}
           </span>
@@ -136,7 +137,7 @@ export function PreviewStatusPanel({
     return (
       <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
         <div className="flex items-start gap-2">
-          <Loader2 className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin mt-0.5 flex-shrink-0" />
+          <Spinner size="md" tone="inherit" className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
               {progressMsg}
@@ -148,7 +149,7 @@ export function PreviewStatusPanel({
                     <div
                       key={idx}
                       className={`h-1.5 flex-1 rounded-full ${
-                        pkg.state === 'starting' ? 'bg-blue-400 dark:bg-blue-600 animate-pulse' :
+                        pkg.state === 'starting' ? 'bg-blue-400 dark:bg-blue-600 animate-status-pulse' :
                         pkg.state === 'running' ? 'bg-blue-600 dark:bg-blue-400' :
                         'bg-blue-200 dark:bg-blue-800'
                       }`}
@@ -250,7 +251,7 @@ export function PreviewStatusPanel({
               {ready ? (
                 <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
               ) : (
-                <Loader2 className="w-4 h-4 text-green-600 dark:text-green-400 animate-spin" />
+                <Spinner size="md" tone="inherit" className="text-green-600 dark:text-green-400" />
               )}
               <span className="text-sm font-medium text-green-900 dark:text-green-100">
                 {ready ? progressMsg : startingWithCounts}

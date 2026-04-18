@@ -1,4 +1,5 @@
-import { Loader2, Check, X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { cn } from '@/shared/utils/design-system';
 import type { ExecStepStatus } from './types';
 
@@ -15,7 +16,7 @@ export function StepRow({ label, status, error }: { label: string; status: ExecS
             <Check className="w-3 h-3 text-white dark:text-gray-900" strokeWidth={3} />
           </div>
         ) : status === 'active' ? (
-          <Loader2 className="w-5 h-5 text-emerald-500 dark:text-emerald-400 animate-spin" />
+          <Spinner size="lg" className="text-emerald-500 dark:text-emerald-400" />
         ) : status === 'error' ? (
           <div className="w-5 h-5 rounded-full bg-red-500 dark:bg-red-400 flex items-center justify-center">
             <X className="w-3 h-3 text-white dark:text-gray-900" strokeWidth={3} />
