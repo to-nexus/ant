@@ -7,6 +7,7 @@
  */
 
 import { useStore } from '@/domain/store';
+import { useGitState } from '@/application/hooks/git';
 import { getConfigSlots, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasMixedCodebaseRefs, hasRealRefSlots } from '@ant/shared';
 
 export interface ActionFooterPolicy {
@@ -22,7 +23,7 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   const selectedFeature = useStore(s => s.selectedFeature);
   const isRunning = useStore(s => s.isRunning);
   const actionMetadata = useStore(s => s.actionMetadata);
-  const gitStatus = useStore(s => s.gitStatus);
+  const { gitStatus } = useGitState();
 
   const hasWorkspace = !!selectedProject && !!selectedFeature;
 

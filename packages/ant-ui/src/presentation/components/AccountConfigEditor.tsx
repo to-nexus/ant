@@ -141,10 +141,13 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       setGithubPATConfigured(true);
       setGithubUsername(result.username);
       setGithubPAT('');
-      showSuccess(result.username 
-        ? t('account.patSavedWithUser', { username: result.username }) 
+      showSuccess(result.username
+        ? t('account.patSavedWithUser', { username: result.username })
         : t('account.patSaved'));
-      useStore.getState().refreshGitStatus();
+      // PAT changed — re-pull /status + /changes so gated CTAs (push/pull,
+      // publish) refresh their decision based on the new auth.
+      const { selectedProject, selectedFeature, fetchGitAll } = useStore.getState();
+      if (selectedProject) fetchGitAll(selectedProject, selectedFeature || undefined);
     } catch (error: any) {
       console.error('Failed to save GitHub PAT:', error);
       showError(error.message || t('github.saveFailed'));
@@ -186,7 +189,8 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
           setGithubUsername(undefined);
           setGithubPAT('');
           showSuccess(t('github.deleteSuccess'));
-          useStore.getState().refreshGitStatus();
+          const { selectedProject, selectedFeature, fetchGitAll } = useStore.getState();
+          if (selectedProject) fetchGitAll(selectedProject, selectedFeature || undefined);
         } catch (error: any) {
           console.error('Failed to delete GitHub PAT:', error);
           showError(error.message || t('github.deleteFailed'));

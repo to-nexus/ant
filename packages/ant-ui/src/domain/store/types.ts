@@ -1,7 +1,8 @@
 import { Session } from '@/domain/models/session';
-import { Feature, FileNode, FileContent, PreviewStatus, KanbanData, GitChanges } from '@/infrastructure/http/api';
+import { Feature, FileNode, FileContent, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import type { ChatMessage } from '@/domain/models/chat';
+import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
 
 // ==================
 // Store State Types
@@ -129,44 +130,54 @@ export interface UIState {
   accountConfigScrollTarget: string | null;
 }
 
-export interface GitStatus {
-  hasGit: boolean;
-  hasCodebase: boolean;
-  codebaseHasFiles: boolean;
-  hasFeatures: boolean;
-  currentBranch?: string;
-  remoteUrl?: string;
-  hasUpstream?: boolean;
-  ahead?: number;
-  behind?: number;
-  hasUncommittedChanges?: boolean;
-}
+/**
+ * Git phase — an orthogonal "what operation is in flight" flag.
+ *
+ * Separate from `statusFetchState` / `changesFetchState` because a git action
+ * (push/pull/commit…) may run long while background refreshes of the two REST
+ * endpoints keep ticking. UI chooses its spinner label based on this phase.
+ */
+export type GitPhase =
+  | 'switching'
+  | 'fetching'
+  | 'pushing'
+  | 'pulling'
+  | 'committing'
+  | 'syncing'
+  | 'initializing'
+  | 'cloning'
+  | 'discarding';
 
 export interface GitState {
-  isGitStatusLoading: boolean;
-  gitStatusPhase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | 'discarding' | null;
-  gitStatus: GitStatus | null;  // ✅ Single source of truth for Git state
-  gitStatusRefreshTrigger: number;
-  bypassFetchTimer: boolean;  // ✅ Flag to bypass timer for next fetch
-  // ✅ SSOT for working-tree info (staged/unstaged/untracked, ahead/behind).
-  // Previously owned by useGitChanges hook + sessionStorage; consolidated here.
-  gitChanges: GitChanges | null;
-  isGitInitialized: boolean | null;  // null = unknown/loading, false = no .git, true = git repo
-  isFetchingChanges: boolean;
-  // `${projectId}:${feature||'base'}` — lets consumers detect which feature the
-  // current `gitChanges` belongs to (prevents cross-feature staleness).
-  gitChangesKey: string | null;
+  /** Response of `/git/status`. `null` before the first fetch resolves. */
+  gitStatus: GitStatusResponse | null;
+  /** Response of `/git/changes`. `null` before the first fetch resolves. */
+  gitChanges: GitChangesResponse | null;
+  /** Fetch state for `gitStatus`. Never blind-resets `gitStatus` on failure. */
+  statusFetchState: 'idle' | 'pending';
+  /** Fetch state for `gitChanges`. Never blind-resets `gitChanges` on failure. */
+  changesFetchState: 'idle' | 'pending';
+  /** Active git operation (UI label). Setter is a pure writer with no side effects. */
+  gitStatusPhase: GitPhase | null;
 }
+
+// Re-export contract types for convenience (other slices/selectors import from here).
+export type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
 
 export interface PreviewSliceState {
   previewStatus: PreviewStatus | undefined;
   isPreviewLoading: boolean;
 }
 
+export interface PerFeatureDeployState {
+  status: import('@/infrastructure/http/api').DeployStatus | undefined;
+  logs: import('@/infrastructure/http/api').DeployLogEntry[];
+  isLoading: boolean;
+}
+
 export interface DeploySliceState {
-  deployStatus: import('@/infrastructure/http/api').DeployStatus | undefined;
-  deployLogs: import('@/infrastructure/http/api').DeployLogEntry[];
-  isDeployLoading: boolean;
+  /** Map keyed by `${projectId}:${featureName}` — isolates state per feature. */
+  deployByFeature: Record<string, PerFeatureDeployState>;
 }
 
 export interface AuthState {

@@ -197,9 +197,14 @@ export function useJobExecution() {
         // Refresh file tree to show new/modified files
         refreshFileTree();
         
-        // Git status refresh: fileTree SSE debounce listener handles mid-job updates,
-        // but explicit refresh on completion ensures final state is captured
-        useStore.getState().refreshGitStatus();
+        // Git status refresh: fileTree SSE debounce listener handles mid-job
+        // updates, but explicit refresh on completion ensures final state is
+        // captured. `fetchGitAll` re-pulls both /status (hasGit may flip if
+        // the job initialized a repo) and /changes (ahead/behind/staged).
+        {
+          const { selectedProject: pid, selectedFeature: ft, fetchGitAll } = useStore.getState();
+          if (pid) fetchGitAll(pid, ft || undefined);
+        }
       });
       
       console.log('[useJobExecution] Job execution started successfully');

@@ -1,3 +1,4 @@
+import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
 import { API_BASE, authFetch, apiGet } from './client';
 
 export interface GitHubPATStatus {
@@ -146,54 +147,24 @@ export function fetchFromGitHub(projectId: string, feature?: string) {
 
 // ── Git Status & Operations ─────────────────────────────────────────
 
-export function getGitStatus(projectId: string, feature?: string): Promise<{
-  hasGit: boolean;
-  hasCodebase: boolean;
-  hasFeatures: boolean;
-  currentBranch?: string;
-  remoteUrl?: string;
-}> {
-  const params = feature ? `?feature=${encodeURIComponent(feature)}` : '';
-  return apiGet<{
-    hasGit: boolean;
-    hasCodebase: boolean;
-    hasFeatures: boolean;
-    currentBranch?: string;
-    remoteUrl?: string;
-  }>(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/status${params}`).catch(() => ({
-    hasGit: false,
-    hasCodebase: false,
-    hasFeatures: false,
-  }));
-}
-
-export interface FileChange {
-  path: string;
-  status: 'modified' | 'deleted' | 'new' | 'renamed';
-}
-
 /**
- * Shape of `GET /projects/:id/git/changes` response.
- *
- * Canonical definition lives here (infrastructure layer) because this is
- * where the REST contract is expressed. Presentation/hook layers re-export
- * for compatibility but must not define their own copy.
+ * Response types are the contract SSOT in `@ant/shared/git`.
+ * Errors are NOT swallowed — callers observe `statusFetchState` / `changesFetchState`
+ * in the store to keep the UI loading rather than flashing "git uninitialized"
+ * on transient failures.
  */
-export interface GitChanges {
-  hasChanges: boolean;
-  staged: FileChange[];
-  unstaged: FileChange[];
-  untracked: FileChange[];
-  ahead: number;
-  behind: number;
-  currentBranch?: string;
-  isGitInitialized?: boolean;
-  hasUpstream?: boolean;
+export function getGitStatus(projectId: string, feature?: string): Promise<GitStatusResponse> {
+  const params = feature ? `?feature=${encodeURIComponent(feature)}` : '';
+  return apiGet<GitStatusResponse>(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/status${params}`,
+  );
 }
 
-export function getGitChanges(projectId: string, feature?: string): Promise<GitChanges> {
+export function getGitChanges(projectId: string, feature?: string): Promise<GitChangesResponse> {
   const params = feature ? `?feature=${encodeURIComponent(feature)}` : '';
-  return apiGet(`${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/changes${params}`);
+  return apiGet<GitChangesResponse>(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/git/changes${params}`,
+  );
 }
 
 export async function commitGitChanges(

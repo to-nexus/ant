@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Undo2, FileEdit, FilePlus, FileX, FileSymlink } from 'lucide-react';
-import { FileChange, GitChanges } from '../hooks/useGitChanges';
+import type { FileChange, GitChangesResponse } from '@ant/shared';
 
 interface GitChangesPanelProps {
-  gitChanges: GitChanges;
+  gitChanges: GitChangesResponse;
   selectedFiles: string[];
   onSelectedFilesChange: (files: string[]) => void;
   onDiscardFiles: (files: string[]) => void;

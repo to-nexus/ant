@@ -404,7 +404,19 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<DeployState, 'phase' | 'port' | 'error' | 'buildLog' | 'url'>>
+    update: Partial<Pick<DeployState, 'phase' | 'port' | 'host' | 'podId' | 'error' | 'buildLog' | 'url' | 'urlKey' | 'workspacePath' | 'lastAccessedAt'>>
+  ): Promise<void>;
+
+  /**
+   * Refresh deploy lastAccessedAt + TTL (sliding TTL).
+   * No-op if the deploy does not exist.
+   * Called by the proxy on every successful fetch.
+   */
+  touchDeploy(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string
   ): Promise<void>;
 
   /**

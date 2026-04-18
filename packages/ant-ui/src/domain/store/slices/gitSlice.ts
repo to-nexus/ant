@@ -1,206 +1,207 @@
 import { StateCreator } from 'zustand';
-import { GitState, GitStatus } from '../types';
-import { getGitStatus, getGitChanges, GitChanges } from '@/infrastructure/http/api';
+import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
+import { GitState, GitPhase } from '../types';
+import { getGitStatus, getGitChanges, fetchFromGitHub } from '@/infrastructure/http/api';
+import { GIT_FETCH_INTERVAL } from '@/shared/utils/constants';
 
 /**
- * gitSlice is the SINGLE SOURCE OF TRUTH for Git state consumed by UI.
+ * gitSlice — Single source of truth for Git state consumed by the UI.
  *
- * Includes both:
- *   - gitStatus: disk-level info from `/git/status` (hasGit, remoteUrl, ...)
- *   - gitChanges / isGitInitialized / isFetchingChanges: working-tree info
- *     from `/git/changes` (staged, unstaged, untracked, ahead, behind, ...)
+ * Two REST endpoints feed two store fields. No merging, no derived fields
+ * re-injected into the other object:
+ *   - `/git/status` → `gitStatus` (disk-level: hasGit, remoteUrl, codebaseHasFiles…)
+ *   - `/git/changes` → `gitChanges` (working-tree: staged/unstaged/untracked,
+ *      ahead, behind, isGitInitialized, hasUpstream)
  *
- * Prior to SSOT consolidation these two were split between `gitSlice` and
- * a local `useGitChanges` hook that cached to sessionStorage and re-injected
- * fields back into the store. That created stale-field bugs on feature
- * switches and inconsistent branch logic between ProjectSection and
- * ActionButton. Everything now reads from this slice.
+ * Each fetch uses a stale-guard (`${projectId}:${feature||'base'}` key
+ * compared against current selection at completion) and in-flight dedup.
+ * Actions are explicit — no counters, no bypass flags, no auto-triggers from
+ * phase transitions.
  */
 
+// Key helper: matches SSE gitChange "same feature" comparison.
+const keyOf = (projectId: string, feature?: string): string =>
+  `${projectId}:${feature || 'base'}`;
+
+// In-flight dedup per fetch type.
+const inFlightStatus: Map<string, Promise<void>> = new Map();
+const inFlightChanges: Map<string, Promise<void>> = new Map();
+
+// Stale-guard helper: ensure the active (selectedProject, selectedFeature) is
+// still the one we fetched for. Prevents a slow response for feature A from
+// overwriting state that already belongs to feature B.
+function isStillActive(store: any, projectId: string, feature?: string): boolean {
+  return (
+    store.selectedProject === projectId &&
+    (store.selectedFeature || undefined) === (feature || undefined)
+  );
+}
+
 export interface GitActions {
-  setGitStatusLoading: (loading: boolean) => void;
-  setGitStatusPhase: (phase: 'switching' | 'fetching' | 'pushing' | 'pulling' | 'committing' | 'syncing' | 'initializing' | 'cloning' | 'discarding' | null) => void;
-  // NOTE: `setGitStatus` was removed — it was only used by the old
-  // `useGitChanges` hook to re-inject working-tree info back into gitStatus.
-  // That responsibility now lives inside `fetchGitChanges` itself. Exposing
-  // a generic `setGitStatus` writer would re-enable the same SSOT violation.
   fetchGitStatus: (projectId: string, feature?: string) => Promise<void>;
-  refreshGitStatus: () => void;
-  setBypassFetchTimer: (bypass: boolean) => void;
   fetchGitChanges: (projectId: string, feature?: string) => Promise<void>;
-  clearGitChanges: () => void;
+  /** Convenience: run both fetches in parallel. Use on project/feature change. */
+  fetchGitAll: (projectId: string, feature?: string) => Promise<void>;
+  /** Timer-guarded remote fetch + refresh changes. Used by the Fetch button
+   *  and by feature-switch auto-refresh. Atomic sequence in one action. */
+  fetchFromRemote: (projectId: string, feature?: string) => Promise<void>;
+  /** Pure writer — no auto-triggered side effects. */
+  setGitStatusPhase: (phase: GitPhase | null) => void;
+  /** Clear both objects and fetch states. Use on project/feature change. */
+  clearGitState: () => void;
 }
 
 export type GitSlice = GitState & GitActions;
 
-// In-flight fetchGitChanges promises keyed by `${projectId}:${feature||'base'}`.
-// Same-key re-entry reuses the pending promise — prevents 3–4× fan-out when
-// feature-switch + SSE gitChange + phase-null + initial load all fire together.
-const inFlightGitChanges: Map<string, Promise<void>> = new Map();
+// Last-fetch throttle for the Fetch-from-remote button. Keyed per
+// (project, feature) in sessionStorage so it survives reloads.
+function shouldSkipRemoteFetch(projectId: string, feature: string | undefined): boolean {
+  const key = `git-fetch-time:${projectId}:${feature || 'base'}`;
+  const last = sessionStorage.getItem(key);
+  if (!last) return false;
+  return Date.now() - parseInt(last, 10) < GIT_FETCH_INTERVAL;
+}
 
-const gitChangesKeyOf = (projectId: string, feature?: string): string =>
-  `${projectId}:${feature || 'base'}`;
+function recordRemoteFetch(projectId: string, feature: string | undefined): void {
+  const key = `git-fetch-time:${projectId}:${feature || 'base'}`;
+  sessionStorage.setItem(key, Date.now().toString());
+}
 
 export const createGitSlice: StateCreator<any, [], [], GitSlice> = (set, _get) => ({
   // ==================
   // State
   // ==================
-  isGitStatusLoading: false,
-  gitStatusPhase: null,
   gitStatus: null,
-  gitStatusRefreshTrigger: 0,
-  bypassFetchTimer: false,
   gitChanges: null,
-  isGitInitialized: null,
-  isFetchingChanges: false,
-  gitChangesKey: null,
+  statusFetchState: 'idle',
+  changesFetchState: 'idle',
+  gitStatusPhase: null,
 
   // ==================
   // Actions
   // ==================
-  setGitStatusLoading: (loading) => {
-    set({ isGitStatusLoading: loading });
-  },
-
-  setGitStatusPhase: (phase) => {
-    // Auto-trigger gitChanges refetch on phase-null transition (Git
-    // operation just finished). The dedup map ensures this doesn't
-    // double-up with the explicit refreshGitStatus() caller.
-    const prev = _get().gitStatusPhase;
-    set({ gitStatusPhase: phase });
-    if (prev !== null && phase === null) {
-      const projectId = _get().selectedProject;
-      const feature = _get().selectedFeature;
-      if (projectId) {
-        _get().fetchGitChanges(projectId, feature).catch(() => {
-          // Errors are already logged inside fetchGitChanges.
-        });
-      }
-    }
-  },
-
   fetchGitStatus: async (projectId: string, feature?: string) => {
-    if (!projectId) {
-      set({ gitStatus: { hasGit: false, hasCodebase: false, codebaseHasFiles: false, hasFeatures: false }, isGitStatusLoading: false });
-      return;
-    }
+    if (!projectId) return;
 
-    set({ isGitStatusLoading: true });
-    try {
-      const status = await getGitStatus(projectId, feature);
-      const prev = _get().gitStatus;
-      // Critical: reset fields that getGitStatus does NOT return
-      // (hasUpstream/ahead/behind/hasUncommittedChanges come from getGitChanges).
-      // Without this reset, feature-switch keeps stale values from the previous
-      // feature until fetchGitChanges finishes — which is the root cause of
-      // "Commit label shows 10 changes for a clean feature" symptom.
-      set({
-        gitStatus: prev
-          ? {
-              ...prev,
-              ...status,
-              hasUpstream: undefined,
-              ahead: undefined,
-              behind: undefined,
-              hasUncommittedChanges: undefined,
-            }
-          : status,
-      });
-    } catch {
-      // Transient errors (network, timeout) should not flash "Git uninitialized".
-      // Leave gitStatus as-is (null or previous). Retry comes from the next
-      // gitStatusRefreshTrigger / bypassFetchTimer cycle.
-    } finally {
-      set({ isGitStatusLoading: false });
-    }
-  },
+    const key = keyOf(projectId, feature);
+    const existing = inFlightStatus.get(key);
+    if (existing) return existing;
 
-  refreshGitStatus: () => {
-    set((state: GitSlice) => ({ gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 }));
-  },
+    const task = (async () => {
+      set({ statusFetchState: 'pending' });
+      try {
+        const status: GitStatusResponse = await getGitStatus(projectId, feature);
+        if (!isStillActive(_get(), projectId, feature)) return;
+        set({ gitStatus: status });
+      } catch (error: any) {
+        // Transient error — preserve previous gitStatus rather than flash a
+        // "git uninitialized" UI. Consumers retry by invoking fetch again.
+        console.warn('[gitSlice] fetchGitStatus failed:', error?.message ?? error);
+      } finally {
+        if (isStillActive(_get(), projectId, feature)) {
+          set({ statusFetchState: 'idle' });
+        }
+        inFlightStatus.delete(key);
+      }
+    })();
 
-  setBypassFetchTimer: (bypass) => {
-    set({ bypassFetchTimer: bypass });
+    inFlightStatus.set(key, task);
+    return task;
   },
 
   fetchGitChanges: async (projectId: string, feature?: string) => {
     if (!projectId) return;
 
-    const key = gitChangesKeyOf(projectId, feature);
-
-    // Dedup: if a fetch for the same key is already in flight, reuse it.
-    const existing = inFlightGitChanges.get(key);
+    const key = keyOf(projectId, feature);
+    const existing = inFlightChanges.get(key);
     if (existing) return existing;
 
     const task = (async () => {
-      set({ isFetchingChanges: true });
+      set({ changesFetchState: 'pending' });
       try {
-        const changes: GitChanges = await getGitChanges(projectId, feature);
-
-        // Guard against stale completion: only commit results if the active
-        // feature hasn't changed under us during the await.
-        const activeKey = gitChangesKeyOf(_get().selectedProject, _get().selectedFeature);
-        if (activeKey !== key) {
-          return;
-        }
-
-        const totalChanges =
-          changes.staged.length + changes.unstaged.length + changes.untracked.length;
-
-        const currentGitStatus = _get().gitStatus;
-        const mergedStatus: GitStatus | null = currentGitStatus
-          ? {
-              ...currentGitStatus,
-              hasUpstream: changes.hasUpstream,
-              ahead: changes.ahead,
-              behind: changes.behind,
-              hasUncommittedChanges: totalChanges > 0,
-            }
-          : null;
-
-        set({
-          gitChanges: changes,
-          isGitInitialized: changes.isGitInitialized ?? true,
-          gitChangesKey: key,
-          ...(mergedStatus && { gitStatus: mergedStatus }),
-        });
+        const changes: GitChangesResponse = await getGitChanges(projectId, feature);
+        if (!isStillActive(_get(), projectId, feature)) return;
+        set({ gitChanges: changes });
       } catch (error: any) {
         if (error?.message?.includes('not initialized')) {
-          set({ gitChanges: null, isGitInitialized: false, gitChangesKey: key });
+          // Explicit "no .git yet" — record with a zeroed shape so consumers
+          // can render "uninitialized" without treating it as still-loading.
+          if (isStillActive(_get(), projectId, feature)) {
+            set({
+              gitChanges: {
+                staged: [],
+                unstaged: [],
+                untracked: [],
+                ahead: 0,
+                behind: 0,
+                isGitInitialized: false,
+                hasUpstream: false,
+              },
+            });
+          }
         } else {
-          // Transient errors — leave previous data intact. Next trigger retries.
           console.warn('[gitSlice] fetchGitChanges failed:', error?.message ?? error);
         }
       } finally {
-        set({ isFetchingChanges: false });
-        inFlightGitChanges.delete(key);
+        if (isStillActive(_get(), projectId, feature)) {
+          set({ changesFetchState: 'idle' });
+        }
+        inFlightChanges.delete(key);
       }
     })();
 
-    inFlightGitChanges.set(key, task);
+    inFlightChanges.set(key, task);
     return task;
   },
 
-  clearGitChanges: () => {
-    // Also scrub the derived fields on gitStatus — they were injected by
-    // the previous `fetchGitChanges` and would otherwise survive one React
-    // reconciliation window past a feature switch, leaking stale `ahead`/
-    // `behind`/`hasUncommittedChanges` into `deriveGitMenuState`.
-    const prev = _get().gitStatus;
+  fetchGitAll: async (projectId: string, feature?: string) => {
+    if (!projectId) return;
+    const self = _get();
+    await Promise.all([
+      self.fetchGitStatus(projectId, feature),
+      self.fetchGitChanges(projectId, feature),
+    ]);
+  },
+
+  fetchFromRemote: async (projectId: string, feature?: string) => {
+    if (!projectId) return;
+    const self = _get();
+
+    // Throttle: respect GIT_FETCH_INTERVAL so feature switches during rapid
+    // navigation don't hammer the origin. Still refresh local changes.
+    if (shouldSkipRemoteFetch(projectId, feature)) {
+      await self.fetchGitChanges(projectId, feature);
+      return;
+    }
+
+    self.setGitStatusPhase('fetching');
+    try {
+      try {
+        const result = await fetchFromGitHub(projectId, feature);
+        if (result?.success) {
+          recordRemoteFetch(projectId, feature);
+        }
+      } catch (err) {
+        console.warn('[gitSlice] fetchFromRemote network error:', err);
+      }
+    } finally {
+      self.setGitStatusPhase(null);
+      // Always refresh changes so ahead/behind reflect the latest origin.
+      await self.fetchGitChanges(projectId, feature);
+    }
+  },
+
+  setGitStatusPhase: (phase) => {
+    set({ gitStatusPhase: phase });
+  },
+
+  clearGitState: () => {
     set({
+      gitStatus: null,
       gitChanges: null,
-      isGitInitialized: null,
-      gitChangesKey: null,
-      isFetchingChanges: false,
-      ...(prev && {
-        gitStatus: {
-          ...prev,
-          hasUpstream: undefined,
-          ahead: undefined,
-          behind: undefined,
-          hasUncommittedChanges: undefined,
-        },
-      }),
+      statusFetchState: 'idle',
+      changesFetchState: 'idle',
+      gitStatusPhase: null,
     });
   },
 });

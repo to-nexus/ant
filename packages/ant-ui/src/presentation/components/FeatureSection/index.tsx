@@ -2,8 +2,6 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { useBaseBranch } from './hooks/useBaseBranch';
-import { useFeatureBranchManager } from './hooks/useFeatureBranchManager';
 import { usePreviewManager } from './hooks/usePreviewManager';
 import { useFeatureActions } from './hooks/useFeatureActions.tsx';
 import { FeatureDropdown } from './components/FeatureDropdown';
@@ -26,8 +24,9 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
   const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
   const { showError } = useAlertModalContext();
   
-  // Custom hooks
-  const baseBranch = useBaseBranch(selectedProject);
+  // Per-feature git refresh (fetch-from-remote + /changes re-pull) is owned
+  // by the application-layer `useGitRefresh` hook mounted at the app root
+  // — no feature-scoped manager needed here anymore.
   const {
     state,
     status,
@@ -48,9 +47,6 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
     handleDeleteFeature,
     handleFeatureChange
   } = useFeatureActions(selectedProject);
-  
-  // Feature status manager (auto-fetch for worktree)
-  useFeatureBranchManager(selectedProject, selectedFeature, baseBranch);
   
   // ✅ Get setPendingChatInput from Chat service
   const setPendingChatInput = useStore((state) => state.setPendingChatInput);

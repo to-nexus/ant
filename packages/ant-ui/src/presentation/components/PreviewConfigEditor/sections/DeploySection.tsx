@@ -6,6 +6,8 @@ import {
   AlertCircle,
   Square,
   ExternalLink,
+  Moon,
+  AlertTriangle,
 } from 'lucide-react';
 import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
 import { ansiConverter } from '../utils';
@@ -29,9 +31,100 @@ export function DeploySection({
 }) {
   const { t } = useTranslation('explorer');
 
-  const isDeployActive = deployStatus?.phase === 'running'
-    || deployStatus?.phase === 'building'
-    || deployStatus?.phase === 'deploying';
+  const phase = deployStatus?.phase;
+
+  // Active = a static server process owns a port on some pod
+  const isRunning = phase === 'running';
+  const isWorking = phase === 'building' || phase === 'deploying' || phase === 'starting';
+  const isHibernated = phase === 'hibernated';
+  const isUnavailable = phase === 'unavailable';
+  const isError = phase === 'error';
+  const isDeployActive = isRunning || isWorking;
+
+  const statusBadge = (() => {
+    if (isRunning) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Globe className="w-4 h-4 text-green-500" />
+          <span className="text-sm font-medium text-green-700 dark:text-green-300">
+            {t('preview.deploy.running', 'Deployed')}
+          </span>
+        </div>
+      );
+    }
+    if (phase === 'building') {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            {t('preview.deploy.building', 'Building...')}
+          </span>
+        </div>
+      );
+    }
+    if (phase === 'deploying') {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            {t('preview.deploy.deploying', 'Deploying...')}
+          </span>
+        </div>
+      );
+    }
+    if (phase === 'starting') {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+            {t('preview.deploy.starting', 'Waking up...')}
+          </span>
+        </div>
+      );
+    }
+    if (isHibernated) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <Moon className="w-4 h-4 text-gray-500" />
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+            {t('preview.deploy.hibernated', 'Hibernated')}
+          </span>
+        </div>
+      );
+    }
+    if (isUnavailable) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+            {t('preview.deploy.unavailable', 'Artifact missing')}
+          </span>
+        </div>
+      );
+    }
+    if (isError) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <AlertCircle className="w-4 h-4 text-red-500" />
+          <span className="text-sm font-medium text-red-700 dark:text-red-300">
+            {t('preview.deploy.error', 'Deploy Failed')}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1.5">
+        <div className="w-2 h-2 rounded-full bg-gray-400" />
+        <span className="text-sm text-gray-500 dark:text-gray-400">
+          {t('preview.deploy.idle', 'Not deployed')}
+        </span>
+      </div>
+    );
+  })();
+
+  const primaryButtonLabel = isUnavailable
+    ? t('preview.deploy.redeploy', 'Re-deploy')
+    : t('preview.deploy.deploy', 'Deploy');
 
   return (
     <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
@@ -46,48 +139,9 @@ export function DeploySection({
         {t('preview.deploy.description', 'Build and serve a production-optimized static version of your project.')}
       </p>
 
-      {/* Deploy status */}
-      <div className="flex items-center gap-2 mb-3">
-        {deployStatus?.phase === 'running' ? (
-          <div className="flex items-center gap-1.5">
-            <Globe className="w-4 h-4 text-green-500" />
-            <span className="text-sm font-medium text-green-700 dark:text-green-300">
-              {t('preview.deploy.running', 'Deployed')}
-            </span>
-          </div>
-        ) : deployStatus?.phase === 'building' ? (
-          <div className="flex items-center gap-1.5">
-            <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-              {t('preview.deploy.building', 'Building...')}
-            </span>
-          </div>
-        ) : deployStatus?.phase === 'deploying' ? (
-          <div className="flex items-center gap-1.5">
-            <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-              {t('preview.deploy.deploying', 'Deploying...')}
-            </span>
-          </div>
-        ) : deployStatus?.phase === 'error' ? (
-          <div className="flex items-center gap-1.5">
-            <AlertCircle className="w-4 h-4 text-red-500" />
-            <span className="text-sm font-medium text-red-700 dark:text-red-300">
-              {t('preview.deploy.error', 'Deploy Failed')}
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-gray-400" />
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              {t('preview.deploy.idle', 'Not deployed')}
-            </span>
-          </div>
-        )}
-      </div>
+      <div className="flex items-center gap-2 mb-3">{statusBadge}</div>
 
-      {/* Deploy controls */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {!isDeployActive ? (
           <button
             onClick={onDeploy}
@@ -102,7 +156,7 @@ export function DeploySection({
             ) : (
               <Rocket className="w-3.5 h-3.5" />
             )}
-            {t('preview.deploy.deploy', 'Deploy')}
+            {primaryButtonLabel}
           </button>
         ) : (
           <button
@@ -116,7 +170,8 @@ export function DeploySection({
             {t('preview.deploy.stop', 'Stop')}
           </button>
         )}
-        {deployStatus?.phase === 'running' && deployStatus?.url && (
+        {/* Open button: available while running OR hibernated (click triggers auto-wake). */}
+        {(isRunning || isHibernated) && deployStatus?.url && (
           <button
             onClick={onOpenDeployUrl}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
@@ -124,19 +179,27 @@ export function DeploySection({
                      transition-colors"
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            {t('preview.deploy.open', 'Open')}
+            {isHibernated
+              ? t('preview.deploy.wake', 'Wake up')
+              : t('preview.deploy.open', 'Open')}
           </button>
         )}
       </div>
 
-      {/* Deploy error */}
-      {deployStatus?.phase === 'error' && deployStatus?.error && (
+      {isError && deployStatus?.error && (
         <div className="mt-3 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-md">
           <p className="text-sm text-red-700 dark:text-red-300">{deployStatus.error}</p>
         </div>
       )}
 
-      {/* Deploy logs */}
+      {isUnavailable && (
+        <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            {deployStatus?.error || t('preview.deploy.unavailable', 'Artifact missing')}
+          </p>
+        </div>
+      )}
+
       {deployLogs.length > 0 && (
         <div className="mt-3 max-h-48 overflow-y-auto bg-gray-900 dark:bg-gray-950 rounded-md p-3">
           {deployLogs.slice(-50).map((log, idx) => (

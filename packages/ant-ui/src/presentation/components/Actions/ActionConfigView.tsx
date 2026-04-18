@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
+import { useGitState } from '@/application/hooks/git';
 import {
   INTENT_DEFINITIONS,
   getIntentsForAction,
@@ -49,7 +50,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const selectFile = useStore(s => s.selectFile);
   const setMainView = useStore(s => s.setMainView);
   const setAccountConfigScrollTarget = useStore(s => s.setAccountConfigScrollTarget);
-  const gitStatus = useStore(s => s.gitStatus);
+  const gitStatus = useGitState().gitStatus;
   const { toast } = useToastContext();
 
   useEffect(() => {

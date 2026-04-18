@@ -1,51 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Undo2 } from 'lucide-react';
-import { useStore } from '@/domain/store';
-import { useGitChanges } from './hooks/useGitChanges';
-import { useGitActions } from './hooks/useGitActions';
+import { useGitState } from '@/application/hooks/git';
+import { useGitActions as useGitStoreActions } from './hooks/useGitActions';
 import { PlaceholderButton } from './components/PlaceholderButton';
 import { LoadingButton } from './components/LoadingButton';
 import { ActionButton } from './components/ActionButton';
 import { GitChangesPanel } from './components/GitChangesPanel';
 import { Button } from '../common/button';
+import { useStore } from '@/domain/store';
 
 export function GitStatusButton() {
   const { t } = useTranslation('explorer');
-  const {
-    selectedProject,
-    selectedFeature,
-    isGitStatusLoading,
-    gitStatusPhase,
-    gitStatusRefreshTrigger,
-    fetchGitChanges,
-  } = useStore();
+  const selectedProject = useStore((s) => s.selectedProject);
+  const { gitStatus, gitChanges, changesFetchState, gitStatusPhase } = useGitState();
 
-  const { gitChanges, isGitInitialized, isFetchingChanges } = useGitChanges();
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const prevPathsRef = useRef<string>('');
 
-  // Drive `fetchGitChanges` from the single place in the tree that mounts
-  // whenever a project is selected. The slice deduplicates by key, so
-  // redundant calls (SSE gitChange + refresh trigger + phase transition +
-  // initial mount) collapse to at most one network request.
-  //
-  // We intentionally skip while `gitStatusPhase !== null` — an active git
-  // operation (switch/fetch) will call `setGitStatusPhase(null)` at its
-  // end, which auto-triggers a fresh fetch through the slice.
-  useEffect(() => {
-    if (!selectedProject) return;
-    if (gitStatusPhase !== null) return;
-    fetchGitChanges(selectedProject, selectedFeature || undefined);
-  }, [
-    selectedProject,
-    selectedFeature,
-    gitStatusRefreshTrigger,
-    gitStatusPhase,
-    fetchGitChanges,
-  ]);
-
-  // Smart sync: preserve user selections, only update when file list actually changes
+  // Smart sync: preserve user selections, only update when file list actually changes.
   useEffect(() => {
     if (gitChanges) {
       const allPaths = [
@@ -73,6 +46,7 @@ export function GitStatusButton() {
     }
   }, [gitChanges]);
   
+  const selectedFeature = useStore((s) => s.selectedFeature);
   const {
     isCommitting,
     isPushing,
@@ -85,33 +59,27 @@ export function GitStatusButton() {
     handlePull,
     handleSync,
     handleDiscard
-  } = useGitActions(selectedProject, selectedFeature, gitChanges);
+  } = useGitStoreActions(selectedProject, selectedFeature, gitChanges);
 
   if (!selectedProject) {
     return null;
   }
 
+  // Active git operation — show phase-specific spinner.
   if (gitStatusPhase !== null) {
-    return <LoadingButton isFetchingChanges={isFetchingChanges} />;
+    return <LoadingButton />;
   }
 
-  if (isGitInitialized === false) {
+  // Explicit uninitialized state — backend returned `isGitInitialized: false`.
+  if (gitChanges && gitChanges.isGitInitialized === false) {
     return <PlaceholderButton message={t('config:git.notInitialized')} />;
   }
 
-  // Narrow loading gate: only show spinner when we have NO data to render
-  // (initial load, post-clearGitChanges, or explicit fetch-with-null-slice).
-  // When gitChanges is present we keep showing the live CTA and let the
-  // refetch swap values in silently — otherwise every SSE-driven refresh
-  // would flash the whole button. The stale-commit-label bug that motivated
-  // widening this gate is now prevented by `clearGitChanges` which nulls
-  // the slice synchronously on feature/project switch.
-  if (isGitStatusLoading || (isFetchingChanges && !gitChanges)) {
-    return <LoadingButton isFetchingChanges={isFetchingChanges} />;
-  }
-
-  if (!gitChanges || isGitInitialized === null) {
-    return <PlaceholderButton message={t('common:status.checking')} />;
+  // Initial load — neither endpoint has responded yet. Once we have data we
+  // let silent refetches swap values without flashing the whole button.
+  if (!gitStatus || !gitChanges) {
+    const isFetching = changesFetchState === 'pending';
+    return isFetching ? <LoadingButton /> : <PlaceholderButton message={t('common:status.checking')} />;
   }
 
   const totalChanges = gitChanges.staged.length + gitChanges.unstaged.length + gitChanges.untracked.length;
@@ -142,7 +110,7 @@ export function GitStatusButton() {
                      hover:bg-red-500/10 dark:hover:bg-red-500/10
                      text-red-500 dark:text-red-400
                      transition-colors"
-          disabled={totalChanges === 0 || isDiscarding || isGitStatusLoading}
+          disabled={totalChanges === 0 || isDiscarding}
           title={t('git.discardAll')}
         >
           <Undo2 className="w-3.5 h-3.5" />

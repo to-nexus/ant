@@ -703,7 +703,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async updateDeploy(
     tenantId: string, userId: string, projectId: string, feature: string,
-    update: Partial<Pick<DeployState, 'phase' | 'port' | 'error' | 'buildLog' | 'url'>>
+    update: Partial<Pick<DeployState, 'phase' | 'port' | 'host' | 'podId' | 'error' | 'buildLog' | 'url' | 'urlKey' | 'workspacePath' | 'lastAccessedAt'>>
   ): Promise<void> {
     const deployKey = createDeployKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);
@@ -711,6 +711,18 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     if (!data) return;
     const state: DeployState = JSON.parse(data);
     Object.assign(state, update);
+    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.DEPLOY);
+  }
+
+  async touchDeploy(
+    tenantId: string, userId: string, projectId: string, feature: string
+  ): Promise<void> {
+    const deployKey = createDeployKey(tenantId, userId, projectId, feature);
+    const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);
+    const data = await this.redis.get(key);
+    if (!data) return;
+    const state: DeployState = JSON.parse(data);
+    state.lastAccessedAt = new Date();
     await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.DEPLOY);
   }
 

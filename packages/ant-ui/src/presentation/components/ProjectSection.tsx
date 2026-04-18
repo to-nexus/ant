@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder, Github, Download, Plus, Upload, Download as DownloadIcon, RefreshCw, Globe } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { 
-  createProject, 
+import {
+  createProject,
   cloneGitHubRepo,
   initializeGitHubRepo,
   pushToGitHub,
@@ -18,27 +18,25 @@ import { Button } from '@/presentation/components/common/button';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { CreationWizardModal } from './CreationWizardModal';
 import { deriveGitMenuState } from '@/domain/git/selectors';
+import { useGitState, useGitActions } from '@/application/hooks/git';
 
 export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const { t } = useTranslation('explorer');
-  const { 
-    projects, 
-    selectedProject, 
+  const {
+    projects,
+    selectedProject,
     selectedFeature,
-    setSelectedProject, 
-    fetchProjects, 
+    setSelectedProject,
+    fetchProjects,
     openMainPanelTab,
-    gitStatus,
-    fetchGitStatus,
-    setGitStatusPhase,
-    gitStatusPhase,
-    gitStatusRefreshTrigger,
     backendMode,
     projectConfig,
     projectConfigExists,
     fetchProjectConfig,
     createProjectConfig,
   } = useStore();
+  const { gitStatus, gitChanges, gitStatusPhase } = useGitState();
+  const { fetchGitAll, fetchFromRemote, setGitStatusPhase } = useGitActions();
   const [showGitMenu, setShowGitMenu] = useState(false);
   const [isGitProcessing, setIsGitProcessing] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
@@ -54,7 +52,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const policy = useUIActionPolicy();
   const { showError, showWarning, showConfirm } = useAlertModalContext();
   const { toast } = useToastContext();
-  
+
   // Click outside to close Git menu
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -65,46 +63,24 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-  
-  // ✅ Fetch Git status when project or feature changes
-  useEffect(() => {
-    if (selectedProject) {
-      fetchGitStatus(selectedProject, selectedFeature || undefined);
-    }
-  }, [selectedProject, selectedFeature]);
 
-  // ✅ Refresh Git status when trigger changes
-  useEffect(() => {
-    if (gitStatusRefreshTrigger > 0 && selectedProject) {
-      fetchGitStatus(selectedProject, selectedFeature || undefined);
-    }
-  }, [gitStatusRefreshTrigger, selectedProject, selectedFeature]);
-
-  // Fetch project config on:
-  //  - initial mount with a persisted `selectedProject` (setSelectedProject
-  //    is NOT called during localStorage hydration),
-  //  - project change driven by setSelectedProject (the slice also fires its
-  //    own fetch — the in-flight dedup inside projectConfigSlice collapses
-  //    them to one network call),
-  //  - gitStatusRefreshTrigger bumps (e.g. config editor close, git action).
+  // Initial project config fetch. Per-(project, feature) git fetches are owned
+  // by `useGitRefresh` — this effect only pulls projectConfig because it's
+  // project-scoped (feature-independent).
   useEffect(() => {
     if (selectedProject) {
       fetchProjectConfig(selectedProject);
     }
-  }, [selectedProject, gitStatusRefreshTrigger, fetchProjectConfig]);
+  }, [selectedProject, fetchProjectConfig]);
 
   const handleCreateProject = async (projectName: string) => {
     await createProject(projectName);
-    // ✅ Auto-switch to the newly created project
     setSelectedProject(projectName);
   };
 
   const handleConfigClick = async () => {
     if (!selectedProject) return;
 
-    // If config doesn't exist, create it first.
-    // projectConfigSlice.createProjectConfig updates `projectConfigExists`
-    // internally — no local setState needed here.
     if (projectConfigExists === false) {
       try {
         await createProjectConfig(selectedProject, backendMode);
@@ -131,28 +107,26 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   };
 
   const handleGitAction = async (
-    action: () => Promise<any>, 
-    actionType: 'fetch' | 'push' | 'pull' | 'clone' | 'init',
-    shouldRefreshGitStatus = true
+    action: () => Promise<any>,
+    actionType: 'push' | 'pull' | 'clone' | 'init',
+    shouldRefreshAll = true
   ) => {
     if (!selectedProject) return;
-    
+
     setShowGitMenu(false);
     setIsGitProcessing(true);
-    
+
     const phaseMap = {
-      'fetch': 'fetching',
       'push': 'pushing',
       'pull': 'pulling',
       'clone': 'cloning',
       'init': 'initializing'
     } as const;
-    
+
     setGitStatusPhase(phaseMap[actionType]);
-    
+
     try {
       const result = await action();
-      console.log('[git] handleGitAction result:', result);
       if (result.success) {
         if (actionType === 'clone' || actionType === 'init') {
           const successMessages = {
@@ -172,14 +146,6 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
         } else if (actionType === 'pull') {
           toast.success(t('git.pullSuccess'));
         }
-
-        // Show fetch toast only when new remote commits were found
-        if (actionType === 'fetch') {
-          const behind = useStore.getState().gitStatus?.behind ?? 0;
-          if (behind > 0) {
-            toast.success(t('git.fetchSuccess'));
-          }
-        }
       } else {
         const errMsg = result.error || t('git.actionFailed', { action: actionType });
         if (isPATError(errMsg)) {
@@ -198,11 +164,10 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     } finally {
       setIsGitProcessing(false);
       setGitStatusPhase(null);
-      if (shouldRefreshGitStatus && selectedProject) {
-        try {
-          await fetchGitStatus(selectedProject, selectedFeature || undefined);
-          useStore.getState().refreshGitStatus();
-        } catch { /* status refresh is best-effort */ }
+      if (shouldRefreshAll && selectedProject) {
+        // clone/init may have flipped disk-level flags (hasGit, remoteUrl) —
+        // pull both endpoints back so CTAs update.
+        fetchGitAll(selectedProject, selectedFeature || undefined);
       }
     }
   };
@@ -243,28 +208,26 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     });
   };
 
+  // push/pull don't mutate disk-level flags, so skip the /status refetch and
+  // only pull fresh /changes (the action itself triggers an SSE gitChange too).
   const handlePush = () => handleGitAction(
     () => pushToGitHub(selectedProject!, selectedFeature || undefined),
     'push',
-    false // Don't refresh Git status (hasGit won't change)
+    false
   );
 
   const handlePull = () => handleGitAction(
     () => pullFromGitHub(selectedProject!, selectedFeature || undefined),
     'pull',
-    false // Don't refresh Git status (hasGit won't change)
+    false
   );
 
-  const handleFetch = async () => {
+  // Explicit user-initiated remote fetch. `fetchFromRemote` handles the
+  // GIT_FETCH_INTERVAL throttle and always refreshes /changes afterwards.
+  const handleFetch = () => {
     if (!selectedProject) return;
-    
     setShowGitMenu(false);
-    
-    // ✅ Set bypass flag and trigger both useGitChanges and useFeatureBranchManager
-    useStore.setState((state) => ({ 
-      bypassFetchTimer: true, // ← useFeatureBranchManager will fetch from GitHub
-      gitStatusRefreshTrigger: state.gitStatusRefreshTrigger + 1 // ← useGitChanges will update status
-    }));
+    fetchFromRemote(selectedProject, selectedFeature || undefined);
   };
 
   const projectItems = projects.map((p: string) => ({ name: p }));
@@ -295,18 +258,16 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
         onClose={handleCloseWizard}
         onCreateEmpty={handleCreateEmpty}
       />
-      
+
       {/* Git Status Section */}
       {selectedProject && (
         <div className="mt-2">
           <div className="flex flex-wrap gap-1.5 items-center">
-            {/* Git Status Button (Fragment: buttons row + changes panel with order-last) */}
             <GitStatusButton />
-            
+
             {/* Git Control Button */}
             <div className="relative" ref={gitMenuRef}>
               {!projectConfig?.githubRepo ? (
-                // ✅ Disabled state: Show tooltip on click
                 <Tooltip
                   content={
                     <div className="max-w-xs space-y-2">
@@ -335,7 +296,6 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
                   </Button>
                 </Tooltip>
               ) : (
-                // ✅ Enabled state: Normal button with menu
                 <Button
                   onClick={() => setShowGitMenu(!showGitMenu)}
                   variant="outline"
@@ -347,11 +307,12 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
                   <Github className="w-4 h-4" />
                 </Button>
               )}
-              
+
               {/* Git Menu Dropdown */}
               {showGitMenu && (() => {
                 const menu = deriveGitMenuState({
                   gitStatus,
+                  gitChanges,
                   githubRepo: projectConfig?.githubRepo ?? null,
                 });
                 const disabledClass = 'opacity-40 cursor-not-allowed';
@@ -456,15 +417,18 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
               })()}
             </div>
           </div>
-          
-          {/* Current Branch Display */}
+
+          {/* Current Branch Display.
+              Branch name is derived from /git/status — no fallback to
+              /git/changes needed, since /status responds first when /git is
+              initialized. */}
           {gitStatus?.currentBranch && (
             <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400 truncate">
               {explorerWidth >= 260 && <>{t('config:git.currentBranch')}{' '}</>}
               <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{gitStatus.currentBranch}</span>
             </div>
           )}
-          
+
           {/* Warning Messages */}
           {projectConfigExists === false && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
@@ -478,8 +442,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
               </div>
             </div>
           )}
-          
-          {/* Only show localPath warning in local backend mode, for local/github repo types */}
+
           {backendMode !== 'cloud' && projectConfigExists && !projectConfig?.localPath && projectConfig?.repoType !== 'cloud' && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
@@ -494,8 +457,6 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
           )}
         </div>
       )}
-      
-      {/* Alert Modal */}
     </div>
   );
 }

@@ -119,12 +119,11 @@ export interface PreviewState {
 }
 
 // ============================================
-// Deploy Types
+// Deploy Types (SSOT: @ant/shared)
 // ============================================
 
-export type DeployPhase = 'idle' | 'building' | 'deploying' | 'running' | 'error' | 'stopped';
-
-export type DeployFramework = 'vite' | 'cra' | 'nextjs' | 'static' | 'unknown';
+export type { DeployPhase, DeployFramework } from '@ant/shared';
+import type { DeployPhase, DeployFramework } from '@ant/shared';
 
 export interface DeployState {
   tenantId: string;
@@ -140,6 +139,10 @@ export interface DeployState {
   framework: DeployFramework;
   buildOutputDir: string;
   basePath: string;
+  /** Full workspace path — required for lazy re-hydration (read meta.json, re-spawn server). */
+  workspacePath: string;
+  /** urlKey derived from serverKey — stable identifier used in the public deploy URL. */
+  urlKey?: string;
   url?: string;
 
   error?: string;

@@ -36,7 +36,7 @@ Presentation -> Application -> Domain <- Infrastructure
 | jobSlice | Job 실행 상태, currentJobId |
 | sseSlice | SSE 연결, Kanban/Chat/FileTree/GitChange 등 핸들러 단일 등록 지점 |
 | uiSlice | UI 상태 (탭, 레이아웃, pendingClarifyAnswers) |
-| gitSlice | Git 상태 SSOT (gitStatus · gitChanges · isGitInitialized · isFetchingChanges). fetchGitChanges는 in-flight 키 dedup |
+| gitSlice | Git 상태 SSOT. `gitStatus: GitStatusResponse \| null`, `gitChanges: GitChangesResponse \| null`, phase/fetchState 플래그. fetch 액션은 키 단위 in-flight dedup + stale guard. 자세한 내용은 [24-git-operations.md](24-git-operations.md#frontend-git-state) |
 | projectConfigSlice | `.ant/config.json` 내용 (githubRepo 등) SSOT, 프로젝트별 tri-state exists |
 | previewSlice | Preview 상태 |
 | authSlice | 인증 상태 |
@@ -48,7 +48,7 @@ Presentation -> Application -> Domain <- Infrastructure
 
 ### Git / ProjectConfig SSOT
 
-`gitSlice`와 `projectConfigSlice`는 sessionStorage 캐시나 훅·컴포넌트 로컬 state를 두지 않는다. UI 분기는 `src/domain/git/selectors.ts`의 순수 함수(`deriveGitMenuState` · `deriveGitActionCta`)에서만 이루어진다. 상세는 [24-git-operations.md](24-git-operations.md#frontend-git-state).
+`gitSlice`와 `projectConfigSlice`는 sessionStorage 캐시나 훅·컴포넌트 로컬 state를 두지 않는다. `gitStatus`/`gitChanges`는 `@ant/shared`의 `GitStatusResponse`/`GitChangesResponse`를 그대로 보관하는 필드별 SSOT이며, 파생 플래그를 한쪽 객체에 머지하지 않는다. UI 분기는 `src/domain/git/selectors.ts`의 순수 함수(`deriveGitMenuState` · `deriveGitActionCta`)에서만 이루어진다. 프리젠테이션은 직접 스토어를 읽지 않고 `application/hooks/git/`의 `useGitState`/`useGitActions`/`useGitRefresh`만 사용한다. 상세는 [24-git-operations.md](24-git-operations.md#frontend-git-state).
 
 ### 영속화
 

@@ -1,24 +1,33 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { 
-  commitGitChanges, 
-  pushToGitHub, 
-  pullFromGitHub, 
+import type { GitChangesResponse } from '@ant/shared';
+import {
+  commitGitChanges,
+  pushToGitHub,
+  pullFromGitHub,
   syncWithRemote,
   discardGitChanges,
   initializeGitHubRepo
 } from '@/infrastructure/http/api';
-import { useStore } from '@/domain/store';
+import { useGitActions as useGitStoreActions } from '@/application/hooks/git';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
-import { GitChanges } from './useGitChanges';
 
+/**
+ * Git operation handlers bound to the currently selected feature. Each
+ * handler toggles the matching `gitStatusPhase`, runs the REST call, and
+ * lets `useGitRefresh` + SSE re-fetch `gitChanges` afterwards.
+ *
+ * Previously this hook also reached into `useStore.getState().refreshGitStatus`
+ * to bump a counter. With the new SSOT we call `fetchGitAll` explicitly on
+ * the one handler (`handlePublishRepo`) that mutates remote state.
+ */
 export function useGitActions(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
-  gitChanges: GitChanges | null
+  gitChanges: GitChangesResponse | null
 ) {
-  const setGitStatusPhase = useStore((state) => state.setGitStatusPhase);
+  const { setGitStatusPhase, fetchGitAll } = useGitStoreActions();
   const { showError, showConfirm } = useAlertModalContext();
   const { toast } = useToastContext();
   const { t } = useTranslation('explorer');
@@ -33,7 +42,7 @@ export function useGitActions(
 
     setIsCommitting(true);
     setGitStatusPhase('committing');
-    
+
     try {
       const result = await commitGitChanges(selectedProject, undefined, selectedFeature, files);
       if (result.success) {
@@ -50,11 +59,8 @@ export function useGitActions(
   };
 
   // Pure push — BE's PushOperation auto-sets `--set-upstream` when the
-  // current branch has no upstream (see GitService/remote/operations/
-  // PushOperation.ts lines 86-89). Callers no longer need to inspect
-  // `gitStatus.remoteUrl` here: ActionButton/ProjectSection already pick
-  // the correct CTA via `deriveGitActionCta` / `deriveGitMenuState` and
-  // dispatch `handlePublishRepo` separately for the "no remote" case.
+  // current branch has no upstream. ActionButton/ProjectSection already
+  // pick the correct CTA via `deriveGitActionCta` / `deriveGitMenuState`.
   const handlePush = async () => {
     if (!selectedProject) return;
 
@@ -78,7 +84,7 @@ export function useGitActions(
 
   // "Publish repository" — remote not yet created. Creates the GitHub repo
   // and pushes the current branch. Always behind a confirm dialog because
-  // it has user-visible side effects (creates a new remote resource).
+  // it has user-visible side effects.
   const handlePublishRepo = async () => {
     if (!selectedProject) return;
     showConfirm(t('config:git.confirmPublish'), {
@@ -92,7 +98,9 @@ export function useGitActions(
           const result = await initializeGitHubRepo(selectedProject, selectedFeature);
           if (result.success) {
             toast.success(t('git.repoInitialized'));
-            useStore.getState().refreshGitStatus();
+            // `remoteUrl` / `hasGit` flipped on disk — re-pull both endpoints
+            // so the CTA transitions out of the "publish" variant.
+            fetchGitAll(selectedProject, selectedFeature);
           } else {
             showError(result.error || t('git.pushFailed'));
           }
@@ -111,7 +119,7 @@ export function useGitActions(
 
     setIsPulling(true);
     setGitStatusPhase('pulling');
-    
+
     try {
       const result = await pullFromGitHub(selectedProject, selectedFeature);
       if (result.success) {
@@ -132,7 +140,7 @@ export function useGitActions(
 
     setIsSyncing(true);
     setGitStatusPhase('syncing');
-    
+
     try {
       const result = await syncWithRemote(selectedProject, selectedFeature);
       if (result.success) {
