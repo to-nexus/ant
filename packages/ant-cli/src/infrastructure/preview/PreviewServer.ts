@@ -107,6 +107,7 @@ export class PreviewServer {
     this.deployService = new DeployService({
       portManager: this.portManager,
       stateStore: this.stateStore,
+      workspacesPath: workspaceRoot,
     });
 
     logger.info('[PreviewServer] Services initialized', {
@@ -794,20 +795,23 @@ export class PreviewServer {
       }
 
       const { tenantId, userId, projectId, feature } = parsed;
-      const deployState = await this.stateStore.getDeploy(tenantId, userId, projectId, feature);
 
-      if (!deployState || deployState.phase !== 'running') {
-        res.status(404).json({ error: 'Deploy not found or not running' });
+      // Lazy re-hydration: if the static server is dead (pod restart, idle
+      // eviction, crash), DeployService will re-spawn it from meta.json.
+      // Returns null when the deploy is truly unavailable (meta lost,
+      // artifact missing, port exhaustion).
+      let deployState = await this.deployService.ensureRunning(tenantId, userId, projectId, feature);
+      if (!deployState) {
+        res.status(404).json({ error: 'Deploy unavailable' });
         return;
       }
 
-      const targetHost = deployState.host || 'localhost';
-      const targetPort = deployState.port;
-      // Forward the full path including /deploy/ + urlKey prefix (the static server uses basePath = /deploy/{urlKey})
-      const targetPath = `/deploy/${urlKey}${req.url.replace(new RegExp(`^/${urlKey}`), '') || '/'}`;
-      const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
+      const tryProxy = async (state: NonNullable<typeof deployState>): Promise<void> => {
+        const targetHost = state.host || 'localhost';
+        const targetPort = state.port;
+        const targetPath = `/deploy/${urlKey}${req.url.replace(new RegExp(`^/${urlKey}`), '') || '/'}`;
+        const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
 
-      try {
         const response = await fetch(targetUrl, {
           method: req.method,
           headers: {
@@ -830,11 +834,42 @@ export class PreviewServer {
         } else {
           res.end();
         }
+
+        this.stateStore.touchDeploy(tenantId, userId, projectId, feature).catch(() => {});
+      };
+
+      try {
+        await tryProxy(deployState);
       } catch (error: any) {
         logger.warn(`[Deploy] Proxy error: ${error.message}`, { component: 'PreviewServer' });
 
-        await this.stateStore.unregisterDeploy(tenantId, userId, projectId, feature).catch(() => {});
-        logger.warn(`[Deploy] Unregistered unreachable deploy: ${urlKey}`, { component: 'PreviewServer' });
+        // Host/port stale (e.g. another pod's entry) — mark hibernated and
+        // attempt a single rehydrate retry on this pod.
+        try {
+          await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, { phase: 'hibernated' });
+        } catch { /* ignore */ }
+
+        try {
+          const retry = await this.deployService.ensureRunning(tenantId, userId, projectId, feature);
+          if (retry) {
+            try {
+              await tryProxy(retry);
+              return;
+            } catch (retryErr: any) {
+              logger.warn(`[Deploy] Proxy retry failed: ${retryErr.message}`, { component: 'PreviewServer' });
+            }
+          }
+        } catch { /* ignore */ }
+
+        await this.stateStore.updateDeploy(tenantId, userId, projectId, feature, {
+          phase: 'unavailable',
+          error: error.message,
+        }).catch(() => {});
+        await this.deployService.broadcastStatus(tenantId, userId, projectId, feature, {
+          phase: 'unavailable',
+          error: error.message,
+        });
+        logger.warn(`[Deploy] Marked unavailable: ${urlKey}`, { component: 'PreviewServer' });
 
         res.status(502).json({ error: 'Deploy server unreachable' });
       }
@@ -847,6 +882,7 @@ export class PreviewServer {
   async start(): Promise<void> {
     await this.initialize();
     await this.deployService.cleanupStaleDeploys();
+    this.deployService.startIdleEviction();
     this.setupRoutes();
 
     const port = this.options.port || parseInt(process.env.PORT || '8080');

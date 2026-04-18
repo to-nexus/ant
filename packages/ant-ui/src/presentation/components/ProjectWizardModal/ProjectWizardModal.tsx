@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { useStore } from '@/domain/store';
+import { useGitState } from '@/application/hooks/git';
 import {
   createProject, createFeature, createProjectConfig, updateProjectConfig,
   deleteProject, uploadFiles, type UploadFileEntry,
@@ -80,7 +81,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   // ── Store ──
   const projects = useStore((s) => s.projects);
   const features = useStore((s) => s.features);
-  const gitStatus = useStore((s) => s.gitStatus);
+  const { gitStatus } = useGitState();
   const setSelectedProject = useStore((s) => s.setSelectedProject);
   const setSelectedFeature = useStore((s) => s.setSelectedFeature);
   const setSelectedAgent = useStore((s) => s.setSelectedAgent);

@@ -18,6 +18,7 @@
  *   - canonical.ts          : CANONICAL_FEATURE_DIRS, isCanonicalDir
  *   - file-descriptions.ts  : FILE_DESCRIPTIONS
  *   - deploy.ts             : DeployConfig
+ *   - git.ts                : GitStatusResponse, GitChangesResponse, FileChange
  */
 
 export * from './job';
@@ -38,3 +39,4 @@ export * from './prompt-policy-matrix';
 export * from './deploy';
 export * from './sse-events';
 export * from './verification-scenario';
+export * from './git';

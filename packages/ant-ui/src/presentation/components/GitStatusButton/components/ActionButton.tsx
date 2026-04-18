@@ -1,12 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { GitCommit, Upload, Download, RefreshCw, Check, Globe } from 'lucide-react';
+import type { GitChangesResponse } from '@ant/shared';
 import { Button } from '../../common/button';
-import { GitChanges } from '../hooks/useGitChanges';
-import { useStore } from '@/domain/store';
+import { useGitState } from '@/application/hooks/git';
 import { deriveGitActionCta } from '@/domain/git/selectors';
 
 interface ActionButtonProps {
-  gitChanges: GitChanges;
+  gitChanges: GitChangesResponse;
   isCommitting: boolean;
   isPushing: boolean;
   isPulling: boolean;
@@ -49,14 +49,12 @@ export function ActionButton({
   selectedFiles
 }: ActionButtonProps) {
   const { t } = useTranslation('explorer');
-  const isGitStatusLoading = useStore((s) => s.isGitStatusLoading);
-  const gitStatus = useStore((s) => s.gitStatus);
-
-  // Parent (GitStatusButton) already renders LoadingButton whenever
-  // `isFetchingChanges && !gitChanges`, so by the time ActionButton mounts
-  // `gitChanges` is guaranteed non-null. We hand selector `false` to keep
-  // the contract explicit instead of routing a dead `isFetchingChanges`
-  // branch through the derivation.
+  const { gitStatus, statusFetchState, changesFetchState } = useGitState();
+  // The parent (GitStatusButton) keeps ActionButton un-mounted while either
+  // fetch state is pending AND we don't yet have data. By the time we render,
+  // gitChanges is guaranteed non-null and gitStatus is either present or
+  // still loading — the selector handles both.
+  const isFetchBlockingCta = statusFetchState === 'pending' || changesFetchState === 'pending';
   const cta = deriveGitActionCta({
     gitChanges,
     gitStatus,
@@ -85,8 +83,8 @@ export function ActionButton({
                      hover:bg-emerald-500/20 dark:hover:bg-emerald-500/20
                      text-emerald-600 dark:text-emerald-400
                      transition-colors"
-          disabled={isCommitting || isGitStatusLoading || (selectedFiles !== undefined && selectedFiles.length === 0)}
-          title={isGitStatusLoading ? t('git.updatingStatus') : undefined}
+          disabled={isCommitting || isFetchBlockingCta || (selectedFiles !== undefined && selectedFiles.length === 0)}
+          title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
           <GitCommit className="w-3.5 h-3.5 flex-shrink-0" />
           {isCommitting ? (
@@ -116,7 +114,7 @@ export function ActionButton({
           variant="outline"
           size="sm"
           className={actionButtonClass}
-          disabled={isPushing || isGitStatusLoading}
+          disabled={isPushing || isFetchBlockingCta}
           title={cta.variant === 'noRemoteWithFeatures'
             ? t('config:git.publishToGitHubDesc')
             : t('git.publishBranchDesc')}
@@ -143,8 +141,8 @@ export function ActionButton({
           variant="outline"
           size="sm"
           className={actionButtonClass}
-          disabled={isSyncing || isGitStatusLoading}
-          title={isGitStatusLoading ? t('git.updatingStatus') : t('git.pullThenPush')}
+          disabled={isSyncing || isFetchBlockingCta}
+          title={isFetchBlockingCta ? t('git.updatingStatus') : t('git.pullThenPush')}
         >
           <RefreshCw className={`w-3.5 h-3.5 flex-shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
           {isSyncing ? (
@@ -176,8 +174,8 @@ export function ActionButton({
           variant="outline"
           size="sm"
           className={actionButtonClass}
-          disabled={isPushing || isGitStatusLoading}
-          title={isGitStatusLoading ? t('git.updatingStatus') : undefined}
+          disabled={isPushing || isFetchBlockingCta}
+          title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
           <Upload className="w-3.5 h-3.5 flex-shrink-0" />
           {isPushing ? (
@@ -202,8 +200,8 @@ export function ActionButton({
           variant="outline"
           size="sm"
           className={actionButtonClass}
-          disabled={isPulling || isGitStatusLoading}
-          title={isGitStatusLoading ? t('git.updatingStatus') : undefined}
+          disabled={isPulling || isFetchBlockingCta}
+          title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >
           <Download className="w-3.5 h-3.5 flex-shrink-0" />
           {isPulling ? (

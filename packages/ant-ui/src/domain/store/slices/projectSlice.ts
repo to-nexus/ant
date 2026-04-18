@@ -96,8 +96,8 @@ export const createProjectSlice: StateCreator<
       if (state.setFileContent) state.setFileContent(undefined);
       if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
       // Scrub Git / project config SSOT so the old project's data can't
-      // flash into the next project's UI.
-      if (state.clearGitChanges) state.clearGitChanges();
+      // flash into the next project's UI. Re-fetch is driven by useGitRefresh.
+      if (state.clearGitState) state.clearGitState();
       if (state.clearProjectConfig) state.clearProjectConfig();
       
       removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
@@ -137,9 +137,9 @@ export const createProjectSlice: StateCreator<
       if (state.setFileContent) state.setFileContent(undefined);
       if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
       // Scrub previous project's Git state so `deriveGitMenuState` sees
-      // `{kind: 'loading'}` until the new project's data arrives, instead of
-      // flashing stale `hasUpstream/ahead/behind` from the outgoing project.
-      if (state.clearGitChanges) state.clearGitChanges();
+      // `{kind: 'loading'}` until the new project's data arrives. Re-fetch
+      // is driven by the useGitRefresh application hook.
+      if (state.clearGitState) state.clearGitState();
       if (state.clearProjectConfig) state.clearProjectConfig();
       // Kick off project config fetch (was previously a local effect inside
       // ProjectSection). This populates `githubRepo` which deriveGitMenuState
@@ -236,14 +236,11 @@ export const createProjectSlice: StateCreator<
     if (state.setFileTree) state.setFileTree([]);
     if (state.setFileContent) state.setFileContent(undefined);
     if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
-    // Immediately drop the outgoing feature's git state so the next feature
-    // enters `{kind: 'loading'}` instead of showing stale commit/push counts.
-    // The follow-up refreshGitStatus (below) + bypassFetchTimer path refills.
-    if (state.clearGitChanges) state.clearGitChanges();
-    // Force one-time remote fetch when the user switches features so
-    // `behind` is recomputed against the latest origin. Consumed by
-    // useFeatureBranchManager and reset after use.
-    if (state.setBypassFetchTimer) state.setBypassFetchTimer(true);
+    // Drop the outgoing feature's git state so the next feature enters
+    // `{kind: 'loading'}` instead of showing stale commit/push counts. The
+    // useGitRefresh application hook sees the new selectedFeature and
+    // triggers `fetchGitAll` + `fetchFromRemote`.
+    if (state.clearGitState) state.clearGitState();
     if (state.setRunning) {
       // Only update isRunning flag, don't call full setRunning
       set({ isRunning: newFeatureIsRunning } as any);

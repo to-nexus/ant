@@ -12,6 +12,7 @@ import { useHealthCheck } from '@/application/hooks/ui/useHealthCheck';
 import { useSessionLoader } from '@/application/hooks/ui/useSessionLoader';
 import { useJobRestoration } from '@/application/hooks/ui/useJobRestoration';
 import { useConfigLoader } from '@/application/hooks/ui/useConfigLoader';
+import { useGitRefresh } from '@/application/hooks/git';
 import { ServerDownDetector } from '@/application/hooks/ui/useServerDownDetector';
 import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
@@ -276,15 +277,23 @@ function App() {
     selectedFeature: selectedFeature || null
   });
 
-  // ✅ Config loading (extracted to hook)
-  const gitStatusRefreshTrigger = useStore((state) => state.gitStatusRefreshTrigger);
+  // Centralized git auto-refresh: watches selectedProject/selectedFeature and
+  // session restore, then fires fetchGitAll + fetchFromRemote. Previously this
+  // logic was scattered across ProjectSection/GitStatusButton/useGitChanges
+  // with a carrier counter (`gitStatusRefreshTrigger`) and a bypass flag
+  // (`bypassFetchTimer`). One hook, one trigger, one dedup key.
+  useGitRefresh();
+
+  // ✅ Config loading (extracted to hook). On save, pull fresh /status and
+  // /changes so disk-level flags (remoteUrl, hasGit) reflect the updated
+  // projectConfig.
   const { projectConfigData, isLoadingProjectConfig, handleSaveProjectConfig } = useConfigLoader(
     useStore((state) => state.mainPanelOpenTabs.projectConfig),
     selectedProject || null,
     () => {
-      useStore.getState().refreshGitStatus();
+      const { selectedProject: pid, selectedFeature: ft, fetchGitAll } = useStore.getState();
+      if (pid) fetchGitAll(pid, ft || undefined);
     },
-    gitStatusRefreshTrigger
   );
 
   // ✅ Development: Render tracking for debugging
