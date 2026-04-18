@@ -61,7 +61,12 @@ export async function handleCreateFile(
       `</file>`,
     ].join('\n');
 
-    const decision = decideInvalidationScope(resolved.displayPath);
+    // F2 — new files have no prior content to diff against; decideInvalidationScope
+    // treats an undefined oldContent as "conservative fallback" for manifests.
+    const decision = decideInvalidationScope(resolved.displayPath, {
+      oldContent: undefined,
+      newContent: content,
+    });
     const sideEffects: ToolSideEffect[] = [
       { type: 'fileCreated', path: resolved.displayPath },
       {

@@ -71,13 +71,27 @@ export function applyCodeCommandPolicy(
   if (ctx.activePhase === 'plan' && tracker) {
     const deep = ctx.isDeepDiagnostic === true;
 
+    // F1 — *Passed independent guard (retry/reverify boundary cache preservation).
+    // As long as Axis C invalidation has NOT flipped *Passed back to false, the
+    // runtime deterministically blocks re-execution across retry/reverify entries,
+    // even when *Attempted has been reset for the new diagnostic cycle.
+    if (isTypecheckCommand(command) && tracker.typecheckPassed) {
+      return makeRejection(command,
+        'ALREADY PASSED: tsc --noEmit succeeded earlier in this task and the affected scope has not been invalidated. Proceed to the next verification step.');
+    }
+    if (isBuildCommand(command) && tracker.buildPassed) {
+      return makeRejection(command,
+        'ALREADY PASSED: build succeeded earlier in this task and the affected scope has not been invalidated. Proceed to the next verification step.');
+    }
+    if (isTestCommand(command) && tracker.testPassed) {
+      return makeRejection(command,
+        'ALREADY PASSED: tests succeeded earlier in this task and the affected scope has not been invalidated. Proceed to the next verification step.');
+    }
+
     // Axis G-4 — in deep-diagnostic mode, only "already passed" blocks remain.
     // Re-running a failed verification with different options (e.g. tsc --noEmit --pretty,
     // tsc -p tsconfig.app.json) is explicitly allowed so the LLM can probe.
     if (isTypecheckCommand(command) && tracker.typecheckAttempted) {
-      if (tracker.typecheckPassed) {
-        return makeRejection(command, 'ALREADY PASSED: tsc --noEmit already succeeded in this diagnostic cycle. Proceed to the next verification step.');
-      }
       if (!deep) {
         return makeRejection(command, 'BLOCKED: typecheck already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.');
       }
@@ -92,22 +106,19 @@ export function applyCodeCommandPolicy(
         'BLOCKED: type check (tsc --noEmit) failed. Build embeds type checking internally and will fail with the same errors. Produce the remediation plan from tsc output.');
     }
 
-    if (isBuildCommand(command) && tracker.buildAttempted) {
-      if (tracker.buildPassed) {
-        return makeRejection(command, 'ALREADY PASSED: build already succeeded in this diagnostic cycle. Proceed to the next verification step.');
-      }
-      if (!deep) {
-        return makeRejection(command, 'BLOCKED: build already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.');
-      }
+    if (isBuildCommand(command) && tracker.buildAttempted && !deep) {
+      return makeRejection(command, 'BLOCKED: build already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.');
     }
 
-    if (isTestCommand(command) && tracker.testAttempted) {
-      if (tracker.testPassed) {
-        return makeRejection(command, 'ALREADY PASSED: test already succeeded in this diagnostic cycle. Proceed to the next verification step.');
-      }
-      if (!deep) {
-        return makeRejection(command, 'BLOCKED: test already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.');
-      }
+    // F4 — 3-gate ordering: test requires buildPassed. Tests against an unbuilt
+    // project waste a diagnostic cycle (build embeds typecheck + packaging).
+    if (isTestCommand(command) && !tracker.buildPassed && !deep) {
+      return makeRejection(command,
+        'BLOCKED: run the build command and confirm it passes before running tests. Tests against an unbuilt project waste a diagnostic cycle.');
+    }
+
+    if (isTestCommand(command) && tracker.testAttempted && !deep) {
+      return makeRejection(command, 'BLOCKED: test already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.');
     }
 
     // Mark as attempted (side-effect for the tracker)

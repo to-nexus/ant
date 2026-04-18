@@ -108,15 +108,34 @@ export function deriveInstallDecision(
 }
 
 /**
- * Decide the invalidation scope for a single file write/delete.
+ * F2 — content diff for a manifest edit. Allows `decideInvalidationScope` to
+ * narrow the invalidation scope based on which JSON fields actually changed.
+ * When `oldContent` is `undefined`, the manifest is treated as newly created
+ * (diff unavailable → conservative fallback).
  */
-export function decideInvalidationScope(rawPath: string | undefined): InvalidationDecision {
+export interface ManifestDiff {
+  oldContent?: string;
+  newContent: string;
+}
+
+/**
+ * Decide the invalidation scope for a single file write/delete.
+ *
+ * Principle: when the caller can supply a content diff for a dependency
+ * manifest, this function narrows the scope to the gates logically affected
+ * by the changed fields. Without a diff, the decision falls back to the
+ * conservative `'all'` scope as before.
+ */
+export function decideInvalidationScope(
+  rawPath: string | undefined,
+  diff?: ManifestDiff,
+): InvalidationDecision {
   if (!rawPath) return { scope: 'all', reason: 'missing path' };
   const normalized = rawPath.replace(/^\.\/+/, '').toLowerCase();
   const base = lastSegment(normalized);
 
   if (DEP_MANIFEST_BASENAMES.has(base)) {
-    return { scope: 'all', installNeeded: true, reason: `dep manifest: ${base}` };
+    return decideManifestScope(base, diff);
   }
 
   if (TEST_PATH_PATTERNS.some(p => p.test(normalized))) {
@@ -134,4 +153,92 @@ export function decideInvalidationScope(rawPath: string | undefined): Invalidati
 
   // config/tsconfig/etc. → 'all' conservatively
   return { scope: 'all', reason: `unknown: ${ext || 'no-ext'}` };
+}
+
+function isLockfile(base: string): boolean {
+  return (
+    base.endsWith('.lock') ||
+    base.endsWith('-lock.yaml') ||
+    base.endsWith('-lock.json') ||
+    base === 'yarn.lock' ||
+    base === 'cargo.lock' ||
+    base === 'poetry.lock' ||
+    base === 'pipfile.lock' ||
+    base === 'gemfile.lock' ||
+    base === 'bun.lockb' ||
+    base === 'bun.lock' ||
+    base === 'go.sum'
+  );
+}
+
+/**
+ * Route a dependency manifest edit to a fine-grained scope based on its diff.
+ * Unknown manifest formats fall through to the conservative `'all'` scope.
+ */
+function decideManifestScope(base: string, diff?: ManifestDiff): InvalidationDecision {
+  // Lockfiles are regenerated from their source manifest; source changes are
+  // already covered by the package.json path. Treat lockfile-only edits as
+  // affecting build/runtime linkage but preserving typecheck cache.
+  if (isLockfile(base)) {
+    return { scope: 'build', installNeeded: true, reason: `lockfile: ${base}` };
+  }
+
+  if (!diff || diff.oldContent === undefined) {
+    // New manifest OR no diff supplied: behave as before.
+    return { scope: 'all', installNeeded: true, reason: `dep manifest (no diff): ${base}` };
+  }
+
+  if (base === 'package.json') {
+    return decidePackageJsonScope(diff);
+  }
+
+  // Other manifests (pyproject.toml, Cargo.toml, go.mod, …) are not parsed yet.
+  return { scope: 'all', installNeeded: true, reason: `dep manifest: ${base}` };
+}
+
+function decidePackageJsonScope(diff: ManifestDiff): InvalidationDecision {
+  let oldPkg: Record<string, unknown>;
+  let newPkg: Record<string, unknown>;
+  try {
+    oldPkg = JSON.parse(diff.oldContent!) as Record<string, unknown>;
+    newPkg = JSON.parse(diff.newContent) as Record<string, unknown>;
+  } catch {
+    return { scope: 'all', installNeeded: true, reason: 'package.json parse failed' };
+  }
+
+  const changedFields = new Set<string>();
+  const allKeys = new Set<string>([...Object.keys(oldPkg), ...Object.keys(newPkg)]);
+  for (const k of allKeys) {
+    if (JSON.stringify(oldPkg[k]) !== JSON.stringify(newPkg[k])) changedFields.add(k);
+  }
+
+  if (changedFields.size === 0) {
+    return { scope: 'test', reason: 'package.json edit (no field change)' };
+  }
+
+  // devDependencies alone → test tooling scope (jest/vitest/jsdom/etc.).
+  const onlyDev = changedFields.size === 1 && changedFields.has('devDependencies');
+  if (onlyDev) {
+    return { scope: 'test', installNeeded: true, reason: 'package.json devDependencies only' };
+  }
+
+  // Any runtime dep change → full invalidation (import graph may shift).
+  if (
+    changedFields.has('dependencies') ||
+    changedFields.has('peerDependencies') ||
+    changedFields.has('optionalDependencies')
+  ) {
+    return {
+      scope: 'all',
+      installNeeded: true,
+      reason: `package.json ${[...changedFields].sort().join('+')}`,
+    };
+  }
+
+  // scripts / engines / type / exports / packageManager / workspaces / etc.
+  return {
+    scope: 'all',
+    installNeeded: true,
+    reason: `package.json fields: ${[...changedFields].sort().join(',')}`,
+  };
 }

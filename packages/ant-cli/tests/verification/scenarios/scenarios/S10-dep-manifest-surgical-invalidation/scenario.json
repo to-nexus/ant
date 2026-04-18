@@ -1,0 +1,10 @@
+{
+  "name": "dep-manifest-surgical-invalidation",
+  "description": "R2 — decideInvalidationScope narrows a package.json devDependencies-only edit to scope='test'. Combined with F1, re-running typecheck after a reverify cycle is deterministically blocked with ALREADY PASSED because typecheckPassed survives the narrow invalidation. Covers C17, C18.",
+  "mode": "stub",
+  "timeoutMs": 30000,
+  "expectedChildExitCode": "any",
+  "expected": {
+    "routeSequence": ["plan"]
+  }
+}
