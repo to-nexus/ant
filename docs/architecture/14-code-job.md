@@ -159,6 +159,27 @@ LLM은 `<done>true</done>` 출력 **전에** 다음 단계를 완료한다:
 
 batch split은 단일 검증 실패를 여러 독립 error 태스크로 쪼개어 병렬 처리를 가능하게 한다. 분할된 태스크는 taskQueue에 삽입되고 `plan` 노드로 재진입한다.
 
+## Cache Invalidation Scope
+
+편집된 파일의 영향 범위에 따라 `VerificationTracker`를 선택적으로 무효화한다. `decideInvalidationScope()` (`agents/common/tool/handlers/invalidationScope.ts`)가 경로와 diff를 관찰해 scope를 결정하고, `tool` 노드의 `verificationInvalidated` side effect 처리기가 해당 scope만 tracker에서 떨어뜨린다.
+
+| 편집 대상 | scope | 근거 |
+|---|---|---|
+| 테스트 파일 (`*.test.*`, `tests/**` 등) | `test` | 타입/빌드 캐시와 무관 |
+| 정적 자산 (`.css`, `.md`, 이미지, 폰트 등) | `build` | 번들링에만 영향 |
+| 소스 코드 (`.ts`/`.tsx`/`.js`/`.jsx`/`.mjs`/`.cjs`) | `all` | 타입·빌드·테스트 모두 재검증 필요 |
+| 매니페스트 `package.json` — devDependencies 단독 변경 | `test` + install | 테스트 도구 체인만 교체 |
+| 매니페스트 `package.json` — dependencies / peerDependencies 변경 | `all` + install | 런타임 import 그래프 변동 |
+| 매니페스트 `package.json` — scripts / engines / exports / packageManager 등 | `all` + install | 빌드 파이프라인 / 타입 해석 변동 가능 |
+| 매니페스트 `package.json` — 필드 변화 없음 | `test` | formatting 등 무해 변경 |
+| lockfile (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock` / `cargo.lock` / …) | `build` + install | 의존성 버전 고정 — 타입 캐시는 보존, 빌드·테스트만 재검증 |
+| 타 매니페스트 (`pyproject.toml` / `Cargo.toml` / `go.mod` 등) | `all` + install | diff 파서 없음 → conservative fallback |
+| 알 수 없는 확장자 / 경로 | `all` | conservative fallback |
+
+**보수성 원칙**: diff 부재 / 판별 실패 시 항상 `scope:'all'`로 안전 쪽으로 폴백한다. Narrowing은 캐시 최적화이지 정확성의 전제가 아니다.
+
+런타임 측면에서 `codeCommandPolicy`는 tracker의 `*Passed`를 독립 조건으로 먼저 관찰하기 때문에, invalidation이 실제로 `*Passed=false`로 떨어뜨리지 않는 한 retry/reverify 경계를 넘어서도 이미 통과한 gate의 재실행을 `ALREADY PASSED`로 결정론적으로 차단한다. 이는 프롬프트의 stochastic hint(`cachedPassedSteps`)에 의존하지 않고 관찰 가능한 tracker 상태를 SSOT로 삼는 FPOP Constraints-over-Instructions 원칙의 적용이다.
+
 ## State 복원
 
 runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다:

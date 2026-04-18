@@ -170,7 +170,16 @@ function composeViolationsText(
   retrySummaryText: string | undefined,
 ): string | undefined {
   const parts: string[] = [];
-  if (violations?.length) parts.push(formatViolations(violations));
+
+  // F3b — when retrySummary carries normalized error signals, `verification_incomplete`
+  // violations duplicate that content and create a contradictory signal for the LLM
+  // (same failure described twice in different formats). Suppress them here; other
+  // violation types remain visible.
+  const effectiveViolations = retrySummaryText
+    ? violations?.filter(v => v.type !== 'verification_incomplete')
+    : violations;
+
+  if (effectiveViolations?.length) parts.push(formatViolations(effectiveViolations));
   if (diagnosticRetryContext) parts.push(diagnosticRetryContext);
   if (retrySummaryText) parts.push(retrySummaryText);
   return parts.length ? parts.join('\n') : undefined;
@@ -562,6 +571,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           attemptCount: (state.retries || 0) + 1,
           commandHistory: state.commandHistory,
         }));
+        // F3a — violations were just captured into retrySummaryText's normalizedErrors.
+        // Clearing them prevents composeViolationsText from double-injecting the same
+        // signal via formatViolations + retrySummary in STEP 3.
+        state.violations = [];
         state.conversations = {
           ...state.conversations,
           [CONV_KEYS.NODE_EXECUTE]: [],
@@ -584,6 +597,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
         console.log(`   ♻️  Preserved: _finalTaskLoopCount = ${state._finalTaskLoopCount || 0}\n`);
         if (nextTask && state.context?.featurePath && state._httpJobId) {
           const _taskRef = nextTask;
+          const _summaryText = retrySummaryText;
+          const _passedGates: Array<'typecheck' | 'build' | 'test'> = [];
+          const _tracker = state._verificationTracker;
+          if (_tracker?.typecheckPassed) _passedGates.push('typecheck');
+          if (_tracker?.buildPassed) _passedGates.push('build');
+          if (_tracker?.testPassed) _passedGates.push('test');
           import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
             getExecutionLogger({
               featurePath: state.context!.featurePath!,
@@ -596,6 +615,11 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
               preservedHistoryLength: 0,
               preservedCallIndex: 0,
               violationsFromPrevAttempt: state.violations?.length ?? 0,
+              // F3c — reflect Axis D summary retention policy + tracker cache state at retry entry.
+              retentionMode: 'summary',
+              summaryInjected: !!_summaryText,
+              summaryLen: _summaryText?.length ?? 0,
+              passedGatesAtRetry: _passedGates,
             }).catch(() => {});
           }).catch(() => {});
         }
@@ -612,6 +636,9 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
           attemptCount: (state.retries || 0) + 1,
           commandHistory: state.commandHistory,
         }));
+        // F3a — same invariant as the verification retry path: violations have
+        // been distilled into retrySummaryText, so the originals are spent.
+        state.violations = [];
         state.conversations = {
           ...state.conversations,
           [CONV_KEYS.NODE_EXECUTE]: [],
@@ -662,6 +689,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       state._executeCallIndex = 0;
       state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
       state._executeModifiedFiles = false;
+      // F3a — invariant parity with retry paths: prior-cycle violations must
+      // not leak into the next diagnostic prompt's violationsText. The fresh
+      // diagnostic cycle produces its own violations from rerunning gates.
+      state.violations = [];
 
       // Recompute installNeeded — execute may have modified dependency declaration files
       await recomputeInstallNeeded(state, { detectPmIfMissing: true });

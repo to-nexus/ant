@@ -211,9 +211,15 @@ export class ExecutionLogger {
     taskName: string;
     attempt: number;
     maxAttempts: number;
+    /** @deprecated Axis D retains a compact summary, not raw history. Kept for schema stability. */
     preservedHistoryLength: number;
     preservedCallIndex: number;
     violationsFromPrevAttempt: number;
+    // F3c — observability for Axis D summary retention + tracker cache state.
+    retentionMode?: 'summary' | 'full' | 'none';
+    summaryInjected?: boolean;
+    summaryLen?: number;
+    passedGatesAtRetry?: Array<'typecheck' | 'build' | 'test'>;
   }): Promise<void> {
     await this.log('verification_retry', data, taskId);
   }
