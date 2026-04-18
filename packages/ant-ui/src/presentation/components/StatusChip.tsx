@@ -83,7 +83,7 @@ export function StatusChip({
 
   return (
     <div className="flex items-center gap-2 px-2 h-7 rounded-md bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-      <div className={`flex items-center gap-1.5 ${shouldPulse ? 'animate-pulse' : ''}`}>
+      <div className={`flex items-center gap-1.5 ${shouldPulse ? 'animate-status-pulse' : ''}`}>
         {icon ? (
           // 커스텀 아이콘 사용
           <span className={style.textColor}>{icon}</span>

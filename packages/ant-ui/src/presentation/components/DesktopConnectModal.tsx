@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Modal } from './common/Modal';
+import { Spinner } from './common/async';
 import type { LaunchPhase } from '@/application/hooks/ui/useDesktopBridge';
 import { DESKTOP_DOWNLOAD_URL } from '@/presentation/constants/desktop';
 
@@ -24,7 +25,9 @@ export function DesktopConnectModal({ launchPhase, onRetry, onCancel }: DesktopC
       <div className="flex flex-col items-center py-4">
         {launchPhase === 'connecting' && (
           <>
-            <div className="w-10 h-10 mb-4 border-3 border-gray-200 dark:border-gray-600 border-t-blue-500 rounded-full animate-spin" />
+            <div className="w-10 h-10 mb-4 flex items-center justify-center">
+              <Spinner size="lg" tone="accent" />
+            </div>
             <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
               {t('desktop.connecting')}
             </p>

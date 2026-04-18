@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Timer } from 'lucide-react';
+import { Timer } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 
 interface NodeActivityBannerProps {
   label: string;
@@ -35,7 +36,7 @@ export function NodeActivityBanner({ label, startedAt }: NodeActivityBannerProps
 
   return (
     <div className="mb-3 flex items-center gap-2.5 px-3 py-2 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800">
-      <Loader2 className="w-4 h-4 text-purple-500 dark:text-purple-400 animate-spin flex-shrink-0" />
+      <Spinner size="md" tone="inherit" className="text-purple-500 dark:text-purple-400 flex-shrink-0" />
       <span className="text-sm font-medium text-purple-800 dark:text-purple-200 truncate">
         {label}
       </span>

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { GitCommit, Upload, Download, RefreshCw, Check, Globe } from 'lucide-react';
 import type { GitChangesResponse } from '@ant/shared';
 import { Button } from '../../common/button';
+import { Spinner } from '../../common/async';
 import { useGitState } from '@/application/hooks/git';
 import { deriveGitActionCta } from '@/domain/git/selectors';
 
@@ -144,7 +145,11 @@ export function ActionButton({
           disabled={isSyncing || isFetchBlockingCta}
           title={isFetchBlockingCta ? t('git.updatingStatus') : t('git.pullThenPush')}
         >
-          <RefreshCw className={`w-3.5 h-3.5 flex-shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
+          {isSyncing ? (
+            <Spinner size="sm" tone="inherit" className="flex-shrink-0" />
+          ) : (
+            <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+          )}
           {isSyncing ? (
             <span className="action-label truncate">{t('git.syncingFromRemote')}</span>
           ) : (

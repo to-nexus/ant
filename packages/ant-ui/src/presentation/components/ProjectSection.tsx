@@ -19,6 +19,10 @@ import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { CreationWizardModal } from './CreationWizardModal';
 import { deriveGitMenuState } from '@/domain/git/selectors';
 import { useGitState, useGitActions } from '@/application/hooks/git';
+import {
+  selectProjectConfigMissing,
+  selectProjectConfigExists,
+} from '@/domain/store/selectors';
 
 export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const { t } = useTranslation('explorer');
@@ -30,11 +34,14 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     fetchProjects,
     openMainPanelTab,
     backendMode,
-    projectConfig,
-    projectConfigExists,
     fetchProjectConfig,
     createProjectConfig,
   } = useStore();
+  // Primitive selectors keep this component re-rendering only on the fields
+  // it actually uses. See docs/architecture/ui-async-policy.md §Zustand.
+  const projectConfigData = useStore((s) => s.projectConfig.data);
+  const projectConfigMissing = useStore(selectProjectConfigMissing);
+  const projectConfigReady = useStore(selectProjectConfigExists);
   const { gitStatus, gitChanges, gitStatusPhase } = useGitState();
   const { fetchGitAll, fetchFromRemote, setGitStatusPhase } = useGitActions();
   const [showGitMenu, setShowGitMenu] = useState(false);
@@ -81,7 +88,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const handleConfigClick = async () => {
     if (!selectedProject) return;
 
-    if (projectConfigExists === false) {
+    if (projectConfigMissing) {
       try {
         await createProjectConfig(selectedProject, backendMode);
       } catch (error) {
@@ -267,7 +274,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
 
             {/* Git Control Button */}
             <div className="relative" ref={gitMenuRef}>
-              {!projectConfig?.githubRepo ? (
+              {!projectConfigData?.githubRepo ? (
                 <Tooltip
                   content={
                     <div className="max-w-xs space-y-2">
@@ -313,7 +320,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
                 const menu = deriveGitMenuState({
                   gitStatus,
                   gitChanges,
-                  githubRepo: projectConfig?.githubRepo ?? null,
+                  githubRepo: projectConfigData?.githubRepo ?? null,
                 });
                 const disabledClass = 'opacity-40 cursor-not-allowed';
                 const enabledClass = 'hover:bg-gray-100 dark:hover:bg-gray-700';
@@ -430,7 +437,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
           )}
 
           {/* Warning Messages */}
-          {projectConfigExists === false && (
+          {projectConfigMissing && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>
@@ -443,7 +450,7 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
             </div>
           )}
 
-          {backendMode !== 'cloud' && projectConfigExists && !projectConfig?.localPath && projectConfig?.repoType !== 'cloud' && (
+          {backendMode !== 'cloud' && projectConfigReady && !projectConfigData?.localPath && projectConfigData?.repoType !== 'cloud' && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
                 <span className="text-orange-600 dark:text-orange-400 text-xs flex-shrink-0">⚠️</span>

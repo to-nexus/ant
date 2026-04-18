@@ -135,7 +135,9 @@ Clean Architecture layers:
 - `presentation/` → `application/` → `domain/` ← `infrastructure/`
 - Presentation uses Application hooks only (no direct domain access)
 
-State is managed by a single **Zustand store** with 12 slices (project, file, job, sse, ui, git, preview, auth, config, chat, transfer, reset).
+State is managed by a single **Zustand store** with 12 slices (project, file, job, sse, ui, git, preview, auth, config, chat, transfer, reset). Slices that represent remote resources store flat `AsyncFields<T>` (status / data / error / refreshing); see [docs/architecture/ui-async-policy.md](docs/architecture/ui-async-policy.md).
+
+**Async UI Policy**: every loading / empty / error state flows through `<AsyncBoundary>` with one of five surfaces (page / panel / region / modal / inline) plus an ambient nav-bar progress bar. `Loader2` + `animate-spin` + `animate-pulse` are confined to the `common/async/primitives/` directory; ESLint and `pnpm legacy:sweep` enforce the boundary. Read `docs/architecture/ui-async-policy.md` before adding a new fetch, spinner, or status indicator.
 
 Backend communication:
 - **HTTP**: `infrastructure/http/api.ts` — local uses Vite proxy to `localhost:4100/4101`

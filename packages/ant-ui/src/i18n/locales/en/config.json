@@ -3,9 +3,7 @@
     "title": "Project Config",
     "saved": "Configuration saved successfully!",
     "saveFailed": "Failed to save configuration. Please try again.",
-    "revertConfirm": "Revert all changes?",
-    "loading": "Loading project configuration...",
-    "noConfig": "No project configuration loaded."
+    "revertConfirm": "Revert all changes?"
   },
   "accountConfig": {
     "title": "Account Configuration"

@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Monitor, Loader2 } from 'lucide-react';
+import { Monitor } from 'lucide-react';
+import { Spinner } from '../common/async';
 import { useStore } from '@/domain/store';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import { usePreviewManager } from '../FeatureSection/hooks/usePreviewManager';
@@ -98,7 +99,7 @@ export function PreviewConfigEditor() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <Spinner size="lg" tone="muted" />
       </div>
     );
   }

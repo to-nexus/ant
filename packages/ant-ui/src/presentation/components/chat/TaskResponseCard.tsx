@@ -10,7 +10,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, MessageSquare } from 'lucide-react';
+import { ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { MessageContent } from '@/domain/models/chat';
@@ -81,7 +82,7 @@ export function TaskResponseCard({ content, isStreaming }: TaskResponseCardProps
       >
         <div className="flex items-center gap-2">
           {isActive ? (
-            <Loader2 className="w-4 h-4 text-gray-500 dark:text-gray-400 animate-spin flex-shrink-0" />
+            <Spinner size="md" tone="muted" className="flex-shrink-0" />
           ) : (
             <MessageSquare className="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0" />
           )}

@@ -6,7 +6,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Loader2, Ban } from 'lucide-react';
+import { ChevronDown, ChevronRight, Ban } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import type { MessageContent } from '@/domain/models/chat';
 import { FileIcon } from '@/shared/utils/file-icons';
 
@@ -180,7 +181,7 @@ export function FileCard({ content, operation }: FileCardProps) {
         <div className="flex items-center gap-2">
           {/* File Icon - Shows loading spinner when active, file type icon when complete */}
           {isActive ? (
-            <Loader2 className={`w-4 h-4 ${config.iconColor} animate-spin flex-shrink-0`} />
+            <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${config.iconColor}`} />
           ) : (
             <FileIcon filePath={filePath} size={16} />
           )}

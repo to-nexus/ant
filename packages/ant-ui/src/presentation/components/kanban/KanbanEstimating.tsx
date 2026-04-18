@@ -1,22 +1,21 @@
 import { useTranslation } from 'react-i18next';
+import { Skeleton } from '@/presentation/components/common/async';
 
 /**
- * SkeletonCard - Placeholder card during decompose/revise
- * @param delay - Animation delay in milliseconds (for staggered effect)
+ * SkeletonCard - Placeholder card during decompose/revise.
+ * The shell uses the `card` skeleton variant (shared primitive). The inner
+ * rows use the `rect` variant with staggered `delayMs` for a subtle cascade.
  */
 function SkeletonCard({ delay = 0 }: { delay?: number }) {
   return (
-    <div 
-      className="animate-pulse p-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800"
-      style={{ animationDelay: `${delay}ms` }}
-    >
+    <Skeleton variant="card" delayMs={delay}>
       <div className="flex items-start gap-2 mb-2">
-        <div className="h-4 w-12 bg-gray-300 dark:bg-gray-600 rounded"></div>
-        <div className="flex-1 h-4 bg-gray-300 dark:bg-gray-600 rounded"></div>
-        <div className="h-4 w-16 bg-gray-300 dark:bg-gray-600 rounded"></div>
+        <Skeleton variant="rect" className="h-4 w-12 bg-gray-300 dark:bg-gray-600" delayMs={delay} />
+        <Skeleton variant="rect" className="flex-1 h-4 bg-gray-300 dark:bg-gray-600" delayMs={delay + 60} />
+        <Skeleton variant="rect" className="h-4 w-16 bg-gray-300 dark:bg-gray-600" delayMs={delay + 120} />
       </div>
-      <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-    </div>
+      <Skeleton variant="rect" className="h-3 w-3/4" delayMs={delay + 180} />
+    </Skeleton>
   );
 }
 
