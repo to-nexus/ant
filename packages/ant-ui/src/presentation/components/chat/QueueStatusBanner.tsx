@@ -3,6 +3,7 @@
  */
 
 import { useStore } from '@/domain/store';
+import { Spinner } from '@/presentation/components/common/async';
 
 export function QueueStatusBanner() {
   const isQueued = useStore((state) => state.isQueued);
@@ -17,7 +18,7 @@ export function QueueStatusBanner() {
   return (
     <div className="mx-4 mb-3 px-4 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
       {/* Spinner */}
-      <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+      <Spinner size="md" className="text-amber-500" />
       
       {/* Text */}
       <span className="text-sm text-amber-600 dark:text-amber-400">

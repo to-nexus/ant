@@ -5,7 +5,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Terminal, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Terminal, ChevronDown, ChevronRight } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import Convert from 'ansi-to-html';
 import type { MessageContent } from '@/domain/models/chat';
 import { TruncatableText } from '@/presentation/components/common/TruncatableText';
@@ -107,7 +108,7 @@ export function TerminalCard({ content }: TerminalCardProps) {
         <div className="flex items-center gap-2">
           {/* Status Icon */}
           {isActive ? (
-            <Loader2 className={`w-4 h-4 ${config.iconColor} animate-spin flex-shrink-0`} />
+            <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${config.iconColor}`} />
           ) : (
             <Terminal className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
           )}

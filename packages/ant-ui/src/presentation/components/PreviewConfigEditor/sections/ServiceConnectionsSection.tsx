@@ -2,12 +2,12 @@ import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
   ChevronRight,
-  Loader2,
   Search,
   Save,
   Plus,
   Package,
 } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import type { ServiceConnection } from '@/infrastructure/http/api';
 import { ConnectionRow } from '../components/ConnectionRow';
 import { AddConnectionForm } from '../components/AddConnectionForm';
@@ -87,7 +87,7 @@ export function ServiceConnectionsSection({
                      disabled:opacity-50"
             title={t('preview.autoDetectTitle', 'Re-scan project files for connections')}
           >
-            {isDetecting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+            {isDetecting ? <Spinner size="sm" tone="inherit" /> : <Search className="w-3 h-3" />}
             {t('preview.autoDetect', 'Auto Detect')}
           </button>
         </div>

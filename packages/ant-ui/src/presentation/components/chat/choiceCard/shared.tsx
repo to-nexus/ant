@@ -11,7 +11,8 @@
 import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Play, Loader2, XCircle } from 'lucide-react';
+import { Play, XCircle } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
 import { submitChoiceDismiss } from '@/infrastructure/http/api';
 import type { MessageContent } from '@/domain/models/chat';
@@ -273,7 +274,7 @@ export function TwoButtonLayout({
       >
         {isLoading ? (
           <span className="flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Spinner size="md" tone="inverse" />
             {positiveLoadingLabel || 'Processing...'}
           </span>
         ) : (
@@ -328,7 +329,7 @@ export function VerticalChoiceLayout({
       >
         {isLoading && loadingAction === 'positive' ? (
           <span className="flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Spinner size="md" tone="inverse" />
             처리 중...
           </span>
         ) : (
@@ -343,7 +344,7 @@ export function VerticalChoiceLayout({
       >
         {isLoading && loadingAction === 'neutral' ? (
           <span className="flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Spinner size="md" tone="inherit" />
             처리 중...
           </span>
         ) : (

@@ -46,8 +46,7 @@
     "startServerPlain": "Run pnpm dev:cli to start the server",
     "error": "Connection Error",
     "disconnected": "Disconnected",
-    "selectFile": "Select a file from Explorer to edit.",
-    "noConfig": "No project configuration loaded."
+    "selectFile": "Select a file from Explorer to edit."
   },
   "featureDropdown": {
     "featureNamePlaceholder": "Feature name..."

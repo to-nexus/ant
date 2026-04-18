@@ -4,9 +4,9 @@ import {
   X,
   Trash2,
   Pencil,
-  Loader2,
   MessageSquare,
 } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import type {
   ServiceConnection,
   ConnectionResolution,
@@ -400,7 +400,7 @@ function AntProjectFields({
           </button>
           {loadingProjects ? (
             <span className="text-[10px] text-gray-400 px-2 py-0.5 flex items-center gap-1">
-              <Loader2 className="w-2.5 h-2.5 animate-spin" /> Loading...
+              <Spinner size="sm" tone="inherit" /> Loading...
             </span>
           ) : (
             projects.map((p) => (
@@ -429,7 +429,7 @@ function AntProjectFields({
           <div className="flex flex-wrap gap-1">
             {loadingFeatures ? (
               <span className="text-[10px] text-gray-400 px-2 py-0.5 flex items-center gap-1">
-                <Loader2 className="w-2.5 h-2.5 animate-spin" /> Loading...
+                <Spinner size="sm" tone="inherit" /> Loading...
               </span>
             ) : features.length === 0 ? (
               <span className="text-[10px] text-gray-400 px-2 py-0.5 italic">No features found</span>

@@ -26,6 +26,7 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
     // State
     // ==================
     recursionLimit: 50,
+    systemConfigStatus: 'idle',
     backendMode,
     localBackendPort,
 
@@ -37,15 +38,19 @@ export const createConfigSlice: StateCreator<any, [], [], ConfigSlice> = (set, g
     },
 
     loadSystemConfig: async () => {
+      set({ systemConfigStatus: 'loading' });
       try {
         const response = await authFetch(`${API_BASE()}/system/config`);
         if (response.ok) {
           const config = await response.json();
-          set({ recursionLimit: config.recursionLimit });
+          set({ recursionLimit: config.recursionLimit, systemConfigStatus: 'ready' });
           console.log(`[Store] System config loaded: recursionLimit=${config.recursionLimit}`);
+        } else {
+          set({ systemConfigStatus: 'error' });
         }
       } catch (error) {
         console.error('[Store] Failed to load system config:', error);
+        set({ systemConfigStatus: 'error' });
       }
     },
 

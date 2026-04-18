@@ -154,7 +154,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
                 {actorInfo.icon}
                 {data.isActive && (
                   <div className="absolute -top-1 -right-1">
-                    <Settings className="w-5 h-5 text-green-500 animate-spin" />
+                    <Settings className="w-5 h-5 text-green-500 animate-cog-spin" />
                   </div>
                 )}
               </div>
@@ -220,7 +220,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
               {actorInfo.icon}
               {data.isActive && (
                 <div className="absolute -top-1 -right-1">
-                  <Settings className="w-5 h-5 text-green-500 animate-spin" />
+                  <Settings className="w-5 h-5 text-green-500 animate-cog-spin" />
                 </div>
               )}
             </div>
@@ -257,7 +257,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
           'actor-node flex flex-col items-center justify-center relative cursor-pointer',
           'border-2 border-dashed transition-all duration-200 hover:shadow-lg',
           colorClass,
-          data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50 animate-pulse'
+          data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50 animate-status-pulse'
         )}
         style={{
           width: 120,
@@ -289,7 +289,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
           {data.icon || actorInfo?.icon}
           {data.isActive && (
             <div className="absolute -top-0.5 -right-0.5">
-              <Settings className="w-4 h-4 text-green-500 animate-spin" />
+              <Settings className="w-4 h-4 text-green-500 animate-cog-spin" />
             </div>
           )}
         </div>
@@ -307,7 +307,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
         'actor-node rounded-full flex flex-col items-center justify-center relative',
         'border-2 transition-all duration-200 cursor-pointer hover:shadow-lg',
         colorClass,
-        data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50 animate-pulse'
+        data.isActive && 'ring-4 ring-green-500 ring-opacity-50 shadow-lg shadow-green-500/50 animate-status-pulse'
       )}
       style={{
         width: 100,
@@ -323,7 +323,7 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
         {data.icon || actorInfo?.icon}
         {data.isActive && (
           <div className="absolute -top-0.5 -right-0.5">
-            <Settings className="w-4 h-4 text-green-500 animate-spin" />
+            <Settings className="w-4 h-4 text-green-500 animate-cog-spin" />
           </div>
         )}
       </div>

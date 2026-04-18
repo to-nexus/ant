@@ -6,9 +6,9 @@ import {
   ExternalLink,
   AlertCircle,
   CheckCircle,
-  Loader2,
   X,
 } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import type { PreviewStatus } from '@/infrastructure/http/api';
 
 export function PreviewControlsSection({
@@ -55,12 +55,12 @@ export function PreviewControlsSection({
           </div>
         ) : phase === 'stopping' ? (
           <div className="flex items-center gap-1.5">
-            <Loader2 className="w-4 h-4 text-orange-500 animate-spin" />
+            <Spinner size="md" className="text-orange-500" />
             <span className="text-sm font-medium text-orange-700 dark:text-orange-300">{t('preview.stopping')}</span>
           </div>
         ) : phase === 'running' || phase === 'starting' || phase === 'installing' ? (
           <div className="flex items-center gap-1.5">
-            <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+            <Spinner size="md" className="text-blue-500" />
             <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
               {phase === 'starting' ? t('preview.starting')
                 : phase === 'installing' ? t('preview.installing')
@@ -93,7 +93,7 @@ export function PreviewControlsSection({
                      transition-colors"
           >
             {isPreviewLoading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Spinner size="sm" tone="inherit" />
             ) : (
               <Play className="w-3.5 h-3.5" />
             )}
@@ -109,7 +109,7 @@ export function PreviewControlsSection({
                        transition-colors"
             >
               {phase === 'stopping' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Spinner size="sm" tone="inherit" />
               ) : (
                 <Square className="w-3.5 h-3.5" />
               )}

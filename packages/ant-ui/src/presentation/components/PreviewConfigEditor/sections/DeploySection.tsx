@@ -2,13 +2,13 @@ import { useTranslation } from 'react-i18next';
 import {
   Rocket,
   Globe,
-  Loader2,
   AlertCircle,
   Square,
   ExternalLink,
   Moon,
   AlertTriangle,
 } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
 import { ansiConverter } from '../utils';
 
@@ -55,7 +55,7 @@ export function DeploySection({
     if (phase === 'building') {
       return (
         <div className="flex items-center gap-1.5">
-          <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+          <Spinner size="md" className="text-blue-500" />
           <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
             {t('preview.deploy.building', 'Building...')}
           </span>
@@ -65,7 +65,7 @@ export function DeploySection({
     if (phase === 'deploying') {
       return (
         <div className="flex items-center gap-1.5">
-          <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+          <Spinner size="md" className="text-blue-500" />
           <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
             {t('preview.deploy.deploying', 'Deploying...')}
           </span>
@@ -75,7 +75,7 @@ export function DeploySection({
     if (phase === 'starting') {
       return (
         <div className="flex items-center gap-1.5">
-          <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />
+          <Spinner size="md" className="text-indigo-500" />
           <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
             {t('preview.deploy.starting', 'Waking up...')}
           </span>
@@ -152,7 +152,7 @@ export function DeploySection({
                      transition-colors"
           >
             {isDeployLoading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Spinner size="sm" tone="inherit" />
             ) : (
               <Rocket className="w-3.5 h-3.5" />
             )}

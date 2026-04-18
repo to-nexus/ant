@@ -11,7 +11,6 @@ import { useResizeHandlers } from '@/application/hooks/ui/useResizeHandlers';
 import { useHealthCheck } from '@/application/hooks/ui/useHealthCheck';
 import { useSessionLoader } from '@/application/hooks/ui/useSessionLoader';
 import { useJobRestoration } from '@/application/hooks/ui/useJobRestoration';
-import { useConfigLoader } from '@/application/hooks/ui/useConfigLoader';
 import { useGitRefresh } from '@/application/hooks/git';
 import { ServerDownDetector } from '@/application/hooks/ui/useServerDownDetector';
 import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
@@ -19,7 +18,9 @@ import { MainContentArea } from '@/presentation/components/layout/MainContentAre
 import { ChatSidebarWrapper } from '@/presentation/components/layout/ChatSidebarWrapper';
 import { LocalSetupGuide } from '@/presentation/pages/LocalSetupGuide';
 import { QuickStart } from '@/presentation/pages/QuickStart';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
+import { Skeleton, Spinner } from '@/presentation/components/common/async';
+import { selectProjectsLoaded } from '@/domain/store/selectors';
 import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
@@ -125,7 +126,7 @@ function App() {
   const userEmail = useStore((state) => state.userEmail);
   const backendMode = useStore((state) => state.backendMode);
   const projects = useStore((state) => state.projects);
-  const projectsLoaded = useStore((state) => state.projectsLoaded);
+  const projectsLoaded = useStore(selectProjectsLoaded);
   
   const onboardingSkipped = useStore((state) => state.onboardingSkipped);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
@@ -284,17 +285,9 @@ function App() {
   // (`bypassFetchTimer`). One hook, one trigger, one dedup key.
   useGitRefresh();
 
-  // ✅ Config loading (extracted to hook). On save, pull fresh /status and
-  // /changes so disk-level flags (remoteUrl, hasGit) reflect the updated
-  // projectConfig.
-  const { projectConfigData, isLoadingProjectConfig, handleSaveProjectConfig } = useConfigLoader(
-    useStore((state) => state.mainPanelOpenTabs.projectConfig),
-    selectedProject || null,
-    () => {
-      const { selectedProject: pid, selectedFeature: ft, fetchGitAll } = useStore.getState();
-      if (pid) fetchGitAll(pid, ft || undefined);
-    },
-  );
+  // ✅ Project config is owned by projectConfigSlice now. MainContentArea
+  // subscribes to the slice directly via useAsyncResource and dispatches
+  // `updateProjectConfig` on save; no prop drilling from App.tsx needed.
 
   // ✅ Development: Render tracking for debugging
   if (import.meta.env.DEV && renderCountRef.current > 1) {
@@ -306,8 +299,6 @@ function App() {
       isRunning,
       kanbanDataSource: kanbanData?.dataSource,
       workflowActiveNodes: workflowData?.activeNodes?.length ?? 0,
-      projectConfigData: !!projectConfigData,
-      isLoadingProjectConfig,
       isExplorerCollapsed,
       explorerWidth,
       isResizingExplorer,
@@ -383,7 +374,9 @@ function App() {
     );
   }
 
-  // ✅ Loading gate: authenticated but projects not yet loaded — prevent normal UI flash
+  // ✅ Boot gate: authenticated but projects not yet loaded — prevent normal
+  // UI flash. Uses a delayed spinner (via Spinner primitive) so fast boots
+  // don't flicker; the AppNavBar stays mounted to avoid a header jump.
   if (!!userEmail && !projectsLoaded) {
     return (
       <ToastProvider>
@@ -391,7 +384,7 @@ function App() {
           <div className="h-screen bg-[#f6f8fa] dark:bg-[#0d1117] flex flex-col transition-colors">
             <AppNavBar />
             <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="w-6 h-6 animate-spin text-gray-400 dark:text-gray-500" />
+              <Spinner size="lg" tone="muted" />
             </div>
           </div>
         </AlertModalProvider>
@@ -447,30 +440,12 @@ function App() {
           // Docker container is shared, timestamp forces VS Code to reload workspace
           <div className={`flex-1 pt-16 transition-opacity duration-350 ${viewOpacity}`}>
             {ideConnecting || !ideBaseUrl ? (
-              <div className="w-full h-full flex items-center justify-center">
-                <div className="max-w-lg w-full px-6">
-                  <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
-                    <div className="h-4 w-44 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4" />
-                    <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
-                    <div className="h-3 w-5/6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-6" />
-                    <div className="text-sm text-gray-600 dark:text-gray-300">
-                      {ideConnectError ? `IDE 로딩 실패: ${ideConnectError}` : 'IDE 컨테이너를 시작하는 중입니다...'}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <IdeLoadingOverlay message={ideConnectError ? 'failed' : 'connecting'} errorMessage={ideConnectError} />
             ) : (
               <div className="relative w-full h-full">
                 {!ideFrameLoaded && (
                   <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-[#0d1117] z-10">
-                    <div className="max-w-lg w-full px-6">
-                      <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
-                        <div className="h-4 w-44 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-4" />
-                        <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
-                        <div className="h-3 w-5/6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-6" />
-                        <div className="text-sm text-gray-600 dark:text-gray-300">IDE를 로드하는 중...</div>
-                      </div>
-                    </div>
+                    <IdeLoadingOverlay message="loading" />
                   </div>
                 )}
                 <iframe
@@ -515,9 +490,6 @@ function App() {
 
           {/* Main Content Area */}
           <MainContentArea
-            projectConfigData={projectConfigData}
-            isLoadingProjectConfig={isLoadingProjectConfig}
-            onSaveProjectConfig={handleSaveProjectConfig}
             connectionStatus={connectionStatus}
             splitLayout={splitLayout}
             kanbanData={kanbanData}
@@ -550,6 +522,39 @@ function App() {
       )}
     </AlertModalProvider>
     </ToastProvider>
+  );
+}
+
+/**
+ * Small helper used by the codeIde view's loading states. Centralises the
+ * skeleton + spinner + i18n message so both the "container starting" and
+ * "iframe loading" phases share one visual.
+ */
+function IdeLoadingOverlay({
+  message,
+  errorMessage,
+}: {
+  message: 'connecting' | 'loading' | 'failed';
+  errorMessage?: string;
+}) {
+  const { t } = useTranslation('async');
+  const text =
+    message === 'failed'
+      ? t('ide.failed', { message: errorMessage ?? '' })
+      : message === 'connecting'
+        ? t('ide.connecting')
+        : t('ide.loading');
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      <div className="max-w-lg w-full px-6">
+        <div className="rounded-xl border border-gray-200 dark:border-[#30363d] bg-white dark:bg-[#161b22] p-6 shadow-sm">
+          <Skeleton variant="text" className="w-44 mb-4" />
+          <Skeleton variant="text" className="w-full mb-2" delayMs={80} />
+          <Skeleton variant="text" className="w-5/6 mb-6" delayMs={160} />
+          <div className="text-sm text-gray-600 dark:text-gray-300">{text}</div>
+        </div>
+      </div>
+    </div>
   );
 }
 

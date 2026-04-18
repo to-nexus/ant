@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react';
+import { Spinner } from './async';
 import { useTranslation } from 'react-i18next';
 
 interface ConnectionBannerProps {
@@ -22,7 +22,7 @@ export function ConnectionBanner({ visible }: ConnectionBannerProps) {
                  text-amber-800 dark:text-amber-200 text-sm font-medium
                  animate-fadeIn select-none"
     >
-      <Loader2 className="w-4 h-4 animate-spin" />
+      <Spinner size="md" tone="inherit" />
       <span>{t('serverDown.connecting', 'Trying to reconnect to server...')}</span>
     </div>
   );

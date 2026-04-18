@@ -183,7 +183,7 @@ export function AgentJobToolbar({
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium">{job.label}</span>
                     {activeJobs[job.value] && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse flex-shrink-0" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-status-pulse flex-shrink-0" />
                     )}
                   </div>
                   <span className="text-[10px] text-gray-500 dark:text-gray-400">{job.description}</span>

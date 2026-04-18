@@ -1,0 +1,21 @@
+{
+  "loading": {
+    "default": "Loading…",
+    "longWait": "Still loading — this is taking longer than usual."
+  },
+  "empty": {
+    "default": "No data to display.",
+    "projectConfig": "No project configuration has been created yet.",
+    "noFile": "Select a file from Explorer to edit."
+  },
+  "error": {
+    "default": "Something went wrong.",
+    "retry": "Retry",
+    "dismiss": "Dismiss"
+  },
+  "ide": {
+    "connecting": "Starting the IDE container…",
+    "loading": "Loading the IDE…",
+    "failed": "IDE failed to load: {{message}}"
+  }
+}

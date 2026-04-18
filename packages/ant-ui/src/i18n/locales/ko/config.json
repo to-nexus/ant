@@ -3,9 +3,7 @@
     "title": "프로젝트 설정",
     "saved": "설정이 저장되었습니다!",
     "saveFailed": "설정 저장에 실패했습니다. 다시 시도해주세요.",
-    "revertConfirm": "변경사항을 모두 되돌릴까요?",
-    "loading": "프로젝트 설정 로딩 중...",
-    "noConfig": "프로젝트 설정이 로드되지 않았습니다."
+    "revertConfirm": "변경사항을 모두 되돌릴까요?"
   },
   "accountConfig": {
     "title": "계정 설정"

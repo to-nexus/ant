@@ -1,42 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
-import { fetchProjectConfig } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 
 /**
- * Watches `projectConfig.githubRepo` for the given project. Previously this
- * hook also re-ran when a global `gitStatusRefreshTrigger` counter bumped —
- * that carrier is gone. Re-loads now happen on:
- *   - project change
- *   - opening the project-config tab (handled by the existing
- *     `mainPanelOpenTabs.projectConfig` dep)
- * ConfigEditor's save handler calls `fetchGitAll` directly when it mutates
- * the repo URL, which triggers any downstream selector re-renders.
+ * Returns whether the currently-selected project has a GitHub repo URL
+ * configured. Previously this hook ran its own `fetchProjectConfig` call
+ * on tab open; that duplicated projectConfigSlice and left stale data in
+ * the failure path. Now it simply projects off the slice which is the
+ * single source of truth.
+ *
+ *   status === 'idle' | 'loading' → null  (unknown yet)
+ *   status === 'ready' | 'empty'  → boolean (based on data.githubRepo)
+ *   status === 'error'            → false  (conservative: hide the action)
  */
-export function useGitHubRepoConfig(selectedProject: string | undefined) {
-  const mainPanelOpenTabs = useStore((state) => state.mainPanelOpenTabs);
-  const prevProjectConfigTabOpenRef = useRef(mainPanelOpenTabs.projectConfig);
-  const [hasGitHubRepo, setHasGitHubRepo] = useState<boolean | null>(null);
+export function useGitHubRepoConfig(selectedProject: string | undefined): boolean | null {
+  const status = useStore((s) => s.projectConfig.status);
+  const githubRepo = useStore((s) => s.projectConfig.data?.githubRepo);
 
-  useEffect(() => {
-    if (!selectedProject) {
-      setHasGitHubRepo(null);
-      prevProjectConfigTabOpenRef.current = mainPanelOpenTabs.projectConfig;
-      return;
-    }
-
-    const checkConfig = async () => {
-      try {
-        const config = await fetchProjectConfig(selectedProject);
-        setHasGitHubRepo(!!config?.githubRepo);
-      } catch (error) {
-        console.error('[useGitHubRepoConfig] Failed to fetch config:', error);
-        setHasGitHubRepo(false);
-      }
-    };
-
-    prevProjectConfigTabOpenRef.current = mainPanelOpenTabs.projectConfig;
-    checkConfig();
-  }, [selectedProject, mainPanelOpenTabs.projectConfig]);
-
-  return hasGitHubRepo;
+  if (!selectedProject) return null;
+  if (status === 'idle' || status === 'loading') return null;
+  if (status === 'error') return false;
+  return !!githubRepo;
 }

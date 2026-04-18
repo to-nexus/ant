@@ -1,0 +1,21 @@
+{
+  "loading": {
+    "default": "불러오는 중…",
+    "longWait": "아직 불러오는 중입니다 — 평소보다 오래 걸리고 있습니다."
+  },
+  "empty": {
+    "default": "표시할 데이터가 없습니다.",
+    "projectConfig": "아직 생성된 프로젝트 설정이 없습니다.",
+    "noFile": "탐색기에서 파일을 선택하여 편집하세요."
+  },
+  "error": {
+    "default": "문제가 발생했습니다.",
+    "retry": "다시 시도",
+    "dismiss": "닫기"
+  },
+  "ide": {
+    "connecting": "IDE 컨테이너를 시작하는 중입니다…",
+    "loading": "IDE를 로드하는 중입니다…",
+    "failed": "IDE 로딩 실패: {{message}}"
+  }
+}

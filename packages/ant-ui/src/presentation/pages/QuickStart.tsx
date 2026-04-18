@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, Loader2, AlertCircle, Check, X, ArrowRight, Compass, Code2 } from 'lucide-react';
+import { Send, AlertCircle, Check, X, ArrowRight, Compass, Code2 } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
 import { createProject, createFeature, addChatUserMessage } from '@/infrastructure/http/api';
@@ -144,7 +145,7 @@ function StepRow({
             <Check className="w-3 h-3 text-white dark:text-gray-900" strokeWidth={3} />
           </div>
         ) : status === 'active' ? (
-          <Loader2 className="w-5 h-5 text-emerald-500 dark:text-emerald-400 animate-spin" />
+          <Spinner size="lg" className="text-emerald-500 dark:text-emerald-400" />
         ) : (
           <div className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600" />
         )}
@@ -537,7 +538,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
                   <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                   <span className="relative flex items-center gap-2">
                     {isSubmitting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Spinner size="md" tone="inherit" />
                     ) : (
                       <Send className="w-4 h-4" />
                     )}
