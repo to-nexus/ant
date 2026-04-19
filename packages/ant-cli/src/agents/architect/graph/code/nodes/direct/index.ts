@@ -29,10 +29,24 @@ import { accumulateTokenUsage } from '../../../../../common/graph/llmHelpers';
 import { invokeLLMWithTools } from '../shared/invokeLLMWithTools';
 import { runToolCallsAndCollect } from '../shared/runToolCallsAndCollect';
 import { parseReActResponse } from '../shared/parseReActResponse';
+import { shouldEscalate } from './shouldEscalate';
 
 const registry = createCodeToolRegistry();
 
 const ONESHOT_MAX_STEPS = 2;
+
+/**
+ * Tool names whose successful execution implies a "touched" file.
+ * Used by the runtime-escalate heuristic to count how many distinct files
+ * the direct loop has mutated so far. Includes shadow aliases.
+ */
+const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'edit_file',
+  'create_file',
+  'delete_file',
+  'file',
+  'write_file',
+]);
 
 function getExploratoryMaxSteps(): number {
   const raw = process.env.ANT_DIRECT_MAX_STEPS;
@@ -104,6 +118,7 @@ export async function direct(
   let success = false;
   let needsEscalation = false;
   let stepsExecuted = 0;
+  const touchedFiles = new Set<string>();
 
   for (let step = 0; step < maxSteps; step++) {
     stepsExecuted = step + 1;
@@ -218,6 +233,23 @@ export async function direct(
         content: batch.toolResultBlocks as any,
       });
       state.recursionCount = (state.recursionCount || 0) + 1;
+
+      // Aggregate touched files from write-style tool calls for runtime escalate.
+      for (const ev of batch.events) {
+        if (!WRITE_TOOL_NAMES.has(ev.toolName)) continue;
+        const path = ev.args && typeof ev.args === 'object' ? (ev.args as any).path : undefined;
+        if (typeof path === 'string' && path.length > 0) {
+          touchedFiles.add(path);
+        }
+      }
+
+      if (!state._promotedThisJob && shouldEscalate(state, touchedFiles)) {
+        needsEscalation = true;
+        console.log(
+          `⚡ [Direct] Touched-file escalation at step ${stepsExecuted}/${maxSteps} (touched=${touchedFiles.size})`,
+        );
+        break;
+      }
       continue;
     }
 
@@ -268,9 +300,16 @@ export async function direct(
     );
   }
 
+  // Runtime escalate: pair `needsEscalation` with `_promotedThisJob=true` so the
+  // routeAfterDirect 1-shot cap (see routing.ts) is honoured on re-entry. The
+  // caller also guards each in-loop trigger with `!state._promotedThisJob` so
+  // this value only flips false→true once per job.
+  const promoteThisJob = needsEscalation && !state._promotedThisJob;
+
   return {
     conversations: updatedConversations,
     needsEscalation: needsEscalation || undefined,
+    ...(promoteThisJob ? { _promotedThisJob: true } : {}),
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   };
