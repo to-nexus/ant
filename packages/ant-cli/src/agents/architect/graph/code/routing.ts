@@ -35,8 +35,8 @@ export function routeAfterResolve(state: ArchitectGraphState): string {
     return 'plan';
   }
 
-  if (state.awaitingDecomposeClarify && state.overrideDirective) {
-    console.log(`[RouteAfterResolve] Decompose clarify resume → decompose`);
+  if (state.awaitingDecomposeClarify && (state.overrideDirective || state._specClarifyBypassed)) {
+    console.log(`[RouteAfterResolve] Decompose clarify resume (bypass=${state._specClarifyBypassed === true}) → decompose`);
     return 'decompose';
   }
 
@@ -50,17 +50,37 @@ export function routeAfterResolve(state: ArchitectGraphState): string {
 }
 
 export function routeAfterDecompose(state: ArchitectGraphState): string {
-  if (state.awaitingDecomposeClarify) {
-    console.log(`⏸️  [Decompose→Router] awaitingDecomposeClarify → __end__`);
+  if (state.awaitingDecomposeClarify || state.specClarify) {
+    const reason = state.awaitingDecomposeClarify
+      ? 'awaitingDecomposeClarify'
+      : 'specClarify';
+    console.log(`⏸️  [Decompose→Router] ${reason} → __end__`);
     return '__end__';
+  }
+  if (state.complexity === 'oneshot' || state.complexity === 'exploratory') {
+    console.log(`[Decompose→Router] complexity=${state.complexity} → direct`);
+    return 'direct';
   }
   const concurrency = getTaskConcurrency();
   if (concurrency > 1) {
-    console.log(`[Decompose→Router] ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
+    console.log(`[Decompose→Router] complexity=${state.complexity ?? 'todo'} ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
     return 'parallelOrchestrator';
   }
-  console.log(`[Decompose→Router] ANT_TASK_CONCURRENCY=1 → sequential plan`);
+  console.log(`[Decompose→Router] complexity=${state.complexity ?? 'todo'} ANT_TASK_CONCURRENCY=1 → sequential plan`);
   return 'plan';
+}
+
+export function routeAfterDirect(state: ArchitectGraphState): string {
+  if (state.needsEscalation && !state._promotedThisJob) {
+    console.log(`⚡ [Direct→Router] needsEscalation (not yet promoted) → decompose`);
+    return 'decompose';
+  }
+  if (state.needsEscalation && state._promotedThisJob) {
+    console.log(`🛑 [Direct→Router] needsEscalation but already promoted this job → learn (1-shot escalation cap)`);
+  } else {
+    console.log(`✅ [Direct→Router] direct loop complete → learn`);
+  }
+  return 'learn';
 }
 
 export function routeAfterRevise(state: ArchitectGraphState): string {

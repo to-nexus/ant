@@ -11,6 +11,7 @@ import { triage, routeAfterTriage } from "../../../common/graph/nodes/triage";  
 import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
 import { codeDetectStrategy } from './nodes/detect/strategy.js';
 import { decompose } from "./nodes/decompose";
+import { direct } from "./nodes/direct";
 import { plan } from "./nodes/plan";
 import { execute } from "./nodes/execute/index";
 import { tool } from "./nodes/tool";
@@ -123,7 +124,7 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
   }
 
   // Diagnostic objective guard: every required step must have passed for verification tasks.
-  // Axis B — single-source-of-truth completion check via evaluateVerificationCompletion.
+  // Single-source-of-truth completion check via evaluateVerificationCompletion (utils/verificationCompleteness.ts).
   // Error tasks are code-fix only — build verification deferred to the re-enqueued verification task.
   // NOTE: the `llmExplicitlyDone` 1층 가드 above remains authoritative for the `<done>` contract;
   // the SSOT only decides whether the tracker's objectives were actually met.
@@ -209,13 +210,10 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       _finalTaskLoopCount: 0,
       planText: '',
       projectCodeContext: undefined,
-      // Axis lifecycle — task boundary clears per-task verification state so the
-      // next verification task pops with a fresh budget/attempt counters. A
-      // resumed task bypasses this path (TaskWorker restores via resumeState).
-      _verificationBudget: undefined,
-      _diagnosticAttempts: undefined,
-      _deepDiagnosticBudgetGranted: undefined,
-      _lastPlanHash: undefined,
+      // Task boundary clears per-task verification state so the next
+      // verification task pops with a fresh attempt counter. A resumed
+      // task bypasses this path (TaskWorker restores via resumeState).
+      _verificationAttempts: undefined,
       _appliedPlanHistory: undefined,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
@@ -389,12 +387,9 @@ async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<Arch
       _finalTaskLoopCount: 0,
       planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
       projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
-      // Axis lifecycle — task boundary clears. Next verification task pops with
-      // a clean slate; a resumed task bypasses this path (TaskWorker restores).
-      _verificationBudget: undefined,
-      _diagnosticAttempts: undefined,
-      _deepDiagnosticBudgetGranted: undefined,
-      _lastPlanHash: undefined,
+      // Task boundary clears. Next verification task pops with a clean slate;
+      // a resumed task bypasses this path (TaskWorker restores via resumeState).
+      _verificationAttempts: undefined,
       _appliedPlanHistory: undefined,
       recursionCount: state.recursionCount,  // ✅ Propagate recursion count
       recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
@@ -1067,13 +1062,24 @@ export const CodeGraphChannels = {
       boundary: Annotation<any>,
       jobConversation: Annotation<any>,
       awaitingDecomposeClarify: Annotation<any>,
+      complexity: Annotation<any>,
+      directHints: Annotation<any>,
+      directMode: Annotation<any>,
+      featureContext: Annotation<any>,
+      specClarify: Annotation<any>,
+      needsEscalation: Annotation<any>,
+      _promotedThisJob: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => false,
+      }),
+      _specClarifyBypassed: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => false,
+      }),
       workerId: Annotation<any>,
       _isStopRequested: Annotation<any>,
       _depFileHash: Annotation<any>,
-      _verificationBudget: Annotation<any>,
-      _diagnosticAttempts: Annotation<any>,
-      _deepDiagnosticBudgetGranted: Annotation<any>,
-      _lastPlanHash: Annotation<any>,
+      _verificationAttempts: Annotation<any>,
       _batchSplitRequeued: Annotation<any>,
       verifiedTasks: Annotation<any>,
 } as const;
@@ -1090,6 +1096,7 @@ export function buildCodeGraph() {
   graph.addNode("triage", triage as any);
   graph.addNode('detect', createDetectNode(codeDetectStrategy) as any);
   graph.addNode("decompose", decompose as any);
+  graph.addNode("direct", direct as any);  // ✅ oneshot / exploratory ReAct loop
   graph.addNode("revise", revise as any);  // ✅ Task queue revision (continue/modify)
   graph.addNode("plan", plan as any);
   graph.addNode("execute", execute as any);
@@ -1132,13 +1139,26 @@ export function buildCodeGraph() {
   
   graph.addEdge("detect" as any, "decompose" as any);
   
-  // ✅ Decompose → conditional: clarify pause, parallel, or sequential
+  // ✅ Decompose → conditional: clarify/spec-clarify pause, direct (oneshot|exploratory),
+  //                              parallelOrchestrator or plan (todo)
   graph.addConditionalEdges(
     "decompose" as any,
     routing.routeAfterDecompose as any,
-    { __end__: "__end__", parallelOrchestrator: "parallelOrchestrator", plan: "plan" } as any
+    {
+      __end__: "__end__",
+      direct: "direct",
+      parallelOrchestrator: "parallelOrchestrator",
+      plan: "plan",
+    } as any
   );
-  
+
+  // ✅ Direct → conditional: escalate back to decompose (1-shot) or complete via learn
+  graph.addConditionalEdges(
+    "direct" as any,
+    routing.routeAfterDirect as any,
+    { decompose: "decompose", learn: "learn" } as any
+  );
+
   // ✅ ParallelOrchestrator → learn (after all tasks are done)
   graph.addEdge("parallelOrchestrator" as any, "learn" as any);
   
