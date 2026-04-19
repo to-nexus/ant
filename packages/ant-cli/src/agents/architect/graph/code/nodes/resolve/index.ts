@@ -4,6 +4,7 @@ import { ReferenceContext } from "../../../../../../core/codebase/types";
 import * as path from "path";
 import type { ConversationEntry } from "../../../../../../core/types/session";
 import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../../core/context/constants";
+import { buildFeatureContext } from "../../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
 import { buildSessionDigest } from '../../../../../common/graph/utils/sessionDigest';
@@ -283,51 +284,70 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       ? sessionBuilder.buildContextForLLM(session.runs, 'generate', directive || design || '')
       : undefined;
 
-    // Inter-Job Context Bridge: Load & compact jobConversation
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Feature Context (session redesign — Phase C)
+    // loadSinceBoundary: latest boundary-onwards T2(user_turn+meta) + all T3(breadcrumbs).
+    // Merged by turnId and trimmed so plan/direct prompts receive prior context.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const featureContext = await buildFeatureContext(state.deps?.session);
+    if (featureContext) {
+      console.log(
+        `📚 [Resolve] featureContext: breadcrumbs=${featureContext.breadcrumbs.length}, userTurns=${featureContext.userTurns.length}`,
+      );
+    }
+
+    // TODO(legacy_cleanup): remove jobConversation compaction block once §14 clean-up lands.
+    // Commented out as part of §11 `resolve_integrate` — featureContext above is now SSOT.
+    // Intentionally preserved to document the prior behaviour until the field is removed.
     const rawJobConversation: ConversationEntry[] = session?.state?.jobConversation || [];
     let processedJobConversation = rawJobConversation;
     const promptBuilder = state.deps?.promptBuilder;
-    if (rawJobConversation.length > 0 && state.deps?.llm && promptBuilder) {
-      const promptPort = promptBuilder;
-      if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-        state.deps.kanbanUpdate.setEstimatingActivity('Compacting previous context...', 'resolve');
-      }
-      let compactionChanged = false;
-      const trigger2Result = await compressHeavyweightEntries(processedJobConversation, state.deps.llm, promptPort);
-      processedJobConversation = trigger2Result.entries;
-      compactionChanged = trigger2Result.changed;
-
-      const { compactJob, applyCompactionToConversation } = await import('../../../../../../core/context/compactJob');
-      try {
-        const compactResult = await compactJob(processedJobConversation, state.deps.llm, promptPort, {
-          threshold: CODE_JOB_COMPACTION_THRESHOLD,
-          recentWindowSize: CODE_JOB_COMPACTION_WINDOW,
-          maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
-        });
-        if (compactResult.wasCompacted) {
-          processedJobConversation = applyCompactionToConversation(
-            processedJobConversation,
-            { summary: compactResult.summary!, summarizedCount: processedJobConversation.length - CODE_JOB_COMPACTION_WINDOW },
-            (summary) => ({ role: 'system' as const, content: summary, timestamp: new Date().toISOString(), metadata: { chapterSummary: 'Previous jobs summary' } }),
-          );
-          compactionChanged = true;
-        }
-      } catch (err) {
-        console.warn(`⚠️  [Resolve] Trigger 1 compaction failed, using uncompacted entries:`, err);
-      }
-      if (compactionChanged && state.deps?.session) {
-        try {
-          const existingSessionForUpdate = await state.deps.session.load(context.project, context.featureFolder, 'code');
-          await state.deps.session.updateArtifacts(context.project, context.featureFolder, 'code', {
-            state: { ...existingSessionForUpdate.state, jobConversation: processedJobConversation },
-          });
-          console.log(`💾 [Resolve] Persisted compacted jobConversation (${rawJobConversation.length} → ${processedJobConversation.length} entries)`);
-        } catch (err) {
-          console.warn(`⚠️  [Resolve] Failed to persist compacted jobConversation:`, err);
-        }
-      }
-      console.log(`📋 [Resolve] Inter-Job Context: ${processedJobConversation.length} entries loaded`);
-    }
+    void promptBuilder; // keep reference to avoid stale-import removal before §14
+    void CODE_JOB_COMPACTION_THRESHOLD;
+    void CODE_JOB_COMPACTION_WINDOW;
+    void COMPACTION_MAX_OUTPUT_TOKENS;
+    void compressHeavyweightEntries;
+    // if (rawJobConversation.length > 0 && state.deps?.llm && promptBuilder) {
+    //   const promptPort = promptBuilder;
+    //   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    //     state.deps.kanbanUpdate.setEstimatingActivity('Compacting previous context...', 'resolve');
+    //   }
+    //   let compactionChanged = false;
+    //   const trigger2Result = await compressHeavyweightEntries(processedJobConversation, state.deps.llm, promptPort);
+    //   processedJobConversation = trigger2Result.entries;
+    //   compactionChanged = trigger2Result.changed;
+    //
+    //   const { compactJob, applyCompactionToConversation } = await import('../../../../../../core/context/compactJob');
+    //   try {
+    //     const compactResult = await compactJob(processedJobConversation, state.deps.llm, promptPort, {
+    //       threshold: CODE_JOB_COMPACTION_THRESHOLD,
+    //       recentWindowSize: CODE_JOB_COMPACTION_WINDOW,
+    //       maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
+    //     });
+    //     if (compactResult.wasCompacted) {
+    //       processedJobConversation = applyCompactionToConversation(
+    //         processedJobConversation,
+    //         { summary: compactResult.summary!, summarizedCount: processedJobConversation.length - CODE_JOB_COMPACTION_WINDOW },
+    //         (summary) => ({ role: 'system' as const, content: summary, timestamp: new Date().toISOString(), metadata: { chapterSummary: 'Previous jobs summary' } }),
+    //       );
+    //       compactionChanged = true;
+    //     }
+    //   } catch (err) {
+    //     console.warn(`⚠️  [Resolve] Trigger 1 compaction failed, using uncompacted entries:`, err);
+    //   }
+    //   if (compactionChanged && state.deps?.session) {
+    //     try {
+    //       const existingSessionForUpdate = await state.deps.session.load(context.project, context.featureFolder, 'code');
+    //       await state.deps.session.updateArtifacts(context.project, context.featureFolder, 'code', {
+    //         state: { ...existingSessionForUpdate.state, jobConversation: processedJobConversation },
+    //       });
+    //       console.log(`💾 [Resolve] Persisted compacted jobConversation (${rawJobConversation.length} → ${processedJobConversation.length} entries)`);
+    //     } catch (err) {
+    //       console.warn(`⚠️  [Resolve] Failed to persist compacted jobConversation:`, err);
+    //     }
+    //   }
+    //   console.log(`📋 [Resolve] Inter-Job Context: ${processedJobConversation.length} entries loaded`);
+    // }
 
     const referenceContexts: ReferenceContext[] = [];
 
@@ -344,6 +364,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       figmaFileKey,
       figmaStartNodeId,
       jobConversation: processedJobConversation,
+      featureContext,
       runtimeAssetsIndex,
       conversations: {},
       sessionDigest: buildSessionDigest(processedJobConversation),

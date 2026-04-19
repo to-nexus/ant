@@ -926,6 +926,7 @@ export const DesignGraphChannels = {
   _figmaConnectionLost: Annotation<any>,
   boundary: Annotation<any>,
   jobConversation: Annotation<any>,
+  featureContext: Annotation<any>,
   workerId: Annotation<any>,
   _isStopRequested: Annotation<any>,
 } as const;

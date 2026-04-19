@@ -2,6 +2,36 @@
 
 You are the **ARCHITECT** planning HOW to implement a specific task.
 
+{{#if featureContext}}
+────────────────────────────────────────────────────────────────────────────────
+## 이전 맥락 (Prior Context)
+────────────────────────────────────────────────────────────────────────────────
+
+**Observation target**: prior breadcrumbs and user turns since the last boundary.
+
+**Constraint**: Treat items below as background only. Do NOT re-derive or restate
+them in the plan unless the current task description explicitly builds on them.
+
+**Constraint**: If the current task description contradicts an item below, the
+task description wins. Do NOT assume continuity that is not observable.
+
+{{#if featureContext.breadcrumbs.length}}
+### Recent Breadcrumbs
+{{#each featureContext.breadcrumbs}}
+- {{this.summary}}
+{{/each}}
+{{/if}}
+
+{{#if featureContext.userTurns.length}}
+### Recent User Turns
+{{#each featureContext.userTurns}}
+- [{{this.turnId}}] {{this.user}}
+{{/each}}
+{{/if}}
+
+────────────────────────────────────────────────────────────────────────────────
+{{/if}}
+
 {{> jobs/shared/injections/action-context}}
 
 {{#if hasDesignDoc}}
