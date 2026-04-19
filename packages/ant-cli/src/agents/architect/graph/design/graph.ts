@@ -926,7 +926,6 @@ export const DesignGraphChannels = {
   _figmaConsecutiveErrors: Annotation<any>,
   _figmaConnectionLost: Annotation<any>,
   boundary: Annotation<any>,
-  jobConversation: Annotation<any>,
   featureContext: Annotation<any>,
   workerId: Annotation<any>,
   _isStopRequested: Annotation<any>,

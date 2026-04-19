@@ -5,11 +5,9 @@
  * Used by LLMResponseService for streaming LLM responses.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import type { StateStorePort, ChatSessionData, ChatMessageData } from '../ports/stateStore';
 import type { SessionContext, LLMResponseEnv } from './types';
-import type { ChatSession, ChatMessage, FileOperationTracker, MessageContent } from '../chat/types';
+import type { ChatSession, ChatMessage, FileOperationTracker } from '../chat/types';
 import { getSessionKey, toRedisSession, fromRedisSession, toRedisMessage, fromRedisMessage, createAssistantMessage } from '../chat/schema';
 import { logger } from '../../utils/logger';
 import { getWorkerScope } from '../parallel/workerScope';
@@ -27,8 +25,6 @@ export interface WorkerMessageState {
   sessionProxy?: ChatSession;
 }
 
-import { isBaseBranch, getBranchBase } from '../utils/branchUtils';
-
 // Detect if this process is a resume (set by JobWorker)
 const IS_RESUME = process.env.ANT_IS_RESUME === 'true';
 
@@ -36,13 +32,11 @@ export class SessionStore {
   private stateStore: StateStorePort;
   private context: SessionContext;
   private localSession: ChatSession | null = null;  // Local cache for hot path
-  private featurePath: string | undefined;
   private workerMessages = new Map<number, WorkerMessageState>();
 
   constructor(stateStore: StateStorePort, env: LLMResponseEnv) {
     this.stateStore = stateStore;
-    this.featurePath = env.featurePath;
-    
+
     const userContext = env.userId && env.organizationId ? {
       userId: env.userId,
       organizationId: env.organizationId,
@@ -365,13 +359,11 @@ export class SessionStore {
       ws.thinkingStartTime = undefined;
       ws.lastThinkingContentIndex = undefined;
 
-      // Persist: Redis session + chat.json (NO Redis currentMessage key for workers)
       try {
         await this.saveSession();
       } catch (error) {
         logger.warn(`Failed to save session to Redis after worker finalize`, { component: 'SessionStore' }, error);
       }
-      this.saveToChatFile();
 
       logger.debug(`Finalized worker ${scope.workerId} message: ${message.id} (${message.contents.length} contents, cancelled=${cancelled})`, {
         component: 'SessionStore'
@@ -401,7 +393,6 @@ export class SessionStore {
     this.localSession.thinkingStartTime = undefined;
     this.localSession.lastThinkingContentIndex = undefined;
 
-    // Save to Redis
     try {
       await this.stateStore.setCurrentMessage(this.context.sessionKey, null);
       await this.saveSession();
@@ -409,192 +400,9 @@ export class SessionStore {
       logger.warn(`Failed to finalize message in Redis`, { component: 'SessionStore' }, error);
     }
 
-    // ✅ CRITICAL: Also save to chat.json file for persistence
-    this.saveToChatFile();
-
     logger.debug(`Finalized message: ${message.id} (${message.contents.length} contents, cancelled=${cancelled})`, {
       component: 'SessionStore'
     });
-  }
-
-  /**
-   * Get chat.json file path
-   * 
-   * featurePath is the full feature directory path (e.g., .../features/skeleton)
-   * containing inputs/, outputs/, sessions/
-   */
-  private getChatFilePath(): string | null {
-    if (!this.featurePath) {
-      return null;
-    }
-    
-    return path.join(this.featurePath, 'sessions', 'chat.json');
-  }
-
-  /**
-   * Flush current session state to chat.json without finalizing the active message.
-   * Used to persist intermediate progress during long-running tool-call loops,
-   * so messages are not lost if the job is interrupted before the task completes.
-   */
-  flushToChatFile(): void {
-    this.saveToChatFile();
-  }
-
-  /**
-   * Strip heavy file content from message contents for lightweight persistence.
-   * Replaces file body and diffs with line-count summaries.
-   * Non-file content (command output, text, thinking, etc.) is preserved as-is.
-   */
-  private static stripHeavyContent(contents: MessageContent[]): MessageContent[] {
-    const FILE_OP_TYPES = new Set([
-      'file_creating', 'file_writing', 'file_create', 'file_create_failed',
-      'file_editing', 'file_updating', 'file_edit', 'file_edit_failed',
-      'file_deleting', 'file_delete', 'file_delete_failed',
-      'file_conflict', 'file_conflict_retry'
-    ]);
-
-    const PLAN_TYPES = new Set(['plan_generating', 'plan']);
-
-    return contents.map(c => {
-      if (PLAN_TYPES.has(c.type)) {
-        const lineCount = c.content ? c.content.split('\n').length : 0;
-        return {
-          type: c.type,
-          content: '',
-          metadata: { ...c.metadata, lineCount }
-        };
-      }
-
-      if (!FILE_OP_TYPES.has(c.type)) return c;
-
-      const lineCount = c.content ? c.content.split('\n').length : 0;
-      const diffBeforeLines = c.metadata?.diffBefore ? c.metadata.diffBefore.split('\n').length : 0;
-      const diffAfterLines = c.metadata?.diffAfter ? c.metadata.diffAfter.split('\n').length : 0;
-
-      return {
-        type: c.type,
-        content: '',
-        metadata: {
-          ...c.metadata,
-          diffBefore: undefined,
-          diffAfter: undefined,
-          lineCount,
-          diffBeforeLines,
-          diffAfterLines,
-        }
-      };
-    });
-  }
-
-  /**
-   * Save session to chat.json file
-   * 
-   * Uses read-merge-write to handle parallel workers writing to the same file.
-   * Each worker's localSession only contains its own messages, so we merge
-   * with existing messages from other workers using message ID deduplication.
-   */
-  private saveToChatFile(): void {
-    // Skip if no feature path
-    if (!this.featurePath || !this.localSession) {
-      return;
-    }
-
-    // Skip saving chat for base branches (learning only, no chat history needed)
-    if (isBaseBranch(this.context.featureName, getBranchBase())) {
-      logger.debug(`Skipping chat.json save for base branch: ${this.context.featureName}`, { 
-        component: 'SessionStore' 
-      });
-      return;
-    }
-
-    const filePath = this.getChatFilePath();
-    if (!filePath) {
-      return;
-    }
-
-    try {
-      // Ensure directory exists
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      // Read existing file for merge (preserves createdAt and other workers' messages)
-      let createdAt = new Date().toISOString();
-      let existingMessages: Array<{ id?: string; [key: string]: any }> = [];
-      if (fs.existsSync(filePath)) {
-        try {
-          const existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-          if (existing.createdAt) {
-            createdAt = existing.createdAt;
-          }
-          if (Array.isArray(existing.messages)) {
-            existingMessages = existing.messages;
-          }
-        } catch {
-          // Ignore parse errors, start fresh
-        }
-      }
-
-      // Merge: deduplicate by message ID, then sort by timestamp
-      const localMessages = this.localSession.messages.map(msg => ({
-        ...msg,
-        contents: SessionStore.stripHeavyContent(msg.contents),
-        isStreaming: undefined,  // Don't persist streaming flag
-        isComplete: true  // Mark as complete
-      }));
-
-      // Include in-progress currentMessages so they survive interruption.
-      // Main graph's currentMessage:
-      const inProgressMessages: typeof localMessages = [];
-      if (this.localSession.currentMessage && this.localSession.currentMessage.contents.length > 0) {
-        inProgressMessages.push({
-          ...this.localSession.currentMessage,
-          contents: SessionStore.stripHeavyContent(this.localSession.currentMessage.contents),
-          isStreaming: undefined,
-          isComplete: false
-        });
-      }
-      // Worker-scoped currentMessages:
-      for (const [, ws] of this.workerMessages) {
-        if (ws.currentMessage && ws.currentMessage.contents.length > 0) {
-          inProgressMessages.push({
-            ...ws.currentMessage,
-            contents: SessionStore.stripHeavyContent(ws.currentMessage.contents),
-            isStreaming: undefined,
-            isComplete: false
-          });
-        }
-      }
-
-      const allLocalMessages = [...localMessages, ...inProgressMessages];
-      const localIds = new Set(allLocalMessages.map(m => m.id));
-      const mergedMessages = [
-        // Keep existing messages from other workers (not in local set)
-        ...existingMessages.filter(m => m.id && !localIds.has(m.id)),
-        // Add all local messages + in-progress messages (authoritative for this worker)
-        ...allLocalMessages,
-      ].sort((a, b) => {
-        const ta = a.timestamp || '';
-        const tb = b.timestamp || '';
-        return ta < tb ? -1 : ta > tb ? 1 : 0;
-      });
-
-      const sessionFile = {
-        projectId: this.context.projectId,
-        featureName: this.context.featureName,
-        messages: mergedMessages,
-        createdAt,
-        updatedAt: new Date().toISOString()
-      };
-
-      fs.writeFileSync(filePath, JSON.stringify(sessionFile, null, 2), 'utf-8');
-      logger.debug(`Saved chat.json: ${mergedMessages.length} messages (${localMessages.length} local, ${existingMessages.length} existing)`, { 
-        component: 'SessionStore' 
-      });
-    } catch (error) {
-      logger.warn(`Failed to save chat.json`, { component: 'SessionStore' }, error);
-    }
   }
 
   /**

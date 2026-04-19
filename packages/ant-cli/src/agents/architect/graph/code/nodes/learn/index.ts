@@ -1,12 +1,11 @@
 import * as path from "path";
 import { ArchitectGraphState } from "../../state";
-import { SessionRun, ConversationEntry } from "../../../../../../core/types";
+import { SessionRun } from "../../../../../../core/types";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../core/utils/docMetadata";
-import { designSubdirOf, DESIGN_DIR, BOUNDARY } from "@ant/shared";
+import { designSubdirOf, DESIGN_DIR } from "@ant/shared";
 import type { FeatureBoundaryLine } from "@ant/shared";
 
-import { buildJobRecord } from './jobRecord';
 import { extractCodeLessons, extractTags } from './lessonExtractor';
 import {
   buildBreadcrumb,
@@ -483,8 +482,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // Session redesign §2.4 — Breadcrumb / Boundary policy matrix.
     // Runs once at the end of a code job (isLastTask) to capture the
     // job's trace into feature.jsonl for future resolve/plan/direct use.
-    // Invoked before jobConversation legacy block (kept below but
-    // commented out under TODO(legacy_cleanup) for §14).
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (isLastTask && !taskFailed) {
       try {
@@ -494,19 +491,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     }
 
-    // TODO(legacy_cleanup): removed in §14 along with SessionState.jobConversation.
-    // Kept as a documentation reference for the Phase C migration; runtime
-    // behaviour is now handled by the breadcrumb/boundary matrix above.
-    let updatedJobConversation = existingSession.state?.jobConversation;
-    void buildJobRecord;
-    void BOUNDARY;
-    void (null as unknown as ConversationEntry);
-    // if (isLastTask && !taskFailed) {
-    //   const { user: jobUser, assistant: jobAssistant } = buildJobRecord(state);
-    //   const existingJobConv: ConversationEntry[] = existingSession.state?.jobConversation || [];
-    //   updatedJobConversation = [...existingJobConv, jobUser, jobAssistant];
-    //   console.log(`📋 [Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || BOUNDARY.LIGHTWEIGHT})`);
-    // }
     if (isLastTask && !taskFailed) {
       // Mark consumed documents with metadata
       if (state.deps?.fileSystem && state.context.featurePath) {
@@ -575,7 +559,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           chatSource: state.chatSource,
           referenceRequests: state.referenceRequests || [],
           resolvedAction: state.resolvedAction,
-          jobConversation: updatedJobConversation,
         }
       }
     );

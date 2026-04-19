@@ -23,13 +23,7 @@ interface GracefulOrchestrator {
   handleInterruption(reason: string): Promise<void>;
 }
 
-/** Minimal interface for flushing chat state on shutdown */
-interface ChatFlusher {
-  flushToChatFile(): void;
-}
-
 let activeOrchestrator: GracefulOrchestrator | null = null;
-let activeChatFlusher: ChatFlusher | null = null;
 let isShuttingDown = false;
 
 /**
@@ -48,15 +42,15 @@ export function unregisterActiveOrchestrator(): void {
 }
 
 /**
- * Register a chat flusher (SessionStore) so in-progress messages are
- * persisted to chat.json during graceful shutdown.
+ * Legacy no-op retained for callers still invoking the old chat flusher hook.
+ * Chat persistence now flows through trace.jsonl, so there is nothing to flush.
  */
-export function registerChatFlusher(flusher: ChatFlusher): void {
-  activeChatFlusher = flusher;
+export function registerChatFlusher(_flusher: unknown): void {
+  /* no-op */
 }
 
 export function unregisterChatFlusher(): void {
-  activeChatFlusher = null;
+  /* no-op */
 }
 
 /**
@@ -113,15 +107,5 @@ export async function handleGracefulShutdown(reason: string, timeoutMs = 1800): 
     await Promise.race([interruptionPromise, timeoutPromise]);
   } else {
     console.log(`[GracefulShutdown] No active orchestrator registered — checkpoint from previous phase is still valid`);
-  }
-
-  // Flush in-progress chat messages to chat.json so file card content survives interruption
-  if (activeChatFlusher) {
-    try {
-      activeChatFlusher.flushToChatFile();
-      console.log(`[GracefulShutdown] ✅ Chat messages flushed to disk`);
-    } catch {
-      // Best-effort — don't block shutdown
-    }
   }
 }

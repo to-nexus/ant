@@ -183,15 +183,6 @@ export class LLMResponseService {
     }
   }
 
-  /**
-   * Flush current session state to chat.json without finalizing the active message.
-   * Ensures intermediate progress is persisted during long-running tool-call loops.
-   */
-  flushToChatFile(): void {
-    if (!this.enabled) return;
-    this.sessionStore.flushToChatFile();
-  }
-
   // ============================================================================
   // LLM Stream Events
   // ============================================================================

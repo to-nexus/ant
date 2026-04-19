@@ -71,24 +71,7 @@ async function decomposeSpecSections(
 
   if (!llm) return fallback();
 
-  // Inter-Job Context Bridge: include previous job history if available
-  const jobHistoryLines: string[] = [];
-  if (state.jobConversation && state.jobConversation.length > 0) {
-    jobHistoryLines.push(`## Previous Jobs in This Feature`);
-    for (const entry of state.jobConversation) {
-      if (entry.role === 'system') {
-        jobHistoryLines.push(`[Earlier Summary] ${entry.content}`);
-      } else if (entry.role === 'user') {
-        jobHistoryLines.push(`[Directive] ${entry.content}`);
-      } else {
-        jobHistoryLines.push(`[Result] ${entry.content}`);
-      }
-    }
-    jobHistoryLines.push('');
-  }
-
   const prompt = [
-    ...jobHistoryLines,
     `You are a software architect. Analyze the following directive and decide how to structure a spec document.`,
     ``,
     `Rules:`,

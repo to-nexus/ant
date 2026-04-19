@@ -41,7 +41,6 @@ export interface ChatStatusReporter {
   commandComplete(command: string, success: boolean, exitCode: number, output: string, mergeIndex: number | undefined): Promise<void>;
 
   finalizeMessage(): Promise<void>;
-  flush(): Promise<void>;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -106,7 +105,7 @@ export interface ToolExecutionContext {
   verificationTracker?: VerificationTracker;
   depFileHash?: string;
   retries?: number;
-  /** Axis G — deep-diagnostic mode active: loosen loop guards so the LLM can
+  /** Deep-diagnostic mode active: loosen loop guards so the LLM can
    *  probe config / dependency variants and re-run verification commands with
    *  different options once per attempt. */
   isDeepDiagnostic?: boolean;
@@ -143,7 +142,8 @@ export interface ToolExecutionContext {
 
 /**
  * Scope of verification invalidation triggered by a file change.
- * Axis C — lets the tracker retain already-passed steps when the edited file
+ * Scope hint (see handlers/invalidationScope.ts) — lets the tracker retain
+ * already-passed steps when the edited file
  * cannot logically affect them (e.g. changing a test file should not reset
  * typecheck/build status).
  */

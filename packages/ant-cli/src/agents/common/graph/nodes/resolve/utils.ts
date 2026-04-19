@@ -5,56 +5,6 @@
  * Extracted to avoid duplication between code and design resolve.
  */
 
-import type { ConversationEntry } from '../../../../../core/types/session.js';
-import { BOUNDARY } from '@ant/shared';
-
-/**
- * Compress uncompressed heavyweight entries in jobConversation via LLM summarization.
- * Shared between code and design resolve strategies (Trigger 2: heavyweight compression).
- */
-export async function compressHeavyweightEntries(
-  entries: ConversationEntry[],
-  llm: { invoke: (messages: any[], options?: any) => Promise<string> },
-  promptPort: { render: (template: string, data: any) => Promise<string> },
-): Promise<{ entries: ConversationEntry[]; changed: boolean }> {
-  let changed = false;
-  const result: ConversationEntry[] = [];
-  for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i];
-    if (
-      entry.role === 'assistant' &&
-      entry.metadata?.boundary === BOUNDARY.HEAVYWEIGHT &&
-      !entry.metadata?.chapterSummary
-    ) {
-      const userEntry = result[result.length - 1];
-      const jobData = [
-        `Directive: ${userEntry?.content || ''}`,
-        `Result: ${entry.content}`,
-      ].join('\n');
-
-      try {
-        const systemPrompt = await promptPort.render('infra/compaction/job-summary', { jobData });
-        const summaryContent = await llm.invoke(
-          [{ role: 'user', content: 'Summarize this job.' }],
-          { system: systemPrompt, maxTokens: 2048 },
-        );
-        result.push({
-          ...entry,
-          content: summaryContent,
-          metadata: { ...entry.metadata, chapterSummary: 'Heavyweight job summary' },
-        });
-        changed = true;
-      } catch (err) {
-        console.warn(`⚠️  [Resolve] Heavyweight compression failed, keeping raw entry:`, err);
-        result.push(entry);
-      }
-    } else {
-      result.push(entry);
-    }
-  }
-  return { entries: changed ? result : entries, changed };
-}
-
 /**
  * Validate workspace and feature directories exist.
  * Returns the resolved absolute featurePath.

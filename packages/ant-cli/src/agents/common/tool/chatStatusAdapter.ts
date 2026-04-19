@@ -83,14 +83,6 @@ export function createChatStatusReporter(): ChatStatusReporter {
       const client = await getClient();
       await client.finalizeMessage();
     },
-    async flush() {
-      const client = await getClient();
-      try {
-        await client.flushToChatFile();
-      } catch {
-        // Non-critical
-      }
-    },
   };
 }
 
@@ -114,6 +106,5 @@ export function createNoopChatStatusReporter(): ChatStatusReporter {
     async commandStart() { return undefined; },
     async commandComplete() {},
     async finalizeMessage() {},
-    async flush() {},
   };
 }

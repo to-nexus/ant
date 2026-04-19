@@ -15,8 +15,6 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
-import { TaskQueue } from "../../../../types/task";
-import { CodeTask } from "../../../../types/task";
 import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../shared/errorHandler";
@@ -72,44 +70,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('📋 DECOMPOSE: Breaking down specification into tasks');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🔥 EXPLAIN MODE: Skip decompose, create single explain task
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state.resolvedAction?.mode === 'explain') {
-    console.log('💡 [Decompose] Explain mode detected - creating single explanation task\n');
-    
-    const explainTask: CodeTask = {
-      id: 'explain-1',
-      name: 'Explain code',
-      type: 'explain',
-      priority: 200,
-      description: state.directive || 'Explain the codebase'
-    };
-    
-    const taskQueue = new TaskQueue<CodeTask>();
-    taskQueue.push(explainTask);
-    
-    // ✅ Workflow exitNode (explain 조기 반환에서도 호출 필요)
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose', 0);
-    }
-    
-    return {
-      ...state,
-      taskQueue,
-      featureTasks: new Map(),
-      referenceRequests: [],
-      projectCodeContext: undefined,
-      referenceCodeContexts: [],
-      totalSubtasks: 1,
-      subtaskIndex: 0,
-      completedTasks: [],
-      completedTasksDetails: [],
-      boundary: BOUNDARY.LIGHTWEIGHT,
-    };
-  }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 1: Check for existing session (resume support)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -303,9 +264,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     uiSectionsSummary,
     runtimeAssetsIndex: state.runtimeAssetsIndex,
     hasErrorInDirective,
-    // Inter-Job Context Bridge
-    jobConversation: state.jobConversation,
-    hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
     needsBoundaryClassification: suggestedBoundary === SUGGESTED_BOUNDARY.PENDING,
   };
   
@@ -332,6 +290,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
+    specClarifyBypassed: state._specClarifyBypassed === true,
   };
   const decomposeSystem = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/rules', enrichedVars);
   let envContract = '';
@@ -491,7 +450,72 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     throw error;
   }
   
-  const { tasks, referenceRequests, techTier: parsedTechTier, selectedSpec, unknownPackages, boundary: parsedBoundary } = parsed;
+  const {
+    tasks,
+    referenceRequests,
+    techTier: parsedTechTier,
+    selectedSpec,
+    unknownPackages,
+    boundary: parsedBoundary,
+    complexity,
+    directHints,
+    specClarify,
+  } = parsed;
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 4.6: SpecClarify short-circuit
+  // When LLM emitted <specClarify>, pause the job for user choice.
+  // Triggering *criteria* are the LLM's responsibility (prompts); routing
+  // logic (route_after_decompose_3way) consumes state.specClarify.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (specClarify && !state._specClarifyBypassed) {
+    console.log('⏸️  [Decompose] specClarify emitted — pausing for user choice');
+
+    if (state.deps?.session && state.context.featureFolder) {
+      try {
+        await state.deps.session.updateArtifacts(
+          state.context.project,
+          state.context.featureFolder,
+          'code',
+          {
+            // `awaitingDecomposeClarify` / `specClarify` / `complexity` / `directHints`
+            // are session-redesign fields; SessionState surface is extended in legacy_cleanup.
+            state: {
+              awaitingDecomposeClarify: true,
+              specClarify,
+              complexity,
+              directHints,
+              resolvedAction: state.resolvedAction,
+              directive: state.directive,
+              overrideDirective: state.overrideDirective,
+              chatSource: state.chatSource,
+            } as any,
+          }
+        );
+      } catch { /* non-critical */ }
+    }
+
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'decompose', 0);
+    }
+
+    return {
+      ...state,
+      awaitingDecomposeClarify: true,
+      specClarify,
+      complexity,
+      directHints,
+      _phaseTimings: { ...(state._phaseTimings || {}), decompose: Date.now() - phaseStart },
+    };
+  }
+
+  const mode = state.resolvedAction?.mode;
+  const directMode: 'oneshot' | 'exploratory' | undefined =
+    complexity === 'oneshot' || complexity === 'exploratory' ? complexity : undefined;
+
+  if (directMode) {
+    console.log(`🎯 [Decompose] Direct tier selected: complexity=${complexity}, mode=${mode || 'unknown'} (tasks=${tasks.length})`);
+  }
 
   // Inter-Job Context Bridge: finalize boundary
   const finalBoundary: Boundary = suggestedBoundary === SUGGESTED_BOUNDARY.PENDING
@@ -781,6 +805,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     _estimatingTokenUsage: estimatingTokenUsage,
     _phaseTimings: finalPhaseTimings,
     boundary: finalBoundary,
+    complexity,
+    directHints,
+    directMode,
+    specClarify: undefined,
+    awaitingDecomposeClarify: false,
   };
   
   // ✅ Update broadcaster with finalized jobTiming (includes estimatingDuration + phaseBreakdown)

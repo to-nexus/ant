@@ -354,7 +354,7 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/dismiss-choice
    * Unified choice persistence endpoint for ALL choice card types.
-   * Persists the choice state to chat.json + Redis so it survives page refresh in multi-pod.
+   * Persists the choice state via ChatService + Redis so it survives page refresh in multi-pod.
    * 
    * ✅ Replaces the old cancelled-choice endpoint — all choice persistence goes through here.
    * 
