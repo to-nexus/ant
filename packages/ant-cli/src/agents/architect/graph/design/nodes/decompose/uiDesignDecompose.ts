@@ -107,8 +107,6 @@ export async function decomposeUiDesign(
           })
           .join('\n')
       : undefined,
-    jobConversation: state.jobConversation,
-    hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
     availableVisualLanguages: VISUAL_LANGUAGE_VARIANTS.join(', '),
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),

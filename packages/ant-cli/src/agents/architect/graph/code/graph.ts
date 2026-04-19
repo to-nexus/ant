@@ -1051,7 +1051,7 @@ export const CodeGraphChannels = {
       toolResults: Annotation<any>,
       interruption: Annotation<any>,
       _activePhase: Annotation<any>,
-      _planEntryReason: Annotation<any>,
+      _nextPlanEntry: Annotation<any>,
       _executeModifiedFiles: Annotation<any>,
       _installNeeded: Annotation<any>,
       _detectedPackageManager: Annotation<any>,
@@ -1061,7 +1061,6 @@ export const CodeGraphChannels = {
       figmaFileKey: Annotation<any>,
       figmaStartNodeId: Annotation<any>,
       boundary: Annotation<any>,
-      jobConversation: Annotation<any>,
       awaitingDecomposeClarify: Annotation<any>,
       complexity: Annotation<any>,
       directHints: Annotation<any>,
@@ -1083,6 +1082,8 @@ export const CodeGraphChannels = {
       _verificationAttempts: Annotation<any>,
       _batchSplitRequeued: Annotation<any>,
       verifiedTasks: Annotation<any>,
+      verification: Annotation<any>,
+      _shortCircuitReason: Annotation<any>,
 } as const;
 
 const ArchitectCodeGraphStateAnnotation = Annotation.Root(CodeGraphChannels);

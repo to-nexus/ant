@@ -1,5 +1,4 @@
 import { CodebaseProfile } from "../../../../core/types";
-import type { ConversationEntry } from "../../../../core/types/session";
 import type { Conversations } from '../../../common/graph/conversations';
 import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
@@ -194,7 +193,6 @@ export interface DesignGraphState extends TriageableState {
 
   // Inter-Job Context Bridge
   boundary?: Boundary;
-  jobConversation?: ConversationEntry[];
 
   /**
    * T2+T3 context loaded from feature.jsonl by resolve (session redesign).

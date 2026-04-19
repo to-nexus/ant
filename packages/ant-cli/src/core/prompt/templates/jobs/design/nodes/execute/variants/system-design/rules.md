@@ -39,7 +39,7 @@ Do NOT read UI design artifacts (`ui-spec.json`, `ui-tokens.json`, `ui-assets.js
 
 ### Constraint
 
-Do NOT read session metadata (`sessions/*`, `chat.json`). These are internal system files irrelevant to architectural decisions.
+Do NOT read session metadata under `sessions/*`. These are internal system files irrelevant to architectural decisions.
 
 ### Constraint
 

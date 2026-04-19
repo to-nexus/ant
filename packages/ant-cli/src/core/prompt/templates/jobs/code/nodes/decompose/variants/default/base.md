@@ -1,7 +1,3 @@
-{{#if hasJobHistory}}
-{{> jobs/code/base/injections/job-history}}
-{{/if}}
-
 You are analyzing a software specification to break it into executable tasks.
 
 DIRECTIVE:

@@ -1,6 +1,5 @@
 import { CodebaseProfile } from "../../../../core/types";
 import type { ParsedUiDocs } from "../../../../core/types/uiDoc";
-import type { ConversationEntry } from "../../../../core/types/session";
 import type { Conversations } from '../../../common/graph/conversations';
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
@@ -10,6 +9,8 @@ import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
 import type { ResolvedActionContext, ResolvedArtifact, TechTier, Boundary, Complexity, SpecClarify, FeatureUserTurnLine, FeatureUserTurnMetaLine, FeatureBreadcrumbLine } from '@ant/shared';
+import type { VerificationSession } from "./tasks/verification/model/Session";
+import type { PlanEntry } from "./tasks/verification/model/Session";
 
 export interface IntegrationRequirement {
   name: string;
@@ -330,12 +331,25 @@ export interface ArchitectGraphState extends TriageableState {
   /** Which node's tool loop are we in? 'plan' = plan-tool loop, 'execute' = execute-tool loop.
    *  Used by routers (planRouter, toolRouter) and tool node for conversation/tracking branching. */
   _activePhase?: 'plan' | 'execute';
-  /** Why did we enter the plan node? Set by the caller (executeRouter, enforce, etc.),
-   *  consumed immediately on plan entry. Undefined = new task from queue. */
-  _planEntryReason?: 'retry' | 'reverify';
+  /**
+   * Why did we enter the plan node? Set by the caller (executeRouter, enforce, etc.),
+   * consumed immediately on plan entry. Undefined = new task from queue.
+   *
+   * Renamed from `_planEntryReason` in T4a (task domain consolidation). Union is
+   * now `PlanEntry` — callers may still write `'retry' | 'reverify'` today; the
+   * wider union (`'fresh' | 'resumed' | 'toolLoop' | …`) is reserved for the
+   * verification hook layer (T5).
+   */
+  _nextPlanEntry?: PlanEntry;
   /** Tracks whether execute phase modified any files (for executeRouter re-verify decision) */
   _executeModifiedFiles?: boolean;
-  /** Whether dependency install is needed (dep-hash guard bypass) */
+  /**
+   * Whether dependency install is needed (dep-hash guard bypass).
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `state.verification.snapshot().installNeeded` (VerificationSession).
+   *   Readers must not be added; new code uses the Session API.
+   */
   _installNeeded?: boolean;
   /**
    * Package manager (npm / pnpm / yarn / bun) detected from lockfile at the
@@ -350,7 +364,13 @@ export interface ArchitectGraphState extends TriageableState {
    * through every plan helper and offers no runtime benefit).
    */
   _detectedPackageManager?: string;
-  /** Accumulated remediation plans from previous fix cycles */
+  /**
+   * Accumulated remediation plans from previous fix cycles.
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `state.verification.snapshot().planHistoryBodies` (VerificationSession).
+   *   Readers must not be added; new code uses the Session API.
+   */
   _appliedPlanHistory?: string[];
   /** Files written by other parallel tasks/workers (for session manifest in execute) */
   _otherWorkerFiles?: Array<{ path: string; taskName?: string }>;
@@ -448,11 +468,21 @@ export interface ArchitectGraphState extends TriageableState {
    * - Reset rule: `*Attempted` cleared on retry/reverify entry; `*Passed` and
    *   `*Required` preserved unless explicitly invalidated.
    *   `testsRequired`/`typecheckRequired` are set once at initialisation.
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `state.verification` (VerificationSession).
+   *   Readers must not be added; new code uses the Session API.
    */
   _verificationTracker?: VerificationTracker;
 
-  /** Hash of dependency declaration files at last successful install.
-   *  Compared at verification plan entry to determine if install is needed. */
+  /**
+   * Hash of dependency declaration files at last successful install.
+   * Compared at verification plan entry to determine if install is needed.
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `state.verification.snapshot().depHash` (VerificationSession).
+   *   Readers must not be added; new code uses the Session API.
+   */
   _depFileHash?: string;
 
   /**
@@ -473,8 +503,37 @@ export interface ArchitectGraphState extends TriageableState {
    * For verification tasks, the orchestrator also reads this field (via the
    * carried-over snapshot) instead of the legacy `_failedAttempts` task field
    * so that in-plan retry + reverify + re-queue share one ceiling.
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `state.verification.attempts()` (VerificationSession).
+   *   Readers must not be added; new code uses the Session API.
    */
   _verificationAttempts?: number;
+
+  /**
+   * New SSOT for verification domain state, introduced in T4a.
+   * Coexists with the five `_verification*` / `_dep*` / `_installNeeded` /
+   * `_appliedPlanHistory` fields above during the migration window; those
+   * will be removed in T4b once every reader/writer has moved to the
+   * Session API (§11.1 mapping table).
+   *
+   * Populated by `runner.ts` on fresh verification task entry (T5) and
+   * rehydrated on resume via `VerificationSession.rehydrate(snap)`.
+   * Persisted across carry-over boundaries as `VerificationSnapshot` in
+   * `WorkerSnapshot.verification` / `CodeTaskResumeState.verification`.
+   */
+  verification?: VerificationSession;
+
+  /**
+   * Reason emitted by the plan node when it short-circuits before execute
+   * (empty plan, already-complete verification, force-split). Consumed by
+   * `routeAfterPlan` in lieu of the previous inline `state.llmResponse`
+   * mutation inside the router (R1 — routers stay pure).
+   *
+   * Set by `nodes/plan/parts/handleShortCircuit` (T6) alongside
+   * `llmResponse = { done: true, … }`; cleared on the next plan entry.
+   */
+  _shortCircuitReason?: string;
 
   /** Phase 3-15 — number of `search_web` calls executed in the current
    *  plan-toolLoop session. Reset on fresh task entry; incremented after
@@ -547,7 +606,6 @@ export interface ArchitectGraphState extends TriageableState {
 
   // Inter-Job Context Bridge
   boundary?: Boundary;
-  jobConversation?: ConversationEntry[];
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Session Redesign (5-Tier Execution Model) — Mode × Complexity routing
