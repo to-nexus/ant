@@ -6,6 +6,7 @@ import { isTemplateContent } from "../../../../../core/utils/templateDetector";
 import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
 import type { ConversationEntry } from "../../../../../core/types/session";
 import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
+import { buildFeatureContext } from "../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
 import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
@@ -239,55 +240,72 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       console.log(`📄 [Design Resolve] Loaded ${FIGMA_FILENAME}: ${figmaConfig.file ? '1 file configured' : 'no file'}`);
     } catch { /* Non-critical */ }
 
-    // Inter-Job Context Bridge: Load & compact jobConversation
-    let processedJobConversation: ConversationEntry[] = [];
-    if (state.deps?.session) {
-      const designSession = await state.deps.session.load(context.project, context.featureFolder || 'default', 'design');
-      const rawJobConversation: ConversationEntry[] = designSession?.state?.jobConversation || [];
-      processedJobConversation = rawJobConversation;
-
-      const promptBuilder = state.deps?.promptBuilder;
-      if (rawJobConversation.length > 0 && state.deps?.llm && promptBuilder) {
-        const promptPort = promptBuilder;
-        if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-          state.deps.kanbanUpdate.setEstimatingActivity('Compacting previous context...', 'resolve');
-        }
-        let compactionChanged = false;
-        const trigger2Result = await compressHeavyweightEntries(processedJobConversation, state.deps.llm, promptPort);
-        processedJobConversation = trigger2Result.entries;
-        compactionChanged = trigger2Result.changed;
-
-        const { compactJob, applyCompactionToConversation } = await import('../../../../../core/context/compactJob');
-        try {
-          const compactResult = await compactJob(processedJobConversation, state.deps.llm, promptPort, {
-            threshold: DESIGN_JOB_COMPACTION_THRESHOLD,
-            recentWindowSize: DESIGN_JOB_COMPACTION_WINDOW,
-            maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
-          });
-          if (compactResult.wasCompacted) {
-            processedJobConversation = applyCompactionToConversation(
-              processedJobConversation,
-              { summary: compactResult.summary!, summarizedCount: processedJobConversation.length - DESIGN_JOB_COMPACTION_WINDOW },
-              (summary) => ({ role: 'system' as const, content: summary, timestamp: new Date().toISOString(), metadata: { chapterSummary: 'Previous jobs summary' } }),
-            );
-            compactionChanged = true;
-          }
-        } catch (err) {
-          console.warn(`⚠️  [Design Resolve] Trigger 1 compaction failed, using uncompacted entries:`, err);
-        }
-        if (compactionChanged) {
-          try {
-            await state.deps.session.updateArtifacts(context.project, context.featureFolder || 'default', 'design', {
-              state: { ...designSession.state, jobConversation: processedJobConversation },
-            });
-            console.log(`💾 [Design Resolve] Persisted compacted jobConversation (${rawJobConversation.length} → ${processedJobConversation.length} entries)`);
-          } catch (err) {
-            console.warn(`⚠️  [Design Resolve] Failed to persist compacted jobConversation:`, err);
-          }
-        }
-        console.log(`📋 [Design Resolve] Inter-Job Context: ${processedJobConversation.length} entries loaded`);
-      }
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Feature Context (session redesign — Phase C)
+    // Mirrors code resolve: surface T2+T3 so future design-level prompts may
+    // consume prior context. Design sub-graph remains untouched (D5).
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const featureContext = await buildFeatureContext(state.deps?.session);
+    if (featureContext) {
+      console.log(
+        `📚 [Design Resolve] featureContext: breadcrumbs=${featureContext.breadcrumbs.length}, userTurns=${featureContext.userTurns.length}`,
+      );
     }
+
+    // TODO(legacy_cleanup): remove jobConversation compaction block once §14 clean-up lands.
+    // Commented out as part of §11 `resolve_integrate` — featureContext above is now SSOT.
+    let processedJobConversation: ConversationEntry[] = [];
+    void compressHeavyweightEntries;
+    void DESIGN_JOB_COMPACTION_THRESHOLD;
+    void DESIGN_JOB_COMPACTION_WINDOW;
+    void COMPACTION_MAX_OUTPUT_TOKENS;
+    // if (state.deps?.session) {
+    //   const designSession = await state.deps.session.load(context.project, context.featureFolder || 'default', 'design');
+    //   const rawJobConversation: ConversationEntry[] = designSession?.state?.jobConversation || [];
+    //   processedJobConversation = rawJobConversation;
+    //
+    //   const promptBuilder = state.deps?.promptBuilder;
+    //   if (rawJobConversation.length > 0 && state.deps?.llm && promptBuilder) {
+    //     const promptPort = promptBuilder;
+    //     if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+    //       state.deps.kanbanUpdate.setEstimatingActivity('Compacting previous context...', 'resolve');
+    //     }
+    //     let compactionChanged = false;
+    //     const trigger2Result = await compressHeavyweightEntries(processedJobConversation, state.deps.llm, promptPort);
+    //     processedJobConversation = trigger2Result.entries;
+    //     compactionChanged = trigger2Result.changed;
+    //
+    //     const { compactJob, applyCompactionToConversation } = await import('../../../../../core/context/compactJob');
+    //     try {
+    //       const compactResult = await compactJob(processedJobConversation, state.deps.llm, promptPort, {
+    //         threshold: DESIGN_JOB_COMPACTION_THRESHOLD,
+    //         recentWindowSize: DESIGN_JOB_COMPACTION_WINDOW,
+    //         maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
+    //       });
+    //       if (compactResult.wasCompacted) {
+    //         processedJobConversation = applyCompactionToConversation(
+    //           processedJobConversation,
+    //           { summary: compactResult.summary!, summarizedCount: processedJobConversation.length - DESIGN_JOB_COMPACTION_WINDOW },
+    //           (summary) => ({ role: 'system' as const, content: summary, timestamp: new Date().toISOString(), metadata: { chapterSummary: 'Previous jobs summary' } }),
+    //         );
+    //         compactionChanged = true;
+    //       }
+    //     } catch (err) {
+    //       console.warn(`⚠️  [Design Resolve] Trigger 1 compaction failed, using uncompacted entries:`, err);
+    //     }
+    //     if (compactionChanged) {
+    //       try {
+    //         await state.deps.session.updateArtifacts(context.project, context.featureFolder || 'default', 'design', {
+    //           state: { ...designSession.state, jobConversation: processedJobConversation },
+    //         });
+    //         console.log(`💾 [Design Resolve] Persisted compacted jobConversation (${rawJobConversation.length} → ${processedJobConversation.length} entries)`);
+    //       } catch (err) {
+    //         console.warn(`⚠️  [Design Resolve] Failed to persist compacted jobConversation:`, err);
+    //       }
+    //     }
+    //     console.log(`📋 [Design Resolve] Inter-Job Context: ${processedJobConversation.length} entries loaded`);
+    //   }
+    // }
 
     // Validation based on mode
     const hasAnySource = sourceDocuments && Object.keys(sourceDocuments).length > 0;
@@ -316,6 +334,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       chatSource: state.chatSource,
       _httpJobId: state._httpJobId,
       jobConversation: processedJobConversation,
+      featureContext,
       sessionDigest: buildSessionDigest(processedJobConversation),
     } as Partial<DesignGraphState>;
   },

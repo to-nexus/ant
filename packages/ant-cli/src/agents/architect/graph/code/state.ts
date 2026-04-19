@@ -9,7 +9,7 @@ import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/promp
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { ResolvedActionContext, ResolvedArtifact, TechTier, Boundary } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, TechTier, Boundary, Complexity, SpecClarify, FeatureUserTurnLine, FeatureUserTurnMetaLine, FeatureBreadcrumbLine } from '@ant/shared';
 
 export interface IntegrationRequirement {
   name: string;
@@ -443,7 +443,8 @@ export interface ArchitectGraphState extends TriageableState {
    *   back when edited files intersect the scope of a previously-passed
    *   gate.
    * - Readers: `isVerificationComplete`/`evaluateVerificationCompletion`
-   *   (Axis B SSOT), `formatCachedPassedSteps` (Axis C), codeCommandPolicy.
+   *   (SSOT in utils/verificationCompleteness.ts),
+   *   `formatCachedPassedSteps` (plan/planGeneration.ts), and codeCommandPolicy.
    * - Reset rule: `*Attempted` cleared on retry/reverify entry; `*Passed` and
    *   `*Required` preserved unless explicitly invalidated.
    *   `testsRequired`/`typecheckRequired` are set once at initialisation.
@@ -454,23 +455,26 @@ export interface ArchitectGraphState extends TriageableState {
    *  Compared at verification plan entry to determine if install is needed. */
   _depFileHash?: string;
 
-  /** Axis E — single verification budget (initialised from ANT_VERIFICATION_BUDGET,
-   *  default 8). Consumed only on retry/reverify re-entry into the plan node
-   *  (`consumeVerificationBudget`); a first-time plan entry does NOT decrement
-   *  this. When it reaches 0 the plan node force-splits by file and escalates
-   *  to error tasks. */
-  _verificationBudget?: number;
-
-  /** Axis G-1 — number of re-entries (retry/reverify) into this verification task.
-   *  Triggers deep-diagnostic mode once the threshold is crossed. */
-  _diagnosticAttempts?: number;
-
-  /** Axis G-7 — one-shot marker so the deep-diagnostic budget bump is applied only once. */
-  _deepDiagnosticBudgetGranted?: boolean;
-
-  /** Axis F-4 — normalized SHA of the last produced plan JSON, used to detect
-   *  "same diagnostic output again" and escalate instead of looping. */
-  _lastPlanHash?: string;
+  /**
+   * Total verification attempts across all boundaries (in-plan retry +
+   * reverify + orchestrator re-queue). Single source of truth for "how many
+   * cycles has this verification task had?", derived-from-which are:
+   *   - remaining budget:         `remainingBudget(state)`
+   *   - deep-diagnostic mode:     `inDeepDiagnosticMode(state)`
+   *   - termination decision:     `shouldStopVerification(state)`
+   * Helpers live in `utils/verificationAttempts.ts`.
+   *
+   * Replaces three formerly-independent fields:
+   *   _verificationBudget (remaining, counted down)
+   *   _diagnosticAttempts (re-entries, counted up)
+   *   _deepDiagnosticBudgetGranted (one-shot flag)
+   * — all of which described the same underlying state from different angles.
+   *
+   * For verification tasks, the orchestrator also reads this field (via the
+   * carried-over snapshot) instead of the legacy `_failedAttempts` task field
+   * so that in-plan retry + reverify + re-queue share one ceiling.
+   */
+  _verificationAttempts?: number;
 
   /** Phase 3-15 — number of `search_web` calls executed in the current
    *  plan-toolLoop session. Reset on fresh task entry; incremented after
@@ -536,6 +540,87 @@ export interface ArchitectGraphState extends TriageableState {
   // Inter-Job Context Bridge
   boundary?: Boundary;
   jobConversation?: ConversationEntry[];
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Session Redesign (5-Tier Execution Model) — Mode × Complexity routing
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /**
+   * Complexity classification decided by Decompose.
+   * Combined with `resolvedAction.mode` it selects the execution tier:
+   *   oneshot/exploratory  → `direct` node (ReAct loop, no plan/execute)
+   *   todo                 → full `plan` / `execute` pipeline
+   *
+   * - Writer: decompose node, once per job (or re-decompose).
+   * - Readers: `routeAfterDecompose`, `direct` node, learn/breadcrumb policy.
+   * - Reset rule: never reset within a job; re-decompose overwrites.
+   * Safe default when LLM output is missing: `'todo'` (parseLLMResponse fallback).
+   */
+  complexity?: Complexity;
+
+  /**
+   * Hints produced alongside `complexity` for the `direct` node.
+   * `targetFiles` applies to oneshot (generate/refactor mode) when concrete
+   * targets are identifiable from directive+context.
+   * `explorationScope` applies to exploratory mode (any) to narrow the ReAct
+   * observation surface.
+   */
+  directHints?: { targetFiles?: string[]; explorationScope?: string };
+
+  /**
+   * Narrow view of `complexity` used by the `direct` node to pick a loop
+   * budget: `'oneshot'` (limited steps) vs `'exploratory'` (extended steps).
+   * Derived from `complexity` in decompose; preserved across retries.
+   */
+  directMode?: 'oneshot' | 'exploratory';
+
+  /**
+   * T2+T3 context loaded from feature.jsonl by resolve (session redesign).
+   * Populated by `resolve_integrate`; consumers are plan/direct prompt
+   * builders. Meta fields are surfaced as optional patches rather than a
+   * full intersection to keep the `type` discriminant usable.
+   */
+  featureContext?: {
+    breadcrumbs: FeatureBreadcrumbLine[];
+    userTurns: Array<
+      FeatureUserTurnLine & {
+        complexity?: FeatureUserTurnMetaLine['complexity'];
+        decidedBy?: FeatureUserTurnMetaLine['decidedBy'];
+        reason?: FeatureUserTurnMetaLine['reason'];
+      }
+    >;
+  };
+
+  /**
+   * Spec clarify choice emitted by Decompose when:
+   *   complexity === 'todo' && mode !== 'explain'
+   *   && no system design doc && no relevant spec
+   * When present, graph routes to `__end__` to await user choice.
+   * Triggering logic belongs to `decompose_spec_clarify` (next todo);
+   * this channel exists so the parser/router can already carry the value.
+   */
+  specClarify?: SpecClarify;
+
+  /**
+   * Runtime escalation guard: the `direct` node may re-enter `decompose`
+   * at most once per job. Set true when direct promotes to decompose.
+   * Used by `routeAfterDirect` to prevent infinite direct↔decompose loops.
+   */
+  _promotedThisJob?: boolean;
+
+  /**
+   * Set when the user selects "proceed without spec" on a specClarify
+   * prompt. Decompose reads this on re-entry and skips the specClarify
+   * trigger so the same job can proceed without design redirect.
+   */
+  _specClarifyBypassed?: boolean;
+
+  /**
+   * Direct-node driven escalation signal: when the direct ReAct loop
+   * determines the scope exceeds oneshot/exploratory bounds, it sets this
+   * flag and returns; `routeAfterDirect` then promotes back to decompose.
+   */
+  needsEscalation?: boolean;
 }
 
 /**

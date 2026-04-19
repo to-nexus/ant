@@ -1,6 +1,15 @@
 {{#if featureContext}}
 ════════════════════════════════════════════════════════════════════════════════
 ## Prior Context
+════════════════════════════════════════════════════════════════════════════════
+
+**Observation target**: prior breadcrumbs and user turns since the last boundary.
+
+**Constraint**: Treat items below as background only. Do NOT re-derive or restate
+them unless the current directive explicitly builds on them.
+
+**Constraint**: If the current directive contradicts an item below, the directive
+wins. Do NOT assume continuity that is not observable.
 
 {{#if featureContext.breadcrumbs.length}}
 ### Recent Breadcrumbs
@@ -8,10 +17,11 @@
 - {{this.summary}}
 {{/each}}
 {{/if}}
+
 {{#if featureContext.userTurns.length}}
 ### Recent User Turns
 {{#each featureContext.userTurns}}
-- [{{this.turnId}}] {{this.directive}}
+- [{{this.turnId}}] {{this.user}}
 {{/each}}
 {{/if}}
 
