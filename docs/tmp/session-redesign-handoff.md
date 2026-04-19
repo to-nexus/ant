@@ -13,11 +13,12 @@
 | 항목 | 값 |
 |---|---|
 | 전체 todos | 19개 |
-| 완료 | **13개** |
+| 완료 | **14개** |
 | 진행 중 | 0 |
-| 남음 | **6개** |
+| 남음 | **5개** |
 | Phase B | ✅ **종료** (Mode × Complexity MVP 동작) |
 | Phase C | ✅ **종료** (3/3 완료 — resolve_integrate ✅ · breadcrumb_tiered_policy ✅ · compaction_policy ✅) |
+| Phase D | 🔄 진행 중 (1/5 완료 — legacy_cleanup ✅) |
 | 베이스 커밋 | `8277b313 feat: code verification hardening, tech-tier hints, preview/deploy` |
 | 내 수정 파일 타입 에러 | 0 |
 | 기존 브랜치 선행 에러 (내 작업과 무관) | 27개 |
@@ -78,11 +79,11 @@
   feature.jsonl      ← NEW: 맥락 SSOT (T2 user_turn + T3 breadcrumb + boundary)
   trace.jsonl        ← NEW: UI 채팅 표시 SSOT
   architect/
-    code.json        (기존 — 재개 체크포인트 전용. jobConversation 필드는 제거될 것)
+    code.json        (기존 — 재개 체크포인트 전용, jobConversation 필드 제거 완료 §14)
     design.json
     learn.json
   planner/plan.json
-  chat.json          (DEPRECATED — legacy_cleanup에서 제거)
+  # chat.json         (agent 쪽은 §14에서 제거 완료, ChatService HTTP 레이어 잔존 → §16에서 UI 마이그레이션과 함께 제거)
 ```
 
 ### 메타데이터 정책 (§4.4 매트릭스 SSOT)
@@ -503,7 +504,66 @@
 
 ---
 
-## 4. 남은 Todos (6개, 실행 순서)
+### 14. `legacy_cleanup` ✅
+
+**목표**: Phase D 시작. Session redesign에서 superseded된 legacy 심볼(`chat.json` write path / `saveToChatFile` / `SessionState.jobConversation` / `planMini` / unused compaction 상수)을 **agent 실행 경로에서 완전 제거**. UI-facing HTTP layer는 §16과 겹쳐서 그쪽에서 정리.
+
+**Grep 게이트 결과** (`packages/ant-cli/src` 스캔):
+- `saveToChatFile` / `flushToChatFile` / `getChatSessionPath` / `jobConversation` / `planMini` — 0건
+- `chat.json` — ChatService HTTP 레이어(3건) 잔존 → §16과 함께 UI migration에서 제거 예정 (handoff §14 스코프에서 명시적으로 "UI는 16과 중첩 → 16에서 처리"로 분리됨)
+- `CODE_JOB_COMPACTION_*` / `DESIGN_JOB_COMPACTION_*` — 0건 (constants.ts에서 제거)
+- `PLAN_COMPACTION_*` / `VISUAL_COMPACTION_*` — 유지 (plan/visual compactJob 현역)
+
+**제거/변경 파일**:
+- `packages/ant-cli/src/core/types/session.ts` — `SessionState.jobConversation` 필드 제거
+- `packages/ant-cli/src/agents/architect/graph/code/state.ts` / `design/state.ts` — `jobConversation` 필드 + `ConversationEntry` import 제거
+- `packages/ant-cli/src/agents/architect/graph/code/graph.ts` / `design/graph.ts` — `jobConversation` channel annotation 제거
+- `packages/ant-cli/src/agents/architect/graph/code/nodes/resolve/index.ts` / `design/nodes/resolve.ts` — legacy `compressHeavyweightEntries` + `compactJob(jobConversation)` 블록과 `TODO(legacy_cleanup)` sentinel 전부 삭제. 미사용 import 정리
+- `packages/ant-cli/src/agents/architect/graph/code/nodes/learn/index.ts` / `design/nodes/learn/sessionWriter.ts` — legacy `jobConversation` append + `buildJobRecord` sentinel 삭제
+- `packages/ant-cli/src/agents/architect/graph/code/nodes/learn/jobRecord.ts` / `design/nodes/learn/jobRecord.ts` — **파일 삭제** (buildJobRecord / buildDesignJobRecord 미참조)
+- `packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/index.ts` / `design/nodes/decompose/{specDecompose,uiDesignDecompose,systemDesignDecompose}.ts` — `state.jobConversation` / `hasJobHistory` 렌더링 변수 제거
+- `packages/ant-cli/src/agents/common/graph/nodes/resolve/utils.ts` — `compressHeavyweightEntries` 함수 삭제 + 관련 imports 정리
+- `packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/job-history.md` / `design/base/injections/job-history.md` — **파일 삭제**
+- `packages/ant-cli/src/core/prompt/templates/infra/compaction/job-summary.md` — **파일 삭제** (heavyweight 압축 경로와 함께)
+- `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/decompose/variants/default/base.md` + `scope-rules.md` / `design/nodes/decompose/variants/{ui-design-by-figma,ui-design-by-ref,system-design}/base.md` — `{{> job-history}}` partial include 및 "Completed Work Boundary" 섹션(jobConversation 의존) 제거
+- `packages/ant-cli/src/core/prompt/injection-manifest.json` — `job-history` 엔트리 제거
+- `packages/ant-cli/src/core/utils/sessionPaths.ts` — `getChatSessionPath` 함수 삭제 + 디렉터리 구조 docstring을 `feature.jsonl` / `trace.jsonl`로 갱신
+- `packages/ant-cli/src/core/llm-response/SessionStore.ts` — `saveToChatFile` / `flushToChatFile` / `getChatFilePath` / `stripHeavyContent` / `featurePath` 필드 + `fs` / `path` / `MessageContent` / `isBaseBranch` / `getBranchBase` imports 제거. `finalizeMessage`의 chat.json persistence 호출 라인 제거
+- `packages/ant-cli/src/core/llm-response/LLMResponseService.ts` — `flushToChatFile()` 래퍼 제거
+- `packages/ant-cli/src/core/adapters/ChatAPIClient.ts` — `flushToChatFile()` 메서드 제거 (등록 훅은 `registerChatFlusher` 유지)
+- `packages/ant-cli/src/agents/common/tool/types.ts` — `ChatStatusReporter.flush()` 인터페이스 제거
+- `packages/ant-cli/src/agents/common/tool/chatStatusAdapter.ts` — `flush()` 구현 + noop flush 제거
+- `packages/ant-cli/src/agents/common/tool/orchestrator.ts` — tool batch 루프의 `ctx.chatStatus.flush()` 호출 제거
+- `packages/ant-cli/src/composition/gracefulShutdown.ts` — `ChatFlusher` 인터페이스 + `activeChatFlusher` 상태 + shutdown 시 flush 호출 제거. `registerChatFlusher` / `unregisterChatFlusher`는 기존 caller 호환을 위해 **no-op으로 유지**
+- `packages/ant-cli/src/core/context/constants.ts` — `CODE_JOB_COMPACTION_THRESHOLD` / `CODE_JOB_COMPACTION_WINDOW` / `DESIGN_JOB_COMPACTION_THRESHOLD` / `DESIGN_JOB_COMPACTION_WINDOW` 4개 상수 제거
+- `packages/ant-cli/src/core/prompt/templates/jobs/design/nodes/execute/variants/system-design/rules.md` — `chat.json` 문자열 언급 제거
+- `packages/ant-cli/src/periphery/adapters/http/routes/chat.routes.ts` — 코멘트의 "chat.json" 설명을 "ChatService" 기반 문구로 변경
+- `packages/ant-cli/tests/tool-registry.test.ts` — `reporter.flush` 체크를 `reporter.finalizeMessage`로 교체 (인터페이스 변경 반영)
+
+**설계 결정**:
+- `buildSessionDigest`는 `jobConversation` 소비자였으나 이번에 input이 비면 `undefined`를 반환해서 graceful degrade. 기존 triage 프롬프트의 `sessionDigest` 섹션은 지금은 항상 미렌더 → 향후 feature.jsonl 기반으로 대체할지 별개 결정. 인프라 자체는 이번 라운드에서 건드리지 않음 (후속 ticket에서 판단)
+- `ChatService/*` + `chat.routes.ts` 백엔드 라우트는 UI(`packages/ant-ui`)가 여전히 `/api/chat/*`를 소비하므로 §14에서 유지. §16 `ui_render_migration`이 UI를 `trace.jsonl`로 전환하면서 함께 제거
+- `compactJob`은 `CompactableEntry` 제네릭 함수로 이미 jobConversation 비의존. 시그니처 조정 불필요
+- `planMini`는 원래 dead concept (grep 0건). "phase out 상태" 확인만 하고 실제 제거 없음
+- `ConversationEntry` 타입 자체는 plan/visual 잡(Conversation persistence 경로)에서 여전히 사용 중이므로 유지. code/design 쪽에서만 import 제거
+- `registerChatFlusher` / `unregisterChatFlusher`는 기존 `ChatAPIClient`가 여전히 호출하므로 no-op 함수로 남겨서 호출측 변경 없이 무력화 → 다음 라운드에 caller까지 정리할 수 있음
+
+**AC 달성**:
+- [x] agent-side grep 게이트: `chat\.json|saveToChatFile|jobConversation|planMini|flushToChatFile|getChatSessionPath|CODE_JOB_COMPACTION|DESIGN_JOB_COMPACTION|compressHeavyweightEntries` → `packages/ant-cli/src` 전체에서 0건 (ChatService HTTP layer 3건은 §16 스코프로 명시적 이관)
+- [x] 내 수정 파일 타입 에러 0 (총 27 baseline 유지)
+- [x] vitest **55 suites / 1248 tests** 전원 통과
+
+**⚠️ 검증 미완**:
+- ChatService HTTP 레이어가 여전히 chat.json을 작성/읽지만, agent-side 워커는 더 이상 chat.json을 작성하지 않음 → UI에서 `/api/chat/*`가 반환하는 내용이 오래된 상태로 남을 수 있음. §16 `ui_render_migration`이 `trace.jsonl` 기반으로 갈아엎을 때 최종적으로 정리됨
+- `buildSessionDigest`가 항상 `undefined`를 반환하므로 triage 프롬프트의 sessionDigest 섹션은 사실상 dead. 별도 ticket에서 제거 또는 feature.jsonl 기반으로 재설계 필요
+
+**후속 의존성**:
+- §15 `prompt_singletask`: 본 todo가 decompose base.md에서 `jobConversation` 의존을 제거하면서 `{{#if singleTask}}` 브랜치 추가를 위한 깨끗한 기반 제공
+- §16 `ui_render_migration`: `ChatService` + `/api/chat/*` 라우트를 `trace.jsonl` 기반으로 재작성하고 그 시점에 chat.json 잔존 3건 제거 + UI 코드도 동시 이관
+
+---
+
+## 4. 남은 Todos (5개, 실행 순서)
 
 > 번호 = 실행 순서. **§5의 카드도 동일 번호**로 정렬됨.
 > 선행 의존이 모두 완료됐을 때만 해당 번호 시작 가능.
@@ -523,9 +583,9 @@
 - [x] **12. `breadcrumb_tiered_policy`** — `core/context/breadcrumb.ts` 신규 (bubble-up 4-tier + trace collector). code/design learn 노드가 §2.4 매트릭스에 따라 BC/Boundary append. trace.jsonl `file_write` SSOT 확립 (tool + direct + design tool emit). ✅ 완료
 - [x] **13. `compaction_policy`** — `compactFeatureContext` 신규 (Collapse는 adapter SSOT, Compact는 `FEATURE_CONTEXT_THRESHOLD` 초과 시 LLM 요약 + `FEATURE_CONTEXT_WINDOW` 최신 user_turn 보존). plan/direct base.md에 `{{#if featureContext.summary}}` 섹션. ✅ 완료 → **Phase C 종료**
 
-### Phase D — Cleanup · UI (5개)
+### Phase D — Cleanup · UI (5개 · ✅ 1/5 완료)
 
-- [ ] **14. `legacy_cleanup`** — `chat.json` / `saveToChatFile` / `jobConversation` 필드 / `planMini` 일괄 제거. grep 게이트 0.
+- [x] **14. `legacy_cleanup`** — `chat.json` (agent write path) / `saveToChatFile` / `jobConversation` 필드 / `planMini` / unused compaction 상수 일괄 제거. agent-side grep 게이트 0. ChatService HTTP layer는 §16 스코프로 명시 이관. ✅ 완료
 - [ ] **15. `prompt_singletask`** — plan/decompose base 프롬프트에 `{{#if singleTask}}` 분기.
 - [ ] **16. `ui_render_migration`** — 백엔드 `/api/feature/:id/trace` · `/breadcrumbs` 엔드포인트 + ant-ui 채팅 렌더를 `trace.jsonl` 단일 소스로 전환 + breadcrumb 타임라인 뷰.
 - [ ] **17. `hard_reset`** — `POST /api/feature/:id/context/reset` + FeatureSection 헤더 리셋 버튼.

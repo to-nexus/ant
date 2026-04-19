@@ -225,7 +225,7 @@ describe('createNoopChatStatusReporter', () => {
     expect(reporter.showStatus).toBeInstanceOf(Function);
     expect(reporter.addReadingFile).toBeInstanceOf(Function);
     expect(reporter.commandStart).toBeInstanceOf(Function);
-    expect(reporter.flush).toBeInstanceOf(Function);
+    expect(reporter.finalizeMessage).toBeInstanceOf(Function);
   });
 
   it('should return undefined from noop methods', async () => {

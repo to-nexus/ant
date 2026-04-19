@@ -24,7 +24,8 @@
  *       plan.json
  *       debug/
  *         prompts/
- *     chat.json             ← UI-level, not agent-nested
+ *     feature.jsonl         ← prompt context SSOT (T2+T3)
+ *     trace.jsonl           ← UI chat display SSOT
  */
 
 import * as fs from 'fs';
@@ -106,17 +107,34 @@ export function getSessionFilePathByJob(featurePath: string, jobType: string): s
 }
 
 // ============================================
-// Chat Session (not agent-nested)
+// Context & Trace Log (feature-level, JSONL)
 // ============================================
 
 /**
- * Get the path to the chat session file (UI-level, not agent-nested).
+ * Get the path to feature.jsonl — the prompt context SSOT.
+ * 
+ * Contains T2(user_turn) + T3(breadcrumb) + boundary lines.
+ * Read by resolve node for LLM prompt injection.
  * 
  * @param featurePath - Absolute path to the feature directory
- * @returns Absolute path to chat.json
+ * @returns Absolute path to feature.jsonl
  */
-export function getChatSessionPath(featurePath: string): string {
-  return path.join(featurePath, 'sessions', 'chat.json');
+export function getFeatureJsonlPath(featurePath: string): string {
+  return path.join(featurePath, 'sessions', 'feature.jsonl');
+}
+
+/**
+ * Get the path to trace.jsonl — the UI chat display SSOT.
+ * 
+ * Contains all execution events (thinking, tool calls, file writes, etc.)
+ * plus user_turn copies (with sourceRef). Read by UI for chat rendering.
+ * Ask jobtype also writes here (with sourceRef='ask-only').
+ * 
+ * @param featurePath - Absolute path to the feature directory
+ * @returns Absolute path to trace.jsonl
+ */
+export function getTraceJsonlPath(featurePath: string): string {
+  return path.join(featurePath, 'sessions', 'trace.jsonl');
 }
 
 // ============================================

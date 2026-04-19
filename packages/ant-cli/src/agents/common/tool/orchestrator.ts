@@ -168,9 +168,6 @@ export class ToolOrchestrator {
       });
     }
 
-    // Flush chat once per batch
-    await ctx.chatStatus.flush();
-
     // Workflow: exit once per batch
     if (workflowUpdate && httpJobId) {
       await workflowUpdate.exitNode(httpJobId, 'tool', workerId);

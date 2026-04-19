@@ -391,8 +391,6 @@ export async function decomposeSystemDesign(
     environment: detectedEnv,
     resolvedTargetFiles,
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
-    jobConversation: state.jobConversation,
-    hasJobHistory: state.jobConversation && state.jobConversation.length > 0,
   });
 
   await safeLogPrompt(

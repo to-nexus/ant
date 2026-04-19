@@ -90,8 +90,7 @@ async function initializeLLMResponseService(): Promise<LLMResponseService | null
     });
     
     console.log(`✅ [ChatAPIClient] LLMResponseService created successfully`);
-    
-    // Register for graceful shutdown so in-progress messages are flushed to chat.json
+
     try {
       const { registerChatFlusher } = await import('../../composition/gracefulShutdown');
       registerChatFlusher(llmResponseService!);
@@ -323,20 +322,6 @@ export class ChatAPIClient {
     await service.finalizeMessage(cancelled);
     this.messageStarted = false;
     this.currentMessageId = null;
-  }
-
-  /**
-   * Flush current session state to chat.json without finalizing the active message.
-   * Call this after tool execution to persist intermediate progress, so messages
-   * are not lost if the job is interrupted during a long tool-call loop.
-   */
-  async flushToChatFile(): Promise<void> {
-    if (!this.enabled) return;
-
-    const service = await getLLMResponseService();
-    if (!service) return;
-
-    service.flushToChatFile();
   }
 
   // ============================================================================

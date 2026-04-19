@@ -186,8 +186,14 @@ export interface SessionState {
   // Unified conversations record (new format — node:* + session:* keys)
   conversations?: Record<string, any[]>;
 
-  // Inter-Job Context Bridge (cross-job directive+result history)
-  jobConversation?: ConversationEntry[];
+  // Verification state carried across resumes. See
+  // `agents/architect/graph/code/utils/verificationAttempts.ts` and
+  // `utils/verificationCompleteness.ts` for semantics. Only the scenario
+  // harness path in `runner.ts` writes these; the production path rehydrates
+  // via `TaskWorker` resumeState + per-task fresh initialisation.
+  _verificationAttempts?: number;
+  _verificationTracker?: any;
+  _appliedPlanHistory?: string[];
 
   // Detection & Profile
   resolvedAction?: ResolvedActionContext;
