@@ -515,6 +515,16 @@
       "partial-ref"
     ]
   },
+  "jobs/code/nodes/direct/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/direct/variants/default/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "jobs/code/nodes/enforce/variants/default/rules-enforcement": {
     "sources": [
       "render-call"

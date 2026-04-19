@@ -46,6 +46,14 @@ export const CONV_KEYS = {
   NODE_DOCGEN:   'node:docGen'   as ConversationKey,
   NODE_GENERATE: 'node:generate' as ConversationKey,
   NODE_AGENT:    'node:agent'    as ConversationKey,
+  /**
+   * Session-redesign `direct` ReAct loop history. Separate from NODE_EXECUTE
+   * because direct has no currentTask lifecycle — the loop opens and closes
+   * within a single node invocation, then routes to learn or back to decompose.
+   * Retention: discarded at direct exit (next direct entry starts fresh; see
+   * applyRetention with jobType='code' which always discards).
+   */
+  NODE_DIRECT:   'node:direct'   as ConversationKey,
 } as const;
 
 // ─── Type aliases for readability ───
