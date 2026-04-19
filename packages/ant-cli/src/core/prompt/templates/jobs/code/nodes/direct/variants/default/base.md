@@ -11,6 +11,15 @@ them unless the current directive explicitly builds on them.
 **Constraint**: If the current directive contradicts an item below, the directive
 wins. Do NOT assume continuity that is not observable.
 
+{{#if featureContext.summary}}
+### Earlier Context (summary)
+
+Older user turns in this feature were condensed to a digest. Treat it as
+read-only background — do NOT restate it unless the current directive asks.
+
+{{{featureContext.summary}}}
+{{/if}}
+
 {{#if featureContext.breadcrumbs.length}}
 ### Recent Breadcrumbs
 {{#each featureContext.breadcrumbs}}

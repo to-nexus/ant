@@ -4,7 +4,7 @@ import { ReferenceContext } from "../../../../../../core/codebase/types";
 import * as path from "path";
 import type { ConversationEntry } from "../../../../../../core/types/session";
 import { CODE_JOB_COMPACTION_THRESHOLD, CODE_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../../core/context/constants";
-import { buildFeatureContext } from "../../../../../../core/context/featureContextBuilder";
+import { buildFeatureContext, compactFeatureContext } from "../../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
 import { buildSessionDigest } from '../../../../../common/graph/utils/sessionDigest';
@@ -289,11 +289,25 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     // loadSinceBoundary: latest boundary-onwards T2(user_turn+meta) + all T3(breadcrumbs).
     // Merged by turnId and trimmed so plan/direct prompts receive prior context.
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const featureContext = await buildFeatureContext(state.deps?.session);
+    let featureContext = await buildFeatureContext(state.deps?.session);
     if (featureContext) {
       console.log(
         `📚 [Resolve] featureContext: breadcrumbs=${featureContext.breadcrumbs.length}, userTurns=${featureContext.userTurns.length}`,
       );
+      // §13 compaction_policy — Compact T2 user_turns when over budget.
+      // Collapse (boundary) is adapter-side; Compact is the LLM-based safety
+      // net. Skipped silently when llm / promptBuilder are not wired.
+      const llm = state.deps?.llm;
+      const promptPort = state.deps?.promptBuilder;
+      if (llm && promptPort) {
+        const before = featureContext.userTurns.length;
+        featureContext = await compactFeatureContext(featureContext, { llm, promptPort });
+        if (featureContext.wasCompacted) {
+          console.log(
+            `🗜️  [Resolve] featureContext compacted: ${before} → ${featureContext.userTurns.length} user_turns + summary`,
+          );
+        }
+      }
     }
 
     // Resolve current turnId from feature.jsonl (matches on jobId). Populated
