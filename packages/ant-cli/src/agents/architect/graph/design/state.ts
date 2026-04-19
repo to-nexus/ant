@@ -8,7 +8,7 @@ import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext } from '@ant/shared';
+import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, FeatureUserTurnLine, FeatureUserTurnMetaLine, FeatureBreadcrumbLine } from '@ant/shared';
 
 /**
  * Design Task State
@@ -188,4 +188,24 @@ export interface DesignGraphState extends TriageableState {
   // Inter-Job Context Bridge
   boundary?: Boundary;
   jobConversation?: ConversationEntry[];
+
+  /**
+   * T2+T3 context loaded from feature.jsonl by resolve (session redesign).
+   * Populated by `resolve_integrate` so that design-level prompts can
+   * consume prior breadcrumbs / user_turns without re-reading the file.
+   * The design sub-graph (ui-design/system-design/spec) does not inject
+   * this today — D5 keeps the sub-graph untouched — but the field is
+   * declared so the state channel is discoverable and compatible with
+   * future consumers without another state refactor.
+   */
+  featureContext?: {
+    breadcrumbs: FeatureBreadcrumbLine[];
+    userTurns: Array<
+      FeatureUserTurnLine & {
+        complexity?: FeatureUserTurnMetaLine['complexity'];
+        decidedBy?: FeatureUserTurnMetaLine['decidedBy'];
+        reason?: FeatureUserTurnMetaLine['reason'];
+      }
+    >;
+  };
 }

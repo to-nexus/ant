@@ -20,21 +20,26 @@ import { resolveArtifacts } from "../../../../../../core/prompt/builder/Artifact
 import { getRACDocuments } from "@ant/shared";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
-import { collectDeepDiagnosticConfigs, renderConfigContextBlock } from '../../utils/deepDiagnosticConfig';
+import {
+  collectConfigSnapshot,
+  renderConfigBlock,
+  inDeepDiagnosticMode,
+} from '../../utils/deepDiagnosticMode';
+import { usedAttempts } from '../../utils/verificationAttempts';
 import type { VerificationTracker } from '../../state';
 import { enumeratePassedSteps } from '../../utils/verificationCompleteness';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 /**
- * Axis C helper — render a bullet list of verification steps that have
- * already passed in the current diagnostic cycle. Returns undefined when
- * nothing is cached so the template's `{{#if}}` block stays silent.
+ * Render a bullet list of verification steps that have already passed in
+ * the current diagnostic cycle. Returns undefined when nothing is cached
+ * so the template's `{{#if}}` block stays silent.
  *
- * Derived from `enumeratePassedSteps` (Axis B SSOT) so that "which gates
- * are considered passed here" matches exactly what `isVerificationComplete`
- * considers non-missing. Previously these two functions encoded the same
- * rule independently and drifted.
+ * Derived from `enumeratePassedSteps` (SSOT in utils/verificationCompleteness.ts)
+ * so that "which gates are considered passed here" matches exactly what
+ * `isVerificationComplete` considers non-missing. Previously these two
+ * functions encoded the same rule independently and drifted.
  *
  * Exported for unit testing.
  */
@@ -103,14 +108,14 @@ export async function buildPlanPrompt(
     }
 
     const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
-    // Axis G-2/3/6 — deep-diagnostic mode activates on the second re-entry
-    // into this verification task. We inject config files and a dedicated
-    // prompt signal so the LLM breaks out of "same category of fix" loops.
-    const isDeepDiagnostic = (state._diagnosticAttempts || 0) >= 2;
+    // Deep-diagnostic mode activates on the 2nd re-entry. We inject config
+    // files + a dedicated prompt signal so the LLM breaks out of "same
+    // category of fix" loops. See utils/deepDiagnosticMode.ts.
+    const isDeepDiagnostic = inDeepDiagnosticMode(state);
     let fmtCtx = formatCodeContext(projectCodeContext);
     if (isDeepDiagnostic) {
-      const configs = await collectDeepDiagnosticConfigs(state.context?.featurePath);
-      const block = renderConfigContextBlock(configs);
+      const configs = await collectConfigSnapshot(state.context?.featurePath);
+      const block = renderConfigBlock(configs);
       if (block) {
         fmtCtx = `${fmtCtx || ''}\n\n${block}`.trim();
         console.log(`🧭 [Plan] Deep-diagnostic injected ${configs.length} config file(s)`);
@@ -120,8 +125,8 @@ export async function buildPlanPrompt(
     if (techTier?.language) {
       try { languageHints = await promptBuilder.render(`jobs/code/nodes/plan/variants/verification/basis/techTier/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
     }
-    // Axis C — proactive "already passed" hint so the LLM skips cached steps
-    // instead of hitting the codeCommandPolicy rejection to learn the same.
+    // "Already passed" hint so the LLM skips cached steps instead of hitting
+    // the codeCommandPolicy rejection to learn the same.
     const cachedPassedSteps = formatCachedPassedSteps(state._verificationTracker);
     const vTaskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
     const vBasisSection = await promptBuilder.renderBasis(
@@ -135,7 +140,7 @@ export async function buildPlanPrompt(
       languageHints, hasLanguageHints: !!languageHints, dependencyStatus,
       packageManager, hasPackageManager: !!packageManager,
       isDeepDiagnostic,
-      diagnosticAttempts: state._diagnosticAttempts || 0,
+      diagnosticAttempts: usedAttempts(state),
       cachedPassedSteps,
       resolvedAction: state.resolvedAction,
     });
@@ -233,6 +238,7 @@ export async function buildPlanPrompt(
     designDocUnknownPackages: state.designDocUnknownPackages,
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
     resolvedAction: resolvedActionWithDocs, hasDesignDoc, hasUiDoc,
+    featureContext: state.featureContext,
   });
 
   return basisSection ? `${basisSection}\n\n---\n\n${prompt}` : prompt;
@@ -321,7 +327,7 @@ export async function generatePlanText(
   violations?: Violation[],
   uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
   remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>,  // ✅ Remaining tasks for cross-task awareness
-  extraViolationContext?: string,  // ✅ Axis D — rendered prior-attempt summary for retry re-entries
+  extraViolationContext?: string,  // rendered prior-attempt summary for retry re-entries (taskRetryRetention.ts)
 ): Promise<string> {
   if (!taskRequiresPlan(task)) {
     return '';
