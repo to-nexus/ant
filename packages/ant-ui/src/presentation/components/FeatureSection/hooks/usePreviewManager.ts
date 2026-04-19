@@ -1,342 +1,277 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useStore } from '@/domain/store';
-import { sseManager } from '@/infrastructure/sse/SSEManager';
-import { 
-  startPreview, 
-  stopPreview, 
-  getPreviewStatus
-} from '@/infrastructure/http/api';
-import { PREVIEW_MESSAGES } from '../constants/preview';
-import { analyzePreviewState, extractErrorFromLogs, extractProgress } from '../utils/preview';
-import { loadDismissedMessages, saveDismissedMessage, clearDismissedMessagesForServer } from '../utils/dismissedMessages';
-import type { 
-  PreviewState, 
-  PreviewError, 
-  PreviewProgress, 
-  SetupFailureReasoning,
-  UsePreviewManagerResult 
-} from '../types/preview';
-
 /**
- * usePreviewManager
- * 
- * Manages preview server lifecycle and state
- * 
- * Features:
- * - Initial status check on mount/feature change
- * - Real-time updates via SSE (no polling)
- * - State analysis from logs
- * - Multi-package progress tracking
+ * usePreviewManager — thin action facade.
+ *
+ * Owns only the mutating actions (`startServer`, `stopServer`,
+ * `dismissMessage`) plus dismissal UI state. All state _reads_ go
+ * through `selectPreviewVM(key)` directly from the caller — this hook
+ * never exposes `state`/`status`/`ready` to avoid two parallel read
+ * paths drifting.
+ *
+ * SSE subscription, initial `GET /status`, visibility / reconnect
+ * re-sync live in `usePreviewSync` at the app root. None of those
+ * effects are reachable from this file.
  */
+
+import { useCallback, useEffect, useState } from 'react';
+import { useStore } from '@/domain/store';
+import {
+  startPreview,
+  stopPreview,
+  getPreviewStatus,
+} from '@/infrastructure/http/api';
+import type { PreviewStatus } from '@/infrastructure/http/api';
+import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
+import { PREVIEW_MESSAGES } from '../constants/preview';
+import {
+  loadDismissedMessages,
+  saveDismissedMessage,
+  clearDismissedMessagesForServer,
+} from '../utils/dismissedMessages';
+import type { PreviewError } from '../types/preview';
+
+export interface UsePreviewManagerResult {
+  startServer: () => Promise<void>;
+  stopServer: () => Promise<void>;
+  isDismissed: boolean;
+  dismissMessage: () => void;
+  /** Action-level error (e.g. network failure on POST /start). Does NOT
+   *  include backend-reported errors — those live on `vm.error`. */
+  localError: PreviewError | undefined;
+}
+
 export function usePreviewManager(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
-  options?: { primary?: boolean }
 ): UsePreviewManagerResult {
-  const isPrimary = options?.primary ?? false;
-  const previewStatus = useStore((state) => state.previewStatus);
-  const setPreviewStatus = useStore((state) => state.setPreviewStatus);
-  const setPreviewLoading = useStore((state) => state.setPreviewLoading);
-  const isPreviewLoading = useStore((state) => state.isPreviewLoading);
-  
+  const featureKey = makeFeatureKey(selectedProject, selectedFeature);
+
+  const mergePreviewStatus = useStore((s: any) => s.mergePreviewStatus);
+  const setPreviewStatus = useStore((s: any) => s.setPreviewStatus);
+  const setPreviewLoading = useStore((s: any) => s.setPreviewLoading);
+  const setPreviewStopGuard = useStore((s: any) => s.setPreviewStopGuard);
+
   const [localError, setLocalError] = useState<PreviewError | undefined>();
-  const [progress, setProgress] = useState<PreviewProgress | undefined>();
   const [isDismissed, setIsDismissed] = useState(false);
-  const setPreviewStopGuardUntil = useStore((state) => state.setPreviewStopGuardUntil);
 
-  // Generate stable server key
-  const serverKey = selectedProject && selectedFeature 
-    ? `${selectedProject}/${selectedFeature}` 
-    : '';
+  // Legacy dismissal storage still keys on the slash-form serverKey —
+  // preserve for backward-compat with localStorage contents.
+  const serverKey =
+    selectedProject && selectedFeature
+      ? `${selectedProject}/${selectedFeature}`
+      : '';
 
-  // Derive state from status and logs
-  const state: PreviewState = analyzePreviewState(
-    previewStatus as any,  // Type cast for compatibility
-    isPreviewLoading
+  // Subscribe to the two fields that define the dismiss key so the
+  // effect re-evaluates when either changes. Keeps the read narrow and
+  // avoids re-running on unrelated status updates (log appends etc.).
+  const dismissSetupReasoning = useStore(
+    (s: any) => (featureKey ? s.previewByFeature[featureKey]?.status?.setupReasoning : undefined),
   );
-  
-  // Get ready state from backend (health check result)
-  const ready = previewStatus?.ready || false;
+  const dismissErrorMessage = useStore(
+    (s: any) => (featureKey ? s.previewByFeature[featureKey]?.status?.error : undefined),
+  );
 
-  // Extract progress from logs
   useEffect(() => {
-    if (previewStatus?.logs && previewStatus.logs.length > 0) {
-      const extractedProgress = extractProgress(previewStatus.logs);
-      setProgress(extractedProgress);
-    } else {
-      setProgress(undefined);
-    }
-  }, [previewStatus?.logs]);
-
-  // Derive error synchronously from state + previewStatus + localError
-  const error = useMemo<PreviewError | undefined>(() => {
-    if (state === 'error') {
-      const backendError = previewStatus?.error;
-      if (backendError) return { message: backendError };
-      if (previewStatus?.logs) {
-        const errorMessage = extractErrorFromLogs(previewStatus.logs);
-        if (errorMessage) return { message: errorMessage };
-      }
-    }
-    return localError;
-  }, [state, previewStatus?.error, previewStatus?.logs, localError]);
-
-  // Sync preview status from server (mount, feature change, SSE reconnect)
-  const syncPreviewStatus = useCallback(() => {
-    if (!selectedProject || !selectedFeature) return;
-    getPreviewStatus(selectedProject, selectedFeature)
-      .then(status => {
-        if (Date.now() < useStore.getState().previewStopGuardUntil && status?.running) {
-          return;
-        }
-        // Preserve accumulated SSE logs — getPreviewStatus doesn't return them
-        const currentLogs = useStore.getState().previewStatus?.logs;
-        setPreviewStatus({
-          ...status,
-          logs: status?.logs || currentLogs || []
-        });
-      })
-      .catch(err => {
-        console.error('[usePreviewManager] Status sync failed:', err);
-      });
-  }, [selectedProject, selectedFeature, setPreviewStatus]);
-
-  // Initial status check on mount / feature change (primary only to avoid duplicate HTTP calls)
-  useEffect(() => {
-    if (!isPrimary) return;
-    if (!selectedProject || !selectedFeature) {
-      setPreviewStatus(undefined);
-      return;
-    }
-    syncPreviewStatus();
-  }, [isPrimary, selectedProject, selectedFeature, syncPreviewStatus, setPreviewStatus]);
-
-  // Re-sync on SSE reconnection (primary only)
-  const connectionStatus = useStore((state) => state.connectionStatus);
-  useEffect(() => {
-    if (!isPrimary) return;
-    if (connectionStatus === 'connected' && selectedProject && selectedFeature) {
-      syncPreviewStatus();
-    }
-  }, [isPrimary, connectionStatus, syncPreviewStatus, selectedProject, selectedFeature]);
-
-  // Check dismissal state when status changes
-  useEffect(() => {
-    if (!selectedProject || !selectedFeature) {
+    if (!featureKey || !serverKey) {
       setIsDismissed(false);
       return;
     }
-
-    const reasoning = previewStatus?.setupReasoning;
-    const errorMsg = previewStatus?.error;
-    const dismissKey = reasoning || (errorMsg ? `error:${errorMsg}` : null);
-
-    if (dismissKey && serverKey) {
-      const dismissed = loadDismissedMessages();
-      const isMessageDismissed = dismissed.some(
-        d => d.serverKey === serverKey && d.reasoning === dismissKey
-      );
-      setIsDismissed(isMessageDismissed);
-    } else {
+    const dismissKey =
+      dismissSetupReasoning ||
+      (dismissErrorMessage ? `error:${dismissErrorMessage}` : null);
+    if (!dismissKey) {
       setIsDismissed(false);
+      return;
     }
-  }, [previewStatus?.setupReasoning, previewStatus?.error, serverKey, selectedProject, selectedFeature]);
+    const dismissed = loadDismissedMessages();
+    setIsDismissed(
+      dismissed.some(
+        (d) => d.serverKey === serverKey && d.reasoning === dismissKey,
+      ),
+    );
+  }, [featureKey, serverKey, dismissSetupReasoning, dismissErrorMessage]);
 
-  // Subscribe to preview events via existing unified SSEManager (primary only —
-  // multiple instances would each append the same log entry to the store, doubling output)
-  useEffect(() => {
-    if (!isPrimary) return;
-    if (!selectedProject || !selectedFeature) return;
-
-    const handler = (payload: any) => {
-      try {
-        const messageType = payload?.type;
-        const messageData = payload?.data;
-
-        if (messageType === 'status') {
-          if (Date.now() < useStore.getState().previewStopGuardUntil && messageData?.running === true) {
-            return;
-          }
-
-          const currentStatus = useStore.getState().previewStatus;
-          const mergedStatus = {
-            ...(currentStatus || {}),
-            ...(messageData || {}),
-            logs: (messageData && messageData.logs) ? messageData.logs : (currentStatus?.logs || [])
-          };
-          setPreviewStatus(mergedStatus);
-
-          if (mergedStatus.ready || mergedStatus.running || mergedStatus.setupReasoning || mergedStatus.error || mergedStatus.phase === 'error') {
-            setPreviewLoading(false);
-          }
-        } else if (messageType === 'log') {
-          const currentStatus = useStore.getState().previewStatus;
-          if (!currentStatus) return;
-
-          const updated = {
-            ...currentStatus,
-            logs: [...(currentStatus.logs || []), messageData]
-          };
-          setPreviewStatus(updated);
-        }
-      } catch (err) {
-        console.error('[usePreviewManager] preview handler error:', err);
-      }
-    };
-
-    const handlerId = sseManager.registerHandlerWithId('preview', handler);
-
-    return () => {
-      sseManager.unregisterHandlerById(handlerId);
-    };
-  }, [isPrimary, selectedProject, selectedFeature, setPreviewStatus, setPreviewLoading]);
-
-  // Start preview server
   const startServer = useCallback(async () => {
-    if (!selectedProject || !selectedFeature) {
-      setLocalError({ 
-        message: PREVIEW_MESSAGES.ERROR_NO_PROJECT_FEATURE 
-      });
+    if (!selectedProject || !selectedFeature || !featureKey) {
+      setLocalError({ message: PREVIEW_MESSAGES.ERROR_NO_PROJECT_FEATURE });
       return;
     }
-    
-    // Clear dismissals when user explicitly clicks Play button
+
     clearDismissedMessagesForServer(serverKey);
     setIsDismissed(false);
-    
-    setPreviewLoading(true);
     setLocalError(undefined);
-    setProgress(undefined);
-    
+
+    // Disarm stopGuard from any prior stop cycle. The guard is a time-based
+    // window that ignores stale `running:true` SSE events from a server
+    // being shut down; once the user initiates a NEW start, those events
+    // are no longer stale — they describe the new lifecycle. Without this
+    // line, restarting within 15s of a stop drops the critical
+    // `{phase:'running', running:true}` event from the new server's
+    // health-check, leaving the UI stuck in a permanent loading state.
+    setPreviewStopGuard(featureKey, 0);
+
+    setPreviewLoading(featureKey, true);
+    // Hard reset to shed any prior `phase: 'stopped'` / `error` /
+    // `setupReasoning` — analyzePreviewState would otherwise keep the
+    // panel in 'idle' or 'error' until the first SSE event lands.
+    // Preserve fields that describe the workspace (not the run) so
+    // buttons stay meaningful.
+    const prev = useStore.getState().previewByFeature[featureKey]?.status;
+    setPreviewStatus(featureKey, {
+      running: false,
+      ready: false,
+      logs: [],
+      canStart: prev?.canStart,
+      packages: prev?.packages,
+      structureType: prev?.structureType,
+      projectProfile: prev?.projectProfile,
+      connections: prev?.connections,
+    } as PreviewStatus);
+
     try {
-      // Ensure we can show install/start progress immediately
-      setPreviewStatus({ running: false, ready: false, logs: [] } as any);
-      
       const response = await startPreview(selectedProject, selectedFeature);
-      
-      // Use status from response (backend includes full status)
       if (response.status) {
-        setPreviewStatus(response.status);
+        // Guard against phase regression: the /start response body holds
+        // a snapshot taken BEFORE the async health check resolves (see
+        // PreviewService.startPreview), so `response.status.phase` is
+        // typically `'starting'`. If the health check already completed
+        // on the BE side and the SSE `updatePhase('running')` event
+        // reached us FIRST (possible with fast LAN + slow HTTP), merging
+        // this response would downgrade phase from 'running' back to
+        // 'starting' and freeze the UI in loading.
+        const cur = useStore.getState().previewByFeature[featureKey]?.status;
+        const incoming = response.status as Partial<PreviewStatus>;
+        const wouldRegress =
+          cur?.phase === 'running' && incoming.phase && incoming.phase !== 'running';
+        if (!wouldRegress) {
+          mergePreviewStatus(featureKey, incoming);
+        }
       } else {
-        // Fallback: set running: true manually
-        const currentStatus = useStore.getState().previewStatus;
-        setPreviewStatus({ ...currentStatus, running: true });
+        mergePreviewStatus(featureKey, { running: true } as Partial<PreviewStatus>);
       }
-      setPreviewLoading(false);
+      // Do NOT clear isLoading here. The VM derives `isLoading=false`
+      // from `phase === 'running'`; until then, leaving it true lets the
+      // UI show the starting spinner. SSE will land the running phase.
+      // (A safety-net timeout in usePreviewSync catches the rare case
+      // where that event is lost.)
     } catch (err: any) {
-      // If validation failed, set status with validation info (for Fix button)
-      if (err.setupReasoning) {
-        setPreviewStatus({
+      if (err?.setupReasoning) {
+        setPreviewStatus(featureKey, {
           running: false,
           ready: false,
           setupReasoning: err.setupReasoning,
           setupReason: err.setupReason,
           suggestedFix: err.suggestedFix,
           issues: err.issues,
-          logs: []
-        });
+          logs: [],
+        } as PreviewStatus);
       } else {
-        // Network/timeout error — backend might still be running.
-        // Re-sync from server before clearing loading to avoid
-        // a window where the Start button is incorrectly enabled.
+        // Network/timeout — backend might still be up. Re-sync from
+        // server before surfacing the error so the Start button reflects
+        // reality.
         try {
-          const currentStatus = await getPreviewStatus(selectedProject, selectedFeature);
-          setPreviewStatus(currentStatus);
-        } catch { /* ignore — next poll will catch up */ }
+          const status = await getPreviewStatus(selectedProject, selectedFeature);
+          mergePreviewStatus(featureKey, status as Partial<PreviewStatus>);
+        } catch { /* next sync will catch up */ }
       }
-      
       setLocalError({
-        message: err.message || PREVIEW_MESSAGES.ERROR_UNKNOWN,
-        details: err.setupReason || err.response?.data?.error
+        message: err?.message || PREVIEW_MESSAGES.ERROR_UNKNOWN,
+        details: err?.setupReason || err?.response?.data?.error,
       });
-      setPreviewLoading(false);
+      setPreviewLoading(featureKey, false);
     }
-  }, [selectedProject, selectedFeature, serverKey, setPreviewLoading, setPreviewStatus]);
+  }, [
+    selectedProject,
+    selectedFeature,
+    featureKey,
+    serverKey,
+    mergePreviewStatus,
+    setPreviewStatus,
+    setPreviewLoading,
+    setPreviewStopGuard,
+  ]);
 
-  // Stop preview server
   const stopServer = useCallback(async () => {
-    if (!selectedProject || !selectedFeature) return;
+    if (!selectedProject || !selectedFeature || !featureKey) return;
 
-    // Show 'stopping' phase with loading indicator while backend cleans up
-    // (docker compose down, process group kill, port release can take several seconds)
-    setPreviewStopGuardUntil(Date.now() + 15000);
-    const currentLogs = useStore.getState().previewStatus?.logs;
-    const currentCanStart = useStore.getState().previewStatus?.canStart ?? true;
-    setPreviewStatus(currentLogs?.length
-      ? { running: false, ready: false, phase: 'stopping', canStart: currentCanStart, logs: currentLogs } as any
-      : { running: false, ready: false, phase: 'stopping' } as any
-    );
-    setPreviewLoading(true);
+    // 15s window to ignore stale `running:true` events during shutdown
+    // (docker compose down / process-group kill can take seconds).
+    setPreviewStopGuard(featureKey, Date.now() + 15000);
 
+    const curr = useStore.getState().previewByFeature[featureKey]?.status;
+    const canStart = curr?.canStart ?? true;
+    mergePreviewStatus(featureKey, {
+      running: false,
+      ready: false,
+      phase: 'stopping',
+      canStart,
+    });
+    setPreviewLoading(featureKey, true);
     setLocalError(undefined);
-    setProgress(undefined);
-    
+
     try {
       await stopPreview(selectedProject, selectedFeature);
-      // Stop succeeded — now mark as fully stopped
-      const finalLogs = useStore.getState().previewStatus?.logs;
-      setPreviewStatus(finalLogs?.length
-        ? { running: false, ready: false, phase: 'stopped', canStart: true, logs: finalLogs } as any
-        : undefined
-      );
+      mergePreviewStatus(featureKey, {
+        running: false,
+        ready: false,
+        phase: 'stopped',
+        canStart: true,
+      });
+      // Stop confirmed by backend. The 15s guard window was a worst-case
+      // safety net against stale `running:true` events from processes
+      // still being torn down — once the /stop call returns success, the
+      // server is already gone and the window serves no purpose. Clearing
+      // it here keeps the guard bound to the stop cycle and prevents it
+      // from leaking into a follow-up start.
+      setPreviewStopGuard(featureKey, 0);
     } catch (err: any) {
       setLocalError({
-        message: PREVIEW_MESSAGES.ERROR_STOP_FAILED(err.message || PREVIEW_MESSAGES.ERROR_UNKNOWN)
+        message: PREVIEW_MESSAGES.ERROR_STOP_FAILED(
+          err?.message || PREVIEW_MESSAGES.ERROR_UNKNOWN,
+        ),
       });
-      // Re-sync status if stop failed
       try {
         const status = await getPreviewStatus(selectedProject, selectedFeature);
-        setPreviewStatus(status);
-      } catch {
-        // ignore
-      }
+        mergePreviewStatus(featureKey, status as Partial<PreviewStatus>);
+        // Second-chance disarm: if the refetch confirms the server is
+        // NOT running, keeping a guard around would only suppress events
+        // from the next start cycle. If it IS still running, keep the
+        // guard — the original 15s window is still valid.
+        if (!status?.running) {
+          setPreviewStopGuard(featureKey, 0);
+        }
+      } catch { /* ignore */ }
     } finally {
-      setPreviewLoading(false);
+      setPreviewLoading(featureKey, false);
     }
-  }, [selectedProject, selectedFeature, setPreviewLoading, setPreviewStatus, setPreviewStopGuardUntil]);
+  }, [
+    selectedProject,
+    selectedFeature,
+    featureKey,
+    mergePreviewStatus,
+    setPreviewLoading,
+    setPreviewStopGuard,
+  ]);
 
-  // Dismiss message
   const dismissMessage = useCallback(() => {
-    const reasoning = previewStatus?.setupReasoning;
-    const errorMsg = previewStatus?.error;
-    const dismissKey = reasoning || (errorMsg ? `error:${errorMsg}` : null);
-
-    if (dismissKey && serverKey) {
-      saveDismissedMessage(serverKey, dismissKey);
+    if (!featureKey) {
       setIsDismissed(true);
       return;
     }
-    
+    const status = useStore.getState().previewByFeature[featureKey]?.status;
+    const reasoning = status?.setupReasoning;
+    const errorMsg = status?.error;
+    const dismissKey = reasoning || (errorMsg ? `error:${errorMsg}` : null);
+    if (dismissKey && serverKey) {
+      saveDismissedMessage(serverKey, dismissKey);
+    }
     setIsDismissed(true);
-  }, [previewStatus?.setupReasoning, previewStatus?.error, serverKey]);
-
-  // Build "Fix All" payload from issues (extensible)
-  const effectiveSuggestedFix = (() => {
-    const issues = previewStatus?.issues || [];
-    const withFix = issues.filter(i => i.suggestedFix && i.suggestedFix.trim().length > 0);
-    if (withFix.length === 0) return previewStatus?.suggestedFix;
-    
-    const ordered = [...withFix].sort((a, b) => {
-      if (a.severity === b.severity) return 0;
-      return a.severity === 'fatal' ? -1 : 1;
-    });
-    
-    return ordered.map(i => i.suggestedFix!.trim()).join('\n\n---\n\n');
-  })();
+  }, [featureKey, serverKey]);
 
   return {
-    state,
-    status: previewStatus as any,
-    ready,
-    setupReasoning: previewStatus?.setupReasoning as SetupFailureReasoning | undefined,
-    setupReason: previewStatus?.setupReason,
-    suggestedFix: effectiveSuggestedFix,
-    error,
-    progress,
     startServer,
     stopServer,
-    isLoading: isPreviewLoading,
     isDismissed,
-    dismissMessage
+    dismissMessage,
+    localError,
   };
 }

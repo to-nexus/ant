@@ -669,31 +669,50 @@ export class PreviewServer {
      * POST /projects/:id/deploy
      * Start build and deploy (non-blocking). Returns 202 immediately;
      * build progress and final status are delivered via SSE 'deploy' events.
+     *
+     * Only feature branches are deployable. Requests without a feature (or
+     * with `feature === 'main'`) are rejected with 400. Requests issued
+     * while a code job is writing files on this feature are rejected with
+     * 409 — DeployService surfaces this via `reason === 'code-job-active'`.
      */
     this.app.post('/projects/:id/deploy', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
-        const feature = req.body?.feature || 'main';
+        const feature = req.body?.feature;
+
+        if (!feature || feature === 'main') {
+          res.status(400).json({
+            success: false,
+            reason: 'base-branch-not-allowed',
+            message: 'Deploy is only available on feature branches',
+          });
+          return;
+        }
 
         logger.warn(`[PreviewServer] POST /projects/${projectId}/deploy (user=${userContext.userId}, feature=${feature})`, {
           component: 'PreviewServer'
         });
 
-        const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+        const codebasePath = this.resolveWorkspacePath(userContext, projectId, feature);
         const result = await this.deployService.startDeploy(
           userContext.organizationId,
           userContext.userId,
           projectId,
           feature,
-          workspacePath
+          codebasePath
         );
 
         if (result.success) {
           res.status(202).json(result);
-        } else {
-          res.status(400).json(result);
+          return;
         }
+
+        // Map failure reasons to HTTP status codes. 409 for the one that
+        // is transient (resolves when the code job ends); 400 for the
+        // rest (validation failures the caller must fix before retrying).
+        const status = result.reason === 'code-job-active' ? 409 : 400;
+        res.status(status).json(result);
       } catch (error: any) {
         logger.error('[PreviewServer] Deploy error', { component: 'PreviewServer' }, error);
         sendErrorResponse(res, 500, error, 'PreviewServer');
@@ -702,13 +721,22 @@ export class PreviewServer {
 
     /**
      * POST /projects/:id/deploy/stop
-     * Stop a running deploy
+     * Stop a running deploy. Only valid for feature branches.
      */
     this.app.post('/projects/:id/deploy/stop', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
-        const feature = req.body?.feature || 'main';
+        const feature = req.body?.feature;
+
+        if (!feature || feature === 'main') {
+          res.status(400).json({
+            success: false,
+            reason: 'base-branch-not-allowed',
+            message: 'Deploy is only available on feature branches',
+          });
+          return;
+        }
 
         const result = await this.deployService.stopDeploy(
           userContext.organizationId,
@@ -726,13 +754,22 @@ export class PreviewServer {
 
     /**
      * GET /projects/:id/deploy/status
-     * Get deploy status
+     * Get deploy status. Only valid for feature branches.
      */
     this.app.get('/projects/:id/deploy/status', async (req: Request, res: Response) => {
       try {
         const projectId = req.params.id;
         const userContext = this.extractUserContext(req);
-        const feature = req.query.feature as string || 'main';
+        const feature = req.query.feature as string | undefined;
+
+        if (!feature || feature === 'main') {
+          res.status(400).json({
+            success: false,
+            reason: 'base-branch-not-allowed',
+            message: 'Deploy is only available on feature branches',
+          });
+          return;
+        }
 
         const status = await this.deployService.getStatus(
           userContext.organizationId,

@@ -97,6 +97,17 @@ export class AutoInjectionResolver {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Tier A: Blind-spot hints (basis/techTier — Hints 계층)
+    // SSOT for `jobs/{job}/basis/techTier/{language,framework}/...` injection.
+    // See docs/architecture/13-prompt-system.md "Hints 계층".
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (job === 'code' || job === 'design') {
+      for (const path of this.resolveTechTierInjections(job as 'code' | 'design', tiers, taskType)) {
+        injections.push(path);
+      }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Code job: data-presence injections (Tier D)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (job === 'code') {
@@ -190,6 +201,97 @@ export class AutoInjectionResolver {
     const lang = tiers[0]?.language;
     if (lang) return lang;
     return 'typescript';
+  }
+
+  /**
+   * Hints-layer language mapping (SSOT for `jobs/{job}/basis/techTier/language/*`).
+   *
+   * Returns null instead of falling back to avoid injecting the wrong file.
+   * The allowed filename set is:
+   *   code: typescript-node | typescript-browser | go
+   *   design: (same set; contents curated separately)
+   *
+   * Intentionally stricter than `resolveLanguage` which uses a 'typescript' fallback.
+   */
+  private resolveTechTierLanguage(tiers: TechTier[]): string | null {
+    const tier = tiers[0];
+    if (!tier?.language) return null;
+    const lang = tier.language;
+    const stack = tier.stack;
+    if (lang === 'go') return 'go';
+    if (lang === 'typescript') {
+      if (stack === 'backend') return 'typescript-node';
+      if (stack === 'frontend' || stack === 'fullstack') return 'typescript-browser';
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * Hints-layer framework mapping (SSOT for `jobs/{job}/basis/techTier/framework/*`).
+   *
+   * Returns null instead of falling back. Allowed sets are hardcoded per job
+   * to prevent silent injection of a file that does not exist on disk.
+   */
+  private resolveTechTierFramework(tiers: TechTier[], job: 'code' | 'design'): string | null {
+    const fw = tiers[0]?.framework?.toLowerCase();
+    if (!fw) return null;
+    const allowed = job === 'code'
+      ? ['nextjs', 'react', 'react-native', 'nestjs', 'gin']
+      : ['nextjs', 'go'];
+    if (allowed.includes(fw)) return fw;
+    if (fw.includes('next')) return 'nextjs';
+    return null;
+  }
+
+  /**
+   * Hints-layer SSOT. Returns the list of injection paths for the given
+   * (job, tiers, taskType). Exposed as the public surface so that callers
+   * outside PromptBuilder (e.g. design docGen logging) reuse the same
+   * decision logic instead of duplicating the framework/language mapping.
+   *
+   * Code job scope: `taskType ∈ {verification, error, ui}` only.
+   * Other task types (feature/setup/test-code/doc) already have dedicated
+   * injections (e.g. setup/config) — injecting hints here would scope-creep.
+   *
+   * Design job scope: all task types when language/framework are detectable.
+   */
+  resolveTechTierInjections(
+    job: 'code' | 'design',
+    tiers: TechTier[],
+    taskType: string | undefined,
+  ): string[] {
+    const paths: string[] = [];
+    const framework = this.resolveTechTierFramework(tiers, job);
+    const language = this.resolveTechTierLanguage(tiers);
+
+    if (job === 'code') {
+      const injectable = ['verification', 'error', 'ui'].includes(taskType ?? '');
+      if (!injectable) return paths;
+      if (framework) paths.push(`jobs/code/basis/techTier/framework/${framework}`);
+      if (language) paths.push(`jobs/code/basis/techTier/language/${language}`);
+      return paths;
+    }
+
+    if (job === 'design') {
+      // Design job currently has framework files only (nextjs, go).
+      // `framework/go.md` is named after the language because the historical
+      // entry was "Go API backend" rather than a specific Go web framework —
+      // accept `language === 'go' && stack === 'backend'` as a synonym so
+      // callers (e.g. text-search fallback producing a pseudo-techTier with
+      // just `language: 'go'`) resolve to the same file.
+      if (framework) {
+        paths.push(`jobs/design/basis/techTier/framework/${framework}`);
+      } else {
+        const tier = tiers[0];
+        if (tier?.language === 'go' && tier?.stack === 'backend') {
+          paths.push('jobs/design/basis/techTier/framework/go');
+        }
+      }
+      return paths;
+    }
+
+    return paths;
   }
 
   private pushUnique(arr: string[], value: string): void {

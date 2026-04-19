@@ -340,7 +340,7 @@ function processDiagnosticBatchSplit(
       && (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1)
       && modifyArr.length > 0;
 
-    if ((shouldForceSplit || forceByRepeat) && modifyArr.length > 0) {
+    if ((shouldForceSplit || forceByRepeat) && modifyArr.length >= 2) {
       logBatchSplit({
         action: 'force_split_escalate',
         reason: forceByRepeat
@@ -396,6 +396,24 @@ function processDiagnosticBatchSplit(
     // Batches with file overlap use exclusive:true (sequential) instead.
     const batchGroupBase = hasFileOverlap ? null : `error-batch-${Date.now()}`;
 
+    // Phase 3-11 — carry the plan-level `rootCauseSelfCheck.mode` onto each
+    // batch so the error execute variant can branch its scope rules.
+    // Falls back to a heuristic (max affectedFiles across rootCauses ≥ 5 →
+    // 'upstream', otherwise 'patch') when the LLM did not self-report.
+    const selfCheck = (parsed as any).rootCauseSelfCheck;
+    const allowedModes = ['patch', 'upstream', 'refactor'] as const;
+    type RemediationMode = typeof allowedModes[number];
+    let planMode: RemediationMode;
+    if (selfCheck?.mode && allowedModes.includes(selfCheck.mode)) {
+      planMode = selfCheck.mode;
+    } else {
+      const maxAffected = (parsed.diagnostics?.rootCauses ?? []).reduce(
+        (m: number, rc: any) => Math.max(m, Array.isArray(rc.affectedFiles) ? rc.affectedFiles.length : 0),
+        0,
+      );
+      planMode = maxAffected >= 5 ? 'upstream' : 'patch';
+    }
+
     const subTaskIds: string[] = [];
     for (let i = 0; i < parsed.batches.length; i++) {
       const batch = parsed.batches[i];
@@ -407,6 +425,7 @@ function processDiagnosticBatchSplit(
           create: batch.create || [],
           delete: batch.delete || [],
         },
+        rootCauseSelfCheck: selfCheck ?? { mode: planMode },
       });
 
       const subTask: CodeTask = {
@@ -418,6 +437,7 @@ function processDiagnosticBatchSplit(
         prePlanText: batchPlanText,
         exclusive: hasFileOverlap,
         parallelGroup: batchGroupBase ? `${batchGroupBase}-${i}` : undefined,
+        remediationMode: planMode,
       };
       state.taskQueue.push(subTask);
       subTaskIds.push(subTask.id);
@@ -475,6 +495,540 @@ function processDiagnosticBatchSplit(
 }
 
 /**
+ * STEP 0 entry dispatcher — routes plan() entry into exactly one of the
+ * four handlers below and returns a `PlanEntryContext` that downstream
+ * STEP 0.5 / STEP 3 consume.
+ *
+ * The four entry reasons are orthogonal:
+ *   - inToolLoop: re-entry from the plan↔tool loop (no resets)
+ *   - retry:     enforce→plan retry (violations triage)
+ *   - reverify:  post-codefix final verification
+ *   - fresh:     a new task popped from the queue (or pre-assigned to a worker)
+ *
+ * Strict invariants (see docs/architecture/14-code-job.md Axis A–G):
+ *   - `preservedRetries` MUST carry through when entering via retry, tool-loop,
+ *     or scenario-preserve env; otherwise reset to 0.
+ *   - retry/reverify both consume the verification budget and clear
+ *     `state.violations` after rendering `retrySummaryText` (which becomes the
+ *     sole violations carrier in STEP 3).
+ *   - `recomputeInstallNeeded` is called from every branch that mutates the
+ *     task-level context — do NOT merge the calls across handlers, the
+ *     conditions differ (`detectPmIfMissing` is only set by reverify/fresh).
+ *
+ * Phase 2-9: the dispatcher only splits branching; no behavior change intended.
+ */
+export interface PlanEntryContext {
+  nextTask: CodeTask;
+  isRetry: boolean;
+  preservedRetries: number;
+  retrySummaryText: string | undefined;
+  skipKeywordAndRAG: boolean;
+  inToolLoop: boolean;
+}
+
+interface PlanEntryFlags {
+  inToolLoop: boolean;
+  isRetry: boolean;
+  preservedRetries: number;
+}
+
+export async function resolvePlanEntry(state: ArchitectGraphState): Promise<PlanEntryContext> {
+  const inToolLoop = state._activePhase === 'plan' && !!state.currentTask;
+  const entryReason = inToolLoop ? undefined : state._planEntryReason;
+  if (!inToolLoop) state._planEntryReason = undefined;
+  const isRetry = entryReason === 'retry';
+  // Scenario harness escape hatch: when ANT_SCENARIO_PRESERVE_RETRIES=1,
+  // never reset retries from a non-retry plan entry either. Without this,
+  // seeded `retries` would survive runCodeGraph's resume hydration only to
+  // be wiped here on the first pop. Production path (env unset) is unaffected.
+  const preserveRetriesAlways = process.env.ANT_SCENARIO_PRESERVE_RETRIES === '1';
+  const preservedRetries = (inToolLoop || isRetry || preserveRetriesAlways) ? state.retries : 0;
+  const flags: PlanEntryFlags = { inToolLoop, isRetry, preservedRetries };
+
+  if (inToolLoop) {
+    return handleToolLoopReentry(state, flags);
+  }
+  if (entryReason === 'retry' && state.currentTask) {
+    return await handleRetryEntry(state, flags);
+  }
+  if (entryReason === 'reverify' && state.currentTask) {
+    return await handleReverifyEntry(state, flags);
+  }
+  return await handleFreshTaskEntry(state, flags);
+}
+
+function handleToolLoopReentry(
+  state: ArchitectGraphState,
+  flags: PlanEntryFlags,
+): PlanEntryContext {
+  const nextTask = state.currentTask!;
+  console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
+  return {
+    nextTask,
+    isRetry: flags.isRetry,
+    preservedRetries: flags.preservedRetries,
+    retrySummaryText: undefined,
+    skipKeywordAndRAG: false,
+    inToolLoop: flags.inToolLoop,
+  };
+}
+
+async function handleRetryEntry(
+  state: ArchitectGraphState,
+  flags: PlanEntryFlags,
+): Promise<PlanEntryContext> {
+  const nextTask = state.currentTask!;
+
+  // 🚨 CRITICAL: Check if maxRetries exceeded
+  if (state.retries >= state.maxRetries) {
+    console.error(`\n❌ [Plan] Max retries (${state.maxRetries}) exceeded for task: ${nextTask.name}`);
+    console.error(`   Current retries: ${state.retries}`);
+    console.error(`   This task has failed repeatedly and cannot be fixed automatically.\n`);
+
+    throw new Error(
+      `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). ` +
+      `Cannot proceed with automatic fixes.`
+    );
+  }
+
+  const prevCallIndex = state._executeCallIndex || 0;
+  const isVerificationRetry = nextTask.type === 'verification';
+  let retrySummaryText: string | undefined;
+
+  if (isVerificationRetry) {
+    consumeVerificationBudget(state);
+    maybeGrantDeepDiagnosticBudget(state);
+    state._executeCallIndex = 0;
+    // NOTE: _finalTaskLoopCount is intentionally NOT reset here (matching
+    // the reverify path below). Accumulating across retry cycles lets
+    // Safety Net C in executeRouter detect stuck loops faster. Previously
+    // resetting to 0 allowed infinite retry×2-execute cycles.
+    // Axis D — capture a rendered prior-attempt summary (plan JSON +
+    // error signals + command history) and let it flow through the
+    // prompt via violationsText in STEP 3.
+    retrySummaryText = renderRetrySummary(summarizeForRetry({
+      violations: state.violations,
+      lastPlan: state.planText,
+    }, {
+      attemptCount: (state.retries || 0) + 1,
+      commandHistory: state.commandHistory,
+    }));
+    // F3a — violations were just captured into retrySummaryText's normalizedErrors.
+    // Clearing them prevents composeViolationsText from double-injecting the same
+    // signal via formatViolations + retrySummary in STEP 3.
+    state.violations = [];
+    state.conversations = {
+      ...state.conversations,
+      [CONV_KEYS.NODE_EXECUTE]: [],
+      [CONV_KEYS.NODE_PLAN]: [],
+    };
+    state._executeModifiedFiles = false;
+    // Axis A — recompute installNeeded from the actual dep-file hash
+    // instead of hardcoding true. Keeps cached installs reusable when
+    // package.json/go.mod/etc. have not changed since the last success.
+    await recomputeInstallNeeded(state);
+    if (state._verificationTracker) {
+      state._verificationTracker.buildAttempted = false;
+      state._verificationTracker.testAttempted = false;
+      state._verificationTracker.typecheckAttempted = false;
+    }
+    const _retryAttempt = (state.retries || 0) + 1;
+    const _retryMax = state.maxRetries || 3;
+    console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
+    console.log(`   ♻️  Reset: conversations cleared, _executeCallIndex ${prevCallIndex}→0`);
+    console.log(`   ♻️  Preserved: _finalTaskLoopCount = ${state._finalTaskLoopCount || 0}\n`);
+    if (nextTask && state.context?.featurePath && state._httpJobId) {
+      const _taskRef = nextTask;
+      const _summaryText = retrySummaryText;
+      const _passedGates: Array<'typecheck' | 'build' | 'test'> = [];
+      const _tracker = state._verificationTracker;
+      if (_tracker?.typecheckPassed) _passedGates.push('typecheck');
+      if (_tracker?.buildPassed) _passedGates.push('build');
+      if (_tracker?.testPassed) _passedGates.push('test');
+      import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
+        getExecutionLogger({
+          featurePath: state.context!.featurePath!,
+          jobId: state._httpJobId!,
+          jobType: 'code',
+        }).logVerificationRetry(_taskRef.id, {
+          taskName: _taskRef.name,
+          attempt: _retryAttempt,
+          maxAttempts: _retryMax,
+          preservedHistoryLength: 0,
+          preservedCallIndex: 0,
+          violationsFromPrevAttempt: state.violations?.length ?? 0,
+          // F3c — reflect Axis D summary retention policy + tracker cache state at retry entry.
+          retentionMode: 'summary',
+          summaryInjected: !!_summaryText,
+          summaryLen: _summaryText?.length ?? 0,
+          passedGatesAtRetry: _passedGates,
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  } else {
+    state._executeCallIndex = 0;
+    state._finalTaskLoopCount = 0;
+    // Axis D — non-verification retries also receive a prior-attempt
+    // summary (appended to violationsText later) so LLM solution quality
+    // doesn't collapse when previous reasoning is wiped mid-task.
+    retrySummaryText = renderRetrySummary(summarizeForRetry({
+      violations: state.violations,
+      lastPlan: state.planText,
+    }, {
+      attemptCount: (state.retries || 0) + 1,
+      commandHistory: state.commandHistory,
+    }));
+    // F3a — same invariant as the verification retry path: violations have
+    // been distilled into retrySummaryText, so the originals are spent.
+    state.violations = [];
+    state.conversations = {
+      ...state.conversations,
+      [CONV_KEYS.NODE_EXECUTE]: [],
+      [CONV_KEYS.NODE_PLAN]: [],
+    };
+    console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
+    console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversations cleared; retry summary flows via violationsText\n`);
+  }
+
+  return {
+    nextTask,
+    isRetry: flags.isRetry,
+    preservedRetries: flags.preservedRetries,
+    retrySummaryText,
+    skipKeywordAndRAG: false,
+    inToolLoop: flags.inToolLoop,
+  };
+}
+
+async function handleReverifyEntry(
+  state: ArchitectGraphState,
+  flags: PlanEntryFlags,
+): Promise<PlanEntryContext> {
+  // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
+  const nextTask = state.currentTask!;
+  console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
+  console.log(`   Re-initializing VerificationTracker for fresh build/test check\n`);
+
+  consumeVerificationBudget(state);
+  maybeGrantDeepDiagnosticBudget(state);
+
+  // Accumulate applied plans so plan LLM can see ALL previous attempts
+  if (state.planText) {
+    const history = (state._appliedPlanHistory || []) as string[];
+    history.push(state.planText);
+    state._appliedPlanHistory = history;
+  }
+
+  // Axis C — reset only attempted flags, preserve already-passed steps
+  // that weren't invalidated by the edited files. The tool hook
+  // (`verificationInvalidated`) already flipped the `*Passed` flags for
+  // the affected scope during execute; reverify should surface exactly
+  // those gaps, not wipe clean state.
+  const prev = state._verificationTracker;
+  state._verificationTracker = {
+    buildPassed: prev?.buildPassed ?? false,
+    testPassed: prev?.testPassed ?? false,
+    testsRequired: prev?.testsRequired ?? detectTestFilesFromDisk(state.context?.featurePath),
+    typecheckPassed: prev?.typecheckPassed ?? false,
+    typecheckRequired: prev?.typecheckRequired ?? isTypeScriptProject(state),
+    buildAttempted: false,
+    testAttempted: false,
+    typecheckAttempted: false,
+  };
+
+  // Reset execute state for potential next fix cycle.
+  // NOTE: _finalTaskLoopCount is intentionally NOT reset here so that
+  // the Safety Net C guard in executeRouter accumulates across reverify
+  // cycles and can break infinite loops.
+  state._executeCallIndex = 0;
+  state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
+  state._executeModifiedFiles = false;
+  // F3a — invariant parity with retry paths: prior-cycle violations must
+  // not leak into the next diagnostic prompt's violationsText. The fresh
+  // diagnostic cycle produces its own violations from rerunning gates.
+  state.violations = [];
+
+  // Recompute installNeeded — execute may have modified dependency declaration files
+  await recomputeInstallNeeded(state, { detectPmIfMissing: true });
+
+  return {
+    nextTask,
+    isRetry: flags.isRetry,
+    preservedRetries: flags.preservedRetries,
+    retrySummaryText: undefined,
+    skipKeywordAndRAG: true,
+    inToolLoop: flags.inToolLoop,
+  };
+}
+
+async function handleFreshTaskEntry(
+  state: ArchitectGraphState,
+  flags: PlanEntryFlags,
+): Promise<PlanEntryContext> {
+  // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
+  // Sequential context: pop next task from queue
+  const _wid = state.workerId;
+  const isWorkerCtx = _wid !== undefined && _wid !== null;
+
+  let nextTask: CodeTask;
+  if (isWorkerCtx && state.currentTask) {
+    nextTask = state.currentTask;
+    console.log(`\n📋 [Plan] Task pre-assigned by orchestrator (worker ${_wid}): ${nextTask.name}\n`);
+  } else {
+    const popped = state.taskQueue?.pop();
+    if (!popped) {
+      throw new Error('[Plan] No tasks in queue');
+    }
+    nextTask = popped;
+    console.log(`\n📋 [Plan] Next task: ${nextTask.name}\n`);
+  }
+
+  // Start timing
+  const { TaskTimingHelper } = await import('../../state');
+  console.log(`⏱️  Starting timer for task: ${nextTask.name}`);
+  nextTask = TaskTimingHelper.startTask(nextTask);
+
+  // ✅ Initialize token usage tracking for new task
+  const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
+  resetTaskTokenUsage(state);
+  state._executeCallIndex = 0;
+  // Phase 3-15 — reset plan-phase search_web budget per fresh task.
+  state._planSearchWebCount = 0;
+
+  // ✅ Initialize verification tracker for verification tasks only.
+  // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
+  if (nextTask.type === 'verification') {
+    // Axis D/resume — TaskWorker restores axis state from resumeState for
+    // interrupted tasks. A resumed task that did NOT qualify for canSkipPlan
+    // (e.g. stopped mid-tool-loop with short planText) must NOT lose its
+    // budget / diagnostic-attempts / lastPlanHash. `nextTask.interrupted`
+    // is already cleared by TaskWorker right after restore, so we detect
+    // resume by the presence of previously-initialized axis fields.
+    const isResumedVerification = state._verificationBudget !== undefined;
+    const tsProject = isTypeScriptProject(state);
+
+    if (!state._verificationTracker) {
+      state._verificationTracker = {
+        buildPassed: false,
+        testPassed: false,
+        testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
+        buildAttempted: false,
+        testAttempted: false,
+        typecheckPassed: false,
+        typecheckAttempted: false,
+        typecheckRequired: tsProject,
+      };
+    }
+    if (state._appliedPlanHistory === undefined) {
+      state._appliedPlanHistory = [];
+    }
+    // Axis E — initialise verification budget on first entry into this task.
+    // Only seed when undefined so a resumed task keeps its remaining budget.
+    if (state._verificationBudget === undefined) {
+      const envBudget = parseInt(process.env.ANT_VERIFICATION_BUDGET || '8', 10);
+      state._verificationBudget = Number.isFinite(envBudget) && envBudget > 0 ? envBudget : 8;
+    }
+    if (state._diagnosticAttempts === undefined) state._diagnosticAttempts = 0;
+    if (state._deepDiagnosticBudgetGranted === undefined) state._deepDiagnosticBudgetGranted = false;
+    // _lastPlanHash: undefined on a truly fresh task; preserved on resume.
+    console.log(`🔍 [Plan] VerificationTracker ${isResumedVerification ? 'restored (resume)' : 'initialized'}: testsRequired=${state._verificationTracker.testsRequired}, typecheckRequired=${tsProject}`);
+    console.log(`🎫 [Plan] _verificationBudget=${state._verificationBudget}, _diagnosticAttempts=${state._diagnosticAttempts}`);
+
+    // Axis A — single-source-of-truth dep hash check (same helper as retry/reverify paths)
+    await recomputeInstallNeeded(state, { detectPmIfMissing: true });
+  }
+
+  // ✅ Log task_start event to debug/logs/
+  if (state.context?.featurePath && state._httpJobId) {
+    const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
+    const execLogger = getExecutionLogger({
+      featurePath: state.context.featurePath,
+      jobId: state._httpJobId,
+      jobType: 'code',
+    });
+    execLogger.logTaskStart(nextTask.id, {
+      taskName: nextTask.name,
+      taskType: nextTask.type,
+      priority: nextTask.priority,
+      isParallel: !!(nextTask as any).parallelGroup,
+      parallelGroup: (nextTask as any).parallelGroup,
+    }).catch(() => {});
+  }
+
+  // Update Kanban UI
+  // Skip in worker context — TaskOrchestrator handles kanban for parallel mode
+  // (per-worker kanban would overwrite multi-task inProgress with just this worker's task)
+  if (!isWorkerCtx && state._httpJobId && state.deps?.kanbanUpdate) {
+    console.log(`🔥 [Plan] Updating Kanban → task started`);
+    console.log(`   Current: ${nextTask.name}`);
+    console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
+
+    state.deps.kanbanUpdate.updateTaskQueue(
+      state._httpJobId,
+      nextTask,
+      state.taskQueue?.getAll() || [],
+      state.completedTasksDetails || [],
+      state.recursionCount,
+      state.recursionLimit
+    );
+  } else if (!isWorkerCtx) {
+    if (!state._httpJobId) console.warn(`⚠️ [Plan] Kanban skipped: _httpJobId is missing`);
+    if (!state.deps?.kanbanUpdate) console.warn(`⚠️ [Plan] Kanban skipped: deps.kanbanUpdate is null (broadcaster not injected)`);
+  } else {
+    console.log(`📋 [Plan] Kanban skipped: isWorkerCtx=true (orchestrator handles)`);
+  }
+
+  // ✅ CRITICAL: Save checkpoint after task started so session has correct currentTask
+  // Without this, manual cancel during execute can't find the in-progress task
+  // (session still has stale currentTask from previous learn node save)
+  // Skip in worker context — orchestrator manages parallel checkpoints separately
+  if (!isWorkerCtx && state.deps?.session && state.context.featureFolder) {
+    try {
+      const { saveCheckpoint } = await import('../checkpoint');
+      await saveCheckpoint({
+        ...state,
+        currentTask: nextTask
+      });
+    } catch (err) {
+      // Non-critical: checkpoint save failure shouldn't block plan execution
+      console.warn(`⚠️  [Plan] Failed to save task-start checkpoint: ${err}`);
+    }
+  }
+
+  return {
+    nextTask,
+    isRetry: flags.isRetry,
+    preservedRetries: flags.preservedRetries,
+    retrySummaryText: undefined,
+    skipKeywordAndRAG: false,
+    inToolLoop: flags.inToolLoop,
+  };
+}
+
+/**
+ * STEP 0.9 helper — runs the plan↔tool loop and either produces a
+ * finalized plan state (to short-circuit plan()) or asks the caller to
+ * fall through into normal plan generation.
+ *
+ * Phase 4-19 — extracted from plan() inline STEP 0.9 block. No behavior
+ * change: the inner call graph (runPlanLLMWithTools / finalizePlanFromExploration
+ * / processDiagnosticBatchSplit / enrichContextFromPlanToolLoop) is identical;
+ * the only difference is the module boundary.
+ */
+export type PlanToolLoopOutcome =
+  | { kind: 'return'; state: ArchitectGraphState }
+  | { kind: 'fallthrough'; forceNoTools?: boolean };
+
+export async function runPlanToolLoopPhase(
+  state: ArchitectGraphState,
+  nextTask: CodeTask,
+  preservedRetries: number,
+): Promise<PlanToolLoopOutcome> {
+  const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
+  if (!(state._activePhase === 'plan' && nodePlan.length > 0)) {
+    return { kind: 'fallthrough' };
+  }
+
+  const overLimit = nodePlan.length >= PLAN_TOOL_LOOP_MAX * 2; // ~2 messages per round
+
+  if (overLimit) {
+    console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; finalizing plan from exploration context`);
+    let finalizedPlan = await finalizePlanFromExploration(state, nodePlan as any, nextTask);
+    if (finalizedPlan) {
+      const preSplitPlan = finalizedPlan;
+      finalizedPlan = processDiagnosticBatchSplit(state, finalizedPlan, nextTask);
+      const batchSplitOccurred = preSplitPlan.length > 50 && finalizedPlan === '';
+      const diagnosticPass = isVerificationPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
+      const enrichedContext = enrichContextFromPlanToolLoop(state.projectCodeContext, nodePlan);
+      state._activePhase = 'execute';
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
+      }
+      const returned: ArchitectGraphState = {
+        ...state,
+        currentTask: nextTask,
+        projectCodeContext: enrichedContext,
+        referenceCodeContexts: state.referenceCodeContexts,
+        lessons: state.lessons ?? [],
+        planText: finalizedPlan,
+        _executeBudget: computeBudgetFromPlanText(finalizedPlan),
+        _activePhase: 'execute' as const,
+        conversations: { [CONV_KEYS.NODE_PLAN]: [] },
+        retries: preservedRetries,
+        completedTasksDetails: state.completedTasksDetails || [],
+        recursionCount: state.recursionCount,
+        recursionLimit: state.recursionLimit,
+        workspaceConfig: state.workspaceConfig,
+        llmResponse: (batchSplitOccurred || diagnosticPass)
+          ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
+          : { done: false, textResponse: '', thinking: '', toolCalls: [] },
+      };
+      return { kind: 'return', state: returned };
+    }
+    console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
+    if (nodePlan.length > 0) {
+      state.projectCodeContext = enrichContextFromPlanToolLoop(state.projectCodeContext, nodePlan);
+    }
+    state._activePhase = 'execute';
+    return { kind: 'fallthrough', forceNoTools: true };
+  }
+
+  const result = await runPlanLLMWithTools(state, nodePlan as any, nextTask);
+  if (result && '_activePhase' in result) {
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
+    }
+    const returned: ArchitectGraphState = {
+      ...state,
+      conversations: { [CONV_KEYS.NODE_PLAN]: result.nodePlanHistory },
+      _activePhase: 'plan' as const,
+      llmResponse: result.llmResponse,
+      projectCodeContext: state.projectCodeContext,
+      referenceCodeContexts: state.referenceCodeContexts,
+      lessons: state.lessons,
+    };
+    return { kind: 'return', state: returned };
+  }
+  if (result && 'planText' in result) {
+    const preSplitPlan = result.planText;
+    const planText = processDiagnosticBatchSplit(state, preSplitPlan, nextTask);
+    const batchSplitOccurred = preSplitPlan.length > 50 && planText === '';
+    const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
+    const enrichedContext = enrichContextFromPlanToolLoop(state.projectCodeContext, nodePlan);
+    const updatedState: ArchitectGraphState = {
+      ...state,
+      currentTask: nextTask,
+      projectCodeContext: enrichedContext,
+      referenceCodeContexts: state.referenceCodeContexts,
+      lessons: state.lessons ?? [],
+      planText,
+      _executeBudget: computeBudgetFromPlanText(planText),
+      _activePhase: 'execute' as const,
+      conversations: { [CONV_KEYS.NODE_PLAN]: [] },
+      retries: preservedRetries,
+      completedTasksDetails: state.completedTasksDetails || [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+      workspaceConfig: state.workspaceConfig,
+      llmResponse: (batchSplitOccurred || diagnosticPass)
+        ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
+        : { done: false, textResponse: '', thinking: '', toolCalls: [] },
+    };
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
+    }
+    return { kind: 'return', state: updatedState };
+  }
+
+  // null: fall through to normal flow — but first enrich context with any files read during tool loop
+  if (nodePlan.length > 0) {
+    state.projectCodeContext = enrichContextFromPlanToolLoop(state.projectCodeContext, nodePlan);
+  }
+  state._activePhase = 'execute';
+  return { kind: 'fallthrough' };
+}
+
+/**
  * Test-only exports for verification scenario harness L1 unit tests.
  * Not part of the public API; see docs/testing/verification-scenarios.md.
  */
@@ -482,6 +1036,8 @@ export const __testing__ = {
   processDiagnosticBatchSplit,
   normalizePlanForHash,
   MAX_BATCH_SPLIT_CYCLES,
+  resolvePlanEntry,
+  runPlanToolLoopPhase,
 };
 
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
@@ -496,337 +1052,29 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
   /** Set when plan↔tool loop limit hit so STEP 3 skips tools and uses generatePlanText only. */
   let forceNoTools = false;
-  /** Re-verification fast-path: skip keyword/RAG when we only need to re-run build/test. */
-  let skipKeywordAndRAG = false;
-  /**
-   * Axis D — rendered prior-attempt summary produced when entering via retry.
-   * Appended to `violationsText` in STEP 3 so it flows through the verification
-   * prompt template instead of hijacking the NODE_PLAN conversation.
-   */
-  let retrySummaryText: string | undefined;
-  
-  let nextTask: CodeTask | undefined;
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 0: Determine entry reason and set up task
   //
   // Two orthogonal axes:
   //   _activePhase ('plan'|'execute') — "where are we?" — routing & tool node branching
   //   _planEntryReason ('retry'|'reverify'|undefined) — "why are we here?" — consumed immediately
+  //
+  // Actual dispatching lives in `resolvePlanEntry` above; each branch
+  // mutates `state` and returns the fields the downstream steps need.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const inToolLoop = state._activePhase === 'plan' && !!state.currentTask;
-  const entryReason = inToolLoop ? undefined : state._planEntryReason;
-  if (!inToolLoop) state._planEntryReason = undefined;
-  const isRetry = entryReason === 'retry';
-  // Capture retries at entry so tool loop re-entries (where isRetry=false) don't reset it.
-  // Without this, the plan↔tool loop completion path sets retries=0 via `isRetry ? ... : 0`,
-  // causing the retry counter to never reach maxRetries → infinite loop.
-  // inToolLoop: state.retries already carries the correct value from the initial retry entry.
-  // Scenario harness escape hatch: when ANT_SCENARIO_PRESERVE_RETRIES=1,
-  // never reset retries from a non-retry plan entry either. Without this,
-  // seeded `retries` would survive runCodeGraph's resume hydration only to
-  // be wiped here on the first pop. Production path (env unset) is unaffected.
-  const preserveRetriesAlways = process.env.ANT_SCENARIO_PRESERVE_RETRIES === '1';
-  const preservedRetries = (inToolLoop || isRetry || preserveRetriesAlways) ? state.retries : 0;
-
-  if (inToolLoop) {
-    // Tool loop re-entry — no resets, just continue where we left off
-    nextTask = state.currentTask!;
-    console.log(`\n🔄 [Plan] Re-entry from tool loop for task: ${nextTask.name}\n`);
-  } else {
-
-    if (entryReason === 'retry' && state.currentTask) {
-      nextTask = state.currentTask;
-
-      // 🚨 CRITICAL: Check if maxRetries exceeded
-      if (state.retries >= state.maxRetries) {
-        console.error(`\n❌ [Plan] Max retries (${state.maxRetries}) exceeded for task: ${nextTask.name}`);
-        console.error(`   Current retries: ${state.retries}`);
-        console.error(`   This task has failed repeatedly and cannot be fixed automatically.\n`);
-
-        throw new Error(
-          `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). ` +
-          `Cannot proceed with automatic fixes.`
-        );
-      }
-
-      const prevCallIndex = state._executeCallIndex || 0;
-      const isVerificationRetry = nextTask.type === 'verification';
-
-      if (isVerificationRetry) {
-        consumeVerificationBudget(state);
-        maybeGrantDeepDiagnosticBudget(state);
-        state._executeCallIndex = 0;
-        // NOTE: _finalTaskLoopCount is intentionally NOT reset here (matching
-        // the reverify path below). Accumulating across retry cycles lets
-        // Safety Net C in executeRouter detect stuck loops faster. Previously
-        // resetting to 0 allowed infinite retry×2-execute cycles.
-        // Axis D — capture a rendered prior-attempt summary (plan JSON +
-        // error signals + command history) and let it flow through the
-        // prompt via violationsText in STEP 3.
-        retrySummaryText = renderRetrySummary(summarizeForRetry({
-          violations: state.violations,
-          lastPlan: state.planText,
-        }, {
-          attemptCount: (state.retries || 0) + 1,
-          commandHistory: state.commandHistory,
-        }));
-        // F3a — violations were just captured into retrySummaryText's normalizedErrors.
-        // Clearing them prevents composeViolationsText from double-injecting the same
-        // signal via formatViolations + retrySummary in STEP 3.
-        state.violations = [];
-        state.conversations = {
-          ...state.conversations,
-          [CONV_KEYS.NODE_EXECUTE]: [],
-          [CONV_KEYS.NODE_PLAN]: [],
-        };
-        state._executeModifiedFiles = false;
-        // Axis A — recompute installNeeded from the actual dep-file hash
-        // instead of hardcoding true. Keeps cached installs reusable when
-        // package.json/go.mod/etc. have not changed since the last success.
-        await recomputeInstallNeeded(state);
-        if (state._verificationTracker) {
-          state._verificationTracker.buildAttempted = false;
-          state._verificationTracker.testAttempted = false;
-          state._verificationTracker.typecheckAttempted = false;
-        }
-        const _retryAttempt = (state.retries || 0) + 1;
-        const _retryMax = state.maxRetries || 3;
-        console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax})`);
-        console.log(`   ♻️  Reset: conversations cleared, _executeCallIndex ${prevCallIndex}→0`);
-        console.log(`   ♻️  Preserved: _finalTaskLoopCount = ${state._finalTaskLoopCount || 0}\n`);
-        if (nextTask && state.context?.featurePath && state._httpJobId) {
-          const _taskRef = nextTask;
-          const _summaryText = retrySummaryText;
-          const _passedGates: Array<'typecheck' | 'build' | 'test'> = [];
-          const _tracker = state._verificationTracker;
-          if (_tracker?.typecheckPassed) _passedGates.push('typecheck');
-          if (_tracker?.buildPassed) _passedGates.push('build');
-          if (_tracker?.testPassed) _passedGates.push('test');
-          import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-            getExecutionLogger({
-              featurePath: state.context!.featurePath!,
-              jobId: state._httpJobId!,
-              jobType: 'code',
-            }).logVerificationRetry(_taskRef.id, {
-              taskName: _taskRef.name,
-              attempt: _retryAttempt,
-              maxAttempts: _retryMax,
-              preservedHistoryLength: 0,
-              preservedCallIndex: 0,
-              violationsFromPrevAttempt: state.violations?.length ?? 0,
-              // F3c — reflect Axis D summary retention policy + tracker cache state at retry entry.
-              retentionMode: 'summary',
-              summaryInjected: !!_summaryText,
-              summaryLen: _summaryText?.length ?? 0,
-              passedGatesAtRetry: _passedGates,
-            }).catch(() => {});
-          }).catch(() => {});
-        }
-      } else {
-        state._executeCallIndex = 0;
-        state._finalTaskLoopCount = 0;
-        // Axis D — non-verification retries also receive a prior-attempt
-        // summary (appended to violationsText later) so LLM solution quality
-        // doesn't collapse when previous reasoning is wiped mid-task.
-        retrySummaryText = renderRetrySummary(summarizeForRetry({
-          violations: state.violations,
-          lastPlan: state.planText,
-        }, {
-          attemptCount: (state.retries || 0) + 1,
-          commandHistory: state.commandHistory,
-        }));
-        // F3a — same invariant as the verification retry path: violations have
-        // been distilled into retrySummaryText, so the originals are spent.
-        state.violations = [];
-        state.conversations = {
-          ...state.conversations,
-          [CONV_KEYS.NODE_EXECUTE]: [],
-          [CONV_KEYS.NODE_PLAN]: [],
-        };
-        console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-        console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversations cleared; retry summary flows via violationsText\n`);
-      }
-    } else if (entryReason === 'reverify' && state.currentTask) {
-      // POST-CODEFIX: execute applied fixes, now re-run full diagnostic for final verification
-      nextTask = state.currentTask;
-      console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
-      console.log(`   Re-initializing VerificationTracker for fresh build/test check\n`);
-
-      consumeVerificationBudget(state);
-      maybeGrantDeepDiagnosticBudget(state);
-
-      skipKeywordAndRAG = true;
-
-      // Accumulate applied plans so plan LLM can see ALL previous attempts
-      if (state.planText) {
-        const history = (state._appliedPlanHistory || []) as string[];
-        history.push(state.planText);
-        state._appliedPlanHistory = history;
-      }
-
-      // Axis C — reset only attempted flags, preserve already-passed steps
-      // that weren't invalidated by the edited files. The tool hook
-      // (`verificationInvalidated`) already flipped the `*Passed` flags for
-      // the affected scope during execute; reverify should surface exactly
-      // those gaps, not wipe clean state.
-      const prev = state._verificationTracker;
-      state._verificationTracker = {
-        buildPassed: prev?.buildPassed ?? false,
-        testPassed: prev?.testPassed ?? false,
-        testsRequired: prev?.testsRequired ?? detectTestFilesFromDisk(state.context?.featurePath),
-        typecheckPassed: prev?.typecheckPassed ?? false,
-        typecheckRequired: prev?.typecheckRequired ?? isTypeScriptProject(state),
-        buildAttempted: false,
-        testAttempted: false,
-        typecheckAttempted: false,
-      };
-
-      // Reset execute state for potential next fix cycle.
-      // NOTE: _finalTaskLoopCount is intentionally NOT reset here so that
-      // the Safety Net C guard in executeRouter accumulates across reverify
-      // cycles and can break infinite loops.
-      state._executeCallIndex = 0;
-      state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
-      state._executeModifiedFiles = false;
-      // F3a — invariant parity with retry paths: prior-cycle violations must
-      // not leak into the next diagnostic prompt's violationsText. The fresh
-      // diagnostic cycle produces its own violations from rerunning gates.
-      state.violations = [];
-
-      // Recompute installNeeded — execute may have modified dependency declaration files
-      await recomputeInstallNeeded(state, { detectPmIfMissing: true });
-    } else {
-    // ✅ Worker context: TaskWorker pre-assigns currentTask via orchestrator
-    // Sequential context: pop next task from queue
-    const _wid = state.workerId;
-    const isWorkerCtx = _wid !== undefined && _wid !== null;
-    
-    if (isWorkerCtx && state.currentTask) {
-      nextTask = state.currentTask;
-      console.log(`\n📋 [Plan] Task pre-assigned by orchestrator (worker ${_wid}): ${nextTask.name}\n`);
-    } else {
-      nextTask = state.taskQueue?.pop();
-      
-      if (!nextTask) {
-        throw new Error('[Plan] No tasks in queue');
-      }
-      
-      console.log(`\n📋 [Plan] Next task: ${nextTask.name}\n`);
-    }
-    
-    // Start timing
-    const { TaskTimingHelper } = await import('../../state');
-    console.log(`⏱️  Starting timer for task: ${nextTask.name}`);
-    nextTask = TaskTimingHelper.startTask(nextTask);
-    
-    // ✅ Initialize token usage tracking for new task
-    const { resetTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
-    resetTaskTokenUsage(state);
-    state._executeCallIndex = 0;
-
-    // ✅ Initialize verification tracker for verification tasks only.
-    // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
-    if (nextTask.type === 'verification') {
-      // Axis D/resume — TaskWorker restores axis state from resumeState for
-      // interrupted tasks. A resumed task that did NOT qualify for canSkipPlan
-      // (e.g. stopped mid-tool-loop with short planText) must NOT lose its
-      // budget / diagnostic-attempts / lastPlanHash. `nextTask.interrupted`
-      // is already cleared by TaskWorker right after restore, so we detect
-      // resume by the presence of previously-initialized axis fields.
-      const isResumedVerification = state._verificationBudget !== undefined;
-      const tsProject = isTypeScriptProject(state);
-
-      if (!state._verificationTracker) {
-        state._verificationTracker = {
-          buildPassed: false,
-          testPassed: false,
-          testsRequired: detectTestFilesFromDisk(state.context?.featurePath),
-          buildAttempted: false,
-          testAttempted: false,
-          typecheckPassed: false,
-          typecheckAttempted: false,
-          typecheckRequired: tsProject,
-        };
-      }
-      if (state._appliedPlanHistory === undefined) {
-        state._appliedPlanHistory = [];
-      }
-      // Axis E — initialise verification budget on first entry into this task.
-      // Only seed when undefined so a resumed task keeps its remaining budget.
-      if (state._verificationBudget === undefined) {
-        const envBudget = parseInt(process.env.ANT_VERIFICATION_BUDGET || '8', 10);
-        state._verificationBudget = Number.isFinite(envBudget) && envBudget > 0 ? envBudget : 8;
-      }
-      if (state._diagnosticAttempts === undefined) state._diagnosticAttempts = 0;
-      if (state._deepDiagnosticBudgetGranted === undefined) state._deepDiagnosticBudgetGranted = false;
-      // _lastPlanHash: undefined on a truly fresh task; preserved on resume.
-      console.log(`🔍 [Plan] VerificationTracker ${isResumedVerification ? 'restored (resume)' : 'initialized'}: testsRequired=${state._verificationTracker.testsRequired}, typecheckRequired=${tsProject}`);
-      console.log(`🎫 [Plan] _verificationBudget=${state._verificationBudget}, _diagnosticAttempts=${state._diagnosticAttempts}`);
-
-      // Axis A — single-source-of-truth dep hash check (same helper as retry/reverify paths)
-      await recomputeInstallNeeded(state, { detectPmIfMissing: true });
-    }
-
-    // ✅ Log task_start event to debug/logs/
-    if (state.context?.featurePath && state._httpJobId) {
-      const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
-      const execLogger = getExecutionLogger({
-        featurePath: state.context.featurePath,
-        jobId: state._httpJobId,
-        jobType: 'code',
-      });
-      execLogger.logTaskStart(nextTask.id, {
-        taskName: nextTask.name,
-        taskType: nextTask.type,
-        priority: nextTask.priority,
-        isParallel: !!(nextTask as any).parallelGroup,
-        parallelGroup: (nextTask as any).parallelGroup,
-      }).catch(() => {});
-    }
-    
-    // Update Kanban UI
-    // Skip in worker context — TaskOrchestrator handles kanban for parallel mode
-    // (per-worker kanban would overwrite multi-task inProgress with just this worker's task)
-    if (!isWorkerCtx && state._httpJobId && state.deps?.kanbanUpdate) {
-      console.log(`🔥 [Plan] Updating Kanban → task started`);
-      console.log(`   Current: ${nextTask.name}`);
-      console.log(`   Remaining in queue: ${state.taskQueue?.size() || 0}\n`);
-      
-      state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpJobId,
-        nextTask,
-        state.taskQueue?.getAll() || [],
-        state.completedTasksDetails || [],
-        state.recursionCount,
-        state.recursionLimit
-      );
-    } else if (!isWorkerCtx) {
-      if (!state._httpJobId) console.warn(`⚠️ [Plan] Kanban skipped: _httpJobId is missing`);
-      if (!state.deps?.kanbanUpdate) console.warn(`⚠️ [Plan] Kanban skipped: deps.kanbanUpdate is null (broadcaster not injected)`);
-    } else {
-      console.log(`📋 [Plan] Kanban skipped: isWorkerCtx=true (orchestrator handles)`);
-    }
-    
-    // ✅ CRITICAL: Save checkpoint after task started so session has correct currentTask
-    // Without this, manual cancel during execute can't find the in-progress task
-    // (session still has stale currentTask from previous learn node save)
-    // Skip in worker context — orchestrator manages parallel checkpoints separately
-    if (!isWorkerCtx && state.deps?.session && state.context.featureFolder) {
-      try {
-        const { saveCheckpoint } = await import('../checkpoint');
-        await saveCheckpoint({
-          ...state,
-          currentTask: nextTask
-        });
-      } catch (err) {
-        // Non-critical: checkpoint save failure shouldn't block plan execution
-        console.warn(`⚠️  [Plan] Failed to save task-start checkpoint: ${err}`);
-      }
-    }
-    }
-  }
-  
+  const entryCtx = await resolvePlanEntry(state);
+  /** Re-verification fast-path: skip keyword/RAG when we only need to re-run build/test. */
+  const skipKeywordAndRAG = entryCtx.skipKeywordAndRAG;
+  /**
+   * Axis D — rendered prior-attempt summary produced when entering via retry.
+   * Appended to `violationsText` in STEP 3 so it flows through the verification
+   * prompt template instead of hijacking the NODE_PLAN conversation.
+   */
+  const retrySummaryText: string | undefined = entryCtx.retrySummaryText;
+  const isRetry = entryCtx.isRetry;
+  const preservedRetries = entryCtx.preservedRetries;
+  let nextTask: CodeTask = entryCtx.nextTask;
   // Workflow instrumentation
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = {
@@ -936,113 +1184,19 @@ const hasPrePlanText =
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 0.9: Re-entry from tool (plan↔tool loop)
+  //
+  // Delegates to `runPlanToolLoopPhase`. That helper may:
+  //   - Produce a final plan and return the fully-assembled state here
+  //     (kind: 'return') — plan() short-circuits with that state.
+  //   - Decide to fall through into normal plan generation, optionally
+  //     forcing no-tools on the next LLM call (kind: 'fallthrough').
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
-  if (state._activePhase === 'plan' && nodePlan.length > 0) {
-    const overLimit = nodePlan.length >= PLAN_TOOL_LOOP_MAX * 2; // ~2 messages per round
-    if (overLimit) {
-      console.log(`\n⚠️ [Plan] Plan↔tool loop limit (${PLAN_TOOL_LOOP_MAX}) reached; finalizing plan from exploration context`);
-      let finalizedPlan = await finalizePlanFromExploration(state, nodePlan as any, nextTask);
-      if (finalizedPlan) {
-        const preSplitPlan = finalizedPlan;
-        finalizedPlan = processDiagnosticBatchSplit(state, finalizedPlan, nextTask);
-        const batchSplitOccurred = preSplitPlan.length > 50 && finalizedPlan === '';
-        const diagnosticPass = isVerificationPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
-        const enrichedContext = enrichContextFromPlanToolLoop(
-          state.projectCodeContext ,
-          nodePlan,
-        );
-        state._activePhase = 'execute';
-        if (state.deps?.workflowUpdate && state._httpJobId) {
-          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
-        }
-        return {
-          ...state,
-          currentTask: nextTask,
-          projectCodeContext: enrichedContext,
-          referenceCodeContexts: state.referenceCodeContexts,
-          lessons: state.lessons ?? [],
-          planText: finalizedPlan,
-          _executeBudget: computeBudgetFromPlanText(finalizedPlan),
-          _activePhase: 'execute' as const,
-          conversations: { [CONV_KEYS.NODE_PLAN]: [] },
-          retries: preservedRetries,
-          completedTasksDetails: state.completedTasksDetails || [],
-          recursionCount: state.recursionCount,
-          recursionLimit: state.recursionLimit,
-          workspaceConfig: state.workspaceConfig,
-          llmResponse: (batchSplitOccurred || diagnosticPass)
-            ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
-            : { done: false, textResponse: '', thinking: '', toolCalls: [] },
-        };
-      }
-      console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
-      if (nodePlan.length > 0) {
-        state.projectCodeContext = enrichContextFromPlanToolLoop(
-          state.projectCodeContext ,
-          nodePlan,
-        );
-      }
-      state._activePhase = 'execute';
-      forceNoTools = true;
-    } else {
-      const result = await runPlanLLMWithTools(state, nodePlan as any, nextTask);
-      if (result && '_activePhase' in result) {
-        if (state.deps?.workflowUpdate && state._httpJobId) {
-          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
-        }
-        return {
-          ...state,
-          conversations: { [CONV_KEYS.NODE_PLAN]: result.nodePlanHistory },
-          _activePhase: 'plan' as const,
-          llmResponse: result.llmResponse,
-          projectCodeContext: state.projectCodeContext,
-          referenceCodeContexts: state.referenceCodeContexts,
-          lessons: state.lessons,
-        };
-      }
-      if (result && 'planText' in result) {
-        const preSplitPlan = result.planText;
-        const planText = processDiagnosticBatchSplit(state, preSplitPlan, nextTask);
-        const batchSplitOccurred = preSplitPlan.length > 50 && planText === '';
-        const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
-        const enrichedContext = enrichContextFromPlanToolLoop(
-          state.projectCodeContext ,
-          nodePlan,
-        );
-        const updatedState = {
-          ...state,
-          currentTask: nextTask,
-          projectCodeContext: enrichedContext,
-          referenceCodeContexts: state.referenceCodeContexts,
-          lessons: state.lessons ?? [],
-          planText,
-          _executeBudget: computeBudgetFromPlanText(planText),
-          _activePhase: 'execute' as const,
-          conversations: { [CONV_KEYS.NODE_PLAN]: [] },
-          retries: preservedRetries,
-          completedTasksDetails: state.completedTasksDetails || [],
-          recursionCount: state.recursionCount,
-          recursionLimit: state.recursionLimit,
-          workspaceConfig: state.workspaceConfig,
-          llmResponse: (batchSplitOccurred || diagnosticPass)
-            ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
-            : { done: false, textResponse: '', thinking: '', toolCalls: [] },
-        };
-        if (state.deps?.workflowUpdate && state._httpJobId) {
-          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
-        }
-        return updatedState;
-      }
-      // null: fall through to normal flow — but first enrich context with any files read during tool loop
-      if (nodePlan.length > 0) {
-        state.projectCodeContext = enrichContextFromPlanToolLoop(
-          state.projectCodeContext ,
-          nodePlan,
-        );
-      }
-      state._activePhase = 'execute';
-    }
+  const toolLoopOutcome = await runPlanToolLoopPhase(state, nextTask, preservedRetries);
+  if (toolLoopOutcome.kind === 'return') {
+    return toolLoopOutcome.state;
+  }
+  if (toolLoopOutcome.forceNoTools) {
+    forceNoTools = true;
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1240,6 +1394,9 @@ const hasPrePlanText =
   let planText: string | undefined;
   const requiresPlan = taskRequiresPlan(nextTask);
   const isVerificationTask = nextTask.type === 'verification';
+  // Re-read node-plan history here — STEP 0.9 (`runPlanToolLoopPhase`) may
+  // have appended to or cleared it before we reach the main plan LLM call.
+  const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
   const planToolRounds = nodePlan.length / 2;
   // error tasks use tool loop via requiresPlan (true), verification via isVerificationTask
   const tryToolsFirst = llm && (requiresPlan || isVerificationTask) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;

@@ -6,6 +6,8 @@ import { useStore } from '@/domain/store';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import { usePreviewManager } from '../FeatureSection/hooks/usePreviewManager';
 import { useDeployManager } from '../FeatureSection/hooks/useDeployManager';
+import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
+import { selectPreviewVM } from '@/domain/store/selectors/previewSelectors';
 
 import { usePreviewConfig } from './hooks/usePreviewConfig';
 import { useConnectionEditor } from './hooks/useConnectionEditor';
@@ -23,20 +25,27 @@ export function PreviewConfigEditor() {
   const selectedFeature = useStore((s) => s.selectedFeature);
   const setPendingChatInput = useStore((s) => s.setPendingChatInput);
 
-  const previewStatus = useStore((s) => s.previewStatus);
   const isJobRunning = useStore((s) => s.isRunning);
 
-  const {
-    startServer,
-    stopServer,
-    isLoading: isPreviewLoading,
-    state: previewState,
-  } = usePreviewManager(selectedProject, selectedFeature);
+  // Read preview VM through the single selector; actions only come from
+  // the manager facade (no SSE registration in this component).
+  const featureKey = makeFeatureKey(selectedProject, selectedFeature);
+  const vm = useStore((s: any) => selectPreviewVM(s, featureKey));
+  const previewStatus = vm.status;
+  const previewState = vm.state;
+  const isPreviewLoading = vm.isLoading;
+
+  const { startServer, stopServer } = usePreviewManager(
+    selectedProject,
+    selectedFeature,
+  );
 
   const {
     status: deployStatusData,
     logs: deployLogs,
     isLoading: isDeployLoading,
+    canDeploy,
+    disabledReason: deployDisabledReason,
     deploy: handleDeploy,
     stop: handleStopDeploy,
     openDeployUrl,
@@ -63,10 +72,10 @@ export function PreviewConfigEditor() {
   const isRunning = previewState === 'running';
 
   const handleOpenPreview = useCallback(() => {
-    if (previewStatus?.url) {
-      window.open(`${PREVIEW_BASE()}${previewStatus.url}`, '_blank');
+    if (vm.url) {
+      window.open(`${PREVIEW_BASE()}${vm.url}`, '_blank');
     }
-  }, [previewStatus?.url]);
+  }, [vm.url]);
 
   const handleApplyToChat = useCallback((message: string) => {
     setPendingChatInput({ message, jobType: 'code', autoSubmit: false });
@@ -173,7 +182,8 @@ export function PreviewConfigEditor() {
           deployStatus={deployStatusData}
           deployLogs={deployLogs}
           isDeployLoading={isDeployLoading}
-          isJobRunning={isJobRunning}
+          canDeploy={canDeploy}
+          disabledReason={deployDisabledReason}
           onDeploy={handleDeploy}
           onStopDeploy={handleStopDeploy}
           onOpenDeployUrl={openDeployUrl}

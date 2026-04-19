@@ -12,6 +12,7 @@ import { useHealthCheck } from '@/application/hooks/ui/useHealthCheck';
 import { useSessionLoader } from '@/application/hooks/ui/useSessionLoader';
 import { useJobRestoration } from '@/application/hooks/ui/useJobRestoration';
 import { useGitRefresh } from '@/application/hooks/git';
+import { usePreviewSync } from '@/application/hooks/preview/usePreviewSync';
 import { ServerDownDetector } from '@/application/hooks/ui/useServerDownDetector';
 import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
@@ -284,6 +285,11 @@ function App() {
   // with a carrier counter (`gitStatusRefreshTrigger`) and a bypass flag
   // (`bypassFetchTimer`). One hook, one trigger, one dedup key.
   useGitRefresh();
+
+  // Ambient preview sync — single writer for SSE / initial fetch / visibility
+  // / reconnect. Lives at app root so it survives Explorer collapse and any
+  // preview-config-editor mount/unmount. See `usePreviewSync` header.
+  usePreviewSync();
 
   // ✅ Project config is owned by projectConfigSlice now. MainContentArea
   // subscribes to the slice directly via useAsyncResource and dispatches

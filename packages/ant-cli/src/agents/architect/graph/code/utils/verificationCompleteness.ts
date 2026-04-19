@@ -11,7 +11,71 @@
  * (see `llmExplicitlyDone` guard) and is NOT re-checked here.
  */
 
-import type { VerificationTracker } from '../state';
+import type { VerificationTracker, Violation, ViolationType } from '../state';
+
+/**
+ * Axis B — Verification completion evaluation shared between the main
+ * `checkTaskStatus` and the worker `workerCheckTaskStatus`.
+ *
+ * Callers remain responsible for the `<done>` tag contract and the
+ * "violations are empty" precondition; this helper only judges whether
+ * the tracker's required objectives have actually succeeded and, when
+ * they have not, produces the shared `verification_incomplete` violation.
+ */
+export interface VerificationCommandHistoryEntry {
+  command: string;
+  success: boolean;
+  exitCode?: number;
+  errorSnippet?: string;
+}
+
+export interface EvaluateVerificationCompletionParams {
+  tracker: VerificationTracker | undefined;
+  commandHistory: VerificationCommandHistoryEntry[] | undefined;
+  logPrefix: string;
+}
+
+export function evaluateVerificationCompletion(
+  params: EvaluateVerificationCompletionParams,
+): Violation | null {
+  const { tracker, commandHistory, logPrefix } = params;
+  const completeness = isVerificationComplete(tracker);
+
+  if (!tracker) {
+    const history = commandHistory || [];
+    const lastCommand = history[history.length - 1];
+    if (lastCommand && lastCommand.success) return null;
+
+    console.warn(`⚠️  [${logPrefix}] Verification: no tracker, falling back to commandHistory`);
+    return {
+      type: 'verification_incomplete' as ViolationType,
+      severity: 'critical',
+      message: lastCommand
+        ? `Last command failed (exit ${lastCommand.exitCode}): ${lastCommand.command}`
+        : 'Verification task completed without executing any command.',
+      isRetryable: true,
+      suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
+    };
+  }
+
+  if (completeness.ok) return null;
+
+  const firstMissing = completeness.missing[0];
+  console.warn(`⚠️  [${logPrefix}] Verification: ${firstMissing} objective not met (missing: ${completeness.missing.join(', ')})`);
+  const history = commandHistory || [];
+  const lastFailed = [...history].reverse().find(h => !h.success);
+  const errorDetail = lastFailed?.errorSnippet
+    ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
+    : '';
+  const detail = getMissingStepDetail(firstMissing);
+  return {
+    type: 'verification_incomplete' as ViolationType,
+    severity: 'critical',
+    message: detail.message + errorDetail,
+    isRetryable: true,
+    suggestedFix: detail.fix,
+  };
+}
 
 export type MissingStep = 'typecheck' | 'build' | 'test';
 
@@ -47,6 +111,34 @@ export function describeMissingStep(tracker: VerificationTracker | undefined): s
   const { ok, missing } = isVerificationComplete(tracker);
   if (ok) return undefined;
   return missing[0];
+}
+
+/**
+ * Enumerate the steps this verification task is required to run, in
+ * observation order. Single source of truth for "which gates matter"
+ * so that `isVerificationComplete` (missing steps) and
+ * `formatCachedPassedSteps` (passed steps) cannot drift apart.
+ */
+export function enumerateRequiredSteps(tracker: VerificationTracker | undefined): MissingStep[] {
+  if (!tracker) return ['build'];
+  const required: MissingStep[] = [];
+  if (tracker.typecheckRequired) required.push('typecheck');
+  required.push('build');
+  if (tracker.testsRequired) required.push('test');
+  return required;
+}
+
+/**
+ * Compute the steps that have already passed in the current diagnostic
+ * cycle. Derived from `enumerateRequiredSteps` ∖ `isVerificationComplete.missing`
+ * so that the "what's cached" prompt hint and the "what's missing"
+ * violation rendering share a single judgment.
+ */
+export function enumeratePassedSteps(tracker: VerificationTracker | undefined): MissingStep[] {
+  const required = enumerateRequiredSteps(tracker);
+  const { missing } = isVerificationComplete(tracker);
+  const missingSet = new Set(missing);
+  return required.filter(s => !missingSet.has(s));
 }
 
 /**

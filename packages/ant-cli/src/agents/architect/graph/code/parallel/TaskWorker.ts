@@ -162,6 +162,9 @@ export class TaskWorker<T extends BaseTask> {
         _diagnosticAttempts: (task as any).resumeState._diagnosticAttempts,
         _deepDiagnosticBudgetGranted: (task as any).resumeState._deepDiagnosticBudgetGranted,
         _lastPlanHash: (task as any).resumeState._lastPlanHash,
+        // Axis D — prior attempt plan bodies; required for composeViolationsText
+        // to render "what was already tried" on the post-resume prompt.
+        _appliedPlanHistory: (task as any).resumeState._appliedPlanHistory,
       } : {}),
       // Worker stop signal checker
       _isStopRequested: () => this.stopRequested,
@@ -226,6 +229,8 @@ export class TaskWorker<T extends BaseTask> {
       _diagnosticAttempts: this.currentState._diagnosticAttempts,
       _deepDiagnosticBudgetGranted: this.currentState._deepDiagnosticBudgetGranted,
       _lastPlanHash: this.currentState._lastPlanHash,
+      // Axis D — prior-attempt plan bodies (used by composeViolationsText)
+      _appliedPlanHistory: this.currentState._appliedPlanHistory,
     };
   }
 

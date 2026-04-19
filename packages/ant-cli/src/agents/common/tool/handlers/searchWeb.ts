@@ -72,11 +72,27 @@ export async function executeSearchWeb(args: { query: string }): Promise<string>
 
 /**
  * ToolHandler-compatible wrapper for the unified tool system.
+ *
+ * Phase 3-15 — in plan phase, reject further `search_web` calls after
+ * `planSearchWebLimit` (default 3) have already been executed in this
+ * plan-toolLoop session. Prevents the LLM from burning rounds on
+ * near-duplicate queries when the information is not going to surface
+ * new actionable signal.
  */
 export async function handleSearchWeb(
-  _ctx: ToolExecutionContext,
+  ctx: ToolExecutionContext,
   args: { query: string },
 ): Promise<ToolResult> {
+  if (ctx.activePhase === 'plan') {
+    const limit = ctx.planSearchWebLimit ?? 3;
+    const used = ctx.planSearchWebCount ?? 0;
+    if (used >= limit) {
+      const message = `search_web rejected: plan-phase limit of ${limit} call(s) reached in this task (already used ${used}). Produce the <plan> from the evidence already gathered; do NOT retry the same query with a different phrasing.`;
+      console.warn(`🔍 [WebSearch] ${message}`);
+      return { content: `SKIPPED: ${message}`, error: 'plan_search_web_limit' };
+    }
+  }
+
   try {
     const result = await executeSearchWeb(args);
     return { content: result };

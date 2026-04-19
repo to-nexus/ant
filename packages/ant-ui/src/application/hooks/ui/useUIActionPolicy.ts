@@ -25,6 +25,8 @@
  */
 
 import { useStore } from '@/domain/store';
+import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
+import { selectPreviewVM } from '@/domain/store/selectors/previewSelectors';
 
 export interface UIActionPolicy {
   // ============================================
@@ -96,8 +98,10 @@ export function useUIActionPolicy(): UIActionPolicy {
   const selectedFeature = useStore(state => state.selectedFeature);
   const backendMode = useStore(state => state.backendMode);
   const userEmail = useStore(state => state.userEmail);
-  const isPreviewLoading = useStore(state => state.isPreviewLoading);
-  const previewStatus = useStore(state => state.previewStatus);
+  // Preview state is per-feature; compute VM for the active selection.
+  const featureKey = makeFeatureKey(selectedProject, selectedFeature);
+  const previewVM = useStore((s: any) => selectPreviewVM(s, featureKey));
+  const isPreviewLoading = previewVM.isLoading;
   
   // ============================================
   // Policy Rules (정책 규칙)
@@ -150,17 +154,17 @@ export function useUIActionPolicy(): UIActionPolicy {
    * - Backend reports canStart (filesystem has runnable scripts)
    */
   const isPreviewTransitioning = ['installing', 'starting', 'validating'].includes(
-    (previewStatus as any)?.phase ?? ''
+    previewVM.phase ?? '',
   );
-  const backendCanStart = previewStatus?.canStart ?? false;
-  const canStartPreview = !isRunning && !isPreviewLoading && !isPreviewTransitioning && canPerformAnyAction && !!selectedProject && !(previewStatus?.running ?? false) && backendCanStart;
+  const backendCanStart = previewVM.canStart;
+  const canStartPreview = !isRunning && !isPreviewLoading && !isPreviewTransitioning && canPerformAnyAction && !!selectedProject && !previewVM.running && backendCanStart;
   
   /**
    * Rule 6: Preview 중단 조건
    * - Preview running OR in transitional phase (installing/starting)
    * - NOT disconnected
    */
-  const canStopPreview = ((previewStatus?.running ?? false) || isPreviewTransitioning) && canPerformAnyAction;
+  const canStopPreview = (previewVM.running || isPreviewTransitioning) && canPerformAnyAction;
 
   /**
    * Rule 7: Feature 생성 조건

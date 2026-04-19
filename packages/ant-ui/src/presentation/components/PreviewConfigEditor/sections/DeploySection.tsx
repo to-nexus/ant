@@ -10,13 +10,15 @@ import {
 } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
+import type { DeployDisabledReason } from '../../FeatureSection/hooks/useDeployManager';
 import { ansiConverter } from '../utils';
 
 export function DeploySection({
   deployStatus,
   deployLogs,
   isDeployLoading,
-  isJobRunning,
+  canDeploy,
+  disabledReason,
   onDeploy,
   onStopDeploy,
   onOpenDeployUrl,
@@ -24,7 +26,13 @@ export function DeploySection({
   deployStatus: DeployStatus | undefined;
   deployLogs: DeployLogEntry[];
   isDeployLoading: boolean;
-  isJobRunning: boolean;
+  /**
+   * False when the backend would reject a deploy request (no feature
+   * selected, or a `code` job is actively writing the source tree).
+   * Derived by `useDeployManager`; button stays disabled with a tooltip.
+   */
+  canDeploy: boolean;
+  disabledReason: DeployDisabledReason | undefined;
   onDeploy: () => void;
   onStopDeploy: () => void;
   onOpenDeployUrl: () => void;
@@ -126,6 +134,20 @@ export function DeploySection({
     ? t('preview.deploy.redeploy', 'Re-deploy')
     : t('preview.deploy.deploy', 'Deploy');
 
+  const disabledTooltip = (() => {
+    if (canDeploy) return undefined;
+    if (disabledReason === 'no-feature-selected') {
+      return t('preview.deploy.disabled.noFeatureSelected', 'Select a feature branch to deploy');
+    }
+    if (disabledReason === 'code-job-active') {
+      return t(
+        'preview.deploy.disabled.codeJobActive',
+        'A code job is running on this feature. Deploy is available once it completes.'
+      );
+    }
+    return undefined;
+  })();
+
   return (
     <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -145,7 +167,8 @@ export function DeploySection({
         {!isDeployActive ? (
           <button
             onClick={onDeploy}
-            disabled={isDeployLoading || isJobRunning}
+            disabled={isDeployLoading || !canDeploy}
+            title={disabledTooltip}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-md
                      bg-indigo-600 text-white hover:bg-indigo-700
                      disabled:opacity-50 disabled:cursor-not-allowed

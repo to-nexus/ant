@@ -159,6 +159,12 @@ which files need changes, in what order)
     ],
     "create": [],
     "delete": []
+  },
+  "rootCauseSelfCheck": {
+    "isPatternAcrossFiles": [true|false — is the same symptom repeating in ≥ 5 files?],
+    "upstreamAlternative": "[one-line description of the single upstream change that would make all N patches unnecessary, or null]",
+    "whyPatchChosenOverUpstream": "[one-line justification, or null if mode=upstream]",
+    "mode": "patch|upstream|refactor"
   }
 }
 </plan>
@@ -207,7 +213,13 @@ or have cross-file dependencies MUST be in the same batch.)
       "create": [],
       "delete": []
     }
-  ]
+  ],
+  "rootCauseSelfCheck": {
+    "isPatternAcrossFiles": [true|false — is the same symptom repeating in ≥ 5 files?],
+    "upstreamAlternative": "[one-line description of the single upstream change that would make all N patches unnecessary, or null]",
+    "whyPatchChosenOverUpstream": "[one-line justification, or null if mode=upstream]",
+    "mode": "patch|upstream|refactor"
+  }
 }
 </plan>
 ```

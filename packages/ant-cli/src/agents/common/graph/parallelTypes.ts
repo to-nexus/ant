@@ -157,6 +157,11 @@ export interface WorkerSnapshot {
   _deepDiagnosticBudgetGranted?: boolean;
   /** Axis F-4 — last normalized plan JSON hash for repeat detection. */
   _lastPlanHash?: string;
+  /** Axis D — prior attempt plan bodies accumulated across reverify cycles.
+   *  Used by `composeViolationsText` to show the LLM what was already tried.
+   *  Phase 4-17 — previously missing from the snapshot, which caused the
+   *  prompt history to silently truncate on worker resume. */
+  _appliedPlanHistory?: string[];
 }
 
 // ============================================

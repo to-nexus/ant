@@ -108,6 +108,30 @@ export function deriveInstallDecision(
 }
 
 /**
+ * Unified install-skip decision shared between the plan-node
+ * `recomputeInstallNeeded` path and the `runCommand` bare-install guard.
+ *
+ * Returns `null` when the install MUST run (no skip). Returns a skip reason
+ * string when the install can be short-circuited because the dependency
+ * declaration files have not changed since the last successful install.
+ *
+ * The decision is derived from `deriveInstallDecision` so both call sites
+ * agree on the cache rules — previously these were two independent
+ * implementations with a subtle "first-time install" asymmetry.
+ */
+export function shouldSkipInstall(
+  savedHash: string | undefined,
+  currentHash: string | null,
+  depsExist: boolean,
+): string | null {
+  if (!savedHash) return null;
+  if (!depsExist) return null;
+  if (!currentHash) return null;
+  if (savedHash !== currentHash) return null;
+  return 'Dependencies are up to date. Dependency declaration files have not changed since the last successful install. Proceed directly to build/test verification commands.';
+}
+
+/**
  * F2 — content diff for a manifest edit. Allows `decideInvalidationScope` to
  * narrow the invalidation scope based on which JSON fields actually changed.
  * When `oldContent` is `undefined`, the manifest is treated as newly created

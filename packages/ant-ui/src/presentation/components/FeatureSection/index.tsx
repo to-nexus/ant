@@ -10,6 +10,8 @@ import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import { useState, useEffect, useCallback } from 'react';
 import { QuickStartCTA } from '../common/QuickStartCTA';
 import { CreationWizardModal } from '../CreationWizardModal';
+import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
+import { selectPreviewVM } from '@/domain/store/selectors/previewSelectors';
 
 export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
   const { 
@@ -27,20 +29,31 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
   // Per-feature git refresh (fetch-from-remote + /changes re-pull) is owned
   // by the application-layer `useGitRefresh` hook mounted at the app root
   // — no feature-scoped manager needed here anymore.
+
+  // Read all preview render state through the single VM selector. SSE/fetch
+  // writers live in `usePreviewSync` at the app root.
+  const featureKey = makeFeatureKey(selectedProject, selectedFeature);
+  const vm = useStore((s: any) => selectPreviewVM(s, featureKey));
   const {
     state,
     status,
-    ready,  // Health check result
-    setupReasoning,  // Categorized failure code
-    suggestedFix,    // Suggested fix prompt
-    error,
+    ready,
+    setupReasoning,
+    suggestedFix,
+    error: vmError,
     progress,
+    isLoading,
+  } = vm;
+
+  const {
     startServer,
     stopServer,
-    isLoading,
-    isDismissed,     // ✅ NEW: Dismissal state from hook
-    dismissMessage   // ✅ NEW: Dismiss handler from hook
-  } = usePreviewManager(selectedProject, selectedFeature, { primary: true });
+    isDismissed,
+    dismissMessage,
+    localError,
+  } = usePreviewManager(selectedProject, selectedFeature);
+  // Action-level error (network/timeout on POST) overrides VM error when present.
+  const error = localError ?? vmError;
   
   const {
     handleCreateFeature,
@@ -117,7 +130,7 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
         features={features}
         selectedFeature={selectedFeature || undefined}
         isPreviewLoading={isLoading}
-        previewRunning={state === 'running' || state === 'installing' || state === 'starting'}
+        previewRunning={vm.running || state === 'installing' || state === 'starting'}
         canChangeFeature={policy.canChangeFeature}
         canCreateFeature={policy.canCreateFeature}
         canStartPreview={policy.canStartPreview}

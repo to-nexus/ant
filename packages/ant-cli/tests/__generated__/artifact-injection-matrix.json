@@ -160,6 +160,7 @@
     "duplicateInjectionPaths": [],
     "failedTemplates": 0,
     "injectionPaths": [
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management"
     ]

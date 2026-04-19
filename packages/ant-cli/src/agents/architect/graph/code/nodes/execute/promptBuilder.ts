@@ -289,6 +289,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       filteredCatalog: undefined,
       hasRuntimeError: state.directive ? containsRuntimeErrorPattern(state.directive) : false,
       hasMissingDependency: false,
+      // Phase 3-11 — expose remediation mode flags to `error/rules.md`.
+      remediationModeUpstream: state.currentTask?.type === 'error'
+        && state.currentTask?.remediationMode === 'upstream',
+      remediationModeRefactor: state.currentTask?.type === 'error'
+        && state.currentTask?.remediationMode === 'refactor',
     },
   };
 

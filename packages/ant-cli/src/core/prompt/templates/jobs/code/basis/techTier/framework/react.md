@@ -1,240 +1,30 @@
-# React Framework Profile
+# React Framework Hints
 
-## Runtime: Client-Side Rendering (Vite)
-
-**This profile is for pure React with Vite — a client-side rendered SPA.**
-
-**Constraint**: Do NOT use SSR/hybrid frameworks (Next.js, Remix, Gatsby). This means:
-- No `next`, `remix`, `gatsby` dependencies
-- No file-based routing (`src/app/`, `src/pages/`)
-- No Server Components, no `'use client'` directives
-- No `getServerSideProps`, `generateMetadata`, or server-only APIs
-
-**Constraint**: Use Vite as the build tool and dev server. Entry point is `index.html` + `src/main.tsx`.
-
-**Constraint**: If the existing codebase uses a different framework (e.g., Next.js), follow this profile — not the existing setup. Remove or replace conflicting framework configuration.
-
-**Routing**: Use a client-side router (React Router, TanStack Router) — not file-based routing.
-
-## Component Structure
-```typescript
-// Preferred order:
-// 1. Imports
-// 2. Type definitions
-// 3. Component
-// 4. Exports
-
-import React, { useState, useEffect } from 'react';
-import type { User } from '@/types';
-
-interface UserProfileProps {
-  userId: string;
-  onUpdate?: (user: User) => void;
-}
-
-export function UserProfile({ userId, onUpdate }: UserProfileProps) {
-  // Component logic
-}
-```
-
-## Component Best Practices
-- **Use function components** (not class components)
-- **Keep components < 200 lines** - split if larger
-- **One component per file** (except small, tightly-coupled components)
-- **Export by name, not default** for better refactoring
-- **Use TypeScript for props** - always define prop types
-
-## Hooks Rules
-- **Call hooks at top level** - never in conditions or loops
-- **Use custom hooks** to extract reusable logic
-- **useState**: Local component state
-- **useEffect**: Side effects and subscriptions
-- **useMemo**: Expensive computations
-- **useCallback**: Memoized callbacks (for child optimization)
-- **useContext**: Shared state across tree
-- **useRef**: DOM refs or mutable values
-
-```typescript
-// ✅ Good: Custom hook for reusable logic
-function useUser(userId: string) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  
-  useEffect(() => {
-    let cancelled = false;
-    
-    async function fetchUser() {
-      try {
-        const data = await api.getUser(userId);
-        if (!cancelled) {
-          setUser(data);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-    
-    fetchUser();
-    return () => { cancelled = true; };
-  }, [userId]);
-  
-  return { user, loading };
-}
-```
-
-## State Management
-```typescript
-// ✅ Local state for simple cases
-const [count, setCount] = useState(0);
-
-// ✅ Context for shared state across components
-const ThemeContext = createContext<Theme | null>(null);
-
-// ✅ Reducer for complex state logic
-const [state, dispatch] = useReducer(reducer, initialState);
-
-// ✅ External state library for large apps (Zustand, Jotai, Redux)
-```
-
-## Event Handlers
-```typescript
-// ✅ Good: Type-safe event handlers
-function handleClick(event: React.MouseEvent<HTMLButtonElement>) {
-  event.preventDefault();
-  // Handle click
-}
-
-function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-  setValue(event.target.value);
-}
-
-// ✅ Good: Inline handlers for simple cases
-<button onClick={() => setCount(c => c + 1)}>Increment</button>
-
-// ✅ Good: Named handlers for complex logic
-<button onClick={handleSubmit}>Submit</button>
-```
-
-## Conditional Rendering
-```typescript
-// ✅ Good: Short-circuit for simple conditions
-{isLoading && <Spinner />}
-{error && <ErrorMessage error={error} />}
-
-// ✅ Good: Ternary for if-else
-{isLoggedIn ? <Dashboard /> : <Login />}
-
-// ✅ Good: Early return for complex conditions
-if (isLoading) return <Spinner />;
-if (error) return <ErrorMessage error={error} />;
-return <Content />;
-```
-
-## Lists and Keys
-```typescript
-// ✅ Good: Stable, unique keys
-{users.map(user => (
-  <UserCard key={user.id} user={user} />
-))}
-
-// ❌ Bad: Index as key (causes bugs on reorder/filter)
-{users.map((user, index) => (
-  <UserCard key={index} user={user} />
-))}
-```
-
-## Performance Optimization
-- **React.memo**: Prevent re-renders for unchanged props
-- **useMemo**: Cache expensive computations
-- **useCallback**: Memoize callbacks passed to children
-- **Code splitting**: Use `React.lazy` and `Suspense`
-- **Virtualization**: Use `react-window` for large lists
-
-```typescript
-// ✅ Memoize component
-export const UserCard = React.memo(function UserCard({ user }: Props) {
-  return <div>{user.name}</div>;
-});
-
-// ✅ Memoize expensive computation
-const sortedUsers = useMemo(
-  () => users.sort((a, b) => a.name.localeCompare(b.name)),
-  [users]
-);
-
-// ✅ Memoize callback
-const handleClick = useCallback(
-  () => onUserSelect(userId),
-  [userId, onUserSelect]
-);
-```
-
-## Forms
-```typescript
-// ✅ Controlled components
-function LoginForm() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    login(email, password);
-  };
-  
-  return (
-    <form onSubmit={handleSubmit}>
-      <input
-        type="email"
-        value={email}
-        onChange={e => setEmail(e.target.value)}
-      />
-      <input
-        type="password"
-        value={password}
-        onChange={e => setPassword(e.target.value)}
-      />
-      <button type="submit">Login</button>
-    </form>
-  );
-}
-```
+Blind-spot reminders for client-rendered React. Pre-training gap only.
 
 ## Forbidden Patterns
-- ❌ Class components (use functions)
-- ❌ Directly mutating state (`state.value = x`)
-- ❌ Index as key in lists
-- ❌ Hooks in conditions or loops
-- ❌ Missing dependencies in useEffect/useMemo/useCallback
-- ❌ Forgetting cleanup in useEffect
-- ❌ Props drilling (use Context or state management)
-- ❌ Using `<img>` for SVG assets — use SVGR component import instead
 
-## SVG Assets
+- Conditional hook calls (`if (cond) useX()`) → ordering violation; runtime throws on re-render.
+- Missing deps in `useEffect` / `useMemo` / `useCallback` closing over stale props → silent incorrect behavior.
+- Index-as-key in reorderable / filterable lists → state leaks between unrelated items.
+- `<img src="foo.svg">` mixed with SVGR imports → inconsistent bundling.
 
-Import SVGs as React components (SVGR) — see browser rules for usage constraints. Vite setup:
+## Symptom → Upstream Cues
 
-**Option A** — `vite-plugin-svgr` (same import syntax as Next.js):
-```typescript
-// vite.config.ts
-import svgr from 'vite-plugin-svgr';
-export default defineConfig({ plugins: [react(), svgr()] });
-```
-Install: `vite-plugin-svgr` (devDependency)
+If the patch repeats across ≥ 5 files, fix upstream:
 
-Type declaration (add to `src/types/svg.d.ts`):
-```typescript
-declare module '*.svg' {
-  import type { FC, SVGProps } from 'react';
-  const SVGComponent: FC<SVGProps<SVGElement>>;
-  export default SVGComponent;
-}
-```
+- Many components annotating `JSX.Element` → React 19. Verify `@types/react` and `tsconfig.json` `jsx`, not file-by-file.
+- `React.memo` + `useCallback` chains without measured benefit → fan-out source (context identity, parent setter) is the cause.
+- Many files adopting `useReducer` for one domain → a shared store (Zustand / Jotai / Redux).
 
-**Option B** — Vite built-in (no extra package, no type declaration needed):
-```tsx
-import CalendarIcon from '@/assets/icon-calendar.svg?react';
-<CalendarIcon className="h-3 w-3" />
-```
+## Version Notes
 
+- React 19: global `JSX` removed — omit return annotations or use `React.JSX.Element`.
+- React 19: `forwardRef` mostly unnecessary — `ref` is a regular prop on function components.
+- React 18+: `useEffect` runs twice in dev StrictMode by design — fix the effect, do NOT add guards.
+
+## Toolchain Compatibility
+
+- Vite built-in `?react` SVG and `vite-plugin-svgr` register different transforms — pick one.
+- SWC vs Babel Vite plugins differ on JSX runtime defaults — confirm active plugin before transform config.
+- React 19 + Testing Library < 16: older `act()` shims throw under concurrent rendering.

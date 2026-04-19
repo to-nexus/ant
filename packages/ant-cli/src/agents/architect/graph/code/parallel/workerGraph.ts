@@ -20,7 +20,7 @@ import { learn } from '../nodes/learn';
 import { routeAfterExecute } from '../routers/executeRouter';
 import { routeAfterPlan } from '../routers/planRouter';
 import { routeAfterTool } from '../routers/toolRouter';
-import { isVerificationComplete, getMissingStepDetail } from '../utils/verificationCompleteness';
+import { evaluateVerificationCompletion } from '../utils/verificationCompleteness';
 import type { WorkerGraphBuilder } from './types';
 
 /**
@@ -163,41 +163,12 @@ async function workerCheckTaskStatus(state: ArchitectGraphState): Promise<Partia
   // Error tasks are code-fix only — build verification is deferred to the re-enqueued verification task.
   const isDiagnosticTask = state.currentTask?.type === 'verification';
   if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
-    const tracker = state._verificationTracker;
-    const completeness = isVerificationComplete(tracker);
-
-    if (!tracker) {
-      const history = state.commandHistory || [];
-      const lastCommand = history[history.length - 1];
-      if (!lastCommand || !lastCommand.success) {
-        console.warn(`⚠️  [Worker checkTaskStatus] Verification: no tracker, falling back to commandHistory`);
-        violations.push({
-          type: 'verification_incomplete' as ViolationType,
-          severity: 'critical',
-          message: lastCommand
-            ? `Last command failed (exit ${lastCommand.exitCode}): ${lastCommand.command}`
-            : 'Verification task completed without executing any command.',
-          isRetryable: true,
-          suggestedFix: 'Run the build/test command and verify it succeeds before marking done.',
-        });
-      }
-    } else if (!completeness.ok) {
-      const firstMissing = completeness.missing[0];
-      console.warn(`⚠️  [Worker checkTaskStatus] Verification: ${firstMissing} objective not met (missing: ${completeness.missing.join(', ')})`);
-      const history = state.commandHistory || [];
-      const lastFailed = [...history].reverse().find(h => !h.success);
-      const errorDetail = lastFailed?.errorSnippet
-        ? `\n\nLast failed command: ${lastFailed.command}\nError output:\n${lastFailed.errorSnippet}`
-        : '';
-      const detail = getMissingStepDetail(firstMissing);
-      violations.push({
-        type: 'verification_incomplete' as ViolationType,
-        severity: 'critical',
-        message: detail.message + errorDetail,
-        isRetryable: true,
-        suggestedFix: detail.fix,
-      });
-    }
+    const violation = evaluateVerificationCompletion({
+      tracker: state._verificationTracker,
+      commandHistory: state.commandHistory,
+      logPrefix: 'Worker checkTaskStatus',
+    });
+    if (violation) violations.push(violation);
   }
 
   // test-code guard: ensure at least one test file was actually written.

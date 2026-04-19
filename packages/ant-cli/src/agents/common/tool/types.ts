@@ -111,6 +111,13 @@ export interface ToolExecutionContext {
    *  different options once per attempt. */
   isDeepDiagnostic?: boolean;
 
+  /** Phase 3-15 — number of `search_web` calls already executed in the current
+   *  plan-toolLoop session. Handlers reject further calls once this reaches
+   *  the configured limit to prevent runaway web-search expansion. */
+  planSearchWebCount?: number;
+  /** Configured limit (default 3, env `ANT_PLAN_SEARCH_WEB_MAX`). */
+  planSearchWebLimit?: number;
+
   // === Reference search handlers ===
   referenceRequests?: any[];
   resolvedActionMode?: string;
