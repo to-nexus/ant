@@ -6,7 +6,7 @@ import { isTemplateContent } from "../../../../../core/utils/templateDetector";
 import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
 import type { ConversationEntry } from "../../../../../core/types/session";
 import { DESIGN_JOB_COMPACTION_THRESHOLD, DESIGN_JOB_COMPACTION_WINDOW, COMPACTION_MAX_OUTPUT_TOKENS } from "../../../../../core/context/constants";
-import { buildFeatureContext } from "../../../../../core/context/featureContextBuilder";
+import { buildFeatureContext, compactFeatureContext } from "../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { compressHeavyweightEntries, validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
 import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
@@ -245,11 +245,25 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     // Mirrors code resolve: surface T2+T3 so future design-level prompts may
     // consume prior context. Design sub-graph remains untouched (D5).
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const featureContext = await buildFeatureContext(state.deps?.session);
+    let featureContext = await buildFeatureContext(state.deps?.session);
     if (featureContext) {
       console.log(
         `📚 [Design Resolve] featureContext: breadcrumbs=${featureContext.breadcrumbs.length}, userTurns=${featureContext.userTurns.length}`,
       );
+      // §13 compaction_policy — mirror of code resolve. Compact is per-job and
+      // D5-safe: the feature.jsonl SSOT is shared across code/design so the
+      // same threshold/window applies.
+      const llm = state.deps?.llm;
+      const promptPort = state.deps?.promptBuilder;
+      if (llm && promptPort) {
+        const before = featureContext.userTurns.length;
+        featureContext = await compactFeatureContext(featureContext, { llm, promptPort });
+        if (featureContext.wasCompacted) {
+          console.log(
+            `🗜️  [Design Resolve] featureContext compacted: ${before} → ${featureContext.userTurns.length} user_turns + summary`,
+          );
+        }
+      }
     }
 
     // Resolve current turnId from feature.jsonl (session redesign §2 / §12).

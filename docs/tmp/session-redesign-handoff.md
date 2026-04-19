@@ -13,11 +13,11 @@
 | 항목 | 값 |
 |---|---|
 | 전체 todos | 19개 |
-| 완료 | **12개** |
+| 완료 | **13개** |
 | 진행 중 | 0 |
-| 남음 | **7개** |
+| 남음 | **6개** |
 | Phase B | ✅ **종료** (Mode × Complexity MVP 동작) |
-| Phase C | 진행 중 (2/3 완료 — resolve_integrate ✅ · breadcrumb_tiered_policy ✅) |
+| Phase C | ✅ **종료** (3/3 완료 — resolve_integrate ✅ · breadcrumb_tiered_policy ✅ · compaction_policy ✅) |
 | 베이스 커밋 | `8277b313 feat: code verification hardening, tech-tier hints, preview/deploy` |
 | 내 수정 파일 타입 에러 | 0 |
 | 기존 브랜치 선행 에러 (내 작업과 무관) | 27개 |
@@ -97,7 +97,7 @@
 
 ---
 
-## 3. 완료된 Todos (12개)
+## 3. 완료된 Todos (13개)
 
 ### ✅ 1) `feature_jsonl_schema` + `trace_jsonl_schema`
 
@@ -461,7 +461,49 @@
 
 ---
 
-## 4. 남은 Todos (7개, 실행 순서)
+### ✅ 13) `compaction_policy` (T2 user_turn LLM 요약 안전망)
+
+**수정 파일**:
+- `packages/ant-cli/src/core/context/featureContextBuilder.ts` — `FeatureContext`에 `summary?`/`wasCompacted?` 필드 추가 + `compactFeatureContext(ctx, deps, options?)` 신규 export. CHARS_PER_TOKEN=2.8 기반 `estimateTurnsTokens` 내장 + `FEATURE_CONTEXT_THRESHOLD`/`FEATURE_CONTEXT_WINDOW` default. `compactJob` 재사용 (MergedUserTurn → CompactableEntry 변환), LLM 실패 시 원형 ctx 반환 (graceful degradation)
+- `packages/ant-cli/src/agents/architect/graph/code/nodes/resolve/index.ts` — `buildFeatureContext` 직후 `state.deps.llm && state.deps.promptBuilder` 있으면 `compactFeatureContext` 호출. 결과는 동일 `featureContext` state 채널에 재할당 (`let` 변수 사용)
+- `packages/ant-cli/src/agents/architect/graph/design/nodes/resolve.ts` — code resolve와 동일 패턴. feature.jsonl은 code/design이 공유하므로 threshold/window도 공유
+- `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/direct/variants/default/base.md` — `{{#if featureContext.summary}}` 블록 신설 ("Earlier Context (summary)" 섹션). FPOP "read-only background" constraint + `{{{summary}}}` raw block
+- `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/plan/base.md` — direct와 동일 summary 블록 추가 (plan 프롬프트)
+
+**신규 파일**:
+- `packages/ant-cli/tests/verification/unit/compactFeatureContext.test.ts` — 5 tests (threshold 미만 no-op / window 이하 no-op / 정상 compact (window 보존 + summary 생성) / breadcrumbs 불변 보존 / LLM 실패 시 원형 반환)
+
+**설계 결정**:
+- Collapse vs Compact 책임 분리 유지: Collapse는 `FileSessionAdapter.appendBoundary`가 쓰기 시점에 자동 처리, Compact는 **읽기 시점 안전망** (featureContextBuilder)으로 완전히 직교
+- `summary`는 별도 스트링 필드로 보관해서 `userTurns`에 가짜 엔트리를 섞지 않음 (compactJob의 설계 철학 그대로 계승). 프롬프트는 `{{featureContext.summary}}`를 별도 섹션으로 렌더
+- window(6)보다 user_turn이 많을 때만 Compact 시도. 그 이하에선 summary 없이 원본 그대로 주입 → 적은 맥락에서 LLM call 불필요 (비용/지연)
+- `infra/compaction/system.md` 기존 템플릿 재사용 — "Agreements / Artifacts / Open items" 3분류로 조직화된 요약 (이미 FPOP 준수)
+- `compactJob` facade 통과: `CompactableEntry.role='user'`로 고정 (user_turn은 사용자 원본) + `content`=turn.user + `timestamp`=turn.ts. compactJob 내부가 `entries.slice(-recentWindowSize)`로 oldEntries/recentEntries를 나누기 때문에 windowSize만 정확히 넘겨주면 T2 slice 로직이 자연히 맞물림
+- LLM/promptBuilder 중 하나라도 없으면 Compact 경로 스킵 (테스트 harness·특수 주입 시나리오 지원). 이는 resolve 쪽 옵셔널 체크로 처리
+- breadcrumbs는 bubble-up 상한(BREADCRUMB_LIMITS + DEFAULT_BREADCRUMB_WINDOW=5)으로 이미 제한적 → compact 대상 아님 (T3는 수가 적고 요약하면 네비게이션 가치 상실)
+
+**AC 달성**:
+- [x] T2 토큰이 threshold 미만이면 compact 미호출 (LLM 호출 0회 — test: "no-op when token estimate is under threshold")
+- [x] threshold 초과 시 summary가 featureContext에 담기고 userTurns가 windowSize로 트리밍 (test: "keeps the most recent windowSize entries and populates summary")
+- [x] 최신 `FEATURE_CONTEXT_WINDOW(6)` user_turn은 summary 없이 그대로 유지 (test: turnIds 정확히 `t-6…t-11` 순서 보존)
+- [x] breadcrumbs는 compact 중 건드리지 않음 (test: "preserves breadcrumbs untouched")
+- [x] LLM 실패 시 원본 ctx 반환 (test: "graceful degradation")
+- [x] plan/direct base.md에 `{{#if featureContext.summary}}` 섹션 추가 (FPOP: observation target + 2 constraints)
+- [x] 내 수정 파일 타입 에러 0 (총 27 baseline 유지)
+- [x] vitest **54 suites / 1203 tests** 전원 통과 (compactFeatureContext 5 신규)
+
+**⚠️ 검증 미완**:
+- end-to-end 시나리오 (user_turn 15+개 축적 → resolve Compact → plan 프롬프트에 summary 주입) 통합 테스트 없음. §16 `ui_render_migration` 또는 수동 smoke 필요
+- Compact된 summary의 품질은 `infra/compaction/system.md` 기존 템플릿 의존 — 품질 개선은 본 플랜 범위 외
+
+**후속 의존성**:
+- §14 `legacy_cleanup`: 기존 `CODE_JOB_COMPACTION_THRESHOLD` / `DESIGN_JOB_COMPACTION_THRESHOLD` 상수는 `jobConversation` 경로 전용이었으나 본 todo에서 Compact는 `FEATURE_CONTEXT_THRESHOLD`로 완전히 이관됨. §14에서 legacy 상수(`CODE_JOB_*`, `DESIGN_JOB_*`, `PLAN_COMPACTION_*`, `VISUAL_COMPACTION_*` 중 unused)를 일괄 정리
+
+**Phase C 종료**: §11~§13 3/3 완료. resolve가 feature.jsonl을 읽어 T2+T3 `featureContext`를 구축 + Collapse(boundary 시) + Compact(threshold 초과 시) 이중 메커니즘으로 맥락 크기 통제 + plan/direct 프롬프트 주입. 다음은 Phase D (§14 legacy_cleanup부터).
+
+---
+
+## 4. 남은 Todos (6개, 실행 순서)
 
 > 번호 = 실행 순서. **§5의 카드도 동일 번호**로 정렬됨.
 > 선행 의존이 모두 완료됐을 때만 해당 번호 시작 가능.
@@ -475,11 +517,11 @@
 - [x] **9. `route_after_decompose_3way`** — `routeAfterDecompose` 4-way 확장 + `routeAfterDirect` 신설 + graph 배선. 8의 direct 노드를 정식 연결. ✅ 완료
 - [x] **10. `runtime_escalate`** — direct 내부 승격 트리거 + `_promotedThisJob` 1회 상한. `shouldEscalate()` 유틸 + touched 집계 + LLM 태그 공용 promoteThisJob 경로. ✅ 완료 → **Phase B 종료**
 
-### Phase C — 맥락 레이어 (3개 · 2 완료)
+### Phase C — 맥락 레이어 (3개 · ✅ 3/3 완료)
 
 - [x] **11. `resolve_integrate`** — resolve에서 `loadSinceBoundary()` 호출 + `featureContext` 주입 + 기존 `jobConversation` 로드 주석 처리. ✅ 완료
 - [x] **12. `breadcrumb_tiered_policy`** — `core/context/breadcrumb.ts` 신규 (bubble-up 4-tier + trace collector). code/design learn 노드가 §2.4 매트릭스에 따라 BC/Boundary append. trace.jsonl `file_write` SSOT 확립 (tool + direct + design tool emit). ✅ 완료
-- [ ] **13. `compaction_policy`** — Collapse(boundary에 자동) + Compact(threshold 초과 시 LLM 요약) 이중 메커니즘.
+- [x] **13. `compaction_policy`** — `compactFeatureContext` 신규 (Collapse는 adapter SSOT, Compact는 `FEATURE_CONTEXT_THRESHOLD` 초과 시 LLM 요약 + `FEATURE_CONTEXT_WINDOW` 최신 user_turn 보존). plan/direct base.md에 `{{#if featureContext.summary}}` 섹션. ✅ 완료 → **Phase C 종료**
 
 ### Phase D — Cleanup · UI (5개)
 
@@ -1073,7 +1115,8 @@ pnpm exec tsc --noEmit 2>&1 | grep -c 'error TS'
 | `tests/triage-prompt.test.ts` (snapshot) | 3/3 통과 ✅ |
 | `tests/triage-parser.test.ts` | 30/30 통과 ✅ |
 | `tests/verification/unit/breadcrumb.test.ts` (§12) | 15/15 통과 ✅ |
-| 전체 vitest (ant-cli) | **52 suites / 1163 tests** 통과 ✅ |
+| `tests/verification/unit/compactFeatureContext.test.ts` (§13) | 5/5 통과 ✅ |
+| 전체 vitest (ant-cli) | **54 suites / 1203 tests** 통과 ✅ |
 
 > **각 카드 공통 검증**:
 > ```bash
