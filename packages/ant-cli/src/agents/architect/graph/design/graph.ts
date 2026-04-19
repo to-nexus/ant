@@ -896,6 +896,7 @@ export const DesignGraphChannels = {
   completedTasks: Annotation<any>,
   completedTasksDetails: Annotation<any>,
   jobId: Annotation<any>,
+  turnId: Annotation<any>,
   jobTiming: Annotation<any>,
   _currentTaskTokenUsage: Annotation<any>,
   _estimatingTokenUsage: Annotation<any>,

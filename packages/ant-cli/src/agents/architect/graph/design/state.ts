@@ -68,6 +68,13 @@ export interface DesignGraphState extends TriageableState {
   jobId?: string;
   jobTiming?: JobTiming;
 
+  /**
+   * Current user turn id (session redesign §2). Populated by design resolve
+   * after reading feature.jsonl; consumed by learn for breadcrumb/boundary
+   * attribution. The design sub-graph itself stays untouched (D5).
+   */
+  turnId?: string;
+
   // Execution
   planText: string;
   

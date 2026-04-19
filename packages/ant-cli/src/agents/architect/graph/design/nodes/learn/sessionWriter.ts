@@ -72,15 +72,20 @@ export async function saveSessionRun(state: DesignGraphState): Promise<void> {
     }
   }
 
-  // Inter-Job Context Bridge: append raw job record
-  const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
+  // TODO(legacy_cleanup): removed in §14 along with SessionState.jobConversation.
+  // Design learn/index.ts now delegates context propagation to the
+  // feature.jsonl breadcrumb/boundary writes (session redesign §2.4 / §12).
   let updatedJobConversation = existingSession.state?.jobConversation;
-  if (isLastTask) {
-    const { user: jobUser, assistant: jobAssistant } = buildDesignJobRecord(state);
-    const existingJobConv: ConversationEntry[] = existingSession.state?.jobConversation || [];
-    updatedJobConversation = [...existingJobConv, jobUser, jobAssistant];
-    console.log(`📋 [Design Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || BOUNDARY.LIGHTWEIGHT})`);
-  }
+  void buildDesignJobRecord;
+  void BOUNDARY;
+  void (null as unknown as ConversationEntry);
+  // const isLastTask = !state.taskQueue || state.taskQueue.isEmpty();
+  // if (isLastTask) {
+  //   const { user: jobUser, assistant: jobAssistant } = buildDesignJobRecord(state);
+  //   const existingJobConv: ConversationEntry[] = existingSession.state?.jobConversation || [];
+  //   updatedJobConversation = [...existingJobConv, jobUser, jobAssistant];
+  //   console.log(`📋 [Design Learn] Inter-Job Context: appended raw record (${updatedJobConversation.length} total entries, boundary=${state.boundary || BOUNDARY.LIGHTWEIGHT})`);
+  // }
 
   await state.deps.session.updateArtifacts(
     state.context.project,

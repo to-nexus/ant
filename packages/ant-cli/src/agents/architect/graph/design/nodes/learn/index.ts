@@ -1,9 +1,102 @@
 import { DesignGraphState } from "../../state";
 import { saveFigmaMCPDebugLog } from '../../../../../../periphery/adapters/figma/figmaMCPHandler';
 import { DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
+import type { FeatureBoundaryLine } from '@ant/shared';
 
 import { saveSessionRun } from './sessionWriter';
 import { extractDesignLessons, storeLessonsToMemory, stripMetaFromContent } from './lessonExtractor';
+import {
+  buildBreadcrumb,
+  collectTouchedFilesFromTrace,
+} from '../../../../../../core/context/breadcrumb';
+
+/**
+ * Append a breadcrumb + boundary for a completed design job (§12).
+ *
+ * Design does not carry a `complexity` field; its learn phase always
+ * represents a "todo-complete" class event — a boundary collapses the
+ * user_turn into T3, and a breadcrumb surfaces the produced documents as
+ * paths anchors for the next resolve cycle.
+ *
+ * SSOT for touched files: trace.jsonl `file_write` (see
+ * core/context/breadcrumb.ts). `state.files` is consulted as a fallback
+ * when the trace is empty (e.g. docGen wrote via non-tool paths).
+ */
+async function applyDesignBreadcrumbBoundary(
+  state: DesignGraphState,
+): Promise<void> {
+  const session = state.deps?.session;
+  if (!session) return;
+  const jobId = state.jobId;
+  const turnId = state.turnId;
+  if (!jobId || !turnId) {
+    console.warn('⚠️  [Design Learn] skip breadcrumb/boundary (missing turnId)');
+    return;
+  }
+  const touched = await collectTouchedFilesFromTrace(session, turnId);
+  let pathsFromTrace = Array.from(touched.all);
+  if (pathsFromTrace.length === 0) {
+    const fallback = (state.files || [])
+      .map((f: any) => f?.path)
+      .filter((p: unknown): p is string => typeof p === 'string' && p.length > 0);
+    pathsFromTrace = fallback;
+  }
+  const summary = designBreadcrumbSummary(state, pathsFromTrace.length);
+  const mode = state.resolvedAction?.mode;
+
+  const breadcrumb = buildBreadcrumb({
+    jobId,
+    turnId,
+    jobType: 'design',
+    mode,
+    touched: pathsFromTrace,
+    created: touched.created,
+    modified: touched.modified,
+    deleted: touched.deleted,
+    summary,
+    traceRangeRef: touched.range,
+  });
+  try {
+    await session.appendBreadcrumb(breadcrumb);
+    console.log(
+      `📝 [Design Learn] breadcrumb appended (scope=${breadcrumb.scope} touched=${pathsFromTrace.length})`,
+    );
+  } catch (err) {
+    console.warn('⚠️  [Design Learn] appendBreadcrumb failed:', err);
+  }
+
+  const boundary: FeatureBoundaryLine = {
+    type: 'boundary',
+    ts: new Date().toISOString(),
+    jobId,
+    turnId,
+    jobType: 'design',
+    reason: 'auto_job_complete_todo',
+  };
+  try {
+    await session.appendBoundary(boundary);
+    console.log(`📌 [Design Learn] boundary appended (reason=${boundary.reason})`);
+  } catch (err) {
+    console.warn('⚠️  [Design Learn] appendBoundary failed:', err);
+  }
+}
+
+/**
+ * Build a noun-form one-line summary for design breadcrumbs.
+ *
+ * FPOP constraint (inline contract — no LLM render today):
+ *   - Observation target: the completed design artefact.
+ *   - Principle: single-line noun-form phrase; filenames belong in anchors.
+ *   - Constraint: no verb-form sentences, no listing of individual files.
+ */
+function designBreadcrumbSummary(state: DesignGraphState, touchedCount: number): string {
+  const directive = (state.directive || '').trim();
+  const firstLine = directive.split(/\r?\n/)[0] ?? '';
+  const trimmed = firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
+  const scaleTag = touchedCount > 0 ? ` · ${touchedCount} docs` : '';
+  const core = trimmed.length > 0 ? trimmed : 'design update';
+  return `${core}${scaleTag}`;
+}
 
 /**
  * Learn Node - Finalize workflow and store lessons
@@ -197,6 +290,19 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     runId = session.runs[session.runs.length - 1]?.runId;
     
     console.log(`💾 Session run saved to workspace/${state.context.project}/${state.context.featureFolder || 'default'}/sessions/architect/design.json`);
+
+    // Session redesign §2.4 — design learn appends BC + Boundary so resolve
+    // in subsequent jobs sees the design job's outcome via featureContext.
+    // Design has no complexity classification; we treat each completed
+    // design run as a full boundary event (D5: sub-graph untouched, only
+    // the terminal learn surface is extended here).
+    if (isLastTask) {
+      try {
+        await applyDesignBreadcrumbBoundary(state);
+      } catch (err) {
+        console.warn('⚠️  [Design Learn] breadcrumb/boundary write failed:', err);
+      }
+    }
   }
   
   // Store lessons to vector memory
