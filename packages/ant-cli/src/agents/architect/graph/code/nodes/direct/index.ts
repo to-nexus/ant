@@ -29,6 +29,7 @@ import { accumulateTokenUsage } from '../../../../../common/graph/llmHelpers';
 import { invokeLLMWithTools } from '../shared/invokeLLMWithTools';
 import { runToolCallsAndCollect } from '../shared/runToolCallsAndCollect';
 import { parseReActResponse } from '../shared/parseReActResponse';
+import { emitFileWriteTrace } from '../shared/emitFileWriteTrace';
 import { shouldEscalate } from './shouldEscalate';
 
 const registry = createCodeToolRegistry();
@@ -241,6 +242,15 @@ export async function direct(
         if (typeof path === 'string' && path.length > 0) {
           touchedFiles.add(path);
         }
+        // Forward file-mutating sideEffects to trace.jsonl (SSOT for
+        // breadcrumb/touched — see core/context/breadcrumb.ts). Best-effort.
+        emitFileWriteTrace({
+          session: state.deps?.session,
+          jobId: state.jobId,
+          turnId: state.turnId,
+          jobType: 'code',
+          sideEffects: ev.result.sideEffects,
+        });
       }
 
       if (!state._promotedThisJob && shouldEscalate(state, touchedFiles)) {

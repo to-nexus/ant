@@ -296,6 +296,16 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       );
     }
 
+    // Resolve current turnId from feature.jsonl (matches on jobId). Populated
+    // by orchestrator's recordUserTurn before this graph ran. Consumers:
+    // tool/direct trace emission, learn's breadcrumb/boundary writes.
+    if (featureContext && state.jobId) {
+      const owning = featureContext.userTurns.find((t) => t.jobId === state.jobId);
+      if (owning?.turnId) {
+        state.turnId = owning.turnId;
+      }
+    }
+
     // TODO(legacy_cleanup): remove jobConversation compaction block once §14 clean-up lands.
     // Commented out as part of §11 `resolve_integrate` — featureContext above is now SSOT.
     // Intentionally preserved to document the prior behaviour until the field is removed.

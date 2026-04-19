@@ -21,6 +21,7 @@ import { createChatStatusReporter } from '../../../../../common/tool/chatStatusA
 import { CACHEABLE_TOOLS } from '../../../../../common/tool/toolCatalog';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
 import { createDesignToolHandlers } from './designToolAdapters';
+import { emitFileWriteTrace } from '../../../code/nodes/shared/emitFileWriteTrace';
 
 const tokenManager = new TokenBudgetManager();
 const designToolResultManager = new ToolResultManager(tokenManager, {
@@ -85,6 +86,15 @@ const toolNodeFn = createToolNode<DesignGraphState>({
 
   hooks: {
     afterExecution(state, event) {
+      // Forward file-mutating sideEffects to trace.jsonl (SSOT for
+      // breadcrumb/touched — see core/context/breadcrumb.ts). Best-effort.
+      emitFileWriteTrace({
+        session: state.deps?.session,
+        jobId: state.jobId,
+        turnId: state.turnId,
+        jobType: 'design',
+        sideEffects: event.result.sideEffects,
+      });
       const jobId = state._httpJobId;
       const featurePath = state.context?.featurePath;
       const taskId = (state.currentTask as any)?.id;

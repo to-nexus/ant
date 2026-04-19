@@ -1022,6 +1022,7 @@ export const CodeGraphChannels = {
       completedTasksDetails: Annotation<any>,
       resolvedCategories: Annotation<any>,
       jobId: Annotation<any>,
+      turnId: Annotation<any>,
       jobTiming: Annotation<any>,
       failedTasks: Annotation<any>,
       unresolvedErrors: Annotation<any>,
