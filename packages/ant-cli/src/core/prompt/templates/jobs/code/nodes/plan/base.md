@@ -15,6 +15,16 @@ them in the plan unless the current task description explicitly builds on them.
 **Constraint**: If the current task description contradicts an item below, the
 task description wins. Do NOT assume continuity that is not observable.
 
+{{#if featureContext.summary}}
+### Earlier Context (summary)
+
+Older user turns in this feature were condensed to a digest. Treat it as
+read-only background — do NOT restate it unless the current task description
+asks.
+
+{{{featureContext.summary}}}
+{{/if}}
+
 {{#if featureContext.breadcrumbs.length}}
 ### Recent Breadcrumbs
 {{#each featureContext.breadcrumbs}}
