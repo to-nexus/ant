@@ -533,6 +533,14 @@ export interface ArchitectGraphState extends TriageableState {
   jobId?: string;
   jobTiming?: import('../../../common/graph/timing/JobTimingManager').JobTiming;
 
+  /**
+   * Current user turn id (session redesign §2 — append-only user_turn).
+   * Populated by resolve after reading feature.jsonl (matches on jobId);
+   * consumed by tool/direct/learn nodes to attribute trace events and
+   * breadcrumb/boundary lines to the originating user request.
+   */
+  turnId?: string;
+
   // ✅ Worker runtime injection
   workerId?: number;
   _isStopRequested?: (() => boolean);

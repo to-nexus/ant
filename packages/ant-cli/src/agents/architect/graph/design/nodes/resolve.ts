@@ -252,6 +252,16 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       );
     }
 
+    // Resolve current turnId from feature.jsonl (session redesign §2 / §12).
+    // Consumer: design learn node writes breadcrumb/boundary attributed to
+    // this turn. Design sub-graph itself stays untouched (D5).
+    if (featureContext && state.jobId) {
+      const owning = featureContext.userTurns.find((t) => t.jobId === state.jobId);
+      if (owning?.turnId) {
+        state.turnId = owning.turnId;
+      }
+    }
+
     // TODO(legacy_cleanup): remove jobConversation compaction block once §14 clean-up lands.
     // Commented out as part of §11 `resolve_integrate` — featureContext above is now SSOT.
     let processedJobConversation: ConversationEntry[] = [];

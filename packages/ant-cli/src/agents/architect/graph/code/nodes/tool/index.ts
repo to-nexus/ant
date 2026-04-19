@@ -16,6 +16,8 @@ import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
+import { inDeepDiagnosticMode } from '../../utils/deepDiagnosticMode';
+import { emitFileWriteTrace } from '../shared/emitFileWriteTrace';
 
 const registry = createCodeToolRegistry();
 
@@ -46,8 +48,9 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       verificationTracker: state._verificationTracker as any,
       depFileHash: state._depFileHash,
       retries: state.retries,
-      // Axis G-2 — deep-diagnostic triggers at the second re-entry into the task
-      isDeepDiagnostic: (state._diagnosticAttempts || 0) >= 2,
+      // Deep-diagnostic activates at the 2nd re-entry into the task (see
+      // utils/deepDiagnosticMode.ts for the full set of effects).
+      isDeepDiagnostic: inDeepDiagnosticMode(state),
       referenceRequests: state.referenceRequests,
       resolvedActionMode: state.resolvedAction?.mode,
       retriever: state.deps?.retriever as any,
@@ -77,13 +80,23 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       if (state._activePhase === 'plan' && event.toolName === 'search_web' && !event.result.error) {
         state._planSearchWebCount = (state._planSearchWebCount ?? 0) + 1;
       }
+      // Emit trace.jsonl file_write events (SSOT for touched-file collection
+      // in learn/breadcrumb — see core/context/breadcrumb.ts). Best-effort:
+      // failures log and continue so tool execution never regresses.
+      emitFileWriteTrace({
+        session: state.deps?.session,
+        jobId: state.jobId,
+        turnId: state.turnId,
+        jobType: 'code',
+        sideEffects: event.result.sideEffects,
+      });
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
         switch (effect.type) {
           case 'verificationInvalidated': {
-            // Axis C — scope-based selective invalidation. Narrow the reset
-            // to the steps actually affected by the file change so already-passed
-            // steps (e.g. typecheck) remain cached across edits.
+            // Scope-based selective invalidation (see utils/invalidationScope.ts).
+            // Narrow the reset to the steps actually affected by the file change
+            // so already-passed steps (e.g. typecheck) remain cached across edits.
             const tracker = state._verificationTracker;
             const { scope } = effect;
             if (tracker) {
@@ -113,7 +126,7 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
           }
 
           case 'depFileHashChanged': {
-            // Axis A — reflect updated dependency hash into state so the
+            // Reflect updated dependency hash into state so the
             // "bare install skipped" guard in runCommand can actually fire
             // on the next verification cycle.
             state._depFileHash = effect.newHash;
