@@ -59,12 +59,14 @@ code job의 verification 태스크는 `plan → execute ↔ tool → checkTaskSt
 | C11 | 동 — done but incomplete → plan(reverify) | · | ○ | S03 |
 | C12 | `checkTaskStatus` — `<done>` + tracker 불완전 → `verification_incomplete` | · | ○ | S08 |
 | C13 | 동 — error task 완료 시 final verification 자동 추가 | · | ○ | S07 |
-| C14 | `plan` 노드 — verification 진입 시 tracker·budget 초기화 | · | ○ | S01..S09 |
-| C15 | `plan` 노드 — verification retry 시 tracker attempted 리셋 | · | ○ | S08 |
+| C14 | `plan` 노드 — verification 진입 시 tracker·budget 초기화 | ✅ | ○ | S01..S09 |
+| C15 | `plan` 노드 — verification retry 시 tracker attempted 리셋 | ✅ | ○ | S08 |
 | C16 | `tool` 노드 — typecheck/build/test 명령 분류 → tracker 갱신 | · | ○ | S01, S03, S06 |
 | C17 | `codeCommandPolicy` — `*Passed` 독립 guard (retry/reverify 경계 캐시 유지) | ✅ | ○ | S10 |
 | C18 | `decideInvalidationScope` — 매니페스트 diff-aware scope (package.json 필드 분기) | ✅ | ○ | S10 |
 | C19 | `codeCommandPolicy` — 3-gate ordering (test는 `buildPassed` 이후만 허용) | ✅ | · | — |
+| C20 | `runCommand` — retry 진입 시에도 dep-hash skip guard 유지 (중복 `npm install` 0건) | ✅ | ○ | S11 (planned) |
+| C21 | `checkTaskStatus` 검증 블록 단일화 — graph.ts 와 workerGraph.ts가 `evaluateVerificationCompletion` 공통 함수를 경유 | ✅ | · | — |
 
 **현재 상태**: L1 컬럼(C1~C9)은 모두 `pnpm test:cli`에서 자동 검증됨.
 L2 컬럼은 스키마 + 인젝션 레이어는 도입 완료, 러너 + fixture는 후속.

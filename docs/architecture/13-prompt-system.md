@@ -291,6 +291,79 @@ templates/basis/
 
 `basis.techTier`는 **decompose 노드에서 도출**되거나, UI에서 explicit preset으로 사전 설정된다. decompose를 경유하지 않는 job(plan, ask, visual)은 techTier가 없으므로 주입되지 않는다.
 
+## Hints 계층 (Blind-Spot 환기)
+
+`basis/techTier/{language,framework}/<X>.md` 자리는 **모델 pre-training이 커버하지 않는 선제 환기** 용도이다. 주입 경로는 `AutoInjectionResolver`의 단일 헬퍼 `resolveTechTierInjections(job, tiers, taskType)`로 한정한다.
+
+### 자리 목적
+
+| 구분 | 원칙 |
+|------|------|
+| 용도 | pre-training 갭 환기 (blind-spot reminder) |
+| 금지 | API 레퍼런스·튜토리얼·일반 best practice 등재 |
+| 파일명 | 허용 집합 고정. 집합 외 값은 주입 skip — fallback 금지 |
+| 토큰 예산 | 파일당 ≤ 400 토큰, 섹션당 항목 ≤ 4 |
+| 형식 | FPOP 원칙 — 관찰 원칙·금지사항, 구체 코드 나열 금지 |
+| 증거 의무 | 항목 추가/변경 PR은 실증 job의 chat/log JSON 경로를 커밋 메시지에 기재 |
+| 유지보수 | 메이저 릴리즈 시에만 업데이트 |
+
+### 허용 파일명
+
+| Job | language | framework |
+|-----|----------|-----------|
+| `code` | `typescript-node`, `typescript-browser`, `go` | `nextjs`, `react`, `react-native`, `nestjs`, `gin` |
+| `design` | (미정 — 구조만 준비) | `nextjs`, `go` |
+
+### Code Job 허용 섹션 (순서·헤더 고정)
+
+| # | 섹션 | 의미 |
+|---|------|------|
+| 1 | `## Forbidden Patterns` | 컴파일 통과해도 런타임/하이드레이션 실패하는 패턴 |
+| 2 | `## Symptom → Upstream Cues` | N ≥ 5 파일 반복 증상은 상위 설정 신호 — 국소 패치 금지 |
+| 3 | `## Version Notes` | 직전 메이저 API 이관 2–3개 |
+| 4 | `## Toolchain Compatibility` | 런타임·러너·빌더 메이저 호환성 2–3개 |
+
+각 섹션은 선택적이며 미등재 섹션은 헤더도 넣지 않는다. 허용 섹션 외 헤더 등장은 린터로 차단한다.
+
+### 주입 조건 (SSOT: `AutoInjectionResolver.resolveTechTierInjections`)
+
+| Job | 조건 | 주입 |
+|-----|------|------|
+| `code` | `taskType ∈ {verification, error, ui}` | framework + language 동시 |
+| `code` | 그 외 (feature/setup/test-code/doc) | skip — 기존 `setup/config` 계열이 이미 커버 |
+| `design` | framework/language 판별 가능 | framework + language 동시 |
+
+**경로 규칙**:
+
+```
+jobs/{job}/basis/techTier/language/{typescript-node|typescript-browser|go}
+jobs/{job}/basis/techTier/framework/{allowed-framework-name}
+```
+
+미지 언어/프레임워크는 주입 **skip**(반드시 fallback 금지 — 잘못된 경로 주입 위험).
+
+### Design Job 섹션 스펙
+
+Design job은 이번 단계에서 **구조·배선만** 표준화되며, 섹션 스펙·허용 파일 집합은 후속 작업에서 확정한다. 배선은 code job과 동일하게 `resolveTechTierInjections(job='design', tiers, taskType)` 경유.
+
+### 비 FPOP 금지 목록
+
+- ❌ "How do I use X?" 같은 튜토리얼 문체
+- ❌ 구체 import 예시 (권장/금지 어느 쪽이든)
+- ❌ 스니펫 나열 (관찰 원칙은 설명문으로)
+- ❌ "You MUST..." 반복 훈계 — FPOP는 제약을 중립적으로 명시
+
+### PR 체크리스트
+
+Hints 계층 파일(`jobs/code/basis/techTier/**.md`, `jobs/design/basis/techTier/**.md`)을 추가·수정하는 PR은 아래 항목을 만족해야 한다:
+
+- [ ] 변경 사유가 되는 **실증 chat/log 경로**가 커밋 메시지에 기재되어 있는가?
+- [ ] 추가된 항목이 현 모델이 **이미 알고 있는 일반 지식**이 아닌, **pre-training 갭 / blind-spot**인가?
+- [ ] 파일당 토큰 예산(≤ 400)을 충족하는가? (`tests/techtier-hint-budget.test.ts` 통과)
+- [ ] 허용 섹션 4개 (`Forbidden Patterns` / `Symptom → Upstream Cues` / `Version Notes` / `Toolchain Compatibility`)만 사용했는가?
+- [ ] 파일명이 허용 집합에 속하는가? (집합 외 이름은 주입 skip됨 — fallback 없음)
+- [ ] AutoInjectionResolver 외 경로에서 같은 파일을 중복 주입하고 있지 않은가?
+
 ## 템플릿 렌더링
 
 Handlebars를 사용하며, 조건부 섹션(`{{#if}}`)과 반복(`{{#each}}`)을 지원한다. 삼중 중괄호(`{{{...}}}`)로 HTML 이스케이프 없이 raw 출력한다.

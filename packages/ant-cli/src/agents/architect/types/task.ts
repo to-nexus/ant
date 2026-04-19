@@ -62,6 +62,13 @@ export interface CodeTask extends BaseTask {
    */
   prePlanText?: string;
   /**
+   * Phase 3-11 — remediation scope mode inherited from the verification plan's
+   * `rootCauseSelfCheck.mode` (or a fallback heuristic based on the rootCauses'
+   * affectedFiles fan-out). Consumed by the error execute variant to branch
+   * its "Minimal changes" rule between patch / upstream / refactor scopes.
+   */
+  remediationMode?: 'patch' | 'upstream' | 'refactor';
+  /**
    * UI sections required for this task (set by decompose LLM).
    * Used for split injection - only specified sections are loaded into prompt.
    *

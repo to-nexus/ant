@@ -6,6 +6,7 @@ import {
   type PreviewConfig,
 } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
+import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
 
 export interface UseConnectionEditorResult {
   localConns: ServiceConnection[];
@@ -30,7 +31,7 @@ export function useConnectionEditor(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
 ): UseConnectionEditorResult {
-  const setPreviewStatus = useStore((s) => s.setPreviewStatus);
+  const mergePreviewStatus = useStore((s: any) => s.mergePreviewStatus);
 
   const [localConns, setLocalConns] = useState<ServiceConnection[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -72,12 +73,15 @@ export function useConnectionEditor(
         setConfig(prev => prev
           ? { ...prev, connections: result.connections }
           : { connections: result.connections } as PreviewConfig);
-        const currentStatus = useStore.getState().previewStatus;
-        if (currentStatus?.running && currentStatus?.connections) {
-          setPreviewStatus({
-            ...currentStatus,
-            connections: result.connections,
-          });
+        // Propagate fresh connections into the per-feature preview slice
+        // so the Preview Controls section sees live statuses immediately
+        // (when the server is running). Missing feature key → skip.
+        const key = makeFeatureKey(selectedProject, selectedFeature);
+        if (key) {
+          const currentStatus = useStore.getState().previewByFeature[key]?.status;
+          if (currentStatus?.running && currentStatus?.connections) {
+            mergePreviewStatus(key, { connections: result.connections });
+          }
         }
         setHasUnsavedChanges(false);
       }
@@ -89,7 +93,7 @@ export function useConnectionEditor(
     } finally {
       setIsDetecting(false);
     }
-  }, [selectedProject, selectedFeature, setConfig, setPreviewStatus]);
+  }, [selectedProject, selectedFeature, setConfig, mergePreviewStatus]);
 
   const handleSaveConnections = useCallback(async () => {
     if (!selectedProject) return;

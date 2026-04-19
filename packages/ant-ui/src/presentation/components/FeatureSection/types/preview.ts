@@ -38,7 +38,7 @@ export interface PreviewStatus {
   suggestedFix?: string;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
   packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
-  phase?: 'idle' | 'installing' | 'starting' | 'running' | 'error' | 'stopped';  // Explicit phase from backend
+  phase?: 'idle' | 'installing' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';  // Explicit phase from backend
   error?: string;  // Error message from backend (e.g., install failure, health check failure)
 }
 

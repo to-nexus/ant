@@ -13,8 +13,9 @@ import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import { buildSourceFileIndex, EXECUTE_SOURCE_THRESHOLD } from '../sourceSelector';
 import { DesignTask } from '../../../../../types/task';
 import { designDirOf, effectiveTechTier, getTechTier, getRACDocuments, ARTIFACT_PREFIX } from '@ant/shared';
-import type { ResolvedArtifact } from '@ant/shared';
+import type { ResolvedArtifact, TechTier } from '@ant/shared';
 import { PromptBuilder } from '../../../../../../../core/prompt/builder/PromptBuilder';
+import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
 import { deriveArtifactPolicies } from '../../../../../../../core/prompt/builder/ArtifactRoleResolver';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
@@ -405,11 +406,17 @@ export function buildRuntimeContext(state: DesignGraphState): string {
 
 /**
  * Detect all templates that would be used, including framework augmentations.
- * Mirrors PromptResolver.detectFrameworkAugmentation logic for accurate logging.
+ *
+ * Framework/language path decisions now delegate to
+ * `AutoInjectionResolver.resolveTechTierInjections` (SSOT). See
+ * `docs/architecture/13-prompt-system.md` "Hints 계층". The 3-branch
+ * priority (task → graph → text-search) is preserved here only as an
+ * input-gathering step: each branch shapes the `tiers` array, and the
+ * resolver decides which `basis/techTier/framework/*` files to emit.
  */
 function detectUsedTemplates(state: DesignGraphState, targetFile: string): string[] {
   const templates: string[] = ['jobs/design/nodes/execute/variants/system-design/rules'];
-  
+
   if (targetFile.includes('api-contract')) {
     templates.push('jobs/design/base/injections/api-contract-guide');
   } else if (targetFile.includes('be-system-')) {
@@ -417,61 +424,77 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
   } else if (targetFile.includes('fe-system-')) {
     templates.push('jobs/design/base/injections/frontend-guide');
   }
-  
+
   // Domain-specific guides
   if (state.resolvedAction?.domain === 'game') {
     templates.push('jobs/design/basis/domain/game');
   } else if (state.resolvedAction?.domain === 'service') {
     templates.push('jobs/design/basis/domain/service');
   }
-  
-  // Framework augmentation detection (mirrors PromptResolver.detectFrameworkAugmentation)
-  // Filter by targetFile: nextjs → frontend docs only, go-api → backend docs only
+
+  const tiers = resolveDesignTechTierCandidates(state, targetFile);
+  if (tiers.length > 0) {
+    const resolver = new AutoInjectionResolver();
+    const paths = resolver.resolveTechTierInjections('design', tiers, state.currentTask?.type);
+    for (const p of paths) templates.push(p);
+  }
+
+  return templates;
+}
+
+/**
+ * Produce the list of TechTier candidates to feed into
+ * `AutoInjectionResolver.resolveTechTierInjections('design', ...)`.
+ *
+ * Priority order (first non-empty branch wins):
+ *   0. Task-level `techTiers` (from decompose).
+ *   1. Graph-level `getTechTier(state)`.
+ *   2. Text-search fallback over source docs + directive — materialized as
+ *      a synthetic (pseudo) TechTier so the resolver signature remains
+ *      unchanged and the injection rules live in one place.
+ *
+ * Filter by `targetFile`: frontend docs accept frontend-shaped tiers,
+ * backend docs accept backend-shaped tiers. This preserves the prior
+ * filtering semantics (`nextjs → fe-system-*`, `go → be-system-*`).
+ */
+function resolveDesignTechTierCandidates(
+  state: DesignGraphState,
+  targetFile: string,
+): TechTier[] {
   const isFrontendDoc = targetFile.includes('fe-system-') || targetFile.includes('frontend');
   const isBackendDoc = targetFile.includes('be-system-') || targetFile.includes('backend');
 
-  // Priority 0: Task-level TechTiers (from decompose)
-  const taskTechTiers = (state.currentTask as DesignTask)?.techTiers ?? [];
-  if (taskTechTiers.length > 0) {
-    for (const tier of taskTechTiers) {
-      const fw = tier.framework?.toLowerCase();
-      if ((fw?.includes('next') || fw?.includes('nextjs')) && isFrontendDoc) {
-        templates.push('jobs/design/basis/techTier/framework/nextjs');
-        break;
-      }
-      if (tier.language === 'go' && isBackendDoc) {
-        templates.push('jobs/design/basis/techTier/framework/go');
-        break;
-      }
-    }
-  } else if (getTechTier(state)) {
-    const _techTier = getTechTier(state)!;
-    const fw = _techTier.framework?.toLowerCase();
-    const lang = _techTier.language;
-    if ((fw?.includes('next') || fw?.includes('nextjs')) && isFrontendDoc) {
-      templates.push('jobs/design/basis/techTier/framework/nextjs');
-    } else if (lang === 'go' && isBackendDoc) {
-      templates.push('jobs/design/basis/techTier/framework/go');
-    }
-  } else {
-    // Priority 2: Text search fallback (no techTier available)
-    {
-      const _pool = new ArtifactPoolView(state.artifacts || []);
-      const allSourceDocs = _pool.hasSources()
-        ? _pool.sources.map(a => a.content).join(' ')
-        : '';
-      const textSources = [allSourceDocs, state.directive].filter(Boolean);
-      const combined = textSources.join(' ').toLowerCase();
-      if ((combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router')) && isFrontendDoc) {
-        templates.push('jobs/design/basis/techTier/framework/nextjs');
-      } else if ((combined.includes('go ') || combined.includes('golang')) &&
-                 (combined.includes('api') || combined.includes('server') || combined.includes('backend')) && isBackendDoc) {
-        templates.push('jobs/design/basis/techTier/framework/go');
-      }
-    }
+  const fits = (tier: TechTier): boolean => {
+    const fw = tier.framework?.toLowerCase();
+    const lang = tier.language;
+    if (isFrontendDoc && (fw?.includes('next') || fw?.includes('nextjs'))) return true;
+    if (isBackendDoc && lang === 'go') return true;
+    return false;
+  };
+
+  // Priority 0 — task-level techTiers
+  const taskTiers = ((state.currentTask as DesignTask)?.techTiers ?? []).filter(fits);
+  if (taskTiers.length > 0) return taskTiers;
+
+  // Priority 1 — graph-level techTier
+  const graphTier = getTechTier(state);
+  if (graphTier && fits(graphTier)) return [graphTier];
+
+  // Priority 2 — text-search fallback synthesized as pseudo-techTier
+  const pool = new ArtifactPoolView(state.artifacts || []);
+  const allSourceDocs = pool.hasSources()
+    ? pool.sources.map(a => a.content).join(' ')
+    : '';
+  const combined = [allSourceDocs, state.directive].filter(Boolean).join(' ').toLowerCase();
+  if (isFrontendDoc && (combined.includes('next.js') || combined.includes('nextjs') || combined.includes('next app router'))) {
+    return [{ framework: 'nextjs', stack: 'frontend' }];
   }
-  
-  return templates;
+  if (isBackendDoc
+      && (combined.includes('go ') || combined.includes('golang'))
+      && (combined.includes('api') || combined.includes('server') || combined.includes('backend'))) {
+    return [{ language: 'go', stack: 'backend' }];
+  }
+  return [];
 }
 
 /**

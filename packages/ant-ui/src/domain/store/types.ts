@@ -170,9 +170,15 @@ export interface GitState {
 // Re-export contract types for convenience (other slices/selectors import from here).
 export type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
 
+export interface PerFeaturePreviewState {
+  status: PreviewStatus | undefined;
+  isLoading: boolean;
+  stopGuardUntil: number;
+}
+
 export interface PreviewSliceState {
-  previewStatus: PreviewStatus | undefined;
-  isPreviewLoading: boolean;
+  /** Map keyed by `${projectId}:${featureName}` — isolates state per feature. */
+  previewByFeature: Record<string, PerFeaturePreviewState>;
 }
 
 export interface PerFeatureDeployState {

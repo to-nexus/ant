@@ -306,6 +306,49 @@ Code Job은 Figma Desktop MCP에 직접 연결하여 디자인 정보를 보충�
 
 Cloud mode에서 `BridgeMCPTransport`는 Redis Pub/Sub을 사용한다. `orchestrator.ts`에서 Code Job 전용 Redis 클라이언트를 생성하여 `deps.redis`로 전달하고, Job 완료 시 `quit()`한다.
 
+## Axis A~G: 필드·리셋 규칙·테스트 커버리지
+
+Code job의 verification 사이클은 7개 축(Axis A–G)으로 분해된다. 각 축은 **상태 필드**(state 저장), **리셋 규칙**(언제 초기화되는가), **테스트 커버리지**(어느 L1/L2 시나리오가 불변식을 묶는가)로 정의된다. 새 필드 추가·기존 필드 의미 변경 시 반드시 이 표를 갱신한다.
+
+### 요약 매트릭스
+
+| Axis | 책임 | 필드 | 리셋 시점 | L1/L2 커버리지 |
+|------|------|------|----------|----------------|
+| **A** — Install invalidation | dep-hash 기반 install skip/force 판정 | `_installNeeded`, `_depFileHash` | verification plan 진입, retry/reverify | S10 (dep-manifest-surgical), `invalidationScope.test.ts` |
+| **B** — Verification completion SSOT | `<done>` + tracker 동시 체크 | `_verificationTracker.{buildPassed,testPassed,typecheckPassed, *Required, *Attempted}` | reverify 시 `*Attempted`만 리셋 · 수정 범위 invalidation 시 `*Passed` flip | S01, S03, S06, S08, `isVerificationComplete.test.ts` |
+| **C** — Cached-passed step hint | 이미 통과한 gate는 프롬프트에 명시 | `formatCachedPassedSteps(tracker)` | tracker `*Passed` 변동에 파생 | (Phase 3-16 파생화 후) golden snapshot |
+| **D** — Retry summary & plan history | 직전 attempt 요약 → violationsText 경유 주입 | `_appliedPlanHistory`, `retrySummaryText` (런타임) | retry/reverify 진입마다 `retrySummaryText` 새로 렌더 · history는 reverify 시 append | `summarizeForRetry.test.ts`, F3c 로그 검증 |
+| **E** — Verification budget | retry·reverify 누적 한도 | `_verificationBudget`, `_diagnosticAttempts`, `_deepDiagnosticBudgetGranted`, `_lastPlanHash` | retry/reverify 진입 시 `consumeVerificationBudget` 1 감소 · fresh task 시 env 기반 시드 | S05 (budget-exhausted), `processDiagnosticBatchSplit.test.ts` |
+| **F** — Batch split / force escalation | LLM 단일 plan 고집 시 safety valve | `_batchSplitCount`, `_lastPlanHash` | 각 plan 진입마다 재계산 | S02, S04, `batch-split-fix.test.ts` |
+| **G** — Deep-diagnostic escalation | 2회 이상 재진입 시 config 주입 | `_diagnosticAttempts`, `_deepDiagnosticBudgetGranted` | fresh task 시드 · retry/reverify에서 `maybeGrantDeepDiagnosticBudget` | `deepDiagnosticConfig.test.ts` |
+
+### STEP 0 entry 분기별 리셋 필드 (Phase 2-9)
+
+`resolvePlanEntry`는 4개의 핸들러로 분기한다. 각 분기가 건드리는 필드를 아래 표로 고정한다.
+
+| 필드 | inToolLoop | retry | reverify | fresh |
+|------|:---:|:---:|:---:|:---:|
+| `state.retries` | 보존 | 보존 (maxRetries 검사) | 미조작 | 0 (scenario env 시 보존) |
+| `_executeCallIndex` | 보존 | 0 | 0 | 0 |
+| `_finalTaskLoopCount` | 보존 | 0 (비verification) / 보존 (verification) | 보존 | 0 (신규 task) |
+| `_verificationTracker` | 보존 | `*Attempted` 3개만 false, 그 외 보존 | `*Attempted` false · `*Passed`/`*Required`는 prev 보존 | 신규 task 시 fresh seed (verification만) |
+| `state.conversations[NODE_PLAN/EXECUTE]` | 보존 | 클리어 | 클리어 | 미조작 |
+| `state.violations` | 보존 | 클리어 (summary로 흡수) | 클리어 | 미조작 |
+| `_installNeeded` | 보존 | `recomputeInstallNeeded` | `recomputeInstallNeeded({detectPmIfMissing:true})` | verification task 시 `recomputeInstallNeeded({detectPmIfMissing:true})` |
+| `_appliedPlanHistory` | 보존 | 보존 | `planText` push | 신규 task 시 `[]` 초기화 |
+| `_verificationBudget` | 보존 | `consumeVerificationBudget` (verification 한정) | `consumeVerificationBudget` | fresh task 시 env 시드 · resume 시 보존 |
+| `_diagnosticAttempts` | 보존 | `maybeGrantDeepDiagnosticBudget` | 동일 | fresh task 시 0 |
+| `_lastPlanHash` | 보존 | 미조작 (STEP 2의 batch split이 갱신) | 동일 | fresh task 시 보존 (resume) |
+| `retrySummaryText` (반환값) | `undefined` | `renderRetrySummary(...)` | `undefined` | `undefined` |
+| `skipKeywordAndRAG` (반환값) | `false` | `false` | `true` | `false` |
+
+### 불변식 (Phase 2-9 이후)
+
+1. `preservedRetries`는 `inToolLoop ∨ isRetry ∨ ANT_SCENARIO_PRESERVE_RETRIES=1`일 때만 `state.retries` 유지 — 그 외엔 0.
+2. retry/reverify 진입에서 `state.violations`를 클리어하기 **전에** `retrySummaryText` 렌더가 완료되어야 함 (STEP 3 `composeViolationsText` 단일 경로).
+3. `recomputeInstallNeeded` 호출 조건은 분기별로 다르다 (retry 한정 ≠ reverify의 `detectPmIfMissing` ≠ fresh의 verification 전용) — 네 분기를 하나로 합치면 회귀.
+4. `_verificationTracker.testsRequired`, `typecheckRequired`는 fresh task 시점에 한 번 결정되어 이후 상태 변화로 변경되지 않는다.
+
 ## 경계
 
 - 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)

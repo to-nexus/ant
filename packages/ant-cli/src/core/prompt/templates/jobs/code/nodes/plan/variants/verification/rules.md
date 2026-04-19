@@ -65,6 +65,24 @@ Do not plan a fix for only the first error — the execution phase expects a com
 
 **Constraint**: If the same file needs multiple changes, consolidate them into a single `modify` entry with multiple `changes`.
 
+### Root Cause Self-Check
+
+**Principle**: Before finalizing a file-local patch, verify the fix is not covering a symptom whose real source is upstream. Large N × identical patch plans are a leading indicator of an unaddressed upstream configuration.
+
+**Constraint**: The plan JSON MUST include a `rootCauseSelfCheck` object with a chosen `mode`:
+
+| Mode | When to choose | Scope allowance |
+|------|----------------|-----------------|
+| `patch` | 1 root cause, fewer than 5 files, no repeating pattern | Apply the fixes as described. Do NOT refactor adjacent code. |
+| `upstream` | The same symptom repeats across ≥ 5 files (a generator anti-pattern, a toolchain/tsconfig mismatch, a missing dependency in a config) | Emit a single upstream fix in the plan. Do NOT enumerate N file-local patches when one configuration change makes them all unnecessary. |
+| `refactor` | Only when the user explicitly requested a refactor | Broad scope permitted. |
+
+**Observation targets**:
+- Count the distinct files across `rootCauses[].affectedFiles`. If ≥ 5 files share the same surface symptom, default to `upstream` unless you can name a concrete reason the upstream fix is infeasible.
+- Consult any `Symptom → Upstream Cues` hints from the framework/language basis. A blind-spot match is sufficient evidence to choose `upstream`.
+
+**Constraint**: Do NOT leave `rootCauseSelfCheck` unset, and do NOT claim `mode: "patch"` without populating `whyPatchChosenOverUpstream`.
+
 ### Build Command Discovery
 
 If you are unsure which build command to use, observe:

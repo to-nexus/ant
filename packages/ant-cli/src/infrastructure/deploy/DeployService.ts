@@ -22,9 +22,28 @@ import { StateStorePort, DeployState, DeployPhase } from '../../core/ports/state
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
 import { DeployMetaStore } from './DeployMetaStore';
+import { resolveDeployWorkspacePath, syncDeployWorkspace } from './DeployWorkspace';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
 import { toUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { logger } from '../../utils/logger';
+
+/**
+ * Structured reason codes returned from startDeploy so the HTTP layer can
+ * map them to appropriate status codes (400 for validation, 409 for
+ * conflict with an active job, 500 for infrastructure failures).
+ */
+export type DeployFailureReason =
+  | 'base-branch-not-allowed'
+  | 'code-job-active'
+  | 'port-allocation-failed'
+  | 'state-register-failed'
+  | 'workspace-sync-failed';
+
+export interface StartDeployResult {
+  success: boolean;
+  message: string;
+  reason?: DeployFailureReason;
+}
 
 export interface DeployServiceOptions {
   portManager: PortManager;
@@ -76,14 +95,52 @@ export class DeployService {
   /**
    * Mirror of PreviewServer.resolveWorkspacePath — needed when we must
    * rehydrate from scratch and don't have `workspacePath` on the Redis state.
+   *
+   * Deploy is only allowed on feature branches (see startDeploy), so the
+   * `main` branch is never a valid input here; callers should not reach this
+   * path with `feature === 'main'`.
    */
-  private guessWorkspacePath(
+  private guessCodebasePath(
     tenantId: string, userId: string, projectId: string, feature: string
   ): string {
-    if (feature && feature !== 'main') {
-      return path.join(this.workspacesBasePath, tenantId, userId, projectId, 'features', feature, 'codebase');
+    return path.join(this.workspacesBasePath, tenantId, userId, projectId, 'features', feature, 'codebase');
+  }
+
+  /**
+   * Deploy workspace = sibling `deploy/` of the codebase. This is where
+   * `next build`, `next start`, and static serving all run, fully isolated
+   * from the preview `next dev` process in `codebase/`.
+   */
+  private guessDeployWorkspacePath(
+    tenantId: string, userId: string, projectId: string, feature: string
+  ): string {
+    return resolveDeployWorkspacePath(
+      this.guessCodebasePath(tenantId, userId, projectId, feature)
+    );
+  }
+
+  /**
+   * Returns true iff a `code` job is currently in flight for this feature.
+   * Other job types (`design`, `plan`, `learn`, `ask`, `inline-ask`) do not
+   * modify the source tree, so they do not invalidate a deploy snapshot.
+   */
+  private async hasActiveCodeJob(projectId: string, feature: string): Promise<boolean> {
+    try {
+      const jobs = await this.stateStore.listJobsByFeature(projectId, feature);
+      return jobs.some(
+        (j) =>
+          j.type === 'code' &&
+          (j.status === 'pending' ||
+            j.status === 'queued' ||
+            j.status === 'running' ||
+            j.status === 'paused')
+      );
+    } catch (err: any) {
+      // If we cannot determine job state, fail open: do not block deploy.
+      // The build itself would surface a partially-written source tree.
+      logger.warn(`[Deploy] hasActiveCodeJob lookup failed: ${err.message}`, { component: 'DeployService' });
+      return false;
     }
-    return path.join(this.workspacesBasePath, tenantId, userId, projectId, 'codebase');
   }
 
   private getPodHost(): string {
@@ -151,17 +208,48 @@ export class DeployService {
    * the build asynchronously. Returns immediately (non-blocking) so the HTTP
    * response is sent within milliseconds — no ALB/proxy timeout risk.
    * All subsequent status updates are delivered via SSE.
+   *
+   * Validation order (fail fast, no side effects before success):
+   *   1. base branch rejected (deploy is feature-scoped by design)
+   *   2. active `code` job rejected (snapshotting a tree mid-write would
+   *      yield half-written source files in the deployed build)
+   *   3. snapshot codebase → deploy workspace (incremental)
+   *   4. allocate port, register Redis state, spawn executeBuild
+   *
+   * @param codebasePath  absolute path to the dev codebase (the preview
+   *                      workspace). Deploy never builds here directly; it
+   *                      syncs into the sibling `deploy/` workspace.
    */
   async startDeploy(
     tenantId: string,
     userId: string,
     projectId: string,
     feature: string,
-    workspacePath: string
-  ): Promise<{ success: boolean; message: string }> {
+    codebasePath: string
+  ): Promise<StartDeployResult> {
+    // 1) Base branch guard — main is not deployable. Features only.
+    if (!feature || feature === 'main') {
+      return {
+        success: false,
+        reason: 'base-branch-not-allowed',
+        message: 'Deploy is only available on feature branches',
+      };
+    }
+
     const key = this.makeKey(tenantId, userId, projectId, feature);
 
-    // Stop existing deploy if any
+    // 2) Active code-job guard — do this BEFORE any snapshot/port work so
+    // the caller sees a clean 409 without transient side effects. Other
+    // job types do not touch the source tree.
+    if (await this.hasActiveCodeJob(projectId, feature)) {
+      return {
+        success: false,
+        reason: 'code-job-active',
+        message: 'A code job is currently running on this feature. Deploy is blocked until it completes.',
+      };
+    }
+
+    // Stop existing deploy if any (port cleanup + generation bump via stopDeploy).
     const existing = this.activeDeploys.get(key);
     if (existing) {
       await this.stopDeploy(tenantId, userId, projectId, feature);
@@ -172,7 +260,25 @@ export class DeployService {
     this.deployGeneration.set(key, generation);
 
     const host = this.getPodHost();
-    const framework = detectFramework(workspacePath);
+
+    // 3) Snapshot the codebase into the sibling deploy workspace. From here
+    // on, all build/serve operations target `deployWorkspacePath` — the
+    // preview dev server's `codebase/.next` is never touched.
+    let deployWorkspacePath: string;
+    try {
+      deployWorkspacePath = await syncDeployWorkspace(codebasePath, (line) => {
+        this.broadcastLog(tenantId, userId, projectId, feature, line);
+      });
+    } catch (err: any) {
+      logger.error(`[Deploy] Workspace sync failed for ${key}: ${err.message}`, { component: 'DeployService' });
+      return {
+        success: false,
+        reason: 'workspace-sync-failed',
+        message: `Failed to prepare deploy workspace: ${err.message}`,
+      };
+    }
+
+    const framework = detectFramework(deployWorkspacePath);
     const serverKey = `${tenantId}:${userId}:${projectId}:${feature}`;
     const urlKey = toUrlKey(serverKey);
     const basePath = `/deploy/${urlKey}`;
@@ -182,10 +288,16 @@ export class DeployService {
     try {
       port = await this.portManager.allocate('deploy');
     } catch (err: any) {
-      return { success: false, message: `Port allocation failed: ${err.message}` };
+      return {
+        success: false,
+        reason: 'port-allocation-failed',
+        message: `Port allocation failed: ${err.message}`,
+      };
     }
 
-    // Register initial state in Redis
+    // Register initial state in Redis. `workspacePath` is now the deploy
+    // workspace — rehydrate and stopDeploy both use it as the source of
+    // truth for cwd and meta.json location.
     const initialState: Omit<DeployState, 'lastAccessedAt'> = {
       tenantId, userId, projectId, feature,
       phase: 'building',
@@ -193,9 +305,9 @@ export class DeployService {
       host,
       podId: os.hostname(),
       framework,
-      buildOutputDir: getBuildOutputDir(workspacePath, framework),
+      buildOutputDir: getBuildOutputDir(deployWorkspacePath, framework),
       basePath,
-      workspacePath,
+      workspacePath: deployWorkspacePath,
       urlKey,
       startedAt: new Date(),
     };
@@ -204,16 +316,20 @@ export class DeployService {
       await this.stateStore.registerDeploy(initialState);
     } catch (err: any) {
       this.portManager.release(port);
-      return { success: false, message: `Failed to register deploy state: ${err.message}` };
+      return {
+        success: false,
+        reason: 'state-register-failed',
+        message: `Failed to register deploy state: ${err.message}`,
+      };
     }
 
     await this.broadcastStatus(tenantId, userId, projectId, feature, { phase: 'building', framework });
 
     // Fire-and-forget: build + serve runs in background
-    this.executeBuild(tenantId, userId, projectId, feature, workspacePath, port, framework, urlKey, basePath, initialState, generation)
+    this.executeBuild(tenantId, userId, projectId, feature, deployWorkspacePath, port, framework, urlKey, basePath, initialState, generation)
       .catch(err => logger.error(`[Deploy] Unexpected executeBuild error for ${key}: ${err.message}`, { component: 'DeployService' }));
 
-    logger.info(`[Deploy] Build started: ${key} (${framework})`, { component: 'DeployService' });
+    logger.info(`[Deploy] Build started: ${key} (${framework}) in ${deployWorkspacePath}`, { component: 'DeployService' });
     return { success: true, message: 'Build started' };
   }
 
@@ -363,7 +479,7 @@ export class DeployService {
     const active = this.activeDeploys.get(key);
     const workspacePath = active?.state.workspacePath
       ?? (await this.stateStore.getDeploy(tenantId, userId, projectId, feature))?.workspacePath
-      ?? this.guessWorkspacePath(tenantId, userId, projectId, feature);
+      ?? this.guessDeployWorkspacePath(tenantId, userId, projectId, feature);
 
     if (active) {
       try {
@@ -448,7 +564,7 @@ export class DeployService {
 
     try {
       const workspacePath = existing?.workspacePath
-        ?? this.guessWorkspacePath(tenantId, userId, projectId, feature);
+        ?? this.guessDeployWorkspacePath(tenantId, userId, projectId, feature);
 
       const meta = await this.metaStore.read(workspacePath);
       if (!meta) {
@@ -605,7 +721,7 @@ export class DeployService {
 
     // 5. Check meta.json → hibernated (auto-wake eligible)
     const workspacePath = state?.workspacePath
-      ?? this.guessWorkspacePath(tenantId, userId, projectId, feature);
+      ?? this.guessDeployWorkspacePath(tenantId, userId, projectId, feature);
     const meta = await this.metaStore.read(workspacePath);
     if (meta) {
       return {

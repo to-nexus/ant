@@ -22,6 +22,7 @@ import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { collectDeepDiagnosticConfigs, renderConfigContextBlock } from '../../utils/deepDiagnosticConfig';
 import type { VerificationTracker } from '../../state';
+import { enumeratePassedSteps } from '../../utils/verificationCompleteness';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -29,15 +30,24 @@ import * as path from 'path';
  * Axis C helper — render a bullet list of verification steps that have
  * already passed in the current diagnostic cycle. Returns undefined when
  * nothing is cached so the template's `{{#if}}` block stays silent.
+ *
+ * Derived from `enumeratePassedSteps` (Axis B SSOT) so that "which gates
+ * are considered passed here" matches exactly what `isVerificationComplete`
+ * considers non-missing. Previously these two functions encoded the same
+ * rule independently and drifted.
+ *
  * Exported for unit testing.
  */
 export function formatCachedPassedSteps(tracker: VerificationTracker | undefined): string | undefined {
-  if (!tracker) return undefined;
-  const lines: string[] = [];
-  if (tracker.typecheckRequired && tracker.typecheckPassed) lines.push('- ✓ typecheck (tsc --noEmit)');
-  if (tracker.buildPassed) lines.push('- ✓ build');
-  if (tracker.testsRequired && tracker.testPassed) lines.push('- ✓ test');
-  return lines.length ? lines.join('\n') : undefined;
+  const passed = enumeratePassedSteps(tracker);
+  if (passed.length === 0) return undefined;
+  const labels: Record<string, string> = {
+    typecheck: '- ✓ typecheck (tsc --noEmit)',
+    build: '- ✓ build',
+    test: '- ✓ test',
+  };
+  const rendered = passed.map(s => labels[s]).filter(Boolean).join('\n');
+  return rendered || undefined;
 }
 
 /**
@@ -113,7 +123,11 @@ export async function buildPlanPrompt(
     // Axis C — proactive "already passed" hint so the LLM skips cached steps
     // instead of hitting the codeCommandPolicy rejection to learn the same.
     const cachedPassedSteps = formatCachedPassedSteps(state._verificationTracker);
-    return await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
+    const vTaskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
+    const vBasisSection = await promptBuilder.renderBasis(
+      state.resolvedAction?.basis, 'code', vTaskTechTiers,
+    );
+    const vBody = await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
       taskId: task.id, taskName: task.name, taskDescription: task.description,
       directive: state.directive || '', isErrorTask: false, runTests: true,
       projectCodeContext: fmtCtx, directoryTree: projectCodeContext?.directoryTree || '',
@@ -125,6 +139,7 @@ export async function buildPlanPrompt(
       cachedPassedSteps,
       resolvedAction: state.resolvedAction,
     });
+    return vBasisSection ? `${vBasisSection}\n\n---\n\n${vBody}` : vBody;
   }
 
   if (task.type === 'error') {
@@ -135,7 +150,11 @@ export async function buildPlanPrompt(
     if (techTier?.language) {
       try { languageHints = await promptBuilder.render(`jobs/code/nodes/plan/variants/verification/basis/techTier/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
     }
-    return await promptBuilder.render('jobs/code/nodes/plan/variants/error/base', {
+    const eTaskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
+    const eBasisSection = await promptBuilder.renderBasis(
+      state.resolvedAction?.basis, 'code', eTaskTechTiers,
+    );
+    const eBody = await promptBuilder.render('jobs/code/nodes/plan/variants/error/base', {
       taskId: task.id, taskName: task.name, taskDescription: task.description,
       directive: state.directive || '', projectCodeContext: fmtCtx,
       directoryTree: projectCodeContext?.directoryTree || '',
@@ -144,6 +163,7 @@ export async function buildPlanPrompt(
       packageManager, hasPackageManager: !!packageManager,
       resolvedAction: state.resolvedAction,
     });
+    return eBasisSection ? `${eBasisSection}\n\n---\n\n${eBody}` : eBody;
   }
 
   const isSpecDriven = !!state.selectedSpec;

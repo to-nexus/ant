@@ -765,7 +765,24 @@ export class PreviewService {
       });
       
       const finalStatus = await this.getPreviewStatus(tenantId, userId, projectId, feature);
-      
+
+      // Conditional re-broadcast to handle late-subscribing FE clients
+      // (handler registered after install→starting events already fired —
+      // no event buffering exists). We ONLY re-push while still in a
+      // transitional phase; if health check resolved faster than the
+      // `getPreviewStatus` read above, `updatePhase('running')` has
+      // already published the authoritative `phase:'running'` event and
+      // re-broadcasting this pre-read snapshot would race-overwrite the
+      // FE state back to 'starting'.
+      const transitionalPhase =
+        !finalStatus?.phase ||
+        finalStatus.phase === 'idle' ||
+        finalStatus.phase === 'installing' ||
+        finalStatus.phase === 'starting';
+      if (transitionalPhase) {
+        this.broadcastStatus(serverKey, finalStatus);
+      }
+
       return {
         success: true,
         message: `Started ${structure.packages.length} package(s)`,

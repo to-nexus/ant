@@ -74,7 +74,7 @@ export class PromptBuilder implements PromptPort {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Step 1: Resolve all injections
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const allInjections = this.resolveInjections(config);
+    const resolvedInjections = this.resolveInjections(config);
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Step 2: Prepare template variables
@@ -122,14 +122,20 @@ export class PromptBuilder implements PromptPort {
 
     // 3b. Basis section: root(stack) + task-scoped(lang+variant+fw)
     let basisSection = '';
+    const basisPaths = new Set<string>();
     if (config.pipeline?.includeBasis && config.basis) {
       const job = this.inferJob(config);
       const domain = config.techContext?.resolvedAction?.domain;
       const taskTechTiers = config.techContext?.techTiers;
-      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain);
+      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain, basisPaths);
     } else if (config.pipeline?.includeBasis && !config.basis) {
       console.warn(`⚠️  [PromptBuilder] includeBasis=true but config.basis is ${config.basis === undefined ? 'undefined' : 'falsy'} — skipping basis section`);
     }
+
+    // Dedup: remove paths already rendered in the basis section so injections
+    // don't double-render the same template (e.g. `jobs/code/basis/techTier/framework/nextjs`
+    // appears in both basisSection and AutoInjectionResolver output).
+    const allInjections = resolvedInjections.filter(p => !basisPaths.has(p));
 
     // 3c. Rules template
     const rules = await this.renderTemplate(config.templates.rules, vars, failedTemplates, true);
@@ -260,6 +266,7 @@ export class PromptBuilder implements PromptPort {
     job: string,
     taskTechTiers?: import('@ant/shared').TechTier[],
     domain?: string,
+    outPaths?: Set<string>,
   ): Promise<string> {
     if (!basis) {
       console.warn(`⚠️  [PromptBuilder.buildBasisSection] basis is undefined — returning empty`);
@@ -271,7 +278,7 @@ export class PromptBuilder implements PromptPort {
     // Root: stack template (shared across all tasks)
     const basisStack = basis.techTier?.stack as SupportedStack | undefined;
     if (basisStack) {
-      await this.pushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.stack(basisStack));
+      await this.pushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.stack(basisStack), outPaths);
     }
 
     // Task-scoped: language base + variant + framework (from taskTechTiers or config tiers)
@@ -294,7 +301,7 @@ export class PromptBuilder implements PromptPort {
         injectedLangs.add(lang);
         const basePath = TECH_TIER_TEMPLATE_PATHS.languageBase(lang);
         if (basePath) {
-          await this.pushBasisTemplate(sections, basePath);
+          await this.pushBasisTemplate(sections, basePath, outPaths);
         }
       }
 
@@ -305,6 +312,7 @@ export class PromptBuilder implements PromptPort {
         await this.tryPushBasisTemplate(
           sections,
           TECH_TIER_TEMPLATE_PATHS.jobLanguageVariant(job, variant),
+          outPaths,
         );
       }
 
@@ -313,33 +321,34 @@ export class PromptBuilder implements PromptPort {
         await this.tryPushBasisTemplate(
           sections,
           TECH_TIER_TEMPLATE_PATHS.jobFramework(job, tier.framework),
+          outPaths,
         );
       }
     }
 
     if (domain) {
       const jobDomainPath = TECH_TIER_TEMPLATE_PATHS.jobDomain(job, domain);
-      const loaded = await this.tryPushBasisTemplate(sections, jobDomainPath);
+      const loaded = await this.tryPushBasisTemplate(sections, jobDomainPath, outPaths);
       if (!loaded) {
-        await this.pushBasisTemplate(sections, `basis/domain/${domain}`);
+        await this.pushBasisTemplate(sections, `basis/domain/${domain}`, outPaths);
       }
     }
 
     if (basis.visualTier?.designSystem) {
-      await this.pushBasisTemplate(sections, `basis/visualTier/design-system/${basis.visualTier.designSystem}`);
+      await this.pushBasisTemplate(sections, `basis/visualTier/design-system/${basis.visualTier.designSystem}`, outPaths);
     }
 
     const hasVisualTierLayers = VISUAL_TIER_LAYER_KEYS.some(k => basis.visualTier?.[k]);
     if (hasVisualTierLayers) {
       const vt = basis.visualTier!;
-      await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.preamble());
+      await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.preamble(), outPaths);
       for (const layer of VISUAL_TIER_LAYER_KEYS) {
         const variant = vt[layer];
         if (variant) {
-          await this.pushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS[layer](variant));
+          await this.pushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS[layer](variant), outPaths);
         }
       }
-      await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job));
+      await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
     }
 
     if (sections.length === 0) {
@@ -351,26 +360,28 @@ export class PromptBuilder implements PromptPort {
   }
 
   /** Returns true if template was found and pushed. */
-  private async tryPushBasisTemplate(sections: string[], path: string): Promise<boolean> {
+  private async tryPushBasisTemplate(sections: string[], path: string, outPaths?: Set<string>): Promise<boolean> {
     try {
       const content = this.promptPort.renderRaw
         ? await this.promptPort.renderRaw(path)
         : await this.promptPort.render(path, {});
       if (content) {
         sections.push(`<basis axis="${path}">\n${content}\n</basis>`);
+        outPaths?.add(path);
         return true;
       }
       return false;
     } catch { return false; }
   }
 
-  private async pushBasisTemplate(sections: string[], path: string): Promise<void> {
+  private async pushBasisTemplate(sections: string[], path: string, outPaths?: Set<string>): Promise<void> {
     try {
       const content = this.promptPort.renderRaw
         ? await this.promptPort.renderRaw(path)
         : await this.promptPort.render(path, {});
       if (content) {
         sections.push(`<basis axis="${path}">\n${content}\n</basis>`);
+        outPaths?.add(path);
       } else {
         console.warn(`⚠️  [PromptBuilder.pushBasisTemplate] Template rendered empty: ${path}`);
       }

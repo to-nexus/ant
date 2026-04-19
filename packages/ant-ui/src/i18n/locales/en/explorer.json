@@ -237,7 +237,11 @@
       "hibernated": "Hibernated",
       "unavailable": "Artifact missing",
       "error": "Deploy Failed",
-      "idle": "Not deployed"
+      "idle": "Not deployed",
+      "disabled": {
+        "noFeatureSelected": "Select a feature branch to deploy",
+        "codeJobActive": "A code job is running on this feature. Deploy is available once it completes."
+      }
     }
   }
 }

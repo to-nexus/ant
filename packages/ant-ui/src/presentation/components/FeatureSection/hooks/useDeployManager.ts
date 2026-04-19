@@ -15,10 +15,21 @@ import {
 } from '@/infrastructure/http/api';
 import type { DeployStatus, DeployLogEntry } from '@/infrastructure/http/api';
 
+/**
+ * Reason the Deploy button must stay disabled, or undefined when deploy is
+ * allowed. Kept as a discriminated string so callers can render the right
+ * tooltip/toast without duplicating the business rules.
+ */
+export type DeployDisabledReason =
+  | 'no-feature-selected'
+  | 'code-job-active';
+
 export interface UseDeployManagerResult {
   status: DeployStatus | undefined;
   logs: DeployLogEntry[];
   isLoading: boolean;
+  canDeploy: boolean;
+  disabledReason: DeployDisabledReason | undefined;
   deploy: () => Promise<void>;
   stop: () => Promise<void>;
   openDeployUrl: () => void;
@@ -42,6 +53,21 @@ export function useDeployManager(
   const deployStatus = useStore((s: any) => selectDeployStatus(s, featureKey));
   const deployLogs = useStore((s: any) => selectDeployLogs(s, featureKey));
   const isDeployLoading = useStore((s: any) => selectIsDeployLoading(s, featureKey));
+
+  // A deploy takes a snapshot of the codebase. If a `code` job is writing
+  // files at that moment, the snapshot would be half-written → broken build
+  // or broken deploy. `activeJobs` is scoped to the currently selected
+  // feature by the SSE kanban handler, so this read is already feature-safe.
+  // Other job types (design/plan/learn/ask/inline-ask) do not touch the
+  // source tree and therefore do not invalidate a deploy.
+  const hasActiveCodeJob = useStore((s: any) => Boolean(s.activeJobs?.code));
+
+  const disabledReason: DeployDisabledReason | undefined = (() => {
+    if (!selectedFeature) return 'no-feature-selected';
+    if (hasActiveCodeJob) return 'code-job-active';
+    return undefined;
+  })();
+  const canDeploy = disabledReason === undefined;
 
   const setDeployStatus = useStore((s: any) => s.setDeployStatus);
   const setDeployLoading = useStore((s: any) => s.setDeployLoading);
@@ -70,6 +96,19 @@ export function useDeployManager(
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [isPrimary, featureKey, selectedProject, selectedFeature, setDeployStatus]);
+
+  // Re-sync on SSE reconnect — mirrors the preview-side pattern
+  // (`usePreviewSync`). Without this, events missed during the
+  // connected→disconnected→connected window never reach this feature's
+  // slice, leaving the deploy UI stuck on a stale snapshot.
+  const connectionStatus = useStore((s: any) => s.connectionStatus);
+  useEffect(() => {
+    if (!isPrimary || !featureKey || !selectedProject || !selectedFeature) return;
+    if (connectionStatus !== 'connected') return;
+    getDeployStatus(selectedProject, selectedFeature)
+      .then((status) => setDeployStatus(featureKey, status))
+      .catch(() => { /* silent */ });
+  }, [isPrimary, connectionStatus, featureKey, selectedProject, selectedFeature, setDeployStatus]);
 
   // SSE handler — piped events are already filtered by project/feature at the
   // SSEManager URL level (EventSource reconnects on feature switch). Redundant
@@ -117,6 +156,10 @@ export function useDeployManager(
 
   const deploy = useCallback(async () => {
     if (!selectedProject || !selectedFeature || !featureKey) return;
+    // Local guard mirrors the backend validation (400 base-branch /
+    // 409 code-job-active). The UI should not optimistically enter
+    // `building` for a request that the server will immediately reject.
+    if (!canDeploy) return;
 
     setDeployLoading(featureKey, true);
     clearDeployLogs(featureKey);
@@ -133,7 +176,7 @@ export function useDeployManager(
       setDeployStatus(featureKey, { phase: 'error', error: err.message });
       setDeployLoading(featureKey, false);
     }
-  }, [selectedProject, selectedFeature, featureKey, setDeployLoading, clearDeployLogs, setDeployStatus]);
+  }, [selectedProject, selectedFeature, featureKey, canDeploy, setDeployLoading, clearDeployLogs, setDeployStatus]);
 
   const stop = useCallback(async () => {
     if (!selectedProject || !selectedFeature || !featureKey) return;
@@ -159,6 +202,8 @@ export function useDeployManager(
     status: deployStatus,
     logs: deployLogs,
     isLoading: isDeployLoading,
+    canDeploy,
+    disabledReason,
     deploy,
     stop,
     openDeployUrl,
