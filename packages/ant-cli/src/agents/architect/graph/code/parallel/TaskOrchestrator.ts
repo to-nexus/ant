@@ -15,7 +15,7 @@
 
 import type { BaseTask, TaskTokenUsage } from '@ant/shared';
 import { TaskQueue } from '../../../types/task';
-import { TASK_PRIORITIES } from '../state';
+import { TASK_PRIORITIES, TaskTimingHelper } from '../state';
 import { AsyncMutex } from '../../../../../core/utils/AsyncMutex';
 import { TaskWorker } from './TaskWorker';
 import type {
@@ -662,11 +662,10 @@ export class TaskOrchestrator<T extends BaseTask> {
     delete (task as any)._failureReason;
 
     // Always reset timing — stale startedAt from failed/checkpoint-restored tasks
-    // would cause cumulative elapsed time across sequential tasks.
-    task.timing = {
-      startedAt: new Date().toISOString(),
-      totalPausedDuration: 0,
-    };
+    // would cause cumulative elapsed time across sequential tasks. Routed
+    // through `TaskTimingHelper.restartTask` so this Orchestrator is no
+    // longer an independent writer of the timing field.
+    task = TaskTimingHelper.restartTask(task) as T;
 
     this.runningTasks.set(workerId, task);
     // Broadcast kanban immediately when task starts (not just on completion)

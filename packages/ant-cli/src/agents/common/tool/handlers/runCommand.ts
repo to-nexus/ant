@@ -35,6 +35,7 @@ import {
   overlayResult,
   describeInjection,
 } from '../../../../utils/commandInject';
+import { shouldSkipInstall } from './invalidationScope';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Constants — imported from canonical source to prevent drift
@@ -321,16 +322,17 @@ async function executeCommandLogic(
 
   const featureRootPath = fileSystem.getRootPath();
 
-  // Dep-hash skip guard
-  if (isBareInstallCommand(command) && !(ctx.retries && ctx.retries > 0)) {
+  // Dep-hash skip guard — unified with plan-node `recomputeInstallNeeded`
+  // via `shouldSkipInstall` so both paths share a single cache rule.
+  if (isBareInstallCommand(command)) {
     const currentHash = await computeDepFileHash(featureRootPath);
     const savedHash = ctx.depFileHash;
     const depsExist = await hasInstalledDeps(featureRootPath);
 
-    if (savedHash && currentHash === savedHash && depsExist) {
+    const skipReason = shouldSkipInstall(savedHash, currentHash, depsExist);
+    if (skipReason) {
       console.log(`📦 [RunCommand] Bare install skipped — dependency declaration files unchanged`);
-      return makeRejection(command,
-        'SKIPPED: Dependencies are up to date. Dependency declaration files have not changed since the last successful install. Proceed directly to build/test verification commands.');
+      return makeRejection(command, `SKIPPED: ${skipReason}`);
     }
   }
 

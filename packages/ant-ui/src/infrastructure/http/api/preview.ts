@@ -38,7 +38,7 @@ export interface PreviewStatus {
   suggestedFix?: string;
   packages?: Array<{ name: string; type: 'frontend' | 'backend' | 'other'; port: number }>;
   issues?: Array<{ reasoning: string; severity: 'fatal' | 'warning'; reason: string; suggestedFix?: string }>;
-  phase?: 'idle' | 'installing' | 'starting' | 'running' | 'error' | 'stopped';
+  phase?: 'idle' | 'installing' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error';
   error?: string;
   structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo' | null;
   projectProfile?: { language: string; framework?: string } | null;

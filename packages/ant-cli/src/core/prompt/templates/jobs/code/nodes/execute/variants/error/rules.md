@@ -26,12 +26,34 @@
 
 ### Error-Specific Constraints
 
+Scope is determined by the remediation mode carried through the plan's `rootCauseSelfCheck.mode` field (defaults to `patch` when absent).
+
+{{#if remediationModeUpstream}}
+**Active mode: `upstream`** — the plan identified that ≥ 5 files share the same symptom and the fix belongs at a higher layer (config, generator, toolchain). The narrow "minimal changes" rule is suspended for this batch.
+
+| Constraint | Rule |
+|-----------|------|
+| **Fix the source** | Apply the single upstream change the plan specifies (e.g., `tsconfig.json` compiler option, `package.json` dependency, generator template). Do NOT also patch the N files the upstream change renders correct. |
+| **Verify scope erasure** | Re-run the build/test command after the upstream change. If the N surface errors disappear without further edits, the change is correct. |
+| **Do NOT pre-apply file patches** | Downgrade to a file-local fix only if the upstream change demonstrably fails to resolve the reported errors. |
+{{else if remediationModeRefactor}}
+**Active mode: `refactor`** — the user explicitly requested broader code reshaping. Scope constraints are relaxed but purpose must remain traceable.
+
+| Constraint | Rule |
+|-----------|------|
+| **Stay within the plan** | Broader scope is permitted ONLY for the modules the plan lists. Do NOT expand into modules the plan does not reference. |
+| **Preserve existing contracts** | Public API of refactored modules MUST remain compatible unless the plan explicitly says otherwise. |
+| **Exact match required** | `old_str` must match current content. If `edit_file` fails, `read_file` the target file to refresh. |
+{{else}}
+**Active mode: `patch`** (default) — single root cause, small scope.
+
 | Constraint | Rule |
 |-----------|------|
 | **Root cause first** | Fix root causes before cascading issues. A single root cause fix may resolve multiple reported errors. |
 | **Minimal changes** | Fix ONLY what the plan specifies. Do NOT refactor or "improve" adjacent code. |
 | **Config over code** | Prefer configuration fixes (go.mod, package.json, tsconfig.json) when the plan allows it. |
 | **Exact match required** | `old_str` must match current content. If `edit_file` fails, `read_file` the target file to refresh. |
+{{/if}}
 
 ---
 

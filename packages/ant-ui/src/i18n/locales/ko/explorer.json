@@ -237,7 +237,11 @@
       "hibernated": "잠들어 있음",
       "unavailable": "산출물이 사라짐",
       "error": "배포 실패",
-      "idle": "배포되지 않음"
+      "idle": "배포되지 않음",
+      "disabled": {
+        "noFeatureSelected": "배포하려면 피처 브랜치를 선택하세요",
+        "codeJobActive": "이 피처에서 코드 작업이 진행 중입니다. 작업이 끝난 후 배포할 수 있습니다."
+      }
     }
   }
 }

@@ -1,42 +1,30 @@
-# NestJS Framework Profile
+# NestJS Framework Hints
 
-## Module Architecture
+Blind-spot reminders. Pre-training gap only.
 
-**Principle**: NestJS enforces modular architecture. Each feature is encapsulated in a module with its own controllers, services, and providers.
+## Forbidden Patterns
 
-**Observation target**: Does the feature being implemented belong to an existing module or require a new one?
+- `process.env.X` in services instead of `ConfigService.get('X')` → fails under `ConfigModule.forFeature` schema.
+- `providers: [Svc]` consumed across modules without `exports: [Svc]` → "No provider for Svc" at startup.
+- `@Inject()` string tokens mixed with class-based injection on one constructor → runtime DI error.
+- Circular imports patched with `forwardRef()` everywhere → architectural problem; reshape the graph.
 
-| Checkpoint | What to observe |
-|-----------|----------------|
-| **Module boundary** | Does this feature fit into an existing module scope? |
-| **Provider registration** | Are all injectable services registered in the module's `providers` array? |
-| **Export visibility** | If a service is needed by other modules, is it in the `exports` array? |
+## Symptom → Upstream Cues
 
----
+If the shim is added to every feature, fix upstream:
 
-## Dependency Injection
+- `@UseGuards(AuthGuard)` on every controller → apply globally via `APP_GUARD`.
+- `ValidationPipe` attached per handler → `app.useGlobalPipes(new ValidationPipe())`.
+- Each service injecting `Logger` manually → global logger at bootstrap; receive via DI.
 
-**Constraint**: Use constructor injection exclusively. Do NOT use `@Inject()` with string tokens unless interfacing with non-class providers.
+## Version Notes
 
-**Constraint**: Services should depend on abstractions (interfaces) at module boundaries. Within a module, concrete class injection is acceptable.
+- NestJS 10+: Fastify adapter changed request/response shapes — confirm adapter before Express-only middleware.
+- `@nestjs/config` v3: schema validation supports Joi or `class-validator`; older Joi-only usage undocumented.
+- TypeORM and Prisma modules ship different testing helpers — `getRepositoryToken` vs `PrismaService` differ.
 
----
+## Toolchain Compatibility
 
-## Decorator Patterns
-
-**Constraint**: Use NestJS decorators for cross-cutting concerns (guards, interceptors, pipes) rather than middleware when possible. Decorators are type-safe and composable.
-
-| Concern | Mechanism |
-|---------|-----------|
-| Authentication | Guards (`@UseGuards`) |
-| Validation | Pipes (`@UsePipes`, `ValidationPipe`) |
-| Transformation | Interceptors (`@UseInterceptors`) |
-| Logging | Interceptors |
-
----
-
-## Configuration
-
-**Principle**: Use `@nestjs/config` with `.env` files and typed configuration. Do NOT access `process.env` directly in services.
-
-⚠️ **Blind spot**: Forgetting to import `ConfigModule` in the consuming module causes `ConfigService` injection to fail silently at runtime, not at compile time.
+- `platform-fastify` vs `platform-express` change `Request` / `Response` typing — do NOT import Express types under Fastify.
+- `nest start --builder swc` skips decorator metadata by default — explicit SWC config needed.
+- `ts-jest` vs SWC Jest diverge on decorator metadata; `@Injectable()`-only classes may fail under SWC Jest.

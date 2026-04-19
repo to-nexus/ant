@@ -337,7 +337,18 @@ export interface ArchitectGraphState extends TriageableState {
   _executeModifiedFiles?: boolean;
   /** Whether dependency install is needed (dep-hash guard bypass) */
   _installNeeded?: boolean;
-  /** Package manager detected from lockfile/package.json at verification plan entry */
+  /**
+   * Package manager (npm / pnpm / yarn / bun) detected from lockfile at the
+   * verification plan entry, cached for the rest of the job.
+   *
+   * **Scope**: plan-node-internal. Writer: `plan/index.ts#recomputeInstallNeeded`
+   * when `detectPmIfMissing` is set. Readers: `planGeneration.ts` only
+   * (verification and error plan templates). No other node consumes this.
+   *
+   * Phase 4-18 — localization intent is expressed via scope documentation
+   * rather than field removal (removal would require threading the value
+   * through every plan helper and offers no runtime benefit).
+   */
   _detectedPackageManager?: string;
   /** Accumulated remediation plans from previous fix cycles */
   _appliedPlanHistory?: string[];
@@ -409,13 +420,34 @@ export interface ArchitectGraphState extends TriageableState {
   filesWritten?: number;
   reportFile?: string;
   
-  // ✅ UI locale (narrowed from TriageableState.string to literal union)
+  /**
+   * UI locale narrowed from `TriageableState.uiLocale` to a literal union.
+   *
+   * - Writer: `triage` node after intent classification; resolved from the
+   *   workspace/user preference or the detected language of the directive.
+   * - Readers: plan/execute prompt builders (passed as `userLanguage` var to
+   *   i18n-aware templates like UI design catalogs).
+   * - Reset rule: never reset within a job; carried end-to-end.
+   */
   _uiLocale?: 'ko' | 'en';
 
   /** Batch split occurred: original task was re-enqueued, skip completed marking in checkTaskStatus */
   _batchSplitRequeued?: boolean;
-  
-  // ✅ Verification objective tracker (build/test pass status, reset on file modification)
+
+  /**
+   * Verification objective tracker (build/test/typecheck pass status).
+   *
+   * - Writer: initialised on fresh verification task entry (STEP 0 fresh
+   *   handler); `*Passed` flags are flipped by the run_command hook when a
+   *   verification command exits 0; `verificationInvalidated` flips them
+   *   back when edited files intersect the scope of a previously-passed
+   *   gate.
+   * - Readers: `isVerificationComplete`/`evaluateVerificationCompletion`
+   *   (Axis B SSOT), `formatCachedPassedSteps` (Axis C), codeCommandPolicy.
+   * - Reset rule: `*Attempted` cleared on retry/reverify entry; `*Passed` and
+   *   `*Required` preserved unless explicitly invalidated.
+   *   `testsRequired`/`typecheckRequired` are set once at initialisation.
+   */
   _verificationTracker?: VerificationTracker;
 
   /** Hash of dependency declaration files at last successful install.
@@ -423,8 +455,10 @@ export interface ArchitectGraphState extends TriageableState {
   _depFileHash?: string;
 
   /** Axis E — single verification budget (initialised from ANT_VERIFICATION_BUDGET,
-   *  default 8). Every verification plan entry decrements this by 1; when it
-   *  reaches 0 the plan node force-splits by file and escalates to error tasks. */
+   *  default 8). Consumed only on retry/reverify re-entry into the plan node
+   *  (`consumeVerificationBudget`); a first-time plan entry does NOT decrement
+   *  this. When it reaches 0 the plan node force-splits by file and escalates
+   *  to error tasks. */
   _verificationBudget?: number;
 
   /** Axis G-1 — number of re-entries (retry/reverify) into this verification task.
@@ -438,6 +472,12 @@ export interface ArchitectGraphState extends TriageableState {
    *  "same diagnostic output again" and escalate instead of looping. */
   _lastPlanHash?: string;
 
+  /** Phase 3-15 — number of `search_web` calls executed in the current
+   *  plan-toolLoop session. Reset on fresh task entry; incremented after
+   *  each plan-phase `search_web` execution. Cap enforced in `handleSearchWeb`
+   *  via `ctx.planSearchWebLimit` (default 3, env `ANT_PLAN_SEARCH_WEB_MAX`). */
+  _planSearchWebCount?: number;
+
   // ✅ Command history tracking (for loop detection)
   commandHistory?: Array<{
     command: string;
@@ -447,10 +487,27 @@ export interface ArchitectGraphState extends TriageableState {
     errorSnippet?: string;
   }>;
   
-  // ✅ Token tracking for current task (internal, accumulated across LLM calls within a task)
+  /**
+   * Per-task token accumulator.
+   *
+   * - Writer: `llmHelpers` accumulates LLM call token usage after each call
+   *   within the current task.
+   * - Readers: `TaskTimingHelper.completeTask` snapshots it onto the task's
+   *   `tokenUsage` field; reporting/kanban read the task's snapshot.
+   * - Reset rule: `resetTaskTokenUsage(state)` on every fresh task entry
+   *   (and on retry before the first LLM call of the new attempt).
+   */
   _currentTaskTokenUsage?: TokenUsage;
-  
-  // ✅ Estimating phase token usage snapshot (captured at end of decompose, before tasks)
+
+  /**
+   * Token usage snapshot captured at the end of the decompose phase, before
+   * the first task runs. Used to report "estimating phase" tokens separately
+   * from task tokens in the final summary.
+   *
+   * - Writer: end of decompose node, once.
+   * - Readers: report generation (learn node).
+   * - Reset rule: set once per job; never reset thereafter.
+   */
   _estimatingTokenUsage?: TokenUsage;
   
   // ✅ Recursion tracking
@@ -475,10 +532,6 @@ export interface ArchitectGraphState extends TriageableState {
   // ✅ Worker runtime injection
   workerId?: number;
   _isStopRequested?: (() => boolean);
-
-  // ✅ Docker infrastructure cleanup (runner-injected, not serializable)
-  _infraManager?: any;
-  _infraProjectPath?: string;
 
   // Inter-Job Context Bridge
   boundary?: Boundary;
@@ -522,7 +575,23 @@ export class TaskTimingHelper {
     
     return task;
   }
-  
+
+  /**
+   * Re-start timing for a task from scratch. Unlike `startTask`, this always
+   * resets `timing` (discarding any stale `startedAt` from a previous
+   * assignment). Used by TaskOrchestrator to prevent cumulative elapsed
+   * time across sequential assignments of the same task instance.
+   */
+  static restartTask<T extends { timing?: CodeTask['timing'] }>(task: T): T {
+    return {
+      ...task,
+      timing: {
+        startedAt: new Date().toISOString(),
+        totalPausedDuration: 0,
+      },
+    };
+  }
+
   /**
    * Pause timing for a task (recursion limit, etc.)
    */
@@ -564,25 +633,6 @@ export class TaskTimingHelper {
       },
       tokenUsage  // ✅ Include token usage
     };
-  }
-  
-  /**
-   * Get current elapsed time for a running task
-   */
-  static getCurrentElapsedTime(task: CodeTask): number | null {
-    if (!task.timing?.startedAt) {
-      return null;
-    }
-    
-    // If paused, calculate up to pause time
-    if (task.timing.pausedAt) {
-      const totalTime = new Date(task.timing.pausedAt).getTime() - new Date(task.timing.startedAt).getTime();
-      return totalTime - task.timing.totalPausedDuration;
-    }
-    
-    // If running, calculate up to now
-    const totalTime = new Date().getTime() - new Date(task.timing.startedAt).getTime();
-    return totalTime - task.timing.totalPausedDuration;
   }
   
   /**

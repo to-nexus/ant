@@ -55,6 +55,9 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       workspaceResolver: state.deps?.workspaceResolver,
       userId: state.context?.userId,
       organizationId: state.context?.organizationId,
+      // Phase 3-15 — surface plan-phase search_web usage to the handler.
+      planSearchWebCount: state._planSearchWebCount ?? 0,
+      planSearchWebLimit: parseInt(process.env.ANT_PLAN_SEARCH_WEB_MAX || '3', 10),
     };
   },
 
@@ -69,6 +72,11 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
 
   hooks: {
     afterExecution(state, event) {
+      // Phase 3-15 — count successful plan-phase search_web executions so
+      // subsequent rounds see the bumped counter via buildContext.
+      if (state._activePhase === 'plan' && event.toolName === 'search_web' && !event.result.error) {
+        state._planSearchWebCount = (state._planSearchWebCount ?? 0) + 1;
+      }
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
         switch (effect.type) {

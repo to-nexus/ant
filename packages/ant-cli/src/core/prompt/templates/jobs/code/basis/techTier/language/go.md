@@ -1,147 +1,30 @@
-## Go API Server Environment
+# Go Language Hints
 
-**Context**: Backend API server handling concurrent HTTP requests
+Blind-spot reminders. Pre-training gap only.
 
----
+## Forbidden Patterns
 
-### Key Characteristics
+- Loop variable captured by a goroutine on Go < 1.22 → all goroutines see the final `x`; Go 1.22+ flips this with per-iteration scoping.
+- Returning a slice aliasing a large underlying array (`return big[lo:hi]`) → GC retains the whole array; use `slices.Clone` if the slice outlives the source.
+- `defer` inside a long-running loop accumulating file handles → iterations exhaust FDs before any defer runs.
+- `context.WithTimeout(...)` without `defer cancel()` → goroutine leak.
 
-1. **Goroutine-per-request**: Each request runs in its own goroutine automatically
-2. **Long-running process**: Server stays alive, handles many requests
-3. **Static binary**: Single compiled binary with no external runtime dependency
+## Symptom → Upstream Cues
 
----
+If the boilerplate repeats, fix upstream:
 
-### Key Constraints
+- Repeated `fmt.Errorf("...: %w", err)` with identical prefixes → a domain error type (sentinels / `errors.Join`) is missing.
+- Every handler re-extracting the same `context.Context` fields → the extractor belongs in middleware.
+- Each package re-initializing its own logger → inject a shared `*slog.Logger` via config.
 
-1. **Explicit error handling**: Every error return MUST be checked — do NOT discard with `_`
-2. **Resource lifecycle**: Database connections, file handles, HTTP clients must be properly closed via `defer`
-3. **Graceful shutdown**: Server must handle OS signals (SIGTERM, SIGINT) for clean connection draining
-4. **Context propagation**: Use `context.Context` as the first parameter for cancellation and timeout propagation across layers
+## Version Notes
 
----
+- Go 1.21+: `slices`, `maps`, `cmp` are stdlib — do NOT use `golang.org/x/exp/slices` in new code.
+- Go 1.22: `http.ServeMux` supports method-qualified patterns (`"GET /users/{id}"`).
+- `log/slog` is the default structured logger — integrates with tests via `slog.Default()`.
 
-### Concurrency Considerations
+## Toolchain Compatibility
 
-**Principle**: Observe whether shared mutable state exists before introducing synchronization.
-
-| Checkpoint | Observation Target |
-|-----------|-------------------|
-| **Shared state** | Is there mutable state accessed by multiple goroutines? |
-| **Synchronization** | If shared state observed, what mechanism protects it? (mutex, channel, atomic) |
-| **Goroutine lifecycle** | Are spawned goroutines properly bounded and tracked? |
-
-**Constraint**: Do NOT spawn unbounded goroutines. If background work is needed, observe whether the existing codebase uses a worker pool, errgroup, or similar pattern — and follow it.
-
-**Blind spot reminder**: Race conditions are silent until they crash. If you introduce shared mutable state, verify synchronization is in place.
-
----
-
-### When Solving Problems
-
-**Principle**: Observe the existing codebase structure and established patterns before making changes. Minimal, targeted changes only.
-
-**Constraint**: Do NOT run build, module, or dependency commands (`go build`, `go mod tidy`, `go get`, `go run`, `go test`). Build and dependency verification is handled by the verification task — not yours.
-
-**Exception**: `go doc` is allowed — it is read-only and has no side effects.
-
-⚠️ **Blind spot**: When a source file has import errors or type mismatches, the instinct is to run a build command to "check if it compiles." Resist this — fix the source code issue directly. If a dependency is missing from `go.mod` and you know the exact version, add it to the `require` block via `edit_file`. If you do not know the version, leave the import in the `.go` file — the verification phase's `go mod tidy` resolves missing modules from imports and adds them with the latest published version automatically.
-
----
-
-### Design-Document Dependency Pre-check
-
-**Observation target**: Does the design document or plan reference a package that is NOT in `go.mod`?
-
-**Constraint**: Before writing code that imports a design-document-prescribed package, verify it exists in `go.mod`. If missing, add the module to the `require` block via `edit_file`. If the exact version is unknown, add the import in the `.go` file — the verification phase's `go mod tidy` resolves missing modules from imports automatically.
-
-### Design-Prescribed Dependency API Discovery
-
-**Principle**: If a design-prescribed dependency's API is not in your training data, observe it before writing code — do NOT guess function names or type signatures.
-
-**Protocol** (via `run_command`):
-
-1. `go doc package` — package overview with one-line summary of each exported symbol (index)
-2. `go doc package.TypeName` — drill into specific types referenced by the design document or needed for the task
-3. `go doc package.TypeName.Method` — drill into specific methods when signatures are needed
-4. Repeat steps 2-3 for each type/function you need until you have sufficient API knowledge
-
-**Constraint**: Do NOT start with `go doc -all` — it outputs the entire package documentation and is easily truncated. Start with the package index (step 1) and drill into specific symbols.
-
-**Constraint**: If `go doc` returns "no symbol found" or an error, the package may not be downloaded yet. Inform the user that the package needs to be resolved first (setup phase responsibility).
-
-⚠️ **Blind spot**: Packages from the same organization are easily assumed to follow familiar conventions. Their actual exported API may differ — always verify with `go doc` when uncertain.
-
----
-
-### Common Considerations
-
-| Concern | What to Observe |
-|---------|-----------------|
-| Import errors | Module path in `go.mod`, package naming, circular imports |
-| Type errors | Visibility (exported vs unexported), interface satisfaction |
-| Cross-module imports | Is the imported module physically present in this workspace (listed in `go.work` or as a sibling directory)? Only workspace-local modules use `replace`. |
-
-⚠️ **Blind spot**: `replace` directives are ONLY for modules whose source directory is physically present in this workspace. Adding `replace` for modules not in the workspace (e.g., same-org packages published externally) causes build failure — the relative path does not exist. Do NOT infer workspace-local status from organization name or module path prefix.
-
----
-
-### Type Visibility
-
-**Principle**: Identifiers starting with an uppercase letter are exported (cross-package accessible). Lowercase identifiers are package-private.
-
-**Constraint**: When defining a type that will be referenced by another package in the same project, the type name MUST start with an uppercase letter. Decide visibility at definition time, not after a compile error.
-
-⚠️ **Blind spot**: Data-transfer types in a repository package (row structs, result types) are easily created as unexported. If any service or handler package references these types, the build fails. Fixing visibility after the fact causes cascading renames across interface signatures, function returns, and variable declarations — each rename a separate interaction that replays the full conversation.
-
----
-
-### Data Access Layer Consistency
-
-**Principle**: Persistence operations belong in exactly one architectural layer. When an architecture defines a dedicated persistence layer, that layer is the single owner of all persistence operations.
-
-**Observation target**: In which architectural layers do persistence statements appear?
-
-| Checkpoint | Observation Target |
-|-----------|-------------------|
-| **Statement containment** | Do persistence statements appear outside the designated persistence layer? |
-| **Cross-boundary atomicity** | When a service coordinates atomic operations across multiple persistence interfaces, does the coordination mechanism live in the persistence layer or the business logic layer? |
-
-**Constraint**: If the architecture designates a persistence layer, other layers MUST NOT contain persistence statements — even when coordinating atomic operations across multiple persistence interfaces.
-
-**Constraint**: When atomic coordination across persistence boundaries is needed, the mechanism MUST be exposed through the persistence layer's interface. The business logic layer orchestrates WHAT participates in the atomic operation; the persistence layer owns HOW it executes.
-
-⚠️ **Blind spot**: When a service needs to update 2+ persistence interfaces atomically, it is tempting to bypass those interfaces and write persistence statements directly in the service layer. This creates a parallel data access path that breaks layer separation and is invisible to the persistence interface's contract. Verify that ALL persistence statements — including those inside atomic coordination — go through the designated persistence layer.
-
----
-
-### Dependency Boundaries for Testability
-
-**Principle**: Service and handler constructors should accept interfaces, not concrete implementations. This allows test doubles to be substituted without modifying source code.
-
-**Observation target**: Does a constructor or factory function directly instantiate its dependencies?
-
-| Checkpoint | Observation Target |
-|-----------|-------------------|
-| **Constructor parameters** | Does `NewXxxService(...)` accept interface types for its dependencies (repository, client, etc.)? |
-| **Direct instantiation** | Does a service create its own `*sql.DB`, HTTP client, or repository struct internally? |
-| **Handler-layer boundary** | Does the handler (HTTP/gRPC) depend on a service interface, not the concrete service struct? |
-
-**Constraint**: If the architecture defines layer boundaries (handler → service → repository), each boundary should be an interface. The concrete type is wired at the composition root (e.g., `main()` or `cmd/`), not inside the consuming layer.
-
-⚠️ **Blind spot**: It is easy to pass concrete struct pointers between layers because "it works." A dedicated test task runs after features — it cannot substitute dependencies unless interfaces exist at layer boundaries.
-
----
-
-### Security Considerations
-
-**Observation target**: Does the code protect against common API security vulnerabilities?
-
-| Checkpoint | What to observe |
-|-----------|----------------|
-| **Secret comparison** | Are API keys or tokens compared using `crypto/subtle.ConstantTimeCompare`? A plain `==` or `!=` on secrets is a timing-attack vulnerability. |
-| **Input bounds** | Are request body sizes limited via the framework or `http.Server.MaxHeaderBytes` / `http.MaxBytesReader`? |
-
-**Constraint**: Do NOT compare authentication secrets with `==` or `!=`. Use `crypto/subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1` for all secret comparisons in middleware or handlers.
-
-⚠️ **Blind spot**: `key != expectedKey` compiles, passes tests, and looks correct — but leaks timing information. This is the most commonly missed security pattern in Go API authentication middleware.
+- `go test -race` reveals data races `go test` alone hides — CI must run race.
+- `go generate` is NOT invoked by `go build` — commit generated files or run it in CI.
+- `GOFLAGS` / `GOEXPERIMENT` silently change build behavior; confirm local and CI match.

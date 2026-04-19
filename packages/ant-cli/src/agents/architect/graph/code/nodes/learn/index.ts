@@ -145,30 +145,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     console.log(`   ✅ Server cleanup complete\n`);
   }
   
-  // Clean up Docker infrastructure if started during task execution
-  if (state._infraManager && state._infraProjectPath) {
-    try {
-      const infraManager = state._infraManager as import('../../../../../../infrastructure/docker').InfrastructureManager;
-      const infraPath = state._infraProjectPath as string;
-      
-      console.log(`\n🐳 [Learn] Cleaning up Docker infrastructure...`);
-      
-      const onLog = (type: 'stdout' | 'stderr', msg: string) => {
-        const trimmed = msg.trim();
-        if (trimmed) console.log(`   [docker] ${trimmed}`);
-      };
-      
-      await infraManager.stopInfrastructure(infraPath, onLog);
-      
-      delete state._infraManager;
-      delete state._infraProjectPath;
-      
-      console.log(`   ✅ Infrastructure cleanup complete\n`);
-    } catch (infraError: any) {
-      console.warn(`   ⚠️  Infrastructure cleanup failed (best-effort): ${infraError.message}`);
-    }
-  }
-  
   // Workflow instrumentation: Enter node
   if (state.deps?.workflowUpdate && state._httpJobId) {
     const taskInfo = state.currentTask ? {

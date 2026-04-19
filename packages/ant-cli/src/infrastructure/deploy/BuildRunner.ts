@@ -98,11 +98,37 @@ function detectPackageManager(workspacePath: string): 'pnpm' | 'yarn' | 'npm' {
  * Ensure dependencies (including devDependencies) are installed before building.
  * Uses --include=dev for npm to guarantee devDependencies are present even when
  * NODE_ENV=production is set in the server environment.
+ *
+ * Fast path: in the deploy workspace, `node_modules` is a symlink pointing
+ * at the dev codebase's already-installed `node_modules` (see
+ * DeployWorkspace.syncDeployWorkspace). PreviewService runs a Redis-locked
+ * install for preview dev, so deps are already present and correct —
+ * running install again here would race with that lock (and with any
+ * live `next dev` file watcher). Skip when we can verify deps are ready.
  */
 async function ensureDependencies(
   workspacePath: string,
   onLog?: (line: string) => void
 ): Promise<void> {
+  const nodeModulesPath = path.join(workspacePath, 'node_modules');
+  const nodeModulesStat = await fs.promises.lstat(nodeModulesPath).catch(() => null);
+
+  if (nodeModulesStat?.isSymbolicLink()) {
+    onLog?.(`📦 node_modules is a symlink (shared with dev codebase) — skipping install`);
+    return;
+  }
+
+  // Heuristic for the non-symlink case: if node_modules exists and contains
+  // a resolvable next binary (or any .bin), deps are almost certainly
+  // installed. Treat as no-op to avoid redundant reinstalls.
+  if (nodeModulesStat?.isDirectory()) {
+    const binDir = path.join(nodeModulesPath, '.bin');
+    if (fs.existsSync(binDir)) {
+      onLog?.(`📦 node_modules already populated — skipping install`);
+      return;
+    }
+  }
+
   const pm = detectPackageManager(workspacePath);
   let command: string;
   let args: string[];

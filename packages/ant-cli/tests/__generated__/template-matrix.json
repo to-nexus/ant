@@ -437,16 +437,20 @@
   },
   "jobs/code/basis/techTier/language/go": {
     "sources": [
+      "auto-injection",
+      "render-call",
       "basis-registry"
     ]
   },
   "jobs/code/basis/techTier/language/typescript-browser": {
     "sources": [
+      "auto-injection",
       "basis-registry"
     ]
   },
   "jobs/code/basis/techTier/language/typescript-node": {
     "sources": [
+      "auto-injection",
       "basis-registry"
     ]
   },
@@ -804,12 +808,12 @@
   },
   "jobs/design/basis/techTier/framework/go": {
     "sources": [
+      "auto-injection",
       "render-call"
     ]
   },
   "jobs/design/basis/techTier/framework/nextjs": {
     "sources": [
-      "render-call",
       "basis-registry"
     ]
   },

@@ -403,8 +403,18 @@ export class JobWorker {
     // Inject GitHub PAT-based credentials for private module access (go get, npm install)
     const credentialEnv = await this.getCredentialEnv(workspaceBase, payload.userContext, projectPath, codebasePath);
 
+    // Phase 3-12 — denylist test-harness env vars so a mistakenly-set
+    // `ANT_SCENARIO_*` in the worker process cannot leak into production
+    // child processes. These vars change runtime behaviour (e.g.
+    // `ANT_SCENARIO_PRESERVE_RETRIES=1` keeps a seeded retry counter).
+    const sanitizedProcessEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (key.startsWith('ANT_SCENARIO_')) continue;
+      if (typeof value === 'string') sanitizedProcessEnv[key] = value;
+    }
+
     const env: Record<string, string> = {
-      ...process.env as Record<string, string>,
+      ...sanitizedProcessEnv,
       ...credentialEnv,
       ANT_JOB_ID: jobId,
       ANT_PROJECT_ID: payload.projectId,
