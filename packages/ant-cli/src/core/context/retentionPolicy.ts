@@ -43,7 +43,7 @@ export function decideRetention(ctx: RetentionContext): RetentionDecision {
   }
 
   if (ctx.intentGroup === 'design-ui') {
-    return { action: 'discard', reason: 'ui-design uses disk-based loadPreviousUiDocs' };
+    return { action: 'discard', reason: 'ui-design loads previous docs from artifact pool' };
   }
 
   if (ctx.intentGroup === 'design-system') {

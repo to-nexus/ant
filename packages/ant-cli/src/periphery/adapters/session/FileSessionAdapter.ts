@@ -323,23 +323,41 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
-   * Append a user_turn atomically to both feature.jsonl (optional) and trace.jsonl.
-   * 
-   * jobType='ask'|'inline-ask'인 경우 skipFeature=true 필요 (호출자 책임) — 
+   * Append a user_turn to feature.jsonl (context SSOT) and trace.jsonl (UI).
+   *
+   * jobType='ask'|'inline-ask'인 경우 skipFeature=true 필요 (호출자 책임) —
    * ask 대화는 맥락 대상 아니므로 feature.jsonl에 기록하지 않음.
-   * 
+   *
    * trace.jsonl에는 항상 기록 (UI 연속성).
+   *
+   * **Atomicity contract**: feature.jsonl and trace.jsonl are append-only and
+   * each has its own per-file lock, but the two appends are NOT atomic across
+   * a process crash between them. The invariant enforced here is:
+   *
+   *   feature.jsonl is the context SSOT → it MUST succeed or throw.
+   *   trace.jsonl is UI-only → if it fails AFTER feature succeeded, we log
+   *   and swallow. The job continues with a correct context record; the UI
+   *   just misses one copy of the turn (the feature line still carries the
+   *   original directive).
+   *
+   * The earlier design collapsed the feature line on trace failure as a
+   * rollback step, but because the orchestrator catches recordUserTurn
+   * failures with `.catch(console.warn)` and continues, that rollback left
+   * the job running with a collapsed user_turn → later user_turn_meta /
+   * breadcrumb lines became orphans referring to a collapsed turnId. The
+   * current behaviour avoids that inconsistency.
    */
   async appendUserTurn(
     line: FeatureUserTurnLine,
     options: { skipFeature?: boolean } = {},
   ): Promise<void> {
-    // 1. feature.jsonl에 append (skipFeature가 true면 건너뜀)
+    // 1. feature.jsonl에 append (skipFeature가 true면 건너뜀). 실패 시 throw.
     if (!options.skipFeature) {
       await this.appendLine('feature', line);
     }
 
-    // 2. trace.jsonl에 사본 append (항상)
+    // 2. trace.jsonl에 사본 append (항상). Failure here does NOT abort the
+    //    feature-side record — feature.jsonl is the context SSOT.
     const sourceRef = options.skipFeature
       ? 'ask-only'
       : `feature.jsonl#${line.turnId}`;
@@ -349,19 +367,23 @@ export class FileSessionAdapter implements SessionPort {
       jobId: line.jobId,
       turnId: line.turnId,
       jobType: line.jobType,
-      text: line.user,
+      text: line.text,
       sourceRef,
     };
     try {
       await this.appendLine('trace', traceCopy);
     } catch (traceErr) {
-      // trace 실패 시 feature 라인을 collapsed로 마킹 (best-effort rollback)
-      if (!options.skipFeature) {
-        try {
-          await this.collapseTurn(line.turnId);
-        } catch { /* ignore */ }
-      }
-      throw traceErr;
+      // For ask/inline-ask skipFeature=true, feature was never written, so the
+      // turn is effectively lost for both context AND UI — surface the error.
+      if (options.skipFeature) throw traceErr;
+      // Otherwise: feature.jsonl already carries the authoritative record.
+      // Log and continue — the UI will be missing one turn copy but the
+      // context pipeline (resolve → plan/direct) remains coherent.
+      console.warn(
+        `[FileSessionAdapter] trace.jsonl append failed for turnId=${line.turnId}; ` +
+          `feature.jsonl record is intact. UI may be missing this turn copy.`,
+        traceErr,
+      );
     }
   }
 
@@ -529,6 +551,33 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
+   * Load ALL user_turn and user_turn_meta lines from feature.jsonl
+   * (UI tier badge — §18 `tier_ui_badge`).
+   *
+   * Unlike `loadSinceBoundary`, this ignores the boundary cursor — the UI
+   * tier badge needs to render mode/complexity/decidedBy/reason for every
+   * non-collapsed turn, including those that survived the latest Hard Reset
+   * but are still visible in the trace.
+   *
+   * Collapsed lines are excluded. Order preserved (append order).
+   */
+  async loadFeatureTurnMeta(): Promise<{
+    userTurns: FeatureUserTurnLine[];
+    userTurnMetas: FeatureUserTurnMetaLine[];
+  }> {
+    const filePath = getFeatureJsonlPath(this.featurePath);
+    const all = await this.readJsonlLines<FeatureLine>(filePath);
+    const userTurns: FeatureUserTurnLine[] = [];
+    const userTurnMetas: FeatureUserTurnMetaLine[] = [];
+    for (const line of all) {
+      if (line.collapsed) continue;
+      if (line.type === 'user_turn') userTurns.push(line);
+      else if (line.type === 'user_turn_meta') userTurnMetas.push(line);
+    }
+    return { userTurns, userTurnMetas };
+  }
+
+  /**
    * Collapse a specific turnId in both feature.jsonl and trace.jsonl.
    * 
    * Used by Hard Reset (everything) or selective invalidation.
@@ -542,20 +591,35 @@ export class FileSessionAdapter implements SessionPort {
 
   /**
    * Collapse ALL lines in both files (Hard Reset).
-   * Also appends a user_reset boundary to feature.jsonl.
+   * Also appends a boundary line to feature.jsonl.
+   *
+   * `reason='user_reset'` (default call path from §17 Hard Reset) marks the
+   * boundary with the agent-agnostic `jobType: 'reset'` literal so UI /
+   * analytics can distinguish it from ordinary `auto_job_complete_todo`
+   * boundaries. Callers invoking this method for a job-scoped collapse may
+   * pass an explicit `jobType` override.
    */
-  async collapseAll(reason: 'user_reset' | string, jobId: string, turnId: string): Promise<void> {
+  async collapseAll(
+    reason: 'user_reset' | string,
+    jobId: string,
+    turnId: string,
+    jobType?: LogJobType | 'reset',
+  ): Promise<void> {
     await Promise.all([
       this.collapseAllInFile(getFeatureJsonlPath(this.featurePath)),
       this.collapseAllInFile(getTraceJsonlPath(this.featurePath)),
     ]);
-    // Append boundary marker AFTER collapsing existing lines
+    // Append boundary marker AFTER collapsing existing lines. Default the
+    // jobType to the agent-agnostic `'reset'` literal unless the caller
+    // explicitly wants to label the boundary with a concrete JobType (e.g.
+    // during a targeted per-job collapse that should appear as `code`).
+    const resolvedJobType: LogJobType | 'reset' = jobType ?? 'reset';
     const boundary: FeatureBoundaryLine = {
       type: 'boundary',
       ts: new Date().toISOString(),
       jobId,
       turnId,
-      jobType: 'code', // reset event has no specific jobType — use 'code' as default
+      jobType: resolvedJobType,
       reason,
     };
     await this.appendLine('feature', boundary);
