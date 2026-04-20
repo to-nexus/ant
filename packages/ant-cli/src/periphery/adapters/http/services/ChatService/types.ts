@@ -116,17 +116,6 @@ export interface ChatMessage {
 }
 
 /**
- * Chat session file format (for persistence)
- */
-export interface ChatSessionFile {
-  projectId: string;
-  featureName: string;
-  messages: ChatMessage[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
  * In-memory chat session
  */
 export interface ChatSession {

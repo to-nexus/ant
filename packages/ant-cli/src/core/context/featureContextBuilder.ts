@@ -97,9 +97,14 @@ export function mergeFeatureContext(
     });
 
   const window = options?.breadcrumbWindow ?? DEFAULT_BREADCRUMB_WINDOW;
-  const breadcrumbs = input.breadcrumbs
-    .filter((bc) => !(bc as { collapsed?: true }).collapsed)
-    .slice(-Math.max(0, window));
+  const liveBreadcrumbs = input.breadcrumbs.filter(
+    (bc) => !(bc as { collapsed?: true }).collapsed,
+  );
+  // Guard the JS `-0` trap: `Array.prototype.slice(-0)` is identical to
+  // `slice(0)` and returns the full array, which contradicts the "keep none"
+  // intent of a zero/negative window. Branch explicitly so callers cannot
+  // accidentally leak the full breadcrumb list through a defensive clamp.
+  const breadcrumbs = window <= 0 ? [] : liveBreadcrumbs.slice(-window);
 
   return { breadcrumbs, userTurns: merged };
 }
@@ -145,7 +150,7 @@ const CHARS_PER_TOKEN = 2.8;
 
 function estimateTurnsTokens(turns: MergedUserTurn[]): number {
   return turns.reduce(
-    (sum, turn) => sum + Math.ceil((turn.user || '').length / CHARS_PER_TOKEN),
+    (sum, turn) => sum + Math.ceil((turn.text || '').length / CHARS_PER_TOKEN),
     0,
   );
 }
@@ -191,7 +196,7 @@ export async function compactFeatureContext(
 
   const entries: CompactableEntry[] = ctx.userTurns.map((turn) => ({
     role: 'user',
-    content: turn.user || '',
+    content: turn.text || '',
     timestamp: turn.ts,
   }));
 
@@ -214,4 +219,91 @@ export async function compactFeatureContext(
     console.warn('⚠️  [FeatureContext] Compact failed, keeping full context:', err);
     return ctx;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §12 resolve integration — hydrateFeatureContext
+//
+// Shared SSOT helper used by code + design `resolve` strategies on both the
+// initial (`loadArtifacts`) and resume (`onResume`) paths. Centralizes:
+//
+//   1. build featureContext from feature.jsonl (loadSinceBoundary + merge)
+//   2. run Compact (§13) when llm/promptPort are wired
+//   3. recover the current `turnId` by matching owning `jobId`
+//
+// Having a single entry point prevents the resume-path defect where
+// `featureContext` was rebuilt but `turnId` was forgotten, causing silent
+// failures in downstream tool/direct/learn consumers that rely on turnId to
+// attribute trace events and breadcrumb/boundary lines.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface HydrateFeatureContextDeps {
+  session: SessionPort | undefined;
+  llm?: LLMClient;
+  promptPort?: PromptPort;
+}
+
+export interface HydrateFeatureContextInput {
+  /** Job id owning the current turn — used to recover `turnId`. */
+  jobId?: string;
+  /** Optional overrides for breadcrumb window / compaction thresholds. */
+  breadcrumbWindow?: number;
+  compact?: CompactFeatureContextOptions;
+  /** Log prefix, e.g. `Resolve` or `Design Resolve` for consistent output. */
+  logPrefix?: string;
+}
+
+export interface HydrateFeatureContextResult {
+  featureContext?: FeatureContext;
+  /** Current turn id resolved by matching `jobId` against feature.jsonl. */
+  turnId?: string;
+}
+
+export async function hydrateFeatureContext(
+  deps: HydrateFeatureContextDeps,
+  input: HydrateFeatureContextInput = {},
+): Promise<HydrateFeatureContextResult> {
+  const logPrefix = input.logPrefix ?? 'Resolve';
+
+  let featureContext = await buildFeatureContext(deps.session, {
+    breadcrumbWindow: input.breadcrumbWindow,
+  });
+
+  // Resolve turnId from the FULL pre-compact userTurns. Compact trims the
+  // oldest entries down to FEATURE_CONTEXT_WINDOW; if the owning user_turn
+  // (the one that created the current job) sits in that older half — a real
+  // scenario when a long-paused job resumes after other turns accumulated —
+  // running the lookup on the post-compact array returns `undefined` and
+  // reintroduces the §12 defect (silent turnId loss → emitFileWriteTrace /
+  // applyBreadcrumbBoundaryMatrix / recordClassificationBias all no-op).
+  //
+  // Keep this search BEFORE the compact step so the owning turn is always
+  // visible, regardless of how aggressively compact trims the tail window.
+  let turnId: string | undefined;
+  if (featureContext && input.jobId) {
+    const owning = featureContext.userTurns.find((t) => t.jobId === input.jobId);
+    if (owning?.turnId) turnId = owning.turnId;
+  }
+
+  if (featureContext) {
+    console.log(
+      `📚 [${logPrefix}] featureContext: breadcrumbs=${featureContext.breadcrumbs.length}, userTurns=${featureContext.userTurns.length}`,
+    );
+
+    if (deps.llm && deps.promptPort) {
+      const before = featureContext.userTurns.length;
+      featureContext = await compactFeatureContext(
+        featureContext,
+        { llm: deps.llm, promptPort: deps.promptPort },
+        input.compact,
+      );
+      if (featureContext.wasCompacted) {
+        console.log(
+          `🗜️  [${logPrefix}] featureContext compacted: ${before} → ${featureContext.userTurns.length} user_turns + summary`,
+        );
+      }
+    }
+  }
+
+  return { featureContext, turnId };
 }

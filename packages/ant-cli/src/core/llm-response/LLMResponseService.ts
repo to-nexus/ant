@@ -27,6 +27,8 @@ import { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import { ContentMerger } from '../chat/ContentMerger';
 import { getChatSyncChannel } from '../constants/redis';
 import { logger } from '../../utils/logger';
+import { TraceAppender } from './TraceAppender';
+import { setTraceAppender, clearTraceAppender } from './traceAppenderRegistry';
 
 export class LLMResponseService {
   private enabled: boolean;
@@ -46,12 +48,30 @@ export class LLMResponseService {
   // Sync channel subscription (for reconnect snapshot)
   private syncUnsubscribe: (() => Promise<void>) | null = null;
 
+  // trace.jsonl writer (session redesign §16.2 SSOT)
+  private traceAppender: TraceAppender | null = null;
+
   constructor(stateStore: StateStorePort, env: LLMResponseEnv) {
     this.stateStore = stateStore;
     // Initialize core components
     this.sessionStore = new SessionStore(stateStore, env);
     this.broadcaster = new MessageBroadcaster(stateStore);
     this.contentMerger = new ContentMerger(this.broadcaster);
+
+    // Register a TraceAppender whenever we have the minimum env to write
+    // trace.jsonl (featurePath + jobId + jobType). Initial turnId is unset —
+    // the orchestrator calls setTurnId() after recordUserTurn returns.
+    if (env.featurePath && env.jobId && env.jobType) {
+      this.traceAppender = new TraceAppender({
+        featurePath: env.featurePath,
+        jobId: env.jobId,
+        jobType: env.jobType,
+        agent: env.agent,
+        projectId: env.projectId,
+        featureName: env.featureName,
+      });
+      setTraceAppender(this.traceAppender);
+    }
     
     // Initialize handlers
     this.llmEventHandler = new LLMEventHandler(
@@ -143,6 +163,17 @@ export class LLMResponseService {
   }
 
   /**
+   * Update the active turnId for trace.jsonl appends. Called by the
+   * orchestrator after `recordUserTurn` resolves — before that point
+   * there is no turnId to attach to trace lines.
+   */
+  setTurnId(turnId: string | null): void {
+    if (this.traceAppender) {
+      this.traceAppender.setTurnId(turnId);
+    }
+  }
+
+  /**
    * Finalize current message
    */
   async finalizeMessage(cancelled: boolean = false): Promise<void> {
@@ -151,7 +182,16 @@ export class LLMResponseService {
     try {
       const session = this.sessionStore.getSession();
       const ctx = this.sessionStore.getContext();
-      
+
+      // Emit assistant_message to trace.jsonl before finalization so the UI
+      // has a durable record of the reply text (cancelled / non-cancelled).
+      if (this.traceAppender && session?.currentMessage && !cancelled) {
+        const text = collectAssistantText(session.currentMessage.contents);
+        if (text.trim().length > 0) {
+          this.traceAppender.appendAssistantMessage(text);
+        }
+      }
+
       if (session) {
         this.contentMerger.finalizeContent(
           ctx.projectId,
@@ -529,4 +569,37 @@ export class LLMResponseService {
       logger.error(`Failed to handle sync request`, { component: 'LLMResponseService' }, error);
     }
   }
+
+  /**
+   * Tear down process-scoped trace writer registration. Intended for tests
+   * that create multiple LLMResponseService instances in the same process.
+   * Production workers exit immediately after the job finishes.
+   */
+  disposeTraceAppender(): void {
+    if (this.traceAppender) {
+      clearTraceAppender();
+      this.traceAppender = null;
+    }
+  }
+}
+
+/**
+ * Collapse assistant-visible text content into a single trace.jsonl line.
+ *
+ * Intentionally conservative: we concatenate `text` + `thinking` content
+ * blocks in order, trimming duplicates between adjacent blocks. Tool status
+ * cards, file cards and command cards stay in their own trace line types
+ * (tool_call / file_write / run_command) so they are not duplicated here.
+ */
+function collectAssistantText(
+  contents: Array<{ type: string; content: string }>,
+): string {
+  const parts: string[] = [];
+  for (const c of contents) {
+    if (!c || typeof c.content !== 'string') continue;
+    if (c.type === 'text') {
+      parts.push(c.content);
+    }
+  }
+  return parts.join('\n').trim();
 }

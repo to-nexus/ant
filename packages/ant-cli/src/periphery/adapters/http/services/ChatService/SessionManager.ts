@@ -1,16 +1,17 @@
 /**
- * SessionManager - Manages chat sessions with Redis backing
- * 
- * CLOUD MODE: Sessions are stored in Redis for Pod-to-Pod consistency.
- * File persistence is used for backup/recovery only.
- * 
+ * SessionManager — streaming scratchpad for the Chat API (local cache + Redis).
+ *
+ * Session redesign §16.2: chat.json is retired. This manager owns the
+ * transient message state that backs SSE delta broadcasts; the durable
+ * SSOT lives in trace.jsonl (+ feature.jsonl) and is rebuilt via
+ * {@link TraceToChatMessages} when the UI asks for history.
+ *
  * Session Key Format: "org:user:projectId/featureName"
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ChatSession, ChatMessage } from './types';
-import { isBaseBranch, readBranchBaseFromConfig } from '../../../../../core/utils/branchUtils';
 import type { UserContext } from '../../../../../core/types/user';
 import type { SessionPersistence } from './SessionPersistence';
 import type { MessageBroadcaster } from './MessageBroadcaster';
@@ -98,8 +99,6 @@ export class SessionManager {
   // Redis is the source of truth; this is just for performance
   private localCache = new Map<string, { session: ChatSession; cachedAt: number }>();
   private readonly CACHE_TTL_MS = 5000; // 5 seconds cache TTL
-  
-  private fileWatchers = new Map<string, fs.FSWatcher>();
 
   constructor(
     private persistence: SessionPersistence,
@@ -203,42 +202,22 @@ export class SessionManager {
       }
     }
 
-    // 3. Check local cache (fallback if Redis unavailable)
-    if (this.isCacheValid(simpleKey)) {
-      const cached = this.localCache.get(simpleKey)!;
-      if (jobId && cached.session.jobId !== jobId) {
-        cached.session.jobId = jobId;
-      }
-      return cached.session;
-    }
-
-    // 3. Try file persistence
-    const fileSession = this.persistence.loadSession(projectId, featureName, userContext);
-    
+    // 3. Nothing cached and Redis returned nothing — start a fresh session.
+    // Durable history is in trace.jsonl; this scratchpad is only for the
+    // current streaming turn.
     const session: ChatSession = {
       projectId,
       featureName,
       jobId,
-      messages: fileSession?.messages || [],
-      userContext
+      messages: [],
+      userContext,
     };
-    
-    if (fileSession) {
-      logger.debug(`Loaded ${fileSession.messages.length} messages from file`, { 
-        component: 'SessionManager', 
-        projectId, 
-        featureName 
-      });
-    }
 
     // Save to Redis for future Pod consistency
     await this.saveSessionAsync(projectId, featureName, session, userContext);
-    
+
     // Update local cache
     this.localCache.set(simpleKey, { session, cachedAt: Date.now() });
-    
-    // Start watching the chat file for external changes
-    this.startWatchingChatFile(projectId, featureName, userContext);
 
     return session;
   }
@@ -264,35 +243,23 @@ export class SessionManager {
       return cached.session;
     }
 
-    // Create new session with file data if available
-    const fileSession = this.persistence.loadSession(projectId, featureName, userContext);
-    
+    // Create a fresh session. Durable history lives in trace.jsonl and is
+    // rebuilt on demand by ChatService.getMessagesAsync.
     const session: ChatSession = {
       projectId,
       featureName,
       jobId,
-      messages: fileSession?.messages || [],
-      userContext
+      messages: [],
+      userContext,
     };
-    
-    if (fileSession) {
-      logger.debug(`Loaded ${fileSession.messages.length} messages from file`, { 
-        component: 'SessionManager', 
-        projectId, 
-        featureName 
-      });
-    }
 
     // Cache locally
     this.localCache.set(simpleKey, { session, cachedAt: Date.now() });
-    
+
     // Async: Save to Redis (don't await)
-    this.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
+    this.saveSessionAsync(projectId, featureName, session, userContext).catch((err) => {
       logger.warn(`Failed to save session to Redis`, { component: 'SessionManager' }, err);
     });
-    
-    // Start watching the chat file for external changes
-    this.startWatchingChatFile(projectId, featureName, userContext);
 
     return session;
   }
@@ -321,26 +288,18 @@ export class SessionManager {
     // Update local cache
     this.localCache.set(simpleKey, { session, cachedAt: Date.now() });
     
-    // Save to Redis
+    // Save to Redis (durable SSOT is trace.jsonl; Redis is streaming scratchpad)
     if (this.stateStore) {
       try {
         await this.stateStore.setChatSession(redisKey, SessionManager.toRedisSession(session));
       } catch (error) {
-        logger.warn(`Failed to save session to Redis`, { 
+        logger.warn(`Failed to save session to Redis`, {
           component: 'SessionManager',
-          projectId, 
-          featureName 
+          projectId,
+          featureName,
         }, error);
       }
     }
-    
-    // Also save to file (backup)
-    this.persistence.saveSession(
-      projectId, 
-      featureName, 
-      session.messages, 
-      userContext || session.userContext
-    );
   }
 
   /**
@@ -481,22 +440,26 @@ export class SessionManager {
       }
     }
     
-    // Delete file
-    this.persistence.deleteSession(projectId, featureName, userContext);
+    // Collapse trace.jsonl / feature.jsonl so the durable SSOT also reflects
+    // an empty timeline. This is the user-visible clear effect.
+    await this.persistence.collapseSessionLogs(projectId, featureName, userContext);
 
     // Clean up draft images associated with chat
-    try {
-      const chatFilePath = this.persistence.getChatFilePath(projectId, featureName, userContext);
-      const featurePath = path.resolve(path.dirname(chatFilePath), '..');
-      const draftsDir = path.join(featurePath, 'inputs', 'assets', 'gen', 'drafts');
-      if (fs.existsSync(draftsDir)) {
-        fs.rmSync(draftsDir, { recursive: true, force: true });
-        logger.info('Cleaned up draft images on chat clear', { component: 'SessionManager', projectId, featureName });
+    const featurePath = this.persistence.getFeaturePath(projectId, featureName, userContext);
+    if (featurePath) {
+      try {
+        const draftsDir = path.join(featurePath, 'inputs', 'assets', 'gen', 'drafts');
+        if (fs.existsSync(draftsDir)) {
+          fs.rmSync(draftsDir, { recursive: true, force: true });
+          logger.info('Cleaned up draft images on chat clear', {
+            component: 'SessionManager', projectId, featureName,
+          });
+        }
+      } catch (error) {
+        logger.warn('Failed to clean up draft images', { component: 'SessionManager' }, error);
       }
-    } catch (error) {
-      logger.warn('Failed to clean up draft images', { component: 'SessionManager' }, error);
     }
-    
+
     // Broadcast to frontend
     this.broadcaster?.broadcast(projectId, featureName, {
       type: 'messages_cleared'
@@ -522,88 +485,12 @@ export class SessionManager {
   }
 
   /**
-   * Start watching chat file for external changes (e.g., manual deletion)
-   */
-  private startWatchingChatFile(projectId: string, featureName: string, userContext?: UserContext): void {
-    // Base branches don't persist chat history; watching can fail because sessions dir won't be created.
-    if (userContext && this.persistence.isBaseBranchFeature(projectId, featureName, userContext)) {
-      return;
-    }
-
-    const key = this.getSimpleKey(projectId, featureName);
-    
-    // Don't create duplicate watchers
-    if (this.fileWatchers.has(key)) {
-      return;
-    }
-    
-    try {
-      const filePath = this.persistence.getChatFilePath(projectId, featureName, userContext);
-      const dirPath = path.dirname(filePath);
-
-      // Ensure sessions directory exists before watching (fs.watch throws ENOENT otherwise)
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-      }
-      
-      // Watch the sessions directory (file might not exist yet)
-      const watcher = fs.watch(dirPath, { persistent: false }, (eventType, filename) => {
-        if (filename === 'chat.json') {
-          // Check if file was deleted
-          if (!fs.existsSync(filePath)) {
-            logger.info(`Detected external deletion of chat file`, { component: 'SessionManager', projectId, featureName });
-            
-            // Clear local cache and Redis
-            this.clearMessagesAsync(projectId, featureName, userContext).catch(err => {
-              logger.warn(`Failed to clear messages after file deletion`, { component: 'SessionManager' }, err);
-            });
-          }
-        }
-      });
-      
-      this.fileWatchers.set(key, watcher);
-      logger.debug(`Started watching chat file`, { component: 'SessionManager', projectId, featureName });
-      
-      // Clean up watcher on error
-      watcher.on('error', (error) => {
-        logger.warn(`File watcher error`, { component: 'SessionManager', projectId, featureName }, error);
-        this.stopWatchingChatFile(projectId, featureName);
-      });
-    } catch (error) {
-      logger.warn(`Failed to start watching chat file`, { component: 'SessionManager', projectId, featureName }, error);
-    }
-  }
-
-  /**
-   * Stop watching chat file
-   */
-  private stopWatchingChatFile(projectId: string, featureName: string): void {
-    const key = this.getSimpleKey(projectId, featureName);
-    const watcher = this.fileWatchers.get(key);
-    
-    if (watcher) {
-      watcher.close();
-      this.fileWatchers.delete(key);
-      logger.debug(`Stopped watching chat file`, { component: 'SessionManager', projectId, featureName });
-    }
-  }
-
-  /**
-   * Cleanup method - stop all watchers (call on server shutdown)
+   * Cleanup method - drop the in-memory cache (call on server shutdown).
+   *
+   * Historically also closed chat.json file watchers; those are retired now
+   * that trace.jsonl is the SSOT and no file is being watched.
    */
   cleanup(): void {
-    logger.info(`Cleaning up ${this.fileWatchers.size} file watchers...`, { component: 'SessionManager' });
-    
-    for (const [key, watcher] of this.fileWatchers.entries()) {
-      try {
-        watcher.close();
-        logger.debug(`Closed watcher: ${key}`, { component: 'SessionManager' });
-      } catch (error) {
-        logger.warn(`Error closing watcher for ${key}`, { component: 'SessionManager' }, error);
-      }
-    }
-    
-    this.fileWatchers.clear();
     this.localCache.clear();
     logger.info(`Cleanup complete`, { component: 'SessionManager' });
   }

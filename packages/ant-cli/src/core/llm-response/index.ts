@@ -51,6 +51,8 @@ export function createLLMResponseService(stateStore: StateStorePort): LLMRespons
     projectId: process.env.ANT_PROJECT_ID || '',
     featureName: process.env.ANT_FEATURE_NAME || '',
     jobId: process.env.ANT_JOB_ID || '',
+    jobType: process.env.ANT_JOB_TYPE as import('@ant/shared').LogJobType | undefined,
+    agent: process.env.ANT_AGENT || undefined,
     userEmail: process.env.ANT_USER_EMAIL,
     userId: process.env.ANT_USER_ID,
     organizationId: process.env.ANT_ORG_ID,

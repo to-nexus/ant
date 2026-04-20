@@ -11,6 +11,8 @@ import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent } from '../chat/types';
 import type { ChatStatusType } from './types';
 import { logger } from '../../utils/logger';
+import { getTraceAppender } from './traceAppenderRegistry';
+import * as crypto from 'crypto';
 
 const PROCESSING_LABELS: Record<string, { progress: string; complete: string }> = {
   bg_removal: { progress: 'Removing background', complete: 'Background removed' },
@@ -57,14 +59,27 @@ export class ChatStatusHandler {
     // Auto-generate content text based on type
     const content = this.generateStatusContent(type, metadata);
 
+    // Durable mirror preparation: for interactive card types, mint a
+    // stable cardId BEFORE we build the message content so that
+    //   (a) the SSE broadcast carries it,
+    //   (b) the later choice_resolved trace line can reference the same id.
+    const isChoiceCard = type === 'triage_choice' || type === 'choice_card';
+    const appender = isChoiceCard ? getTraceAppender() : null;
+    const mergedMetadata: Record<string, any> = {
+      provider: 'system',
+      timestamp: new Date().toISOString(),
+      ...metadata,
+    };
+    if (isChoiceCard && appender) {
+      mergedMetadata.cardId =
+        (metadata && typeof metadata.cardId === 'string' && metadata.cardId) ||
+        `card-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    }
+
     const messageContent: MessageContent = {
       type,
       content,
-      metadata: {
-        provider: 'system',
-        timestamp: new Date().toISOString(),
-        ...metadata
-      }
+      metadata: mergedMetadata as MessageContent['metadata'],
     };
 
     // Use ContentMerger for intelligent merging
@@ -81,6 +96,19 @@ export class ChatStatusHandler {
         component: 'ChatStatusHandler' 
       }, err);
     });
+
+    // Durable mirror: emit choice_presented to trace.jsonl. The cardId was
+    // minted above so any later resolution line pairs with this card.
+    if (isChoiceCard && appender && mergedMetadata.cardId) {
+      const cardType = type === 'triage_choice'
+        ? 'triage_choice'
+        : (mergedMetadata.cardType as string | undefined) ?? 'choice_card';
+      const { message: promptText, cardId: _cardId, ...restPayload } = mergedMetadata;
+      appender.appendChoicePresented(mergedMetadata.cardId, cardType, {
+        prompt: content,
+        payload: { ...restPayload, message: promptText },
+      });
+    }
 
     return contentIndex;
   }

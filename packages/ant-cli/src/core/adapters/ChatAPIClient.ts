@@ -79,10 +79,16 @@ async function initializeLLMResponseService(): Promise<LLMResponseService | null
     console.log(`🔍 [ChatAPIClient] featurePath=${featurePath}`);
     
     console.log(`🔍 [ChatAPIClient] Creating LLMResponseService...`);
+    const jobTypeRaw = process.env.ANT_JOB_TYPE as
+      | import('@ant/shared').LogJobType
+      | undefined;
+    const agentRaw = process.env.ANT_AGENT || undefined;
     llmResponseService = createLLMResponseServiceWithEnv(stateStore, {
       projectId,
       featureName,
       jobId,
+      jobType: jobTypeRaw,
+      agent: agentRaw,
       userEmail: process.env.ANT_USER_EMAIL,
       userId: process.env.ANT_USER_ID,
       organizationId: process.env.ANT_ORG_ID,
@@ -91,13 +97,6 @@ async function initializeLLMResponseService(): Promise<LLMResponseService | null
     
     console.log(`✅ [ChatAPIClient] LLMResponseService created successfully`);
 
-    try {
-      const { registerChatFlusher } = await import('../../composition/gracefulShutdown');
-      registerChatFlusher(llmResponseService!);
-    } catch {
-      // Non-critical — graceful shutdown may not be available in all contexts
-    }
-    
     logger.info(`ChatAPIClient initialized with direct Redis: ${projectId}/${featureName} (Job: ${jobId})`, {
       component: 'ChatAPIClient'
     });
@@ -581,6 +580,21 @@ export class ChatAPIClient {
 export async function drainChatBroadcaster(): Promise<void> {
   if (llmResponseService) {
     await llmResponseService.drainBroadcaster();
+  }
+}
+
+/**
+ * Return the lazily-initialised LLMResponseService for out-of-band callers
+ * that need to poke it directly (e.g. `recordUserTurn` propagating a newly
+ * generated turnId into the trace.jsonl appender). Does not throw — returns
+ * `null` whenever initialisation failed or the worker process lacks the
+ * required env vars.
+ */
+export async function getLLMResponseServiceOrNull(): Promise<LLMResponseService | null> {
+  try {
+    return await getLLMResponseService();
+  } catch {
+    return null;
   }
 }
 
