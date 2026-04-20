@@ -35,11 +35,46 @@ async function applyDesignBreadcrumbBoundary(
   }
   const touched = await collectTouchedFilesFromTrace(session, turnId);
   let pathsFromTrace = Array.from(touched.all);
+  let created = touched.created;
+  let modified = touched.modified;
+  let deleted = touched.deleted;
+  let rangeRef = touched.range;
   if (pathsFromTrace.length === 0) {
-    const fallback = (state.files || [])
-      .map((f: any) => f?.path)
-      .filter((p: unknown): p is string => typeof p === 'string' && p.length > 0);
-    pathsFromTrace = fallback;
+    // Fallback — docGen nodes may write via non-tool paths so trace.jsonl
+    // can be empty even when state.files captured newly produced docs.
+    // Reconstruct the created / modified / deleted stats from each file's
+    // `actionType` so the breadcrumb accurately reflects what happened
+    // instead of reporting zero mutations for every category.
+    const fbCreated: string[] = [];
+    const fbModified: string[] = [];
+    const fbDeleted: string[] = [];
+    for (const f of state.files || []) {
+      const p = typeof (f as any)?.path === 'string' ? (f as any).path : undefined;
+      if (!p) continue;
+      switch ((f as any).actionType) {
+        case 'edit':
+        case 'append':
+          fbModified.push(p);
+          break;
+        case 'delete':
+          fbDeleted.push(p);
+          break;
+        case 'create':
+        default:
+          fbCreated.push(p);
+      }
+    }
+    const fbDeleteExtra = Array.isArray((state as any).filesToDelete)
+      ? ((state as any).filesToDelete as string[]).filter((p) => typeof p === 'string' && p.length > 0)
+      : [];
+    for (const p of fbDeleteExtra) {
+      if (!fbDeleted.includes(p)) fbDeleted.push(p);
+    }
+    pathsFromTrace = [...fbCreated, ...fbModified, ...fbDeleted];
+    created = fbCreated;
+    modified = fbModified;
+    deleted = fbDeleted;
+    rangeRef = undefined;
   }
   const summary = designBreadcrumbSummary(state, pathsFromTrace.length);
   const mode = state.resolvedAction?.mode;
@@ -50,11 +85,11 @@ async function applyDesignBreadcrumbBoundary(
     jobType: 'design',
     mode,
     touched: pathsFromTrace,
-    created: touched.created,
-    modified: touched.modified,
-    deleted: touched.deleted,
+    created,
+    modified,
+    deleted,
     summary,
-    traceRangeRef: touched.range,
+    traceRangeRef: rangeRef,
   });
   try {
     await session.appendBreadcrumb(breadcrumb);

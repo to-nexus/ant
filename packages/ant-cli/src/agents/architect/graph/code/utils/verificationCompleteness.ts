@@ -1,5 +1,5 @@
 /**
- * Axis B — Verification completion SSOT.
+ * Verification completion SSOT.
  *
  * A verification task is complete only when every objective flagged as
  * required by the tracker has actually passed. This single function
@@ -14,7 +14,7 @@
 import type { VerificationTracker, Violation, ViolationType } from '../state';
 
 /**
- * Axis B — Verification completion evaluation shared between the main
+ * Verification completion evaluation shared between the main
  * `checkTaskStatus` and the worker `workerCheckTaskStatus`.
  *
  * Callers remain responsible for the `<done>` tag contract and the

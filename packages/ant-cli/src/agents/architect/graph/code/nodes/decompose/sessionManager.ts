@@ -2,6 +2,7 @@ import { ArchitectGraphState } from "../../state";
 import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import type { Session } from '../../../../../../core/types/session';
+import { isFeatureTask } from '../../tasks/feature';
 
 /**
  * Check if session exists and should be restored
@@ -108,39 +109,31 @@ export function restoreFromSession(
   
   const featureTasks = new Map<string, CodeTask>();
   (session.state.taskQueue ?? []).forEach((task: CodeTask) => {
-    if (task.type === 'feature') {
+    if (isFeatureTask(task)) {
       featureTasks.set(task.id, task);
     }
   });
-  
-  // Calculate task type breakdown
-  const tasksByType = {
+
+  // Count task types for progress display. R1 — no `task.type === '...'`
+  // comparisons; use task.type as a generic key and alias the
+  // FINAL_VERIFICATION priority into the verification bucket so historical
+  // decompositions that didn't retype still report accurately.
+  const tasksByType: Record<string, number> = {
     setup: 0,
     feature: 0,
     'test-code': 0,
     doc: 0,
     error: 0,
-    verification: 0
+    verification: 0,
   };
-  
+
   const classifyTask = (task: { type: string; priority: number }) => {
-    if (task.type === 'verification' || task.priority === 1000) {
-      tasksByType.verification++;
-    } else if (task.type === 'test-code') {
-      tasksByType['test-code']++;
-    } else if (task.type === 'doc') {
-      tasksByType.doc++;
-    } else if (task.type === 'error') {
-      tasksByType.error++;
-    } else if (task.type === 'setup') {
-      tasksByType.setup++;
-    } else if (task.type === 'feature') {
-      tasksByType.feature++;
-    }
+    const bucket = task.priority === 1000 ? 'verification' : task.type;
+    tasksByType[bucket] = (tasksByType[bucket] ?? 0) + 1;
   };
-  
+
   taskQueue.getAll().forEach(classifyTask);
-  
+
   if (session.state.currentTask) {
     classifyTask(session.state.currentTask);
   }

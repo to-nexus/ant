@@ -19,7 +19,7 @@ import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import { CacheableContent, MessageContentBlock } from '../../../../../../../core/ports/llm';
 import { DesignTask } from '../../../../../types/task';
 import type { FigmaNodeSummary } from '@ant/shared';
-import { designDirOf, DESIGN_DIR, DESIGN_SUBDIR, ARTIFACT_PREFIX, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
+import { designDirOf, ARTIFACT_PREFIX, isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
 import { selectArtifacts, selectArtifactsWithPolicy } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 
@@ -407,7 +407,7 @@ function buildResourcesSummary(state: DesignGraphState): string {
 }
 
 /**
- * Build previous UI docs context from artifact pool (replaces disk-based loadPreviousUiDocs).
+ * Build previous UI docs context from artifact pool.
  * Only ui-spec tasks need tokens + assets as REFERENCE.
  */
 function buildPreviousUiDocsFromPool(
@@ -436,77 +436,6 @@ function buildPreviousUiDocsFromPool(
     }
   }
 
-  return injectedDocs;
-}
-
-/**
- * Load previously generated UI documents for dependent tasks
- * 
- * Why needed: node history resets between tasks (each task = fresh session)
- * So prior task outputs must be loaded from disk.
- * 
- * Dependency:
- * - ui-tokens: no dependencies
- * - ui-assets: no dependencies (independent from tokens)
- * - ui-spec: needs ui-tokens.json + ui-assets.json
- */
-async function loadPreviousUiDocs(
-  state: DesignGraphState,
-  taskId: string
-): Promise<string> {
-  const isUiSpecTask = taskId.startsWith('ui-spec');
-  
-  // Only ui-spec tasks need previous docs (tokens + assets as REFERENCE)
-  if (!isUiSpecTask) {
-    return '';
-  }
-  
-  const fileSystem = state.deps?.fileSystem;
-  if (!fileSystem || !state.context.featurePath) {
-    return '';
-  }
-  
-  const path = await import('path');
-  const rootPath = fileSystem.getRootPath?.() || '';
-  const featureDirRel = rootPath
-    ? path.relative(rootPath, state.context.featurePath)
-    : state.context.featurePath.replace(/^\//, '');
-  
-  const designOutputDir = path.join(featureDirRel, DESIGN_DIR, DESIGN_SUBDIR.UI);
-  let injectedDocs = '';
-  
-  // Load COMPLETE ui-tokens.json for ui-spec-*
-  try {
-    const tokensPath = path.join(designOutputDir, 'ui-tokens.json');
-    const tokensContent = await fileSystem.readFile(tokensPath);
-    if (tokensContent && !tokensContent.includes('ant:template')) {
-      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-      injectedDocs += `# REFERENCE: ui-tokens.json (ALL chapters completed)\n`;
-      injectedDocs += `> Use these token keys. Do NOT use raw values that are defined here.\n`;
-      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-      injectedDocs += '```json\n' + tokensContent + '\n```';
-      console.log(`📄 [DocGen] Injected ui-tokens.json (${tokensContent.length} chars) for ${taskId}`);
-    }
-  } catch {
-    // File doesn't exist yet, skip
-  }
-  
-  // Load COMPLETE ui-assets.json for ui-spec-*
-  try {
-    const assetsPath = path.join(designOutputDir, 'ui-assets.json');
-    const assetsContent = await fileSystem.readFile(assetsPath);
-    if (assetsContent && !assetsContent.includes('ant:template')) {
-      injectedDocs += `\n\n════════════════════════════════════════════════════════════════════════════════\n`;
-      injectedDocs += `# REFERENCE: ui-assets.json (ALL chapters completed)\n`;
-      injectedDocs += `> Reference these asset identifiers when documenting components.\n`;
-      injectedDocs += `════════════════════════════════════════════════════════════════════════════════\n\n`;
-      injectedDocs += '```json\n' + assetsContent + '\n```';
-      console.log(`📄 [DocGen] Injected ui-assets.json (${assetsContent.length} chars) for ${taskId}`);
-    }
-  } catch {
-    // File doesn't exist yet, skip
-  }
-  
   return injectedDocs;
 }
 

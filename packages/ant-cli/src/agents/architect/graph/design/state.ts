@@ -206,8 +206,14 @@ export interface DesignGraphState extends TriageableState {
    * future consumers without another state refactor.
    *
    * Shape SSOT lives in `core/context/featureContextBuilder.ts`
-   * (`FeatureContext` — includes `summary?` / `wasCompacted?` populated
-   * by §13 Compact). Do not redeclare inline here.
+   * (`FeatureContext`). Do not redeclare inline here.
+   *
+   * §13 Compact policy: design resolve deliberately skips `compactFeatureContext`
+   * (does not pass `llm`/`promptPort` to `hydrateFeatureContext`) because no
+   * design prompt template renders `featureContext.summary`. Running Compact
+   * here would fire an LLM call whose output nobody reads. If a future design
+   * template starts consuming the summary, flip the hydrate call to pass
+   * `llm`/`promptPort` and the Compact path activates automatically.
    */
   featureContext?: FeatureContext;
 }

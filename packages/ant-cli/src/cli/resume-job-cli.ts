@@ -127,6 +127,12 @@ async function main(): Promise<void> {
       projectPath,
       workspaceResolver,
       userContext: { userId: args.user, organizationId: args.org },
+      // This CLI ONLY simulates resumes of seeded sessions (see file
+      // docstring). Without this flag, recordUserTurn would append a spurious
+      // empty user_turn to feature.jsonl on every scenario run (input=''),
+      // polluting the seeded state. isResume=true makes recordUserTurn skip
+      // the append and only propagate any existing turnId.
+      isResume: true,
     });
 
     process.stdout.write(`RESULT:${JSON.stringify({ success: true, output: result })}\n`);

@@ -6,6 +6,8 @@ import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
   isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
 } from "../../../common/graph/runnerHelpers";
+import { VerificationSession } from "./tasks/verification/model/Session";
+import type { VerificationSnapshot } from "./tasks/verification/model/snapshot";
 
 /**
  * Code Graph Runner
@@ -122,23 +124,52 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.jobTiming = session.state.jobTiming;
         }
 
-        // Scenario harness escape hatch: restore axis-E/axis-F state (tracker,
-        // budget, lastPlanHash) from session so fixture seed values actually
-        // reach the graph. Production path leaves these fields to the plan
-        // node's fresh-initialisation logic.
+        // Scenario harness escape hatch: restore legacy verification state
+        // (tracker, attempt counter, plan history) from session so fixture
+        // seed values reach the graph. Production path leaves these fields
+        // to the plan node's fresh-initialisation logic.
         if (process.env.ANT_SCENARIO_PRESERVE_RETRIES === '1') {
           if (session.state._verificationTracker !== undefined) {
             initial._verificationTracker = session.state._verificationTracker;
           }
-          if (session.state._verificationBudget !== undefined) {
-            initial._verificationBudget = session.state._verificationBudget;
-          }
-          if (session.state._lastPlanHash !== undefined) {
-            initial._lastPlanHash = session.state._lastPlanHash;
+          if (session.state._verificationAttempts !== undefined) {
+            initial._verificationAttempts = session.state._verificationAttempts;
           }
           if (session.state._appliedPlanHistory !== undefined) {
             initial._appliedPlanHistory = session.state._appliedPlanHistory;
           }
+        }
+
+        // T7 — Production-path VerificationSession rehydration. The snapshot
+        // is written to `session.state.verification` by `saveCheckpoint`
+        // (see `nodes/checkpoint/index.ts`) and by the three carry-over
+        // boundaries via `snapshotFromState()`. Wiring the session onto
+        // `initial.verification` at this point ensures the plan/tool/check
+        // hooks see a live session from the first node entry rather than
+        // constructing a fresh one and discarding the persisted cycle.
+        if (session.state.verification !== undefined) {
+          initial.verification = VerificationSession.rehydrate(
+            session.state.verification as VerificationSnapshot | null,
+          );
+        } else if (
+          process.env.ANT_SCENARIO_PRESERVE_RETRIES === '1'
+          && (session.state._verificationTracker !== undefined
+            || session.state._verificationAttempts !== undefined
+            || session.state._appliedPlanHistory !== undefined)
+        ) {
+          // T4b-α scenario bridge — seeds authored before the T4b-β seed
+          // migration carry only the legacy fields. Synthesise a session
+          // from them so phase-layer readers that expect
+          // `state.verification` (deep-diagnostic gating, repeated-plan
+          // detection, etc.) observe the seeded values instead of starting
+          // from a fresh zero session.
+          initial.verification = VerificationSession.fromLegacyState({
+            _verificationTracker: session.state._verificationTracker as any,
+            _verificationAttempts: session.state._verificationAttempts,
+            _appliedPlanHistory: session.state._appliedPlanHistory,
+            _depFileHash: (session.state as { _depFileHash?: string })._depFileHash,
+            _installNeeded: (session.state as { _installNeeded?: boolean })._installNeeded,
+          });
         }
       } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
         // Restore partial state from early-interrupted session (triage/detectEnv stage)
@@ -154,6 +185,19 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         }
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
+        }
+        // Restore Decompose clarify fields (awaiting/bypassed/choice) so
+        // routeAfterResolve can branch directly to `decompose` without a
+        // fresh triage pass.
+        const sRaw = session.state;
+        if (sRaw.awaitingDecomposeClarify) {
+          initial.awaitingDecomposeClarify = true;
+        }
+        if (sRaw._specClarifyBypassed === true) {
+          initial._specClarifyBypassed = true;
+        }
+        if (sRaw.specClarify && !initial.specClarify) {
+          initial.specClarify = sRaw.specClarify;
         }
       }
     } catch (err) {

@@ -148,20 +148,55 @@ export interface WorkerSnapshot {
   violations?: any[];
   enforcementHistory?: any[];
   tokenUsage?: TaskTokenUsage;
-  /** Axis A — survive the dep-file hash across interruption/resume so install skips remain valid. */
+  /**
+   * Survive the dep-file hash across interruption/resume so `shouldSkipInstall`
+   * remains valid after a new worker invocation picks up the task.
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `verification.depHash` (VerificationSnapshot). Coexists during migration.
+   */
   _depFileHash?: string;
-  /** Axis E — remaining verification budget across resume. */
-  _verificationBudget?: number;
-  /** Axis G — deep-diagnostic bookkeeping. */
-  _diagnosticAttempts?: number;
-  _deepDiagnosticBudgetGranted?: boolean;
-  /** Axis F-4 — last normalized plan JSON hash for repeat detection. */
-  _lastPlanHash?: string;
-  /** Axis D — prior attempt plan bodies accumulated across reverify cycles.
-   *  Used by `composeViolationsText` to show the LLM what was already tried.
-   *  Phase 4-17 — previously missing from the snapshot, which caused the
-   *  prompt history to silently truncate on worker resume. */
+  /**
+   * Total verification attempts accumulated across all boundaries. Replaces
+   * the former triad `_verificationBudget + _diagnosticAttempts +
+   * _deepDiagnosticBudgetGranted`, all three of which were facets of this
+   * single counter.
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `verification.attempts` (VerificationSnapshot). Coexists during migration.
+   */
+  _verificationAttempts?: number;
+  /**
+   * Verification tracker so already-passed gates are carried to the next
+   * worker invocation (previously wiped on orchestrator re-queue).
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `verification.{required,passed,attemptedThisCycle}` (VerificationSnapshot).
+   *   Coexists during migration.
+   */
+  _verificationTracker?: any;
+  /**
+   * Prior attempt plan bodies accumulated across reverify cycles. Used by
+   * `composeViolationsText` and `detectRepeatedPlan` to surface "what was
+   * already tried" to the next LLM call.
+   *
+   * @deprecated T4a — will be removed in T4b; authority moves to
+   *   `verification.planHistoryBodies` / `planHistoryHashes` (VerificationSnapshot).
+   *   Coexists during migration.
+   */
   _appliedPlanHistory?: string[];
+  /**
+   * Verification session snapshot — the post-T4a SSOT that supersedes the
+   * `_verification*` / `_depFileHash` / `_appliedPlanHistory` fields above
+   * (marked @deprecated). Present only on code-job carry-overs that
+   * originated from a verification task.
+   *
+   * Typed as `any` at this boundary to keep `common/graph/` free of
+   * code-job-specific imports; the concrete shape is
+   * `VerificationSnapshot` (see
+   * `agents/architect/graph/code/tasks/verification/model/snapshot.ts`).
+   */
+  verification?: any;
 }
 
 // ============================================

@@ -3,7 +3,10 @@ import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
-import { ARTIFACT_PREFIX, BOUNDARY, type Boundary } from '@ant/shared';
+import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type Complexity, type DecidedBy, type SpecClarify } from '@ant/shared';
+import { hooksForTaskType } from '../../tasks/_shared/registry';
+import { isDiagnosticTask } from '../../tasks/_shared/classification';
+import { isFeatureTask } from '../../tasks/feature';
 
 /**
  * Escape unescaped control characters inside JSON string literals.
@@ -90,6 +93,36 @@ export interface ParsedDecomposeResponse {
   selectedSpec?: string | null;
   unknownPackages?: string[];
   boundary?: Boundary;
+  /** 3-way classification: oneshot | exploratory | todo. Safe default: 'todo'. */
+  complexity: Complexity;
+  /** 1-sentence rationale for the complexity classification. */
+  complexityReason?: string;
+  /**
+   * Who produced the final `complexity` classification:
+   *   - `'llm'`       → LLM emitted a `<complexity>` tag (normal path)
+   *   - `'heuristic'` → tag missing / malformed → `normalizeComplexity` fell
+   *                     back to `'todo'` (still safe, but observable)
+   *
+   * `'user'` is reserved for future overrule UX; the parser never produces
+   * it because LLM output is machine input. Consumers writing
+   * `user_turn_meta` patches MUST forward this value so the UI tier badge
+   * and `featureBiases` sample can distinguish LLM judgements from
+   * degraded fallbacks.
+   */
+  complexityDecidedBy: DecidedBy;
+  /** Hints consumed by the `direct` node when complexity is oneshot/exploratory. */
+  directHints?: { targetFiles?: string[]; explorationScope?: string };
+  /** Design-redirect choice when todo requires spec that is missing (see SpecClarify). */
+  specClarify?: SpecClarify;
+}
+
+/**
+ * Strict narrow for Complexity. Unknown strings fall back to 'todo'.
+ */
+function normalizeComplexity(raw: string | undefined): Complexity {
+  const v = (raw || '').trim().toLowerCase();
+  if (v === 'oneshot' || v === 'exploratory' || v === 'todo') return v;
+  return 'todo';
 }
 
 /**
@@ -206,6 +239,72 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       console.log(`📋 [Decompose] Boundary classification: ${boundary}`);
     }
 
+    // Complexity classification (session redesign 5-tier model)
+    const complexityMatch = rawResponse.match(/<complexity>\s*([\s\S]*?)\s*<\/complexity>/i);
+    const complexity = normalizeComplexity(complexityMatch?.[1]);
+    // `decidedBy` tracks whether the classification came from the LLM's
+    // `<complexity>` tag or from the heuristic fallback. Consumers
+    // (user_turn_meta writer, §19 featureBiases sample, future overrule UX)
+    // rely on this distinction to audit classification quality.
+    const complexityDecidedBy: DecidedBy = complexityMatch ? 'llm' : 'heuristic';
+    if (!complexityMatch) {
+      console.warn('⚠️  [Decompose] No <complexity> tag found — defaulting to "todo"');
+    } else {
+      console.log(`🧭 [Decompose] Complexity: ${complexity}`);
+    }
+
+    let complexityReason: string | undefined;
+    const reasonMatch = rawResponse.match(/<complexityReason>\s*([\s\S]*?)\s*<\/complexityReason>/i);
+    if (reasonMatch) {
+      const r = reasonMatch[1].trim();
+      if (r) complexityReason = r;
+    }
+
+    let directHints: { targetFiles?: string[]; explorationScope?: string } | undefined;
+    const directHintsMatch = rawResponse.match(/<directHints>\s*([\s\S]*?)\s*<\/directHints>/i);
+    if (directHintsMatch) {
+      const body = directHintsMatch[1].trim();
+      if (body && body !== '{}') {
+        try {
+          const parsedHints = JSON.parse(sanitizeJsonControlChars(body));
+          const targetFiles = Array.isArray(parsedHints?.targetFiles)
+            ? parsedHints.targetFiles.filter((f: unknown) => typeof f === 'string' && f.length > 0)
+            : undefined;
+          const explorationScope = typeof parsedHints?.explorationScope === 'string' && parsedHints.explorationScope.trim().length > 0
+            ? parsedHints.explorationScope.trim()
+            : undefined;
+          if (targetFiles?.length || explorationScope) {
+            directHints = { targetFiles, explorationScope };
+          }
+        } catch (error) {
+          console.warn('⚠️  [Decompose] Failed to parse <directHints> tag content:', error);
+        }
+      }
+    }
+
+    let specClarify: SpecClarify | undefined;
+    const specClarifyMatch = rawResponse.match(/<specClarify>\s*([\s\S]*?)\s*<\/specClarify>/i);
+    if (specClarifyMatch) {
+      const body = specClarifyMatch[1].trim();
+      if (body && body !== '{}' && body.toLowerCase() !== 'null') {
+        try {
+          const parsed = JSON.parse(sanitizeJsonControlChars(body));
+          if (parsed && parsed.needsChoice === true
+            && parsed.choiceOptions?.positive?.action
+            && parsed.choiceOptions?.neutral?.action
+            && parsed.choiceOptions?.negative?.action
+          ) {
+            specClarify = parsed as SpecClarify;
+            console.log('📝 [Decompose] specClarify requested by LLM');
+          } else {
+            console.warn('⚠️  [Decompose] <specClarify> missing required fields, ignoring');
+          }
+        } catch (error) {
+          console.warn('⚠️  [Decompose] Failed to parse <specClarify> tag content:', error);
+        }
+      }
+    }
+
     return {
       tasks,
       referenceRequests,
@@ -213,6 +312,11 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       selectedSpec,
       unknownPackages,
       boundary,
+      complexity,
+      complexityReason,
+      complexityDecidedBy,
+      directHints,
+      specClarify,
     };
     
   } catch (error) {
@@ -241,11 +345,11 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
   
   // ✅ Validate Final Verification task conditionally
   const hasFinalTask = tasks.some(task => task.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
-  const hasFeatureTasks = tasks.some(task => 
-    task.type === 'feature' && task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION
+  const hasFeatureTasks = tasks.some(task =>
+    isFeatureTask(task) && task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION
   );
-  const allTasksAreErrors = tasks.length > 0 && tasks.every(task => 
-    task.type === 'error' || task.type === 'verification' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
+  const allTasksAreErrors = tasks.length > 0 && tasks.every(task =>
+    isDiagnosticTask(task) || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
   );
   
   // Final task is required only if there are feature tasks
@@ -270,10 +374,14 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
   tasks.forEach(task => {
     // Determine exclusive flag:
     // - Explicit from LLM takes precedence
-    // - Fallback: setup, error, and final (priority 1000) are always exclusive
+    // - Fallback delegated to tasks/{type}/hooks/decompose.ts → isExclusive
+    //   (setup / error / verification = always true; feature = priority===1000;
+    //    ui / design-system / test-code / doc have no hook → fall through to false).
+    // R1 — the phase layer is blind to task.type; the dispatch registry owns
+    // the per-type predicate.
     const isExplicitExclusive = typeof (task as any).exclusive === 'boolean' ? (task as any).exclusive : undefined;
-    // design-system is NOT exclusive — parallelGroup handles token→wiring ordering
-    const isTypeExclusive = task.type === 'setup' || task.type === 'error' || task.type === 'verification' || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+    const isTypeExclusive =
+      hooksForTaskType(task.type)?.decompose?.isExclusive?.(task) ?? false;
     const exclusive = isExplicitExclusive ?? isTypeExclusive;
     
     // parallelGroup only applies when not exclusive
@@ -311,8 +419,8 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
     };
     
     taskQueue.push(normalizedTask);
-    
-    if (normalizedTask.type === 'feature') {
+
+    if (isFeatureTask(normalizedTask)) {
       featureTasks.set(normalizedTask.id, normalizedTask);
     }
   });
@@ -328,27 +436,25 @@ export function logTaskSummary(
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>
 ): void {
   console.log(`\n✅ Task breakdown complete:`);
-  
-  // Count actual task types
-  const tasksByType = {
-    setup: tasks.filter(t => t.type === 'setup').length,
-    'design-system': tasks.filter(t => t.type === 'design-system').length,
-    feature: tasks.filter(t => t.type === 'feature' && t.priority !== TASK_PRIORITIES.FINAL_VERIFICATION).length,
-    ui: tasks.filter(t => t.type === 'ui').length,
-    'test-code': tasks.filter(t => t.type === 'test-code').length,
-    doc: tasks.filter(t => t.type === 'doc').length,
-    error: tasks.filter(t => t.type === 'error').length,
-    verification: tasks.filter(t => t.type === 'verification' || t.priority === TASK_PRIORITIES.FINAL_VERIFICATION).length,
-  };
+
+  // Count task types via task.type as a generic key (R1 — no `task.type === '...'`
+  // literal comparisons). FINAL_VERIFICATION alias re-routes feature→verification
+  // so historical decompositions that set priority=1000 without retype still
+  // show up under the correct bucket.
+  const countByType: Record<string, number> = {};
+  for (const t of tasks) {
+    const bucket = t.priority === TASK_PRIORITIES.FINAL_VERIFICATION ? 'verification' : (t.type as string);
+    countByType[bucket] = (countByType[bucket] ?? 0) + 1;
+  }
 
   console.log(`   Total tasks: ${tasks.length}`);
-  console.log(`   Setup: ${tasksByType.setup}`);
-  if (tasksByType['design-system']) console.log(`   Design-System: ${tasksByType['design-system']}`);
-  console.log(`   Feature: ${tasksByType.feature}`);
-  if (tasksByType.ui) console.log(`   UI: ${tasksByType.ui}`);
-  console.log(`   Test-Code: ${tasksByType['test-code']}`);
-  console.log(`   Error: ${tasksByType.error}`);
-  console.log(`   Verification: ${tasksByType.verification}`);
+  console.log(`   Setup: ${countByType.setup ?? 0}`);
+  if (countByType['design-system']) console.log(`   Design-System: ${countByType['design-system']}`);
+  console.log(`   Feature: ${countByType.feature ?? 0}`);
+  if (countByType.ui) console.log(`   UI: ${countByType.ui}`);
+  console.log(`   Test-Code: ${countByType['test-code'] ?? 0}`);
+  console.log(`   Error: ${countByType.error ?? 0}`);
+  console.log(`   Verification: ${countByType.verification ?? 0}`);
   
   // Parallel execution summary
   const exclusiveTasks = tasks.filter(t => t.exclusive);
