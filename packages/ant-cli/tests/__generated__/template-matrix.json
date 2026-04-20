@@ -598,36 +598,43 @@
   },
   "jobs/code/nodes/execute/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/execute/variants/default/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/execute/variants/docgen/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/execute/variants/docgen/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/execute/variants/error/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/execute/variants/error/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/execute/variants/test-code/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
@@ -645,16 +652,19 @@
   },
   "jobs/code/nodes/execute/variants/test-code/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/execute/variants/verification/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/execute/variants/verification/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },

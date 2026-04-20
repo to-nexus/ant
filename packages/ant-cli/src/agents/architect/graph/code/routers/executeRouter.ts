@@ -18,9 +18,8 @@
 
 import { ArchitectGraphState } from '../state';
 import type { CodeTask } from '../../../types/task';
-import { isFinalVerificationTask } from '../tasks/verification';
-import { hooksIfActive } from '../tasks/_shared/registry';
 import { isVerificationTask } from '../tasks/verification';
+import { hooksIfActive } from '../tasks/_shared/registry';
 import { isErrorTask } from '../tasks/error';
 
 /**
@@ -49,9 +48,11 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   }
   
   const currentTask = state.currentTask;
-  const isFinalTask = currentTask ? isFinalVerificationTask(currentTask) : false;
+  // Verification tasks are always the final-verification pass (system
+  // invariant — see tasks/verification/model/is.ts).
+  const isFinalTask = currentTask ? isVerificationTask(currentTask) : false;
   const isCurrentErrorTask = currentTask ? isErrorTask(currentTask) : false;
-  
+
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📍 [executeRouter] Current Task Info:`);
   console.log(`   Task: ${currentTask?.name || 'none'}`);
@@ -150,8 +151,8 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // Verification tasks use threshold=1 by default. When planText is present (inline fix),
   // threshold=2 allows recovery from a thinking-only first call: the second call runs
   // with enableThinking=false (isAfterToolCall=true) and produces actual tool calls.
-  // R1 — use the `isVerificationTask` predicate (tasks/verification/model/is)
-  // instead of a literal `task.type === 'verification'` branch.
+  // R1 — polymorphic discrimination via the `isVerificationTask` predicate
+  // from `tasks/verification/model/is`; no literal type-equality branches here.
   const finalTaskLoopCount = state._finalTaskLoopCount || 0;
   const isVerification = currentTask ? isVerificationTask(currentTask) : false;
   const loopThreshold = isVerification

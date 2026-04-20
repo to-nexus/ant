@@ -1,15 +1,31 @@
 /**
  * L2 — `tasks/feature/hooks/*` adapter invariants.
  *
- * Feature is the only task type that is NOT exclusive by default:
- * the test pins `isExclusive === false` for non-priority-1000 tasks and
- * documents the `priority === 1000` fallback (priority-1000 feature
- * tasks are re-typed to `'verification'` at normalisation, but the
- * fallback defends against accidental retyping regressions).
+ * Feature is the only multi-task type that is NOT exclusive by
+ * default: the test pins `isExclusive === false` for ordinary feature
+ * tasks and documents the `priority === FINAL_VERIFICATION` fallback
+ * (priority-1000 feature tasks are re-typed to `'verification'` at
+ * normalisation in `responseParser.ts` L393–394, but the fallback
+ * defends against accidental retyping regressions — the hook runs
+ * BEFORE the retype at L383–385).
+ *
+ * Feature is also the "thickest" scheduling bundle — it publishes 1
+ * consumer flag + 4 producer flags (5/8 of the TaskSchedulingHook
+ * surface). The regression-guard section below pins every unpublished
+ * flag to `undefined` so a future author cannot silently flip feature
+ * into consuming a barrier it actually produces (self-blocking sibling
+ * feature tasks).
  *
  * Locks the contract for T6 call-site flips:
- *   - scheduling.preIntegrationBarrier — true
- *   - decompose.isExclusive            — false for feature, true only for FINAL_VERIFICATION
+ *   - scheduling.preIntegrationBarrier — true (consumer)
+ *   - scheduling.blocksUi              — true (producer)
+ *   - scheduling.blocksTestgen         — true (producer)
+ *   - scheduling.blocksDoc             — true (producer)
+ *   - scheduling.blocksIntegration     — true (producer, paired with
+ *                                         the orchestrator's priority-
+ *                                         window check)
+ *   - decompose.isExclusive            — false for feature, true only
+ *                                         for priority === FINAL_VERIFICATION
  *   - conversations.convKey            — `node:execute:feature:<id>`
  */
 
@@ -57,14 +73,37 @@ describe('tasks/_shared/registry — feature entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle does NOT publish unrelated hooks', () => {
+  it('bundle publishes only scheduling + decompose + conversations slots', () => {
+    // Slot-level absence — mirrors the ui / doc / design-system / test-code
+    // precedents so a future drive-by hook addition forces an explicit
+    // test update (and forces the author to justify it in index.ts).
     expect(featureBundle.plan).toBeUndefined();
     expect(featureBundle.check).toBeUndefined();
+    expect(featureBundle.tool).toBeUndefined();
+    expect(featureBundle.command).toBeUndefined();
+    expect(featureBundle.router).toBeUndefined();
+    expect(featureBundle.orchestrator).toBeUndefined();
+  });
+
+  it('scheduling exposes integration-consumer + 4 producer flags — no other consumer flags', () => {
+    // Consumer flags: only preIntegrationBarrier.
     // feature does NOT consume the testgen / doc / ui barriers — it
-    // produces them instead (see blocks* flags above).
+    // PRODUCES them (see blocks* above). Self-activation would make
+    // sibling feature tasks block each other from parallel scheduling.
+    // Regression guard.
+    expect(featureBundle.scheduling?.preIntegrationBarrier).toBe(true);
     expect(featureBundle.scheduling?.preTestgenBarrier).toBeUndefined();
     expect(featureBundle.scheduling?.preDocBarrier).toBeUndefined();
     expect(featureBundle.scheduling?.preUiBarrier).toBeUndefined();
+    // Producer flags: all 4 true. blocksIntegration=true is paired
+    // with the orchestrator priority-window check in
+    // `isPreIntegrationWork` (FEATURE_CRITICAL ≤ priority <
+    // INTEGRATION_MIN) so integration-priority feature tasks do not
+    // self-block.
+    expect(featureBundle.scheduling?.blocksUi).toBe(true);
+    expect(featureBundle.scheduling?.blocksTestgen).toBe(true);
+    expect(featureBundle.scheduling?.blocksDoc).toBe(true);
+    expect(featureBundle.scheduling?.blocksIntegration).toBe(true);
   });
 });
 

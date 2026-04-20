@@ -22,6 +22,8 @@ import { CodeTask } from '../../../../../types/task';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { appendTrace } from '../../../../../../../utils/verificationTrace';
 import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
+import { isVerificationTask } from '../../../tasks/verification';
+import { isErrorTask } from '../../../tasks/error';
 
 export const MAX_BATCH_SPLIT_CYCLES = 10;
 
@@ -85,10 +87,17 @@ export function computeBatchFileOverlap(batches: any[]): boolean {
 }
 
 /**
- * When a diagnostic task (verification/error) finishes its plan tool-loop with
- * build/test already passing and no plan to execute, execute would only ask the
- * LLM to output `<done>true</done>` — a wasted call.  Detect this and let the
- * plan node set `done: true` directly so planRouter skips execute entirely.
+ * When a verification task finishes its plan tool-loop with build/test already
+ * passing and no plan to execute, execute would only ask the LLM to output
+ * `<done>true</done>` — a wasted call. Detect this and let the plan node set
+ * `done: true` directly so planRouter skips execute entirely.
+ *
+ * Scope is intentionally verification-only: completeness is decided by
+ * `VerificationSession.isComplete()`, which is populated exclusively by the
+ * verification plan hook's `initSession`. Error tasks never own a session
+ * (they apply fixes from `prePlanText`) so they would always read `false`
+ * here anyway — narrowing the gate to verification makes the semantics
+ * honest instead of relying on session-absence as an implicit filter.
  */
 export function isVerificationPassWithoutCodeGen(
   state: ArchitectGraphState,
@@ -97,12 +106,7 @@ export function isVerificationPassWithoutCodeGen(
 ): boolean {
   if (batchSplitOccurred) return false;
   if (planText !== '') return false;
-  const task = state.currentTask;
-  if (task?.type !== 'verification' && task?.type !== 'error') return false;
-  // Session is the SSOT for verification completeness. Error tasks have no
-  // session; the caller already screened for them above so we only reach
-  // here with `task.type === 'verification'` and a populated session (the
-  // plan hook's `initSession` runs before any short-circuit probe).
+  if (!isVerificationTask(state.currentTask)) return false;
   return state.verification?.isComplete() ?? false;
 }
 
@@ -125,7 +129,14 @@ export function processDiagnosticBatchSplit(
   planText: string,
   nextTask: CodeTask,
 ): string {
-  const isVerificationOrErrorTask = nextTask.type === 'verification' || nextTask.type === 'error';
+  // Gate is BOTH verification and error. Error tasks created by a previous
+  // batch-split carry `prePlanText` and fast-path past this function (see
+  // `nodes/plan/index.ts maybePrePlannedFastPath`). But error tasks emitted
+  // directly by decompose (no prePlanText) fall through to normal planning
+  // and may legitimately produce a multi-batch remediation plan that should
+  // also be split. Cascading splits are bounded by
+  // `MAX_BATCH_SPLIT_CYCLES` on the Session.
+  const isBatchSplitCandidate = isVerificationTask(nextTask) || isErrorTask(nextTask);
 
   const logBatchSplit = (data: Record<string, any>) => {
     if (state.context?.featurePath && state._httpJobId) {
@@ -139,7 +150,7 @@ export function processDiagnosticBatchSplit(
     }
   };
 
-  if (!isVerificationOrErrorTask) {
+  if (!isBatchSplitCandidate) {
     return planText;
   }
   if (!planText || planText.length <= 50) {

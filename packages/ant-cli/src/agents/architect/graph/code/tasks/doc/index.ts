@@ -36,21 +36,22 @@
  *
  * Phase-layer `task.type === 'doc'` residuals (`nodes/plan/
  * planGeneration.ts` L232 skip-planning gate) are pre-existing R1
- * misses carried forward from T6b-δ and belong to follow-up T6b
- * cleanup — they require either an `isDocTask` adoption or a broader
- * `taskRequiresPlan` classification hook that is out of T5b.6 scope.
- * `nodes/execute/promptBuilder.ts` L675 (dirTree gating) already
- * consults `isDocTask` from this bundle.
+ * misses scheduled for follow-up T6b slices — they require either an
+ * `isDocTask` adoption or a broader `taskRequiresPlan` classification
+ * hook. Execute-phase dirTree gating has been lifted into the
+ * `execute` hook slot at T6b-ι (`includeDirectoryTree: true` below).
  */
 
 import type { TaskHooks } from '../_shared/types';
 
 import { preDocBarrier } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
+import { executeHook } from './hooks/execute';
 
 export const hooks: TaskHooks = {
   scheduling: { preDocBarrier },
   conversations: { convKey },
+  execute: executeHook,
 };
 
 export { isDocTask } from './model/is';

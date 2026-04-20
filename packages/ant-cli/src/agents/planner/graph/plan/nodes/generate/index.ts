@@ -30,7 +30,7 @@ import { PLAN_COMPACTION_THRESHOLD, PLAN_COMPACTION_WINDOW, COMPACTION_MAX_OUTPU
 import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 
-import { buildSystemPrompt, getTargetPath, formatConversationForPrompt } from './promptBuilder';
+import { buildSystemPrompt, getTargetPath, formatConversationForPrompt } from './buildSystemPrompt';
 import { parseClarifyBlocks, stripClarifyBlocks } from './clarify';
 import { saveConversationToSession, pruneConversationHistory } from './sessionWriter';
 

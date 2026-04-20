@@ -12,6 +12,10 @@
  *                                    (T6b-β; port of planGeneration.ts
  *                                    L150~172)
  *   - plan.toolLoopLogTemplate     — plan-toolLoop debug log path
+ *   - command.guard                — execute-phase build/test/typecheck
+ *                                    block (T6b-η; codifies the "error
+ *                                    applies fixes only, diagnostics run
+ *                                    in the next verification cycle" rule)
  *   - orchestrator.onTaskComplete  — auto-enqueue Final Verification
  *                                    recheck after an error task completes
  *                                    (T6b-γ; port of graph.ts L309 + L511)
@@ -22,7 +26,9 @@ import type { TaskHooks } from '../_shared/types';
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
 import { buildPrompt as planBuildPrompt } from './hooks/plan';
+import { guard as commandGuard } from './hooks/command';
 import { onTaskComplete as orchestratorOnTaskComplete } from './hooks/orchestrator';
+import { executeHook } from './hooks/execute';
 
 export const hooks: TaskHooks = {
   decompose: { isExclusive },
@@ -31,6 +37,8 @@ export const hooks: TaskHooks = {
     buildPrompt: planBuildPrompt,
     toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/error/base',
   },
+  execute: executeHook,
+  command: { guard: commandGuard },
   orchestrator: {
     // Error tasks do not publish `hasOwnAttemptCounter` / `attemptCount` /
     // `attachSnapshot` / `restoreIntoWorkerState`. When the orchestrator

@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import * as decompHook from '../../../src/agents/architect/graph/code/tasks/error/hooks/decompose';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/error/hooks/conversations';
 import * as planHook from '../../../src/agents/architect/graph/code/tasks/error/hooks/plan';
+import * as commandHook from '../../../src/agents/architect/graph/code/tasks/error/hooks/command';
 import * as orchestratorHook from '../../../src/agents/architect/graph/code/tasks/error/hooks/orchestrator';
 import { hooks as errorBundle } from '../../../src/agents/architect/graph/code/tasks/error';
 import { isErrorTask } from '../../../src/agents/architect/graph/code/tasks/error/model/is';
@@ -48,6 +49,10 @@ describe('tasks/_shared/registry — error entry', () => {
     // variant template (`jobs/code/nodes/plan/variants/error/base`).
     expect(hooks?.plan?.buildPrompt).toBe(planHook.buildPrompt);
     expect(hooks?.plan?.toolLoopLogTemplate).toBe('jobs/code/nodes/plan/variants/error/base');
+    // T6b-η — error bundle publishes `command.guard` so the execute-phase
+    // build/test/typecheck block lives in tasks/, matching the
+    // "error applies fixes only" contract.
+    expect(hooks?.command?.guard).toBe(commandHook.guard);
     // T6b-γ — error bundle publishes `orchestrator.onTaskComplete` so the
     // Final-Verification auto-add lives in tasks/, not graph.ts.
     expect(hooks?.orchestrator?.onTaskComplete).toBe(orchestratorHook.onTaskComplete);
@@ -66,6 +71,64 @@ describe('tasks/_shared/registry — error entry', () => {
     // share the orchestrator's shared `_failedAttempts` counter.
     expect(errorBundle.orchestrator?.hasOwnAttemptCounter).toBeUndefined();
     expect(errorBundle.orchestrator?.attemptCount).toBeUndefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// command.guard — execute-phase build/test/typecheck block (T6b-η)
+// ────────────────────────────────────────────────────────────────────────────
+
+function guardCtx(opts: { activePhase?: 'plan' | 'execute' } = {}): any {
+  return {
+    activePhase: opts.activePhase ?? 'execute',
+    currentTaskType: 'error',
+    verificationSession: undefined,
+    isDeepDiagnostic: false,
+    fileSystem: undefined,
+    chatStatus: undefined,
+    workingDir: '/tmp',
+  };
+}
+
+describe('tasks/error/hooks/command.guard', () => {
+  it('blocks build commands in execute phase', () => {
+    const result = commandHook.guard(guardCtx(), { command: 'npm run build' });
+    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.error).toMatch(/remediation plan/);
+  });
+
+  it('blocks test commands in execute phase', () => {
+    const result = commandHook.guard(guardCtx(), { command: 'pnpm test' });
+    expect(result?.error).toMatch(/BLOCKED/);
+  });
+
+  it('blocks typecheck commands in execute phase', () => {
+    const result = commandHook.guard(guardCtx(), { command: 'tsc --noEmit' });
+    expect(result?.error).toMatch(/BLOCKED/);
+  });
+
+  it('allows install commands (error tasks may install deps to apply a fix)', () => {
+    expect(commandHook.guard(guardCtx(), { command: 'pnpm add lodash' })).toBeNull();
+    expect(commandHook.guard(guardCtx(), { command: 'npm install react' })).toBeNull();
+  });
+
+  it('allows read-only inspection commands', () => {
+    expect(commandHook.guard(guardCtx(), { command: 'ls src/' })).toBeNull();
+    expect(commandHook.guard(guardCtx(), { command: 'cat tsconfig.json' })).toBeNull();
+    expect(commandHook.guard(guardCtx(), { command: 'pnpm why react' })).toBeNull();
+  });
+
+  it('does not block in plan phase (rare no-prePlanText path needs exploration)', () => {
+    const ctx = guardCtx({ activePhase: 'plan' });
+    expect(commandHook.guard(ctx, { command: 'npm run build' })).toBeNull();
+    expect(commandHook.guard(ctx, { command: 'tsc --noEmit' })).toBeNull();
+  });
+
+  it('rejection carries a commandExecuted side-effect with exitCode -1', () => {
+    const result = commandHook.guard(guardCtx(), { command: 'npm run build' });
+    expect(result?.sideEffects).toEqual([
+      expect.objectContaining({ type: 'commandExecuted', exitCode: -1, success: false }),
+    ]);
   });
 });
 

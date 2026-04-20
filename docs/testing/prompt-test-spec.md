@@ -180,7 +180,7 @@ G. Non-prompt (비프롬프트)
 
 | 그룹 | 대상 파일 | 검증 |
 |------|-----------|------|
-| 2-A. build() 호출부 | code/execute/promptBuilder, design/docGen/intent/system, design/docGen/intent/spec | `artifacts` 키워드 존재 |
+| 2-A. build() 호출부 | code/execute/buildMessages, design/docGen/intent/system, design/docGen/intent/spec | `artifacts` 키워드 존재 |
 | 2-B. decompose 노드 | code/decompose/responseParser, design/decompose/uiDesign·systemDesign·spec | `artifactPolicy` 키워드 존재 |
 
 ### prompt-integration.test.ts

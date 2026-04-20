@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import * as decompHook from '../../../src/agents/architect/graph/code/tasks/setup/hooks/decompose';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/setup/hooks/conversations';
 import * as planHook from '../../../src/agents/architect/graph/code/tasks/setup/hooks/plan';
+import { executeHook as setupExecuteHook } from '../../../src/agents/architect/graph/code/tasks/setup/hooks/execute';
 import {
   blocksUi,
   blocksTestgen,
@@ -50,6 +51,12 @@ describe('tasks/_shared/registry — setup entry', () => {
     expect(hooks?.scheduling?.blocksTestgen).toBe(true);
     expect(hooks?.scheduling?.blocksDoc).toBe(true);
     expect(hooks?.scheduling?.blocksIntegration).toBeUndefined();
+    // T6b-ι — setup keeps the generic template but opts out of examples
+    // (foundation work should not be steered by feature-style snippets).
+    expect(hooks?.execute).toBe(setupExecuteHook);
+    expect(hooks?.execute?.skipExamples).toBe(true);
+    expect(hooks?.execute?.templatePaths).toBeUndefined();
+    expect(hooks?.execute?.skipCrossTaskContext).toBeUndefined();
   });
 
   it('bundle does not publish still-deferred hooks', () => {

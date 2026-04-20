@@ -1,11 +1,15 @@
 /**
- * feature/hooks/decompose.ts — TaskDecomposeHook
+ * feature/hooks/decompose.ts — TaskDecomposeHook.isExclusive
  *
- * Feature tasks are the only multi-task type that is NOT exclusive:
- * they are designed to run in parallel via `parallelGroup`. The
- * `isTypeExclusive` fallback in `nodes/decompose/responseParser.ts`
- * L358 only marks setup / error / verification / priority===1000 as
- * exclusive; feature tasks fall through to the `false` branch.
+ * Called from `nodes/decompose/responseParser.ts` (currently L383–385)
+ * via the `hooksForTaskType(task.type)?.decompose?.isExclusive?.(task)
+ * ?? false` dispatch — there is no inline if-chain over `task.type` at
+ * the call site, the phase layer is blind (R1). Every task type
+ * resolves its own exclusivity here: setup / error / verification all
+ * return `true`; ui / design-system / test-code / doc omit the hook
+ * entirely and the `?? false` fallback applies; feature is the one
+ * multi-task type that is NOT exclusive by default so it can run in
+ * parallel via `parallelGroup`.
  *
  * This hook documents the invariant explicitly so future callers
  * cannot accidentally flip the default by mis-editing the fallback.
@@ -20,9 +24,13 @@ import { TASK_PRIORITIES } from '../../../state';
 /**
  * Feature tasks are not exclusive by type. Priority-1000 (final
  * verification) is a historical alias that decompose re-types to
- * `'verification'` at normalisation time (see responseParser.ts L367
- * `resolvedType`); if that retyping is ever skipped, fall back to
- * exclusive so behaviour does not regress.
+ * `'verification'` at normalisation time (see `responseParser.ts`
+ * L393–394 `resolvedType`). This hook is invoked BEFORE the retyping
+ * step (at L383–385 on the still-`'feature'` task), so returning
+ * `true` for `priority === FINAL_VERIFICATION` is the defensive
+ * regression guard: if the retyping step is ever skipped or reordered,
+ * the priority-1000 task would stay `type: 'feature'` but still be
+ * marked exclusive, preserving the barrier semantics.
  */
 export function isExclusive(task: CodeTask): boolean {
   return task.priority === TASK_PRIORITIES.FINAL_VERIFICATION;

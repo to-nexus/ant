@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildRuntimeContext,
   generateFileTree,
-} from '../src/agents/architect/graph/code/nodes/execute/promptBuilder';
+} from '../src/agents/architect/graph/code/nodes/execute/buildMessages';
 import {
   buildRuntimeContext as buildDesignRuntimeContext,
 } from '../src/agents/architect/graph/design/nodes/docGen/intent/system';
