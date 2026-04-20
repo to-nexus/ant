@@ -643,7 +643,7 @@
 - [x] **14. `legacy_cleanup`** — `chat.json` (agent write path) / `saveToChatFile` / `jobConversation` 필드 / `planMini` / unused compaction 상수 일괄 제거. agent-side grep 게이트 0. ChatService HTTP layer는 §16 스코프로 명시 이관. ✅ 완료
 - [x] **16. `ui_render_migration`** — 백엔드 `/api/projects/:id/features/:feature/{trace,breadcrumbs}` 엔드포인트 + ant-ui `FeatureLogSlice` + `TraceActivityView` (turnId 그룹) + `BreadcrumbTimeline` + ChatPanel 3-way 탭 스위처. legacy Chat 탭은 §16.2에서 치환. ✅ 완료
 - [ ] **16.2. `chat_ssot_finalization`** — Chat 탭을 trace-derived 모델로 완전 치환 + ChatService/`chat.routes.ts`(GET/DELETE messages, user-message, job-error, eval-save, dismiss-choice) 은퇴 + SSE `initial_state.chat.messages` 경로 제거 + choice UX(triage_choice / decompose-choice) 재설계. §16 후속.
-- [ ] **17. `hard_reset`** — `POST /api/feature/:id/context/reset` + FeatureSection 헤더 리셋 버튼.
+- [ ] **17. `hard_reset`** — `POST /api/projects/:id/features/:feature/context/reset` + FeatureSection 헤더 리셋 버튼.
 - [ ] **18. `tier_ui_badge`** — user_turn 뱃지에 `mode · complexity · decidedBy · reason` 표시 (읽기 전용).
 
 ### Phase E — 관찰성 (1개)
@@ -1035,6 +1035,12 @@ pnpm build:cli
 
 완료 상세: §3 "16. `ui_render_migration` ✅" 참조. 이 카드는 **후속(§16.2)** 과 함께 목표를 완수한다 — 본 카드가 trace SSOT 인프라(endpoints + slice + Activity/Timeline 뷰)를 깔고, §16.2가 legacy chat 경로를 완전히 치환한다.
 
+**URL 규약 (정정)**: 원 플랜의 `/api/feature/:featureId/...` 표기는 기존 라우트 체계(`/api/projects/:id/features/:feature/...`)와 맞지 않아 전원 후자 패턴으로 구현·명시. §17 이후 모든 feature-scoped 엔드포인트는 이 패턴을 따른다.
+
+구체 구현 경로:
+- `GET /api/projects/:id/features/:feature/trace?sinceTs=...&jobTypes=code,design`
+- `GET /api/projects/:id/features/:feature/breadcrumbs`
+
 ---
 
 ### 16.2. `chat_ssot_finalization`  —  Phase D
@@ -1083,56 +1089,95 @@ rg 'chatService\.' packages/ant-cli/src                       # 필수 잔여(pe
 
 ### 17. `hard_reset`  —  Phase D
 
-**Goal**: `POST /api/feature/:id/context/reset` 백엔드 + FeatureSection 헤더 리셋 버튼. `collapseAll('user_reset', ...)` 호출로 feature.jsonl의 T2/T3 초기화.
+**Goal**: `POST /api/projects/:id/features/:feature/context/reset` 백엔드 + FeatureSection 헤더 리셋 버튼. `FileSessionAdapter.collapseAll('user_reset', jobId, turnId)` 호출로 feature.jsonl / trace.jsonl T2/T3 초기화 + `user_reset` boundary 라인 append.
 
-**선행 의존**: 16 (FeatureSection API 인프라)
+**선행 의존**: 16 (`/trace` + `/breadcrumbs` 엔드포인트 + featureLog slice로 리셋 직후 UI 재로딩 경로 준비 완료)
 **해금 대상**: (없음)
-**예상 범위**: S (백엔드 라우트 1개 + 프런트 버튼 1개)
+**예상 범위**: S (백엔드 라우트 1개 + 프런트 버튼 1개 + i18n 2개 로케일)
+
+**URL 규약 주의**:
+- 기존 라우트는 모두 `/api/projects/:id/features/:feature/...` 패턴. 원 플랜의 `/api/feature/:featureId/...` 표기는 폐기 — §16에서 `feature-log.routes.ts`도 동일한 `/api/projects/:id/features/:feature/{trace,breadcrumbs}` 패턴으로 구현됨
+- `workspaceResolver.getFeaturePath(userContext, projectId, featureName)` 경유로 feature 경로 resolve → `FileSessionAdapter` 인스턴스 생성
 
 **Landmark 파일**:
-- `packages/ant-cli/src/periphery/adapters/session/FileSessionAdapter.ts::collapseAll` (완료됨)
-- `packages/ant-cli/src/periphery/adapters/http/routes/` (라우트 신설 위치)
+- `packages/ant-cli/src/periphery/adapters/session/FileSessionAdapter.ts::collapseAll` (완료됨 — `feature.jsonl` / `trace.jsonl` 두 파일을 모두 collapse + feature.jsonl에 `user_reset` boundary append)
+- `packages/ant-cli/src/periphery/adapters/http/routes/feature-log.routes.ts` (§16 신규 — 동일 파일에 reset 라우트 추가하는 것이 자연. 또는 독립 `feature-context.routes.ts` 신설 고려)
+- `packages/ant-cli/src/periphery/adapters/http/routes/chat.routes.ts::eval-save` — `extractUserContext(req)` + `workspaceResolver.getFeaturePath(...)` 패턴 참조
 - `packages/ant-ui/src/presentation/components/FeatureSection/` (헤더 컴포넌트 위치)
+- `packages/ant-ui/src/infrastructure/http/api/featureLog.ts` (§16 신규 — 동일 파일에 `resetFeatureContext` 클라이언트 추가 자연)
+- `packages/ant-ui/src/domain/store/slices/featureLogSlice.ts` (§16 신규 — reset 직후 `clearFeatureLog()` + 재-fetch 흐름)
 
 **단계**:
-1. 백엔드 라우트: body에 optional `reason`, 기본 `'user_reset'`
-2. 프런트 버튼 + 확인 다이얼로그 (i18n 문구 ko/en)
-3. 리셋 후 SSE broadcast → 채팅 뷰 빈 상태로 전환
+1. **백엔드 라우트** (`feature-log.routes.ts` 또는 신규 `feature-context.routes.ts`):
+   ```ts
+   router.post('/projects/:id/features/:feature/context/reset', async (req, res) => {
+     const userContext = extractUserContext(req);
+     const featurePath = deps.workspaceResolver.getFeaturePath(userContext, req.params.id, req.params.feature);
+     const reason = (req.body?.reason as string) ?? 'user_reset';
+     const jobId = `reset-${Date.now()}`;
+     const turnId = `t-reset-${Date.now().toString(16)}`;
+     const adapter = new FileSessionAdapter(featurePath, 'architect', req.params.id, req.params.feature);
+     await adapter.collapseAll(reason, jobId, turnId);
+     res.json({ success: true, reason, jobId, turnId });
+   });
+   ```
+2. **프런트 API 클라이언트** (`featureLog.ts`): `resetFeatureContext(projectId, featureName, reason?)` → `apiPost`
+3. **프런트 버튼** (`FeatureSection` 헤더): 리셋 아이콘 버튼 + 확인 다이얼로그 (i18n ko/en). 성공 응답 후 `clearFeatureLog()` + `loadFeatureTrace()` + `loadFeatureBreadcrumbs()` 재호출 — §16에서 준비된 경로 재사용
+4. **(선택) SSE broadcast**: reset 이벤트를 Redis publish해 다른 pod/탭에서도 즉시 반영. 본 MVP 범위에서는 단일 pod + 탭 내 재-fetch로 충분
 
 **AC**:
-- [ ] 리셋 후 `loadSinceBoundary`가 빈 배열 반환
-- [ ] trace.jsonl은 그대로 유지 (UI 연속성)
+- [ ] 리셋 후 `loadSinceBoundary`가 빈 배열 반환 (user_reset boundary 이후 T2 비어있음)
+- [ ] trace.jsonl의 기존 라인은 `collapsed=true`로 마킹되나 디스크 보존 (UI는 숨김, 감사/복구 여지 유지)
 - [ ] 확인 다이얼로그 없이는 리셋되지 않음 (실수 방지)
+- [ ] URL이 `/api/projects/:id/features/:feature/context/reset` 패턴 준수 (기존 라우트 규약 일관성)
 - [ ] 내 수정 파일 타입 에러 0
 
-**검증**: 수동 smoke + `pnpm build`
+**검증**:
+```bash
+cd /Users/probe/dev/ant/packages/ant-cli
+pnpm exec tsc --noEmit 2>&1 | grep -c 'error TS'   # 27 baseline
+pnpm vitest run                                     # regression 없음
+# 수동 smoke: 리셋 → Activity/Timeline 탭이 즉시 비고, 다음 user_turn부터 새 boundary 이후로 누적
+```
 
 ---
 
 ### 18. `tier_ui_badge`  —  Phase D
 
-**Goal**: 채팅 user_turn 메시지 옆 뱃지로 `mode · complexity · decidedBy · reason` 표시. 읽기 전용.
+**Goal**: user_turn 메시지 옆 뱃지로 `mode · complexity · decidedBy · reason` 표시. 읽기 전용.
 
-**선행 의존**: 16 (채팅 렌더 turnId 기반 재배선)
-**해금 대상**: (없음)
-**예상 범위**: S (프런트 컴포넌트 1개 + 병합 로직)
+**선행 의존**: 16 (§16의 `TraceActivityView`가 turnId 그룹 렌더링 + turn 헤더 자리 이미 준비됨)
+**해금 대상**: (없음 — §16.2에서 Chat 탭이 trace-derived로 치환되면 거기에도 자연 적용됨)
+**예상 범위**: S (백엔드 user_turn_meta 전송 + 프런트 Badge 컴포넌트 1개 + 병합 로직)
+
+**URL 규약 주의**:
+- 현재 `/api/projects/:id/features/:feature/breadcrumbs` 엔드포인트는 breadcrumb만 반환. `user_turn_meta`도 UI에 필요하므로 옵션 2개:
+  - (A) 기존 `/trace` 엔드포인트에 user_turn_meta를 feature.jsonl로부터 합쳐 반환 (Trace Line 유니온 확장)
+  - (B) 신규 `/features/:feature/user-turn-meta` 또는 `/features/:feature/feature-log` (user_turn + user_turn_meta + breadcrumb 통합) 엔드포인트 추가
+- 어느 쪽이든 **URL은 반드시 `/api/projects/:id/features/:feature/...` 패턴 유지**
 
 **Landmark 파일**:
-- `packages/ant-ui/src/presentation/components/` 채팅 메시지 컴포넌트
-- feature.jsonl line 타입 (shared)
+- `packages/ant-ui/src/presentation/components/chat/feature-log/TraceActivityView.tsx` (§16 신규) — turn 헤더에 `{jobType, turnId, firstTs}` 렌더 중. 여기에 `mode / complexity / decidedBy / reason` 배지 행 추가하는 것이 최소 변경
+- `packages/ant-ui/src/domain/store/slices/featureLogSlice.ts` (§16 신규) — user_turn_meta 저장 필드 추가 필요 (현재 traceLines + breadcrumbs만 보유)
+- `packages/ant-shared/src/session-log.ts` — `FeatureUserTurnLine.mode` (이미 있음) / `FeatureUserTurnMetaLine.{complexity, decidedBy, reason}` (이미 있음) SSOT
+- `packages/ant-cli/src/periphery/adapters/session/FileSessionAdapter.ts::loadSinceBoundary` — `userTurnMetas` 포함 반환 중 (이미 존재). HTTP 라우트에서 이 결과를 노출하면 됨
+- `packages/ant-cli/src/periphery/adapters/http/routes/feature-log.routes.ts` (§16 신규) — 여기에 `/user-turn-meta` 라우트 추가하거나 기존 `/breadcrumbs` 응답 shape 확장
 
 **단계**:
-1. user_turn + user_turn_meta 병합 로직 (turnId join)
-2. Badge 컴포넌트: 4개 필드 중 존재하는 것만 표시
-3. 클릭 토글/overrule은 구현 금지 (후속 플랜)
+1. **백엔드**: 선택한 엔드포인트 옵션에 따라 `FileSessionAdapter` 결과를 HTTP로 노출 (기존 `loadSinceBoundary`의 userTurns/userTurnMetas 재사용)
+2. **프런트 슬라이스 확장**: `featureLogSlice`에 `userTurnMetas: FeatureUserTurnMetaLine[]` 추가 + fetch 액션
+3. **병합 로직**: `TraceActivityView`의 turn 헤더에서 `turnId` 기준으로 user_turn(mode) + user_turn_meta(complexity/decidedBy/reason) join
+4. **Badge 컴포넌트**: 4개 필드 중 존재하는 것만 표시 (mode / complexity / decidedBy / reason). 값별 색상 토큰 (예: mode=explain→회색, generate→emerald, refactor→purple)
+5. 클릭 토글/overrule은 구현 금지 (후속 플랜)
 
 **AC**:
-- [ ] 뱃지가 user_turn마다 표시
+- [ ] 뱃지가 `TraceActivityView` turn 헤더마다 표시 (해당 turnId에 mode 또는 meta가 있을 때만)
 - [ ] meta 누락 시 해당 필드만 생략 (UI 무너지지 않음)
 - [ ] 읽기 전용 (onClick 핸들러 없음)
+- [ ] URL이 `/api/projects/:id/features/:feature/...` 패턴 준수
 - [ ] 내 수정 파일 타입 에러 0
 
-**검증**: `pnpm build:ui`
+**검증**: `pnpm build:ui` + 수동 smoke (§16 Activity 탭 열어 turn 헤더 확인)
 
 ---
 
