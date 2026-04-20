@@ -18,7 +18,6 @@
  */
 
 import path from 'node:path';
-import { getTechTier } from '@ant/shared';
 import { ArchitectGraphState } from '../../state';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
@@ -37,6 +36,9 @@ import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { isFinalVerificationTask } from '../../utils/taskClassification';
+import { isUiTask } from '../../tasks/ui';
+import { isErrorTask } from '../../tasks/error';
+import { isDiagnosticTask } from '../../tasks/_shared/classification';
 import type { CodeTask } from '../../../../types/task';
 
 export async function execute(
@@ -72,52 +74,25 @@ export async function execute(
   // Guardrail: UI task requires UI-doc injection contract
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Principle:
-  // - If the task is explicitly marked UI (from decompose), then the UI docs must be available for injection.
-  // - If UI docs EXIST in inputs/sources but are missing/unloaded, we must FAIL FAST to avoid silent drift.
-  // - If UI docs truly do NOT exist for this feature, do NOT fail: proceed with defaults derived from PRD/design.
-  // - Use the existing self-healing path: fileErrors → checkTaskStatus → enforce → plan.
-  if (state.currentTask?.type === 'ui') {
-    const path = await import('path');
-
-    const fileSystemRoot = state.deps?.fileSystem?.getRootPath?.();
-    const featurePathAbs = state.context.featurePath;
-    const featurePathRel = (() => {
-      if (!featurePathAbs) return undefined;
-      if (fileSystemRoot && typeof fileSystemRoot === 'string') {
-        return path.relative(fileSystemRoot, featurePathAbs);
-      }
-      // Worst-case: assume FileSystemPort root already equals featurePathAbs parent (cloud project root)
-      return featurePathAbs.startsWith('/') ? featurePathAbs.slice(1) : featurePathAbs;
-    })();
-
-    // Detect whether UI docs exist (canonical only: inputs/sources/*).
-    // This distinguishes:
-    // - "Docs truly absent" (allowed)
-    // - "Docs present but not injected/loaded" (bug; fail fast)
-    const uiDocsExist = await (async () => {
-      const fsPort = state.deps?.fileSystem as any;
-      if (!fsPort || !featurePathRel) return false;
-      const candidates = [
-        'ui-spec.json',
-        'ui-assets.json',
-        'ui-tokens.json',
-      ].map(name => path.join(featurePathRel, 'inputs', 'sources', name));
-      for (const p of candidates) {
-        try {
-          if (await fsPort.fileExists(p)) return true;
-        } catch {
-          // ignore
-        }
-      }
-      return false;
-    })();
-
-    // Best-effort: if no UI artifacts in pool, try loading from disk and appending
+  // - UI-doc presence is a role-based signal via ArtifactPoolView.hasUi()
+  //   (category match on ARTIFACT_PREFIX.UI = 'outputs/design/ui/').
+  // - If the pool lacks UI artifacts, best-effort self-heal by reading the
+  //   canonical location via ArtifactService.loadParsedUiContext() and
+  //   appending as role:'context' artifacts.
+  // - If docs truly do not exist for this feature, proceed silently with
+  //   defaults derived from PRD/design (no fail-fast).
+  if (isUiTask(state.currentTask)) {
     const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
     const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
-    if (!new ArtifactPoolView(state.artifacts || []).hasUi() && state.deps?.git && state.deps?.fileSystem) {
+
+    const poolView = new ArtifactPoolView(state.artifacts || []);
+    if (!poolView.hasUi() && state.deps?.git && state.deps?.fileSystem) {
       try {
-        const parsed = await ArtifactService.loadParsedUiContext(state.context, state.deps.git, state.deps.fileSystem);
+        const parsed = await ArtifactService.loadParsedUiContext(
+          state.context,
+          state.deps.git,
+          state.deps.fileSystem,
+        );
         if (parsed) {
           const uiPool: import('@ant/shared').ResolvedArtifact[] = [];
           if (parsed.tokens) uiPool.push({ path: `${AP.UI}tokens`, content: parsed.tokens, role: 'context' });
@@ -134,19 +109,6 @@ export async function execute(
       } catch {
         // ignore
       }
-    }
-
-    if (uiDocsExist && !new ArtifactPoolView(state.artifacts || []).hasUi()) {
-      const msg =
-        `UI task requires UI specification docs to be loaded and injected, but none were available.\n` +
-        `Docs appear to exist under inputs/sources, but UI-doc injection did not occur.\n` +
-        `This would cause implementation drift (e.g., placeholders instead of mapped assets).\n` +
-        `Fix: ensure inputs/sources documents are user-filled (not templates/comments-only) and that featurePath/workspace resolution is correct, then retry.`;
-      return {
-        ...state,
-        fileErrors: [msg],
-        llmResponse: { done: false, textResponse: '', thinking: '', toolCalls: [] }
-      };
     }
   }
 
@@ -181,7 +143,7 @@ export async function execute(
   // LLM must know its remaining budget to prioritize file output over analysis.
   {
     const currentCall = (state._executeCallIndex || 0) + 1;
-    const isErrorType = state.currentTask?.type === 'error';
+    const isErrorType = isErrorTask(state.currentTask);
     const isFinalType = state.currentTask ? isFinalVerificationTask(state.currentTask) : false;
     const isPrePlanned = !!(state.currentTask as CodeTask)?.prePlanText;
     // Pre-planned error tasks get a bounded budget (25) since their scope is limited by batch split.
@@ -390,7 +352,7 @@ export async function execute(
   // which Safety Net C (threshold=1) immediately kills, wasting an entire
   // plan→execute→enforce cycle and triggering the "restart from beginning" loop.
   const isDiagnosticWithPlan =
-    (state.currentTask?.type === 'verification' || state.currentTask?.type === 'error')
+    isDiagnosticTask(state.currentTask)
     && !!state.planText;
 
   // ✅ Track token usage for this LLM call
@@ -516,6 +478,10 @@ export async function execute(
         state._verificationTracker.buildPassed = false;
         state._verificationTracker.testPassed = false;
       }
+      // T4b-α: mirror the "streamed files touched code → invalidate every
+      // verification gate" semantic into the Session. `onFileChanged('all')`
+      // matches the three `*Passed = false` writes above atomically.
+      state.verification?.onFileChanged('all');
       state._executeModifiedFiles = true;
     }
 
@@ -657,7 +623,6 @@ export async function execute(
         _finalTaskLoopCount: 0,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
-        techTier: getTechTier(state),
         profile: state.profile,
       };
     }
@@ -734,9 +699,9 @@ export async function execute(
     // (which persists across iterations and causes false positives from prior tool calls).
     const streamedInThisCall = finalizeResult?.streamedFiles || [];
     if (!explicitDone && toolCalls.length === 0 && streamedInThisCall.length > 0
-        && (state.currentTask?.type === 'verification' || state.currentTask?.type === 'error')) {
+        && isDiagnosticTask(state.currentTask)) {
       explicitDone = true;
-      console.log(`✅ [execute] Auto-completing ${state.currentTask.type} task: ${streamedInThisCall.length} file(s) created via <file> tag`);
+      console.log(`✅ [execute] Auto-completing ${state.currentTask?.type} task: ${streamedInThisCall.length} file(s) created via <file> tag`);
     }
 
     // Safety Net: track final task loop count (MUST go through channel system via return)
@@ -806,7 +771,7 @@ export async function execute(
             ...streamedFilePaths.map(fp => `  - ${fp}`),
           );
         }
-        const isDiagnosticType = state.currentTask?.type === 'verification' || state.currentTask?.type === 'error';
+        const isDiagnosticType = isDiagnosticTask(state.currentTask);
         const doneHint = isDiagnosticType
           ? 'If you have applied all fixes from the remediation plan, output <done>true</done> now. Do NOT run build/test — a separate diagnostic phase re-verifies automatically.'
           : 'If you have completed all work for this task, output <done>true</done> now.';
@@ -838,7 +803,6 @@ export async function execute(
           _finalTaskLoopCount: newFinalTaskLoopCount,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
-          techTier: getTechTier(state),
           profile: state.profile,
         };
       }
@@ -869,7 +833,6 @@ export async function execute(
       _finalTaskLoopCount: newFinalTaskLoopCount,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
-      techTier: getTechTier(state),
       profile: state.profile,
     };
   } catch (error) {

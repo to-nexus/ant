@@ -104,7 +104,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 2: Codebase file listing (git-based)
+  // STEP 2: Codebase file listing (fileSystem-based)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let codebaseFilePaths: string[] | undefined;
   let gitDiffResult: any;
@@ -130,60 +130,56 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     throw new Error('[Decompose] PromptBuilder not available');
   }
   
-  // ✅ CRITICAL: Check if project has existing code via git (fallback if Vector DB empty)
-  // Vector DB might be empty even when code exists (user hasn't run 'ant index')
+  // Detect project code inside the feature's `codebase/` scope (Vector DB may be empty
+  // when the user hasn't run `ant index` yet). A single fileSystem.listFiles call
+  // drives both the hasProjectCode heuristic and the codebaseFilePaths fallback,
+  // so both observations share the same scope.
   let hasProjectCode = false;
-  if (state.deps?.git) {
+  const fsPort = state.deps?.fileSystem;
+  if (fsPort) {
     try {
-      const repoRoot = await state.deps.git.getRepoRoot();
-      console.log(`   🔍 [Decompose] Checking project code at: ${repoRoot}`);
-      
-      const fs = await import('fs/promises');
-      const path = await import('path');
-      
-      const entries = await fs.readdir(repoRoot, { withFileTypes: true });
-      
-      // Check for common source directories (Node: src/lib/app, Go: cmd/internal/services, Python: src/app)
-      const hasSourceDir = entries.some((e: any) => 
-        e.isDirectory() && (
-          e.name === 'src' || e.name === 'lib' || e.name === 'app' ||
-          e.name === 'cmd' || e.name === 'internal' || e.name === 'services'
-        )
-      );
-      
-      // Check for project config files (Node: package.json, Go: go.mod/go.work, etc.)
-      const hasConfigFile = entries.some((e: any) => 
-        e.isFile() && (
-          e.name === 'package.json' ||
-          e.name === 'go.mod' || e.name === 'go.work' ||
-          e.name === 'Cargo.toml' ||
-          e.name === 'pyproject.toml' || e.name === 'requirements.txt' ||
-          e.name === 'pom.xml' || e.name === 'build.gradle' || e.name === 'build.gradle.kts'
-        )
-      );
-      
-      hasProjectCode = hasSourceDir || hasConfigFile;
-      console.log(`   ${hasProjectCode ? '✅' : '❌'} Project code exists: ${hasProjectCode} (hasSourceDir=${hasSourceDir}, hasConfigFile=${hasConfigFile})`);
-      
-      if (hasProjectCode && (!codebaseFilePaths || codebaseFilePaths.length === 0)) {
-        console.log(`⚠️  [Decompose] Project has code but codebaseFilePaths is empty — using git.listFiles() fallback`);
-        try {
-          const allFiles = await state.deps.git.listFiles('', [
-            'node_modules', '.git', 'vendor', '__pycache__', 'dist', 'build',
-            '.next', '.nuxt', '.output', 'coverage', '.turbo',
-            '*.sum', '*.lock',
-          ]);
-          if (allFiles.length > 0) {
-            codebaseFilePaths = allFiles;
-            console.log(`   ✅ Fallback: loaded ${allFiles.length} files via git.listFiles()`);
-          }
-        } catch (fallbackErr) {
-          console.warn(`   ⚠️  git.listFiles() fallback failed:`, fallbackErr);
+      const allFiles = await fsPort.listFiles('codebase', [
+        'node_modules', '.git', 'vendor', '__pycache__', 'dist', 'build',
+        '.next', '.nuxt', '.output', 'coverage', '.turbo',
+        '*.sum', '*.lock',
+      ]);
+
+      // listFiles returns paths relative to the feature root (e.g. "codebase/src/foo.ts").
+      // Normalize to codebase-relative for rule matching.
+      const codebasePrefix = 'codebase/';
+      const relFiles = allFiles.map(p => p.startsWith(codebasePrefix) ? p.slice(codebasePrefix.length) : p);
+
+      const sourceDirs = new Set(['src', 'lib', 'app', 'cmd', 'internal', 'services']);
+      const configFiles = new Set([
+        'package.json',
+        'go.mod', 'go.work',
+        'Cargo.toml',
+        'pyproject.toml', 'requirements.txt',
+        'pom.xml', 'build.gradle', 'build.gradle.kts',
+      ]);
+
+      let hasSourceDir = false;
+      let hasConfigFile = false;
+      for (const rel of relFiles) {
+        const slashIdx = rel.indexOf('/');
+        if (slashIdx > 0) {
+          const firstSeg = rel.slice(0, slashIdx);
+          if (!hasSourceDir && sourceDirs.has(firstSeg)) hasSourceDir = true;
+        } else if (!hasConfigFile && configFiles.has(rel)) {
+          hasConfigFile = true;
         }
+        if (hasSourceDir && hasConfigFile) break;
+      }
+
+      hasProjectCode = hasSourceDir || hasConfigFile;
+      console.log(`   ${hasProjectCode ? '✅' : '❌'} [Decompose] Project code exists: ${hasProjectCode} (hasSourceDir=${hasSourceDir}, hasConfigFile=${hasConfigFile})`);
+
+      if (hasProjectCode && (!codebaseFilePaths || codebaseFilePaths.length === 0)) {
+        codebaseFilePaths = relFiles;
+        console.log(`   ✅ [Decompose] Loaded ${relFiles.length} files via fileSystem.listFiles('codebase')`);
       }
     } catch (error) {
-      console.warn(`⚠️  [Decompose] Failed to check project code existence:`, error);
-      // Don't fail the entire decompose, just assume no code
+      console.warn(`⚠️  [Decompose] Failed to probe codebase via fileSystem.listFiles:`, error);
       hasProjectCode = false;
     }
   }
@@ -362,9 +358,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const allTools = [...DISCOVERY_TOOLS, ...(useToolMode ? [READ_DESIGN_DOC_TOOL] : [])];
     const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, {
       tools: allTools,
-      toolHandler: (name, args) => {
+      toolHandler: async (name, args) => {
         if (name === 'read_design_doc') return handleReadDesignDoc(args.name, state);
-        const discoveryResult = discoveryHandler(name, args);
+        const discoveryResult = await discoveryHandler(name, args);
         if (!discoveryResult.startsWith('Error: Unknown tool')) return discoveryResult;
         return `Error: Unknown tool "${name}"`;
       },
@@ -414,12 +410,22 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
     if (state.deps?.session && state.context.featureFolder) {
       try {
+        // CRITICAL: FileSessionAdapter.updateArtifacts replaces session.state
+        // wholesale. Load the existing state first and merge the pause markers
+        // so jobId / jobTiming / tokenUsage / estimatingTokenUsage / profile /
+        // designDocUnknownPackages / userLanguage / etc. survive the pause.
+        const existing = await state.deps.session.load(
+          state.context.project,
+          state.context.featureFolder,
+          'code',
+        );
         await state.deps.session.updateArtifacts(
           state.context.project,
           state.context.featureFolder,
           'code',
           {
             state: {
+              ...(existing?.state || {}),
               awaitingDecomposeClarify: true,
               resolvedAction: state.resolvedAction,
               directive: state.directive,
@@ -458,6 +464,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     unknownPackages,
     boundary: parsedBoundary,
     complexity,
+    complexityReason,
+    complexityDecidedBy,
     directHints,
     specClarify,
   } = parsed;
@@ -473,14 +481,23 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
     if (state.deps?.session && state.context.featureFolder) {
       try {
+        // CRITICAL: Preserve prior session.state when marking specClarify.
+        // FileSessionAdapter.updateArtifacts replaces state wholesale, so a
+        // partial patch would wipe jobId / jobTiming / tokenUsage /
+        // estimatingTokenUsage / profile / designDocUnknownPackages and
+        // break resume continuity after proceed_without_spec.
+        const existing = await state.deps.session.load(
+          state.context.project,
+          state.context.featureFolder,
+          'code',
+        );
         await state.deps.session.updateArtifacts(
           state.context.project,
           state.context.featureFolder,
           'code',
           {
-            // `awaitingDecomposeClarify` / `specClarify` / `complexity` / `directHints`
-            // are session-redesign fields; SessionState surface is extended in legacy_cleanup.
             state: {
+              ...(existing?.state || {}),
               awaitingDecomposeClarify: true,
               specClarify,
               complexity,
@@ -489,7 +506,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
               directive: state.directive,
               overrideDirective: state.overrideDirective,
               chatSource: state.chatSource,
-            } as any,
+            },
           }
         );
       } catch { /* non-critical */ }
@@ -515,6 +532,18 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   if (directMode) {
     console.log(`🎯 [Decompose] Direct tier selected: complexity=${complexity}, mode=${mode || 'unknown'} (tasks=${tasks.length})`);
+    // Matrix SSOT: oneshot/exploratory → `<tasks>[]`. If the LLM emits tasks
+    // anyway, the direct node bypasses the queue — passing them through
+    // `validateTasks` / `createTaskQueue` would raise spurious "final
+    // verification missing" errors and abort an otherwise-valid direct path.
+    // Observe the violation (warn), then clear to keep the queue empty.
+    if (tasks.length > 0) {
+      console.warn(
+        `⚠️  [Decompose] LLM emitted ${tasks.length} task(s) for complexity='${complexity}' — ` +
+        `expected '<tasks>[]' per the Output shape matrix. Ignoring tasks; direct node will consume directHints only.`
+      );
+      tasks.length = 0;
+    }
   }
 
   // Inter-Job Context Bridge: finalize boundary
@@ -556,7 +585,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const { buildTechTier, mergeTechTierConfigs } = await import('@ant/shared');
     const stack = parsedTechTier.stack as 'frontend' | 'backend' | 'fullstack' | undefined;
     const defaultTier = buildTechTier(
-      { language: parsedTechTier.language, framework: parsedTechTier.framework },
+      { language: parsedTechTier.language, framework: parsedTechTier.framework ?? undefined },
       stack,
     );
 
@@ -806,6 +835,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     _phaseTimings: finalPhaseTimings,
     boundary: finalBoundary,
     complexity,
+    complexityDecidedBy,
     directHints,
     directMode,
     specClarify: undefined,
@@ -823,7 +853,58 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     await saveCheckpoint(updatedState);
     console.log(`✅ [Decompose] Checkpoint saved with ${tasks.length} tasks\n`);
   }
-  
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 9.5: user_turn_meta patch (§18 tier_ui_badge + featureContext hint)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Decompose has produced the final complexity classification for this
+  // turn. The patch line feeds TWO downstream consumers:
+  //   1. UI tier badge (TraceActivityView)      — `complexity / decidedBy / reason`
+  //   2. resolve → featureContextBuilder         — complexity hint in prompt
+  //
+  // Design SSOT: `docs/architecture/18-session-redesign.md` §4.1 ("user_turn_meta
+  // — complexity 판정 패치 (decompose 후 learn에서 append)"). The doc originally
+  // said "learn에서 append", but learn only runs in the `plan` path
+  // (`todo` complexity); `oneshot`/`exploratory` hand off to `direct` +
+  // `parallelOrchestrator` which exit without visiting learn's isLastTask
+  // branch. Writing here covers every path uniformly.
+  //
+  // Idempotency: if decompose re-runs (e.g. after `proceed_without_spec`
+  // resumed the specClarify pause), we append a fresh meta line. The
+  // feature.jsonl reader merges by turnId and picks the latest, so extra
+  // lines are acceptable; the alternative (tracking "already written")
+  // would require new state plumbing for zero net benefit.
+  //
+  // Side-effect only. Failures are logged and swallowed — meta is an
+  // observability patch; the job must never abort on its absence.
+  if (state.deps?.session && state.turnId && timingJobId) {
+    try {
+      await state.deps.session.appendUserTurnMeta({
+        type: 'user_turn_meta',
+        ts: new Date().toISOString(),
+        jobId: timingJobId,
+        turnId: state.turnId,
+        jobType: 'code',
+        complexity,
+        decidedBy: complexityDecidedBy,
+        reason: (complexityReason && complexityReason.length > 0)
+          ? complexityReason
+          // Fallback keeps `reason` a non-empty string (required by
+          // FeatureUserTurnMetaLine). The value is still observable: readers
+          // can see the classification came from a heuristic fallback with
+          // no LLM rationale, or from the LLM without an explicit reason.
+          : (complexityDecidedBy === 'heuristic'
+            ? 'heuristic fallback — no <complexity> tag'
+            : 'classification emitted without <complexityReason>'),
+      });
+      console.log(
+        `🧭 [Decompose] user_turn_meta appended (complexity=${complexity} decidedBy=${complexityDecidedBy})`,
+      );
+    } catch (err) {
+      console.warn('⚠️  [Decompose] appendUserTurnMeta failed:', err);
+    }
+  }
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 10: Return updated state
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

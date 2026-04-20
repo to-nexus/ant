@@ -103,7 +103,7 @@ export async function decomposeWithToolLoop(
   llm: LLMClient,
   messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
   tools: ToolDefinition[],
-  toolHandler: (name: string, args: Record<string, any>) => string,
+  toolHandler: (name: string, args: Record<string, any>) => string | Promise<string>,
   options: DecomposeToolLoopOptions,
 ): Promise<{ response: string; usage?: TaskTokenUsage }> {
   const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
@@ -178,7 +178,7 @@ export async function decomposeWithToolLoop(
 
     const toolResults: MessageContentBlock[] = [];
     for (const tc of toolCalls) {
-      let result = toolHandler(tc.name, tc.input);
+      let result = await toolHandler(tc.name, tc.input);
       cumulativeToolResultChars += result.length;
 
       if (cumulativeToolResultChars > TOOL_RESULT_BUDGET) {

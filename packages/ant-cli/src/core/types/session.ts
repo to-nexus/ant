@@ -6,7 +6,7 @@
  */
 
 import type { AgentJob, CodebaseProfile } from './agent';
-import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, TechTier, InferredAction, Boundary } from '@ant/shared';
+import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, InferredAction, Boundary, Complexity, SpecClarify } from '@ant/shared';
 import type { MessageContentBlock } from '../ports/llm';
 
 // Re-export shared types
@@ -186,18 +186,43 @@ export interface SessionState {
   // Unified conversations record (new format — node:* + session:* keys)
   conversations?: Record<string, any[]>;
 
-  // Verification state carried across resumes. See
-  // `agents/architect/graph/code/utils/verificationAttempts.ts` and
-  // `utils/verificationCompleteness.ts` for semantics. Only the scenario
-  // harness path in `runner.ts` writes these; the production path rehydrates
-  // via `TaskWorker` resumeState + per-task fresh initialisation.
+  /**
+   * Verification session snapshot — the post-T4a SSOT that carries the
+   * current diagnostic cycle (required/passed gates, attempt counter,
+   * plan history, dep hash, batch-split count, previous batch
+   * diagnostics) across session boundaries. Produced by
+   * `VerificationSession.snapshot()` and consumed by
+   * `VerificationSession.rehydrate()` in `runner.ts`.
+   *
+   * Typed as `unknown` to keep `core/types/session.ts` free of
+   * code-job-specific imports; the concrete shape is
+   * `VerificationSnapshot` (see
+   * `agents/architect/graph/code/tasks/verification/model/snapshot.ts`).
+   * Added in T7 alongside the legacy fields below; those three become
+   * `@deprecated` in T4a and are removed in T4b.
+   */
+  verification?: unknown;
+
+  /**
+   * Legacy verification state carried across resumes. Semantics were
+   * historically encoded across three discrete fields; T4a unified them
+   * under a single `VerificationSnapshot` persisted to `verification`
+   * above. These fields remain so the `ANT_SCENARIO_PRESERVE_RETRIES`
+   * scenario-harness path in `runner.ts` can continue seeding fixture
+   * values. The production path uses `verification` exclusively.
+   *
+   * @deprecated T4a — will be removed in T4b. Use `verification` instead.
+   */
   _verificationAttempts?: number;
+  /** @deprecated T4a — removed in T4b. Use `verification` instead. */
   _verificationTracker?: any;
+  /** @deprecated T4a — removed in T4b. Use `verification` instead. */
   _appliedPlanHistory?: string[];
 
   // Detection & Profile
+  // Effective TechTier is derived on demand via getTechTier(state) from
+  // resolvedAction.basis.techTier. Do not persist as a top-level field.
   resolvedAction?: ResolvedActionContext;
-  techTier?: TechTier;
   profile?: CodebaseProfile;
   lastInferredAction?: InferredAction;
 
@@ -223,6 +248,63 @@ export interface SessionState {
   figmaStartNodeId?: string;
   awaitingDetectClarify?: boolean;
   awaitingClarify?: boolean;
+
+  // ============================================
+  // Session Redesign (5-tier execution model)
+  // ============================================
+
+  /**
+   * Decompose-level clarify pause. Set when either (a) the clarify tool was
+   * invoked during the decompose LLM turn, or (b) Decompose emitted
+   * `<specClarify>`. Readers: routeAfterResolve (resume path).
+   */
+  awaitingDecomposeClarify?: boolean;
+
+  /**
+   * 3-way complexity classification emitted by decompose.
+   * Consumed by routeAfterDecompose + learn breadcrumb policy.
+   * Safe default: 'todo' (see decompose/responseParser.normalizeComplexity).
+   */
+  complexity?: Complexity;
+
+  /**
+   * Hints produced alongside `complexity` for the `direct` node.
+   * Persisted so resume paths can rebuild direct-node context without
+   * re-running decompose.
+   */
+  directHints?: { targetFiles?: string[]; explorationScope?: string };
+
+  /**
+   * Narrow view of `complexity` used by the `direct` node to pick a loop
+   * budget. Derived from `complexity` in decompose.
+   */
+  directMode?: 'oneshot' | 'exploratory';
+
+  /**
+   * Spec-clarify choice emitted by Decompose when a `todo`-complexity
+   * generate/refactor job has no design / directive-relevant spec source.
+   * Presence pauses the job at `__end__` pending user choice.
+   */
+  specClarify?: SpecClarify;
+
+  /**
+   * User-bypass flag for spec-clarify. Set by the `proceed_without_spec`
+   * route handler; read by decompose on re-entry to suppress re-emission
+   * of `<specClarify>`.
+   */
+  _specClarifyBypassed?: boolean;
+
+  /**
+   * Runtime-escalation guard: the `direct` node may re-enter `decompose`
+   * at most once per job. Set true when direct promotes to decompose;
+   * read by `routeAfterDirect` to prevent infinite direct↔decompose loops.
+   */
+  _promotedThisJob?: boolean;
+
+  /**
+   * Direct-node escalation signal surfaced to `routeAfterDirect`.
+   */
+  needsEscalation?: boolean;
 }
 
 // ============================================
