@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import type { TraceLine } from '@ant/shared';
+import type {
+  TraceLine,
+  FeatureUserTurnLine,
+  FeatureUserTurnMetaLine,
+} from '@ant/shared';
 
 /**
  * Trace-based activity view — chat history derived from trace.jsonl,
@@ -18,9 +22,15 @@ import type { TraceLine } from '@ant/shared';
 export function TraceActivityView() {
   const { t } = useTranslation('chat');
   const traceLines = useStore(s => s.traceLines);
+  const userTurns = useStore(s => s.userTurns);
+  const userTurnMetas = useStore(s => s.userTurnMetas);
   const status = useStore(s => s.traceStatus);
   const error = useStore(s => s.traceError);
 
+  const tierByTurnId = useMemo(
+    () => buildTierIndex(userTurns, userTurnMetas),
+    [userTurns, userTurnMetas],
+  );
   const groups = useMemo(() => groupByTurn(traceLines), [traceLines]);
 
   if (status === 'loading' && groups.length === 0) {
@@ -56,10 +66,49 @@ export function TraceActivityView() {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-4">
       {groups.map(group => (
-        <TurnBlock key={group.turnId} group={group} />
+        <TurnBlock
+          key={group.turnId}
+          group={group}
+          tier={tierByTurnId.get(group.turnId)}
+        />
       ))}
     </div>
   );
+}
+
+/**
+ * Tier info merged from feature.jsonl user_turn + user_turn_meta by turnId.
+ * All fields are optional — only renders the badges that actually exist
+ * (`mode` always comes from user_turn, `complexity/decidedBy/reason`
+ * from the paired user_turn_meta once Decompose finishes).
+ */
+interface TierInfo {
+  mode?: FeatureUserTurnLine['mode'];
+  complexity?: FeatureUserTurnMetaLine['complexity'];
+  decidedBy?: FeatureUserTurnMetaLine['decidedBy'];
+  reason?: FeatureUserTurnMetaLine['reason'];
+}
+
+function buildTierIndex(
+  userTurns: FeatureUserTurnLine[],
+  userTurnMetas: FeatureUserTurnMetaLine[],
+): Map<string, TierInfo> {
+  const byTurn = new Map<string, TierInfo>();
+  for (const turn of userTurns) {
+    if (!turn.turnId) continue;
+    const entry = byTurn.get(turn.turnId) ?? {};
+    if (turn.mode) entry.mode = turn.mode;
+    byTurn.set(turn.turnId, entry);
+  }
+  for (const meta of userTurnMetas) {
+    if (!meta.turnId) continue;
+    const entry = byTurn.get(meta.turnId) ?? {};
+    entry.complexity = meta.complexity;
+    entry.decidedBy = meta.decidedBy;
+    entry.reason = meta.reason;
+    byTurn.set(meta.turnId, entry);
+  }
+  return byTurn;
 }
 
 interface TurnGroup {
@@ -103,15 +152,16 @@ function groupByTurn(lines: TraceLine[]): TurnGroup[] {
   return groups;
 }
 
-function TurnBlock({ group }: { group: TurnGroup }) {
+function TurnBlock({ group, tier }: { group: TurnGroup; tier?: TierInfo }) {
   return (
     <article className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-white/[0.02] shadow-sm">
-      <header className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+      <header className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
           <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] uppercase tracking-wide">
             {group.jobType}
           </span>
           <span className="font-mono">{group.turnId}</span>
+          {tier ? <TierBadges tier={tier} /> : null}
         </div>
         <time className="text-[11px] text-gray-400 dark:text-gray-500">{formatTs(group.firstTs)}</time>
       </header>
@@ -136,6 +186,82 @@ function TurnBlock({ group }: { group: TurnGroup }) {
     </article>
   );
 }
+
+/**
+ * Read-only tier badges for a user_turn.
+ *
+ * Shows whichever of `mode / complexity / decidedBy / reason` is present
+ * — `reason` is gated behind the user's hover (title attribute) to keep
+ * the header compact. No interactions; overrule is an explicit follow-up
+ * plan (see §18).
+ */
+function TierBadges({ tier }: { tier: TierInfo }) {
+  const { t } = useTranslation('chat');
+  const modeClass = tier.mode ? MODE_CLASSES[tier.mode] : undefined;
+  const complexityClass = tier.complexity ? COMPLEXITY_CLASSES[tier.complexity] : undefined;
+  const decidedByClass = tier.decidedBy ? DECIDED_BY_CLASSES[tier.decidedBy] : undefined;
+
+  if (!tier.mode && !tier.complexity && !tier.decidedBy && !tier.reason) return null;
+
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {tier.mode ? (
+        <span
+          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${modeClass ?? NEUTRAL_CLASS}`}
+          title={t('tier.modeTooltip', { defaultValue: 'Mode' })}
+        >
+          {tier.mode}
+        </span>
+      ) : null}
+      {tier.complexity ? (
+        <span
+          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${complexityClass ?? NEUTRAL_CLASS}`}
+          title={t('tier.complexityTooltip', { defaultValue: 'Complexity' })}
+        >
+          {tier.complexity}
+        </span>
+      ) : null}
+      {tier.decidedBy ? (
+        <span
+          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${decidedByClass ?? NEUTRAL_CLASS}`}
+          title={t('tier.decidedByTooltip', { defaultValue: 'Decided by' })}
+        >
+          {tier.decidedBy}
+        </span>
+      ) : null}
+      {tier.reason ? (
+        <span
+          className="inline-flex max-w-[12rem] items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 truncate"
+          title={tier.reason}
+        >
+          {truncate(tier.reason, 32)}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+const NEUTRAL_CLASS =
+  'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300';
+
+const MODE_CLASSES: Record<NonNullable<TierInfo['mode']>, string> = {
+  explain: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300',
+  generate: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+  refactor: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
+};
+
+const COMPLEXITY_CLASSES: Record<NonNullable<TierInfo['complexity']>, string> = {
+  oneshot: 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300',
+  exploratory: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
+  todo: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
+};
+
+const DECIDED_BY_CLASSES: Record<NonNullable<TierInfo['decidedBy']>, string> = {
+  llm: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40',
+  heuristic:
+    'bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-300 border border-yellow-200/60 dark:border-yellow-800/40',
+  user: 'bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200/60 dark:border-pink-800/40',
+};
 
 function EventRow({ event }: { event: TraceLine }) {
   switch (event.type) {

@@ -223,6 +223,12 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
 
       case 'messages_cleared':
         set({ chatMessages: [] });
+        // Backend `clearMessages` collapses trace.jsonl + feature.jsonl as
+        // part of the same action, so the feature-log SSOT used by the
+        // Activity / Timeline tabs must also drop its cached arrays.
+        // Without this sync, stale trace/breadcrumb rows would remain
+        // visible until a feature switch. (Session redesign §16.2.)
+        get().clearFeatureLog?.();
         get().refreshFileTree();
         break;
 
