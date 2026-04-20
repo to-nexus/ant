@@ -12,20 +12,23 @@ import { logger } from '../../../../utils/logger';
 
 /**
  * Chat operations (messages, user interactions)
- * 
+ *
  * NOTE: LLM streaming endpoints have been removed.
  * Job workers now use direct Redis via LLMResponseService instead of HTTP.
- * 
+ *
  * Removed endpoints (now handled by LLMResponseService):
  * - POST /chat/start-message
- * - POST /chat/llm-event  
+ * - POST /chat/llm-event
  * - POST /chat/finalize-message
  * - POST /chat/add-content
  * - POST /chat/file-operation
  * - POST /chat/command-execution
  * - GET  /chat/has-active-message
  * - POST /chat/triage-choice-message
- * 
+ *
+ * Session redesign §16.2 retirement:
+ * - GET /chat/messages — replaced by SSE `initial_state.chat` (no UI caller).
+ *
  * @see LLMResponseService for the job worker implementation
  */
 export function createChatRoutes(deps: {
@@ -40,28 +43,16 @@ export function createChatRoutes(deps: {
   };
 }): Router {
   const router = Router();
-  
-  /**
-   * GET /projects/:id/features/:feature/chat/messages
-   * Get all chat messages for a feature
-   */
-  router.get('/projects/:id/features/:feature/chat/messages', (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-
-    if (!deps.chatService) {
-      res.status(503).json({ error: 'Chat service not available' });
-      return;
-    }
-
-    const userContext = extractUserContext(req);
-    const messages = deps.chatService.getMessages(projectId, featureName, userContext);
-    res.json({ messages });
-  });
 
   /**
    * DELETE /projects/:id/features/:feature/chat/messages
-   * Clear all chat messages for a feature
+   * Clear all chat messages for a feature.
+   *
+   * Session redesign §16.2: this route now collapses trace.jsonl +
+   * feature.jsonl (durable SSOT) via `ChatService.clearMessages`. The
+   * legacy GET /chat/messages companion was retired — chat history is
+   * now delivered exclusively through the SSE `initial_state.chat`
+   * event (backed by the same trace.jsonl rebuild).
    */
   router.delete('/projects/:id/features/:feature/chat/messages', (req: Request, res: Response) => {
     const projectId = req.params.id;
