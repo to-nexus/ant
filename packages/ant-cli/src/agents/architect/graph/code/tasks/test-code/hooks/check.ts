@@ -1,28 +1,26 @@
 /**
  * test-code/hooks/check.ts — TaskCheckHook.evaluate
  *
- * Replaces the test-code guard currently duplicated in
- * `graph.ts` L142 and `parallel/workerGraph.ts` L176:
+ * Produces the `incomplete_implementation` violation when a test-code
+ * task signalled `<done>` but no matching test files (`*.test.*` /
+ * `*.spec.*`) actually made it to disk. Replaces the inline guard that
+ * used to live at `graph.ts` L142 and `parallel/workerGraph.ts` L176
+ * (both removed in T6b-γ when `checkTaskStatus` was promoted to its own
+ * directory). The dispatch site is now `nodes/checkTaskStatus/evaluate.ts`
+ * via `hooksIfActive(state)?.check?.evaluate(state)`.
  *
- *     if (violations.length === 0 && llmExplicitlyDone && currentTask?.type === 'test-code') {
- *       const testFilesExist = detectTestFilesFromDisk(featurePath);
- *       if (!testFilesExist) violations.push(...);
- *     }
+ * Preconditions enforced by the caller (mirror the removed inline branch):
+ *   - the shared violations array is empty
+ *   - `state.llmResponse?.done === true`
  *
- * Once T6 flips `checkTaskStatus` to consult `hooksIfActive(state)?.check`,
- * the branch disappears from both phase files. The disk scan is async
- * because `detectTestFilesFromDisk` touches the filesystem; the hook
- * surface was widened to `Violation | Promise<Violation | null> | null`
- * at T5b to accommodate this.
+ * Async surface — `detectTestFilesFromDisk` touches the filesystem, so
+ * `TaskCheckHook.evaluate` returns `Violation | Promise<Violation | null> | null`.
+ * The async-widening was introduced here (T5b.5) to accommodate this hook;
+ * the verification hook remains sync and relies on structural narrowing.
  *
- * Callers (T6 checkTaskStatus) should:
- *   1. Only consult this hook AFTER the shared violations array is empty
- *      AND `llmResponse.done === true` — i.e. the same preconditions the
- *      original branch observed.
- *   2. Await the result.
- *
- * R2 — depends only on the plan node's `testFileDetector` helper (a
- * pure fs query) and graph state types.
+ * R2 — depends only on the plan node's `testFileDetector` helper (a pure
+ * fs query) and graph state types. No `task.type` comparison: the
+ * registry routes by type, so this module only runs for test-code tasks.
  */
 
 import type { ArchitectGraphState, Violation, ViolationType } from '../../../state';

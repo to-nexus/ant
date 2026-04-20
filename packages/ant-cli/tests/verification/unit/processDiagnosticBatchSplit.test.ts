@@ -3,8 +3,8 @@
  *
  * Covers (see docs/testing/verification-scenarios.md, matrix C6-C9):
  *   C6  batches >= 2 → split into error sub-tasks, re-enqueue original
- *   C7  forceByRepeat (applied plan history repeat) → force split
- *   C8  budgetExhausted (_verificationAttempts >= MAX) → force split
+ *   C7  forceByRepeat (Session.isPlanRepeated) → force split
+ *   C8  budgetExhausted (Session.remainingBudget() <= 0) → force split
  *   C9  overErrorBudget / overFileBudget → force split
  *   Edge: non-verification/error task → noop
  *   Edge: short planText (<= 50 chars) → noop
@@ -14,22 +14,28 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { __testing__ } from '../../../src/agents/architect/graph/code/nodes/plan/index';
-import { MAX_VERIFICATION_ATTEMPTS } from '../../../src/agents/architect/graph/code/utils/verificationAttempts';
-import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/utils/verificationErrors';
+import {
+  VerificationSession,
+  MAX_VERIFICATION_ATTEMPTS,
+} from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
+import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/verification/model/errors';
 import { TaskQueue } from '../../../src/agents/architect/types/task';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 
 const { processDiagnosticBatchSplit, normalizePlanForHash, MAX_BATCH_SPLIT_CYCLES } = __testing__;
 
-function makeState(overrides: Record<string, any> = {}): any {
+interface StateOverrides {
+  verification?: VerificationSession;
+  _batchSplitRequeued?: boolean;
+}
+
+function makeState(overrides: StateOverrides = {}): any {
   return {
     taskQueue: new TaskQueue<CodeTask>(),
-    _verificationAttempts: 0,
-    _appliedPlanHistory: [] as string[],
-    _batchSplitRequeued: false,
+    verification: overrides.verification ?? VerificationSession.createFresh({ isTs: true, hasTests: false }),
+    _batchSplitRequeued: overrides._batchSplitRequeued ?? false,
     context: { featurePath: undefined },
     _httpJobId: undefined,
-    ...overrides,
   };
 }
 
@@ -120,8 +126,9 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
   });
 
   describe('C6: batches >= 2 → split', () => {
-    it('creates sub-tasks and re-enqueues original', () => {
-      const state = makeState();
+    it('creates sub-tasks, re-enqueues original, and bumps Session.batchSplitCount', () => {
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      const state = makeState({ verification: session });
       const task = makeTask();
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 3, rootCauses: ['type error'] },
@@ -141,21 +148,28 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       const verifications = all.filter((t: any) => t.type === 'verification');
       expect(errors.length).toBe(2);
       expect(verifications.length).toBe(1);
-      expect((verifications[0] as any)._batchSplitCount).toBe(1);
+      // The Session now owns the cycle counter — the re-queued task's
+      // resumeState carries the snapshot with batchSplitCount=1.
+      expect(session.batchSplitCount()).toBe(1);
+      const requeued = verifications[0] as any;
+      expect(requeued.resumeState?.verification?.batchSplitCount).toBe(1);
       for (const e of errors) {
         expect((e as any).prePlanText).toBeTruthy();
       }
     });
   });
 
-  describe('C7: forceByRepeat (applied plan history repeat)', () => {
-    it('same plan in _appliedPlanHistory + single batch + modify present → force split', () => {
+  describe('C7: forceByRepeat (Session.isPlanRepeated)', () => {
+    it('same plan previously applied + single batch + modify present → force split', () => {
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts', 'b.ts'] },
       });
-      // Previous attempt applied the same plan — detectRepeatedPlan will fire.
-      const state = makeState({ _appliedPlanHistory: [plan] });
+      // Session records the plan as applied so the next identical plan
+      // fires the repeated-plan detector.
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      session.onPlanApplied(plan);
+      const state = makeState({ verification: session });
       const task = makeTask();
 
       const out = processDiagnosticBatchSplit(state, plan, task);
@@ -175,7 +189,9 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['different.ts'] },
       });
-      const state = makeState({ _appliedPlanHistory: [otherPlan] });
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      session.onPlanApplied(otherPlan);
+      const state = makeState({ verification: session });
       const task = makeTask();
 
       const out = processDiagnosticBatchSplit(state, plan, task);
@@ -185,14 +201,13 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
 
   describe('C8: budgetExhausted (remainingBudget <= 0)', () => {
     it('attempts at ceiling + multiple modify files → force split', () => {
-      // Force split rebuilds `batches` from `implementation.modify`, then the
-      // "batches.length <= 1" guard blocks single-file cases. Splitting only
-      // actually occurs when there are >= 2 files to split across batches.
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      for (let i = 0; i < MAX_VERIFICATION_ATTEMPTS; i++) session.onPlanEntry('retry');
+      const state = makeState({ verification: session });
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts', 'b.ts'] },
       });
-      const state = makeState({ _verificationAttempts: MAX_VERIFICATION_ATTEMPTS });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe('');
       expect(state._batchSplitRequeued).toBe(true);
@@ -201,21 +216,25 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
     });
 
     it('attempts at ceiling + single modify file → noop (not enough to split)', () => {
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      for (let i = 0; i < MAX_VERIFICATION_ATTEMPTS; i++) session.onPlanEntry('retry');
+      const state = makeState({ verification: session });
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts'] },
       });
-      const state = makeState({ _verificationAttempts: MAX_VERIFICATION_ATTEMPTS });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe(plan);
     });
 
     it('budget remaining and no other force condition → noop', () => {
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      session.onPlanEntry('retry');
+      const state = makeState({ verification: session });
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts'] },
       });
-      const state = makeState({ _verificationAttempts: 1 });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe(plan);
     });
@@ -261,9 +280,15 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
     // T8 — throw typed terminal error instead of mutating `task._failed`.
     // Orchestrator classifyTerminalError handles it at `reportFailure`, so
     // the plan node no longer side-effects permanent-fail state.
-    it(`splitCount > ${MAX_BATCH_SPLIT_CYCLES} throws VerificationTerminalError('batch_cycle_limit')`, () => {
-      const state = makeState();
-      const task = makeTask({ _batchSplitCount: MAX_BATCH_SPLIT_CYCLES } as any);
+    it(`Session.batchSplitCount at ceiling throws VerificationTerminalError('batch_cycle_limit')`, () => {
+      // Drive the Session to one-less-than the cycle limit so the next
+      // would-be split produces splitCount > MAX and throws.
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      for (let i = 0; i < MAX_BATCH_SPLIT_CYCLES; i++) {
+        session.onBatchSplit(JSON.stringify({ cycle: i + 1 }));
+      }
+      const state = makeState({ verification: session });
+      const task = makeTask();
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 2 },
         implementation: { modify: [] },

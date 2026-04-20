@@ -473,14 +473,9 @@ export async function execute(
         ? { ...state.projectCodeContext, filePaths: merged }
         : { source: 'execute' as const, filePaths: merged, files: [], stats: { filesLoaded: merged.length, estimatedTokens: 0 } };
 
-      if (state._verificationTracker) {
-        state._verificationTracker.typecheckPassed = false;
-        state._verificationTracker.buildPassed = false;
-        state._verificationTracker.testPassed = false;
-      }
-      // T4b-α: mirror the "streamed files touched code → invalidate every
-      // verification gate" semantic into the Session. `onFileChanged('all')`
-      // matches the three `*Passed = false` writes above atomically.
+      // Streamed files touched code → invalidate every verification gate
+      // via the Session. The legacy `_verificationTracker` fan-out has
+      // been removed alongside the state field (T4b-β).
       state.verification?.onFileChanged('all');
       state._executeModifiedFiles = true;
     }

@@ -11,12 +11,10 @@ import { ArchitectGraphState } from '../../state';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
-import { isTypecheckCommand, isBuildCommand, isTestCommand } from '../../../../../common/tool/constants';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
-import { inDeepDiagnosticMode } from '../../utils/deepDiagnosticMode';
 import { emitFileWriteTrace } from '../shared/emitFileWriteTrace';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 
@@ -46,12 +44,16 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       figmaFileKey: state.figmaFileKey,
       activePhase: state._activePhase as 'plan' | 'execute' | undefined,
       currentTaskType: (state.currentTask as any)?.type,
-      verificationTracker: state._verificationTracker as any,
-      depFileHash: state._depFileHash,
+      // T4b-β: verification cycle state is carried by `state.verification`
+      // (VerificationSession). Tool handlers that need gate / dep-hash
+      // information read it off the session directly via the
+      // `verificationSession` slot — no tracker / depHash fan-out from
+      // state is necessary any more.
+      verificationSession: state.verification,
       retries: state.retries,
-      // Deep-diagnostic activates at the 2nd re-entry into the task (see
-      // utils/deepDiagnosticMode.ts for the full set of effects).
-      isDeepDiagnostic: inDeepDiagnosticMode(state),
+      // Deep-diagnostic activates once the Session's attempt count crosses
+      // the threshold; the hook layer owns the predicate.
+      isDeepDiagnostic: state.verification?.inDeepMode() ?? false,
       referenceRequests: state.referenceRequests,
       resolvedActionMode: state.resolvedAction?.mode,
       retriever: state.deps?.retriever as any,
@@ -92,66 +94,27 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
         sideEffects: event.result.sideEffects,
       });
       // R1 — task-type-specific side-effect handling lives on the task's
-      // tool hook (verification: tracker reset / install status / deep-
-      // diagnostic). The inline switch below stays as a transitional
-      // dual-write until T4b removes the `_verificationTracker` /
-      // `_installNeeded` state fields; at that point the hook is the
-      // sole writer. See docs/tmp/verification-task-redesign-handoff.md
-      // §7.3 (T6b-α 편승).
+      // tool hook (verification: gate invalidation / install status / deep-
+      // diagnostic marking via the Session API). The inline switch below
+      // owns only phase-blind bookkeeping (command history + modified
+      // file flag) that the hook layer does not mediate.
       hooksIfActive(state)?.tool?.onEvent(state, event);
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
         switch (effect.type) {
           case 'verificationInvalidated': {
-            // Scope-based selective invalidation (see utils/invalidationScope.ts).
-            // Narrow the reset to the steps actually affected by the file change
-            // so already-passed steps (e.g. typecheck) remain cached across edits.
-            const tracker = state._verificationTracker;
-            const { scope } = effect;
-            if (tracker) {
-              const invalidateTypecheck = scope === 'typecheck' || scope === 'all';
-              const invalidateBuild = scope === 'build' || scope === 'all';
-              const invalidateTest = scope === 'test' || scope === 'all';
-              if (invalidateTypecheck) {
-                tracker.typecheckPassed = false;
-                tracker.typecheckAttempted = false;
-              }
-              if (invalidateBuild) {
-                tracker.buildPassed = false;
-                tracker.buildAttempted = false;
-              }
-              if (invalidateTest) {
-                tracker.testPassed = false;
-                tracker.testAttempted = false;
-              }
-            }
-            if (effect.installNeeded === true) {
-              state._installNeeded = true;
-            }
+            // Phase-blind side effect: track that the execute phase touched
+            // files so the downstream router knows whether a reverify is
+            // warranted. Gate invalidation is performed by the verification
+            // tool hook (see tasks/verification/hooks/tool.ts onEvent).
             if (state._activePhase !== 'plan') {
               state._executeModifiedFiles = true;
             }
             break;
           }
 
-          case 'depFileHashChanged': {
-            // Reflect updated dependency hash into state so the
-            // "bare install skipped" guard in runCommand can actually fire
-            // on the next verification cycle.
-            state._depFileHash = effect.newHash;
-            state._installNeeded = false;
-            break;
-          }
-
           case 'commandExecuted': {
             const { exitCode, command, success } = effect;
-            const tracker = state._verificationTracker;
-            if (tracker && exitCode !== -1) {
-              if (isTypecheckCommand(command)) tracker.typecheckPassed = success;
-              if (isBuildCommand(command)) tracker.buildPassed = success;
-              if (isTestCommand(command)) tracker.testPassed = success;
-            }
-
             const commandExecuted = { command, success, exitCode };
             const { shouldWarn, warningMessage } = updateCommandHistory(
               state, commandExecuted, event.result.error, event.result.content,

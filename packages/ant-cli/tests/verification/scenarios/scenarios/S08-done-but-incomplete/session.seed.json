@@ -5,15 +5,12 @@
       "name": "Final Verification",
       "type": "verification",
       "priority": 1000,
-      "status": "todo",
-      "description": "Verification task where <done> is emitted before any command runs"
+      "status": "todo"
     }
   ],
   "currentTask": null,
   "completedTasks": [],
   "retries": 0,
   "maxRetries": 3,
-  "_verificationAttempts": 0,
-  "_verificationTracker": null,
   "recursionLimit": 100
 }

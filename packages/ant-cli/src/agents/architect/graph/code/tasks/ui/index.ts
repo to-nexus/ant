@@ -2,13 +2,33 @@
  * tasks/ui/index.ts — ui task bundle.
  *
  * UI tasks render the view layer from `uiSections` + design tokens.
- * At T5b.3 the bundle exposes the barrier + conv-key hooks; the
- * UI-specific prompt variant (`uiSections` scope injection) is
- * deferred to T6 along with the plan-node decomposition.
  *
  * Hooks published:
- *   - scheduling.preUiBarrier   — block ui work while feature/setup runs
- *   - conversations.convKey     — per-task conversation scope
+ *   - scheduling.preUiBarrier   — block ui work while `blocksUi`
+ *                                 producers (setup / feature) run.
+ *   - conversations.convKey     — per-task conversation scope (pre-wiring;
+ *                                 phase layer still shares
+ *                                 `CONV_KEYS.NODE_EXECUTE`).
+ *
+ * Intentionally absent:
+ *   - plan.buildPrompt / extraTemplateVars — UI flows through the
+ *     shared `jobs/code/nodes/plan/base` template and the generic
+ *     artifact-resolution pipeline. `uiSections` scoping is applied
+ *     upstream during decompose (drives `task.include` + `artifactPolicy`),
+ *     so no ui-specific plan variant template or template-var override
+ *     is required. There is no `plan/variants/ui/` template and no
+ *     planGeneration.ts branch to port.
+ *   - scheduling producer flags (`blocksUi / blocksTestgen / blocksDoc /
+ *     blocksIntegration`) — UI is a barrier sink only; it does not
+ *     activate barriers for other task types.
+ *
+ * Phase-layer `task.type === 'ui'` residuals (e.g. `nodes/execute/
+ * promptBuilder.ts` expected-type OR chain, `nodes/decompose/
+ * responseParser.ts` design-context guard, `nodes/execute/
+ * toolDefinitions.ts` frontend detection) are pre-existing R1 misses
+ * carried forward from T6b-δ and belong to follow-up T6b cleanup
+ * (they require either `isUiTask` adoption or broader classification
+ * hooks that are out of T5b.3 scope).
  */
 
 import type { TaskHooks } from '../_shared/types';

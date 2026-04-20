@@ -2,14 +2,9 @@
  * verification/hooks/tool.ts — TaskToolHook.onEvent
  *
  * Translates `ToolExecutionEvent` side effects into `VerificationSession`
- * mutations. This is the future replacement for the verification-specific
- * switch in `nodes/tool/index.ts` (`afterExecution` → `verificationInvalidated`
- * / `depFileHashChanged` / `commandExecuted`).
- *
- * T5 note: during coexistence, the existing inline handler still runs. This
- * hook is a no-op when `state.verification` is absent so tests can drive it
- * in isolation without disturbing the legacy tracker path. T6 will wire the
- * tool node to call this hook and delete the inline handler.
+ * mutations. Single writer for gate invalidation, dep-hash stamping, and
+ * per-cycle command bookkeeping — the common `nodes/tool/index.ts` side-
+ * effect handler is phase-blind and delegates here.
  *
  * R2 — depends only on `model/` (gates, Session). No imports from `nodes/`,
  * `routers/`, or `parallel/`.

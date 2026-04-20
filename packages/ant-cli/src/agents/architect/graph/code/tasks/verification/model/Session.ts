@@ -2,11 +2,9 @@
  * VerificationSession — the single authority for "where is this verification
  * task in its diagnostic cycle?".
  *
- * Replaces five state fields (`_verificationTracker`, `_verificationAttempts`,
- * `_appliedPlanHistory`, `_depFileHash`, `_installNeeded`) and the seven
- * scattered mutator sites that touched them. Every query and mutation goes
- * through this class so invariants ("passed ⊆ required",
- * "attempts ≥ 0", "repeated-plan derived from history") cannot drift.
+ * Every query and mutation goes through this class so invariants
+ * ("passed ⊆ required", "attempts ≥ 0", "repeated-plan derived from
+ * history") cannot drift.
  *
  * R2 — model-only. Does not import from `nodes/`, `routers/`, or `parallel/`.
  * Hooks (added in T5) sit above this module and translate phase events
@@ -179,64 +177,18 @@ export class VerificationSession {
   }
 
   /**
-   * Synthesise a session from the T4a-era legacy state shape
-   * (`_verificationTracker` / `_verificationAttempts` / `_appliedPlanHistory` /
-   * `_depFileHash` / `_installNeeded`). Used exclusively by the
-   * `ANT_SCENARIO_PRESERVE_RETRIES=1` harness in `runner.ts` so fixture
-   * seeds authored before T4b-β can still populate `state.verification`
-   * without the phase layer touching the legacy fields. Production resume
-   * goes through `rehydrate` against the persisted snapshot.
-   *
-   * The `required` set is reconstructed from whatever the tracker declared
-   * via its `*Required` flags (plus an always-required `build` gate to
-   * match `createFresh`'s invariant); `passed` is read off the tracker's
-   * `*Passed` flags, and `planHistoryHashes` is synthesised from the body
-   * list so repeated-plan detection remains identical.
+   * Populate the required-gate set from the plan-entry environment on a
+   * pre-existing session whose `required` is empty. Used when a scenario
+   * seed carries only metadata (attempts, history) and leaves gate
+   * configuration to the phase layer's environment probe. Idempotent — a
+   * session whose required set is already non-empty is left untouched so
+   * the call can be made unconditionally from `initSession`.
    */
-  static fromLegacyState(legacy: {
-    _verificationTracker?: {
-      buildPassed?: boolean;
-      testPassed?: boolean;
-      testsRequired?: boolean;
-      typecheckPassed?: boolean;
-      typecheckRequired?: boolean;
-      buildAttempted?: boolean;
-      testAttempted?: boolean;
-      typecheckAttempted?: boolean;
-    };
-    _verificationAttempts?: number;
-    _appliedPlanHistory?: string[];
-    _depFileHash?: string;
-    _installNeeded?: boolean;
-  }): VerificationSession {
-    const tracker = legacy._verificationTracker;
-    const required: Gate[] = ['build'];
-    if (tracker?.typecheckRequired) required.unshift('typecheck');
-    if (tracker?.testsRequired) required.push('test');
-
-    const passed: Gate[] = [];
-    if (tracker?.typecheckPassed && tracker.typecheckRequired) passed.push('typecheck');
-    if (tracker?.buildPassed) passed.push('build');
-    if (tracker?.testPassed && tracker.testsRequired) passed.push('test');
-
-    const attemptedThisCycle: Gate[] = [];
-    if (tracker?.typecheckAttempted && tracker.typecheckRequired) attemptedThisCycle.push('typecheck');
-    if (tracker?.buildAttempted) attemptedThisCycle.push('build');
-    if (tracker?.testAttempted && tracker.testsRequired) attemptedThisCycle.push('test');
-
-    const planHistoryBodies = legacy._appliedPlanHistory ?? [];
-    const planHistoryHashes = planHistoryBodies.map(normalizePlanForHash);
-
-    return new VerificationSession({
-      required,
-      passed,
-      attemptedThisCycle,
-      attempts: legacy._verificationAttempts ?? 0,
-      planHistoryHashes,
-      planHistoryBodies,
-      depHash: legacy._depFileHash,
-      installNeeded: legacy._installNeeded,
-    });
+  hydrateEnv(env: VerificationSessionEnv): void {
+    if (this._required.size > 0) return;
+    if (env.isTs) this._required.add('typecheck');
+    this._required.add('build');
+    if (env.hasTests) this._required.add('test');
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -263,6 +215,11 @@ export class VerificationSession {
   /** All required gates, in canonical order. */
   required(): Gate[] {
     return GATE_ORDER.filter(g => this._required.has(g));
+  }
+
+  /** Gates attempted (success or failure) in the current cycle. */
+  attemptedThisCycle(): Gate[] {
+    return GATE_ORDER.filter(g => this._attemptedThisCycle.has(g));
   }
 
   attempts(): number {
@@ -307,7 +264,7 @@ export class VerificationSession {
   }
 
   /**
-   * Tri-state counterpart to the legacy `state._installNeeded` field:
+   * Tri-state dependency-install status for the plan prompt:
    *
    *   - `'changed'`  — dependency manifest has drifted since the last
    *                    successful install (run the install command first).
@@ -315,9 +272,6 @@ export class VerificationSession {
    *                    to skip install and go straight to build).
    *   - `'unknown'`  — session has not observed an install boundary yet;
    *                    the plan prompt should omit the dependency hint.
-   *
-   * Exposed so `hooks/plan.ts buildPrompt` can preserve the tri-state
-   * prompt contract without reaching back into legacy state fields.
    */
   dependencyStatus(): 'current' | 'changed' | 'unknown' {
     if (this._installNeeded === true) return 'changed';
@@ -444,6 +398,18 @@ export class VerificationSession {
   }
 
   /**
+   * Preemptive attempt marker — called by the command-policy guard before
+   * the command actually executes so a concurrent request for the same
+   * gate in the same cycle is rejected with "already attempted" instead
+   * of racing past the loop guard. The downstream `onCommand(...)` update
+   * then records the pass/fail outcome.
+   */
+  markAttempted(gate: Gate): void {
+    if (!this._required.has(gate)) return;
+    this._attemptedThisCycle.add(gate);
+  }
+
+  /**
    * Files changed; invalidate the affected gates' passed status. Scope
    * mirrors the historical `invalidationScope` helper — `all` clears every
    * passed gate, while targeted scopes clear just the implicated gate.
@@ -487,11 +453,10 @@ export class VerificationSession {
 
   /**
    * Narrow setter for the install-needed flag used by
-   * `recomputeInstallNeeded` (plan entry.ts). Distinct from `onFileChanged`
-   * because the plan-entry dep-hash probe must NOT clear already-passed
-   * gates — gate invalidation happens only in response to actual file
-   * writes surfaced by the tool hook. Mirrors the legacy behaviour of
-   * `state._installNeeded = needed` without touching the passed set.
+   * `recomputeInstallNeeded` (plan/parts/entry.ts). Distinct from
+   * `onFileChanged` because the plan-entry dep-hash probe must NOT clear
+   * already-passed gates — gate invalidation happens only in response to
+   * actual file writes surfaced by the tool hook.
    */
   markInstallNeeded(needed: boolean): void {
     this._installNeeded = needed;

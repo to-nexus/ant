@@ -1,19 +1,21 @@
 /**
- * ui/hooks/scheduling.ts — TaskSchedulingHook
+ * ui/hooks/scheduling.ts — TaskSchedulingHook (consumer-only)
  *
- * Replaces the type-specific branch in `parallel/TaskOrchestrator.ts`
- * L672 / L739:
- *
- *     if (hasPreUiWork && task.type === 'ui') break;
- *
- * Once T6 flips the orchestrator to query hooks, the branch becomes:
+ * UI tasks render the view layer from `uiSections` + design tokens and
+ * must wait for foundation (`setup`) and feature scaffolding before
+ * they have anything to render. They publish the `preUiBarrier`
+ * consumer flag so the orchestrator gates them behind the cross-type
+ * `hasPreUiWork` barrier:
  *
  *     const sched = hooksForTaskType(task.type)?.scheduling;
  *     if (hasPreUiWork && sched?.preUiBarrier) break;
  *
- * The barrier fires whenever any foundation work (feature / setup) is
- * still running — UI tasks need the layout / data scaffolding in place
- * before they can render.
+ * Who activates `hasPreUiWork` is a producer-side concern and lives on
+ * each upstream bundle's `scheduling.blocksUi` flag (currently:
+ * `setup` + `feature`). UI itself never produces a barrier — it is a
+ * barrier sink only, so no `blocksUi / blocksTestgen / blocksDoc /
+ * blocksIntegration` flags are exported here. The registry test locks
+ * this invariant.
  */
 
 export const preUiBarrier = true;

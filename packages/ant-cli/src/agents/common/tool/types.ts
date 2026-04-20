@@ -67,14 +67,26 @@ export interface FileTreeUpdatePort {
   notifyFileTreeUpdate(project: string, featureName: string): Promise<void>;
 }
 
-export interface VerificationTracker {
-  typecheckRequired?: boolean;
-  typecheckAttempted?: boolean;
-  typecheckPassed?: boolean;
-  buildAttempted?: boolean;
-  buildPassed?: boolean;
-  testAttempted?: boolean;
-  testPassed?: boolean;
+/**
+ * Minimal surface of `VerificationSession` that the tool / command-policy
+ * handlers consume. Declared here (rather than imported from
+ * `tasks/verification/model/Session`) so the common tool layer stays free
+ * of code-graph imports.
+ *
+ * The full class lives at
+ * `agents/architect/graph/code/tasks/verification/model/Session.ts`.
+ */
+export interface VerificationSessionSurface {
+  required(): Array<'typecheck' | 'build' | 'test'>;
+  missing(): Array<'typecheck' | 'build' | 'test'>;
+  passed(): Array<'typecheck' | 'build' | 'test'>;
+  attemptedThisCycle(): Array<'typecheck' | 'build' | 'test'>;
+  isComplete(): boolean;
+  dependencyStatus(): 'current' | 'changed' | 'unknown';
+  depHash(): string | undefined;
+  inDeepMode(): boolean;
+  /** Preemptive attempt marker used by the command-policy guard. */
+  markAttempted(gate: 'typecheck' | 'build' | 'test'): void;
 }
 
 export interface ToolExecutionContext {
@@ -102,8 +114,13 @@ export interface ToolExecutionContext {
   // === Command policy / verification handlers ===
   activePhase?: 'plan' | 'execute';
   currentTaskType?: string;
-  verificationTracker?: VerificationTracker;
-  depFileHash?: string;
+  /**
+   * Read-only handle onto the active task's `VerificationSession` (when
+   * the current task is verification-typed). Command-policy hooks consult
+   * the session for gate state and dep-hash instead of the flattened
+   * `verificationTracker` / `depFileHash` fields that existed pre-T4b-β.
+   */
+  verificationSession?: VerificationSessionSurface;
   retries?: number;
   /** Deep-diagnostic mode active: loosen loop guards so the LLM can
    *  probe config / dependency variants and re-run verification commands with

@@ -19,7 +19,7 @@ import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
 import { runInWorkerScope } from '../../../../../core/parallel/workerScope';
-import { VerificationTerminalError } from '../utils/verificationErrors';
+import { VerificationTerminalError } from '../tasks/verification/model/errors';
 import { hooksForTaskType } from '../tasks/_shared/registry';
 import type { TaskType } from '@ant/shared';
 
@@ -37,12 +37,10 @@ import type { TaskType } from '@ant/shared';
  *
  * T7 — Single snapshot API for the three carry-over boundaries
  * (`handleInterruption` / `reportFailure` transient re-queue /
- * `plan.processDiagnosticBatchSplit`). Each boundary calls this helper so
- * the post-T4b shape (`verification: VerificationSnapshot`) and the
- * pre-T4b shape (legacy `_verificationTracker` / `_verificationAttempts` /
- * `_appliedPlanHistory` / `_depFileHash` fields) are produced together.
- * The legacy four fields remain here during the T6→T4b coexistence
- * window; T4b drops them, leaving only `verification`.
+ * `plan.processDiagnosticBatchSplit`). Each boundary calls this helper
+ * so the persisted shape (`verification: VerificationSnapshot`) is
+ * produced uniformly. Task-type-specific snapshot hydration is
+ * delegated via `hooksForTaskType(task.type)?.orchestrator?.*`.
  */
 export function snapshotFromState(state: any): WorkerSnapshot | null {
   if (!state) return null;
@@ -60,21 +58,10 @@ export function snapshotFromState(state: any): WorkerSnapshot | null {
     violations: state.violations,
     enforcementHistory: state.enforcementHistory,
     tokenUsage: state._currentTaskTokenUsage,
-    // T4b authoritative field — consolidates the four legacy fields below
-    // into a typed snapshot. `undefined` when the task never ran through
-    // the verification hook (e.g. non-verification tasks, or verification
-    // tasks before T4b wires `state.verification` population).
+    // VerificationSession snapshot (undefined for non-verification tasks
+    // or a verification task that was never entered — `initSession`
+    // populates `state.verification` the first time the plan node fires).
     verification: state.verification?.snapshot?.(),
-    // Legacy fields — preserved across boundaries until T4b cleans them
-    // out of state.ts / WorkerSnapshot. Kept alongside the hook-driven
-    // `verification` snapshot so runtime code that still reads them
-    // (tool node's afterExecution handler, execute node's guard, the
-    // scenario harness restore path in `runner.ts`) behaves correctly
-    // during the T6→T4b coexistence window.
-    _depFileHash: state._depFileHash,
-    _verificationAttempts: state._verificationAttempts,
-    _verificationTracker: state._verificationTracker,
-    _appliedPlanHistory: state._appliedPlanHistory,
   };
 }
 
@@ -154,7 +141,7 @@ export class TaskWorker<T extends BaseTask> {
           const err = new VerificationTerminalError(
             'unresolved_violations',
             `Task "${task.name}" exhausted call budget with ${result.violations.length} unresolved violation(s): ${violationTypes}`,
-            snapshotFromState(result),
+            snapshotFromState(result)?.verification,
           );
           console.warn(`[Worker ${this.workerId}] Task "${task.name}" ended with unresolved violations → reporting as failure`);
           await this.orchestrator.reportFailure(this.workerId, completedTask, err);
@@ -226,15 +213,6 @@ export class TaskWorker<T extends BaseTask> {
         retries: (task as any).resumeState.retries || 0,
         violations: (task as any).resumeState.violations || [],
         enforcementHistory: (task as any).resumeState.enforcementHistory || [],
-        // Legacy fields — preserved across boundaries until T4b cleans them
-        // out of state.ts. Kept alongside the hook-driven `state.verification`
-        // restore so runtime code that still reads them (tool node's
-        // afterExecution handler, execute node's guard) behaves correctly
-        // during the T6→T4b coexistence window.
-        _depFileHash: (task as any).resumeState._depFileHash,
-        _verificationAttempts: (task as any).resumeState._verificationAttempts,
-        _verificationTracker: (task as any).resumeState._verificationTracker,
-        _appliedPlanHistory: (task as any).resumeState._appliedPlanHistory,
       } : {}),
       // Worker stop signal checker
       _isStopRequested: () => this.stopRequested,

@@ -10,9 +10,19 @@
  *   - blocksDoc — doc tasks wait until test-code work finishes so the
  *     docs describe the final test layout alongside the final source.
  *
- * Introduced in T6b-ε — `blocksDoc` replaces the `task.type === 'test-code'`
- * reference inside the `isPreDocTask` module-level predicate in
- * `parallel/TaskOrchestrator.ts`.
+ * Intentionally unpublished:
+ *   - preUiBarrier / preDocBarrier / preIntegrationBarrier — test-code
+ *     only blocks on testgen; it runs after feature/setup but does not
+ *     need to wait on ui / doc / integration work.
+ *   - blocksUi / blocksTestgen / blocksIntegration — test-code does not
+ *     gate those barriers. In particular blocksTestgen=false prevents
+ *     self-blocking (a test-code task would otherwise block sibling
+ *     test-code tasks from being scheduled in parallel). Regression
+ *     guard: the registry test locks each of these to `undefined`.
+ *
+ * Introduced in T6b-ε — `blocksDoc` replaced the hardcoded
+ * `task.type === 'test-code'` reference inside the `isPreDocTask`
+ * module-level predicate in `parallel/TaskOrchestrator.ts`.
  */
 
 export const preTestgenBarrier = true;

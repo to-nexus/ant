@@ -1,21 +1,21 @@
 /**
  * L2 — `tasks/verification/hooks/plan::initSession`
  *
- * Locks the idempotent population semantics introduced in T4b-α so the
- * plan-node fresh entry populates `state.verification` alongside (later:
- * instead of) the legacy `_verification*` fields.
+ * Locks the merge-aware population semantics so the plan-node fresh entry
+ * populates `state.verification` as the sole SSOT for verification cycle
+ * state.
  *
  * Coverage:
  *   1. Fresh state: creates a VerificationSession from env (isTs / hasTests).
- *   2. Idempotent: when `state.verification` already exists (rehydrated
- *      resume / worker restore) the call is a no-op and the existing
- *      instance is preserved.
- *   3. Env flags drive the Session's required-gate set (`createFresh`
+ *   2. Merge-aware: when `state.verification` exists with an empty required
+ *      set (scenario seed carrying only attempts metadata), the hook
+ *      hydrates the gate set from env while preserving attempts/history.
+ *   3. Fully-populated session is left untouched (resume / rehydrate path
+ *      is authoritative).
+ *   4. Env flags drive the Session's required-gate set (`createFresh`
  *      parity — build always required, typecheck iff isTs, test iff hasTests).
- *   4. Registered on the verification bundle + consumable via
+ *   5. Registered on the verification bundle + consumable via
  *      `hooksForTaskType('verification')`.
- *   5. Integration with `VerificationSession.fromLegacyState` — runner's
- *      scenario harness bridge produces a functionally equivalent session.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -63,18 +63,16 @@ describe('verification.plan.initSession', () => {
     }
   });
 
-  it('is idempotent — subsequent calls preserve the existing session', () => {
+  it('leaves a fully-populated session untouched', () => {
     const state = blankState() as ArchitectGraphState;
     planHook.initSession(state, { isTs: true, hasTests: true });
     const first = state.verification;
 
-    // Bump something mutable so we can detect instance replacement.
     state.verification!.onPlanEntry('retry');
     expect(state.verification!.attempts()).toBe(1);
 
-    // Second call with a DIFFERENT env must still be a no-op when session
-    // is already populated. This is the contract: callers cannot overwrite
-    // a rehydrated session by accident.
+    // Second call with a DIFFERENT env must not stomp the session: required
+    // set is already populated, so the hydrate branch is a no-op.
     planHook.initSession(state, { isTs: false, hasTests: false });
 
     expect(state.verification).toBe(first);
@@ -82,44 +80,34 @@ describe('verification.plan.initSession', () => {
     expect(state.verification!.required()).toContain('typecheck');
   });
 
+  it('hydrates env onto a seeded partial session (empty required set)', () => {
+    // Mirrors the scenario-seed shape used by S05: attempts is carried but
+    // the gate set is intentionally empty so the plan-entry env probe fills
+    // it in. The hook must preserve attempts / history while populating
+    // required/passed from env.
+    const partial = VerificationSession.rehydrate({
+      required: [],
+      passed: [],
+      attemptedThisCycle: [],
+      attempts: 3,
+      planHistoryHashes: [],
+    });
+    const state = { verification: partial } as ArchitectGraphState;
+
+    planHook.initSession(state, { isTs: true, hasTests: true });
+
+    expect(state.verification).toBe(partial);
+    expect(state.verification!.attempts()).toBe(3);
+    expect(state.verification!.required().sort()).toEqual(
+      ['build', 'test', 'typecheck'].sort(),
+    );
+    expect(state.verification!.passed()).toEqual([]);
+  });
+
   it('is wired on the verification bundle and registry', () => {
     expect(verificationBundle.plan?.initSession).toBe(planHook.initSession);
 
     const registryHooks = hooksForTaskType('verification');
     expect(registryHooks?.plan?.initSession).toBe(planHook.initSession);
-  });
-
-  it('VerificationSession.fromLegacyState reconstructs an equivalent session', () => {
-    // Simulates a scenario seed authored pre-T4b-β: legacy fields only.
-    // The bridge must yield the same observable state the plan node would
-    // have derived on a fresh entry + subsequent events.
-    const legacy = {
-      _verificationTracker: {
-        buildPassed: true,
-        testPassed: false,
-        testsRequired: true,
-        typecheckPassed: true,
-        typecheckAttempted: true,
-        typecheckRequired: true,
-        buildAttempted: true,
-        testAttempted: false,
-      },
-      _verificationAttempts: 2,
-      _appliedPlanHistory: ['{"implementation":{"modify":[{"file":"a.ts"}]}}'],
-      _depFileHash: 'abcdef',
-      _installNeeded: false,
-    };
-    const s = VerificationSession.fromLegacyState(legacy);
-
-    expect(s.attempts()).toBe(2);
-    expect(s.required().sort()).toEqual(['build', 'test', 'typecheck'].sort());
-    expect(s.passed().sort()).toEqual(['build', 'typecheck'].sort());
-    expect(s.depHash()).toBe('abcdef');
-    expect(s.installNeeded()).toBe(false);
-    // planHistoryBodies is exposed read-only via snapshot; hashes are
-    // synthesised from bodies so `isPlanRepeated` still fires.
-    const repeat = s.isPlanRepeated(legacy._appliedPlanHistory[0]);
-    expect(repeat.repeated).toBe(true);
-    expect(repeat.count).toBe(1);
   });
 });

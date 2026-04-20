@@ -29,7 +29,7 @@ import type {
 } from './types';
 import { getTaskConcurrency } from './types';
 import { isFigmaRateLimitError, isFigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
-import { classifyTerminalError } from '../utils/verificationErrors';
+import { classifyTerminalError } from '../tasks/verification/model/errors';
 import { hooksForTaskType } from '../tasks/_shared/registry';
 import type { TaskType } from '@ant/shared';
 

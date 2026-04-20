@@ -82,14 +82,30 @@ describe('tasks/_shared/registry — test-code entry', () => {
     expect(hooks?.check?.evaluate).toBe(checkEvaluate);
   });
 
-  it('bundle does NOT publish unrelated hooks', () => {
+  it('bundle publishes only scheduling + conversations + check slots', () => {
+    // Slot-level absence — lock parity with ui/design-system precedents
+    // so a future drive-by hook addition forces an explicit test update.
     expect(testCodeBundle.plan).toBeUndefined();
     expect(testCodeBundle.decompose).toBeUndefined();
-    // test-code does NOT consume the doc / ui / integration barriers.
+    expect(testCodeBundle.tool).toBeUndefined();
+    expect(testCodeBundle.command).toBeUndefined();
+    expect(testCodeBundle.router).toBeUndefined();
+    expect(testCodeBundle.orchestrator).toBeUndefined();
+    // check.evaluate is published; but budgetExhaustedHint is NOT —
+    // generic "Break down the task scope" is correct for test-code.
+    expect(testCodeBundle.check?.budgetExhaustedHint).toBeUndefined();
+  });
+
+  it('scheduling exposes only testgen-consumer + doc-producer — no other flags', () => {
+    // Consumer flags: only preTestgenBarrier.
+    expect(testCodeBundle.scheduling?.preTestgenBarrier).toBe(true);
     expect(testCodeBundle.scheduling?.preDocBarrier).toBeUndefined();
     expect(testCodeBundle.scheduling?.preUiBarrier).toBeUndefined();
     expect(testCodeBundle.scheduling?.preIntegrationBarrier).toBeUndefined();
-    // test-code does NOT produce the ui / testgen / integration barriers.
+    // Producer flags: only blocksDoc. blocksTestgen=undefined is
+    // intentional — self-activation would block sibling test-code
+    // tasks from parallel scheduling. Regression guard.
+    expect(testCodeBundle.scheduling?.blocksDoc).toBe(true);
     expect(testCodeBundle.scheduling?.blocksUi).toBeUndefined();
     expect(testCodeBundle.scheduling?.blocksTestgen).toBeUndefined();
     expect(testCodeBundle.scheduling?.blocksIntegration).toBeUndefined();
