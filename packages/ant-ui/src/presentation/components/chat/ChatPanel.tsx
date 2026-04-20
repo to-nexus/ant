@@ -10,6 +10,9 @@ import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { PinnedQuery, type PinnedQueryData } from './PinnedQuery';
 import { QueueStatusBanner } from './QueueStatusBanner';
+import { TraceActivityView } from './feature-log/TraceActivityView';
+import { BreadcrumbTimeline } from './feature-log/BreadcrumbTimeline';
+import { useFeatureLogSync } from './feature-log/useFeatureLogSync';
 import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
@@ -18,6 +21,8 @@ import { useStore } from '@/domain/store';
 import type { IntentGroup } from '@ant/shared';
 import { Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FileStats } from '@/domain/models/chat';
+
+type ChatPanelTab = 'chat' | 'activity' | 'timeline';
 
 interface ChatPanelProps {
   projectId: string | null;
@@ -104,6 +109,13 @@ export function ChatPanel({
   
   const chatPolicy = useChatPolicy(messages.length);
   const mainPanelActiveTab = useStore(s => s.mainPanelActiveTab);
+
+  // Session-redesign SSOT: load trace.jsonl + breadcrumbs on feature switch.
+  // Live updates keep flowing via existing SSE streams; this populates the
+  // Activity / Timeline tabs below and acts as the historical ground truth.
+  useFeatureLogSync(_projectId, _featureName);
+
+  const [activeTab, setActiveTab] = useState<ChatPanelTab>('chat');
 
   // ✅ Track which user message to pin (Cursor-style dynamic pinning)
   // null = no pin needed (user message visible or none above viewport)
@@ -211,7 +223,23 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */}
+      {/* Tab bar: Chat (live / choice cards) | Activity (trace.jsonl SSOT) | Timeline (breadcrumbs) */}
+      <ChatPanelTabBar activeTab={activeTab} onChange={setActiveTab} />
+
+      {activeTab === 'activity' && (
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <TraceActivityView />
+        </div>
+      )}
+
+      {activeTab === 'timeline' && (
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <BreadcrumbTimeline />
+        </div>
+      )}
+
+      {activeTab === 'chat' && (
+      /* Chat History (Virtuoso owns scrolling; avoid nested overflow containers) */
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col relative">
         {historyWatermarkStyle && (
           <div
@@ -296,6 +324,7 @@ export function ChatPanel({
           </div>
         )}
       </div>
+      )}
 
       {/* Input Area - Fixed at bottom */}
       <div className="border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
@@ -397,5 +426,47 @@ function ActionsCTA() {
 export function useChatData(_projectId: string | null, _featureName: string | null, _enabled: boolean) {
   // ✅ Delegate to Application Hook (parameters ignored, Store manages subscription)
   return useChat();
+}
+
+function ChatPanelTabBar({
+  activeTab,
+  onChange,
+}: {
+  activeTab: ChatPanelTab;
+  onChange: (tab: ChatPanelTab) => void;
+}) {
+  const { t } = useTranslation('chat');
+  const tabs: Array<{ id: ChatPanelTab; label: string }> = [
+    { id: 'chat', label: t('panelTabs.chat', { defaultValue: 'Chat' }) },
+    { id: 'activity', label: t('panelTabs.activity', { defaultValue: 'Activity' }) },
+    { id: 'timeline', label: t('panelTabs.timeline', { defaultValue: 'Timeline' }) },
+  ];
+
+  return (
+    <div
+      role="tablist"
+      className="flex-shrink-0 flex items-center gap-1 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#161b22] px-2 pt-1.5"
+    >
+      {tabs.map(tab => {
+        const isActive = activeTab === tab.id;
+        return (
+          <button
+            key={tab.id}
+            role="tab"
+            type="button"
+            aria-selected={isActive}
+            onClick={() => onChange(tab.id)}
+            className={`text-xs px-2.5 py-1.5 rounded-t-md border border-b-0 transition-colors ${
+              isActive
+                ? 'bg-white dark:bg-[#0d1117] border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100 font-medium -mb-px'
+                : 'bg-transparent border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 

@@ -11,6 +11,7 @@ import { createConfigSlice, ConfigSlice } from './slices/configSlice';
 import { createProjectConfigSlice, ProjectConfigSlice } from './slices/projectConfigSlice';
 import { createResetSlice, ResetSlice } from './slices/resetSlice';
 import { createChatSlice, ChatSlice } from './slices/chatSlice';
+import { createFeatureLogSlice, FeatureLogSlice } from './slices/featureLogSlice';
 import { createTransferSlice, TransferSlice } from './slices/transferSlice';
 import { createDeploySlice, DeploySlice } from './slices/deploySlice';
 import { loadFromStorage, STORAGE_KEYS } from './storage';
@@ -29,6 +30,7 @@ export type Store = ProjectSlice &
   ProjectConfigSlice &
   ResetSlice &
   ChatSlice &
+  FeatureLogSlice &
   TransferSlice;
 
 // Initialize persistent state from localStorage
@@ -72,6 +74,7 @@ export const useStore = create<Store>((set, get, store) => {
     ...createProjectConfigSlice(set, get, store),
     ...createResetSlice(set, get, store),
     ...createChatSlice(set, get, store),
+    ...createFeatureLogSlice(set, get, store),
     ...createTransferSlice(set, get, store),
     ...createDeploySlice(set, get, store),
     

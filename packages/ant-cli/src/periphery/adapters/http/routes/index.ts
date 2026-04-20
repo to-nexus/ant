@@ -7,6 +7,7 @@ import { createProjectsRoutes } from './projects.routes';
 import { createFeaturesRoutes } from './features.routes';
 import { createFilesRoutes } from './files.routes';
 import { createChatRoutes } from './chat.routes';
+import { createFeatureLogRoutes } from './feature-log.routes';
 import { createGitHubRoutes } from './github.routes';
 import { createFigmaFilesRoutes } from './figma-files.routes';
 import { createBridgeRoutes } from './bridge.routes';
@@ -79,6 +80,11 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     workspaceResolver: deps.workspaceResolver,
     fileTreeNotifier: deps.fileTreeNotifier,
     stateStore: deps.stateStore
+  }));
+
+  // Feature log (trace.jsonl + feature.jsonl breadcrumbs) — UI SSOT for chat / timeline
+  router.use(createFeatureLogRoutes({
+    workspaceResolver: deps.workspaceResolver,
   }));
   
   // GitHub integration
