@@ -18,7 +18,7 @@
 
 import { ArchitectGraphState } from '../state';
 import type { CodeTask } from '../../../types/task';
-import { isFinalVerificationTask } from '../utils/taskClassification';
+import { isFinalVerificationTask } from '../tasks/verification';
 import { hooksIfActive } from '../tasks/_shared/registry';
 import { isVerificationTask } from '../tasks/verification';
 import { isErrorTask } from '../tasks/error';
