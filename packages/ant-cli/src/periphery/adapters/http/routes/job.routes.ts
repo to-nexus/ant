@@ -600,6 +600,162 @@ export function createJobRoutes(deps: {
     }
   });
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Decompose Spec Clarify choice (session-redesign 5-tier)
+  // Body: { jobId, choice: 'redirect_to_design' | 'proceed_without_spec' | 'cancel' }
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  router.post('/projects/:id/features/:feature/chat/decompose-choice', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { jobId, choice } = req.body || {};
+
+    if (!jobId || typeof jobId !== 'string') {
+      return res.status(400).json({ error: 'jobId is required' });
+    }
+
+    const validChoices = ['redirect_to_design', 'proceed_without_spec', 'cancel'];
+    if (!validChoices.includes(choice)) {
+      return res.status(400).json({ error: `Invalid choice. Must be one of: ${validChoices.join(', ')}` });
+    }
+
+    try {
+      const userContext = extractUserContext(req);
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+
+      const codeSessionPath = getSessionFilePathByJob(featurePath, 'code');
+      if (!fs.existsSync(codeSessionPath)) {
+        return res.status(404).json({ error: 'No code session found for this feature' });
+      }
+
+      // Use FileSessionAdapter for a mutex-safe read (consistent with Chapter 2
+      // atomic_user_turn_write and feature-log.routes.ts pattern).
+      const { FileSessionAdapter } = await import('../../session/FileSessionAdapter');
+      const loadAdapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
+      const sessionData = await loadAdapter.load(projectId, featureName, 'code');
+      const sessionState = (sessionData?.state || {}) as Record<string, any>;
+      const sessionJobId: string | undefined = sessionState.jobId;
+      const awaiting: boolean = sessionState.awaitingDecomposeClarify === true;
+      const specClarifyPresent = Boolean(sessionState.specClarify);
+
+      if (!awaiting || !specClarifyPresent) {
+        return res.status(409).json({
+          error: 'No pending spec-clarify choice for this code session',
+          awaitingDecomposeClarify: awaiting,
+          hasSpecClarify: specClarifyPresent,
+        });
+      }
+      if (sessionJobId && sessionJobId !== jobId) {
+        return res.status(409).json({ error: 'jobId does not match current code session', expectedJobId: sessionJobId });
+      }
+
+      const originalDirective: string | undefined =
+        sessionState.overrideDirective
+        || (Array.isArray(sessionState.directives) ? sessionState.directives[0] : undefined)
+        || sessionState.directive;
+
+      // Dispatch by choice
+      if (choice === 'redirect_to_design') {
+        // 1) Dismiss the paused code job
+        const codeStatus = await deps.stateStore.getJobStatus(jobId);
+        if (codeStatus?.status === 'paused') {
+          await deps.stateStore.updateJobStatus(jobId, {
+            status: 'failed',
+            completedAt: new Date().toISOString(),
+            error: 'Redirected to design via spec-clarify choice',
+          });
+        }
+
+        // 2) Enqueue a fresh design job with the original directive
+        const designParams: ExecuteJobParams = {
+          agent: 'architect',
+          jobType: 'design',
+          project: projectId,
+          feature: featureName,
+          overrideDirective: originalDirective,
+          chatSource: true,
+          userContext,
+        };
+        const result = await deps.executeJob(designParams);
+        logger.info(`Decompose redirect_to_design: codeJob=${jobId} → designJob=${result.jobId}`, { component: 'JobRoute' });
+        return res.json({
+          success: true,
+          choice,
+          action: 'design_enqueued',
+          designJobId: result.jobId,
+        });
+      }
+
+      if (choice === 'proceed_without_spec') {
+        // Patch session so the resumed code job bypasses specClarify on re-entry.
+        // Reuse the mutex-backed adapter from the top-level load so the write
+        // goes through the per-file lock (Chapter 2 atomic_user_turn_write).
+        await loadAdapter.updateArtifacts(projectId, featureName, 'code', {
+          state: {
+            ...sessionState,
+            _specClarifyBypassed: true,
+            specClarify: undefined,
+          },
+        });
+        logger.debug(`Decompose proceed_without_spec: _specClarifyBypassed=true written to code session ${jobId}`);
+
+        const resumeParams: ExecuteJobParams = {
+          agent: 'architect',
+          jobType: 'code',
+          project: projectId,
+          feature: featureName,
+          jobId: sessionJobId || jobId,
+          isResume: true,
+          chatSource: true,
+          userContext,
+        };
+
+        const result = await deps.executeJob(resumeParams);
+
+        // Mirror /jobs/:jobId/resume: release idempotency locks AFTER executeJob.
+        // Rationale (see L426-430): the enqueue path removes the old BullMQ job
+        // first; releasing locks afterwards closes the stale-event window and
+        // keeps the locks intact if executeJob throws.
+        const resumeLockJobId = sessionJobId || jobId;
+        await deps.stateStore.releaseLock(`ant:job-completed:${resumeLockJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-event:${resumeLockJobId}:completed`);
+        await deps.stateStore.releaseLock(`ant:job-event:${resumeLockJobId}:failed`);
+
+        logger.info(`Decompose proceed_without_spec: resumed code job ${result.jobId}`, { component: 'JobRoute' });
+        return res.json({
+          success: true,
+          choice,
+          action: 'code_resumed',
+          jobId: result.jobId,
+        });
+      }
+
+      // cancel
+      const interruption: InterruptionDetails = {
+        reason: 'user_stopped',
+        message: 'Spec-clarify cancelled by user',
+        timestamp: new Date().toISOString(),
+        canResume: false,
+        metadata: { stoppedBy: 'decompose_choice_cancel' },
+      };
+      await deps.stateStore.markUserStopped(jobId);
+      await deps.stateStore.updateJobStatus(jobId, {
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        error: 'Spec-clarify cancelled by user',
+      });
+      // Symmetry with proceed_without_spec: clear the same idempotency locks so
+      // a subsequent job spawn under the same jobId cannot hit stale guards.
+      await deps.stateStore.releaseLock(`ant:job-completed:${jobId}`);
+      await deps.stateStore.releaseLock(`ant:job-event:${jobId}:completed`);
+      await deps.stateStore.releaseLock(`ant:job-event:${jobId}:failed`);
+      await deps.cleanupJobState(jobId, projectId, featureName, interruption, 'code', userContext);
+      logger.info(`Decompose cancel: code job ${jobId} dismissed`, { component: 'JobRoute' });
+      return res.json({ success: true, choice, action: 'code_cancelled' });
+    } catch (error: any) {
+      return sendErrorResponse(res, 500, error, 'DecomposeChoice');
+    }
+  });
+
   // Dismiss an interrupted/cancelled job — clears the server-side state
   // so the user can acknowledge the interruption and start a new job.
   // For 'paused' jobs: transitions to 'failed'. For already-terminal jobs: no-op (just ack).
