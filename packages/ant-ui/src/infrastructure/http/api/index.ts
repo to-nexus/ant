@@ -1,6 +1,7 @@
 export * from './client';
 export * from './auth';
 export * from './chat';
+export * from './featureLog';
 export * from './jobs';
 export * from './queue';
 export * from './projects';

@@ -9,6 +9,26 @@
     "stopping": "중지 중...",
     "filesEdited": "{{count}}개 파일 편집됨"
   },
+  "panelTabs": {
+    "chat": "대화",
+    "activity": "활동",
+    "timeline": "타임라인"
+  },
+  "activity": {
+    "loading": "활동 불러오는 중…",
+    "loadError": "활동 내역을 불러오지 못했습니다.",
+    "empty": "아직 기록된 활동이 없습니다. 사용자 요청과 작업 이벤트가 여기에 표시됩니다."
+  },
+  "breadcrumb": {
+    "loading": "타임라인 불러오는 중…",
+    "loadError": "타임라인을 불러오지 못했습니다.",
+    "empty": "아직 브레드크럼이 없습니다. 완료된 작업이 네비게이션 앵커로 표시됩니다.",
+    "scope": {
+      "initial_creation": "초기 생성",
+      "modification": "수정",
+      "refactor": "리팩터링"
+    }
+  },
   "sidebar": {
     "chatWith": "{{agent}}와 채팅",
     "clearHistory": "채팅 기록 삭제",
