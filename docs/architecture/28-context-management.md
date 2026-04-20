@@ -2,6 +2,12 @@
 
 Context Window 관리 전략: 4단 계층 정의, 메커니즘 인벤토리, Job별 pruning/compaction 매트릭스.
 
+> ⚠️ **부분 대체 (2026-04-20)**: code/design 경로의 "Context Isolation" 모델(§2 Inter-Job Context Bridge · `jobConversation` · heavyweight/lightweight compaction · `CODE_JOB_COMPACTION_*` / `DESIGN_JOB_COMPACTION_*` 상수 · `job-history` 템플릿)은 [`18-session-redesign.md`](./18-session-redesign.md)로 **완전 대체**됐다. code/design에서는 `feature.jsonl` + `featureContext` + `FEATURE_CONTEXT_THRESHOLD(12000)`을 사용한다.
+>
+> 본 문서 중 **유효한 범위**: (a) 4-Tier conversation hierarchy(Session/Job/Run/Turn) 정의 · (b) `compactRun` 3단계 파이프라인 (`compactToolResults` → `compactTurns` → `pruneTurns`) · (c) **plan / visual** 경로의 `compactJob` + `applyCompactionToConversation` (Continuity 모델) · (d) `retentionPolicy` (Task boundary, code/design 공용).
+>
+> 본 문서 중 **제거된 심볼** (grep 시 0건이어야 함): `jobConversation` / `compressHeavyweightEntries` / `CODE_JOB_COMPACTION_THRESHOLD` / `CODE_JOB_COMPACTION_WINDOW` / `DESIGN_JOB_COMPACTION_THRESHOLD` / `DESIGN_JOB_COMPACTION_WINDOW` / `common/compaction/job-summary.md` / `code/base/injections/job-history.md` / `design/base/injections/job-history.md`. 아래 본문의 해당 서술은 역사적 배경으로만 읽는다.
+
 ---
 
 ## 1. 4-Tier Conversation Hierarchy
