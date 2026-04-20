@@ -131,3 +131,108 @@ describe('F1/F4 — non-plan phase is not guarded by plan-phase gates', () => {
     expect(result?.error).toMatch(/BLOCKED/);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// T6b-η — error task policy
+//
+// Error tasks apply fixes from an upstream remediation plan and must NOT
+// re-run build/test/typecheck themselves. Prior to T6b-η the legacy
+// `isDiagnosticTask` alias silently permitted `go build` in error tasks
+// (verification + error share the allow-list). These tests lock the
+// tightened policy: only verification may drive build/test/typecheck.
+// ────────────────────────────────────────────────────────────────────────────
+
+function makeErrorCtx(opts: { activePhase?: 'plan' | 'execute' } = {}): ToolExecutionContext {
+  return {
+    // Error tasks never carry a VerificationSession.
+    verificationSession: undefined,
+    activePhase: opts.activePhase ?? 'execute',
+    currentTaskType: 'error',
+    isDeepDiagnostic: false,
+    fileSystem: undefined as any,
+    chatStatus: undefined as any,
+    workingDir: '/tmp',
+  } as unknown as ToolExecutionContext;
+}
+
+describe('codeCommandPolicy — Go build allow-list (verification-only after T6b-η)', () => {
+  it('blocks `go build` in an error task (previously silently allowed via isDiagnosticTask)', () => {
+    const ctx = makeErrorCtx();
+    const result = applyCodeCommandPolicy(ctx, { command: 'go build ./...' });
+    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.error).toMatch(/verification tasks/);
+  });
+
+  it('blocks `go test` in an error task', () => {
+    const ctx = makeErrorCtx();
+    const result = applyCodeCommandPolicy(ctx, { command: 'go test ./...' });
+    expect(result?.error).toMatch(/BLOCKED/);
+  });
+
+  it('blocks `go vet` in a feature task (unchanged behaviour)', () => {
+    const ctx = {
+      verificationSession: undefined,
+      activePhase: 'execute',
+      currentTaskType: 'feature',
+      isDeepDiagnostic: false,
+      fileSystem: undefined as any,
+      chatStatus: undefined as any,
+      workingDir: '/tmp',
+    } as unknown as ToolExecutionContext;
+    const result = applyCodeCommandPolicy(ctx, { command: 'go vet ./...' });
+    expect(result?.error).toMatch(/BLOCKED/);
+  });
+
+  it('allows `go build` in a verification task (plan phase — diagnostic run)', () => {
+    // Go project with no tests required → verification session's `required`
+    // set is just `build` (no `typecheck` gate ordering). This isolates the
+    // cross-cutting Go allow-list from the verification hook's gate-order
+    // logic so the assertion genuinely checks the policy-level block.
+    const session = makeSession({ isTs: false, hasTests: false });
+    const ctx = makeCtx(session, { activePhase: 'plan' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'go build ./...' });
+    expect(result).toBeNull();
+  });
+});
+
+describe('codeCommandPolicy — error command.guard (execute-phase build/test/typecheck block)', () => {
+  it('blocks `npm run build` in error task execute phase', () => {
+    const ctx = makeErrorCtx({ activePhase: 'execute' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.error).toMatch(/remediation plan/);
+  });
+
+  it('blocks `npm run test` in error task execute phase', () => {
+    const ctx = makeErrorCtx({ activePhase: 'execute' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
+    expect(result?.error).toMatch(/BLOCKED/);
+  });
+
+  it('blocks `npx tsc --noEmit` in error task execute phase', () => {
+    const ctx = makeErrorCtx({ activePhase: 'execute' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
+    expect(result?.error).toMatch(/BLOCKED/);
+  });
+
+  it('allows `pnpm install foo` in error task execute phase (dependency install is part of fix)', () => {
+    const ctx = makeErrorCtx({ activePhase: 'execute' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'pnpm install foo' });
+    expect(result).toBeNull();
+  });
+
+  it('allows read-only inspection commands (cat/ls) in error task execute phase', () => {
+    const ctx = makeErrorCtx({ activePhase: 'execute' });
+    expect(applyCodeCommandPolicy(ctx, { command: 'ls src/' })).toBeNull();
+    expect(applyCodeCommandPolicy(ctx, { command: 'cat package.json' })).toBeNull();
+  });
+
+  it('does not apply the execute-phase block in plan phase (rare no-prePlanText path needs inspection)', () => {
+    const ctx = makeErrorCtx({ activePhase: 'plan' });
+    // build/test/typecheck in plan phase would still be blocked by the
+    // cross-cutting Go allow-list only; npm build in plan phase with no
+    // verification session falls through (verification hook is absent).
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    expect(result).toBeNull();
+  });
+});

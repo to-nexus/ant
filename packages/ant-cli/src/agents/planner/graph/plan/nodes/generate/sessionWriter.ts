@@ -5,7 +5,7 @@ import { PlanGraphState, getPlanMode } from '../../state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
 import { applyCompactionToConversation } from '../../../../../../core/context';
 import type { ConversationCompaction } from '../../../../../../core/context';
-import { getTargetPath } from './promptBuilder';
+import { getTargetPath } from './buildSystemPrompt';
 
 /**
  * Prune node history (Anthropic-format ReAct messages) via compactRun.

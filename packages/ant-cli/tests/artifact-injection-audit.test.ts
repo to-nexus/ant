@@ -16,7 +16,7 @@ const SRC_DIR = join(__dirname, '../src');
 // ============================================
 
 const MUST_PASS_ARTIFACTS = [
-  'agents/architect/graph/code/nodes/execute/promptBuilder.ts',
+  'agents/architect/graph/code/nodes/execute/buildMessages.ts',
   'agents/architect/graph/design/nodes/docGen/intent/system.ts',
   'agents/architect/graph/design/nodes/docGen/intent/spec.ts',
 ];

@@ -58,7 +58,14 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
   describe('task type gating', () => {
     it('non-verification / non-error task → noop (returns original)', () => {
       const state = makeState();
-      const task = makeTask({ type: 'feature' });
+      // Realistic feature task — priority in the feature band and a
+      // non-verification-keyword name so neither the priority fallback nor
+      // the name fallback on `isVerificationTask` fires. T6b-η: since the
+      // type-only `isDiagnosticTask` helper was deleted, the gate is now
+      // `isVerificationTask(t) || isErrorTask(t)`; the predicate layer
+      // uses the richer verification discriminator, so this test must use
+      // unambiguous inputs.
+      const task = makeTask({ type: 'feature', priority: 50, name: 'implement login form' });
       const planText = JSON.stringify({ batches: [{ name: 'a' }, { name: 'b' }], implementation: { modify: ['f1.ts', 'f2.ts'] } });
       const out = processDiagnosticBatchSplit(state, planText, task);
       expect(out).toBe(planText);
@@ -66,9 +73,13 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(state._batchSplitRequeued).toBe(false);
     });
 
-    it('error task is a valid split target (same behavior as verification)', () => {
+    it('error task is a valid split target (decompose-emitted error without prePlanText)', () => {
       const state = makeState();
-      const task = makeTask({ type: 'error' });
+      // Error-band priority + unambiguous name — batch-split-spawned error
+      // tasks use `prePlanText` fast-path and never reach this function,
+      // so the realistic split-target scenario is a decompose-emitted
+      // error task without prePlanText.
+      const task = makeTask({ type: 'error', priority: 50, name: 'fix ts2307 import errors' });
       const planText = JSON.stringify({
         diagnostics: { totalErrors: 2 },
         implementation: { modify: [] },

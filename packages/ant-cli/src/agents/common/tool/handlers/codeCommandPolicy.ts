@@ -7,14 +7,14 @@
  * After T6 the body is task-type-blind (R1): guard logic lives in
  * `tasks/{type}/hooks/command.ts` and is dispatched via the shared
  * registry. Only cross-task concerns (Go build block outside
- * verification/error, diagnostic-inspect bypass) remain inline.
+ * verification, diagnostic-inspect bypass) remain inline.
  */
 
 import type { ToolExecutionContext, ToolResult } from '../types';
 import type { TaskType } from '@ant/shared';
 import { isDiagnosticInspectCommand } from '../../../architect/graph/code/tasks/verification/model/gates';
 import { hooksForTaskType } from '../../../architect/graph/code/tasks/_shared/registry';
-import { isDiagnosticTask } from '../../../architect/graph/code/tasks/_shared/classification';
+import { isVerificationTask } from '../../../architect/graph/code/tasks/verification';
 
 export interface CodeCommandPolicyResult {
   rejected: boolean;
@@ -48,15 +48,20 @@ export function applyCodeCommandPolicy(
     return null;
   }
 
-  // Go build/test/run/vet block in non-diagnostic tasks. This cross-cuts
-  // verification + error tasks (both are allowed) — the predicate is
-  // captured in `isDiagnosticTask` (tasks/_shared/classification.ts).
+  // Go build/test/run/vet block. Only verification may run these (in the
+  // plan phase, where tool-loop diagnoses build errors). Error tasks apply
+  // fixes from a remediation plan and MUST NOT re-run build/test — the
+  // diagnostic cycle re-verifies after their changes land. Feature / setup
+  // / ui / doc / test-code tasks have no legitimate reason to invoke the
+  // Go toolchain either. The per-task `command.guard` hook further narrows
+  // (verification enforces gate ordering; error blocks all of
+  // build/test/typecheck in the execute phase).
   const GO_BUILD_PATTERNS = /\bgo\s+(build|test|run|vet)\b/;
-  if (GO_BUILD_PATTERNS.test(command) && !isDiagnosticTask({ type: taskType })) {
+  if (GO_BUILD_PATTERNS.test(command) && !isVerificationTask({ type: taskType })) {
     console.warn(`   ⛔ [RunCommand] Blocked Go build command in ${taskType} task: ${command}`);
     return makeRejection(
       command,
-      `⛔ BLOCKED: ${command}\n\nGo build/test/run/vet commands are only allowed in verification and error tasks.\nContinue writing code files and output <done>true</done> when complete.`,
+      `⛔ BLOCKED: ${command}\n\nGo build/test/run/vet commands are only allowed in verification tasks (plan phase). Error tasks apply fixes from the remediation plan — the next diagnostic cycle re-verifies automatically.\nContinue writing code files and output <done>true</done> when complete.`,
     );
   }
 

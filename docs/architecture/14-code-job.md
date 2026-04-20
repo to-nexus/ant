@@ -252,7 +252,7 @@ interface ParsedUiDocs {
 
 ### hasUiDoc 플래그
 
-`parsedUiDocs`가 존재하면 `hasUiDoc = true`가 `promptBuilder.ts`에서 artifacts에 설정되어, execute 프롬프트에서 `{{#if hasUiDoc}}` 분기로 UI 관련 가이드를 조건부 주입한다.
+`parsedUiDocs`가 존재하면 `hasUiDoc = true`가 `buildMessages.ts`에서 artifacts에 설정되어, execute 프롬프트에서 `{{#if hasUiDoc}}` 분기로 UI 관련 가이드를 조건부 주입한다.
 
 ## Visual Source Authority
 

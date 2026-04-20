@@ -7,8 +7,9 @@
  *
  * Both entry points share the same registry so behaviour is consistent
  * whether the caller is a phase node, router, orchestrator, or tool
- * handler. Fake-state casts (`{ currentTask: { type: ... } } as any`) are
- * banned; use `hooksForTaskType` in stateless contexts instead.
+ * handler. Fake-state casts that fabricate a `currentTask` object solely
+ * to re-use `hooksIfActive` are banned; use `hooksForTaskType` in
+ * stateless contexts instead.
  *
  * Wiring is static: each `tasks/{type}/index.ts` exports a `hooks`
  * bundle that is imported at module-load time below. There is no runtime

@@ -21,7 +21,8 @@ import { getRACDocuments } from "@ant/shared";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
-import { isDiagnosticTask } from '../../tasks/_shared/classification';
+import { isVerificationTask } from '../../tasks/verification';
+import { isErrorTask } from '../../tasks/error';
 import type { PlanPromptCtx } from '../../tasks/_shared/types';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -641,8 +642,12 @@ export async function runPlanLLMWithTools(
     }
   }
 
-  // Log prompt for plan-toolLoop so it appears in prompt-*.md debug files
-  const isDiagnosticType = isDiagnosticTask(task);
+  // Log prompt for plan-toolLoop so it appears in prompt-*.md debug files.
+  // The "empty plan → done" shortcut below applies to verification (gates
+  // passed with no fix left) AND error (remediation plan reports zero
+  // implementation items). Feature/setup plans cannot legitimately be
+  // empty so they never enter the shortcut and fall through to execute.
+  const allowsEmptyPlanShortcut = isVerificationTask(task) || isErrorTask(task);
   const planRound = Math.floor((messages.length - 1) / 2);
   const jobId = state._httpJobId || 'unknown';
   if (state.context?.featurePath) {
@@ -692,7 +697,7 @@ export async function runPlanLLMWithTools(
       }
       // Shortcut: if plan indicates no errors, return empty planText
       // so execute can immediately mark done without LLM interpretation
-      if (isDiagnosticType) {
+      if (allowsEmptyPlanShortcut) {
         try {
           const parsed = JSON.parse(planText);
           if (parsed.diagnostics?.totalErrors === 0 ||
@@ -751,8 +756,11 @@ export async function finalizePlanFromExploration(
   const llmToUse = await selectLLMForTask(llm, task, state);
   if (!llmToUse?.stream) return null;
 
-  const isDiagnostic = isDiagnosticTask(task);
-  const finalizePrompt = isDiagnostic
+  // Verification-only batched-plan instruction. Error tasks take the
+  // `prePlanText` fast-path in `nodes/plan/index.ts maybePrePlannedFastPath`
+  // and never reach this finalize step — the batched format directive is
+  // only ever emitted for verification's diagnostic tool-loop.
+  const finalizePrompt = isVerificationTask(task)
     ? 'You have finished exploring and analyzing the codebase. Based on ALL the tool results above, ' +
       'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
       'and output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
@@ -879,8 +887,10 @@ export async function finalizePlanFromExploration(
         const parsed = JSON.parse(planText);
         await validatePrescribedPackages(parsed, state);
 
-        // Diagnostic shortcut: no errors → empty planText for immediate done
-        if (isDiagnostic &&
+        // Verification-only shortcut: no errors → empty planText for
+        // immediate done. Error tasks never reach this function
+        // (prePlanText fast-path) so the check is verification-specific.
+        if (isVerificationTask(task) &&
             (parsed.diagnostics?.totalErrors === 0 ||
              (parsed.implementation?.modify?.length === 0 &&
               parsed.implementation?.create?.length === 0 &&

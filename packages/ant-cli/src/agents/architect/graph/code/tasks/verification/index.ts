@@ -25,6 +25,7 @@ import {
   makeTerminalError,
   buildPrompt as planBuildPrompt,
 } from './hooks/plan';
+import { executeHook } from './hooks/execute';
 import {
   hasOwnAttemptCounter,
   captureOnFailure,
@@ -48,6 +49,7 @@ export const hooks: TaskHooks = {
     // captured prompt reflects the variant actually being exercised.
     toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/verification/rules',
   },
+  execute: executeHook,
   tool: { onEvent },
   command: { guard },
   check: { evaluate, budgetExhaustedHint },
@@ -63,4 +65,4 @@ export const hooks: TaskHooks = {
   conversations: { convKey },
 };
 
-export { isVerificationTask, isFinalVerificationTask } from './model/is';
+export { isVerificationTask } from './model/is';

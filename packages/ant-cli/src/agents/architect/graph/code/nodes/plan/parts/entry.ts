@@ -15,10 +15,12 @@
  *     across retry / reverify / fresh paths.
  *
  * R1 invariants preserved:
- *   - `task.type === 'verification'` branches here are transitional. They
- *     will migrate onto `hooks.plan.classifyEntry` / `onEntry` during the
- *     remainder of T6b-α. For now they stay inline so the split is a
- *     pure refactor with no semantic change.
+ *   - Task-type discrimination uses the `isVerificationTask` predicate
+ *     from `tasks/verification/model/is.ts` (imported via the bundle
+ *     barrel). No literal `task.type === '...'` comparisons remain.
+ *     Session hydration dispatches through `hooksForTaskType(nextTask.type)
+ *     ?.plan?.initSession` so task types that do not carry a session
+ *     (error/setup/ui/...) are no-ops automatically.
  */
 
 import { getTechTier } from '@ant/shared';
@@ -32,6 +34,7 @@ import {
 } from '../../../tasks/verification/model/Session';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
+import { isVerificationTask } from '../../../tasks/verification';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
 import {
   summarizeForRetry,
@@ -198,7 +201,7 @@ async function handleRetryEntry(
   }
 
   const prevCallIndex = state._executeCallIndex || 0;
-  const isVerificationRetry = nextTask.type === 'verification';
+  const isVerificationRetry = isVerificationTask(nextTask);
   let retrySummaryText: string | undefined;
 
   if (isVerificationRetry) {
@@ -347,7 +350,7 @@ async function handleFreshTaskEntry(
   state._executeCallIndex = 0;
   state._planSearchWebCount = 0;
 
-  if (nextTask.type === 'verification') {
+  if (isVerificationTask(nextTask)) {
     const isResumedVerification = !!state.verification && state.verification.attempts() > 0;
     const tsProject = isTypeScriptProject(state);
     const hasTests = detectTestFilesFromDisk(state.context?.featurePath);

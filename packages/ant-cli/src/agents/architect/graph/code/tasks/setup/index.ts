@@ -23,12 +23,14 @@ import { blocksUi, blocksTestgen, blocksDoc } from './hooks/scheduling';
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
+import { executeHook } from './hooks/execute';
 
 export const hooks: TaskHooks = {
   scheduling: { blocksUi, blocksTestgen, blocksDoc },
   decompose: { isExclusive },
   conversations: { convKey },
   plan: { extraTemplateVars: planExtraTemplateVars },
+  execute: executeHook,
 };
 
 export { isSetupTask } from './model/is';

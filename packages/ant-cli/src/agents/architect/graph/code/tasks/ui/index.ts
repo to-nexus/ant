@@ -22,13 +22,13 @@
  *     blocksIntegration`) — UI is a barrier sink only; it does not
  *     activate barriers for other task types.
  *
- * Phase-layer `task.type === 'ui'` residuals (e.g. `nodes/execute/
- * promptBuilder.ts` expected-type OR chain, `nodes/decompose/
+ * Phase-layer `task.type === 'ui'` residuals (`nodes/decompose/
  * responseParser.ts` design-context guard, `nodes/execute/
  * toolDefinitions.ts` frontend detection) are pre-existing R1 misses
- * carried forward from T6b-δ and belong to follow-up T6b cleanup
- * (they require either `isUiTask` adoption or broader classification
- * hooks that are out of T5b.3 scope).
+ * scheduled for follow-up T6b slices. The pre-T6b-ι
+ * `nodes/execute/buildMessages.ts` expected-type OR chain is resolved
+ * (the warning guard now checks hook presence, not task-type
+ * literals).
  */
 
 import type { TaskHooks } from '../_shared/types';

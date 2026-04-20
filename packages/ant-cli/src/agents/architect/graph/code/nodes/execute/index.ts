@@ -12,7 +12,7 @@
  * - 루프 (LangGraph가 관리)
  * 
  * ✅ MODULAR ARCHITECTURE:
- * - promptBuilder.ts: Message & context building
+ * - buildMessages.ts: Message & context building (wraps core PromptBuilder)
  * - toolDefinitions.ts: Available tools
  * - referenceFilter.ts: Reference context filtering
  */
@@ -27,7 +27,7 @@ import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStr
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 
 // Import submodules
-import { buildMessages } from './promptBuilder';
+import { buildMessages } from './buildMessages';
 import { getAvailableTools } from './toolDefinitions';
 import { getToolsByNamesWithTemplates, TOOL_SETS } from '../../../../../common/tool/toolSchemas';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
@@ -35,10 +35,9 @@ import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormal
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
-import { isFinalVerificationTask } from '../../tasks/verification';
+import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
 import { isErrorTask } from '../../tasks/error';
-import { isDiagnosticTask } from '../../tasks/_shared/classification';
 import type { CodeTask } from '../../../../types/task';
 
 export async function execute(
@@ -144,12 +143,15 @@ export async function execute(
   {
     const currentCall = (state._executeCallIndex || 0) + 1;
     const isErrorType = isErrorTask(state.currentTask);
-    const isFinalType = state.currentTask ? isFinalVerificationTask(state.currentTask) : false;
+    // Verification tasks are always the final-verification pass (system
+    // invariant — see `tasks/verification/model/is.ts`); there is no
+    // separate "final" vs "non-final" verification distinction.
+    const isVerificationType = isVerificationTask(state.currentTask);
     const isPrePlanned = !!(state.currentTask as CodeTask)?.prePlanText;
     // Pre-planned error tasks get a bounded budget (25) since their scope is limited by batch split.
     // Regular error/verification tasks have no budget (0) — they rely on recursion limit.
     // Feature tasks use plan-computed budget when available (create×1 + modify×3), otherwise default 20.
-    const maxCalls = isPrePlanned ? 25 : (isFinalType || isErrorType) ? 0 : (state._executeBudget ?? 20);
+    const maxCalls = isPrePlanned ? 25 : (isVerificationType || isErrorType) ? 0 : (state._executeBudget ?? 20);
     
     if (maxCalls > 0 && currentCall >= 3) {
       const remaining = maxCalls - currentCall;
@@ -346,14 +348,15 @@ export async function execute(
   // ✅ Check if this is a continuation after tool calling
   const isAfterToolCall = nodeExecute.length > 0;
   
-  // Diagnostic tasks (verification/error) with a remediation plan don't need extended thinking —
-  // the plan node already analyzed errors and produced a concrete fix plan.
-  // Enabling thinking here causes thinking-only responses (no tool calls),
-  // which Safety Net C (threshold=1) immediately kills, wasting an entire
-  // plan→execute→enforce cycle and triggering the "restart from beginning" loop.
-  const isDiagnosticWithPlan =
-    isDiagnosticTask(state.currentTask)
-    && !!state.planText;
+  // Remediation-style tasks (verification with its diagnostic plan,
+  // error with its prePlanText) do not need extended thinking —
+  // the plan is already concrete. Enabling thinking here produces
+  // thinking-only responses (no tool calls), which Safety Net C
+  // (threshold=1) immediately kills, wasting an entire plan→execute→
+  // enforce cycle and triggering the "restart from beginning" loop.
+  const isRemediationTask =
+    isVerificationTask(state.currentTask) || isErrorTask(state.currentTask);
+  const hasRemediationPlan = isRemediationTask && !!state.planText;
 
   // ✅ Track token usage for this LLM call
   let capturedUsage: any = undefined;
@@ -363,7 +366,7 @@ export async function execute(
     for await (const event of llmToUse.stream(messages, {
       tools,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
-      enableThinking: !isAfterToolCall && !isDiagnosticWithPlan,
+      enableThinking: !isAfterToolCall && !hasRemediationPlan,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
     })) {
       if (event.type === 'retry') {
@@ -694,20 +697,24 @@ export async function execute(
     // (which persists across iterations and causes false positives from prior tool calls).
     const streamedInThisCall = finalizeResult?.streamedFiles || [];
     if (!explicitDone && toolCalls.length === 0 && streamedInThisCall.length > 0
-        && isDiagnosticTask(state.currentTask)) {
+        && isRemediationTask) {
       explicitDone = true;
       console.log(`✅ [execute] Auto-completing ${state.currentTask?.type} task: ${streamedInThisCall.length} file(s) created via <file> tag`);
     }
 
-    // Safety Net: track final task loop count (MUST go through channel system via return)
-    const isFinalTask = state.currentTask ? isFinalVerificationTask(state.currentTask) : false;
+    // Safety Net: track verification loop count (verification is the final
+    // task in every code job; see tasks/verification/model/is.ts). The
+    // `_finalTaskLoopCount` state name predates T6b-θ and is preserved to
+    // keep save / restore compatibility; semantically it tracks
+    // verification-only loops without progress.
+    const isVerification = state.currentTask ? isVerificationTask(state.currentTask) : false;
     const prevLoopCount = state._finalTaskLoopCount || 0;
-    const isStuckLooping = isFinalTask && !explicitDone && toolCalls.length === 0;
+    const isStuckLooping = isVerification && !explicitDone && toolCalls.length === 0;
     const newFinalTaskLoopCount = isStuckLooping ? prevLoopCount + 1 : 0;
     
     // Thinking-only detection: log when LLM produces thinking but no text/tools
     if (toolCalls.length === 0 && !textResponse.trim() && thinking) {
-      const actualEnableThinking = !isAfterToolCall && !isDiagnosticWithPlan;
+      const actualEnableThinking = !isAfterToolCall && !hasRemediationPlan;
       console.warn(`⚠️  [CodeGen] THINKING-ONLY response: thinking=${thinking.length}ch, enableThinking=${actualEnableThinking}, history=${nodeExecute.length}, violations=${state.violations?.length ?? 0}`);
       if (state.context?.featurePath && state._httpJobId) {
         const { getExecutionLogger } = await import('../../../../../../core/utils/executionLogger');
@@ -766,8 +773,7 @@ export async function execute(
             ...streamedFilePaths.map(fp => `  - ${fp}`),
           );
         }
-        const isDiagnosticType = isDiagnosticTask(state.currentTask);
-        const doneHint = isDiagnosticType
+        const doneHint = isRemediationTask
           ? 'If you have applied all fixes from the remediation plan, output <done>true</done> now. Do NOT run build/test — a separate diagnostic phase re-verifies automatically.'
           : 'If you have completed all work for this task, output <done>true</done> now.';
         reentryParts.push(

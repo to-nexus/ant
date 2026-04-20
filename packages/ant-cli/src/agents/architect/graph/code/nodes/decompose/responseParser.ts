@@ -5,7 +5,8 @@ import { extractErrorDetails, createErrorViolation } from "../shared/errorHandle
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
 import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type Complexity, type DecidedBy, type SpecClarify } from '@ant/shared';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
-import { isDiagnosticTask } from '../../tasks/_shared/classification';
+import { isVerificationTask } from '../../tasks/verification';
+import { isErrorTask } from '../../tasks/error';
 import { isFeatureTask } from '../../tasks/feature';
 
 /**
@@ -348,10 +349,16 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
   const hasFeatureTasks = tasks.some(task =>
     isFeatureTask(task) && task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION
   );
-  const allTasksAreErrors = tasks.length > 0 && tasks.every(task =>
-    isDiagnosticTask(task) || task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
+  // Queue composed entirely of verification / error tasks — no feature
+  // work to validate. A separate Final Verification is redundant because
+  // verification tasks self-validate (they are the gate) and error tasks
+  // are remediation fixes targeted at an existing verification failure.
+  // `isVerificationTask` already absorbs the FINAL_VERIFICATION priority
+  // band, so no separate priority check is needed.
+  const allTasksAreRemediation = tasks.length > 0 && tasks.every(task =>
+    isVerificationTask(task) || isErrorTask(task)
   );
-  
+
   // Final task is required only if there are feature tasks
   if (!hasFinalTask && hasFeatureTasks) {
     throw new Error(
@@ -363,10 +370,10 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
       'This is a CRITICAL prompt violation. Check decompose prompt compliance.'
     );
   }
-  
+
   // Log decision
-  if (!hasFinalTask && allTasksAreErrors) {
-    console.log(`✅ [createTaskQueue] Final task skipped (all tasks are error tasks with individual validation)`);
+  if (!hasFinalTask && allTasksAreRemediation) {
+    console.log(`✅ [createTaskQueue] Final task skipped (queue is verification/error only — no feature work to validate)`);
   } else if (hasFinalTask) {
     console.log(`✅ [createTaskQueue] Final Verification task validated (created by LLM)`);
   }

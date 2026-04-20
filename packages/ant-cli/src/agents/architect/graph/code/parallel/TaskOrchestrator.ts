@@ -562,7 +562,8 @@ export class TaskOrchestrator<T extends BaseTask> {
         // Skip remaining verification/final tasks — running them after failure is pointless.
         // A "final" task is one whose orchestrator hook owns its attempt counter
         // (verification) or one tagged with the FINAL_VERIFICATION priority. R1 —
-        // no `task.type === 'verification'` comparison.
+        // polymorphic discrimination via `hasOwnAttemptCounter`; no literal
+        // type-equality branches here.
         const remaining = this.taskQueue.getAll();
         const isFinalTask = (t: T): boolean => {
           if (t.priority >= TASK_PRIORITIES.FINAL_VERIFICATION) return true;
