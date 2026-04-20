@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { formatCachedPassedSteps } from '../../../src/agents/architect/graph/code/nodes/plan/planGeneration';
+import { formatCachedPassedSteps } from '../../../src/agents/architect/graph/code/tasks/verification/hooks/plan';
 
-describe('Axis C — formatCachedPassedSteps', () => {
+describe('tasks/verification/hooks/plan — formatCachedPassedSteps', () => {
   it('returns undefined when tracker is undefined', () => {
     expect(formatCachedPassedSteps(undefined)).toBeUndefined();
   });

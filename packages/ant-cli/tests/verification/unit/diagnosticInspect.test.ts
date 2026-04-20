@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { isDiagnosticInspectCommand } from '../../../src/agents/common/tool/handlers/diagnosticInspect';
+import { isDiagnosticInspectCommand } from '../../../src/agents/architect/graph/code/utils/deepDiagnosticMode';
 
-describe('Axis G-5 — isDiagnosticInspectCommand', () => {
+describe('isDiagnosticInspectCommand — deep-diagnostic inspect allow-list', () => {
   it('accepts file inspection commands', () => {
     expect(isDiagnosticInspectCommand('cat package.json')).toBe(true);
     expect(isDiagnosticInspectCommand('ls -la')).toBe(true);

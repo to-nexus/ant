@@ -356,6 +356,10 @@ describe('applyCodeCommandPolicy', () => {
 
   it('should block re-run of already-attempted typecheck in plan phase', async () => {
     const { applyCodeCommandPolicy } = await import('../src/agents/common/tool/handlers/codeCommandPolicy');
+    // Plan-phase loop guard is verification-specific per R1 (lives in
+    // tasks/verification/hooks/command.ts); callers without a task type
+    // get the generic `null` pass-through.
+    ctx.currentTaskType = 'verification';
     ctx.activePhase = 'plan';
     ctx.verificationTracker = { typecheckAttempted: true, typecheckPassed: false };
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });

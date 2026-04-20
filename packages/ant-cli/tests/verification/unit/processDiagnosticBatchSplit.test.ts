@@ -3,17 +3,19 @@
  *
  * Covers (see docs/testing/verification-scenarios.md, matrix C6-C9):
  *   C6  batches >= 2 → split into error sub-tasks, re-enqueue original
- *   C7  forceByRepeat (_lastPlanHash repeat) → force split
- *   C8  budgetExhausted (_verificationBudget=0) → force split
+ *   C7  forceByRepeat (applied plan history repeat) → force split
+ *   C8  budgetExhausted (_verificationAttempts >= MAX) → force split
  *   C9  overErrorBudget / overFileBudget → force split
  *   Edge: non-verification/error task → noop
  *   Edge: short planText (<= 50 chars) → noop
  *   Edge: unparseable JSON → noop (returns original)
- *   Hard limit: MAX_BATCH_SPLIT_CYCLES exceeded → mark failed, return ''
+ *   Hard limit: MAX_BATCH_SPLIT_CYCLES exceeded → throw VerificationTerminalError('batch_cycle_limit')
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { __testing__ } from '../../../src/agents/architect/graph/code/nodes/plan/index';
+import { MAX_VERIFICATION_ATTEMPTS } from '../../../src/agents/architect/graph/code/utils/verificationAttempts';
+import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/utils/verificationErrors';
 import { TaskQueue } from '../../../src/agents/architect/types/task';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 
@@ -22,8 +24,8 @@ const { processDiagnosticBatchSplit, normalizePlanForHash, MAX_BATCH_SPLIT_CYCLE
 function makeState(overrides: Record<string, any> = {}): any {
   return {
     taskQueue: new TaskQueue<CodeTask>(),
-    _verificationBudget: 5,
-    _lastPlanHash: undefined,
+    _verificationAttempts: 0,
+    _appliedPlanHistory: [] as string[],
     _batchSplitRequeued: false,
     context: { featurePath: undefined },
     _httpJobId: undefined,
@@ -146,13 +148,14 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
     });
   });
 
-  describe('C7: forceByRepeat (_lastPlanHash repeat)', () => {
-    it('same plan hash twice + single batch + modify present → force split', () => {
+  describe('C7: forceByRepeat (applied plan history repeat)', () => {
+    it('same plan in _appliedPlanHistory + single batch + modify present → force split', () => {
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts', 'b.ts'] },
       });
-      const state = makeState({ _lastPlanHash: normalizePlanForHash(plan) });
+      // Previous attempt applied the same plan — detectRepeatedPlan will fire.
+      const state = makeState({ _appliedPlanHistory: [plan] });
       const task = makeTask();
 
       const out = processDiagnosticBatchSplit(state, plan, task);
@@ -163,12 +166,16 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(errors.length).toBe(2);
     });
 
-    it('different plan hash → does not force by repeat', () => {
+    it('different plan in history → does not force by repeat', () => {
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts'] },
       });
-      const state = makeState({ _lastPlanHash: 'different-hash' });
+      const otherPlan = JSON.stringify({
+        diagnostics: { totalErrors: 1 },
+        implementation: { modify: ['different.ts'] },
+      });
+      const state = makeState({ _appliedPlanHistory: [otherPlan] });
       const task = makeTask();
 
       const out = processDiagnosticBatchSplit(state, plan, task);
@@ -176,8 +183,8 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
     });
   });
 
-  describe('C8: budgetExhausted (_verificationBudget <= 0)', () => {
-    it('budget=0 + multiple modify files → force split', () => {
+  describe('C8: budgetExhausted (remainingBudget <= 0)', () => {
+    it('attempts at ceiling + multiple modify files → force split', () => {
       // Force split rebuilds `batches` from `implementation.modify`, then the
       // "batches.length <= 1" guard blocks single-file cases. Splitting only
       // actually occurs when there are >= 2 files to split across batches.
@@ -185,7 +192,7 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts', 'b.ts'] },
       });
-      const state = makeState({ _verificationBudget: 0 });
+      const state = makeState({ _verificationAttempts: MAX_VERIFICATION_ATTEMPTS });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe('');
       expect(state._batchSplitRequeued).toBe(true);
@@ -193,22 +200,22 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(errors.length).toBe(2);
     });
 
-    it('budget=0 + single modify file → noop (not enough to split)', () => {
+    it('attempts at ceiling + single modify file → noop (not enough to split)', () => {
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts'] },
       });
-      const state = makeState({ _verificationBudget: 0 });
+      const state = makeState({ _verificationAttempts: MAX_VERIFICATION_ATTEMPTS });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe(plan);
     });
 
-    it('budget > 0 and no other force condition → noop', () => {
+    it('budget remaining and no other force condition → noop', () => {
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
         implementation: { modify: ['a.ts'] },
       });
-      const state = makeState({ _verificationBudget: 5 });
+      const state = makeState({ _verificationAttempts: 1 });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe(plan);
     });
@@ -251,7 +258,10 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
   });
 
   describe('Hard limit: MAX_BATCH_SPLIT_CYCLES', () => {
-    it(`splitCount > ${MAX_BATCH_SPLIT_CYCLES} marks task failed and returns ''`, () => {
+    // T8 — throw typed terminal error instead of mutating `task._failed`.
+    // Orchestrator classifyTerminalError handles it at `reportFailure`, so
+    // the plan node no longer side-effects permanent-fail state.
+    it(`splitCount > ${MAX_BATCH_SPLIT_CYCLES} throws VerificationTerminalError('batch_cycle_limit')`, () => {
       const state = makeState();
       const task = makeTask({ _batchSplitCount: MAX_BATCH_SPLIT_CYCLES } as any);
       const plan = JSON.stringify({
@@ -262,11 +272,19 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
           { name: 'fix b', modify: ['b.ts'] },
         ],
       });
-      const out = processDiagnosticBatchSplit(state, plan, task);
-      expect(out).toBe('');
-      expect((task as any)._failed).toBe(true);
-      expect((task as any)._failureReason).toMatch(/batch_split_cycle_limit_exceeded/);
-      expect(state._batchSplitRequeued).toBe(true);
+      let thrown: unknown;
+      try {
+        processDiagnosticBatchSplit(state, plan, task);
+      } catch (err) {
+        thrown = err;
+      }
+      expect(thrown).toBeInstanceOf(VerificationTerminalError);
+      expect((thrown as VerificationTerminalError).kind).toBe('batch_cycle_limit');
+      expect((thrown as VerificationTerminalError).message).toMatch(/cycle limit/i);
+      // The throw path no longer mutates `_failed` / `_batchSplitRequeued`
+      // — the orchestrator's permanent-fail branch owns that transition.
+      expect((task as any)._failed).toBeUndefined();
+      expect(state._batchSplitRequeued).toBe(false);
     });
   });
 

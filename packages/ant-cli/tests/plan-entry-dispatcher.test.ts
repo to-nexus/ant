@@ -3,7 +3,7 @@
  *
  * Covers verification scenario matrix entries:
  *   - C14: verification fresh entry initializes `_verificationTracker`,
- *          `_verificationBudget`, `_appliedPlanHistory`.
+ *          `_verificationAttempts`, `_appliedPlanHistory`.
  *   - C15: retry entry clears tracker `*Attempted` flags while
  *          preserving `*Passed` / `*Required`.
  *
@@ -59,9 +59,7 @@ describe('resolvePlanEntry — fresh verification task (C14)', () => {
     expect(state._verificationTracker?.testPassed).toBe(false);
     expect(state._verificationTracker?.typecheckPassed).toBe(false);
 
-    expect(state._verificationBudget).toBeGreaterThan(0);
-    expect(state._diagnosticAttempts).toBe(0);
-    expect(state._deepDiagnosticBudgetGranted).toBe(false);
+    expect(state._verificationAttempts).toBe(0);
     expect(Array.isArray(state._appliedPlanHistory)).toBe(true);
   });
 
@@ -84,7 +82,7 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
       type: 'verification',
       priority: 1000,
     };
-    state._planEntryReason = 'retry';
+    state._nextPlanEntry = 'retry';
     state._verificationTracker = {
       buildPassed: true,
       testPassed: false,
@@ -95,8 +93,7 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
       testsRequired: true,
       typecheckRequired: true,
     };
-    state._verificationBudget = 8;
-    state._diagnosticAttempts = 0;
+    state._verificationAttempts = 0;
     state.retries = 1;
     state.violations = [{ type: 'type_error' as any, severity: 'critical', message: 'x' }];
     state.planText = '{"task":{"id":"t1"},"diagnostics":{"totalErrors":1}}';

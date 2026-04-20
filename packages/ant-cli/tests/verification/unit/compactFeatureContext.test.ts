@@ -11,7 +11,7 @@ function makeTurn(idx: number, userLen = 20): MergedUserTurn {
     jobId: `job-${idx}`,
     turnId: `t-${idx}`,
     jobType: 'code',
-    user: 'x'.repeat(userLen),
+    text: 'x'.repeat(userLen),
   };
 }
 
