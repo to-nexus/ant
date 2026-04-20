@@ -64,8 +64,8 @@
 1. Identify which artifact the directive targets
 2. Determine which job OWNS that artifact — the job whose `outputs` include that artifact type (see AVAILABLE JOBS)
 3. Compare owning job with current job:
-   - Same → `proceed` (owning job handles explain internally). **STOP — skip Steps 3–8.**
-   - Different → `redirect` to owning job with `suggestedJob` and `suggestedAgent`. **STOP — skip Steps 3–8.**
+   - Same → `proceed` (owning job handles explain internally). **STOP — skip Steps 3–7.**
+   - Different → `redirect` to owning job with `suggestedJob` and `suggestedAgent`. **STOP — skip Steps 3–7.**
 
 **Constraint**: Directives that request modification, improvement, or creation of artifacts are modification intent, NOT explain intent. Observe whether the expected outcome is a changed artifact or an answer.
 
@@ -79,7 +79,7 @@
 
 | Observation | Action |
 |-------------|--------|
-| No different artifact type requested as output | `proceed` — skip Steps 4–8 |
+| No different artifact type requested as output | `proceed` — skip Steps 4–7 |
 | Explicitly requests to produce a different artifact type | Continue to Step 4 |
 
 **Constraint**: Mentioning technologies, architecture patterns, design constraints, or domain concepts that overlap with another job's scope is NOT requesting that job's artifact. These are inputs to the current job's output.
@@ -116,75 +116,28 @@
 |-------------------|------------------------|--------|
 | Yes | Yes | target = `code` |
 | No | Yes | target = `design` (design artifacts needed first) |
-| Any | No | → Step 6 |
+| Any | No | target = `code` |
 
-**Constraint (conservative)**: Only explicit development/implementation directives qualify as "implementation request" — develop, implement, code, build, "start development". Analysis, investigation, bug diagnosis, modification, explanation do NOT qualify. **When uncertain, always pass to Step 6.**
+**Constraint (conservative)**: Only explicit development/implementation directives qualify as "implementation request" — develop, implement, code, build, "start development". Analysis, investigation, bug diagnosis, modification, explanation do NOT qualify.
 
-### Step 6: Scope Routing
-
-**Applies when**: No explicit artifact (Step 4) AND not implementation request (Step 5).
-
-**Observation targets** (in order):
-
-#### 6.1: Modification Intent Check
-
-Observe whether the directive's content implies changes will result:
-
-| Content describes | Modification intent? |
-|-------------------|---------------------|
-| Problems, defects, broken behavior, root cause investigation | Yes — analysis will lead to fixes |
-| Requests to fix, modify, add, refactor, implement | Yes — direct modification |
-| Pure understanding: "how does X work?", "explain Y", "describe Z" | No — explanation only |
-
-- **Modification intent = No** → target = `code` (explain mode, any boundary). **STOP — skip 6.2.**
-- **Modification intent = Yes** → proceed to 6.2.
-
-**Constraint**: Observe the CONTENT of the request, not just the verb. "Why doesn't X work?" describes broken behavior (modification intent). "How does X work?" asks for understanding (no modification intent).
-
-#### 6.2: Scope Breadth + Spec Check (modification intent only)
-
-1. **Scope breadth** — observe the specificity of the directive's target:
-   - **Single-boundary**: directive names a specific, narrow target (one file, one function, one UI element, one API endpoint). The change is self-contained.
-   - **Multi-boundary**: everything else — multiple concerns, broad/vague directive, cross-layer impact, empty project.
-   - **Constraint**: When uncertain, default to multi-boundary.
-
-2. **Relevant spec** — observe whether a spec document covers the directive's scope:
-   - Compare `spec-*.md` filenames in WORKSPACE STATE with the directive's scope
-   - Specs for a different scope = "no relevant spec"
-   - **Constraint**: "spec documents exist" ≠ "relevant spec for THIS directive exists"
-
-**Decision**:
-
-| Scope breadth | Relevant spec? | Target |
-|---------------|----------------|--------|
-| Single-boundary | Any | `code` |
-| Multi-boundary | Yes | `code` |
-| Multi-boundary | No | `design` |
-
-Compare target vs current job:
-- target == current → `proceed`
-- target != current → `redirect` with `suggestedJob` and `suggestedAgent`
-
-⚠️ **Blind spot — scope underestimation**: Bugs that manifest in one place but originate across multiple layers (UI, data, API, state management) span multiple boundaries. Observe the FULL scope of affected subsystems, not just where the symptom appears.
-
-### Step 7: Agent Match (for work intent)
+### Step 6: Agent Match (for work intent)
 
 **Principle**: Each job definition in AVAILABLE JOBS includes its `agent`. Compare the target job's agent with the current agent (shown in SESSION).
 
 | Observation | Action |
 |-------------|--------|
-| Target job's agent matches current agent | Continue to Step 8 |
+| Target job's agent matches current agent | Continue to Step 7 |
 | Target job's agent differs from current agent | Set `redirect` with `suggestedAgent` + `suggestedJob` |
 
-### Step 8: Determine Status
+### Step 7: Determine Status
 
 | Observation | Status |
 |-------------|--------|
 | Request matches current job capability AND prerequisites present | `proceed` |
-| Steps 4–6 determined a different job or agent than current | `redirect` |
+| Steps 4–5 determined a different job or agent than current | `redirect` |
 | Request matches current job BUT REQUIRED prerequisites missing | `blocked` |
 
-**Constraint**: If Steps 4–6 set `redirect`, Step 8 MUST NOT override it.
+**Constraint**: If Steps 4–5 set `redirect`, Step 7 MUST NOT override it.
 
 **Constraint**: Only missing REQUIRED prerequisites trigger `blocked`. Missing RECOMMENDED prerequisites do NOT affect status.
 

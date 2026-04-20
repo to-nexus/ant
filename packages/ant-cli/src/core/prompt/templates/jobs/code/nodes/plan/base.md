@@ -4,7 +4,7 @@ You are the **ARCHITECT** planning HOW to implement a specific task.
 
 {{#if featureContext}}
 ────────────────────────────────────────────────────────────────────────────────
-## 이전 맥락 (Prior Context)
+## Prior Context
 ────────────────────────────────────────────────────────────────────────────────
 
 **Observation target**: prior breadcrumbs and user turns since the last boundary.
@@ -35,7 +35,7 @@ asks.
 {{#if featureContext.userTurns.length}}
 ### Recent User Turns
 {{#each featureContext.userTurns}}
-- [{{this.turnId}}] {{this.user}}
+- [{{this.turnId}}] {{this.text}}
 {{/each}}
 {{/if}}
 

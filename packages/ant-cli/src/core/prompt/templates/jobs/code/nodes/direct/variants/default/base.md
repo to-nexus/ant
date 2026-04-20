@@ -30,7 +30,7 @@ read-only background — do NOT restate it unless the current directive asks.
 {{#if featureContext.userTurns.length}}
 ### Recent User Turns
 {{#each featureContext.userTurns}}
-- [{{this.turnId}}] {{this.user}}
+- [{{this.turnId}}] {{this.text}}
 {{/each}}
 {{/if}}
 
