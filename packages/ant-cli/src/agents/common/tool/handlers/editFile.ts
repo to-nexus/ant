@@ -90,7 +90,7 @@ export async function handleEditFile(
       await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
     }
 
-    // Axis F-2 — if the edit produced the same content, emit fileNotChanged so the
+    // If the edit produced the same content, emit fileNotChanged so the
     // reverify path can safely skip. Treat as a no-op for tracker invalidation.
     const contentChanged = modifiedContent !== originalContentForCompare;
     if (!contentChanged) {
@@ -101,7 +101,7 @@ export async function handleEditFile(
       };
     }
 
-    // Axis C — scope the invalidation based on what was touched.
+    // Scope the invalidation based on what was touched (invalidationScope.ts).
     // F2 — pass the pre/post content so dependency manifests narrow their
     // scope based on which fields actually changed.
     const decision = decideInvalidationScope(resolved.displayPath, {

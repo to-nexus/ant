@@ -4,7 +4,7 @@ import { DesignGraphState } from "../state";
 import * as path from "path";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
 import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
-import { buildFeatureContext, compactFeatureContext } from "../../../../../core/context/featureContextBuilder";
+import { hydrateFeatureContext } from "../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
 import { scanDesignOutputs, buildDesignArtifactPool } from '../../../../../core/prompt/builder/ArtifactPipeline';
@@ -111,9 +111,26 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     });
     console.log(`📄 [Design Resolve] Resume pool: ${artifacts.length} artifacts (${designOutputs.length} from disk)`);
 
+    // Rehydrate featureContext + turnId from feature.jsonl (§12 resume path).
+    // Checkpoints do not persist turnId — without this, learn cannot attribute
+    // breadcrumb/boundary writes to the correct user turn.
+    //
+    // §13 note: we intentionally do NOT pass `llm`/`promptPort` here. Design
+    // prompt templates never render `featureContext.summary` (see
+    // `core/prompt/templates/jobs/design/**` — zero references), so the LLM
+    // call that Compact would fire on large user_turn accumulation produces
+    // a digest nothing in this job run consumes. Code resolve keeps compact
+    // because plan/direct templates inject summary; design does not.
+    const { featureContext, turnId } = await hydrateFeatureContext(
+      { session: state.deps?.session },
+      { jobId: state.jobId, logPrefix: 'Design Resolve/Resume' },
+    );
+
     return {
       existingDesignDocs,
       artifacts,
+      featureContext,
+      turnId,
     } as Partial<DesignGraphState>;
   },
 
@@ -238,40 +255,19 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     } catch { /* Non-critical */ }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Feature Context (session redesign — Phase C)
-    // Mirrors code resolve: surface T2+T3 so future design-level prompts may
-    // consume prior context. Design sub-graph remains untouched (D5).
+    // Feature Context + turnId (session redesign — Phase C §11/§12/§13)
+    // Shared with onResume via `hydrateFeatureContext` so both paths recover
+    // the same turnId from feature.jsonl (SSOT).
+    //
+    // §13 note: no `llm`/`promptPort` passed. Design prompts do not render
+    // `featureContext.summary`, so running Compact here would fire an LLM
+    // call whose output nobody reads. Compact is code-specific by design —
+    // see onResume for the full rationale.
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    let featureContext = await buildFeatureContext(state.deps?.session);
-    if (featureContext) {
-      console.log(
-        `📚 [Design Resolve] featureContext: breadcrumbs=${featureContext.breadcrumbs.length}, userTurns=${featureContext.userTurns.length}`,
-      );
-      // §13 compaction_policy — mirror of code resolve. Compact is per-job and
-      // D5-safe: the feature.jsonl SSOT is shared across code/design so the
-      // same threshold/window applies.
-      const llm = state.deps?.llm;
-      const promptPort = state.deps?.promptBuilder;
-      if (llm && promptPort) {
-        const before = featureContext.userTurns.length;
-        featureContext = await compactFeatureContext(featureContext, { llm, promptPort });
-        if (featureContext.wasCompacted) {
-          console.log(
-            `🗜️  [Design Resolve] featureContext compacted: ${before} → ${featureContext.userTurns.length} user_turns + summary`,
-          );
-        }
-      }
-    }
-
-    // Resolve current turnId from feature.jsonl (session redesign §2 / §12).
-    // Consumer: design learn node writes breadcrumb/boundary attributed to
-    // this turn. Design sub-graph itself stays untouched (D5).
-    if (featureContext && state.jobId) {
-      const owning = featureContext.userTurns.find((t) => t.jobId === state.jobId);
-      if (owning?.turnId) {
-        state.turnId = owning.turnId;
-      }
-    }
+    const { featureContext, turnId } = await hydrateFeatureContext(
+      { session: state.deps?.session },
+      { jobId: state.jobId, logPrefix: 'Design Resolve' },
+    );
 
     // Validation based on mode
     const hasAnySource = sourceDocuments && Object.keys(sourceDocuments).length > 0;
@@ -300,6 +296,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       chatSource: state.chatSource,
       _httpJobId: state._httpJobId,
       featureContext,
+      turnId,
     } as Partial<DesignGraphState>;
   },
 };

@@ -18,6 +18,7 @@ import { createChatStatusReporter } from '../../../../../common/tool/chatStatusA
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
 import { inDeepDiagnosticMode } from '../../utils/deepDiagnosticMode';
 import { emitFileWriteTrace } from '../shared/emitFileWriteTrace';
+import { hooksIfActive } from '../../tasks/_shared/registry';
 
 const registry = createCodeToolRegistry();
 
@@ -90,6 +91,14 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
         jobType: 'code',
         sideEffects: event.result.sideEffects,
       });
+      // R1 — task-type-specific side-effect handling lives on the task's
+      // tool hook (verification: tracker reset / install status / deep-
+      // diagnostic). The inline switch below stays as a transitional
+      // dual-write until T4b removes the `_verificationTracker` /
+      // `_installNeeded` state fields; at that point the hook is the
+      // sole writer. See docs/tmp/verification-task-redesign-handoff.md
+      // §7.3 (T6b-α 편승).
+      hooksIfActive(state)?.tool?.onEvent(state, event);
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
         switch (effect.type) {

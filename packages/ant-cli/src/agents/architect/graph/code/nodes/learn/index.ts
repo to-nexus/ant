@@ -10,7 +10,10 @@ import { extractCodeLessons, extractTags } from './lessonExtractor';
 import {
   buildBreadcrumb,
   collectTouchedFilesFromTrace,
+  type TouchedFromTrace,
 } from '../../../../../../core/context/breadcrumb';
+import { recordClassification } from '../../../../../../core/utils/featureBiases';
+import { PROMOTION_TOUCHED_THRESHOLD } from '@ant/shared';
 
 class LessonQueue {
   private queue: Array<() => Promise<void>> = [];
@@ -78,8 +81,9 @@ const lessonQueue = new LessonQueue();
  * The helper is side-effect only (appends to feature.jsonl); return value
  * is unused. Failures are caller's responsibility to log.
  */
-async function applyBreadcrumbBoundaryMatrix(
+export async function applyBreadcrumbBoundaryMatrix(
   state: ArchitectGraphState,
+  preComputedTouched?: TouchedFromTrace,
 ): Promise<void> {
   const session = state.deps?.session;
   if (!session) return;
@@ -104,7 +108,12 @@ async function applyBreadcrumbBoundaryMatrix(
   let wantBoundary = false;
   let rowLabel = 'noop';
 
-  const touched = await collectTouchedFilesFromTrace(session, turnId);
+  // I/O dedup: `learn()` can pre-compute `touched` once and share it with
+  // `recordClassificationBias` so the matrix + bias paths hit trace.jsonl
+  // a single time per job. Fall back to a fresh read when the helper is
+  // invoked directly (tests / future consumers).
+  const touched = preComputedTouched
+    ?? (await collectTouchedFilesFromTrace(session, turnId));
   const touchedCount = touched.all.size;
 
   if (!isExplain && complexity === 'todo') {
@@ -169,6 +178,70 @@ async function applyBreadcrumbBoundaryMatrix(
     } catch (err) {
       console.warn('⚠️  [Learn] appendBoundary failed:', err);
     }
+  }
+}
+
+/**
+ * §19 misclassify_guard — append a featureBiases.jsonl sample when the
+ * current job shows a signal that Decompose's initial complexity
+ * classification may have been wrong.
+ *
+ * Trigger conditions (OR):
+ *   - `needsEscalation === true` → direct emitted an escalation signal
+ *     at least once on this job (true whether decompose re-routed back
+ *     to direct or onward to plan/parallelOrchestrator)
+ *   - `_promotedThisJob === true` → direct was re-entered after a prior
+ *     escalation (strict subset of the above, kept for clarity)
+ *   - touched-file count > PROMOTION_TOUCHED_THRESHOLD → exceeded the
+ *     same threshold that powers `shouldEscalate`
+ *
+ * When `state.complexity` is undefined (no decomposed prediction on this
+ * run) there's nothing to compare against — skip. When `featurePath` is
+ * missing (resume-without-context / test harness) — skip.
+ *
+ * Provenance: forwards `state.complexityDecidedBy` so aggregation
+ * readers can distinguish LLM judgements from heuristic fallbacks
+ * without joining feature.jsonl `user_turn_meta` (§4.1 contract —
+ * see `decompose/responseParser.ts` ParsedDecomposeResponse doc).
+ *
+ * Side-effect only (append). `recordClassification` swallows write
+ * failures and returns `false`; the caller uses the return value to
+ * avoid logging a misleading "recorded" line on silent failure.
+ */
+export async function recordClassificationBias(
+  state: ArchitectGraphState,
+  preComputedTouched?: TouchedFromTrace,
+): Promise<void> {
+  const featurePath = state.context?.featurePath;
+  const predicted = state.complexity;
+  const jobId = state.jobId;
+  const turnId = state.turnId;
+  if (!featurePath || !predicted || !jobId || !turnId) return;
+
+  const session = state.deps?.session;
+  const touched = preComputedTouched
+    ?? (await collectTouchedFilesFromTrace(session, turnId));
+  const actualTouched = touched.all.size;
+  const escalated =
+    state._promotedThisJob === true || state.needsEscalation === true;
+
+  if (!escalated && actualTouched <= PROMOTION_TOUCHED_THRESHOLD) return;
+
+  const recorded = await recordClassification({
+    featurePath,
+    jobId,
+    predictedComplexity: predicted,
+    decidedBy: state.complexityDecidedBy,
+    actualTouched,
+    escalated,
+    directive: state.directive,
+  });
+  if (recorded) {
+    console.log(
+      `📊 [Learn] featureBiases sample recorded: predicted=${predicted} ` +
+        `decidedBy=${state.complexityDecidedBy ?? 'unknown'} ` +
+        `touched=${actualTouched} escalated=${escalated}`,
+    );
   }
 }
 
@@ -391,7 +464,46 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   const hasOrchestratorFailure = state.interruption?.reason === 'tasks_failed'
     || state.interruption?.reason === 'recursion_limit'
     || state.interruption?.reason === 'consecutive_timeouts';
-  
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // I/O dedup: the §19 featureBiases sampler and the §2.4 breadcrumb
+  // matrix (below, inside the session-persistence block) both need the
+  // set of files touched during this turn, which lives in trace.jsonl.
+  //
+  // Compute it once here so the observability path issues a single
+  // `loadTraceByTurnIds` call per learn run. Both helpers accept the
+  // pre-computed result and skip their internal fetch.
+  //
+  // Preconditions mirror the union of the two call sites:
+  //   - isLastTask (both helpers run only at turn boundary)
+  //   - !isWorkerContext (workers never own the classification / matrix)
+  //   - turnId + session present (collector returns empty otherwise)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const learnSession = state.deps?.session;
+  const touchedForLearn: TouchedFromTrace | undefined =
+    isLastTask && !isWorkerContext && state.turnId && learnSession
+      ? await collectTouchedFilesFromTrace(learnSession, state.turnId)
+      : undefined;
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // §19 misclassify_guard — run BEFORE the session-persistence block.
+  //
+  // Must not be gated by `!hasOrchestratorFailure`: orchestrator-level
+  // failures (tasks_failed / recursion_limit / consecutive_timeouts)
+  // are exactly the cases where an under-predicted complexity tends to
+  // blow up the recursion budget or the per-task retry budget. Those
+  // are the strongest misclass signals we can collect, so we record
+  // them unconditionally. Worker-context calls are still skipped —
+  // workers do not own the classification, the main graph does.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (isLastTask && !isWorkerContext) {
+    try {
+      await recordClassificationBias(state, touchedForLearn);
+    } catch (err) {
+      console.warn('⚠️  [Learn] featureBiases record failed:', err);
+    }
+  }
+
   let sessionId: string | undefined;
   let runId: number | undefined;
   
@@ -482,10 +594,14 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // Session redesign §2.4 — Breadcrumb / Boundary policy matrix.
     // Runs once at the end of a code job (isLastTask) to capture the
     // job's trace into feature.jsonl for future resolve/plan/direct use.
+    //
+    // Gated by `!taskFailed` so a failed run does not poison downstream
+    // feature.jsonl readers. §19 featureBiases has a different failure
+    // contract and runs earlier, outside this block (see above).
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (isLastTask && !taskFailed) {
       try {
-        await applyBreadcrumbBoundaryMatrix(state);
+        await applyBreadcrumbBoundaryMatrix(state, touchedForLearn);
       } catch (err) {
         console.warn('⚠️  [Learn] breadcrumb/boundary matrix failed:', err);
       }

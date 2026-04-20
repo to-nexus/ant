@@ -13,47 +13,18 @@ import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
 import { formatViolations } from "../shared/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
-import { effectiveTechTier, getTechTier, type ResolvedArtifact } from "@ant/shared";
+import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
-import { resolveArtifacts } from "../../../../../../core/prompt/builder/ArtifactPipeline";
+import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { getRACDocuments } from "@ant/shared";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
-import {
-  collectConfigSnapshot,
-  renderConfigBlock,
-  inDeepDiagnosticMode,
-} from '../../utils/deepDiagnosticMode';
-import { usedAttempts } from '../../utils/verificationAttempts';
-import type { VerificationTracker } from '../../state';
-import { enumeratePassedSteps } from '../../utils/verificationCompleteness';
+import { hooksForTaskType } from '../../tasks/_shared/registry';
+import { isDiagnosticTask } from '../../tasks/_shared/classification';
+import type { PlanPromptCtx } from '../../tasks/_shared/types';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-
-/**
- * Render a bullet list of verification steps that have already passed in
- * the current diagnostic cycle. Returns undefined when nothing is cached
- * so the template's `{{#if}}` block stays silent.
- *
- * Derived from `enumeratePassedSteps` (SSOT in utils/verificationCompleteness.ts)
- * so that "which gates are considered passed here" matches exactly what
- * `isVerificationComplete` considers non-missing. Previously these two
- * functions encoded the same rule independently and drifted.
- *
- * Exported for unit testing.
- */
-export function formatCachedPassedSteps(tracker: VerificationTracker | undefined): string | undefined {
-  const passed = enumeratePassedSteps(tracker);
-  if (passed.length === 0) return undefined;
-  const labels: Record<string, string> = {
-    typecheck: '- ✓ typecheck (tsc --noEmit)',
-    build: '- ✓ build',
-    test: '- ✓ test',
-  };
-  const rendered = passed.map(s => labels[s]).filter(Boolean).join('\n');
-  return rendered || undefined;
-}
 
 /**
  * Select appropriate LLM for plan node
@@ -79,6 +50,18 @@ async function selectLLMForTask(
 
 /**
  * Build plan prompt (shared by generatePlanText and plan-with-tools path).
+ *
+ * Dispatch order (T6b-β):
+ *   1. `hooks.plan.buildPrompt(ctx)` — full override; used by verification
+ *      and error which render against dedicated `jobs/code/nodes/plan/
+ *      variants/{type}/base` templates.
+ *   2. Generic `jobs/code/nodes/plan/base` path — artifact pipeline, RAC
+ *      documents, basis section. Task types that only need to inject extra
+ *      template vars (e.g. setup's `setupConstraints`) participate via
+ *      `hooks.plan.extraTemplateVars(ctx)`.
+ *
+ * The phase layer itself is blind to `task.type`; all branching has moved
+ * into `tasks/{type}/hooks/plan.ts`.
  */
 export async function buildPlanPrompt(
   state: ArchitectGraphState,
@@ -92,85 +75,23 @@ export async function buildPlanPrompt(
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Plan] PromptBuilder not available');
 
-  if (task.type === 'verification') {
-    const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
-    if (!techTier) {
-      console.warn(`⚠️ [Plan] Verification task "${task.name}": techTier is null`);
-    } else {
-      console.log(`🔧 [Plan] Verification techTier: language=${techTier.language}, framework=${techTier.framework || 'none'}`);
-    }
-    const installNeeded = state._installNeeded;
-    let dependencyStatus: string | undefined;
-    if (installNeeded === false) {
-      dependencyStatus = 'Dependencies are current. Dependency declaration files are unchanged since last install. Skip dependency installation and proceed directly to build verification.';
-    } else if (installNeeded === true) {
-      dependencyStatus = 'Dependency declaration files have changed since last successful install. Run the project\'s install command before build verification.';
-    }
+  const planHook = hooksForTaskType(task.type)?.plan;
+  const promptCtx: PlanPromptCtx = {
+    state,
+    task,
+    projectCodeContext,
+    violationsText,
+    uiDoc,
+    remainingTasks,
+    options,
+  };
 
-    const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
-    // Deep-diagnostic mode activates on the 2nd re-entry. We inject config
-    // files + a dedicated prompt signal so the LLM breaks out of "same
-    // category of fix" loops. See utils/deepDiagnosticMode.ts.
-    const isDeepDiagnostic = inDeepDiagnosticMode(state);
-    let fmtCtx = formatCodeContext(projectCodeContext);
-    if (isDeepDiagnostic) {
-      const configs = await collectConfigSnapshot(state.context?.featurePath);
-      const block = renderConfigBlock(configs);
-      if (block) {
-        fmtCtx = `${fmtCtx || ''}\n\n${block}`.trim();
-        console.log(`🧭 [Plan] Deep-diagnostic injected ${configs.length} config file(s)`);
-      }
-    }
-    let languageHints = '';
-    if (techTier?.language) {
-      try { languageHints = await promptBuilder.render(`jobs/code/nodes/plan/variants/verification/basis/techTier/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
-    }
-    // "Already passed" hint so the LLM skips cached steps instead of hitting
-    // the codeCommandPolicy rejection to learn the same.
-    const cachedPassedSteps = formatCachedPassedSteps(state._verificationTracker);
-    const vTaskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
-    const vBasisSection = await promptBuilder.renderBasis(
-      state.resolvedAction?.basis, 'code', vTaskTechTiers,
-    );
-    const vBody = await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
-      taskId: task.id, taskName: task.name, taskDescription: task.description,
-      directive: state.directive || '', isErrorTask: false, runTests: true,
-      projectCodeContext: fmtCtx, directoryTree: projectCodeContext?.directoryTree || '',
-      violationsText, isRetry: !!violationsText, hasTools: options?.hasTools ?? false,
-      languageHints, hasLanguageHints: !!languageHints, dependencyStatus,
-      packageManager, hasPackageManager: !!packageManager,
-      isDeepDiagnostic,
-      diagnosticAttempts: usedAttempts(state),
-      cachedPassedSteps,
-      resolvedAction: state.resolvedAction,
-    });
-    return vBasisSection ? `${vBasisSection}\n\n---\n\n${vBody}` : vBody;
+  // Type-specific full override (verification / error variants).
+  if (planHook?.buildPrompt) {
+    return planHook.buildPrompt(promptCtx);
   }
 
-  if (task.type === 'error') {
-    const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
-    const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
-    const fmtCtx = formatCodeContext(projectCodeContext);
-    let languageHints = '';
-    if (techTier?.language) {
-      try { languageHints = await promptBuilder.render(`jobs/code/nodes/plan/variants/verification/basis/techTier/${mapLang(techTier.language)}/hints`, {}); } catch { /* no hints */ }
-    }
-    const eTaskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
-    const eBasisSection = await promptBuilder.renderBasis(
-      state.resolvedAction?.basis, 'code', eTaskTechTiers,
-    );
-    const eBody = await promptBuilder.render('jobs/code/nodes/plan/variants/error/base', {
-      taskId: task.id, taskName: task.name, taskDescription: task.description,
-      directive: state.directive || '', projectCodeContext: fmtCtx,
-      directoryTree: projectCodeContext?.directoryTree || '',
-      violationsText, isRetry: !!violationsText, hasTools: options?.hasTools ?? false,
-      languageHints, hasLanguageHints: !!languageHints,
-      packageManager, hasPackageManager: !!packageManager,
-      resolvedAction: state.resolvedAction,
-    });
-    return eBasisSection ? `${eBasisSection}\n\n---\n\n${eBody}` : eBody;
-  }
-
+  // Generic path — artifact pipeline + RAC docs + optional extra template vars.
   const isSpecDriven = !!state.selectedSpec;
 
   // Artifact selection via ArtifactPipeline (task-level)
@@ -197,13 +118,7 @@ export async function buildPlanPrompt(
   }
 
   const taskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
-  const techTier = taskTechTiers.length ? effectiveTechTier(taskTechTiers) : getTechTier(state);
   const fmtCtx = formatCodeContext(projectCodeContext);
-
-  let setupConstraints = '';
-  if (task.type === 'setup' && techTier?.language) {
-    try { setupConstraints = await promptBuilder.render(`jobs/code/nodes/execute/basis/techTier/${mapLang(techTier.language)}/setup/constraints`, {}); } catch { /* no constraints */ }
-  }
 
   const _planBasis = state.resolvedAction?.basis;
   if (!_planBasis) {
@@ -220,9 +135,10 @@ export async function buildPlanPrompt(
   const hasDesignDoc = allDocs.some(
     d => d.role === 'ref' && d.path.startsWith(AP.DESIGN),
   );
-  const hasUiDoc = allDocs.some(
-    d => d.path?.startsWith(AP.UI) || d.path?.includes('ui-'),
-  );
+  const hasUiDoc = new ArtifactPoolView(allDocs).hasUi();
+
+  // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
+  const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
 
   const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
     taskName: task.name, taskDescription: task.description,
@@ -232,13 +148,13 @@ export async function buildPlanPrompt(
     projectCodeContext: fmtCtx, directoryTree: projectCodeContext?.directoryTree || '',
     hasProjectCodeContext: !!fmtCtx,
     violationsText, isRetry: !!violationsText,
-    setupConstraints, hasSetupConstraints: !!setupConstraints,
     remainingTasks, hasRemainingTasks: remainingTasks && remainingTasks.length > 0,
     hasTools: options?.hasTools ?? false,
     designDocUnknownPackages: state.designDocUnknownPackages,
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
     resolvedAction: resolvedActionWithDocs, hasDesignDoc, hasUiDoc,
     featureContext: state.featureContext,
+    ...typeVars,
   });
 
   return basisSection ? `${basisSection}\n\n---\n\n${prompt}` : prompt;
@@ -726,7 +642,7 @@ export async function runPlanLLMWithTools(
   }
 
   // Log prompt for plan-toolLoop so it appears in prompt-*.md debug files
-  const isDiagnosticType = task.type === 'verification' || task.type === 'error';
+  const isDiagnosticType = isDiagnosticTask(task);
   const planRound = Math.floor((messages.length - 1) / 2);
   const jobId = state._httpJobId || 'unknown';
   if (state.context?.featurePath) {
@@ -734,11 +650,8 @@ export async function runPlanLLMWithTools(
       const estimatedChars = messages.reduce(
         (n, m) => n + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0,
       );
-      const logTemplate = task.type === 'verification'
-        ? 'jobs/code/nodes/plan/variants/verification/rules'
-        : task.type === 'error'
-          ? 'jobs/code/nodes/plan/variants/error/base'
-          : 'jobs/code/base/injections/plan-tools-batch';
+      const logTemplate = hooksForTaskType(task.type)?.plan?.toolLoopLogTemplate
+        ?? 'jobs/code/base/injections/plan-tools-batch';
       await logPrompt(
         state.context.featurePath,
         jobId,
@@ -838,7 +751,7 @@ export async function finalizePlanFromExploration(
   const llmToUse = await selectLLMForTask(llm, task, state);
   if (!llmToUse?.stream) return null;
 
-  const isDiagnostic = task.type === 'verification' || task.type === 'error';
+  const isDiagnostic = isDiagnosticTask(task);
   const finalizePrompt = isDiagnostic
     ? 'You have finished exploring and analyzing the codebase. Based on ALL the tool results above, ' +
       'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
@@ -990,13 +903,4 @@ export async function finalizePlanFromExploration(
 function formatCodeContext(ctx: any): string {
   if (!ctx?.files || !Array.isArray(ctx.files) || ctx.files.length === 0) return '';
   return `**Retrieved Files** (${ctx.files.length} files):\n\n${ctx.files.map((f: any) => `- \`${f.path}\``).join('\n')}`;
-}
-
-function mapLang(language: string): string {
-  const l = language.toLowerCase();
-  if (l.includes('go')) return 'go';
-  if (l.includes('python')) return 'python';
-  if (l.includes('rust')) return 'rust';
-  if (l.includes('java')) return 'java';
-  return 'typescript';
 }

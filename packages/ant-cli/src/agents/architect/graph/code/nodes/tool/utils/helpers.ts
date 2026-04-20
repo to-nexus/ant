@@ -5,6 +5,8 @@
 
 import { ArchitectGraphState } from '../../../state';
 import { CommandExecutionResult } from '../types';
+import { isVerificationTask } from '../../../tasks/verification';
+import { isSetupTask } from '../../../tasks/setup';
 
 /**
  * Get temp file path for buffering
@@ -26,14 +28,14 @@ export function getTempFilePath(state: ArchitectGraphState, filePath: string): s
 export function buildTaskReminder(state: ArchitectGraphState): string {
   if (!state.currentTask) return '';
 
-  const doneInstruction = state.currentTask.type === 'verification'
+  const doneInstruction = isVerificationTask(state.currentTask)
     ? 'Output <done>true</done> ONLY after build (and tests if any) pass with exit code 0.'
     : 'When all work is complete, output <done>true</done>.';
   let taskReminder = `\n\nTask: **${state.currentTask.name}** (${state.currentTask.type})` +
     ` — ${doneInstruction}` +
     ` Files marked [file written to disk: ...] are already saved — do NOT regenerate.`;
 
-  if (state.currentTask.type === 'setup') {
+  if (isSetupTask(state.currentTask)) {
     taskReminder += `\n**SETUP:** Generate config files, run install if rules permit, then <done>true</done>. No mkdir.`;
   }
 
