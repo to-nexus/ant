@@ -90,6 +90,39 @@ function plan(opts: {
   return JSON.stringify(body);
 }
 
+/**
+ * Build a minimal VerificationSessionSurface for command-guard tests. The
+ * shape mirrors what `VerificationSession` publishes but lets each test
+ * seed just the state it needs without rehydrating a full session.
+ */
+function mkSession(opts: {
+  required?: Array<'typecheck' | 'build' | 'test'>;
+  passed?: Array<'typecheck' | 'build' | 'test'>;
+  attempted?: Array<'typecheck' | 'build' | 'test'>;
+  deep?: boolean;
+} = {}) {
+  const required = new Set(opts.required ?? ['build']);
+  const passed = new Set(opts.passed ?? []);
+  const attempted = new Set(opts.attempted ?? []);
+  const attemptLog: Array<'typecheck' | 'build' | 'test'> = [];
+  return {
+    required: () => [...required] as Array<'typecheck' | 'build' | 'test'>,
+    missing: () => [...required].filter(g => !passed.has(g)) as Array<'typecheck' | 'build' | 'test'>,
+    passed: () => [...passed] as Array<'typecheck' | 'build' | 'test'>,
+    attemptedThisCycle: () => [...attempted] as Array<'typecheck' | 'build' | 'test'>,
+    isComplete: () => [...required].every(g => passed.has(g)),
+    dependencyStatus: () => 'unknown' as const,
+    depHash: () => undefined,
+    inDeepMode: () => opts.deep === true,
+    markAttempted: (gate: 'typecheck' | 'build' | 'test') => {
+      attemptLog.push(gate);
+      attempted.add(gate);
+    },
+    // Test-only introspection of preemptive markAttempted calls.
+    _markedAttempts: attemptLog,
+  };
+}
+
 function mkCtx(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionContext {
   return {
     fileSystem: {} as any,
@@ -97,12 +130,7 @@ function mkCtx(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionCont
     workingDir: '/tmp',
     activePhase: 'plan',
     currentTaskType: 'verification',
-    verificationTracker: {
-      buildPassed: false,
-      testPassed: false,
-      testsRequired: false,
-      typecheckRequired: true,
-    },
+    verificationSession: mkSession({ required: ['typecheck', 'build'] }),
     ...overrides,
   } as ToolExecutionContext;
 }
@@ -308,11 +336,12 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
 
   it('forwards installNeeded=true into dependencyStatus and includes deep-diagnostic injections', async () => {
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    for (let i = 0; i < 3; i++) session.onPlanEntry('retry'); // attempts=3 → deep mode
+    session.markInstallNeeded(true);
     await planHook.buildPrompt({
-      state: stateWith(undefined, {
+      state: stateWith(session, {
         deps: { promptBuilder } as any,
-        _installNeeded: true,
-        _verificationAttempts: 3, // >= DEEP_DIAGNOSTIC_THRESHOLD → deep mode
       } as Partial<ArchitectGraphState>),
       task: task('v2'),
       projectCodeContext: { files: [] },
@@ -327,7 +356,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     expect(base?.vars.isRetry).toBe(true);
   });
 
-  it('omits dependencyStatus when _installNeeded is undefined', async () => {
+  it('omits dependencyStatus when Session has no dep-hash observation yet', async () => {
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
     await planHook.buildPrompt({
       state: stateWith(undefined, { deps: { promptBuilder } as any } as Partial<ArchitectGraphState>),
@@ -355,27 +384,21 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     ).rejects.toThrow(/PromptBuilder not available/);
   });
 
-  it('Session takes precedence over legacy fields for attempts/deep/dependency/cached (SSOT guard)', async () => {
-    // Locks in the coexistence policy: when state.verification is
-    // populated the hook MUST read from it, never from the legacy
-    // `_verificationAttempts` / `_installNeeded` / `_verificationTracker`
-    // fields. The legacy state below is deliberately set to values that
-    // would produce a visibly different prompt so a silent bypass would
-    // fail this test.
+  it('Session drives attempts / deep / dependency / cached-steps vars', async () => {
+    // Session is the sole authority for verification prompt vars (T4b-β).
+    // The test stages a session with a deep-mode attempt count, a
+    // dependency change, and one gate re-passed after invalidation, and
+    // checks the resulting prompt vars all come from those Session
+    // observations.
     const session = VerificationSession.createFresh({ isTs: true, hasTests: true });
     for (let i = 0; i < 4; i++) session.onPlanEntry('retry'); // attempts=4, deep mode
     session.onFileChanged('all', true);                        // installNeeded=true, clears gates
-    session.onCommand('typecheck', true);                     // 'typecheck' re-passes AFTER the invalidation
+    session.onCommand('typecheck', true);                     // typecheck re-passes
 
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
     await planHook.buildPrompt({
       state: stateWith(session, {
         deps: { promptBuilder } as any,
-        // Legacy state is deliberately inconsistent with Session — the
-        // hook must ignore it.
-        _verificationAttempts: 0,
-        _installNeeded: false,
-        _verificationTracker: { buildPassed: true, testPassed: true, testsRequired: false } as any,
       } as Partial<ArchitectGraphState>),
       task: task('v-ssot'),
       projectCodeContext: { files: [] },
@@ -385,11 +408,9 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     });
 
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
-    expect(base?.vars.diagnosticAttempts).toBe(4);            // from Session, NOT legacy 0
-    expect(base?.vars.isDeepDiagnostic).toBe(true);           // from Session.inDeepMode
-    expect(base?.vars.dependencyStatus).toMatch(/have changed/); // from Session.dependencyStatus
-    // cachedPassedSteps renders only gates Session.passed() reports —
-    // typecheck. Legacy tracker's build/test passed flags must be ignored.
+    expect(base?.vars.diagnosticAttempts).toBe(4);
+    expect(base?.vars.isDeepDiagnostic).toBe(true);
+    expect(base?.vars.dependencyStatus).toMatch(/have changed/);
     expect(base?.vars.cachedPassedSteps).toContain('typecheck');
     expect(base?.vars.cachedPassedSteps).not.toContain('build');
     expect(base?.vars.cachedPassedSteps).not.toContain('test');
@@ -473,7 +494,10 @@ describe('hooks/command', () => {
   it('guard — plan-phase blocks already-passed typecheck', () => {
     const res = commandHook.guard(
       mkCtx({
-        verificationTracker: { buildPassed: false, testPassed: false, testsRequired: false, typecheckPassed: true },
+        verificationSession: mkSession({
+          required: ['typecheck', 'build'],
+          passed: ['typecheck'],
+        }),
       }),
       { command: 'tsc --noEmit' },
     );
@@ -491,7 +515,11 @@ describe('hooks/command', () => {
   it('guard — deep-diagnostic relaxes failed-in-cycle block', () => {
     const ctx = mkCtx({
       isDeepDiagnostic: true,
-      verificationTracker: { buildPassed: false, testPassed: false, testsRequired: false, typecheckRequired: true, typecheckAttempted: true, buildAttempted: true },
+      verificationSession: mkSession({
+        required: ['typecheck', 'build'],
+        attempted: ['typecheck', 'build'],
+        deep: true,
+      }),
     });
     // Build after failed typecheck is still ordered, but "already failed" block lifts.
     const res = commandHook.guard(ctx, { command: 'pnpm build' });
@@ -500,16 +528,16 @@ describe('hooks/command', () => {
 
   it('guard — test requires buildPassed', () => {
     const res = commandHook.guard(
-      mkCtx({ verificationTracker: { buildPassed: false, testPassed: false, testsRequired: true } }),
+      mkCtx({ verificationSession: mkSession({ required: ['build', 'test'] }) }),
       { command: 'pnpm test' },
     );
     expect(res?.error).toContain('run the build command');
   });
 
   it('guard — marks typecheck/build/test as attempted on pass-through', () => {
-    const tracker: any = { buildPassed: false, testPassed: false, testsRequired: false, typecheckRequired: false };
-    commandHook.guard(mkCtx({ verificationTracker: tracker }), { command: 'tsc --noEmit' });
-    expect(tracker.typecheckAttempted).toBe(true);
+    const session = mkSession({ required: ['typecheck'] });
+    commandHook.guard(mkCtx({ verificationSession: session }), { command: 'tsc --noEmit' });
+    expect((session as any)._markedAttempts).toContain('typecheck');
   });
 });
 
@@ -532,11 +560,12 @@ describe('hooks/check', () => {
     expect(v?.severity).toBe('critical');
   });
 
-  it('evaluate — legacy tracker fallback when session missing', () => {
-    const v = checkHook.evaluate(stateWith(undefined, {
-      _verificationTracker: { buildPassed: false, testPassed: false, testsRequired: false } as any,
-    }));
-    expect(v?.type).toBe('verification_incomplete');
+  it('evaluate — no session returns null (non-verification tasks)', () => {
+    // Outside verification tasks `state.verification` is undefined and the
+    // hook must decline to raise a violation — the check-task-status
+    // layer is blind to task type and only consults the task-specific
+    // hook, so `null` means "I have no objection".
+    expect(checkHook.evaluate(stateWith(undefined))).toBeNull();
   });
 });
 
@@ -607,13 +636,16 @@ describe('hooks/orchestrator', () => {
     expect(orchHook.attemptCount(t)).toBe(3);
   });
 
-  it('attemptCount falls back to legacy _verificationAttempts', () => {
-    const t = task('t1', { resumeState: { _verificationAttempts: 5 } } as any);
-    expect(orchHook.attemptCount(t)).toBe(5);
-  });
-
   it('attemptCount — zero when no resume', () => {
     expect(orchHook.attemptCount(task('fresh'))).toBe(0);
+  });
+
+  it('attemptCount — zero when resumeState carries no verification snapshot', () => {
+    // Pre-T4b this case would have fallen back to the legacy
+    // `_verificationAttempts` field; post-T4b-β the snapshot is the sole
+    // source and missing data reports zero.
+    const t = task('t1', { resumeState: {} } as any);
+    expect(orchHook.attemptCount(t)).toBe(0);
   });
 
   it('attachSnapshot writes to task.resumeState.verification', () => {

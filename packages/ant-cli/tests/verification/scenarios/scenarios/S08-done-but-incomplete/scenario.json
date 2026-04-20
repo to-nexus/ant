@@ -1,6 +1,6 @@
 {
   "name": "done-but-incomplete",
-  "description": "Execute emits <done> but _verificationTracker remains null → checkTaskStatus raises verification_incomplete → enforce → plan re-entry. Covers C3, C12, C15.",
+  "description": "Execute emits <done> but the verification session still has unmet gates → checkTaskStatus raises verification_incomplete → enforce → plan re-entry. Covers C3, C12, C15.",
   "mode": "stub",
   "timeoutMs": 30000,
   "expectedChildExitCode": "any",

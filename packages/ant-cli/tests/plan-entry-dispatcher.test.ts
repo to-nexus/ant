@@ -2,10 +2,10 @@
  * L1 — `resolvePlanEntry` dispatcher invariants.
  *
  * Covers verification scenario matrix entries:
- *   - C14: verification fresh entry initializes `_verificationTracker`,
- *          `_verificationAttempts`, `_appliedPlanHistory`.
- *   - C15: retry entry clears tracker `*Attempted` flags while
- *          preserving `*Passed` / `*Required`.
+ *   - C14: verification fresh entry initialises `state.verification`
+ *          (VerificationSession) via the plan hook.
+ *   - C15: retry entry clears per-cycle `attemptedThisCycle` while
+ *          preserving already-passed gates and the required set.
  *
  * The dispatcher is a pure state transformer for these branches; this suite
  * exercises it directly without the full LangGraph harness.
@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { __testing__ } from '../src/agents/architect/graph/code/nodes/plan';
+import { VerificationSession } from '../src/agents/architect/graph/code/tasks/verification/model/Session';
 
 const { resolvePlanEntry } = __testing__;
 
@@ -46,7 +47,7 @@ function makeFreshVerificationState() {
 }
 
 describe('resolvePlanEntry — fresh verification task (C14)', () => {
-  it('initializes verification tracker, budget, and plan history', async () => {
+  it('initialises the verification session via the plan hook', async () => {
     const state = makeFreshVerificationState();
     const ctx = await resolvePlanEntry(state);
 
@@ -54,13 +55,13 @@ describe('resolvePlanEntry — fresh verification task (C14)', () => {
     expect(ctx.isRetry).toBe(false);
     expect(ctx.skipKeywordAndRAG).toBe(false);
 
-    expect(state._verificationTracker).toBeDefined();
-    expect(state._verificationTracker?.buildPassed).toBe(false);
-    expect(state._verificationTracker?.testPassed).toBe(false);
-    expect(state._verificationTracker?.typecheckPassed).toBe(false);
-
-    expect(state._verificationAttempts).toBe(0);
-    expect(Array.isArray(state._appliedPlanHistory)).toBe(true);
+    expect(state.verification).toBeInstanceOf(VerificationSession);
+    // Env probe in the test harness has no feature path → hasTests=false
+    // and techTier is absent → isTs=false. Required therefore reduces to
+    // the always-on `build` gate.
+    expect(state.verification.required()).toEqual(['build']);
+    expect(state.verification.passed()).toEqual([]);
+    expect(state.verification.attempts()).toBe(0);
   });
 
   it('resets _planSearchWebCount to 0', async () => {
@@ -73,7 +74,7 @@ describe('resolvePlanEntry — fresh verification task (C14)', () => {
 });
 
 describe('resolvePlanEntry — verification retry (C15)', () => {
-  it('clears *Attempted flags while preserving *Passed and *Required', async () => {
+  it('clears attemptedThisCycle while preserving passed + required gates', async () => {
     const state = makeFreshVerificationState();
     state.currentTask = {
       id: 't1',
@@ -83,17 +84,16 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
       priority: 1000,
     };
     state._nextPlanEntry = 'retry';
-    state._verificationTracker = {
-      buildPassed: true,
-      testPassed: false,
-      typecheckPassed: true,
-      buildAttempted: true,
-      testAttempted: true,
-      typecheckAttempted: true,
-      testsRequired: true,
-      typecheckRequired: true,
-    };
-    state._verificationAttempts = 0;
+    // Seed a rehydrated session with two gates already passed and the full
+    // attempted set populated — the retry branch must clear the attempted
+    // set while preserving passed + required.
+    state.verification = VerificationSession.rehydrate({
+      required: ['typecheck', 'build', 'test'],
+      passed: ['typecheck', 'build'],
+      attemptedThisCycle: ['typecheck', 'build', 'test'],
+      attempts: 0,
+      planHistoryHashes: [],
+    });
     state.retries = 1;
     state.violations = [{ type: 'type_error' as any, severity: 'critical', message: 'x' }];
     state.planText = '{"task":{"id":"t1"},"diagnostics":{"totalErrors":1}}';
@@ -103,14 +103,14 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     expect(ctx.isRetry).toBe(true);
     expect(ctx.retrySummaryText).toBeTruthy();
 
-    expect(state._verificationTracker?.buildAttempted).toBe(false);
-    expect(state._verificationTracker?.testAttempted).toBe(false);
-    expect(state._verificationTracker?.typecheckAttempted).toBe(false);
-
-    expect(state._verificationTracker?.buildPassed).toBe(true);
-    expect(state._verificationTracker?.typecheckPassed).toBe(true);
-    expect(state._verificationTracker?.testsRequired).toBe(true);
-    expect(state._verificationTracker?.typecheckRequired).toBe(true);
+    const snap = state.verification.snapshot();
+    // onPlanEntry('retry') clears attemptedThisCycle
+    expect(snap.attemptedThisCycle).toEqual([]);
+    // passed / required preserved
+    expect(snap.passed.sort()).toEqual(['build', 'typecheck'].sort());
+    expect(snap.required.sort()).toEqual(['build', 'test', 'typecheck'].sort());
+    // attempts bumped
+    expect(snap.attempts).toBe(1);
 
     expect(state.violations).toEqual([]);
   });

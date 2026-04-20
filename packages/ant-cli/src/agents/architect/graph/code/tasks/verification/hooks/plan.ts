@@ -35,15 +35,11 @@
  *                                    as part of T6b-β.
  *
  * R2 compliance — the hook's verdicts come from its own `model/` (Session,
- * outcome, errors). A few legacy `utils/*` helpers
- * (`inDeepDiagnosticMode`, `usedAttempts`, `enumeratePassedSteps`,
- * `collectConfigSnapshot`, `renderConfigBlock`) and the legacy
- * `VerificationTracker` type from `state.ts` are imported solely as the
- * coexistence fallback while Session population is still T4b-gated —
- * every call site reads `state.verification` first and only falls through
- * to the legacy helper when the session is absent. These imports
- * disappear together with the `utils/` deletion in T9. No imports from
- * `nodes/`, `routers/`, or `parallel/`.
+ * outcome, errors). A few prompt-rendering helpers
+ * (`collectConfigSnapshot`, `renderConfigBlock`) still live under
+ * `utils/deepDiagnosticMode` and will migrate into `model/` when the
+ * `utils/` directory is retired (T9). No imports from `nodes/`,
+ * `routers/`, or `parallel/`.
  */
 
 import type { ArchitectGraphState } from '../../../state';
@@ -57,11 +53,7 @@ import { effectiveTechTier, getTechTier } from '@ant/shared';
 import {
   collectConfigSnapshot,
   renderConfigBlock,
-  inDeepDiagnosticMode,
 } from '../../../utils/deepDiagnosticMode';
-import { usedAttempts } from '../../../utils/verificationAttempts';
-import { enumeratePassedSteps } from '../../../utils/verificationCompleteness';
-import type { VerificationTracker } from '../../../state';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Plan parsing helpers — kept local to avoid coupling to `nodes/plan/*`.
@@ -107,20 +99,28 @@ function parsePlan(planText: string): ParsedPlan | null {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Idempotent VerificationSession population at plan-node entry. When the
- * session is already present (mid-cycle re-entry / resume-restored) the call
- * is a no-op. Otherwise constructs a fresh session via `createFresh` using
- * the phase-supplied environment snapshot (isTs / hasTests).
+ * Merge-aware VerificationSession population at plan-node entry.
+ *
+ *   - Missing session → constructs a fresh one via `createFresh(env)`.
+ *   - Session present with an empty required-gate set (scenario seed that
+ *     carried only attempts / history metadata, or an early-rehydrated
+ *     pre-plan snapshot) → populates required/passed from `env` via
+ *     `hydrateEnv` while preserving attempts, history, depHash, etc.
+ *   - Session present with a populated required set → no-op (carry-over
+ *     from resume/rehydrate is authoritative).
  *
  * This is the single writer of `state.verification` in the fresh-entry
  * path. Carry-over boundaries populate the session via
  * `hooks/orchestrator.ts::restoreIntoWorkerState` and `runner.ts` resume
- * hydration; both run before the plan node fires, so initSession never
- * overwrites rehydrated state.
+ * hydration; both run before the plan node fires, so `initSession` never
+ * stomps a rehydrated cycle.
  */
 export function initSession(state: ArchitectGraphState, env: InitSessionEnv): void {
-  if (state.verification) return;
-  state.verification = VerificationSession.createFresh(env);
+  if (!state.verification) {
+    state.verification = VerificationSession.createFresh(env);
+    return;
+  }
+  state.verification.hydrateEnv(env);
 }
 
 /**
@@ -267,17 +267,6 @@ function renderPassedSteps(passed: readonly string[]): string | undefined {
   return rendered || undefined;
 }
 
-/**
- * Legacy-tracker adapter kept for the `cachedPassedSteps.test.ts`
- * contract and any path that still reads from `VerificationTracker`
- * during the T5→T4b coexistence window. Post-T4b (Session hydrated on
- * every resume), the session-first branch in `buildPrompt` takes over
- * and this helper is only reachable from the legacy bridge.
- */
-export function formatCachedPassedSteps(tracker: VerificationTracker | undefined): string | undefined {
-  return renderPassedSteps(enumeratePassedSteps(tracker));
-}
-
 function formatCodeContext(ctx: any): string {
   if (!ctx?.files || !Array.isArray(ctx.files) || ctx.files.length === 0) return '';
   return `**Retrieved Files** (${ctx.files.length} files):\n\n${ctx.files.map((f: any) => `- \`${f.path}\``).join('\n')}`;
@@ -299,7 +288,7 @@ function mapLang(language: string): string {
  *
  *   - tech-tier resolution + language-hint lookup (silent fallback when the
  *     hint partial does not exist for the detected language);
- *   - dependency-status hint driven by `state._installNeeded`;
+ *   - dependency-status hint driven by `Session.dependencyStatus()`;
  *   - deep-diagnostic config-snapshot injection on re-entry ≥ threshold;
  *   - cached-passed-step block so the LLM does not re-run gates the
  *     session already considers passed.
@@ -318,21 +307,14 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<string> {
     console.log(`🔧 [Plan] Verification techTier: language=${techTier.language}, framework=${techTier.framework || 'none'}`);
   }
 
-  // Session-first for every verification-owned read. Legacy state fields
-  // (`_installNeeded`, `_verificationAttempts`, `_verificationTracker`)
-  // are consulted only when Session is absent — the expected coexistence
-  // path until T4b wires session hydration on every worker resume.
-  // Without this ordering, once T4b lands the hook would silently read
-  // stale legacy fields instead of the Session SSOT (§5.3).
+  // `state.verification` is the sole SSOT for every verification-owned
+  // read (attempts, passed gates, dep status). `initSession` has already
+  // run for a verification task by the time `buildPrompt` fires, so the
+  // session is normally present; any absence short-circuits the
+  // verification-specific vars via `?? undefined`.
   const session = state.verification;
 
-  const depStatus = session
-    ? session.dependencyStatus()
-    : (state._installNeeded === true
-        ? 'changed'
-        : state._installNeeded === false
-          ? 'current'
-          : 'unknown');
+  const depStatus = session?.dependencyStatus() ?? 'unknown';
   let dependencyStatus: string | undefined;
   if (depStatus === 'current') {
     dependencyStatus = 'Dependencies are current. Dependency declaration files are unchanged since last install. Skip dependency installation and proceed directly to build verification.';
@@ -344,9 +326,10 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<string> {
 
   // Deep-diagnostic mode activates on the 2nd re-entry. We inject config
   // files + a dedicated prompt signal so the LLM breaks out of "same
-  // category of fix" loops. Session owns the decision; legacy predicate
-  // is the pre-T4b bridge.
-  const isDeepDiagnostic = session ? session.inDeepMode() : inDeepDiagnosticMode(state);
+  // category of fix" loops. Session is the sole authority — the hook
+  // never runs without a populated session because `initSession` is
+  // called from plan/parts/entry.ts before any hook fires.
+  const isDeepDiagnostic = session?.inDeepMode() ?? false;
   let fmtCtx = formatCodeContext(projectCodeContext);
   if (isDeepDiagnostic) {
     const configs = await collectConfigSnapshot(state.context?.featurePath);
@@ -370,9 +353,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<string> {
   // "Already passed" hint so the LLM skips cached steps instead of hitting
   // the codeCommandPolicy rejection to learn the same. Session.passed()
   // is the SSOT once hydrated; legacy tracker is the coexistence bridge.
-  const cachedPassedSteps = session
-    ? renderPassedSteps(session.passed())
-    : formatCachedPassedSteps(state._verificationTracker);
+  const cachedPassedSteps = renderPassedSteps(session?.passed() ?? []);
 
   const taskTechTiers = task.techTiers?.length
     ? task.techTiers
@@ -402,7 +383,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<string> {
     packageManager,
     hasPackageManager: !!packageManager,
     isDeepDiagnostic,
-    diagnosticAttempts: session ? session.attempts() : usedAttempts(state),
+    diagnosticAttempts: session?.attempts() ?? 0,
     cachedPassedSteps,
     resolvedAction: state.resolvedAction,
   });

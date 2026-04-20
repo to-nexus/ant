@@ -1,24 +1,34 @@
 import { describe, it, expect } from 'vitest';
 import { applyCodeCommandPolicy } from '../../../src/agents/common/tool/handlers/codeCommandPolicy';
-import type { ToolExecutionContext, VerificationTracker } from '../../../src/agents/common/tool/types';
+import type { ToolExecutionContext, VerificationSessionSurface } from '../../../src/agents/common/tool/types';
+import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
 
-type TrackerOverrides = Partial<VerificationTracker>;
-
-function makeTracker(overrides: TrackerOverrides = {}): VerificationTracker {
-  return {
-    typecheckRequired: true,
-    typecheckAttempted: false,
-    typecheckPassed: false,
-    buildAttempted: false,
-    buildPassed: false,
-    testAttempted: false,
-    testPassed: false,
-    ...overrides,
-  };
+/**
+ * Build a VerificationSession initialised with the env flags and mutated
+ * into the desired post-state via Session mutators. Keeps these tests
+ * driving the production API instead of a hand-rolled tracker shape.
+ */
+function makeSession(opts: {
+  isTs?: boolean;
+  hasTests?: boolean;
+  passed?: Array<'typecheck' | 'build' | 'test'>;
+  attempted?: Array<'typecheck' | 'build' | 'test'>;
+} = {}): VerificationSession {
+  const session = VerificationSession.createFresh({
+    isTs: opts.isTs ?? true,
+    hasTests: opts.hasTests ?? true,
+  });
+  for (const gate of opts.attempted ?? []) {
+    session.markAttempted(gate);
+  }
+  for (const gate of opts.passed ?? []) {
+    session.onCommand(gate, true);
+  }
+  return session;
 }
 
 function makeCtx(
-  tracker: VerificationTracker,
+  session: VerificationSessionSurface,
   opts: {
     activePhase?: 'plan' | 'execute';
     isDeepDiagnostic?: boolean;
@@ -26,7 +36,7 @@ function makeCtx(
   } = {},
 ): ToolExecutionContext {
   return {
-    verificationTracker: tracker,
+    verificationSession: session,
     activePhase: opts.activePhase ?? 'plan',
     currentTaskType: opts.taskType ?? 'verification',
     isDeepDiagnostic: opts.isDeepDiagnostic ?? false,
@@ -38,75 +48,72 @@ function makeCtx(
 }
 
 describe('F1 — *Passed independent guard', () => {
-  it('F1a: typecheckPassed=true + typecheckAttempted=false → ALREADY PASSED', () => {
-    // retry/reverify boundary: *Attempted was just reset, but the cache must still block re-execution.
-    const ctx = makeCtx(makeTracker({ typecheckPassed: true, typecheckAttempted: false }));
+  it('F1a: typecheck passed + not yet attempted this cycle → ALREADY PASSED', () => {
+    // retry/reverify boundary: Session clears attemptedThisCycle on
+    // `onPlanEntry`, but the passed gate cache must still block re-runs.
+    const session = makeSession({ passed: ['typecheck'] });
+    const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
     expect(result?.error).toMatch(/ALREADY PASSED/);
   });
 
-  it('F1b: typecheckPassed=false + typecheckAttempted=false → pass-through', () => {
-    const ctx = makeCtx(makeTracker());
+  it('F1b: typecheck not passed and not attempted → pass-through', () => {
+    const ctx = makeCtx(makeSession());
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
     expect(result).toBeNull();
   });
 
-  it('F1c: typecheckPassed=true + typecheckAttempted=true → ALREADY PASSED', () => {
-    const ctx = makeCtx(makeTracker({ typecheckPassed: true, typecheckAttempted: true }));
+  it('F1c: typecheck passed + attempted in cycle → ALREADY PASSED', () => {
+    const session = makeSession({ passed: ['typecheck'], attempted: ['typecheck'] });
+    const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
     expect(result?.error).toMatch(/ALREADY PASSED/);
   });
 
-  it('F1d: buildPassed=true → ALREADY PASSED (build)', () => {
-    const ctx = makeCtx(makeTracker({ typecheckPassed: true, buildPassed: true }));
+  it('F1d: build passed → ALREADY PASSED (build)', () => {
+    const session = makeSession({ passed: ['typecheck', 'build'] });
+    const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
     expect(result?.error).toMatch(/ALREADY PASSED/);
   });
 
-  it('F1e: testPassed=true → ALREADY PASSED (test)', () => {
-    const ctx = makeCtx(makeTracker({
-      typecheckPassed: true,
-      buildPassed: true,
-      testPassed: true,
-    }));
+  it('F1e: test passed → ALREADY PASSED (test)', () => {
+    const session = makeSession({ passed: ['typecheck', 'build', 'test'] });
+    const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
     expect(result?.error).toMatch(/ALREADY PASSED/);
   });
 
   it('F1f: *Passed ALREADY PASSED applies even in deep diagnostic mode', () => {
-    const ctx = makeCtx(
-      makeTracker({ typecheckPassed: true, typecheckAttempted: true }),
-      { isDeepDiagnostic: true },
-    );
+    const session = makeSession({ passed: ['typecheck'], attempted: ['typecheck'] });
+    const ctx = makeCtx(session, { isDeepDiagnostic: true });
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
     expect(result?.error).toMatch(/ALREADY PASSED/);
   });
 });
 
 describe('F4 — 3-gate ordering guard', () => {
-  function baseTypecheckedTracker(extra: TrackerOverrides = {}): VerificationTracker {
-    return makeTracker({
-      typecheckPassed: true,
-      typecheckAttempted: true,
-      ...extra,
-    });
-  }
-
   it('F4a: buildPassed=false + test command → BLOCKED (build first)', () => {
-    const ctx = makeCtx(baseTypecheckedTracker());
+    const session = makeSession({ passed: ['typecheck'], attempted: ['typecheck'] });
+    const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
     expect(result?.error).toMatch(/BLOCKED/);
     expect(result?.error).toMatch(/build/i);
   });
 
   it('F4b: buildPassed=true + test command → pass-through', () => {
-    const ctx = makeCtx(baseTypecheckedTracker({ buildPassed: true }));
+    const session = makeSession({
+      passed: ['typecheck', 'build'],
+      attempted: ['typecheck', 'build'],
+    });
+    const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
     expect(result).toBeNull();
   });
 
   it('F4c: deep diagnostic mode bypasses build-first', () => {
-    const ctx = makeCtx(baseTypecheckedTracker(), { isDeepDiagnostic: true });
+    const session = makeSession({ passed: ['typecheck'], attempted: ['typecheck'] });
+    const ctx = makeCtx(session, { isDeepDiagnostic: true });
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
     expect(result).toBeNull();
   });
@@ -114,10 +121,11 @@ describe('F4 — 3-gate ordering guard', () => {
 
 describe('F1/F4 — non-plan phase is not guarded by plan-phase gates', () => {
   it('execute phase rejects verification commands regardless of *Passed', () => {
-    const ctx = makeCtx(
-      makeTracker({ typecheckPassed: true, buildPassed: true, testPassed: true }),
-      { activePhase: 'execute' },
-    );
+    const session = makeSession({
+      passed: ['typecheck', 'build', 'test'],
+      attempted: ['typecheck', 'build', 'test'],
+    });
+    const ctx = makeCtx(session, { activePhase: 'execute' });
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
     // Execute-phase guard message, not ALREADY PASSED.
     expect(result?.error).toMatch(/BLOCKED/);

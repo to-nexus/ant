@@ -91,11 +91,17 @@ export async function checkTaskStatus(
 
   // Batch split: original task was re-enqueued — skip completion marking entirely
   if (batchSplitRequeued) {
-    const requeuedTasks = state.taskQueue?.getAll().filter(t => (t as any)._batchSplitCount);
+    // Re-enqueued tasks carry their batch-split cycle counter in the
+    // VerificationSession snapshot attached to `resumeState.verification`.
+    // Surface the cycle number for parity with the pre-T4b log line.
+    const requeuedTasks = state.taskQueue?.getAll().filter(t => {
+      const cycle = (t as any).resumeState?.verification?.batchSplitCount;
+      return typeof cycle === 'number' && cycle > 0;
+    });
     if (requeuedTasks?.length) {
       for (const t of requeuedTasks) {
-        const ct = t as any;
-        console.log(`🔄 [BatchSplit] Re-enqueued task "${t.name}" (cycle ${ct._batchSplitCount || 1})`);
+        const cycle = (t as any).resumeState?.verification?.batchSplitCount ?? 1;
+        console.log(`🔄 [BatchSplit] Re-enqueued task "${t.name}" (cycle ${cycle})`);
       }
     }
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -110,15 +116,11 @@ export async function checkTaskStatus(
       _finalTaskLoopCount: 0,
       planText: '',
       projectCodeContext: undefined,
-      // Task boundary clears per-task verification state so the next
-      // verification task pops with a fresh attempt counter. A resumed
-      // task bypasses this path (TaskWorker restores via resumeState).
-      _verificationAttempts: undefined,
-      _appliedPlanHistory: undefined,
-      // T4b-α: Session is the authoritative SSOT for per-task verification
-      // state; clearing it here transfers ownership to the next task's
-      // `initSession` call (plan/parts/entry.ts). Resumed workers bypass
-      // this path and rehydrate via `orchestrator.restoreIntoWorkerState`.
+      // Task boundary clears per-task verification state. Session is the
+      // authoritative SSOT; clearing it transfers ownership to the next
+      // task's `initSession` call (plan/parts/entry.ts). Resumed workers
+      // bypass this path and rehydrate via
+      // `orchestrator.restoreIntoWorkerState`.
       verification: undefined,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
@@ -296,12 +298,9 @@ export async function checkTaskStatus(
       _finalTaskLoopCount: 0,
       planText: '',
       projectCodeContext: undefined,
-      // Task boundary clears. Next verification task pops with a clean slate;
-      // a resumed task bypasses this path (TaskWorker restores via resumeState).
-      _verificationAttempts: undefined,
-      _appliedPlanHistory: undefined,
-      // T4b-α: same rationale as the violations-path reset above — the
-      // Session is per-task and the next task's `initSession` recreates it.
+      // Task boundary clears. Next verification task pops with a clean
+      // Session via `initSession`; a resumed task bypasses this path
+      // (TaskWorker restores via resumeState.verification).
       verification: undefined,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,

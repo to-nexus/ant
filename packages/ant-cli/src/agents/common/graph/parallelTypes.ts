@@ -149,47 +149,11 @@ export interface WorkerSnapshot {
   enforcementHistory?: any[];
   tokenUsage?: TaskTokenUsage;
   /**
-   * Survive the dep-file hash across interruption/resume so `shouldSkipInstall`
-   * remains valid after a new worker invocation picks up the task.
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `verification.depHash` (VerificationSnapshot). Coexists during migration.
-   */
-  _depFileHash?: string;
-  /**
-   * Total verification attempts accumulated across all boundaries. Replaces
-   * the former triad `_verificationBudget + _diagnosticAttempts +
-   * _deepDiagnosticBudgetGranted`, all three of which were facets of this
-   * single counter.
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `verification.attempts` (VerificationSnapshot). Coexists during migration.
-   */
-  _verificationAttempts?: number;
-  /**
-   * Verification tracker so already-passed gates are carried to the next
-   * worker invocation (previously wiped on orchestrator re-queue).
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `verification.{required,passed,attemptedThisCycle}` (VerificationSnapshot).
-   *   Coexists during migration.
-   */
-  _verificationTracker?: any;
-  /**
-   * Prior attempt plan bodies accumulated across reverify cycles. Used by
-   * `composeViolationsText` and `detectRepeatedPlan` to surface "what was
-   * already tried" to the next LLM call.
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `verification.planHistoryBodies` / `planHistoryHashes` (VerificationSnapshot).
-   *   Coexists during migration.
-   */
-  _appliedPlanHistory?: string[];
-  /**
-   * Verification session snapshot — the post-T4a SSOT that supersedes the
-   * `_verification*` / `_depFileHash` / `_appliedPlanHistory` fields above
-   * (marked @deprecated). Present only on code-job carry-overs that
-   * originated from a verification task.
+   * Verification session snapshot — the SSOT that supersedes the former
+   * flat `_verificationTracker` / `_verificationAttempts` /
+   * `_appliedPlanHistory` / `_depFileHash` fields (removed in T4b-β).
+   * Present only on code-job carry-overs that originated from a
+   * verification task.
    *
    * Typed as `any` at this boundary to keep `common/graph/` free of
    * code-job-specific imports; the concrete shape is

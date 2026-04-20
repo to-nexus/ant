@@ -12,7 +12,7 @@
 
 import type { ToolExecutionContext, ToolResult } from '../types';
 import type { TaskType } from '@ant/shared';
-import { isDiagnosticInspectCommand } from '../../../architect/graph/code/utils/deepDiagnosticMode';
+import { isDiagnosticInspectCommand } from '../../../architect/graph/code/tasks/verification/model/gates';
 import { hooksForTaskType } from '../../../architect/graph/code/tasks/_shared/registry';
 import { isDiagnosticTask } from '../../../architect/graph/code/tasks/_shared/classification';
 

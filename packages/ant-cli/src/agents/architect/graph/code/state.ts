@@ -22,24 +22,6 @@ export interface IntegrationRequirement {
 }
 
 /**
- * Verification objective tracker.
- * Tracks whether build and test commands have succeeded,
- * reset when files are modified to force re-verification.
- */
-export interface VerificationTracker {
-  buildPassed: boolean;
-  testPassed: boolean;
-  testsRequired: boolean;
-  /** Plan tool loop guard: tracks whether each verification command type has been attempted. */
-  buildAttempted?: boolean;
-  testAttempted?: boolean;
-  /** Static type check (tsc --noEmit) — separate from build to avoid tracker conflation. */
-  typecheckPassed?: boolean;
-  typecheckAttempted?: boolean;
-  typecheckRequired?: boolean;
-}
-
-/**
  * Structured Violation - 정형화된 에러 정보
  * 학습 및 분석 가능한 형태로 설계
  */
@@ -346,34 +328,14 @@ export interface ArchitectGraphState extends TriageableState {
   /** Tracks whether execute phase modified any files (for executeRouter re-verify decision) */
   _executeModifiedFiles?: boolean;
   /**
-   * Whether dependency install is needed (dep-hash guard bypass).
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `state.verification.snapshot().installNeeded` (VerificationSession).
-   *   Readers must not be added; new code uses the Session API.
-   */
-  _installNeeded?: boolean;
-  /**
    * Package manager (npm / pnpm / yarn / bun) detected from lockfile at the
    * verification plan entry, cached for the rest of the job.
    *
-   * **Scope**: plan-node-internal. Writer: `plan/index.ts#recomputeInstallNeeded`
-   * when `detectPmIfMissing` is set. Readers: `planGeneration.ts` only
-   * (verification and error plan templates). No other node consumes this.
-   *
-   * Phase 4-18 — localization intent is expressed via scope documentation
-   * rather than field removal (removal would require threading the value
-   * through every plan helper and offers no runtime benefit).
+   * **Scope**: plan-node-internal. Writer: `plan/parts/entry.ts#recomputeInstallNeeded`
+   * when `detectPmIfMissing` is set. Readers: verification and error plan
+   * prompt builders only. No other node consumes this.
    */
   _detectedPackageManager?: string;
-  /**
-   * Accumulated remediation plans from previous fix cycles.
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `state.verification.snapshot().planHistoryBodies` (VerificationSession).
-   *   Readers must not be added; new code uses the Session API.
-   */
-  _appliedPlanHistory?: string[];
   /** Files written by other parallel tasks/workers (for session manifest in execute) */
   _otherWorkerFiles?: Array<{ path: string; taskName?: string }>;
 
@@ -457,72 +419,16 @@ export interface ArchitectGraphState extends TriageableState {
   _batchSplitRequeued?: boolean;
 
   /**
-   * Verification objective tracker (build/test/typecheck pass status).
-   *
-   * - Writer: initialised on fresh verification task entry (STEP 0 fresh
-   *   handler); `*Passed` flags are flipped by the run_command hook when a
-   *   verification command exits 0; `verificationInvalidated` flips them
-   *   back when edited files intersect the scope of a previously-passed
-   *   gate.
-   * - Readers: `isVerificationComplete`/`evaluateVerificationCompletion`
-   *   (SSOT in utils/verificationCompleteness.ts),
-   *   `formatCachedPassedSteps` (tasks/verification/hooks/plan.ts), and codeCommandPolicy.
-   * - Reset rule: `*Attempted` cleared on retry/reverify entry; `*Passed` and
-   *   `*Required` preserved unless explicitly invalidated.
-   *   `testsRequired`/`typecheckRequired` are set once at initialisation.
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `state.verification` (VerificationSession).
-   *   Readers must not be added; new code uses the Session API.
-   */
-  _verificationTracker?: VerificationTracker;
-
-  /**
-   * Hash of dependency declaration files at last successful install.
-   * Compared at verification plan entry to determine if install is needed.
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `state.verification.snapshot().depHash` (VerificationSession).
-   *   Readers must not be added; new code uses the Session API.
-   */
-  _depFileHash?: string;
-
-  /**
-   * Total verification attempts across all boundaries (in-plan retry +
-   * reverify + orchestrator re-queue). Single source of truth for "how many
-   * cycles has this verification task had?", derived-from-which are:
-   *   - remaining budget:         `remainingBudget(state)`
-   *   - deep-diagnostic mode:     `inDeepDiagnosticMode(state)`
-   *   - termination decision:     `VerificationSession.evaluate()` (T8+)
-   * Helpers live in `utils/verificationAttempts.ts`.
-   *
-   * Replaces three formerly-independent fields:
-   *   _verificationBudget (remaining, counted down)
-   *   _diagnosticAttempts (re-entries, counted up)
-   *   _deepDiagnosticBudgetGranted (one-shot flag)
-   * — all of which described the same underlying state from different angles.
-   *
-   * For verification tasks, the orchestrator also reads this field (via the
-   * carried-over snapshot) instead of the legacy `_failedAttempts` task field
-   * so that in-plan retry + reverify + re-queue share one ceiling.
-   *
-   * @deprecated T4a — will be removed in T4b; authority moves to
-   *   `state.verification.attempts()` (VerificationSession).
-   *   Readers must not be added; new code uses the Session API.
-   */
-  _verificationAttempts?: number;
-
-  /**
-   * New SSOT for verification domain state, introduced in T4a.
-   * Coexists with the five `_verification*` / `_dep*` / `_installNeeded` /
-   * `_appliedPlanHistory` fields above during the migration window; those
-   * will be removed in T4b once every reader/writer has moved to the
-   * Session API (§11.1 mapping table).
-   *
-   * Populated by `runner.ts` on fresh verification task entry (T5) and
-   * rehydrated on resume via `VerificationSession.rehydrate(snap)`.
-   * Persisted across carry-over boundaries as `VerificationSnapshot` in
+   * SSOT for verification domain state (attempts, gate config, pass cache,
+   * plan history, dep hash, batch-split counter). Populated by
+   * `tasks/verification/hooks/plan.ts::initSession` on fresh plan entry,
+   * rehydrated on resume via `VerificationSession.rehydrate(snap)`, and
+   * carried across worker boundaries as `VerificationSnapshot` in
    * `WorkerSnapshot.verification` / `CodeTaskResumeState.verification`.
+   *
+   * `undefined` for non-verification tasks — queries go through the
+   * Session API (`state.verification?.method()`) and short-circuit
+   * naturally.
    */
   verification?: VerificationSession;
 

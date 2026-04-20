@@ -19,15 +19,9 @@
 
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
-import {
-  detectRepeatedPlan,
-  lastPlanHash, // re-export below for __testing__ parity
-} from '../../../utils/verificationLoopEscape';
-import { remainingBudget } from '../../../utils/verificationAttempts';
-import { isVerificationComplete } from '../../../utils/verificationCompleteness';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { appendTrace } from '../../../../../../../utils/verificationTrace';
-import { VerificationTerminalError } from '../../../utils/verificationErrors';
+import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
 
 export const MAX_BATCH_SPLIT_CYCLES = 10;
 
@@ -105,11 +99,11 @@ export function isVerificationPassWithoutCodeGen(
   if (planText !== '') return false;
   const task = state.currentTask;
   if (task?.type !== 'verification' && task?.type !== 'error') return false;
-  // T4b-α: Session-first completeness check; falls back to the legacy tracker
-  // when the session has not been populated yet (e.g. mid-migration tests
-  // that construct state mocks without invoking the plan hook).
-  return state.verification?.isComplete()
-    ?? isVerificationComplete(state._verificationTracker).ok;
+  // Session is the SSOT for verification completeness. Error tasks have no
+  // session; the caller already screened for them above so we only reach
+  // here with `task.type === 'verification'` and a populated session (the
+  // plan hook's `initSession` runs before any short-circuit probe).
+  return state.verification?.isComplete() ?? false;
 }
 
 /**
@@ -165,7 +159,7 @@ export function processDiagnosticBatchSplit(
     // volume or file fan-out crosses the escalation threshold, OR when the
     // verification attempt budget is exhausted. Safety valve for "LLM keeps
     // outputting a single plan that we keep failing to apply".
-    const budget = remainingBudget(state);
+    const budget = state.verification?.remainingBudget() ?? 0;
     const thresholdErrors = parseInt(process.env.ANT_VERIFICATION_SPLIT_ERRORS || '6', 10);
     const thresholdFiles = parseInt(process.env.ANT_VERIFICATION_SPLIT_FILES || '4', 10);
     const totalErrors: number = parsed.diagnostics?.totalErrors ?? 0;
@@ -177,13 +171,10 @@ export function processDiagnosticBatchSplit(
       && (budgetExhausted || overErrorBudget || overFileBudget);
 
     // Repeat detection — when the same plan structure surfaced again
-    // without progress, escalate to force-split.
-    // T4b-α: consult the Session first (authoritative hash list produced
-    // by `onPlanApplied`); fall back to the legacy history array when no
-    // session is populated yet.
+    // without progress, escalate to force-split. Session owns the
+    // authoritative hash list (produced by `onPlanApplied`).
     const repeatedDetection = planText
-      ? state.verification?.isPlanRepeated(planText)
-        ?? detectRepeatedPlan(state._appliedPlanHistory, planText)
+      ? state.verification?.isPlanRepeated(planText) ?? { repeated: false, count: 0 }
       : { repeated: false, count: 0 };
     if (repeatedDetection.repeated) {
       console.warn(`🔁 [BatchSplit] Same plan hash as previous attempt (count=${repeatedDetection.count}) — escalating`);
@@ -226,7 +217,9 @@ export function processDiagnosticBatchSplit(
     }
 
     // ── Hard limit: cap batch split cycles to prevent infinite loops ──
-    const splitCount = (nextTask._batchSplitCount || 0) + 1;
+    // The count lives on the Session (carried across re-queue via the
+    // `resumeState.verification` snapshot), not on the task.
+    const splitCount = (state.verification?.batchSplitCount() ?? 0) + 1;
 
     if (splitCount > MAX_BATCH_SPLIT_CYCLES) {
       logBatchSplit({ action: 'cycle_limit_failed', splitCount, taskName: nextTask.name });
@@ -248,7 +241,7 @@ export function processDiagnosticBatchSplit(
       throw new VerificationTerminalError(
         'batch_cycle_limit',
         `Batch split cycle limit (${MAX_BATCH_SPLIT_CYCLES}) exceeded for "${nextTask.name}" after ${splitCount} cycles.`,
-        snapshotFromState(state),
+        snapshotFromState(state)?.verification,
       );
     }
 
@@ -304,21 +297,30 @@ export function processDiagnosticBatchSplit(
       subTaskIds.push(subTask.id);
     }
 
+    // Record the batch-split cycle on the Session BEFORE capturing the
+    // snapshot so the carried `verification.batchSplitCount` reflects the
+    // new cycle (matches the hard-limit check above). `onBatchSplit`
+    // bumps the counter by one and stores the diagnostics summary used
+    // by the follow-up plan prompt to avoid re-triggering the same split.
+    state.verification?.onBatchSplit(JSON.stringify({
+      cycle: splitCount,
+      totalErrors: parsed.diagnostics?.totalErrors ?? 0,
+      rootCauses: parsed.diagnostics?.rootCauses ?? [],
+      batchNames: parsed.batches.map((b: any) => b.name),
+    }));
+
     // Re-enqueue the original task (clean state) instead of creating a new one.
     // Priority FINAL_VERIFICATION(1000) > error priority(999) ensures it runs last.
-    // Batch split tracking fields are preserved so the re-enqueued task can detect
-    // repeated errors and break the loop on subsequent cycles.
     //
     // Capture the current state as a `WorkerSnapshot` and attach it to the
     // task's `resumeState` so the next worker invocation rehydrates the
-    // verification attempt counter, applied plan history, and tracker. The
-    // sibling `taskQueue.push` of error sub-tasks above does NOT need a
+    // verification session (attempts, plan history, batch-split counter,
+    // previous diagnostics). Error sub-tasks pushed above do NOT need a
     // snapshot — their `prePlanText` is self-contained.
     //
-    // `_failedAttempts` is NOT reset here: verification tasks use
-    // `_verificationAttempts` (via resumeState) for budget accounting and
-    // ignore `_failedAttempts`, while non-verification tasks (never reach
-    // this path) preserve their orchestrator retry budget. Resetting was a
+    // `_failedAttempts` is NOT reset here: verification tasks read the
+    // attempt counter off `resumeState.verification.attempts` while other
+    // task types preserve their orchestrator retry budget. Resetting was a
     // legacy pattern that accidentally granted unlimited orchestrator
     // retries — root cause of the post-batch-split transient-retry cycle
     // observed in the `still-lacing-north` incident.
@@ -330,14 +332,6 @@ export function processDiagnosticBatchSplit(
       _failed: undefined,
       _failureReason: undefined,
       resumeState: snapshot ?? undefined,
-      // Preserve batch split cycle counter for hard limit
-      _batchSplitCount: splitCount,
-      _previousBatchDiagnostics: JSON.stringify({
-        cycle: splitCount,
-        totalErrors: parsed.diagnostics?.totalErrors ?? 0,
-        rootCauses: parsed.diagnostics?.rootCauses ?? [],
-        batchNames: parsed.batches.map((b: any) => b.name),
-      }),
     } as CodeTask;
     state.taskQueue.push(requeuedTask);
     state._batchSplitRequeued = true;
@@ -376,6 +370,3 @@ export function processDiagnosticBatchSplit(
     return planText;
   }
 }
-
-// Re-export for __testing__ barrel parity.
-export { lastPlanHash };

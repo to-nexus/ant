@@ -12,7 +12,12 @@
   "completedTasks": [],
   "retries": 0,
   "maxRetries": 3,
-  "_verificationAttempts": 999,
-  "_verificationTracker": null,
+  "verification": {
+    "required": [],
+    "passed": [],
+    "attemptedThisCycle": [],
+    "attempts": 999,
+    "planHistoryHashes": []
+  },
   "recursionLimit": 100
 }

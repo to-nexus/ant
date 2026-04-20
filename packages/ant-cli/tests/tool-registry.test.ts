@@ -346,9 +346,10 @@ describe('applyCodeCommandPolicy', () => {
 
   it('should block build/test in verification execute phase', async () => {
     const { applyCodeCommandPolicy } = await import('../src/agents/common/tool/handlers/codeCommandPolicy');
+    const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/verification/model/Session');
     ctx.currentTaskType = 'verification';
     ctx.activePhase = 'execute';
-    ctx.verificationTracker = { buildPassed: false, testPassed: false };
+    ctx.verificationSession = VerificationSession.createFresh({ isTs: false, hasTests: false });
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
     expect(result).not.toBeNull();
     expect(result!.content).toContain('BLOCKED');
@@ -356,12 +357,15 @@ describe('applyCodeCommandPolicy', () => {
 
   it('should block re-run of already-attempted typecheck in plan phase', async () => {
     const { applyCodeCommandPolicy } = await import('../src/agents/common/tool/handlers/codeCommandPolicy');
+    const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/verification/model/Session');
     // Plan-phase loop guard is verification-specific per R1 (lives in
     // tasks/verification/hooks/command.ts); callers without a task type
     // get the generic `null` pass-through.
     ctx.currentTaskType = 'verification';
     ctx.activePhase = 'plan';
-    ctx.verificationTracker = { typecheckAttempted: true, typecheckPassed: false };
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    session.markAttempted('typecheck');
+    ctx.verificationSession = session;
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
     expect(result).not.toBeNull();
     expect(result!.content).toContain('BLOCKED');

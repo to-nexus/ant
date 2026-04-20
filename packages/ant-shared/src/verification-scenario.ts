@@ -60,8 +60,8 @@ export interface ScenarioCommandInjectFile {
  * Minimal shape of a verification / error task seeded into the queue.
  *
  * Decision (F8): `TaskStatus` has no 'error' value — task failure is expressed
- * through `violations` and `_verificationTracker`, not task status. Seed always
- * uses `status: 'todo'`.
+ * through `violations` and the `verification` snapshot, not task status. Seed
+ * always uses `status: 'todo'`.
  */
 export interface ScenarioSeedTask {
   id: string;
@@ -75,10 +75,25 @@ export interface ScenarioSeedTask {
    * node skips diagnostic generation entirely (plan bypass — F1 solution).
    */
   prePlanText?: string;
-  /** Previous batch split cycle count (used by S04 repeat detection). */
-  _batchSplitCount?: number;
-  /** Preserved summary from previous split, reinjected into plan prompt. */
-  _previousBatchDiagnostics?: string;
+}
+
+/**
+ * Persisted verification-cycle state. Mirrors `VerificationSnapshot`
+ * (tasks/verification/model/snapshot.ts) but declared here so `@ant/shared`
+ * stays decoupled from the cli-internal gate union. Seed files use `string`
+ * for gate names to avoid importing the Gate type at the @ant/shared layer.
+ */
+export interface ScenarioVerificationSnapshot {
+  required: string[];
+  passed: string[];
+  attemptedThisCycle?: string[];
+  attempts: number;
+  planHistoryHashes: string[];
+  planHistoryBodies?: string[];
+  depHash?: string;
+  installNeeded?: boolean;
+  batchSplitCount?: number;
+  previousBatchDiagnostics?: string;
 }
 
 /**
@@ -87,6 +102,11 @@ export interface ScenarioSeedTask {
  * This is deliberately a loose shape — the runner writes it verbatim into
  * `sessions/architect/code.json` and the plan node's resolve path then
  * hydrates the full state. Unknown fields are passed through.
+ *
+ * Post-T4b-β: verification cycle state is carried by the `verification`
+ * snapshot only. The legacy `_verificationTracker` / `_verificationAttempts`
+ * / `_appliedPlanHistory` / `_depFileHash` / `_installNeeded` fields were
+ * removed alongside their ArchitectGraphState counterparts.
  */
 export interface ScenarioSessionSeed {
   taskQueue: ScenarioSeedTask[];
@@ -95,18 +115,15 @@ export interface ScenarioSessionSeed {
   retries: number;
   maxRetries: number;
 
-  _verificationBudget?: number;
-  _verificationTracker?: {
-    buildPassed: boolean;
-    testPassed: boolean;
-    testsRequired: boolean;
-    typecheckRequired?: boolean;
-    typecheckPassed?: boolean;
-  } | null;
-  _lastPlanHash?: string;
-  _appliedPlanHistory?: string[];
-  _diagnosticAttempts?: number;
-  _deepDiagnosticBudgetGranted?: boolean;
+  /**
+   * Optional verification snapshot. When omitted, the plan node's
+   * `initSession` hook populates a fresh session from the runtime
+   * environment (detected TypeScript project + presence of test files).
+   * When seeded with an empty `required` array, the hook hydrates only
+   * the gate set while preserving `attempts` / history metadata — used
+   * by the budget-exhausted scenarios (S05).
+   */
+  verification?: ScenarioVerificationSnapshot;
 
   recursionCount?: number;
   recursionLimit?: number;

@@ -1,31 +1,23 @@
 /**
  * verification/hooks/check.ts — TaskCheckHook.evaluate
  *
- * Produces the `verification_incomplete` violation that the `check_task_status`
- * node currently synthesises via `evaluateVerificationCompletion` from
- * `utils/verificationCompleteness.ts`. This hook is the future single entry
- * point; during T5 coexistence the legacy path still runs and this hook is
- * only exercised from tests.
+ * Produces the `verification_incomplete` violation that
+ * `nodes/checkTaskStatus/evaluate.ts` surfaces when a verification task
+ * signalled `<done>` but one or more required gates still remain. The
+ * sole input is `state.verification` — the check-task-status phase is
+ * blind to verification internals.
  *
- * Routing:
- *   - If `state.verification` exists, consult the session (preferred).
- *   - Else fall back to the legacy tracker so the hook remains callable in
- *     scenarios that have not yet been migrated to populate the session.
- *
- * R1 — encapsulates verification-specific completion judgement; the
- * `check_task_status` phase will delegate here in T6.
- * R2 — depends only on `model/` (Session, gates) and `utils/verificationCompleteness`
- * (a pure helper that will survive T5 as a temporary bridge).
+ * R1 — encapsulates verification-specific completion judgement.
+ * R2 — depends only on `model/` (Session, gates).
  */
 
 import type { ArchitectGraphState, Violation, ViolationType } from '../../../state';
 import { getMissingStepDetail } from '../model/gates';
-import { evaluateVerificationCompletion } from '../../../utils/verificationCompleteness';
 
 /**
  * Compose the snippet of the last failed command's error output when
  * available. Keeps the phrasing identical to the legacy helper so the
- * prompt surface does not drift when T6 swaps over.
+ * prompt surface does not drift.
  */
 function composeErrorDetail(state: ArchitectGraphState): string {
   const history = state.commandHistory || [];
@@ -36,34 +28,28 @@ function composeErrorDetail(state: ArchitectGraphState): string {
 
 /**
  * Verification-specific retry hint rendered on the budget-exhausted
- * violation. Replaces the legacy `taskType === 'verification'` branch
- * previously inlined in `graph.ts` L120 / `workerGraph.ts` L156.
+ * violation. Consumed by `checkTaskStatus/evaluate.ts` when the Session
+ * reports budget is exhausted but gates are still missing.
  */
 export const budgetExhaustedHint =
   'Verification task did not complete — build may have failed. Will retry with remaining budget.';
 
 export function evaluate(state: ArchitectGraphState): Violation | null {
   const session = state.verification;
+  // No session → either a non-verification task (not our concern) or a
+  // verification task whose plan hook hasn't fired yet (shouldn't happen
+  // post-T4b-β; we still guard defensively).
+  if (!session) return null;
+  if (session.isComplete()) return null;
 
-  if (session) {
-    if (session.isComplete()) return null;
-    const missing = session.missing();
-    const firstMissing = missing[0];
-    const detail = getMissingStepDetail(firstMissing);
-    return {
-      type: 'verification_incomplete' as ViolationType,
-      severity: 'critical',
-      message: detail.message + composeErrorDetail(state),
-      isRetryable: true,
-      suggestedFix: detail.fix,
-    };
-  }
-
-  // Legacy bridge: session not populated yet — re-use the existing helper
-  // so the hook produces the same violation the main graph does today.
-  return evaluateVerificationCompletion({
-    tracker: state._verificationTracker,
-    commandHistory: state.commandHistory,
-    logPrefix: 'verification.check.evaluate',
-  });
+  const missing = session.missing();
+  const firstMissing = missing[0];
+  const detail = getMissingStepDetail(firstMissing);
+  return {
+    type: 'verification_incomplete' as ViolationType,
+    severity: 'critical',
+    message: detail.message + composeErrorDetail(state),
+    isRetryable: true,
+    suggestedFix: detail.fix,
+  };
 }
