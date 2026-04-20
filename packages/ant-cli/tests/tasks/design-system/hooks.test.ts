@@ -1,13 +1,30 @@
 /**
  * L2 — `tasks/design-system/hooks/*` adapter invariants.
  *
- * Design-system ordering is driven by priority-gated barriers
- * (hasPreAssetsWork / hasPreSpecWork) rather than a type-level barrier,
- * so the bundle intentionally publishes NO `scheduling.preXxxBarrier`
- * flags — only the conversation key.
+ * Design-system tasks in the code pipeline are ordered by **priority +
+ * parallelGroup**, not by type-level scheduling flags. The bundle
+ * therefore publishes NO `scheduling` slot at all — every consumer
+ * barrier (`preUiBarrier / preTestgenBarrier / preDocBarrier /
+ * preIntegrationBarrier`) and every producer barrier (`blocksUi /
+ * blocksTestgen / blocksDoc / blocksIntegration`) is intentionally
+ * absent because:
  *
- * This test pins that design so the bundle cannot silently acquire a
- * type-level barrier without a corresponding orchestrator change.
+ *   - The "design-system blocks priority ≥ 300 tasks" semantic is
+ *     already expressed by the priority-window predicate
+ *     `isFoundationTask` (200–299) that drives `hasPreFeatureWork` in
+ *     `parallel/TaskOrchestrator.ts` — a cross-type predicate owned by
+ *     the orchestrator, not by per-task bundles.
+ *   - Sibling ordering (tokens before wiring) is driven by the shared
+ *     `parallelGroup: "design-system"` + the priority-ordered task queue.
+ *   - The `hasPreAssetsWork` / `hasPreSpecWork` barriers that mention
+ *     "tokens"/"assets"/"spec" in `TaskOrchestrator.ts` are inert for
+ *     the code job (`graph.ts` L282 does not enable `barriers.assets` /
+ *     `barriers.spec`) — they run in the design-job orchestrator only.
+ *
+ * This test pins those invariants so the bundle cannot silently acquire
+ * a type-level barrier without an explicit orchestrator contract change.
+ * Any `scheduling` flag added here without also updating this test is a
+ * drift signal.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -23,7 +40,7 @@ function task(id: string, overrides: Partial<CodeTask> = {}): CodeTask {
     id,
     name: id,
     type: 'design-system',
-    priority: 150,
+    priority: 200,
     description: `task ${id}`,
     ...overrides,
   } as CodeTask;
@@ -36,11 +53,40 @@ describe('tasks/_shared/registry — design-system entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle does NOT publish type-level scheduling barriers', () => {
+  it('bundle publishes only the conversations slot — all other slots undefined', () => {
+    // Slot-level absence — mirrors the ui / doc / test-code precedents
+    // so a future drive-by hook addition forces an explicit test update
+    // (and forces the author to justify it in index.ts).
     expect(dsBundle.scheduling).toBeUndefined();
     expect(dsBundle.plan).toBeUndefined();
     expect(dsBundle.decompose).toBeUndefined();
     expect(dsBundle.check).toBeUndefined();
+    expect(dsBundle.tool).toBeUndefined();
+    expect(dsBundle.command).toBeUndefined();
+    expect(dsBundle.router).toBeUndefined();
+    expect(dsBundle.orchestrator).toBeUndefined();
+  });
+
+  it('scheduling slot absence implies ALL barrier flags are undefined (consumer + producer)', () => {
+    // Redundant with the slot-level check above, but spelled out per
+    // individual flag so a future refactor that introduces `scheduling:
+    // {}` (empty object) still fails here instead of silently accepting
+    // any future flag addition. Each of these MUST remain undefined:
+    //
+    // Consumer flags — design-system is below FEATURE_CRITICAL (300),
+    // so it never waits on a type-level barrier.
+    expect(dsBundle.scheduling?.preUiBarrier).toBeUndefined();
+    expect(dsBundle.scheduling?.preTestgenBarrier).toBeUndefined();
+    expect(dsBundle.scheduling?.preDocBarrier).toBeUndefined();
+    expect(dsBundle.scheduling?.preIntegrationBarrier).toBeUndefined();
+    // Producer flags — the "design-system blocks feature+" semantic is
+    // owned by the priority-window predicate `isFoundationTask`
+    // (200–299) that drives `hasPreFeatureWork` in TaskOrchestrator.
+    // Publishing any of these here would duplicate that SSOT.
+    expect(dsBundle.scheduling?.blocksUi).toBeUndefined();
+    expect(dsBundle.scheduling?.blocksTestgen).toBeUndefined();
+    expect(dsBundle.scheduling?.blocksDoc).toBeUndefined();
+    expect(dsBundle.scheduling?.blocksIntegration).toBeUndefined();
   });
 });
 
