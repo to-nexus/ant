@@ -5,4 +5,5 @@
  * The actual implementation and types live in core/chat/MessageBroadcaster.
  */
 
-export { MessageBroadcaster, ChatBroadcastMessage } from '../../../../../core/chat/MessageBroadcaster';
+export { MessageBroadcaster } from '../../../../../core/chat/MessageBroadcaster';
+export type { ChatBroadcastMessage } from '../../../../../core/chat/MessageBroadcaster';
