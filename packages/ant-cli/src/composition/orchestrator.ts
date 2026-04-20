@@ -12,6 +12,7 @@ import { TaskQueueUpdatePort, FileTreeUpdatePort } from "../core/ports";
 import { WorkflowStateUpdatePort } from "../core/ports/workflow";
 import { PreviewUpdatePort } from "../core/ports/preview";
 import { getChatAPIClient } from "../core/adapters/ChatAPIClient";
+import { recordUserTurn } from "./recordUserTurn";
 import * as path from "path";
 
 /**
@@ -42,8 +43,15 @@ export async function orchestrator(params: {
   chatSource?: boolean;  // ✅ Flag for Chat SSE
   skipTriage?: boolean;  // ✅ Skip triage node (after user selects "proceed" on redirect)
   actionMetadata?: import('@ant/shared').ActionMetadata;  // ✅ Structured context from Actions panel
+  /**
+   * True when this invocation is a resume of a previously paused/interrupted job.
+   * When true, recordUserTurn MUST skip writing a new user_turn (the original
+   * turnId already lives in feature.jsonl); it only re-propagates the existing
+   * turnId to LLMResponseService so subsequent trace lines keep the same grouping.
+   */
+  isResume?: boolean;
 }) {
-  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume } = params;
 
   switch (agent) {
     case "architect": {
@@ -149,6 +157,18 @@ export async function orchestrator(params: {
           configData
         );
 
+        // ✅ Record user_turn to trace.jsonl (skipFeature=true — ask는 feature.jsonl 미기록)
+        await recordUserTurn({
+          featurePath,
+          jobType: 'inline-ask',
+          jobId: jobId || 'unknown',
+          directive: overrideDirective || input,
+          projectId: project,
+          isResume,
+        }).catch(err => {
+          console.warn('[Orchestrator:InlineAsk] Failed to record user_turn:', err);
+        });
+
         const result = await runInlineAsk({
           message: overrideDirective || input,
           featurePath,
@@ -242,6 +262,21 @@ export async function orchestrator(params: {
         // ✅ Create session with file tree update support (agent-nested)
         const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
 
+        // ✅ Record user_turn (feature.jsonl + trace.jsonl). skipFeature=false for design.
+        // mode is not yet known for design (Detect runs inside the graph) → undefined.
+        // When isResume=true the helper skips the append and only re-propagates the
+        // existing turnId into LLMResponseService — see recordUserTurn JSDoc.
+        await recordUserTurn({
+          featurePath,
+          jobType: 'design',
+          jobId: jobId || 'unknown',
+          directive: overrideDirective || input,
+          isResume,
+          session,
+        }).catch(err => {
+          console.warn('[Orchestrator:Design] Failed to record user_turn:', err);
+        });
+
         // ✅ CRITICAL: Pass featurePath directly to avoid re-calculation mismatch
         const result = await architectAgent(
           input,
@@ -315,6 +350,21 @@ export async function orchestrator(params: {
 
         const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
 
+        // ✅ Record user_turn (feature.jsonl + trace.jsonl). Mode may be known via --mode/env.
+        // When isResume=true the helper skips the append and only re-propagates the
+        // existing turnId into LLMResponseService — see recordUserTurn JSDoc.
+        await recordUserTurn({
+          featurePath,
+          jobType: 'code',
+          jobId: jobId || 'unknown',
+          directive: overrideDirective || input,
+          mode,
+          isResume,
+          session,
+        }).catch(err => {
+          console.warn('[Orchestrator:Code] Failed to record user_turn:', err);
+        });
+
         const result = await architectAgent(
           input,
           project || "default",
@@ -372,6 +422,24 @@ export async function orchestrator(params: {
       // Create session for planner
       const session = new FileSessionAdapter(featurePath || '', 'planner', project, feature, fileTreeUpdate);
 
+      // ✅ Record user_turn (feature.jsonl + trace.jsonl) — plan is a feature-context job.
+      // Use the orchestrator-level `isResume` param (propagated from job-runner via
+      // ANT_IS_RESUME). The legacy `!!(overrideDirective && jobId)` heuristic was a
+      // false-positive trap — a normal continue endpoint with both fields set looks
+      // identical to a real resume, producing duplicate user_turn lines.
+      if (featurePath) {
+        await recordUserTurn({
+          featurePath,
+          jobType: 'plan',
+          jobId: jobId || 'unknown',
+          directive: overrideDirective || input,
+          isResume,
+          session,
+        }).catch(err => {
+          console.warn('[Orchestrator:Planner] Failed to record user_turn:', err);
+        });
+      }
+
       // Detect language from directive
       const language = /[가-힣]/.test(input) ? 'ko' : 'en';
 
@@ -384,7 +452,14 @@ export async function orchestrator(params: {
         language: language as 'ko' | 'en',
         workspaceState: { featurePath: featurePath || '' } as any,
         featurePath: featurePath || '',
-        isResume: !!(overrideDirective && jobId),  // continue endpoint sets both
+        // Authoritative orchestrator-level signal (propagated from
+        // ANT_IS_RESUME in job-runner). The legacy `!!(overrideDirective && jobId)`
+        // heuristic was removed in session-redesign §3 — keeping it here would
+        // re-introduce the false-positive trap that created duplicate user_turn
+        // lines (see recordUserTurn call above). runPlanGraph still has its own
+        // session-state `interruption` detection + ANT_IS_RESUME env fallback
+        // for legitimate resume detection, so dropping this heuristic is safe.
+        isResume,
         chatSource: chatSource,
         skipTriage: skipTriage,
         actionMetadata: actionMetadata,
@@ -457,7 +532,11 @@ export async function orchestrator(params: {
       const result = await runVisualGraph({
         directive: input,
         featurePath,
-        isResume: !!(overrideDirective && jobId),
+        // Authoritative orchestrator-level signal only. The legacy
+        // `!!(overrideDirective && jobId)` heuristic was a false-positive trap
+        // (see session-redesign §3 + the planner branch above). job-runner
+        // propagates ANT_IS_RESUME explicitly; direct callers must opt in.
+        isResume,
         chatSource,
         skipTriage,
         actionMetadata,

@@ -42,18 +42,6 @@ export function unregisterActiveOrchestrator(): void {
 }
 
 /**
- * Legacy no-op retained for callers still invoking the old chat flusher hook.
- * Chat persistence now flows through trace.jsonl, so there is nothing to flush.
- */
-export function registerChatFlusher(_flusher: unknown): void {
-  /* no-op */
-}
-
-export function unregisterChatFlusher(): void {
-  /* no-op */
-}
-
-/**
  * Attempt graceful shutdown of the active orchestrator.
  * 
  * - If an orchestrator is registered, calls handleInterruption() which

@@ -10,9 +10,14 @@
  * - touched file count exceeds PROMOTION_TOUCHED_THRESHOLD (`touched.length > N`)
  *
  * Guarding (caller responsibility):
- * - caller MUST gate the call with `!state._promotedThisJob` so promotion
- *   happens at most once per job. When this predicate is true the caller
- *   returns `{ needsEscalation: true, _promotedThisJob: true, ... }`.
+ * - caller MUST gate the call with its local `effectivePromoted` (not
+ *   `state._promotedThisJob` directly) so promotion happens at most once
+ *   per job. `effectivePromoted` is derived at direct-node entry as
+ *   `state._promotedThisJob === true || (state.needsEscalation === true
+ *   && state._promotedThisJob !== true)` and is also the value persisted
+ *   back on return. Setting the flag atomically with the first escalation
+ *   would defeat the router's `!_promotedThisJob` branch before decompose
+ *   has a chance to re-plan.
  */
 import { PROMOTION_TOUCHED_THRESHOLD } from '@ant/shared';
 import type { ArchitectGraphState } from '../../state';

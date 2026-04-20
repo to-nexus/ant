@@ -31,28 +31,14 @@ import { runToolCallsAndCollect } from '../shared/runToolCallsAndCollect';
 import { parseReActResponse } from '../shared/parseReActResponse';
 import { emitFileWriteTrace } from '../shared/emitFileWriteTrace';
 import { shouldEscalate } from './shouldEscalate';
+import { DIRECT_LOOP_LIMITS } from '@ant/shared';
 
 const registry = createCodeToolRegistry();
-
-const ONESHOT_MAX_STEPS = 2;
-
-/**
- * Tool names whose successful execution implies a "touched" file.
- * Used by the runtime-escalate heuristic to count how many distinct files
- * the direct loop has mutated so far. Includes shadow aliases.
- */
-const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'edit_file',
-  'create_file',
-  'delete_file',
-  'file',
-  'write_file',
-]);
 
 function getExploratoryMaxSteps(): number {
   const raw = process.env.ANT_DIRECT_MAX_STEPS;
   const n = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : 10;
+  return Number.isFinite(n) && n > 0 ? n : DIRECT_LOOP_LIMITS.exploratory;
 }
 
 export async function direct(
@@ -73,7 +59,7 @@ export async function direct(
   const directMode = state.directMode;
   const isExplainMode = mode === 'explain';
   const maxSteps =
-    directMode === 'oneshot' ? ONESHOT_MAX_STEPS : getExploratoryMaxSteps();
+    directMode === 'oneshot' ? DIRECT_LOOP_LIMITS.oneshot : getExploratoryMaxSteps();
 
   const toolNames: ToolName[] = isExplainMode
     ? [...TOOL_SETS.codeExplain]
@@ -120,6 +106,24 @@ export async function direct(
   let needsEscalation = false;
   let stepsExecuted = 0;
   const touchedFiles = new Set<string>();
+
+  // 1-shot escalation cap (§4.12 / runtime_escalate):
+  // `_promotedThisJob` flips false→true exactly when direct is re-entered
+  // following a prior escalation — i.e. `state.needsEscalation === true` was
+  // already visible to the router on this run's entry. Setting the flag at
+  // entry (not at escalation return) is what actually enforces the cap: if
+  // we set it atomically with the first escalation, the router's
+  // `!state._promotedThisJob` guard would evaluate against the post-merge
+  // state and skip the decompose re-entry entirely.
+  const wasEscalationReentry =
+    state.needsEscalation === true && state._promotedThisJob !== true;
+  const effectivePromoted =
+    state._promotedThisJob === true || wasEscalationReentry;
+  if (wasEscalationReentry) {
+    console.log(
+      '🔁 [Direct] Re-entered after prior escalation — 2nd escalation will route to learn',
+    );
+  }
 
   for (let step = 0; step < maxSteps; step++) {
     stepsExecuted = step + 1;
@@ -235,25 +239,38 @@ export async function direct(
       });
       state.recursionCount = (state.recursionCount || 0) + 1;
 
-      // Aggregate touched files from write-style tool calls for runtime escalate.
+      // Aggregate touched files for runtime escalate. SSOT is
+      // `ev.result.sideEffects` — the same source emitFileWriteTrace
+      // forwards to trace.jsonl. This keeps the escalation heuristic and
+      // the breadcrumb/touched accounting on the exact same set of files
+      // (actual mutations, not attempted writes). A failed edit_file call
+      // has no sideEffects and therefore must not push the loop toward
+      // escalation — the scope hasn't actually widened.
       for (const ev of batch.events) {
-        if (!WRITE_TOOL_NAMES.has(ev.toolName)) continue;
-        const path = ev.args && typeof ev.args === 'object' ? (ev.args as any).path : undefined;
-        if (typeof path === 'string' && path.length > 0) {
-          touchedFiles.add(path);
+        const effects = ev.result.sideEffects;
+        if (effects && effects.length > 0) {
+          for (const effect of effects) {
+            if (
+              (effect.type === 'fileModified' ||
+                effect.type === 'fileCreated' ||
+                effect.type === 'fileDeleted') &&
+              typeof effect.path === 'string' &&
+              effect.path.length > 0
+            ) {
+              touchedFiles.add(effect.path);
+            }
+          }
         }
-        // Forward file-mutating sideEffects to trace.jsonl (SSOT for
-        // breadcrumb/touched — see core/context/breadcrumb.ts). Best-effort.
         emitFileWriteTrace({
           session: state.deps?.session,
           jobId: state.jobId,
           turnId: state.turnId,
           jobType: 'code',
-          sideEffects: ev.result.sideEffects,
+          sideEffects: effects,
         });
       }
 
-      if (!state._promotedThisJob && shouldEscalate(state, touchedFiles)) {
+      if (!effectivePromoted && shouldEscalate(state, touchedFiles)) {
         needsEscalation = true;
         console.log(
           `⚡ [Direct] Touched-file escalation at step ${stepsExecuted}/${maxSteps} (touched=${touchedFiles.size})`,
@@ -310,16 +327,17 @@ export async function direct(
     );
   }
 
-  // Runtime escalate: pair `needsEscalation` with `_promotedThisJob=true` so the
-  // routeAfterDirect 1-shot cap (see routing.ts) is honoured on re-entry. The
-  // caller also guards each in-loop trigger with `!state._promotedThisJob` so
-  // this value only flips false→true once per job.
-  const promoteThisJob = needsEscalation && !state._promotedThisJob;
-
+  // Runtime escalate: `_promotedThisJob` is persisted as the re-entry flag so
+  // the routeAfterDirect 1-shot cap (routing.ts) has a stable guard. We
+  // intentionally DO NOT flip the flag on the first escalation return —
+  // doing so would close the `!_promotedThisJob` router branch before
+  // decompose gets a chance to re-plan. The flag advances at next-entry
+  // (see `wasEscalationReentry` above) so the second escalation (if any)
+  // correctly collapses to learn.
   return {
     conversations: updatedConversations,
-    needsEscalation: needsEscalation || undefined,
-    ...(promoteThisJob ? { _promotedThisJob: true } : {}),
+    needsEscalation,
+    _promotedThisJob: effectivePromoted,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   };

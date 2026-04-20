@@ -1,6 +1,7 @@
 import { CodeTask } from "../../../../types/task";
 import type { TaskType, ResolvedArtifact } from '@ant/shared';
 import { getDesignDocByPackageFromPool } from '../../../../../../core/prompt/builder/ArtifactPipeline';
+import { isErrorTask } from '../../tasks/error';
 
 /**
  * Post-validation: Check if LLM correctly classified error vs feature
@@ -27,7 +28,7 @@ export function detectPotentialMisclassification(
   
   // ✅ Check 2: If error message exists but no error-type tasks → potential issue
   if (hasErrorMessage) {
-    const hasErrorTypeTasks = tasks.some(t => t.type === 'error');
+    const hasErrorTypeTasks = tasks.some(t => isErrorTask(t));
     if (!hasErrorTypeTasks) {
       return {
         hasMisclassification: true,

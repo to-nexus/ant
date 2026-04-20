@@ -19,6 +19,64 @@ import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
 import { runInWorkerScope } from '../../../../../core/parallel/workerScope';
+import { VerificationTerminalError } from '../utils/verificationErrors';
+import { hooksForTaskType } from '../tasks/_shared/registry';
+import type { TaskType } from '@ant/shared';
+
+/**
+ * Produce a `WorkerSnapshot` from any code-graph state object.
+ *
+ * Extracted to module scope so callers without a live worker instance —
+ * notably `plan.processDiagnosticBatchSplit` — can mint a snapshot and
+ * attach it to a re-queued task via `task.resumeState`. Before this
+ * helper the snapshot shape was inlined inside the `TaskWorker.captureState`
+ * method, which was never callable from anywhere else. The connection is
+ * the critical link that the 2026-02-11 refactor (`0be5a6b0`) accidentally
+ * severed and that every subsequent verification-hardening enhancement silently
+ * depended on.
+ *
+ * T7 — Single snapshot API for the three carry-over boundaries
+ * (`handleInterruption` / `reportFailure` transient re-queue /
+ * `plan.processDiagnosticBatchSplit`). Each boundary calls this helper so
+ * the post-T4b shape (`verification: VerificationSnapshot`) and the
+ * pre-T4b shape (legacy `_verificationTracker` / `_verificationAttempts` /
+ * `_appliedPlanHistory` / `_depFileHash` fields) are produced together.
+ * The legacy four fields remain here during the T6→T4b coexistence
+ * window; T4b drops them, leaving only `verification`.
+ */
+export function snapshotFromState(state: any): WorkerSnapshot | null {
+  if (!state) return null;
+  return {
+    planText: state.planText,
+    conversations: state.conversations,
+    projectCodeContext: state.projectCodeContext
+      ? {
+          source: state.projectCodeContext.source,
+          filePaths: state.projectCodeContext.filePaths || [],
+          stats: state.projectCodeContext.stats,
+        }
+      : undefined,
+    retries: state.retries,
+    violations: state.violations,
+    enforcementHistory: state.enforcementHistory,
+    tokenUsage: state._currentTaskTokenUsage,
+    // T4b authoritative field — consolidates the four legacy fields below
+    // into a typed snapshot. `undefined` when the task never ran through
+    // the verification hook (e.g. non-verification tasks, or verification
+    // tasks before T4b wires `state.verification` population).
+    verification: state.verification?.snapshot?.(),
+    // Legacy fields — preserved across boundaries until T4b cleans them
+    // out of state.ts / WorkerSnapshot. Kept alongside the hook-driven
+    // `verification` snapshot so runtime code that still reads them
+    // (tool node's afterExecution handler, execute node's guard, the
+    // scenario harness restore path in `runner.ts`) behaves correctly
+    // during the T6→T4b coexistence window.
+    _depFileHash: state._depFileHash,
+    _verificationAttempts: state._verificationAttempts,
+    _verificationTracker: state._verificationTracker,
+    _appliedPlanHistory: state._appliedPlanHistory,
+  };
+}
 
 export class TaskWorker<T extends BaseTask> {
   readonly workerId: number;
@@ -90,8 +148,13 @@ export class TaskWorker<T extends BaseTask> {
           await this.orchestrator.reportStopped(this.workerId);
         } else if (hasUnresolvedViolations) {
           const violationTypes = result.violations.map((v: any) => v.type || 'unknown').join(', ');
-          const err = new Error(
-            `Task "${task.name}" exhausted call budget with ${result.violations.length} unresolved violation(s): ${violationTypes}`
+          // Typed terminal error so orchestrator can decide re-queue vs escalate
+          // without string matching. For verification tasks this kind indicates
+          // that in-plan retries AND reverify all failed to clear violations.
+          const err = new VerificationTerminalError(
+            'unresolved_violations',
+            `Task "${task.name}" exhausted call budget with ${result.violations.length} unresolved violation(s): ${violationTypes}`,
+            snapshotFromState(result),
           );
           console.warn(`[Worker ${this.workerId}] Task "${task.name}" ended with unresolved violations → reporting as failure`);
           await this.orchestrator.reportFailure(this.workerId, completedTask, err);
@@ -127,7 +190,7 @@ export class TaskWorker<T extends BaseTask> {
       ? new WorkerFileSystem(originalFileSystem, sharedFileBuffer, this.workerId, task.name)
       : originalFileSystem;
 
-    const workerState = {
+    const workerState: Record<string, any> = {
       ...this.sharedContext,
       workerId: this.workerId,
       currentTask: task,
@@ -148,7 +211,14 @@ export class TaskWorker<T extends BaseTask> {
       _currentTaskTokenUsage: undefined,
       // Restore tool result cache from previous failed attempt (design job: avoids re-reading source docs)
       _toolResultCache: (task as any)._cachedToolResults || undefined,
-      // Restore from resumeState if task was interrupted
+      // Restore cross-task fields from resumeState if task was interrupted or re-queued.
+      // `resumeState` is attached by `TaskOrchestrator.handleInterruption` /
+      // `reportFailure` (transient retry) / `plan.processDiagnosticBatchSplit`
+      // via `snapshotFromState()` below, so a single restore path handles
+      // all three boundaries uniformly. Task-type-specific fields
+      // (verification session, diagnostic tracker, etc.) are restored via
+      // the orchestrator hook below so the phase layer never references
+      // `_verificationTracker` or friends by name.
       ...(task.interrupted && (task as any).resumeState ? {
         planText: (task as any).resumeState.planText || '',
         conversations: (task as any).resumeState.conversations || {},
@@ -156,19 +226,30 @@ export class TaskWorker<T extends BaseTask> {
         retries: (task as any).resumeState.retries || 0,
         violations: (task as any).resumeState.violations || [],
         enforcementHistory: (task as any).resumeState.enforcementHistory || [],
-        // Axes A/E/F-4/G — preserve diagnostic/verification cache across resume
+        // Legacy fields — preserved across boundaries until T4b cleans them
+        // out of state.ts. Kept alongside the hook-driven `state.verification`
+        // restore so runtime code that still reads them (tool node's
+        // afterExecution handler, execute node's guard) behaves correctly
+        // during the T6→T4b coexistence window.
         _depFileHash: (task as any).resumeState._depFileHash,
-        _verificationBudget: (task as any).resumeState._verificationBudget,
-        _diagnosticAttempts: (task as any).resumeState._diagnosticAttempts,
-        _deepDiagnosticBudgetGranted: (task as any).resumeState._deepDiagnosticBudgetGranted,
-        _lastPlanHash: (task as any).resumeState._lastPlanHash,
-        // Axis D — prior attempt plan bodies; required for composeViolationsText
-        // to render "what was already tried" on the post-resume prompt.
+        _verificationAttempts: (task as any).resumeState._verificationAttempts,
+        _verificationTracker: (task as any).resumeState._verificationTracker,
         _appliedPlanHistory: (task as any).resumeState._appliedPlanHistory,
       } : {}),
       // Worker stop signal checker
       _isStopRequested: () => this.stopRequested,
     };
+
+    // Task-type-specific snapshot rehydration (R1 dispatch). The
+    // verification hook rebuilds `state.verification` from the stored
+    // `VerificationSnapshot`; other task types currently have no snapshot
+    // to restore and the call is a no-op.
+    if (task.interrupted && (task as any).resumeState) {
+      hooksForTaskType(task.type as TaskType)?.orchestrator?.restoreIntoWorkerState?.(
+        workerState,
+        (task as any).resumeState.verification,
+      );
+    }
 
     // Clear resumeState after restoring
     if (task.interrupted && (task as any).resumeState) {
@@ -205,33 +286,14 @@ export class TaskWorker<T extends BaseTask> {
   /**
    * Capture the current worker state for checkpoint/interruption.
    * Returns null if no task is currently executing.
+   *
+   * Thin wrapper over the static {@link snapshotFromState} so that sites
+   * without a live worker instance (e.g. `plan.processDiagnosticBatchSplit`)
+   * can produce the same snapshot shape.
    */
   async captureState(): Promise<WorkerSnapshot | null> {
     if (!this.currentState) return null;
-
-    return {
-      planText: this.currentState.planText,
-      conversations: this.currentState.conversations,
-      projectCodeContext: this.currentState.projectCodeContext
-        ? {
-            source: this.currentState.projectCodeContext.source,
-            filePaths: this.currentState.projectCodeContext.filePaths || [],
-            stats: this.currentState.projectCodeContext.stats,
-          }
-        : undefined,
-      retries: this.currentState.retries,
-      violations: this.currentState.violations,
-      enforcementHistory: this.currentState.enforcementHistory,
-      tokenUsage: this.currentState._currentTaskTokenUsage,
-      // Axes A/E/F-4/G — preserve diagnostic/verification cache for resume
-      _depFileHash: this.currentState._depFileHash,
-      _verificationBudget: this.currentState._verificationBudget,
-      _diagnosticAttempts: this.currentState._diagnosticAttempts,
-      _deepDiagnosticBudgetGranted: this.currentState._deepDiagnosticBudgetGranted,
-      _lastPlanHash: this.currentState._lastPlanHash,
-      // Axis D — prior-attempt plan bodies (used by composeViolationsText)
-      _appliedPlanHistory: this.currentState._appliedPlanHistory,
-    };
+    return snapshotFromState(this.currentState);
   }
 
   /**

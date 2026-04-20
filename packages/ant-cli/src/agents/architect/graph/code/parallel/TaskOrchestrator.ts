@@ -29,12 +29,23 @@ import type {
 } from './types';
 import { getTaskConcurrency } from './types';
 import { isFigmaRateLimitError, isFigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
+import { classifyTerminalError } from '../utils/verificationErrors';
+import { hooksForTaskType } from '../tasks/_shared/registry';
+import type { TaskType } from '@ant/shared';
 
 /**
  * Classify whether an error is deterministic (will always fail on retry)
  * vs transient (may succeed on retry).
  *
  * Deterministic errors should NOT be retried — doing so wastes tokens and time.
+ *
+ * Historical note: this regex used to carry an `exhausted call budget` clause
+ * that pattern-matched TaskWorker's string throw. The plan node later threw
+ * a DIFFERENT message ("failed after N attempts") which fell through every
+ * regex → orchestrator classified it as transient → infinite re-queue
+ * (the `still-lacing-north` incident). Both throw sites now emit typed
+ * `VerificationTerminalError` which is classified via `classifyTerminalError`
+ * BEFORE this regex runs. Kept as a safety net for upstream Anthropic errors.
  */
 function isDeterministicError(error: Error): boolean {
   const msg = error.message || '';
@@ -50,9 +61,7 @@ function isDeterministicError(error: Error): boolean {
     // Model not found / not available
     /model.*not found/i.test(msg) ||
     // Explicitly non-retriable HTTP status codes
-    /\b(400|401|403|404)\b.*\{/.test(msg) ||
-    // Call budget exhausted — retrying would repeat the same non-productive loop
-    /exhausted call budget/i.test(msg)
+    /\b(400|401|403|404)\b.*\{/.test(msg)
   );
 }
 
@@ -88,23 +97,43 @@ const CONSECUTIVE_TIMEOUT_LIMIT = 3;
 // ============================================
 // Barrier predicates — shared by findAndAssignNonConflictingTask + spawnAvailableWorkers
 // ============================================
+//
+// Priority-based predicates stay inline — they are cross-type and have no
+// sensible home in a per-task bundle. Type-based predicates (the former
+// `isFeatureOrSetupTask` / `isPreDocTask` / `isNonIntegrationFeatureTask`)
+// have been replaced by `schedBlocks(t, flag)` which queries each task's
+// scheduling hook. This keeps the parallel layer blind to `task.type`
+// per R1 (NODE_GRAPH_LAYOUT.md).
 function isFoundationTask<T extends BaseTask>(t: T): boolean {
   return t.priority >= 200 && t.priority <= 299;
-}
-function isFeatureOrSetupTask<T extends BaseTask>(t: T): boolean {
-  return t.type === 'feature' || t.type === 'setup';
-}
-function isPreDocTask<T extends BaseTask>(t: T): boolean {
-  return t.type === 'feature' || t.type === 'setup' || t.type === 'test-code';
-}
-function isNonIntegrationFeatureTask<T extends BaseTask>(t: T): boolean {
-  return t.type === 'feature' && t.priority >= TASK_PRIORITIES.FEATURE_CRITICAL && t.priority < TASK_PRIORITIES.INTEGRATION_MIN;
 }
 function isTokensTask<T extends BaseTask>(t: T): boolean {
   return t.priority >= 100 && t.priority <= 199;
 }
 function isTokensOrAssetsTask<T extends BaseTask>(t: T): boolean {
   return t.priority >= 100 && t.priority <= 299;
+}
+
+/** Ask a task's scheduling hook whether it activates the named barrier. */
+function schedBlocks<T extends BaseTask>(
+  t: T,
+  flag: 'blocksUi' | 'blocksTestgen' | 'blocksDoc' | 'blocksIntegration',
+): boolean {
+  return !!hooksForTaskType(t.type as TaskType)?.scheduling?.[flag];
+}
+
+/**
+ * Integration barrier producer — a task counts as "pre-integration work" when
+ * its bundle sets `blocksIntegration` AND its priority sits in the
+ * FEATURE_CRITICAL..INTEGRATION_MIN window. The priority window is a
+ * cross-type concern and stays inline; the type concern is delegated.
+ */
+function isPreIntegrationWork<T extends BaseTask>(t: T): boolean {
+  return (
+    schedBlocks(t, 'blocksIntegration') &&
+    t.priority >= TASK_PRIORITIES.FEATURE_CRITICAL &&
+    t.priority < TASK_PRIORITIES.INTEGRATION_MIN
+  );
 }
 
 export class TaskOrchestrator<T extends BaseTask> {
@@ -488,10 +517,25 @@ export class TaskOrchestrator<T extends BaseTask> {
         return;
       }
 
-      const attempts = ((task as any)._failedAttempts || 0) + 1;
-      (task as any)._failedAttempts = attempts;
+      // Attempt counter: tasks that own their own counter (currently
+      // verification via the Session) read through the hook so the legacy
+      // `_verificationAttempts` field carries across retries. All other task
+      // types fall back to the orchestrator-level `_failedAttempts`.
+      // R1 — the orchestrator does not compare `task.type`; it asks the
+      // registered hook bundle whether it has its own counter.
+      const orchestratorHook = hooksForTaskType(task.type as TaskType)?.orchestrator;
+      const ownCounter = orchestratorHook?.hasOwnAttemptCounter === true;
+      const attempts = ownCounter
+        ? (orchestratorHook?.attemptCount?.(task as any) ?? 0)
+        : ((task as any)._failedAttempts || 0) + 1;
+      if (!ownCounter) {
+        (task as any)._failedAttempts = attempts;
+      }
 
-      const deterministic = isDeterministicError(error);
+      // Typed classification FIRST — catches `VerificationTerminalError` so
+      // verification tasks never fall through to the generic regex branch.
+      const terminal = classifyTerminalError(error);
+      const deterministic = terminal.terminal || isDeterministicError(error);
 
       if (deterministic || attempts >= MAX_TASK_RETRIES) {
         // Permanently failed — add to failedTasks list
@@ -501,7 +545,11 @@ export class TaskOrchestrator<T extends BaseTask> {
           timestamp: new Date().toISOString(),
         });
 
-        if (deterministic) {
+        if (terminal.terminal) {
+          console.error(
+            `[Orchestrator] Task "${task.name}" TERMINAL (kind=${terminal.kind}, worker ${workerId}): ${error.message}`,
+          );
+        } else if (deterministic) {
           console.error(
             `[Orchestrator] Task "${task.name}" FAILED with deterministic error (worker ${workerId}), no retry: ${error.message}`,
           );
@@ -512,10 +560,15 @@ export class TaskOrchestrator<T extends BaseTask> {
         }
 
         // Skip remaining verification/final tasks — running them after failure is pointless.
+        // A "final" task is one whose orchestrator hook owns its attempt counter
+        // (verification) or one tagged with the FINAL_VERIFICATION priority. R1 —
+        // no `task.type === 'verification'` comparison.
         const remaining = this.taskQueue.getAll();
-        const allRemainingAreFinal = remaining.length > 0 && remaining.every(
-          t => t.type === 'verification' || t.priority >= 1000
-        );
+        const isFinalTask = (t: T): boolean => {
+          if (t.priority >= TASK_PRIORITIES.FINAL_VERIFICATION) return true;
+          return hooksForTaskType(t.type as TaskType)?.orchestrator?.hasOwnAttemptCounter === true;
+        };
+        const allRemainingAreFinal = remaining.length > 0 && remaining.every(isFinalTask);
         if (allRemainingAreFinal && this.runningTasks.size === 0) {
           for (const t of remaining) {
             this.taskQueue.pop();
@@ -534,10 +587,22 @@ export class TaskOrchestrator<T extends BaseTask> {
         this.drain();
         this.broadcastKanban();
       } else {
-        // Transient error — re-queue for retry.
-        // Axis D — preserve any resumeState captured by the worker so the
-        // retried attempt inherits the prior-attempt summary. Fresh-start wipe
-        // was the source of "LLM solution quality collapses on inline retries".
+        // Transient error — re-queue for retry. Capture the worker's live
+        // snapshot before returning the task to the queue so the next worker
+        // invocation rehydrates verification attempt counter / tracker /
+        // applied plan history. Fresh-start wipe was the source of "LLM
+        // solution quality collapses on inline retries" — see the
+        // `still-lacing-north` post-mortem: the historical claim of
+        // "resumeState preserved" was aspirational; no site actually set it.
+        const worker = this.workers.get(workerId);
+        if (worker) {
+          try {
+            const snapshot = await worker.captureState();
+            if (snapshot) (task as any).resumeState = snapshot;
+          } catch (err) {
+            console.warn(`[Orchestrator] captureState(worker ${workerId}) failed on transient re-queue:`, (err as Error).message);
+          }
+        }
         task.interrupted = true;
         this.taskQueue.push(task);
         console.warn(
@@ -574,16 +639,19 @@ export class TaskOrchestrator<T extends BaseTask> {
         running.some(isFoundationTask) || queued.some(isFoundationTask)
       ),
       hasPreIntegrationWork: !!b?.integration && (
-        running.some(isNonIntegrationFeatureTask) || queued.some(isNonIntegrationFeatureTask)
+        running.some(isPreIntegrationWork) || queued.some(isPreIntegrationWork)
       ),
       hasPreUiWork: !!b?.ui && (
-        running.some(isFeatureOrSetupTask) || queued.some(isFeatureOrSetupTask)
+        running.some((t) => schedBlocks(t, 'blocksUi')) ||
+        queued.some((t) => schedBlocks(t, 'blocksUi'))
       ),
       hasPreTestgenWork: !!b?.['test-code'] && (
-        running.some(isFeatureOrSetupTask) || queued.some(isFeatureOrSetupTask)
+        running.some((t) => schedBlocks(t, 'blocksTestgen')) ||
+        queued.some((t) => schedBlocks(t, 'blocksTestgen'))
       ),
       hasPreDocWork: !!b?.doc && (
-        running.some(isPreDocTask) || queued.some(isPreDocTask)
+        running.some((t) => schedBlocks(t, 'blocksDoc')) ||
+        queued.some((t) => schedBlocks(t, 'blocksDoc'))
       ),
       hasPreAssetsWork: !!b?.assets && (
         running.some(isTokensTask) || queued.some(isTokensTask)
@@ -609,28 +677,38 @@ export class TaskOrchestrator<T extends BaseTask> {
       // Exclusive task acts as a barrier
       if (task.exclusive) break;
 
+      // Type-specific barrier opt-in lives on tasks/{type}/hooks/scheduling.ts.
+      // R1 — the orchestrator does not compare `task.type`; it asks each task
+      // bundle whether it wants to be gated behind the named barrier.
+      const sched = hooksForTaskType(task.type as TaskType)?.scheduling;
+
       // Feature barrier: don't assign feature/integration tasks while foundation work exists
-      if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'test-code' && task.type !== 'doc') {
+      // Foundation tasks (setup + design-system) have priority 200–299. Their
+      // "hasPreFeatureWork" is a cross-type predicate owned by the orchestrator
+      // and stays inline; the priority check guards misclassified test-code/doc
+      // tasks so they still slip through the foundation gate.
+      if (hasPreFeatureWork && task.priority >= 300
+          && !sched?.preTestgenBarrier && !sched?.preDocBarrier) {
         break;
       }
 
       // Integration barrier: don't assign integration tasks while feature work exists
-      if (hasPreIntegrationWork && task.type === 'feature' && task.priority >= TASK_PRIORITIES.INTEGRATION_MIN) {
+      if (hasPreIntegrationWork && sched?.preIntegrationBarrier && task.priority >= TASK_PRIORITIES.INTEGRATION_MIN) {
         break;
       }
 
       // Testgen barrier: don't assign testgen tasks while feature/setup work exists
-      if (hasPreTestgenWork && task.type === 'test-code') {
+      if (hasPreTestgenWork && sched?.preTestgenBarrier) {
         break;
       }
 
       // Doc barrier: don't assign doc tasks while feature/setup/testgen work exists
-      if (hasPreDocWork && task.type === 'doc') {
+      if (hasPreDocWork && sched?.preDocBarrier) {
         break;
       }
 
       // UI barrier: don't assign ui tasks while feature/setup work exists
-      if (hasPreUiWork && task.type === 'ui') break;
+      if (hasPreUiWork && sched?.preUiBarrier) break;
 
       // Assets barrier: don't assign assets (200+) while tokens (100-199) work exists
       if (hasPreAssetsWork && task.priority >= 200) break;
@@ -693,11 +771,13 @@ export class TaskOrchestrator<T extends BaseTask> {
     let potentialTasks = 0;
     for (const task of this.taskQueue.getAll()) {
       if (task.exclusive) break;
-      if (hasPreFeatureWork && task.priority >= 300 && task.type !== 'test-code' && task.type !== 'doc') break;
-      if (hasPreIntegrationWork && task.type === 'feature' && task.priority >= TASK_PRIORITIES.INTEGRATION_MIN) break;
-      if (hasPreTestgenWork && task.type === 'test-code') break;
-      if (hasPreDocWork && task.type === 'doc') break;
-      if (hasPreUiWork && task.type === 'ui') break;
+      const sched = hooksForTaskType(task.type as TaskType)?.scheduling;
+      if (hasPreFeatureWork && task.priority >= 300
+          && !sched?.preTestgenBarrier && !sched?.preDocBarrier) break;
+      if (hasPreIntegrationWork && sched?.preIntegrationBarrier && task.priority >= TASK_PRIORITIES.INTEGRATION_MIN) break;
+      if (hasPreTestgenWork && sched?.preTestgenBarrier) break;
+      if (hasPreDocWork && sched?.preDocBarrier) break;
+      if (hasPreUiWork && sched?.preUiBarrier) break;
       if (hasPreAssetsWork && task.priority >= 200) break;
       if (hasPreSpecWork && task.priority >= 300) break;
       if (!task.parallelGroup) {
@@ -889,14 +969,24 @@ export class TaskOrchestrator<T extends BaseTask> {
 
   /**
    * Handle external interruption (e.g. SIGTERM via graceful shutdown).
-   * 
+   *
    * Flow:
-   *   1. drain()                — stop new task dispatch + periodic checkpoint
-   *   2. signalWorkersToStop()  — workers exit after current iteration
-   *   3. saveCheckpoint()       — running tasks pushed back to queue as interrupted
-   *   4. checkAllDone()         — resolve run() if no running tasks remain
-   * 
-   * Called by gracefulShutdown.ts when the process receives SIGTERM.
+   *   1. drain()                   — stop new task dispatch + periodic checkpoint
+   *   2. captureWorkerSnapshots()  — pull per-worker state onto `task.resumeState`
+   *                                  so the next invocation sees prior attempts
+   *   3. signalWorkersToStop()     — workers exit after current iteration
+   *   4. saveCheckpoint()          — running tasks pushed back to queue as interrupted
+   *   5. checkAllDone()            — resolve run() if no running tasks remain
+   *
+   * Step 2 restores a block of logic that lived here before the 2026-02-11
+   * refactor (`0be5a6b0`) and was accidentally dropped during helper
+   * extraction. Without it, a task interrupted mid-diagnostic loses its
+   * verification budget, plan hash history, and tracker state on resume —
+   * i.e. the LLM re-starts from scratch on every re-entry, defeating Axis
+   * D/E/F-4/G accumulation.
+   *
+   * Called by gracefulShutdown.ts when the process receives SIGTERM, and by
+   * the orchestrator itself on drain-triggering failures.
    */
   async handleInterruption(reason: string): Promise<void> {
     console.log(`[TaskOrchestrator] handleInterruption called: ${reason}`);
@@ -905,6 +995,7 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.hasInterruptedTasks = true;
       this.interruptReason = reason;
       this.drain();
+      await this.captureWorkerSnapshots();
       this.signalWorkersToStop();
       const runningTaskIds = Array.from(this.runningTasks.values()).map(t => t.id);
       this.callbacks.onInterruption?.(reason, runningTaskIds);
@@ -912,5 +1003,31 @@ export class TaskOrchestrator<T extends BaseTask> {
       this.broadcastKanban();
       this.checkAllDone();
     });
+  }
+
+  /**
+   * For every running worker, pull its current state via `worker.captureState()`
+   * and attach the resulting `WorkerSnapshot` to the task's `resumeState`. On
+   * the next worker invocation, `TaskWorker.executeTask` reads this snapshot
+   * and rehydrates planText / conversations / verification attempt counter /
+   * tracker / applied plan history.
+   *
+   * Called from `handleInterruption` (external SIGTERM) and `reportFailure`'s
+   * transient-retry branch so both boundaries produce the same resume shape.
+   */
+  private async captureWorkerSnapshots(): Promise<void> {
+    for (const [workerId, worker] of this.workers) {
+      const task = this.runningTasks.get(workerId);
+      if (!task) continue;
+      try {
+        const snapshot = await worker.captureState();
+        if (snapshot) {
+          task.interrupted = true;
+          (task as any).resumeState = snapshot;
+        }
+      } catch (err) {
+        console.warn(`[TaskOrchestrator] captureWorkerSnapshots(worker ${workerId}) failed:`, (err as Error).message);
+      }
+    }
   }
 }

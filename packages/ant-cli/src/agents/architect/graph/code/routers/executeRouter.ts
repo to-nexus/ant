@@ -19,7 +19,9 @@
 import { ArchitectGraphState } from '../state';
 import type { CodeTask } from '../../../types/task';
 import { isFinalVerificationTask } from '../utils/taskClassification';
-import { isVerificationComplete } from '../utils/verificationCompleteness';
+import { hooksIfActive } from '../tasks/_shared/registry';
+import { isVerificationTask } from '../tasks/verification';
+import { isErrorTask } from '../tasks/error';
 
 /**
  * Detect recent tool failures from command history
@@ -48,7 +50,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   
   const currentTask = state.currentTask;
   const isFinalTask = currentTask ? isFinalVerificationTask(currentTask) : false;
-  const isErrorTask = currentTask?.type === 'error';
+  const isCurrentErrorTask = currentTask ? isErrorTask(currentTask) : false;
   
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📍 [executeRouter] Current Task Info:`);
@@ -56,7 +58,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   console.log(`   Type: ${currentTask?.type || 'none'}`);
   console.log(`   Priority: ${currentTask?.priority || 'none'}`);
   console.log(`   isFinalTask: ${isFinalTask}`);
-  console.log(`   isErrorTask: ${isErrorTask}`);
+  console.log(`   isErrorTask: ${isCurrentErrorTask}`);
   console.log(`   response.done: ${response.done}`);
   console.log(`   response.toolCalls: ${response.toolCalls?.length || 0}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
@@ -101,7 +103,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   }
   
   // Safety Net B: Check for repeated tool failures
-  if (isFinalTask || isErrorTask) {
+  if (isFinalTask || isCurrentErrorTask) {
     const recentFailures = detectRecentToolFailures(state);
     
     if (recentFailures >= 5) {
@@ -130,7 +132,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
 
   // Safety Net E: Feature/general task execute call budget
   // Budget is computed from planText (create×1 + modify×3) when available, otherwise defaults to 20
-  if (!isFinalTask && !isErrorTask) {
+  if (!isFinalTask && !isCurrentErrorTask) {
     const callIndex = state._executeCallIndex || 0;
     const maxFeatureCalls = state._executeBudget ?? 20;
     const warningThreshold = Math.floor(maxFeatureCalls * 0.8);
@@ -148,8 +150,11 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // Verification tasks use threshold=1 by default. When planText is present (inline fix),
   // threshold=2 allows recovery from a thinking-only first call: the second call runs
   // with enableThinking=false (isAfterToolCall=true) and produces actual tool calls.
+  // R1 — use the `isVerificationTask` predicate (tasks/verification/model/is)
+  // instead of a literal `task.type === 'verification'` branch.
   const finalTaskLoopCount = state._finalTaskLoopCount || 0;
-  const loopThreshold = currentTask?.type === 'verification'
+  const isVerification = currentTask ? isVerificationTask(currentTask) : false;
+  const loopThreshold = isVerification
     ? (state.planText ? 2 : 1)
     : 3;
   if (finalTaskLoopCount >= loopThreshold) {
@@ -170,42 +175,23 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
     return 'tool';
   }
   
-  // 2. Done이면 → verification은 plan 재검증, 그 외는 checkTaskStatus
+  // 2. Done이면 → task 훅에 위임 (verification 은 plan 재검증, 그 외는 checkTaskStatus)
+  // R1 — the router is blind to task.type. `hooksIfActive?.router.routeAfterDone`
+  // returns the next node name; verification's hook chooses 'plan' for reverify.
+  // The only mutation the router performs is the `_nextPlanEntry='reverify'`
+  // signal the plan node reads in `resolvePlanEntry`. All downstream resets
+  // (`violations`, `_executeModifiedFiles`, conversations, tracker) now live
+  // in `handleReverifyEntry` where they belong per R1. See handoff §7.6.
   if (response.done) {
-    // Verification tasks: route back to plan for final build/test check.
-    // verify/base.md states: "The diagnostic phase will re-verify after your changes."
-    if (currentTask?.type === 'verification') {
-      const hasPlan = !!state.planText?.trim();
-      const madeFileChanges = state._executeModifiedFiles === true;
-
-      // Empty plan = diagnostic phase found no errors to fix.
-      // Route to checkTaskStatus so the tracker can validate that all
-      // verification objectives (typecheck/build/test) were actually met.
-      // Without this, an empty plan + buildPassed=false creates an
-      // infinite reverify loop because reverify resets the tracker.
-      if (!hasPlan) {
-        console.log(`\n🎯 [Router] Empty plan (no errors found) → checkTaskStatus (tracker validation)\n`);
-        return 'checkTaskStatus';
-      }
-
-      if (hasPlan && !madeFileChanges) {
-        console.warn(`⚠️  [Router] Execute signaled done but made no file changes despite non-empty plan → checkTaskStatus`);
-        return 'checkTaskStatus';
-      }
-
-      // Axis F-3 — if all verification objectives already pass (e.g. a no-op
-      // execute that didn't actually break anything), skip reverify entirely.
-      const completeness = isVerificationComplete(state._verificationTracker);
-      if (completeness.ok) {
-        console.log(`\n🎯 [Router] ✅ Verification already complete — skipping reverify → checkTaskStatus\n`);
-        return 'checkTaskStatus';
-      }
-
-      console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (final build/test verification, missing=${completeness.missing.join(',')})\n`);
-      state._planEntryReason = 'reverify';
-      state._executeModifiedFiles = false;
-      state.violations = [];
+    const hookNext = hooksIfActive(state)?.router?.routeAfterDone?.(state);
+    if (hookNext === 'plan') {
+      console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (reverify, via task hook)\n`);
+      state._nextPlanEntry = 'reverify';
       return 'plan';
+    }
+    if (hookNext) {
+      console.log(`\n🎯 [Router] ✅ task hook → ${hookNext}\n`);
+      return hookNext;
     }
     console.log(`\n🎯 [Router] ✅ TASK DONE → checkTaskStatus\n`);
     return 'checkTaskStatus';

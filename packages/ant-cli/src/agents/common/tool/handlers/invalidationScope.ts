@@ -1,5 +1,5 @@
 /**
- * Axis C — derive the verification-invalidation scope from a modified/created/deleted
+ * invalidationScope — derive the verification-invalidation scope from a modified/created/deleted
  * file path. This lets the tracker retain already-passed steps when the edit cannot
  * logically affect them (e.g. touching a *.test.ts file should not invalidate typecheck
  * or build — only tests need to be re-run).
@@ -68,7 +68,7 @@ function extension(base: string): string {
 }
 
 /**
- * Axis A — derive the install-needed decision from dep manifest state.
+ * Derive the install-needed decision from dep manifest state.
  * Pure function: enables deterministic unit tests without filesystem.
  *
  *   savedHash absent AND node_modules exists AND we can hash the manifests

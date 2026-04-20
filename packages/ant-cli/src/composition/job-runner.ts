@@ -172,6 +172,7 @@ async function runJob(params: JobParams): Promise<void> {
       chatSource: params.chatSource,
       skipTriage: params.skipTriage,
       actionMetadata: params.actionMetadata,
+      isResume: params.isResume,
     });
     
     reportProgress('completed', 'Job completed successfully', 100);

@@ -26,6 +26,10 @@ import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/Pr
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { formatGitDiffForPrompt } from "../../../../../../core/codebase/GitDiffSummary";
+import { isVerificationTask } from "../../tasks/verification";
+import { isErrorTask } from "../../tasks/error";
+import { isDocTask } from "../../tasks/doc";
+import { isDiagnosticTask } from "../../tasks/_shared/classification";
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -105,8 +109,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     techTiers: taskTechTiers,
   };
   
-  const isVerificationTask = state.currentTask.type === 'verification';
-  const isErrorTask = state.currentTask.type === 'error';
+  const isVerification = isVerificationTask(state.currentTask);
+  const isError = isErrorTask(state.currentTask);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Artifact selection via ArtifactPipeline
@@ -163,7 +167,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const taskType = state.currentTask.type;
   const isTestCode = taskType === 'test-code';
   const isDoc = taskType === 'doc';
-  const skipHeavyContext = isVerificationTask || isTestCode || isDoc || isErrorTask;
+  const skipHeavyContext = isVerification || isTestCode || isDoc || isError;
 
   const intent = state.resolvedAction?.intent;
   const effectiveTier = effectiveTechTier(taskTechTiers);
@@ -175,10 +179,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   let templateBase: string;
   let templateRules: string;
   const executeVariantsPrefix = 'jobs/code/nodes/execute/variants';
-  if (isVerificationTask) {
+  if (isVerification) {
     templateBase = `${executeVariantsPrefix}/verification/base`;
     templateRules = `${executeVariantsPrefix}/verification/rules`;
-  } else if (isErrorTask) {
+  } else if (isError) {
     templateBase = `${executeVariantsPrefix}/error/base`;
     templateRules = `${executeVariantsPrefix}/error/rules`;
   } else if (isTestCode) {
@@ -258,14 +262,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         priority: state.currentTask.priority,
         description: state.currentTask.description,
       } : null,
-      directive: isVerificationTask ? '' : (state.directive || ''),
+      directive: isVerification ? '' : (state.directive || ''),
       modificationMode: executeProjectCodeContext?.files && executeProjectCodeContext.files.length > 0
         ? 'MODIFICATION MODE: Modify existing code'
         : 'CREATION MODE: Build from scratch',
       referenceRequests: state.referenceRequests || [],
-      hasUiInDocuments: getRACDocuments(resolvedActionWithDocs).some(
-        d => d.path?.startsWith(AP.UI) || d.path?.includes('ui-'),
-      ),
+      hasUiInDocuments: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
       isSpecDriven: !!state.selectedSpec,
       figmaAvailable: (state.figmaAvailable && !poolView.hasUi()) || false,
       figmaStartNodeId: state.figmaStartNodeId || undefined,
@@ -290,9 +292,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       hasRuntimeError: state.directive ? containsRuntimeErrorPattern(state.directive) : false,
       hasMissingDependency: false,
       // Phase 3-11 — expose remediation mode flags to `error/rules.md`.
-      remediationModeUpstream: state.currentTask?.type === 'error'
+      remediationModeUpstream: isError
         && state.currentTask?.remediationMode === 'upstream',
-      remediationModeRefactor: state.currentTask?.type === 'error'
+      remediationModeRefactor: isError
         && state.currentTask?.remediationMode === 'refactor',
     },
   };
@@ -302,8 +304,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Additional context parts for Block 2
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const foundationContract = isVerificationTask ? null : await buildFoundationContract(state);
-  const schemaAnchor = isVerificationTask ? null : await buildSchemaAnchor(state);
+  const foundationContract = isVerification ? null : await buildFoundationContract(state);
+  const schemaAnchor = isVerification ? null : await buildSchemaAnchor(state);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // UI Images (NOT CACHED - multimodal blocks)
@@ -488,8 +490,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           callIndex: state._executeCallIndex,
-          templatePath: state.currentTask?.type === 'verification' ? 'jobs/code/nodes/execute/variants/verification/base'
-            : state.currentTask?.type === 'error' ? 'jobs/code/nodes/execute/variants/error/base'
+          templatePath: isVerificationTask(state.currentTask) ? 'jobs/code/nodes/execute/variants/verification/base'
+            : isErrorTask(state.currentTask) ? 'jobs/code/nodes/execute/variants/error/base'
             : 'jobs/code/nodes/execute/variants/default/base',
           usedTemplates: [
             templateBase,
@@ -548,12 +550,12 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(`**${state.currentTask.name}**`);
     lines.push(``);
     
-    const isDiagnosticTask = state.currentTask.type === 'verification' || state.currentTask.type === 'error';
+    const isDiagnostic = isDiagnosticTask(state.currentTask);
 
     // Safety guard: detect batched planText that leaked through processDiagnosticBatchSplit failure.
     // If the plan contains a `batches` array, it was meant to be split into sub-tasks, not executed directly.
     // Log INVARIANT VIOLATION but do NOT modify the planText — silent fallbacks mask bugs.
-    if (state.planText && isDiagnosticTask) {
+    if (state.planText && isDiagnostic) {
       try {
         const stripped = state.planText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
         const parsed = JSON.parse(stripped);
@@ -567,10 +569,10 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
       lines.push(`**Goal**: ${state.currentTask.description}`);
       lines.push(``);
       
-      const planLabel = isDiagnosticTask
+      const planLabel = isDiagnostic
         ? `📋 REMEDIATION PLAN (Structured JSON - FOLLOW EXACTLY)`
         : `📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)`;
-      const planDescription = isDiagnosticTask
+      const planDescription = isDiagnostic
         ? `The following JSON contains the diagnostic analysis and fix instructions.\n- \`diagnostics\`: Build/test error analysis\n- \`modify\`: Files to modify with specific fixes\n- \`create\`: Files to create (if any)\n- \`delete\`: Files to delete (if any)`
         : `The following JSON contains the exact implementation instructions.\n- \`prescribedPackages\`: External dependencies with discovered API signatures — MUST import and call these APIs in the files listed in \`usedBy\`\n- \`create\`: Files to create with integration points\n- \`modify\`: Files to modify with specific changes\n- \`assets\`: Asset copy operations (source → destination)`;
       
@@ -586,13 +588,13 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
       lines.push(``);
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(``);
-    } else if (state.currentTask.type === 'verification') {
+    } else if (isVerificationTask(state.currentTask)) {
       // Verification task with empty planText = build/test passed, no fixes needed
       lines.push(state.currentTask.description);
       lines.push(``);
       lines.push(`**Build/test passed successfully. No code changes needed. Output \`<done>true</done>\` immediately.**`);
       lines.push(``);
-    } else if (state.currentTask.type === 'error' && !state.planText) {
+    } else if (isErrorTask(state.currentTask) && !state.planText) {
       // Error task with empty planText = investigation found no issues
       lines.push(state.currentTask.description);
       lines.push(``);
@@ -670,7 +672,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   }
 
   const dirTree = state.projectCodeContext?.directoryTree;
-  if (dirTree && (state.currentTask?.type === 'verification' || state.currentTask?.type === 'doc')) {
+  if (dirTree && (isVerificationTask(state.currentTask) || isDocTask(state.currentTask))) {
     lines.push('════════════════════════════════════════════════════════════════════════════════');
     lines.push('🗂️ Codebase Directory Structure (pre-loaded — do NOT list_files)');
     lines.push('════════════════════════════════════════════════════════════════════════════════');

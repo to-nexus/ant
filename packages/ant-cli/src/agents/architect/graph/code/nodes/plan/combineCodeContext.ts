@@ -25,6 +25,8 @@ import { loadSemanticFiles, LessonResult } from "./semanticSearch";
 import { extractFilesFromCode } from "./utils";
 import { generateGitDiffSummary, GitDiffSummary } from "../../../../../../core/codebase/GitDiffSummary";
 import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
+import { isVerificationTask } from "../../tasks/verification";
+import { isErrorTask } from "../../tasks/error";
 
 export interface ProjectCodeContext {
   filePaths: string[];
@@ -98,10 +100,10 @@ export async function combineCodeContext(
   // All other exclusive tasks (integration, setup) use the normal 3-tier
   // RAG path below — files are selected by relevance and loaded with FULL
   // content (no truncation), which eliminates redundant read_file calls.
-  const isVerificationTask = state.currentTask?.exclusive === true
-    && state.currentTask?.type === 'verification';
+  const isVerificationFastPath = state.currentTask?.exclusive === true
+    && isVerificationTask(state.currentTask);
 
-  if (isVerificationTask) {
+  if (isVerificationFastPath) {
     console.log(`🔍 [RAG] Verification task → config pre-loaded, rest paths-only`);
 
     const BINARY_EXTENSIONS = new Set([
@@ -242,8 +244,8 @@ export async function combineCodeContext(
 
   // Error tasks need fewer files — focus on error-related code only.
   // Mirrors analyzer.ts ContextStrategy.maxFilesToRead = 5 for error tasks.
-  const isErrorTask = state.currentTask?.type === 'error';
-  const effectiveTotalMax = isErrorTask
+  const isErrorContext = isErrorTask(state.currentTask);
+  const effectiveTotalMax = isErrorContext
     ? Math.min(RETRIEVAL_CONFIG.TOTAL_MAX, 5)
     : (isIntegrationOrFoundation ? RETRIEVAL_CONFIG.INTEGRATION_TOTAL_MAX : RETRIEVAL_CONFIG.TOTAL_MAX);
 
