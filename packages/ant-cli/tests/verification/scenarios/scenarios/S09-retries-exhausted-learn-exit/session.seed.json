@@ -13,7 +13,5 @@
   "completedTasks": [],
   "retries": 3,
   "maxRetries": 3,
-  "_verificationAttempts": 0,
-  "_verificationTracker": null,
   "recursionLimit": 100
 }

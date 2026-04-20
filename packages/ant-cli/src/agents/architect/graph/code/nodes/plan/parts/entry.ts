@@ -29,13 +29,10 @@ import { formatViolations } from '../../shared/violationFormatter';
 import { detectTestFilesFromDisk } from '../testFileDetector';
 import {
   MAX_VERIFICATION_ATTEMPTS,
-  remainingBudget,
-  usedAttempts,
-} from '../../../utils/verificationAttempts';
-import { lastPlanHash } from '../../../utils/verificationLoopEscape';
+} from '../../../tasks/verification/model/Session';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
-import { VerificationTerminalError } from '../../../utils/verificationErrors';
-import { hooksIfActive } from '../../../tasks/_shared/registry';
+import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
+import { hooksForTaskType } from '../../../tasks/_shared/registry';
 import {
   summarizeForRetry,
   renderRetrySummary,
@@ -91,18 +88,15 @@ export function composeViolationsText(
 }
 
 /**
- * Bump the unified verification attempt counter. Called on every retry/reverify
- * re-entry into a verification task. A fresh task entry does NOT call this
- * (attempts=0 represents "first cycle").
- */
-function bumpVerificationAttempt(state: ArchitectGraphState): void {
-  state._verificationAttempts = (state._verificationAttempts || 0) + 1;
-}
-
-/**
  * Recompute install-needed status from the dep-file hash on disk via
  * `invalidationScope.deriveInstallDecision`.
  * Single source of truth for all plan entry paths (first-entry, retry, reverify).
+ *
+ * The decision is written directly onto `state.verification`: the Session is
+ * the SSOT for dependency status (`dependencyStatus()` / `installNeeded()`).
+ * `markInstallNeeded` touches only the flag — gate invalidation happens via
+ * the tool hook on actual file writes, not here — while `onInstallResolved`
+ * also persists the adopted hash when deps are newly consistent.
  */
 export async function recomputeInstallNeeded(
   state: ArchitectGraphState,
@@ -110,33 +104,23 @@ export async function recomputeInstallNeeded(
 ): Promise<void> {
   const featureRoot = state.deps?.fileSystem?.getRootPath?.();
   if (!featureRoot) return;
+  const session = state.verification;
+  if (!session) return;
   try {
     const { computeDepFileHash, hasInstalledDeps, detectPackageManager } = await import(
       '../../../../../../common/tool/handlers/runCommand'
     );
     const currentHash = await computeDepFileHash(featureRoot);
-    const savedHash = state._depFileHash;
+    const savedHash = session.depHash();
     const depsExist = await hasInstalledDeps(featureRoot);
 
     const { deriveInstallDecision } = await import(
       '../../../../../../common/tool/handlers/invalidationScope'
     );
     const decision = deriveInstallDecision(savedHash, currentHash, depsExist);
-    state._installNeeded = decision.installNeeded;
-    if (decision.adoptedHash) {
-      state._depFileHash = decision.adoptedHash;
-    }
-    // T4b-α: mirror dep-hash / install-needed decision into the Session.
-    // `markInstallNeeded` touches only the flag (matching the legacy
-    // `state._installNeeded = decision.installNeeded` behaviour — gate
-    // invalidation happens via the tool hook on actual file writes, not
-    // here). When the decision concludes deps are freshly consistent,
-    // `onInstallResolved` also persists the adopted hash.
-    if (state.verification) {
-      state.verification.markInstallNeeded(decision.installNeeded);
-      if (!decision.installNeeded && decision.adoptedHash) {
-        state.verification.onInstallResolved(decision.adoptedHash);
-      }
+    session.markInstallNeeded(decision.installNeeded);
+    if (!decision.installNeeded && decision.adoptedHash) {
+      session.onInstallResolved(decision.adoptedHash);
     }
     console.log(
       `📦 [Plan] Dependency install needed: ${decision.installNeeded} (${decision.reason}; ` +
@@ -151,8 +135,7 @@ export async function recomputeInstallNeeded(
       }
     }
   } catch (err) {
-    state._installNeeded = true;
-    state.verification?.markInstallNeeded(true);
+    session.markInstallNeeded(true);
     console.warn(`⚠️ [Plan] Dependency hash check failed, defaulting to installNeeded=true: ${err}`);
   }
 }
@@ -210,7 +193,7 @@ async function handleRetryEntry(
     throw new VerificationTerminalError(
       'max_retries_exceeded',
       `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). Cannot proceed with automatic fixes.`,
-      snapshotFromState(state),
+      snapshotFromState(state)?.verification,
     );
   }
 
@@ -219,10 +202,8 @@ async function handleRetryEntry(
   let retrySummaryText: string | undefined;
 
   if (isVerificationRetry) {
-    bumpVerificationAttempt(state);
-    // T4b-α: Session is the authoritative counter for retry/reverify
-    // attempts; dual-write keeps legacy consumers working during the
-    // coexistence window.
+    // Session owns the retry/reverify attempt counter and per-cycle gate
+    // invalidation (onPlanEntry('retry') clears `attemptedThisCycle`).
     state.verification?.onPlanEntry('retry');
     state._executeCallIndex = 0;
     retrySummaryText = renderRetrySummary(summarizeForRetry({
@@ -240,20 +221,16 @@ async function handleRetryEntry(
     };
     state._executeModifiedFiles = false;
     await recomputeInstallNeeded(state);
-    if (state._verificationTracker) {
-      state._verificationTracker.buildAttempted = false;
-      state._verificationTracker.testAttempted = false;
-      state._verificationTracker.typecheckAttempted = false;
-    }
     const _retryAttempt = (state.retries || 0) + 1;
     const _retryMax = state.maxRetries || 3;
-    console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax}, verificationAttempts=${usedAttempts(state)}/${MAX_VERIFICATION_ATTEMPTS})`);
+    const sessionAttempts = state.verification?.attempts() ?? 0;
+    console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax}, verificationAttempts=${sessionAttempts}/${MAX_VERIFICATION_ATTEMPTS})`);
     console.log(`   ♻️  Reset: conversations cleared, _executeCallIndex ${prevCallIndex}→0`);
     console.log(`   ♻️  Preserved: _finalTaskLoopCount = ${state._finalTaskLoopCount || 0}\n`);
     if (nextTask && state.context?.featurePath && state._httpJobId) {
       const _taskRef = nextTask;
-      const _retention = describeRetryRetention(retrySummaryText, state._verificationTracker);
-      const _prevPlanHash = lastPlanHash(state._appliedPlanHistory);
+      const _retention = describeRetryRetention(retrySummaryText, state.verification?.passed());
+      const _prevPlanHash = state.verification?.snapshot().planHistoryHashes.at(-1);
       const _carryOverBytes = JSON.stringify(snapshotFromState(state) || {}).length;
       import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
         getExecutionLogger({
@@ -271,7 +248,7 @@ async function handleRetryEntry(
           summaryInjected: _retention.summaryInjected,
           summaryLen: _retention.summaryLen,
           passedGatesAtRetry: _retention.passedGatesAtRetry,
-          verificationAttempts: usedAttempts(state),
+          verificationAttempts: sessionAttempts,
           prevPlanHash: _prevPlanHash,
           carryOverSize: _carryOverBytes,
         }).catch(() => {});
@@ -313,35 +290,16 @@ async function handleReverifyEntry(
 ): Promise<PlanEntryContext> {
   const nextTask = state.currentTask!;
   console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
-  console.log(`   Re-initializing VerificationTracker for fresh build/test check\n`);
+  console.log(`   Resetting per-cycle attempted gates via Session.onPlanEntry('reverify')\n`);
 
-  bumpVerificationAttempt(state);
-  // T4b-α: mirror attempt bump + plan history push into the Session.
-  // `onPlanApplied` pushes the body into the bounded buffer and maintains
-  // the hash list that `isPlanRepeated` consults; dual-write keeps the
-  // legacy `_appliedPlanHistory` array populated for coexistence.
+  // Session is authoritative — `onPlanEntry('reverify')` bumps the attempt
+  // counter and clears `attemptedThisCycle` while preserving already-passed
+  // gates. `onPlanApplied` pushes the body into the bounded history buffer
+  // and records the hash list consumed by `isPlanRepeated`.
   state.verification?.onPlanEntry('reverify');
   if (state.planText) {
     state.verification?.onPlanApplied(state.planText);
   }
-
-  if (state.planText) {
-    const history = (state._appliedPlanHistory || []) as string[];
-    history.push(state.planText);
-    state._appliedPlanHistory = history;
-  }
-
-  const prev = state._verificationTracker;
-  state._verificationTracker = {
-    buildPassed: prev?.buildPassed ?? false,
-    testPassed: prev?.testPassed ?? false,
-    testsRequired: prev?.testsRequired ?? detectTestFilesFromDisk(state.context?.featurePath),
-    typecheckPassed: prev?.typecheckPassed ?? false,
-    typecheckRequired: prev?.typecheckRequired ?? isTypeScriptProject(state),
-    buildAttempted: false,
-    testAttempted: false,
-    typecheckAttempted: false,
-  };
 
   state._executeCallIndex = 0;
   state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
@@ -390,34 +348,23 @@ async function handleFreshTaskEntry(
   state._planSearchWebCount = 0;
 
   if (nextTask.type === 'verification') {
-    const isResumedVerification = state._verificationAttempts !== undefined;
+    const isResumedVerification = !!state.verification && state.verification.attempts() > 0;
     const tsProject = isTypeScriptProject(state);
     const hasTests = detectTestFilesFromDisk(state.context?.featurePath);
 
-    if (!state._verificationTracker) {
-      state._verificationTracker = {
-        buildPassed: false,
-        testPassed: false,
-        testsRequired: hasTests,
-        buildAttempted: false,
-        testAttempted: false,
-        typecheckPassed: false,
-        typecheckAttempted: false,
-        typecheckRequired: tsProject,
-      };
-    }
-    if (state._appliedPlanHistory === undefined) {
-      state._appliedPlanHistory = [];
-    }
-    if (state._verificationAttempts === undefined) state._verificationAttempts = 0;
+    // Single writer of `state.verification` on fresh entry. Merge-aware:
+    //   - missing         → createFresh(env)
+    //   - seeded partial  → hydrateEnv(env) populates required/passed
+    //   - fully rehydrated → no-op
+    // Dispatched via `hooksForTaskType(nextTask.type)` rather than
+    // `hooksIfActive(state)` because `state.currentTask` is not yet
+    // assigned in the fresh-entry path — `nextTask` is still a local.
+    hooksForTaskType(nextTask.type)?.plan?.initSession?.(state, { isTs: tsProject, hasTests });
 
-    // T4b-α: populate `state.verification` (VerificationSession SSOT) alongside
-    // the legacy dual-write. Idempotent: `initSession` is a no-op when the
-    // session was already rehydrated by runner resume or worker restore.
-    hooksIfActive(state)?.plan?.initSession?.(state, { isTs: tsProject, hasTests });
-
-    console.log(`🔍 [Plan] VerificationTracker ${isResumedVerification ? 'restored (resume)' : 'initialized'}: testsRequired=${state._verificationTracker.testsRequired}, typecheckRequired=${tsProject}`);
-    console.log(`🎫 [Plan] verificationAttempts=${state.verification?.attempts() ?? usedAttempts(state)}/${MAX_VERIFICATION_ATTEMPTS} (budget remaining=${state.verification?.remainingBudget() ?? remainingBudget(state)})`);
+    const sessionAttempts = state.verification?.attempts() ?? 0;
+    const sessionBudget = state.verification?.remainingBudget() ?? MAX_VERIFICATION_ATTEMPTS;
+    console.log(`🔍 [Plan] VerificationSession ${isResumedVerification ? 'rehydrated' : 'initialised'}: required=${state.verification?.required().join('+') ?? ''}, passed=${state.verification?.passed().join('+') ?? ''}`);
+    console.log(`🎫 [Plan] verificationAttempts=${sessionAttempts}/${MAX_VERIFICATION_ATTEMPTS} (budget remaining=${sessionBudget})`);
 
     await recomputeInstallNeeded(state, { detectPmIfMissing: true });
   }

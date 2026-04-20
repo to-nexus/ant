@@ -43,7 +43,7 @@ import {
 } from './parts/batchSplit';
 import { runPlanToolLoopPhase } from './parts/planLLM';
 import { runPlanRAG } from './parts/rag';
-import { normalizePlanForHash } from '../../utils/verificationLoopEscape';
+import { normalizePlanForHash } from '../../tasks/verification/model/planHash';
 
 // Re-exports for backward-compat with existing imports.
 export type { PlanEntryContext } from './parts/entry';
@@ -156,8 +156,7 @@ async function maybePrePlannedFastPath(
     workspaceConfig: state.workspaceConfig,
     conversations: { [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] },
     _activePhase: 'execute' as const,
-    _verificationTracker: undefined,
-    // T4b-α: prePlanText path only fires for error tasks, so the preceding
+    // prePlanText path only fires for error tasks, so the preceding
     // verification session should not leak into the error-task execution.
     verification: undefined,
   };
@@ -215,11 +214,15 @@ async function maybeSetupFastPath(
 
 /**
  * Compose the `diagnosticRetryContext` block appended to the plan prompt
- * when a verification task was previously batch-split or retried. Captures
- * three sources:
- *   1. `_previousBatchDiagnostics` from the carried task field.
- *   2. Completed error sub-tasks (their prePlanText bodies).
- *   3. Accumulated `_appliedPlanHistory` (up to 3 most recent attempts).
+ * when a verification task was previously batch-split or retried. All
+ * verification cycle state now comes from `state.verification`:
+ *
+ *   1. `previousBatchDiagnostics()` + `batchSplitCount()` — from the
+ *      last `onBatchSplit` call.
+ *   2. Completed error sub-tasks (`state.completedTasksDetails`) paired
+ *      with their `prePlanText` bodies.
+ *   3. `planHistoryBodies()` — up to 3 most recent attempts retained by
+ *      the Session (bounded buffer).
  *
  * Returns undefined when the task is not a verification retry or nothing
  * has been captured yet.
@@ -230,21 +233,25 @@ function buildDiagnosticRetryContext(
 ): string | undefined {
   const isVerification = nextTask.type === 'verification';
   if (!isVerification) return undefined;
+  const session = state.verification;
+  if (!session) return undefined;
+
+  const prevBatchDiagnostics = session.previousBatchDiagnostics();
+  const batchSplitCount = session.batchSplitCount();
 
   let context: string | undefined;
 
-  if (nextTask._previousBatchDiagnostics) {
-    const cycle = nextTask._batchSplitCount || 0;
+  if (prevBatchDiagnostics) {
     context =
-      `\n\n### PREVIOUS BATCH SPLIT ATTEMPT (Cycle ${cycle})\n` +
+      `\n\n### PREVIOUS BATCH SPLIT ATTEMPT (Cycle ${batchSplitCount})\n` +
       `Error sub-tasks were created and executed, but errors persist.\n` +
-      `Previous diagnostics: ${nextTask._previousBatchDiagnostics}\n` +
+      `Previous diagnostics: ${prevBatchDiagnostics}\n` +
       `Analyze whether these are NEW errors (cascading from compiler) or SAME errors (fix failed). ` +
       `Adjust strategy accordingly.`;
-    console.log(`📋 [Plan] Injecting previous batch split context (cycle ${cycle}) into diagnostic prompt`);
+    console.log(`📋 [Plan] Injecting previous batch split context (cycle ${batchSplitCount}) into diagnostic prompt`);
   }
 
-  if (nextTask._batchSplitCount && nextTask._batchSplitCount > 0) {
+  if (batchSplitCount > 0) {
     const completedErrorTasks = (state.completedTasksDetails || [])
       .filter((t: any) => t.type === 'error' && (t as any).prePlanText);
 
@@ -277,7 +284,7 @@ function buildDiagnosticRetryContext(
     }
   }
 
-  const planHistory = (state._appliedPlanHistory || []) as string[];
+  const planHistory = [...session.planHistoryBodies()];
   if (planHistory.length > 0) {
     const recentHistory = planHistory.slice(-3);
     let historyContext = `\n\n### PREVIOUS FIXES APPLIED BUT ERROR PERSISTS\n` +

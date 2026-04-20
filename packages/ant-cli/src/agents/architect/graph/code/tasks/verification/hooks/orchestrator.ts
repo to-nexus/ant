@@ -1,22 +1,25 @@
 /**
  * verification/hooks/orchestrator.ts — TaskOrchestratorHook
  *
- * Replaces the four verification-specific branches in
- * `parallel/TaskOrchestrator.ts` + `parallel/TaskWorker.ts` that read and
- * write legacy resume-state fields directly:
+ * Owns verification-specific orchestrator behaviour:
  *
- *   - Orchestrator attempt counter (`isVerificationTask ? resumeState._verificationAttempts : ...`)
- *   - Transient-failure snapshot attachment (`(task as any).resumeState = snapshot`)
- *   - "Capture snapshot on failure" policy flag
- *   - Worker `executeTask` restore-block (4 fields restored by hand)
+ *   - Unified attempt counter (`hasOwnAttemptCounter` + `attemptCount`) —
+ *     reads from `resumeState.verification.attempts` instead of the
+ *     shared `retries` counter.
+ *   - Transient-failure snapshot attachment (`attachSnapshot`) — writes
+ *     the session snapshot onto `task.resumeState.verification` so the
+ *     next worker invocation rehydrates the cycle.
+ *   - Worker-graph restore (`restoreIntoWorkerState`) — rebuilds
+ *     `state.verification` from `resumeState.verification` at worker
+ *     startup.
  *
- * After T6, the orchestrator loops over `hooksForTaskType(task.type)?.orchestrator?.*`
- * for each task and never references `_verificationAttempts` /
- * `_verificationTracker` / `_appliedPlanHistory` / `_depFileHash` by name.
+ * `TaskOrchestrator` / `TaskWorker` dispatch via
+ * `hooksForTaskType(task.type)?.orchestrator?.*` and never know this
+ * module exists — the code-graph layer stays blind to `task.type` (R1).
  *
- * The shape used on `task.resumeState.verification` is `VerificationSnapshot`
- * (see `model/snapshot.ts`). `resume` is typed `unknown` at the interface
- * boundary; this module performs the narrow check.
+ * `VerificationSnapshot` (see `model/snapshot.ts`) is the only shape ever
+ * stored on `task.resumeState.verification`; the `resume` argument is
+ * typed `unknown` at the interface boundary and narrowed here.
  */
 
 import type { CodeTask } from '../../../../../types/task';
@@ -43,11 +46,7 @@ function readSnapshot(task: CodeTask): VerificationSnapshot | undefined {
 export function attemptCount(task: CodeTask): number {
   const snap = readSnapshot(task);
   if (snap && typeof snap.attempts === 'number') return snap.attempts;
-  // Legacy path — before T6 populates `resumeState.verification`, the
-  // orchestrator's old code path used `resumeState._verificationAttempts`.
-  const legacy = (task as { resumeState?: { _verificationAttempts?: number } })
-    .resumeState?._verificationAttempts;
-  return typeof legacy === 'number' ? legacy : 0;
+  return 0;
 }
 
 /**

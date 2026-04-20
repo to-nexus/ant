@@ -58,31 +58,11 @@ export interface BaseTaskResumeState {
 }
 
 /**
- * Code-job resume state: base fields + verification carry-over.
- *
- * The `_verification*` / `_depFileHash` / `_appliedPlanHistory` fields are
- * @deprecated T4a — kept for the migration window so T5+ can land the
- * hook layer without breaking existing carry-over consumers. T4b removes
- * them and leaves `verification: VerificationSnapshot` as the only
- * verification-domain field.
+ * Code-job resume state: base fields + verification snapshot.
  */
 export interface CodeTaskResumeState extends BaseTaskResumeState {
-  /** @deprecated T4a — authority moves to `verification.depHash` in T4b. */
-  _depFileHash?: string;
-  /** @deprecated T4a — authority moves to `verification.attempts` in T4b. */
-  _verificationAttempts?: number;
   /**
-   * @deprecated T4a — authority moves to
-   * `verification.{required,passed,attemptedThisCycle}` in T4b.
-   */
-  _verificationTracker?: any;
-  /**
-   * @deprecated T4a — authority moves to `verification.planHistoryBodies`
-   * / `planHistoryHashes` in T4b.
-   */
-  _appliedPlanHistory?: string[];
-  /**
-   * VerificationSession snapshot — post-T4a SSOT for verification-domain
+   * VerificationSession snapshot — SSOT for verification-domain
    * carry-over. Typed as `any` here to avoid importing from
    * `graph/code/tasks/...` into `types/task.ts` (the module would then
    * participate in a cycle with the graph state).
@@ -95,25 +75,9 @@ export interface CodeTaskResumeState extends BaseTaskResumeState {
 /**
  * Design-job resume state. Presently no job-specific fields; the type
  * exists so design tasks never accidentally receive code-only fields
- * (verification carry-over, dep-hash, applied plan history, …) through
- * the `TaskResumeState` alias.
+ * (verification carry-over) through a shared alias.
  */
 export interface DesignTaskResumeState extends BaseTaskResumeState {}
-
-/**
- * Backward-compatible alias — pre-T4a sites referenced a single
- * `TaskResumeState`. New call sites should prefer the concrete
- * `CodeTaskResumeState` / `DesignTaskResumeState` directly. The alias
- * itself will be removed in T4b once the deprecated `_verification*` /
- * `_depFileHash` / `_appliedPlanHistory` fields are dropped from
- * `CodeTaskResumeState`.
- *
- * NOTE: `DesignTask.resumeState` already uses `DesignTaskResumeState` —
- * see below — so the alias's presence does NOT leak code-only fields
- * onto the design surface. It exists purely as an import shim for
- * existing references.
- */
-export type TaskResumeState = CodeTaskResumeState;
 
 /**
  * Code-specific Task
@@ -204,20 +168,13 @@ export interface CodeTask extends BaseTask {
    * Per-task resume state (exists only when interrupted during parallel execution).
    * Contains the worker's execution context at the time of interruption.
    *
-   * Narrowed to `CodeTaskResumeState` so the verification snapshot and the
-   * (deprecated) `_verification*` carry-over fields are visible only on code
-   * tasks — design tasks consume `DesignTaskResumeState`.
+   * Narrowed to `CodeTaskResumeState` so the verification snapshot is
+   * visible only on code tasks — design tasks consume `DesignTaskResumeState`.
+   * Batch-split cycle tracking that used to live on `_batchSplitCount` /
+   * `_previousBatchDiagnostics` task fields now rides in
+   * `resumeState.verification.batchSplitCount` / `.previousBatchDiagnostics`.
    */
   resumeState?: CodeTaskResumeState;
-
-  // ── Batch split loop detection ──────────────────────────────────
-  // These fields live on the task (not ArchitectGraphState) so they
-  // survive re-enqueue across checkTaskStatus state resets.
-
-  /** Total number of batch split cycles this task has triggered. */
-  _batchSplitCount?: number;
-  /** JSON summary of previous batch split diagnostics (injected into LLM prompt). */
-  _previousBatchDiagnostics?: string;
 }
 
 /**
@@ -281,9 +238,8 @@ export interface DesignTask extends BaseTask {
    * Per-task resume state (exists only when interrupted during parallel execution).
    * Contains the worker's execution context at the time of interruption.
    *
-   * Narrowed to `DesignTaskResumeState` (T4 review) so code-only fields
-   * such as `verification` / `_verificationTracker` cannot silently bleed
-   * onto the design surface via the legacy `TaskResumeState` alias.
+   * Narrowed to `DesignTaskResumeState` so the code-only `verification`
+   * snapshot cannot bleed onto the design surface.
    */
   resumeState?: DesignTaskResumeState;
 }

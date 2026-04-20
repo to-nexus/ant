@@ -25,7 +25,7 @@
  *     passedGatesAtRetry) logged at every retry boundary.
  */
 
-import type { Violation, VerificationTracker } from '../../agents/architect/graph/code/state';
+import type { Violation } from '../../agents/architect/graph/code/state';
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const MAX_PLAN_JSON_CHARS = 2000;
@@ -230,19 +230,20 @@ export interface RetryRetentionMeta {
  * Produce the retention metadata that retry/reverify observability logs should
  * emit. Centralises what used to be inline composition in `plan.index.ts`'s
  * retry-entry handler.
+ *
+ * `passedGates` is supplied by the caller (the plan entry handler reads it
+ * from `state.verification?.passed()`). Keeping the gate list as a direct
+ * argument — rather than piping a VerificationTracker through — stops this
+ * module from depending on the verification task model.
  */
 export function describeRetryRetention(
   retrySummaryText: string | undefined,
-  tracker: VerificationTracker | undefined,
+  passedGates: ReadonlyArray<'typecheck' | 'build' | 'test'> | undefined,
 ): RetryRetentionMeta {
-  const passedGates: Array<'typecheck' | 'build' | 'test'> = [];
-  if (tracker?.typecheckPassed) passedGates.push('typecheck');
-  if (tracker?.buildPassed) passedGates.push('build');
-  if (tracker?.testPassed) passedGates.push('test');
   return {
     retentionMode: 'summary',
     summaryInjected: !!retrySummaryText,
     summaryLen: retrySummaryText?.length ?? 0,
-    passedGatesAtRetry: passedGates,
+    passedGatesAtRetry: [...(passedGates ?? [])],
   };
 }

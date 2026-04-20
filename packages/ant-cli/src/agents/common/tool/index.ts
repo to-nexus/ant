@@ -14,7 +14,6 @@ export type {
   CommandPort,
   GitPort,
   FileTreeUpdatePort,
-  VerificationTracker,
 } from './types';
 
 export {

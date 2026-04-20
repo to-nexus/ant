@@ -39,9 +39,24 @@ describe('tasks/_shared/registry — ui entry', () => {
     expect(uiBundle.plan).toBeUndefined();
     expect(uiBundle.decompose).toBeUndefined();
     expect(uiBundle.check).toBeUndefined();
+    expect(uiBundle.tool).toBeUndefined();
+    expect(uiBundle.command).toBeUndefined();
+    expect(uiBundle.router).toBeUndefined();
+    expect(uiBundle.orchestrator).toBeUndefined();
+  });
+
+  it('scheduling exposes only the ui consumer flag — no other consumer or producer flags', () => {
+    expect(uiBundle.scheduling?.preUiBarrier).toBe(true);
     expect(uiBundle.scheduling?.preTestgenBarrier).toBeUndefined();
     expect(uiBundle.scheduling?.preDocBarrier).toBeUndefined();
     expect(uiBundle.scheduling?.preIntegrationBarrier).toBeUndefined();
+    // UI is a barrier sink only — it must NEVER activate barriers for
+    // other task types. Regression guard: if someone adds a producer
+    // flag here it changes orchestrator scheduling semantics silently.
+    expect(uiBundle.scheduling?.blocksUi).toBeUndefined();
+    expect(uiBundle.scheduling?.blocksTestgen).toBeUndefined();
+    expect(uiBundle.scheduling?.blocksDoc).toBeUndefined();
+    expect(uiBundle.scheduling?.blocksIntegration).toBeUndefined();
   });
 });
 

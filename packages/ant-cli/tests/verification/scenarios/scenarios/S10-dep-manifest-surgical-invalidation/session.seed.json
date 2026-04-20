@@ -12,16 +12,12 @@
   "completedTasks": [],
   "retries": 0,
   "maxRetries": 3,
-  "_verificationAttempts": 0,
-  "_verificationTracker": {
-    "typecheckPassed": true,
-    "typecheckAttempted": true,
-    "typecheckRequired": true,
-    "buildPassed": true,
-    "buildAttempted": true,
-    "testPassed": false,
-    "testAttempted": false,
-    "testsRequired": true
+  "verification": {
+    "required": ["typecheck", "build", "test"],
+    "passed": ["typecheck", "build"],
+    "attemptedThisCycle": ["typecheck", "build"],
+    "attempts": 0,
+    "planHistoryHashes": []
   },
   "recursionLimit": 100
 }
