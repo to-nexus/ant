@@ -1,11 +1,26 @@
 import { SessionPort, FileTreeUpdatePort } from "../../../core/ports";
-import { SessionableJobType } from '@ant/shared';
+import type {
+  SessionableJobType,
+  FeatureLine,
+  FeatureUserTurnLine,
+  FeatureUserTurnMetaLine,
+  FeatureBreadcrumbLine,
+  FeatureBoundaryLine,
+  TraceLine,
+  TraceUserTurnLine,
+  LogJobType,
+} from '@ant/shared';
 import * as crypto from "crypto";
 import { Session, SessionRun, SessionArtifacts, SessionState } from "../../../core/types";
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { getSessionFilePath, getSessionsDir } from "../../../core/utils/sessionPaths";
+import {
+  getSessionFilePath,
+  getSessionsDir,
+  getFeatureJsonlPath,
+  getTraceJsonlPath,
+} from "../../../core/utils/sessionPaths";
 
 /**
  * Simple async mutex for serializing file I/O.
@@ -274,5 +289,367 @@ export class FileSessionAdapter implements SessionPort {
     } catch {
       return false;
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // feature.jsonl / trace.jsonl — context & UI log (append-only JSONL)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Shared mutex for JSONL file writes (per-file) */
+  private readonly jsonlLocks = new Map<string, FileMutex>();
+
+  private getJsonlLock(filePath: string): FileMutex {
+    if (!this.jsonlLocks.has(filePath)) {
+      this.jsonlLocks.set(filePath, new FileMutex());
+    }
+    return this.jsonlLocks.get(filePath)!;
+  }
+
+  /**
+   * Append a line to feature.jsonl or trace.jsonl (generic).
+   * Append-only. JSON.stringify(line) + '\n'.
+   */
+  async appendLine(file: 'feature' | 'trace', line: FeatureLine | TraceLine): Promise<void> {
+    const filePath = file === 'feature'
+      ? getFeatureJsonlPath(this.featurePath)
+      : getTraceJsonlPath(this.featurePath);
+
+    const lock = this.getJsonlLock(filePath);
+    await lock.runExclusive(async () => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const content = JSON.stringify(line) + '\n';
+      await fs.appendFile(filePath, content, 'utf-8');
+    });
+  }
+
+  /**
+   * Append a user_turn atomically to both feature.jsonl (optional) and trace.jsonl.
+   * 
+   * jobType='ask'|'inline-ask'인 경우 skipFeature=true 필요 (호출자 책임) — 
+   * ask 대화는 맥락 대상 아니므로 feature.jsonl에 기록하지 않음.
+   * 
+   * trace.jsonl에는 항상 기록 (UI 연속성).
+   */
+  async appendUserTurn(
+    line: FeatureUserTurnLine,
+    options: { skipFeature?: boolean } = {},
+  ): Promise<void> {
+    // 1. feature.jsonl에 append (skipFeature가 true면 건너뜀)
+    if (!options.skipFeature) {
+      await this.appendLine('feature', line);
+    }
+
+    // 2. trace.jsonl에 사본 append (항상)
+    const sourceRef = options.skipFeature
+      ? 'ask-only'
+      : `feature.jsonl#${line.turnId}`;
+    const traceCopy: TraceUserTurnLine = {
+      type: 'user_turn',
+      ts: line.ts,
+      jobId: line.jobId,
+      turnId: line.turnId,
+      jobType: line.jobType,
+      text: line.user,
+      sourceRef,
+    };
+    try {
+      await this.appendLine('trace', traceCopy);
+    } catch (traceErr) {
+      // trace 실패 시 feature 라인을 collapsed로 마킹 (best-effort rollback)
+      if (!options.skipFeature) {
+        try {
+          await this.collapseTurn(line.turnId);
+        } catch { /* ignore */ }
+      }
+      throw traceErr;
+    }
+  }
+
+  /**
+   * Append user_turn_meta patch line (complexity/decidedBy/reason).
+   * 
+   * Decompose 판정 결과를 기록. resolve가 로드 시 user_turn과 turnId 기준 병합.
+   */
+  async appendUserTurnMeta(line: FeatureUserTurnMetaLine): Promise<void> {
+    await this.appendLine('feature', line);
+  }
+
+  /**
+   * Append a breadcrumb line to feature.jsonl.
+   */
+  async appendBreadcrumb(line: FeatureBreadcrumbLine): Promise<void> {
+    await this.appendLine('feature', line);
+  }
+
+  /**
+   * Append a boundary line to feature.jsonl + collapse all user_turn/user_turn_meta
+   * lines before this boundary.
+   * 
+   * This is the main Collapse mechanism (§4.2 primary compression).
+   */
+  async appendBoundary(line: FeatureBoundaryLine): Promise<void> {
+    const filePath = getFeatureJsonlPath(this.featurePath);
+    const lock = this.getJsonlLock(filePath);
+    await lock.runExclusive(async () => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      // 1. Collapse prior user_turn/user_turn_meta lines
+      await this.collapseBeforeBoundaryInternal(filePath, line.ts);
+      // 2. Append the boundary line itself
+      const content = JSON.stringify(line) + '\n';
+      await fs.appendFile(filePath, content, 'utf-8');
+    });
+  }
+
+  /**
+   * Read all lines of a JSONL file (returns parsed objects).
+   * Safe against partial writes (skips unparseable lines with warning).
+   */
+  private async readJsonlLines<T>(filePath: string): Promise<T[]> {
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const lines = raw.split('\n').filter(l => l.trim() !== '');
+      const parsed: T[] = [];
+      for (const l of lines) {
+        try {
+          parsed.push(JSON.parse(l));
+        } catch {
+          console.warn(`[FileSessionAdapter] Skipping malformed JSONL line in ${filePath}`);
+        }
+      }
+      return parsed;
+    } catch (err: any) {
+      if (err.code === 'ENOENT') return [];
+      throw err;
+    }
+  }
+
+  /**
+   * Load feature.jsonl lines since the latest boundary.
+   * 
+   * resolve가 프롬프트 주입용으로 호출.
+   * 
+   * Returns T2(user_turn, user_turn_meta) after latest boundary, excluding collapsed lines,
+   * + ALL T3(breadcrumb) lines regardless of boundary (T3는 반영구).
+   */
+  async loadSinceBoundary(): Promise<{
+    userTurns: FeatureUserTurnLine[];
+    userTurnMetas: FeatureUserTurnMetaLine[];
+    breadcrumbs: FeatureBreadcrumbLine[];
+  }> {
+    const filePath = getFeatureJsonlPath(this.featurePath);
+    const all = await this.readJsonlLines<FeatureLine>(filePath);
+
+    // Find index of latest boundary
+    let latestBoundaryIdx = -1;
+    for (let i = all.length - 1; i >= 0; i--) {
+      if (all[i].type === 'boundary') {
+        latestBoundaryIdx = i;
+        break;
+      }
+    }
+
+    const userTurns: FeatureUserTurnLine[] = [];
+    const userTurnMetas: FeatureUserTurnMetaLine[] = [];
+    const breadcrumbs: FeatureBreadcrumbLine[] = [];
+
+    for (let i = 0; i < all.length; i++) {
+      const line = all[i];
+      if (line.collapsed) continue;
+
+      if (line.type === 'breadcrumb') {
+        // Breadcrumbs는 boundary 무관하게 모두 수집
+        breadcrumbs.push(line);
+        continue;
+      }
+      // user_turn / user_turn_meta만 boundary 이후 체크
+      if (i <= latestBoundaryIdx) continue;
+      if (line.type === 'user_turn') {
+        userTurns.push(line);
+      } else if (line.type === 'user_turn_meta') {
+        userTurnMetas.push(line);
+      }
+    }
+
+    return { userTurns, userTurnMetas, breadcrumbs };
+  }
+
+  /**
+   * Load trace.jsonl lines grouped by turnId.
+   * UI용. 특정 turn의 이벤트 블록을 조회.
+   */
+  async loadTraceByTurnIds(turnIds: string[]): Promise<TraceLine[]> {
+    const filePath = getTraceJsonlPath(this.featurePath);
+    const all = await this.readJsonlLines<TraceLine>(filePath);
+    const turnSet = new Set(turnIds);
+    return all.filter(l => !l.collapsed && turnSet.has(l.turnId));
+  }
+
+  /**
+   * Load trace.jsonl lines filtered by jobType (UI filtering).
+   */
+  async loadTraceByJobType(jobTypes: LogJobType[]): Promise<TraceLine[]> {
+    const filePath = getTraceJsonlPath(this.featurePath);
+    const all = await this.readJsonlLines<TraceLine>(filePath);
+    const jobTypeSet = new Set(jobTypes);
+    return all.filter(l => !l.collapsed && jobTypeSet.has(l.jobType));
+  }
+
+  /**
+   * Load ALL trace.jsonl lines (UI initial load).
+   * Supports optional sinceTs (ISO 8601) and jobTypes filters.
+   * Collapsed lines are excluded.
+   */
+  async loadAllTrace(opts: { sinceTs?: string; jobTypes?: LogJobType[] } = {}): Promise<TraceLine[]> {
+    const filePath = getTraceJsonlPath(this.featurePath);
+    const all = await this.readJsonlLines<TraceLine>(filePath);
+    const jobTypeSet = opts.jobTypes && opts.jobTypes.length > 0 ? new Set(opts.jobTypes) : null;
+    const sinceTs = opts.sinceTs;
+    return all.filter(l => {
+      if (l.collapsed) return false;
+      if (sinceTs && l.ts <= sinceTs) return false;
+      if (jobTypeSet && !jobTypeSet.has(l.jobType)) return false;
+      return true;
+    });
+  }
+
+  /**
+   * Load ALL breadcrumb lines from feature.jsonl (UI timeline).
+   * Collapsed lines are excluded. Order preserved (append order = chronological).
+   */
+  async loadAllBreadcrumbs(): Promise<FeatureBreadcrumbLine[]> {
+    const filePath = getFeatureJsonlPath(this.featurePath);
+    const all = await this.readJsonlLines<FeatureLine>(filePath);
+    const out: FeatureBreadcrumbLine[] = [];
+    for (const line of all) {
+      if (line.type === 'breadcrumb' && !line.collapsed) {
+        out.push(line);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Collapse a specific turnId in both feature.jsonl and trace.jsonl.
+   * 
+   * Used by Hard Reset (everything) or selective invalidation.
+   */
+  async collapseTurn(turnId: string): Promise<void> {
+    await Promise.all([
+      this.collapseTurnInFile(getFeatureJsonlPath(this.featurePath), turnId),
+      this.collapseTurnInFile(getTraceJsonlPath(this.featurePath), turnId),
+    ]);
+  }
+
+  /**
+   * Collapse ALL lines in both files (Hard Reset).
+   * Also appends a user_reset boundary to feature.jsonl.
+   */
+  async collapseAll(reason: 'user_reset' | string, jobId: string, turnId: string): Promise<void> {
+    await Promise.all([
+      this.collapseAllInFile(getFeatureJsonlPath(this.featurePath)),
+      this.collapseAllInFile(getTraceJsonlPath(this.featurePath)),
+    ]);
+    // Append boundary marker AFTER collapsing existing lines
+    const boundary: FeatureBoundaryLine = {
+      type: 'boundary',
+      ts: new Date().toISOString(),
+      jobId,
+      turnId,
+      jobType: 'code', // reset event has no specific jobType — use 'code' as default
+      reason,
+    };
+    await this.appendLine('feature', boundary);
+  }
+
+  // ───── Private JSONL helpers ─────
+
+  private async collapseTurnInFile(filePath: string, turnId: string): Promise<void> {
+    const lock = this.getJsonlLock(filePath);
+    await lock.runExclusive(async () => {
+      let content: string;
+      try {
+        content = await fs.readFile(filePath, 'utf-8');
+      } catch (err: any) {
+        if (err.code === 'ENOENT') return;
+        throw err;
+      }
+      const lines = content.split('\n');
+      const newLines = lines.map(l => {
+        if (!l.trim()) return l;
+        try {
+          const obj = JSON.parse(l);
+          if (obj.turnId === turnId && !obj.collapsed) {
+            obj.collapsed = true;
+            return JSON.stringify(obj);
+          }
+          return l;
+        } catch {
+          return l;
+        }
+      });
+      await fs.writeFile(filePath, newLines.join('\n'), 'utf-8');
+    });
+  }
+
+  private async collapseAllInFile(filePath: string): Promise<void> {
+    const lock = this.getJsonlLock(filePath);
+    await lock.runExclusive(async () => {
+      let content: string;
+      try {
+        content = await fs.readFile(filePath, 'utf-8');
+      } catch (err: any) {
+        if (err.code === 'ENOENT') return;
+        throw err;
+      }
+      const lines = content.split('\n');
+      const newLines = lines.map(l => {
+        if (!l.trim()) return l;
+        try {
+          const obj = JSON.parse(l);
+          if (!obj.collapsed) {
+            obj.collapsed = true;
+            return JSON.stringify(obj);
+          }
+          return l;
+        } catch {
+          return l;
+        }
+      });
+      await fs.writeFile(filePath, newLines.join('\n'), 'utf-8');
+    });
+  }
+
+  /**
+   * Internal: collapse user_turn/user_turn_meta lines with ts < boundaryTs.
+   * Must be called inside a lock (appendBoundary handles locking).
+   */
+  private async collapseBeforeBoundaryInternal(filePath: string, boundaryTs: string): Promise<void> {
+    let content: string;
+    try {
+      content = await fs.readFile(filePath, 'utf-8');
+    } catch (err: any) {
+      if (err.code === 'ENOENT') return;
+      throw err;
+    }
+    const lines = content.split('\n');
+    const newLines = lines.map(l => {
+      if (!l.trim()) return l;
+      try {
+        const obj = JSON.parse(l);
+        // Collapse only user_turn / user_turn_meta before this boundary timestamp
+        if (
+          (obj.type === 'user_turn' || obj.type === 'user_turn_meta') &&
+          !obj.collapsed &&
+          obj.ts < boundaryTs
+        ) {
+          obj.collapsed = true;
+          return JSON.stringify(obj);
+        }
+        return l;
+      } catch {
+        return l;
+      }
+    });
+    await fs.writeFile(filePath, newLines.join('\n'), 'utf-8');
   }
 }

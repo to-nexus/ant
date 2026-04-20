@@ -12,13 +12,13 @@
 
 | 항목 | 값 |
 |---|---|
-| 전체 todos | 19개 |
-| 완료 | **14개** |
+| 전체 todos | 19개 (§16.2 follow-up 신규) |
+| 완료 | **15개** |
 | 진행 중 | 0 |
-| 남음 | **5개** |
+| 남음 | **4개** (§16.2 · §17 · §18 · §19) |
 | Phase B | ✅ **종료** (Mode × Complexity MVP 동작) |
 | Phase C | ✅ **종료** (3/3 완료 — resolve_integrate ✅ · breadcrumb_tiered_policy ✅ · compaction_policy ✅) |
-| Phase D | 🔄 진행 중 (1/5 완료 — legacy_cleanup ✅) |
+| Phase D | 🔄 진행 중 (2/5 완료 — legacy_cleanup ✅ · ui_render_migration ✅) |
 | 베이스 커밋 | `8277b313 feat: code verification hardening, tech-tier hints, preview/deploy` |
 | 내 수정 파일 타입 에러 | 0 |
 | 기존 브랜치 선행 에러 (내 작업과 무관) | 27개 |
@@ -98,7 +98,7 @@
 
 ---
 
-## 3. 완료된 Todos (13개)
+## 3. 완료된 Todos (15개)
 
 ### ✅ 1) `feature_jsonl_schema` + `trace_jsonl_schema`
 
@@ -558,12 +558,67 @@
 - `buildSessionDigest`가 항상 `undefined`를 반환하므로 triage 프롬프트의 sessionDigest 섹션은 사실상 dead. 별도 ticket에서 제거 또는 feature.jsonl 기반으로 재설계 필요
 
 **후속 의존성**:
-- §15 `prompt_singletask`: 본 todo가 decompose base.md에서 `jobConversation` 의존을 제거하면서 `{{#if singleTask}}` 브랜치 추가를 위한 깨끗한 기반 제공
 - §16 `ui_render_migration`: `ChatService` + `/api/chat/*` 라우트를 `trace.jsonl` 기반으로 재작성하고 그 시점에 chat.json 잔존 3건 제거 + UI 코드도 동시 이관
 
 ---
 
-## 4. 남은 Todos (5개, 실행 순서)
+### 16. `ui_render_migration` ✅ (스캐폴딩 단계)
+
+**목표**: trace.jsonl + feature.jsonl breadcrumb를 읽는 read-only HTTP 엔드포인트를 신설하고, ant-ui에 trace SSOT 기반 Activity 뷰 + Breadcrumb Timeline 탭을 추가. ChatPanel 내부 3-way 탭 스위처(Chat / Activity / Timeline)로 통합.
+
+**실제 범위 결정**: 핸드오프 원문은 "ChatPanel을 trace.jsonl SSOT로 완전 치환"을 요구하나, 기존 ChatPanel이 `triage_choice` / `decompose-choice` / streaming file-write 카드 등 풍부한 ChatMessage 타입 + SSE live streaming에 강결합되어 있어 1 세션 완전 치환이 비현실적. Phase B에서 완성한 choice UX 회귀 위험을 피하기 위해 **스캐폴딩 접근**으로 분할:
+- 이번 세션: 백엔드 엔드포인트 + UI API 클라이언트 + 슬라이스 + Activity/Timeline 탭 (trace SSOT가 UI에서 관찰 가능) ✅
+- 후속(§16.2 `chat_ssot_finalization`): legacy chat rendering을 trace-derived 모델로 완전 치환 + ChatService/chat.routes 은퇴 + SSE initial_state.chat 제거
+
+**신규 파일**:
+- `packages/ant-cli/src/periphery/adapters/http/routes/feature-log.routes.ts` — `GET /projects/:id/features/:feature/trace` (`?sinceTs=...&jobTypes=code,design`) + `GET .../breadcrumbs`. 요청마다 `FileSessionAdapter` 인스턴스 생성 (workspaceResolver.getFeaturePath 경유)
+- `packages/ant-ui/src/infrastructure/http/api/featureLog.ts` — `getFeatureTrace(projectId, feature, { sinceTs?, jobTypes? })` + `getFeatureBreadcrumbs(projectId, feature)` API 클라이언트
+- `packages/ant-ui/src/domain/store/slices/featureLogSlice.ts` — Zustand 슬라이스. `traceLines` / `breadcrumbs` / 각 `status`/`error` + `featureLogKey`(cache key) + fetch action 3종 + `appendFeatureTraceLine` / `appendFeatureBreadcrumb` / `clearFeatureLog`. stale response는 `featureLogKey` mismatch 체크로 안전 폐기
+- `packages/ant-ui/src/presentation/components/chat/feature-log/TraceActivityView.tsx` — trace.jsonl SSOT 뷰. turnId 기준 grouping + 이벤트별 렌더 (user_turn / assistant_thinking / tool_call / file_write / run_command / job_status / assistant_message). turn 내 `firstTs` 기준 오름차순 정렬, turn 간 동일 기준 정렬
+- `packages/ant-ui/src/presentation/components/chat/feature-log/BreadcrumbTimeline.tsx` — 수직 타임라인. scope별 dot 색상(`initial_creation` emerald / `modification` blue / `refactor` purple), anchor chip 3-kind (specs/paths/files), stats pills (`+created ~modified -deleted Σtouched`)
+- `packages/ant-ui/src/presentation/components/chat/feature-log/useFeatureLogSync.ts` — 피처 mount 시 trace + breadcrumbs 자동 로드 훅. project/feature 변경 시 재-fetch, unmount 시 clear
+- `packages/ant-cli/tests/verification/unit/fileSessionAdapter-log.test.ts` — `loadAllTrace` (sinceTs strict-greater + jobTypes 집합 + 미생성 파일 ENOENT) / `loadAllBreadcrumbs` (collapsed 제외 + append-order + ENOENT) 6 tests
+
+**수정 파일**:
+- `packages/ant-cli/src/core/ports/session.ts` — `SessionPort`에 `loadAllTrace(opts)` / `loadAllBreadcrumbs()` 2 메서드 추가
+- `packages/ant-cli/src/periphery/adapters/session/FileSessionAdapter.ts` — 위 2 메서드 구현. `collapsed` 제외, `sinceTs`는 strict-greater 비교(ISO 8601 문자열 비교 안전), `jobTypes`는 `Set` lookup
+- `packages/ant-cli/src/periphery/adapters/http/routes/index.ts` — `createFeatureLogRoutes`를 `createApiRoutes`에 마운트. `workspaceResolver` 주입
+- `packages/ant-ui/src/infrastructure/http/api/index.ts` — `./featureLog` re-export
+- `packages/ant-ui/src/domain/store/index.ts` — `Store` 타입에 `FeatureLogSlice` 교차 + `createFeatureLogSlice` 스프레드
+- `packages/ant-ui/src/presentation/components/chat/ChatPanel.tsx` — 상단 탭 바(`ChatPanelTabBar`) + `activeTab` 상태 + Chat/Activity/Timeline 분기 렌더. Chat 뷰는 기존 로직 그대로(역호환 + triage/choice UX 보존). Activity/Timeline 탭 선택 시 ChatInput은 공유 유지
+- `packages/ant-ui/src/i18n/locales/{en,ko}/chat.json` — `panelTabs.{chat,activity,timeline}` / `activity.{loading,loadError,empty}` / `breadcrumb.{loading,loadError,empty,scope.*}` 키 신설 (양 로케일 동일 구조)
+
+**설계 결정**:
+- URL 패턴: 기존 `/api/projects/:id/features/:feature/...` 규약 준수 (핸드오프 원문의 `/api/feature/:featureId/...`는 WorkspaceResolver 재설계가 필요해서 기각)
+- Breadcrumb 배치: ChatPanel 사이드바 내부 탭 스위처로 통합 → FeatureSection/MainContentArea 레이아웃 변경 없음. 채팅 맥락(Chat 탭) 바로 옆에서 turnId 기준 Activity, 시간순 Timeline을 볼 수 있어 네비게이션 밀접도 최상
+- 탭 전환 시 `ChatInput` 공유 유지 — Activity/Timeline 탭에서도 사용자가 곧바로 새 요청을 보낼 수 있어 UX 연속성 확보
+- Activity 뷰의 grouping key는 `turnId`. 누락 시 `__untagged__` bucket으로 떨어져 UI 붕괴 방지. turn 내부 이벤트는 `ts` 오름차순, turn 간에는 `firstTs` 기준
+- `featureLogKey`로 stale fetch 결과 격리 — project/feature 변경 중 in-flight 요청이 돌아와도 이전 feature 데이터로 덮어쓰지 않음
+- Legacy ChatPanel 로직은 건드리지 않음 — triage_choice / decompose-choice / streaming file-write 카드가 살아있어 Phase B 완성 상태 보존
+- SSE 전혀 미수정 — workflow stream / chat stream 그대로. trace 엔드포인트는 "초기 로드 전용"
+
+**AC 달성**:
+- [x] 두 엔드포인트가 SSE 아닌 일반 HTTP로 동작 (초기 로드 전용 — `getFeatureTrace` / `getFeatureBreadcrumbs`)
+- [x] SSE는 기존 workflow stream 유지 (`sseSlice` 전혀 미수정)
+- [x] 채팅 렌더가 turnId 기준으로 그룹화 (`TraceActivityView`의 `groupByTurn`)
+- [x] breadcrumb 타임라인이 별개 탭/패널로 표시 (`BreadcrumbTimeline`을 ChatPanel Timeline 탭에 마운트)
+- [x] 내 수정 파일 타입 에러 0 (ant-cli tsc 27 baseline 유지, ant-ui tsc 기존 선행 에러만)
+- [x] vitest **56 suites / 1254 tests** 전원 통과 (fileSessionAdapter-log 6 신규)
+- [x] `pnpm build` (ant-ui) 성공 — dist 산출, pre-existing warning만
+
+**⚠️ 검증 미완 / 후속 이관**:
+- ChatService + `chat.routes.ts` (GET/DELETE messages / user-message / job-error / triage-choice / pending-choice / eval-save / dismiss-choice) + SSE `initial_state.chat.messages` 경로는 **그대로 유지**. UI의 Chat 탭이 여전히 해당 경로를 소비. 완전 제거는 **§16.2 `chat_ssot_finalization`** 로 분리 이관
+- Activity/Timeline 탭은 현재 initial-load HTTP fetch에만 의존 — 실시간 업데이트 없음. 새 이벤트 반영은 피처 재진입 또는 수동 refresh 필요. 후속에서 SSE 기반 append 구현 가능 (슬라이스에 이미 `appendFeatureTraceLine`/`appendFeatureBreadcrumb` 준비됨)
+- trace line 스키마가 `ChatMessage` 대비 단순 — choice 카드 / streaming file-create 중간 단계 등은 표현 불가. §16.2에서 choice 인터랙션을 trace 이벤트 기반으로 재설계하거나, choice UX를 trace와 직교한 별도 레이어(pending-choice endpoint 재사용)로 분리해야 함
+
+**후속 의존성**:
+- §16.2 `chat_ssot_finalization`(신규 — §4 남은 todos 참조): Chat 탭 자체를 Activity 뷰로 치환 + ChatService/chat.routes/SSE initial_state.chat 제거 + choice UX 재설계
+- §17 `hard_reset`: 본 todo로 `/trace` + `/breadcrumbs` 엔드포인트 인프라가 갖춰졌으므로 reset 후 UI가 즉시 빈 상태로 갱신되는 경로가 열림
+- §18 `tier_ui_badge`: `TraceActivityView`의 turn 헤더가 `mode · complexity · decidedBy · reason` 배지 렌더 자리 제공 (현재 `jobType` + `turnId` + `firstTs` 표시 중)
+
+---
+
+## 4. 남은 Todos (4개, 실행 순서)
 
 > 번호 = 실행 순서. **§5의 카드도 동일 번호**로 정렬됨.
 > 선행 의존이 모두 완료됐을 때만 해당 번호 시작 가능.
@@ -583,11 +638,11 @@
 - [x] **12. `breadcrumb_tiered_policy`** — `core/context/breadcrumb.ts` 신규 (bubble-up 4-tier + trace collector). code/design learn 노드가 §2.4 매트릭스에 따라 BC/Boundary append. trace.jsonl `file_write` SSOT 확립 (tool + direct + design tool emit). ✅ 완료
 - [x] **13. `compaction_policy`** — `compactFeatureContext` 신규 (Collapse는 adapter SSOT, Compact는 `FEATURE_CONTEXT_THRESHOLD` 초과 시 LLM 요약 + `FEATURE_CONTEXT_WINDOW` 최신 user_turn 보존). plan/direct base.md에 `{{#if featureContext.summary}}` 섹션. ✅ 완료 → **Phase C 종료**
 
-### Phase D — Cleanup · UI (5개 · ✅ 1/5 완료)
+### Phase D — Cleanup · UI (5개 · ✅ 2/5 완료)
 
 - [x] **14. `legacy_cleanup`** — `chat.json` (agent write path) / `saveToChatFile` / `jobConversation` 필드 / `planMini` / unused compaction 상수 일괄 제거. agent-side grep 게이트 0. ChatService HTTP layer는 §16 스코프로 명시 이관. ✅ 완료
-- [ ] **15. `prompt_singletask`** — plan/decompose base 프롬프트에 `{{#if singleTask}}` 분기.
-- [ ] **16. `ui_render_migration`** — 백엔드 `/api/feature/:id/trace` · `/breadcrumbs` 엔드포인트 + ant-ui 채팅 렌더를 `trace.jsonl` 단일 소스로 전환 + breadcrumb 타임라인 뷰.
+- [x] **16. `ui_render_migration`** — 백엔드 `/api/projects/:id/features/:feature/{trace,breadcrumbs}` 엔드포인트 + ant-ui `FeatureLogSlice` + `TraceActivityView` (turnId 그룹) + `BreadcrumbTimeline` + ChatPanel 3-way 탭 스위처. legacy Chat 탭은 §16.2에서 치환. ✅ 완료
+- [ ] **16.2. `chat_ssot_finalization`** — Chat 탭을 trace-derived 모델로 완전 치환 + ChatService/`chat.routes.ts`(GET/DELETE messages, user-message, job-error, eval-save, dismiss-choice) 은퇴 + SSE `initial_state.chat.messages` 경로 제거 + choice UX(triage_choice / decompose-choice) 재설계. §16 후속.
 - [ ] **17. `hard_reset`** — `POST /api/feature/:id/context/reset` + FeatureSection 헤더 리셋 버튼.
 - [ ] **18. `tier_ui_badge`** — user_turn 뱃지에 `mode · complexity · decidedBy · reason` 표시 (읽기 전용).
 
@@ -604,7 +659,7 @@
 
 ---
 
-## 5. 실행 카드 (13개, 순서대로)
+## 5. 실행 카드 (12개, 순서대로)
 
 > 각 카드는 **선행 의존이 모두 완료된 상태**에서 단독 실행 가능.
 > 공통 원칙: **Landmark 읽기 → 단계 순서대로 → AC 체크 → 검증 명령**.
@@ -976,70 +1031,52 @@ pnpm build:cli
 
 ---
 
-### 15. `prompt_singletask`  —  Phase D
+### 16. `ui_render_migration`  —  Phase D ✅
 
-**Goal**: plan/decompose base 프롬프트에 `{{#if singleTask}}` 분기 추가 (planMini 신규 파일 생성 대체).
+완료 상세: §3 "16. `ui_render_migration` ✅" 참조. 이 카드는 **후속(§16.2)** 과 함께 목표를 완수한다 — 본 카드가 trace SSOT 인프라(endpoints + slice + Activity/Timeline 뷰)를 깔고, §16.2가 legacy chat 경로를 완전히 치환한다.
 
-**선행 의존**: 14 (planMini 제거 경로 합의)
-**해금 대상**: (없음 — 프롬프트 품질 개선)
-**예상 범위**: S (프롬프트 1~2곳)
+---
+
+### 16.2. `chat_ssot_finalization`  —  Phase D
+
+**Goal**: 기존 Chat 탭(ChatMessage + SSE `initial_state.chat.messages` + ChatService)을 trace.jsonl SSOT 기반으로 완전 치환. `chat.routes.ts`의 messages 경로(GET/DELETE/POST user-message/job-error/eval-save/dismiss-choice) 은퇴. triage_choice / decompose-choice UX를 trace 이벤트 + pending-choice endpoint 조합으로 재설계.
+
+**선행 의존**: 16 (infrastructure 준비 완료)
+**해금 대상**: Phase D 종료
+**예상 범위**: L~XL (UI 채팅 전면 재배선 + 백엔드 라우트 다량 제거 + choice UX 재설계)
 
 **Landmark 파일**:
-- `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/plan/variants/default/base.md`
-- `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/decompose/variants/default/base.md`
-- plan 노드 렌더 호출부: `singleTask` boolean 주입 위치
+- `packages/ant-cli/src/periphery/adapters/http/routes/chat.routes.ts` — 7 엔드포인트 (messages GET/DELETE, user-message, job-error, triage-choice, pending-choice, eval-save, dismiss-choice). 이 중 `pending-choice`와 `triage-choice` dispatch는 인터랙션이라 유지 권장, 나머지는 trace 이벤트로 치환 가능
+- `packages/ant-cli/src/periphery/adapters/http/services/ChatService/` — index + SessionManager + 관련 구현체 전체. trace SSOT 전환 시 `chat.json` 영속성 경로는 제거, choice 메타데이터 경로만 필요시 별도 어댑터로 분리
+- `packages/ant-cli/src/periphery/adapters/http/routes/sse.routes.ts` — `initial_state.chat.messages` emit 블록(현 `chatService.getMessagesAsync` 호출). trace HTTP로 대체 후 제거. 라이브 append 이벤트(`content_add` 등)는 남길지 trace 이벤트(file_write / assistant_message)로 통합할지 결정 필요
+- `packages/ant-ui/src/domain/models/chat.ts` (`ChatMessage`) + `sseSlice.chatMessages` — ChatMessage 모델을 trace 기반으로 재정의하거나 `TraceLine` → `ChatMessage` 어댑터 계층 도입
+- `packages/ant-ui/src/presentation/components/chat/ChatHistory.tsx` + `MessageItem.tsx` + `choiceCard/*` — `ChatMessage` 소비. trace 기반 데이터로 feed하도록 전환
+- `packages/ant-ui/src/presentation/components/chat/ChatPanel.tsx` — 현재 Chat/Activity/Timeline 3-way 탭. Chat 탭이 trace 기반으로 전환되면 Activity 탭은 제거 가능(혹은 debug view로 유지)
 
-**단계**:
-1. plan 노드에서 taskQueue 크기 관찰 → `singleTask: taskQueue.size === 1` 주입
-2. plan base.md에 `{{#if singleTask}}...{{else}}...{{/if}}` 섹션 (간결 모드 vs 다중 task 조율)
-3. FPOP 유지: 구체 예시 금지, 원칙만
+**단계 (제안 순서)**:
+1. **choice UX 조사**: triage_choice / decompose_choice / eval_save / cancelled 카드가 현재 ChatMessage.contents[].type으로 어떻게 실리는지 + pending-choice HTTP가 어떻게 소비되는지 정리. trace 스키마로 1:1 매핑 불가한 필드 목록화
+2. **trace → ChatMessage 어댑터** (신규 `ChatMessageFromTrace.ts`): turnId 그룹 → ChatMessage (role/contents[] 재조립). 이 어댑터 결과가 기존 `ChatHistory`/`MessageItem`를 그대로 먹이도록
+3. **pending-choice UI 분리**: choice 카드를 `chatMessages`에 섞지 않고 별도 상태로 분리(`pendingChoices: PendingChoice[]`). `GET /chat/pending-choice` 재사용
+4. **SSE 스트림 정리**: `initial_state.chat` 제거, content_add 계열도 trace append 이벤트로 통합(`appendFeatureTraceLine` 활용). legacy SSE chat handler 단계적 삭제
+5. **백엔드 라우트 제거**: `chat.routes.ts`에서 messages GET/DELETE, user-message, job-error, eval-save, dismiss-choice 삭제. triage-choice POST는 choice dispatch용으로 유지(혹은 `choice.routes.ts`로 이관)
+6. **ChatService 은퇴**: chat.json 참조 / `getMessages*` / `addUserMessage` / `addJobError` / `updateLastContentMetadata` 제거. SessionManager의 chat.json 읽기도 제거
+7. **Activity 탭 처리**: Chat 탭이 trace 기반이면 Activity는 중복 → 제거하거나 "Raw" debug view로 리네임
 
 **AC**:
-- [ ] `singleTask === true`일 때 프롬프트가 간결화됨 (팀 조율·parallelGroup 관련 섹션 생략)
-- [ ] 신규 파일(`base-plan-light.md` 등) 생성 금지
+- [ ] ChatPanel의 Chat 탭이 `featureLogSlice.traceLines`로부터 렌더 (SSE initial_state.chat 미의존)
+- [ ] `grep -r 'chat\.json' packages/ant-cli/src packages/ant-ui/src` → 0건
+- [ ] `chat.routes.ts`에서 messages GET/DELETE/user-message/job-error/eval-save/dismiss-choice 엔드포인트 제거 (triage-choice / pending-choice는 유지 가능)
+- [ ] ChatService export path 자체 제거 또는 pending-choice만 남은 slim 버전
+- [ ] triage_choice / decompose_choice 카드 UX 회귀 없음 (수동 smoke)
 - [ ] 내 수정 파일 타입 에러 0
 
 **검증**:
 ```bash
-pnpm vitest run   # snapshot 갱신 가능성 있음 → 예상된 변경인지 확인
-```
-
----
-
-### 16. `ui_render_migration`  —  Phase D
-
-**Goal**: 백엔드 `/api/feature/:id/trace` · `/api/feature/:id/breadcrumbs` 엔드포인트 신설. ant-ui 채팅 렌더를 `trace.jsonl` 단일 소스로 전환. breadcrumb 타임라인 뷰 추가.
-
-**선행 의존**: 12 (breadcrumb 생성), 14 (legacy_cleanup의 UI 잔여 제거)
-**해금 대상**: 17 (hard_reset UI), 18 (tier_ui_badge)
-**예상 범위**: L (백엔드 라우트 2개 + 프런트 API 클라이언트 + 컴포넌트 재배선)
-
-**Landmark 파일**:
-- `packages/ant-cli/src/periphery/adapters/http/routes/` (기존 라우트 디렉터리)
-- `packages/ant-cli/src/periphery/adapters/session/FileSessionAdapter.ts` — `loadTraceByTurnIds`, `loadTraceByJobType`
-- `packages/ant-ui/src/infrastructure/http/api/` (기존 API 클라이언트)
-- `packages/ant-ui/src/presentation/components/` 채팅 렌더링 컴포넌트 (위치는 grep)
-
-**단계**:
-1. 백엔드 라우트 신설 (Express 패턴 기존 코드 참조):
-   - `GET /api/feature/:featureId/trace?sinceTs=...&jobTypes=...` → trace.jsonl 필터
-   - `GET /api/feature/:featureId/breadcrumbs` → feature.jsonl의 breadcrumb만 필터
-2. 프런트 API 클라이언트 + fetch hook
-3. 채팅 컴포넌트 turnId 기준 grouping으로 재구성
-4. breadcrumb 타임라인 뷰 (별도 컴포넌트)
-5. 기존 chat.json 소비 로직 제거 (ui-async-policy 준수)
-
-**AC**:
-- [ ] 두 엔드포인트가 SSE가 아닌 일반 HTTP로 동작 (초기 로드 전용)
-- [ ] SSE는 기존 workflow stream 유지
-- [ ] 채팅 렌더가 turnId 기준으로 그룹화
-- [ ] breadcrumb 타임라인이 별개 탭/패널로 표시
-- [ ] 내 수정 파일 타입 에러 0 (ant-ui 포함)
-
-**검증**:
-```bash
-pnpm build        # 전체 빌드
-pnpm dev:local:all   # 수동 smoke test
+cd /Users/probe/dev/ant
+pnpm build                   # ant-cli + ant-ui 전체
+pnpm test:cli                # 전 vitest suites
+rg 'chat\.json' packages/ant-cli/src packages/ant-ui/src     # 0건
+rg 'chatService\.' packages/ant-cli/src                       # 필수 잔여(pending-choice/triage dispatch)만
 ```
 
 ---
@@ -1166,7 +1203,7 @@ pnpm exec tsc --noEmit 2>&1 | grep -c 'error TS'
 
 ---
 
-## 6. 검증 현황 (2026-04-19 기준)
+## 6. 검증 현황 (2026-04-20 기준)
 
 | 검증 항목 | 결과 |
 |---|---|
@@ -1176,7 +1213,9 @@ pnpm exec tsc --noEmit 2>&1 | grep -c 'error TS'
 | `tests/triage-parser.test.ts` | 30/30 통과 ✅ |
 | `tests/verification/unit/breadcrumb.test.ts` (§12) | 15/15 통과 ✅ |
 | `tests/verification/unit/compactFeatureContext.test.ts` (§13) | 5/5 통과 ✅ |
-| 전체 vitest (ant-cli) | **54 suites / 1203 tests** 통과 ✅ |
+| `tests/verification/unit/fileSessionAdapter-log.test.ts` (§16) | 6/6 통과 ✅ |
+| 전체 vitest (ant-cli) | **56 suites / 1254 tests** 통과 ✅ |
+| `pnpm build` (ant-ui) | 성공 — dist 산출, pre-existing warning만 ✅ |
 
 > **각 카드 공통 검증**:
 > ```bash
@@ -1228,6 +1267,11 @@ pnpm exec tsc --noEmit 2>&1 | grep -c 'error TS'
 ### D10. Heuristic/Overrule 제외
 - regex 신뢰 불가 + overrule은 후속 플랜
 - MVP는 **LLM 판정만**
+
+### D11. Tier 내부 균일성 (같은 Tier = 같은 프롬프트)
+- 5-Tier는 Mode × Complexity 판정의 최종 셀. 동일 Tier로 라우팅된 실행은 **같은 파이프라인 + 같은 프롬프트**를 사용
+- Phase 노드 렌더 시 **런타임 관측치(`taskQueue.size`, touched 수 등)를 근거로 프롬프트를 if/else 분기하지 않는다**. 이는 템플릿 레벨에서 sub-tier를 암묵 생성하는 반패턴 (SSOT 분열, FPOP의 edge-case enumeration 위반)
+- task=1 같은 corner case는 LLM의 instruction-following에 위임. 실측 문제 발생 시 **프롬프트 서술을 task-count 중립적 원칙으로 리팩토링**하는 것이 대응 (별도 파일·별도 분기 X)
 
 ---
 

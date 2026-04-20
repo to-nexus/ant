@@ -9,6 +9,26 @@
     "stopping": "Stopping...",
     "filesEdited": "{{count}} File(s) Edited"
   },
+  "panelTabs": {
+    "chat": "Chat",
+    "activity": "Activity",
+    "timeline": "Timeline"
+  },
+  "activity": {
+    "loading": "Loading activity…",
+    "loadError": "Failed to load activity feed.",
+    "empty": "No recorded activity yet. User turns and job events will appear here."
+  },
+  "breadcrumb": {
+    "loading": "Loading timeline…",
+    "loadError": "Failed to load timeline.",
+    "empty": "No breadcrumbs yet. Completed tasks will appear here as navigation anchors.",
+    "scope": {
+      "initial_creation": "Initial Creation",
+      "modification": "Modification",
+      "refactor": "Refactor"
+    }
+  },
   "sidebar": {
     "chatWith": "Chat with {{agent}}",
     "clearHistory": "Clear Chat History",
