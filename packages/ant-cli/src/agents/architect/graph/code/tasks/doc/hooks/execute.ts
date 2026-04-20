@@ -1,0 +1,20 @@
+/**
+ * doc/hooks/execute.ts — TaskExecuteHook for doc tasks.
+ *
+ * Doc tasks use the `docgen` variant and need the directoryTree in
+ * runtime context so the LLM can cross-reference files without calling
+ * list_files. Heavy context (examples / foundation contract / schema
+ * anchor) is skipped — documentation writing stays focused on the
+ * curated context already present.
+ */
+
+import type { TaskExecuteHook } from '../../_shared/types';
+
+export const executeHook: TaskExecuteHook = {
+  templatePaths: {
+    base: 'jobs/code/nodes/execute/variants/docgen/base',
+    rules: 'jobs/code/nodes/execute/variants/docgen/rules',
+  },
+  skipExamples: true,
+  includeDirectoryTree: true,
+};

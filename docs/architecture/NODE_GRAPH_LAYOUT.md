@@ -120,7 +120,7 @@ cross-job 공유 task 도메인이 생기면 `common/graph/tasks/{taskType}/` �
 | state에 `_fooTracker`, `_fooAttempts` 등 type-local 필드 누적 | R4 | `state.foo?: FooSession` SSOT + `tasks/foo/model/` |
 | tool handler가 `{ currentTask: { type } } as any` fake cast | R1 | `hooksForTaskType(ctx.currentTaskType)` |
 | `TaskResumeState` 하나에 모든 job 필드가 섞임 | R5 | `BaseTaskResumeState` + `{Job}TaskResumeState` |
-| verification/error 공통 판정이 여러 phase에서 중복 | R1 + R3 | `tasks/_shared/classification.ts isDiagnosticTask` |
+| verification/error 공통 판정이 여러 phase에서 중복 | R1 + R3 | 각 site 에서 `isVerificationTask(t) \|\| isErrorTask(t)` 를 명시적으로 작성 — 두 type 은 session 소유 / 명령 가드 / plan entry 경로에서 **갈라지므로** alias 로 묶지 않음 (T6b-η) |
 
 ---
 

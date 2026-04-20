@@ -34,13 +34,12 @@
  *   - scheduling producer flags `blocksUi / blocksTestgen /
  *     blocksIntegration` — test-code only activates the doc barrier.
  *
- * Phase-layer `task.type === 'test-code'` residuals (`nodes/execute/
- * promptBuilder.ts` L83 expected-type OR chain + L168/L189 template
- * path selection, `nodes/plan/planGeneration.ts` L231 skip-planning
- * gate, `nodes/decompose/validation.ts` L55 allowed-types list) are
- * pre-existing R1 misses carried forward from T6b-δ and belong to
- * follow-up T6b cleanup — they require either `isTestCodeTask` adoption
- * or broader classification hooks that are out of T5b.5 scope.
+ * Execute-phase R1 residuals resolved by T6b-ι (`execute` hook slot:
+ * template-variant + skipExamples). Remaining R1 residuals live in
+ * `nodes/plan/planGeneration.ts` L231 (skip-planning gate) and
+ * `nodes/decompose/validation.ts` L55 (allowed-types list); those
+ * require either an `isTestCodeTask` predicate or a broader
+ * classification hook that is out of T6b-ι scope.
  */
 
 import type { TaskHooks } from '../_shared/types';
@@ -48,9 +47,11 @@ import type { TaskHooks } from '../_shared/types';
 import { preTestgenBarrier, blocksDoc } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { evaluate } from './hooks/check';
+import { executeHook } from './hooks/execute';
 
 export const hooks: TaskHooks = {
   scheduling: { preTestgenBarrier, blocksDoc },
   conversations: { convKey },
   check: { evaluate },
+  execute: executeHook,
 };

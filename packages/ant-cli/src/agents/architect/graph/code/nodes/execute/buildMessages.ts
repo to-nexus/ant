@@ -1,7 +1,15 @@
 /**
- * Prompt Building for Execute Node
- * 
- * ✅ Supports Anthropic Prompt Caching for cost reduction:
+ * buildMessages — Execute-node message composer.
+ *
+ * Per-node prompt orchestration adapter that wraps the canonical
+ * `core/prompt/builder/PromptBuilder`. This file does NOT implement a
+ * parallel PromptBuilder; it pre-formats execute-specific inputs
+ * (artifact selection, runtime context, UI images, foundation contract,
+ * schema anchor), invokes `state.deps.promptBuilder.build(config)`, then
+ * post-processes the result into Anthropic cache blocks and composes the
+ * final messages against the conversation history.
+ *
+ * Supports Anthropic Prompt Caching for cost reduction:
  * - System prompts, rules, profiles (cached)
  * - Project context, design docs (cached)
  * - Current task, user directive (not cached - changes frequently)
@@ -20,16 +28,27 @@ import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { ProjectCodeContext } from "../plan/combineCodeContext";
 import { selectArtifacts, selectArtifactsWithPolicy, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { effectiveTechTier, getTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
-import { PromptBuilder } from "../../../../../../core/prompt/builder/PromptBuilder";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { formatGitDiffForPrompt } from "../../../../../../core/codebase/GitDiffSummary";
-import { isVerificationTask } from "../../tasks/verification";
-import { isErrorTask } from "../../tasks/error";
-import { isDocTask } from "../../tasks/doc";
-import { isDiagnosticTask } from "../../tasks/_shared/classification";
+import { hooksIfActive } from "../../tasks/_shared/registry";
+
+const DEFAULT_EXECUTE_TEMPLATES = {
+  base: 'jobs/code/nodes/execute/variants/default/base',
+  rules: 'jobs/code/nodes/execute/variants/default/rules',
+} as const;
+
+const DEFAULT_PLAN_FRAMING = {
+  label: '📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)',
+  description:
+    'The following JSON contains the exact implementation instructions.\n' +
+    '- `prescribedPackages`: External dependencies with discovered API signatures — MUST import and call these APIs in the files listed in `usedBy`\n' +
+    '- `create`: Files to create with integration points\n' +
+    '- `modify`: Files to modify with specific changes\n' +
+    '- `assets`: Asset copy operations (source → destination)',
+} as const;
 
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
@@ -74,20 +93,23 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   content: MessageContentBlock[];
 }>> {
   
-  // planText check (empty is normal for verification and explain tasks)
   if (state.planText) {
     console.log(`🔍 [Execute] planText: ${state.planText.length} chars`);
-  } else {
-    const taskType = state.currentTask?.type || 'unknown';
-    const priority = state.currentTask?.priority;
-    const isExpected = priority === 1000 || taskType === 'verification' || taskType === 'error' || taskType === 'test-code' || taskType === 'doc' || taskType === 'explain' || taskType === 'ui' || taskType === 'design-system';
-    if (!isExpected) {
-      console.warn(`⚠️  [Execute] planText is empty (task: ${taskType}, priority: ${priority})`);
-    }
   }
-  
+
   if (!state.currentTask) {
     throw new Error('[Execute] currentTask is required but not available in state');
+  }
+
+  // Task-specific execute hooks carry every task-type switch previously
+  // inlined here (template variant, directive sanitisation, heavy-context
+  // gating, runtime-context framing, empty-plan fallback, directoryTree).
+  // `execHook === undefined` is the generic fallback path used by feature
+  // / explain / ui / design-system tasks.
+  const execHook = hooksIfActive(state)?.execute;
+
+  if (!state.planText && !execHook && state.currentTask.priority !== 1000) {
+    console.warn(`⚠️  [Execute] planText is empty (task: ${state.currentTask.type}, priority: ${state.currentTask.priority})`);
   }
   
   // Pass RAG-loaded file content directly to the prompt.
@@ -108,9 +130,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     techTier: effectiveTechTier(taskTechTiers),
     techTiers: taskTechTiers,
   };
-  
-  const isVerification = isVerificationTask(state.currentTask);
-  const isError = isErrorTask(state.currentTask);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Artifact selection via ArtifactPipeline
@@ -165,9 +184,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // Build prompt via PromptBuilder (4-tier injection resolution)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const taskType = state.currentTask.type;
-  const isTestCode = taskType === 'test-code';
-  const isDoc = taskType === 'doc';
-  const skipHeavyContext = isVerification || isTestCode || isDoc || isError;
+  const skipExamples = execHook?.skipExamples ?? false;
+  const skipCrossTaskContext = execHook?.skipCrossTaskContext ?? false;
 
   const intent = state.resolvedAction?.intent;
   const effectiveTier = effectiveTechTier(taskTechTiers);
@@ -175,26 +193,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Execute] PromptBuilder is required but not available in state.deps');
 
-  // Determine template paths (mirrors PromptResolver logic)
-  let templateBase: string;
-  let templateRules: string;
-  const executeVariantsPrefix = 'jobs/code/nodes/execute/variants';
-  if (isVerification) {
-    templateBase = `${executeVariantsPrefix}/verification/base`;
-    templateRules = `${executeVariantsPrefix}/verification/rules`;
-  } else if (isError) {
-    templateBase = `${executeVariantsPrefix}/error/base`;
-    templateRules = `${executeVariantsPrefix}/error/rules`;
-  } else if (isTestCode) {
-    templateBase = `${executeVariantsPrefix}/test-code/base`;
-    templateRules = `${executeVariantsPrefix}/test-code/rules`;
-  } else if (isDoc) {
-    templateBase = `${executeVariantsPrefix}/docgen/base`;
-    templateRules = `${executeVariantsPrefix}/docgen/rules`;
-  } else {
-    templateBase = 'jobs/code/nodes/execute/variants/default/base';
-    templateRules = 'jobs/code/nodes/execute/variants/default/rules';
-  }
+  const { base: templateBase, rules: templateRules } =
+    execHook?.templatePaths ?? DEFAULT_EXECUTE_TEMPLATES;
 
   // Pre-format injection data
   const formattedGitDiff = executeProjectCodeContext?.gitDiff
@@ -250,7 +250,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     pipeline: {
       sanitizeInput: true,
       includeBasis: true,
-      includeExamples: !skipHeavyContext && taskType !== 'setup',
+      includeExamples: !skipExamples,
       applyPolicyGuardrails: true,
       formatForLLM: true,
     },
@@ -262,7 +262,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         priority: state.currentTask.priority,
         description: state.currentTask.description,
       } : null,
-      directive: isVerification ? '' : (state.directive || ''),
+      directive: execHook?.sanitizeDirective
+        ? execHook.sanitizeDirective(state.directive || '')
+        : (state.directive || ''),
       modificationMode: executeProjectCodeContext?.files && executeProjectCodeContext.files.length > 0
         ? 'MODIFICATION MODE: Modify existing code'
         : 'CREATION MODE: Build from scratch',
@@ -291,11 +293,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       filteredCatalog: undefined,
       hasRuntimeError: state.directive ? containsRuntimeErrorPattern(state.directive) : false,
       hasMissingDependency: false,
-      // Phase 3-11 — expose remediation mode flags to `error/rules.md`.
-      remediationModeUpstream: isError
-        && state.currentTask?.remediationMode === 'upstream',
-      remediationModeRefactor: isError
-        && state.currentTask?.remediationMode === 'refactor',
+      // Task-specific vars (e.g. error's remediationMode{Upstream,Refactor}).
+      // Placed last so the hook's keys override generic defaults if ever
+      // required; today error is the sole publisher and it only adds keys.
+      ...(execHook?.extraTemplateVars?.({
+        state,
+        task: state.currentTask,
+        projectCodeContext: executeProjectCodeContext,
+      }) ?? {}),
     },
   };
 
@@ -304,8 +309,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Additional context parts for Block 2
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const foundationContract = isVerification ? null : await buildFoundationContract(state);
-  const schemaAnchor = isVerification ? null : await buildSchemaAnchor(state);
+  const foundationContract = skipCrossTaskContext ? null : await buildFoundationContract(state);
+  const schemaAnchor = skipCrossTaskContext ? null : await buildSchemaAnchor(state);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // UI Images (NOT CACHED - multimodal blocks)
@@ -490,9 +495,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           callIndex: state._executeCallIndex,
-          templatePath: isVerificationTask(state.currentTask) ? 'jobs/code/nodes/execute/variants/verification/base'
-            : isErrorTask(state.currentTask) ? 'jobs/code/nodes/execute/variants/error/base'
-            : 'jobs/code/nodes/execute/variants/default/base',
+          templatePath: templateBase,
           usedTemplates: [
             templateBase,
             templateRules,
@@ -545,17 +548,23 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   const lines: string[] = [];
   
   
+  const execHook = hooksIfActive(state)?.execute;
+
   if (state.currentTask) {
     lines.push(`# Current Task`);
     lines.push(`**${state.currentTask.name}**`);
     lines.push(``);
-    
-    const isDiagnostic = isDiagnosticTask(state.currentTask);
+
+    // Remediation-style framing (verification / error) vs generic
+    // implementation framing is driven by `execute.runtimePlanFraming`
+    // so the phase layer never branches on `task.type`.
+    const framing = execHook?.runtimePlanFraming;
+    const isRemediationTask = !!framing;
 
     // Safety guard: detect batched planText that leaked through processDiagnosticBatchSplit failure.
     // If the plan contains a `batches` array, it was meant to be split into sub-tasks, not executed directly.
     // Log INVARIANT VIOLATION but do NOT modify the planText — silent fallbacks mask bugs.
-    if (state.planText && isDiagnostic) {
+    if (state.planText && isRemediationTask) {
       try {
         const stripped = state.planText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
         const parsed = JSON.parse(stripped);
@@ -568,14 +577,10 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     if (state.planText) {
       lines.push(`**Goal**: ${state.currentTask.description}`);
       lines.push(``);
-      
-      const planLabel = isDiagnostic
-        ? `📋 REMEDIATION PLAN (Structured JSON - FOLLOW EXACTLY)`
-        : `📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)`;
-      const planDescription = isDiagnostic
-        ? `The following JSON contains the diagnostic analysis and fix instructions.\n- \`diagnostics\`: Build/test error analysis\n- \`modify\`: Files to modify with specific fixes\n- \`create\`: Files to create (if any)\n- \`delete\`: Files to delete (if any)`
-        : `The following JSON contains the exact implementation instructions.\n- \`prescribedPackages\`: External dependencies with discovered API signatures — MUST import and call these APIs in the files listed in \`usedBy\`\n- \`create\`: Files to create with integration points\n- \`modify\`: Files to modify with specific changes\n- \`assets\`: Asset copy operations (source → destination)`;
-      
+
+      const planLabel = framing?.label ?? DEFAULT_PLAN_FRAMING.label;
+      const planDescription = framing?.description ?? DEFAULT_PLAN_FRAMING.description;
+
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(planLabel);
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
@@ -588,22 +593,14 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
       lines.push(``);
       lines.push(`════════════════════════════════════════════════════════════════════════════════`);
       lines.push(``);
-    } else if (isVerificationTask(state.currentTask)) {
-      // Verification task with empty planText = build/test passed, no fixes needed
-      lines.push(state.currentTask.description);
-      lines.push(``);
-      lines.push(`**Build/test passed successfully. No code changes needed. Output \`<done>true</done>\` immediately.**`);
-      lines.push(``);
-    } else if (isErrorTask(state.currentTask) && !state.planText) {
-      // Error task with empty planText = investigation found no issues
-      lines.push(state.currentTask.description);
-      lines.push(``);
-      lines.push(`**Error investigation found no code changes needed. Output \`<done>true</done>\` immediately.**`);
-      lines.push(``);
     } else {
-      // No plan available (explain tasks OR state propagation failure)
       lines.push(state.currentTask.description);
       lines.push(``);
+      const fallback = execHook?.emptyPlanFallback?.(state.currentTask);
+      if (fallback) {
+        lines.push(fallback);
+        lines.push(``);
+      }
     }
   }
 
@@ -672,7 +669,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   }
 
   const dirTree = state.projectCodeContext?.directoryTree;
-  if (dirTree && (isVerificationTask(state.currentTask) || isDocTask(state.currentTask))) {
+  if (dirTree && execHook?.includeDirectoryTree) {
     lines.push('════════════════════════════════════════════════════════════════════════════════');
     lines.push('🗂️ Codebase Directory Structure (pre-loaded — do NOT list_files)');
     lines.push('════════════════════════════════════════════════════════════════════════════════');

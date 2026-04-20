@@ -43,9 +43,7 @@
  *     T6b follow-up that will land together with those call-site flips.
  *
  * Phase-layer `task.type === 'design-system'` residuals (pre-existing
- * R1 misses carried forward from T6b-δ, belonging to follow-up T6b
- * cleanup):
- *   - `nodes/execute/promptBuilder.ts` L83 — expected-type OR chain
+ * R1 misses, scheduled for follow-up T6b slices):
  *   - `nodes/execute/toolDefinitions.ts` L51 — `isFrontendTask`
  *     OR chain
  *   - `nodes/decompose/responseParser.ts` L51 — ui||design-system
@@ -54,10 +52,11 @@
  *   - `nodes/revise/index.ts` L153/L291 — design-system literal in the
  *     revise-intermediate typed field declaration
  *
- * These require either an `isDesignSystemTask` predicate adoption
- * (new `tasks/design-system/model/is.ts`) or a broader artifact-scope
- * classification hook; both are out of T5b.4 scope and scheduled for
- * the T6b follow-up.
+ * The pre-T6b-ι `nodes/execute/buildMessages.ts` expected-type OR
+ * chain is resolved (the warning guard now checks hook presence, not
+ * task-type literals). Remaining residuals require either an
+ * `isDesignSystemTask` predicate adoption (new `tasks/design-system/
+ * model/is.ts`) or a broader artifact-scope classification hook.
  */
 
 import type { TaskHooks } from '../_shared/types';

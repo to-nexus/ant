@@ -10,11 +10,15 @@
  *   6. `parts.batchSplit.processDiagnosticBatchSplit` — STEP 3.5 escalation.
  *   7. STEP 4 — return finalised state.
  *
- * R1 — the orchestrator stays blind to `task.type`; any remaining literal
- * branches (`nextTask.type === 'setup'` / `'verification'` / `'error'`)
- * below are the last remnants of the T6b-α migration and will move onto
- * hook slots (`plan.classifyEntry`, `plan.buildPrompt`, `plan.decideOutcome`)
- * in the follow-up commits tracked in the handoff doc.
+ * R1 — the orchestrator stays blind to `task.type`; all task-type
+ * discrimination is delegated to per-task predicates (`isVerificationTask`,
+ * `isErrorTask`, `isSetupTask`) exported from each `tasks/{type}/model/is.ts`
+ * bundle, or to hooks (`plan.initSession`, `plan.buildPrompt`, etc.).
+ * Sites where BOTH verification and error share behaviour (empty-plan
+ * short-circuit, remediation-plan label in execute) spell the disjunction
+ * out explicitly instead of hiding it behind a "diagnostic" alias, because
+ * the two task types diverge in meaningful ways elsewhere (error never owns
+ * a VerificationSession; error is blocked from build/test).
  */
 
 import type { LLMClient } from '../../../../../../core/ports';
@@ -44,6 +48,9 @@ import {
 import { runPlanToolLoopPhase } from './parts/planLLM';
 import { runPlanRAG } from './parts/rag';
 import { normalizePlanForHash } from '../../tasks/verification/model/planHash';
+import { isVerificationTask } from '../../tasks/verification';
+import { isErrorTask } from '../../tasks/error';
+import { isSetupTask } from '../../tasks/setup';
 
 // Re-exports for backward-compat with existing imports.
 export type { PlanEntryContext } from './parts/entry';
@@ -136,7 +143,7 @@ async function maybePrePlannedFastPath(
   const hasPrePlanText =
     prePlanText != null &&
     prePlanText.length > 50 &&
-    (!isRetry || nextTask.type === 'error');
+    (!isRetry || isErrorTask(nextTask));
 
   if (!hasPrePlanText) return null;
 
@@ -172,7 +179,7 @@ async function maybeSetupFastPath(
   entry: PlanEntryContext,
 ): Promise<ArchitectGraphState | null> {
   const { nextTask, preservedRetries } = entry;
-  if (nextTask.type !== 'setup') return null;
+  if (!isSetupTask(nextTask)) return null;
   const llm = state.deps?.llm as LLMClient | undefined;
   console.log(`⚡ [Plan] Setup task — skipping keyword/RAG/tool-loop (no existing code to search)`);
 
@@ -231,8 +238,7 @@ function buildDiagnosticRetryContext(
   state: ArchitectGraphState,
   nextTask: CodeTask,
 ): string | undefined {
-  const isVerification = nextTask.type === 'verification';
-  if (!isVerification) return undefined;
+  if (!isVerificationTask(nextTask)) return undefined;
   const session = state.verification;
   if (!session) return undefined;
 
@@ -253,7 +259,7 @@ function buildDiagnosticRetryContext(
 
   if (batchSplitCount > 0) {
     const completedErrorTasks = (state.completedTasksDetails || [])
-      .filter((t: any) => t.type === 'error' && (t as any).prePlanText);
+      .filter((t: any) => isErrorTask(t) && (t as any).prePlanText);
 
     if (completedErrorTasks.length > 0) {
       const MAX_PLAN_CHARS = 2000;
@@ -330,7 +336,7 @@ async function runMainPlanLLM(
   const { nextTask, retrySummaryText } = entry;
   const llm = state.deps?.llm as LLMClient | undefined;
   const requiresPlan = taskRequiresPlan(nextTask);
-  const isVerificationTask = nextTask.type === 'verification';
+  const isVerification = isVerificationTask(nextTask);
 
   const remainingTasks = (state.taskQueue?.getAll() || [])
     .filter(t => t.id !== nextTask.id)
@@ -338,7 +344,7 @@ async function runMainPlanLLM(
 
   const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
   const planToolRounds = nodePlan.length / 2;
-  const tryToolsFirst = llm && (requiresPlan || isVerificationTask) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
+  const tryToolsFirst = llm && (requiresPlan || isVerification) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
   const diagnosticRetryContext = buildDiagnosticRetryContext(state, nextTask);
 
@@ -374,7 +380,7 @@ async function runMainPlanLLM(
     }
   }
 
-  if (isVerificationTask) {
+  if (isVerification) {
     // Tool loop didn't produce a plan — execute handles via verification template.
     console.log(`📋 [Plan] Verification task "${nextTask.name}": tool loop did not produce plan, proceeding with empty planText`);
     return { planText: '' };
@@ -419,7 +425,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   if (prePlanned) return prePlanned;
 
   // STEP 0.7 — verification retry always re-diagnoses (fall through).
-  if (isRetry && nextTask.type === 'verification') {
+  if (isRetry && isVerificationTask(nextTask)) {
     console.log(`\n🔄 [Plan] Verification retry — will re-run build/test via tool loop for fresh error analysis`);
     console.log(`   Violations from previous attempt: ${state.violations?.length || 0}`);
   }
@@ -450,12 +456,15 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const planText = processDiagnosticBatchSplit(state, planTextRaw, nextTask);
   const batchSplitOccurred = planTextRaw.length > 50 && planText === '';
   const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
-  // Empty-implementation short-circuit: diagnostic tasks whose plan JSON has
-  // no modify/create/delete entries. Router used to mutate `llmResponse` here
-  // (R1 violation) — the plan node flips `done:true` itself so the router
-  // stays a pure read-only predicate. See handoff §7.5.
-  const isDiagnosticTask = nextTask.type === 'verification' || nextTask.type === 'error';
-  const emptyImplShortCircuit = isDiagnosticTask && hasEmptyImplementation(planText);
+  // Empty-implementation short-circuit: a remediation-style task (verification
+  // with all gates already passed, or error with no pending fixes in the batch
+  // plan) whose JSON has no modify/create/delete entries. Router used to mutate
+  // `llmResponse` here (R1 violation) — the plan node flips `done:true` itself
+  // so the router stays a pure read-only predicate. Feature/setup/ui plans
+  // cannot legitimately be empty, so they fall through to execute and let the
+  // LLM error surface there.
+  const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
+  const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(planText);
 
   // STEP 4 — return finalised state.
   try {

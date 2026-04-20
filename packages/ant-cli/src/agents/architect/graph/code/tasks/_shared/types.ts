@@ -215,6 +215,71 @@ export interface TaskConversationsHook {
   convKey(task: CodeTask): string;
 }
 
+/**
+ * Context passed to execute-node hooks. The `buildMessages` adapter fills
+ * every slot before calling the hook so hooks never read back into graph
+ * state beyond what is exposed here (mirrors the `PlanPromptCtx` pattern
+ * introduced in T6b-β).
+ */
+export interface ExecutePromptCtx {
+  state: ArchitectGraphState;
+  task: CodeTask;
+  /** `ProjectCodeContext` from the plan node (post-compaction). Kept loose
+   *  to avoid coupling this type module to `nodes/plan/combineCodeContext`. */
+  projectCodeContext: unknown;
+}
+
+/**
+ * Execute-node polymorphic surface.
+ *
+ * Replaces the task-type literal cascades inside
+ * `nodes/execute/buildMessages.ts` (template selection, directive
+ * sanitisation, heavy-context gating, runtime-context framing, empty-plan
+ * fallback, dirTree inclusion). Each slot is optional — unimplemented
+ * slots cause `buildMessages` to fall back to its generic default path
+ * (feature tasks, explain tasks). R1: the node never inspects
+ * `task.type`; it only consults `hooksIfActive(state)?.execute`.
+ *
+ * Framing for remediation-style plans (verification / error) uses the
+ * JSON diagnostic/modify/create/delete schema; feature-style plans use
+ * the implementation-plan schema. The node does not know which schema is
+ * active — it reads `runtimePlanFraming` straight from the hook.
+ */
+export interface TaskExecuteHook {
+  /**
+   * Variant template paths. When undefined the generic
+   * `jobs/code/nodes/execute/variants/default/{base,rules}` pair is used.
+   */
+  templatePaths?: { base: string; rules: string };
+  /**
+   * Skip the injected examples block (`jobs/code/base/examples`). Replaces
+   * the pre-T6b-ι `skipHeavyContext` OR chain + `taskType !== 'setup'`
+   * guard in `nodes/execute/buildMessages.ts`.
+   */
+  skipExamples?: boolean;
+  /**
+   * Skip Foundation Contract + Schema Anchor cross-task injections.
+   * Replaces the pre-T6b-ι `isVerification ? null : ...` gate on
+   * `buildFoundationContract` / `buildSchemaAnchor`. Only verification
+   * publishes this because its prompt fixes existing files rather than
+   * creating new ones that would need cross-task symbol visibility.
+   */
+  skipCrossTaskContext?: boolean;
+  /** Transform the user directive before it is rendered into the prompt. */
+  sanitizeDirective?(directive: string): string;
+  /** Extra template vars merged into the base render. */
+  extraTemplateVars?(ctx: ExecutePromptCtx): Record<string, unknown>;
+  /**
+   * Runtime-context plan section label/description. Undefined keeps the
+   * generic "IMPLEMENTATION PLAN" framing.
+   */
+  runtimePlanFraming?: { label: string; description: string };
+  /** Fallback line shown in runtime context when `state.planText` is empty. */
+  emptyPlanFallback?(task: CodeTask): string | null;
+  /** Whether to append `projectCodeContext.directoryTree` to runtime context. */
+  includeDirectoryTree?: boolean;
+}
+
 export interface TaskSchedulingHook {
   // ─── Consumer-side flags (this task type is BLOCKED by the named barrier) ───
   preIntegrationBarrier?: boolean;
@@ -248,6 +313,7 @@ export interface TaskSchedulingHook {
  */
 export interface TaskHooks {
   plan?: TaskPlanHook;
+  execute?: TaskExecuteHook;
   tool?: TaskToolHook;
   command?: TaskCommandHook;
   check?: TaskCheckHook;
