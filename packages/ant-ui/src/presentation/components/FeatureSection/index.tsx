@@ -8,6 +8,7 @@ import { FeatureDropdown } from './components/FeatureDropdown';
 import { PreviewStatusPanel } from './components/PreviewStatusPanel';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import { useState, useEffect, useCallback } from 'react';
+import { RotateCcw } from 'lucide-react';
 import { QuickStartCTA } from '../common/QuickStartCTA';
 import { CreationWizardModal } from '../CreationWizardModal';
 import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
@@ -21,10 +22,11 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
     fetchFeatures,
   } = useStore();
   
-  const { t } = useTranslation(['artifacts', 'nav', 'onboarding']);
+  const { t } = useTranslation(['artifacts', 'nav', 'onboarding', 'chat', 'common']);
   const policy = useUIActionPolicy();
   const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
-  const { showError } = useAlertModalContext();
+  const { showError, showConfirm, showSuccess } = useAlertModalContext();
+  const resetFeatureContext = useStore((state) => state.resetFeatureContext);
   
   // Per-feature git refresh (fetch-from-remote + /changes re-pull) is owned
   // by the application-layer `useGitRefresh` hook mounted at the app root
@@ -93,6 +95,52 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
   // ✅ Track fix button click state
   const [fixButtonClicked, setFixButtonClicked] = useState(false);
 
+  // ✅ Hard Reset (§17) — in-flight flag prevents double-clicks while the
+  // backend collapses feature.jsonl / trace.jsonl and re-fetch completes.
+  const [isResetting, setIsResetting] = useState(false);
+  const featureKeyForJob = selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
+  const hasRunningJobForFeature = featureKeyForJob ? !!runningJobsByFeature[featureKeyForJob] : false;
+
+  const performReset = useCallback(async () => {
+    if (!selectedProject || !selectedFeature) return;
+    setIsResetting(true);
+    try {
+      await resetFeatureContext(selectedProject, selectedFeature);
+      showSuccess(t('chat:context.resetSuccess'), { title: t('chat:context.resetSuccessTitle') });
+    } catch (err) {
+      console.warn('[FeatureSection] context reset failed:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      showError(`${t('chat:context.resetFailed')}${message ? `\n${message}` : ''}`, {
+        title: t('common:error.title'),
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  }, [selectedProject, selectedFeature, resetFeatureContext, showSuccess, showError, t]);
+
+  const handleResetContextClick = useCallback(() => {
+    if (!selectedProject || !selectedFeature || isResetting) return;
+    if (hasRunningJobForFeature) {
+      showError(t('chat:context.resetBlockedByJob'), { title: t('common:error.title') });
+      return;
+    }
+    showConfirm(t('chat:context.resetConfirm'), {
+      title: t('chat:context.resetConfirmTitle'),
+      type: 'warning',
+      confirmText: t('chat:context.resetConfirmAction'),
+      onConfirm: performReset,
+    });
+  }, [
+    selectedProject,
+    selectedFeature,
+    isResetting,
+    hasRunningJobForFeature,
+    showError,
+    showConfirm,
+    performReset,
+    t,
+  ]);
+
   // Fix dev server setup handler (uses Chat service)
   const handleFixSetup = () => {
     if (!suggestedFix) {
@@ -157,6 +205,29 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
         onForceInlineCreateHandled={handleForceInlineCreateHandled}
         isNarrow={explorerWidth < 260}
       />
+
+      {selectedFeature && (
+        <div className="mt-1 flex justify-end">
+          <button
+            type="button"
+            onClick={handleResetContextClick}
+            disabled={isResetting || hasRunningJobForFeature}
+            title={
+              hasRunningJobForFeature
+                ? t('chat:context.resetBlockedByJob')
+                : t('chat:context.resetTooltip')
+            }
+            aria-label={t('chat:context.resetTooltip')}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          >
+            <RotateCcw
+              className={`h-3 w-3 ${isResetting ? 'animate-spin' : ''}`}
+              aria-hidden="true"
+            />
+            <span>{t('chat:context.resetLabel')}</span>
+          </button>
+        </div>
+      )}
 
       <CreationWizardModal
         isOpen={showWizard}

@@ -14,6 +14,17 @@
     "activity": "Activity",
     "timeline": "Timeline"
   },
+  "context": {
+    "resetLabel": "Reset context",
+    "resetTooltip": "Clear this feature's conversation context (feature.jsonl · trace.jsonl). Prior lines stay on disk but the UI and the next job start from an empty context.",
+    "resetConfirmTitle": "Reset this feature's context?",
+    "resetConfirm": "The current conversation context for this feature will be cleared. Prior lines remain on disk for audit, but the next job will start with an empty context. Continue?",
+    "resetConfirmAction": "Reset",
+    "resetSuccessTitle": "Context reset",
+    "resetSuccess": "Conversation context has been cleared. The next job will start with an empty context.",
+    "resetFailed": "Failed to reset context.",
+    "resetBlockedByJob": "Cannot reset context while a job is running on this feature. Stop the job first."
+  },
   "activity": {
     "loading": "Loading activity…",
     "loadError": "Failed to load activity feed.",
@@ -28,6 +39,11 @@
       "modification": "Modification",
       "refactor": "Refactor"
     }
+  },
+  "tier": {
+    "modeTooltip": "Mode",
+    "complexityTooltip": "Complexity",
+    "decidedByTooltip": "Decided by"
   },
   "sidebar": {
     "chatWith": "Chat with {{agent}}",

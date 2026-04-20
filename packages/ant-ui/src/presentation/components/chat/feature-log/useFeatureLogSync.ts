@@ -10,6 +10,7 @@ import { useStore } from '@/domain/store';
 export function useFeatureLogSync(projectId: string | null, featureName: string | null) {
   const loadFeatureTrace = useStore(s => s.loadFeatureTrace);
   const loadFeatureBreadcrumbs = useStore(s => s.loadFeatureBreadcrumbs);
+  const loadFeatureTurnMeta = useStore(s => s.loadFeatureTurnMeta);
   const clearFeatureLog = useStore(s => s.clearFeatureLog);
 
   useEffect(() => {
@@ -19,5 +20,6 @@ export function useFeatureLogSync(projectId: string | null, featureName: string 
     }
     void loadFeatureTrace(projectId, featureName);
     void loadFeatureBreadcrumbs(projectId, featureName);
-  }, [projectId, featureName, loadFeatureTrace, loadFeatureBreadcrumbs, clearFeatureLog]);
+    void loadFeatureTurnMeta(projectId, featureName);
+  }, [projectId, featureName, loadFeatureTrace, loadFeatureBreadcrumbs, loadFeatureTurnMeta, clearFeatureLog]);
 }
