@@ -267,11 +267,6 @@
       "basis-registry"
     ]
   },
-  "infra/compaction/job-summary": {
-    "sources": [
-      "render-call"
-    ]
-  },
   "infra/compaction/system": {
     "sources": [
       "render-call"
@@ -316,12 +311,6 @@
   "jobs/code/base/injections/git-diff": {
     "sources": [
       "auto-injection",
-      "manifest"
-    ]
-  },
-  "jobs/code/base/injections/job-history": {
-    "sources": [
-      "partial-ref",
       "manifest"
     ]
   },
@@ -789,12 +778,6 @@
     "sources": [
       "policy-map",
       "render-call",
-      "manifest"
-    ]
-  },
-  "jobs/design/base/injections/job-history": {
-    "sources": [
-      "partial-ref",
       "manifest"
     ]
   },

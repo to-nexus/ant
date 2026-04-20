@@ -12,7 +12,7 @@
   "completedTasks": [],
   "retries": 0,
   "maxRetries": 3,
-  "_verificationBudget": 0,
+  "_verificationAttempts": 999,
   "_verificationTracker": null,
   "recursionLimit": 100
 }
