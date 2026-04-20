@@ -36,73 +36,50 @@ Every time a "local-only" fallback is added, it creates a parallel code path tha
 
 ---
 
-## Prompt Template Architecture
+## Node Graph Layout — Task Type Blind Phases (R1)
 
-This project follows **WHAT/HOW separation principle** for prompt templates.
+**Phase nodes, routers, parallel orchestrators, and common tool handlers MUST be blind to `task.type`. Task-specific logic lives ONLY in `tasks/{taskType}/hooks/`.**
 
-### File Naming Convention
+This is the **R1 invariant** from [docs/architecture/NODE_GRAPH_LAYOUT.md](docs/architecture/NODE_GRAPH_LAYOUT.md). It applies to every agent graph under `packages/ant-cli/src/agents/{agent}/graph/{job}/`.
 
-| Prefix | Role | Content |
-|--------|------|---------|
-| `base-*.md` | **WHAT** | Context, data, current state, task definition |
-| `rules-*.md` | **HOW** | Rules, formats, constraints, methods |
+### ❌ ABSOLUTELY FORBIDDEN
 
-### ❌ DON'T
+- `if (task.type === 'verification')` / `task.type === 'error'` / any `task.type === '...'` branch inside `nodes/`, `routers/`, `parallel/`, `common/tool/handlers/`
+- `{ currentTask: { type: '...' } } as any` fake state casts to sneak task-type logic into state-less contexts
+- Domain state fields (`_verificationTracker`, `_fooAttempts`, `_barHistory`, etc.) accumulating on `state.ts` — they belong in `tasks/{type}/model/Session.ts`
+- Domain-named files in `utils/` (e.g., `verificationFoo.ts`, `taskClassification.ts`) — `utils/` is pure helpers only
+- Routers mutating state (`state.llmResponse = ...`) — routers are pure predicates
+- A `TaskResumeState` shared across jobs mixing code-only and design-only fields — split into `BaseTaskResumeState` + `{Job}TaskResumeState`
 
-```markdown
-<!-- Don't put these in base-*.md -->
-⚠️ You MUST...           ← Rules belong in rules-
-DO NOT re-generate...    ← Constraints belong in rules-
-NEVER duplicate...       ← Prohibitions belong in rules-
+### ✅ CORRECT
 
-<!-- Don't put these in rules-*.md -->
-{{{previousChaptersSummary}}}  ← Dynamic data belongs in base-
-{{#if taskDescription}}...     ← Context injection belongs in base-
+- `hooksIfActive(state)?.{hook}?.(...)` at phase-node / router call sites (state available)
+- `hooksForTaskType(ctx.currentTaskType)?.{hook}?.(...)` at tool-handler / orchestrator call sites (no state, just ctx)
+- Each task type has its own `tasks/{type}/index.ts` exporting `{ hooks: TaskHooks }` and is registered in `tasks/_shared/registry.ts`
+- Depth varies: verification has full `model/` + all hooks; test-code / doc may have only `scheduling.ts` + `conversations.ts`. **What is uniform is the absence of `task.type` branches in phases.**
+- Domain state lives as `state.{type}?: {Type}Session` (one field per task type) with Session/Snapshot APIs as the only mutation surface
+
+### Why This Matters
+
+Every `if (task.type === 'x')` in a phase node creates a hidden contract: "phase X knows about task X's internals." As task types multiply (verification, error, setup, ui, design-system, test-code, doc, feature, ...), these branches scatter across phases, routers, parallel, and tool handlers. Symptoms:
+
+1. Same task-type predicate duplicated in 6+ files — drift guaranteed
+2. Changing one task type's behavior requires edits in 8 phases instead of 1 hook folder
+3. verification-specific state fields pollute `state.ts`, leaking into design / planner jobs via shared types
+4. New task types must grep-and-copy existing `if` cascades — the pattern propagates
+
+**The only durable fix is polymorphic dispatch via hooks. Phase nodes treat all task types identically; divergence is opt-in per hook.**
+
+### Enforcement
+
+```bash
+rg "task\.type === '(verification|error|setup|ui|design-system|test-code|doc|feature)'" \
+  packages/ant-cli/src/agents/architect/graph/code \
+  --glob '!packages/ant-cli/src/agents/architect/graph/code/tasks/**'
+# Expected: 0 matches
 ```
 
-### ✅ CORRECT Separation
-
-**base-*.md (WHAT):**
-```markdown
-🎯 YOUR CURRENT TASK: {{taskId}}
-
-### 📋 Task Description
-{{{taskDescription}}}
-
-### 📋 Already Documented
-{{{previousChaptersSummary}}}
-```
-
-**rules-*.md (HOW):**
-```markdown
-## CHAPTER SCOPE CONSTRAINT
-
-### ⚠️ CRITICAL RULES
-1. ONLY generate content described in YOUR task description
-2. NEVER generate content that belongs to OTHER chapters
-3. NEVER duplicate content from previous chapters
-```
-
-### File Locations
-
-```
-packages/ant-cli/src/core/prompt/templates/
-├── code/
-│   └── phases/
-│       ├── decompose/
-│       │   ├── base.md      ← WHAT
-│       │   └── rules.md     ← HOW
-│       └── execute/
-│           ├── base.md      ← WHAT
-│           └── rules.md     ← HOW
-└── design/
-    └── phases/
-        └── execute/
-            ├── base-ui-design.md      ← WHAT
-            ├── rules-ui-design.md     ← HOW
-            ├── base-system-design.md  ← WHAT
-            └── rules-system-design.md ← HOW
-```
+For full 8-axis layout and rules R1~R5, see [docs/architecture/NODE_GRAPH_LAYOUT.md](docs/architecture/NODE_GRAPH_LAYOUT.md).
 
 ---
 
@@ -161,157 +138,108 @@ ui-spec.md (references ui-tokens.md + ui-assets.md)
 
 ---
 
-## Prompt Template Rules
+## Prompt Engineering
+
+Rules for authoring Handlebars prompt templates under `packages/ant-cli/src/core/prompt/templates/`. Three concerns, one section.
+
+### 1. WHAT / HOW separation (file naming)
+
+| Prefix | Role | Content |
+|--------|------|---------|
+| `base*.md` | **WHAT** | Context, data, current state, task definition, dynamic Handlebars interpolation |
+| `rules*.md` | **HOW** | Rules, formats, constraints, prohibitions — no dynamic data |
+
+**Do NOT** put rules/constraints (`⚠️ You MUST...`, `DO NOT ...`, `NEVER ...`) in `base*.md`.
+**Do NOT** put dynamic interpolation (`{{{fieldName}}}`, `{{#if ...}}`) in `rules*.md`.
+
+✅ Correct split:
+
+```markdown
+<!-- base.md (WHAT) -->
+🎯 YOUR CURRENT TASK: {{taskId}}
+
+### 📋 Task Description
+{{{taskDescription}}}
+```
+
+```markdown
+<!-- rules.md (HOW) -->
+## CHAPTER SCOPE CONSTRAINT
+1. ONLY generate content described in YOUR task description
+2. NEVER generate content that belongs to OTHER chapters
+```
+
+### 2. Directory layout
+
+```
+packages/ant-cli/src/core/prompt/templates/
+├── agents/{agent}/{base,rules}.md           # agent-level system prompt
+├── jobs/{job}/nodes/{node}/
+│   ├── {base,rules}.md                      # default (when no variants)
+│   └── variants/{variant}/{base,rules}.md   # variant-specific (e.g. verification, error, ui-design-by-figma)
+├── jobs/shared/nodes/{node}/variants/{variant}/{base,rules}.md  # cross-job (e.g. triage)
+├── basis/                                   # shared policy partials
+└── infra/                                   # infra-level partials (tool schemas, etc.)
+```
+
+Templates are auto-registered as Handlebars partials by `initPartials()` at server startup. Adding/renaming a `.md` file requires no code change.
+
+### 3. Language & platform neutrality
 
 **All prompt templates MUST be written in English only.**
 
-- ❌ NO Korean or other non-English text in prompt files
-- ❌ NO project-specific examples (Hero.tsx, page.tsx, etc.)
-- ✅ Use generic, platform/language-neutral examples
-- ✅ Focus on principles over specific implementations
+- ❌ NO Korean or other non-English text
+- ❌ NO project-specific examples (`Hero.tsx`, `page.tsx`, etc.)
+- ❌ NO platform-specific terms (`React`, `Tailwind`, `Next.js`)
+- ✅ Generic, platform/language-neutral wording (`component`, `container`, `element`)
 
-Ant supports frontend, backend, and fullstack across multiple languages. Prompts must be platform-agnostic.
+Ant supports frontend / backend / fullstack across multiple languages. Prompts must not assume a stack.
 
----
+### 4. FPOP — First-Principles Observation Prompting
 
-## FPOP: First-Principles Observation Prompting
-
-**THE MOST IMPORTANT PRINCIPLE for writing prompts in this project.**
-
-All prompts MUST follow FPOP (First-Principles Observation Prompting) methodology.
-
-### Core Definition
+**All prompts MUST follow FPOP.** The underlying rule:
 
 > "Specify observation targets and constraints as principles, not concrete examples or methods."
 
-### The 6 Principles
+#### The 6 principles
 
-| Principle | Meaning | ❌ Bad | ✅ Good |
-|-----------|---------|--------|---------|
-| **Principles over Examples** | Use universal rules, not specific cases | "Footer is column" | "Each container decides direction independently" |
-| **What over How** | State target, not method | "Top→flex-start" | "Observe cross-axis position" |
-| **Observable over Assumed** | Require observation, forbid inference | "Add overlay" | "If not observed, do NOT add" |
-| **Universal over Specific** | Platform/language-neutral | "React component" | "component" |
-| **Constraints over Instructions** | State what NOT to do | "Do this way" | "Do NOT assume" |
-| **Reminders for Blind Spots** | Remind only what's easily missed | Generic list | "⚠️ Cross-axis REQUIRED" |
+| Principle | ❌ Bad | ✅ Good |
+|---|---|---|
+| **Principles over Examples** | "Footer is column" | "Each container decides direction independently" |
+| **What over How** | "Top → flex-start" | "Observe cross-axis position" |
+| **Observable over Assumed** | "Add overlay" | "If not observed, do NOT add" |
+| **Universal over Specific** | "React component" | "component" |
+| **Constraints over Instructions** | "Do this way" | "Do NOT assume" |
+| **Reminders for Blind Spots** | generic list | "⚠️ Cross-axis REQUIRED" |
 
-### FPOP Checklist
+#### Mandatory authoring workflow
 
-When writing/reviewing prompts, use this checklist:
+Before writing or editing any prompt template, run this check silently:
 
-#### ❌ NEVER Include
+```
+❌ Any of these present? → remove / convert to principle
+  - Concrete project examples (Footer, Hero, Card)
+  - Method explanations (CSS properties LLM already knows)
+  - Edge case enumeration (If A→X, B→Y, C→Z)
+  - Platform-specific terms (React, Tailwind)
+  - Value mappings (Top=flex-start)
 
-- [ ] Concrete project examples (Footer, Hero, Card, etc.)
-- [ ] Method explanations (CSS properties, basic knowledge LLM already knows)
-- [ ] Edge case enumeration (If A then X, if B then Y, if C then Z)
-- [ ] Platform-specific terms (React, Tailwind, Next.js, etc.)
-- [ ] Value mappings (Top=flex-start, Center=center, etc.)
-
-#### ✅ ALWAYS Include
-
-- [ ] State the observation target ("Observe cross-axis alignment")
-- [ ] State the constraint ("If not observed, do NOT add")
-- [ ] State the principle ("Each level decides independently")
-- [ ] Remind blind spots ("Cross-axis REQUIRED - easily missed")
-- [ ] Use universal language ("container" not "div", "element" not "component")
-
-### FPOP Terminology
-
-Use these terms when discussing prompts:
-
-| Term | Meaning | Usage |
-|------|---------|-------|
-| **FPOP** | First-Principles Observation Prompting | "This prompt violates FPOP principles" |
-| **Principle** | Rule applicable to all cases | "Principle: Each level decides independently" |
-| **Constraint** | What NOT to do | "Constraint: Do NOT add if not observed" |
-| **Blind Spot** | What LLM easily misses | "Cross-axis is a blind spot, use ⚠️" |
-| **Observable** | What can be seen in screenshot | "Is gradient observable?" |
-| **Edge Case Leakage** | Specific cases infiltrating prompt | "Footer example is edge case leakage" |
-
-### Example Comparison
-
-#### ❌ Anti-FPOP (BAD)
-
-```markdown
-### Footer Layout Analysis
-
-Footer is usually a column structure:
-1. Top row: Copyright + Contact (row)
-2. Bottom row: Logo + Button (row)
-
-Example:
-┌─────────────────────┐
-│ [copyright] [contact]│  ← row
-│ [logo]      [button] │  ← row
-└─────────────────────┘
-
-Each row's alignItems:
-- Top → flex-start
-- Center → center
-- Bottom → flex-end
+✅ All of these present? → add if missing
+  - Observation target stated
+  - Constraint stated (what NOT to do)
+  - Principle stated (applies to all cases)
+  - Blind spots flagged with ⚠️ when easily missed
+  - Universal language used (container / element / component)
 ```
 
-**Problems:**
-- Specific case (Footer)
-- ASCII diagram (project-specific)
-- CSS mappings (LLM already knows)
+#### FPOP vocabulary (use these terms in review)
 
-#### ✅ FPOP (GOOD)
+| Term | Meaning |
+|---|---|
+| **Principle** | Rule applicable to all cases |
+| **Constraint** | What NOT to do |
+| **Blind Spot** | What LLM easily misses |
+| **Observable** | What can be seen in screenshot / input data |
+| **Edge Case Leakage** | Specific cases infiltrating a prompt |
 
-```markdown
-## Observation Protocol
-
-### Step 2: Child Arrangement
-
-For each container, observe:
-
-| Checkpoint | What to observe |
-|-----------|----------------|
-| **Cross Axis** (alignItems) | ⚠️ **REQUIRED**: Row→where vertically? Column→where horizontally? |
-
-**Constraint**: Do NOT assume center alignment. Observe actual position.
-```
-
-**Strengths:**
-- Principle only (applies to any container)
-- Observation target specified
-- Constraint specified
-- Platform-neutral
-
-### Command Phrases
-
-When requesting prompt work, use these commands:
-
-- "Write this using FPOP principles"
-- "Validate this prompt against FPOP checklist"
-- "Remove edge case leakage, keep principles only"
-- "Convert this to FPOP format"
-
-### ⚠️ MANDATORY Workflow: Before Writing/Editing Any Prompt
-
-**YOU (the AI assistant) MUST follow this workflow BEFORE writing or editing any prompt template:**
-
-1. **Read the current prompt** (if editing existing)
-2. **Run FPOP Checklist** silently in your reasoning:
-   
-   ```
-   ❌ NEVER violations found?
-   - [ ] Concrete project examples (Footer, Hero, Card)?
-   - [ ] Method explanations (CSS properties LLM knows)?
-   - [ ] Edge case enumeration (If A→X, B→Y)?
-   - [ ] Platform-specific terms (React, Tailwind)?
-   - [ ] Value mappings (Top=flex-start)?
-   
-   ✅ ALWAYS requirements met?
-   - [ ] Observation target stated?
-   - [ ] Constraint stated?
-   - [ ] Principle stated?
-   - [ ] Blind spots reminded?
-   - [ ] Universal language used?
-   ```
-
-3. **If ANY ❌ violation found**: Remove it, convert to principle
-4. **If ANY ✅ requirement missing**: Add it as principle
-5. **Then** proceed with the edit/write
-
-**This checklist validation is MANDATORY. Do not skip.**
+Example review shortcuts: *"Remove edge case leakage, keep principles only"*, *"Convert this to FPOP format"*, *"Validate against FPOP checklist"*.

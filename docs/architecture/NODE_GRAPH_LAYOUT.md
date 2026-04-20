@@ -1,0 +1,158 @@
+# Node Graph Layout — 에이전트 그래프 디렉토리 정규화 규칙
+
+> **적용 범위**: `packages/ant-cli/src/agents/{agent}/graph/{job}/` 하위 모든 LangGraph StateGraph.
+> **목적**: task type·phase·도메인 책임이 디렉토리 축에 일관되게 응집되도록 강제한다.
+> **관련 문서**: [14-code-job.md](./14-code-job.md), [17-verification-consolidation-handoff.md](./17-verification-consolidation-handoff.md), [`.cursorrules`](../../.cursorrules) `Node Graph Layout — Task Type Blind Phases (R1)` 섹션.
+
+---
+
+## 1. 왜 이 규칙인가
+
+- LangGraph 그래프가 커지면 `task.type === '...'` 분기, 도메인 state 필드, carry-over 로직, 훅/핸들러가 phase 노드·routers·parallel·tool handlers 전반에 산발한다.
+- "verification 한 번 정리"로 끝나지 않고, error / setup / ui / design-system / test-code / doc / feature 같은 모든 task type이 동일한 변형을 만든다.
+- 따라서 **어떤 냄새가 어느 디렉토리로 가야 하는지**를 규칙(R1~R5)으로 고정한다. 미래 그래프에도 동일하게 적용한다.
+
+---
+
+## 2. 8축 레이아웃
+
+모든 agent 그래프(`agents/{agent}/graph/{job}/`)는 아래 8축을 따른다.
+
+| # | 폴더/파일 | 책임 | 존재 조건 |
+|---|---|---|---|
+| ① | `graph.ts` · `state.ts` · `routing.ts` · `runner.ts` | 그래프 조립, state 타입, edge predicate, entry | 모든 그래프 필수 |
+| ② | `nodes/{name}/` | phase 노드 (graph.addNode 대상) 1개 = 1 디렉토리 | 모든 그래프 필수 |
+| ③ | `routers/` 또는 `routing.ts` | edge predicate. **순수 함수, state mutation 금지** | 모든 그래프 필수 |
+| ④ | `parallel/` | 오케스트레이션 (worker/queue) | 필요 시 |
+| ⑤ | `session/` | 체크포인트/리저움 | 필요 시 |
+| ⑥ | `config/` | 상수/환경 | 필요 시 |
+| ⑦ | `tasks/{taskType}/` | **task.type-specific cross-phase 모듈** (0..N) | task.type 분기가 생길 때 필수 |
+| ⑧ | `utils/` | **pure helper only** (도메인 로직 금지) | 필요 시 |
+
+### 2.1 `tasks/{taskType}/` 내부 표준 구조
+
+```
+tasks/{taskType}/
+├── index.ts        # { hooks: TaskHooks } export
+├── model/          # (선택) phase를 모르는 도메인 state·outcome·snapshot·errors
+│   ├── Session.ts
+│   ├── snapshot.ts
+│   ├── outcome.ts
+│   ├── errors.ts
+│   └── is.ts
+└── hooks/          # phase 어댑터. model만 import, 다른 hook 간 import 금지
+    ├── plan.ts
+    ├── tool.ts
+    ├── command.ts
+    ├── check.ts
+    ├── router.ts
+    ├── orchestrator.ts
+    ├── decompose.ts
+    ├── conversations.ts
+    └── scheduling.ts
+```
+
+- **깊은 구현** (verification): model + hook 전체.
+- **얕은 구현** (test-code, doc, feature): 필요한 hook만 (예: `scheduling.ts` + `conversations.ts`). model 없어도 됨.
+- **공통 진입**: `tasks/_shared/registry.ts` 가 `hooksIfActive(state)` (state 기반) / `hooksForTaskType(taskType)` (ctx-only) 두 엔트리 제공.
+
+---
+
+## 3. 규칙 R1 ~ R5
+
+### R1 (phase blind) — **불변식**
+
+phase 노드 (`nodes/`), routers, parallel, common/tool handlers 는 `task.type` 을 모른다. task-specific 로직은 반드시 `tasks/{taskType}/hooks/` 훅을 통해 주입한다.
+
+- 어떤 위치에서든 `if (task.type === '...')` / `task.type === '...'` 비교 표현식이 나오면 **R1 위반**이다.
+- 해당 조건은 `tasks/{taskType}/hooks/` 로 이주시킨다. **예외 없음.**
+- state 없는 컨텍스트(tool handlers 등)는 `hooksForTaskType(ctx.currentTaskType)` 로 호출한다.
+- **`{ currentTask: { type: '...' } } as any` 같은 fake state 캐스트 금지**. R1 우회이며 리뷰 reject 대상.
+- **routers 는 순수 predicate** — `state.llmResponse = ...` 같은 state mutation 금지. phase 노드가 반환한 `Partial<State>` 를 router 가 읽기만 한다. routers 의 mutation 은 task.type 로직을 잠재하기 쉬워 R1 우회 경로가 되므로 금지한다. (이전 초안 R7 의 흡수 결과)
+
+**검증 명령**:
+```bash
+rg "task\.type === '[a-z-]+'" \
+  packages/ant-cli/src/agents/architect/graph/code \
+  --glob '!packages/ant-cli/src/agents/architect/graph/code/tasks/**'
+# 기대: 0 matches
+```
+
+### R2 (model phase-blind)
+
+`tasks/{taskType}/model/` 은 phase를 모른다.
+
+- `nodes/`, `routers/`, `parallel/` 을 import 하지 않는다.
+- 의존 방향: `hooks/ → model/`, `nodes/ → hooks/`.
+- model은 순수 도메인 객체(Session, Snapshot, Outcome, Errors)로만 구성.
+
+### R3 (utils pure)
+
+`utils/` 에 도메인 로직 금지.
+
+- "Session" / "Tracker" / "Outcome" / "Classification" 같은 도메인 명사가 파일명에 오면 위치 오류.
+- 이주 대상: `tasks/{type}/` 또는 `tasks/_shared/`.
+- `utils/` 는 `codeMetrics.ts`, `responseCleaners.ts` 같은 재사용 순수 헬퍼만.
+
+### R4 (state SSOT)
+
+state에 새 필드 추가 충동이 생기면 먼저 "이것은 `tasks/{taskType}/model/` 안에 속하는가?"를 물어라.
+
+- state에는 **cross-task 공통 필드만** 남긴다.
+- task type별 state는 `state.{type}` 한 필드(Session 인스턴스)에 응집. 예: `state.verification?: VerificationSession`.
+- 새 필드 1개 추가 ⇒ 기존 필드 1개 이상 제거를 목표("Axis N+1 금지").
+
+### R5 (cross-job promotion)
+
+cross-job 공유 task 도메인이 생기면 `common/graph/tasks/{taskType}/` 으로 승격.
+
+- 역방향으로, 특정 job에만 쓰이는 resumeState 필드는 그 job 쪽 TaskResumeState 에만 둔다. (예: `CodeTaskResumeState.verification` 은 design job 으로 누수 금지.)
+
+---
+
+## 4. 냄새 → 이주 대상 (빠른 결정표)
+
+| 관측된 냄새 | 원인 규칙 | 이주 대상 |
+|---|---|---|
+| phase 노드에 `if (task.type === 'x')` | R1 | `tasks/x/hooks/{phase}.ts` |
+| router가 `state.llmResponse = ...` 같은 mutation | R1 | plan 노드가 `Partial<State>` 반환, router는 읽기만 |
+| `utils/verificationFoo.ts` 같은 도메인명 utils | R3 | `tasks/verification/model/foo.ts` 또는 `hooks/` |
+| state에 `_fooTracker`, `_fooAttempts` 등 type-local 필드 누적 | R4 | `state.foo?: FooSession` SSOT + `tasks/foo/model/` |
+| tool handler가 `{ currentTask: { type } } as any` fake cast | R1 | `hooksForTaskType(ctx.currentTaskType)` |
+| `TaskResumeState` 하나에 모든 job 필드가 섞임 | R5 | `BaseTaskResumeState` + `{Job}TaskResumeState` |
+| verification/error 공통 판정이 여러 phase에서 중복 | R1 + R3 | `tasks/_shared/classification.ts isDiagnosticTask` |
+
+---
+
+## 5. 신규 그래프 작성 체크리스트
+
+새 agent/job 그래프를 만들 때:
+
+- [ ] `graph.ts` / `state.ts` / `runner.ts` / `routing.ts` (또는 `routers/`) 4파일 생성 (축 ①)
+- [ ] phase 노드는 `nodes/{name}/` 디렉토리로 (축 ②). `nodes/{name}.ts` 단일 파일은 지양.
+- [ ] routers는 순수 predicate만 (축 ③). state mutation 금지.
+- [ ] task.type 분기 발생 시 반드시 `tasks/{type}/hooks/` 로 이주 (축 ⑦). R1 준수.
+- [ ] task type별 도메인 state는 `tasks/{type}/model/Session.ts` 에 응집. state.ts 에는 `state.{type}?: Session` 한 필드만 (R4).
+- [ ] 순수 헬퍼만 `utils/` 에 (R3). 도메인 명사 파일명 금지.
+- [ ] cross-job 재사용 여지가 보이면 `common/graph/tasks/{type}/` 승격 검토 (R5).
+- [ ] PR 제출 전 `§4 regression guard` 명령 전부 실행해 0 결과 확인.
+
+---
+
+## 6. 냄새 재발 방지 6원칙
+
+이 문서를 구현자가 모두 읽지 못하더라도 아래 6원칙만 지키면 동일 재설계 방향이 유지된다. R1~R5 의 운영 요약이며, 코드 리뷰 시 빠른 체크리스트로 쓴다.
+
+1. **"Axis N+1" 금지** (R4 운영형): state 에 새 필드 추가 충동이 생기면 기존 필드로 파생 가능한지부터 검사. 새 필드 1개 추가 ⇒ 기존 필드 1개 이상 제거를 목표로 한다.
+2. **Domain state 는 task model 에 있다** (R4): task 별 시도·gate·history·depHash·batch-split 등은 `state.ts` 에 직접 추가하지 않고 `tasks/{type}/model/` 의 Session/Snapshot 에 귀속. `state.ts` 에는 **cross-task 공통 필드만** 남긴다.
+3. **Carry-over 경계 all-or-nothing**: 재큐·재시도·split 등 모든 boundary 는 동일한 `snapshotFromState + resumeState` SSOT 를 경유해야 한다. 하나의 경계만 빠져도 regression 이 재발한다. 새 boundary 추가 시 기존 3 경계(`handleInterruption` / `reportFailure transient` / `plan.processDiagnosticBatchSplit`)를 레퍼런스로 동일 API 를 호출할 것.
+4. **Terminal 은 typed + single path**: terminal 종결은 `VerificationTerminalError` 같은 typed error + `classifyTerminalError` 한 경로로 통합. 새 kind 추가 시 `model/errors.ts` 와 대응 테스트 `all defined kinds` 케이스에 함께 추가한다. orchestrator 는 kind 증가에 대한 코드 수정 없이 자동 분기 처리.
+5. **Phase 노드·routers·parallel·tool handlers 는 모든 task.type 에 blind** (R1): `if (task.type === '...')` 분기를 이들 축에 넣지 않는다. 분기가 필요하면 `tasks/{taskType}/hooks/` 에 hook 을 추가한다. **verification 만의 예외 없음**.
+6. **`as any` fake state 캐스트 금지** (R1): state 가 없는 컨텍스트는 `hooksForTaskType(taskType)` 사용. `{ currentTask: { type: ... } } as any` 같은 shim 은 R1 우회이며 리뷰 reject 대상.
+
+---
+
+## 7. 참고
+
+- **구현 레퍼런스**: `packages/ant-cli/src/agents/architect/graph/code/tasks/` (verification 가장 깊음, error/setup/ui/design-system/test-code/doc/feature 얕은 구현).
+- **상세 계획/이력**: [docs/tmp/verification-task-redesign-handoff.md](../tmp/verification-task-redesign-handoff.md) — 작업 완료(T12) 후 `docs/archive/` 로 이동. 이 문서는 NODE_GRAPH_LAYOUT 의 도입 배경·의사결정 로그로만 남고, 규칙·원칙의 SSOT 는 본 NODE_GRAPH_LAYOUT 문서다.
