@@ -7,19 +7,133 @@ OUTPUT FORMAT:
 - Write analysis in natural sentences without excessive line breaks
 - Keep related information on the same line
 
-First, analyze step by step (think through):
-- Is this a new project or existing project?
-  - If "EXISTING CODEBASE DETECTED" was shown above, it is an existing project
-  - If existing project, do NOT create setup task (priority 100)
-- Does it need setup/configuration tasks?
-  - ONLY for NEW projects without any code
-  - If ANY files exist, setup is already done
-- What are the main features to implement?
-- What is the optimal task breakdown?
-- Does test-code apply? (setup task exists OR codebase has test files → MUST include test-code tasks)
-- Does doc apply? (setup task exists OR 3+ feature tasks → MUST include doc tasks)
+---
 
-Then output the results in order: `<techTier>`, `<tasks>`, `<references>`, `<prescribedDependencies>`.
+## Complexity Classification (decides task shape)
+
+**Observation target**: The breadth and structure of work implied by the directive and the provided context.
+
+| Classification | Principle |
+|---|---|
+| `oneshot`     | A single self-contained action fulfils the directive. Targets are identifiable from directive and provided context. |
+| `exploratory` | The directive requires observing the codebase before a final action can be chosen. Targets must be discovered first. |
+| `todo`        | The directive spans multiple independent units of work that benefit from separate persistence boundaries, verification, or parallelism. |
+
+**Constraint**: Classify using the directive and the provided context ONLY. Do NOT invent scope beyond what the directive states.
+
+**Constraint**: When classification is ambiguous, default to `todo`.
+
+### Output shape by mode × classification
+
+| Mode                    | Classification              | `<tasks>` content                                     | `<directHints>` content |
+|---|---|---|---|
+| `explain`               | `oneshot` or `exploratory`  | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
+| `explain`               | `todo`                      | Exactly one task, `type: "explain"`, `priority: 200`  | `{}` |
+| `generate` / `refactor` | `oneshot`                   | `[]`                                                  | `{ "targetFiles": [...] }` listing the files the single action touches |
+| `generate` / `refactor` | `exploratory`               | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` narrowing the observation surface |
+| `generate` / `refactor` | `todo`                      | Full task breakdown per the rules below               | `{}` |
+
+**Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply ONLY when `complexity === 'todo'` and mode is not `explain`. When `<tasks>` is `[]`, skip the reasoning steps those rules describe.
+
+**Constraint**: The `generate` / `refactor` + `todo` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes `[]` and `<specClarify>` is emitted instead of a task breakdown.
+
+**Constraint**: When `complexity === 'todo'` and mode is `explain`, emit exactly one task:
+- `id`: `"explain-1"`
+- `name`: human-readable summary of what to explain
+- `type`: `"explain"`
+- `priority`: `200`
+- `packages`: one tier tag covering the area of the codebase to explain (e.g., `fe-main`, `be-main`, or `shared`)
+- `exclusive`: `true`
+- `description`: the full explanation scope derived from the directive
+
+Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this case.
+
+⚠️ **Blind spot**: `oneshot` and `exploratory` skip task breakdown entirely. Populate ONLY `<complexity>`, `<complexityReason>`, `<directHints>`, `<techTier>`, and `<tasks>[]`. Do not add boilerplate tasks to "make decomposition look complete".
+
+### Mode shapes the meaning of each classification
+
+**Principle**: The unit of "action" differs by mode. Classification observes the same three questions, but the answers are mode-specific.
+
+- `explain` mode: the action is producing an explanation.
+  - `oneshot`     — answerable from the directive alone.
+  - `exploratory` — answer requires observing the codebase before writing.
+  - `todo`        — answer must be structured as multiple chapter-scale artefacts.
+- `refactor` mode: the action is a code change.
+  - `oneshot`     — change surface is known from the directive.
+  - `exploratory` — the target must be located before editing.
+  - `todo`        — change spans multiple independent persistence boundaries.
+- `generate` mode: the action is producing new code.
+  - `oneshot`     — single output unit (one file / one symbol).
+  - `exploratory` — structure to generate depends on codebase observation.
+  - `todo`        — multi-boundary or multi-concern implementation.
+
+**Constraint**: Do NOT infer complexity from task-count expectations. Observe the directive and context, then classify.
+
+---
+
+## Spec Clarify (source adequacy for `todo` decomposition)
+
+**Observation target**: When the classification is `todo` and mode is not `explain`, observe whether the Development Source (see Scope Determination) can anchor a confident task breakdown.
+
+**Principle**: Every checkpoint question below is phrased so that a `yes` answer moves toward emission. `<specClarify>` fires only when ALL four answers are `yes` together.
+
+| Checkpoint | Question (yes = points to emit) |
+|-----------|----------------|
+| **Mode** | Is the active mode `generate` or `refactor` (i.e., NOT `explain`)? |
+| **Complexity** | Is the classification `todo`? |
+| **Design absent** | Does the prompt show no `Design Document Availability` entries — either the section is missing entirely or it lists no documents? |
+| **Spec absent** | Does the prompt show no directive-relevant `Spec Documents Available` entries — either the section is missing entirely or the listed entries do not relate to the directive? |
+
+⚠️ **Blind spot**: Absence is the signal. When a section is omitted from this prompt, that omission IS the observation — do NOT treat an unseen section as "unknown" or "probably present elsewhere".
+
+**Principle**: When every checkpoint is `yes`, there is no source to decompose from. Producing a breakdown under that condition degrades to guessing and MUST be deferred.
+
+**Constraint**: Emit `<specClarify>` EXCLUSIVELY when ALL four checkpoints above are `yes` together.
+
+**Constraint**: When `<specClarify>` is emitted, emit `<tasks>[]` alongside it. Do NOT fabricate a task breakdown without a Development Source.
+
+**Constraint**: If ANY observation above is false, OMIT `<specClarify>` entirely. Do NOT emit `{}` or a placeholder. Proceed with normal decomposition.
+
+{{#if specClarifyBypassed}}
+**Constraint (session-carried decision)**: The user already chose to proceed without a spec. Do NOT emit `<specClarify>` on this turn. Decompose with whatever Development Source is available, even if partial.
+{{/if}}
+
+### `<specClarify>` output shape
+
+The tag content MUST be a single JSON object with these fields (no others):
+
+- `needsChoice`: literal `true`.
+- `reason`: one sentence naming what is missing for confident decomposition. Observation-grounded; do NOT speculate on user intent.
+- `displayMessage`: one sentence user-facing recommendation in the user's language.
+- `choiceOptions.positive`: `{ "label": <design suggestion label>, "action": "redirect_to_design" }`.
+- `choiceOptions.neutral`: `{ "label": <proceed label>, "action": "proceed_without_spec" }`.
+- `choiceOptions.negative`: `{ "label": <cancel label>, "action": "cancel" }`.
+
+**Constraint**: `action` values are fixed — use exactly `redirect_to_design`, `proceed_without_spec`, `cancel`. Do NOT translate, rename, or add actions.
+
+**Constraint**: `label` and `displayMessage` adopt the user's language. Do NOT append extra fields beyond the shape above.
+
+⚠️ **Blind spot**: The `<complexity>` tag remains `todo` when `<specClarify>` is emitted — the classification is observation, not a promise of breakdown. Only the `<tasks>` array is deferred.
+
+---
+
+First, analyze step by step (think through):
+- **Classify complexity first**: `oneshot`, `exploratory`, or `todo`? (see Complexity Classification above)
+- If `oneshot` or `exploratory`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`
+- If `todo` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all four checkpoints indicate no source, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown.
+- If `todo`:
+  - Is this a new project or existing project?
+    - If "EXISTING CODEBASE DETECTED" was shown above, it is an existing project
+    - If existing project, do NOT create setup task (priority 100)
+  - Does it need setup/configuration tasks?
+    - ONLY for NEW projects without any code
+    - If ANY files exist, setup is already done
+  - What are the main features to implement?
+  - What is the optimal task breakdown?
+  - Does test-code apply? (setup task exists OR codebase has test files → MUST include test-code tasks)
+  - Does doc apply? (setup task exists OR 3+ feature tasks → MUST include doc tasks)
+
+Then output the tags in the order defined in the Output Sequence section below.
 
 ---
 
@@ -32,7 +146,7 @@ Each task object MUST follow this schema:
   {
     "id": "kebab-case-id",
     "name": "Human-readable task name",
-    "type": "setup" | "feature" | "design-system" | "ui" | "test-code" | "doc" | "error",
+    "type": "setup" | "feature" | "design-system" | "ui" | "test-code" | "doc" | "error" | "explain",
     "priority": 100,
     "packages": ["<tier>-<name>"],
     "exclusive": true,
@@ -56,7 +170,7 @@ Each task object MUST follow this schema:
 |-------|----------|-------------|
 | `id` | Yes | Unique kebab-case identifier |
 | `name` | Yes | Human-readable task name |
-| `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, or `"verification"` |
+| `type` | Yes | `"setup"`, `"feature"`, `"design-system"`, `"ui"`, `"test-code"`, `"doc"`, `"error"`, `"verification"`, or `"explain"` |
 | `priority` | Yes | 100–189: setup, 200–299: feature or design-system (shared foundation / design-system token infra from ui-docs or visualTier policy), 300–599: feature, 600–649: feature (integration), 650–699: ui, 700: test-code, 800: doc, 900–980: error, 1000: verification |
 | `packages` | Yes | Which design documents to inject (see Package Tags below) |
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
@@ -596,12 +710,45 @@ Constraint: If uncertain, default to lightweight.
 
 Output in this exact order:
 
-{{#if needsBoundaryClassification}}
-**0. `<boundary>` tag** (see Boundary Classification above)
+**0. `<complexity>` tag** — one of `oneshot`, `exploratory`, `todo` (see Complexity Classification above):
 
-**1. `<techTier>` tag** (technology tier -- see Step 1 above):
+`<complexity>todo</complexity>`
+
+**0.1. `<complexityReason>` tag** — one sentence citing what in the directive and context drove the classification:
+
+`<complexityReason>Directive names a single function to rename; target is identifiable from existing file list.</complexityReason>`
+
+**0.2. `<directHints>` tag** — JSON object. `{}` when complexity is `todo`; otherwise populated per the Output shape table above:
+
+<directHints>
+{
+  "targetFiles": ["src/utils/date.ts"]
+}
+</directHints>
+
+**Constraint**: Emit `<complexity>`, `<complexityReason>`, `<directHints>` BEFORE `<techTier>`. The classification commitment anchors the rest of the output.
+
+**0.3. `<specClarify>` tag** (CONDITIONAL — see Spec Clarify above). Emit ONLY when all four Spec Clarify checkpoints fire. Omit the tag entirely otherwise:
+
+<specClarify>
+{
+  "needsChoice": true,
+  "reason": "<one-sentence observation>",
+  "displayMessage": "<one-sentence recommendation>",
+  "choiceOptions": {
+    "positive": { "label": "...", "action": "redirect_to_design" },
+    "neutral":  { "label": "...", "action": "proceed_without_spec" },
+    "negative": { "label": "...", "action": "cancel" }
+  }
+}
+</specClarify>
+
+{{#if needsBoundaryClassification}}
+**1. `<boundary>` tag** (see Boundary Classification above)
+
+**2. `<techTier>` tag** (technology tier -- see Step 1 above):
 {{else}}
-**0. `<techTier>` tag** (technology tier -- see Step 1 above):
+**1. `<techTier>` tag** (technology tier -- see Step 1 above):
 {{/if}}
 
 <techTier>
@@ -613,9 +760,9 @@ Output in this exact order:
 }
 </techTier>
 
-**{{#if needsBoundaryClassification}}2{{else}}1{{/if}}. `<tasks>` tag** (task array -- see Task Schema above)
+**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<tasks>` tag** (task array -- see Task Schema and Complexity Classification above. `[]` when complexity is `oneshot` or `exploratory`.)
 
-**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<references>` tag** (REQUIRED, even if empty):
+**{{#if needsBoundaryClassification}}4{{else}}3{{/if}}. `<references>` tag** (REQUIRED, even if empty):
 
 <references>
 []
@@ -625,7 +772,7 @@ Output in this exact order:
 
 **Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. Feature names become `feature/{name}` branches.
 
-**{{#if needsBoundaryClassification}}4{{else}}3{{/if}}. `<prescribedDependencies>` tag** (REQUIRED, even if empty):
+**{{#if needsBoundaryClassification}}5{{else}}4{{/if}}. `<prescribedDependencies>` tag** (REQUIRED, even if empty):
 
 <prescribedDependencies>
 ["github.com/org/repo/sub/pkg-a", "github.com/org/repo/sub/pkg-b"]
@@ -634,7 +781,7 @@ Output in this exact order:
 **Constraint**: ALWAYS output `<prescribedDependencies>` tag, even if the array is empty. See "Design-Prescribed Dependency Extraction" section above for extraction rules.
 
 {{#if resolvedAction.basis.visualTier}}
-**{{#if needsBoundaryClassification}}5{{else}}4{{/if}}. `<visualTier>` tag** (visual design policy detection):
+**{{#if needsBoundaryClassification}}6{{else}}5{{/if}}. `<visualTier>` tag** (visual design policy detection):
 
 {{> jobs/shared/injections/visual-tier-detection}}
 {{/if}}
