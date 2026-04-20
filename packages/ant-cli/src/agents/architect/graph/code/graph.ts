@@ -1,9 +1,8 @@
 import path from 'node:path';
 import { Annotation, StateGraph, END } from "@langchain/langgraph";
-import { getTechTier } from '@ant/shared';
+import type { TaskType } from '@ant/shared';
 import { DetectableFields } from '../../../common/graph/annotationHelpers';
-import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
-import { ArchitectGraphState, TASK_PRIORITIES, TaskTimingHelper, Violation, ViolationType } from "./state";
+import { ArchitectGraphState } from "./state";
 import { CodeTask } from "../../types/task";
 import { codeResolveStrategy } from "./nodes/resolve";
 import { createResolveNode } from "../../../common/graph/nodes/resolve";
@@ -17,414 +16,16 @@ import { execute } from "./nodes/execute/index";
 import { tool } from "./nodes/tool";
 import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
+import { checkTaskStatus } from "./nodes/checkTaskStatus";
 import { routeAfterExecute } from "./routers/executeRouter";
 import { routeAfterPlan } from "./routers/planRouter";
 import { routeAfterTool } from "./routers/toolRouter";
-import { evaluateVerificationCompletion } from "./utils/verificationCompleteness";
-import { saveCheckpoint } from "./nodes/checkpoint";
 import { revise } from "./nodes/revise";
 import { getTaskConcurrency } from "./parallel/types";
+import { hooksForTaskType } from "./tasks/_shared/registry";
 import * as routing from "./routing";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import type { InterruptionReason } from '../../../../core/types/session';
-
-/**
- * Node that handles task completion logic and state mutations.
- * This MUST be a node (not a router) because it mutates state.
- */
-async function checkTaskStatus(state: ArchitectGraphState): Promise<Partial<ArchitectGraphState>> {
-  // ✅ Increment recursion count (track every node execution)
-  state.recursionCount = (state.recursionCount || 0) + 1;
-
-  const { traceNodeEntry } = await import('../../../../utils/verificationTrace');
-  traceNodeEntry('checkTaskStatus', state.currentTask ?? undefined);
-
-  // ✅ Workflow instrumentation: Enter node
-  // ✅ CRITICAL: await to ensure workflow SSE is sent before continuing
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    const taskInfo = state.currentTask ? {
-      id: state.currentTask.id,
-      name: state.currentTask.name,
-      type: state.currentTask.type,
-      description: state.currentTask.description,
-      priority: state.currentTask.priority
-    } : undefined;
-    await state.deps.workflowUpdate.enterNode(
-      state._httpJobId, 
-      'checkTaskStatus', 
-      0,
-      taskInfo, 
-      undefined, // llmInfo
-      state.recursionCount,
-      state.recursionLimit
-    );
-  }
-  
-  // ✅ Build violations from CURRENT state only.
-  // CRITICAL: Do NOT inherit state.violations — they contain stale violations from
-  // the previous enforce→plan cycle. checkTaskStatus must evaluate independently.
-  // Fresh violations come from: fileErrors conversion, budget guard, tracker checks.
-  const violations: Violation[] = [];
-  if (state.fileErrors && state.fileErrors.length > 0) {
-    console.log(`⚠️  [checkTaskStatus] Converting ${state.fileErrors.length} file error(s) to violations`);
-    for (const errorMsg of state.fileErrors) {
-      // ✅ Extract file path from error message if available
-      const fileMatch = errorMsg.match(/File "([^"]+)"|file "([^"]+)"/);
-      const filePath = fileMatch ? (fileMatch[1] || fileMatch[2]) : undefined;
-      
-      // ✅ Determine violation type based on error message
-      let violationType: ViolationType;
-      let suggestedFix: string | undefined;
-      
-      if (errorMsg.includes('Cannot edit non-existing file') || errorMsg.includes('non-existing file')) {
-        // File doesn't exist but LLM tried to edit it
-        violationType = 'missing_file';
-        suggestedFix = filePath ? `File does not exist. Use <file path="${filePath}"> to create it first, or verify the file path is correct.` : undefined;
-      } else if (errorMsg.includes('Search block not found')) {
-        // File exists but search block doesn't match (outdated content)
-        violationType = 'file_operation_failed';
-        suggestedFix = filePath 
-          ? `The file content has changed since you last saw it.\n` +
-            `Call read_file("${filePath}") to get current content, then retry edit_file with the exact match.`
-          : undefined;
-      } else {
-        // Other file operation errors
-        violationType = 'file_operation_failed';
-        suggestedFix = undefined;
-      }
-      
-      violations.push({
-        type: violationType,
-        message: errorMsg,
-        severity: 'critical',
-        file: filePath,
-        isRetryable: true,  // ✅ All file errors are retryable
-        suggestedFix
-      });
-    }
-  }
-  
-  // ✅ Budget exhaustion guard: <done> tag is the ONLY completion signal.
-  // If checkTaskStatus is reached without LLM explicitly signaling done,
-  // the task hit its call budget — this is a failure, not a success.
-  // Applies to ALL task types including verification and error.
-  const llmExplicitlyDone = state.llmResponse?.done === true;
-  if (violations.length === 0 && state.currentTask && !llmExplicitlyDone) {
-    const taskType = state.currentTask.type;
-    console.warn(`⚠️  [checkTaskStatus] Task "${state.currentTask.name}" (type=${taskType}) reached checkTaskStatus without <done> tag — budget exhausted`);
-    violations.push({
-      type: 'budget_exhausted' as ViolationType,
-      severity: 'critical',
-      message: `Task reached checkTaskStatus without LLM signaling completion via <done> tag. The LLM could not complete within the call budget.`,
-      isRetryable: true,
-      suggestedFix: taskType === 'verification'
-        ? 'Verification task did not complete — build may have failed. Will retry with remaining budget.'
-        : 'Break down the task scope or provide clearer implementation direction.',
-    });
-  }
-
-  // Diagnostic objective guard: every required step must have passed for verification tasks.
-  // Single-source-of-truth completion check via evaluateVerificationCompletion (utils/verificationCompleteness.ts).
-  // Error tasks are code-fix only — build verification deferred to the re-enqueued verification task.
-  // NOTE: the `llmExplicitlyDone` 1층 가드 above remains authoritative for the `<done>` contract;
-  // the SSOT only decides whether the tracker's objectives were actually met.
-  const isDiagnosticTask = state.currentTask?.type === 'verification';
-  if (violations.length === 0 && llmExplicitlyDone && isDiagnosticTask) {
-    const violation = evaluateVerificationCompletion({
-      tracker: state._verificationTracker,
-      commandHistory: state.commandHistory,
-      logPrefix: 'checkTaskStatus',
-    });
-    if (violation) violations.push(violation);
-  }
-
-  // test-code guard: ensure at least one test file was actually written.
-  if (violations.length === 0 && llmExplicitlyDone && state.currentTask?.type === 'test-code') {
-    const { detectTestFilesFromDisk } = await import('./nodes/plan/testFileDetector');
-    const testFilesExist = detectTestFilesFromDisk(state.context?.featurePath);
-    if (!testFilesExist) {
-      violations.push({
-        type: 'incomplete_implementation' as ViolationType,
-        severity: 'critical',
-        message: 'test-code task completed but no test files (*.test.ts / *.spec.ts / *.test.js / *.spec.js) were found in the workspace.',
-        isRetryable: true,
-        suggestedFix: 'Create the required test files before marking this task as done.',
-      });
-    }
-  }
-
-  const hasViolations = (violations && violations.length > 0);
-
-  // Verification scenario harness — no-op in production. Surface raised
-  // violations into the trace so `ScenarioExpectedOutcome.violations` can
-  // assert against types that get cleared from state before it's persisted.
-  if (hasViolations) {
-    const { appendTrace } = await import('../../../../utils/verificationTrace');
-    appendTrace({
-      node: 'checkTaskStatus',
-      taskId: state.currentTask?.id,
-      taskType: state.currentTask?.type,
-      extra: {
-        violations: violations.map(v => ({ type: v.type, severity: v.severity })),
-      },
-    });
-  }
-
-  // ✅ CRITICAL: Check if user has requested a stop before marking task as completed.
-  // Without this, a cancelled job can still mark the current task as "completed"
-  // if checkTaskStatus runs after the cancellation signal but before process termination.
-  const isStopRequested = typeof state._isStopRequested === 'function'
-    ? state._isStopRequested()
-    : false;
-
-  if (isStopRequested) {
-    console.log(`🛑 [checkTaskStatus] User stop requested — NOT marking task as completed`);
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
-    }
-    return {
-      violations: [],
-      recursionCount: state.recursionCount,
-      recursionLimit: state.recursionLimit,
-    };
-  }
-
-  // Batch split: original task was re-enqueued — skip completion marking entirely
-  if (state._batchSplitRequeued === true) {
-    const requeuedTasks = state.taskQueue?.getAll().filter(t => (t as any)._batchSplitCount);
-    if (requeuedTasks?.length) {
-      for (const t of requeuedTasks) {
-        const ct = t as any;
-        console.log(`🔄 [BatchSplit] Re-enqueued task "${t.name}" (cycle ${ct._batchSplitCount || 1})`);
-      }
-    }
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
-    }
-    return {
-      currentTask: undefined,
-      retries: 0,
-      violations: [],
-      _batchSplitRequeued: false,
-      _executeCallIndex: 0,
-      _finalTaskLoopCount: 0,
-      planText: '',
-      projectCodeContext: undefined,
-      // Task boundary clears per-task verification state so the next
-      // verification task pops with a fresh attempt counter. A resumed
-      // task bypasses this path (TaskWorker restores via resumeState).
-      _verificationAttempts: undefined,
-      _appliedPlanHistory: undefined,
-      recursionCount: state.recursionCount,
-      recursionLimit: state.recursionLimit,
-    };
-  }
-
-  if (!hasViolations && state.currentTask) {
-    // Task succeeded — use _currentTaskTokenUsage as single source of truth.
-    // _currentTaskTokenUsage already accumulated ALL plan + execute calls via
-    // accumulateTokenUsage({ taskLevel: true, jobLevel: true }) in each node.
-    // No additional merge or job-level re-accumulation needed here.
-    const { getTaskTokenUsage } = await import('../../../common/graph/llmHelpers');
-    const { getExecutionLogger } = await import('../../../../core/utils/executionLogger');
-    const taskTokenUsage = getTaskTokenUsage(state);
-    
-    const { TaskTimingHelper } = await import('./state');
-    const completedTask = TaskTimingHelper.completeTask(state.currentTask, taskTokenUsage);
-    
-    if (completedTask.timing?.elapsedTime) {
-      const formattedTime = TaskTimingHelper.formatElapsedTime(completedTask.timing.elapsedTime);
-      console.log(`✅ Task "${completedTask.name}" completed in ${formattedTime}!`);
-      if (completedTask.tokenUsage) {
-        console.log(`   Tokens: ${completedTask.tokenUsage.totalTokens} total (${completedTask.tokenUsage.inputTokens} in, ${completedTask.tokenUsage.outputTokens} out)`);
-      }
-    } else {
-      console.log(`✅ Task "${completedTask.name}" completed!`);
-    }
-
-    // ✅ Log task_complete event to debug/logs/
-    if (state.context?.featurePath && state._httpJobId) {
-      const execLogger = getExecutionLogger({
-        featurePath: state.context.featurePath,
-        jobId: state._httpJobId,
-        jobType: 'code',
-      });
-      execLogger.logTaskComplete(completedTask.id, {
-        taskName: completedTask.name,
-        elapsedMs: completedTask.timing?.elapsedTime || 0,
-        inputTokens: completedTask.tokenUsage?.inputTokens || 0,
-        outputTokens: completedTask.tokenUsage?.outputTokens || 0,
-        cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
-        cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
-        llmCallCount: state._executeCallIndex || 0,
-      }).catch(() => {});
-    }
-    
-    // Apply centralized conversation retention policy (code job always discards)
-    const { applyRetention } = await import('../../../../core/utils/conversationRetention');
-    const retainedExecute = applyRetention({
-      jobType: 'code',
-      currentTask: { id: state.currentTask.id },
-      nextTask: state.taskQueue?.peek() ? { id: state.taskQueue.peek()!.id } : undefined,
-      nodeHistory: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
-    });
-    state._executeCallIndex = 0;
-    state._finalTaskLoopCount = 0;
-    
-    // ✅ CRITICAL: Clear violations for next task
-    // Previous task's violations should not carry over to new task
-    state.violations = [];
-    state.lastViolations = [];  // ✅ Also clear lastViolations
-    state.violationMessage = undefined;
-    console.log(`🧹 [checkTaskStatus] Cleared violations for next task`);
-    
-    // Update completedTasks (IDs only)
-    const completedTasks = state.completedTasks || [];
-    completedTasks.push(completedTask.id);
-    
-    // ✅ NEW: Store full task details in completedTasksDetails
-    const completedTasksDetails = state.completedTasksDetails || [];
-    completedTasksDetails.push(completedTask);
-    
-    console.log(`[checkTaskStatus] 💾 Saving completed task to completedTasksDetails:`, {
-      taskId: completedTask.id,
-      taskName: completedTask.name,
-      hasTiming: !!completedTask.timing,
-      hasDescription: !!completedTask.description,
-      totalCompletedTasksDetails: completedTasksDetails.length,
-      completedTasksDetailsIds: completedTasksDetails.map(t => t.id)
-    });
-    
-    // If feature task, mark in featureTasks map
-    if (completedTask.type === 'feature' && state.featureTasks) {
-      const feature = state.featureTasks.get(completedTask.id);
-      if (feature) {
-        feature.completed = true;
-      }
-    }
-    
-    // If error task completed, guarantee Final Verification exists as safety net.
-    // Decompose may omit verification for error-only jobs; this ensures a final
-    // build/test check after all error fixes are applied.
-    if (state.currentTask.type === 'error' && state.taskQueue) {
-      const hasFinalTask = state.taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
-      
-      if (!hasFinalTask) {
-        const finalTask: CodeTask = {
-          id: `final-verification-recheck-${Date.now()}`,
-          name: 'Final Verification (Recheck)',
-          type: 'verification' as const,
-          priority: TASK_PRIORITIES.FINAL_VERIFICATION,
-          description: 'Re-verify all errors are resolved after error fixes',
-          techTiers: [state.resolvedAction?.basis?.techTier?.frontend, state.resolvedAction?.basis?.techTier?.backend].filter((t): t is import('@ant/shared').TechTier => !!t),
-        };
-        state.taskQueue.push(finalTask);
-        console.log(`📋 Added Final Verification to confirm all errors resolved\n`);
-        const { appendTrace } = await import('../../../../utils/verificationTrace');
-        appendTrace({
-          node: 'checkTaskStatus',
-          taskId: state.currentTask?.id,
-          taskType: state.currentTask?.type,
-          extra: { flagSet: ['finalVerificationAutoAdded'] },
-        });
-      }
-    }
-    
-    // ✅ CRITICAL: Update state with completedTasksDetails
-    const updatedState = {
-      ...state,
-      completedTasks,
-      completedTasksDetails, // ✅ NEW: Add full task details to state
-      currentTask: undefined,
-      retries: 0,
-      violations: [],
-    };
-    
-    // ✅ CRITICAL: Save checkpoint with updated completedTasksDetails
-    const { saveCheckpoint } = await import('./nodes/checkpoint');
-    await saveCheckpoint(updatedState);
-    console.log(`[checkTaskStatus] ✅ Checkpoint saved with completedTasksDetails (${completedTasksDetails.length} tasks)`);
-    
-    // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskStatus SSE sent
-    // This ensures frontend sees checkTaskStatus animation before Kanban switches
-    if (state.deps?.kanbanUpdate && state._httpJobId && updatedState.taskQueue) {
-      const allTasks = updatedState.taskQueue.getAll();
-      const nextTask = updatedState.taskQueue.peek(); // ✅ Use peek() for correct next task
-      
-      // ✅ CRITICAL: Remove nextTask from queue display (it's now in progress)
-      const remainingQueue = nextTask ? allTasks.filter((t: CodeTask) => t.id !== nextTask.id) : allTasks;
-      
-      console.log(`\n🔥 [checkTaskStatus] Updating Kanban → next task`);
-      console.log(`   Completed: ${completedTask.name}`);
-      console.log(`   Next: ${nextTask?.name || 'none (learn)'}`);
-      console.log(`   Remaining in queue: ${remainingQueue.length}`);
-      console.log(`   Total completed: ${completedTasksDetails.length}\n`);
-      
-      state.deps.kanbanUpdate.updateTaskQueue(
-        state._httpJobId,
-        nextTask || null,  // ✅ Show next task as in-progress
-        remainingQueue,    // ✅ Exclude nextTask from queue
-        completedTasksDetails,
-        state.recursionCount,
-        state.recursionLimit,
-        state.tokenUsage  // ✅ FIX: Pass job-level token usage to prevent badge reset
-      );
-    }
-    
-    // ✅ Workflow instrumentation: Exit node (task completed path)
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
-    }
-    
-    return {
-      completedTasks,
-      completedTasksDetails,
-      currentTask: undefined,
-      retries: 0,
-      violations: [],
-      conversations: { [CONV_KEYS.NODE_EXECUTE]: retainedExecute },
-      _executeCallIndex: 0,
-      _finalTaskLoopCount: 0,
-      planText: '',  // ✅ Clear for next task - prevents stale planText leaking via reducer
-      projectCodeContext: undefined,  // ✅ Clear for next task - Plan will load new context
-      // Task boundary clears. Next verification task pops with a clean slate;
-      // a resumed task bypasses this path (TaskWorker restores via resumeState).
-      _verificationAttempts: undefined,
-      _appliedPlanHistory: undefined,
-      recursionCount: state.recursionCount,  // ✅ Propagate recursion count
-      recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
-    };
-  }
-  
-  // ✅ Log violation event to debug/logs/
-  if (state.context?.featurePath && state._httpJobId && state.currentTask) {
-    const { getExecutionLogger: getExecLogger } = await import('../../../../core/utils/executionLogger');
-    const execLogger = getExecLogger({
-      featurePath: state.context.featurePath,
-      jobId: state._httpJobId,
-      jobType: 'code',
-    });
-    execLogger.logTaskError(state.currentTask.id, {
-      taskName: state.currentTask.name,
-      violationType: violations[0]?.type || 'unknown',
-      violationCount: violations.length,
-      retryCount: state.retries || 0,
-      message: violations.map((v: any) => v.message).join('; ').substring(0, 500),
-    }).catch(() => {});
-  }
-
-  // ✅ Workflow instrumentation: Exit node (task failed/has violations path)
-  if (state.deps?.workflowUpdate && state._httpJobId) {
-    await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
-  }
-  
-  // Task failed or has violations - propagate violations and recursion tracking
-  return {
-    violations,  // ✅ CRITICAL: Must return violations for router to see them!
-    recursionCount: state.recursionCount,  // ✅ Propagate recursion count
-    recursionLimit: state.recursionLimit,  // ✅ Propagate recursion limit
-  };
-}
 
 /**
  * Parallel Orchestrator node for code job.
@@ -473,7 +74,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     artifacts: state.artifacts,
     resolvedArtifacts: state.resolvedArtifacts,
     resolvedAction: state.resolvedAction,
-    techTier: getTechTier(state),
     selectedDesignFiles: state.selectedDesignFiles,
     decomposeFilePaths: state.decomposeFilePaths,
     directive: state.directive,
@@ -509,24 +109,20 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     {
       onTaskComplete: (task, workerId) => {
         console.log(`[ParallelOrchestrator] Worker ${workerId} completed: ${task.name}`);
-        if (task.type === 'error') {
-          const remaining = taskQueue.getAll().filter((t: CodeTask) => t.type === 'error').length;
-          console.log(`📋 [ParallelOrchestrator] Error task done. ${remaining} error task(s) remain — will run independently`);
-          const hasFinalInQueue = taskQueue.getAll().some((t: CodeTask) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
-          const hasFinalRunning = orchestrator.getRunningTasks().some((t: any) => t.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
-          const hasFinalCompleted = orchestrator.getCompletedTasks().some((t: any) => t.type === 'verification');
-          if (!hasFinalInQueue && !hasFinalRunning && !hasFinalCompleted) {
-            const finalTask: CodeTask = {
-              id: `final-verification-recheck-${Date.now()}`,
-              name: 'Final Verification (Recheck)',
-              type: 'verification' as const,
-              priority: TASK_PRIORITIES.FINAL_VERIFICATION,
-              description: 'Re-verify all errors are resolved after error fixes',
-              techTiers: [state.resolvedAction?.basis?.techTier?.frontend, state.resolvedAction?.basis?.techTier?.backend].filter((t): t is import('@ant/shared').TechTier => !!t),
-            };
-            taskQueue.push(finalTask);
-            console.log(`📋 [ParallelOrchestrator] Added Final Verification to confirm all errors resolved`);
-          }
+        // Task-type-specific post-completion side effects live in
+        // `tasks/{type}/hooks/orchestrator.ts onTaskComplete`. For error
+        // tasks the hook auto-enqueues a Final Verification (Recheck)
+        // when none is already in flight. R1 — no task.type branches.
+        const hook = hooksForTaskType(task.type as TaskType)?.orchestrator?.onTaskComplete;
+        if (hook) {
+          hook({
+            task,
+            taskQueue,
+            queueSnapshot: taskQueue.getAll() as readonly CodeTask[],
+            runningSnapshot: orchestrator.getRunningTasks() as readonly CodeTask[],
+            completedSnapshot: orchestrator.getCompletedTasks() as readonly CodeTask[],
+            resolvedAction: state.resolvedAction,
+          });
         }
       },
       onTaskFailure: (task, error, workerId) => {
@@ -642,7 +238,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   // onCheckpoint does a full replace of session.state, so any field
                   // not listed here is lost on session reload / resume.
                   designDocUnknownPackages: state.designDocUnknownPackages,
-                  techTier: getTechTier(state),
                   profile: state.profile,
                   resolvedAction: state.resolvedAction,
                   referenceRequests: state.referenceRequests,
@@ -983,7 +578,6 @@ export const CodeGraphChannels = {
       workspaceConfig: Annotation<any>,
       gitPort: Annotation<any>,
       artifacts: Annotation<any>,
-      techTier: Annotation<any>,
       selectedDesignFiles: Annotation<any>,
       decomposeFilePaths: Annotation<any>,
       code: Annotation<any>,
@@ -1063,6 +657,7 @@ export const CodeGraphChannels = {
       boundary: Annotation<any>,
       awaitingDecomposeClarify: Annotation<any>,
       complexity: Annotation<any>,
+      complexityDecidedBy: Annotation<any>,
       directHints: Annotation<any>,
       directMode: Annotation<any>,
       featureContext: Annotation<any>,

@@ -73,8 +73,7 @@ export interface CheckpointData {
   estimatingTokenUsage?: any;
   overrideDirective?: string;
   chatSource?: any;
-  userLanguage?: 'en' | 'ko' | 'ja' | 'zh';
-  techTier?: import('@ant/shared').TechTier;
+  userLanguage?: 'en' | 'ko';
 }
 
 /**
@@ -104,7 +103,6 @@ export async function saveCheckpoint(
           overrideDirective: data.overrideDirective,
           chatSource: data.chatSource,
           userLanguage: data.userLanguage,
-          techTier: data.techTier,
           resolvedAction: state.resolvedAction,
         }
       }

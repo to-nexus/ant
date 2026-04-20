@@ -1,5 +1,4 @@
 import { CodebaseProfile } from "../../../../core/types";
-import type { ParsedUiDocs } from "../../../../core/types/uiDoc";
 import type { Conversations } from '../../../common/graph/conversations';
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
@@ -8,9 +7,13 @@ import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/promp
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { ResolvedActionContext, ResolvedArtifact, TechTier, Boundary, Complexity, SpecClarify, FeatureUserTurnLine, FeatureUserTurnMetaLine, FeatureBreadcrumbLine } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, Boundary, Complexity, DecidedBy, SpecClarify } from '@ant/shared';
+import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 import type { VerificationSession } from "./tasks/verification/model/Session";
-import type { PlanEntry } from "./tasks/verification/model/Session";
+// `PlanEntry` is phase-blind (consumed by router/plan/enforce regardless of
+// task type). Source it from the `_shared/` layer so `state.ts` does not
+// inherit a structural dependency on the verification-specific model.
+import type { PlanEntry } from "./tasks/_shared/types";
 
 export interface IntegrationRequirement {
   name: string;
@@ -176,19 +179,13 @@ export interface ArchitectGraphState extends TriageableState {
   workspaceConfig?: any;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Legacy artifact fields (previously inherited, now declared directly)
+  // Code snapshot + profile (propagated to worker sharedContext in graph.ts).
   // Note: `directive` is inherited from ResolvableState via TriageableState.
+  // Document inputs (prd / sources / design / ui) flow through `artifacts` below.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  prd?: string;
-  sourceDocuments?: Record<string, string>;
-  design?: string;
-  designDocPath?: string;
   code?: string;
   codeHead?: string;
-  parsedUiDocs?: ParsedUiDocs;
   profile?: CodebaseProfile;
-  hasUiDoc?: boolean;
-  isSpecDriven?: boolean;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Unified artifact pool (resolve output, consumed by all downstream nodes)
@@ -196,6 +193,8 @@ export interface ArchitectGraphState extends TriageableState {
   artifacts?: ResolvedArtifact[];
 
   // RAC (detect output → decompose enriches basis.techTier: TechTierConfig)
+  // Effective TechTier is derived on demand via getTechTier(state) from
+  // resolvedAction.basis.techTier. Do not mirror as a top-level field.
   resolvedAction?: ResolvedActionContext;
   resolvedArtifacts?: ResolvedArtifact[];
 
@@ -332,13 +331,16 @@ export interface ArchitectGraphState extends TriageableState {
    *  Used by routers (planRouter, toolRouter) and tool node for conversation/tracking branching. */
   _activePhase?: 'plan' | 'execute';
   /**
-   * Why did we enter the plan node? Set by the caller (executeRouter, enforce, etc.),
-   * consumed immediately on plan entry. Undefined = new task from queue.
+   * Why did we enter the plan node? Set by the caller (executeRouter, enforce,
+   * etc.), consumed immediately on plan entry. Undefined = new task from queue.
    *
-   * Renamed from `_planEntryReason` in T4a (task domain consolidation). Union is
-   * now `PlanEntry` — callers may still write `'retry' | 'reverify'` today; the
-   * wider union (`'fresh' | 'resumed' | 'toolLoop' | …`) is reserved for the
-   * verification hook layer (T5).
+   * Renamed from `_planEntryReason` in T4a (task domain consolidation). The
+   * union (`PlanEntry`) is sourced from `tasks/_shared/types.ts` — phase-blind
+   * by design so non-verification task types can adopt the wider vocabulary
+   * (`fresh | resumed | toolLoop`) without coupling state.ts to the
+   * verification model. Callers may still write `'retry' | 'reverify'` today;
+   * `'fresh' / 'resumed' / 'toolLoop'` are reserved for hook-layer producers
+   * landing alongside T5/T6.
    */
   _nextPlanEntry?: PlanEntry;
   /** Tracks whether execute phase modified any files (for executeRouter re-verify decision) */
@@ -464,7 +466,7 @@ export interface ArchitectGraphState extends TriageableState {
    *   gate.
    * - Readers: `isVerificationComplete`/`evaluateVerificationCompletion`
    *   (SSOT in utils/verificationCompleteness.ts),
-   *   `formatCachedPassedSteps` (plan/planGeneration.ts), and codeCommandPolicy.
+   *   `formatCachedPassedSteps` (tasks/verification/hooks/plan.ts), and codeCommandPolicy.
    * - Reset rule: `*Attempted` cleared on retry/reverify entry; `*Passed` and
    *   `*Required` preserved unless explicitly invalidated.
    *   `testsRequired`/`typecheckRequired` are set once at initialisation.
@@ -491,7 +493,7 @@ export interface ArchitectGraphState extends TriageableState {
    * cycles has this verification task had?", derived-from-which are:
    *   - remaining budget:         `remainingBudget(state)`
    *   - deep-diagnostic mode:     `inDeepDiagnosticMode(state)`
-   *   - termination decision:     `shouldStopVerification(state)`
+   *   - termination decision:     `VerificationSession.evaluate()` (T8+)
    * Helpers live in `utils/verificationAttempts.ts`.
    *
    * Replaces three formerly-independent fields:
@@ -625,6 +627,18 @@ export interface ArchitectGraphState extends TriageableState {
   complexity?: Complexity;
 
   /**
+   * Provenance of `complexity` — mirrors `ParsedDecomposeResponse.complexityDecidedBy`.
+   * Plumbed through state so downstream observability writers (learn → §19
+   * `featureBiases`) can distinguish LLM judgements from heuristic fallbacks
+   * without joining feature.jsonl `user_turn_meta`.
+   *
+   * - Writer: decompose node (mirrors parser output).
+   * - Readers: learn node (`recordClassificationBias`).
+   * - Reset rule: follows `complexity` — never reset within a job; re-decompose overwrites.
+   */
+  complexityDecidedBy?: DecidedBy;
+
+  /**
    * Hints produced alongside `complexity` for the `direct` node.
    * `targetFiles` applies to oneshot (generate/refactor mode) when concrete
    * targets are identifiable from directive+context.
@@ -642,20 +656,16 @@ export interface ArchitectGraphState extends TriageableState {
 
   /**
    * T2+T3 context loaded from feature.jsonl by resolve (session redesign).
-   * Populated by `resolve_integrate`; consumers are plan/direct prompt
-   * builders. Meta fields are surfaced as optional patches rather than a
-   * full intersection to keep the `type` discriminant usable.
+   * Populated by `resolve_integrate` (§11) and optionally compacted by §13
+   * `compactFeatureContext`. Consumers: plan/direct prompt builders.
+   *
+   * Shape SSOT lives in `core/context/featureContextBuilder.ts`
+   * (`FeatureContext` — includes `summary?` / `wasCompacted?` populated by
+   * Compact). Do not redeclare inline here; drift between the builder and
+   * this state channel silently breaks the `{{#if featureContext.summary}}`
+   * handlebars block in plan/direct base templates.
    */
-  featureContext?: {
-    breadcrumbs: FeatureBreadcrumbLine[];
-    userTurns: Array<
-      FeatureUserTurnLine & {
-        complexity?: FeatureUserTurnMetaLine['complexity'];
-        decidedBy?: FeatureUserTurnMetaLine['decidedBy'];
-        reason?: FeatureUserTurnMetaLine['reason'];
-      }
-    >;
-  };
+  featureContext?: FeatureContext;
 
   /**
    * Spec clarify choice emitted by Decompose when:
@@ -669,8 +679,14 @@ export interface ArchitectGraphState extends TriageableState {
 
   /**
    * Runtime escalation guard: the `direct` node may re-enter `decompose`
-   * at most once per job. Set true when direct promotes to decompose.
-   * Used by `routeAfterDirect` to prevent infinite direct↔decompose loops.
+   * at most once per job. Flips false→true at direct's **next entry**
+   * after a prior escalation (i.e. when `state.needsEscalation === true`
+   * is already visible on entry), NOT at the first escalation return —
+   * that would close `routeAfterDirect`'s `!_promotedThisJob` branch
+   * before decompose gets a chance to re-plan. On the second escalation
+   * (if any) `routeAfterDirect` sees `_promotedThisJob === true` and
+   * routes to `learn`, enforcing the 1-shot cap. See
+   * `nodes/direct/index.ts` (`wasEscalationReentry`) for the transition.
    */
   _promotedThisJob?: boolean;
 
