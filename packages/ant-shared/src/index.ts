@@ -40,3 +40,4 @@ export * from './deploy';
 export * from './sse-events';
 export * from './verification-scenario';
 export * from './git';
+export * from './session-log';
