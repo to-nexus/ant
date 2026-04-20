@@ -143,12 +143,35 @@ export interface SessionPort {
   loadAllBreadcrumbs(): Promise<FeatureBreadcrumbLine[]>;
 
   /**
+   * Load ALL user_turn + user_turn_meta lines from feature.jsonl
+   * (UI tier badge — §18 `tier_ui_badge`).
+   *
+   * Unlike `loadSinceBoundary`, this ignores the boundary cursor so the UI
+   * can render tier badges on every non-collapsed turn, including ones
+   * that survived the latest Hard Reset but are still visible in trace.
+   * Collapsed lines are excluded.
+   */
+  loadFeatureTurnMeta(): Promise<{
+    userTurns: FeatureUserTurnLine[];
+    userTurnMetas: FeatureUserTurnMetaLine[];
+  }>;
+
+  /**
    * Mark specific turnId lines as collapsed in both files.
    */
   collapseTurn(turnId: string): Promise<void>;
 
   /**
-   * Hard Reset — collapse all lines in both files + append user_reset boundary.
+   * Hard Reset — collapse all lines in both files + append a boundary line.
+   *
+   * Default `jobType` for the boundary is the agent-agnostic `'reset'` literal.
+   * Callers performing a job-scoped collapse (rare) may pass an explicit
+   * `jobType` (e.g. `'code'`) to preserve the semantic label.
    */
-  collapseAll(reason: 'user_reset' | string, jobId: string, turnId: string): Promise<void>;
+  collapseAll(
+    reason: 'user_reset' | string,
+    jobId: string,
+    turnId: string,
+    jobType?: LogJobType | 'reset',
+  ): Promise<void>;
 }

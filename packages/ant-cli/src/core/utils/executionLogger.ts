@@ -211,15 +211,22 @@ export class ExecutionLogger {
     taskName: string;
     attempt: number;
     maxAttempts: number;
-    /** @deprecated Axis D retains a compact summary, not raw history. Kept for schema stability. */
+    /** @deprecated Retained for schema stability; summary-based retention carries the signal. */
     preservedHistoryLength: number;
     preservedCallIndex: number;
     violationsFromPrevAttempt: number;
-    // F3c — observability for Axis D summary retention + tracker cache state.
+    // Retention metadata from `describeRetryRetention` — summary kept, not
+    // raw conversations. Passed gates help post-mortem diagnose "which
+    // cache was preserved across the retry boundary".
     retentionMode?: 'summary' | 'full' | 'none';
     summaryInjected?: boolean;
     summaryLen?: number;
     passedGatesAtRetry?: Array<'typecheck' | 'build' | 'test'>;
+    // Observability for Phase 0 / Phase A: the unified attempt counter and
+    // last plan hash are the primary signals for diagnosing "LLM stuck" loops.
+    verificationAttempts?: number;
+    prevPlanHash?: string;
+    carryOverSize?: number;
   }): Promise<void> {
     await this.log('verification_retry', data, taskId);
   }

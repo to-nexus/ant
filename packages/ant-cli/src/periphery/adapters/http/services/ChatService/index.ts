@@ -1,10 +1,16 @@
 /**
- * ChatService - Main service for managing chat messages and Redis Pub/Sub broadcasting
- * 
- * Handles real-time chat message streaming to frontend via Redis Pub/Sub
- * Persists chat history to {project}/{feature}/chat.json
- * 
- * Cloud-safe: Uses Redis Pub/Sub for cross-instance SSE broadcasting
+ * ChatService — Chat API façade backed by trace.jsonl SSOT.
+ *
+ * Session redesign §16.2 cutover: chat.json is retired. The durable chat
+ * history lives in trace.jsonl + feature.jsonl and is rebuilt via
+ * {@link buildChatMessagesFromTrace} when the UI asks for history.
+ *
+ * This service keeps a transient in-memory + Redis "streaming scratchpad"
+ * so that live SSE delta broadcasts (content_add / content_update /
+ * message_start / message_finalized) still flow. The scratchpad is
+ * cleared on message finalize — only trace.jsonl survives process exit.
+ *
+ * Cloud-safe: Redis Pub/Sub drives cross-instance SSE broadcasting.
  */
 
 import type { LLMStreamEvent } from '../../../../../core/ports/llm';
@@ -12,6 +18,9 @@ import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import type { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import type { UserContext } from '../../../../../core/types/user';
 import type { ChatMessage, MessageContent, FileOperationPhase, CommandExecutionPhase } from './types';
+import type { TraceLine } from '@ant/shared';
+import { FileSessionAdapter } from '../../../session/FileSessionAdapter';
+import { buildChatMessagesFromTrace } from './TraceToChatMessages';
 
 // Module imports
 import { SessionPersistence } from './SessionPersistence';
@@ -72,18 +81,6 @@ export class ChatService {
    */
   setUserContext(userContext: UserContext): void {
     this.defaultUserContext = userContext;
-  }
-
-  /**
-   * Get or create a chat session
-   */
-  getOrCreateSession(
-    projectId: string, 
-    featureName: string, 
-    jobId?: string, 
-    userContext?: UserContext
-  ) {
-    return this.sessionManager.getOrCreateSession(projectId, featureName, jobId, userContext);
   }
 
   /**
@@ -306,22 +303,95 @@ export class ChatService {
   }
 
   /**
-   * Get all messages for a session
+   * Get all messages for a feature (async, durable + live).
+   *
+   * Result is the concatenation of:
+   *   1. Trace-derived history from trace.jsonl + feature.jsonl (SSOT)
+   *   2. The current in-memory streaming message (if any), which has not
+   *      yet been flushed to trace.jsonl because its turn is still live.
+   *
+   * The trace-derived history already surfaces completed turns as user +
+   * assistant ChatMessages (including choice_presented / choice_resolved
+   * pairs). The streaming overlay is only the last partial reply.
    */
-  getMessages(projectId: string, featureName: string, userContext?: UserContext): ChatMessage[] {
-    // Use getOrCreateSession to ensure file is loaded
-    this.sessionManager.getOrCreateSession(projectId, featureName, undefined, userContext);
-    return this.sessionManager.getMessages(projectId, featureName);
+  async getMessagesAsync(
+    projectId: string,
+    featureName: string,
+    userContext?: UserContext,
+  ): Promise<ChatMessage[]> {
+    // 1. Rebuild completed turns from trace.jsonl
+    const durable = await this.loadTraceDerivedMessages(projectId, featureName, userContext);
+
+    // 2. Overlay the streaming scratchpad's currentMessage (if any)
+    const session = await this.sessionManager.getOrCreateSessionAsync(
+      projectId,
+      featureName,
+      undefined,
+      userContext,
+    );
+
+    // 2a. User messages that the UI optimistically POSTed via
+    //     /chat/user-message land in session.messages BEFORE the worker
+    //     starts and recordUserTurn writes the durable user_turn to
+    //     trace.jsonl. Include any such pending user messages so a refresh
+    //     on another pod (or the same pod, during the spawn window) still
+    //     shows them. Dedup by jobId against the trace-derived set.
+    const durableUserJobIds = new Set(
+      durable.filter((m) => m.role === 'user' && m.jobId).map((m) => m.jobId as string),
+    );
+    const pendingUserMsgs = session.messages.filter(
+      (m) => m.role === 'user' && m.jobId && !durableUserJobIds.has(m.jobId),
+    );
+
+    // 2b. The active streaming message is a partial view of the same turn
+    //     that trace.jsonl is accumulating events for (thinking /
+    //     tool_call / file_write / run_command lines are emitted as they
+    //     happen, before finalize writes the terminal assistant_message).
+    //     To avoid a double-render, drop the trace-derived assistant
+    //     message for that same jobId and replace it with the live
+    //     currentMessage (if any).
+    const streamingJobId = session.currentMessage?.jobId;
+    const filtered = streamingJobId
+      ? durable.filter((m) => !(m.role === 'assistant' && m.jobId === streamingJobId))
+      : durable;
+
+    const streaming: ChatMessage[] = [];
+    if (session.currentMessage) {
+      streaming.push({ ...session.currentMessage, isStreaming: undefined });
+    }
+
+    return [...filtered, ...pendingUserMsgs, ...streaming];
   }
 
   /**
-   * Get all messages for a session (async version - ensures file is loaded)
-   * Use this when you need guaranteed message loading from file/Redis
+   * Load `ChatMessage[]` derived from the durable session log (trace.jsonl).
+   * Returns `[]` when the feature path cannot be resolved or the log is empty.
+   *
+   * Only trace.jsonl is consulted here — breadcrumbs and user_turn_meta are
+   * consumed directly by the Timeline / tier-badge surfaces (feature-log
+   * slice in the UI), not by Chat rendering.
    */
-  async getMessagesAsync(projectId: string, featureName: string, userContext?: UserContext): Promise<ChatMessage[]> {
-    // Use async version to ensure file/Redis is fully loaded before returning
-    await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, undefined, userContext);
-    return this.sessionManager.getMessages(projectId, featureName);
+  private async loadTraceDerivedMessages(
+    projectId: string,
+    featureName: string,
+    userContext?: UserContext,
+  ): Promise<ChatMessage[]> {
+    const featurePath = this.persistence.getFeaturePath(projectId, featureName, userContext);
+    if (!featurePath) return [];
+
+    const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
+    let traceLines: TraceLine[] = [];
+    try {
+      traceLines = await adapter.loadAllTrace();
+    } catch (err) {
+      logger.warn(
+        `[ChatService] loadAllTrace failed for ${projectId}/${featureName}`,
+        { component: 'ChatService' },
+        err,
+      );
+    }
+
+    return buildChatMessagesFromTrace({ traceLines });
   }
 
   /**
@@ -342,7 +412,18 @@ export class ChatService {
     userContext?: UserContext,
     metadataFilter?: Record<string, any>
   ): Promise<boolean> {
-    const messages = this.getMessages(projectId, featureName, userContext);
+    // Cross-pod safety: the choice card may have been emitted by a
+    // different pod, so we must rehydrate the session from Redis before
+    // searching. getOrCreateSessionAsync consults Redis first and falls
+    // back to local cache; the following getMessages then returns the
+    // authoritative scratchpad state.
+    await this.sessionManager.getOrCreateSessionAsync(
+      projectId,
+      featureName,
+      undefined,
+      userContext,
+    );
+    const messages = this.sessionManager.getMessages(projectId, featureName);
     
     // ✅ Strategy: Find the last ACTIONABLE content (not yet resolved via choiceSelected).
     // If multiple cancelled/choice cards exist (e.g., due to duplicates or sequential runs),
@@ -397,51 +478,111 @@ export class ChatService {
   }
 
   /**
-   * Apply metadata update to a specific content item, save, and broadcast.
+   * Apply metadata update to a specific content item, save to Redis and
+   * mirror the choice resolution to trace.jsonl.
    */
   private async applyContentMetadataUpdate(
     projectId: string,
     featureName: string,
-    messages: ChatMessage[],
+    _messages: ChatMessage[],
     message: ChatMessage,
     contentIndex: number,
     content: any,
     metadataUpdate: Record<string, any>,
     userContext?: UserContext
   ): Promise<boolean> {
-    // Update metadata
+    // Update in-memory metadata
     content.metadata = {
       ...content.metadata,
-      ...metadataUpdate
+      ...metadataUpdate,
     };
-    
-    // Save to disk AND Redis
-    this.persistence.saveSession(projectId, featureName, messages, userContext);
+
+    // Save streaming scratchpad to Redis (durable SSOT is the trace line below)
     const session = this.sessionManager.getSession(projectId, featureName);
     if (session) {
-      await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext).catch(err => {
-        logger.warn('Failed to save metadata update to Redis', { component: 'ChatService' }, err);
-      });
+      await this.sessionManager
+        .saveSessionAsync(projectId, featureName, session, userContext)
+        .catch((err) => {
+          logger.warn('Failed to save metadata update to Redis', { component: 'ChatService' }, err);
+        });
     }
-    
+
     // Broadcast updated content via SSE so frontend can update the card
     if (userContext) {
       this.broadcaster.broadcast(projectId, featureName, {
         type: 'content_update',
         messageId: message.id,
         contentIndex,
-        content
+        content,
       }, userContext);
     }
-    
+
+    // Durable mirror: every metadata update that records a user choice
+    // also emits a choice_resolved line. Only emit when the caller supplied
+    // choiceSelected / resolvedLabel (i.e. this is a real resolution, not
+    // a generic metadata bump).
+    //
+    // cardId resolution order:
+    //   1. content.metadata.cardId  — set by ChatStatusHandler when it
+    //      emitted the matching choice_presented line (triage_choice /
+    //      eval_save / clarifying cards).
+    //   2. message.id               — fallback for cards whose
+    //      choice_presented line was emitted with the message id as the
+    //      card id (cancelled cards, see MessageManager.addCancelledMessageAsync).
+    const jobId = message.jobId ?? content.metadata?.jobId;
+    const choiceSelected = metadataUpdate.choiceSelected;
+    const resolvedLabel = metadataUpdate.resolvedLabel;
+    if (jobId && choiceSelected && resolvedLabel) {
+      const { choiceSelected: _unused1, resolvedLabel: _unused2, ...answer } = metadataUpdate;
+      const cardId = (content.metadata?.cardId as string | undefined) ?? message.id;
+      await this.persistence
+        .emitChoiceResolved({
+          projectId,
+          featureName,
+          userContext,
+          jobId,
+          cardId,
+          choiceSelected: String(choiceSelected),
+          resolvedLabel: String(resolvedLabel),
+          answer: Object.keys(answer).length > 0 ? answer : undefined,
+        })
+        .catch((err) => {
+          logger.warn(
+            `Failed to emit choice_resolved trace line: ${(err as Error)?.message ?? err}`,
+            { component: 'ChatService' },
+          );
+        });
+    }
+
     return true;
   }
 
   /**
-   * Clear messages for a session
+   * Clear messages for a session (fire-and-forget).
+   *
+   * Prefer {@link clearMessagesAsync} when the caller needs to observe
+   * collapse completion (e.g. §17 Hard Reset responds only after
+   * trace.jsonl / feature.jsonl are durably collapsed so the subsequent
+   * UI re-fetch sees the empty state).
    */
   clearMessages(projectId: string, featureName: string, userContext?: UserContext): void {
     this.sessionManager.clearMessages(projectId, featureName, userContext);
+  }
+
+  /**
+   * Clear messages for a session (awaitable).
+   *
+   * Runs the same pipeline as {@link clearMessages} — Redis session
+   * delete, local cache reset, trace.jsonl / feature.jsonl collapse with
+   * a `user_reset` boundary, draft image cleanup, and the
+   * `messages_cleared` SSE broadcast — but resolves only after the work
+   * completes. This is the SSOT entry point for Reset semantics (§16.2
+   * "Clear·Reset 양방향 sync"); any new reset surface (§17 Hard Reset,
+   * future per-turn purge, etc.) should route through here instead of
+   * touching FileSessionAdapter directly, to avoid diverging cleanup.
+   */
+  async clearMessagesAsync(projectId: string, featureName: string, userContext?: UserContext): Promise<void> {
+    await this.sessionManager.clearMessagesAsync(projectId, featureName, userContext);
   }
 
   /**

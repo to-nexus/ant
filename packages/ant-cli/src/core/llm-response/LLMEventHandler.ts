@@ -11,6 +11,7 @@ import type { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent } from '../chat/types';
 import { logger } from '../../utils/logger';
+import { getTraceAppender } from './traceAppenderRegistry';
 
 export class LLMEventHandler {
   private lastRedisWrite = 0;
@@ -112,6 +113,13 @@ export class LLMEventHandler {
           ...thinkingContent.metadata,
           durationMs
         };
+
+        // Emit finalized thinking block to trace.jsonl (session redesign §16.2).
+        // Fire-and-forget — failures must not disrupt streaming.
+        const appender = getTraceAppender();
+        if (appender && thinkingContent.content?.trim()) {
+          appender.appendThinking(thinkingContent.content);
+        }
         
         // Broadcast update and collapse
         this.broadcaster.broadcastContentUpdate(
@@ -181,7 +189,14 @@ export class LLMEventHandler {
     if (!event.toolUse || !session?.currentMessage) return;
 
     const { name, input } = event.toolUse;
-    
+
+    // Emit trace.jsonl tool_call — single line per tool_use, regardless of
+    // which UI card path is taken below. Keeps trace SSOT tool-agnostic.
+    const appender = getTraceAppender();
+    if (appender && name) {
+      appender.appendToolCall(name, { args: sanitizeToolArgs(input) });
+    }
+
     // FILE OPERATIONS: edit_file, delete_file (create loading card)
     if (name === 'edit_file' || name === 'delete_file') {
       this.handleFileToolUse(name, input);
@@ -329,4 +344,23 @@ export class LLMEventHandler {
       })
       .finally(() => { this.writeInFlight = false; });
   }
+}
+
+/**
+ * Truncate long string fields in tool args so trace.jsonl does not balloon
+ * with full file contents or multi-MB edits. Mirrors the UI's
+ * handleGenericToolUse compacting logic (chars > 100 → `(n chars)`).
+ */
+function sanitizeToolArgs(input: unknown): unknown {
+  if (!input || typeof input !== 'object') return input;
+  const src = input as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(src)) {
+    if (typeof value === 'string' && value.length > 200) {
+      out[key] = `(${value.length} chars)`;
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
 }

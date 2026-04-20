@@ -49,25 +49,24 @@ export class MessageManager {
     };
     
     session.messages.push(userMessage);
-    
-    // Save to file
-    this.persistence.saveSession(projectId, featureName, session.messages, userContext);
-    
+
     // ✅ CRITICAL: Wait for Redis save to ensure message order in Cloud mode
     // Without this, Job Worker may start before user message is in Redis,
-    // causing assistant message to appear before user message
+    // causing assistant message to appear before user message.
+    // Durable user_turn record is written by orchestrator.recordUserTurn
+    // against trace.jsonl — this scratchpad only drives live SSE delivery.
     try {
       await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext);
     } catch (err) {
       logger.warn('Failed to save session to Redis', { component: 'MessageManager' }, err);
     }
-    
+
     // Broadcast new user message
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'user_message',
       message: userMessage
     }, session.userContext);
-    
+
     return messageId;
   }
 
@@ -378,9 +377,38 @@ export class MessageManager {
 
     session.currentMessage.isStreaming = false;
     session.messages.push(session.currentMessage);
-    
-    // Save to file AND Redis
-    this.persistence.saveSession(projectId, featureName, session.messages, session.userContext);
+
+    // Durable mirror: the server-side finalize path handles cases that the
+    // worker cannot — e.g. triage-choice "guide" response where the server
+    // appends a text block and then finalizes the message without the
+    // worker running to completion. Emit the accumulated text to trace so
+    // the response survives refresh. Worker-side LLMResponseService also
+    // finalizes independently and emits its own assistant_message; the two
+    // don't double-emit because only one of them owns `currentMessage` at
+    // any moment (worker clears it on finalize, server path runs only when
+    // worker is paused for user choice).
+    if (!cancelled && session.currentMessage.jobId) {
+      const text = collectAssistantText(session.currentMessage.contents);
+      if (text.trim().length > 0) {
+        this.persistence
+          .emitAssistantMessageTrace({
+            projectId,
+            featureName,
+            userContext: session.userContext,
+            jobId: session.currentMessage.jobId,
+            text,
+          })
+          .catch((err) => {
+            logger.warn(
+              `Failed to emit finalize trace line: ${(err as Error)?.message ?? err}`,
+              { component: 'MessageManager' },
+            );
+          });
+      }
+    }
+
+    // Save streaming scratchpad to Redis (durable SSOT is trace.jsonl,
+    // written incrementally by LLMResponseService + TraceAppender).
     this.sessionManager.saveSessionAsync(projectId, featureName, session, session.userContext).catch(err => {
       logger.warn('Failed to save session to Redis', { component: 'MessageManager' }, err);
     });
@@ -414,21 +442,22 @@ export class MessageManager {
     const session = this.sessionManager.getOrCreateSession(projectId, featureName, jobId);
     
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const textContent = `❌ **Job Failed**\n\n${errorMessage}${errorDetails ? `\n\nDetails:\n${JSON.stringify(errorDetails, null, 2)}` : ''}`;
     const errorMsg: ChatMessage = {
       id: messageId,
       role: 'assistant',
       contents: [{
         type: 'text',
-        content: `❌ **Job Failed**\n\n${errorMessage}${errorDetails ? `\n\nDetails:\n${JSON.stringify(errorDetails, null, 2)}` : ''}`
+        content: textContent,
       }],
       timestamp: new Date().toISOString(),
       jobId
     };
     
     session.messages.push(errorMsg);
-    
-    // Save to file AND Redis
-    this.persistence.saveSession(projectId, featureName, session.messages);
+
+    // Save streaming scratchpad to Redis (durable mirror is emitted to
+    // trace.jsonl as an assistant_message below).
     this.sessionManager.saveSessionAsync(projectId, featureName, session).catch(err => {
       logger.warn('Failed to save error message to Redis', { component: 'MessageManager' }, err);
     });
@@ -438,7 +467,25 @@ export class MessageManager {
       type: 'error_message',
       message: errorMsg
     }, session.userContext);
-    
+
+    // Mirror to trace.jsonl so the Activity tab picks up the error without
+    // needing to read chat.json. Fire-and-forget — never block the HTTP
+    // response just because the log write is slow.
+    this.persistence
+      .emitAssistantMessageTrace({
+        projectId,
+        featureName,
+        userContext: session.userContext,
+        jobId,
+        text: textContent,
+      })
+      .catch((err) => {
+        logger.warn(
+          `Failed to emit error trace line: ${(err as Error)?.message ?? err}`,
+          { component: 'MessageManager' },
+        );
+      });
+
     return messageId;
   }
 
@@ -474,18 +521,42 @@ export class MessageManager {
     
     // ✅ Resolve ALL existing unresolved cancelled messages (from any jobId) before creating a new one.
     // This prevents orphaned choice cards from previous runs accumulating in the chat.
-    let resolvedCount = 0;
+    const staleResolutions: Array<{ cardId: string; originalJobId: string }> = [];
     for (const msg of session.messages) {
       if (!msg.contents) continue;
       for (const content of msg.contents) {
         if (content.type === 'cancelled' && !content.metadata?.resolved && !content.metadata?.choiceSelected) {
           content.metadata = { ...content.metadata, resolved: true };
-          resolvedCount++;
+          staleResolutions.push({ cardId: msg.id, originalJobId: msg.jobId ?? jobId });
         }
       }
     }
-    if (resolvedCount > 0) {
-      logger.info(`Auto-resolved ${resolvedCount} stale cancelled message(s) before creating new one for job ${jobId}`, { component: 'MessageManager' });
+    if (staleResolutions.length > 0) {
+      logger.info(
+        `Auto-resolved ${staleResolutions.length} stale cancelled message(s) before creating new one for job ${jobId}`,
+        { component: 'MessageManager' },
+      );
+      // Mirror to trace.jsonl so the durable log stays consistent with the
+      // scratchpad (otherwise a subsequent refresh would re-show the cards
+      // as actionable).
+      for (const { cardId, originalJobId } of staleResolutions) {
+        this.persistence
+          .emitChoiceResolved({
+            projectId,
+            featureName,
+            userContext,
+            jobId: originalJobId,
+            cardId,
+            choiceSelected: 'auto_stale',
+            resolvedLabel: 'Superseded',
+          })
+          .catch((err) => {
+            logger.warn(
+              `Failed to emit stale choice_resolved: ${(err as Error)?.message ?? err}`,
+              { component: 'MessageManager' },
+            );
+          });
+      }
     }
     
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -506,17 +577,41 @@ export class MessageManager {
     };
     
     session.messages.push(cancelledMsg);
-    
-    // Save to file AND Redis
-    this.persistence.saveSession(projectId, featureName, session.messages, userContext);
+
+    // Save streaming scratchpad to Redis (durable SSOT is the trace line below)
     await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext);
-    
-    // Broadcast cancelled message
+
+    // Broadcast cancelled message (SSE)
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'cancelled_message',
       message: cancelledMsg
     }, session.userContext);
-    
+
+    // Durable SSOT: emit a choice_presented line so the card reappears on
+    // refresh without chat.json. Payload carries the free-form data the
+    // UI needs to render the Resume / Dismiss buttons.
+    this.persistence
+      .emitChoicePresented({
+        projectId,
+        featureName,
+        userContext,
+        jobId,
+        cardId: messageId,
+        cardType: 'cancelled',
+        prompt: message,
+        payload: {
+          reason,
+          jobId,
+          ...(interruptionMetadata?.designErrorType && { designErrorType: interruptionMetadata.designErrorType }),
+        },
+      })
+      .catch((err) => {
+        logger.warn(
+          `Failed to emit cancelled choice_presented: ${(err as Error)?.message ?? err}`,
+          { component: 'MessageManager' },
+        );
+      });
+
     return messageId;
   }
 
@@ -532,24 +627,67 @@ export class MessageManager {
     userContext?: UserContext
   ): Promise<number> {
     const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
-    
-    let resolvedCount = 0;
+
+    // Track only the newly-resolved cards so we don't re-emit
+    // choice_resolved for cards that were already resolved in prior calls.
+    const newlyResolvedCardIds: string[] = [];
     for (const msg of session.messages) {
       if (msg.jobId !== jobId || !msg.contents) continue;
       for (const content of msg.contents) {
         if (content.type === 'cancelled' && !content.metadata?.resolved) {
           content.metadata = { ...content.metadata, resolved: true };
-          resolvedCount++;
+          newlyResolvedCardIds.push(msg.id);
         }
       }
     }
-    
-    if (resolvedCount > 0) {
-      this.persistence.saveSession(projectId, featureName, session.messages, userContext);
+
+    if (newlyResolvedCardIds.length > 0) {
       await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext);
-      logger.info(`[MessageManager] Resolved ${resolvedCount} cancelled message(s) for job: ${jobId}`, { component: 'MessageManager' });
+      // Mirror the resolution to trace.jsonl so the durable log stays in
+      // sync with the in-memory scratchpad. addCancelledMessageAsync emits
+      // choice_presented with cardId=messageId, so the same cardId pairs
+      // the presented + resolved lines.
+      for (const cardId of newlyResolvedCardIds) {
+        this.persistence
+          .emitChoiceResolved({
+            projectId,
+            featureName,
+            userContext,
+            jobId,
+            cardId,
+            choiceSelected: 'resume',
+            resolvedLabel: 'Resumed',
+          })
+          .catch((err) => {
+            logger.warn(
+              `Failed to emit resume choice_resolved: ${(err as Error)?.message ?? err}`,
+              { component: 'MessageManager' },
+            );
+          });
+      }
+      logger.info(
+        `[MessageManager] Resolved ${newlyResolvedCardIds.length} cancelled message(s) for job: ${jobId}`,
+        { component: 'MessageManager' },
+      );
     }
-    
-    return resolvedCount;
+
+    return newlyResolvedCardIds.length;
   }
+}
+
+/**
+ * Collapse assistant-visible text content into a single trace.jsonl line.
+ * Only `type: 'text'` content blocks are concatenated — thinking / tool /
+ * file / command cards stay in their own trace line types so they are not
+ * duplicated in the assistant_message text.
+ */
+function collectAssistantText(
+  contents: Array<{ type: string; content: string }>,
+): string {
+  const parts: string[] = [];
+  for (const c of contents) {
+    if (!c || typeof c.content !== 'string') continue;
+    if (c.type === 'text') parts.push(c.content);
+  }
+  return parts.join('\n').trim();
 }

@@ -1,5 +1,6 @@
 /**
- * Axis D — Single-source-of-truth task-internal retry retention.
+ * Task-internal retry retention — single source of truth for how we preserve
+ * context across re-entries into the same task.
  *
  * Retry / reverify / resumeState / Orchestrator re-queue are four distinct entry
  * points back into the same task. Before this module they had conflicting
@@ -16,9 +17,15 @@
  * Ant context-pollution rules still apply at *task boundaries* (learn → new
  * task pop remains a full wipe). This module is strictly for intra-task
  * re-entries.
+ *
+ * Absorbs two formerly-inline behaviours from `plan/index.ts`:
+ *   - Dedupe `verification_incomplete` violations against an already-rendered
+ *     retry summary (so the LLM doesn't see the same failure described twice).
+ *   - Produce the observability meta-data (summaryInjected, retentionMode,
+ *     passedGatesAtRetry) logged at every retry boundary.
  */
 
-import type { Violation } from '../../agents/architect/graph/code/state';
+import type { Violation, VerificationTracker } from '../../agents/architect/graph/code/state';
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const MAX_PLAN_JSON_CHARS = 2000;
@@ -182,3 +189,60 @@ export const TASK_RETRY_RETENTION_DEFAULTS = {
   MAX_ERROR_LINES,
   MAX_COMMAND_HISTORY,
 } as const;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Violation deduplication
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * When the plan prompt already carries a rendered retry summary, the
+ * `verification_incomplete` violation describes the exact same failure in a
+ * different format — the LLM sees it twice and often reacts inconsistently.
+ * This helper strips the redundant violation so the retry summary is the sole
+ * voice describing the prior outcome. Other violation types are untouched.
+ *
+ * Call site (plan.composeViolationsText): when `retrySummaryText` is truthy,
+ * pass `violations` through this helper before formatting.
+ */
+export function dedupeViolationsAgainstSummary(
+  violations: Violation[] | undefined,
+  retrySummaryText: string | undefined,
+): Violation[] | undefined {
+  if (!retrySummaryText) return violations;
+  if (!violations?.length) return violations;
+  return violations.filter(v => v.type !== 'verification_incomplete');
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Retention observability metadata
+// ────────────────────────────────────────────────────────────────────────────
+
+export type RetentionMode = 'summary' | 'full' | 'none';
+
+export interface RetryRetentionMeta {
+  retentionMode: RetentionMode;
+  summaryInjected: boolean;
+  summaryLen: number;
+  passedGatesAtRetry: Array<'typecheck' | 'build' | 'test'>;
+}
+
+/**
+ * Produce the retention metadata that retry/reverify observability logs should
+ * emit. Centralises what used to be inline composition in `plan.index.ts`'s
+ * retry-entry handler.
+ */
+export function describeRetryRetention(
+  retrySummaryText: string | undefined,
+  tracker: VerificationTracker | undefined,
+): RetryRetentionMeta {
+  const passedGates: Array<'typecheck' | 'build' | 'test'> = [];
+  if (tracker?.typecheckPassed) passedGates.push('typecheck');
+  if (tracker?.buildPassed) passedGates.push('build');
+  if (tracker?.testPassed) passedGates.push('test');
+  return {
+    retentionMode: 'summary',
+    summaryInjected: !!retrySummaryText,
+    summaryLen: retrySummaryText?.length ?? 0,
+    passedGatesAtRetry: passedGates,
+  };
+}

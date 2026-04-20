@@ -10,6 +10,7 @@ import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent, ChatSession } from '../chat/types';
 import type { CommandExecutionPhase } from './types';
 import { logger } from '../../utils/logger';
+import { getTraceAppender } from './traceAppenderRegistry';
 
 export class CommandExecutionHandler {
   private activeCommands: Map<string, number> = new Map();  // command -> contentIndex
@@ -40,6 +41,16 @@ export class CommandExecutionHandler {
    */
   async completeCommand(command: string, output: string, exitCode: number): Promise<void> {
     await this.addCommandExecution(command, 'complete', { output, exitCode });
+
+    // Emit run_command line to trace.jsonl (session redesign §16.2). Only
+    // emit on terminal phase so we write exactly once per command.
+    const appender = getTraceAppender();
+    if (appender) {
+      appender.appendRunCommand(command, {
+        stdout: truncateOutput(output),
+        exitCode,
+      });
+    }
   }
 
   /**
@@ -204,4 +215,17 @@ export class CommandExecutionHandler {
         return 'command';
     }
   }
+}
+
+/**
+ * Cap stdout captured in trace.jsonl so a noisy command does not inflate the
+ * UI log. UI tail rendering only shows first/last few KB; anything longer is
+ * not actionable context.
+ */
+function truncateOutput(output: string | undefined, max = 4000): string | undefined {
+  if (!output) return output;
+  if (output.length <= max) return output;
+  const head = output.slice(0, Math.floor(max * 0.75));
+  const tail = output.slice(-Math.floor(max * 0.2));
+  return `${head}\n…(${output.length - max} chars truncated)…\n${tail}`;
 }
