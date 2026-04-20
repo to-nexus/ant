@@ -214,13 +214,11 @@ export async function decomposeSpec(
     overrideDirective: state.overrideDirective,
     chatSource: state.chatSource,
     userLanguage: state.context.userLanguage as CheckpointData['userLanguage'],
-    techTier: specTechTier,
   });
 
   return {
     ...state,
     taskQueue,
-    techTier: specTechTier,
     completedTasks: [],
     completedTasksDetails: [],
     _httpJobId: state._httpJobId,

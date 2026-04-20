@@ -1,5 +1,4 @@
 import { ArchitectGraphState } from "../../state";
-import { getTechTier } from '@ant/shared';
 import type { SessionState } from "../../../../../../core/types/session";
 
 /**
@@ -73,7 +72,6 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       chatSource: state.chatSource,
       referenceRequests: state.referenceRequests || [],
       designDocUnknownPackages: state.designDocUnknownPackages,
-      techTier: getTechTier(state),
       profile: state.profile,
       userLanguage: state.context.userLanguage,
       resolvedAction: state.resolvedAction,
@@ -94,6 +92,13 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       ...(state.tokenUsage && { tokenUsage: state.tokenUsage }),
       ...(state._estimatingTokenUsage && { estimatingTokenUsage: state._estimatingTokenUsage }),
       ...(state.interruption && { interruption: state.interruption }),
+      // T7 — Persist the VerificationSession snapshot so resume paths in
+      // `runner.ts` can rehydrate the live diagnostic cycle (required/passed
+      // gates, attempt counter, plan history, dep hash, batch-split count).
+      // Class instances serialise to `{}` under `JSON.stringify` (Sets and
+      // private fields drop), so an explicit `.snapshot()` projection is
+      // mandatory.
+      ...(state.verification && { verification: state.verification.snapshot() }),
     };
     
     // ✅ Only include currentTask if it exists

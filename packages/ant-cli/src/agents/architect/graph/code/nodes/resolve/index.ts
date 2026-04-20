@@ -2,11 +2,11 @@ import { ArtifactService } from "../../../../../../infrastructure/workspace/Arti
 import { ArchitectGraphState } from "../../state";
 import { ReferenceContext } from "../../../../../../core/codebase/types";
 import * as path from "path";
-import { buildFeatureContext, compactFeatureContext } from "../../../../../../core/context/featureContextBuilder";
+import { hydrateFeatureContext } from "../../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
 import type { ResolvedArtifact } from '@ant/shared';
-import { ARTIFACT_PREFIX, getTechTier } from '@ant/shared';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 import type { ParsedUiDocs } from '../../../../../../core/types/uiDoc';
 
 /**
@@ -144,16 +144,31 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     // Index runtime assets
     state.runtimeAssetsIndex = await indexRuntimeAssets(state.context.featurePath);
 
+    // Rehydrate featureContext + turnId from feature.jsonl (§12 resume path).
+    // Checkpoints do not persist either — see runner.ts / checkpoint/index.ts.
+    // Without this, downstream tool/direct/learn nodes silently skip trace
+    // emission and breadcrumb/boundary writes because turnId is undefined.
+    const { featureContext, turnId } = await hydrateFeatureContext(
+      {
+        session: state.deps?.session,
+        llm: state.deps?.llm,
+        promptPort: state.deps?.promptBuilder,
+      },
+      { jobId: state.jobId, logPrefix: 'Resolve/Resume' },
+    );
+    if (turnId) state.turnId = turnId;
+
     return {
       workspaceConfig: state.workspaceConfig,
       context: state.context,
       artifacts,
       profile: state.profile,
-      techTier: getTechTier(state),
       figmaAvailable: state.figmaAvailable,
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
       runtimeAssetsIndex: state.runtimeAssetsIndex,
+      featureContext,
+      turnId: state.turnId,
     } as Partial<ArchitectGraphState>;
   },
 
@@ -282,40 +297,19 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       : undefined;
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Feature Context (session redesign — Phase C)
-    // loadSinceBoundary: latest boundary-onwards T2(user_turn+meta) + all T3(breadcrumbs).
-    // Merged by turnId and trimmed so plan/direct prompts receive prior context.
+    // Feature Context + turnId (session redesign — Phase C §11/§12/§13)
+    // Shared with onResume via `hydrateFeatureContext` so both paths recover
+    // the same turnId and compacted context from feature.jsonl (SSOT).
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    let featureContext = await buildFeatureContext(state.deps?.session);
-    if (featureContext) {
-      console.log(
-        `📚 [Resolve] featureContext: breadcrumbs=${featureContext.breadcrumbs.length}, userTurns=${featureContext.userTurns.length}`,
-      );
-      // §13 compaction_policy — Compact T2 user_turns when over budget.
-      // Collapse (boundary) is adapter-side; Compact is the LLM-based safety
-      // net. Skipped silently when llm / promptBuilder are not wired.
-      const llm = state.deps?.llm;
-      const promptPort = state.deps?.promptBuilder;
-      if (llm && promptPort) {
-        const before = featureContext.userTurns.length;
-        featureContext = await compactFeatureContext(featureContext, { llm, promptPort });
-        if (featureContext.wasCompacted) {
-          console.log(
-            `🗜️  [Resolve] featureContext compacted: ${before} → ${featureContext.userTurns.length} user_turns + summary`,
-          );
-        }
-      }
-    }
-
-    // Resolve current turnId from feature.jsonl (matches on jobId). Populated
-    // by orchestrator's recordUserTurn before this graph ran. Consumers:
-    // tool/direct trace emission, learn's breadcrumb/boundary writes.
-    if (featureContext && state.jobId) {
-      const owning = featureContext.userTurns.find((t) => t.jobId === state.jobId);
-      if (owning?.turnId) {
-        state.turnId = owning.turnId;
-      }
-    }
+    const { featureContext, turnId } = await hydrateFeatureContext(
+      {
+        session: state.deps?.session,
+        llm: state.deps?.llm,
+        promptPort: state.deps?.promptBuilder,
+      },
+      { jobId: state.jobId, logPrefix: 'Resolve' },
+    );
+    if (turnId) state.turnId = turnId;
 
     const referenceContexts: ReferenceContext[] = [];
 
@@ -332,6 +326,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       figmaFileKey,
       figmaStartNodeId,
       featureContext,
+      turnId,
       runtimeAssetsIndex,
       conversations: {},
     } as Partial<ArchitectGraphState>;

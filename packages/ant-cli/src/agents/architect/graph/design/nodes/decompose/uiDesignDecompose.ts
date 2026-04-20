@@ -296,7 +296,6 @@ export async function decomposeUiDesign(
       overrideDirective: state.overrideDirective,
       chatSource: state.chatSource,
       userLanguage: state.context.userLanguage as CheckpointData['userLanguage'],
-      techTier: uiTechTier,
     });
 
     // Update Kanban
@@ -305,7 +304,6 @@ export async function decomposeUiDesign(
     return {
       ...state,
       taskQueue,
-      techTier: uiTechTier,
       completedTasks: [],
       completedTasksDetails: [],
       _httpJobId: state._httpJobId,

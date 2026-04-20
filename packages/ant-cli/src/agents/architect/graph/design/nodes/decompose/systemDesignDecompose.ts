@@ -631,7 +631,6 @@ export async function decomposeSystemDesign(
     tokenUsage: state.tokenUsage,
     estimatingTokenUsage,
     userLanguage: state.context.userLanguage,
-    techTier: graphTechTier,
   });
 
   // Update Kanban (tasks in queue, no in-progress yet)
@@ -640,7 +639,6 @@ export async function decomposeSystemDesign(
   return {
     ...state,
     taskQueue,
-    techTier: graphTechTier,
     currentTask: undefined,
     completedTasks: [],
     _httpJobId: state._httpJobId,

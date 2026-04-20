@@ -12,7 +12,7 @@ import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../.
 
 interface CallDecomposeOptions {
   tools?: ToolDefinition[];
-  toolHandler?: (name: string, args: Record<string, any>) => string;
+  toolHandler?: (name: string, args: Record<string, any>) => string | Promise<string>;
 }
 
 /**
