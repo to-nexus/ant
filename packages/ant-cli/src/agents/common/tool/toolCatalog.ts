@@ -262,6 +262,7 @@ export const TOOL_SETS = {
   design: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB,
+    ToolName.RUN_COMMAND,
   ] as ToolName[],
 
   uiDesignBase: [
@@ -287,6 +288,7 @@ export const TOOL_SETS = {
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+    ToolName.RUN_COMMAND,
   ] as ToolName[],
 
   figmaExplore: [

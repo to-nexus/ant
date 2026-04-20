@@ -58,6 +58,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       project: state.context?.projectName,
       featureFolder: state.context?.featureFolder,
       git: state.deps?.git as any,
+      command: state.deps?.command as any,
       redis: state.deps?.redis,
       fileTreeUpdate: state.deps?.fileTreeUpdate as any,
       figmaFileKey: state.figmaFileKey,

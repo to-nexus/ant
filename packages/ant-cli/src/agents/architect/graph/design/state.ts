@@ -1,13 +1,14 @@
 import { CodebaseProfile } from "../../../../core/types";
 import type { Conversations } from '../../../common/graph/conversations';
-import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort } from "../../../../core/ports";
+import { LLMClient, ChunkPort, SessionPort, GitPort, CodebaseAnalyzerPort, MemoryPort, TaskQueueUpdatePort, CommandPort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
 import { ProjectContext } from "../../types";
 import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, FeatureUserTurnLine, FeatureUserTurnMetaLine, FeatureBreadcrumbLine } from '@ant/shared';
+import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext } from '@ant/shared';
+import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 
 /**
  * Design Task State
@@ -37,6 +38,7 @@ export interface DesignGraphState extends TriageableState {
     kanbanUpdate?: TaskQueueUpdatePort;
     fileTreeUpdate?: import('../../../../core/ports').FileTreeUpdatePort;
     workflowUpdate?: import('../../../../core/ports/workflow').WorkflowStateUpdatePort;
+    command?: CommandPort;
     redis?: any;
   };
 
@@ -196,21 +198,16 @@ export interface DesignGraphState extends TriageableState {
 
   /**
    * T2+T3 context loaded from feature.jsonl by resolve (session redesign).
-   * Populated by `resolve_integrate` so that design-level prompts can
+   * Populated by `resolve_integrate` (§11) so design-level prompts can
    * consume prior breadcrumbs / user_turns without re-reading the file.
    * The design sub-graph (ui-design/system-design/spec) does not inject
    * this today — D5 keeps the sub-graph untouched — but the field is
    * declared so the state channel is discoverable and compatible with
    * future consumers without another state refactor.
+   *
+   * Shape SSOT lives in `core/context/featureContextBuilder.ts`
+   * (`FeatureContext` — includes `summary?` / `wasCompacted?` populated
+   * by §13 Compact). Do not redeclare inline here.
    */
-  featureContext?: {
-    breadcrumbs: FeatureBreadcrumbLine[];
-    userTurns: Array<
-      FeatureUserTurnLine & {
-        complexity?: FeatureUserTurnMetaLine['complexity'];
-        decidedBy?: FeatureUserTurnMetaLine['decidedBy'];
-        reason?: FeatureUserTurnMetaLine['reason'];
-      }
-    >;
-  };
+  featureContext?: FeatureContext;
 }
