@@ -88,7 +88,7 @@ describe('FileSessionAdapter — feature-log readers', () => {
 
   it('loadAllBreadcrumbs returns only non-collapsed breadcrumb lines in append order', async () => {
     const featureLines: FeatureLine[] = [
-      { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', user: 'hi' },
+      { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hi' },
       {
         type: 'breadcrumb',
         ts: '2026-04-20T00:00:02Z',

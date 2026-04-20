@@ -12,7 +12,7 @@
   "completedTasks": [],
   "retries": 0,
   "maxRetries": 3,
-  "_verificationBudget": 8,
+  "_verificationAttempts": 0,
   "_verificationTracker": {
     "buildPassed": true,
     "testPassed": true,
