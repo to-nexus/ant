@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { VerificationTerminalError, classifyTerminalError } from '../../../src/agents/architect/graph/code/utils/verificationErrors';
+import { VerificationTerminalError, classifyTerminalError } from '../../../src/agents/architect/graph/code/tasks/verification/model/errors';
 
 describe('classifyTerminalError', () => {
   it('returns terminal:true with kind for VerificationTerminalError', () => {

@@ -35,7 +35,7 @@ import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormal
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
-import { isFinalVerificationTask } from '../../utils/taskClassification';
+import { isFinalVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
 import { isErrorTask } from '../../tasks/error';
 import { isDiagnosticTask } from '../../tasks/_shared/classification';

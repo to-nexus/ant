@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isDiagnosticInspectCommand } from '../../../src/agents/architect/graph/code/utils/deepDiagnosticMode';
+import { isDiagnosticInspectCommand } from '../../../src/agents/architect/graph/code/tasks/verification/model/gates';
 
 describe('isDiagnosticInspectCommand — deep-diagnostic inspect allow-list', () => {
   it('accepts file inspection commands', () => {
