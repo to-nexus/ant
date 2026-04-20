@@ -69,7 +69,6 @@ interface TurnGroup {
   firstTs: string;
   userText?: string;
   events: TraceLine[];
-  assistantText: string[];
 }
 
 function groupByTurn(lines: TraceLine[]): TurnGroup[] {
@@ -85,7 +84,6 @@ function groupByTurn(lines: TraceLine[]): TurnGroup[] {
         jobType: line.jobType,
         firstTs: line.ts,
         events: [],
-        assistantText: [],
       };
       byTurn.set(key, group);
     }
@@ -94,9 +92,6 @@ function groupByTurn(lines: TraceLine[]): TurnGroup[] {
       group.userText = line.text;
     } else {
       group.events.push(line);
-      if (line.type === 'assistant_message') {
-        group.assistantText.push(line.text);
-      }
     }
   }
 

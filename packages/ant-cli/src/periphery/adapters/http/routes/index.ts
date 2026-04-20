@@ -82,10 +82,14 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     stateStore: deps.stateStore
   }));
 
-  // Feature log (trace.jsonl + feature.jsonl breadcrumbs) — UI SSOT for chat / timeline
-  router.use(createFeatureLogRoutes({
-    workspaceResolver: deps.workspaceResolver,
-  }));
+  // Feature log (trace.jsonl + feature.jsonl breadcrumbs) — UI SSOT for chat / timeline.
+  // Requires workspaceResolver to resolve feature paths; other feature-scoped
+  // routes (figma, org, transfer) follow the same presence check pattern.
+  if (deps.workspaceResolver) {
+    router.use(createFeatureLogRoutes({
+      workspaceResolver: deps.workspaceResolver,
+    }));
+  }
   
   // GitHub integration
   if (deps.githubAuthService) {

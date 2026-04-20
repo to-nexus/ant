@@ -611,6 +611,24 @@
 - Activity/Timeline 탭은 현재 initial-load HTTP fetch에만 의존 — 실시간 업데이트 없음. 새 이벤트 반영은 피처 재진입 또는 수동 refresh 필요. 후속에서 SSE 기반 append 구현 가능 (슬라이스에 이미 `appendFeatureTraceLine`/`appendFeatureBreadcrumb` 준비됨)
 - trace line 스키마가 `ChatMessage` 대비 단순 — choice 카드 / streaming file-create 중간 단계 등은 표현 불가. §16.2에서 choice 인터랙션을 trace 이벤트 기반으로 재설계하거나, choice UX를 trace와 직교한 별도 레이어(pending-choice endpoint 재사용)로 분리해야 함
 
+**사후 결함 검토 (자체 리뷰)**:
+| 등급 | 항목 | 상태 |
+|---|---|---|
+| P0 | `BreadcrumbTimeline` `<li>`에 `relative` 누락 → dot이 `<ol>` 기준 절대 위치로 렌더되어 타임라인 dot 정렬이 브라우저 static-position 해석에 의존 | ✅ 수정 (`relative` 추가 + `-left-[22px] top-1`로 정량 좌표 명시) |
+| P1 | `loadFeatureTrace`/`loadFeatureBreadcrumbs`가 피처 전환 시 `traceLines`/`breadcrumbs` 배열을 초기화 안 함 → 피처 A→B 전환 직후 B fetch 완료 전까지 A 데이터가 잔존 | ✅ 수정 (두 loader에 `isNewFeature` 체크 후 해당 배열만 `[]`로 리셋) |
+| P1 | 공유 `featureLogKey`가 trace/breadcrumb 양쪽에서 덮어써 race 조건 (서로 다른 쌍으로 동시 호출 시 늦은 호출이 이른 호출의 유효 결과를 폐기) | ✅ 수정 (`traceKey` / `breadcrumbsKey` per-loader 키 분리) |
+| P2 | `createFeatureLogRoutes` 마운트가 다른 workspaceResolver 의존 라우트(figma/org/transfer)와 달리 무조건 등록 → handler 내 503 fallback은 있었지만 일관성 부족 | ✅ 수정 (`if (deps.workspaceResolver)` 가드로 다른 라우트와 패턴 통일) |
+| P2 | `TurnGroup.assistantText` 계산은 하지만 전혀 사용하지 않는 dead field | ✅ 수정 (필드 + 집계 루프 제거) |
+| P3 | 탭 버튼에 `aria-controls` / 패널에 `role="tabpanel"` + `aria-labelledby` 미설정 (ARIA tabs 패턴 미완성) | ⏸ 접근성 폴리시 — §18 `tier_ui_badge` 또는 별도 UI-a11y 패스에서 일괄 처리 권장 |
+| P3 | `ChatPanel` 인자의 `_projectId`/`_featureName` underscore 접두사는 이제 `useFeatureLogSync`에서 소비되므로 "의도적 미사용" 규약과 불일치 (기능상 영향 없음) | ⏸ 주변 코드 규약 리팩터링 시 함께 정리 |
+| 검증 제외 | SessionPort 인터페이스 확장이 다른 구현체 영향 없음 (유일 구현체 `FileSessionAdapter`, 테스트에 Mock 없음) | ✅ grep 확인 |
+| 검증 제외 | 라우트 URL prefix는 `RouteConfigurator.setupApiRoutes`의 `app.use('/api', apiRoutes)` 경유로 `/api/projects/...` 정확히 마운트됨 | ✅ 확인 |
+| 검증 제외 | Cloud 모드 JWT 미들웨어: 신규 라우트가 `publicPaths` 밖이라 자동 인증 필수 | ✅ 확인 |
+| 검증 제외 | Local 모드: `extractUserContext` → `{local, local}` fallback 또는 filesystem 추론. 기존 라우트와 동일 패턴 | ✅ 확인 |
+| 검증 제외 | Realtime/Worker 서버는 `createApiRoutes` 미사용 → 신규 라우트는 API 서버 전용으로 노출 | ✅ 확인 |
+
+수정 후 재검증: tsc baseline 27 유지 + vitest **56 suites / 1254 tests** 전원 통과 + 내 파일 타입 에러 0. 후속 커밋(defect-fix)로 별도 푸시.
+
 **후속 의존성**:
 - §16.2 `chat_ssot_finalization`(신규 — §4 남은 todos 참조): Chat 탭 자체를 Activity 뷰로 치환 + ChatService/chat.routes/SSE initial_state.chat 제거 + choice UX 재설계
 - §17 `hard_reset`: 본 todo로 `/trace` + `/breadcrumbs` 엔드포인트 인프라가 갖춰졌으므로 reset 후 UI가 즉시 빈 상태로 갱신되는 경로가 열림
