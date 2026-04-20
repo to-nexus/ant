@@ -49,4 +49,4 @@ Before any write, observe the current state of the target via read/list/search t
 
 - One termination tag per loop termination. Never both in the same turn.
 - Termination tags appear at the very end of the assistant text; placing them earlier risks misparse.
-- Do NOT narrate the loop state (e.g. "step 3 of 10"). The runtime tracks iterations.
+- Do NOT narrate loop iteration counts. The runtime tracks iterations.
