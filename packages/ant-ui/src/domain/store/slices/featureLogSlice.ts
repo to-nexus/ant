@@ -24,8 +24,13 @@ export interface FeatureLogState {
   breadcrumbsStatus: LoadStatus;
   traceError?: string;
   breadcrumbsError?: string;
-  /** Feature-scoped cache key so we can safely discard stale data when switching features. */
-  featureLogKey?: string;
+  /**
+   * Per-loader feature-scoped cache keys so we can safely discard stale data
+   * when switching features. Kept separate for trace vs breadcrumbs because
+   * the two loaders race freely and may interleave.
+   */
+  traceKey?: string;
+  breadcrumbsKey?: string;
 }
 
 export interface FeatureLogActions {
@@ -49,19 +54,27 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
   breadcrumbsStatus: 'idle',
   traceError: undefined,
   breadcrumbsError: undefined,
-  featureLogKey: undefined,
+  traceKey: undefined,
+  breadcrumbsKey: undefined,
 
   loadFeatureTrace: async (projectId, featureName) => {
     const key = makeKey(projectId, featureName);
-    set({ traceStatus: 'loading', traceError: undefined, featureLogKey: key });
+    const isNewFeature = get().traceKey !== key;
+    // When the target feature changes, discard the previous feature's data
+    // immediately so the UI does not briefly flash stale content while the
+    // new fetch is in flight.
+    set({
+      traceStatus: 'loading',
+      traceError: undefined,
+      traceKey: key,
+      ...(isNewFeature ? { traceLines: [] } : {}),
+    });
     try {
       const lines = await getFeatureTrace(projectId, featureName);
-      const current = get();
-      if (current.featureLogKey !== key) return;
+      if (get().traceKey !== key) return;
       set({ traceLines: lines, traceStatus: 'loaded' });
     } catch (err) {
-      const current = get();
-      if (current.featureLogKey !== key) return;
+      if (get().traceKey !== key) return;
       const message = err instanceof Error ? err.message : String(err);
       console.warn('[FeatureLog] trace load failed:', message);
       set({ traceStatus: 'error', traceError: message });
@@ -70,15 +83,19 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
 
   loadFeatureBreadcrumbs: async (projectId, featureName) => {
     const key = makeKey(projectId, featureName);
-    set({ breadcrumbsStatus: 'loading', breadcrumbsError: undefined, featureLogKey: key });
+    const isNewFeature = get().breadcrumbsKey !== key;
+    set({
+      breadcrumbsStatus: 'loading',
+      breadcrumbsError: undefined,
+      breadcrumbsKey: key,
+      ...(isNewFeature ? { breadcrumbs: [] } : {}),
+    });
     try {
       const breadcrumbs = await getFeatureBreadcrumbs(projectId, featureName);
-      const current = get();
-      if (current.featureLogKey !== key) return;
+      if (get().breadcrumbsKey !== key) return;
       set({ breadcrumbs, breadcrumbsStatus: 'loaded' });
     } catch (err) {
-      const current = get();
-      if (current.featureLogKey !== key) return;
+      if (get().breadcrumbsKey !== key) return;
       const message = err instanceof Error ? err.message : String(err);
       console.warn('[FeatureLog] breadcrumbs load failed:', message);
       set({ breadcrumbsStatus: 'error', breadcrumbsError: message });
@@ -101,7 +118,8 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
       breadcrumbsStatus: 'idle',
       traceError: undefined,
       breadcrumbsError: undefined,
-      featureLogKey: undefined,
+      traceKey: undefined,
+      breadcrumbsKey: undefined,
     });
   },
 });

@@ -79,9 +79,9 @@ function BreadcrumbItem({ line }: { line: FeatureBreadcrumbLine }) {
   const hasFiles = anchors.files && anchors.files.length > 0;
 
   return (
-    <li className="mb-5 ml-4">
+    <li className="relative mb-5 ml-4">
       <span
-        className={`absolute -left-[7px] flex items-center justify-center w-3 h-3 rounded-full ${dot}`}
+        className={`absolute top-1 -left-[22px] flex items-center justify-center w-3 h-3 rounded-full ${dot}`}
         aria-hidden="true"
       />
       <div className="flex items-baseline justify-between gap-2 mb-1">
