@@ -3,7 +3,10 @@ import type { ActionMetadata } from '@ant/shared';
 
 /**
  * Add a user message to the chat history.
- * Persists the message to chat.json and broadcasts via SSE.
+ *
+ * Posts to the optimistic-write endpoint so the user's message shows up
+ * immediately via the SSE `user_message` broadcast, ahead of the worker's
+ * durable `user_turn` record in trace.jsonl (session redesign §16.2).
  * Must be called BEFORE executeCodeJob().
  */
 export async function addChatUserMessage(
@@ -24,7 +27,11 @@ export async function addChatUserMessage(
 }
 
 /**
- * Clear chat history for a feature (chat.json only)
+ * Clear chat history for a feature.
+ *
+ * Session redesign §16.2: the backend collapses trace.jsonl + feature.jsonl
+ * (durable SSOT) and broadcasts a `messages_cleared` SSE event so the UI
+ * drops both its chat messages and the feature-log slice.
  */
 export async function clearChatHistory(
   projectId: string,

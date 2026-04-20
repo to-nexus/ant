@@ -104,7 +104,7 @@ export function FileCard({ content, operation }: FileCardProps) {
     }
   }, [fileContent, isActive, isUserScrolling]);
   
-  // Calculate line stats (supports both full content and lightweight metadata from chat.json)
+  // Calculate line stats (supports both full content and lightweight metadata from trace.jsonl)
   const calculateLineStats = () => {
     if (operation === 'edit' && diffBefore && diffAfter) {
       return { added: diffAfter.split('\n').length, removed: diffBefore.split('\n').length, total: null };
