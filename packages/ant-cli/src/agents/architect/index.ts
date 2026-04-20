@@ -241,6 +241,7 @@ export async function architectAgent(
           kanbanUpdate: deps?.kanbanUpdate,
           fileTreeUpdate: deps?.fileTreeUpdate,
           workflowUpdate: deps?.workflowUpdate,
+          command: deps?.command,
           redis: deps?.redis,
         },
         planText: "",
