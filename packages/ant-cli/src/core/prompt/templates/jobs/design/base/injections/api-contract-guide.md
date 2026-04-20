@@ -111,4 +111,22 @@ For each per-service document, observe:
 
 ---
 
+## External Contract Discovery
+
+**Observation Target**
+- The reference, context, or directive materials provided for this task may name an external API contract by a reachable source (a URL, a repository path, a command that emits it, or another addressable handle). Observe those injected materials; do NOT rely on a particular source file name.
+
+**Constraints**
+- C1 — When a reachable contract source is observable in the injected materials, retrieve it with the available tools before describing endpoints, payloads, or status codes.
+- C2 — Retrieved content is evidence, not output. NEVER paste it verbatim.
+- C3 — If retrieval fails, state the gap; do NOT fabricate shapes.
+- C4 — `search_web` only when source is unknown; retrieval tools only when source is identified. Do NOT overlap.
+
+**Blind Spots**
+- Partial retrieval looking complete.
+- External contract vs directive disagreement.
+- If no reachable source is observable, do NOT attempt retrieval.
+
+---
+
 **Purpose**: Pure interface specification that FE/BE implement independently.
