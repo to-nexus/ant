@@ -43,7 +43,7 @@ export function applyCodeCommandPolicy(
   // Diagnostic inspect commands (cat/ls/pnpm why/tsc --version/etc.) are
   // always allowed and bypass every loop-guard below. They do not mutate
   // tracker state and are essential for config/dep-version root-cause discovery.
-  // Allow-list lives in utils/deepDiagnosticMode.ts.
+  // Allow-list lives in tasks/verification/model/gates.ts.
   if (isDiagnosticInspectCommand(command)) {
     return null;
   }

@@ -326,7 +326,7 @@ async function executeCommandLogic(
   // via `shouldSkipInstall` so both paths share a single cache rule.
   if (isBareInstallCommand(command)) {
     const currentHash = await computeDepFileHash(featureRootPath);
-    const savedHash = ctx.depFileHash;
+    const savedHash = ctx.verificationSession?.depHash();
     const depsExist = await hasInstalledDeps(featureRootPath);
 
     const skipReason = shouldSkipInstall(savedHash, currentHash, depsExist);

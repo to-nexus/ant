@@ -35,11 +35,9 @@
  *                                    as part of T6b-β.
  *
  * R2 compliance — the hook's verdicts come from its own `model/` (Session,
- * outcome, errors). A few prompt-rendering helpers
- * (`collectConfigSnapshot`, `renderConfigBlock`) still live under
- * `utils/deepDiagnosticMode` and will migrate into `model/` when the
- * `utils/` directory is retired (T9). No imports from `nodes/`,
- * `routers/`, or `parallel/`.
+ * outcome, errors). Prompt-rendering helpers (`collectConfigSnapshot`,
+ * `renderConfigBlock`) also live under `model/configSnapshot` as of T9.
+ * No imports from `nodes/`, `routers/`, or `parallel/`.
  */
 
 import type { ArchitectGraphState } from '../../../state';
@@ -53,7 +51,7 @@ import { effectiveTechTier, getTechTier } from '@ant/shared';
 import {
   collectConfigSnapshot,
   renderConfigBlock,
-} from '../../../utils/deepDiagnosticMode';
+} from '../model/configSnapshot';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Plan parsing helpers — kept local to avoid coupling to `nodes/plan/*`.
