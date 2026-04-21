@@ -26,7 +26,7 @@
 
 **Constraint**: When you need to read multiple files referenced in build errors, issue ALL reads in ONE response. Do NOT read files one at a time.
 
-**Constraint**: After running build/test and reading error-related files, produce `<analysis>` and `<plan>` promptly. Do NOT continue calling tools after sufficient diagnostic information is gathered.
+**Constraint**: Produce `<analysis>` and `<plan>` as soon as the failing command's output AND the referenced source file(s) are in context. One `read_file` per source file named in the error is sufficient — do NOT issue follow-up `search_code` calls after the file has been read. If the error message does not name any file, ONE targeted `search_code` is permitted; then produce `<plan>` from the located site.
 
 **Constraint**: Each verification command type (build, test) must be executed at most once per diagnostic cycle. Re-running a failed command without code changes produces identical results. A separate execution phase applies code fixes, after which a fresh diagnostic cycle re-verifies automatically.
 
@@ -115,6 +115,8 @@ Use `read_file` on the project root's configuration files to determine the corre
 **Principle**: A verification step (typecheck, build, test) that already passed in the current diagnostic cycle is retained by the runtime. You will be told when a step is already passed.
 
 **Constraint**: Do not re-run a step that is reported as already passed. Proceed to the next unverified step or, if every required step passes, output an empty plan and signal completion.
+
+**Constraint**: Tool responses whose content begins with `[Policy]` are internal guards (already-passed / gate ordering / deep-mode), NOT command execution failures. Treat them as the listed state (e.g. "already passed") and proceed to the next step — do not interpret them as a verification failure and do not retry the same command.
 
 {{#if isDeepDiagnostic}}
 ### Deep-Diagnostic Variant Commands

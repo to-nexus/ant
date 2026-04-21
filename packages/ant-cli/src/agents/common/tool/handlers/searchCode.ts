@@ -1,30 +1,48 @@
 /**
- * search_code handler — context-injected version
+ * search_code handler — ripgrep-backed.
+ *
+ * Contract: the `pattern` argument is a ripgrep regex (default Rust regex
+ * engine; no lookaround). `file_pattern` is a ripgrep glob. This matches
+ * the industry contract LLMs are trained on (Claude Code / Cursor /
+ * Codex CLI all wrap ripgrep) and replaces the previous substring-based
+ * implementation whose mismatch with LLM expectations forced multi-round
+ * retry loops (see ocean-clinging-motif session).
+ *
+ * The ripgrep binary is supplied by `@vscode/ripgrep` (bundled per-platform
+ * binary, no host dependency). We spawn the process directly rather than
+ * going through `CommandPort` so host command allow-lists and logging do
+ * not apply — `search_code` is an internal tool, not a user command.
  */
 
+import { spawn } from 'node:child_process';
+import { rgPath } from '@vscode/ripgrep';
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolDirectory, prependFixMessage } from './pathResolver';
 
-function matchFilePattern(filePath: string, pattern: string): boolean {
-  const p = pattern.replace(/\\/g, '/');
+const DEFAULT_EXCLUDES = ['node_modules', '.git', 'dist', 'build'];
+/** Cap total result size fed back to the LLM. ripgrep's per-file `--max-count`
+ *  still applies, but a pathological pattern on a large tree could otherwise
+ *  produce thousands of lines; the truncator upstream would drop most of it
+ *  anyway, so trim here with an explicit notice. */
+const MAX_RESULT_LINES = 500;
+const PER_FILE_MAX_COUNT = 200;
 
-  if (p.startsWith('.') && !p.includes('/')) {
-    return filePath.endsWith(p);
-  }
-
-  if (p.endsWith('/')) {
-    return filePath.includes(p);
-  }
-
-  if (p.includes('*')) {
-    const regexStr = p
-      .replace(/\*\*\//g, '(.+/)?')
-      .replace(/\*/g, '[^/]*');
-    const regex = new RegExp(`(^|/)${regexStr}$`);
-    return regex.test(filePath);
-  }
-
-  return filePath.includes(p);
+async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string; stderr: string; code: number }> {
+  return new Promise((resolve) => {
+    let proc: ReturnType<typeof spawn>;
+    try {
+      proc = spawn(rgPath, args, { cwd });
+    } catch (err) {
+      resolve({ stdout: '', stderr: (err as Error).message, code: 2 });
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    proc.stdout?.on('data', (c: Buffer) => { stdout += c.toString(); });
+    proc.stderr?.on('data', (c: Buffer) => { stderr += c.toString(); });
+    proc.on('close', (code) => resolve({ stdout, stderr, code: code ?? 0 }));
+    proc.on('error', (err) => resolve({ stdout: '', stderr: err.message, code: 2 }));
+  });
 }
 
 export async function handleSearchCode(
@@ -50,40 +68,33 @@ export async function handleSearchCode(
   try {
     const segments = resolvedRoot.fsPath.split('/');
     const isInsideDeps = segments.includes('node_modules') || segments.includes('vendor');
-    const excludes = isInsideDeps
-      ? ['.git']
-      : ['node_modules', '.git', 'dist', 'build'];
+    const excludes = isInsideDeps ? ['.git'] : DEFAULT_EXCLUDES;
 
-    console.log(`[searchCode] Listing files: ${resolvedRoot.displayPath} (fsPath: ${resolvedRoot.fsPath}, excludes: ${excludes})`);
+    console.log(`[searchCode] Ripgrep: ${resolvedRoot.displayPath} (fsPath: ${resolvedRoot.fsPath}, excludes: ${excludes})`);
 
-    const files = await fileSystem.listFiles(resolvedRoot.fsPath, excludes);
-    console.log(`[searchCode] Found ${files.length} files total`);
-
-    const filteredFiles = file_pattern
-      ? files.filter(f => matchFilePattern(f, file_pattern))
-      : files;
-
-    console.log(`[searchCode] Filtered to ${filteredFiles.length} files (pattern: ${file_pattern || 'none'})`);
-
-    const results: string[] = [];
-    for (const file of filteredFiles.slice(0, 50)) {
-      const content = await fileSystem.readFile(file);
-      if (!content) continue;
-
-      const lines = content.split('\n');
-      lines.forEach((line, index) => {
-        if (line.includes(pattern)) {
-          results.push(`${file}:${index + 1}: ${line.trim()}`);
-        }
-      });
+    const rgArgs: string[] = [
+      '--no-heading',
+      '--line-number',
+      '--color', 'never',
+      '--max-count', String(PER_FILE_MAX_COUNT),
+      '--max-filesize', '1M',
+    ];
+    for (const ex of excludes) {
+      rgArgs.push('--glob', `!${ex}`);
     }
+    if (file_pattern) {
+      rgArgs.push('--glob', file_pattern);
+    }
+    // `--` so patterns starting with `-` are not parsed as flags.
+    rgArgs.push('--', pattern, resolvedRoot.fsPath);
 
-    console.log(`[searchCode] Found ${results.length} matches for "${pattern}"`);
+    const { stdout, stderr, code } = await runRipgrep(rgArgs, resolvedRoot.fsPath);
 
-    if (results.length === 0) {
-      const errorMsg = `No matches found for pattern "${pattern}"${file_pattern ? ` in files matching "${file_pattern}"` : ''}`;
-      console.error(`[searchCode] ❌ ${errorMsg}`);
-
+    // ripgrep exit codes: 0=match, 1=no match, 2+=error.
+    if (code === 2) {
+      const errorMsg = (stderr.trim() || 'ripgrep exited with error') +
+        '\n\nHint: `pattern` is a ripgrep regex (Rust regex syntax). Escape literal regex metacharacters (. * + ? ( ) [ ] | \\).';
+      console.error(`[searchCode] ripgrep error: ${stderr.trim()}`);
       await ctx.chatStatus.showStatus('searched_code', {
         pattern,
         filesCount: 0,
@@ -92,20 +103,56 @@ export async function handleSearchCode(
         error: errorMsg,
         _mergeIndex: searchingIndex,
       });
+      return { content: `Error: ${errorMsg}`, error: errorMsg };
+    }
 
+    let lines = stdout.split('\n').filter(l => l.length > 0);
+    // Normalize absolute paths emitted by ripgrep down to repository-relative
+    // so the output matches the pre-ripgrep format (`file:line: content`).
+    // resolvedRoot.fsPath is the cwd we passed; strip it from each hit.
+    const rootPrefix = resolvedRoot.fsPath.endsWith('/') ? resolvedRoot.fsPath : resolvedRoot.fsPath + '/';
+    lines = lines.map(l => l.startsWith(rootPrefix) ? l.slice(rootPrefix.length) : l);
+
+    if (code === 1 || lines.length === 0) {
+      const errorMsg = `No matches found for pattern "${pattern}"${file_pattern ? ` in files matching "${file_pattern}"` : ''}`;
+      console.error(`[searchCode] ❌ ${errorMsg}`);
+      await ctx.chatStatus.showStatus('searched_code', {
+        pattern,
+        filesCount: 0,
+        totalMatches: 0,
+        filesList: [],
+        error: errorMsg,
+        _mergeIndex: searchingIndex,
+      });
       return { content: errorMsg, error: errorMsg };
     }
 
-    const matchedFiles = Array.from(new Set(results.map(r => r.split(':')[0])));
+    let truncatedNotice = '';
+    if (lines.length > MAX_RESULT_LINES) {
+      truncatedNotice = `\n\n[Search truncated: showing first ${MAX_RESULT_LINES} of ${lines.length} matches. Narrow the pattern or use \`file_pattern\` to reduce scope.]`;
+      lines = lines.slice(0, MAX_RESULT_LINES);
+    }
+
+    const matchedFiles = Array.from(new Set(
+      lines.map(l => {
+        const m = l.match(/^([^:]+):\d+:/);
+        return m ? m[1] : '';
+      }).filter(Boolean),
+    ));
+
+    // `fileSystem` is reserved for future cross-process fs concerns (it is
+    // intentionally unused here — ripgrep owns tree walking).
+    void fileSystem;
+
     await ctx.chatStatus.showStatus('searched_code', {
       pattern,
       filesCount: matchedFiles.length,
-      totalMatches: results.length,
+      totalMatches: lines.length,
       filesList: matchedFiles,
       _mergeIndex: searchingIndex,
     });
 
-    return { content: prependFixMessage(resolvedRoot, results.join('\n')) };
+    return { content: prependFixMessage(resolvedRoot, lines.join('\n') + truncatedNotice) };
   } catch (e) {
     const errorMsg = (e as Error).message;
     console.error(`[searchCode] ❌ Error:`, errorMsg);

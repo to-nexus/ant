@@ -18,10 +18,16 @@ import {
 } from '../../../../../../common/tool/constants';
 import { isDiagnosticInspectCommand } from '../model/gates';
 
+/**
+ * Policy-rejection `ToolResult`. The `[Policy]` prefix signals to the LLM
+ * that this is an internal guard (not a command execution failure), so the
+ * `messageBuilder` tool_result formatter leaves it untouched instead of
+ * prepending `Error:` (which would happen if the `error` field were set).
+ * Dropping `error` is the SSOT fix: policy rejection ≠ execution failure.
+ */
 function reject(command: string, reason: string): ToolResult {
   return {
-    content: reason,
-    error: reason,
+    content: `[Policy] ${reason}`,
     sideEffects: [
       { type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false },
     ],

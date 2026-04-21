@@ -85,17 +85,17 @@ export const ARCHITECT_TOOLS = {
   
   search_code: {
     name: 'search_code',
-    description: 'Search for a pattern in the codebase',
+    description: 'Search the codebase with ripgrep. Use a ripgrep regex; matches are returned as `file:line:content`.',
     input_schema: {
       type: 'object' as const,
       properties: {
         pattern: {
           type: 'string',
-          description: 'Search pattern',
+          description: 'Ripgrep regex pattern (Rust regex syntax, no lookaround). Escape literal metacharacters. Examples: "onMouseOver" (literal), "onMouseO(ver|ut)" (alternation), "use(State|Effect|Ref)\\b" (multi-hook).',
         },
         file_pattern: {
           type: 'string',
-          description: 'File pattern to filter (optional)',
+          description: 'Ripgrep glob to restrict files (optional). Examples: "**/*.tsx", "src/**/*.{ts,tsx}", "!**/*.test.ts" (exclude).',
         },
       },
       required: ['pattern'],

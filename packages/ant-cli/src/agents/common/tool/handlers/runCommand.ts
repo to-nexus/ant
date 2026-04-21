@@ -229,12 +229,60 @@ const packageManagerMutex = new AsyncMutex();
 // Main handler
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/**
+ * Policy-rejection `ToolResult` (exitCode: -1 sentinel = "did not execute").
+ * The `[Policy]` content prefix + omitted `error` field prevents the
+ * tool_result formatter from prepending `Error:` and misleading the LLM
+ * into treating an internal guard as a command execution failure.
+ */
 function makeRejection(command: string, displayText: string): ToolResult {
   return {
-    content: displayText,
-    error: displayText,
+    content: `[Policy] ${displayText}`,
     sideEffects: [{ type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false }],
   };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Stall watchdog helpers (exported for unit-test coverage)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Default: fire the watchdog only after ≥ 90s have elapsed. */
+export const STALL_GRACE_MS = 90_000;
+/** Default: `N` identical signatures in the recent window trigger a stall. */
+export const STALL_REPEAT_THRESHOLD = 5;
+
+/**
+ * Strip varying numeric tokens so repeated "Generating static pages (1/4)"
+ * / "(2/4)" / "(3/4)" lines collapse to the same signature. Trimmed to 80
+ * chars to keep very long error traces from escaping the repeat counter on
+ * an unrelated suffix.
+ */
+export function normalizeStderrLineSig(line: string): string {
+  return line.replace(/\d+/g, 'N').trim().slice(0, 80);
+}
+
+/**
+ * Decide whether the recent stderr tail shows repeated, progress-free
+ * output. Returns the dominant signature + its count when the stall
+ * criteria are met, or `null` otherwise.
+ */
+export function detectOutputStall(
+  lineSignatures: readonly string[],
+  startedAt: number,
+  opts: { graceMs?: number; repeatThreshold?: number; now?: number } = {},
+): { repeat: number; signature: string } | null {
+  const graceMs = opts.graceMs ?? STALL_GRACE_MS;
+  const repeatThreshold = opts.repeatThreshold ?? STALL_REPEAT_THRESHOLD;
+  const now = opts.now ?? Date.now();
+  if (now - startedAt < graceMs) return null;
+  const counts = new Map<string, number>();
+  for (const s of lineSignatures) counts.set(s, (counts.get(s) || 0) + 1);
+  let maxCount = 0;
+  let maxSig = '';
+  for (const [sig, c] of counts) {
+    if (c > maxCount) { maxCount = c; maxSig = sig; }
+  }
+  return maxCount >= repeatThreshold ? { repeat: maxCount, signature: maxSig } : null;
 }
 
 export async function handleRunCommand(
@@ -402,15 +450,37 @@ async function executeCommandLogic(
       // 'overlay' mode falls through to real execution; result is rewritten below.
     }
 
+    // Stall watchdog — catches commands that keep printing but make no
+    // progress (e.g. Next.js `Static page generation timeout` restarting
+    // itself 3× over ~9 minutes). Independent of wall-clock `timeout`; fires
+    // when the same stderr signature repeats ≥ STALL_REPEAT_THRESHOLD times
+    // after STALL_GRACE_MS has elapsed. See ocean-clinging-motif session
+    // for the motivating case. Helpers live at module scope for unit-tests.
+    const STALL_BUFFER_SIZE = 20;
+    const stderrLineSigs: string[] = [];
+    const commandStartedAt = Date.now();
+    let stallCheckTimer: NodeJS.Timeout | null = null;
+    const pushStderrLine = (line: string) => {
+      const sig = normalizeStderrLineSig(line);
+      if (!sig) return;
+      stderrLineSigs.push(sig);
+      if (stderrLineSigs.length > STALL_BUFFER_SIZE) stderrLineSigs.shift();
+    };
+
     const commandPromise = commandPort.execute(command, {
       cwd: workingDir,
       timeout: effectiveTimeout,
       env: installEnv,
       onStdout: (chunk: string) => { streamedStdout += chunk; console.log(chunk); },
-      onStderr: (chunk: string) => { streamedStderr += chunk; console.error(chunk); },
+      onStderr: (chunk: string) => {
+        streamedStderr += chunk;
+        console.error(chunk);
+        for (const line of chunk.split('\n')) pushStderrLine(line);
+      },
       onExit: (code: number) => {
         console.log(`   Exit code: ${code}`);
         if (serverDetectionTimer) { clearTimeout(serverDetectionTimer); serverDetectionTimer = null; }
+        if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
       },
     });
 
@@ -424,12 +494,41 @@ async function executeCommandLogic(
       }, SERVER_DETECTION_TIMEOUT);
     });
 
+    const stallPromise = new Promise<{ repeat: number; signature: string }>((resolve) => {
+      stallCheckTimer = setInterval(() => {
+        const stall = detectOutputStall(stderrLineSigs, commandStartedAt);
+        if (stall) {
+          if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
+          resolve(stall);
+        }
+      }, 15_000);
+    });
+
     const raceResult = await Promise.race([
       commandPromise.then(r => ({ type: 'completed' as const, result: r })),
       serverDetectionPromise.then(() => ({ type: 'server_detected' as const })),
+      stallPromise.then(stall => ({ type: 'stall_detected' as const, stall })),
     ]);
 
     if (serverDetectionTimer) { clearTimeout(serverDetectionTimer); serverDetectionTimer = null; }
+    if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
+
+    if (raceResult.type === 'stall_detected') {
+      invalidateBufferedFiles();
+      const allOutput = streamedStdout + streamedStderr;
+      const elapsedSec = Math.round((Date.now() - commandStartedAt) / 1000);
+      console.warn(`\n   ⚠️  [Watchdog] Stalled: "${raceResult.stall.signature}" repeated ${raceResult.stall.repeat}× over ${elapsedSec}s — terminating early\n`);
+      commandPromise.catch(() => {});
+      await ctx.chatStatus.commandComplete(command, false, 124, `Stall watchdog terminated command\n\nOutput:\n${allOutput}`, mergeIndex);
+      sideEffects.push({ type: 'commandExecuted', exitCode: 124, command, success: false, hasWarnings: false });
+      const tailChars = 5000;
+      const tail = allOutput.length > tailChars ? allOutput.slice(-tailChars) : allOutput;
+      return {
+        content: `⚠️ COMMAND STALLED: ${command}\n\n[Watchdog] Terminated early: the same error signature repeated ${raceResult.stall.repeat}× over ${elapsedSec}s with no observable progress.\nContinuing the same command will not help — analyze the repeated error below and apply a code fix.\n\nOutput captured (last ${tailChars} chars):\n${tail}`,
+        error: allOutput,
+        sideEffects,
+      };
+    }
 
     if (raceResult.type === 'server_detected') {
       invalidateBufferedFiles();

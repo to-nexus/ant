@@ -15,6 +15,7 @@ Execute a shell command. Long-running server commands are tested for startup the
   • Error tasks (infrastructure needed for verification)
 - Setup tasks: ONLY dependency install allowed
 - Feature tasks: NO build, NO docker (code only)
+- Test-code tasks: ONLY test-runner dependency install allowed. NO test execution, NO build.
 
 If build accidentally run in wrong task and fails: DO NOT retry, just complete the task.
 

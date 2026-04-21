@@ -86,20 +86,26 @@ function guardCtx(opts: { activePhase?: 'plan' | 'execute' } = {}): any {
 }
 
 describe('tasks/error/hooks/command.guard', () => {
+  // Policy rejections carry their reason in `content` (prefixed with
+  // `[Policy] ` so tool_result formatting does not mis-label them as
+  // command execution failures) and omit `error` — see reject() in
+  // error/hooks/command.ts.
   it('blocks build commands in execute phase', () => {
     const result = commandHook.guard(guardCtx(), { command: 'npm run build' });
-    expect(result?.error).toMatch(/BLOCKED/);
-    expect(result?.error).toMatch(/remediation plan/);
+    expect(result?.content).toMatch(/\[Policy\]/);
+    expect(result?.content).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/remediation plan/);
+    expect(result?.error).toBeUndefined();
   });
 
   it('blocks test commands in execute phase', () => {
     const result = commandHook.guard(guardCtx(), { command: 'pnpm test' });
-    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/BLOCKED/);
   });
 
   it('blocks typecheck commands in execute phase', () => {
     const result = commandHook.guard(guardCtx(), { command: 'tsc --noEmit' });
-    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/BLOCKED/);
   });
 
   it('allows install commands (error tasks may install deps to apply a fix)', () => {
