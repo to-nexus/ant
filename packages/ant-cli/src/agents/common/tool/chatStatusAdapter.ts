@@ -74,6 +74,10 @@ export function createChatStatusReporter(): ChatStatusReporter {
       const client = await getClient();
       return client.commandStart(command);
     },
+    async streamCommandOutput(command, output) {
+      const client = await getClient();
+      await client.streamCommandOutput(command, output);
+    },
     async commandComplete(command, success, exitCode, output, mergeIndex) {
       const client = await getClient();
       await client.commandComplete(command, success, exitCode, output, mergeIndex);
@@ -104,6 +108,7 @@ export function createNoopChatStatusReporter(): ChatStatusReporter {
     async completeFileCreation() {},
     async failFileCreation() {},
     async commandStart() { return undefined; },
+    async streamCommandOutput() {},
     async commandComplete() {},
     async finalizeMessage() {},
   };

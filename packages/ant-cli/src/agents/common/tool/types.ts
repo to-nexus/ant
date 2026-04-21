@@ -38,6 +38,14 @@ export interface ChatStatusReporter {
   failFileCreation(path: string, error: string): Promise<void>;
 
   commandStart(command: string): Promise<number | undefined>;
+  /**
+   * Push an incremental (accumulated) output snapshot to the chat UI.
+   * Callers should throttle / coalesce upstream so this runs at most a
+   * few times per second per command. The implementation forwards to
+   * `LLMResponseService.streamCommandOutput`, which computes a delta
+   * before broadcasting to keep Redis pub/sub payloads small.
+   */
+  streamCommandOutput(command: string, output: string): Promise<void>;
   commandComplete(command: string, success: boolean, exitCode: number, output: string, mergeIndex: number | undefined): Promise<void>;
 
   finalizeMessage(): Promise<void>;

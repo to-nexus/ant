@@ -6,10 +6,9 @@
  * layer violations (common/tool/handlers/ was importing from architect/).
  */
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Long-running command detection
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+// LONG_RUNNING_PATTERNS: syntax hint (pre-spawn) — "looks like a dev server".
+// COMPILE_RUN_PATTERNS: syntax hint — needs longer startup (go run / cargo run).
+// SERVER_OUTPUT_PATTERNS: runtime hint — output looks server-like. Don't fold.
 export const LONG_RUNNING_PATTERNS = [
   // ── Node.js / Frontend ──
   /npm\s+run\s+dev\b/,
@@ -54,6 +53,7 @@ export const LONG_RUNNING_PATTERNS = [
   /make\s+(run|serve|dev)\b/,   // make run, make serve, make dev
 ];
 
+/** Used ONLY by `handleLongRunningCommand.earlyErrorTimeout` (3s window). Do not reuse elsewhere — `/error/i` false-positives on benign substrings. */
 export const ERROR_PATTERNS = /error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find|Transform failed|Unexpected|Exception/i;
 
 // Many real-world commands (npm install, pnpm install, building large bundles)
@@ -61,7 +61,6 @@ export const ERROR_PATTERNS = /error|Error|ERR_|EADDRINUSE|ENOENT|Cannot find|Tr
 export const COMMAND_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 export const EARLY_ERROR_TIMEOUT = 3000; // 3 seconds
 export const STARTUP_VERIFICATION_TIMEOUT = 5000; // 5 seconds
-export const UI_CARD_ANIMATION_DELAY = 150; // 150ms
 
 // Compile-and-run languages (Go, Rust) need longer startup verification
 // because `go run` / `cargo run` compile before executing.
