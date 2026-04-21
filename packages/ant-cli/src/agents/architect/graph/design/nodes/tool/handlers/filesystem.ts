@@ -1,5 +1,28 @@
+import { spawn } from 'node:child_process';
+import { rgPath } from '@vscode/ripgrep';
 import { DesignGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
+
+/** See `agents/common/tool/handlers/searchCode.ts` for the ripgrep contract
+ *  rationale. The design-job adapter uses the same binary so the shared
+ *  `search_code` tool schema (regex-based) holds across jobs. */
+async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string; stderr: string; code: number }> {
+  return new Promise((resolve) => {
+    let proc: ReturnType<typeof spawn>;
+    try {
+      proc = spawn(rgPath, args, { cwd });
+    } catch (err) {
+      resolve({ stdout: '', stderr: (err as Error).message, code: 2 });
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    proc.stdout?.on('data', (c: Buffer) => { stdout += c.toString(); });
+    proc.stderr?.on('data', (c: Buffer) => { stderr += c.toString(); });
+    proc.on('close', (code) => resolve({ stdout, stderr, code: code ?? 0 }));
+    proc.on('error', (err) => resolve({ stdout: '', stderr: err.message, code: 2 }));
+  });
+}
 
 /**
  * Handle read_file tool with optional line range support.
@@ -122,7 +145,12 @@ export async function handleListFiles(
 }
 
 /**
- * Handle search_code tool
+ * Handle search_code tool (ripgrep-backed).
+ *
+ * Contract matches the shared `search_code` tool schema: `pattern` is a
+ * ripgrep regex, `file_pattern` is a ripgrep glob. The output JSON keeps
+ * the legacy `{ pattern, file_pattern, results, count }` shape so design
+ * tool adapters / prompts that consume the result stay source-compatible.
  */
 export async function handleSearchCode(
   state: DesignGraphState,
@@ -130,66 +158,70 @@ export async function handleSearchCode(
 ): Promise<string> {
   const { pattern, file_pattern } = args;
   const fileSystem = state.deps?.fileSystem;
-  
+
   if (!fileSystem) {
     throw new Error('FileSystemPort not available');
   }
-  
-  const path = await import('path');
+
   const featurePath = state.context.featurePath;
   if (!featurePath) {
     throw new Error('featurePath not available in context');
   }
-  
-  const rootPath = fileSystem.getRootPath?.() || '';
-  const relativePath = rootPath
-    ? path.relative(rootPath, featurePath)
-    : featurePath.replace(/^\//, '');
-  
-  const files = await fileSystem.listFiles(relativePath, ['node_modules', '.git']);
-  const results: any[] = [];
-  
-  for (const file of files.slice(0, 50)) {
-    if (file_pattern && !file.includes(file_pattern)) continue;
-    
-    try {
-      const content = await fileSystem.readFile(file);
-      if (!content) continue;
-      
-      const lines = content.split('\n');
-      lines.forEach((line, idx) => {
-        if (line.includes(pattern)) {
-          results.push({
-            file,
-            line: idx + 1,
-            snippet: line.trim(),
-          });
-        }
-      });
-      
-      if (results.length >= 50) break;
-    } catch {
-      // Skip files that can't be read
-    }
+
+  const rgArgs: string[] = [
+    '--no-heading',
+    '--line-number',
+    '--color', 'never',
+    '--max-count', '200',
+    '--max-filesize', '1M',
+    '--glob', '!node_modules',
+    '--glob', '!.git',
+  ];
+  if (file_pattern) {
+    rgArgs.push('--glob', file_pattern);
   }
-  
+  rgArgs.push('--', pattern, featurePath);
+
+  const { stdout, stderr, code } = await runRipgrep(rgArgs, featurePath);
+
+  if (code === 2) {
+    console.error(`   🔍 ripgrep error: ${stderr.trim()}`);
+    return JSON.stringify({
+      pattern,
+      file_pattern,
+      results: [],
+      count: 0,
+      error: stderr.trim() || 'ripgrep exited with error (invalid regex?)',
+    }, null, 2);
+  }
+
+  const rootPrefix = featurePath.endsWith('/') ? featurePath : featurePath + '/';
+  const lines = stdout.split('\n').filter(l => l.length > 0);
+
+  const results = lines.slice(0, 500).map(raw => {
+    const line = raw.startsWith(rootPrefix) ? raw.slice(rootPrefix.length) : raw;
+    const m = line.match(/^([^:]+):(\d+):(.*)$/);
+    if (!m) return null;
+    return { file: m[1], line: parseInt(m[2], 10), snippet: m[3].trim() };
+  }).filter(Boolean);
+
   console.log(`   🔍 Search: "${pattern}" found ${results.length} results`);
-  
-  const matchedFiles = [...new Set(results.map(r => r.file))];
+
+  const matchedFiles = [...new Set(results.map(r => r!.file))];
   if (matchedFiles.length > 0) {
     const chatAPI = getChatAPIClient();
     const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
-    await chatAPI.showChatStatus('grepped', { 
+    await chatAPI.showChatStatus('grepped', {
       filesCount: matchedFiles.length,
       filesList: matchedFiles,
-      _mergeIndex: mergeIndex
+      _mergeIndex: mergeIndex,
     });
   }
-  
+
   return JSON.stringify({
     pattern,
     file_pattern,
-    results: results.slice(0, 50),
+    results,
     count: results.length,
   }, null, 2);
 }

@@ -368,7 +368,13 @@ describe('hooks/command', () => {
       mkCtx({ activePhase: 'execute' }),
       { command: 'pnpm build' },
     );
-    expect(res?.error).toContain('execute phase');
+    // Policy rejections carry the explanation in `content` (prefixed with
+    // `[Policy] ` so the tool_result formatter does not mis-label the
+    // internal guard as a command execution failure). `error` is left
+    // unset intentionally — see reject() in verification/hooks/command.ts.
+    expect(res?.content).toContain('[Policy]');
+    expect(res?.content).toContain('execute phase');
+    expect(res?.error).toBeUndefined();
   });
 
   it('guard — plan-phase blocks already-passed typecheck', () => {
@@ -381,7 +387,9 @@ describe('hooks/command', () => {
       }),
       { command: 'tsc --noEmit' },
     );
-    expect(res?.error).toContain('ALREADY PASSED');
+    expect(res?.content).toContain('[Policy]');
+    expect(res?.content).toContain('ALREADY PASSED');
+    expect(res?.error).toBeUndefined();
   });
 
   it('guard — plan-phase requires typecheck before build', () => {
@@ -389,7 +397,7 @@ describe('hooks/command', () => {
       mkCtx(),
       { command: 'pnpm build' },
     );
-    expect(res?.error).toContain('Run tsc --noEmit first');
+    expect(res?.content).toContain('Run tsc --noEmit first');
   });
 
   it('guard — deep-diagnostic relaxes failed-in-cycle block', () => {
@@ -411,7 +419,7 @@ describe('hooks/command', () => {
       mkCtx({ verificationSession: mkSession({ required: ['build', 'test'] }) }),
       { command: 'pnpm test' },
     );
-    expect(res?.error).toContain('run the build command');
+    expect(res?.content).toContain('run the build command');
   });
 
   it('guard — marks typecheck/build/test as attempted on pass-through', () => {

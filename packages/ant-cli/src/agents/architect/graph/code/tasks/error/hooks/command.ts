@@ -32,10 +32,14 @@ import {
 } from '../../../../../../common/tool/constants';
 import { isDiagnosticInspectCommand } from '../../verification/model/gates';
 
+/**
+ * Policy-rejection `ToolResult`. See verification/hooks/command.ts for the
+ * `[Policy]` prefix rationale: it keeps the tool_result formatter from
+ * disguising an internal guard as a command execution failure.
+ */
 function reject(command: string, reason: string): ToolResult {
   return {
-    content: reason,
-    error: reason,
+    content: `[Policy] ${reason}`,
     sideEffects: [
       { type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false },
     ],

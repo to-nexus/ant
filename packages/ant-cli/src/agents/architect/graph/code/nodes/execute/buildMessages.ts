@@ -53,6 +53,31 @@ const DEFAULT_PLAN_FRAMING = {
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
 /**
+ * Observe `codebase/node_modules` against `codebase/package.json` for
+ * test-code tasks so the `missing-dependency-fix` injection can activate.
+ * The same `areDepsInstalled` SSOT used by verification plan entry backs
+ * this check; we do not introduce a parallel observation path.
+ *
+ * Returns `false` for other task types to preserve their legacy default —
+ * verification carries the signal via `Session.dependencyStatus()`, and
+ * feature/error tasks surface missing imports through build/test output.
+ */
+async function observeMissingDepsForTask(state: ArchitectGraphState): Promise<boolean> {
+  if (state.currentTask?.type !== 'test-code') return false;
+  const featureRoot = state.deps?.fileSystem?.getRootPath?.();
+  if (!featureRoot) return false;
+  try {
+    const { areDepsInstalled } = await import(
+      '../../../../../common/tool/handlers/invalidationScope'
+    );
+    const installed = await areDepsInstalled(featureRoot);
+    return installed === false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Build retry context from enforcement history so the LLM knows what was
  * already tried and failed. Returns null when not in a retry cycle.
  */
@@ -299,7 +324,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       userLanguage: state.context?.userLanguage || 'en',
       filteredCatalog: undefined,
       hasRuntimeError: state.directive ? containsRuntimeErrorPattern(state.directive) : false,
-      hasMissingDependency: false,
+      // test-code frequently adds test-runner packages to package.json; if
+      // node_modules/<name> is missing we flip `hasMissingDependency` so the
+      // `missing-dependency-fix` injection activates and the task installs
+      // the runner itself (instead of deferring to verification). Other task
+      // types keep the legacy `false` default — verification owns its own
+      // signal via `Session.dependencyStatus()`, and feature/error tasks'
+      // missing-import errors are surfaced by build/test output.
+      hasMissingDependency: await observeMissingDepsForTask(state),
       // Task-specific vars (e.g. error's remediationMode{Upstream,Refactor}).
       // Placed last so the hook's keys override generic defaults if ever
       // required; today error is the sole publisher and it only adds keys.

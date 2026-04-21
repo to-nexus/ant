@@ -54,7 +54,12 @@ describe('F1 — *Passed independent guard', () => {
     const session = makeSession({ passed: ['typecheck'] });
     const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
-    expect(result?.error).toMatch(/ALREADY PASSED/);
+    // Policy rejections carry the reason in `content` (prefixed with
+    // `[Policy] ` so the tool_result formatter doesn't mis-label the
+    // internal guard as a command execution failure). `error` is unset.
+    expect(result?.content).toMatch(/\[Policy\]/);
+    expect(result?.content).toMatch(/ALREADY PASSED/);
+    expect(result?.error).toBeUndefined();
   });
 
   it('F1b: typecheck not passed and not attempted → pass-through', () => {
@@ -67,28 +72,28 @@ describe('F1 — *Passed independent guard', () => {
     const session = makeSession({ passed: ['typecheck'], attempted: ['typecheck'] });
     const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
-    expect(result?.error).toMatch(/ALREADY PASSED/);
+    expect(result?.content).toMatch(/ALREADY PASSED/);
   });
 
   it('F1d: build passed → ALREADY PASSED (build)', () => {
     const session = makeSession({ passed: ['typecheck', 'build'] });
     const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
-    expect(result?.error).toMatch(/ALREADY PASSED/);
+    expect(result?.content).toMatch(/ALREADY PASSED/);
   });
 
   it('F1e: test passed → ALREADY PASSED (test)', () => {
     const session = makeSession({ passed: ['typecheck', 'build', 'test'] });
     const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
-    expect(result?.error).toMatch(/ALREADY PASSED/);
+    expect(result?.content).toMatch(/ALREADY PASSED/);
   });
 
   it('F1f: *Passed ALREADY PASSED applies even in deep diagnostic mode', () => {
     const session = makeSession({ passed: ['typecheck'], attempted: ['typecheck'] });
     const ctx = makeCtx(session, { isDeepDiagnostic: true });
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
-    expect(result?.error).toMatch(/ALREADY PASSED/);
+    expect(result?.content).toMatch(/ALREADY PASSED/);
   });
 });
 
@@ -97,8 +102,8 @@ describe('F4 — 3-gate ordering guard', () => {
     const session = makeSession({ passed: ['typecheck'], attempted: ['typecheck'] });
     const ctx = makeCtx(session);
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
-    expect(result?.error).toMatch(/BLOCKED/);
-    expect(result?.error).toMatch(/build/i);
+    expect(result?.content).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/build/i);
   });
 
   it('F4b: buildPassed=true + test command → pass-through', () => {
@@ -128,7 +133,7 @@ describe('F1/F4 — non-plan phase is not guarded by plan-phase gates', () => {
     const ctx = makeCtx(session, { activePhase: 'execute' });
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
     // Execute-phase guard message, not ALREADY PASSED.
-    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/BLOCKED/);
   });
 });
 
@@ -159,14 +164,16 @@ describe('codeCommandPolicy — Go build allow-list (verification-only after T6b
   it('blocks `go build` in an error task (previously silently allowed via isDiagnosticTask)', () => {
     const ctx = makeErrorCtx();
     const result = applyCodeCommandPolicy(ctx, { command: 'go build ./...' });
-    expect(result?.error).toMatch(/BLOCKED/);
-    expect(result?.error).toMatch(/verification tasks/);
+    expect(result?.content).toMatch(/\[Policy\]/);
+    expect(result?.content).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/verification tasks/);
+    expect(result?.error).toBeUndefined();
   });
 
   it('blocks `go test` in an error task', () => {
     const ctx = makeErrorCtx();
     const result = applyCodeCommandPolicy(ctx, { command: 'go test ./...' });
-    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/BLOCKED/);
   });
 
   it('blocks `go vet` in a feature task (unchanged behaviour)', () => {
@@ -180,7 +187,7 @@ describe('codeCommandPolicy — Go build allow-list (verification-only after T6b
       workingDir: '/tmp',
     } as unknown as ToolExecutionContext;
     const result = applyCodeCommandPolicy(ctx, { command: 'go vet ./...' });
-    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/BLOCKED/);
   });
 
   it('allows `go build` in a verification task (plan phase — diagnostic run)', () => {
@@ -199,20 +206,20 @@ describe('codeCommandPolicy — error command.guard (execute-phase build/test/ty
   it('blocks `npm run build` in error task execute phase', () => {
     const ctx = makeErrorCtx({ activePhase: 'execute' });
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
-    expect(result?.error).toMatch(/BLOCKED/);
-    expect(result?.error).toMatch(/remediation plan/);
+    expect(result?.content).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/remediation plan/);
   });
 
   it('blocks `npm run test` in error task execute phase', () => {
     const ctx = makeErrorCtx({ activePhase: 'execute' });
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
-    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/BLOCKED/);
   });
 
   it('blocks `npx tsc --noEmit` in error task execute phase', () => {
     const ctx = makeErrorCtx({ activePhase: 'execute' });
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
-    expect(result?.error).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/BLOCKED/);
   });
 
   it('allows `pnpm install foo` in error task execute phase (dependency install is part of fix)', () => {
