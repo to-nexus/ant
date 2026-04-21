@@ -18,16 +18,16 @@ export interface LLMModelInfo {
 // Available models registry
 const AVAILABLE_MODELS: LLMModelInfo[] = [
   {
-    id: 'claude-sonnet-4-6',
-    displayName: 'Sonnet 4.6',
+    id: 'claude-sonnet-4-7',
+    displayName: 'Sonnet 4.7',
     provider: 'anthropic',
     description: 'Latest Claude Sonnet model, best for coding',
     recommended: true,
     capabilities: ['coding', 'reasoning', 'large-context']
   },
   {
-    id: 'claude-opus-4-6',
-    displayName: 'Opus 4.6',
+    id: 'claude-opus-4-7',
+    displayName: 'Opus 4.7',
     provider: 'anthropic',
     description: 'Most capable Claude model, best for complex reasoning',
     recommended: false,
@@ -81,7 +81,7 @@ export function createModelsRoutes(): Router {
     try {
       res.json({
         models: AVAILABLE_MODELS,
-        default: 'claude-opus-4-6'
+        default: 'claude-opus-4-7'
       });
     } catch (error) {
       console.error('[Models API] Error:', error);
