@@ -226,26 +226,17 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
         // `scope` tells us how aggressive the backend collapse was:
         // - 'full' (Hard Reset / §17 hard_reset): BOTH trace.jsonl and
         //   feature.jsonl were collapsed + a user_reset boundary was
-        //   appended. Wipe all feature-log caches (trace, breadcrumbs,
-        //   user_turns, user_turn_metas) so stale rows do not linger in the
-        //   Activity / Timeline tabs until a feature switch.
+        //   appended. Wipe the feature-log breadcrumb cache so the Timeline
+        //   tab does not keep stale rows until a feature switch.
         // - 'chat' (DELETE /chat/messages, default): only trace.jsonl was
         //   collapsed. feature.jsonl (breadcrumbs, user_turn, user_turn_meta)
         //   is preserved so the LLM still remembers the conversation for the
-        //   next turn. Drop only the local trace cache; keep breadcrumb and
-        //   tier-badge data so they stay visible.
+        //   next turn — keep breadcrumbs intact in the UI as well.
         // Falls back to 'chat' when older servers omit the field — the
         //   conservative, less destructive choice.
         const scope: 'chat' | 'full' = event.scope === 'full' ? 'full' : 'chat';
         if (scope === 'full') {
           get().clearFeatureLog?.();
-        } else {
-          set({
-            traceLines: [],
-            traceStatus: 'idle',
-            traceError: undefined,
-            traceKey: undefined,
-          });
         }
         get().refreshFileTree();
         break;
@@ -309,6 +300,16 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
             setRunning(false);
           }
           get().refreshFileTree();
+          // Session redesign §2.4: feature.jsonl breadcrumbs are appended at
+          // the end of the learn node (disk-only, no SSE push). Re-fetch
+          // here so the Timeline tab reflects the just-finished job without
+          // requiring a feature switch or manual reload.
+          const project = currentState.selectedProject;
+          const feature = currentState.selectedFeature;
+          if (project && feature) {
+            console.log('[Store] 📚 Reloading feature breadcrumbs after job_status completion');
+            void get().loadFeatureBreadcrumbs?.(project, feature);
+          }
         } else if (event.status === 'running' || event.status === 'started') {
           if (get().jobStartPending) {
             console.log('[Store] ✅ Job started on worker, clearing jobStartPending via job_status');

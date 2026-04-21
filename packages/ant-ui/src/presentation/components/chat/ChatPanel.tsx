@@ -10,7 +10,6 @@ import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { PinnedQuery, type PinnedQueryData } from './PinnedQuery';
 import { QueueStatusBanner } from './QueueStatusBanner';
-import { TraceActivityView } from './feature-log/TraceActivityView';
 import { BreadcrumbTimeline } from './feature-log/BreadcrumbTimeline';
 import { useFeatureLogSync } from './feature-log/useFeatureLogSync';
 import { useChat } from '@/application/hooks/features/useChat';
@@ -22,7 +21,7 @@ import type { IntentGroup } from '@ant/shared';
 import { Zap, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { FileStats } from '@/domain/models/chat';
 
-type ChatPanelTab = 'chat' | 'activity' | 'timeline';
+type ChatPanelTab = 'chat' | 'timeline';
 
 interface ChatPanelProps {
   projectId: string | null;
@@ -110,9 +109,9 @@ export function ChatPanel({
   const chatPolicy = useChatPolicy(messages.length);
   const mainPanelActiveTab = useStore(s => s.mainPanelActiveTab);
 
-  // Session-redesign SSOT: load trace.jsonl + breadcrumbs on feature switch.
-  // Live updates keep flowing via existing SSE streams; this populates the
-  // Activity / Timeline tabs below and acts as the historical ground truth.
+  // Session-redesign SSOT: load feature.jsonl breadcrumbs on feature switch.
+  // Live updates to the Timeline tab arrive via the `job_status=completed|failed`
+  // SSE event handler in chatSseHandler.ts which re-issues this load.
   useFeatureLogSync(_projectId, _featureName);
 
   const [activeTab, setActiveTab] = useState<ChatPanelTab>('chat');
@@ -223,14 +222,8 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Tab bar: Chat (live / choice cards) | Activity (trace.jsonl SSOT) | Timeline (breadcrumbs) */}
+      {/* Tab bar: Chat (live / choice cards) | Timeline (feature.jsonl breadcrumbs) */}
       <ChatPanelTabBar activeTab={activeTab} onChange={setActiveTab} />
-
-      {activeTab === 'activity' && (
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          <TraceActivityView />
-        </div>
-      )}
 
       {activeTab === 'timeline' && (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
@@ -438,7 +431,6 @@ function ChatPanelTabBar({
   const { t } = useTranslation('chat');
   const tabs: Array<{ id: ChatPanelTab; label: string }> = [
     { id: 'chat', label: t('panelTabs.chat', { defaultValue: 'Chat' }) },
-    { id: 'activity', label: t('panelTabs.activity', { defaultValue: 'Activity' }) },
     { id: 'timeline', label: t('panelTabs.timeline', { defaultValue: 'Timeline' }) },
   ];
 
