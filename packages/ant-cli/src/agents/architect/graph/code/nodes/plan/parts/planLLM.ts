@@ -35,7 +35,7 @@ import {
  * Extracts read_file results from nodePlanHistory and merges them
  * into projectCodeContext.files, deduplicating against existing RAG files.
  */
-export function enrichContextFromPlanToolLoop(
+function enrichContextFromPlanToolLoop(
   projectCodeContext: any,
   nodePlanHistory: Array<{ role: string; content: string | MessageContentBlock[] }> | undefined,
 ): any {

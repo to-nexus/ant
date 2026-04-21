@@ -63,10 +63,10 @@ export function routeAfterDecompose(state: ArchitectGraphState): string {
   }
   const concurrency = getTaskConcurrency();
   if (concurrency > 1) {
-    console.log(`[Decompose→Router] complexity=${state.complexity ?? 'todo'} ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
+    console.log(`[Decompose→Router] complexity=${state.complexity ?? 'task'} ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
     return 'parallelOrchestrator';
   }
-  console.log(`[Decompose→Router] complexity=${state.complexity ?? 'todo'} ANT_TASK_CONCURRENCY=1 → sequential plan`);
+  console.log(`[Decompose→Router] complexity=${state.complexity ?? 'task'} ANT_TASK_CONCURRENCY=1 → sequential plan`);
   return 'plan';
 }
 

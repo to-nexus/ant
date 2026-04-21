@@ -17,7 +17,7 @@ import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
 import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
-import { logErrorHeader } from "../shared/errorHandler";
+import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 // ArtifactService no longer needed — metadata extracted from state.artifacts
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
@@ -28,6 +28,7 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
+import { selectExecutionTier } from "../../../../../../core/executionTier";
 
 
 /**
@@ -521,6 +522,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       awaitingDecomposeClarify: true,
       specClarify,
       complexity,
+      executionTier: selectExecutionTier(state.resolvedAction?.mode, complexity),
       directHints,
       _phaseTimings: { ...(state._phaseTimings || {}), decompose: Date.now() - phaseStart },
     };
@@ -836,6 +838,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     boundary: finalBoundary,
     complexity,
     complexityDecidedBy,
+    executionTier: selectExecutionTier(state.resolvedAction?.mode, complexity),
     directHints,
     directMode,
     specClarify: undefined,
@@ -849,7 +852,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   // ✅ Save checkpoint with tasks
   if (state.deps?.session) {
-    const { saveCheckpoint } = await import('../checkpoint');
+    const { saveCheckpoint } = await import('../../session/checkpoint');
     await saveCheckpoint(updatedState);
     console.log(`✅ [Decompose] Checkpoint saved with ${tasks.length} tasks\n`);
   }

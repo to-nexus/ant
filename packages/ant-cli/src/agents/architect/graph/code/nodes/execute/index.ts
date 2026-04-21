@@ -13,7 +13,7 @@
  * 
  * ✅ MODULAR ARCHITECTURE:
  * - buildMessages.ts: Message & context building (wraps core PromptBuilder)
- * - toolDefinitions.ts: Available tools
+ * - tools.ts: Available tools
  * - referenceFilter.ts: Reference context filtering
  */
 
@@ -28,8 +28,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 
 // Import submodules
 import { buildMessages } from './buildMessages';
-import { getAvailableTools } from './toolDefinitions';
-import { getToolsByNamesWithTemplates, TOOL_SETS } from '../../../../../common/tool/toolSchemas';
+import { getTools } from './tools';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
@@ -189,11 +188,10 @@ export async function execute(
     }
   }
   
-  // Tool activation: explain mode → read-only tools, otherwise full tools.
+  // Tool activation: mode-aware selection is encapsulated in `./tools.ts`
+  // (NODE_GRAPH_LAYOUT.md §2.2 — caller is a single `await getTools(state)` line).
   const isExplainMode = state.resolvedAction?.mode === 'explain';
-  const tools = isExplainMode
-    ? await getToolsByNamesWithTemplates(TOOL_SETS.codeExplain, state.deps?.promptBuilder)
-    : await getAvailableTools(state);
+  const tools = await getTools(state);
   
   if (!state.resolvedAction?.mode) {
     console.warn(`⚠️ [CodeGen] resolvedAction.mode is missing — defaulting to tools enabled`);

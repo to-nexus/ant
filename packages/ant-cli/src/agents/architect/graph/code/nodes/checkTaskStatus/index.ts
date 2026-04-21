@@ -18,6 +18,7 @@ import type { CodeTask } from '../../../../types/task';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TASK_PRIORITIES, TaskTimingHelper } from '../../state';
 import { hooksIfActive } from '../../tasks/_shared/registry';
+import { isFeatureTask } from '../../tasks/feature/model/is';
 import { evaluateTaskStatus } from './evaluate';
 
 export async function checkTaskStatus(
@@ -202,7 +203,7 @@ export async function checkTaskStatus(
     });
 
     // If feature task, mark in featureTasks map
-    if (completedTask.type === 'feature' && state.featureTasks) {
+    if (isFeatureTask(completedTask) && state.featureTasks) {
       const feature = state.featureTasks.get(completedTask.id);
       if (feature) {
         feature.completed = true;
@@ -252,7 +253,7 @@ export async function checkTaskStatus(
     };
 
     // ✅ CRITICAL: Save checkpoint with updated completedTasksDetails
-    const { saveCheckpoint } = await import('../checkpoint');
+    const { saveCheckpoint } = await import('../../session/checkpoint');
     await saveCheckpoint(updatedState);
     console.log(`[checkTaskStatus] ✅ Checkpoint saved with completedTasksDetails (${completedTasksDetails.length} tasks)`);
 

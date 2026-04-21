@@ -126,7 +126,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
 
         // VerificationSession rehydration. The snapshot is persisted on
         // `session.state.verification` by `saveCheckpoint`
-        // (nodes/checkpoint/index.ts), the three carry-over boundaries
+        // (session/checkpoint.ts), the three carry-over boundaries
         // via `snapshotFromState()`, and scenario seeds authored post-T4b
         // (see tests/verification/scenarios/scenarios/Sxx/session.seed.json).
         // Wiring the session onto `initial.verification` here ensures the
@@ -295,7 +295,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
     // Save pause state BEFORE learn node (learn node can fail)
     if (state.deps?.session && state.context.featureFolder) {
       try {
-        const { saveCheckpoint } = await import('./nodes/checkpoint');
+        const { saveCheckpoint } = await import('./session/checkpoint');
         state.currentTask = undefined;
         
         const pausedState = {
