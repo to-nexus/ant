@@ -22,6 +22,7 @@ If the same patch repeats across ≥ 5 files, fix upstream:
 - React 19: global `JSX` removed — use `React.JSX.Element` or omit the annotation.
 - Next.js 15: `headers()`, `cookies()`, `params`, `searchParams` are async — sync destructuring throws.
 - App Router: `experimental.appDir` no longer exists; remove from migrated configs.
+- Next.js 14: `next.config.ts` unsupported — use `.mjs` / `.js` / `.cjs`.
 
 ## Toolchain Compatibility
 
