@@ -14,15 +14,11 @@ import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../../types/task";
 import { LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
-import {
-  saveCheckpoint,
-  updateKanban,
-  safeLogPrompt,
-  resolveLLMClient,
-  showChatPlaceholder,
-  trackTokenUsage,
-  type CheckpointData,
-} from "./helpers";
+import { updateKanban } from "./kanbanUpdate";
+import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
+import { trackTokenUsage } from "./tokenTracking";
+import { safeLogPrompt } from "../../utils/promptLog";
+import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
 
 interface DecomposeContext {
@@ -203,17 +199,13 @@ export async function decomposeSpec(
     basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
   };
 
-  await saveCheckpoint(state, {
+  state.jobId = ctx.newJobId;
+  state.jobTiming = ctx.newJobTiming;
+  state._estimatingTokenUsage = state.tokenUsage;
+  await saveDecomposeCheckpoint(state, {
     taskQueue: taskQueue.getAll(),
     completedTasks: [],
     completedTasksDetails: [],
-    jobId: ctx.newJobId,
-    jobTiming: ctx.newJobTiming,
-    tokenUsage: state.tokenUsage,
-    estimatingTokenUsage: state.tokenUsage,
-    overrideDirective: state.overrideDirective,
-    chatSource: state.chatSource,
-    userLanguage: state.context.userLanguage as CheckpointData['userLanguage'],
   });
 
   return {

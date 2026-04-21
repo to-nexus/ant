@@ -10,17 +10,13 @@ import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../../types/task";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
-import { logErrorHeader } from "../../../code/nodes/shared/errorHandler";
-import {
-  parseLLMJsonResponse,
-  saveCheckpoint,
-  updateKanban,
-  safeLogPrompt,
-  resolveLLMClient,
-  showChatPlaceholder,
-  trackTokenUsage,
-  type CheckpointData,
-} from "./helpers";
+import { logErrorHeader } from "../../../code/nodes/_common/errorHandler";
+import { updateKanban } from "./kanbanUpdate";
+import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
+import { trackTokenUsage } from "./tokenTracking";
+import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { safeLogPrompt } from "../../utils/promptLog";
+import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 
@@ -285,17 +281,12 @@ export async function decomposeUiDesign(
       basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
     };
 
-    // Save checkpoint
-    await saveCheckpoint(state, {
+    state.jobId = ctx.newJobId;
+    state.jobTiming = finalJobTiming;
+    await saveDecomposeCheckpoint(state, {
       taskQueue: taskQueue.getAll(),
       completedTasks: [],
       completedTasksDetails: [],
-      jobId: ctx.newJobId,
-      jobTiming: finalJobTiming,
-      tokenUsage: state.tokenUsage,
-      overrideDirective: state.overrideDirective,
-      chatSource: state.chatSource,
-      userLanguage: state.context.userLanguage as CheckpointData['userLanguage'],
     });
 
     // Update Kanban

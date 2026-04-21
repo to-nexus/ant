@@ -2,6 +2,7 @@ import { DesignGraphState } from '../../state';
 import { SessionRun } from '../../../../../../core/types';
 import { DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
+import { saveLearnCheckpoint } from '../../session/checkpoint';
 
 /**
  * Save session run with all metadata
@@ -71,27 +72,10 @@ export async function saveSessionRun(state: DesignGraphState): Promise<void> {
     }
   }
 
-  await state.deps.session.updateArtifacts(
-    state.context.project,
-    state.context.featureFolder || 'default',
-    'design',
-    {
-      keyDecisions: decisions.slice(0, 5),
-      state: {
-        taskQueue: state.taskQueue?.getAll() || [],
-        currentTask: state.currentTask,
-        completedTasks: state.completedTasks || [],
-        completedTasksDetails: state.completedTasksDetails || [],
-        interruption: existingSession.state?.interruption,
-        jobId: state.jobId,
-        jobTiming: completedJobTiming,
-        tokenUsage: state.tokenUsage,
-        estimatingTokenUsage: state._estimatingTokenUsage,
-        directives: directivesArray,
-        overrideDirective: state.overrideDirective,
-        chatSource: state.chatSource,
-        resolvedAction: state.resolvedAction,
-      }
-    }
-  );
+  await saveLearnCheckpoint(state, {
+    decisions,
+    directivesArray,
+    completedJobTiming,
+    existingInterruption: existingSession.state?.interruption,
+  });
 }

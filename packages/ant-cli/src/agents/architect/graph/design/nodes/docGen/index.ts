@@ -26,10 +26,10 @@ import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient'
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
-import { getToolsByNames, TOOL_SETS } from '../../../../../common/tool/toolSchemas';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
-import { READ_SOURCE_DOC_TOOL } from './sourceSelector';
+import { getTools } from './tools';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
+import { saveClarifyCheckpoint } from '../../session/checkpoint';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './intent/system';
@@ -93,7 +93,8 @@ export async function docGen(
     useSourceFileTool = result.useSourceFileTool;
   }
   
-  // Figma mode detection (used for both budget thresholds and tool selection)
+  // Figma mode detection (used for budget threshold tuning; tool selection
+  // lives in ./tools.ts and mirrors the same predicates there).
   const { isFigmaPipeline, isFigmaDataPopulated } = await import('@ant/shared');
   const isFigmaUiDesign = intentGroup === 'design-ui' && isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
 
@@ -133,22 +134,9 @@ export async function docGen(
     console.log(`⚠️  [DocGen] Budget ${level}: ${noOutputCount}/${MAX_NO_OUTPUT_CALLS} no-output calls, ${remaining} remaining`);
   }
 
-  // Tool activation: Select appropriate tool set based on work type
-  const isSpecFigma = intentGroup === 'design-spec' && state.figmaAvailable === true;
-
-  const tools = isExplainMode
-    ? getToolsByNames(TOOL_SETS.designExplain)
-    : isFigmaUiDesign
-      ? getToolsByNames(TOOL_SETS.uiDesignFigma)
-      : intentGroup === 'design-ui'
-        ? getToolsByNames(TOOL_SETS.uiDesign)
-        : isSpecFigma
-          ? getToolsByNames(TOOL_SETS.specFigma)
-          : useSourceFileTool
-            ? [...getToolsByNames(TOOL_SETS.design), READ_SOURCE_DOC_TOOL]
-            : getToolsByNames(TOOL_SETS.design);
-  
-  // Tool configuration complete
+  // Tool activation: delegate to the per-node tools.ts selector so the
+  // docGen node body stays focused on streaming / parsing.
+  const tools = await getTools(state, { useSourceFileTool });
   
   // ✅ Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -373,29 +361,7 @@ export async function docGen(
         await chatAPI.sendLLMEvent({ type: 'text', text: `\n\n**추가 정보가 필요합니다:**\n\n${clarifyContent}\n` });
         await chatAPI.finalizeMessage();
         
-        // Save awaitingClarify + conversation history to session for resume
-        if (state.deps?.session && state.context.featureFolder) {
-          try {
-            await state.deps.session.updateArtifacts(
-              state.context.project,
-              state.context.featureFolder,
-              'design',
-              {
-                state: {
-                  awaitingClarify: true,
-                  conversations: { [CONV_KEYS.NODE_DOCGEN]: nodeHistory },
-                  resolvedAction: state.resolvedAction,
-                  directive: state.directive,
-                  overrideDirective: state.overrideDirective,
-                  chatSource: state.chatSource,
-                }
-              }
-            );
-            console.log(`💾 [DocGen/Spec] Saved awaitingClarify=true to session`);
-          } catch (err) {
-            console.warn(`⚠️  [DocGen/Spec] Failed to save clarify state:`, err);
-          }
-        }
+        await saveClarifyCheckpoint(state, { kind: 'docgen', nodeHistory });
         
         // Clear estimating activity
         if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {

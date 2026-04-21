@@ -4,6 +4,7 @@ import { DesignGraphState } from "../state";
 import { DesignTask, TaskQueue } from "../../../types/task";
 import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
 import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
+import { saveReviseCheckpoint } from "../session/checkpoint";
 
 /**
  * Revise Node for Design Job
@@ -215,37 +216,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
         console.log(`   ✅ Interrupted task not affected → preserving planText + conversations`);
       }
       
-      // Save checkpoint
-      if (state.deps?.session && state.context.featureFolder) {
-        try {
-          await state.deps.session.updateArtifacts(
-            state.context.project,
-            state.context.featureFolder,
-            'design',
-            {
-              state: {
-                taskQueue: updatedState.taskQueue?.getAll() || [],
-                completedTasks: updatedState.completedTasks || [],
-                completedTasksDetails: updatedState.completedTasksDetails || [],
-                currentTask: updatedState.currentTask,
-                planText: updatedState.planText,
-                conversations: updatedState.conversations || {},
-                files: updatedState.files || [],
-                filesToDelete: updatedState.filesToDelete || [],
-                jobId: updatedState.jobId,
-                jobTiming: updatedState.jobTiming,
-                tokenUsage: updatedState.tokenUsage,
-                overrideDirective: updatedState.overrideDirective,
-                chatSource: updatedState.chatSource,
-                resolvedAction: updatedState.resolvedAction,
-              }
-            }
-          );
-          console.log(`💾 [Design Revise] Checkpoint saved\n`);
-        } catch (error) {
-          console.warn(`⚠️  [Design Revise] Failed to save checkpoint:`, error);
-        }
-      }
+      await saveReviseCheckpoint(state, updatedState);
       
       // Update Kanban
       if (state.deps?.kanbanUpdate && state._httpJobId && updatedState.taskQueue) {

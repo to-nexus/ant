@@ -12,15 +12,12 @@ import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingMa
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { ARTIFACT_PREFIX } from '@ant/shared';
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
-import {
-  parseLLMJsonResponse,
-  saveCheckpoint,
-  updateKanban,
-  safeLogPrompt,
-  resolveLLMClient,
-  showChatPlaceholder,
-  trackTokenUsage,
-} from "./helpers";
+import { updateKanban } from "./kanbanUpdate";
+import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
+import { trackTokenUsage } from "./tokenTracking";
+import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { safeLogPrompt } from "../../utils/promptLog";
+import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
 import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTierConfig, resolveTaskTechTiers, type PackageTierEntry } from "@ant/shared";
 
@@ -621,16 +618,13 @@ export async function decomposeSystemDesign(
     state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
   }
 
-  // Save checkpoint (no currentTask yet — plan node will pop first task)
-  await saveCheckpoint(state, {
+  state.jobId = ctx.newJobId;
+  state.jobTiming = finalJobTiming;
+  state._estimatingTokenUsage = estimatingTokenUsage;
+  await saveDecomposeCheckpoint(state, {
     taskQueue: taskQueue.getAll(),
     completedTasks: [],
     completedTasksDetails: [],
-    jobId: ctx.newJobId,
-    jobTiming: finalJobTiming,
-    tokenUsage: state.tokenUsage,
-    estimatingTokenUsage,
-    userLanguage: state.context.userLanguage,
   });
 
   // Update Kanban (tasks in queue, no in-progress yet)

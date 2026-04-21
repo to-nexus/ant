@@ -48,20 +48,10 @@ export async function plan(state: DesignGraphState) {
         );
       }
       
-      // ✅ CRITICAL: Save checkpoint after task started so session has correct currentTask
-      // Without this, manual cancel during docGen can't find the in-progress task
-      if (state.deps?.session && state.context?.featureFolder) {
-        try {
-          // Import from code state (shared checkpoint logic)
-          const { saveCheckpoint } = await import('../../code/nodes/checkpoint');
-          await saveCheckpoint({
-            ...state,
-            currentTask
-          } as any);
-        } catch (err) {
-          console.warn(`⚠️  [Plan] Failed to save task-start checkpoint: ${err}`);
-        }
-      }
+      // Save checkpoint after task started so session has correct currentTask.
+      // Without this, manual cancel during docGen can't locate the in-progress task.
+      const { saveTaskStartCheckpoint } = await import('../session/checkpoint');
+      await saveTaskStartCheckpoint(state, { currentTask });
     } else {
       console.log('⚠️  No task to execute');
       return state;
