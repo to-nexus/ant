@@ -53,7 +53,6 @@ code job의 verification 태스크는 `plan → execute ↔ tool → checkTaskSt
 | C5 | 동 — recursionRemaining<20 → learn | ✅ | · | — |
 | C6 | `processDiagnosticBatchSplit` — batches>=2 분기 | ✅ | ○ | S02 |
 | C7 | 동 — forceByRepeat (`_lastPlanHash` 반복) | ✅ | ○ | S04 |
-| C8 | 동 — budgetExhausted (`_verificationBudget=0`) | ✅ | ○ | S05 |
 | C9 | 동 — overErrorBudget / overFileBudget | ✅ | · | — |
 | C10 | `executeRouter` done + completeness.ok → checkTaskStatus | · | ○ | S01 |
 | C11 | 동 — done but incomplete → plan(reverify) | · | ○ | S03 |
@@ -79,7 +78,6 @@ L2 컬럼은 스키마 + 인젝션 레이어는 도입 완료, 러너 + fixture�
 | S02 | multi-file-build-errors-split | overlay | tracker 미완료 | 2파일 에러 stderr 고정 | plan(batches=2) → split → error 서브태스크 2 + 원본 재큐 | C6 |
 | S03 | typecheck-plus-test-failure | real | tracker 미완료 | 없음 | 연속 reverify 2회 후 완료 | C11, C16 |
 | S04 | repeated-plan-hash-force-split | overlay | `_lastPlanHash` 기세팅 | tsc stderr 고정 | forceByRepeat → split | C7 |
-| S05 | budget-exhausted-force-split | stub | `_verificationBudget=0` | tsc stub | budgetExhausted → split | C8 |
 | S06 | no-tests-no-typecheck | real | tsconfig/tests 없음 | 없음 | build만 돌고 즉시 완료 | C2, C14 |
 | S07 | error-only-job-final-verification-autoadd | stub | error 태스크 1개만 | 명령 skip | final verification 자동 추가 | C13 |
 | S08 | done-but-incomplete | stub | — | LLM mock이 즉시 `<done>` | verification_incomplete → enforce → retry | C3, C12, C15 |
@@ -219,13 +217,12 @@ scenarios/S02-multi-file-build-errors-split/
 | S02 | overlay | 2파일 tsc stderr + env `ANT_VERIFICATION_SPLIT_FILES=2` | flagSet `_batchSplitRequeued` |
 | S03 | stub | typecheck+test 둘 다 미통과 | route 동일, violation `verification_incomplete` |
 | S04 | overlay | plan hash 반복 (plan1 설정 → plan2 매치) | flagSet `_batchSplitRequeued` (forceByRepeat) |
-| S05 | stub | `_verificationBudget=0` + plan.md modify×2 | flagSet `_batchSplitRequeued` (budgetExhausted) |
 | S06 | stub | tracker 초기부터 complete | route plan→execute→check→learn |
 | S07 | stub | error 태스크 prePlanText 1개 | flagSet `finalVerificationAutoAdded` |
 | S08 | stub | tracker=null + 골든 done | violation `verification_incomplete` + enforce→plan |
 | S09 | stub | `retries=3, maxRetries=3` | route check→learn (C4 — routeAfterCheckTaskStatus가 learn 반환) |
 
-**시나리오별 env 오버라이드**: `ScenarioConfig.env`로 `RECURSION_LIMIT` / `ANT_VERIFICATION_BUDGET` /
+**시나리오별 env 오버라이드**: `ScenarioConfig.env`로 `RECURSION_LIMIT` /
 `ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES`를 선별 주입 (allow-list 방식).
 
 **공용 골든 응답 디렉터리**: `tests/verification/scenarios/fixtures/golden/execute-verification-done.md`.

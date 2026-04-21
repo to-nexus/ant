@@ -166,24 +166,17 @@ export function processDiagnosticBatchSplit(
     const jsonStr = stripMarkdownFences(planText);
     const parsed = JSON.parse(jsonStr);
 
-    // Force split-by-file when LLM produced a consolidated plan but the error
-    // volume or file fan-out crosses the escalation threshold, OR when the
-    // verification attempt budget is exhausted. Safety valve for "LLM keeps
-    // outputting a single plan that we keep failing to apply".
-    const budget = state.verification?.remainingBudget() ?? 0;
+    // Force split-by-file when the error volume or file fan-out crosses the
+    // escalation threshold, or when the LLM keeps emitting the same plan.
     const thresholdErrors = parseInt(process.env.ANT_VERIFICATION_SPLIT_ERRORS || '6', 10);
     const thresholdFiles = parseInt(process.env.ANT_VERIFICATION_SPLIT_FILES || '4', 10);
     const totalErrors: number = parsed.diagnostics?.totalErrors ?? 0;
     const modifyArr: any[] = parsed.implementation?.modify ?? [];
-    const budgetExhausted = budget <= 0;
     const overErrorBudget = totalErrors >= thresholdErrors;
     const overFileBudget = modifyArr.length >= thresholdFiles;
     const shouldForceSplit = (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1)
-      && (budgetExhausted || overErrorBudget || overFileBudget);
+      && (overErrorBudget || overFileBudget);
 
-    // Repeat detection — when the same plan structure surfaced again
-    // without progress, escalate to force-split. Session owns the
-    // authoritative hash list (produced by `onPlanApplied`).
     const repeatedDetection = planText
       ? state.verification?.isPlanRepeated(planText) ?? { repeated: false, count: 0 }
       : { repeated: false, count: 0 };
@@ -199,17 +192,14 @@ export function processDiagnosticBatchSplit(
         action: 'force_split_escalate',
         reason: forceByRepeat
           ? 'repeated_plan_hash'
-          : budgetExhausted
-            ? 'budget_exhausted'
-            : overErrorBudget
-              ? 'over_error_threshold'
-              : 'over_file_threshold',
+          : overErrorBudget
+            ? 'over_error_threshold'
+            : 'over_file_threshold',
         totalErrors,
         modifyCount: modifyArr.length,
         taskName: nextTask.name,
-        budget,
       });
-      console.warn(`🚨 [BatchSplit] Forcing splitByFile escalate (budgetExhausted=${budgetExhausted}, totalErrors=${totalErrors}, modifyCount=${modifyArr.length})`);
+      console.warn(`🚨 [BatchSplit] Forcing splitByFile escalate (totalErrors=${totalErrors}, modifyCount=${modifyArr.length})`);
       parsed.batches = modifyArr.map((m: any, i: number) => {
         const target = typeof m === 'string' ? m : (m.target || m.file || `file-${i}`);
         return {

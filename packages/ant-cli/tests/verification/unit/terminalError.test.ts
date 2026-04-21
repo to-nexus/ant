@@ -26,7 +26,6 @@ describe('classifyTerminalError', () => {
   it('works for all defined kinds', () => {
     const kinds = [
       'max_retries_exceeded',
-      'budget_exhausted',
       'no_progress',
       'unresolved_violations',
       'batch_cycle_limit',
@@ -38,7 +37,7 @@ describe('classifyTerminalError', () => {
 
   it('preserves carryOver snapshot on the error instance', () => {
     const snap = { planText: 'plan', retries: 2 };
-    const err = new VerificationTerminalError('budget_exhausted', 'msg', snap as any);
+    const err = new VerificationTerminalError('no_progress', 'msg', snap as any);
     expect(err.carryOver).toEqual(snap);
   });
 

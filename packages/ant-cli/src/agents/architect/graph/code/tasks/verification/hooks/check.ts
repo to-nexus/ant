@@ -27,12 +27,11 @@ function composeErrorDetail(state: ArchitectGraphState): string {
 }
 
 /**
- * Verification-specific retry hint rendered on the budget-exhausted
- * violation. Consumed by `checkTaskStatus/evaluate.ts` when the Session
- * reports budget is exhausted but gates are still missing.
+ * Hint rendered on the `budget_exhausted` violation (execute call loop)
+ * for verification tasks. Consumed by `checkTaskStatus/evaluate.ts`.
  */
 export const budgetExhaustedHint =
-  'Verification task did not complete — build may have failed. Will retry with remaining budget.';
+  'Verification task did not complete — build may have failed. Retry pending.';
 
 export function evaluate(state: ArchitectGraphState): Violation | null {
   const session = state.verification;

@@ -46,6 +46,7 @@ import {
   renderConfigBlock,
 } from '../model/configSnapshot';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
+import { VerificationTerminalError } from '../model/errors';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Hook implementations
@@ -74,6 +75,31 @@ export function initSession(state: ArchitectGraphState, env: InitSessionEnv): vo
     return;
   }
   state.verification.hydrateEnv(env);
+}
+
+/** Trailing identical-plan count that marks the LLM as stuck. */
+const NO_PROGRESS_STREAK = 2;
+
+/**
+ * Verification's retry terminator. Returns `no_progress` when the just-failed
+ * plan matches the trailing plan-history streak; `null` continues the loop.
+ * Runaway is bounded by `state.recursionLimit` at the routing layer.
+ */
+export function checkRetryTermination(
+  state: ArchitectGraphState,
+): VerificationTerminalError | null {
+  const session = state.verification;
+  if (!session || !state.planText) return null;
+
+  const repeat = session.isPlanRepeated(state.planText);
+  if (repeat.count >= NO_PROGRESS_STREAK) {
+    return new VerificationTerminalError(
+      'no_progress',
+      `Task "${state.currentTask?.name ?? 'verification'}" stuck: the LLM produced the same plan ${repeat.count} times in a row.`,
+      session.snapshot(),
+    );
+  }
+  return null;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
