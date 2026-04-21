@@ -36,6 +36,42 @@ function sanitizeJsonControlChars(jsonStr: string): string {
   });
 }
 
+/**
+ * Strip a markdown code fence that wraps the tag body.
+ *
+ * The decompose prompt explicitly forbids ```json ... ``` fences inside
+ * XML tags, but the LLM violates this occasionally (observed on
+ * `<specClarify>` most, but any JSON tag is vulnerable). Without this
+ * cleanup, JSON.parse fails on the leading backtick and the silent
+ * `console.warn` branch drops the payload — which in the specClarify
+ * case collapses the job into a 0-task no-op success. See
+ * `.cursorrules` "Retry Authority SSOT — critical silent-failure".
+ *
+ * Also tolerates a leading language hint (e.g. ```json) and balanced
+ * trailing fence, and a bare pair of backticks. No-op when no fence.
+ */
+function stripCodeFence(body: string): string {
+  const trimmed = body.trim();
+  // Triple-backtick fence, optional language hint, optional trailing fence.
+  const tripleFence = trimmed.match(/^```(?:[a-zA-Z0-9_+-]*)\s*([\s\S]*?)\s*```$/);
+  if (tripleFence) return tripleFence[1].trim();
+  // Single-backtick wrap (`...`) — rare, but observed.
+  if (trimmed.startsWith('`') && trimmed.endsWith('`') && trimmed.length >= 2) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+/**
+ * Canonical pre-processing for every tag body that carries JSON.
+ * Stripping the code fence FIRST is critical — `sanitizeJsonControlChars`
+ * only escapes control chars inside matched string literals, so it
+ * cannot rescue a body that starts with a raw backtick.
+ */
+function prepareTagJson(body: string): string {
+  return sanitizeJsonControlChars(stripCodeFence(body));
+}
+
 import type { PackageTierEntry, TaskType } from '@ant/shared';
 import { flattenPolicyToInclude } from '../../../../../../core/artifact/ArtifactPipeline';
 
@@ -137,7 +173,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       throw new Error('Invalid response: <tasks> tag is required. LLM must follow the prompt format strictly.');
     }
     
-    const tasks = JSON.parse(sanitizeJsonControlChars(tasksMatch[1]));
+    const tasks = JSON.parse(prepareTagJson(tasksMatch[1]));
     
     if (!Array.isArray(tasks)) {
       throw new Error('Invalid response: tasks must be an array');
@@ -149,7 +185,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     
     if (techTierMatch) {
       try {
-        const parsed = JSON.parse(sanitizeJsonControlChars(techTierMatch[1]));
+        const parsed = JSON.parse(prepareTagJson(techTierMatch[1]));
         techTier = {
           stack: parsed.stack || 'unknown',
           stackReasoning: parsed.stackReasoning || '',
@@ -182,7 +218,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     
     if (referencesMatch) {
       try {
-        const parsed = JSON.parse(sanitizeJsonControlChars(referencesMatch[1]));
+        const parsed = JSON.parse(prepareTagJson(referencesMatch[1]));
         // ✅ Accept empty array (no references)
         if (Array.isArray(parsed)) {
           referenceRequests = parsed.length > 0 ? parsed : undefined;
@@ -204,7 +240,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       || rawResponse.match(/<unknownPackages>\s*([\s\S]*?)\s*<\/unknownPackages>/);
     if (prescribedDepsMatch) {
       try {
-        const parsed = JSON.parse(sanitizeJsonControlChars(prescribedDepsMatch[1]));
+        const parsed = JSON.parse(prepareTagJson(prescribedDepsMatch[1]));
         if (Array.isArray(parsed)) {
           unknownPackages = parsed.length > 0 ? parsed.filter((p: unknown) => typeof p === 'string' && p.length > 0) : undefined;
           if (unknownPackages && unknownPackages.length > 0) {
@@ -239,7 +275,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       const body = directHintsMatch[1].trim();
       if (body && body !== '{}') {
         try {
-          const parsedHints = JSON.parse(sanitizeJsonControlChars(body));
+          const parsedHints = JSON.parse(prepareTagJson(body));
           const targetFiles = Array.isArray(parsedHints?.targetFiles)
             ? parsedHints.targetFiles.filter((f: unknown) => typeof f === 'string' && f.length > 0)
             : undefined;
@@ -261,7 +297,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       const body = specClarifyMatch[1].trim();
       if (body && body !== '{}' && body.toLowerCase() !== 'null') {
         try {
-          const parsed = JSON.parse(sanitizeJsonControlChars(body));
+          const parsed = JSON.parse(prepareTagJson(body));
           if (parsed && parsed.needsChoice === true
             && parsed.choiceOptions?.positive?.action
             && parsed.choiceOptions?.neutral?.action

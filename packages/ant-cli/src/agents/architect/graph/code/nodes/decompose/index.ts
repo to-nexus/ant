@@ -29,6 +29,7 @@ import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
 import { ExecutionTierId, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
+import { isIntentCommitted, buildIntentClarifyTemplateVars } from "../../../../../common/clarify";
 
 
 /**
@@ -298,6 +299,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
     specClarifyBypassed: state._specClarifyBypassed === true,
+    // Intent-level clarify gate. `<specClarify>` re-adjudicates the
+    // active intent (redirect_to_design = job switch, proceed_without_spec
+    // = skip source contract) and MUST NOT fire when the upstream
+    // pipeline has already committed to an intent — whether via
+    // ActionsPanel "Start via Chat" (source='explicit') or via @-mention
+    // that populates `actionMetadata.intent`. See
+    // `agents/common/intentCommit.ts` for the SSOT predicate.
+    ...buildIntentClarifyTemplateVars(state),
   };
   const decomposeSystem = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/rules', enrichedVars);
   let envContract = '';
@@ -455,8 +464,24 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     boundary: parsedBoundary,
     executionTier: parsedExecutionTier,
     directHints,
-    specClarify,
+    specClarify: rawSpecClarify,
   } = parsed;
+
+  // Defense-in-depth: when the upstream pipeline has already committed to
+  // an intent (ActionsPanel explicit OR @-mention actionMetadata), the LLM
+  // has no standing to emit `<specClarify>` — its three options all
+  // re-adjudicate the intent (redirect_to_design = switch job,
+  // proceed_without_spec = override source contract, cancel = abort).
+  // Discard silently here; pair with the empty-tasks guard below to turn
+  // a malformed emission into a loud re-decompose instead of a silent
+  // 0-task success. See `agents/common/intentCommit.ts`.
+  const specClarify = isIntentCommitted(state) ? undefined : rawSpecClarify;
+  if (rawSpecClarify && !specClarify) {
+    console.warn(
+      `⚠️  [Decompose] LLM emitted <specClarify> for committed intent ` +
+      `"${state.actionMetadata?.intent ?? state.resolvedAction?.intent}" — discarded (prompt violation).`
+    );
+  }
 
   // LLM's <executionTier> is the SSOT. If the tag is missing (prompt
   // violation), coerceExecutionTier degrades to Tier 0 Reflex (safe
@@ -521,6 +546,45 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   const mode = state.resolvedAction?.mode;
   const isDirectPath = executionTier <= 2;
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 4.7: Silent-failure guard — empty task queue at Tier 3/4 generate/refactor
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Tier 3/4 mandates a non-empty task breakdown for generate/refactor
+  // modes UNLESS the LLM emits a valid <specClarify>. When a malformed
+  // specClarify (e.g. body wrapped in a markdown code fence) is dropped
+  // by the tag parser, the job silently completes with 0 files, masking
+  // a critical prompt violation as success. Fail loudly instead — the
+  // retry / re-decompose path is far less damaging than a no-op success.
+  const isTaskTier = executionTier >= 3;
+  const isTaskBreakdownMode = mode === 'generate' || mode === 'refactor';
+  if (isTaskTier && isTaskBreakdownMode && tasks.length === 0 && !specClarify) {
+    const intentCommitted = isIntentCommitted(state);
+    const metadataIntent = state.actionMetadata?.intent;
+    const resolvedIntent = state.resolvedAction?.intent;
+    throw new Error(
+      `❌ [Decompose] Empty <tasks> at executionTier=${executionTier} mode=${mode} ` +
+      `(intent=${metadataIntent ?? resolvedIntent ?? 'unknown'}, ` +
+      `source=${state.resolvedAction?.source ?? 'unknown'}, ` +
+      `intentCommitted=${intentCommitted}).\n` +
+      `\n` +
+      (intentCommitted
+        ? `Committed intent (ActionsPanel explicit OR @-mention actionMetadata) MUST emit a ` +
+          `non-empty task breakdown at Tier 3/4 generate/refactor. specClarify is gated off ` +
+          `for committed intents — the LLM has no valid path to an empty queue here.\n`
+        : `Tier 3/4 generate/refactor MUST emit either a non-empty task breakdown OR a valid ` +
+          `<specClarify> payload. Observed: tasks=[], specClarify=undefined — this is a critical ` +
+          `prompt violation that would otherwise silently complete the job with 0 files.\n`
+      ) +
+      `\n` +
+      `Common causes:\n` +
+      `  • LLM wrapped a JSON tag body in a markdown code fence (\`\`\`json … \`\`\`). The parser now\n` +
+      `    strips balanced fences, so a bare parse failure here means the payload is structurally invalid.\n` +
+      `  • LLM emitted <specClarify> despite the committed-intent hard gate; it has already been discarded.\n` +
+      `\n` +
+      `Raw response head:\n${rawResponse.substring(0, 800)}`
+    );
+  }
 
   if (isDirectPath) {
     console.log(`🎯 [Decompose] Direct tier selected: executionTier=${executionTier}, mode=${mode || 'unknown'} (tasks=${tasks.length})`);
