@@ -47,7 +47,7 @@ Do NOT use tools to explore publicly available, well-known packages. This includ
 
 **Principle**: After gathering sufficient information from Priority 1-2, produce `<plan>` promptly.
 
-**Constraint**: Once you have observed the APIs for the design-prescribed dependencies, produce `<analysis>` and `<plan>` in your NEXT response. Do NOT continue calling tools after the key APIs have been discovered.
+**Constraint**: Once you have observed the APIs for the design-prescribed dependencies, produce `<plan>` in your NEXT response. Do NOT continue calling tools after the key APIs have been discovered.
 
 ⚠️ **Blind spot**: Calling tools indefinitely without producing `<plan>`. The system enforces a round-trip limit; if you exceed it your exploration context is used to generate the plan automatically. Produce `<plan>` BEFORE hitting the limit.
 
