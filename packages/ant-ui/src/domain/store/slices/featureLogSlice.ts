@@ -32,7 +32,7 @@ export interface FeatureLogState {
   breadcrumbs: FeatureBreadcrumbLine[];
   /** user_turn lines from feature.jsonl (tier badge — §18). */
   userTurns: FeatureUserTurnLine[];
-  /** user_turn_meta patch lines (complexity/decidedBy/reason) — §18. */
+  /** user_turn_meta patch lines (executionTier/reason) — §18. */
   userTurnMetas: FeatureUserTurnMetaLine[];
   traceStatus: LoadStatus;
   breadcrumbsStatus: LoadStatus;

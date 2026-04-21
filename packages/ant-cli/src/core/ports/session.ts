@@ -93,7 +93,7 @@ export interface SessionPort {
   appendUserTurn(line: FeatureUserTurnLine, options?: { skipFeature?: boolean }): Promise<void>;
 
   /**
-   * Append a user_turn_meta patch line (complexity/decidedBy/reason).
+   * Append a user_turn_meta patch line (executionTier/reason).
    * Written by Decompose after complexity judgment.
    */
   appendUserTurnMeta(line: FeatureUserTurnMetaLine): Promise<void>;

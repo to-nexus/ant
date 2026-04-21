@@ -731,6 +731,7 @@ export const DesignGraphChannels = {
   featureContext: Annotation<any>,
   workerId: Annotation<any>,
   _isStopRequested: Annotation<any>,
+  executionTier: Annotation<any>,
 } as const;
 
 const DesignGraphAnnotation = Annotation.Root(DesignGraphChannels);

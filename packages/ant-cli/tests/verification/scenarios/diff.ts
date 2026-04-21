@@ -117,6 +117,21 @@ function checkTaskQueue(
   return failures;
 }
 
+/**
+ * Reads the batch-split cycle count from wherever it legitimately lives
+ * post-T4b-β. The counter moved off `CodeTask._batchSplitCount` into the
+ * `VerificationSession` snapshot that rides on `resumeState.verification`.
+ * Falls back to the legacy task-field only so scenarios authored during
+ * the coexistence window keep working; current seeds never populate it.
+ */
+function readBatchSplitCount(task: any): number {
+  const fromSnapshot = task?.resumeState?.verification?.batchSplitCount;
+  if (typeof fromSnapshot === 'number') return fromSnapshot;
+  const fromTask = task?._batchSplitCount;
+  if (typeof fromTask === 'number') return fromTask;
+  return 0;
+}
+
 function oneTaskMatches(exp: ScenarioExpectedQueueTask, act: any): boolean {
   if (!act || act.type !== exp.type) return false;
   if (exp.prePlanTextIncludes) {
@@ -124,7 +139,7 @@ function oneTaskMatches(exp: ScenarioExpectedQueueTask, act: any): boolean {
     if (!text.includes(exp.prePlanTextIncludes)) return false;
   }
   if (exp._batchSplitCount !== undefined) {
-    if ((act._batchSplitCount ?? 0) !== exp._batchSplitCount) return false;
+    if (readBatchSplitCount(act) !== exp._batchSplitCount) return false;
   }
   return true;
 }
@@ -138,8 +153,11 @@ function checkOneTask(label: string, exp: ScenarioExpectedQueueTask, act: any): 
   if (exp.prePlanTextIncludes && !((act.prePlanText ?? '') as string).includes(exp.prePlanTextIncludes)) {
     failures.push(`task${label}.prePlanText does not include "${exp.prePlanTextIncludes}"`);
   }
-  if (exp._batchSplitCount !== undefined && (act._batchSplitCount ?? 0) !== exp._batchSplitCount) {
-    failures.push(`task${label}._batchSplitCount: expected ${exp._batchSplitCount}, got ${act._batchSplitCount ?? 0}`);
+  if (exp._batchSplitCount !== undefined) {
+    const actCount = readBatchSplitCount(act);
+    if (actCount !== exp._batchSplitCount) {
+      failures.push(`task${label}._batchSplitCount: expected ${exp._batchSplitCount}, got ${actCount}`);
+    }
   }
   return failures;
 }

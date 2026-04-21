@@ -19,7 +19,7 @@ import { VisualSettings } from '../../../../core/types/workspace.js';
 import type { ConversationEntry } from '../../../../core/types/session.js';
 import type { Conversations } from '../../../common/graph/conversations.js';
 import type { ConversationCompaction } from '../../../../core/context/compactJob.js';
-import type { Mode } from '@ant/shared';
+import type { Mode, ExecutionTierId } from '@ant/shared';
 
 
 /** Visual-pipeline-local asset type */
@@ -168,6 +168,13 @@ export interface VisualGraphState extends DetectableState, PhaseTrackingState {
 
   // Pending tool calls (TriageableState compat)
   pendingToolCalls?: any[];
+
+  /**
+   * 5-tier execution strategy — LLM direct output from the Tier Entry Node
+   * (visual uses Detect). Phase nodes consume via `getExecutionTier(state)`
+   * only.
+   */
+  executionTier?: ExecutionTierId;
 }
 
 export const VisualGraphAnnotation = Annotation.Root({
@@ -199,6 +206,7 @@ export const VisualGraphAnnotation = Annotation.Root({
   _conversationCompaction: Annotation<any>,
   phaseTokenUsages: Annotation<any>,
   pendingToolCalls: Annotation<any>,
+  executionTier: Annotation<any>,
 } as const);
 
 /**

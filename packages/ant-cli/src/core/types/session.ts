@@ -6,7 +6,7 @@
  */
 
 import type { AgentJob, CodebaseProfile } from './agent';
-import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, InferredAction, Boundary, Complexity, SpecClarify } from '@ant/shared';
+import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, InferredAction, Boundary, ExecutionTierId, SpecClarify } from '@ant/shared';
 import type { MessageContentBlock } from '../ports/llm';
 
 // Re-export shared types
@@ -241,27 +241,22 @@ export interface SessionState {
   awaitingDecomposeClarify?: boolean;
 
   /**
-   * 3-way complexity classification emitted by decompose.
-   * Consumed by routeAfterDecompose + learn breadcrumb policy.
-   * Safe default: 'task' (see decompose/responseParser.normalizeComplexity).
+   * 5-tier execution strategy emitted by each job's Tier Entry Node
+   * (code/design: Decompose, plan/visual: Detect). Consumed by
+   * `routeAfterDecompose`, the `direct` node loop budget, and learn's
+   * breadcrumb / boundary policy.
    */
-  complexity?: Complexity;
+  executionTier?: ExecutionTierId;
 
   /**
-   * Hints produced alongside `complexity` for the `direct` node.
-   * Persisted so resume paths can rebuild direct-node context without
-   * re-running decompose.
+   * Hints produced by the Tier Entry Node for the `direct` node
+   * (Tier 0-2 paths). Persisted so resume paths can rebuild direct-node
+   * context without re-running decompose.
    */
   directHints?: { targetFiles?: string[]; explorationScope?: string };
 
   /**
-   * Narrow view of `complexity` used by the `direct` node to pick a loop
-   * budget. Derived from `complexity` in decompose.
-   */
-  directMode?: 'oneshot' | 'exploratory';
-
-  /**
-   * Spec-clarify choice emitted by Decompose when a `todo`-complexity
+   * Spec-clarify choice emitted by Decompose when a task-tier (3 or 4)
    * generate/refactor job has no design / directive-relevant spec source.
    * Presence pauses the job at `__end__` pending user choice.
    */

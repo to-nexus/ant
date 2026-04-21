@@ -1,13 +1,16 @@
 /**
- * Direct Node — single-turn ReAct loop for oneshot / exploratory complexity.
+ * Direct Node — single-turn ReAct loop for Tier 0-2 (oneshot / exploratory).
  *
- * Alternative execution path to plan/execute, chosen when Decompose classifies
- * the job as `oneshot` or `exploratory`. Independent of currentTask: the loop
- * opens and closes within a single graph invocation, then routes to
- * `learn` (success) or back to `decompose` (escalation).
+ * Alternative execution path to plan/execute, chosen when the Tier Entry
+ * Node classifies the job as Tier 0, 1, or 2 (`isDirectTier`). Independent
+ * of currentTask: the loop opens and closes within a single graph
+ * invocation, then routes to `learn` (success) or back to `decompose`
+ * (escalation).
  *
  * Tool policy: explain mode → read-only set; generate/refactor → full code set.
- * Loop budget: oneshot = 2 steps, exploratory = ANT_DIRECT_MAX_STEPS (default 10).
+ * Loop budget derived from tier via `tierToDirectMode`:
+ *   Tier 0, 1 → DIRECT_LOOP_LIMITS.oneshot (= 2 steps)
+ *   Tier 2    → ANT_DIRECT_MAX_STEPS (default 10)
  */
 
 import { ArchitectGraphState } from '../../state';
@@ -28,6 +31,7 @@ import { parseReActResponse } from '../../utils/parseReActResponse';
 import { emitFileWriteTrace } from '../_common/emitFileWriteTrace';
 import { shouldEscalate } from './shouldEscalate';
 import { DIRECT_LOOP_LIMITS } from '@ant/shared';
+import { tierToDirectMode } from '../../../../../../core/executionTier';
 
 const registry = createCodeToolRegistry();
 
@@ -52,7 +56,9 @@ export async function direct(
   if (!promptBuilder) throw new Error('[Direct] PromptBuilder not available');
 
   const mode = state.resolvedAction?.mode;
-  const directMode = state.directMode;
+  const directMode = state.executionTier !== undefined
+    ? tierToDirectMode(state.executionTier)
+    : 'oneshot';
   const isExplainMode = mode === 'explain';
   const maxSteps =
     directMode === 'oneshot' ? DIRECT_LOOP_LIMITS.oneshot : getExploratoryMaxSteps();

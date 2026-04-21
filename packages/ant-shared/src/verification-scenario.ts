@@ -151,6 +151,13 @@ export interface ScenarioSessionSeed {
 /**
  * Assertion expressed as "a task of {type} must appear in the queue and its
  * prePlanText must contain {prePlanTextIncludes}".
+ *
+ * `_batchSplitCount` is resolved against
+ * `task.resumeState.verification.batchSplitCount` (post-T4b-β). For
+ * scenarios authored during the coexistence window the runner also
+ * accepts the legacy `task._batchSplitCount` field so existing seeds do
+ * not need re-migrating; new seeds should express the assertion against
+ * the Session snapshot.
  */
 export interface ScenarioExpectedQueueTask {
   type: TaskType;
