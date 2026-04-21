@@ -14,11 +14,12 @@ import type { DetectStrategy, DetectResult } from '../../../../../common/graph/n
 import type { PlanGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
 import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers.js';
+import { parseExecutionTierTag, coerceExecutionTier, ExecutionTierId } from '../../../../../../core/executionTier/index.js';
 
 export const planDetectStrategy: DetectStrategy<PlanGraphState> = {
   async run(state): Promise<DetectResult<PlanGraphState>> {
-    const { intentId, reasoning } = await determinePlanIntent(state);
-    console.log(`📋 [Plan:Detect] Determined intentId: ${intentId}`);
+    const { intentId, reasoning, executionTier } = await determinePlanIntent(state);
+    console.log(`📋 [Plan:Detect] Determined intentId: ${intentId} (executionTier=${executionTier})`);
 
     const targets = resolveTargets(state);
 
@@ -29,13 +30,16 @@ export const planDetectStrategy: DetectStrategy<PlanGraphState> = {
       sourceJob: 'plan',
     };
 
-    return { inferred };
+    return {
+      inferred,
+      stateUpdates: { executionTier } as Partial<PlanGraphState>,
+    };
   },
 };
 
 async function determinePlanIntent(
   state: PlanGraphState,
-): Promise<{ intentId: string; reasoning: string }> {
+): Promise<{ intentId: string; reasoning: string; executionTier: ExecutionTierId }> {
   const fs = await import('fs');
   const path = await import('path');
   const { normalizeTemplateDoc } = await import('../../../../../../core/utils/templateDetector.js');
@@ -48,11 +52,7 @@ async function determinePlanIntent(
     } catch { return false; }
   });
 
-  if (!hasExistingTarget) {
-    return { intentId: 'gen-plan', reasoning: 'No existing target — generating new document' };
-  }
-
-  return await detectPlanIntentViaLLM(state);
+  return await detectPlanIntentViaLLM(state, hasExistingTarget);
 }
 
 function resolveTargets(state: PlanGraphState): string[] {
@@ -65,34 +65,51 @@ function resolveTargets(state: PlanGraphState): string[] {
 
 async function detectPlanIntentViaLLM(
   state: PlanGraphState,
-): Promise<{ intentId: string; reasoning: string }> {
+  hasExistingTarget: boolean,
+): Promise<{ intentId: string; reasoning: string; executionTier: ExecutionTierId }> {
   const directive = state.overrideDirective || state.directive || '';
-  if (!directive) return { intentId: 'rev-plan', reasoning: 'Existing target present, no directive' };
+
+  // Degenerate cases (no directive / no LLM / no promptBuilder) still need
+  // deterministic intent. Default to tier 0 Reflex in these paths — the
+  // LLM gets no chance to judge, so there is no "LLM SSOT" to honor.
+  if (!directive) {
+    const intentId = hasExistingTarget ? 'rev-plan' : 'gen-plan';
+    return { intentId, reasoning: 'No directive', executionTier: ExecutionTierId.Reflex };
+  }
 
   const llm = state.deps?.llm;
-  if (!llm) return { intentId: 'rev-plan', reasoning: 'No LLM available, defaulting to refactor' };
+  const promptBuilder = state.deps?.promptBuilder;
+  if (!llm || !promptBuilder) {
+    const intentId = hasExistingTarget ? 'rev-plan' : 'gen-plan';
+    return {
+      intentId,
+      reasoning: !llm ? 'No LLM available' : 'No PromptBuilder available',
+      executionTier: ExecutionTierId.Reflex,
+    };
+  }
 
-  const prompt = `Classify the following user directive about an existing document.
+  const refs = extractRefs(state);
+  const vars = { directive, hasExistingTarget, refs };
 
-Directive: "${directive}"
-
-Select the appropriate intentId:
-
-| intentId | When to select |
-|----------|---------------|
-| rev-plan | User wants to MODIFY, IMPROVE, UPDATE, FIX, EXPAND the document |
-| explain-plan | User wants to UNDERSTAND, ANALYZE, QUERY, SUMMARIZE the document (no modification) |
-
-Respond with ONLY a JSON object inside <detect> tags:
-<detect>
-{ "intentId": "rev-plan" or "explain-plan", "reasoning": "one sentence" }
-</detect>`;
+  let systemPrompt = '';
+  let userPrompt = '';
+  try {
+    systemPrompt = await promptBuilder.render('jobs/plan/nodes/detect/variants/default/rules', vars);
+    userPrompt = await promptBuilder.render('jobs/plan/nodes/detect/variants/default/base', vars);
+  } catch (err) {
+    console.warn(`   ⚠️ [Plan:Detect] Prompt render failed, using fallback:`, err);
+    const intentId = hasExistingTarget ? 'rev-plan' : 'gen-plan';
+    return { intentId, reasoning: 'Prompt render failed', executionTier: ExecutionTierId.Reflex };
+  }
 
   try {
     let response = '';
     for await (const event of llm.stream(
-      [{ role: 'user', content: prompt }],
-      { temperature: 0, maxTokens: 150, enableThinking: false },
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      { temperature: 0, maxTokens: 256, enableThinking: false },
     )) {
       if (event.type === 'retry') { response = ''; continue; }
       if (event.text) response += event.text;
@@ -105,18 +122,56 @@ Respond with ONLY a JSON object inside <detect> tags:
       }
     }
 
+    const executionTier = coerceExecutionTier(
+      parseExecutionTierTag(response),
+      'Plan:Detect',
+    );
+
     const match = response.match(/<detect>\s*([\s\S]*?)\s*<\/detect>/);
     if (match) {
       const parsed = JSON.parse(match[1]);
-      const intentId = parsed.intentId === 'explain-plan' ? 'explain-plan' : 'rev-plan';
-      return { intentId, reasoning: parsed.reasoning || '' };
+      const intentId = normalizePlanIntent(parsed.intentId, hasExistingTarget);
+      return { intentId, reasoning: parsed.reasoning || '', executionTier };
     }
 
-    const jsonMatch = response.match(/\{[\s\S]*?"intentId"\s*:\s*"(explain-plan|rev-plan)"[\s\S]*?\}/);
-    if (jsonMatch) return { intentId: jsonMatch[1], reasoning: '' };
+    const jsonMatch = response.match(/\{[\s\S]*?"intentId"\s*:\s*"(explain-plan|rev-plan|gen-plan)"[\s\S]*?\}/);
+    if (jsonMatch) {
+      const intentId = normalizePlanIntent(jsonMatch[1], hasExistingTarget);
+      return { intentId, reasoning: '', executionTier };
+    }
+
+    // LLM produced no parseable intent — fall back based on document state.
+    const intentId = hasExistingTarget ? 'rev-plan' : 'gen-plan';
+    return { intentId, reasoning: 'LLM parse failed, defaulting based on target state', executionTier };
   } catch (err) {
     console.warn(`   ⚠️ DetectPlanIntent failed, defaulting to rev-plan:`, err);
   }
 
-  return { intentId: 'rev-plan', reasoning: 'LLM parse failed, defaulting to refactor' };
+  const intentId = hasExistingTarget ? 'rev-plan' : 'gen-plan';
+  return {
+    intentId,
+    reasoning: 'LLM call failed',
+    executionTier: ExecutionTierId.Reflex,
+  };
+}
+
+function normalizePlanIntent(raw: string | undefined, hasExistingTarget: boolean): string {
+  if (raw === 'explain-plan') return 'explain-plan';
+  if (raw === 'gen-plan') return 'gen-plan';
+  if (raw === 'rev-plan') return hasExistingTarget ? 'rev-plan' : 'gen-plan';
+  return hasExistingTarget ? 'rev-plan' : 'gen-plan';
+}
+
+function extractRefs(state: PlanGraphState): Array<{ path: string; label: string }> {
+  const artifacts = (state as any).resolvedArtifacts as
+    | Array<{ path: string; role?: string; content?: string }>
+    | undefined;
+  if (!artifacts || !artifacts.length) return [];
+  return artifacts
+    .filter(a => a.role === 'ref' && typeof a.content === 'string' && a.content.trim().length > 0)
+    .map(a => {
+      const basename = a.path.slice(a.path.lastIndexOf('/') + 1) || a.path;
+      const label = basename.replace(/\.md$/i, '');
+      return { path: a.path, label };
+    });
 }

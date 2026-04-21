@@ -979,6 +979,16 @@
       "render-call"
     ]
   },
+  "jobs/plan/nodes/detect/variants/default/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/plan/nodes/detect/variants/default/rules": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "jobs/plan/nodes/plan/variants/default/base": {
     "sources": [
       "build-callsite",

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { parseClassifyResponse } from '../src/agents/creator/graph/visual/nodes/classifyParser';
+import { ExecutionTierId } from '@ant/shared';
 
 beforeAll(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -123,5 +124,40 @@ describe('parseClassifyResponse', () => {
     const result = parseClassifyResponse(input);
     expect(result.assetType).toBe('general');
     expect(result.jobMode).toBe('generate');
+  });
+
+  describe('executionTier', () => {
+    it('parses <executionTier> tag emitted alongside <classify>', () => {
+      const input = `<executionTier>1</executionTier>
+<classify>{"assetType":"logo","jobMode":"generate","reasoning":"Single logo"}</classify>`;
+      const result = parseClassifyResponse(input);
+      expect(result.executionTier).toBe(ExecutionTierId.OneShot);
+      expect(result.assetType).toBe('logo');
+    });
+
+    it('accepts RefsGrounded tier for brand-grounded requests', () => {
+      const input = `<executionTier>4</executionTier>
+<classify>{"assetType":"icon","jobMode":"generate","reasoning":"Icon set from brand refs"}</classify>`;
+      const result = parseClassifyResponse(input);
+      expect(result.executionTier).toBe(ExecutionTierId.RefsGrounded);
+    });
+
+    it('degrades to Tier 0 Reflex when <executionTier> is missing', () => {
+      const input = `<classify>{"assetType":"icon","jobMode":"generate","reasoning":"No tier tag"}</classify>`;
+      const result = parseClassifyResponse(input);
+      expect(result.executionTier).toBe(ExecutionTierId.Reflex);
+    });
+
+    it('degrades to Tier 0 Reflex on malformed tier value', () => {
+      const input = `<executionTier>9</executionTier>
+<classify>{"assetType":"logo","jobMode":"generate","reasoning":"Bad tier"}</classify>`;
+      const result = parseClassifyResponse(input);
+      expect(result.executionTier).toBe(ExecutionTierId.Reflex);
+    });
+
+    it('fallback response still carries Tier 0 Reflex', () => {
+      const result = parseClassifyResponse('garbage');
+      expect(result.executionTier).toBe(ExecutionTierId.Reflex);
+    });
   });
 });

@@ -51,9 +51,27 @@ Classify the visual asset type and job mode for the current request.
 | `gen-visual-illustration` | Scene illustration, character art, diagram, infographic, decorative art, or any visual that does not match logo/icon/hero |
 | `explain-visual` | Question, analysis, or consultation — the user wants information, not an image |
 
+## ExecutionTier Classification
+
+Emit a `<executionTier>N</executionTier>` tag BEFORE the `<classify>` block. `N` is a single digit `0`–`4`.
+
+| Tier | Label | Principle |
+|---|---|---|
+| `0` | Reflex        | Read-only answer; no asset produced. `explain-visual` requests that can be answered without observing anything external fall here. |
+| `1` | OneShot       | Single concrete asset, target known from the directive (most `logo` / `icon` / `hero` single-variant requests). |
+| `2` | Exploratory   | Must observe the conversation history or prior assets before producing the new one. |
+| `3` | Task          | Multiple independent assets driven by the directive alone (e.g. "generate 5 icons for the following actions"), without systematic grounding on brand reference refs. |
+| `4` | RefsGrounded  | Multiple assets systematically grounded in brand reference documents or reference images supplied in this prompt. |
+
+**Constraint**: The presence of reference images alone does NOT force Tier 4. Tier 4 applies when the generation is systematically derived from those references (brand refs → full icon set).
+
+⚠️ **Blind spot**: A single-asset `logo` request with no refs is tier `1`, NOT tier `3`. Do NOT inflate tier based on asset importance.
+
 ## Response
 
-Respond inside `<classify>` tags with valid JSON:
+Respond with the `<executionTier>` tag first, then the `<classify>` block:
+
+<executionTier>1</executionTier>
 
 <classify>
 {
