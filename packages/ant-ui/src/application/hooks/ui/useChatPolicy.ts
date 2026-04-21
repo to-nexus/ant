@@ -154,7 +154,8 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       emptyStateMessage: null,
       readyEmptyStateMessage: null,
       jobButtonLabel: selectedJobType,
-      canChangeJob: true,  // ✅ N concurrent jobs: 실행 중에도 다른 job type으로 전환 가능
+      // 단일 채팅 시기 한정: 실행 중 agent/job 전환 금지(멀티 채팅 도입 시 재검토)
+      canChangeJob: false,
       reason: 'job-running'
     };
   }
