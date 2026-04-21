@@ -558,12 +558,11 @@ export class ChatService {
   }
 
   /**
-   * Clear messages for a session (fire-and-forget).
+   * Clear messages for a session (fire-and-forget). Always uses Chat Clear
+   * semantics (trace.jsonl only).
    *
    * Prefer {@link clearMessagesAsync} when the caller needs to observe
-   * collapse completion (e.g. §17 Hard Reset responds only after
-   * trace.jsonl / feature.jsonl are durably collapsed so the subsequent
-   * UI re-fetch sees the empty state).
+   * collapse completion or wants Hard Reset semantics (`scope='full'`).
    */
   clearMessages(projectId: string, featureName: string, userContext?: UserContext): void {
     this.sessionManager.clearMessages(projectId, featureName, userContext);
@@ -572,17 +571,27 @@ export class ChatService {
   /**
    * Clear messages for a session (awaitable).
    *
-   * Runs the same pipeline as {@link clearMessages} — Redis session
-   * delete, local cache reset, trace.jsonl / feature.jsonl collapse with
-   * a `user_reset` boundary, draft image cleanup, and the
-   * `messages_cleared` SSE broadcast — but resolves only after the work
-   * completes. This is the SSOT entry point for Reset semantics (§16.2
-   * "Clear·Reset 양방향 sync"); any new reset surface (§17 Hard Reset,
-   * future per-turn purge, etc.) should route through here instead of
-   * touching FileSessionAdapter directly, to avoid diverging cleanup.
+   * Runs the same base pipeline as {@link clearMessages} — Redis session
+   * delete, local cache reset, draft image cleanup, and the
+   * `messages_cleared` SSE broadcast — but the jsonl collapse step varies
+   * by `scope`:
+   *
+   * - `scope='chat'` (default, Chat Clear): only trace.jsonl is collapsed.
+   *   feature.jsonl (LLM context SSOT) is preserved.
+   * - `scope='full'` (§17 Hard Reset): both trace.jsonl and feature.jsonl
+   *   are collapsed and a `user_reset` boundary is appended.
+   *
+   * This is the SSOT entry point for Reset semantics (§16.2 "Clear·Reset
+   * 양방향 sync"); any new reset surface should route through here instead
+   * of touching FileSessionAdapter directly, to avoid diverging cleanup.
    */
-  async clearMessagesAsync(projectId: string, featureName: string, userContext?: UserContext): Promise<void> {
-    await this.sessionManager.clearMessagesAsync(projectId, featureName, userContext);
+  async clearMessagesAsync(
+    projectId: string,
+    featureName: string,
+    userContext?: UserContext,
+    scope: 'chat' | 'full' = 'chat',
+  ): Promise<void> {
+    await this.sessionManager.clearMessagesAsync(projectId, featureName, userContext, scope);
   }
 
   /**

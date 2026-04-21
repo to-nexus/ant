@@ -591,6 +591,55 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
+   * Collapse feature.jsonl lines whose `jobId` matches — Job-tab clear.
+   *
+   * Leaves trace.jsonl untouched so the UI chat / activity view retains the
+   * deleted job's history. Skips `boundary` lines (structural markers) and
+   * already-collapsed lines. A completed sibling job of the same `jobType`
+   * has a different `jobId`, so its lines remain visible to future prompts.
+   */
+  async collapseByJobId(jobId: string): Promise<void> {
+    const filePath = getFeatureJsonlPath(this.featurePath);
+    const lock = this.getJsonlLock(filePath);
+    await lock.runExclusive(async () => {
+      let content: string;
+      try {
+        content = await fs.readFile(filePath, 'utf-8');
+      } catch (err: any) {
+        if (err.code === 'ENOENT') return;
+        throw err;
+      }
+      const lines = content.split('\n');
+      const newLines = lines.map(l => {
+        if (!l.trim()) return l;
+        try {
+          const obj = JSON.parse(l);
+          if (obj.jobId === jobId && obj.type !== 'boundary' && !obj.collapsed) {
+            obj.collapsed = true;
+            return JSON.stringify(obj);
+          }
+          return l;
+        } catch {
+          return l;
+        }
+      });
+      await fs.writeFile(filePath, newLines.join('\n'), 'utf-8');
+    });
+  }
+
+  /**
+   * Collapse ALL trace.jsonl lines — Chat Clear.
+   *
+   * `feature.jsonl` is intentionally preserved so the LLM retains
+   * conversation context across a chat clear. Hard Reset (context/reset)
+   * continues to use {@link collapseAll}, which collapses both files plus
+   * appends a `user_reset` boundary.
+   */
+  async collapseTraceOnly(): Promise<void> {
+    await this.collapseAllInFile(getTraceJsonlPath(this.featurePath));
+  }
+
+  /**
    * Collapse ALL lines in both files (Hard Reset).
    * Also appends a boundary line to feature.jsonl.
    *
