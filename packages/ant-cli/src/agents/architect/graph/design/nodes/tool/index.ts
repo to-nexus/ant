@@ -21,7 +21,7 @@ import { createChatStatusReporter } from '../../../../../common/tool/chatStatusA
 import { CACHEABLE_TOOLS } from '../../../../../common/tool/toolCatalog';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
 import { createDesignToolHandlers } from './designToolAdapters';
-import { emitFileWriteTrace } from '../../../code/nodes/shared/emitFileWriteTrace';
+import { emitFileWriteTrace } from '../../../code/nodes/_common/emitFileWriteTrace';
 
 const tokenManager = new TokenBudgetManager();
 const designToolResultManager = new ToolResultManager(tokenManager, {

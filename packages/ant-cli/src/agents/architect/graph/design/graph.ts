@@ -19,7 +19,12 @@ import { getTaskConcurrency } from '../../../common/graph/parallelTypes';
 import { routeAfterDocGen } from "./routers/docGenRouter";
 import { isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import * as designRouting from "./routing";
-import type { InterruptionReason } from '../../../../core/types/session';
+import {
+  saveInterruptionCheckpoint,
+  saveTaskCompleteCheckpoint,
+  saveOrchestratorCheckpoint,
+  saveOrchestratorFailures,
+} from './session/checkpoint';
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { designSubdirOf } from "@ant/shared";
 import path from "node:path";
@@ -150,42 +155,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       }
     };
     
-    if (state.deps?.session && state.context.featureFolder) {
-      try {
-        await state.deps.session.updateArtifacts(
-          state.context.project,
-          state.context.featureFolder,
-          'design',
-          {
-            state: {
-              taskQueue: newQueue.getAll(),
-              completedTasks: state.completedTasks || [],
-              completedTasksDetails: state.completedTasksDetails || [],
-              currentTask: undefined,
-              planText: state.planText,
-              conversations: state.conversations,
-              files: state.files || [],
-              filesToDelete: state.filesToDelete || [],
-              jobId: state.jobId,
-              jobTiming: state.jobTiming,
-              tokenUsage: state.tokenUsage,
-              overrideDirective: state.overrideDirective,
-              chatSource: state.chatSource,
-              resolvedAction: state.resolvedAction,
-              figmaConfig: state.figmaConfig,
-              figmaAvailable: state.figmaAvailable,
-              figmaFileKey: state.figmaFileKey,
-              figmaStartNodeId: state.figmaStartNodeId,
-              interruption,
-            }
-          }
-        );
-        console.log(`💾 [checkTaskStatus] Interruption checkpoint saved (${(state.completedTasks || []).length} completed, ${newQueue.size()} remaining)\n`);
-      } catch (error) {
-        console.warn(`[checkTaskStatus] ⚠️  Failed to save interruption checkpoint:`, error);
-      }
-    }
-    
+    await saveInterruptionCheckpoint(state, { taskQueue: newQueue.getAll(), interruption });
+
     if (state._httpJobId && state.deps?.kanbanUpdate) {
       state.deps.kanbanUpdate.updateTaskQueue(
         state._httpJobId,
@@ -249,42 +220,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       }
     };
     
-    if (state.deps?.session && state.context.featureFolder) {
-      try {
-        await state.deps.session.updateArtifacts(
-          state.context.project,
-          state.context.featureFolder,
-          'design',
-          {
-            state: {
-              taskQueue: newQueue.getAll(),
-              completedTasks: state.completedTasks || [],
-              completedTasksDetails: state.completedTasksDetails || [],
-              currentTask: undefined,
-              planText: state.planText,
-              conversations: state.conversations,
-              files: state.files || [],
-              filesToDelete: state.filesToDelete || [],
-              jobId: state.jobId,
-              jobTiming: state.jobTiming,
-              tokenUsage: state.tokenUsage,
-              overrideDirective: state.overrideDirective,
-              chatSource: state.chatSource,
-              resolvedAction: state.resolvedAction,
-              figmaConfig: state.figmaConfig,
-              figmaAvailable: state.figmaAvailable,
-              figmaFileKey: state.figmaFileKey,
-              figmaStartNodeId: state.figmaStartNodeId,
-              interruption,
-            }
-          }
-        );
-        console.log(`💾 [checkTaskStatus] Figma interruption checkpoint saved (${(state.completedTasks || []).length} completed, ${newQueue.size()} remaining)\n`);
-      } catch (error) {
-        console.warn(`[checkTaskStatus] ⚠️  Failed to save Figma interruption checkpoint:`, error);
-      }
-    }
-    
+    await saveInterruptionCheckpoint(state, { taskQueue: newQueue.getAll(), interruption });
+
     if (state._httpJobId && state.deps?.kanbanUpdate) {
       state.deps.kanbanUpdate.updateTaskQueue(
         state._httpJobId,
@@ -421,41 +358,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       await stripInternalMarkers(state.deps.fileSystem as any, state.context.featurePath, taskForMarkers.targetFile);
     }
     
-    // ✅ CRITICAL: Save checkpoint after completing a task
-    if (state.deps?.session && state.context.featureFolder) {
-      try {
-        await state.deps.session.updateArtifacts(
-          state.context.project,
-          state.context.featureFolder,
-          'design',
-          {
-            state: {
-              taskQueue: state.taskQueue?.getAll() || [],
-              completedTasks,
-              completedTasksDetails,
-              currentTask: undefined,
-              planText: state.planText,
-              conversations: {},  // Checkpoint saves empty; runtime state uses retention policy
-              files: state.files || [],
-              filesToDelete: state.filesToDelete || [],
-              jobId: state.jobId,
-              jobTiming: state.jobTiming,
-              tokenUsage: state.tokenUsage,  // ✅ Save job-level token usage
-              overrideDirective: state.overrideDirective,  // ✅ Save chat-initiated directive
-              chatSource: state.chatSource,  // ✅ Save chat source flag
-              resolvedAction: state.resolvedAction,
-              figmaConfig: state.figmaConfig,
-              figmaAvailable: state.figmaAvailable,
-              figmaFileKey: state.figmaFileKey,
-              figmaStartNodeId: state.figmaStartNodeId,
-            }
-          }
-        );
-        console.log(`[checkTaskStatus] ✅ Checkpoint saved (${completedTasksDetails.length} tasks completed)\n`);
-      } catch (error) {
-        console.warn(`[checkTaskStatus] ⚠️  Failed to save checkpoint:`, error);
-      }
-    }
+    // Save checkpoint after completing a task (task-complete boundary).
+    // Clears currentTask + conversations (runtime uses retention policy separately).
+    await saveTaskCompleteCheckpoint(state, { completedTasks, completedTasksDetails });
     
     // ✅ CRITICAL: Update Kanban to next task AFTER checkTaskStatus SSE sent
     // This ensures frontend sees checkTaskStatus animation before Kanban switches
@@ -664,61 +569,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
         }
       },
       onCheckpoint: async (checkpoint) => {
-        if (state.deps?.session && state.context.featureFolder) {
-          try {
-            // Merge failed tasks into taskQueue so full task definitions survive
-            // process termination (user stop, kill, etc.).
-            const failedAsQueue = checkpoint.failedTasks.map(f => ({
-              ...f.task,
-              _failed: true,
-              _failureReason: f.error.message,
-            }));
-            const failedIds = new Set(failedAsQueue.map((t: any) => t.id));
-            const dedupedQueue = checkpoint.taskQueue.filter(t => !failedIds.has(t.id));
-
-            await state.deps.session.updateArtifacts(
-              state.context.project,
-              state.context.featureFolder,
-              'design',
-              {
-                state: {
-                  taskQueue: [...failedAsQueue, ...dedupedQueue],
-                  completedTasks: checkpoint.completedTasks.map(t => t.id),
-                  completedTasksDetails: checkpoint.completedTasks,
-                  failedTasks: checkpoint.failedTasks.map(f => ({
-                    taskId: f.task.id,
-                    taskName: f.task.name,
-                    error: f.error.message,
-                    timestamp: f.timestamp,
-                  })),
-                  tokenUsage: checkpoint.tokenUsage,
-                  estimatingTokenUsage: state._estimatingTokenUsage,
-                  jobId: state.jobId,
-                  jobTiming: state.jobTiming,
-                  parallelMode: true,
-                  figmaConfig: state.figmaConfig,
-                  figmaAvailable: state.figmaAvailable,
-                  figmaFileKey: state.figmaFileKey,
-                  figmaStartNodeId: state.figmaStartNodeId,
-                  resolvedAction: state.resolvedAction,
-                  userLanguage: state.context.userLanguage,
-                  ...(checkpoint.interruption ? {
-                    interruption: {
-                      reason: checkpoint.interruption.reason as InterruptionReason,
-                      message: `Design paused: ${checkpoint.interruption.reason}`,
-                      timestamp: new Date().toISOString(),
-                      canResume: checkpoint.interruption.canResume,
-                    },
-                  } : {}),
-                },
-              },
-            );
-            const failedCount = checkpoint.failedTasks.length;
-            console.log(`💾 [Design ParallelOrchestrator] Checkpoint saved (${checkpoint.completedTasks.length} completed, ${checkpoint.taskQueue.length} queued${failedCount > 0 ? `, ${failedCount} failed` : ''})`);
-          } catch (err) {
-            console.warn(`⚠️ [Design ParallelOrchestrator] Checkpoint save failed:`, err);
-          }
-        }
+        await saveOrchestratorCheckpoint(state, checkpoint);
       },
     },
     {
@@ -777,55 +628,13 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   }
 
   // ✅ If any tasks permanently failed, save interrupted state to session
-  if (result.hasFailures && state.deps?.session && state.context.featureFolder) {
-    try {
-      const failedAsQueue = result.failedTasks.map(f => ({
-        ...f.task,
-        _failed: true,
-        _failureReason: f.error.message,
-      }));
-
-      await state.deps.session.updateArtifacts(
-        state.context.project,
-        state.context.featureFolder,
-        'design',
-        {
-          state: {
-            taskQueue: [...failedAsQueue, ...result.remainingQueue],
-            completedTasks: result.completedTasks.map(t => t.id),
-            completedTasksDetails: result.completedTasks,
-            failedTasks: result.failedTasks.map(f => ({
-              taskId: f.task.id,
-              taskName: f.task.name,
-              error: f.error.message,
-              timestamp: f.timestamp,
-            })),
-            tokenUsage: result.tokenUsage,
-            estimatingTokenUsage: state._estimatingTokenUsage,
-            jobId: state.jobId,
-            jobTiming: state.jobTiming,
-            parallelMode: true,
-            figmaConfig: state.figmaConfig,
-            figmaAvailable: state.figmaAvailable,
-            figmaFileKey: state.figmaFileKey,
-            figmaStartNodeId: state.figmaStartNodeId,
-            resolvedAction: state.resolvedAction,
-            interruption: {
-              reason: 'tasks_failed',
-              message: [
-                `${result.failedTasks.length} task(s) failed during parallel execution`,
-                ...result.failedTasks.map(f => `- "${f.task.name}": ${f.error.message}`),
-              ].join('\n'),
-              timestamp: new Date().toISOString(),
-              canResume: true,
-            },
-          },
-        },
-      );
-      console.log(`💾 [Design ParallelOrchestrator] Saved interrupted state (${result.failedTasks.length} failed tasks)`);
-    } catch (err) {
-      console.warn(`⚠️ [Design ParallelOrchestrator] Failed to save interrupted state:`, err);
-    }
+  if (result.hasFailures) {
+    await saveOrchestratorFailures(state, {
+      failedTasks: result.failedTasks,
+      remainingQueue: result.remainingQueue,
+      completedTasks: result.completedTasks,
+      tokenUsage: result.tokenUsage,
+    });
   }
 
   // Refresh artifact pool from disk after parallel execution (workers operate on separate copies)
