@@ -253,7 +253,7 @@ const MODE_CLASSES: Record<NonNullable<TierInfo['mode']>, string> = {
 const COMPLEXITY_CLASSES: Record<NonNullable<TierInfo['complexity']>, string> = {
   oneshot: 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300',
   exploratory: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
-  todo: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
+  task: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
 };
 
 const DECIDED_BY_CLASSES: Record<NonNullable<TierInfo['decidedBy']>, string> = {
