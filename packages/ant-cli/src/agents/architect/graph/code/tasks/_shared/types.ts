@@ -42,6 +42,7 @@ import type { ArchitectGraphState, Violation } from '../../state';
 import type { CodeTask } from '../../../../types/task';
 import type { TaskType } from '@ant/shared';
 import type { ToolExecutionContext, ToolExecutionEvent, ToolResult } from '../../../../../common/tool/types';
+import type { VerificationTerminalError } from '../verification/model/errors';
 
 /**
  * Fallback task-type used when the decompose LLM omits the `type` field
@@ -169,6 +170,12 @@ export interface TaskPlanHook {
    * falls back to the generic plan-tools-batch template.
    */
   toolLoopLogTemplate?: string;
+  /**
+   * Called at plan retry entry with `state.planText` set to the just-failed
+   * plan. Publishers own retry termination end-to-end; the phase layer skips
+   * its generic `state.retries/maxRetries` path when this hook exists.
+   */
+  checkRetryTermination?: (state: ArchitectGraphState) => VerificationTerminalError | null;
 }
 
 export interface TaskToolHook {

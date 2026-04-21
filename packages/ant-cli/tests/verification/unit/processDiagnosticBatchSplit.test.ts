@@ -1,10 +1,8 @@
 /**
  * L1 unit — processDiagnosticBatchSplit (plan node).
  *
- * Covers (see docs/testing/verification-scenarios.md, matrix C6-C9):
  *   C6  batches >= 2 → split into error sub-tasks, re-enqueue original
  *   C7  forceByRepeat (Session.isPlanRepeated) → force split
- *   C8  budgetExhausted (Session.remainingBudget() <= 0) → force split
  *   C9  overErrorBudget / overFileBudget → force split
  *   Edge: non-verification/error task → noop
  *   Edge: short planText (<= 50 chars) → noop
@@ -14,10 +12,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { __testing__ } from '../../../src/agents/architect/graph/code/nodes/plan/index';
-import {
-  VerificationSession,
-  MAX_VERIFICATION_ATTEMPTS,
-} from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
+import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
 import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/verification/model/errors';
 import { TaskQueue } from '../../../src/agents/architect/types/task';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
@@ -206,47 +201,6 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       const task = makeTask();
 
       const out = processDiagnosticBatchSplit(state, plan, task);
-      expect(out).toBe(plan);
-    });
-  });
-
-  describe('C8: budgetExhausted (remainingBudget <= 0)', () => {
-    it('attempts at ceiling + multiple modify files → force split', () => {
-      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-      for (let i = 0; i < MAX_VERIFICATION_ATTEMPTS; i++) session.onPlanEntry('retry');
-      const state = makeState({ verification: session });
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: { modify: ['a.ts', 'b.ts'] },
-      });
-      const out = processDiagnosticBatchSplit(state, plan, makeTask());
-      expect(out).toBe('');
-      expect(state._batchSplitRequeued).toBe(true);
-      const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
-      expect(errors.length).toBe(2);
-    });
-
-    it('attempts at ceiling + single modify file → noop (not enough to split)', () => {
-      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-      for (let i = 0; i < MAX_VERIFICATION_ATTEMPTS; i++) session.onPlanEntry('retry');
-      const state = makeState({ verification: session });
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: { modify: ['a.ts'] },
-      });
-      const out = processDiagnosticBatchSplit(state, plan, makeTask());
-      expect(out).toBe(plan);
-    });
-
-    it('budget remaining and no other force condition → noop', () => {
-      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-      session.onPlanEntry('retry');
-      const state = makeState({ verification: session });
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: { modify: ['a.ts'] },
-      });
-      const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe(plan);
     });
   });

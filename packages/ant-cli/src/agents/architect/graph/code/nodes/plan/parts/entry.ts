@@ -29,9 +29,6 @@ import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { formatViolations } from '../../../utils/violationFormatter';
 import { detectTestFilesFromDisk } from '../testFileDetector';
-import {
-  MAX_VERIFICATION_ATTEMPTS,
-} from '../../../tasks/verification/model/Session';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
 import { isVerificationTask } from '../../../tasks/verification';
@@ -259,34 +256,25 @@ async function handleRetryEntry(
 ): Promise<PlanEntryContext> {
   const nextTask = state.currentTask!;
 
-  // Single writer of `state.retries` for retry re-entry. Previously split
-  // across enforce (+1) / routing (compare) / checkTaskStatus (reset);
-  // post-enforce-removal this is the only +1 site.
-  //
-  // Increment runs BEFORE the max-retries guard so the throw boundary
-  // exactly matches pre-enforce-removal semantics. Pre-removal flow:
-  //     enforce: retries N → N+1
-  //     plan:    if (N+1 >= maxRetries) throw
-  // Post-removal equivalent:
-  //     plan:    retries N → N+1, if (N+1 >= maxRetries) throw
-  // Both throw at `state.retries === maxRetries`, running retries
-  // `1..maxRetries-1` before termination. Without this ordering the
-  // routing guard (`retries < maxRetries`) would preempt the throw
-  // and allow one extra retry, making `max_retries_exceeded`
-  // unreachable — a regression for sequential mode which has no
-  // post-graph `unresolved_violations` check (unlike TaskWorker).
-  state.retries = (state.retries || 0) + 1;
+  // Termination dispatch (R1). Hook-owning task types (verification) decide
+  // termination themselves; task types without a hook fall through to the
+  // generic `state.retries / state.maxRetries` counter.
+  const planHook = hooksForTaskType(nextTask.type)?.plan;
+  const hookTerminal = planHook?.checkRetryTermination?.(state);
+  if (hookTerminal) {
+    console.error(`\n❌ [Plan] ${nextTask.name} terminated (${hookTerminal.kind}): ${hookTerminal.message}\n`);
+    throw hookTerminal;
+  }
 
-  if (state.retries >= state.maxRetries) {
-    console.error(`\n❌ [Plan] Max retries (${state.maxRetries}) exceeded for task: ${nextTask.name}`);
-    console.error(`   Current retries: ${state.retries}`);
-    console.error(`   This task has failed repeatedly and cannot be fixed automatically.\n`);
-
-    throw new VerificationTerminalError(
-      'max_retries_exceeded',
-      `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). Cannot proceed with automatic fixes.`,
-      snapshotFromState(state)?.verification,
-    );
+  if (!planHook?.checkRetryTermination) {
+    state.retries = (state.retries || 0) + 1;
+    if (state.retries >= state.maxRetries) {
+      throw new VerificationTerminalError(
+        'max_retries_exceeded',
+        `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). Cannot proceed with automatic fixes.`,
+        snapshotFromState(state)?.verification,
+      );
+    }
   }
 
   const prevCallIndex = state._executeCallIndex || 0;
@@ -298,15 +286,16 @@ async function handleRetryEntry(
     // reflects the previous attempt's failure count rather than the cleared 0.
     const prevViolationCount = state.violations?.length ?? 0;
 
-    // Session owns the retry/reverify attempt counter and per-cycle gate
-    // invalidation (onPlanEntry('retry') clears `attemptedThisCycle`).
+    // Session owns the retry attempt counter; `state.retries` stays 0 for
+    // verification because `checkRetryTermination` owns termination.
     state.verification?.onPlanEntry('retry');
     state._executeCallIndex = 0;
+    const sessionAttempts = state.verification?.attempts() ?? 0;
     retrySummaryText = renderRetrySummary(summarizeForRetry({
       violations: state.violations,
       lastPlan: state.planText,
     }, {
-      attemptCount: (state.retries || 0) + 1,
+      attemptCount: sessionAttempts,
       commandHistory: state.commandHistory,
     }));
     state.violations = [];
@@ -317,10 +306,7 @@ async function handleRetryEntry(
     };
     state._executeModifiedFiles = false;
     await recomputeInstallNeeded(state);
-    const _retryAttempt = (state.retries || 0) + 1;
-    const _retryMax = state.maxRetries || 3;
-    const sessionAttempts = state.verification?.attempts() ?? 0;
-    console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (attempt ${_retryAttempt}/${_retryMax}, verificationAttempts=${sessionAttempts}/${MAX_VERIFICATION_ATTEMPTS})`);
+    console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (verificationAttempts=${sessionAttempts})`);
     console.log(`   ♻️  Reset: conversations cleared, _executeCallIndex ${prevCallIndex}→0`);
     console.log(`   ♻️  Preserved: _finalTaskLoopCount = ${state._finalTaskLoopCount || 0}\n`);
     if (nextTask && state.context?.featurePath && state._httpJobId) {
@@ -335,11 +321,8 @@ async function handleRetryEntry(
           jobType: 'code',
         }).logVerificationRetry(_taskRef.id, {
           taskName: _taskRef.name,
-          attempt: _retryAttempt,
-          maxAttempts: _retryMax,
-          // preservedHistoryLength / preservedCallIndex are @deprecated schema
-          // placeholders — summary-based retention (RetrySummary injection) is
-          // the SSOT for carried retry context, so these stay 0.
+          attempt: sessionAttempts,
+          // @deprecated placeholders — summary-based retention is the SSOT for carried retry context.
           preservedHistoryLength: 0,
           preservedCallIndex: 0,
           violationsFromPrevAttempt: prevViolationCount,
@@ -391,14 +374,9 @@ async function handleReverifyEntry(
   console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
   console.log(`   Resetting per-cycle attempted gates via Session.onPlanEntry('reverify')\n`);
 
-  // Session is authoritative — `onPlanEntry('reverify')` bumps the attempt
-  // counter and clears `attemptedThisCycle` while preserving already-passed
-  // gates. `onPlanApplied` pushes the body into the bounded history buffer
-  // and records the hash list consumed by `isPlanRepeated`.
+  // Session bumps the attempt counter and clears per-cycle attempted gates.
+  // Plan-history push lives at `nodes/plan/index.ts` (single-writer).
   state.verification?.onPlanEntry('reverify');
-  if (state.planText) {
-    state.verification?.onPlanApplied(state.planText);
-  }
 
   state._executeCallIndex = 0;
   state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
@@ -461,9 +439,8 @@ async function handleFreshTaskEntry(
     hooksForTaskType(nextTask.type)?.plan?.initSession?.(state, { isTs: tsProject, hasTests });
 
     const sessionAttempts = state.verification?.attempts() ?? 0;
-    const sessionBudget = state.verification?.remainingBudget() ?? MAX_VERIFICATION_ATTEMPTS;
     console.log(`🔍 [Plan] VerificationSession ${isResumedVerification ? 'rehydrated' : 'initialised'}: required=${state.verification?.required().join('+') ?? ''}, passed=${state.verification?.passed().join('+') ?? ''}`);
-    console.log(`🎫 [Plan] verificationAttempts=${sessionAttempts}/${MAX_VERIFICATION_ATTEMPTS} (budget remaining=${sessionBudget})`);
+    console.log(`🎫 [Plan] verificationAttempts=${sessionAttempts}`);
 
     await recomputeInstallNeeded(state, { detectPmIfMissing: true });
   }

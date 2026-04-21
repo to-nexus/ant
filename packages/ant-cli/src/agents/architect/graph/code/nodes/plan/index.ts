@@ -466,6 +466,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
   const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(planText);
 
+  // Single-writer plan-history push. Skipped when batch-split fanned out
+  // or an empty remediation result short-circuited the body.
+  if (planText && !batchSplitOccurred && !emptyImplShortCircuit) {
+    state.verification?.onPlanApplied(planText);
+  }
+
   // STEP 4 — return finalised state.
   try {
     const updatedState: ArchitectGraphState = {

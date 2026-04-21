@@ -103,10 +103,12 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     expect(ctx.isRetry).toBe(true);
     expect(ctx.retrySummaryText).toBeTruthy();
 
-    // Single writer of state.retries — handleRetryEntry is the only
-    // +1 site after the enforce node removal. Verify the increment
-    // happened exactly once (1 → 2).
-    expect(state.retries).toBe(2);
+    // Verification delegates retry accounting to the Session via the
+    // `checkRetryTermination` hook; the phase layer does NOT bump
+    // `state.retries` for verification task types. The pre-entry value
+    // (1) is preserved unchanged — the authoritative retry counter is
+    // `session.attempts()`.
+    expect(state.retries).toBe(1);
 
     const snap = state.verification.snapshot();
     // onPlanEntry('retry') clears attemptedThisCycle
@@ -114,7 +116,7 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     // passed / required preserved
     expect(snap.passed.sort()).toEqual(['build', 'typecheck'].sort());
     expect(snap.required.sort()).toEqual(['build', 'test', 'typecheck'].sort());
-    // attempts bumped
+    // attempts bumped via session.onPlanEntry('retry')
     expect(snap.attempts).toBe(1);
 
     expect(state.violations).toEqual([]);

@@ -19,6 +19,7 @@ import { routeAfterDone } from './hooks/router';
 import {
   initSession,
   buildPrompt as planBuildPrompt,
+  checkRetryTermination,
 } from './hooks/plan';
 import { executeHook } from './hooks/execute';
 import {
@@ -33,9 +34,8 @@ export const hooks: TaskHooks = {
   plan: {
     initSession,
     buildPrompt: planBuildPrompt,
-    // plan-toolLoop debug log uses the verification rules template so the
-    // captured prompt reflects the variant actually being exercised.
     toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/verification/rules',
+    checkRetryTermination,
   },
   execute: executeHook,
   tool: { onEvent },

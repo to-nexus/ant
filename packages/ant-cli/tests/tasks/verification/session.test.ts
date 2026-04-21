@@ -1,23 +1,16 @@
 /**
  * L1 — `VerificationSession` model invariants.
  *
- * Covers the primary API surface introduced in T3 (with the T8 follow-up
- * review's removal of the dead `evaluate` verdict method applied):
  *   - `createFresh` / `rehydrate` (construction & snapshot round-trip)
  *   - Gate transitions: `onCommand`, `onFileChanged`, `onPlanEntry`
  *   - Plan history + repeated-plan detection
- *   - Deep-diagnostic mode + remaining budget
+ *   - Deep-diagnostic mode
  *   - Batch-split cycle counter
- *
- * These tests lock the model contract BEFORE the hook layer (T5) and phase
- * rewiring (T6) start depending on it. The hook tests (`hooks.test.ts`,
- * T5) exercise the adapter surface; this file exercises the model alone.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   VerificationSession,
-  MAX_VERIFICATION_ATTEMPTS,
   DEEP_DIAGNOSTIC_THRESHOLD,
 } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
 import { EMPTY_SNAPSHOT } from '../../../src/agents/architect/graph/code/tasks/verification/model/snapshot';
@@ -86,7 +79,6 @@ describe('VerificationSession.createFresh', () => {
     expect(s.passed()).toEqual([]);
     expect(s.planHistoryBodies()).toEqual([]);
     expect(s.batchSplitCount()).toBe(0);
-    expect(s.remainingBudget()).toBe(MAX_VERIFICATION_ATTEMPTS);
   });
 
   it('reports not complete when required gates are outstanding', () => {
@@ -223,15 +215,6 @@ describe('onPlanEntry', () => {
     expect(s.inDeepMode()).toBe(false);
     for (let i = 0; i < DEEP_DIAGNOSTIC_THRESHOLD; i++) s.onPlanEntry('retry');
     expect(s.inDeepMode()).toBe(true);
-  });
-
-  it('remainingBudget counts down monotonically to zero', () => {
-    const s = freshTs();
-    const start = s.remainingBudget();
-    s.onPlanEntry('retry');
-    expect(s.remainingBudget()).toBe(start - 1);
-    for (let i = 0; i < MAX_VERIFICATION_ATTEMPTS * 2; i++) s.onPlanEntry('retry');
-    expect(s.remainingBudget()).toBe(0);
   });
 });
 

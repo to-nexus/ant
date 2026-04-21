@@ -7,17 +7,10 @@
  * history") cannot drift.
  *
  * R2 — model-only. Does not import from `nodes/`, `routers/`, or `parallel/`.
- * Hooks (added in T5) sit above this module and translate phase events
- * (`onPlanEntry`, `onCommand`, …) into Session mutations.
  *
  * Environment:
- *   - `ANT_MAX_VERIFICATION_ATTEMPTS` — ceiling for the attempt counter
- *     (default 6). Back-compat: honours the legacy `ANT_VERIFICATION_BUDGET`
- *     name when the new var is absent.
- *   - `ANT_DEEP_DIAGNOSTIC_THRESHOLD` — attempts at which deep-diagnostic
- *     mode activates (default 2).
- *   - `ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES` —
- *     force-split thresholds consulted by `evaluate(...)`.
+ *   - `ANT_DEEP_DIAGNOSTIC_THRESHOLD` — attempts at which deep-diagnostic mode activates (default 2).
+ *   - `ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES` — force-split thresholds.
  */
 
 import type { Gate } from './gates';
@@ -26,24 +19,12 @@ import type { VerificationSnapshot } from './snapshot';
 import { EMPTY_SNAPSHOT } from './snapshot';
 import { countRepeatedHash, normalizePlanForHash } from './planHash';
 
-// ────────────────────────────────────────────────────────────────────────────
-// Environment-driven constants
-// ────────────────────────────────────────────────────────────────────────────
-
-function envInt(name: string, fallback: number, legacyName?: string): number {
-  const current = process.env[name];
-  const legacy = legacyName ? process.env[legacyName] : undefined;
-  const raw = current ?? legacy;
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
   if (raw == null) return fallback;
   const parsed = parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
-
-export const MAX_VERIFICATION_ATTEMPTS = envInt(
-  'ANT_MAX_VERIFICATION_ATTEMPTS',
-  6,
-  'ANT_VERIFICATION_BUDGET',
-);
 
 export const DEEP_DIAGNOSTIC_THRESHOLD = envInt('ANT_DEEP_DIAGNOSTIC_THRESHOLD', 2);
 
@@ -213,15 +194,7 @@ export class VerificationSession {
     return this._attempts;
   }
 
-  remainingBudget(): number {
-    return Math.max(0, MAX_VERIFICATION_ATTEMPTS - this._attempts);
-  }
-
-  /**
-   * True once the task has re-entered the plan node at least
-   * `DEEP_DIAGNOSTIC_THRESHOLD` times without converging. Downstream hooks
-   * use this to loosen command guards and inject config snapshots.
-   */
+  /** True once `_attempts >= DEEP_DIAGNOSTIC_THRESHOLD`; activates config-snapshot injection. */
   inDeepMode(): boolean {
     return this._attempts >= DEEP_DIAGNOSTIC_THRESHOLD;
   }

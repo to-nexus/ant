@@ -25,7 +25,6 @@
 
 | 제거 | 대체 경로 |
 |---|---|
-| `_verificationBudget` | `remainingBudget(state)` |
 | `_diagnosticAttempts` | `_verificationAttempts` 로 일원화 |
 | `_deepDiagnosticBudgetGranted` | `inDeepDiagnosticMode(state)` |
 | `_lastPlanHash` | `lastPlanHash(state._appliedPlanHistory)` |
@@ -41,14 +40,11 @@
 **신규**: [utils/verificationAttempts.ts](/Users/probe/dev/ant/packages/ant-cli/src/agents/architect/graph/code/utils/verificationAttempts.ts)
 
 ```ts
-export const MAX_VERIFICATION_ATTEMPTS;   // env ANT_MAX_VERIFICATION_ATTEMPTS, default 6
 export const DEEP_DIAGNOSTIC_THRESHOLD;   // 2
 export function initAttempts(state);
 export function bumpAttempts(state);
 export function usedAttempts(state): number;
-export function remainingBudget(state): number;
 export function inDeepDiagnosticMode(state): boolean;
-export function shouldStopVerification(state): boolean;
 ```
 
 #### 0.3 모듈 통합 (19 Axis → 6 concepts)
@@ -72,7 +68,6 @@ export function shouldStopVerification(state): boolean;
 
 | 구 참조 | 신 참조 |
 |---|---|
-| `state._verificationBudget` | `remainingBudget(state)` |
 | `state._diagnosticAttempts` | `state._verificationAttempts` |
 | `state._deepDiagnosticBudgetGranted` | `inDeepDiagnosticMode(state)` |
 | `state._lastPlanHash` | `lastPlanHash(state._appliedPlanHistory)` |
@@ -106,9 +101,9 @@ export function shouldStopVerification(state): boolean;
 ```ts
 export type VerificationTerminalKind =
   | 'max_retries_exceeded'
-  | 'budget_exhausted'
   | 'no_progress'
-  | 'unresolved_violations';
+  | 'unresolved_violations'
+  | 'batch_cycle_limit';
 
 export class VerificationTerminalError extends Error {
   readonly kind: VerificationTerminalKind;
@@ -128,7 +123,7 @@ Throw sites:
 
 #### G1: [tests/verification/unit/stateConsolidation.test.ts](/Users/probe/dev/ant/packages/ant-cli/tests/verification/unit/stateConsolidation.test.ts)
 
-`MAX_VERIFICATION_ATTEMPTS`, `remainingBudget`, `inDeepDiagnosticMode`, `shouldStopVerification`, `lastPlanHash`, `detectRepeatedPlan` 등 helper 회귀 방지. retire 된 필드가 `undefined` 로 비어 있음을 runtime 확인.
+`inDeepDiagnosticMode`, `lastPlanHash`, `detectRepeatedPlan` 등 helper 회귀 방지. retire 된 필드가 `undefined` 로 비어 있음을 runtime 확인.
 
 #### G2: [tests/verification/unit/snapshotCarryOver.test.ts](/Users/probe/dev/ant/packages/ant-cli/tests/verification/unit/snapshotCarryOver.test.ts)
 
@@ -207,12 +202,6 @@ $ rg "Axis [A-G]" packages/ant-cli/src
 - `learn` 노드에서 `state.interruption` 에 `reason: 'verification_no_progress'` 추가
 - Kanban UI 에 해당 reason 용 카드 디자인
 - `interruption.message` 에 `terminal.kind` 포함
-
-### H5. `maxRetries` (in-plan) vs `MAX_VERIFICATION_ATTEMPTS` (전체) 의 관계 명시 [clarity]
-
-**상태**: verification 태스크는 in-plan `retries < maxRetries(=3)` 이면 enforce 재시도. 그것과 별개로 `MAX_VERIFICATION_ATTEMPTS(=6)` 가 전체 시도 상한. 두 값의 관계가 코드 주석에는 있지만 사용자 가이드에 없음.
-
-**후속 작업**: `docs/architecture/14-code-job.md` 에 verification 예산 계산 방법 설명 추가.
 
 ---
 
