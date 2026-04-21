@@ -2,15 +2,13 @@ import { useEffect } from 'react';
 import { useStore } from '@/domain/store';
 
 /**
- * Sync trace.jsonl + feature.jsonl breadcrumbs into the `featureLog` slice
- * whenever the active project/feature changes. Live updates continue to flow
- * through the SSE workflow/chat streams; this hook only drives the
- * read-only initial load.
+ * Sync feature.jsonl breadcrumbs into the `featureLog` slice whenever the
+ * active project/feature changes. Post-mount updates are driven by
+ * `chatSseHandler` re-issuing `loadFeatureBreadcrumbs` when a
+ * `job_status=completed|failed` event arrives for the current feature.
  */
 export function useFeatureLogSync(projectId: string | null, featureName: string | null) {
-  const loadFeatureTrace = useStore(s => s.loadFeatureTrace);
   const loadFeatureBreadcrumbs = useStore(s => s.loadFeatureBreadcrumbs);
-  const loadFeatureTurnMeta = useStore(s => s.loadFeatureTurnMeta);
   const clearFeatureLog = useStore(s => s.clearFeatureLog);
 
   useEffect(() => {
@@ -18,8 +16,6 @@ export function useFeatureLogSync(projectId: string | null, featureName: string 
       clearFeatureLog();
       return;
     }
-    void loadFeatureTrace(projectId, featureName);
     void loadFeatureBreadcrumbs(projectId, featureName);
-    void loadFeatureTurnMeta(projectId, featureName);
-  }, [projectId, featureName, loadFeatureTrace, loadFeatureBreadcrumbs, loadFeatureTurnMeta, clearFeatureLog]);
+  }, [projectId, featureName, loadFeatureBreadcrumbs, clearFeatureLog]);
 }
