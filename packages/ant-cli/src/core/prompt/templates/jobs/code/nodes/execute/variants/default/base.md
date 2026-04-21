@@ -165,9 +165,8 @@ Follow the framework/language-specific setup instructions from:
 - Build/dev/start commands (e.g., `npm run build`, `go build`, `cargo build`) - verification happens in final-verification task
 - `docker compose up`, `docker compose down` - infrastructure startup happens in preview/verification
 - Do NOT verify build success
-- Only run dependency install commands explicitly allowed by the language-specific setup rules injected below. If no install command is specified, the system handles it automatically after file creation.
 
-**Actions:** Write all files (with complete content from the start) → Run install if language rules permit → Output `<done>true</done>`
+**Actions:** Write all files (with complete content from the start) → Install declared dependencies → Output `<done>true</done>`
 
 {{/unless}}
 {{/if}}
