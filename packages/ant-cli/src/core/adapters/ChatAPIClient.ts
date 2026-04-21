@@ -406,31 +406,13 @@ export class ChatAPIClient {
   }
 
   // ============================================================================
-  // Command Execution
+  // Command Execution (streaming)
   // ============================================================================
-
-  async startCommand(command: string): Promise<void> {
-    if (!this.enabled) return;
-    const service = await getLLMResponseService();
-    await service?.startCommand(command);
-  }
 
   async streamCommandOutput(command: string, output: string): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
     await service?.streamCommandOutput(command, output);
-  }
-
-  async completeCommand(command: string, output: string, exitCode: number): Promise<void> {
-    if (!this.enabled) return;
-    const service = await getLLMResponseService();
-    await service?.completeCommand(command, output, exitCode);
-  }
-
-  async addCommandExecution(command: string, output?: string, exitCode?: number): Promise<void> {
-    if (!this.enabled) return;
-    const service = await getLLMResponseService();
-    await service?.addCommandExecution(command, output, exitCode);
   }
 
   // ============================================================================
