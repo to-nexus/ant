@@ -26,9 +26,12 @@ import {
 } from '../planGeneration';
 import { computeBudgetFromPlanText, extractFilesFromPlanToolLoop } from '../utils';
 import {
+  hasEmptyImplementation,
   isVerificationPassWithoutCodeGen,
   processDiagnosticBatchSplit,
 } from './batchSplit';
+import { isVerificationTask } from '../../../tasks/verification';
+import { isErrorTask } from '../../../tasks/error';
 
 /**
  * Enrich projectCodeContext with files discovered during Plan's tool loop.
@@ -88,6 +91,8 @@ export async function runPlanToolLoopPhase(
       finalizedPlan = processDiagnosticBatchSplit(state, finalizedPlan, nextTask);
       const batchSplitOccurred = preSplitPlan.length > 50 && finalizedPlan === '';
       const diagnosticPass = isVerificationPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
+      const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
+      const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(finalizedPlan);
       const enrichedContext = enrichContextFromPlanToolLoop(state.projectCodeContext, nodePlan);
       state._activePhase = 'execute';
       if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -108,7 +113,7 @@ export async function runPlanToolLoopPhase(
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         workspaceConfig: state.workspaceConfig,
-        llmResponse: (batchSplitOccurred || diagnosticPass)
+        llmResponse: (batchSplitOccurred || diagnosticPass || emptyImplShortCircuit)
           ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
           : { done: false, textResponse: '', thinking: '', toolCalls: [] },
       };
