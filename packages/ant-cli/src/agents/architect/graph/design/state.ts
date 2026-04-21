@@ -7,7 +7,7 @@ import { DesignTask, TaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { JobTiming } from '../../../common/graph/timing/JobTimingManager';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext } from '@ant/shared';
+import type { Boundary, FigmaDataConfig, FigmaExplorationResult, ResolvedActionContext, ExecutionTierId } from '@ant/shared';
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 
 /**
@@ -216,4 +216,10 @@ export interface DesignGraphState extends TriageableState {
    * `llm`/`promptPort` and the Compact path activates automatically.
    */
   featureContext?: FeatureContext;
+
+  /**
+   * 5-tier execution strategy — LLM direct output from the Tier Entry Node
+   * (Decompose). Phase nodes consume via `getExecutionTier(state)` only.
+   */
+  executionTier?: ExecutionTierId;
 }

@@ -15,22 +15,30 @@
 import type { JobType } from './job';
 import type { Mode } from './detection';
 
+/**
+ * 5-tier execution strategy identifier (SSOT).
+ *
+ * Emitted by each job's Tier Entry Node (code/design: Decompose,
+ * plan/visual: Detect, learn/ask: fixed 0). The LLM directly outputs
+ * this value after observing mode and refs (artifacts with
+ * `role='ref'`). `selectExecutionTier(...)` acts as a safety fallback
+ * when the LLM output is missing or invalid.
+ *
+ * Numeric values are stable and safe to serialize into feature.jsonl /
+ * user_turn_meta lines; consumers should prefer the enum keys in code
+ * comparisons (e.g. `tier === ExecutionTierId.Reflex`).
+ */
+export enum ExecutionTierId {
+  Reflex = 0,
+  OneShot = 1,
+  Exploratory = 2,
+  Task = 3,
+  RefsGrounded = 4,
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Common types
 // ═══════════════════════════════════════════════════════════════════════
-
-/**
- * Complexity classification emitted by Decompose.
- *
- * Literal `'task'` denotes the "decompose → plan → execute" full-pipeline route.
- * Prior to the 5-tier rename it was spelled `'todo'`; legacy on-disk
- * `feature.jsonl` lines may still carry the old literal. `FileSessionAdapter`
- * normalizes them on read (see `normalizeLegacyComplexity`). Writers MUST
- * emit `'task'` only.
- */
-export type Complexity = 'oneshot' | 'exploratory' | 'task';
-
-export type DecidedBy = 'user' | 'heuristic' | 'llm';
 
 /** Log line kind — identical to JobType, re-exported for clarity in session-log context */
 export type LogJobType = JobType;
@@ -75,26 +83,26 @@ export interface FeatureUserTurnLine extends LineBase {
 }
 
 /**
- * user_turn_meta — complexity 판정 패치 라인
- * 
- * 기록 시점: Decompose 완료 후 learn/direct 종료 시 append
- * resolve가 로드 시 user_turn과 turnId 기준 병합
+ * user_turn_meta — execution-tier classification patch line
+ *
+ * 기록 시점: Tier Entry Node(code/design: Decompose, plan/visual: Detect)
+ * 완료 후 learn(또는 동등 phase) 종료 시 append. resolve가 로드 시
+ * user_turn과 turnId 기준 병합.
  */
 export interface FeatureUserTurnMetaLine extends LineBase {
   type: 'user_turn_meta';
-  complexity: Complexity;
-  decidedBy: DecidedBy;
-  reason: string;
+  /** 5-tier execution strategy selected by the Tier Entry Node LLM. */
+  executionTier: ExecutionTierId;
 }
 
 /**
  * breadcrumb — 작업 흔적 네비게이션 앵커 (T3)
- * 
- * 생성 규칙:
- * - mode='explain': 생성 안 함 (T1 무수정)
- * - mode in {generate, refactor} + complexity='task': 항상 생성 (bubble-up 적용)
- * - mode in {generate, refactor} + complexity='exploratory' + touched≥3: mini-BC
- * - 그 외: 생성 안 함
+ *
+ * 생성 규칙 (tier 기반):
+ * - mode='explain'                          → 생성 안 함 (T1 무수정)
+ * - mode in {generate, refactor}, Tier 3/4  → 항상 생성 (bubble-up 적용)
+ * - mode in {generate, refactor}, Tier 2, touched≥3 → mini-BC
+ * - 그 외                                   → 생성 안 함
  */
 export interface FeatureBreadcrumbLine extends LineBase {
   type: 'breadcrumb';
@@ -127,7 +135,7 @@ export interface FeatureBreadcrumbLine extends LineBase {
  * boundary — 대화 맥락 경계 마커
  *
  * 생성 규칙:
- * - complexity='task' 완료 → 자동 boundary (mode 무관)
+ * - Tier 3/4(task) 완료 → 자동 boundary (mode 무관)
  * - Hard Reset → 명시 boundary (`reason: 'user_reset'`)
  * - 그 외 → 생성 안 함
  *

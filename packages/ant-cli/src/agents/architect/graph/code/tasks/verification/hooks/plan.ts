@@ -45,6 +45,7 @@ import {
   collectConfigSnapshot,
   renderConfigBlock,
 } from '../model/configSnapshot';
+import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Hook implementations
@@ -97,19 +98,6 @@ function renderPassedSteps(passed: readonly string[]): string | undefined {
   return rendered || undefined;
 }
 
-function formatCodeContext(ctx: any): string {
-  if (!ctx?.files || !Array.isArray(ctx.files) || ctx.files.length === 0) return '';
-  return `**Retrieved Files** (${ctx.files.length} files):\n\n${ctx.files.map((f: any) => `- \`${f.path}\``).join('\n')}`;
-}
-
-function mapLang(language: string): string {
-  const l = language.toLowerCase();
-  if (l.includes('go')) return 'go';
-  if (l.includes('python')) return 'python';
-  if (l.includes('rust')) return 'rust';
-  if (l.includes('java')) return 'java';
-  return 'typescript';
-}
 
 /**
  * Compose the verification-variant plan prompt. Mirrors the behaviour of the

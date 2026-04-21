@@ -43,9 +43,7 @@ function makeMeta(
     jobId: 'job-x',
     turnId,
     jobType: 'code',
-    complexity: 'task',
-    decidedBy: 'llm',
-    reason: 'classified',
+    executionTier: 3,
     ...overrides,
   };
 }
@@ -75,11 +73,7 @@ function makeBreadcrumb(
 describe('mergeFeatureContext — turnId join', () => {
   it('merges user_turn_meta patch fields onto matching user_turn', () => {
     const turn = makeTurn(1);
-    const meta = makeMeta('t-1', {
-      complexity: 'exploratory',
-      decidedBy: 'heuristic',
-      reason: 'ambiguous intent',
-    });
+    const meta = makeMeta('t-1', { executionTier: 2 });
 
     const ctx = mergeFeatureContext({
       userTurns: [turn],
@@ -91,9 +85,7 @@ describe('mergeFeatureContext — turnId join', () => {
     expect(ctx.userTurns[0]).toMatchObject({
       turnId: 't-1',
       text: 'directive-1',
-      complexity: 'exploratory',
-      decidedBy: 'heuristic',
-      reason: 'ambiguous intent',
+      executionTier: 2,
     });
     // type discriminant stays as the user_turn line (not user_turn_meta)
     expect(ctx.userTurns[0].type).toBe('user_turn');
@@ -108,7 +100,7 @@ describe('mergeFeatureContext — turnId join', () => {
     });
 
     expect(ctx.userTurns[0]).toEqual(turn);
-    expect((ctx.userTurns[0] as { complexity?: unknown }).complexity).toBeUndefined();
+    expect((ctx.userTurns[0] as { executionTier?: unknown }).executionTier).toBeUndefined();
   });
 
   it('preserves input order (no sort) when merging multiple turns', () => {
@@ -143,7 +135,7 @@ describe('mergeFeatureContext — collapsed lines dropped', () => {
 
   it('ignores collapsed user_turn_meta during merge (no patch applied)', () => {
     const turn = makeTurn(1);
-    const deadMeta = makeMeta('t-1', { collapsed: true, complexity: 'task' });
+    const deadMeta = makeMeta('t-1', { collapsed: true, executionTier: 3 });
 
     const ctx = mergeFeatureContext({
       userTurns: [turn],
@@ -151,7 +143,7 @@ describe('mergeFeatureContext — collapsed lines dropped', () => {
       breadcrumbs: [],
     });
 
-    expect((ctx.userTurns[0] as { complexity?: unknown }).complexity).toBeUndefined();
+    expect((ctx.userTurns[0] as { executionTier?: unknown }).executionTier).toBeUndefined();
   });
 
   it('filters collapsed breadcrumb out of the window', () => {
@@ -239,7 +231,7 @@ describe('buildFeatureContext — session port integration', () => {
 
   it('returns merged ctx on the happy path', async () => {
     const turns = [makeTurn(1), makeTurn(2)];
-    const metas = [makeMeta('t-2', { complexity: 'oneshot' })];
+    const metas = [makeMeta('t-2', { executionTier: 1 })];
     const breadcrumbs = [makeBreadcrumb(1)];
 
     const session = {
@@ -252,7 +244,7 @@ describe('buildFeatureContext — session port integration', () => {
 
     expect(session.loadSinceBoundary).toHaveBeenCalledTimes(1);
     expect(ctx?.userTurns.map((t) => t.turnId)).toEqual(['t-1', 't-2']);
-    expect((ctx?.userTurns[1] as { complexity?: unknown }).complexity).toBe('oneshot');
+    expect((ctx?.userTurns[1] as { executionTier?: unknown }).executionTier).toBe(1);
     expect(ctx?.breadcrumbs).toHaveLength(1);
   });
 

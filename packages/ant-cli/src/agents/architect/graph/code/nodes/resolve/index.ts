@@ -319,11 +319,11 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       {
         jobId: state.jobId,
         logPrefix: 'Resolve',
-        // Fresh-turn code path — `state.complexity` is not yet set
+        // Fresh-turn code path — `state.executionTier` is not yet set
         // (decompose runs after resolve) so `getExecutionTier(state)`
-        // returns Tier 4 (Plan) → NoopCompact. Intentional: compact is a
-        // safety net that mostly fires on resumed/heavy sessions, which
-        // take the `onResume` branch above.
+        // falls back to a safe tier. Intentional: compact is a safety
+        // net that mostly fires on resumed/heavy sessions, which take
+        // the `onResume` branch above.
         executionTier: getExecutionTier(state),
       },
     );

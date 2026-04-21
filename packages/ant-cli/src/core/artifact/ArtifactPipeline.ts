@@ -24,6 +24,25 @@ import * as fs from 'fs';
 import * as pathMod from 'path';
 
 // ────────────────────────────────────────────────────────────────
+// UI artifact recognition
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * An artifact counts as "UI" if it lives under the nested
+ * `outputs/design/ui/` subdirectory, OR uses the flat-path fallback
+ * `outputs/design/ui-*` (tokens/assets/spec written directly under
+ * `outputs/design/`). The flat-path fallback is a supported output
+ * shape (see `agents/architect/graph/design/graph.ts validateAssetReferences`);
+ * without covering it the plan-side `hasUiDoc` signal would silently
+ * turn off whenever design docs were written to the flat path.
+ */
+const FLAT_UI_DOC_REGEX = new RegExp(`^${DESIGN_DIR}/ui-[^/]+$`);
+
+export function isUiArtifactPath(p: string): boolean {
+  return p.startsWith(ARTIFACT_PREFIX.UI) || FLAT_UI_DOC_REGEX.test(p);
+}
+
+// ────────────────────────────────────────────────────────────────
 // Types
 // ────────────────────────────────────────────────────────────────
 
@@ -84,7 +103,7 @@ export function selectArtifacts(
 
     case 'ui':
     case 'design-system':
-      return candidates.filter(a => a.path.startsWith(ARTIFACT_PREFIX.UI));
+      return candidates.filter(a => isUiArtifactPath(a.path));
 
     default:
       return candidates.filter(
@@ -202,7 +221,7 @@ export class ArtifactPoolView {
   }
 
   get ui(): ResolvedArtifact[] {
-    return this.pool.filter(a => a.path.startsWith(ARTIFACT_PREFIX.UI));
+    return this.pool.filter(a => isUiArtifactPath(a.path));
   }
 
   get sources(): ResolvedArtifact[] {
@@ -217,7 +236,7 @@ export class ArtifactPoolView {
 
   hasSystemDesign(): boolean { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN)); }
   hasSpec(): boolean         { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SPEC)); }
-  hasUi(): boolean           { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.UI)); }
+  hasUi(): boolean           { return this.pool.some(a => isUiArtifactPath(a.path)); }
   hasSources(): boolean      { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SOURCES)); }
 
   // ── Aggregate metrics ──

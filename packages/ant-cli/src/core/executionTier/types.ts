@@ -2,23 +2,23 @@
  * 5-Tier Execution Strategy — type SSOT
  *
  * The five tiers mirror the 18-session-redesign §2.1 matrix (Reflex /
- * One-shot / Exploratory / Task / Plan). Each tier is realized as an
- * {@link ExecutionTier} that composes four operation strategies:
- * `breadcrumb` / `boundary` / `compact` / `collapse`.
+ * OneShot / Exploratory / Task / RefsGrounded). Each tier is realized
+ * as an {@link ExecutionTier} facade that composes four operation
+ * strategies: `breadcrumb` / `boundary` / `compact` / `collapse`.
  *
- * Phase nodes MUST route through this interface; inspecting
- * `mode` or `complexity` literals inside phase code is explicitly
- * forbidden (D11 invariant — see 18-session-redesign §2.4 and
- * NODE_GRAPH_LAYOUT R1). Mode dispatch lives ONLY inside `Tier3Task`'s
- * constructor.
+ * Phase nodes MUST route through this interface; inspecting `mode`
+ * literals inside phase code is explicitly forbidden (D11 invariant —
+ * see 18-session-redesign §2.4 and NODE_GRAPH_LAYOUT R1). Mode dispatch
+ * lives ONLY inside the tier constructors (Tier3Task, Tier4Plan).
  */
 
+import { ExecutionTierId } from '@ant/shared';
 import type { FeatureBoundaryLine } from '@ant/shared';
 import type { SessionPort } from '../ports/session';
 import type { FeatureContext, CompactFeatureContextDeps } from '../context/featureContextBuilder';
 import type { TouchedFromTrace } from '../context/breadcrumb';
 
-export type ExecutionTierId = 0 | 1 | 2 | 3 | 4;
+export { ExecutionTierId };
 
 /**
  * Lightweight view of the graph state that tier strategies are allowed to
@@ -36,7 +36,7 @@ export interface ExecutionTierState {
 
 export interface ExecutionTier {
   readonly id: ExecutionTierId;
-  readonly label: 'Reflex' | 'OneShot' | 'Exploratory' | 'Task' | 'Plan';
+  readonly label: 'Reflex' | 'OneShot' | 'Exploratory' | 'Task' | 'RefsGrounded';
 
   /**
    * Append a breadcrumb (§12 Breadcrumb). No-op when the tier does not

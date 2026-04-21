@@ -42,8 +42,7 @@
   },
   "tier": {
     "modeTooltip": "Mode",
-    "complexityTooltip": "Complexity",
-    "decidedByTooltip": "Decided by"
+    "executionTierTooltip": "Execution tier"
   },
   "sidebar": {
     "chatWith": "Chat with {{agent}}",

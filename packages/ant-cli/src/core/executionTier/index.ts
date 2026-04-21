@@ -8,51 +8,62 @@
  *   await executionTier.breadcrumb(state, touched);
  *   await executionTier.boundary(state);
  *
- * Phase code MUST NOT compare `mode` / `complexity` literals; routing is
- * encapsulated behind {@link selectExecutionTier} and the tier facades. The
- * Tier 3 constructor is the only place that branches on `mode` (D11
- * invariant).
+ * Phase code MUST NOT compare `mode` literals; routing is encapsulated
+ * behind this facade. Mode branching lives ONLY inside the tier
+ * constructors (Tier3Task, Tier4Plan) — D11 invariant.
+ *
+ * `state.executionTier` is authored by each job's Tier Entry Node LLM
+ * (code/design: Decompose, plan/visual: Detect, learn/ask: fixed 0). If
+ * the channel is missing when `getExecutionTier` is called (e.g. resolve
+ * runs before Decompose, or the LLM failed to emit `<executionTier>`),
+ * the facade returns Tier 0 Reflex — a read-only Noop tier that is safe
+ * to execute under any circumstances. Callers that require a specific
+ * tier MUST ensure the Tier Entry Node has run first.
  */
 
-import type { Mode, Complexity } from '@ant/shared';
-import type { ExecutionTier, ExecutionTierId } from './types';
-import { selectExecutionTier } from './selectExecutionTier';
+import type { Mode } from '@ant/shared';
+import { ExecutionTierId } from './types';
+import type { ExecutionTier } from './types';
 import { Tier0Reflex } from './tiers/Tier0Reflex';
 import { Tier1OneShot } from './tiers/Tier1OneShot';
 import { Tier2Exploratory } from './tiers/Tier2Exploratory';
 import { Tier3Task } from './tiers/Tier3Task';
 import { Tier4Plan } from './tiers/Tier4Plan';
 
-export type { ExecutionTier, ExecutionTierId, ExecutionTierState } from './types';
-export { selectExecutionTier } from './selectExecutionTier';
+export type { ExecutionTier, ExecutionTierState } from './types';
+export { ExecutionTierId } from './types';
+export {
+  tierToDirectMode,
+  isDirectTier,
+  isTaskTier,
+} from './derive';
 
 /**
- * Minimal state shape consumed by {@link getExecutionTier}. We accept a loose
- * projection so callers across different graph states (code / design /
- * planner) can invoke without importing this module's types.
+ * Minimal state shape consumed by {@link getExecutionTier}. Accepts a
+ * loose projection so callers across different graph states (code /
+ * design / planner / visual) can invoke without importing this module's
+ * types.
  */
 export interface GetExecutionTierInput {
   executionTier?: ExecutionTierId;
-  complexity?: Complexity;
   resolvedAction?: { mode?: Mode };
 }
 
 export function getExecutionTier(state: GetExecutionTierInput): ExecutionTier {
-  const executionTierId: ExecutionTierId =
-    state.executionTier ??
-    selectExecutionTier(state.resolvedAction?.mode, state.complexity);
-  const mode = state.resolvedAction?.mode;
+  const executionTierId = state.executionTier ?? ExecutionTierId.Reflex;
+  const mode = state.resolvedAction?.mode ?? 'generate';
   switch (executionTierId) {
-    case 0:
+    case ExecutionTierId.Reflex:
       return Tier0Reflex.instance;
-    case 1:
+    case ExecutionTierId.OneShot:
       return Tier1OneShot.instance;
-    case 2:
+    case ExecutionTierId.Exploratory:
       return Tier2Exploratory.instance;
-    case 3:
-      return new Tier3Task(mode ?? 'generate');
-    case 4:
+    case ExecutionTierId.Task:
+      return new Tier3Task(mode);
+    case ExecutionTierId.RefsGrounded:
+      return new Tier4Plan(mode);
     default:
-      return Tier4Plan.instance;
+      return Tier0Reflex.instance;
   }
 }

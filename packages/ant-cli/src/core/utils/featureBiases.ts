@@ -3,19 +3,11 @@
  *
  * Observability-only helper: accumulates samples into
  * `{featurePath}/featureBiases.jsonl` whenever the learn node detects a
- * potential complexity-misclassification signal (runtime escalation fired
- * or the touched-file count exceeded PROMOTION_TOUCHED_THRESHOLD).
+ * potential execution-tier misclassification signal (runtime escalation
+ * fired or the touched-file count exceeded PROMOTION_TOUCHED_THRESHOLD).
  *
  * Storage shape: append-only JSONL, one record per line:
- *   { ts, jobId, predicted, decidedBy?, actualTouched, escalated, directive? }
- *
- * `decidedBy` mirrors the `user_turn_meta` patch written by decompose
- * (see `responseParser.ts` — "Consumers writing user_turn_meta patches
- * MUST forward this value so the UI tier badge and featureBiases sample
- * can distinguish LLM judgements from degraded fallbacks"). Keeping the
- * provenance in the bias record itself avoids forcing aggregation
- * readers to join with feature.jsonl (which may be Collapsed) by
- * turnId.
+ *   { ts, jobId, predictedTier, actualTouched, escalated, directive? }
  *
  * JSONL is used instead of a JSON array so each write is a single
  * `fs.appendFile` call — atomic at the OS level for small records and
@@ -23,13 +15,12 @@
  * mirrors the feature.jsonl / trace.jsonl convention in the session
  * layer.
  *
- * Reader-side consumers are deliberately NOT implemented in this todo
- * (see handoff §19 — "데이터 수집만"). A follow-up heuristic / overrule
- * plan will aggregate these samples.
+ * Reader-side consumers intentionally aggregate only on the predicted
+ * tier; a follow-up heuristic / overrule plan builds on these samples.
  */
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { Complexity, DecidedBy } from '@ant/shared';
+import type { ExecutionTierId } from '@ant/shared';
 
 export const FEATURE_BIASES_FILENAME = 'featureBiases.jsonl';
 
@@ -38,18 +29,8 @@ export interface FeatureBiasRecord {
   ts: string;
   /** job that produced the sample (source of predicted/actual). */
   jobId: string;
-  /** Complexity predicted by Decompose at the start of the job. */
-  predicted: Complexity;
-  /**
-   * Who produced the final classification:
-   *   - `'llm'`       → LLM emitted the `<complexity>` tag
-   *   - `'heuristic'` → tag missing/malformed → safe 'task' fallback
-   *   - `'user'`      → reserved for future overrule UX
-   * Optional for backwards compatibility with samples written before
-   * provenance plumbing landed; readers MUST treat absent as unknown
-   * rather than substitute a default.
-   */
-  decidedBy?: DecidedBy;
+  /** Execution tier predicted by the Tier Entry Node at the start of the job. */
+  predictedTier: ExecutionTierId;
   /** Observed touched-file count (trace.jsonl file_write SSOT). */
   actualTouched: number;
   /** Whether the direct → decompose runtime escalation fired. */
@@ -65,9 +46,7 @@ export interface FeatureBiasRecord {
 export interface RecordClassificationInput {
   featurePath: string;
   jobId: string;
-  predictedComplexity: Complexity;
-  /** Provenance of the classification; forwarded from decompose's parser. */
-  decidedBy?: DecidedBy;
+  predictedTier: ExecutionTierId;
   actualTouched: number;
   escalated: boolean;
   directive?: string;
@@ -109,11 +88,10 @@ export async function recordClassification(
   const record: FeatureBiasRecord = {
     ts: input.ts ?? new Date().toISOString(),
     jobId: input.jobId,
-    predicted: input.predictedComplexity,
+    predictedTier: input.predictedTier,
     actualTouched: input.actualTouched,
     escalated: input.escalated,
   };
-  if (input.decidedBy) record.decidedBy = input.decidedBy;
   const directive = truncateDirective(input.directive);
   if (directive) record.directive = directive;
 
@@ -136,8 +114,7 @@ export async function recordClassification(
  * the SSOT for §19; aggregation consumers layer on top via
  * `aggregateClassifications` / `summarizeFeatureBiases`.
  *
- * Missing file → empty array (AC: "파일이 없으면 빈 배열로 초기화").
- * Malformed lines are skipped with a warning.
+ * Missing file → empty array. Malformed lines are skipped with a warning.
  */
 export async function readClassifications(
   featurePath: string,
@@ -169,55 +146,24 @@ export async function readClassifications(
 
 // ════════════════════════════════════════════════════════════════════════
 // Aggregation reader — histogram input for the follow-up heuristic plan.
-//
-// `aggregateClassifications` is a pure function over the writer's record
-// shape. It answers three questions downstream consumers ask:
-//
-//   1. "Which bucket does Decompose over-predict from?"        → byPredicted
-//   2. "Is the heuristic fallback degrading classification?"   → byDecidedBy
-//   3. "When do under-predictions escalate / blow up touched?" → escalation*
-//
-// All fields are observable counts / rates so the output can be fed
-// directly into a future prompt hint (e.g. "Your last N llm-decided
-// oneshot samples escalated 40% of the time → consider todo when
-// unsure"). We deliberately do not invent new dimensions — the plan
-// calls out `decidedBy` × `predicted` × `escalated` as the only
-// high-signal cross-tab.
 // ════════════════════════════════════════════════════════════════════════
 
-/** `DecidedBy` bucket plus a synthetic `'unknown'` slot for records
- * written before provenance plumbing landed (§19 sufuso 복검). Callers
- * treat it as a first-class bucket rather than substituting a default,
- * matching `readClassifications`' "absent MUST mean unknown" contract. */
-export type DecidedByBucket = DecidedBy | 'unknown';
+const TIER_IDS: readonly ExecutionTierId[] = [0, 1, 2, 3, 4] as const;
 
 export interface AggregateClassifications {
   /** Total records considered (post-filter). */
   total: number;
-  /** Count per predicted complexity. */
-  byPredicted: Record<Complexity, number>;
-  /** Count per decidedBy bucket (incl. 'unknown'). */
-  byDecidedBy: Record<DecidedByBucket, number>;
-  /**
-   * Count for each (predicted × decidedBy) cell. Sparse — only populated
-   * cells are present. Keyed as `<predicted>/<decidedBy>` to stay flat.
-   */
-  crossTab: Record<string, number>;
+  /** Count per predicted tier. */
+  byPredictedTier: Record<ExecutionTierId, number>;
   /** Number of samples with `escalated === true`. */
   escalatedCount: number;
-  /**
-   * Escalation rate per decidedBy bucket. Denominator is the per-bucket
-   * sample count; a zero-sample bucket emits `null` so callers don't
-   * confuse "no data" with "0% rate".
-   */
-  escalationRateByDecidedBy: Record<DecidedByBucket, number | null>;
   /** Average touched-file count (overall). `null` when total === 0. */
   avgTouched: number | null;
   /**
-   * Average touched-file count per predicted complexity. Null for
+   * Average touched-file count per predicted tier. `null` for
    * buckets with zero samples.
    */
-  avgTouchedByPredicted: Record<Complexity, number | null>;
+  avgTouchedByPredictedTier: Record<ExecutionTierId, number | null>;
   /** Earliest / latest record `ts` observed (ISO 8601), or null when empty. */
   timeRange: { from: string; to: string } | null;
 }
@@ -229,33 +175,17 @@ export interface AggregateOptions {
   until?: string;
   /**
    * Optional jobId allow-list. Useful for scoping a histogram to one
-   * session without having to re-read the file — readClassifications is
-   * already single-pass so we just filter here.
+   * session without having to re-read the file.
    */
   jobIds?: string[];
 }
 
-const ZERO_BY_PREDICTED: Record<Complexity, number> = {
-  oneshot: 0,
-  exploratory: 0,
-  task: 0,
-};
-
-const ZERO_BY_DECIDED_BY: Record<DecidedByBucket, number> = {
-  llm: 0,
-  heuristic: 0,
-  user: 0,
-  unknown: 0,
-};
-
-function bucketOfDecidedBy(value: DecidedBy | undefined): DecidedByBucket {
-  return value ?? 'unknown';
+function zeroTierCounter(): Record<ExecutionTierId, number> {
+  return { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0 };
 }
 
 /**
- * Pure aggregator — stable / deterministic given the same input. Kept
- * separate from `summarizeFeatureBiases` so callers that already hold
- * the record array (tests, resumable analyses) do not re-read the file.
+ * Pure aggregator — stable / deterministic given the same input.
  */
 export function aggregateClassifications(
   records: FeatureBiasRecord[],
@@ -269,11 +199,8 @@ export function aggregateClassifications(
     return true;
   });
 
-  const byPredicted: Record<Complexity, number> = { ...ZERO_BY_PREDICTED };
-  const byDecidedBy: Record<DecidedByBucket, number> = { ...ZERO_BY_DECIDED_BY };
-  const crossTab: Record<string, number> = {};
-  const touchedSumByPredicted: Record<Complexity, number> = { ...ZERO_BY_PREDICTED };
-  const escalatedByDecidedBy: Record<DecidedByBucket, number> = { ...ZERO_BY_DECIDED_BY };
+  const byPredictedTier = zeroTierCounter();
+  const touchedSumByTier = zeroTierCounter();
 
   let escalatedCount = 0;
   let touchedSum = 0;
@@ -281,65 +208,36 @@ export function aggregateClassifications(
   let maxTs: string | undefined;
 
   for (const r of filtered) {
-    byPredicted[r.predicted] += 1;
-    const dbBucket = bucketOfDecidedBy(r.decidedBy);
-    byDecidedBy[dbBucket] += 1;
-    const key = `${r.predicted}/${dbBucket}`;
-    crossTab[key] = (crossTab[key] ?? 0) + 1;
-
+    byPredictedTier[r.predictedTier] += 1;
+    touchedSumByTier[r.predictedTier] += r.actualTouched;
     touchedSum += r.actualTouched;
-    touchedSumByPredicted[r.predicted] += r.actualTouched;
-
-    if (r.escalated) {
-      escalatedCount += 1;
-      escalatedByDecidedBy[dbBucket] += 1;
-    }
-
+    if (r.escalated) escalatedCount += 1;
     if (!minTs || r.ts < minTs) minTs = r.ts;
     if (!maxTs || r.ts > maxTs) maxTs = r.ts;
   }
 
   const total = filtered.length;
 
-  const escalationRateByDecidedBy: Record<DecidedByBucket, number | null> = {
-    llm: null,
-    heuristic: null,
-    user: null,
-    unknown: null,
+  const avgTouchedByPredictedTier: Record<ExecutionTierId, number | null> = {
+    0: null, 1: null, 2: null, 3: null, 4: null,
   };
-  for (const bucket of Object.keys(byDecidedBy) as DecidedByBucket[]) {
-    const n = byDecidedBy[bucket];
-    escalationRateByDecidedBy[bucket] =
-      n > 0 ? escalatedByDecidedBy[bucket] / n : null;
-  }
-
-  const avgTouchedByPredicted: Record<Complexity, number | null> = {
-    oneshot: null,
-    exploratory: null,
-    task: null,
-  };
-  for (const c of Object.keys(byPredicted) as Complexity[]) {
-    const n = byPredicted[c];
-    avgTouchedByPredicted[c] = n > 0 ? touchedSumByPredicted[c] / n : null;
+  for (const t of TIER_IDS) {
+    const n = byPredictedTier[t];
+    avgTouchedByPredictedTier[t] = n > 0 ? touchedSumByTier[t] / n : null;
   }
 
   return {
     total,
-    byPredicted,
-    byDecidedBy,
-    crossTab,
+    byPredictedTier,
     escalatedCount,
-    escalationRateByDecidedBy,
     avgTouched: total > 0 ? touchedSum / total : null,
-    avgTouchedByPredicted,
+    avgTouchedByPredictedTier,
     timeRange: minTs && maxTs ? { from: minTs, to: maxTs } : null,
   };
 }
 
 /**
- * Convenience wrapper: read + aggregate in one call. Thin — direct
- * consumers that already hold the record array should call
- * `aggregateClassifications` directly to avoid double I/O.
+ * Convenience wrapper: read + aggregate in one call.
  */
 export async function summarizeFeatureBiases(
   featurePath: string,

@@ -15,15 +15,7 @@
 
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import type { PlanPromptCtx } from '../../_shared/types';
-
-function mapLang(language: string): string {
-  const l = language.toLowerCase();
-  if (l.includes('go')) return 'go';
-  if (l.includes('python')) return 'python';
-  if (l.includes('rust')) return 'rust';
-  if (l.includes('java')) return 'java';
-  return 'typescript';
-}
+import { mapLang } from '../../_shared/helpers/planPrompt';
 
 /**
  * Resolve the tech-tier setup-constraints partial for the task's language.

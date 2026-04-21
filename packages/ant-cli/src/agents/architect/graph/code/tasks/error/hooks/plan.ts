@@ -13,20 +13,7 @@
 
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import type { PlanPromptCtx } from '../../_shared/types';
-
-function formatCodeContext(ctx: any): string {
-  if (!ctx?.files || !Array.isArray(ctx.files) || ctx.files.length === 0) return '';
-  return `**Retrieved Files** (${ctx.files.length} files):\n\n${ctx.files.map((f: any) => `- \`${f.path}\``).join('\n')}`;
-}
-
-function mapLang(language: string): string {
-  const l = language.toLowerCase();
-  if (l.includes('go')) return 'go';
-  if (l.includes('python')) return 'python';
-  if (l.includes('rust')) return 'rust';
-  if (l.includes('java')) return 'java';
-  return 'typescript';
-}
+import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
 
 /**
  * Compose the error-variant plan prompt. Mirrors the legacy `task.type ===

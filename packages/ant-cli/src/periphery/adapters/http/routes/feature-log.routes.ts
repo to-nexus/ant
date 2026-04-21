@@ -107,7 +107,7 @@ export function createFeatureLogRoutes(deps: {
    *
    * Returns user_turn + user_turn_meta lines from `feature.jsonl`, keyed on
    * the caller side by `turnId` (the UI tier badge merges mode with the
-   * corresponding meta to render `mode · complexity · decidedBy · reason`).
+   * corresponding meta to render `mode · executionTier · reason`).
    *
    * Response: { userTurns: FeatureUserTurnLine[], userTurnMetas: FeatureUserTurnMetaLine[] }
    */
