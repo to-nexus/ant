@@ -43,7 +43,7 @@ export interface FeatureBiasRecord {
   /**
    * Who produced the final classification:
    *   - `'llm'`       → LLM emitted the `<complexity>` tag
-   *   - `'heuristic'` → tag missing/malformed → safe 'todo' fallback
+   *   - `'heuristic'` → tag missing/malformed → safe 'task' fallback
    *   - `'user'`      → reserved for future overrule UX
    * Optional for backwards compatibility with samples written before
    * provenance plumbing landed; readers MUST treat absent as unknown
@@ -238,7 +238,7 @@ export interface AggregateOptions {
 const ZERO_BY_PREDICTED: Record<Complexity, number> = {
   oneshot: 0,
   exploratory: 0,
-  todo: 0,
+  task: 0,
 };
 
 const ZERO_BY_DECIDED_BY: Record<DecidedByBucket, number> = {
@@ -316,7 +316,7 @@ export function aggregateClassifications(
   const avgTouchedByPredicted: Record<Complexity, number | null> = {
     oneshot: null,
     exploratory: null,
-    todo: null,
+    task: null,
   };
   for (const c of Object.keys(byPredicted) as Complexity[]) {
     const n = byPredicted[c];
