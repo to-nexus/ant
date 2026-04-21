@@ -11,7 +11,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { TextContentBlock, MessageContentBlock } from "../../../../../../core/ports/llm";
 import { ArchitectGraphState, TASK_PRIORITIES, Violation } from "../../state";
 import { CodeTask } from "../../../../types/task";
-import { formatViolations } from "../shared/violationFormatter";
+import { formatViolations } from "../../utils/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
@@ -23,6 +23,9 @@ import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { isVerificationTask } from '../../tasks/verification';
 import { isErrorTask } from '../../tasks/error';
+import { isTestCodeTask } from '../../tasks/test-code/model/is';
+import { isDocTask } from '../../tasks/doc/model/is';
+import { isExplainTask } from '../../tasks/explain/model/is';
 import type { PlanPromptCtx } from '../../tasks/_shared/types';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -64,7 +67,7 @@ async function selectLLMForTask(
  * The phase layer itself is blind to `task.type`; all branching has moved
  * into `tasks/{type}/hooks/plan.ts`.
  */
-export async function buildPlanPrompt(
+async function buildPlanPrompt(
   state: ArchitectGraphState,
   task: CodeTask,
   projectCodeContext: any,
@@ -223,16 +226,27 @@ export async function buildPlanPromptBlocks(
 
 /**
  * Determine whether a task requires plan text generation.
- * Tasks that skip planning: verification, test-code, doc, explain, and final verification.
+ *
+ * Tasks that skip planning (LLM never produces a `planText` here; execute
+ * node drives directly):
+ *   - verification (final pass — diagnostics drive remediation, not a plan)
+ *   - test-code    (flows through a dedicated template path)
+ *   - doc          (documentation tasks render without a plan stage)
+ *   - explain      (response-only mode; no implementation plan needed)
+ *
+ * R1 — phase layer delegates to per-task predicates so the
+ * literal comparisons live only inside `tasks/{type}/model/is.ts`.
+ * The `FINAL_VERIFICATION` priority guard is kept as a defence against
+ * dynamically-constructed tasks whose `type` is missing (same pattern
+ * as `isVerificationTask`).
  */
 export function taskRequiresPlan(task: CodeTask): boolean {
-  return (
-    task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION &&
-    task.type !== 'verification' &&
-    task.type !== 'test-code' &&
-    task.type !== 'doc' &&
-    task.type !== 'explain'
-  );
+  if (task.priority === TASK_PRIORITIES.FINAL_VERIFICATION) return false;
+  if (isVerificationTask(task)) return false;
+  if (isTestCodeTask(task)) return false;
+  if (isDocTask(task)) return false;
+  if (isExplainTask(task)) return false;
+  return true;
 }
 
 export async function generatePlanText(
@@ -523,7 +537,7 @@ async function validatePrescribedPackages(parsed: any, state: ArchitectGraphStat
  * so it must produce a <plan> from the gathered exploration context. */
 export const PLAN_TOOL_LOOP_MAX = 15;
 
-export type PlanWithToolsResult =
+type PlanWithToolsResult =
   | { planText: string }
   | { llmResponse: { toolCalls: Array<{ id: string; name: string; args: Record<string, any> }>; textResponse: string; thinking?: string; thinkingSignature?: string; done: false; tokenUsage?: any }; nodePlanHistory: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>; _activePhase: 'plan' }
   | null;
@@ -542,8 +556,8 @@ export async function runPlanLLMWithTools(
     return null;
   }
 
-  const { getPlanTools } = await import('./getPlanTools');
-  const tools = await getPlanTools(state);
+  const { getTools } = await import('./tools');
+  const tools = await getTools(state);
   if (!tools?.length) {
     console.log('[Plan] runPlanLLMWithTools: no tools available, skipping tools');
     return null;

@@ -15,7 +15,7 @@ import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
-import { emitFileWriteTrace } from '../shared/emitFileWriteTrace';
+import { emitFileWriteTrace } from '../_common/emitFileWriteTrace';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 
 const registry = createCodeToolRegistry();

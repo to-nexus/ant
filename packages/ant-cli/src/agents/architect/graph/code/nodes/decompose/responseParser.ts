@@ -1,13 +1,16 @@
 import { TASK_PRIORITIES } from "../../state";
 import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
-import { extractErrorDetails, createErrorViolation } from "../shared/errorHandler";
+import { extractErrorDetails, createErrorViolation } from "../_common/errorHandler";
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
 import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type Complexity, type DecidedBy, type SpecClarify } from '@ant/shared';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
+import { DEFAULT_TASK_TYPE } from '../../tasks/_shared/types';
 import { isVerificationTask } from '../../tasks/verification';
 import { isErrorTask } from '../../tasks/error';
 import { isFeatureTask } from '../../tasks/feature';
+import { isUiTask } from '../../tasks/ui/model/is';
+import { isDesignSystemTask } from '../../tasks/design-system/model/is';
 
 /**
  * Escape unescaped control characters inside JSON string literals.
@@ -47,9 +50,14 @@ export function deriveArtifactPolicy(
   uiSections?: string[],
   selectedSpec?: string | null,
 ): ArtifactPolicy | undefined {
-  if (taskType === 'verification') return undefined;
+  // R1 — phase layer is blind to `task.type`. The predicate helpers below
+  // take a `{ type }` shape so this function (which owns only the type
+  // string, not the full task object) can still dispatch through the
+  // task-bundle SSOT.
+  const taskShape = { type: taskType };
+  if (isVerificationTask(taskShape)) return undefined;
 
-  if (taskType === 'ui' || taskType === 'design-system') {
+  if (isUiTask(taskShape) || isDesignSystemTask(taskShape)) {
     const contextPaths: string[] = [];
     if (uiSections?.length) {
       contextPaths.push(`${ARTIFACT_PREFIX.UI}tokens`);
@@ -94,7 +102,7 @@ export interface ParsedDecomposeResponse {
   selectedSpec?: string | null;
   unknownPackages?: string[];
   boundary?: Boundary;
-  /** 3-way classification: oneshot | exploratory | todo. Safe default: 'todo'. */
+  /** 3-way classification: oneshot | exploratory | task. Safe default: 'task'. */
   complexity: Complexity;
   /** 1-sentence rationale for the complexity classification. */
   complexityReason?: string;
@@ -102,7 +110,7 @@ export interface ParsedDecomposeResponse {
    * Who produced the final `complexity` classification:
    *   - `'llm'`       → LLM emitted a `<complexity>` tag (normal path)
    *   - `'heuristic'` → tag missing / malformed → `normalizeComplexity` fell
-   *                     back to `'todo'` (still safe, but observable)
+   *                     back to `'task'` (still safe, but observable)
    *
    * `'user'` is reserved for future overrule UX; the parser never produces
    * it because LLM output is machine input. Consumers writing
@@ -118,12 +126,17 @@ export interface ParsedDecomposeResponse {
 }
 
 /**
- * Strict narrow for Complexity. Unknown strings fall back to 'todo'.
+ * Strict narrow for Complexity. Unknown strings fall back to 'task'.
+ *
+ * Legacy literal `'todo'` (pre-5-tier rename) is accepted as an alias of
+ * `'task'` so LLM outputs quoting the old literal (e.g. from cached few-shots
+ * or older prompt revisions) still parse cleanly.
  */
 function normalizeComplexity(raw: string | undefined): Complexity {
   const v = (raw || '').trim().toLowerCase();
-  if (v === 'oneshot' || v === 'exploratory' || v === 'todo') return v;
-  return 'todo';
+  if (v === 'oneshot' || v === 'exploratory' || v === 'task') return v;
+  if (v === 'todo') return 'task';
+  return 'task';
 }
 
 /**
@@ -249,7 +262,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     // rely on this distinction to audit classification quality.
     const complexityDecidedBy: DecidedBy = complexityMatch ? 'llm' : 'heuristic';
     if (!complexityMatch) {
-      console.warn('⚠️  [Decompose] No <complexity> tag found — defaulting to "todo"');
+      console.warn('⚠️  [Decompose] No <complexity> tag found — defaulting to "task"');
     } else {
       console.log(`🧭 [Decompose] Complexity: ${complexity}`);
     }
@@ -396,10 +409,13 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
       ? (task as any).parallelGroup 
       : undefined;
     
-    // Determine task type: final verification tasks are always 'verification'
+    // Determine task type: final verification tasks are always 'verification'.
+    // When the decompose LLM omits `type`, fall back to the canonical default
+    // declared by `tasks/_shared/types.ts` (`DEFAULT_TASK_TYPE = 'feature'`)
+    // so the literal lives in exactly one place (R1-compliant).
     const resolvedType = task.priority === TASK_PRIORITIES.FINAL_VERIFICATION
       ? 'verification' as const
-      : (task.type || 'feature');
+      : (task.type || DEFAULT_TASK_TYPE);
 
     const uiSections: string[] | undefined = Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined;
     const packages: string[] | undefined = Array.isArray((task as any).packages) ? (task as any).packages : undefined;

@@ -3,6 +3,7 @@ import { ArchitectGraphState } from "../../state";
 import { ReferenceContext } from "../../../../../../core/codebase/types";
 import * as path from "path";
 import { hydrateFeatureContext } from "../../../../../../core/context/featureContextBuilder";
+import { getExecutionTier } from "../../../../../../core/executionTier";
 import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
 import type { ResolvedArtifact } from '@ant/shared';
@@ -154,7 +155,15 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
         llm: state.deps?.llm,
         promptPort: state.deps?.promptBuilder,
       },
-      { jobId: state.jobId, logPrefix: 'Resolve/Resume' },
+      {
+        jobId: state.jobId,
+        logPrefix: 'Resolve/Resume',
+        // Resume path — `state.executionTier` was restored from checkpoint
+        // if decompose ran on a prior turn, so the tier facade can gate
+        // compact properly. On fresh resume without prior tier the
+        // fallback produces Tier 4 (Plan) which skips LLM compaction.
+        executionTier: getExecutionTier(state),
+      },
     );
     if (turnId) state.turnId = turnId;
 
@@ -287,7 +296,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     }
 
     // Session context for LLM
-    const { SessionContextBuilder } = await import('../../session/SessionContextBuilder');
+    const { SessionContextBuilder } = await import('./sessionContextDigest');
     const sessionBuilder = new SessionContextBuilder();
     const session = state.deps?.session
       ? await state.deps.session.load(context.project, context.featureFolder, 'code')
@@ -307,7 +316,16 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
         llm: state.deps?.llm,
         promptPort: state.deps?.promptBuilder,
       },
-      { jobId: state.jobId, logPrefix: 'Resolve' },
+      {
+        jobId: state.jobId,
+        logPrefix: 'Resolve',
+        // Fresh-turn code path — `state.complexity` is not yet set
+        // (decompose runs after resolve) so `getExecutionTier(state)`
+        // returns Tier 4 (Plan) → NoopCompact. Intentional: compact is a
+        // safety net that mostly fires on resumed/heavy sessions, which
+        // take the `onResume` branch above.
+        executionTier: getExecutionTier(state),
+      },
     );
     if (turnId) state.turnId = turnId;
 

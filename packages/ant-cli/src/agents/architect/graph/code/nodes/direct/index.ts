@@ -15,21 +15,17 @@ import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
-import {
-  getToolsByNamesWithTemplates,
-  TOOL_SETS,
-  ToolName,
-} from '../../../../../common/tool/toolSchemas';
+import { getTools } from './tools';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext } from '../../../../../common/tool/types';
 import { toolResultManager } from '../tool/utils/managers';
-import { saveCheckpoint } from '../checkpoint';
+import { saveCheckpoint } from '../../session/checkpoint';
 import { accumulateTokenUsage } from '../../../../../common/graph/llmHelpers';
-import { invokeLLMWithTools } from '../shared/invokeLLMWithTools';
-import { runToolCallsAndCollect } from '../shared/runToolCallsAndCollect';
-import { parseReActResponse } from '../shared/parseReActResponse';
-import { emitFileWriteTrace } from '../shared/emitFileWriteTrace';
+import { invokeLLMWithTools } from '../_common/invokeLLMWithTools';
+import { runToolCallsAndCollect } from '../_common/runToolCallsAndCollect';
+import { parseReActResponse } from '../../utils/parseReActResponse';
+import { emitFileWriteTrace } from '../_common/emitFileWriteTrace';
 import { shouldEscalate } from './shouldEscalate';
 import { DIRECT_LOOP_LIMITS } from '@ant/shared';
 
@@ -61,13 +57,10 @@ export async function direct(
   const maxSteps =
     directMode === 'oneshot' ? DIRECT_LOOP_LIMITS.oneshot : getExploratoryMaxSteps();
 
-  const toolNames: ToolName[] = isExplainMode
-    ? [...TOOL_SETS.codeExplain]
-    : [...TOOL_SETS.codeBasic];
-  const tools = await getToolsByNamesWithTemplates(toolNames, promptBuilder);
+  const tools = await getTools(state);
 
   console.log(
-    `🧭 [Direct] mode=${mode} directMode=${directMode} tools=${toolNames.length} maxSteps=${maxSteps}`,
+    `🧭 [Direct] mode=${mode} directMode=${directMode} tools=${tools.length} maxSteps=${maxSteps}`,
   );
 
   if (state.deps?.workflowUpdate && state._httpJobId) {

@@ -13,11 +13,13 @@
  *   1. phase-layer plan retry     — session.onPlanEntry('retry')
  *   2. phase-layer reverify       — session.onPlanEntry('reverify')
  *   3. orchestrator transient re-queue:
- *        `snapshotFromState` → `orchestratorHook.attachSnapshot`
- *        → `orchestratorHook.restoreIntoWorkerState` reproduces the
- *        TaskWorker.executeTask restore block (TaskWorker.ts L209–230)
- *        so the second worker invocation sees the preserved
- *        `VerificationSession`.
+ *        `snapshotFromState` writes the full `WorkerSnapshot` onto
+ *        `task.resumeState` (task-type-blind capture), then
+ *        `orchestratorHook.restoreIntoWorkerState` rehydrates the
+ *        verification-specific session from `resumeState.verification`
+ *        inside `TaskWorker.executeTask`'s restore block (TaskWorker.ts
+ *        L209–230). The second worker invocation therefore sees the
+ *        preserved `VerificationSession`.
  *
  * Expected outcomes (mirrors handoff §14.4):
  *   - taskStartsForVerification            === 2
@@ -88,7 +90,6 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
     const task = verificationTask('final');
     const orchestratorHook = hooksForTaskType('verification')?.orchestrator;
     expect(orchestratorHook?.hasOwnAttemptCounter).toBe(true);
-    expect(orchestratorHook?.captureOnFailure).toBe(true);
 
     // ─── Worker 1 — fresh session exercised by phase-layer hooks ───────────
     const firstSession = VerificationSession.createFresh({ isTs: true, hasTests: true });
@@ -169,28 +170,27 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
     expect(task.interrupted).toBe(false);
   });
 
-  it('attachSnapshot seats a VerificationSnapshot under task.resumeState.verification (not on state.ts)', () => {
-    // Regression guard — if `orchestratorHook.attachSnapshot` ever starts
-    // writing the snapshot to a top-level state field again, carry-over
-    // will revert to the pre-T4b "flat state" shape and the TaskWorker
-    // restore block will silently drop the session.
-    //
-    // This locks the T6-ready hook shape: it accepts a raw
-    // `VerificationSnapshot` (not the parent `WorkerSnapshot`) and seats
-    // it at `resumeState.verification`. Pre-T6 the orchestrator still
-    // uses `task.resumeState = WorkerSnapshot` directly — once T6 flips
-    // to the hook call site the regression surface is this test.
-    const task = verificationTask('t');
-    const snap: VerificationSnapshot = {
-      required: ['build'],
-      passed: [],
-      attemptedThisCycle: [],
-      attempts: 1,
-      planHistoryHashes: [],
-      planHistoryBodies: [],
+  it('snapshotFromState seats a VerificationSnapshot under WorkerSnapshot.verification', () => {
+    // Regression guard — capture-side carry-over is task-type-blind: the
+    // orchestrator assigns the entire `WorkerSnapshot` to
+    // `task.resumeState`, and only the restore-side rehydrates the
+    // verification-specific session. If `snapshotFromState` ever stops
+    // forwarding `state.verification` into its snapshot, the second
+    // worker spawn will silently drop the session even though the task
+    // has a populated `resumeState`.
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: true });
+    session.onPlanEntry('retry');
+    const ws: Record<string, unknown> = {
+      planText: '',
+      conversations: {},
+      violations: [],
+      retries: 0,
+      verification: session,
     };
-    hooksForTaskType('verification')?.orchestrator?.attachSnapshot?.(task, snap);
-    expect((task as any).resumeState?.verification).toBe(snap);
+    const snap = snapshotFromState(ws);
+    expect(snap).not.toBeNull();
+    expect(snap!.verification).toBeDefined();
+    expect((snap!.verification as VerificationSnapshot).attempts).toBe(session.attempts());
   });
 
   it('restoreIntoWorkerState is a no-op when resume is undefined (no spurious session)', () => {

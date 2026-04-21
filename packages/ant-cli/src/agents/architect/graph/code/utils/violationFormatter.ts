@@ -5,7 +5,7 @@
  * Extracted from enforce.ts to be reusable across nodes.
  */
 
-import { Violation } from "../../state";
+import { Violation } from "../state";
 
 /**
  * Format violations into human-readable text

@@ -1,4 +1,4 @@
-import { SessionRun } from "../../../types";
+import { SessionRun } from "../../../../types";
 
 export type CodeMode = 'generate' | 'refactor' | 'explain';
 

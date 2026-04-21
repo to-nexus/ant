@@ -1,5 +1,5 @@
-import { ArchitectGraphState } from "../../state";
-import type { SessionState } from "../../../../../../core/types/session";
+import { ArchitectGraphState } from "../state";
+import type { SessionState } from "../../../../../core/types/session";
 
 /**
  * Save checkpoint for resuming after interruption (recursion limit, etc.)

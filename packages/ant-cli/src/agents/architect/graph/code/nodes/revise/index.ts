@@ -3,7 +3,7 @@ import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { ArchitectGraphState } from "../../state";
 import { CodeTask, TaskQueue } from "../../../../types/task";
-import { saveCheckpoint } from "../checkpoint";
+import { saveCheckpoint } from "../../session/checkpoint";
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
 
 /**

@@ -19,7 +19,7 @@ import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
-import { formatViolations } from "../shared/violationFormatter";
+import { formatViolations } from "../../utils/violationFormatter";
 import { CacheableContent, MessageContentBlock } from "../../../../../../core/ports/llm";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";

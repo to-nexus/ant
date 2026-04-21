@@ -7,6 +7,7 @@
 
 import { Violation } from "../../state";
 import { TaskType } from "../../../../types/task";
+import { isErrorTask } from "../../tasks/error/model/is";
 
 export interface ErrorImpact {
   score: number;  // 0-100 (higher = more critical)
@@ -183,8 +184,11 @@ export function calculateErrorImpact(
   }
   
   // 🎯 Rule 9: Error task type gets strict treatment
-  // Reason: Task is specifically to fix errors
-  if (context.taskType === 'error') {
+  // Reason: Task is specifically to fix errors.
+  // R1 — phase layer dispatches via `isErrorTask` predicate; the
+  // `ErrorContext` here only carries the task-type string, so we wrap
+  // it in the minimal `{ type }` shape the predicate accepts.
+  if (isErrorTask({ type: context.taskType })) {
     score = Math.min(score + 10, 100);
     explanation += ' | Error fix task requires strict validation';
   }
