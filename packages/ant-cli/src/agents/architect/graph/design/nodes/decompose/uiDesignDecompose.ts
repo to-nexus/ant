@@ -19,7 +19,7 @@ import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
-import { parseExecutionTierTag, coerceExecutionTier } from "../../../../../../core/executionTier";
+import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -302,21 +302,14 @@ export async function decomposeUiDesign(
     // Update Kanban
     updateKanban(state, null, taskQueue.getAll());
 
-    // user_turn_meta patch — Decompose is design's Tier Entry Node.
-    if (state.deps?.session && state.turnId && ctx.newJobId) {
-      try {
-        await state.deps.session.appendUserTurnMeta({
-          type: 'user_turn_meta',
-          ts: new Date().toISOString(),
-          jobId: ctx.newJobId,
-          turnId: state.turnId,
-          jobType: 'design',
-          executionTier,
-        });
-      } catch (err) {
-        console.warn('⚠️  [UIDecompose] appendUserTurnMeta failed:', err);
-      }
-    }
+    await recordUserTurnMeta({
+      session: state.deps?.session,
+      turnId: state.turnId,
+      jobId: ctx.newJobId,
+      jobType: 'design',
+      executionTier,
+      nodeLabel: 'UIDecompose',
+    });
 
     return {
       ...state,

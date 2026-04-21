@@ -41,6 +41,10 @@ export {
   parseExecutionTierTag,
   coerceExecutionTier,
 } from './parseExecutionTierTag';
+export {
+  recordUserTurnMeta,
+  type RecordUserTurnMetaInput,
+} from './recordUserTurnMeta';
 
 /**
  * Minimal state shape consumed by {@link getExecutionTier}. Accepts a

@@ -20,7 +20,7 @@ import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
 import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTierConfig, resolveTaskTechTiers, type PackageTierEntry } from "@ant/shared";
-import { parseExecutionTierTag, coerceExecutionTier, ExecutionTierId } from "../../../../../../core/executionTier";
+import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -641,23 +641,14 @@ export async function decomposeSystemDesign(
   // Update Kanban (tasks in queue, no in-progress yet)
   updateKanban(state, null, taskQueue.getAll());
 
-  // user_turn_meta patch — Decompose is design's Tier Entry Node. Feed the
-  // tier decision to the UI badge and resolve → featureContextBuilder hint.
-  // Side-effect only.
-  if (state.deps?.session && state.turnId && ctx.newJobId) {
-    try {
-      await state.deps.session.appendUserTurnMeta({
-        type: 'user_turn_meta',
-        ts: new Date().toISOString(),
-        jobId: ctx.newJobId,
-        turnId: state.turnId,
-        jobType: 'design',
-        executionTier,
-      });
-    } catch (err) {
-      console.warn('⚠️  [SystemDecompose] appendUserTurnMeta failed:', err);
-    }
-  }
+  await recordUserTurnMeta({
+    session: state.deps?.session,
+    turnId: state.turnId,
+    jobId: ctx.newJobId,
+    jobType: 'design',
+    executionTier,
+    nodeLabel: 'SystemDecompose',
+  });
 
   return {
     ...state,

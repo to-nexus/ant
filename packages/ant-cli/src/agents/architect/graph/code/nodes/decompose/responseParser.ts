@@ -229,11 +229,11 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       console.log(`📋 [Decompose] Boundary classification: ${boundary}`);
     }
 
-    // ExecutionTier classification (LLM-judged, 5-tier SSOT)
+    // ExecutionTier classification (LLM-judged, 5-tier SSOT). Caller
+    // runs coerceExecutionTier which logs + degrades on missing tag, so
+    // we stay silent here.
     const executionTier = parseExecutionTierTag(rawResponse);
-    if (executionTier === undefined) {
-      console.warn('⚠️  [Decompose] No <executionTier> tag found — caller will default to Tier 0 (Reflex) as safe fallback');
-    } else {
+    if (executionTier !== undefined) {
       console.log(`🧭 [Decompose] ExecutionTier: ${executionTier}`);
     }
 

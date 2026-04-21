@@ -13,10 +13,10 @@ import {
 /**
  * Append a breadcrumb + boundary for a completed design job (§12).
  *
- * Design does not carry a `complexity` field; its learn phase always
- * represents a "todo-complete" class event — a boundary collapses the
- * user_turn into T3, and a breadcrumb surfaces the produced documents as
- * paths anchors for the next resolve cycle.
+ * Design's learn phase always represents a "task-complete" class event
+ * for whatever tier the Decompose Tier Entry Node emitted — a boundary
+ * collapses the user_turn into T3, and a breadcrumb surfaces the
+ * produced documents as path anchors for the next resolve cycle.
  *
  * SSOT for touched files: trace.jsonl `file_write` (see
  * core/context/breadcrumb.ts). `state.files` is consulted as a fallback
@@ -328,9 +328,9 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 
     // Session redesign §2.4 — design learn appends BC + Boundary so resolve
     // in subsequent jobs sees the design job's outcome via featureContext.
-    // Design has no complexity classification; we treat each completed
-    // design run as a full boundary event (D5: sub-graph untouched, only
-    // the terminal learn surface is extended here).
+    // Each completed design run is treated as a full boundary event
+    // regardless of the tier Decompose emitted (D5: sub-graph untouched,
+    // only the terminal learn surface is extended here).
     if (isLastTask) {
       try {
         await applyDesignBreadcrumbBoundary(state);

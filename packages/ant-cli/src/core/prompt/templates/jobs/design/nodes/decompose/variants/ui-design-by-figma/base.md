@@ -1,6 +1,6 @@
 # UI Design Task Decomposition
 
-You are analyzing UI complexity to break it into tasks.
+You are decomposing UI documentation work into executable chapter tasks.
 
 **Job Mode**: {{detectedMode}}
 

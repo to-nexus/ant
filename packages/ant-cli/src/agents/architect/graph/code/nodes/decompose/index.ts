@@ -28,7 +28,7 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
-import { ExecutionTierId } from "../../../../../../core/executionTier";
+import { ExecutionTierId, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
 
 /**
@@ -486,8 +486,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   } = parsed;
 
   // LLM's <executionTier> is the SSOT. If the tag is missing (prompt
-  // violation), degrade to Tier 0 Reflex (safe read-only).
-  const executionTier = parsedExecutionTier ?? ExecutionTierId.Reflex;
+  // violation), coerceExecutionTier degrades to Tier 0 Reflex (safe
+  // read-only) — same policy applied at every Tier Entry Node.
+  const executionTier = coerceExecutionTier(parsedExecutionTier, 'Decompose');
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4.6: SpecClarify short-circuit
@@ -870,33 +871,19 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     console.log(`✅ [Decompose] Checkpoint saved with ${tasks.length} tasks\n`);
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 9.5: user_turn_meta patch (§18 tier_ui_badge + featureContext hint)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Decompose (code's Tier Entry Node) has produced the final executionTier
-  // classification for this turn. Patch line feeds UI tier badge and the
-  // resolve → featureContextBuilder prompt hint.
-  //
-  // Idempotency: if decompose re-runs (e.g. after `proceed_without_spec`),
-  // a fresh meta line is appended. Reader merges by turnId and keeps the
-  // latest.
-  //
-  // Side-effect only. Failures logged and swallowed.
-  if (state.deps?.session && state.turnId && timingJobId) {
-    try {
-      await state.deps.session.appendUserTurnMeta({
-        type: 'user_turn_meta',
-        ts: new Date().toISOString(),
-        jobId: timingJobId,
-        turnId: state.turnId,
-        jobType: 'code',
-        executionTier,
-      });
-      console.log(`🧭 [Decompose] user_turn_meta appended (executionTier=${executionTier})`);
-    } catch (err) {
-      console.warn('⚠️  [Decompose] appendUserTurnMeta failed:', err);
-    }
-  }
+  // STEP 9.5 — user_turn_meta patch (§18 tier_ui_badge + featureContext
+  // hint). Decompose is code's Tier Entry Node; the executionTier it
+  // emits is the final classification for this turn. See
+  // core/executionTier/recordUserTurnMeta.ts for idempotency / failure
+  // semantics.
+  await recordUserTurnMeta({
+    session: state.deps?.session,
+    turnId: state.turnId,
+    jobId: timingJobId,
+    jobType: 'code',
+    executionTier,
+    nodeLabel: 'Decompose',
+  });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 10: Return updated state

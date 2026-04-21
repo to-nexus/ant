@@ -14,7 +14,7 @@
 
 **Constraint**: Figma frames supplied in `nodeSummary` / `variationMatrixSummary` act as grounding refs. A full-page or multi-section Figma decomposition is the Tier 4 signature.
 
-⚠️ **Blind spot**: Figma-driven generate jobs almost always land on tier `4`. UI refactor jobs against an existing doc usually land on tier `1`. Do NOT emit tier `3` when Figma frames are the source of truth.
+⚠️ **Blind spot**: When Figma frames are the source of truth for the breakdown (the chapters map to frames), the tier is `4`, NOT `3`. The signature of Tier 4 is "the documentation is produced BY mapping the frames" — not merely "a Figma file is attached".
 
 ---
 

@@ -21,7 +21,7 @@ Do NOT emit markdown fences, prose, or any other text.
 | `3` | Task          | Multiple independent sections of the plan must be revised or generated, driven by the directive alone. |
 | `4` | RefsGrounded  | Multiple sections systematically grounded in the reference documents supplied above. |
 
-**Constraint**: Plan jobs with no existing target and non-trivial directives typically land on tier `3` or `4`. Plan jobs that ask a question about the existing document typically land on tier `0`. Plan jobs that edit one named section typically land on tier `1`.
+**Constraint**: Classify by observation. The same five principles apply whether the plan already exists or not, whether the directive is short or long. A one-line edit is tier `1`; a multi-section revision derived from a supplied research note is tier `4`.
 
 **Constraint**: Reference presence alone does NOT force Tier 4. Only when the plan revision is systematically grounded in the refs does the tier become `4`.
 
