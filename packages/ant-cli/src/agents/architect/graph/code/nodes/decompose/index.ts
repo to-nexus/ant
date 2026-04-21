@@ -90,7 +90,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         retries: 0,
         previousAttempts: [],
         enforcementHistory: [],
-        lastViolations: [],
         resolvedCategories: []
       } as any;
       
@@ -185,25 +184,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }
   }
   
-  // ✅ Extract metadata from artifact pool via ArtifactPoolView
+  // ✅ Extract metadata from artifact pool via ArtifactPoolView.
+  //
+  // Post-RAC SSOT: templates read role-scoped flags ONLY (see
+  // `.cursorrules` "Post-RAC Template Condition SSOT"). Role-agnostic
+  // "availability meta" blocks (uiSectionsSummary / designDocsMeta /
+  // uiHint) were removed — the pool already injects those documents
+  // via role-annotated sections in the prompt, so re-listing paths
+  // was duplicate context.
   const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
-
-  const uiArtifacts = pool.ui;
-  const uiSectionsSummary = uiArtifacts.length > 0
-    ? uiArtifacts.map(a => {
-        const id = a.path.slice(AP.UI.length);
-        return `- ${id} (${(a.content?.length || 0).toLocaleString()} chars)`;
-      }).join('\n')
-    : undefined;
-
-  const systemArtifacts = pool.systemDesigns;
-  let designDocsMeta = '';
-  if (systemArtifacts.length > 0) {
-    designDocsMeta = systemArtifacts.map(a => {
-      const name = a.path.slice(AP.SYSTEM_DESIGN.length).replace(/\.md$/, '');
-      return `- ${name}: present`;
-    }).join('\n');
-  }
 
   // Generic role-based artifact injection:
   // System designs, specs, and UI have decompose-specific handling above.
@@ -257,10 +246,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     tierRefs,
     mode: state.resolvedAction?.mode || 'unknown',
     techTier: getTechTier(state),
-    designDocsMeta,
     codebaseFilePaths,
     hasProjectCode,
-    uiSectionsSummary,
     runtimeAssetsIndex: state.runtimeAssetsIndex,
     hasErrorInDirective,
     needsBoundaryClassification: suggestedBoundary === SUGGESTED_BOUNDARY.PENDING,
@@ -272,17 +259,39 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     (decomposeVars.codebaseFilePaths && decomposeVars.codebaseFilePaths.length > 0);
   const fileList = (decomposeVars.codebaseFilePaths && decomposeVars.codebaseFilePaths.length > 0)
     ? decomposeVars.codebaseFilePaths.map((f: string) => `- ${f}`).join('\n') : '';
-  const uiHint = decomposeVars.uiSectionsSummary ? `\n\n${decomposeVars.uiSectionsSummary}\n` : '';
   const assetsHint = decomposeVars.runtimeAssetsIndex && decomposeVars.runtimeAssetsIndex.count > 0
     ? `\n\n## Runtime Assets Available (inputs/assets)\nThere are ${decomposeVars.runtimeAssetsIndex.count} runtime asset file(s) under inputs/assets.\nThese are NOT auto-copied. You MUST add a task to copy them into the correct static asset root for the target app (monorepo-aware).\nCopy rule: preserve relative paths under inputs/assets.\nPlacement rule by format:\n- SVG (.svg) → <app>/src/assets/ (source tree, for SVGR import)\n- Raster (png, jpg, webp) → <app>/public/ (static serving)\nExamples:\n- inputs/assets/icons/x.svg -> <app>/src/assets/icons/x.svg\n- inputs/assets/bg/hero.webp -> <app>/public/bg/hero.webp\nAsset file list (first 50):\n${decomposeVars.runtimeAssetsIndex.files.slice(0, 50).map((f: string) => `- ${f}`).join('\n')}\n`
     : '';
+  // Gate flag — decompose activates design-system task guidance
+  // whenever ANY UI artifact (ref or context) is present in the
+  // post-RAC pool. The intent matrix assigns UI=ref for `gen-code-sys`
+  // but UI=context for `gen-code-spec` / `rev-code` (see
+  // `@ant/shared/action-config-matrix.ts`); both must trigger the same
+  // decomposition rules (design-system ladder, uiSections schema),
+  // otherwise the latter two intents regress into missing guidance.
+  // See `.cursorrules` "Post-RAC Template Condition SSOT".
+  const hasUi = pool.hasUi();
+
+  // Functional meta — UI section IDs inform the LLM's `uiSections`
+  // task assignment. Full content is NOT embedded here; plan/execute
+  // load sections per task via artifactPolicy.
+  //
+  // ID = basename (robust against flat `outputs/design/ui-*` paths
+  // that don't share the `AP.UI` prefix — see `isUiArtifactPath` /
+  // `FLAT_UI_DOC_REGEX`).
+  const uiArtifactPaths = pool.ui.map(a => ({
+    id: a.path.split('/').pop() ?? a.path,
+    role: a.role,
+  }));
+
   const enrichedVars = {
     ...decomposeVars,
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
     hasErrorInDirective: decomposeVars.hasErrorInDirective || false,
-    hasUiDocs: Boolean(decomposeVars.uiSectionsSummary),
+    hasUi,
+    uiArtifactPaths,
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
-    uiHint, assetsHint,
+    assetsHint,
     resolvedAction: state.resolvedAction,
     availableVisualLanguages: VISUAL_LANGUAGE_VARIANTS.join(', '),
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
@@ -321,12 +330,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             refArtifacts: refArtifacts.length > 0 ? `[${refArtifacts.length} file(s)]` : undefined,
             contextArtifacts: contextArtifacts.length > 0 ? `[${contextArtifacts.length} file(s)]` : undefined,
             documents: documents.length > 0 ? `[${documents.length} docs]` : undefined,
-            designDocsMeta: designDocsMeta ? 'SET' : undefined,
+            hasUi,
+            hasUiRef: pool.hasUiRef(),
+            hasSystemDesignRef: pool.hasSystemDesignRef(),
+            uiArtifactPaths: uiArtifactPaths.length,
             hasDocuments,
             mode: decomposeVars.mode,
             hasProjectCode,
             codebaseFilePaths: codebaseFilePaths?.length || 0,
-            uiSectionsSummary: uiSectionsSummary ? `[${uiSectionsSummary.length} chars]` : undefined,
             runtimeAssetsCount: state.runtimeAssetsIndex?.count || 0,
             techTierLanguage: decomposeVars.techTier?.language || null,
             techTierFramework: decomposeVars.techTier?.framework || null,

@@ -208,7 +208,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const runtimeContextParts: string[] = [];
 
   if (state.violations && state.violations.length > 0) {
-    const violationsText = state.violationMessage || formatViolations(state.violations);
+    const violationsText = formatViolations(state.violations);
     runtimeContextParts.push(
       `──────────────────────────────────────────────────────────────\n` +
       `⚠️  PREVIOUS ATTEMPT FAILED - FIX REQUIRED\n` +
@@ -269,14 +269,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         ? 'MODIFICATION MODE: Modify existing code'
         : 'CREATION MODE: Build from scratch',
       referenceRequests: state.referenceRequests || [],
-      // Role-scoped post-RAC flags. `deriveArtifactPolicy` assigns UI
-      // docs `role='context'` for ui/design-system tasks (see
-      // tests/artifact-policy-decompose.test.ts), so visual-source
-      // blocks for those tasks observe `hasUiContext`. Feature tasks
-      // only see UI docs when upstream intent explicitly promotes them
-      // — `hasUiRef` covers that rarer path.
-      hasUiRef: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUiRef(),
-      hasUiContext: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUiContext(),
+      // Gate flag — execute branches on whether UI artifacts are
+      // present in the post-RAC selected pool. Role semantics are
+      // already baked into the selection (`selectArtifactsWithPolicy`
+      // reassigns `role='context'` for ui/design-system tasks; explicit
+      // user selections keep their authored role); the template only
+      // needs presence. See `.cursorrules`
+      // "Post-RAC Template Condition SSOT".
+      hasUi: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
       isSpecDriven: new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename() !== null,
       figmaAvailable: (state.figmaAvailable && !poolView.hasUi()) || false,
       figmaStartNodeId: state.figmaStartNodeId || undefined,

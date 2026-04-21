@@ -60,8 +60,6 @@ Adjust chapter count based on expected content:
 {{#if sourceFileNames}}
 Each task MUST include `sourceFiles` — an array of source filenames that the task needs to reference.
 
-Available source files: {{#each sourceFileNames}}`{{this}}`{{#unless @last}}, {{/unless}}{{/each}}
-
 - A task MAY reference 1 or more files depending on its scope
 - Observe each file's relevance to the task's domain concepts, not just its target document
 - **Constraint**: Do NOT omit a file that contains requirements relevant to the task scope

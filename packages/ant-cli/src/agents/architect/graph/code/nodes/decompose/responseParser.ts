@@ -44,12 +44,17 @@ type ArtifactPolicy = { refs?: string[]; context?: string[] };
 /**
  * Derive role-annotated artifact selection policy from legacy task fields.
  * Returns undefined for verification tasks (no docs needed).
+ *
+ * `activeSpecRefFilename` is the filename of the spec promoted to a
+ * development source by the RAC (see `ArtifactPoolView.activeSpecRefFilename`).
+ * The decompose LLM does NOT select specs anymore — the choice is fixed
+ * upstream by intent + action metadata.
  */
 export function deriveArtifactPolicy(
   taskType: TaskType,
   packages?: string[],
   uiSections?: string[],
-  selectedSpec?: string | null,
+  activeSpecRefFilename?: string | null,
 ): ArtifactPolicy | undefined {
   // R1 — phase layer is blind to `task.type`. The predicate helpers below
   // take a `{ type }` shape so this function (which owns only the type
@@ -74,7 +79,7 @@ export function deriveArtifactPolicy(
   }
 
   const refPaths: string[] = [];
-  if (selectedSpec) refPaths.push(`${ARTIFACT_PREFIX.SPEC}${selectedSpec}`);
+  if (activeSpecRefFilename) refPaths.push(`${ARTIFACT_PREFIX.SPEC}${activeSpecRefFilename}`);
 
   if (packages?.length) {
     for (const pkg of packages) {
@@ -100,7 +105,6 @@ export interface ParsedDecomposeResponse {
   tasks: CodeTask[];
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>;
   techTier?: ParsedTechTier;
-  selectedSpec?: string | null;
   unknownPackages?: string[];
   boundary?: Boundary;
   /**
@@ -190,16 +194,8 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       }
     }
     
-    // ✅ Extract selectedSpec from <selectedSpec> tag (OPTIONAL)
-    let selectedSpec: string | null = null;
-    const selectedSpecMatch = rawResponse.match(/<selectedSpec>\s*([\s\S]*?)\s*<\/selectedSpec>/);
-    if (selectedSpecMatch) {
-      const specValue = selectedSpecMatch[1].trim();
-      if (specValue && specValue !== 'null' && specValue !== 'none') {
-        selectedSpec = specValue;
-        console.log(`📋 [Decompose] Selected spec: ${selectedSpec}`);
-      }
-    }
+    // `<selectedSpec>` was removed — the active spec is derived from RAC
+    // role='ref' artifacts at the caller. See `ArtifactPoolView.activeSpecRefFilename()`.
 
     // Extract design-prescribed dependencies from <prescribedDependencies> tag (OPTIONAL)
     // Also accepts legacy <unknownPackages> tag for backward compatibility with cached sessions.
@@ -286,7 +282,6 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       tasks,
       referenceRequests,
       techTier,
-      selectedSpec,
       unknownPackages,
       boundary,
       executionTier,
@@ -311,7 +306,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
  *   graph.ts checkTaskStatus() auto-adds final verification after the first error task completes
  *   as a safety net. Error tasks always delegate build verification to verification.
  */
-export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null): {
+export function createTaskQueue(tasks: CodeTask[], activeSpecRefFilename?: string | null): {
   taskQueue: TaskQueue<CodeTask>;
   featureTasks: Map<string, CodeTask>;
 } {
@@ -383,7 +378,7 @@ export function createTaskQueue(tasks: CodeTask[], selectedSpec?: string | null)
 
     // artifactPolicy: role-annotated selection; include: flat backward-compat projection
     const explicitInclude: string[] | undefined = Array.isArray((task as any).include) ? (task as any).include : undefined;
-    const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, selectedSpec);
+    const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, activeSpecRefFilename);
     const include = explicitInclude ?? flattenPolicyToInclude(artifactPolicy);
 
     const normalizedTask: CodeTask = {

@@ -223,7 +223,6 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         isLastTaskForDocument,
         sectionScope: sectionScope || undefined,
         filteredCatalog: filteredCatalog || undefined,
-        hasUiInDocuments: false,
         isSpecDriven: false,
         referenceRequests: [],
         resolvedAction: resolvedActionWithDocs || null,

@@ -23,8 +23,6 @@ function buildInferDocuments(opts: {
   uiDoc?: string;
   isVerification?: boolean;
   isError?: boolean;
-  selectedSpec?: string;
-  specContent?: string;
 }): ResolvedArtifact[] {
   const docs: ResolvedArtifact[] = [];
 

@@ -48,7 +48,7 @@ describe('deriveArtifactPolicy', () => {
     expect(result!.refs).toContain(`${ARTIFACT_PREFIX.API_CONTRACT}*`);
   });
 
-  it('selectedSpec -> spec ref', () => {
+  it('active spec ref filename -> spec ref', () => {
     const result = deriveArtifactPolicy('feature', undefined, undefined, 'spec-login.md');
     expect(result).toBeDefined();
     expect(result!.refs).toContain(`${ARTIFACT_PREFIX.SPEC}spec-login.md`);
