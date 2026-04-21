@@ -210,7 +210,6 @@ export class ExecutionLogger {
   async logVerificationRetry(taskId: string, data: {
     taskName: string;
     attempt: number;
-    maxAttempts: number;
     /** @deprecated Retained for schema stability; summary-based retention carries the signal. */
     preservedHistoryLength: number;
     preservedCallIndex: number;

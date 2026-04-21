@@ -229,7 +229,6 @@ export async function runScenario(
   // broadcasters, or auth bypass flags.
   const ENV_ALLOW_LIST = new Set([
     'RECURSION_LIMIT',
-    'ANT_VERIFICATION_BUDGET',
     'ANT_VERIFICATION_SPLIT_ERRORS',
     'ANT_VERIFICATION_SPLIT_FILES',
   ]);
