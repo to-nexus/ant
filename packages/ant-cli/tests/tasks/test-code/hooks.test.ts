@@ -20,7 +20,7 @@ import {
 } from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/scheduling';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/conversations';
 import { evaluate as checkEvaluate } from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/check';
-import { hooks as testCodeBundle } from '../../../src/agents/architect/graph/code/tasks/test-code';
+import { hooks as testCodeBundle, isTestCodeTask } from '../../../src/agents/architect/graph/code/tasks/test-code';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
 
 import type { CodeTask } from '../../../src/agents/architect/types/task';
@@ -161,5 +161,24 @@ describe('tasks/test-code/hooks/check', () => {
   it('evaluate — returns violation when featurePath is undefined', async () => {
     const v = await checkEvaluate(stateWithFeaturePath(undefined));
     expect(v?.type).toBe('incomplete_implementation');
+  });
+});
+
+describe('tasks/test-code/model/is — isTestCodeTask', () => {
+  // Introduced in T6b-κ so `nodes/plan/planGeneration.ts
+  // taskRequiresPlan` can delegate the skip-planning predicate to the
+  // per-task SSOT instead of keeping a `task.type !== 'test-code'`
+  // literal in the phase layer.
+  it('returns true only for test-code tasks', () => {
+    expect(isTestCodeTask({ type: 'test-code' })).toBe(true);
+    expect(isTestCodeTask({ type: 'feature' })).toBe(false);
+    expect(isTestCodeTask({ type: 'verification' })).toBe(false);
+    expect(isTestCodeTask({ type: 'doc' })).toBe(false);
+  });
+
+  it('handles null / undefined / missing type defensively', () => {
+    expect(isTestCodeTask(null)).toBe(false);
+    expect(isTestCodeTask(undefined)).toBe(false);
+    expect(isTestCodeTask({})).toBe(false);
   });
 });

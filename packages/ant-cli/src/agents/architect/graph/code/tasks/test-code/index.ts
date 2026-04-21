@@ -35,11 +35,12 @@
  *     blocksIntegration` — test-code only activates the doc barrier.
  *
  * Execute-phase R1 residuals resolved by T6b-ι (`execute` hook slot:
- * template-variant + skipExamples). Remaining R1 residuals live in
- * `nodes/plan/planGeneration.ts` L231 (skip-planning gate) and
- * `nodes/decompose/validation.ts` L55 (allowed-types list); those
- * require either an `isTestCodeTask` predicate or a broader
- * classification hook that is out of T6b-ι scope.
+ * template-variant + skipExamples). The skip-planning gate in
+ * `nodes/plan/planGeneration.ts taskRequiresPlan` now delegates to the
+ * `isTestCodeTask` predicate re-exported below (T6b-κ). The one
+ * remaining residual — `nodes/decompose/validation.ts` allowed-types
+ * list — is a literal enumeration (R3-equivalent) rather than a
+ * behavioural branch and does not need predicate adoption.
  */
 
 import type { TaskHooks } from '../_shared/types';
@@ -55,3 +56,5 @@ export const hooks: TaskHooks = {
   check: { evaluate },
   execute: executeHook,
 };
+
+export { isTestCodeTask } from './model/is';

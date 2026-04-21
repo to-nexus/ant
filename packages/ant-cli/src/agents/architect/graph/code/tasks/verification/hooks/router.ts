@@ -1,72 +1,25 @@
 /**
- * verification/hooks/router.ts — TaskRouterHook.shortCircuitAfterPlan /
- * TaskRouterHook.routeAfterDone
+ * verification/hooks/router.ts — TaskRouterHook.routeAfterDone
  *
- * Factors the verification-specific branches out of `planRouter` and
- * `executeRouter`. The routers themselves stay pure predicates after T6
- * (no state mutation): they ask the hook whether to short-circuit and
- * whether to reverify, and translate the answer into a node name.
+ * Factors the verification-specific branch out of `executeRouter`. The
+ * router itself stays a pure predicate (no state mutation beyond the
+ * `_nextPlanEntry='reverify'` signal it flips when this hook returns
+ * `'plan'`): it asks the hook whether to reverify and translates the
+ * answer into a node name.
  *
- * Summary of what these hooks replace:
- *   - `planRouter.routeAfterPlan` L57~63 (isDiagnostic + hasEmptyImplementation)
+ * Summary of what this hook replaces:
  *   - `executeRouter.routeAfterExecute` L173~209 (verification-done branching)
  *
- * Neither hook mutates state; any `_nextPlanEntry` / `violations` reset that
- * the legacy router does today is moved to the plan/execute phase nodes'
- * hook call in T6 (a mutation of the mutating hook, not the router).
+ * An earlier draft also published `shortCircuitAfterPlan` for
+ * `planRouter` to consult, but the plan node already flips
+ * `llmResponse.done = true` on its own short-circuit paths (batch split,
+ * diagnostic pass, empty implementation) so `routeAfterPlan` stays blind
+ * to task type and reads the flag directly. The slot was retired in the
+ * T11 post-review as dead surface; the hook now owns a single
+ * responsibility.
  */
 
 import type { ArchitectGraphState } from '../../../state';
-
-function stripFences(text: string): string {
-  const trimmed = text.trim();
-  const m = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n\s*```$/);
-  return m ? m[1].trim() : trimmed;
-}
-
-/**
- * Literal "implementation contains no modify/create/delete entries and no
- * batches" detector. Kept local so the hook has no cross-phase imports.
- */
-function hasEmptyImplementation(planText: string | undefined): boolean {
-  if (!planText) return false;
-  const body = stripFences(planText);
-  if (!body.length) return false;
-  try {
-    const parsed = JSON.parse(body);
-    const impl = parsed.implementation || {};
-    const modifyCount = Array.isArray(impl.modify) ? impl.modify.length : 0;
-    const createCount = Array.isArray(impl.create) ? impl.create.length : 0;
-    const deleteCount = Array.isArray(impl.delete) ? impl.delete.length : 0;
-    const hasBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
-    return !hasBatches && modifyCount === 0 && createCount === 0 && deleteCount === 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Return true when the plan router should bypass `execute` and route
- * straight to `checkTaskStatus`. Fires when either (a) the session
- * already considers every required gate passed, or (b) the plan is
- * structurally empty — running execute on an empty plan would burn
- * budget without producing any file changes.
- *
- * Note — `hasEmptyImplementation` is intentionally not replaced by
- * `session.evaluate({ planText })`. Although `Session.evaluate` also
- * returns `short_circuit.empty_plan` for empty bodies, the two helpers
- * disagree on the degenerate "empty string planText" case
- * (`hasEmptyImplementation('') === false`, `isEmptyPlanBody('') === true`).
- * Preserving the legacy `hasEmptyImplementation` semantics keeps behavior
- * parity with the pre-hook router; aligning the two is tracked as
- * follow-up work outside the T5 window.
- */
-export function shortCircuitAfterPlan(state: ArchitectGraphState): boolean {
-  const session = state.verification;
-  if (session?.isComplete()) return true;
-
-  return hasEmptyImplementation(state.planText);
-}
 
 /**
  * Execute-router decision for verification tasks when the LLM signals

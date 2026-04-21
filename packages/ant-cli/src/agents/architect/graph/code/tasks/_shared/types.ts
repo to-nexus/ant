@@ -11,31 +11,54 @@
  *        or `hooksForTaskType(taskType)?.X`.
  *   R2 — Hook implementations depend on `tasks/{type}/model/` only.
  *
- * Individual hook signatures stay loose (`any` for plan/tool/command
- * contexts) because their concrete types are introduced later (T3, T5).
- * Once the Session / Snapshot model and phase context types land, the
- * `any` placeholders will be narrowed.
+ * Slots are additive: add a new member only when a concrete publisher and
+ * a concrete phase-layer consumer land in the same change. Interface
+ * entries without a consumer are dead API surface and get removed on
+ * sight (see prior follow-up reviews for `onEntry` / `classifyEntry` /
+ * `shortCircuitAfterPlan` / `decideOutcome` / `maybeSplit` /
+ * `makeTerminalError` / `attachSnapshot` / `captureOnFailure` /
+ * `allowedTools` / `classify`).
+ *
+ * The same rule applies to public surface exported by `tasks/{type}/
+ * model/` and supporting types (retired with the hook slots above):
+ * `tasks/error/model/ErrorTaskData` (`readErrorData` / `hasPrePlanText`
+ * / `ErrorTaskData` / `RemediationMode` — every phase consumer read
+ * the four fields directly off `CodeTask` instead) and
+ * `tasks/verification/model/gates.GateConfig` (no importer since the
+ * interface was introduced; `Session` holds the three sets as private
+ * fields rather than a combined value).
+ *
+ * T6b-α follow-up (plan-node decomposition, `nodes/plan/parts/*`)
+ * narrowed six file-local helpers from `export` to module-scope because
+ * every use site sat inside the defining module: `isTypeScriptProject` /
+ * `recomputeInstallNeeded` (entry.ts), `stripMarkdownFences` /
+ * `computeBatchFileOverlap` (batchSplit.ts), `EMPTY_CONTEXT` (rag.ts),
+ * `enrichContextFromPlanToolLoop` (planLLM.ts). Named return types
+ * (`PlanRagResult`, `PlanToolLoopOutcome`, `PlanEntryContext`) stay
+ * exported because they carry API-documentation value and one of them
+ * (`PlanEntryContext`) is re-exported through `nodes/plan/index.ts`.
  */
 import type { ArchitectGraphState, Violation } from '../../state';
 import type { CodeTask } from '../../../../types/task';
 import type { TaskType } from '@ant/shared';
 import type { ToolExecutionContext, ToolExecutionEvent, ToolResult } from '../../../../../common/tool/types';
 
+/**
+ * Fallback task-type used when the decompose LLM omits the `type` field
+ * on an emitted task. Historically the phase layer fell back to the
+ * literal 'feature' inline at `nodes/decompose/responseParser.ts` via
+ * `task.type || <feature-literal>`; exposing the constant here
+ * centralises the default so the only literal comparison lives inside
+ * `tasks/feature/model/is.ts` (R1-compliant).
+ */
+export const DEFAULT_TASK_TYPE: TaskType = 'feature';
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Placeholder types (fleshed out in T3 / T5)
+// Shared context types
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /** Plan-node entry classification. Concrete union refined by tasks/verification/model. */
 export type PlanEntry = 'fresh' | 'resumed' | 'toolLoop' | 'retry' | 'reverify';
-
-/** Plan-node outcome union. Concrete shape owned by tasks/verification/model/outcome.ts. */
-export type PlanOutcome = { kind: string; [k: string]: unknown };
-
-/** Subset of `PlanOutcome` narrowed to `kind: 'terminal'`. */
-export type TerminalOutcome = PlanOutcome & { kind: 'terminal' };
-
-/** Batch-split descriptor returned by `plan.maybeSplit`. */
-export type SplitResult = Record<string, unknown>;
 
 /**
  * Prompt-build context passed to `plan.buildPrompt` / `plan.extraTemplateVars`.
@@ -61,12 +84,6 @@ export interface PlanPromptCtx {
   options?: { hasTools?: boolean };
 }
 
-/** General plan-node context passed to `plan.allowedTools`. */
-export type PlanCtx = { state: ArchitectGraphState; [k: string]: unknown };
-
-/** Tool schema placeholder — real type emerges when plan hooks shape allowed-tool output. */
-export type ToolSchema = Record<string, unknown>;
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Hook interfaces
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -87,8 +104,8 @@ export interface TaskPlanHook {
    * Idempotent session hydration called at plan-node entry. Task types that
    * carry a session (currently only `verification`) populate `state.{type}`
    * here; non-session task types leave this undefined. Callers must invoke
-   * this BEFORE any subsequent hook (onEntry, onCommand, etc.) so those
-   * hooks may assume the session exists.
+   * this BEFORE any subsequent hook so those hooks may assume the session
+   * exists.
    *
    * Introduced in T4b-α so `state.verification` is populated on every
    * fresh / retry / reverify plan entry, not only on resume. Before T4b-α
@@ -96,7 +113,6 @@ export interface TaskPlanHook {
    * back to the legacy `_verification*` fields.
    */
   initSession?(state: ArchitectGraphState, env: InitSessionEnv): void;
-  onEntry?(state: ArchitectGraphState, reason: PlanEntry): Promise<void> | void;
   /**
    * Fully override the plan-prompt string. Return the composed prompt (already
    * concatenated with any basis section). Used by verification / error whose
@@ -119,11 +135,6 @@ export interface TaskPlanHook {
    * falls back to the generic plan-tools-batch template.
    */
   toolLoopLogTemplate?: string;
-  allowedTools?(ctx: PlanCtx): ToolSchema[];
-  decideOutcome?(state: ArchitectGraphState, planText: string): PlanOutcome;
-  maybeSplit?(state: ArchitectGraphState, planText: string): SplitResult | null;
-  makeTerminalError?(state: ArchitectGraphState, outcome: TerminalOutcome): Error;
-  classifyEntry?(state: ArchitectGraphState): PlanEntry | null;
 }
 
 export interface TaskToolHook {
@@ -153,7 +164,6 @@ export interface TaskCheckHook {
 }
 
 export interface TaskRouterHook {
-  shortCircuitAfterPlan?(state: ArchitectGraphState): boolean;
   routeAfterDone?(state: ArchitectGraphState): string | null;
 }
 
@@ -192,8 +202,25 @@ export interface TaskOrchestratorHook {
   hasOwnAttemptCounter?: boolean;
   /** Only read when `hasOwnAttemptCounter === true`. */
   attemptCount?(task: CodeTask): number;
-  attachSnapshot?(task: CodeTask, snap: unknown): void;
-  captureOnFailure?: boolean;
+  /**
+   * Re-seed the worker subgraph's initial state with a task-type-specific
+   * snapshot carried on `task.resumeState`. Called from
+   * `TaskWorker.executeTask` after the task-type-blind restore block
+   * rebuilds the cross-task fields (planText / conversations / etc).
+   *
+   * Verification rebuilds `state.verification` from its
+   * `VerificationSnapshot`; non-session task types omit the hook and the
+   * call is a no-op.
+   *
+   * Note: snapshot *capture* / *attach* remains task-type-blind — the
+   * orchestrator writes the full `WorkerSnapshot` onto `task.resumeState`
+   * at all three carry-over boundaries (transient re-queue, interruption,
+   * batch split) because the cross-task fields (planText / conversations
+   * / projectCodeContext / retries / violations / enforcementHistory)
+   * must be preserved regardless of `task.type`. Restore is the only
+   * asymmetric side because it needs to revive the session *instance*
+   * from its plain-object snapshot projection.
+   */
   restoreIntoWorkerState?(workerState: Record<string, unknown>, resume: unknown): void;
   /**
    * Invoked AFTER a task is marked complete but BEFORE the next worker is
@@ -207,7 +234,6 @@ export interface TaskOrchestratorHook {
 }
 
 export interface TaskDecomposeHook {
-  classify?(rawTask: unknown): { type: TaskType; priority?: number } | null;
   isExclusive?(task: CodeTask): boolean;
 }
 

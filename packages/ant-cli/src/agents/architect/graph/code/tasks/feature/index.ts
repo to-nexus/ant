@@ -72,10 +72,10 @@
  *   - command.guard — feature tasks do not mutate a type-specific
  *     session counter on each command, unlike verification's
  *     call-budget guard.
- *   - router.shortCircuitAfterPlan / routeAfterDone — feature tasks
- *     follow the default post-plan / post-execute routing; only
- *     verification short-circuits after plan (reverify) and after
- *     execute (checkTaskStatus fast path).
+ *   - router.routeAfterDone — feature tasks follow the default
+ *     post-execute routing; only verification diverts to reverify
+ *     after execute. Plan short-circuit (`llmResponse.done = true`)
+ *     is owned by the plan node itself, not a router hook.
  *   - orchestrator.* — feature tasks have no type-specific attempt
  *     counter (`hasOwnAttemptCounter === undefined` → the orchestrator
  *     falls back to its shared `_failedAttempts`), no capture-on-
@@ -90,31 +90,27 @@
  *     each of these to `undefined`.
  *
  * Phase-layer `task.type === 'feature'` / `'feature'` literal
- * residuals (pre-existing R1 misses carried forward from T6b-δ,
- * belonging to follow-up T6b cleanup):
- *   - `nodes/checkTaskStatus/index.ts` L205 — `completedTask.type ===
- *     'feature'` gating the `state.featureTasks` completion marker.
- *     Candidate for `isFeatureTask` adoption.
- *   - `nodes/execute/toolDefinitions.ts` L51 — `isFrontendTask` OR
- *     chain (`'ui' | 'feature' | 'design-system'`). Needs either
- *     `isFeatureTask` + `isUiTask` + `isDesignSystemTask` adoption or
- *     a shared `isFrontendTask` classification hook.
- *   - `nodes/revise/index.ts` L153 / L291 — inline type-field literal
- *     union in the revise intermediate record declarations.
- *   - `nodes/decompose/validation.ts` L54 — allowed-type string array
- *     in the generic decompose validator.
- *   - `nodes/decompose/responseParser.ts` L395 — `(task.type ||
- *     'feature')` fallback inside `createTaskQueue`. Stays a string
- *     literal until a `defaultTaskType` constant or classification
- *     hook replaces it.
- *   - `nodes/enforce/index.ts` L94 — `state.currentTask?.type ||
- *     'feature'` fallback for the enforce payload.
+ * residuals were resolved in T6b-κ:
+ *   - `nodes/checkTaskStatus/index.ts` L205 — `isFeatureTask`
+ *     adoption (delegates the `state.featureTasks` completion marker
+ *     to the predicate).
+ *   - `nodes/execute/tools.ts` — `isFrontendTask`
+ *     replaced by disjunction over `isUiTask / isFeatureTask /
+ *     isDesignSystemTask` (new `tasks/design-system/model/is.ts`).
+ *   - `nodes/decompose/responseParser.ts` fallback — the inline
+ *     `(task.type || <feature-literal>)` shape is now
+ *     `(task.type || DEFAULT_TASK_TYPE)`, with the constant defined in
+ *     `tasks/_shared/types.ts`.
+ *   - `nodes/enforce/index.ts` — same `DEFAULT_TASK_TYPE` adoption for
+ *     the enforce-context fallback.
  *
- * These require either an `isFeatureTask` predicate adoption (the
- * `tasks/feature/model/is.ts` predicate already exists and is used at
- * `responseParser.ts` / `sessionManager.ts`) or broader classification
- * hooks; both are out of T5b.7 scope and scheduled for the T6b
- * follow-up together with the remaining non-feature residuals.
+ * Remaining R3-equivalent (non-behavioural, literal-enumeration) sites
+ * are deliberately left as plain strings:
+ *   - `nodes/revise/index.ts` L153 / L291 — inline type-field literal
+ *     union in the revise-intermediate record declarations (TypeScript
+ *     type-literal, not a runtime comparison).
+ *   - `nodes/decompose/validation.ts` L54 — allowed-type string array
+ *     used for schema validation only.
  */
 
 import type { TaskHooks } from '../_shared/types';

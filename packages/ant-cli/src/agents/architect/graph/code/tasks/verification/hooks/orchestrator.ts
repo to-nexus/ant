@@ -6,12 +6,18 @@
  *   - Unified attempt counter (`hasOwnAttemptCounter` + `attemptCount`) —
  *     reads from `resumeState.verification.attempts` instead of the
  *     shared `retries` counter.
- *   - Transient-failure snapshot attachment (`attachSnapshot`) — writes
- *     the session snapshot onto `task.resumeState.verification` so the
- *     next worker invocation rehydrates the cycle.
  *   - Worker-graph restore (`restoreIntoWorkerState`) — rebuilds
  *     `state.verification` from `resumeState.verification` at worker
- *     startup.
+ *     startup so the plan / tool / check hooks observe the persisted
+ *     cycle from the very first node entry.
+ *
+ * Snapshot *capture* / *attach* stays task-type-blind: the orchestrator
+ * writes the full `WorkerSnapshot` onto `task.resumeState` at every
+ * carry-over boundary because cross-task fields (planText / conversations
+ * / projectCodeContext / retries / violations / enforcementHistory) must
+ * be preserved regardless of `task.type`. Restore is the only asymmetric
+ * side because it has to revive the session *instance* from its plain-
+ * object snapshot projection.
  *
  * `TaskOrchestrator` / `TaskWorker` dispatch via
  * `hooksForTaskType(task.type)?.orchestrator?.*` and never know this
@@ -29,9 +35,6 @@ import type { VerificationSnapshot } from '../model/snapshot';
 /** True — verification owns a unified attempt counter on the session. */
 export const hasOwnAttemptCounter = true;
 
-/** True — transient failures must capture a snapshot before re-queue. */
-export const captureOnFailure = true;
-
 function readSnapshot(task: CodeTask): VerificationSnapshot | undefined {
   const resume = (task as { resumeState?: { verification?: unknown } }).resumeState;
   const snap = resume?.verification;
@@ -47,21 +50,6 @@ export function attemptCount(task: CodeTask): number {
   const snap = readSnapshot(task);
   if (snap && typeof snap.attempts === 'number') return snap.attempts;
   return 0;
-}
-
-/**
- * Attach a verification snapshot to the task's `resumeState`. Creates the
- * `resumeState` container if the task was never suspended before. T6 replaces
- * the inline `(task as any).resumeState = snapshot` writes with a call to
- * this method.
- */
-export function attachSnapshot(task: CodeTask, snap: unknown): void {
-  if (!snap || typeof snap !== 'object') return;
-  const mutableTask = task as { resumeState?: Record<string, unknown> };
-  if (!mutableTask.resumeState) {
-    mutableTask.resumeState = {};
-  }
-  mutableTask.resumeState.verification = snap;
 }
 
 /**

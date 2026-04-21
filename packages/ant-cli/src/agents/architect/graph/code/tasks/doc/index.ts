@@ -16,10 +16,11 @@
  * Intentionally absent:
  *   - plan.buildPrompt / extraTemplateVars — doc flows through the
  *     shared `jobs/code/nodes/plan` path; there is no `plan/variants/
- *     doc/` template to port. The `task.type !== 'doc'` entry in
- *     `planGeneration.ts taskRequiresPlan` (currently L232) is a
- *     skip-planning predicate on the phase side (pre-existing R1
- *     residual, T6b follow-up) and does not translate to a hook here.
+ *     doc/` template to port. The `!isDocTask(task)` entry in
+ *     `planGeneration.ts taskRequiresPlan` is a skip-planning predicate
+ *     on the phase side — `isDocTask` is used directly (since T6b-κ)
+ *     rather than a hook, because skip-planning is a static per-type
+ *     fact and no hook context is needed.
  *   - check.evaluate / budgetExhaustedHint — the LLM <done> signal is
  *     sufficient for doc tasks; there is no disk-level completion gate
  *     analogous to test-code's `detectTestFilesFromDisk`, and the
@@ -34,12 +35,11 @@
  *     `blocksDoc=undefined` is a deliberate regression guard against
  *     sibling doc tasks self-blocking their own parallel scheduling.
  *
- * Phase-layer `task.type === 'doc'` residuals (`nodes/plan/
- * planGeneration.ts` L232 skip-planning gate) are pre-existing R1
- * misses scheduled for follow-up T6b slices — they require either an
- * `isDocTask` adoption or a broader `taskRequiresPlan` classification
- * hook. Execute-phase dirTree gating has been lifted into the
- * `execute` hook slot at T6b-ι (`includeDirectoryTree: true` below).
+ * Phase-layer `task.type === 'doc'` residuals were resolved in T6b-κ
+ * (the skip-planning gate at `nodes/plan/planGeneration.ts
+ * taskRequiresPlan` now calls `isDocTask` directly). Execute-phase
+ * dirTree gating has been lifted into the `execute` hook slot at
+ * T6b-ι (`includeDirectoryTree: true` below).
  */
 
 import type { TaskHooks } from '../_shared/types';
