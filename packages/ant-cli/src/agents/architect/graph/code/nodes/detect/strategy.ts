@@ -12,6 +12,7 @@ import type { ArchitectGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
 import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
+import { runEstimatingLLMStream } from '../../../../../common/graph/llmHelpers.js';
 import { logPrompt } from '../../../../../../core/utils/promptLogger.js';
 import { parseDetectResponse } from './responseParser.js';
 
@@ -55,29 +56,16 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
     const chatAPI = getChatAPIClient();
     await chatAPI.showChatStatus('placeholder');
 
-    let response = '';
-    let capturedUsage: any = undefined;
-
-    for await (const event of llm.stream(
-      [{ role: 'user', content: prompt }],
-      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: false },
-    )) {
-      if (event.type === 'retry') { response = ''; capturedUsage = undefined; continue; }
-      if (event.text) response += event.text;
-
-      const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers.js');
-      const usage = extractTokenUsageFromStreamEvent(event);
-      if (usage) capturedUsage = usage;
-    }
-
-    if (capturedUsage) {
-      const { accumulateTokenUsage } = await import('../../../../../common/graph/llmHelpers.js');
-      accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
-      console.log(`   Tokens: ${capturedUsage.totalTokens} total (${capturedUsage.inputTokens} in, ${capturedUsage.outputTokens} out)`);
-      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
-      }
-    }
+    const { response } = await runEstimatingLLMStream(
+      state,
+      'detect',
+      () => llm.stream(
+        [{ role: 'user', content: prompt }],
+        { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: false },
+      ),
+      () => {},
+      { subNode: 'code', promptChars: prompt.length },
+    );
 
     const parsed = parseDetectResponse(response);
 

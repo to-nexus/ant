@@ -14,7 +14,7 @@ import { ARTIFACT_PREFIX } from '@ant/shared';
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { updateKanban } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
-import { trackTokenUsage } from "./tokenTracking";
+import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
@@ -415,6 +415,10 @@ export async function decomposeSystemDesign(
   if (!maybeLlm) throw new Error('LLM client not available');
   const llmToUse = maybeLlm;
 
+  // Per-flow decompose call index (main + repair share this counter so
+  // token debug log entries are ordered 0 → 1 → 2 ... within one job.)
+  let callIdx = 0;
+
   /**
    * Call LLM to get raw text response.
    * Small projects: single-turn invokeWithUsage (fast)
@@ -439,7 +443,7 @@ export async function decomposeSystemDesign(
           thinkingBudget: 10000,
         },
       );
-      await trackTokenUsage(state, usage);
+      applyEstimatingUsage(state, 'decompose', usage, { subNode: 'system', callIndex: callIdx++, promptChars: prompt.length });
       return response;
     } else {
       const result = await llmToUse.invokeWithUsage?.(
@@ -447,7 +451,7 @@ export async function decomposeSystemDesign(
         { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
       );
       const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
-      await trackTokenUsage(state, result?.usage);
+      applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'system', callIndex: callIdx++, promptChars: prompt.length });
       return textResponse;
     }
   }
@@ -511,7 +515,7 @@ export async function decomposeSystemDesign(
       { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
     );
     const textResponse = result?.content || await llmToUse.invoke(repairMessages);
-    await trackTokenUsage(state, result?.usage);
+    applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'system-repair', callIndex: callIdx++, promptChars: prompt.length });
     return textResponse;
   }
 

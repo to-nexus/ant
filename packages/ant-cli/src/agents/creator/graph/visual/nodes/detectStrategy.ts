@@ -9,7 +9,7 @@ import type { DetectStrategy, DetectResult } from '../../../../common/graph/node
 import type { VisualGraphState } from '../types.js';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import type { InferredAction } from '@ant/shared';
-import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { runEstimatingLLM, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { parseClassifyResponse } from './classifyParser.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import type { VisualAssetType } from '../types.js';
@@ -71,12 +71,16 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
       let rawContent: string;
 
       if (llm.invokeWithUsage) {
-        const response = await llm.invokeWithUsage(messages);
-        if (response.usage) {
-          accumulateTokenUsage(state, response.usage, { taskLevel: true, jobLevel: true });
-          upsertPhaseTokenUsage(state, 'detect', response.usage);
+        const { content, usage } = await runEstimatingLLM(
+          state as any,
+          'detect',
+          () => llm.invokeWithUsage!(messages),
+          { subNode: 'visual', promptChars: classifyPrompt.length },
+        );
+        if (usage) {
+          upsertPhaseTokenUsage(state, 'detect', usage);
         }
-        rawContent = response.content;
+        rawContent = content;
       } else {
         rawContent = await llm.invoke(messages);
       }
@@ -84,7 +88,6 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
       const classified = parseClassifyResponse(rawContent);
       console.log(`🏷️ [Visual:Detect] Result: type=${classified.assetType}, mode=${classified.jobMode}, tier=${classified.executionTier} (${classified.reasoning})`);
 
-      // Log prompt
       if (state._httpJobId && state.featurePath) {
         try {
           await logPrompt(state.featurePath, state._httpJobId, 'visual', 'detect', classifyPrompt.length, {
@@ -93,10 +96,6 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
             hardcodedContent: rawContent,
           });
         } catch { /* non-critical */ }
-      }
-
-      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage as any);
       }
 
       const inferred: InferredAction = {
