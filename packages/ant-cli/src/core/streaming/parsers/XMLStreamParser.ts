@@ -22,7 +22,6 @@ interface ParserContext {
   tasksContent: string;  // ✅ NEW: Accumulate tasks content
   insideReferences: boolean;  // ✅ NEW: <references> tag
   referencesContent: string;  // ✅ NEW: Accumulate references content
-  insideTechTier: boolean;  // <techTier> tag (decompose node — suppress from chat)
   insideClarify: boolean;  // ✅ NEW: <clarify> tag (planner mode — suppress from chat)
   clarifyContent: string;  // ✅ NEW: Accumulate clarify content (discarded)
   clarifyStartEmitted: boolean;  // ✅ Track if clarify_start action was already emitted
@@ -44,7 +43,6 @@ export class XMLStreamParser implements IStreamParser {
     tasksContent: '',  // ✅ NEW
     insideReferences: false,  // ✅ NEW
     referencesContent: '',  // ✅ NEW
-    insideTechTier: false,
     insideClarify: false,  // ✅ NEW
     clarifyContent: '',  // ✅ NEW
     clarifyStartEmitted: false,  // ✅ NEW
@@ -336,43 +334,11 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 16aa. Check for <techTier> opening (suppress from chat — parsed post-stream by responseParser)
-      if (!this.context.insideTechTier && this.buffer.includes('<techTier>')) {
-        const startIdx = this.buffer.indexOf('<techTier>');
-        
-        // Emit any text before <techTier> as response
-        const beforeTag = this.buffer.substring(0, startIdx);
-        if (beforeTag.trim()) {
-          actions.push({
-            type: 'response',
-            data: { content: beforeTag }
-          });
-        }
-        
-        this.buffer = this.buffer.substring(startIdx + '<techTier>'.length);
-        this.context.insideTechTier = true;
-        
-        continueParsingLoop = true;
-        continue;
-      }
-      
-      // 16ab. Check for </techTier> closing (discard content)
-      if (this.context.insideTechTier && this.buffer.includes('</techTier>')) {
-        const endIdx = this.buffer.indexOf('</techTier>');
-        
-        this.buffer = this.buffer.substring(endIdx + '</techTier>'.length);
-        this.context.insideTechTier = false;
-        
-        continueParsingLoop = true;
-        continue;
-      }
-      
-      // 16ac. Accumulate content inside <techTier> (suppress)
-      if (this.context.insideTechTier && this.buffer.length > 0) {
-        this.buffer = '';  // Suppress
-        continue;
-      }
-      
+      // NOTE: `<techTier>` suppression lives in SpecialTagTransformer
+      // (consumed entry). Canonical tag rendering is centralized there — the
+      // parser stays payload-agnostic. See .cursorrules "Canonical Tag
+      // Rendering SSOT".
+
       // 16b. Check for <clarify ...> opening (suppress from chat — post-hoc parsed by generate.ts)
       if (!this.context.insideClarify && this.buffer.match(/<clarify[\s]/)) {
         const startIdx = this.buffer.search(/<clarify[\s]/);
@@ -875,7 +841,6 @@ export class XMLStreamParser implements IStreamParser {
       // 21. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
-          !this.context.insideTechTier &&
           !this.context.insideLearnCommand &&
           !this.context.insideClarify &&
           !this.context.insideFunctionCalls &&
@@ -1025,10 +990,6 @@ export class XMLStreamParser implements IStreamParser {
           data: {}
         });
       }
-      // If inside profile, discard (responseParser handles it post-stream)
-      else if (this.context.insideTechTier) {
-        // ✅ DISCARD: profile content suppressed from UI
-      }
       // If inside clarify, discard (post-hoc parsing handles it)
       else if (this.context.insideClarify) {
         // ✅ DISCARD: clarify content suppressed from UI
@@ -1065,7 +1026,6 @@ export class XMLStreamParser implements IStreamParser {
       tasksContent: '',  // ✅ NEW
       insideReferences: false,  // ✅ NEW
       referencesContent: '',  // ✅ NEW
-      insideTechTier: false,
       insideClarify: false,  // ✅ NEW
       clarifyContent: '',  // ✅ NEW
       clarifyStartEmitted: false,  // ✅ NEW

@@ -4,7 +4,7 @@
  * Covers (see docs/testing/verification-scenarios.md, matrix C2-C5):
  *   - violations=0 → learn
  *   - violations>0 + recursionRemaining<20 → learn
- *   - violations>0 + retries<maxRetries → enforce
+ *   - violations>0 + retries<maxRetries → plan (retry via checkTaskStatus→plan)
  *   - violations>0 + retries>=maxRetries → learn
  */
 
@@ -40,10 +40,10 @@ describe('routeAfterCheckTaskStatus — 3-axis branching', () => {
       expect(routeAfterCheckTaskStatus(makeState({ violations: undefined }))).toBe('learn');
     });
 
-    it('has violations + budget + retries available → enforce', () => {
+    it('has violations + budget + retries available → plan', () => {
       expect(routeAfterCheckTaskStatus(
         makeState({ violations: [violation()], retries: 0, maxRetries: 3 }),
-      )).toBe('enforce');
+      )).toBe('plan');
     });
   });
 
@@ -58,14 +58,14 @@ describe('routeAfterCheckTaskStatus — 3-axis branching', () => {
       }))).toBe('learn');
     });
 
-    it('has violations and recursionRemaining == 20 → enforce (boundary)', () => {
+    it('has violations and recursionRemaining == 20 → plan (boundary)', () => {
       expect(routeAfterCheckTaskStatus(makeState({
         violations: [violation()],
         retries: 0,
         maxRetries: 3,
         recursionCount: 180,
         recursionLimit: 200,
-      }))).toBe('enforce');
+      }))).toBe('plan');
     });
 
     it('recursionLimit missing falls back to 200 default', () => {
@@ -76,17 +76,17 @@ describe('routeAfterCheckTaskStatus — 3-axis branching', () => {
         recursionCount: 50,
         recursionLimit: undefined as any,
       }));
-      expect(result).toBe('enforce');
+      expect(result).toBe('plan');
     });
   });
 
   describe('Axis 3: retries vs maxRetries', () => {
-    it('retries < maxRetries → enforce', () => {
+    it('retries < maxRetries → plan', () => {
       expect(routeAfterCheckTaskStatus(makeState({
         violations: [violation()],
         retries: 2,
         maxRetries: 3,
-      }))).toBe('enforce');
+      }))).toBe('plan');
     });
 
     it('retries == maxRetries → learn (exhausted)', () => {

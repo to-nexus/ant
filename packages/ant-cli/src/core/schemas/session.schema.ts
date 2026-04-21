@@ -77,7 +77,6 @@ export const SessionStateSchema = z.object({
   maxRetries: z.number().optional(),
   previousAttempts: z.array(z.any()).optional(),
   enforcementHistory: z.array(z.any()).optional(),
-  lastViolations: z.array(z.any()).optional(),
   previousFileCount: z.number().optional(),
   resolvedCategories: z.array(z.string()).optional(),
 }).passthrough();

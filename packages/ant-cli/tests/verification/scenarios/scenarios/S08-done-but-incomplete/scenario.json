@@ -1,11 +1,11 @@
 {
   "name": "done-but-incomplete",
-  "description": "Execute emits <done> but the verification session still has unmet gates → checkTaskStatus raises verification_incomplete → enforce → plan re-entry. Covers C3, C12, C15.",
+  "description": "Execute emits <done> but the verification session still has unmet gates → checkTaskStatus raises verification_incomplete → plan retry (via enforce-less routing). Covers C3, C12, C15.",
   "mode": "stub",
   "timeoutMs": 30000,
   "expectedChildExitCode": "any",
   "expected": {
-    "routeSequence": ["plan", "execute", "checkTaskStatus", "enforce", "plan"],
+    "routeSequence": ["plan", "execute", "checkTaskStatus", "plan"],
     "violations": ["verification_incomplete"]
   }
 }

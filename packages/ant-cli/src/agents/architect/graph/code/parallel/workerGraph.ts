@@ -5,7 +5,7 @@
  * a TaskWorker. This is a lighter version of the main code graph that
  * only handles the task execution lifecycle (plan → execute → tool loop).
  *
- * Flow: plan → execute ↔ tool → checkTaskStatus → (enforce/workerLearn)
+ * Flow: plan → execute ↔ tool → checkTaskStatus → (plan/workerLearn)
  */
 
 import { Annotation, StateGraph, END } from '@langchain/langgraph';
@@ -14,7 +14,6 @@ import { CodeGraphChannels } from '../graph';
 import { plan } from '../nodes/plan';
 import { execute } from '../nodes/execute/index';
 import { tool } from '../nodes/tool';
-import { enforce } from '../nodes/enforce';
 import { learn } from '../nodes/learn';
 import { routeAfterExecute } from '../routers/executeRouter';
 import { routeAfterPlan } from '../routers/planRouter';
@@ -51,7 +50,6 @@ function buildWorkerSubgraph() {
   graph.addNode('execute', execute as any);
   graph.addNode('tool', tool as any);
   graph.addNode('checkTaskStatus', workerCheckTaskStatus as any);
-  graph.addNode('enforce', enforce as any);
   graph.addNode('learn', workerLearn as any);
 
   // Edges
@@ -102,7 +100,7 @@ function buildWorkerSubgraph() {
           return 'learn';
         }
         if ((s.retries || 0) < (s.maxRetries || 3)) {
-          return 'enforce';
+          return 'plan';
         }
         console.log(`⚠️  Worker task "${s.currentTask?.name}" exhausted retries (${s.retries}/${s.maxRetries}) — moving to learn`);
         return 'learn';
@@ -110,11 +108,8 @@ function buildWorkerSubgraph() {
 
       return 'learn';
     }) as any,
-    { enforce: 'enforce', learn: 'learn' } as any,
+    { plan: 'plan', learn: 'learn' } as any,
   );
-
-  // Enforce → Plan (retry loop)
-  graph.addEdge('enforce' as any, 'plan' as any);
 
   // Learn → END
   graph.addEdge('learn' as any, '__end__' as any);

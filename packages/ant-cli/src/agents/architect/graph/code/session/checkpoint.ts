@@ -60,7 +60,6 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       maxRetries: state.maxRetries || 3,
       previousAttempts: state.previousAttempts || [],
       enforcementHistory: state.enforcementHistory || [],
-      lastViolations: state.lastViolations || [],
       previousFileCount: state.previousFileCount,
       resolvedCategories: state.resolvedCategories || [],
       planText: state.planText,

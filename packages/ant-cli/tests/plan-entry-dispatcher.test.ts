@@ -103,6 +103,11 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     expect(ctx.isRetry).toBe(true);
     expect(ctx.retrySummaryText).toBeTruthy();
 
+    // Single writer of state.retries — handleRetryEntry is the only
+    // +1 site after the enforce node removal. Verify the increment
+    // happened exactly once (1 → 2).
+    expect(state.retries).toBe(2);
+
     const snap = state.verification.snapshot();
     // onPlanEntry('retry') clears attemptedThisCycle
     expect(snap.attemptedThisCycle).toEqual([]);

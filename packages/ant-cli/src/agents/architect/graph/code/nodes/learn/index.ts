@@ -487,7 +487,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
             }
           };
 
-          if (state.selectedSpec) await markFile(state.selectedSpec);
+          // Mark the active spec ref (if any) as consumed. Derived from
+          // RAC role='ref' — replaces the legacy `state.selectedSpec` lookup.
+          const { ArtifactPoolView } = await import('../../../../../../core/artifact/ArtifactPipeline');
+          const activeSpecRefFilename = new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename();
+          if (activeSpecRefFilename) await markFile(activeSpecRefFilename);
         } catch (err: any) {
           console.warn(`⚠️  [Learn] Failed to mark consumed documents: ${err.message}`);
         }
@@ -509,7 +513,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           maxRetries: state.maxRetries,
           previousAttempts: state.previousAttempts || [],
           enforcementHistory: state.enforcementHistory || [],
-          lastViolations: state.lastViolations || [],
           previousFileCount: state.previousFileCount,
           resolvedCategories: state.resolvedCategories || [],
           recursionCount: state.recursionCount,

@@ -514,11 +514,6 @@
       "render-call"
     ]
   },
-  "jobs/code/nodes/enforce/variants/default/rules-enforcement": {
-    "sources": [
-      "render-call"
-    ]
-  },
   "jobs/code/nodes/execute/basis/techTier/go/setup/config": {
     "sources": [
       "auto-injection",

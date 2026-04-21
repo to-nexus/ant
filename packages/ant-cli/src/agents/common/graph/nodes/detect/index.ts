@@ -12,7 +12,7 @@
  */
 
 import type { DetectableState, DetectStrategy } from './types.js';
-import type { InferredAction, IntentId } from '@ant/shared';
+import type { InferredAction, IntentId, ResolvedActionContext } from '@ant/shared';
 import {
   resolveToRAC,
   mergeWithMetadata,
@@ -22,6 +22,7 @@ import { loadResolvedArtifacts } from '../../loadDocumentsForRAC.js';
 import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 import { appendOrUpdatePool } from '../../../../../core/prompt/builder/ArtifactPipeline.js';
+import { emitDetectOutcome } from '../../../../../core/streaming/emitDetectOutcome.js';
 
 export { type DetectableState, type DetectStrategy, type DetectResult } from './types.js';
 
@@ -65,6 +66,8 @@ export function createDetectNode<T extends DetectableState>(
         console.log(`   mode=${state.resolvedAction.mode}, intent=${state.resolvedAction.intent}`);
 
         const strategyResumeUpdates = strategy.onResume?.(state) || {};
+
+        emitRACSummary(state.resolvedAction, undefined, state._uiLocale);
 
         return {
           resolvedAction: state.resolvedAction,
@@ -157,10 +160,10 @@ export function createDetectNode<T extends DetectableState>(
         resolvedArtifacts = loadResolvedArtifacts(resolvedAction, featurePath);
       }
 
-      // Display in chat (reasoning is transient, not persisted in RAC)
-      if (reasoning) {
-        displayRACInChat(resolvedAction, reasoning, state._uiLocale).catch(() => {});
-      }
+      // Unified chat emission — explicit / infer both go through the single
+      // SpecialTagTransformer entry. `reasoning` is included when present
+      // (infer path); absence only omits the reasoning subsection.
+      emitRACSummary(resolvedAction, reasoning, state._uiLocale);
 
       // Merge RAC docs into design pool (no-op for jobs without state.artifacts)
       const updatedArtifacts = (state as any).artifacts
@@ -193,19 +196,15 @@ function resolveFeaturePath<T extends DetectableState>(state: T): string | undef
   return state.featurePath || (state as any).context?.featurePath;
 }
 
-async function displayRACInChat(
-  rac: import('@ant/shared').ResolvedActionContext,
-  reasoning: NonNullable<InferredAction['reasoning']>,
-  locale?: string,
-): Promise<void> {
-  try {
-    const { formatRACForChat } = await import('../../../../../core/types/detection.js');
-    const { getChatAPIClient } = await import('../../../../../core/adapters/ChatAPIClient.js');
-    const chatAPI = getChatAPIClient();
-    const formatted = formatRACForChat(rac, reasoning, (locale as any) || 'ko');
-    await chatAPI.sendLLMEvent({ type: 'text', text: formatted });
-    await chatAPI.finalizeMessage();
-  } catch {
-    // Chat UI display is non-critical
-  }
+/**
+ * Fire-and-forget chat emission for the detect phase. Never awaited so graph
+ * execution stays non-blocking; rendering failures surface via emitDetectOutcome's
+ * own warn logging (no silent swallow — see .cursorrules Canonical Tag Rendering SSOT).
+ */
+function emitRACSummary(
+  rac: ResolvedActionContext,
+  reasoning: InferredAction['reasoning'] | undefined,
+  locale: string | undefined,
+): void {
+  void emitDetectOutcome(rac, { reasoning, locale, phase: 'detect' });
 }

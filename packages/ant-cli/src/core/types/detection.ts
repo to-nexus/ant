@@ -72,76 +72,152 @@ export function resolveDesignTargetFiles(
 
 import type { UserLanguage } from '../utils/languageDetector';
 
+/**
+ * Pipeline phase that produced the RAC snapshot. Drives the chat header
+ * so detect-time ("analysis complete") and decompose-time ("basis finalized")
+ * emissions are visually distinguishable.
+ */
+export type RACFormatPhase = 'detect' | 'decompose-final';
+
 export function formatRACForChat(
   rac: ResolvedActionContext,
   reasoning?: { intent?: string; domain?: string },
   language: UserLanguage = 'ko',
+  phase: RACFormatPhase = 'detect',
 ): string {
   const isKorean = language === 'ko';
   const isVisual = rac.intentGroup === 'visual';
 
-  let formatted = isVisual
-    ? (isKorean ? `\n🏷️ **에셋 분류 완료**\n\n` : `\n🏷️ **Asset Classification Complete**\n\n`)
-    : (isKorean ? `\n🔍 **분석 완료**\n\n` : `\n🔍 **Analysis Complete**\n\n`);
+  let formatted = renderHeader(phase, isVisual, isKorean);
 
-  // Mode
-  const modeEmoji = rac.mode === 'generate' ? '✨' : rac.mode === 'refactor' ? '🔧' : '📖';
-  formatted += isKorean
-    ? `${modeEmoji} **작업 모드**: ${rac.mode}\n`
-    : `${modeEmoji} **Mode**: ${rac.mode}\n`;
-
-  if (reasoning?.intent) {
-    formatted += `   └ ${reasoning.intent}\n\n`;
+  if (phase === 'detect') {
+    formatted += renderModeSection(rac, reasoning, isKorean);
+    if (isVisual) return formatted + '\n';
+    formatted += renderIntentGroupSection(rac, isKorean);
+    formatted += renderDomainSection(rac, reasoning, isKorean);
+    formatted += renderTargetSection(rac, isKorean);
+    formatted += renderDesignUiOutputSection(rac, isKorean);
   }
 
-  if (isVisual) return formatted + '\n';
-
-  // Intent Group (design jobs)
-  const ig = rac.intentGroup;
-  if (ig && (ig === 'design-ui' || ig === 'design-spec' || ig === 'design-system')) {
-    const igEmoji = ig === 'design-ui' ? '🎨' : ig === 'design-spec' ? '📋' : '🏗️';
-    const igLabel = ig === 'design-ui'
-      ? (isKorean ? 'UI 디자인' : 'UI Design')
-      : ig === 'design-spec'
-        ? (isKorean ? '기능 스펙' : 'Feature Spec')
-        : (isKorean ? '시스템 디자인' : 'System Design');
-
-    formatted += isKorean
-      ? `${igEmoji} **작업 유형**: ${igLabel}\n\n`
-      : `${igEmoji} **Work Type**: ${igLabel}\n\n`;
-  }
-
-  // Domain (system-design only)
-  if (rac.domain) {
-    const domainEmoji = rac.domain === 'game' ? '🎮' : '🔧';
-    formatted += isKorean
-      ? `${domainEmoji} **도메인**: ${rac.domain}\n`
-      : `${domainEmoji} **Domain**: ${rac.domain}\n`;
-
-    if (reasoning?.domain) {
-      formatted += `   └ ${reasoning.domain}\n\n`;
-    }
-  }
-
-  // Target files hint (system-design)
-  if (ig === 'design-system' && rac.target?.length) {
-    const filesList = rac.target.map(f => `\`${f}\``).join(', ');
-    formatted += isKorean
-      ? `📄 **대상 문서**: ${filesList}\n\n`
-      : `📄 **Target**: ${filesList}\n\n`;
-  }
-
-  // UI design output hint
-  if (ig === 'design-ui') {
-    formatted += isKorean
-      ? `📄 **생성 문서**:\n`
-      : `📄 **Output Documents**:\n`;
-    formatted += `   • \`outputs/design/ui/ui-tokens.json\`\n`;
-    formatted += `   • \`outputs/design/ui/ui-assets.json\`\n`;
-    formatted += `   • \`outputs/design/ui/ui-spec.json\`\n\n`;
-  }
+  formatted += renderTechTierSection(rac, isKorean);
+  formatted += renderVisualTierSection(rac, isKorean);
 
   return formatted;
+}
+
+function renderHeader(phase: RACFormatPhase, isVisual: boolean, isKorean: boolean): string {
+  if (phase === 'decompose-final') {
+    return isKorean ? `\n✅ **기반 기술 확정**\n\n` : `\n✅ **Basis Finalized**\n\n`;
+  }
+  if (isVisual) {
+    return isKorean ? `\n🏷️ **에셋 분류 완료**\n\n` : `\n🏷️ **Asset Classification Complete**\n\n`;
+  }
+  return isKorean ? `\n🔍 **분석 완료**\n\n` : `\n🔍 **Analysis Complete**\n\n`;
+}
+
+function renderModeSection(
+  rac: ResolvedActionContext,
+  reasoning: { intent?: string; domain?: string } | undefined,
+  isKorean: boolean,
+): string {
+  const modeEmoji = rac.mode === 'generate' ? '✨' : rac.mode === 'refactor' ? '🔧' : '📖';
+  let out = isKorean
+    ? `${modeEmoji} **작업 모드**: ${rac.mode}\n`
+    : `${modeEmoji} **Mode**: ${rac.mode}\n`;
+  if (reasoning?.intent) out += `   └ ${reasoning.intent}\n\n`;
+  return out;
+}
+
+function renderIntentGroupSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  const ig = rac.intentGroup;
+  if (!ig || (ig !== 'design-ui' && ig !== 'design-spec' && ig !== 'design-system')) return '';
+
+  const igEmoji = ig === 'design-ui' ? '🎨' : ig === 'design-spec' ? '📋' : '🏗️';
+  const igLabel = ig === 'design-ui'
+    ? (isKorean ? 'UI 디자인' : 'UI Design')
+    : ig === 'design-spec'
+      ? (isKorean ? '기능 스펙' : 'Feature Spec')
+      : (isKorean ? '시스템 디자인' : 'System Design');
+  return isKorean
+    ? `${igEmoji} **작업 유형**: ${igLabel}\n\n`
+    : `${igEmoji} **Work Type**: ${igLabel}\n\n`;
+}
+
+function renderDomainSection(
+  rac: ResolvedActionContext,
+  reasoning: { intent?: string; domain?: string } | undefined,
+  isKorean: boolean,
+): string {
+  if (!rac.domain) return '';
+  const domainEmoji = rac.domain === 'game' ? '🎮' : '🔧';
+  let out = isKorean
+    ? `${domainEmoji} **도메인**: ${rac.domain}\n`
+    : `${domainEmoji} **Domain**: ${rac.domain}\n`;
+  if (reasoning?.domain) out += `   └ ${reasoning.domain}\n\n`;
+  return out;
+}
+
+function renderTargetSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  if (rac.intentGroup !== 'design-system' || !rac.target?.length) return '';
+  const filesList = rac.target.map(f => `\`${f}\``).join(', ');
+  return isKorean
+    ? `📄 **대상 문서**: ${filesList}\n\n`
+    : `📄 **Target**: ${filesList}\n\n`;
+}
+
+function renderDesignUiOutputSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  if (rac.intentGroup !== 'design-ui') return '';
+  let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
+  out += `   • \`outputs/design/ui/ui-tokens.json\`\n`;
+  out += `   • \`outputs/design/ui/ui-assets.json\`\n`;
+  out += `   • \`outputs/design/ui/ui-spec.json\`\n\n`;
+  return out;
+}
+
+function renderTechTierSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  const tt = rac.basis?.techTier;
+  if (!tt || (!tt.stack && !tt.frontend && !tt.backend)) return '';
+
+  const header = isKorean ? `🛠️ **기반 기술**\n` : `🛠️ **Tech Stack**\n`;
+  const stackLabel = isKorean ? '구조' : 'Stack';
+  const feLabel = isKorean ? '프론트엔드' : 'Frontend';
+  const beLabel = isKorean ? '백엔드' : 'Backend';
+  const noneLabel = isKorean ? '없음' : 'n/a';
+
+  let out = header;
+  if (tt.stack) out += `   • ${stackLabel}: ${tt.stack}\n`;
+  if (tt.frontend) out += `   • ${feLabel}: ${renderTierTuple(tt.frontend, noneLabel)}\n`;
+  if (tt.backend) out += `   • ${beLabel}: ${renderTierTuple(tt.backend, noneLabel)}\n`;
+  return out + '\n';
+}
+
+function renderTierTuple(
+  tier: { language?: string; framework?: string; packageManager?: string },
+  noneLabel: string,
+): string {
+  const lang = tier.language || noneLabel;
+  const fw = tier.framework ? ` / ${tier.framework}` : '';
+  const pm = tier.packageManager ? ` (${tier.packageManager})` : '';
+  return `${lang}${fw}${pm}`;
+}
+
+function renderVisualTierSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  const vt = rac.basis?.visualTier;
+  if (!vt) return '';
+  const entries: Array<[string, string | undefined]> = [
+    [isKorean ? '디자인 시스템' : 'Design System', vt.designSystem],
+    [isKorean ? '비주얼 언어' : 'Visual Language', vt.visualLanguage],
+    [isKorean ? '표면 시스템' : 'Surface System', vt.surfaceSystem],
+    [isKorean ? '공간 시스템' : 'Spatial System', vt.spatialSystem],
+    [isKorean ? '인터랙션' : 'Interaction', vt.interactionGrammar],
+    [isKorean ? '컴포넌트 의미' : 'Component Semantics', vt.componentSemantics],
+    [isKorean ? '계층 규칙' : 'Hierarchy Rules', vt.visualHierarchyRules],
+  ];
+  const present = entries.filter(([, v]) => !!v);
+  if (present.length === 0) return '';
+
+  const header = isKorean ? `🎨 **비주얼 기반**\n` : `🎨 **Visual Basis**\n`;
+  return header + present.map(([k, v]) => `   • ${k}: ${v}`).join('\n') + '\n\n';
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
