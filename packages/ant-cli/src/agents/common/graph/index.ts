@@ -12,7 +12,7 @@
 export { LLM_TEMPERATURE, LLM_MAX_TOKENS } from './llmConfig.js';
 
 // Token Tracking
-export type { TokenUsage, TokenTrackingState } from './llmHelpers.js';
+export type { TokenUsage, TokenTrackingState, EstimatingNodeId, EstimatingOpts, EstimatingState } from './llmHelpers.js';
 export {
   accumulateTokenUsage,
   invokeWithTracking,
@@ -20,8 +20,10 @@ export {
   getTaskTokenUsage,
   getJobTokenUsage,
   extractTokenUsageFromStreamEvent,
-  finalizeStreamTokenUsage,
   updateKanbanTokenUsage,
+  runEstimatingLLM,
+  runEstimatingLLMStream,
+  applyEstimatingUsage,
 } from './llmHelpers.js';
 
 // Runner Helpers

@@ -16,7 +16,7 @@ import { TaskQueue } from "../../../../types/task";
 import { LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
 import { updateKanban } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
-import { trackTokenUsage } from "./tokenTracking";
+import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
@@ -108,7 +108,7 @@ async function decomposeSpecSections(
     );
     const response: string = result?.content || await llm.invoke([{ role: 'user', content: prompt }]);
 
-    await trackTokenUsage(state, result?.usage);
+    applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'spec', promptChars: prompt.length });
 
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found in LLM response');

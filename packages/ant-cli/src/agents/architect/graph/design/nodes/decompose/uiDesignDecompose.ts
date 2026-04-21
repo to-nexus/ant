@@ -13,7 +13,7 @@ import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llm
 import { logErrorHeader } from "../../../code/nodes/_common/errorHandler";
 import { updateKanban } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
-import { trackTokenUsage } from "./tokenTracking";
+import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
@@ -147,14 +147,14 @@ export async function decomposeUiDesign(
         },
       );
       textResponse = response;
-      await trackTokenUsage(state, usage);
+      applyEstimatingUsage(state, 'decompose', usage, { subNode: 'ui', promptChars: uiDecomposePrompt.length });
     } else {
       const result = await llmToUse.invokeWithUsage?.(
         [{ role: 'user', content: uiDecomposePrompt }],
         { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
       );
       textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: uiDecomposePrompt }]);
-      await trackTokenUsage(state, result?.usage);
+      applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'ui', promptChars: uiDecomposePrompt.length });
     }
 
     // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted

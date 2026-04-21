@@ -17,7 +17,7 @@ import { TriageableState, TriageResult, WorkspaceState } from './types.js';
 import { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
 import { parseTriageResponse } from './parser.js';
 import { AgentRegistry } from './AgentRegistry.js';
-import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../llmHelpers.js';
+import { runEstimatingLLM, applyEstimatingUsage } from '../../llmHelpers.js';
 import { runAskGraph } from '../../../../architect/graph/ask/runner.js';
 import { ChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { WorkspacePathResolver } from '../../../../../core/config/WorkspacePathResolver.js';
@@ -161,24 +161,20 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   console.log('🤖 Calling LLM for triage...');
   
-  let responseText: string;
-  
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
-  
+
+  let responseText: string;
   if (llm.invokeWithUsage) {
-    const response = await llm.invokeWithUsage(messages);
-    responseText = response.content;
-    
-    if (response.usage) {
-      accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
-      upsertPhaseTokenUsage(state as any, 'triage', response.usage);
-      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
-      }
-    }
+    const { content } = await runEstimatingLLM(
+      state as any,
+      'triage',
+      () => llm.invokeWithUsage!(messages),
+      { promptChars: systemPrompt.length + userPrompt.length },
+    );
+    responseText = content;
   } else {
     responseText = await llm.invoke(messages);
   }
@@ -263,11 +259,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     });
 
     if (askResult.tokenUsage) {
-      accumulateTokenUsage(state as any, askResult.tokenUsage, { taskLevel: true, jobLevel: true });
-      upsertPhaseTokenUsage(state as any, 'triage', askResult.tokenUsage);
-      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
-      }
+      applyEstimatingUsage(state as any, 'triage', askResult.tokenUsage, { subNode: 'ask' });
     }
     
     triageResult = {

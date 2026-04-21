@@ -205,17 +205,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }).join('\n');
   }
 
-  const specArtifacts = pool.specs;
-  let specDocsMeta = '';
-  if (specArtifacts.length > 0) {
-    const specLines = specArtifacts.map(a => {
-      const filename = a.path.slice(AP.SPEC.length);
-      const firstLine = a.content?.split('\n').find(l => l.startsWith('# '))?.replace('# ', '') || filename;
-      return `- ${filename}: "${firstLine}" (${(a.content?.length || 0)} chars)`;
-    });
-    specDocsMeta = specLines.join('\n');
-  }
-
   // Generic role-based artifact injection:
   // System designs, specs, and UI have decompose-specific handling above.
   // Everything else is injected generically by role so new categories
@@ -247,10 +236,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       return { path, label };
     });
 
-  // Spec content is populated AFTER LLM selects via <selectedSpec> tag.
-  // No auto-selection — the decompose LLM decides which spec is relevant.
-  let specDoc = '';
-  let specApiContract = '';
+  // Active spec ref is determined by the RAC (upstream intent + user
+  // selection). The decompose LLM does NOT re-pick a spec — that was the
+  // legacy `<selectedSpec>` behavior.
+  const activeSpecRefFilename = pool.activeSpecRefFilename();
 
   // Detect error indicators in directive for error-or-general template activation
   const hasErrorInDirective = (() => {
@@ -266,12 +255,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     contextArtifacts,
     hasGenericArtifacts,
     tierRefs,
-    specDoc,
-    specApiContract,
     mode: state.resolvedAction?.mode || 'unknown',
     techTier: getTechTier(state),
     designDocsMeta,
-    specDocsMeta,
     codebaseFilePaths,
     hasProjectCode,
     uiSectionsSummary,
@@ -295,7 +281,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
     hasErrorInDirective: decomposeVars.hasErrorInDirective || false,
     hasUiDocs: Boolean(decomposeVars.uiSectionsSummary),
-    hasSpecDocs: Boolean(decomposeVars.specDocsMeta),
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
     uiHint, assetsHint,
     resolvedAction: state.resolvedAction,
@@ -384,34 +369,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     });
     rawResponse = result.response;
     decomposeTokenUsage = result.tokenUsage;
-    
-    // ✅ Accumulate decompose token usage to job-level (not task-level, as decompose runs before tasks)
+
     if (decomposeTokenUsage) {
-      const { finalizeStreamTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers');
-      finalizeStreamTokenUsage(state, decomposeTokenUsage, { taskLevel: false, jobLevel: true });
-
-      // ✅ Log to debug/tokens/
-      logTokenUsageToFile(
-        state.context?.featurePath,
-        state._httpJobId,
-        decomposeTokenUsage,
-        {
-          taskId: 'decompose',
-          taskName: 'Decompose',
-          node: 'decompose',
-          callIndex: 0,
-          nodeHistoryLength: 0,
-          projectCodeContextFiles: 0,
-          estimatedPromptChars: (prompts.system.length + prompts.user.length) || 0,
-          taskCumulativeInput: 0,
-          taskCumulativeOutput: 0,
-        }
-      );
-
-      // ✅ Push live token update to Kanban UI during estimating phase
-      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
-      }
+      const { applyEstimatingUsage } = await import('../../../../../common/graph/llmHelpers');
+      applyEstimatingUsage(state, 'decompose', decomposeTokenUsage, {
+        promptChars: prompts.system.length + prompts.user.length,
+      });
     }
   } catch (error) {
     logErrorHeader('Decompose');
@@ -477,7 +440,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     tasks,
     referenceRequests,
     techTier: parsedTechTier,
-    selectedSpec,
     unknownPackages,
     boundary: parsedBoundary,
     executionTier: parsedExecutionTier,
@@ -570,31 +532,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     ? ((parsedBoundary as Boundary) || BOUNDARY.LIGHTWEIGHT)
     : suggestedBoundary as Boundary;
   
-  // Store LLM-selected spec in state (used by plan/execute for spec injection)
-  const selectedSpecArtifact = selectedSpec
-    ? pool.findSpec(selectedSpec)
-    : undefined;
-  if (selectedSpec && selectedSpecArtifact?.content) {
-    state.selectedSpec = selectedSpec;
-    specDoc = selectedSpecArtifact.content;
-    const contractArtifacts = pool.apiContracts;
-    if (contractArtifacts.length > 0) {
-      specApiContract = contractArtifacts.map(a => a.content).join('\n\n---\n\n');
-    }
-    console.log(`📋 [Decompose] LLM selected spec: ${selectedSpec} (${specDoc.length} chars)`);
-  } else if (selectedSpec) {
-    console.warn(`⚠️  [Decompose] selectedSpec "${selectedSpec}" not found in artifact pool, ignoring`);
-    state.selectedSpec = null;
-  } else {
-    state.selectedSpec = null;
-  }
-  
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   validateTasks(tasks, state.resolvedAction?.mode, state.directive, state.artifacts);
-  
-  const { taskQueue, featureTasks } = createTaskQueue(tasks, selectedSpec);
+
+  if (activeSpecRefFilename) {
+    console.log(`📋 [Decompose] Active spec ref: ${activeSpecRefFilename}`);
+  }
+  const { taskQueue, featureTasks } = createTaskQueue(tasks, activeSpecRefFilename);
   logTaskSummary(tasks, referenceRequests);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -760,6 +706,20 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     if (narrowedCount > 0) {
       console.log(`🎯 [Decompose] Task-level techTier: ${narrowedCount} task(s) narrowed from ${currentTechTierConfig.stack}`);
     }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 6.75: Re-emit finalized basis to chat
+  // LLM-merged techTier / visualTier are the "final" basis for this turn.
+  // Routed through the Canonical Tag Rendering SSOT (SpecialTagTransformer
+  // via emitDetectOutcome) — no bespoke formatting lives here.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.resolvedAction) {
+    const { emitDetectOutcome } = await import('../../../../../../core/streaming/emitDetectOutcome');
+    void emitDetectOutcome(state.resolvedAction, {
+      locale: state._uiLocale,
+      phase: 'decompose-final',
+    });
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

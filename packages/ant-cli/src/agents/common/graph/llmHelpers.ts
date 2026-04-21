@@ -7,9 +7,10 @@
  * Architecture: docs/architecture/13-token-usage-tracking.md
  */
 
-import { LLMClient, LLMInvokeResult, CacheableContent } from '../../../core/ports/llm';
+import { LLMClient, LLMInvokeResult, CacheableContent, LLMStreamEvent } from '../../../core/ports/llm';
 import { TaskTokenUsage, PhaseTokenUsage } from '@ant/shared';
 import { getTokenLogger, TokenLogContext } from '../../../core/utils/tokenLogger';
+import { getEstimatingLabel, type UILocale } from './timing/estimatingLabels';
 
 /**
  * Re-export TaskTokenUsage as TokenUsage for convenience
@@ -234,30 +235,6 @@ export function extractTokenUsageFromStreamEvent(event: any): TokenUsage | undef
 }
 
 /**
- * Stream wrapper that automatically tracks tokens
- * Call this after stream completes with the accumulated token usage
- */
-export function finalizeStreamTokenUsage(
-  state: TokenTrackingState,
-  usage: TokenUsage,
-  options: {
-    taskLevel?: boolean;
-    jobLevel?: boolean;
-  } = {}
-): void {
-  accumulateTokenUsage(state, usage, options);
-  
-  const total = computeTotal(usage);
-  console.log(`   Tokens: ${total} total (${usage.inputTokens} in, ${usage.outputTokens} out)`);
-  if (usage.cacheReadTokens) {
-    console.log(`   Cache read: ${usage.cacheReadTokens} tokens`);
-  }
-  if (usage.cacheCreationTokens) {
-    console.log(`   Cache creation: ${usage.cacheCreationTokens} tokens`);
-  }
-}
-
-/**
  * Log token usage to debug file (non-blocking, fire-and-forget).
  * Call this after each LLM call with the captured usage and context.
  * 
@@ -338,4 +315,147 @@ export function updateKanbanTokenUsage(state: KanbanUpdatableState): void {
     state.recursionLimit,
     jobTokens
   );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Estimating-phase unified LLM runner (triage / detect / decompose)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// All LLM calls made BEFORE a task queue exists must route through one of
+// these three entry points. They guarantee:
+//   1. `setEstimatingActivity(nodeId)` is called so `updateTokenUsage`'s
+//      broadcast gate always passes.
+//   2. Token usage is accumulated to job-level only (`taskLevel: false`),
+//      since `_currentTaskTokenUsage` belongs to per-task execution.
+//   3. `updateTokenUsage(state.tokenUsage)` is broadcast after every call.
+//   4. `logTokenUsageToFile` is written to `debug/tokens/token-{jobId}.json`
+//      with `{ taskId: 'estimating', node: nodeId }` — so detect/triage
+//      LLM calls appear in the debug log (previously absent).
+//
+// See docs/architecture/13-token-usage-tracking.md for the full rationale.
+
+export type EstimatingNodeId = 'triage' | 'detect' | 'decompose';
+
+export interface EstimatingState extends KanbanUpdatableState {
+  _uiLocale?: UILocale;
+  featurePath?: string;
+  context?: { featurePath?: string; [key: string]: any };
+  tokenUsage?: TokenUsage;
+}
+
+export interface EstimatingOpts {
+  /** Sub-node identifier (e.g. 'system', 'ui', 'repair') for debug logging */
+  subNode?: string;
+  /** Caller-maintained call index for debug log disambiguation */
+  callIndex?: number;
+  /** Estimated prompt char count for TokenLogger */
+  promptChars?: number;
+}
+
+function resolveFeaturePath(state: EstimatingState): string | undefined {
+  return state.context?.featurePath ?? state.featurePath;
+}
+
+function ensureEstimatingActivity(state: EstimatingState, nodeId: EstimatingNodeId): void {
+  const label = getEstimatingLabel(nodeId, state._uiLocale);
+  state.deps?.kanbanUpdate?.setEstimatingActivity?.(label, nodeId);
+}
+
+/**
+ * Apply a captured usage to the estimating pipeline without running the LLM.
+ *
+ * Used when an external subgraph (e.g. the ask graph invoked from triage)
+ * has already executed the LLM and returned a usage snapshot — there's
+ * nothing to wrap, but we still need the uniform accumulate + broadcast +
+ * log sequence the rest of the estimating phase relies on.
+ */
+export function applyEstimatingUsage(
+  state: EstimatingState,
+  nodeId: EstimatingNodeId,
+  usage: TokenUsage | undefined,
+  opts: EstimatingOpts = {},
+): void {
+  if (!usage) return;
+
+  ensureEstimatingActivity(state, nodeId);
+  accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
+
+  if (state.tokenUsage) {
+    state.deps?.kanbanUpdate?.updateTokenUsage?.(state.tokenUsage);
+  }
+
+  logTokenUsageToFile(resolveFeaturePath(state), state._httpJobId, usage, {
+    taskId: 'estimating',
+    taskName: opts.subNode ?? nodeId,
+    node: nodeId,
+    callIndex: opts.callIndex ?? 0,
+    estimatedPromptChars: opts.promptChars ?? 0,
+  });
+
+  console.log(
+    `   [${nodeId}${opts.subNode ? ':' + opts.subNode : ''}] Tokens: ` +
+    `${(usage.totalTokens ?? (usage.inputTokens + usage.outputTokens))} total ` +
+    `(${usage.inputTokens} in, ${usage.outputTokens} out)`,
+  );
+}
+
+/**
+ * Run an `invokeWithUsage`-style LLM call with uniform estimating-phase bookkeeping.
+ */
+export async function runEstimatingLLM(
+  state: EstimatingState,
+  nodeId: EstimatingNodeId,
+  invoke: () => Promise<{ content: string; usage?: TokenUsage }>,
+  opts: EstimatingOpts = {},
+): Promise<{ content: string; usage?: TokenUsage }> {
+  ensureEstimatingActivity(state, nodeId);
+  const { content, usage } = await invoke();
+  if (usage) {
+    applyEstimatingUsage(state, nodeId, usage, opts);
+  }
+  return { content, usage };
+}
+
+/**
+ * Run a streaming LLM call with uniform estimating-phase bookkeeping.
+ *
+ * The `consume` callback receives each stream event (text / retry / etc.) so
+ * the caller can build the response string, feed a UI orchestrator, or
+ * handle retries. Returning `null` from `consume` on a `retry` event causes
+ * the accumulated response to be reset.
+ */
+export async function runEstimatingLLMStream(
+  state: EstimatingState,
+  nodeId: EstimatingNodeId,
+  stream: () => AsyncIterable<LLMStreamEvent>,
+  consume: (event: LLMStreamEvent, currentResponse: string) => string | void | Promise<string | void>,
+  opts: EstimatingOpts = {},
+): Promise<{ response: string; usage?: TokenUsage }> {
+  ensureEstimatingActivity(state, nodeId);
+
+  let response = '';
+  let capturedUsage: TokenUsage | undefined;
+
+  for await (const event of stream()) {
+    if (event.type === 'retry') {
+      response = '';
+      capturedUsage = undefined;
+      const next = await consume(event, response);
+      if (typeof next === 'string') response = next;
+      continue;
+    }
+
+    const usage = extractTokenUsageFromStreamEvent(event);
+    if (usage) capturedUsage = usage;
+
+    if (event.text) response += event.text;
+    const next = await consume(event, response);
+    if (typeof next === 'string') response = next;
+  }
+
+  if (capturedUsage) {
+    applyEstimatingUsage(state, nodeId, capturedUsage, opts);
+  }
+
+  return { response, usage: capturedUsage };
 }

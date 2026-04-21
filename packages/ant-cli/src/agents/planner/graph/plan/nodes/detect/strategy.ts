@@ -13,7 +13,7 @@
 import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { PlanGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
-import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers.js';
+import { runEstimatingLLMStream, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers.js';
 import { parseExecutionTierTag, coerceExecutionTier, ExecutionTierId } from '../../../../../../core/executionTier/index.js';
 
 export const planDetectStrategy: DetectStrategy<PlanGraphState> = {
@@ -103,23 +103,21 @@ async function detectPlanIntentViaLLM(
   }
 
   try {
-    let response = '';
-    for await (const event of llm.stream(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      { temperature: 0, maxTokens: 256, enableThinking: false },
-    )) {
-      if (event.type === 'retry') { response = ''; continue; }
-      if (event.text) response += event.text;
-      if (event.type === 'done') {
-        const capturedUsage = extractTokenUsageFromStreamEvent(event);
-        if (capturedUsage) {
-          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
-          upsertPhaseTokenUsage(state, 'detect', capturedUsage);
-        }
-      }
+    const { response, usage } = await runEstimatingLLMStream(
+      state as any,
+      'detect',
+      () => llm.stream(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        { temperature: 0, maxTokens: 256, enableThinking: false },
+      ),
+      () => {},
+      { subNode: 'plan', promptChars: systemPrompt.length + userPrompt.length },
+    );
+    if (usage) {
+      upsertPhaseTokenUsage(state, 'detect', usage);
     }
 
     const executionTier = coerceExecutionTier(
