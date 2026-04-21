@@ -190,7 +190,7 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
 
   it('appendBoundary collapses prior user_turn / user_turn_meta but preserves breadcrumbs', async () => {
     const t: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hi' };
-    const m: FeatureUserTurnMetaLine = { type: 'user_turn_meta', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', complexity: 'todo', decidedBy: 'llm', reason: 'multi-file' };
+    const m: FeatureUserTurnMetaLine = { type: 'user_turn_meta', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', complexity: 'task', decidedBy: 'llm', reason: 'multi-file' };
     const bc: FeatureBreadcrumbLine = { type: 'breadcrumb', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', scope: 'modification', summary: 'kept', anchors: {}, stats: {} };
 
     await adapter.appendLine('feature', t);

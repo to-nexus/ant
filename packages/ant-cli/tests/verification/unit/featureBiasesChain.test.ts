@@ -197,12 +197,12 @@ describe('§19 integration — decompose → learn → featureBiases chain', () 
   });
 
   it('heuristic fallback (no <complexity> tag) with escalation → decidedBy=heuristic, escalated=true', async () => {
-    // LLM omitted the tag entirely → parser falls back to 'todo' with
+    // LLM omitted the tag entirely → parser falls back to 'task' with
     // decidedBy='heuristic'. Represents a degraded classification that
     // MUST still flow through to featureBiases (otherwise aggregation
     // readers can't distinguish heuristic drift from LLM drift).
     const parsed = parseLLMResponse(buildLLMResponse({ complexityTag: null }));
-    expect(parsed.complexity).toBe('todo');
+    expect(parsed.complexity).toBe('task');
     expect(parsed.complexityDecidedBy).toBe('heuristic');
 
     const turnId = 't-int-heur';
@@ -270,7 +270,7 @@ describe('§19 integration — decompose → learn → featureBiases chain', () 
 
   it('aggregator cross-tab captures mixed provenance after successive runs', async () => {
     // Two job runs on the same feature: first llm-oneshot (escalated),
-    // second heuristic-todo (not escalated). The reader MUST surface
+    // second heuristic-task (not escalated). The reader MUST surface
     // both in crossTab so the downstream heuristic plan can weight them.
     const t1 = 't-int-mix1';
     const t2 = 't-int-mix2';
@@ -292,7 +292,7 @@ describe('§19 integration — decompose → learn → featureBiases chain', () 
       makeState({
         featurePath: tmpDir,
         session,
-        complexity: 'todo',
+        complexity: 'task',
         complexityDecidedBy: 'heuristic',
         jobId: 'job-mix-2',
         turnId: t2,
@@ -305,10 +305,10 @@ describe('§19 integration — decompose → learn → featureBiases chain', () 
 
     const agg = aggregateClassifications(records);
     expect(agg.total).toBe(2);
-    expect(agg.crossTab).toEqual({ 'oneshot/llm': 1, 'todo/heuristic': 1 });
+    expect(agg.crossTab).toEqual({ 'oneshot/llm': 1, 'task/heuristic': 1 });
     expect(agg.escalationRateByDecidedBy.llm).toBe(1);
     expect(agg.escalationRateByDecidedBy.heuristic).toBe(0);
     expect(agg.avgTouchedByPredicted.oneshot).toBe(4);
-    expect(agg.avgTouchedByPredicted.todo).toBe(5);
+    expect(agg.avgTouchedByPredicted.task).toBe(5);
   });
 });

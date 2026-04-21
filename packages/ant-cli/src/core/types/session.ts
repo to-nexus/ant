@@ -243,7 +243,7 @@ export interface SessionState {
   /**
    * 3-way complexity classification emitted by decompose.
    * Consumed by routeAfterDecompose + learn breadcrumb policy.
-   * Safe default: 'todo' (see decompose/responseParser.normalizeComplexity).
+   * Safe default: 'task' (see decompose/responseParser.normalizeComplexity).
    */
   complexity?: Complexity;
 

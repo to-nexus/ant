@@ -27,6 +27,7 @@ import type {
 import { FEATURE_CONTEXT_THRESHOLD, FEATURE_CONTEXT_WINDOW } from '@ant/shared';
 import { compactJob, type CompactableEntry } from './compactJob';
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './constants';
+import type { ExecutionTier } from '../executionTier/types';
 
 /** Default breadcrumb window surfaced to plan/direct prompts. */
 export const DEFAULT_BREADCRUMB_WINDOW = 5;
@@ -251,6 +252,15 @@ export interface HydrateFeatureContextInput {
   compact?: CompactFeatureContextOptions;
   /** Log prefix, e.g. `Resolve` or `Design Resolve` for consistent output. */
   logPrefix?: string;
+  /**
+   * Execution tier whose `compact` strategy should gate the safety-net
+   * compaction (§13). When omitted the caller accepts the unconditional
+   * {@link compactFeatureContext} path (backward-compatible with callers
+   * that predate the 5-tier refactor). Phase nodes SHOULD pass
+   * `getExecutionTier(state)` so mode/complexity literals do not leak out of
+   * `core/executionTier/`.
+   */
+  executionTier?: ExecutionTier;
 }
 
 export interface HydrateFeatureContextResult {
@@ -275,7 +285,7 @@ export async function hydrateFeatureContext(
   // scenario when a long-paused job resumes after other turns accumulated —
   // running the lookup on the post-compact array returns `undefined` and
   // reintroduces the §12 defect (silent turnId loss → emitFileWriteTrace /
-  // applyBreadcrumbBoundaryMatrix / recordClassificationBias all no-op).
+  // tier.breadcrumb / tier.boundary / recordClassificationBias all no-op).
   //
   // Keep this search BEFORE the compact step so the owning turn is always
   // visible, regardless of how aggressively compact trims the tail window.
@@ -292,11 +302,21 @@ export async function hydrateFeatureContext(
 
     if (deps.llm && deps.promptPort) {
       const before = featureContext.userTurns.length;
-      featureContext = await compactFeatureContext(
-        featureContext,
-        { llm: deps.llm, promptPort: deps.promptPort },
-        input.compact,
-      );
+      // Tier facade is the preferred path (post 5-tier refactor). Fallback
+      // to the direct helper preserves behavior for callers that have not
+      // yet adopted tier-aware plumbing. Both invocations ultimately run
+      // the same `compactFeatureContext` body — the tier wrapper only adds
+      // opt-out for Reflex / Plan tiers that should skip the LLM call.
+      const compactDeps = { llm: deps.llm, promptPort: deps.promptPort };
+      if (input.executionTier) {
+        featureContext = await input.executionTier.compact(featureContext, compactDeps);
+      } else {
+        featureContext = await compactFeatureContext(
+          featureContext,
+          compactDeps,
+          input.compact,
+        );
+      }
       if (featureContext.wasCompacted) {
         console.log(
           `🗜️  [${logPrefix}] featureContext compacted: ${before} → ${featureContext.userTurns.length} user_turns + summary`,

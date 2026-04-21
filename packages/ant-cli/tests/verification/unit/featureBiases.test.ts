@@ -57,7 +57,7 @@ describe('featureBiases — recordClassification', () => {
     await recordClassification({
       featurePath: tmpDir,
       jobId: 'job-llm',
-      predictedComplexity: 'todo',
+      predictedComplexity: 'task',
       decidedBy: 'llm',
       actualTouched: 7,
       escalated: false,
@@ -78,7 +78,7 @@ describe('featureBiases — recordClassification', () => {
     await recordClassification({
       featurePath: tmpDir,
       jobId: 'job-unknown',
-      predictedComplexity: 'todo',
+      predictedComplexity: 'task',
       actualTouched: 4,
       escalated: false,
     });
@@ -117,7 +117,7 @@ describe('featureBiases — recordClassification', () => {
     await recordClassification({
       featurePath: tmpDir,
       jobId: 'j-long',
-      predictedComplexity: 'todo',
+      predictedComplexity: 'task',
       actualTouched: 20,
       escalated: false,
       directive: longDirective,
@@ -145,7 +145,7 @@ describe('featureBiases — recordClassification', () => {
     await recordClassification({
       featurePath: tmpDir,
       jobId: 'j-empty',
-      predictedComplexity: 'todo',
+      predictedComplexity: 'task',
       actualTouched: 1,
       escalated: false,
       directive: '   \n  ',
@@ -189,7 +189,7 @@ describe('featureBiases — recordClassification', () => {
       JSON.stringify({
         ts: '2026-04-20T00:00:01.000Z',
         jobId: 'ok2',
-        predicted: 'todo',
+        predicted: 'task',
         actualTouched: 10,
         escalated: true,
       }),
@@ -227,12 +227,12 @@ describe('featureBiases — aggregateClassifications', () => {
   it('returns zero-initialised buckets for an empty record set', () => {
     const agg = aggregateClassifications([]);
     expect(agg.total).toBe(0);
-    expect(agg.byPredicted).toEqual({ oneshot: 0, exploratory: 0, todo: 0 });
+    expect(agg.byPredicted).toEqual({ oneshot: 0, exploratory: 0, task: 0 });
     expect(agg.byDecidedBy).toEqual({ llm: 0, heuristic: 0, user: 0, unknown: 0 });
     expect(agg.crossTab).toEqual({});
     expect(agg.escalatedCount).toBe(0);
     expect(agg.avgTouched).toBeNull();
-    expect(agg.avgTouchedByPredicted).toEqual({ oneshot: null, exploratory: null, todo: null });
+    expect(agg.avgTouchedByPredicted).toEqual({ oneshot: null, exploratory: null, task: null });
     expect(agg.escalationRateByDecidedBy).toEqual({ llm: null, heuristic: null, user: null, unknown: null });
     expect(agg.timeRange).toBeNull();
   });
@@ -241,15 +241,15 @@ describe('featureBiases — aggregateClassifications', () => {
     const agg = aggregateClassifications([
       sample({ predicted: 'oneshot', decidedBy: 'llm', actualTouched: 2, ts: baseTs }),
       sample({ predicted: 'oneshot', decidedBy: 'llm', actualTouched: 6, escalated: true, ts: later }),
-      sample({ predicted: 'todo', decidedBy: 'heuristic', actualTouched: 4, ts: later }),
+      sample({ predicted: 'task', decidedBy: 'heuristic', actualTouched: 4, ts: later }),
       sample({ predicted: 'exploratory', actualTouched: 8, escalated: true, ts: latest }),
     ]);
     expect(agg.total).toBe(4);
-    expect(agg.byPredicted).toEqual({ oneshot: 2, exploratory: 1, todo: 1 });
+    expect(agg.byPredicted).toEqual({ oneshot: 2, exploratory: 1, task: 1 });
     expect(agg.byDecidedBy).toEqual({ llm: 2, heuristic: 1, user: 0, unknown: 1 });
     expect(agg.crossTab).toEqual({
       'oneshot/llm': 2,
-      'todo/heuristic': 1,
+      'task/heuristic': 1,
       'exploratory/unknown': 1,
     });
     expect(agg.escalatedCount).toBe(2);
@@ -259,7 +259,7 @@ describe('featureBiases — aggregateClassifications', () => {
     const agg = aggregateClassifications([
       sample({ predicted: 'oneshot', decidedBy: 'llm', escalated: true }),
       sample({ predicted: 'oneshot', decidedBy: 'llm', escalated: false }),
-      sample({ predicted: 'todo', decidedBy: 'heuristic', escalated: false }),
+      sample({ predicted: 'task', decidedBy: 'heuristic', escalated: false }),
     ]);
     expect(agg.escalationRateByDecidedBy.llm).toBeCloseTo(0.5, 5);
     expect(agg.escalationRateByDecidedBy.heuristic).toBe(0);
@@ -271,17 +271,17 @@ describe('featureBiases — aggregateClassifications', () => {
     const agg = aggregateClassifications([
       sample({ predicted: 'oneshot', actualTouched: 2 }),
       sample({ predicted: 'oneshot', actualTouched: 6 }),
-      sample({ predicted: 'todo', actualTouched: 10 }),
+      sample({ predicted: 'task', actualTouched: 10 }),
     ]);
     expect(agg.avgTouched).toBeCloseTo((2 + 6 + 10) / 3, 5);
     expect(agg.avgTouchedByPredicted.oneshot).toBeCloseTo(4, 5);
-    expect(agg.avgTouchedByPredicted.todo).toBe(10);
+    expect(agg.avgTouchedByPredicted.task).toBe(10);
     expect(agg.avgTouchedByPredicted.exploratory).toBeNull();
   });
 
   it('reports timeRange from min/max ts across all buckets', () => {
     const agg = aggregateClassifications([
-      sample({ predicted: 'todo', ts: later }),
+      sample({ predicted: 'task', ts: later }),
       sample({ predicted: 'oneshot', ts: baseTs }),
       sample({ predicted: 'exploratory', ts: latest }),
     ]);
@@ -292,13 +292,13 @@ describe('featureBiases — aggregateClassifications', () => {
     const agg = aggregateClassifications(
       [
         sample({ predicted: 'oneshot', ts: baseTs }),
-        sample({ predicted: 'todo', ts: later }),
+        sample({ predicted: 'task', ts: later }),
         sample({ predicted: 'exploratory', ts: latest, escalated: true }),
       ],
       { since: later, until: latest },
     );
     expect(agg.total).toBe(2);
-    expect(agg.byPredicted).toEqual({ oneshot: 0, exploratory: 1, todo: 1 });
+    expect(agg.byPredicted).toEqual({ oneshot: 0, exploratory: 1, task: 1 });
     expect(agg.escalatedCount).toBe(1);
   });
 
@@ -306,7 +306,7 @@ describe('featureBiases — aggregateClassifications', () => {
     const agg = aggregateClassifications(
       [
         sample({ predicted: 'oneshot', jobId: 'a' }),
-        sample({ predicted: 'todo', jobId: 'b' }),
+        sample({ predicted: 'task', jobId: 'b' }),
         sample({ predicted: 'exploratory', jobId: 'c' }),
       ],
       { jobIds: ['a', 'c'] },
@@ -314,7 +314,7 @@ describe('featureBiases — aggregateClassifications', () => {
     expect(agg.total).toBe(2);
     expect(agg.byPredicted.oneshot).toBe(1);
     expect(agg.byPredicted.exploratory).toBe(1);
-    expect(agg.byPredicted.todo).toBe(0);
+    expect(agg.byPredicted.task).toBe(0);
   });
 });
 
@@ -348,7 +348,7 @@ describe('featureBiases — summarizeFeatureBiases', () => {
     await recordClassification({
       featurePath: tmpDir,
       jobId: 'j-heur',
-      predictedComplexity: 'todo',
+      predictedComplexity: 'task',
       decidedBy: 'heuristic',
       actualTouched: 2,
       escalated: false,
