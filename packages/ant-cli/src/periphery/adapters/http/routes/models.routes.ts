@@ -18,8 +18,8 @@ export interface LLMModelInfo {
 // Available models registry
 const AVAILABLE_MODELS: LLMModelInfo[] = [
   {
-    id: 'claude-sonnet-4-7',
-    displayName: 'Sonnet 4.7',
+    id: 'claude-sonnet-4-6',
+    displayName: 'Sonnet 4.6',
     provider: 'anthropic',
     description: 'Latest Claude Sonnet model, best for coding',
     recommended: true,
