@@ -221,16 +221,35 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
         get().updateChatMessage(event.messageId, { isStreaming: false });
         break;
 
-      case 'messages_cleared':
+      case 'messages_cleared': {
         set({ chatMessages: [] });
-        // Backend `clearMessages` collapses trace.jsonl + feature.jsonl as
-        // part of the same action, so the feature-log SSOT used by the
-        // Activity / Timeline tabs must also drop its cached arrays.
-        // Without this sync, stale trace/breadcrumb rows would remain
-        // visible until a feature switch. (Session redesign §16.2.)
-        get().clearFeatureLog?.();
+        // `scope` tells us how aggressive the backend collapse was:
+        // - 'full' (Hard Reset / §17 hard_reset): BOTH trace.jsonl and
+        //   feature.jsonl were collapsed + a user_reset boundary was
+        //   appended. Wipe all feature-log caches (trace, breadcrumbs,
+        //   user_turns, user_turn_metas) so stale rows do not linger in the
+        //   Activity / Timeline tabs until a feature switch.
+        // - 'chat' (DELETE /chat/messages, default): only trace.jsonl was
+        //   collapsed. feature.jsonl (breadcrumbs, user_turn, user_turn_meta)
+        //   is preserved so the LLM still remembers the conversation for the
+        //   next turn. Drop only the local trace cache; keep breadcrumb and
+        //   tier-badge data so they stay visible.
+        // Falls back to 'chat' when older servers omit the field — the
+        //   conservative, less destructive choice.
+        const scope: 'chat' | 'full' = event.scope === 'full' ? 'full' : 'chat';
+        if (scope === 'full') {
+          get().clearFeatureLog?.();
+        } else {
+          set({
+            traceLines: [],
+            traceStatus: 'idle',
+            traceError: undefined,
+            traceKey: undefined,
+          });
+        }
         get().refreshFileTree();
         break;
+      }
 
       case 'cancelled_message': {
         if (get().chatMessages.some((m: ChatMessage) => m.id === event.message.id)) {

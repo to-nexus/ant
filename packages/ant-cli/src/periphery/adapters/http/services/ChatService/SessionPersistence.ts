@@ -222,7 +222,9 @@ export class SessionPersistence {
 
   /**
    * Collapse the entire session log (trace.jsonl + feature.jsonl) + append a
-   * `user_reset` boundary. Used by `clearMessages` and by §17 hard_reset.
+   * `user_reset` boundary. Used **only by §17 Hard Reset** (POST
+   * `/context/reset`). Chat Clear now goes through
+   * {@link collapseTraceOnlyLogs} so the LLM retains conversation context.
    */
   async collapseSessionLogs(
     projectId: string,
@@ -239,6 +241,30 @@ export class SessionPersistence {
     } catch (err) {
       logger.warn(
         `[SessionPersistence] collapseSessionLogs failed: ${(err as Error)?.message ?? err}`,
+        { component: 'SessionPersistence', projectId, featureName },
+      );
+    }
+  }
+
+  /**
+   * Collapse trace.jsonl only — Chat Clear.
+   *
+   * `feature.jsonl` is intentionally preserved so the LLM retains
+   * conversation context across a chat clear. The UI chat view, which
+   * renders from trace.jsonl, will appear empty.
+   */
+  async collapseTraceOnlyLogs(
+    projectId: string,
+    featureName: string,
+    userContext?: UserContext,
+  ): Promise<void> {
+    const adapter = this.makeAdapter(projectId, featureName, userContext);
+    if (!adapter) return;
+    try {
+      await adapter.collapseTraceOnly();
+    } catch (err) {
+      logger.warn(
+        `[SessionPersistence] collapseTraceOnlyLogs failed: ${(err as Error)?.message ?? err}`,
         { component: 'SessionPersistence', projectId, featureName },
       );
     }

@@ -29,10 +29,12 @@ export function createFeatureLogRoutes(deps: {
   workspaceResolver?: any;
   /**
    * Optional ChatService — when present, `/context/reset` delegates to
-   * `chatService.clearMessagesAsync` so Reset shares the SSOT pipeline
-   * with the §16.2 Clear path (Redis session purge + local cache reset
-   * + trace.jsonl / feature.jsonl collapse + draft image cleanup +
-   * `messages_cleared` SSE broadcast). When absent the endpoint falls
+   * `chatService.clearMessagesAsync(..., 'full')` so Hard Reset shares the
+   * SSOT pipeline with the §16.2 Clear path (Redis session purge + local
+   * cache reset + jsonl collapse + draft image cleanup + `messages_cleared`
+   * SSE broadcast). The `scope='full'` flag distinguishes Hard Reset from
+   * DELETE /chat/messages (which defaults to `scope='chat'` and only
+   * collapses trace.jsonl). When ChatService is absent the endpoint falls
    * back to a direct FileSessionAdapter.collapseAll so the feature-log
    * collapse still succeeds, but the extra scratchpad / SSE effects are
    * skipped. Wiring happens in `routes/index.ts`.
@@ -184,7 +186,10 @@ export function createFeatureLogRoutes(deps: {
 
       if (deps.chatService) {
         // SSOT path — shared pipeline with DELETE /chat/messages.
-        await deps.chatService.clearMessagesAsync(projectId, featureName, userContext);
+        // scope='full' so the reset collapses BOTH trace.jsonl and
+        // feature.jsonl (+ user_reset boundary); DELETE /chat/messages keeps
+        // the default scope='chat' which only clears trace.jsonl.
+        await deps.chatService.clearMessagesAsync(projectId, featureName, userContext, 'full');
         // ChatService.clearMessagesAsync may delete draft images from
         // disk; the file tree is push-based so we must notify.
         deps.fileTreeNotifier?.notifyFileTreeUpdate(projectId, featureName, userContext);

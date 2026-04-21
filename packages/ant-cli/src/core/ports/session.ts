@@ -164,6 +164,22 @@ export interface SessionPort {
   collapseTurn(turnId: string): Promise<void>;
 
   /**
+   * Mark feature.jsonl lines with the given jobId as collapsed — Job-tab
+   * clear. Leaves trace.jsonl intact (UI history preserved). Sibling jobs of
+   * the same jobType are not affected because each has a distinct jobId.
+   */
+  collapseByJobId(jobId: string): Promise<void>;
+
+  /**
+   * Mark ALL trace.jsonl lines as collapsed — Chat Clear.
+   *
+   * `feature.jsonl` (LLM context SSOT) is intentionally preserved so the
+   * conversation can continue after a chat clear. Hard Reset continues to
+   * use {@link collapseAll}, which collapses both files.
+   */
+  collapseTraceOnly(): Promise<void>;
+
+  /**
    * Hard Reset — collapse all lines in both files + append a boundary line.
    *
    * Default `jobType` for the boundary is the agent-agnostic `'reset'` literal.

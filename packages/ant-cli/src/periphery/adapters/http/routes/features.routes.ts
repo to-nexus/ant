@@ -7,6 +7,7 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { getSessionFilePathByJob, getAgentForJob, getSessionDebugDir, DEBUG_SUBDIRS } from '../../../../core/utils/sessionPaths';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { FileSessionAdapter } from '../../session/FileSessionAdapter';
 
 /**
  * Feature CRUD operations
@@ -264,8 +265,9 @@ export function createFeaturesRoutes(deps: {
 
       // Clean up debug artifacts for all affected jobs
       if (cleanedJobIds.length > 0) {
+        const agent = getAgentForJob(jobType);
+
         try {
-          const agent = getAgentForJob(jobType);
           const debugSubdirs = DEBUG_SUBDIRS[agent] ?? [];
           for (const subdir of debugSubdirs) {
             const debugDir = getSessionDebugDir(featurePath, agent, subdir);
@@ -294,6 +296,21 @@ export function createFeaturesRoutes(deps: {
           logger.debug(`[Session] ✅ Cleared debug logs for jobs: ${cleanedJobIds.join(', ')}`);
         } catch (error) {
           logger.warn('Failed to clear debug log files (non-critical)', { component: 'Features' }, error);
+        }
+
+        // Collapse feature.jsonl lines tied to the invalidated jobIds so future
+        // prompts (resolve → plan/direct) no longer inject their user_turn /
+        // user_turn_meta / breadcrumb lines as context. trace.jsonl is left
+        // intact so the UI chat / activity view retains the history of the
+        // deleted job — matching the §16.2 "Chat Clear vs Job Clear" split.
+        try {
+          const adapter = new FileSessionAdapter(featurePath, agent, projectId, featureName);
+          for (const jobId of cleanedJobIds) {
+            await adapter.collapseByJobId(jobId);
+          }
+          logger.debug(`[Session] ✅ Collapsed feature.jsonl for jobIds: ${cleanedJobIds.join(', ')}`);
+        } catch (error) {
+          logger.warn('Failed to collapse feature.jsonl (non-critical)', { component: 'Features' }, error);
         }
       }
       

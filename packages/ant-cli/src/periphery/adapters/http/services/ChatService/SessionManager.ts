@@ -412,12 +412,23 @@ export class SessionManager {
   }
 
   /**
-   * Clear all messages in a session
+   * Clear all messages in a session.
+   *
+   * @param scope  `'chat'` (default) = Chat Clear — trace.jsonl only;
+   *               feature.jsonl (LLM context) is preserved so the
+   *               conversation continuity is kept.
+   *               `'full'` = Hard Reset — both trace.jsonl and feature.jsonl
+   *               are collapsed with a `user_reset` boundary appended.
+   *
+   * Redis scratchpad reset, local cache drop, draft image cleanup, and the
+   * `messages_cleared` SSE broadcast run in both scopes. Only the jsonl
+   * collapse step differs.
    */
   async clearMessagesAsync(
     projectId: string, 
     featureName: string, 
-    userContext?: UserContext
+    userContext?: UserContext,
+    scope: 'chat' | 'full' = 'chat',
   ): Promise<void> {
     const redisKey = this.getSessionKey(projectId, featureName, userContext);
     const simpleKey = this.getSimpleKey(projectId, featureName);
@@ -440,9 +451,14 @@ export class SessionManager {
       }
     }
     
-    // Collapse trace.jsonl / feature.jsonl so the durable SSOT also reflects
-    // an empty timeline. This is the user-visible clear effect.
-    await this.persistence.collapseSessionLogs(projectId, featureName, userContext);
+    // Collapse jsonl logs. scope='full' (Hard Reset) also rewrites
+    // feature.jsonl + appends a boundary; scope='chat' only clears the UI
+    // timeline so LLM context remains intact.
+    if (scope === 'full') {
+      await this.persistence.collapseSessionLogs(projectId, featureName, userContext);
+    } else {
+      await this.persistence.collapseTraceOnlyLogs(projectId, featureName, userContext);
+    }
 
     // Clean up draft images associated with chat
     const featurePath = this.persistence.getFeaturePath(projectId, featureName, userContext);
@@ -460,17 +476,22 @@ export class SessionManager {
       }
     }
 
-    // Broadcast to frontend
+    // Broadcast to frontend — scope lets the client decide whether to wipe
+    // featureLog cache (full) or refetch it (chat).
     this.broadcaster?.broadcast(projectId, featureName, {
-      type: 'messages_cleared'
+      type: 'messages_cleared',
+      scope,
     }, userContext);
   }
 
   /**
-   * Clear all messages in a session (sync version)
+   * Clear all messages in a session (sync version — fire-and-forget).
+   *
+   * Always uses Chat Clear semantics (`scope='chat'`) — Hard Reset uses the
+   * awaitable variant directly so the HTTP response can block until the
+   * collapse is durable.
    */
   clearMessages(projectId: string, featureName: string, userContext?: UserContext): void {
-    // Start async clear
     this.clearMessagesAsync(projectId, featureName, userContext).catch(err => {
       logger.warn(`Failed to clear messages`, { component: 'SessionManager' }, err);
     });
