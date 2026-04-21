@@ -31,7 +31,7 @@ import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 
 import { buildSystemPrompt, getTargetPath, formatConversationForPrompt } from './buildSystemPrompt';
-import { parseClarifyBlocks, stripClarifyBlocks } from './clarify';
+import { parseClarifyTags, stripClarifyTags } from '../../../../../common/clarify';
 import { saveConversationToSession, pruneConversationHistory } from './sessionWriter';
 
 /**
@@ -274,11 +274,15 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   await orchestrator.finalize(true);
   
   // === Check for <clarify> tags in response ===
-  const clarifyBlocks = parseClarifyBlocks(responseText);
+  // Planner surface uses `<clarify question="...">` with `<option>` children;
+  // blocks without any option would render as a plain text prompt, which
+  // the PRD flow never expects (the rules.md mandates every clarify carries
+  // lettered options). Preserve the legacy strict filter at this site.
+  const clarifyBlocks = parseClarifyTags(responseText).filter(b => b.options.length > 0);
   if (clarifyBlocks.length > 0) {
     console.log(`💬 [Planner:Generate] Found ${clarifyBlocks.length} clarify block(s), sending choice cards`);
     
-    const cleanedResponseText = stripClarifyBlocks(responseText);
+    const cleanedResponseText = stripClarifyTags(responseText);
     
     try {
       const { sendClarify } = await import('../../../../../common/clarify');

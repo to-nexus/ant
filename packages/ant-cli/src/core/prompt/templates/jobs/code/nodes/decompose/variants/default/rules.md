@@ -41,7 +41,9 @@ OUTPUT FORMAT:
 
 **Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply ONLY when tier is `3` or `4` AND mode is not `explain`. When `<tasks>` is `[]`, skip the reasoning steps those rules describe.
 
+{{#unless intentClarifyDisabled}}
 **Constraint**: The `generate` / `refactor` + tier `3`/`4` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes `[]` and `<specClarify>` is emitted instead of a task breakdown.
+{{/unless}}
 
 **Constraint**: When tier is `3` or `4` AND mode is `explain`, emit exactly one task:
 - `id`: `"explain-1"`
@@ -85,6 +87,7 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
 
 ## Spec Clarify (source adequacy for tier 3/4 decomposition)
 
+{{#unless intentClarifyDisabled}}
 **Observation target**: When the tier is `3` or `4` and mode is not `explain`, observe whether the Development Source (see Scope Determination) can anchor a confident task breakdown.
 
 **Principle**: Every checkpoint question below is phrased so that a `yes` answer moves toward emission. `<specClarify>` fires only when ALL four answers are `yes` together.
@@ -109,6 +112,7 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
 {{#if specClarifyBypassed}}
 **Constraint (session-carried decision)**: The user already chose to proceed without a spec. Do NOT emit `<specClarify>` on this turn. Decompose with whatever Development Source is available, even if partial.
 {{/if}}
+{{/unless}}
 
 ### `<specClarify>` output shape
 
@@ -132,7 +136,9 @@ The tag content MUST be a single JSON object with these fields (no others):
 First, analyze step by step (think through):
 - **Classify executionTier first**: `0` Reflex, `1` OneShot, `2` Exploratory, `3` Task, or `4` RefsGrounded? (see ExecutionTier Classification above)
 - If tier is `0`, `1`, or `2`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`
+{{#unless intentClarifyDisabled}}
 - If tier is `3` or `4` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all four checkpoints indicate no source, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown.
+{{/unless}}
 - If tier is `3` or `4`:
   - Is this a new project or existing project?
     - If "EXISTING CODEBASE DETECTED" was shown above, it is an existing project
@@ -764,6 +770,7 @@ Output in this exact order:
 
 **Constraint**: Emit `<executionTier>` and `<directHints>` BEFORE `<techTier>`. The tier commitment anchors the rest of the output.
 
+{{#unless intentClarifyDisabled}}
 **0.2. `<specClarify>` tag** (CONDITIONAL — see Spec Clarify above). Emit ONLY when all four Spec Clarify checkpoints fire. Omit the tag entirely otherwise:
 
 <specClarify>
@@ -778,6 +785,7 @@ Output in this exact order:
   }
 }
 </specClarify>
+{{/unless}}
 
 {{#if needsBoundaryClassification}}
 **1. `<boundary>` tag** (see Boundary Classification above)

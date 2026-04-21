@@ -389,7 +389,7 @@ function parseDetectClarifyChoice(
 }
 
 async function sendDetectClarifyCard(): Promise<void> {
-  const { sendClarify } = await import('../../../../../common/clarify.js');
+  const { sendClarify } = await import('../../../../../common/clarify');
   await sendClarify([{
     question: '어떤 작업을 수행할까요?',
     options: ['새로운 스펙 문서 생성 (spec-*.md)', '기존 시스템 기획서 수정'],

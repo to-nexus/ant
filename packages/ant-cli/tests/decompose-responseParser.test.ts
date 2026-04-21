@@ -159,4 +159,75 @@ describe('parseLLMResponse — specClarify', () => {
     const r = parseLLMResponse(makeResponse('<executionTier>3</executionTier>'));
     expect(r.specClarify).toBeUndefined();
   });
+
+  it('recovers specClarify body wrapped in a ```json markdown fence', () => {
+    // Regression: observed LLM violation of "NO ``` markers" in the decompose
+    // prompt (tag `late-fading-cross`). A fenced body caused JSON.parse to
+    // fail on the leading backtick and silently dropped the payload, which
+    // collapsed the job into a 0-task no-op success.
+    const fenced = [
+      '<specClarify>',
+      '```json',
+      '{',
+      '  "needsChoice": true,',
+      '  "reason": "No design or spec.",',
+      '  "displayMessage": "Need a spec first.",',
+      '  "choiceOptions": {',
+      '    "positive": { "label": "Design first", "action": "redirect_to_design" },',
+      '    "neutral":  { "label": "Proceed",      "action": "proceed_without_spec" },',
+      '    "negative": { "label": "Cancel",       "action": "cancel" }',
+      '  }',
+      '}',
+      '```',
+      '</specClarify>',
+    ].join('\n');
+    const r = parseLLMResponse(makeResponse(`<executionTier>3</executionTier>\n${fenced}`));
+    expect(r.specClarify?.needsChoice).toBe(true);
+    expect(r.specClarify?.choiceOptions.positive.action).toBe('redirect_to_design');
+  });
+
+  it('recovers specClarify body wrapped in a bare ``` fence (no lang)', () => {
+    const fenced = [
+      '<specClarify>',
+      '```',
+      '{"needsChoice":true,"reason":"r","displayMessage":"m",',
+      ' "choiceOptions":{',
+      '   "positive":{"label":"p","action":"redirect_to_design"},',
+      '   "neutral":{"label":"n","action":"proceed_without_spec"},',
+      '   "negative":{"label":"c","action":"cancel"}}}',
+      '```',
+      '</specClarify>',
+    ].join('\n');
+    const r = parseLLMResponse(makeResponse(`<executionTier>3</executionTier>\n${fenced}`));
+    expect(r.specClarify?.needsChoice).toBe(true);
+  });
+});
+
+describe('parseLLMResponse — code fence tolerance across tags', () => {
+  // Triple-backtick fences are forbidden by the prompt but the LLM
+  // violates this occasionally. Every JSON-bearing tag must survive.
+  it('strips a ```json fence around <tasks>', () => {
+    const body = '```json\n[{"id":"t1","name":"T1","type":"feature","priority":300,"packages":["shared"]}]\n```';
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks>${body}</tasks>`,
+    );
+    expect(r.tasks).toHaveLength(1);
+    expect(r.tasks[0].id).toBe('t1');
+  });
+
+  it('strips a ```json fence around <techTier>', () => {
+    const body = '```json\n{"stack":"backend","stackReasoning":"","language":"typescript","framework":null}\n```';
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n<techTier>${body}</techTier>\n${MINIMAL_TASKS}`,
+    );
+    expect(r.techTier?.stack).toBe('backend');
+  });
+
+  it('strips a ```json fence around <directHints>', () => {
+    const body = '```json\n{"targetFiles":["src/a.ts"]}\n```';
+    const r = parseLLMResponse(
+      makeResponse(`<executionTier>1</executionTier><directHints>${body}</directHints>`),
+    );
+    expect(r.directHints?.targetFiles).toEqual(['src/a.ts']);
+  });
 });
