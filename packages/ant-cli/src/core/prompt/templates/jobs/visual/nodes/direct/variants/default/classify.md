@@ -65,7 +65,7 @@ Emit a `<executionTier>N</executionTier>` tag BEFORE the `<classify>` block. `N`
 
 **Constraint**: The presence of reference images alone does NOT force Tier 4. Tier 4 applies when the generation is systematically derived from those references (brand refs → full icon set).
 
-⚠️ **Blind spot**: A single-asset `logo` request with no refs is tier `1`, NOT tier `3`. Do NOT inflate tier based on asset importance.
+⚠️ **Blind spot**: Asset importance does NOT determine tier. A single hero image for a landing page is tier `1`; a sprite sheet of many icons derived from brand refs is tier `4`. Observe the count of independent deliverables and the grounding source, not the asset's visibility.
 
 ## Response
 

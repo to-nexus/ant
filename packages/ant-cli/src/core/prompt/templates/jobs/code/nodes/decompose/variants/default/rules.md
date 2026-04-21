@@ -31,9 +31,11 @@ OUTPUT FORMAT:
 
 | Mode                    | Tier                       | `<tasks>` content                                     | `<directHints>` content |
 |---|---|---|---|
-| `explain`               | `0` / `1` / `2`            | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
+| `explain`               | `0`                        | `[]`                                                  | `{}` (answerable from the directive alone) |
+| `explain`               | `1` / `2`                  | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
 | `explain`               | `3` / `4`                  | Exactly one task, `type: "explain"`, `priority: 200`  | `{}` |
-| `generate` / `refactor` | `0` / `1`                  | `[]`                                                  | `{ "targetFiles": [...] }` listing the files the single action touches |
+| `generate` / `refactor` | `0`                        | `[]`                                                  | `{}` (no files planned — rare; treat as "nothing to do") |
+| `generate` / `refactor` | `1`                        | `[]`                                                  | `{ "targetFiles": [...] }` listing the files the single action touches |
 | `generate` / `refactor` | `2`                        | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` narrowing the observation surface |
 | `generate` / `refactor` | `3` / `4`                  | Full task breakdown per the rules below               | `{}` |
 

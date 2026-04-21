@@ -93,8 +93,10 @@ export interface SessionPort {
   appendUserTurn(line: FeatureUserTurnLine, options?: { skipFeature?: boolean }): Promise<void>;
 
   /**
-   * Append a user_turn_meta patch line (executionTier/reason).
-   * Written by Decompose after complexity judgment.
+   * Append a user_turn_meta patch line (executionTier).
+   * Written by each job's Tier Entry Node after the LLM emits
+   * `<executionTier>`. Fixed-tier jobs (learn / ask / design
+   * explain / design fallback) also append this with Tier 0 Reflex.
    */
   appendUserTurnMeta(line: FeatureUserTurnMetaLine): Promise<void>;
 

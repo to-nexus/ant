@@ -561,11 +561,12 @@ export interface ArchitectGraphState extends TriageableState {
 
   /**
    * Spec clarify choice emitted by Decompose when:
-   *   complexity === 'task' && mode !== 'explain'
+   *   tier >= 3 (Task or RefsGrounded) && mode !== 'explain'
    *   && no system design doc && no relevant spec
    * When present, graph routes to `__end__` to await user choice.
-   * Triggering logic belongs to `decompose_spec_clarify` (next todo);
-   * this channel exists so the parser/router can already carry the value.
+   * Triggering logic lives in the decompose prompt's Spec Clarify
+   * section; this channel carries the LLM's emitted `<specClarify>`
+   * payload for the router.
    */
   specClarify?: SpecClarify;
 

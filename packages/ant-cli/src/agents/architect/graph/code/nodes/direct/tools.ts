@@ -1,6 +1,6 @@
 /**
  * Per-node state-aware tool-set selector for the `direct` phase (single-turn
- * ReAct loop used for oneshot / exploratory complexity).
+ * ReAct loop used for Tier 0-2 execution — `oneshot` / `exploratory` budgets).
  *
  * Conforms to the `nodes/{name}/tools.ts` contract in
  * `docs/architecture/NODE_GRAPH_LAYOUT.md §2.2`:

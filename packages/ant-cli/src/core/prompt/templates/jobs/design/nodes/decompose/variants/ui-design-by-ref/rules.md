@@ -14,7 +14,7 @@
 
 **Constraint**: Reference images alone do not force Tier 4. Tier 4 applies when the UI documentation is systematically derived from those references (full-page ref → full UI spec). If the directive asks for a narrow refactor, prefer tier `1` even when references exist.
 
-⚠️ **Blind spot**: UI generate jobs with multiple reference images almost always land on tier `4`. UI refactor jobs against an existing doc usually land on tier `1`. Do NOT emit tier `3` when references are the source of truth — that is the Tier 4 signature.
+⚠️ **Blind spot**: When references are the source of truth for the breakdown, the tier is `4`, NOT `3`. The signature of Tier 4 is "the documentation is produced BY mapping the references" — not merely "references are attached".
 
 ---
 
