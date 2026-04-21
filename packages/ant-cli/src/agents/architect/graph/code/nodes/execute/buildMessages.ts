@@ -53,17 +53,32 @@ const DEFAULT_PLAN_FRAMING = {
 let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
 
 /**
- * Observe `codebase/node_modules` against `codebase/package.json` for
- * test-code tasks so the `missing-dependency-fix` injection can activate.
- * The same `areDepsInstalled` SSOT used by verification plan entry backs
- * this check; we do not introduce a parallel observation path.
+ * Observe `codebase/node_modules` against `codebase/package.json` so the
+ * `missing-dependency-fix` injection activates whenever declared deps are
+ * not yet resolvable. The same `areDepsInstalled` SSOT used by verification
+ * plan entry backs this check; we do not introduce a parallel observation
+ * path.
  *
- * Returns `false` for other task types to preserve their legacy default —
- * verification carries the signal via `Session.dependencyStatus()`, and
- * feature/error tasks surface missing imports through build/test output.
+ * Active task types: `setup`, `feature`, `design-system`, `ui`, `test-code`.
+ * A task that declares or relies on dependencies owns the install within the
+ * same cycle — observation + prompt guidance carries that responsibility to
+ * the LLM.
+ *
+ * Excluded task types:
+ *   - `verification`, `error` — carry the dependency signal via
+ *     `Session.dependencyStatus()` at plan entry; double-injection would
+ *     fragment the SSOT.
+ *   - `doc`, `explain` — do not modify code / cannot legitimately install.
+ *
+ * Returns `false` when `areDepsInstalled` reports `null` (non-JS project);
+ * in that case the observation has nothing to say and the injection stays
+ * dormant.
  */
-async function observeMissingDepsForTask(state: ArchitectGraphState): Promise<boolean> {
-  if (state.currentTask?.type !== 'test-code') return false;
+export async function observeMissingDepsForTask(state: ArchitectGraphState): Promise<boolean> {
+  const type = state.currentTask?.type;
+  if (!type) return false;
+  if (type === 'verification' || type === 'error') return false;
+  if (type === 'doc' || type === 'explain') return false;
   const featureRoot = state.deps?.fileSystem?.getRootPath?.();
   if (!featureRoot) return false;
   try {
@@ -324,13 +339,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       userLanguage: state.context?.userLanguage || 'en',
       filteredCatalog: undefined,
       hasRuntimeError: state.directive ? containsRuntimeErrorPattern(state.directive) : false,
-      // test-code frequently adds test-runner packages to package.json; if
-      // node_modules/<name> is missing we flip `hasMissingDependency` so the
-      // `missing-dependency-fix` injection activates and the task installs
-      // the runner itself (instead of deferring to verification). Other task
-      // types keep the legacy `false` default — verification owns its own
-      // signal via `Session.dependencyStatus()`, and feature/error tasks'
-      // missing-import errors are surfaced by build/test output.
+      // `missing-dependency-fix` activation: a task that declares or relies
+      // on deps owns the install within the same cycle. Flipped true when
+      // `codebase/node_modules` does not resolve every declared dep in
+      // `codebase/package.json`. Verification / error keep their SSOT via
+      // `Session.dependencyStatus()`; doc / explain opt out (see
+      // `observeMissingDepsForTask`).
       hasMissingDependency: await observeMissingDepsForTask(state),
       // Task-specific vars (e.g. error's remediationMode{Upstream,Refactor}).
       // Placed last so the hook's keys override generic defaults if ever
