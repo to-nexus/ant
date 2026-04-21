@@ -29,9 +29,13 @@ export async function addChatUserMessage(
 /**
  * Clear chat history for a feature.
  *
- * Session redesign §16.2: the backend collapses trace.jsonl + feature.jsonl
- * (durable SSOT) and broadcasts a `messages_cleared` SSE event so the UI
- * drops both its chat messages and the feature-log slice.
+ * Session redesign §16.2: the backend collapses `trace.jsonl` only (the UI
+ * chat SSOT). `feature.jsonl` (LLM prompt context) is intentionally
+ * preserved so conversation continuity is maintained. A `messages_cleared`
+ * SSE event with `scope: 'chat'` is broadcast so the UI drops chat messages
+ * and the local trace cache, while keeping breadcrumbs / tier badges intact.
+ * Use Hard Reset (`POST .../context/reset`) when full context wipe is
+ * required.
  */
 export async function clearChatHistory(
   projectId: string,
