@@ -37,6 +37,10 @@ export {
   isDirectTier,
   isTaskTier,
 } from './derive';
+export {
+  parseExecutionTierTag,
+  coerceExecutionTier,
+} from './parseExecutionTierTag';
 
 /**
  * Minimal state shape consumed by {@link getExecutionTier}. Accepts a

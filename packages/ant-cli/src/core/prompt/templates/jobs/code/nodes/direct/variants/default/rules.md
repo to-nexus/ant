@@ -45,6 +45,18 @@ Do NOT compensate for a missing source by inventing assumptions.
 
 Before any write, observe the current state of the target via read/list/search tools. Do NOT assume file content or directory structure.
 
+### Test and Doc File Discipline
+
+**Principle**: Test files (unit / integration / e2e) and documentation files belong to the `test-code` and `doc` task-type pipelines, which only materialize at higher execution tiers. At the direct-loop tier, these files are not authored — they are only touched when the directive's code change observably breaks the alignment of pre-existing test or doc files.
+
+**Constraint**: Do NOT create new test files or new documentation files in this loop. Creation is out of scope for this tier regardless of directive wording.
+
+**Constraint**: Edits to pre-existing test or doc files are allowed ONLY when the directive's code change renames, relocates, or alters the signature of a symbol the file already references. The edit is restricted to the minimum diff that restores alignment.
+
+**Constraint**: If the directive itself names tests or docs as the primary deliverable (e.g., "add tests for X", "document Y"), do NOT proceed at this tier — emit `<needsEscalation>true</needsEscalation>`. Authoring tests or docs requires the higher-tier task pipeline.
+
+⚠️ **Blind spot**: The habit of adding a companion test or a README note alongside a small code change is a tier-3+ concern. At this tier, a companion creation is scope expansion — escalate instead of compensating inside the loop.
+
 ### Output Discipline
 
 - One termination tag per loop termination. Never both in the same turn.
