@@ -147,16 +147,27 @@ async function buildPlanPrompt(
     state.resolvedAction?.basis, 'code', taskTechTiers,
   );
 
-  // Role-scoped flags for post-RAC templates. Plan reads `ref` docs as
-  // the authoritative spec (implementation must conform); `context`
-  // docs are background and do NOT gate plan-mode sections (e.g. the
-  // API Contract immutability notice, the design-system token extraction
-  // checklist, the ui-task visual source). See `.cursorrules`
-  // "Post-RAC Template Condition SSOT".
+  // Post-RAC template flags — see `.cursorrules`
+  // "Post-RAC Template Condition SSOT" for the 3-category semantics.
+  //
+  //   `hasSystemDesignRef` (Contract): gates the "API Contract
+  //     IMMUTABLE" notice in plan/base.md. The system-design doc is
+  //     promoted to `role='ref'` via package-mapping in
+  //     `deriveArtifactPolicy` whenever a task's `packages` list
+  //     references fe-system-* / be-system-*, so the immutability
+  //     language is justified.
+  //
+  //   `hasUi` (Gate): gates design-system TOKEN INVENTORY / ui ASSET
+  //     INVENTORY / LAYOUT SPECS in plan/rules.md. `deriveArtifactPolicy`
+  //     assigns UI docs `role='context'` for ui/design-system tasks
+  //     regardless of upstream intent — so `hasUiRef` would silently
+  //     drop gen-code-spec / rev-code into the no-ui-docs branch. The
+  //     inventory checklists are identical for ref and context roles,
+  //     so `hasUi` (presence) is the correct gate.
   const allDocs = getRACDocuments(resolvedActionWithDocs);
   const planPool = new ArtifactPoolView(allDocs);
   const hasSystemDesignRef = planPool.hasSystemDesignRef();
-  const hasUiRef = planPool.hasUiRef();
+  const hasUi = planPool.hasUi();
 
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
   const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
@@ -173,7 +184,7 @@ async function buildPlanPrompt(
     hasTools: options?.hasTools ?? false,
     designDocUnknownPackages: state.designDocUnknownPackages,
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
-    resolvedAction: resolvedActionWithDocs, hasSystemDesignRef, hasUiRef,
+    resolvedAction: resolvedActionWithDocs, hasSystemDesignRef, hasUi,
     featureContext: state.featureContext,
     ...typeVars,
   });

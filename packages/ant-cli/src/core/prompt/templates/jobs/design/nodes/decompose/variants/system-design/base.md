@@ -104,15 +104,6 @@ These are initial defaults for this tier. **MSA DETECTION below may expand them*
 
 {{spec}}
 
-{{#if hasExistingDesign}}
-### 📄 Existing Design Detected
-
-Previous design:
-{{designPreview}}
-{{else}}
-### 🆕 New Design (no previous design)
-{{/if}}
-
 ---
 
 ## 📊 PROJECT SCOPE ANALYSIS

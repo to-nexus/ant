@@ -162,6 +162,130 @@ Mode dispatch lives in **exactly one place**: `Tier3Task`'s constructor in `core
 
 ---
 
+## Canonical Tag Rendering SSOT
+
+**Every canonical `<tag>` emitted by a node — LLM-streamed or back-channel emit — MUST be registered in `packages/ant-cli/src/core/streaming/transformers/SpecialTagTransformer.ts`, and rendering rules MUST live there only.**
+
+This is the central authority for how XML-style markers become chat UI. Fragmentation (duplicate formatting in nodes, parsers, or chat helpers) is explicitly forbidden — the transformer's `register({pattern, transform})` list is the complete inventory.
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- Emitting a new `<tag>` from any node without adding a transformer entry for it
+- Calling `formatRACForChat` / building tag-formatted text anywhere outside `SpecialTagTransformer` (and the `emitDetectOutcome` helper that delegates to it)
+- Adding `insideXxx` state flags to `XMLStreamParser` to suppress a tag — suppression belongs in the transformer (`{ consumed: true }`) so the parser stays payload-agnostic
+- Duplicating a tag's regex in a streaming parser AND in a post-stream response parser without a transformer policy — the transformer is the one place that decides "render vs. suppress"
+- `try { await chatAPI.sendLLMEvent(...) } catch {}` silently swallowing chat-emit failures — use `console.warn` so renderer drift is visible
+
+### ✅ CORRECT
+
+- New canonical tag → add `this.register({pattern, transform})` in `SpecialTagTransformer.initializeTransformers()` with either a `transform*` method (formatted output) or a `() => ({ consumed: true })` suppressor
+- Nodes that need back-channel emit (e.g. detect, decompose-final) build the canonical JSON payload and delegate to `core/streaming/emitDetectOutcome.ts` (or a similar helper) which runs the payload through the transformer
+- Locale-dependent labels for tags live in sibling SSOT modules (e.g. `core/executionTier/labels.ts`) and are imported by the transformer — never hard-coded in node files
+
+### Registered tags (current inventory)
+
+| Tag | Policy | Surface |
+|---|---|---|
+| `<done>` | formatted | completion notice |
+| `<learn_command>` | formatted | learn summary |
+| `<tasks>` | consumed | rendered by Kanban |
+| `<references>` | formatted | reference repo list |
+| `<detect>` | formatted | RAC + basis (detect / decompose-final phases) |
+| `<executionTier>` | formatted | 5-tier strategy label |
+| `<prescribedDependencies>` (+ legacy `<unknownPackages>`) | formatted | new dependency list |
+| `<techTier>`, `<boundary>`, `<directHints>`, `<specClarify>` | consumed | internal state only |
+
+### Why This Matters
+
+Without a single authority:
+
+1. Raw XML leaks into the chat stream whenever a node adds a tag faster than its renderer
+2. Formatting drifts across Korean / English surfaces because each node reinvents the wheel
+3. Suppression logic accumulates in parsers that have no business knowing about domain payloads
+4. Renamed tags silently break chat UI because no registry exists to fail-fast on mismatch
+
+The transformer registry is the self-documenting inventory. If it isn't there, it isn't canonical.
+
+---
+
+## Post-RAC Template Condition SSOT
+
+**Post-RAC template `{{#if ...}}` conditions branch on ONE of three flag categories — Gate, Contract, Background — chosen by what the block enforces, NOT by the role an artifact happens to carry today. `ArtifactPoolView` is the single source of truth for all three categories. "Availability meta" blocks that duplicate content already injected via role sections are forbidden; "functional meta" (IDs that LLM output schemas reference) is allowed.**
+
+The RAC-derived pool ([packages/ant-cli/src/agents/common/graph/loadDocumentsForRAC.ts](packages/ant-cli/src/agents/common/graph/loadDocumentsForRAC.ts)) annotates every artifact with `role='ref'` or `role='context'`. The intent matrix ([packages/ant-shared/src/action-config-matrix.ts](packages/ant-shared/src/action-config-matrix.ts)) assigns DIFFERENT roles to the same artifact kind across intents (e.g. UI=ref for `gen-code-sys` but UI=context for `gen-code-spec` / `rev-code`), so blocks whose semantics are identical for ref and context MUST gate on presence (Gate), not role.
+
+### 3-category taxonomy
+
+```
+Template block
+   │
+   └─ What does this block's copy enforce?
+      ├─ "The doc is authoritative — implementation MUST conform / IMMUTABLE"
+      │      → Contract flag:  hasUiRef / hasSystemDesignRef / hasSpecRef / hasSourcesRef
+      │
+      ├─ "The doc is background — read if useful, no conformance demand"
+      │      → Background flag: hasUiContext / hasSystemDesignContext / …
+      │
+      └─ "The kind of doc is available; activate guidance/inventory/ladder"
+             → Gate flag:     hasUi / hasSystemDesign / hasSpec / hasSources
+```
+
+| Category | Naming | Semantics | Current use-sites |
+|---|---|---|---|
+| **Gate** | `hasUi`, `hasSystemDesign`, `hasSpec`, `hasSources` | Post-RAC pool has the artifact kind (role-agnostic) | decompose design-system ladder; plan TOKEN / ASSET / LAYOUT INVENTORY; execute visual source hint |
+| **Contract** | `hasUiRef`, `hasSystemDesignRef`, `hasSpecRef`, `hasSourcesRef` | `role='ref'` — block language says "IMMUTABLE / MUST conform" | plan base "API Contract IMMUTABLE" (`hasSystemDesignRef`) |
+| **Background** | `hasUiContext`, `hasSystemDesignContext`, … | `role='context'` — block explicitly scopes doc as background | reserved for future use |
+
+**Gate-first principle**: when unsure, default to Gate. Contract is warranted ONLY when the copy literally says "IMMUTABLE / MUST conform / authoritative"; otherwise the block leaks the implementation detail "which intent am I in?" into a rendering decision it shouldn't own.
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- `{{#if hasUiDoc}}` / `{{#if hasUiDocs}}` / `{{#if hasDesignDoc}}` / `{{#if hasUiInDocuments}}` / any ad-hoc alias — templates must use the exact `ArtifactPoolView` method names (`hasUi`, `hasUiRef`, `hasUiContext`, …).
+- Adding role-scoped conditions (`hasUiRef`) for blocks whose semantics are identical across ref / context — that's the intent-matrix regression this SSOT is designed to prevent. Use Gate.
+- "Availability meta" blocks that repeat filenames / paths already visible in role sections (`designDocsMeta`, `uiSectionsSummary`, `uiHint`, "Available source files: …").
+- Introducing `insideXxx` path-scan flags for post-RAC phases (those flags are valid ONLY for pre-RAC triage / detect).
+- Passing raw `pool.hasUi()` as a template variable without a documented Gate rationale — wrap the call in a node-level constant with a comment citing this section.
+
+### ✅ CORRECT
+
+- Add helpers on `ArtifactPoolView` exactly once per (category × kind); nodes only consume them, never inline new path predicates.
+- Per use-site, run this check silently:
+  1. Does the block's copy say "IMMUTABLE / MUST conform"? → Contract (`*Ref`).
+  2. Does the block explicitly frame the doc as background? → Background (`*Context`).
+  3. Otherwise → Gate (`hasX`).
+- **Functional meta is allowed**: path / id lists that the LLM output schema binds to (e.g. `uiSections` IDs, refactor-mode `targetFile` enum) are not "availability meta" — they are inputs the LLM consumes. Keep them, sourced from the pool, clearly commented as "Functional meta".
+
+### Pre-RAC exception
+
+`triage` and `detect` run BEFORE RAC exists. They may keep path-based workspace-scan flags (`hasPrd`, `hasFigmaConfig`, `hasScreens`, `hasUiDocs`, `hasDesignDoc`, `artifactAvailability`) because no role-annotated pool is available yet. These flags decide WHAT to put into the RAC; once RAC is built, they are obsolete for every downstream phase.
+
+### Why This Matters
+
+Every `hasUiRef`-only check that should have been Gate is a silent regression waiting for the next intent addition. The taxonomy converts the "which intent assigns which role?" question — which phase nodes have no business answering — into a property of the template block's own language. If the block says "IMMUTABLE", it's Contract; otherwise it's Gate.
+
+The historical regression: decompose / plan rules gated `design-system` task creation and token inventory on `hasUiRef`. For `gen-code-spec` / `rev-code`, UI is context — so the guidance silently disappeared, task decomposition skipped the token ladder, and plans went out without the inventory checklist. `hasUi` (Gate) covers all four code intents with a single flag while `hasSystemDesignRef` legitimately stays Contract (its block literally says "IMMUTABLE").
+
+### Enforcement
+
+```bash
+# Every post-RAC template condition must name an ArtifactPoolView method.
+# Pre-RAC phases (triage / detect) are exempt — see "Pre-RAC exception" above.
+rg "\{\{#if (hasUi|hasSystemDesign|hasSpec|hasSources)(Ref|Context)?\}\}" \
+  packages/ant-cli/src/core/prompt/templates/jobs \
+  --glob '!**/nodes/triage/**' --glob '!**/nodes/detect/**'
+# Expected: all matches resolve to real ArtifactPoolView methods; no aliases.
+
+# Legacy aliases must be absent from POST-RAC templates (pre-RAC is exempt).
+rg "\{\{#if (hasUiDoc|hasUiDocs|hasDesignDoc|hasUiInDocuments)\}\}" \
+  packages/ant-cli/src/core/prompt/templates/jobs \
+  --glob '!**/nodes/triage/**' --glob '!**/nodes/detect/**'
+# Expected: 0 matches.
+```
+
+The intent-matrix integration test ([packages/ant-cli/tests/role-flag-intent-matrix.test.ts](packages/ant-cli/tests/role-flag-intent-matrix.test.ts)) is the runtime guard: it asserts `hasUi=true` for every intent that surfaces UI as either ref or context, catching any regression that would re-introduce `hasUiRef` as a Gate.
+
+---
+
 ## Design Job UI Documents
 
 ### Chapter-Based Generation

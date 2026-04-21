@@ -14,6 +14,37 @@
  *   getDesignDocByPackageFromPool — lookup by package tag
  *   extractFirstDesign — first system-design artifact content
  *   hasSourceArtifact / getSourceContent — source/prd artifact access
+ *
+ * ── Post-RAC template flag categories (SSOT for .cursorrules) ──
+ *
+ * `ArtifactPoolView` exposes THREE flavours of presence check; template
+ * authors pick by WHAT the gated block enforces, not by the role the
+ * artifact happens to carry today:
+ *
+ *   Gate     — `hasUi`, `hasSystemDesign`, `hasSpec`, `hasSources`
+ *              "An artifact of this kind exists in the post-RAC pool."
+ *              Use for task-decomposition branching, inventory guides,
+ *              or any block whose semantics are IDENTICAL for ref and
+ *              context roles. DEFAULT choice when unsure.
+ *
+ *   Contract — `hasUiRef`, `hasSystemDesignRef`, `hasSpecRef`,
+ *              `hasSourcesRef`
+ *              "An authoritative artifact (`role='ref'`) exists and
+ *              the block's language enforces conformance (MUST /
+ *              IMMUTABLE)." Use ONLY when the copy explicitly states
+ *              the doc is an immutable contract.
+ *
+ *   Background — `hasUiContext`, `hasSystemDesignContext`, ...
+ *              "A `role='context'` artifact exists; the block treats
+ *              it as background/reference material, not a contract."
+ *              Currently reserved for future use-sites; no active
+ *              template consumers today.
+ *
+ * The intent matrix in `@ant/shared/action-config-matrix.ts` assigns
+ * different roles to the same artifact kind across intents
+ * (e.g. UI=ref for `gen-code-sys`, UI=context for `gen-code-spec`),
+ * so template blocks that branch on "UI is available" belong in the
+ * Gate category — not Contract.
  */
 
 import type { ResolvedArtifact } from '@ant/shared';
@@ -33,8 +64,9 @@ import * as pathMod from 'path';
  * `outputs/design/ui-*` (tokens/assets/spec written directly under
  * `outputs/design/`). The flat-path fallback is a supported output
  * shape (see `agents/architect/graph/design/graph.ts validateAssetReferences`);
- * without covering it the plan-side `hasUiDoc` signal would silently
- * turn off whenever design docs were written to the flat path.
+ * without covering it, every UI presence flag (`hasUi` / `hasUiRef` /
+ * `hasUiContext` and the `pool.ui` selector) would silently turn off
+ * whenever design docs were written to the flat path.
  */
 const FLAT_UI_DOC_REGEX = new RegExp(`^${DESIGN_DIR}/ui-[^/]+$`);
 
@@ -232,12 +264,49 @@ export class ArtifactPoolView {
     return this.pool.filter(a => a.path.startsWith(ARTIFACT_PREFIX.API_CONTRACT));
   }
 
-  // ── Presence checks ──
+  // ── Gate presence checks — SSOT for post-RAC template Gate flags ──
+  //
+  // Role-agnostic: returns true for BOTH `role='ref'` AND `role='context'`.
+  // Post-RAC templates choose these for any block that fires identically
+  // regardless of role (task decomposition, inventory guides, visual
+  // source hints). See the file-level "Post-RAC template flag
+  // categories" docblock and `.cursorrules`
+  // "Post-RAC Template Condition SSOT".
 
   hasSystemDesign(): boolean { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN)); }
   hasSpec(): boolean         { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SPEC)); }
   hasUi(): boolean           { return this.pool.some(a => isUiArtifactPath(a.path)); }
   hasSources(): boolean      { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SOURCES)); }
+
+  // ── Role-scoped checks — Contract (ref) / Background (context) ──
+
+  hasSystemDesignRef(): boolean {
+    return this.pool.some(a => a.role === 'ref' && a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN));
+  }
+  hasSystemDesignContext(): boolean {
+    return this.pool.some(a => a.role === 'context' && a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN));
+  }
+
+  hasSpecRef(): boolean {
+    return this.pool.some(a => a.role === 'ref' && a.path.startsWith(ARTIFACT_PREFIX.SPEC));
+  }
+  hasSpecContext(): boolean {
+    return this.pool.some(a => a.role === 'context' && a.path.startsWith(ARTIFACT_PREFIX.SPEC));
+  }
+
+  hasUiRef(): boolean {
+    return this.pool.some(a => a.role === 'ref' && isUiArtifactPath(a.path));
+  }
+  hasUiContext(): boolean {
+    return this.pool.some(a => a.role === 'context' && isUiArtifactPath(a.path));
+  }
+
+  hasSourcesRef(): boolean {
+    return this.pool.some(a => a.role === 'ref' && a.path.startsWith(ARTIFACT_PREFIX.SOURCES));
+  }
+  hasSourcesContext(): boolean {
+    return this.pool.some(a => a.role === 'context' && a.path.startsWith(ARTIFACT_PREFIX.SOURCES));
+  }
 
   // ── Aggregate metrics ──
 
@@ -321,6 +390,29 @@ export class ArtifactPoolView {
   /** Find a spec artifact by filename (e.g. `spec-login.md`). */
   findSpec(filename: string): ResolvedArtifact | undefined {
     return this.pool.find(a => a.path === `${ARTIFACT_PREFIX.SPEC}${filename}`);
+  }
+
+  /**
+   * Filename of the spec selected as a development source for this turn.
+   *
+   * SSOT for "is this job spec-driven?": a spec with `role='ref'` in the
+   * RAC-derived artifact pool means the user/intent explicitly promoted it
+   * to a development source (e.g. `gen-code-spec` intent with
+   * `refsSingleSelect: true`, or `rev-code` with a spec mention).
+   *
+   * Returns `null` when no spec is in the ref role — `role='context'` specs
+   * do NOT count (they are reference material only).
+   *
+   * Replaces the legacy `<selectedSpec>` LLM tag + `state.selectedSpec`
+   * field. The decompose LLM must NOT re-pick a spec mid-turn; the choice
+   * is made upstream at intent/action-metadata time.
+   */
+  activeSpecRefFilename(): string | null {
+    const ref = this.pool.find(a =>
+      a.role === 'ref' && a.path.startsWith(ARTIFACT_PREFIX.SPEC)
+    );
+    if (!ref) return null;
+    return ref.path.slice(ARTIFACT_PREFIX.SPEC.length);
   }
 }
 

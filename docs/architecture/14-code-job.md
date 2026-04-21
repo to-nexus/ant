@@ -242,7 +242,7 @@ interface ParsedUiDocs {
 | `error` | spec + api-contract (spec 존재 시) |
 | `verification` | 빈 배열 |
 
-`task.include`가 지정되면 기본 규칙 대신 정확한 path-prefix 매칭이 적용된다. `include`는 decompose LLM이 출력하거나, `packages`/`uiSections`/`selectedSpec`에서 자동 유도된다.
+`task.include`가 지정되면 기본 규칙 대신 정확한 path-prefix 매칭이 적용된다. `include`는 decompose LLM이 출력하거나, `packages`/`uiSections` + RAC의 활성 spec ref(`ArtifactPoolView.activeSpecRefFilename()`)에서 자동 유도된다.
 
 ### Document Authority
 
@@ -250,9 +250,28 @@ interface ParsedUiDocs {
 - **ui-assets.json**: SSOT — 에셋 경로의 유일한 원천
 - **ui-spec.json**: Primary — 레이아웃의 1차 참조. spec이 침묵하는 세부사항은 프레임워크 best practices 적용
 
-### hasUiDoc 플래그
+### Post-RAC template flags (Gate / Contract / Background)
 
-`parsedUiDocs`가 존재하면 `hasUiDoc = true`가 `buildMessages.ts`에서 artifacts에 설정되어, execute 프롬프트에서 `{{#if hasUiDoc}}` 분기로 UI 관련 가이드를 조건부 주입한다.
+post-RAC 페이즈(decompose/plan/execute)의 템플릿은 **3-카테고리 flag**로 분기한다. 어떤 category를 쓸지는 "해당 블록의 copy가 무엇을 강제하는가?"로 판단한다 — artifact가 오늘 가진 role이 아니라.
+
+| Category | Naming | 판단 기준 | 대표 use-site |
+|---|---|---|---|
+| **Gate** | `hasUi`, `hasSystemDesign`, `hasSpec`, `hasSources` | 블록이 ref/context 여부와 무관하게 동일하게 발동해야 함 | decompose의 `design-system` 태스크 생성 분기, plan의 TOKEN/ASSET/LAYOUT 인벤토리, execute의 visual-source hint |
+| **Contract** | `hasUiRef`, `hasSystemDesignRef`, `hasSpecRef`, `hasSourcesRef` | 블록 copy가 "IMMUTABLE / MUST conform" 을 명시 | plan base의 "API Contract IMMUTABLE" (`hasSystemDesignRef`) |
+| **Background** | `hasUiContext`, `hasSystemDesignContext`, … | 블록이 "참고 자료"로 명시 | 현재 use-site 없음 (헬퍼만 보존) |
+
+**Gate-first 원칙**: 모호하면 Gate가 기본. Contract는 블록 copy가 명시적으로 "IMMUTABLE/MUST"를 쓸 때만.
+
+왜 이렇게 해야 하는가? Intent matrix([`@ant/shared/action-config-matrix.ts`](../../packages/ant-shared/src/action-config-matrix.ts))는 같은 artifact kind에 intent별로 다른 role을 배정한다:
+
+- `gen-code-sys`: UI=ref / SYS=ref
+- `gen-code-spec`: UI=**context** / SYS=context (SPEC이 ref)
+- `rev-code`: UI=**context** / SYS=context
+- `rev-ui`: UI=ref
+
+`hasUiRef`만으로 gating하면 `gen-code-spec`/`rev-code`에서 UI 가이드가 **침묵하는 회귀**가 발생한다. 토큰 인벤토리·design-system 태스크 사다리는 intent와 무관하게 "UI 문서가 있으면 활성" 이 옳은 semantics이므로 Gate(`hasUi`)로 갈라야 한다. 이 invariant은 [`tests/role-flag-intent-matrix.test.ts`](../../packages/ant-cli/tests/role-flag-intent-matrix.test.ts)가 런타임으로 보호한다.
+
+규약·금지 사항 전체는 `.cursorrules`의 **Post-RAC Template Condition SSOT** 섹션 참조.
 
 ## Visual Source Authority
 

@@ -156,7 +156,7 @@ describe('Integration B: Document assembly logic', () => {
     expect(docs).toHaveLength(0);
   });
 
-  it('Scenario 4: error + selectedSpec → spec doc in documents', () => {
+  it('Scenario 4: error + active spec ref → spec doc in documents', () => {
     const specContent = 'Login feature specification';
     const apiContracts = { main: 'API contract' };
 

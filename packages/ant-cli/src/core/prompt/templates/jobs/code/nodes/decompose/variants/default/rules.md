@@ -223,7 +223,7 @@ CRITICAL:
 
 **Constraint**: `"design-system"` description MUST NOT enumerate specific component names (e.g., "Button, Input, Modal, Toast"). The executor observes ui-spec at runtime to determine which shared components to create. Description should define SCOPE, not a component inventory.
 
-{{#if hasUiDocs}}
+{{#if hasUi}}
 **Constraint**: ui-docs exist — create `"design-system"` task(s):
 - Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure. `uiSections: ["tokens"]`.
 - Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. `uiSections: ["tokens", "<component-section>"]`.
@@ -429,7 +429,7 @@ the full path so the executor can copy it directly into the install command.
 
 When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify which UI doc sections are needed.
 
-{{#if hasUiDocs}}
+{{#if hasUi}}
 - `"design-system"` (priority 200): `"uiSections": ["tokens"]`
 - `"design-system"` (priority 201+): `"uiSections": ["tokens", "<component-section>"]`
 - `"ui"` tasks: `"uiSections": ["tokens", "<component-section>"]`
