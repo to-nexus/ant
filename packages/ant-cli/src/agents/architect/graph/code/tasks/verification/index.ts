@@ -15,22 +15,15 @@ import type { TaskHooks } from '../_shared/types';
 import { onEvent } from './hooks/tool';
 import { guard } from './hooks/command';
 import { evaluate, budgetExhaustedHint } from './hooks/check';
-import { shortCircuitAfterPlan, routeAfterDone } from './hooks/router';
+import { routeAfterDone } from './hooks/router';
 import {
   initSession,
-  onEntry,
-  classifyEntry,
-  decideOutcome,
-  maybeSplit,
-  makeTerminalError,
   buildPrompt as planBuildPrompt,
 } from './hooks/plan';
 import { executeHook } from './hooks/execute';
 import {
   hasOwnAttemptCounter,
-  captureOnFailure,
   attemptCount,
-  attachSnapshot,
   restoreIntoWorkerState,
 } from './hooks/orchestrator';
 import { isExclusive } from './hooks/decompose';
@@ -39,11 +32,6 @@ import { convKey } from './hooks/conversations';
 export const hooks: TaskHooks = {
   plan: {
     initSession,
-    onEntry,
-    classifyEntry,
-    decideOutcome,
-    maybeSplit,
-    makeTerminalError,
     buildPrompt: planBuildPrompt,
     // plan-toolLoop debug log uses the verification rules template so the
     // captured prompt reflects the variant actually being exercised.
@@ -53,12 +41,10 @@ export const hooks: TaskHooks = {
   tool: { onEvent },
   command: { guard },
   check: { evaluate, budgetExhaustedHint },
-  router: { shortCircuitAfterPlan, routeAfterDone },
+  router: { routeAfterDone },
   orchestrator: {
     hasOwnAttemptCounter,
-    captureOnFailure,
     attemptCount,
-    attachSnapshot,
     restoreIntoWorkerState,
   },
   decompose: { isExclusive },

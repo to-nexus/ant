@@ -4,28 +4,9 @@
  * Translates the plan-node's verification-specific branches into Session API
  * calls. Hooks supplied:
  *
- *   - `onEntry(state, reason)`     — bump attempt counter + clear cycle set
- *                                    via `session.onPlanEntry(reason)`.
- *   - `classifyEntry(state)`       — derives the plan-entry reason from
- *                                    `state._nextPlanEntry` (set by exec
- *                                    router before re-entering plan).
- *   - `decideOutcome(state, pt)`   — forwards raw plan text to
- *                                    `session.evaluate({ planText })` so
- *                                    the verdict is derived strictly from
- *                                    session-owned state (attempts, history,
- *                                    empty-plan body). Never returns
- *                                    `force_split` — that is `maybeSplit`'s
- *                                    single responsibility (§6.2 boundary).
- *   - `maybeSplit(state, pt)`      — sole owner of the force_split path.
- *                                    Parses the plan, calls
- *                                    `session.evaluate({…parsed})` once,
- *                                    and when the verdict is `force_split`
- *                                    advances the batch-split cycle counter
- *                                    and returns the `SplitResult` envelope
- *                                    the plan node should enqueue.
- *   - `makeTerminalError(...)`     — constructs a typed `VerificationTerminalError`
- *                                    with a carry-over snapshot so the
- *                                    orchestrator can classify it immediately.
+ *   - `initSession(state, env)`    — idempotent merge-aware Session creation
+ *                                    at plan-node entry (fresh / seed-only
+ *                                    metadata / fully rehydrated).
  *   - `buildPrompt(ctx)`           — renders the verification-variant plan
  *                                    prompt (`jobs/code/nodes/plan/variants/
  *                                    verification/base`) with tech-tier-aware
@@ -34,63 +15,36 @@
  *                                    `nodes/plan/planGeneration.ts` L95~148
  *                                    as part of T6b-β.
  *
+ * Attempt-counter bookkeeping (`session.onPlanEntry(reason)`) and plan-entry
+ * classification (`state._nextPlanEntry`) are called directly by the phase
+ * layer in `nodes/plan/parts/entry.ts` (`handleRetryEntry`, `handleReverifyEntry`,
+ * `resolvePlanEntry`). Earlier drafts routed both through extra `onEntry` /
+ * `classifyEntry` hook slots, but the phase layer already holds the Session
+ * reference and the router-set `_nextPlanEntry` signal, so the indirection
+ * produced dead surface. Those slots were retired in the T11 post-review
+ * consistent with the T7/T8 follow-ups that removed `attachSnapshot` /
+ * `captureOnFailure` and `decideOutcome` / `maybeSplit` / `makeTerminalError`.
+ *
+ * Termination decisions (`VerificationTerminalError` throws for
+ * `max_retries_exceeded` / `batch_cycle_limit` / `unresolved_violations`)
+ * remain at the phase layer (`nodes/plan/parts/entry.ts`,
+ * `nodes/plan/parts/batchSplit.ts`, `parallel/TaskWorker.ts`) where the
+ * surrounding control flow lives.
+ *
  * R2 compliance — the hook's verdicts come from its own `model/` (Session,
- * outcome, errors). Prompt-rendering helpers (`collectConfigSnapshot`,
+ * errors). Prompt-rendering helpers (`collectConfigSnapshot`,
  * `renderConfigBlock`) also live under `model/configSnapshot` as of T9.
  * No imports from `nodes/`, `routers/`, or `parallel/`.
  */
 
 import type { ArchitectGraphState } from '../../../state';
-import type { PlanEntry } from '../model/Session';
 import { VerificationSession } from '../model/Session';
-import type { VerificationOutcome } from '../model/outcome';
-import { VerificationTerminalError } from '../model/errors';
-import type { VerificationTerminalKind } from '../model/errors';
-import type { TerminalOutcome, SplitResult, PlanPromptCtx, InitSessionEnv } from '../../_shared/types';
+import type { PlanPromptCtx, InitSessionEnv } from '../../_shared/types';
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import {
   collectConfigSnapshot,
   renderConfigBlock,
 } from '../model/configSnapshot';
-
-// ────────────────────────────────────────────────────────────────────────────
-// Plan parsing helpers — kept local to avoid coupling to `nodes/plan/*`.
-// ────────────────────────────────────────────────────────────────────────────
-
-function stripFences(text: string): string {
-  const trimmed = text.trim();
-  const m = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n\s*```$/);
-  return m ? m[1].trim() : trimmed;
-}
-
-interface ParsedPlan {
-  totalErrors: number;
-  modifyCount: number;
-  batches: unknown[];
-  implementation: Record<string, unknown>;
-  raw: Record<string, unknown>;
-}
-
-function parsePlan(planText: string): ParsedPlan | null {
-  if (!planText || planText.length === 0) return null;
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(stripFences(planText));
-  } catch {
-    return null;
-  }
-  const diagnostics = (parsed.diagnostics ?? {}) as Record<string, unknown>;
-  const implementation = (parsed.implementation ?? {}) as Record<string, unknown>;
-  const modify = Array.isArray(implementation.modify) ? implementation.modify : [];
-  const batches = Array.isArray(parsed.batches) ? parsed.batches : [];
-  return {
-    totalErrors: typeof diagnostics.totalErrors === 'number' ? diagnostics.totalErrors : 0,
-    modifyCount: modify.length,
-    batches,
-    implementation,
-    raw: parsed,
-  };
-}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Hook implementations
@@ -119,128 +73,6 @@ export function initSession(state: ArchitectGraphState, env: InitSessionEnv): vo
     return;
   }
   state.verification.hydrateEnv(env);
-}
-
-/**
- * Record plan-node re-entry. `retry` and `reverify` bump the attempt counter
- * and clear the per-cycle attempted set; other reasons are no-ops at the
- * session level.
- */
-export function onEntry(state: ArchitectGraphState, reason: PlanEntry): void {
-  state.verification?.onPlanEntry(reason);
-}
-
-/**
- * Derive the plan-entry reason from transient state set by upstream routers.
- * Returns `null` when the router has not pre-declared a reason — the phase
- * layer is then responsible for choosing `fresh` / `resumed` / `toolLoop`.
- */
-export function classifyEntry(state: ArchitectGraphState): PlanEntry | null {
-  const next = state._nextPlanEntry;
-  if (next === 'retry' || next === 'reverify') return next;
-  return null;
-}
-
-/**
- * Decide the "continue / short_circuit / terminal" verdict using only
- * information the session already owns (attempts, history, repeated-plan
- * hashes, empty-plan body). This hook is strictly the non-split path —
- * per handoff §6.2 the boundary is:
- *
- *   maybeSplit  : parses the plan and decides force_split only
- *   decideOutcome : passes raw planText; `evaluate` never sees parsed
- *                   metadata, so `force_split` is unreachable here
- *
- * Keeping decideOutcome parse-free enforces the contract that
- * `force_split` can only originate from `maybeSplit`. When `maybeSplit`
- * returns null, the phase layer calls decideOutcome for the remaining
- * three outcome kinds. Missing session → conservative `continue`.
- */
-export function decideOutcome(
-  state: ArchitectGraphState,
-  planText: string,
-): VerificationOutcome {
-  const session = state.verification;
-  if (!session) return { kind: 'continue' };
-  return session.evaluate({ planText });
-}
-
-/**
- * Parse the plan body and ask the Session whether this cycle warrants a
- * force-split. When it does, advance the session's batch-split cycle
- * counter and return a `SplitResult` envelope describing the per-batch
- * decomposition the plan node should enqueue.
- *
- * This hook is the single owner of the force_split decision — it parses
- * the plan once, delegates to `Session.evaluate({…parsed})` for the
- * verdict, and only composes the envelope when the verdict is
- * `force_split`. Any other outcome (`continue`/`terminal`/`short_circuit`)
- * leaves the session untouched and returns `null`, letting the phase
- * layer fall through to `decideOutcome`.
- */
-export function maybeSplit(
-  state: ArchitectGraphState,
-  planText: string,
-): SplitResult | null {
-  const session = state.verification;
-  if (!session) return null;
-
-  const parsed = parsePlan(planText);
-  if (!parsed) return null;
-
-  const outcome = session.evaluate({
-    planText,
-    totalErrors: parsed.totalErrors,
-    modifyCount: parsed.modifyCount,
-    batches: parsed.batches.length,
-  });
-  if (outcome.kind !== 'force_split') return null;
-
-  session.onBatchSplit(JSON.stringify({
-    totalErrors: parsed.totalErrors,
-    modifyCount: parsed.modifyCount,
-    reason: outcome.reason,
-  }));
-
-  const batches = parsed.batches.length > 0
-    ? parsed.batches
-    : [parsed.implementation];
-
-  return {
-    reason: outcome.reason,
-    batches,
-    totalErrors: parsed.totalErrors,
-    modifyCount: parsed.modifyCount,
-    batchSplitCount: session.batchSplitCount(),
-  };
-}
-
-/**
- * Render a terminal outcome as a typed `VerificationTerminalError`. The
- * orchestrator's `classifyTerminalError` uses the `kind` field to decide
- * re-queue vs. escalate without resorting to regex on message text.
- */
-const KNOWN_KINDS: ReadonlySet<string> = new Set<VerificationTerminalKind>([
-  'max_retries_exceeded',
-  'budget_exhausted',
-  'no_progress',
-  'unresolved_violations',
-  'batch_cycle_limit',
-]);
-
-export function makeTerminalError(
-  state: ArchitectGraphState,
-  outcome: TerminalOutcome,
-): Error {
-  const rawKind = (outcome as { errorKind?: string }).errorKind ?? '';
-  const message = (outcome as { message?: string }).message ?? 'Verification terminal failure.';
-  const kind: VerificationTerminalKind = KNOWN_KINDS.has(rawKind)
-    ? (rawKind as VerificationTerminalKind)
-    : 'unresolved_violations';
-
-  // Snapshot the session at failure time for observability and resume.
-  const carryOver = state.verification?.snapshot() ?? null;
-  return new VerificationTerminalError(kind, message, carryOver);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

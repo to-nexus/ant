@@ -1,9 +1,9 @@
 /**
  * L1 — `VerificationSession` model invariants.
  *
- * Covers the primary API surface introduced in T3:
+ * Covers the primary API surface introduced in T3 (with the T8 follow-up
+ * review's removal of the dead `evaluate` verdict method applied):
  *   - `createFresh` / `rehydrate` (construction & snapshot round-trip)
- *   - `evaluate` (every `VerificationOutcome.kind`)
  *   - Gate transitions: `onCommand`, `onFileChanged`, `onPlanEntry`
  *   - Plan history + repeated-plan detection
  *   - Deep-diagnostic mode + remaining budget
@@ -36,8 +36,8 @@ function freshNoTsNoTest(): VerificationSession {
 }
 
 /**
- * Build a JSON plan body with N modify entries plus optional batches. Used
- * to drive `evaluate()` outcomes and `isPlanRepeated` detection.
+ * Build a JSON plan body with N modify entries plus optional batches.
+ * Used to drive `isPlanRepeated` detection.
  */
 function plan(opts: {
   modify?: number;
@@ -268,108 +268,6 @@ describe('plan history', () => {
         '```json\n{\n  "implementation": {\n    "modify": [\n      {"file": "a.ts"}\n    ]\n  }\n}\n```',
       ),
     ).toEqual({ repeated: true, count: 1 });
-  });
-});
-
-// ────────────────────────────────────────────────────────────────────────────
-// evaluate — every outcome branch
-// ────────────────────────────────────────────────────────────────────────────
-
-describe('evaluate', () => {
-  it('short_circuit: already_complete when all gates passed', () => {
-    const s = freshTs();
-    s.onCommand('typecheck', true);
-    s.onCommand('build', true);
-    s.onCommand('test', true);
-    expect(s.evaluate({ planText: plan({ modify: 2 }) })).toEqual({
-      kind: 'short_circuit',
-      reason: 'already_complete',
-    });
-  });
-
-  it('short_circuit: empty_plan when plan has no actionable entries', () => {
-    const s = freshTs();
-    expect(s.evaluate({ planText: plan({ modify: 0 }) })).toEqual({
-      kind: 'short_circuit',
-      reason: 'empty_plan',
-    });
-    // whitespace-only body
-    expect(s.evaluate({ planText: '   \n  ' })).toEqual({
-      kind: 'short_circuit',
-      reason: 'empty_plan',
-    });
-    // fenced empty body
-    expect(s.evaluate({ planText: '```json\n```' })).toEqual({
-      kind: 'short_circuit',
-      reason: 'empty_plan',
-    });
-  });
-
-  it('continue when plan has work and nothing else escalates', () => {
-    const s = freshTs();
-    expect(s.evaluate({ planText: plan({ modify: 1 }), modifyCount: 1 })).toEqual({
-      kind: 'continue',
-    });
-  });
-
-  it('force_split: too_many_errors when totalErrors >= threshold', () => {
-    const s = freshTs();
-    const p = plan({ modify: 2, totalErrors: 10 });
-    expect(s.evaluate({ planText: p, modifyCount: 2, totalErrors: 10 })).toEqual({
-      kind: 'force_split',
-      reason: 'too_many_errors',
-    });
-  });
-
-  it('force_split: too_many_files when modifyCount crosses file threshold', () => {
-    const s = freshTs();
-    expect(s.evaluate({ planText: plan({ modify: 4 }), modifyCount: 4, totalErrors: 0 }))
-      .toEqual({ kind: 'force_split', reason: 'too_many_files' });
-  });
-
-  it('force_split: repeated_plan when same hash surfaced once with work to split', () => {
-    const s = freshTs();
-    const p = plan({ modify: 2 });
-    s.onPlanApplied(p);
-    expect(s.evaluate({ planText: p, modifyCount: 2 })).toEqual({
-      kind: 'force_split',
-      reason: 'repeated_plan',
-    });
-  });
-
-  it('terminal: no_progress when same plan hash repeats twice', () => {
-    const s = freshTs();
-    const p = plan({ modify: 2 });
-    s.onPlanApplied(p);
-    s.onPlanApplied(p);
-    const out = s.evaluate({ planText: p, modifyCount: 2 });
-    expect(out.kind).toBe('terminal');
-    if (out.kind === 'terminal') expect(out.errorKind).toBe('no_progress');
-  });
-
-  it('terminal: budget_exhausted when attempts reach ceiling without force-split conditions', () => {
-    const s = freshTs();
-    for (let i = 0; i < MAX_VERIFICATION_ATTEMPTS; i++) s.onPlanEntry('retry');
-    const out = s.evaluate({ planText: plan({ modify: 0 }), modifyCount: 0 });
-    expect(out.kind).toBe('terminal');
-    if (out.kind === 'terminal') expect(out.errorKind).toBe('budget_exhausted');
-  });
-
-  it('force_split: budget_low when budget=0 but work remains that can split', () => {
-    const s = freshTs();
-    for (let i = 0; i < MAX_VERIFICATION_ATTEMPTS; i++) s.onPlanEntry('retry');
-    expect(s.evaluate({ planText: plan({ modify: 3 }), modifyCount: 3 })).toEqual({
-      kind: 'force_split',
-      reason: 'budget_low',
-    });
-  });
-
-  it('terminal: batch_cycle_limit when batchSplitCount reaches ceiling', () => {
-    const s = freshTs();
-    for (let i = 0; i < 10; i++) s.onBatchSplit('{}');
-    const out = s.evaluate({ planText: plan({ modify: 1 }) });
-    expect(out.kind).toBe('terminal');
-    if (out.kind === 'terminal') expect(out.errorKind).toBe('batch_cycle_limit');
   });
 });
 

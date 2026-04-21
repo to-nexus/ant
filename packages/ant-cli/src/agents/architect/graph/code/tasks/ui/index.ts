@@ -22,13 +22,15 @@
  *     blocksIntegration`) — UI is a barrier sink only; it does not
  *     activate barriers for other task types.
  *
- * Phase-layer `task.type === 'ui'` residuals (`nodes/decompose/
- * responseParser.ts` design-context guard, `nodes/execute/
- * toolDefinitions.ts` frontend detection) are pre-existing R1 misses
- * scheduled for follow-up T6b slices. The pre-T6b-ι
- * `nodes/execute/buildMessages.ts` expected-type OR chain is resolved
- * (the warning guard now checks hook presence, not task-type
- * literals).
+ * Phase-layer `task.type === 'ui'` residuals were resolved in T6b-κ:
+ *   - `nodes/decompose/responseParser.ts deriveArtifactPolicy` — the
+ *     ui||design-system design-context guard now dispatches through
+ *     `isUiTask` / `isDesignSystemTask` instead of literal comparison.
+ *   - `nodes/execute/tools.ts isFrontendTask` — the OR chain
+ *     now calls `isUiTask` / `isFeatureTask` / `isDesignSystemTask`.
+ * The pre-T6b-ι `nodes/execute/buildMessages.ts` expected-type OR
+ * chain is resolved separately (the warning guard checks hook
+ * presence, not task-type literals).
  */
 
 import type { TaskHooks } from '../_shared/types';

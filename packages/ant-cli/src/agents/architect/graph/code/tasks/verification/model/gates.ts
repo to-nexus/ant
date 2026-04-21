@@ -24,18 +24,6 @@ export type Gate = 'typecheck' | 'build' | 'test';
 export const GATE_ORDER: readonly Gate[] = Object.freeze(['typecheck', 'build', 'test']);
 
 /**
- * Required gate configuration for a verification task. Derived once at
- * `VerificationSession.createFresh()` from the ambient environment
- * (`isTs` → typecheck required, `hasTests` → test required); `build` is
- * always required for verification tasks.
- */
-export interface GateConfig {
-  required: ReadonlySet<Gate>;
-  passed: ReadonlySet<Gate>;
-  attemptedThisCycle: ReadonlySet<Gate>;
-}
-
-/**
  * Human-readable guidance attached to the `verification_incomplete`
  * violation so the downstream plan prompt and UI surface the same text.
  */
