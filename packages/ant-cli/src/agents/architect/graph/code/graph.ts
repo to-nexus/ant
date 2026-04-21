@@ -147,6 +147,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             inputTokens: task.tokenUsage?.inputTokens,
             outputTokens: task.tokenUsage?.outputTokens,
             cacheReadTokens: task.tokenUsage?.cacheReadTokens,
+            llmCallCount: task.tokenUsage?.callCount,
           }).catch(() => {});
           })().catch(() => {});
         }
@@ -622,7 +623,6 @@ export const CodeGraphChannels = {
       unresolvedErrors: Annotation<any>,
       evaluationReport: Annotation<any>,
       lessons: Annotation<any>,
-      selectedSpec: Annotation<any>,
       referenceRequests: Annotation<any>,
       designDocUnknownPackages: Annotation<any>,
       branch: Annotation<any>,

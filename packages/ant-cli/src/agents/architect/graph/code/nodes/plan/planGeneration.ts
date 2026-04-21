@@ -26,7 +26,7 @@ import { isErrorTask } from '../../tasks/error';
 import { isTestCodeTask } from '../../tasks/test-code/model/is';
 import { isDocTask } from '../../tasks/doc/model/is';
 import { isExplainTask } from '../../tasks/explain/model/is';
-import type { PlanPromptCtx } from '../../tasks/_shared/types';
+import { toPlanPromptResult, type PlanPromptCtx } from '../../tasks/_shared/types';
 import { formatCodeContext } from '../../tasks/_shared/helpers/planPrompt';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -68,6 +68,18 @@ async function selectLLMForTask(
  * The phase layer itself is blind to `task.type`; all branching has moved
  * into `tasks/{type}/hooks/plan.ts`.
  */
+export interface BuildPlanPromptResult {
+  prompt: string;
+  /**
+   * Variant-specific variable snapshot contributed by
+   * `hooksForTaskType(task.type).plan.buildPrompt`. Empty `{}` for the generic
+   * path. Merged into `logPrompt`'s `injectedVariables` so debug logs surface
+   * hook-injected variables (verification's `dependencyStatusKind`,
+   * `cachedPassedStepsCount`, etc.) that phase code can't see directly.
+   */
+  vars: Record<string, unknown>;
+}
+
 async function buildPlanPrompt(
   state: ArchitectGraphState,
   task: CodeTask,
@@ -76,7 +88,7 @@ async function buildPlanPrompt(
   uiDoc: string | undefined,
   remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined,
   options?: { hasTools?: boolean },
-): Promise<string> {
+): Promise<BuildPlanPromptResult> {
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Plan] PromptBuilder not available');
 
@@ -93,14 +105,14 @@ async function buildPlanPrompt(
 
   // Type-specific full override (verification / error variants).
   if (planHook?.buildPrompt) {
-    return planHook.buildPrompt(promptCtx);
+    const hookResult = toPlanPromptResult(await planHook.buildPrompt(promptCtx));
+    return { prompt: hookResult.text, vars: hookResult.vars ?? {} };
   }
 
   // Generic path — artifact pipeline + RAC docs + optional extra template vars.
-  const isSpecDriven = !!state.selectedSpec;
-
-  // Artifact selection via ArtifactPipeline (task-level)
+  // Spec-driven = a spec artifact is present with role='ref' (RAC-derived).
   const pool = state.artifacts || [];
+  const isSpecDriven = new ArtifactPoolView(pool).activeSpecRefFilename() !== null;
   const hasExplicitDocs = state.resolvedAction?.source === 'explicit'
     && ((state.resolvedAction?.artifacts?.length ?? state.resolvedAction?.documents?.length ?? 0) > 0);
 
@@ -135,12 +147,16 @@ async function buildPlanPrompt(
     state.resolvedAction?.basis, 'code', taskTechTiers,
   );
 
-  const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
+  // Role-scoped flags for post-RAC templates. Plan reads `ref` docs as
+  // the authoritative spec (implementation must conform); `context`
+  // docs are background and do NOT gate plan-mode sections (e.g. the
+  // API Contract immutability notice, the design-system token extraction
+  // checklist, the ui-task visual source). See `.cursorrules`
+  // "Post-RAC Template Condition SSOT".
   const allDocs = getRACDocuments(resolvedActionWithDocs);
-  const hasDesignDoc = allDocs.some(
-    d => d.role === 'ref' && d.path.startsWith(AP.DESIGN),
-  );
-  const hasUiDoc = new ArtifactPoolView(allDocs).hasUi();
+  const planPool = new ArtifactPoolView(allDocs);
+  const hasSystemDesignRef = planPool.hasSystemDesignRef();
+  const hasUiRef = planPool.hasUiRef();
 
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
   const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
@@ -157,12 +173,13 @@ async function buildPlanPrompt(
     hasTools: options?.hasTools ?? false,
     designDocUnknownPackages: state.designDocUnknownPackages,
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
-    resolvedAction: resolvedActionWithDocs, hasDesignDoc, hasUiDoc,
+    resolvedAction: resolvedActionWithDocs, hasSystemDesignRef, hasUiRef,
     featureContext: state.featureContext,
     ...typeVars,
   });
 
-  return basisSection ? `${basisSection}\n\n---\n\n${prompt}` : prompt;
+  const composed = basisSection ? `${basisSection}\n\n---\n\n${prompt}` : prompt;
+  return { prompt: composed, vars: typeVars };
 }
 
 /**
@@ -175,6 +192,12 @@ async function buildPlanPrompt(
  * Used only by the plan-with-tools path (plan-toolLoop). The generatePlanText
  * path (single-shot, no tools) continues to use buildPlanPrompt directly.
  */
+export interface BuildPlanPromptBlocksResult {
+  blocks: TextContentBlock[];
+  /** Hook-contributed template var snapshot; see `BuildPlanPromptResult.vars`. */
+  vars: Record<string, unknown>;
+}
+
 export async function buildPlanPromptBlocks(
   state: ArchitectGraphState,
   task: CodeTask,
@@ -183,8 +206,8 @@ export async function buildPlanPromptBlocks(
   uiDoc: string | undefined,
   remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined,
   options?: { hasTools?: boolean },
-): Promise<TextContentBlock[]> {
-  const fullPrompt = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks, options);
+): Promise<BuildPlanPromptBlocksResult> {
+  const { prompt: fullPrompt, vars } = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks, options);
 
   // Cache split: use the SAME compacted artifacts that buildPlanPrompt rendered
   // into fullPrompt. Using un-compacted originals would cause replace() mismatches.
@@ -222,7 +245,7 @@ export async function buildPlanPromptBlocks(
     });
   }
 
-  return blocks;
+  return { blocks, vars };
 }
 
 /**
@@ -274,7 +297,7 @@ export async function generatePlanText(
   const violationsText = extraViolationContext
     ? (baseText ? `${baseText}\n${extraViolationContext}` : extraViolationContext)
     : baseText;
-  const prompt = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks);
+  const { prompt, vars: hookVars } = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks);
 
   // ✅ Log prompt structure (not content)
   const jobId = state._httpJobId || 'unknown';
@@ -301,6 +324,9 @@ export async function generatePlanText(
             packages: task.packages || undefined,
             hasProjectCodeContext: !!projectCodeContext,
             isRetry: !!violationsText,
+            // hook-supplied variant variables (verification / error /
+            // extraTemplateVars-only bundles). Empty for the generic path.
+            ...hookVars,
           },
         }
       );
@@ -549,7 +575,15 @@ type PlanWithToolsResult =
 export async function runPlanLLMWithTools(
   state: ArchitectGraphState,
   messages: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>,
-  task: CodeTask
+  task: CodeTask,
+  options?: {
+    /**
+     * Hook-contributed variant vars (from `buildPlanPromptBlocks`) merged into
+     * the plan-toolLoop `logPrompt` call so debug logs record the same
+     * variant-specific variables as plan-planGen.
+     */
+    extraLogVars?: Record<string, unknown>;
+  },
 ): Promise<PlanWithToolsResult> {
   const llm = state.deps?.llm as LLMClient | undefined;
   if (!llm) {
@@ -690,6 +724,7 @@ export async function runPlanLLMWithTools(
             toolCallsThisRound: toolCalls.length,
             toolNames: toolCalls.map(t => t.name),
             hasTextResponse: textResponse.length > 0,
+            ...(options?.extraLogVars ?? {}),
           },
         },
       );

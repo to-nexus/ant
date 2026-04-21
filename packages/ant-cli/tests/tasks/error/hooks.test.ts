@@ -290,8 +290,12 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
       remainingTasks: undefined,
       options: { hasTools: false },
     });
-    expect(out).toContain('BASIS_SECTION');
-    expect(out).toContain('BODY:jobs/code/nodes/plan/variants/error/base');
+    expect(out.text).toContain('BASIS_SECTION');
+    expect(out.text).toContain('BODY:jobs/code/nodes/plan/variants/error/base');
+    // T6-결함4 — error hook publishes a minimal vars snapshot for logging.
+    expect(out.vars?.hasPackageManager).toBe(true);
+    expect(out.vars?.packageManager).toBe('pnpm');
+    expect(out.vars?.hasViolationsText).toBe(true);
 
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/error/base');
     expect(base).toBeDefined();
@@ -313,8 +317,9 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
       uiDoc: undefined,
       remainingTasks: undefined,
     });
-    expect(out).not.toContain('BASIS_SECTION');
-    expect(out).toContain('BODY:jobs/code/nodes/plan/variants/error/base');
+    expect(out.text).not.toContain('BASIS_SECTION');
+    expect(out.text).toContain('BODY:jobs/code/nodes/plan/variants/error/base');
+    expect(out.vars?.hasViolationsText).toBe(false);
   });
 
   it('throws when promptBuilder is unavailable', async () => {

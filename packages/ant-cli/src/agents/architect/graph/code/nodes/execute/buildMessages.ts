@@ -269,8 +269,15 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         ? 'MODIFICATION MODE: Modify existing code'
         : 'CREATION MODE: Build from scratch',
       referenceRequests: state.referenceRequests || [],
-      hasUiInDocuments: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
-      isSpecDriven: !!state.selectedSpec,
+      // Role-scoped post-RAC flags. `deriveArtifactPolicy` assigns UI
+      // docs `role='context'` for ui/design-system tasks (see
+      // tests/artifact-policy-decompose.test.ts), so visual-source
+      // blocks for those tasks observe `hasUiContext`. Feature tasks
+      // only see UI docs when upstream intent explicitly promotes them
+      // — `hasUiRef` covers that rarer path.
+      hasUiRef: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUiRef(),
+      hasUiContext: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUiContext(),
+      isSpecDriven: new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename() !== null,
       figmaAvailable: (state.figmaAvailable && !poolView.hasUi()) || false,
       figmaStartNodeId: state.figmaStartNodeId || undefined,
       runtimeContext: runtimeContextParts.join('\n\n'),
@@ -433,22 +440,29 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const b2Len = block2Text.length;
     const histLen = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length;
 
-    if (_lastCacheBlockHashes.block1 && _lastCacheBlockHashes.block1 !== b1Hash) {
-      console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${_lastCacheBlockHashes.block1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
+    // Synchronously snapshot prev hashes before the module-level record gets
+    // updated below — otherwise async logger callbacks (microtask-scheduled
+    // import().then) would read the already-overwritten new hash and record
+    // prevHash === currHash.
+    const prevB1 = _lastCacheBlockHashes.block1;
+    const prevB2 = _lastCacheBlockHashes.block2;
+
+    if (prevB1 && prevB1 !== b1Hash) {
+      console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${prevB1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
       if (state.context?.featurePath && state._httpJobId) {
         import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
           getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
-            .logCacheInstability(currentTaskId, { block: 'block1', prevHash: _lastCacheBlockHashes.block1!, currHash: b1Hash, contentLength: b1Len, historyLength: histLen })
+            .logCacheInstability(currentTaskId, { block: 'block1', prevHash: prevB1, currHash: b1Hash, contentLength: b1Len, historyLength: histLen })
             .catch(() => {});
         }).catch(() => {});
       }
     }
-    if (_lastCacheBlockHashes.block2 && _lastCacheBlockHashes.block2 !== b2Hash) {
-      console.warn(`⚠️  [CacheStability] Block2 CHANGED between calls! prev=${_lastCacheBlockHashes.block2} curr=${b2Hash} len=${b2Len} (task=${currentTaskId}, hist=${histLen})`);
+    if (prevB2 && prevB2 !== b2Hash) {
+      console.warn(`⚠️  [CacheStability] Block2 CHANGED between calls! prev=${prevB2} curr=${b2Hash} len=${b2Len} (task=${currentTaskId}, hist=${histLen})`);
       if (state.context?.featurePath && state._httpJobId) {
         import('../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
           getExecutionLogger({ featurePath: state.context!.featurePath!, jobId: state._httpJobId!, jobType: 'code' })
-            .logCacheInstability(currentTaskId, { block: 'block2', prevHash: _lastCacheBlockHashes.block2!, currHash: b2Hash, contentLength: b2Len, historyLength: histLen })
+            .logCacheInstability(currentTaskId, { block: 'block2', prevHash: prevB2, currHash: b2Hash, contentLength: b2Len, historyLength: histLen })
             .catch(() => {});
         }).catch(() => {});
       }

@@ -160,7 +160,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
         outputTokens: completedTask.tokenUsage?.outputTokens || 0,
         cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
         cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
-        llmCallCount: state._docGenCallIndex || 0,
+        llmCallCount: completedTask.tokenUsage?.callCount ?? state._docGenCallIndex ?? 0,
       }).catch(() => {});
     }
 

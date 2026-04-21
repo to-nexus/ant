@@ -51,6 +51,8 @@ export interface TaskTokenUsage {
   totalTokens: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /** Number of underlying LLM calls aggregated into this usage record. */
+  callCount?: number;
 }
 
 /** Per-phase token usage entry for non-task-queue jobs (visual, plan) */

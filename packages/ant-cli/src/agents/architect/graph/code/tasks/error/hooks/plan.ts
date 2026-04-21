@@ -12,7 +12,7 @@
  */
 
 import { effectiveTechTier, getTechTier } from '@ant/shared';
-import type { PlanPromptCtx } from '../../_shared/types';
+import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
 
 /**
@@ -22,7 +22,7 @@ import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
  * because error tasks share the same tech-tier reasoning surface as diagnostic
  * cycles.
  */
-export async function buildPrompt(ctx: PlanPromptCtx): Promise<string> {
+export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
   const { state, task, projectCodeContext, violationsText, options } = ctx;
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) {
@@ -72,5 +72,15 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<string> {
     resolvedAction: state.resolvedAction,
   });
 
-  return basisSection ? `${basisSection}\n\n---\n\n${body}` : body;
+  const text = basisSection ? `${basisSection}\n\n---\n\n${body}` : body;
+  return {
+    text,
+    vars: {
+      hasLanguageHints: !!languageHints,
+      hasPackageManager: !!packageManager,
+      packageManager,
+      hasViolationsText: !!violationsText,
+      violationsTextLen: violationsText?.length ?? 0,
+    },
+  };
 }
