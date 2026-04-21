@@ -43,7 +43,7 @@ function makeMeta(
     jobId: 'job-x',
     turnId,
     jobType: 'code',
-    complexity: 'todo',
+    complexity: 'task',
     decidedBy: 'llm',
     reason: 'classified',
     ...overrides,
@@ -143,7 +143,7 @@ describe('mergeFeatureContext — collapsed lines dropped', () => {
 
   it('ignores collapsed user_turn_meta during merge (no patch applied)', () => {
     const turn = makeTurn(1);
-    const deadMeta = makeMeta('t-1', { collapsed: true, complexity: 'todo' });
+    const deadMeta = makeMeta('t-1', { collapsed: true, complexity: 'task' });
 
     const ctx = mergeFeatureContext({
       userTurns: [turn],

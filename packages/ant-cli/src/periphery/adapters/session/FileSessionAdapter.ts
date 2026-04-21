@@ -23,6 +23,29 @@ import {
 } from "../../../core/utils/sessionPaths";
 
 /**
+ * Legacy complexity literal fallback.
+ *
+ * Pre-5-tier-rename `feature.jsonl` lines carry `complexity: 'todo'`. The
+ * SSOT type ({@link import('@ant/shared').Complexity}) no longer includes
+ * `'todo'`; readers therefore upgrade the literal on the fly so older
+ * workspaces keep resuming. Writers emit `'task'` only — no file rewrite
+ * occurs (append-only invariant preserved).
+ */
+let legacyComplexityLoggedOnce = false;
+function normalizeLegacyComplexity<T extends { complexity?: string }>(line: T): T {
+  if ((line as any).complexity === 'todo') {
+    if (!legacyComplexityLoggedOnce) {
+      legacyComplexityLoggedOnce = true;
+      console.debug(
+        "📦 [FileSessionAdapter] legacy complexity literal migrated on read: 'todo' → 'task' (on-disk unchanged)",
+      );
+    }
+    return { ...line, complexity: 'task' } as T;
+  }
+  return line;
+}
+
+/**
  * Simple async mutex for serializing file I/O.
  * Prevents race conditions when multiple workers call updateArtifacts concurrently.
  */
@@ -488,7 +511,7 @@ export class FileSessionAdapter implements SessionPort {
       if (line.type === 'user_turn') {
         userTurns.push(line);
       } else if (line.type === 'user_turn_meta') {
-        userTurnMetas.push(line);
+        userTurnMetas.push(normalizeLegacyComplexity(line));
       }
     }
 
@@ -572,7 +595,7 @@ export class FileSessionAdapter implements SessionPort {
     for (const line of all) {
       if (line.collapsed) continue;
       if (line.type === 'user_turn') userTurns.push(line);
-      else if (line.type === 'user_turn_meta') userTurnMetas.push(line);
+      else if (line.type === 'user_turn_meta') userTurnMetas.push(normalizeLegacyComplexity(line));
     }
     return { userTurns, userTurnMetas };
   }

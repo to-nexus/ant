@@ -33,11 +33,11 @@ OUTPUT FORMAT:
 | `generate` / `refactor` | `exploratory`               | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` narrowing the observation surface |
 | `generate` / `refactor` | `todo`                      | Full task breakdown per the rules below               | `{}` |
 
-**Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply ONLY when `complexity === 'todo'` and mode is not `explain`. When `<tasks>` is `[]`, skip the reasoning steps those rules describe.
+**Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply ONLY when `complexity === 'task'` and mode is not `explain`. When `<tasks>` is `[]`, skip the reasoning steps those rules describe.
 
 **Constraint**: The `generate` / `refactor` + `todo` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes `[]` and `<specClarify>` is emitted instead of a task breakdown.
 
-**Constraint**: When `complexity === 'todo'` and mode is `explain`, emit exactly one task:
+**Constraint**: When `complexity === 'task'` and mode is `explain`, emit exactly one task:
 - `id`: `"explain-1"`
 - `name`: human-readable summary of what to explain
 - `type`: `"explain"`
@@ -113,15 +113,15 @@ The tag content MUST be a single JSON object with these fields (no others):
 
 **Constraint**: `label` and `displayMessage` adopt the user's language. Do NOT append extra fields beyond the shape above.
 
-⚠️ **Blind spot**: The `<complexity>` tag remains `todo` when `<specClarify>` is emitted — the classification is observation, not a promise of breakdown. Only the `<tasks>` array is deferred.
+⚠️ **Blind spot**: The `<complexity>` tag remains `task` when `<specClarify>` is emitted — the classification is observation, not a promise of breakdown. Only the `<tasks>` array is deferred.
 
 ---
 
 First, analyze step by step (think through):
-- **Classify complexity first**: `oneshot`, `exploratory`, or `todo`? (see Complexity Classification above)
+- **Classify complexity first**: `oneshot`, `exploratory`, or `task`? (see Complexity Classification above)
 - If `oneshot` or `exploratory`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`
-- If `todo` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all four checkpoints indicate no source, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown.
-- If `todo`:
+- If `task` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all four checkpoints indicate no source, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown.
+- If `task`:
   - Is this a new project or existing project?
     - If "EXISTING CODEBASE DETECTED" was shown above, it is an existing project
     - If existing project, do NOT create setup task (priority 100)
@@ -710,15 +710,15 @@ Constraint: If uncertain, default to lightweight.
 
 Output in this exact order:
 
-**0. `<complexity>` tag** — one of `oneshot`, `exploratory`, `todo` (see Complexity Classification above):
+**0. `<complexity>` tag** — one of `oneshot`, `exploratory`, `task` (see Complexity Classification above):
 
-`<complexity>todo</complexity>`
+`<complexity>task</complexity>`
 
 **0.1. `<complexityReason>` tag** — one sentence citing what in the directive and context drove the classification:
 
 `<complexityReason>Directive names a single function to rename; target is identifiable from existing file list.</complexityReason>`
 
-**0.2. `<directHints>` tag** — JSON object. `{}` when complexity is `todo`; otherwise populated per the Output shape table above:
+**0.2. `<directHints>` tag** — JSON object. `{}` when complexity is `task`; otherwise populated per the Output shape table above:
 
 <directHints>
 {

@@ -116,6 +116,28 @@ function extractSpecs(paths: string[], cap: number): string[] {
   return out;
 }
 
+/**
+ * Produce a noun-form, ≤80-char one-line summary from the owning directive
+ * + observed scale. Kept side-effect-free so tier strategies can reuse it.
+ *
+ * Scope note: this is an intentionally modest heuristic — when an LLM-driven
+ * summariser replaces it the rules promoted to a template will be wired
+ * through `promptBuilder`, see 18-session-redesign §12.
+ */
+export function buildBreadcrumbSummary(input: {
+  directive: string;
+  touchedCount: number;
+  mode?: string;
+}): string {
+  const directive = (input.directive || '').trim();
+  const firstLine = directive.split(/\r?\n/)[0] ?? '';
+  const trimmed = firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
+  const scale = input.touchedCount > 0 ? ` · ${input.touchedCount} files` : '';
+  const modeTag = input.mode ? ` · ${input.mode}` : '';
+  const core = trimmed.length > 0 ? trimmed : 'code change';
+  return `${core}${modeTag}${scale}`;
+}
+
 export function buildBreadcrumb(input: BuildBreadcrumbInput): FeatureBreadcrumbLine {
   const uniqueTouched = Array.from(new Set(input.touched));
   const touchedCount = uniqueTouched.length;
