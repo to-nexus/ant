@@ -1,3 +1,23 @@
+## ExecutionTier Classification
+
+**Observation target**: The breadth of work implied by the directive, the mode, and the reference documents (if any) supplied in this prompt.
+
+| Tier | Label | Principle |
+|---|---|---|
+| `0` | Reflex        | Read-only, self-contained answer. No design document produced. |
+| `1` | OneShot       | Single concrete edit to one existing design document, scope known from the directive. |
+| `2` | Exploratory   | Must observe the source documents before choosing what to write; the act itself is still a single cohesive document edit. |
+| `3` | Task          | Multiple independent design documents or chapters, scope driven by the directive alone. |
+| `4` | RefsGrounded  | Multiple documents/chapters systematically derived from supplied reference documents (PRD / source docs / prior design). |
+
+**Constraint**: Emit exactly one `<executionTier>N</executionTier>` tag OUTSIDE the `<decompose>` JSON, BEFORE the `<decompose>` block. `N` is a single digit `0`–`4`.
+
+**Constraint**: The presence of reference documents alone does NOT imply Tier 4. Only when the design breakdown is systematically grounded in them does the tier become `4`. If refs exist but the directive asks for something unrelated, prefer `3`.
+
+⚠️ **Blind spot**: Design jobs almost always land on tier `3` or `4`. Tiers `0`–`2` apply only when the directive is a question, a targeted single-document refactor, or a narrow exploration — do NOT inflate the tier "to be safe".
+
+---
+
 ## 📋 TASK CREATION RULES
 
 ### Section Assignment (BINDING)
@@ -146,7 +166,11 @@ Each per-service document uses the **same catalog sections** but organizes conte
 {{#if (eq detectedMode "refactor")}}
 ## 📤 OUTPUT FORMAT (REFACTOR MODE)
 
-Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
+Emit `<executionTier>N</executionTier>` first, then the JSON wrapped in `<decompose>` tags. No markdown fences.
+
+Example prefix (literal digit only):
+
+`<executionTier>3</executionTier>`
 
 **Create one task per affected file.** Most refactors need only one task (one file). If the change genuinely spans multiple documents (e.g., auth change affecting both `be-system-main.md` and `api-contract-main.md`), create one task per affected file — tasks targeting different files run in parallel.
 
@@ -191,7 +215,11 @@ Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)
 
-Respond with ONLY JSON wrapped in `<decompose>` tags. No markdown fences.
+Emit `<executionTier>N</executionTier>` first, then the JSON wrapped in `<decompose>` tags. No markdown fences.
+
+Example prefix (literal digit only):
+
+`<executionTier>4</executionTier>`
 
 <decompose>
 {

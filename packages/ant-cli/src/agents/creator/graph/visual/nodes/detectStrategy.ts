@@ -14,6 +14,7 @@ import { parseClassifyResponse } from './classifyParser.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import type { VisualAssetType } from '../types.js';
 import type { Mode } from '@ant/shared';
+import { ExecutionTierId } from '../../../../../core/executionTier/index.js';
 
 function mapVisualIntentId(mode: string, assetType?: string): string {
   if (mode === 'explain') return 'explain-visual';
@@ -36,9 +37,14 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         reasoning: { intent: 'Classification skipped — using existing values.' },
         sourceJob: 'visual',
       };
+      // Skip path has no LLM judgment — default to Tier 0 Reflex (safe
+      // read-only). Callers that need a specific tier must not set
+      // `skipClassify`.
       return {
         inferred,
-        stateUpdates: {} as Partial<VisualGraphState>,
+        stateUpdates: {
+          executionTier: ExecutionTierId.Reflex,
+        } as Partial<VisualGraphState>,
       };
     }
 
@@ -76,7 +82,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
       }
 
       const classified = parseClassifyResponse(rawContent);
-      console.log(`🏷️ [Visual:Detect] Result: type=${classified.assetType}, mode=${classified.jobMode} (${classified.reasoning})`);
+      console.log(`🏷️ [Visual:Detect] Result: type=${classified.assetType}, mode=${classified.jobMode}, tier=${classified.executionTier} (${classified.reasoning})`);
 
       // Log prompt
       if (state._httpJobId && state.featurePath) {
@@ -104,6 +110,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         stateUpdates: {
           assetType: classified.assetType,
           jobMode: classified.jobMode,
+          executionTier: classified.executionTier,
         } as Partial<VisualGraphState>,
       };
     } catch (err: any) {
@@ -118,6 +125,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         stateUpdates: {
           assetType: 'general' as VisualAssetType,
           jobMode: 'generate' as Mode,
+          executionTier: ExecutionTierId.Reflex,
         } as Partial<VisualGraphState>,
       };
     }

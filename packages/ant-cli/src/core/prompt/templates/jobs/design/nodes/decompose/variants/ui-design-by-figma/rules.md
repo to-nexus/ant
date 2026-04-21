@@ -1,3 +1,23 @@
+## ExecutionTier Classification
+
+**Observation target**: The breadth of UI documentation implied by the directive, the mode, and the Figma frames / source documents supplied in this prompt.
+
+| Tier | Label | Principle |
+|---|---|---|
+| `0` | Reflex        | Read-only explanation; no UI document produced. |
+| `1` | OneShot       | Single concrete edit to one existing UI document (e.g. a targeted token or asset change). |
+| `2` | Exploratory   | Must observe the Figma file / sources before choosing what to document; still a single cohesive edit. |
+| `3` | Task          | Multiple chapters of UI documentation driven by the directive alone, without systematic grounding on Figma frames. |
+| `4` | RefsGrounded  | Multiple chapters systematically grounded in the Figma frames plus PRD / source documents supplied in this prompt. |
+
+**Constraint**: Emit exactly one `<executionTier>N</executionTier>` tag BEFORE the JSON output. `N` is a single digit `0`–`4`.
+
+**Constraint**: Figma frames supplied in `nodeSummary` / `variationMatrixSummary` act as grounding refs. A full-page or multi-section Figma decomposition is the Tier 4 signature.
+
+⚠️ **Blind spot**: Figma-driven generate jobs almost always land on tier `4`. UI refactor jobs against an existing doc usually land on tier `1`. Do NOT emit tier `3` when Figma frames are the source of truth.
+
+---
+
 ## 📋 CRITICAL RULES
 
 ### 1. Token Limit Safety (MOST IMPORTANT)
@@ -105,6 +125,10 @@ DO NOT CREATE:
 
 **Principle**: Single focused task for modification. No multi-chapter decomposition.
 
+Emit `<executionTier>N</executionTier>` BEFORE the JSON output. Example:
+
+`<executionTier>1</executionTier>`
+
 ```json
 {
   "jobMode": "refactor",
@@ -133,6 +157,10 @@ DO NOT CREATE:
 
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)
+
+Emit `<executionTier>N</executionTier>` BEFORE the JSON output. Example:
+
+`<executionTier>4</executionTier>`
 
 ```json
 {

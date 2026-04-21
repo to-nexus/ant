@@ -20,6 +20,7 @@ import { trackTokenUsage } from "./tokenTracking";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
+import { parseExecutionTierTag, coerceExecutionTier, ExecutionTierId } from "../../../../../../core/executionTier";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -41,6 +42,7 @@ interface SpecDecomposeResponse {
   slug: string;
   title: string;
   sections: SpecSection[];
+  executionTier: ExecutionTierId;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -63,6 +65,7 @@ async function decomposeSpecSections(
         scope: directive,
       },
     ],
+    executionTier: ExecutionTierId.Reflex,
   });
 
   if (!llm) return fallback();
@@ -78,9 +81,17 @@ async function decomposeSpecSections(
     `  NEVER create "analysis-only" or "writing-only" sections — every section must produce document content.`,
     `- Sections are ordered: earlier sections are written first and provide context for later ones.`,
     ``,
+    `ExecutionTier (BEFORE the JSON output, emit exactly one \`<executionTier>N</executionTier>\` tag where N is 0..4):`,
+    `  0 Reflex        — read-only, no spec document produced.`,
+    `  1 OneShot       — single concrete edit to one spec chapter.`,
+    `  2 Exploratory   — requires observing sources before writing; still a single cohesive edit.`,
+    `  3 Task          — multiple chapters driven by the directive alone, without systematic grounding on refs.`,
+    `  4 RefsGrounded  — multiple chapters systematically grounded in supplied reference documents.`,
+    ``,
     `Directive: "${directive}"`,
     ``,
-    `Respond with ONLY a JSON object (no markdown):`,
+    `Respond with the tier tag first, then ONLY a JSON object (no markdown):`,
+    `<executionTier>3</executionTier>`,
     `{`,
     `  "slug": "short-url-safe-slug",`,
     `  "title": "Human Readable Title",`,
@@ -102,20 +113,25 @@ async function decomposeSpecSections(
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found in LLM response');
 
-    const parsed: SpecDecomposeResponse = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch[0]);
 
     // Validate
     const slug = (parsed.slug || '').replace(/[^a-z0-9-]/g, '').slice(0, 40) || `feature-${Date.now()}`;
     const title = parsed.title || directive.slice(0, 60);
     const sections: SpecSection[] = Array.isArray(parsed.sections) && parsed.sections.length > 0
-      ? parsed.sections.map((s, i) => ({
+      ? parsed.sections.map((s: SpecSection, i: number) => ({
           id: s.id || `spec-${slug}-${i + 1}`,
           name: s.name || `Section ${i + 1}`,
           scope: s.scope || '',
         }))
       : [{ id: `spec-${slug}-1`, name: 'Full Spec', scope: directive }];
 
-    return { slug, title, sections };
+    const executionTier = coerceExecutionTier(
+      parseExecutionTierTag(response),
+      'SpecDecompose',
+    );
+
+    return { slug, title, sections, executionTier };
   } catch (error) {
     console.warn('⚠️  [specDecompose] Failed to decompose via LLM, using fallback:', error);
     return fallback();
@@ -141,7 +157,8 @@ export async function decomposeSpec(
 
   await showChatPlaceholder();
 
-  const { slug, title, sections } = await decomposeSpecSections(state);
+  const { slug, title, sections, executionTier } = await decomposeSpecSections(state);
+  console.log(`🧭 [SpecDecompose] executionTier=${executionTier}`);
   const targetFile = `spec-${slug}.md`;
 
   console.log(`📋 [specDecompose] Target: ${targetFile} ("${title}") — ${sections.length} section(s)`);
@@ -202,11 +219,28 @@ export async function decomposeSpec(
   state.jobId = ctx.newJobId;
   state.jobTiming = ctx.newJobTiming;
   state._estimatingTokenUsage = state.tokenUsage;
+  state.executionTier = executionTier;
   await saveDecomposeCheckpoint(state, {
     taskQueue: taskQueue.getAll(),
     completedTasks: [],
     completedTasksDetails: [],
   });
+
+  // user_turn_meta patch — Decompose is design's Tier Entry Node.
+  if (state.deps?.session && state.turnId && ctx.newJobId) {
+    try {
+      await state.deps.session.appendUserTurnMeta({
+        type: 'user_turn_meta',
+        ts: new Date().toISOString(),
+        jobId: ctx.newJobId,
+        turnId: state.turnId,
+        jobType: 'design',
+        executionTier,
+      });
+    } catch (err) {
+      console.warn('⚠️  [SpecDecompose] appendUserTurnMeta failed:', err);
+    }
+  }
 
   return {
     ...state,
@@ -217,6 +251,7 @@ export async function decomposeSpec(
     jobId: ctx.newJobId,
     jobTiming: ctx.newJobTiming,
     _estimatingTokenUsage: state.tokenUsage,
+    executionTier,
     _phaseTimings: {
       ...(state._phaseTimings || {}),
       decompose: Date.now() - ctx.phaseStart,

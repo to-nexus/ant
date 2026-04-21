@@ -18,6 +18,7 @@ import { decomposeSystemDesign } from "./systemDesignDecompose";
 import { decomposeSpec } from "./specDecompose";
 import { BOUNDARY, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import { ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
+import { ExecutionTierId } from "../../../../../../core/executionTier";
 
 // ============================================
 // UI Design Prerequisites Validation
@@ -135,6 +136,7 @@ function handleExplainMode(
     completedTasksDetails: [],
     jobId: timing.newJobId,
     jobTiming: timing.newJobTiming,
+    executionTier: ExecutionTierId.Reflex,
     boundary: BOUNDARY.LIGHTWEIGHT,
   };
 }
@@ -160,6 +162,7 @@ async function handleDefaultTask(
     _httpJobId: state._httpJobId,
     jobId: timing.newJobId,
     jobTiming: timing.newJobTiming,
+    executionTier: ExecutionTierId.Reflex,
     boundary: BOUNDARY.LIGHTWEIGHT,
   } as any;
 }

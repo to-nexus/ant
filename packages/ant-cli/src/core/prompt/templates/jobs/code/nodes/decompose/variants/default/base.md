@@ -2,6 +2,23 @@ You are analyzing a software specification to break it into executable tasks.
 
 DIRECTIVE:
 {{{directive}}}
+{{#if tierRefs.length}}
+
+════════════════════════════════════════════════════════════════════════════════
+## Available Reference Documents (tier-classification signal)
+
+The following reference documents are attached to this turn. They are a
+tier-classification signal: when the directive asks for work that is
+systematically grounded in these refs, emit `<executionTier>4</executionTier>`;
+when refs exist but the directive is unrelated to their content, prefer
+`<executionTier>3</executionTier>`.
+
+{{#each tierRefs}}
+- {{this.label}} ({{this.path}})
+{{/each}}
+
+════════════════════════════════════════════════════════════════════════════════
+{{/if}}
 {{#if hasGenericArtifacts}}
 
 ════════════════════════════════════════════════════════════════════════════════

@@ -14,7 +14,7 @@ import { ResolvableFields } from '../../../common/graph/annotationHelpers';
 import type { ResolvableState } from '../../../common/graph/annotationHelpers';
 import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import type { MessageContentBlock } from '../../../../core/ports/llm';
-import type { ResolvedActionContext } from '@ant/shared';
+import type { ResolvedActionContext, ExecutionTierId } from '@ant/shared';
 import type { Conversations } from '../../../common/graph/conversations';
 
 /**
@@ -48,6 +48,12 @@ export interface AskGraphState extends ResolvableState {
   isEvaluation?: boolean;
   evalType?: 'prd' | 'design-system' | 'design-ui' | 'code' | 'all';
   chatMessageStarted?: boolean;
+  /**
+   * 5-tier execution strategy. Ask / inline-ask are read-only Q&A flows —
+   * always Tier 0 Reflex. The runner injects this at graph start; no LLM
+   * judgment involved.
+   */
+  executionTier?: ExecutionTierId;
 }
 
 export const AskAnnotation = Annotation.Root({
@@ -64,6 +70,7 @@ export const AskAnnotation = Annotation.Root({
   resolvedAction: Annotation<ResolvedActionContext | undefined>,
   isEvaluation: Annotation<boolean | undefined>,
   evalType: Annotation<'prd' | 'design-system' | 'design-ui' | 'code' | 'all' | undefined>,
+  executionTier: Annotation<ExecutionTierId | undefined>,
 } as const);
 
 /**
@@ -82,6 +89,9 @@ export function createInitialAskState(params: {
   _httpJobId?: string;
   featurePath?: string;
 }): AskGraphState {
+  // ExecutionTierId.Reflex = 0. We hardcode the literal here to avoid a
+  // runtime import in the state module (which is imported widely).
+  const RESOLVED_TIER = 0 as ExecutionTierId;
   return {
     // ResolvableState fields
     featurePath: params.featurePath,
@@ -97,5 +107,7 @@ export function createInitialAskState(params: {
     conversations: {},
     toolCalls: [],
     pendingToolCalls: [],
+    // Ask is a read-only Q&A flow — always Tier 0 Reflex.
+    executionTier: RESOLVED_TIER,
   } as unknown as AskGraphState;
 }

@@ -20,6 +20,7 @@ import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
 import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTierConfig, resolveTaskTechTiers, type PackageTierEntry } from "@ant/shared";
+import { parseExecutionTierTag, coerceExecutionTier, ExecutionTierId } from "../../../../../../core/executionTier";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -551,6 +552,15 @@ export async function decomposeSystemDesign(
 
   console.log(`✅ System decompose: ${response.documentType}, ${response.tasks.length} tasks → [${response.targetFiles.join(', ')}]`);
 
+  // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
+  // outside the `<decompose>` JSON. Missing tag degrades to Tier 0 Reflex
+  // (safe default — see core/executionTier/parseExecutionTierTag.ts).
+  const executionTier = coerceExecutionTier(
+    parseExecutionTierTag(rawResponse),
+    'SystemDecompose',
+  );
+  console.log(`🧭 [SystemDecompose] executionTier=${executionTier}`);
+
   // Build graph-level TechTier: prefer LLM-provided techTier, fallback to detected stack
   const graphTechTier = response.techTier
     ? buildTechTier({ language: response.techTier.language, framework: response.techTier.framework }, (response.techTier.stack as Stack) || detectedEnv)
@@ -621,6 +631,7 @@ export async function decomposeSystemDesign(
   state.jobId = ctx.newJobId;
   state.jobTiming = finalJobTiming;
   state._estimatingTokenUsage = estimatingTokenUsage;
+  state.executionTier = executionTier;
   await saveDecomposeCheckpoint(state, {
     taskQueue: taskQueue.getAll(),
     completedTasks: [],
@@ -629,6 +640,24 @@ export async function decomposeSystemDesign(
 
   // Update Kanban (tasks in queue, no in-progress yet)
   updateKanban(state, null, taskQueue.getAll());
+
+  // user_turn_meta patch — Decompose is design's Tier Entry Node. Feed the
+  // tier decision to the UI badge and resolve → featureContextBuilder hint.
+  // Side-effect only.
+  if (state.deps?.session && state.turnId && ctx.newJobId) {
+    try {
+      await state.deps.session.appendUserTurnMeta({
+        type: 'user_turn_meta',
+        ts: new Date().toISOString(),
+        jobId: ctx.newJobId,
+        turnId: state.turnId,
+        jobType: 'design',
+        executionTier,
+      });
+    } catch (err) {
+      console.warn('⚠️  [SystemDecompose] appendUserTurnMeta failed:', err);
+    }
+  }
 
   return {
     ...state,
@@ -639,6 +668,7 @@ export async function decomposeSystemDesign(
     jobId: ctx.newJobId,
     jobTiming: finalJobTiming,
     _estimatingTokenUsage: estimatingTokenUsage,
+    executionTier,
     boundary: BOUNDARY.HEAVYWEIGHT,
   } as any;
 }

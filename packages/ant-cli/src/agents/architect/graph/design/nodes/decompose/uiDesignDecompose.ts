@@ -19,6 +19,7 @@ import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
+import { parseExecutionTierTag, coerceExecutionTier } from "../../../../../../core/executionTier";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -156,6 +157,14 @@ export async function decomposeUiDesign(
       await trackTokenUsage(state, result?.usage);
     }
 
+    // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
+    // BEFORE the JSON output. Missing tag degrades to Tier 0 Reflex.
+    const executionTier = coerceExecutionTier(
+      parseExecutionTierTag(textResponse),
+      'UIDecompose',
+    );
+    console.log(`🧭 [UIDecompose] executionTier=${executionTier}`);
+
     // Parse and validate
     const parsedResponse = parseLLMJsonResponse(textResponse);
     const response: {
@@ -283,6 +292,7 @@ export async function decomposeUiDesign(
 
     state.jobId = ctx.newJobId;
     state.jobTiming = finalJobTiming;
+    state.executionTier = executionTier;
     await saveDecomposeCheckpoint(state, {
       taskQueue: taskQueue.getAll(),
       completedTasks: [],
@@ -292,6 +302,22 @@ export async function decomposeUiDesign(
     // Update Kanban
     updateKanban(state, null, taskQueue.getAll());
 
+    // user_turn_meta patch — Decompose is design's Tier Entry Node.
+    if (state.deps?.session && state.turnId && ctx.newJobId) {
+      try {
+        await state.deps.session.appendUserTurnMeta({
+          type: 'user_turn_meta',
+          ts: new Date().toISOString(),
+          jobId: ctx.newJobId,
+          turnId: state.turnId,
+          jobType: 'design',
+          executionTier,
+        });
+      } catch (err) {
+        console.warn('⚠️  [UIDecompose] appendUserTurnMeta failed:', err);
+      }
+    }
+
     return {
       ...state,
       taskQueue,
@@ -300,6 +326,7 @@ export async function decomposeUiDesign(
       _httpJobId: state._httpJobId,
       jobId: ctx.newJobId,
       jobTiming: finalJobTiming,
+      executionTier,
       boundary: BOUNDARY.HEAVYWEIGHT,
     };
   } catch (error: any) {
