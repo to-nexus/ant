@@ -18,6 +18,7 @@
     "failedTemplates": 0,
     "injectionPaths": [
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
@@ -43,6 +44,7 @@
     "failedTemplates": 0,
     "injectionPaths": [
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
@@ -68,6 +70,7 @@
     "failedTemplates": 0,
     "injectionPaths": [
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
@@ -93,6 +96,7 @@
     "failedTemplates": 0,
     "injectionPaths": [
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management"
@@ -117,6 +121,7 @@
     "failedTemplates": 0,
     "injectionPaths": [
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
@@ -184,6 +189,7 @@
     "failedTemplates": 0,
     "injectionPaths": [
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
@@ -210,6 +216,7 @@
     "injectionPaths": [
       "jobs/shared/injections/directive",
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",
@@ -235,6 +242,7 @@
     "failedTemplates": 0,
     "injectionPaths": [
       "jobs/shared/injections/visual-source-authority",
+      "jobs/code/basis/techTier/language/typescript-browser",
       "jobs/code/base/injections/preview-setup",
       "jobs/code/base/injections/preview-env-contract",
       "jobs/code/nodes/execute/injections/port-management",

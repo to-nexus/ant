@@ -329,9 +329,11 @@ templates/basis/
 
 | Job | 조건 | 주입 |
 |-----|------|------|
-| `code` | `taskType ∈ {verification, error, ui}` | framework + language 동시 |
-| `code` | 그 외 (feature/setup/test-code/doc) | skip — 기존 `setup/config` 계열이 이미 커버 |
+| `code` | `taskType ∈ {verification, error, ui, feature, setup}` | framework + language 동시 |
+| `code` | `taskType ∈ {test-code, doc}` | skip — 프레임워크 blind-spot은 테스트 스캐폴딩/문서 작성과 무관 |
 | `design` | framework/language 판별 가능 | framework + language 동시 |
+
+Blind-spot hints는 **사전 예방** 지식(Forbidden Patterns / Version Notes)이 본체이므로 작성 시점(feature/setup)에도 주입되어야 문제 발생 자체를 막는다. verification/error는 진단 시점의 보조 활용이다. `setup/config`와는 중복이 아니라 보완 관계(규약 vs 블라인드스팟)이다.
 
 **경로 규칙**:
 

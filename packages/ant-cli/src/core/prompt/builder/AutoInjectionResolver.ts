@@ -250,9 +250,13 @@ export class AutoInjectionResolver {
    * outside PromptBuilder (e.g. design docGen logging) reuse the same
    * decision logic instead of duplicating the framework/language mapping.
    *
-   * Code job scope: `taskType ∈ {verification, error, ui}` only.
-   * Other task types (feature/setup/test-code/doc) already have dedicated
-   * injections (e.g. setup/config) — injecting hints here would scope-creep.
+   * Code job scope: `taskType ∈ {verification, error, ui, feature, setup}`.
+   * Blind-spot hints are prevention knowledge (forbidden patterns, version
+   * boundaries) — they must reach the LLM at WRITE time (feature/setup) too,
+   * not only at diagnosis time (verification/error). Hints complement, rather
+   * than duplicate, the dedicated `setup/config` injection. `test-code` and
+   * `doc` task types remain excluded — the framework blind-spot catalog is
+   * not relevant to test scaffolding or documentation authoring.
    *
    * Design job scope: all task types when language/framework are detectable.
    */
@@ -266,7 +270,7 @@ export class AutoInjectionResolver {
     const language = this.resolveTechTierLanguage(tiers);
 
     if (job === 'code') {
-      const injectable = ['verification', 'error', 'ui'].includes(taskType ?? '');
+      const injectable = ['verification', 'error', 'ui', 'feature', 'setup'].includes(taskType ?? '');
       if (!injectable) return paths;
       if (framework) paths.push(`jobs/code/basis/techTier/framework/${framework}`);
       if (language) paths.push(`jobs/code/basis/techTier/language/${language}`);

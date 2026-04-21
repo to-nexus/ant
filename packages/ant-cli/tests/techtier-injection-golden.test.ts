@@ -109,15 +109,33 @@ describe('Code job techTier injection — golden snapshot', () => {
     ]);
   });
 
-  it('setup task → no hint injection (scope-creep guard)', () => {
+  it('setup task with nextjs tier → framework + language (prevention at write time)', () => {
     expect(
       codePaths([{ framework: 'nextjs', language: 'typescript', stack: 'frontend' }], 'setup'),
+    ).toEqual([
+      'jobs/code/basis/techTier/framework/nextjs',
+      'jobs/code/basis/techTier/language/typescript-browser',
+    ]);
+  });
+
+  it('feature task with nextjs tier → framework + language (prevention at write time)', () => {
+    expect(
+      codePaths([{ framework: 'nextjs', language: 'typescript', stack: 'frontend' }], 'feature'),
+    ).toEqual([
+      'jobs/code/basis/techTier/framework/nextjs',
+      'jobs/code/basis/techTier/language/typescript-browser',
+    ]);
+  });
+
+  it('test-code task → no hint injection (not relevant to test scaffolding)', () => {
+    expect(
+      codePaths([{ framework: 'nextjs', language: 'typescript', stack: 'frontend' }], 'test-code'),
     ).toEqual([]);
   });
 
-  it('feature task → no hint injection (scope-creep guard)', () => {
+  it('doc task → no hint injection (not relevant to documentation authoring)', () => {
     expect(
-      codePaths([{ framework: 'nextjs', language: 'typescript', stack: 'frontend' }], 'feature'),
+      codePaths([{ framework: 'nextjs', language: 'typescript', stack: 'frontend' }], 'doc'),
     ).toEqual([]);
   });
 
