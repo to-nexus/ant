@@ -232,6 +232,21 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     console.log(`📄 [Decompose] Generic artifacts: ${refArtifacts.length} ref(s) + ${contextArtifacts.length} context(s), ${totalChars.toLocaleString()} chars`);
   }
 
+  // Tier-classification signal: a compact summary of every ref (not just
+  // generic refs) so the LLM can weigh Tier 3 (no refs / refs-unrelated)
+  // vs Tier 4 (refs-grounded). The full content of these refs is already
+  // injected elsewhere in this prompt (spec / system designs / ui docs
+  // / generic refs); this block only surfaces the path list so the tier
+  // classifier does not have to scan the whole prompt to know refs exist.
+  const tierRefs = pool.all
+    .filter(a => a.role === 'ref' && a.content?.trim())
+    .map(a => {
+      const path = a.path;
+      const basename = path.slice(path.lastIndexOf('/') + 1) || path;
+      const label = basename.replace(/\.md$/i, '');
+      return { path, label };
+    });
+
   // Spec content is populated AFTER LLM selects via <selectedSpec> tag.
   // No auto-selection — the decompose LLM decides which spec is relevant.
   let specDoc = '';
@@ -250,6 +265,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     refArtifacts,
     contextArtifacts,
     hasGenericArtifacts,
+    tierRefs,
     specDoc,
     specApiContract,
     mode: state.resolvedAction?.mode || 'unknown',

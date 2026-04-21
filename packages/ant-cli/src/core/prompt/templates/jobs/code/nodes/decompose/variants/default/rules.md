@@ -9,35 +9,39 @@ OUTPUT FORMAT:
 
 ---
 
-## Complexity Classification (decides task shape)
+## ExecutionTier Classification (decides task shape)
 
-**Observation target**: The breadth and structure of work implied by the directive and the provided context.
+**Observation target**: The breadth of work implied by the directive, the mode, and the reference documents (if any) listed in the prompt.
 
-| Classification | Principle |
-|---|---|
-| `oneshot`     | A single self-contained action fulfils the directive. Targets are identifiable from directive and provided context. |
-| `exploratory` | The directive requires observing the codebase before a final action can be chosen. Targets must be discovered first. |
-| `todo`        | The directive spans multiple independent units of work that benefit from separate persistence boundaries, verification, or parallelism. |
+| Tier | Label | Principle |
+|---|---|---|
+| `0` | Reflex        | Read-only, self-contained explanation. The directive can be answered from its own wording plus what is already visible in this prompt. No codebase observation or file edits required. |
+| `1` | OneShot       | Single concrete action against a known target. Targets are identifiable from the directive and the provided context; no exploration pass is needed before acting. |
+| `2` | Exploratory   | The directive requires observing the codebase (or the refs) before a final action can be chosen. Targets must be discovered first; the act itself is still a single cohesive change. |
+| `3` | Task          | The directive spans multiple independent units of work that benefit from separate persistence boundaries, verification, or parallelism. No external reference document grounds the breakdown. |
+| `4` | RefsGrounded  | Multiple independent units of work, AND the breakdown is anchored in an external reference document (plan, spec, PRD, design) supplied as a ref in this prompt. |
 
-**Constraint**: Classify using the directive and the provided context ONLY. Do NOT invent scope beyond what the directive states.
+**Constraint**: Classify using the directive, the mode, and the provided context/refs ONLY. Do NOT invent scope beyond what the directive states.
 
-**Constraint**: When classification is ambiguous, default to `todo`.
+**Constraint**: When classification is ambiguous between two tiers, prefer the LOWER tier. The executor can always escalate; over-decomposing a simple directive wastes tokens and serializes work unnecessarily.
 
-### Output shape by mode × classification
+**Constraint**: The presence of refs alone does NOT imply Tier 4. Only when the directive's requested work is directly grounded in those refs (the refs are the source of truth for the breakdown) does the tier become 4. If refs exist but the directive asks for something unrelated, prefer `3` over `4`.
 
-| Mode                    | Classification              | `<tasks>` content                                     | `<directHints>` content |
+### Output shape by mode × tier
+
+| Mode                    | Tier                       | `<tasks>` content                                     | `<directHints>` content |
 |---|---|---|---|
-| `explain`               | `oneshot` or `exploratory`  | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
-| `explain`               | `todo`                      | Exactly one task, `type: "explain"`, `priority: 200`  | `{}` |
-| `generate` / `refactor` | `oneshot`                   | `[]`                                                  | `{ "targetFiles": [...] }` listing the files the single action touches |
-| `generate` / `refactor` | `exploratory`               | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` narrowing the observation surface |
-| `generate` / `refactor` | `todo`                      | Full task breakdown per the rules below               | `{}` |
+| `explain`               | `0` / `1` / `2`            | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
+| `explain`               | `3` / `4`                  | Exactly one task, `type: "explain"`, `priority: 200`  | `{}` |
+| `generate` / `refactor` | `0` / `1`                  | `[]`                                                  | `{ "targetFiles": [...] }` listing the files the single action touches |
+| `generate` / `refactor` | `2`                        | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` narrowing the observation surface |
+| `generate` / `refactor` | `3` / `4`                  | Full task breakdown per the rules below               | `{}` |
 
-**Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply ONLY when `complexity === 'task'` and mode is not `explain`. When `<tasks>` is `[]`, skip the reasoning steps those rules describe.
+**Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply ONLY when tier is `3` or `4` AND mode is not `explain`. When `<tasks>` is `[]`, skip the reasoning steps those rules describe.
 
-**Constraint**: The `generate` / `refactor` + `todo` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes `[]` and `<specClarify>` is emitted instead of a task breakdown.
+**Constraint**: The `generate` / `refactor` + tier `3`/`4` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes `[]` and `<specClarify>` is emitted instead of a task breakdown.
 
-**Constraint**: When `complexity === 'task'` and mode is `explain`, emit exactly one task:
+**Constraint**: When tier is `3` or `4` AND mode is `explain`, emit exactly one task:
 - `id`: `"explain-1"`
 - `name`: human-readable summary of what to explain
 - `type`: `"explain"`
@@ -48,39 +52,45 @@ OUTPUT FORMAT:
 
 Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this case.
 
-⚠️ **Blind spot**: `oneshot` and `exploratory` skip task breakdown entirely. Populate ONLY `<complexity>`, `<complexityReason>`, `<directHints>`, `<techTier>`, and `<tasks>[]`. Do not add boilerplate tasks to "make decomposition look complete".
+⚠️ **Blind spot**: Tiers `0`, `1`, and `2` skip task breakdown entirely. Populate ONLY `<executionTier>`, `<directHints>`, `<techTier>`, and `<tasks>[]`. Do not add boilerplate tasks to "make decomposition look complete".
 
-### Mode shapes the meaning of each classification
+### Mode shapes the meaning of each tier
 
-**Principle**: The unit of "action" differs by mode. Classification observes the same three questions, but the answers are mode-specific.
+**Principle**: The unit of "action" differs by mode. The same five tiers apply, but what counts as Reflex / OneShot / Exploratory / Task / RefsGrounded is mode-specific.
 
 - `explain` mode: the action is producing an explanation.
-  - `oneshot`     — answerable from the directive alone.
-  - `exploratory` — answer requires observing the codebase before writing.
-  - `todo`        — answer must be structured as multiple chapter-scale artefacts.
+  - `0` Reflex        — answerable from the directive alone, no codebase look-up.
+  - `1` OneShot       — answerable by pointing at a single known file or symbol.
+  - `2` Exploratory   — answer requires observing the codebase before writing.
+  - `3` Task          — answer must be structured as multiple chapter-scale artefacts.
+  - `4` RefsGrounded  — answer systematically maps a supplied reference document.
 - `refactor` mode: the action is a code change.
-  - `oneshot`     — change surface is known from the directive.
-  - `exploratory` — the target must be located before editing.
-  - `todo`        — change spans multiple independent persistence boundaries.
+  - `0` Reflex        — (rare) answer is "no change required"; no edits planned.
+  - `1` OneShot       — change surface is known from the directive.
+  - `2` Exploratory   — the target must be located before editing.
+  - `3` Task          — change spans multiple independent persistence boundaries.
+  - `4` RefsGrounded  — the refactor plan comes from a supplied reference document.
 - `generate` mode: the action is producing new code.
-  - `oneshot`     — single output unit (one file / one symbol).
-  - `exploratory` — structure to generate depends on codebase observation.
-  - `todo`        — multi-boundary or multi-concern implementation.
+  - `0` Reflex        — (rare) directive is a question disguised as generation; no files planned.
+  - `1` OneShot       — single output unit (one file / one symbol).
+  - `2` Exploratory   — structure to generate depends on codebase observation.
+  - `3` Task          — multi-boundary or multi-concern implementation.
+  - `4` RefsGrounded  — the implementation scope is enumerated by a supplied reference document.
 
-**Constraint**: Do NOT infer complexity from task-count expectations. Observe the directive and context, then classify.
+**Constraint**: Do NOT infer tier from task-count expectations. Observe the directive, mode, and refs, then classify.
 
 ---
 
-## Spec Clarify (source adequacy for `todo` decomposition)
+## Spec Clarify (source adequacy for tier 3/4 decomposition)
 
-**Observation target**: When the classification is `todo` and mode is not `explain`, observe whether the Development Source (see Scope Determination) can anchor a confident task breakdown.
+**Observation target**: When the tier is `3` or `4` and mode is not `explain`, observe whether the Development Source (see Scope Determination) can anchor a confident task breakdown.
 
 **Principle**: Every checkpoint question below is phrased so that a `yes` answer moves toward emission. `<specClarify>` fires only when ALL four answers are `yes` together.
 
 | Checkpoint | Question (yes = points to emit) |
 |-----------|----------------|
 | **Mode** | Is the active mode `generate` or `refactor` (i.e., NOT `explain`)? |
-| **Complexity** | Is the classification `todo`? |
+| **Tier** | Is the tier `3` (Task) or `4` (RefsGrounded)? |
 | **Design absent** | Does the prompt show no `Design Document Availability` entries — either the section is missing entirely or it lists no documents? |
 | **Spec absent** | Does the prompt show no directive-relevant `Spec Documents Available` entries — either the section is missing entirely or the listed entries do not relate to the directive? |
 
@@ -113,15 +123,15 @@ The tag content MUST be a single JSON object with these fields (no others):
 
 **Constraint**: `label` and `displayMessage` adopt the user's language. Do NOT append extra fields beyond the shape above.
 
-⚠️ **Blind spot**: The `<complexity>` tag remains `task` when `<specClarify>` is emitted — the classification is observation, not a promise of breakdown. Only the `<tasks>` array is deferred.
+⚠️ **Blind spot**: The `<executionTier>` tag still reflects the true tier (3 or 4) when `<specClarify>` is emitted — the classification is observation, not a promise of breakdown. Only the `<tasks>` array is deferred.
 
 ---
 
 First, analyze step by step (think through):
-- **Classify complexity first**: `oneshot`, `exploratory`, or `task`? (see Complexity Classification above)
-- If `oneshot` or `exploratory`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`
-- If `task` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all four checkpoints indicate no source, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown.
-- If `task`:
+- **Classify executionTier first**: `0` Reflex, `1` OneShot, `2` Exploratory, `3` Task, or `4` RefsGrounded? (see ExecutionTier Classification above)
+- If tier is `0`, `1`, or `2`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`
+- If tier is `3` or `4` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all four checkpoints indicate no source, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown.
+- If tier is `3` or `4`:
   - Is this a new project or existing project?
     - If "EXISTING CODEBASE DETECTED" was shown above, it is an existing project
     - If existing project, do NOT create setup task (priority 100)
@@ -736,15 +746,13 @@ Constraint: If uncertain, default to lightweight.
 
 Output in this exact order:
 
-**0. `<complexity>` tag** — one of `oneshot`, `exploratory`, `task` (see Complexity Classification above):
+**0. `<executionTier>` tag** — the single integer `0`, `1`, `2`, `3`, or `4` (see ExecutionTier Classification above):
 
-`<complexity>task</complexity>`
+`<executionTier>3</executionTier>`
 
-**0.1. `<complexityReason>` tag** — one sentence citing what in the directive and context drove the classification:
+**Constraint**: Emit EXACTLY ONE `<executionTier>` tag. Its content MUST be one of the literal digits `0`, `1`, `2`, `3`, `4` — no label, no JSON, no surrounding prose.
 
-`<complexityReason>Directive names a single function to rename; target is identifiable from existing file list.</complexityReason>`
-
-**0.2. `<directHints>` tag** — JSON object. `{}` when complexity is `task`; otherwise populated per the Output shape table above:
+**0.1. `<directHints>` tag** — JSON object. `{}` when tier is `3` or `4`; otherwise populated per the Output shape table above:
 
 <directHints>
 {
@@ -752,9 +760,9 @@ Output in this exact order:
 }
 </directHints>
 
-**Constraint**: Emit `<complexity>`, `<complexityReason>`, `<directHints>` BEFORE `<techTier>`. The classification commitment anchors the rest of the output.
+**Constraint**: Emit `<executionTier>` and `<directHints>` BEFORE `<techTier>`. The tier commitment anchors the rest of the output.
 
-**0.3. `<specClarify>` tag** (CONDITIONAL — see Spec Clarify above). Emit ONLY when all four Spec Clarify checkpoints fire. Omit the tag entirely otherwise:
+**0.2. `<specClarify>` tag** (CONDITIONAL — see Spec Clarify above). Emit ONLY when all four Spec Clarify checkpoints fire. Omit the tag entirely otherwise:
 
 <specClarify>
 {
@@ -786,7 +794,7 @@ Output in this exact order:
 }
 </techTier>
 
-**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<tasks>` tag** (task array -- see Task Schema and Complexity Classification above. `[]` when complexity is `oneshot` or `exploratory`.)
+**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<tasks>` tag** (task array -- see Task Schema and ExecutionTier Classification above. `[]` when tier is `0`, `1`, or `2`.)
 
 **{{#if needsBoundaryClassification}}4{{else}}3{{/if}}. `<references>` tag** (REQUIRED, even if empty):
 

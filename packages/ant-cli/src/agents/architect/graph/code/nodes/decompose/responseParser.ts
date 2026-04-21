@@ -4,6 +4,7 @@ import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../_common/errorHandler";
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
 import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type ExecutionTierId, type SpecClarify } from '@ant/shared';
+import { parseExecutionTierTag } from '../../../../../../core/executionTier';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { DEFAULT_TASK_TYPE } from '../../tasks/_shared/types';
 import { isVerificationTask } from '../../tasks/verification';
@@ -112,19 +113,6 @@ export interface ParsedDecomposeResponse {
   directHints?: { targetFiles?: string[]; explorationScope?: string };
   /** Design-redirect choice when task requires spec that is missing (see SpecClarify). */
   specClarify?: SpecClarify;
-}
-
-/**
- * Strict narrow for ExecutionTierId. Unknown / malformed inputs return
- * `undefined` so the caller can apply the `selectExecutionTier` fallback.
- */
-function normalizeExecutionTier(raw: string | undefined): ExecutionTierId | undefined {
-  const v = (raw || '').trim();
-  if (!v) return undefined;
-  const n = Number(v);
-  if (!Number.isInteger(n)) return undefined;
-  if (n < 0 || n > 4) return undefined;
-  return n as ExecutionTierId;
 }
 
 /**
@@ -242,8 +230,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     }
 
     // ExecutionTier classification (LLM-judged, 5-tier SSOT)
-    const tierMatch = rawResponse.match(/<executionTier>\s*([\s\S]*?)\s*<\/executionTier>/i);
-    const executionTier = normalizeExecutionTier(tierMatch?.[1]);
+    const executionTier = parseExecutionTierTag(rawResponse);
     if (executionTier === undefined) {
       console.warn('⚠️  [Decompose] No <executionTier> tag found — caller will default to Tier 0 (Reflex) as safe fallback');
     } else {
