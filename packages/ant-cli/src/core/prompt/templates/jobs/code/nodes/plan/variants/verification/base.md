@@ -91,7 +91,7 @@ If build{{#if runTests}}/test{{/if}} failed, analyze the COMPLETE command output
 
 ### Step {{#if runTests}}4{{else}}3{{/if}}: Produce Remediation Plan
 
-Output your analysis and structured plan.
+Output the structured plan.
 
 {{#if isRetry}}
 ────────────────────────────────────────────────────────────────────────────────
@@ -128,11 +128,6 @@ Choose the format based on remediation scope:
 ### Format A: Single Plan (fewer than 5 files to modify AND only 1 root cause)
 
 ```
-<analysis>
-(Your reasoning: what errors exist, how they group, what root causes you identified,
-which files need changes, in what order)
-</analysis>
-
 <plan>
 {
   "task": {
@@ -176,13 +171,9 @@ which files need changes, in what order)
 
 When multiple independent root causes exist or many files need changes, group fixes into batches by root cause. Each batch becomes an independent fix task executed separately.
 
-```
-<analysis>
-(Your reasoning: what errors exist, how they group, what root causes you identified.
-Explain WHY you grouped them this way — related errors that share a root cause
-or have cross-file dependencies MUST be in the same batch.)
-</analysis>
+Batch grouping MUST reflect root-cause and cross-file dependency relationships — related errors that share a root cause or cross-file dependencies belong in the same batch.
 
+```
 <plan>
 {
   "task": {
@@ -237,8 +228,6 @@ or have cross-file dependencies MUST be in the same batch.)
 **Constraint**: If all verification commands pass with no errors, output an empty plan:
 
 ```
-<analysis>All verification commands passed (exit 0). No fixes needed.</analysis>
-
 <plan>
 {
   "task": { "id": "{{taskId}}", "goal": "No errors found" },

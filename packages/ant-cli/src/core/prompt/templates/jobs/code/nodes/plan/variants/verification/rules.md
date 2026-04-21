@@ -26,7 +26,7 @@
 
 **Constraint**: When you need to read multiple files referenced in build errors, issue ALL reads in ONE response. Do NOT read files one at a time.
 
-**Constraint**: Produce `<analysis>` and `<plan>` as soon as the failing command's output AND the referenced source file(s) are in context. One `read_file` per source file named in the error is sufficient — do NOT issue follow-up `search_code` calls after the file has been read. If the error message does not name any file, ONE targeted `search_code` is permitted; then produce `<plan>` from the located site.
+**Constraint**: Produce `<plan>` as soon as the failing command's output AND the referenced source file(s) are in context. One `read_file` per source file named in the error is sufficient — do NOT issue follow-up `search_code` calls after the file has been read. If the error message does not name any file, ONE targeted `search_code` is permitted; then produce `<plan>` from the located site.
 
 **Constraint**: Each verification command type (build, test) must be executed at most once per diagnostic cycle. Re-running a failed command without code changes produces identical results. A separate execution phase applies code fixes, after which a fresh diagnostic cycle re-verifies automatically.
 

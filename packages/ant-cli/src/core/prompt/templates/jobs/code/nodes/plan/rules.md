@@ -36,14 +36,9 @@ Generate a **concrete implementation plan** for this task.
 ## 📋 OUTPUT FORMAT (MANDATORY)
 ────────────────────────────────────────────────────────────────────────────────
 
-**Your response MUST follow this EXACT structure:**
+**Your response MUST contain exactly one `<plan>` block with this structure:**
 
 ```
-<analysis>
-(Your Chain-of-Thought reasoning here - analyze directory structure, 
-existing modules, design specs, dependencies, etc.)
-</analysis>
-
 <plan>
 {
   "task": {
@@ -60,6 +55,8 @@ existing modules, design specs, dependencies, etc.)
 </plan>
 ```
 
+Do NOT wrap reasoning in any tag before `<plan>`. Any pre-`<plan>` text will be shown to the user verbatim — keep prose minimal and focused.
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 JSON SCHEMA FOR `<plan>`
 ────────────────────────────────────────────────────────────────────────────────
@@ -68,7 +65,7 @@ existing modules, design specs, dependencies, etc.)
 {
   "task": {
     "id": "[task identifier from input]",
-    "goal": "[one-line goal derived from analysis]"
+    "goal": "[one-line goal derived from your reasoning]"
   },
   "prescribedPackages": [
     {
@@ -220,10 +217,10 @@ what YOU own; depend on interfaces for what others own.
 {{> jobs/code/base/injections/mock-adapter-contract}}
 
 ────────────────────────────────────────────────────────────────────────────────
-## 📝 ANALYSIS SECTION GUIDE
+## 🧠 REASONING CHECKPOINTS
 ────────────────────────────────────────────────────────────────────────────────
 
-In your `<analysis>` section, cover:
+Before emitting `<plan>`, internally consider the observations below. These are targets for your reasoning, NOT an output format — do NOT emit them as prose.
 
 ### External Dependency Verification
 
@@ -302,8 +299,8 @@ In your `<analysis>` section, cover:
    - System design is provided as a **visual hint source only**
    - Extract: page layouts, component sizing, color/typography mentions, spacing constraints
    - IGNORE: functional requirements, API contracts, state management, business logic
-   - If no visual hints found, note explicitly — will use CSS framework conventions
-   - List extracted visual requirements in the analysis section
+   - If no visual hints found, fall back to CSS framework conventions
+   - Extracted visual requirements drive the `implementation` entries below
 
 {{/if}}
 {{/if}}
@@ -345,7 +342,6 @@ In your `<analysis>` section, cover:
 
 Before outputting, verify:
 
-- [ ] `<analysis>` section contains thorough reasoning
 - [ ] `<plan>` section contains valid JSON
 - [ ] All files belong to YOUR task scope (no shared entry points)
 - [ ] No duplicate modules (checked directory tree)
@@ -365,17 +361,15 @@ Before outputting, verify:
 ## ⚠️ OUTPUT CONSTRAINTS
 ────────────────────────────────────────────────────────────────────────────────
 
-### `<analysis>` Section
+### Internal reasoning targets (do NOT emit as prose)
 
-**Principle**: Free-form reasoning based on ACTUAL context you observe.
+Before writing `<plan>`, internally cover:
+1. **Directory patterns** — What structure exists? Where do similar modules live?
+2. **Existing modules** — Does similar functionality already exist? → MODIFY, not CREATE
+3. **Asset requirements** — What assets does ui-assets.json specify for this task?
+4. **Task scope** — Are all planned files within YOUR task's responsibility?
 
-Cover these checkpoints:
-1. **Directory patterns** - What structure exists? Where do similar modules live?
-2. **Existing modules** - Does similar functionality already exist? → MODIFY, not CREATE
-3. **Asset requirements** - What assets does ui-assets.json specify for this task?
-4. **Task scope** - Are all planned files within YOUR task's responsibility?
-
-**Constraint**: Do NOT copy example text. Analyze the ACTUAL project context provided.
+**Constraint**: Do NOT copy example text. Reason about the ACTUAL project context provided.
 
 ### `<plan>` Section
 
