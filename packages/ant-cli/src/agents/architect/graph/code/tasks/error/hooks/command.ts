@@ -11,10 +11,9 @@
  * install dependencies when the remediation plan requires it, but they
  * must NEVER run build / test / typecheck themselves. The next scheduled
  * verification cycle re-runs those gates after the fix lands. Running
- * build here would waste a plan→execute→enforce cycle and, for Go projects,
- * was the specific path that made the legacy `isDiagnosticTask` conflation
- * unsafe (the codeCommandPolicy Go allow-list silently included error
- * tasks).
+ * build here would waste a plan→execute→enforce cycle; the codeCommandPolicy
+ * Go allow-list must remain verification-only so error tasks cannot
+ * silently trigger build/test through a shared gate.
  *
  * The guard mirrors verification's execute-phase guard minus the session
  * dependency. Plan-phase commands pass through (rare, but the no-prePlanText

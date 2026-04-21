@@ -138,13 +138,12 @@ describe('F1/F4 — non-plan phase is not guarded by plan-phase gates', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// T6b-η — error task policy
+// Error task policy
 //
 // Error tasks apply fixes from an upstream remediation plan and must NOT
-// re-run build/test/typecheck themselves. Prior to T6b-η the legacy
-// `isDiagnosticTask` alias silently permitted `go build` in error tasks
-// (verification + error share the allow-list). These tests lock the
-// tightened policy: only verification may drive build/test/typecheck.
+// re-run build/test/typecheck themselves. These tests lock the policy:
+// only verification may drive build/test/typecheck; error tasks hitting
+// the Go allow-list are rejected.
 // ────────────────────────────────────────────────────────────────────────────
 
 function makeErrorCtx(opts: { activePhase?: 'plan' | 'execute' } = {}): ToolExecutionContext {
@@ -160,8 +159,8 @@ function makeErrorCtx(opts: { activePhase?: 'plan' | 'execute' } = {}): ToolExec
   } as unknown as ToolExecutionContext;
 }
 
-describe('codeCommandPolicy — Go build allow-list (verification-only after T6b-η)', () => {
-  it('blocks `go build` in an error task (previously silently allowed via isDiagnosticTask)', () => {
+describe('codeCommandPolicy — Go build allow-list (verification-only)', () => {
+  it('blocks `go build` in an error task', () => {
     const ctx = makeErrorCtx();
     const result = applyCodeCommandPolicy(ctx, { command: 'go build ./...' });
     expect(result?.content).toMatch(/\[Policy\]/);

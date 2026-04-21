@@ -40,14 +40,16 @@ const PREDICATES = [
  * a predicate usage was converted to a hook, which is always welcome and
  * should be captured as a new, lower pin in the same PR.
  *
- * 89 → 91: post-T6b-β audit (R-1) restored the `isVerificationTask ||
- * isErrorTask` symmetry at `finalizePlanFromExploration` via two new pure
- * predicates (`selectFinalizePrompt`, `shouldShortCircuitEmptyPlan`)
- * exported from `nodes/plan/planGeneration.ts`. Each predicate sits inside
- * its defining model file (condition 2), is pure (condition 1), and the
- * dispatch decision is a static per-type fact (condition 3) — a hook
- * would buy nothing over the direct predicate call. See audit notes in
- * `docs/tmp/verification-task-redesign-handoff.md` post-T12 section.
+ * 91: post-T6b-β audit (R-1) maintains the `isVerificationTask ||
+ * isErrorTask` symmetry at the plan phase — used for the empty-plan
+ * short-circuit gate in both the main flow (`nodes/plan/index.ts`) and
+ * the plan↔tool loop-limit path (`nodes/plan/parts/planLLM.ts`). Each
+ * predicate sits inside its defining model file (condition 2), is pure
+ * (condition 1), and the dispatch decision is a static per-type fact
+ * (condition 3) — a hook would buy nothing over the direct predicate
+ * call. The earlier diagnostic finalize-prompt branch was removed when
+ * the finalize nudge became task-type-blind and the empty-plan gate
+ * converged on the shared `hasEmptyImplementation` predicate.
  */
 const MEASURED_COUNT = 91;
 

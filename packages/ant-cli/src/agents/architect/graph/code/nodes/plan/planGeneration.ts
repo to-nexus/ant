@@ -796,49 +796,17 @@ export async function runPlanLLMWithTools(
 }
 
 /**
- * Select the no-more-tools synthesis prompt used when the plan↔tool loop
- * is out of budget. Diagnostic tasks (verification + decompose-emitted
- * error tasks) get the BATCHED-or-single directive so the downstream
- * `processDiagnosticBatchSplit` can legitimately split large remediation
- * plans (Format B in `plan/variants/error/base.md:136`); all other task
- * types get the implementation-plan directive.
- *
- * Error tasks created by a previous batch-split carry `prePlanText` and
- * are short-circuited earlier in `maybePrePlannedFastPath`, so this
- * branch only ever runs against decompose-emitted error tasks.
+ * Task-type-blind finalize nudge issued when the plan↔tool loop exhausts
+ * its budget. Stops further tool calls and asks the LLM to synthesize a
+ * `<plan>` from what it has gathered, following the format spec that
+ * already sits in the initial prompt (`variants/{verification,error,...}/
+ * base.md`). No schema / threshold / field names are re-declared here —
+ * templates are the SSOT for output format.
  */
-export function selectFinalizePrompt(task: CodeTask): string {
-  const isDiagnosticTask = isVerificationTask(task) || isErrorTask(task);
-  return isDiagnosticTask
-    ? 'You have finished exploring and analyzing the codebase. Based on ALL the tool results above, ' +
-      'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
-      'and output `<plan>{JSON}</plan>`. ' +
-      'If 15 or more files need modification, use the BATCHED format: the JSON must contain a top-level "batches" array ' +
-      'where each batch groups related fixes by root cause (with "name", "rationale", "modify", "create", "delete" fields). ' +
-      'Otherwise use the single-plan format with an "implementation" object containing "modify", "create", "delete" arrays. ' +
-      'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.'
-    : 'You have finished exploring. Based on ALL the tool results above, ' +
-      'produce your final implementation plan NOW. Output `<plan>{JSON}</plan>`. ' +
-      'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.';
-}
-
-/**
- * Empty-plan shortcut predicate for `finalizePlanFromExploration`.
- * When a diagnostic task's finalized plan reports "no errors to fix"
- * (either explicit `diagnostics.totalErrors === 0` or all-empty
- * implementation buckets), callers return `planText === ''` so execute
- * can immediately mark the task done.
- */
-export function shouldShortCircuitEmptyPlan(task: CodeTask, parsed: any): boolean {
-  const isDiagnosticTask = isVerificationTask(task) || isErrorTask(task);
-  if (!isDiagnosticTask) return false;
-  return (
-    parsed?.diagnostics?.totalErrors === 0 ||
-    (parsed?.implementation?.modify?.length === 0 &&
-     parsed?.implementation?.create?.length === 0 &&
-     (parsed?.implementation?.delete?.length ?? 0) === 0)
-  );
-}
+const FINALIZE_NUDGE =
+  'You have finished exploring. Do NOT call any more tools. ' +
+  'Based on all tool results above, output exactly one `<plan>{JSON}</plan>` block ' +
+  'following the format specified in the initial prompt.';
 
 /**
  * Finalize plan from tool exploration context.
@@ -862,13 +830,11 @@ export async function finalizePlanFromExploration(
   const llmToUse = await selectLLMForTask(llm, task, state);
   if (!llmToUse?.stream) return null;
 
-  const finalizePrompt = selectFinalizePrompt(task);
-
   const finalizeMessage: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }> = [
     ...history,
     {
       role: 'user' as const,
-      content: finalizePrompt,
+      content: FINALIZE_NUDGE,
     },
   ];
 
@@ -978,12 +944,6 @@ export async function finalizePlanFromExploration(
       try {
         const parsed = JSON.parse(planText);
         await validatePrescribedPackages(parsed, state);
-
-        if (shouldShortCircuitEmptyPlan(task, parsed)) {
-          console.log(`✅ [Plan] Diagnostic plan shows no errors — returning empty planText for immediate done`);
-          await savePlanTextForDebug(state, task, planText);
-          return '';
-        }
       } catch { /* non-blocking */ }
 
       await savePlanTextForDebug(state, task, planText);

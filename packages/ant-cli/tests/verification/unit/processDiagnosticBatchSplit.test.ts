@@ -55,8 +55,7 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       const state = makeState();
       // Realistic feature task — priority in the feature band and a
       // non-verification-keyword name so neither the priority fallback nor
-      // the name fallback on `isVerificationTask` fires. T6b-η: since the
-      // type-only `isDiagnosticTask` helper was deleted, the gate is now
+      // the name fallback on `isVerificationTask` fires. The gate is
       // `isVerificationTask(t) || isErrorTask(t)`; the predicate layer
       // uses the richer verification discriminator, so this test must use
       // unambiguous inputs.
