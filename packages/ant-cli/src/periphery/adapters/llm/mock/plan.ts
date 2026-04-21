@@ -11,11 +11,7 @@ export function planResponse(): string {
     },
   });
 
-  return `<analysis>
-Mock analysis: The task requires creating a simple project structure with one entry file.
-No external dependencies needed. Straightforward implementation.
-</analysis>
-<plan>
+  return `<plan>
 ${plan}
 </plan>`;
 }
