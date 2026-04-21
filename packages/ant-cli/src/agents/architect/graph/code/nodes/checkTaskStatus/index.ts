@@ -163,7 +163,7 @@ export async function checkTaskStatus(
         outputTokens: completedTask.tokenUsage?.outputTokens || 0,
         cacheReadTokens: completedTask.tokenUsage?.cacheReadTokens || 0,
         cacheCreationTokens: completedTask.tokenUsage?.cacheCreationTokens || 0,
-        llmCallCount: state._executeCallIndex || 0,
+        llmCallCount: completedTask.tokenUsage?.callCount ?? 0,
       }).catch(() => {});
     }
 

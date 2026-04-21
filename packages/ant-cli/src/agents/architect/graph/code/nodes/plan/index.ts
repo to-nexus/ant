@@ -357,11 +357,11 @@ async function runMainPlanLLM(
       diagnosticRetryContext,
       retrySummaryText,
     );
-    const contentBlocks = await buildPlanPromptBlocks(
+    const { blocks: contentBlocks, vars: hookLogVars } = await buildPlanPromptBlocks(
       state, nextTask, rag.projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true },
     );
     const messages = [{ role: 'user' as const, content: contentBlocks }];
-    const result = await runPlanLLMWithTools(state, messages, nextTask);
+    const result = await runPlanLLMWithTools(state, messages, nextTask, { extraLogVars: hookLogVars });
     if (result && '_activePhase' in result) {
       await workflowExit(state);
       return {

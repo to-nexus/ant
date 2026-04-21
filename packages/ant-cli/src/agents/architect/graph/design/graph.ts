@@ -337,7 +337,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
           outputTokens: taskTokenUsage?.outputTokens || 0,
           cacheReadTokens: taskTokenUsage?.cacheReadTokens || 0,
           cacheCreationTokens: taskTokenUsage?.cacheCreationTokens || 0,
-          llmCallCount: state._docGenCallIndex || 0,
+          llmCallCount: taskTokenUsage?.callCount ?? state._docGenCallIndex ?? 0,
         });
       } catch (_) { /* non-critical */ }
     }
