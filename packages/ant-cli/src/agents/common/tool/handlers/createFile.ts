@@ -73,7 +73,6 @@ export async function handleCreateFile(
         type: 'verificationInvalidated',
         scope: decision.scope,
         reason: decision.reason,
-        ...(decision.installNeeded ? { installNeeded: true } : {}),
       },
     ];
 

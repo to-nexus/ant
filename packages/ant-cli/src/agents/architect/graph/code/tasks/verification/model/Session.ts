@@ -93,7 +93,6 @@ export class VerificationSession {
   private readonly _planHistoryBodies: string[];
 
   private _attempts: number;
-  private _depHash: string | undefined;
   private _installNeeded: boolean | undefined;
   private _batchSplitCount: number;
   private _previousBatchDiagnostics: string | undefined;
@@ -105,7 +104,6 @@ export class VerificationSession {
     attempts: number;
     planHistoryHashes: string[];
     planHistoryBodies: string[];
-    depHash?: string;
     installNeeded?: boolean;
     batchSplitCount?: number;
     previousBatchDiagnostics?: string;
@@ -116,7 +114,6 @@ export class VerificationSession {
     this._attempts = Math.max(0, init.attempts | 0);
     this._planHistoryHashes = [...init.planHistoryHashes];
     this._planHistoryBodies = [...init.planHistoryBodies];
-    this._depHash = init.depHash;
     this._installNeeded = init.installNeeded;
     this._batchSplitCount = Math.max(0, (init.batchSplitCount ?? 0) | 0);
     this._previousBatchDiagnostics = init.previousBatchDiagnostics;
@@ -160,7 +157,6 @@ export class VerificationSession {
       attempts: safe.attempts ?? 0,
       planHistoryHashes: safe.planHistoryHashes ?? [],
       planHistoryBodies: safe.planHistoryBodies ?? [],
-      depHash: safe.depHash,
       installNeeded: safe.installNeeded,
       batchSplitCount: safe.batchSplitCount,
       previousBatchDiagnostics: safe.previousBatchDiagnostics,
@@ -246,23 +242,21 @@ export class VerificationSession {
     return this._batchSplitCount;
   }
 
-  depHash(): string | undefined {
-    return this._depHash;
-  }
-
   installNeeded(): boolean {
     return this._installNeeded === true;
   }
 
   /**
-   * Tri-state dependency-install status for the plan prompt:
+   * Tri-state dependency-install status for the plan prompt. Authoritative
+   * source is `areDepsInstalled(featureRootPath)` called from the plan-entry
+   * path (`nodes/plan/parts/entry.ts#recomputeInstallNeeded`); this Session
+   * field is a per-entry observation cache so prompt/guard readers within a
+   * single task do not walk the filesystem repeatedly.
    *
-   *   - `'changed'`  — dependency manifest has drifted since the last
-   *                    successful install (run the install command first).
-   *   - `'current'`  — manifest is known to match the last install (safe
-   *                    to skip install and go straight to build).
-   *   - `'unknown'`  — session has not observed an install boundary yet;
-   *                    the plan prompt should omit the dependency hint.
+   *   - `'changed'`  — at least one declared dep is missing from node_modules.
+   *   - `'current'`  — every declared dep resolves under node_modules.
+   *   - `'unknown'`  — not a JS project (no package.json) OR the observation
+   *                    has not run yet; the plan prompt omits the dep hint.
    */
   dependencyStatus(): 'current' | 'changed' | 'unknown' {
     if (this._installNeeded === true) return 'changed';
@@ -326,19 +320,17 @@ export class VerificationSession {
    * Files changed; invalidate the affected gates' passed status. Scope
    * mirrors the historical `invalidationScope` helper — `all` clears every
    * passed gate, while targeted scopes clear just the implicated gate.
-   * `installNeeded` may be toggled simultaneously if the change touched
-   * dependency manifests.
+   *
+   * Install-needed propagation was removed (F3 — observation-based SSOT).
+   * The next plan entry calls `areDepsInstalled` directly on the codebase,
+   * so a stale in-memory flag cannot mislead the install decision.
    */
-  onFileChanged(
-    scope: 'all' | 'build' | 'test' | 'typecheck',
-    installNeeded?: boolean,
-  ): void {
+  onFileChanged(scope: 'all' | 'build' | 'test' | 'typecheck'): void {
     if (scope === 'all') {
       this._passed.clear();
     } else if (this._required.has(scope)) {
       this._passed.delete(scope);
     }
-    if (installNeeded !== undefined) this._installNeeded = installNeeded;
   }
 
   /**
@@ -356,20 +348,10 @@ export class VerificationSession {
   }
 
   /**
-   * Dependency install succeeded; persist the new hash so subsequent
-   * entries can skip install when the manifest is unchanged.
-   */
-  onInstallResolved(depHash: string | undefined): void {
-    this._depHash = depHash;
-    this._installNeeded = false;
-  }
-
-  /**
-   * Narrow setter for the install-needed flag used by
-   * `recomputeInstallNeeded` (plan/parts/entry.ts). Distinct from
-   * `onFileChanged` because the plan-entry dep-hash probe must NOT clear
-   * already-passed gates — gate invalidation happens only in response to
-   * actual file writes surfaced by the tool hook.
+   * Per-entry observation cache setter. Called from
+   * `recomputeInstallNeeded` (plan/parts/entry.ts) after it observes
+   * `areDepsInstalled`. Does NOT clear gates — gate invalidation happens
+   * only in response to actual file writes surfaced by the tool hook.
    */
   markInstallNeeded(needed: boolean): void {
     this._installNeeded = needed;
@@ -397,7 +379,6 @@ export class VerificationSession {
       attempts: this._attempts,
       planHistoryHashes: [...this._planHistoryHashes],
       planHistoryBodies: [...this._planHistoryBodies],
-      depHash: this._depHash,
       installNeeded: this._installNeeded,
       batchSplitCount: this._batchSplitCount,
       previousBatchDiagnostics: this._previousBatchDiagnostics,

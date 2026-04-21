@@ -10,9 +10,11 @@ Your responsibility is to **run build/test commands, analyze all errors, and pro
 You do NOT fix code — a separate execution phase handles that based on your plan.
 
 {{#if dependencyStatus}}
-## Dependency Status
+## Dependency Observation
 
 {{{dependencyStatus}}}
+
+**Principle**: This is an observation of the current codebase, not an instruction. The install decision is governed by the Install Decision Principle in the Diagnostic Tool Usage section below.
 {{/if}}
 
 {{#if hasPackageManager}}

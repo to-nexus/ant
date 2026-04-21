@@ -109,8 +109,8 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
     // Plan was applied twice inside worker 1 so the history is populated.
     firstSession.onPlanApplied('{"plan":1}');
     firstSession.onPlanApplied('{"plan":2}');
-    // Install resolution that the second worker must observe.
-    firstSession.onInstallResolved('deadbeef');
+    // Install observation that the second worker must carry over.
+    firstSession.markInstallNeeded(false);
 
     const firstFinalAttempts = firstSession.attempts();
     const firstFinalPlanHistory = firstSession.snapshot().planHistoryBodies?.length ?? 0;
@@ -145,7 +145,7 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
 
     expect((task as any).resumeState.verification).toBeDefined();
     expect((task as any).resumeState.verification.attempts).toBe(firstFinalAttempts);
-    expect((task as any).resumeState.verification.depHash).toBe('deadbeef');
+    expect((task as any).resumeState.verification.installNeeded).toBe(false);
     expect((task as any).resumeState.verification.planHistoryBodies).toEqual([
       '{"plan":1}',
       '{"plan":2}',
@@ -162,7 +162,7 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
     expect(secondSession.attempts()).toBeGreaterThan(0);
     expect(secondSession.snapshot().planHistoryBodies?.length ?? 0).toBe(firstFinalPlanHistory);
     expect((secondSession.snapshot().planHistoryBodies?.length ?? 0)).toBeGreaterThan(0);
-    expect(secondSession.depHash()).toBe('deadbeef');
+    expect(secondSession.installNeeded()).toBe(false);
 
     // `restoreIntoWorkerState` must clear the resume artefacts on the task so
     // a third worker spawn does not double-restore the same snapshot.

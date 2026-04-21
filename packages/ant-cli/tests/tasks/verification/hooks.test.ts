@@ -89,7 +89,6 @@ function mkSession(opts: {
     attemptedThisCycle: () => [...attempted] as Array<'typecheck' | 'build' | 'test'>,
     isComplete: () => [...required].every(g => passed.has(g)),
     dependencyStatus: () => 'unknown' as const,
-    depHash: () => undefined,
     inDeepMode: () => opts.deep === true,
     markAttempted: (gate: 'typecheck' | 'build' | 'test') => {
       attemptLog.push(gate);
@@ -214,7 +213,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     expect(base?.vars.hasTools).toBe(true);
   });
 
-  it('forwards installNeeded=true into dependencyStatus and includes deep-diagnostic injections', async () => {
+  it('forwards Session.installNeeded=true into dependencyStatus and includes deep-diagnostic injections', async () => {
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
     for (let i = 0; i < 3; i++) session.onPlanEntry('retry'); // attempts=3 → deep mode
@@ -230,7 +229,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
       remainingTasks: undefined,
     });
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
-    expect(base?.vars.dependencyStatus).toMatch(/Run the project's install command/);
+    expect(base?.vars.dependencyStatus).toMatch(/missing from `node_modules`/);
     expect(base?.vars.isDeepDiagnostic).toBe(true);
     expect(base?.vars.diagnosticAttempts).toBe(3);
     expect(base?.vars.isRetry).toBe(true);
@@ -241,7 +240,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     expect(out.vars?.hasViolationsText).toBe(true);
   });
 
-  it('omits dependencyStatus when Session has no dep-hash observation yet', async () => {
+  it('omits dependencyStatus when Session has no install-needed observation yet', async () => {
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
     const out = await planHook.buildPrompt({
       state: stateWith(undefined, { deps: { promptBuilder } as any } as Partial<ArchitectGraphState>),
@@ -279,7 +278,8 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     // observations.
     const session = VerificationSession.createFresh({ isTs: true, hasTests: true });
     for (let i = 0; i < 4; i++) session.onPlanEntry('retry'); // attempts=4, deep mode
-    session.onFileChanged('all', true);                        // installNeeded=true, clears gates
+    session.onFileChanged('all');                              // clears gates
+    session.markInstallNeeded(true);                           // observation: deps missing
     session.onCommand('typecheck', true);                     // typecheck re-passes
 
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
@@ -297,7 +297,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
     expect(base?.vars.diagnosticAttempts).toBe(4);
     expect(base?.vars.isDeepDiagnostic).toBe(true);
-    expect(base?.vars.dependencyStatus).toMatch(/have changed/);
+    expect(base?.vars.dependencyStatus).toMatch(/missing from `node_modules`/);
     expect(base?.vars.cachedPassedSteps).toContain('typecheck');
     expect(base?.vars.cachedPassedSteps).not.toContain('build');
     expect(base?.vars.cachedPassedSteps).not.toContain('test');
@@ -344,17 +344,6 @@ describe('hooks/tool', () => {
       { type: 'verificationInvalidated', scope: 'all', reason: 'src/main.ts edited' },
     ]));
     expect(session.passed()).not.toContain('build');
-  });
-
-  it('onEvent — depFileHashChanged resolves install', () => {
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    session.onFileChanged('all', true);
-    expect(session.installNeeded()).toBe(true);
-    toolHook.onEvent(stateWith(session), event([
-      { type: 'depFileHashChanged', newHash: 'deadbeef' },
-    ]));
-    expect(session.installNeeded()).toBe(false);
-    expect(session.depHash()).toBe('deadbeef');
   });
 
   it('onEvent — no session is a no-op', () => {

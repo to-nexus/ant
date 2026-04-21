@@ -1,13 +1,19 @@
 /**
- * invalidationScope — derive the verification-invalidation scope from a modified/created/deleted
- * file path. This lets the tracker retain already-passed steps when the edit cannot
- * logically affect them (e.g. touching a *.test.ts file should not invalidate typecheck
- * or build — only tests need to be re-run).
+ * invalidationScope — pure fs/path observations that drive two concerns:
  *
- * Principle: fall back to `'all'` when the signal is ambiguous. Narrowing is a cache
- * optimization; widening is safe correctness.
+ *   1. Gate invalidation scope for an edited/created/deleted file
+ *      (`decideInvalidationScope`). Narrowing is a cache optimisation;
+ *      widening is safe correctness.
+ *   2. Dependency install status observation (`areDepsInstalled` +
+ *      `shouldSkipInstall`). Codebase itself (package.json vs
+ *      node_modules/<name>) is the single source of truth — no hash cache.
+ *
+ * Both concerns are pure module-level helpers with no LangGraph state
+ * dependencies; task-type layers consume them via their own hooks.
  */
 
+import * as path from 'path';
+import * as fs from 'fs';
 import type { InvalidationScope } from '../types';
 
 const TEST_PATH_PATTERNS: RegExp[] = [
@@ -51,8 +57,6 @@ const DEP_MANIFEST_BASENAMES = new Set([
 
 export interface InvalidationDecision {
   scope: InvalidationScope;
-  /** Dependency manifest touched — caller should force a fresh install */
-  installNeeded?: boolean;
   /** Why this scope was chosen (human readable, for logs/tests) */
   reason: string;
 }
@@ -68,67 +72,75 @@ function extension(base: string): string {
 }
 
 /**
- * Derive the install-needed decision from dep manifest state.
- * Pure function: enables deterministic unit tests without filesystem.
+ * Are all declared JS dependencies present in `codebase/node_modules/`?
  *
- *   savedHash absent AND node_modules exists AND we can hash the manifests
- *   → adopt current hash as baseline (no install). Fixes "parallel worker
- *   without shared state re-installs every verification task" case.
+ * Returns:
+ *   - `true`  — every entry in `dependencies ∪ devDependencies` is resolvable
+ *               under `codebase/node_modules/<name>`.
+ *   - `false` — at least one declared dep is missing, OR package.json was
+ *               read but the node_modules root is absent.
+ *   - `null`  — not a JS project (package.json missing/unreadable). Callers
+ *               treat this as "dependency status unknown, observe nothing".
  *
- *   otherwise → installNeeded iff (no savedHash) OR (hash mismatch) OR (no deps).
+ * `peerDependencies` and `optionalDependencies` are excluded — the former is
+ * a host contract (not required locally), the latter can be legitimately
+ * absent (platform-specific, already declared as such by npm semantics).
+ *
+ * This is the cross-task SSOT for install status: codebase itself is the
+ * witness, so no in-memory hash cache or persisted hash file is needed. The
+ * filesystem port is already shared across workers, so parallel-worker
+ * install results surface automatically on the next observation.
+ *
+ * Package-manager layout coverage: npm / pnpm (symlinks to `.pnpm/`) / yarn
+ * classic / bun all populate `node_modules/<name>/`. Yarn PnP
+ * (no node_modules) is NOT covered — users of that layout would need a
+ * separate manifest probe; out of scope here.
  */
-export interface InstallDecision {
-  installNeeded: boolean;
-  adoptedHash?: string;
-  reason: string;
-}
+export async function areDepsInstalled(featureRootPath: string): Promise<boolean | null> {
+  const codebasePath = path.join(featureRootPath, 'codebase');
+  const pkgPath = path.join(codebasePath, 'package.json');
+  let pkg: any;
+  try {
+    pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
+  } catch {
+    return null;
+  }
 
-export function deriveInstallDecision(
-  savedHash: string | undefined,
-  currentHash: string | null,
-  depsExist: boolean,
-): InstallDecision {
-  if (!savedHash && depsExist && currentHash) {
-    return {
-      installNeeded: false,
-      adoptedHash: currentHash,
-      reason: 'inferred-installed (no saved hash, node_modules present, manifest hashable)',
-    };
+  const required: Record<string, string> = {
+    ...(pkg.dependencies || {}),
+    ...(pkg.devDependencies || {}),
+  };
+  const names = Object.keys(required);
+  if (names.length === 0) return true;
+
+  for (const name of names) {
+    const modPath = path.join(codebasePath, 'node_modules', ...name.split('/'));
+    try {
+      await fs.promises.stat(modPath);
+    } catch {
+      return false;
+    }
   }
-  if (!savedHash) {
-    return { installNeeded: true, reason: 'no saved hash' };
-  }
-  if (!depsExist) {
-    return { installNeeded: true, reason: 'node_modules missing' };
-  }
-  if (savedHash !== currentHash) {
-    return { installNeeded: true, reason: 'manifest hash changed' };
-  }
-  return { installNeeded: false, reason: 'cached' };
+  return true;
 }
 
 /**
- * Unified install-skip decision shared between the plan-node
- * `recomputeInstallNeeded` path and the `runCommand` bare-install guard.
+ * Install-skip decision used by the `runCommand` bare-install guard. The
+ * single source of truth is `areDepsInstalled` — the codebase (package.json
+ * vs node_modules/<name>) is the witness, so no hash cache is needed.
  *
- * Returns `null` when the install MUST run (no skip). Returns a skip reason
- * string when the install can be short-circuited because the dependency
- * declaration files have not changed since the last successful install.
- *
- * The decision is derived from `deriveInstallDecision` so both call sites
- * agree on the cache rules — previously these were two independent
- * implementations with a subtle "first-time install" asymmetry.
+ * Returns:
+ *   - `null`    — install MUST run (at least one declared dep is missing,
+ *                 or the observation could not be made).
+ *   - `string`  — install can be skipped; the string is a human-readable
+ *                 reason surfaced to the LLM.
  */
-export function shouldSkipInstall(
-  savedHash: string | undefined,
-  currentHash: string | null,
-  depsExist: boolean,
-): string | null {
-  if (!savedHash) return null;
-  if (!depsExist) return null;
-  if (!currentHash) return null;
-  if (savedHash !== currentHash) return null;
-  return 'Dependencies are up to date. Dependency declaration files have not changed since the last successful install. Proceed directly to build/test verification commands.';
+export async function shouldSkipInstall(featureRootPath: string): Promise<string | null> {
+  const installed = await areDepsInstalled(featureRootPath);
+  if (installed === true) {
+    return 'Dependencies are already installed. All declared package.json dependencies resolve under node_modules/. Proceed directly to build/test verification commands.';
+  }
+  return null;
 }
 
 /**
@@ -198,18 +210,24 @@ function isLockfile(base: string): boolean {
 /**
  * Route a dependency manifest edit to a fine-grained scope based on its diff.
  * Unknown manifest formats fall through to the conservative `'all'` scope.
+ *
+ * Install-needed propagation was removed (F3 — observation-based SSOT): the
+ * next plan entry calls `areDepsInstalled` directly, so a stale scope signal
+ * here cannot mislead the install decision. Scope selection still narrows
+ * gate invalidation (e.g. a devDependencies-only edit only resets the `test`
+ * gate, preserving cached typecheck/build passes).
  */
 function decideManifestScope(base: string, diff?: ManifestDiff): InvalidationDecision {
   // Lockfiles are regenerated from their source manifest; source changes are
   // already covered by the package.json path. Treat lockfile-only edits as
   // affecting build/runtime linkage but preserving typecheck cache.
   if (isLockfile(base)) {
-    return { scope: 'build', installNeeded: true, reason: `lockfile: ${base}` };
+    return { scope: 'build', reason: `lockfile: ${base}` };
   }
 
   if (!diff || diff.oldContent === undefined) {
     // New manifest OR no diff supplied: behave as before.
-    return { scope: 'all', installNeeded: true, reason: `dep manifest (no diff): ${base}` };
+    return { scope: 'all', reason: `dep manifest (no diff): ${base}` };
   }
 
   if (base === 'package.json') {
@@ -217,7 +235,7 @@ function decideManifestScope(base: string, diff?: ManifestDiff): InvalidationDec
   }
 
   // Other manifests (pyproject.toml, Cargo.toml, go.mod, …) are not parsed yet.
-  return { scope: 'all', installNeeded: true, reason: `dep manifest: ${base}` };
+  return { scope: 'all', reason: `dep manifest: ${base}` };
 }
 
 function decidePackageJsonScope(diff: ManifestDiff): InvalidationDecision {
@@ -227,7 +245,7 @@ function decidePackageJsonScope(diff: ManifestDiff): InvalidationDecision {
     oldPkg = JSON.parse(diff.oldContent!) as Record<string, unknown>;
     newPkg = JSON.parse(diff.newContent) as Record<string, unknown>;
   } catch {
-    return { scope: 'all', installNeeded: true, reason: 'package.json parse failed' };
+    return { scope: 'all', reason: 'package.json parse failed' };
   }
 
   const changedFields = new Set<string>();
@@ -243,7 +261,7 @@ function decidePackageJsonScope(diff: ManifestDiff): InvalidationDecision {
   // devDependencies alone → test tooling scope (jest/vitest/jsdom/etc.).
   const onlyDev = changedFields.size === 1 && changedFields.has('devDependencies');
   if (onlyDev) {
-    return { scope: 'test', installNeeded: true, reason: 'package.json devDependencies only' };
+    return { scope: 'test', reason: 'package.json devDependencies only' };
   }
 
   // Any runtime dep change → full invalidation (import graph may shift).
@@ -254,7 +272,6 @@ function decidePackageJsonScope(diff: ManifestDiff): InvalidationDecision {
   ) {
     return {
       scope: 'all',
-      installNeeded: true,
       reason: `package.json ${[...changedFields].sort().join('+')}`,
     };
   }
@@ -262,7 +279,6 @@ function decidePackageJsonScope(diff: ManifestDiff): InvalidationDecision {
   // scripts / engines / type / exports / packageManager / workspaces / etc.
   return {
     scope: 'all',
-    installNeeded: true,
     reason: `package.json fields: ${[...changedFields].sort().join(',')}`,
   };
 }

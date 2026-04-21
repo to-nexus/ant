@@ -22,14 +22,14 @@ describe('Axis C — decideInvalidationScope', () => {
     expect(decideInvalidationScope('assets/logo.svg').scope).toBe('build');
   });
 
-  it('dependency manifests force installNeeded + all scope', () => {
-    const decision = decideInvalidationScope('package.json');
-    expect(decision.scope).toBe('all');
-    expect(decision.installNeeded).toBe(true);
-
-    expect(decideInvalidationScope('pnpm-lock.yaml').installNeeded).toBe(true);
-    expect(decideInvalidationScope('go.mod').installNeeded).toBe(true);
-    expect(decideInvalidationScope('Cargo.toml').installNeeded).toBe(true);
+  it('dependency manifests produce all-scope (gate invalidation only)', () => {
+    // F3 — install decision moved from manifest-edit propagation to direct
+    // `areDepsInstalled` observation at the next plan entry. Manifest edits
+    // still trigger gate invalidation; install-needed is not propagated here.
+    expect(decideInvalidationScope('package.json').scope).toBe('all');
+    expect(decideInvalidationScope('pnpm-lock.yaml').scope).toBe('build');
+    expect(decideInvalidationScope('go.mod').scope).toBe('all');
+    expect(decideInvalidationScope('Cargo.toml').scope).toBe('all');
   });
 
   it('unknown extensions default to all (conservative)', () => {
@@ -53,17 +53,16 @@ describe('F2 — manifest diff-aware scope', () => {
     scripts: { build: 'tsc' },
   };
 
-  it('F2a: dependencies-only diff → all + installNeeded', () => {
+  it('F2a: dependencies-only diff → all scope', () => {
     const newPkg = { ...base, dependencies: { react: '^18.2.0' } };
     const decision = decideInvalidationScope('package.json', {
       oldContent: JSON.stringify(base),
       newContent: JSON.stringify(newPkg),
     });
     expect(decision.scope).toBe('all');
-    expect(decision.installNeeded).toBe(true);
   });
 
-  it('F2b: devDependencies-only diff → test + installNeeded', () => {
+  it('F2b: devDependencies-only diff → test scope', () => {
     const newPkg = {
       ...base,
       devDependencies: { ...base.devDependencies, jsdom: '^26.0.0' },
@@ -73,7 +72,6 @@ describe('F2 — manifest diff-aware scope', () => {
       newContent: JSON.stringify(newPkg),
     });
     expect(decision.scope).toBe('test');
-    expect(decision.installNeeded).toBe(true);
   });
 
   it('F2c: scripts diff → all', () => {
@@ -83,7 +81,6 @@ describe('F2 — manifest diff-aware scope', () => {
       newContent: JSON.stringify(newPkg),
     });
     expect(decision.scope).toBe('all');
-    expect(decision.installNeeded).toBe(true);
   });
 
   it('F2d: parse failure → conservative all', () => {
@@ -92,29 +89,25 @@ describe('F2 — manifest diff-aware scope', () => {
       newContent: '{ also broken',
     });
     expect(decision.scope).toBe('all');
-    expect(decision.installNeeded).toBe(true);
   });
 
-  it('F2e: lockfile → build + installNeeded', () => {
+  it('F2e: lockfile → build scope', () => {
     const decision = decideInvalidationScope('pnpm-lock.yaml', {
       oldContent: '# old',
       newContent: '# new',
     });
     expect(decision.scope).toBe('build');
-    expect(decision.installNeeded).toBe(true);
 
     const pkgLock = decideInvalidationScope('package-lock.json', {
       oldContent: '{}',
       newContent: '{"x":1}',
     });
     expect(pkgLock.scope).toBe('build');
-    expect(pkgLock.installNeeded).toBe(true);
   });
 
   it('F2f: diff omitted → conservative all (back-compat)', () => {
     const decision = decideInvalidationScope('package.json');
     expect(decision.scope).toBe('all');
-    expect(decision.installNeeded).toBe(true);
   });
 
   it('F2g: package.json edit with identical content → test scope', () => {
@@ -131,6 +124,5 @@ describe('F2 — manifest diff-aware scope', () => {
       newContent: 'old = 2',
     });
     expect(decision.scope).toBe('all');
-    expect(decision.installNeeded).toBe(true);
   });
 });

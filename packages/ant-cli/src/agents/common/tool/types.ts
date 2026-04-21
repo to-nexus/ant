@@ -83,7 +83,6 @@ export interface VerificationSessionSurface {
   attemptedThisCycle(): Array<'typecheck' | 'build' | 'test'>;
   isComplete(): boolean;
   dependencyStatus(): 'current' | 'changed' | 'unknown';
-  depHash(): string | undefined;
   inDeepMode(): boolean;
   /** Preemptive attempt marker used by the command-policy guard. */
   markAttempted(gate: 'typecheck' | 'build' | 'test'): void;
@@ -117,8 +116,11 @@ export interface ToolExecutionContext {
   /**
    * Read-only handle onto the active task's `VerificationSession` (when
    * the current task is verification-typed). Command-policy hooks consult
-   * the session for gate state and dep-hash instead of the flattened
-   * `verificationTracker` / `depFileHash` fields that existed pre-T4b-β.
+   * the session for gate state and dependency observation status instead
+   * of the flattened `verificationTracker` / `depFileHash` fields that
+   * existed pre-T4b-β. Dependency install status itself is a codebase
+   * observation (see `invalidationScope.areDepsInstalled`), not a
+   * hash cached on the session (F3).
    */
   verificationSession?: VerificationSessionSurface;
   retries?: number;
@@ -172,7 +174,6 @@ export type ToolSideEffect =
   | { type: 'fileDeleted'; path: string }
   | { type: 'fileNotChanged'; path: string }
   | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean }
-  | { type: 'depFileHashChanged'; newHash: string }
   | { type: 'serverStarted'; pid: number; command: string; workingDir: string }
   | { type: 'figmaError'; category: 'connection' | 'environment' | 'data' | 'rate_limit' | 'other' }
   | { type: 'figmaSuccess' }
@@ -180,7 +181,6 @@ export type ToolSideEffect =
       type: 'verificationInvalidated';
       scope: InvalidationScope;
       reason: string;
-      installNeeded?: boolean;
     };
 
 export interface ToolResult {

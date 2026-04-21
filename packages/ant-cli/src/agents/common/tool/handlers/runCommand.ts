@@ -4,7 +4,7 @@
  * Terminology (Axis terminology):
  *   - Command Executor = this module. Responsible for spawning shell processes,
  *     streaming stdout/stderr, detecting long-running servers, and emitting
- *     structured side effects (commandExecuted, depFileHashChanged, etc.).
+ *     structured side effects (commandExecuted, verificationInvalidated, etc.).
  *   - Command Sequencer = the LLM driving the plan node's tool loop. It
  *     decides WHICH commands to run and in what ORDER; it does NOT spawn
  *     anything directly.
@@ -22,7 +22,6 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import * as crypto from 'crypto';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
 import { splitOnShellOperators, hasActualPipe } from '../../../../core/utils/shellParser';
@@ -72,46 +71,8 @@ const PACKAGE_MANAGER_INSTALL_PATTERNS = [
   /\bcargo\s+build\b/i,
 ];
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Dep hash utilities
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-const DEP_DECLARATION_FILES = [
-  'package.json', 'go.mod', 'Cargo.toml', 'pyproject.toml',
-  'requirements.txt', 'Gemfile', 'build.gradle', 'pom.xml',
-];
-
-const DEP_INSTALL_DIRS = [
-  'node_modules', 'vendor', '.venv', 'venv', 'target', 'bundle',
-];
-
-export async function computeDepFileHash(featureRootPath: string): Promise<string | null> {
-  const codebasePath = path.join(featureRootPath, 'codebase');
-  const parts: string[] = [];
-  for (const file of DEP_DECLARATION_FILES) {
-    try {
-      const content = await fs.promises.readFile(path.join(codebasePath, file), 'utf-8');
-      parts.push(`${file}:${content}`);
-    } catch { /* skip */ }
-  }
-  if (parts.length === 0) return null;
-  return crypto.createHash('sha256').update(parts.join('\n---\n')).digest('hex');
-}
-
-export async function hasInstalledDeps(featureRootPath: string): Promise<boolean> {
-  const codebasePath = path.join(featureRootPath, 'codebase');
-  for (const dir of DEP_INSTALL_DIRS) {
-    try {
-      const stat = await fs.promises.stat(path.join(codebasePath, dir));
-      if (stat.isDirectory()) return true;
-    } catch { /* skip */ }
-  }
-  return false;
-}
-
 /**
  * Detect the package manager from lockfiles or package.json's packageManager field.
- * Follows the same featureRootPath convention as computeDepFileHash/hasInstalledDeps.
  */
 export async function detectPackageManager(
   featureRootPath: string
@@ -322,16 +283,14 @@ async function executeCommandLogic(
 
   const featureRootPath = fileSystem.getRootPath();
 
-  // Dep-hash skip guard — unified with plan-node `recomputeInstallNeeded`
-  // via `shouldSkipInstall` so both paths share a single cache rule.
+  // Bare-install skip guard — unified with plan-node `recomputeInstallNeeded`
+  // via `shouldSkipInstall`. Both paths consult `areDepsInstalled` so the
+  // codebase itself (package.json vs node_modules/<name>) is the single
+  // source of truth.
   if (isBareInstallCommand(command)) {
-    const currentHash = await computeDepFileHash(featureRootPath);
-    const savedHash = ctx.verificationSession?.depHash();
-    const depsExist = await hasInstalledDeps(featureRootPath);
-
-    const skipReason = shouldSkipInstall(savedHash, currentHash, depsExist);
+    const skipReason = await shouldSkipInstall(featureRootPath);
     if (skipReason) {
-      console.log(`📦 [RunCommand] Bare install skipped — dependency declaration files unchanged`);
+      console.log(`📦 [RunCommand] Bare install skipped — all declared dependencies already installed`);
       return makeRejection(command, `SKIPPED: ${skipReason}`);
     }
   }
@@ -508,17 +467,6 @@ async function executeCommandLogic(
     }
 
     invalidateBufferedFiles();
-
-    // Update dep-file hash after successful install
-    if (success && PACKAGE_MANAGER_INSTALL_PATTERNS.some(p => p.test(command))) {
-      try {
-        const newHash = await computeDepFileHash(featureRootPath);
-        if (newHash) {
-          sideEffects.push({ type: 'depFileHashChanged', newHash });
-          console.log(`   📦 [RunCommand] Updated dependency hash after successful install`);
-        }
-      } catch { /* non-blocking */ }
-    }
 
     if (success) {
       console.log(`\n   ✅ Command succeeded (exit code: ${exitCode})\n`);

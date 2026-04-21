@@ -2,9 +2,13 @@
  * verification/hooks/tool.ts — TaskToolHook.onEvent
  *
  * Translates `ToolExecutionEvent` side effects into `VerificationSession`
- * mutations. Single writer for gate invalidation, dep-hash stamping, and
- * per-cycle command bookkeeping — the common `nodes/tool/index.ts` side-
- * effect handler is phase-blind and delegates here.
+ * mutations. Single writer for gate invalidation and per-cycle command
+ * bookkeeping — the common `nodes/tool/index.ts` side-effect handler is
+ * phase-blind and delegates here.
+ *
+ * Dependency install status is NOT handled here (F3). It is observed
+ * directly from the codebase by `invalidationScope.areDepsInstalled` at
+ * each plan entry; tool side effects do not propagate install signals.
  *
  * R2 — depends only on `model/` (gates, Session). No imports from `nodes/`,
  * `routers/`, or `parallel/`.
@@ -26,11 +30,7 @@ function applyEffect(state: ArchitectGraphState, effect: ToolSideEffect): void {
 
   switch (effect.type) {
     case 'verificationInvalidated': {
-      session.onFileChanged(effect.scope, effect.installNeeded);
-      break;
-    }
-    case 'depFileHashChanged': {
-      session.onInstallResolved(effect.newHash);
+      session.onFileChanged(effect.scope);
       break;
     }
     case 'commandExecuted': {
