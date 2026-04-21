@@ -58,7 +58,7 @@ import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
  *   - Session present with an empty required-gate set (scenario seed that
  *     carried only attempts / history metadata, or an early-rehydrated
  *     pre-plan snapshot) → populates required/passed from `env` via
- *     `hydrateEnv` while preserving attempts, history, depHash, etc.
+ *     `hydrateEnv` while preserving attempts, history, installNeeded, etc.
  *   - Session present with a populated required set → no-op (carry-over
  *     from resume/rehydrate is authoritative).
  *
@@ -135,9 +135,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   const depStatus = session?.dependencyStatus() ?? 'unknown';
   let dependencyStatus: string | undefined;
   if (depStatus === 'current') {
-    dependencyStatus = 'Dependencies are current. Dependency declaration files are unchanged since last install. Skip dependency installation and proceed directly to build verification.';
+    dependencyStatus = 'Observation: every declared `package.json` dependency is present in `node_modules`.';
   } else if (depStatus === 'changed') {
-    dependencyStatus = 'Dependency declaration files have changed since last successful install. Run the project\'s install command before build verification.';
+    dependencyStatus = 'Observation: one or more declared `package.json` dependencies are missing from `node_modules`.';
   }
 
   const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;

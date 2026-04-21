@@ -44,9 +44,12 @@ export interface VerificationSnapshot {
    * verbatim repetition.
    */
   planHistoryBodies?: string[];
-  /** Hash of dependency files at last successful install. */
-  depHash?: string;
-  /** Whether a `{pm} install` needs to be run before the next gate command. */
+  /**
+   * Last observed install status (from `areDepsInstalled`). Lives on the
+   * snapshot so a batch-split re-queue starts with the pre-split observation
+   * as its initial cache instead of walking node_modules again. Always
+   * re-verified by the next plan entry's `recomputeInstallNeeded` call.
+   */
   installNeeded?: boolean;
   /** Total batch-split cycles this verification task has triggered. */
   batchSplitCount?: number;

@@ -164,15 +164,19 @@ export function renderViolationGuidance(
 }
 
 /**
- * Recompute install-needed status from the dep-file hash on disk via
- * `invalidationScope.deriveInstallDecision`.
+ * Recompute install-needed status at plan entry by observing the codebase
+ * directly — `package.json` declared deps vs `codebase/node_modules/<name>`.
  * Single source of truth for all plan entry paths (first-entry, retry, reverify).
  *
- * The decision is written directly onto `state.verification`: the Session is
- * the SSOT for dependency status (`dependencyStatus()` / `installNeeded()`).
- * `markInstallNeeded` touches only the flag — gate invalidation happens via
- * the tool hook on actual file writes, not here — while `onInstallResolved`
- * also persists the adopted hash when deps are newly consistent.
+ * The observation is pushed onto `state.verification` via `markInstallNeeded`
+ * so the Session's `dependencyStatus()` / `installNeeded()` readers stay
+ * consistent within a task's tool loop (no redundant fs walks between
+ * plan↔execute hops). The authoritative source remains the codebase — the
+ * Session field is a fresh-per-entry observation cache.
+ *
+ * `installed === null` (not a JS project) leaves the Session untouched so the
+ * prompt's `dependencyStatus` block stays absent, matching the legacy
+ * `'unknown'` behaviour for go/python/etc. projects.
  */
 async function recomputeInstallNeeded(
   state: ArchitectGraphState,
@@ -183,25 +187,19 @@ async function recomputeInstallNeeded(
   const session = state.verification;
   if (!session) return;
   try {
-    const { computeDepFileHash, hasInstalledDeps, detectPackageManager } = await import(
-      '../../../../../../common/tool/handlers/runCommand'
-    );
-    const currentHash = await computeDepFileHash(featureRoot);
-    const savedHash = session.depHash();
-    const depsExist = await hasInstalledDeps(featureRoot);
-
-    const { deriveInstallDecision } = await import(
+    const { areDepsInstalled } = await import(
       '../../../../../../common/tool/handlers/invalidationScope'
     );
-    const decision = deriveInstallDecision(savedHash, currentHash, depsExist);
-    session.markInstallNeeded(decision.installNeeded);
-    if (!decision.installNeeded && decision.adoptedHash) {
-      session.onInstallResolved(decision.adoptedHash);
-    }
-    console.log(
-      `📦 [Plan] Dependency install needed: ${decision.installNeeded} (${decision.reason}; ` +
-      `savedHash=${savedHash?.substring(0, 8) ?? 'none'}, currentHash=${currentHash?.substring(0, 8) ?? 'none'}, depsExist=${depsExist})`,
+    const { detectPackageManager } = await import(
+      '../../../../../../common/tool/handlers/runCommand'
     );
+    const installed = await areDepsInstalled(featureRoot);
+
+    if (installed === true) session.markInstallNeeded(false);
+    else if (installed === false) session.markInstallNeeded(true);
+    // installed === null → leave Session's flag untouched (not a JS project).
+
+    console.log(`📦 [Plan] areDepsInstalled=${installed}`);
 
     if (opts?.detectPmIfMissing && !state._detectedPackageManager) {
       const detectedPM = await detectPackageManager(featureRoot);
@@ -212,7 +210,7 @@ async function recomputeInstallNeeded(
     }
   } catch (err) {
     session.markInstallNeeded(true);
-    console.warn(`⚠️ [Plan] Dependency hash check failed, defaulting to installNeeded=true: ${err}`);
+    console.warn(`⚠️ [Plan] Dependency observation failed, defaulting to installNeeded=true: ${err}`);
   }
 }
 

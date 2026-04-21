@@ -175,12 +175,14 @@ describe('gate mutations', () => {
     expect(s.passed()).toEqual(['typecheck']);
   });
 
-  it('onFileChanged installNeeded flips the install flag', () => {
+  it('markInstallNeeded drives the install flag (observation-based, F3)', () => {
     expect(s.installNeeded()).toBe(false);
-    s.onFileChanged('all', true);
+    s.markInstallNeeded(true);
     expect(s.installNeeded()).toBe(true);
-    s.onFileChanged('build', false);
+    expect(s.dependencyStatus()).toBe('changed');
+    s.markInstallNeeded(false);
     expect(s.installNeeded()).toBe(false);
+    expect(s.dependencyStatus()).toBe('current');
   });
 
   it('isComplete() turns true only when all required gates pass', () => {
@@ -283,15 +285,6 @@ describe('batch split + install', () => {
     expect(s.batchSplitCount()).toBe(1);
     expect(s.previousBatchDiagnostics()).toBe('{"totalErrors":3}');
   });
-
-  it('onInstallResolved sets depHash and clears installNeeded', () => {
-    const s = freshTs();
-    s.onFileChanged('all', true);
-    expect(s.installNeeded()).toBe(true);
-    s.onInstallResolved('deadbeef');
-    expect(s.installNeeded()).toBe(false);
-    expect(s.depHash()).toBe('deadbeef');
-  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -305,7 +298,7 @@ describe('snapshot round-trip', () => {
     s.onCommand('typecheck', true);
     s.onPlanApplied(plan({ modify: 1, seed: 'x' }));
     s.onBatchSplit('{}');
-    s.onInstallResolved('hash');
+    s.markInstallNeeded(false);
 
     const snap1 = s.snapshot();
     const snap2 = VerificationSession.rehydrate(snap1).snapshot();

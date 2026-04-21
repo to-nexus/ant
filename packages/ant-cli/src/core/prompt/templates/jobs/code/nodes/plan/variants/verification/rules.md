@@ -6,11 +6,23 @@
 **`run_command` is permitted for**:
 - **Build/test execution**: Run the project's build command, test command, or related verification commands
 - **Observation**: Read-only commands that inspect configuration, dependencies, or project state
-- **Dependency recovery**: Install dependencies ONLY when the Dependency Status section (above) indicates that dependency declaration files have changed. If no status is provided, install ONLY after observing a build failure caused by missing modules — not as a precautionary step
+- **Dependency recovery**: Install dependencies when the Install Decision Principle below is satisfied
 
 **`run_command` is NOT permitted for**:
 - Modifying source files (use the code execution phase for that)
 - Persistent background processes (e.g., database servers, message queues, dev servers)
+
+### Install Decision Principle
+
+**Principle**: Dependency installation is never precautionary. Install iff at least one of the following evidence sources is positive:
+- The Dependency Observation (above), when present, reports declared dependencies missing from the local install tree, OR
+- A build/test command's error output names modules/packages that cannot be resolved.
+
+**Constraint**: The two evidence sources are independent. Either signal alone is sufficient; both can agree, disagree, or one can be absent. When the Dependency Observation section is not rendered (non-JavaScript project), rely on the build/test evidence source only.
+
+**Constraint**: Do NOT install without at least one positive evidence signal. If no evidence is yet available (observation absent AND build/test not yet run), run a build/test first — do not guess module availability.
+
+**Constraint**: Use the correct package manager for the project's language and lockfile. Refer to the Package Manager section (above, when rendered) for JavaScript projects; refer to the language-specific hints below (e.g. `go mod tidy` for Go modules, `pip install -r` / `poetry install` for Python, `cargo` for Rust) for other ecosystems. Do NOT default to `npm install` regardless of project type.
 
 **Constraint**: When you need to read multiple files referenced in build errors, issue ALL reads in ONE response. Do NOT read files one at a time.
 

@@ -114,7 +114,6 @@ export async function handleEditFile(
         type: 'verificationInvalidated',
         scope: decision.scope,
         reason: decision.reason,
-        ...(decision.installNeeded ? { installNeeded: true } : {}),
       },
     ];
 
