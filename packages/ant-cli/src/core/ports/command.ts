@@ -29,15 +29,10 @@ export interface CommandPort {
    * Execute a command and return the result
    */
   execute(command: string, options?: CommandOptions): Promise<CommandResult>;
-  
+
   /**
    * Check if a command is allowed to run (security)
    */
   isAllowed(command: string): boolean;
-  
-  /**
-   * Detect package manager in a directory
-   */
-  detectPackageManager(cwd: string): Promise<'npm' | 'pnpm' | 'yarn' | null>;
 }
 

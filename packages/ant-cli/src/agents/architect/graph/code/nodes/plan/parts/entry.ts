@@ -188,7 +188,7 @@ async function recomputeInstallNeeded(
       '../../../../../../common/tool/handlers/invalidationScope'
     );
     const { detectPackageManager } = await import(
-      '../../../../../../common/tool/handlers/runCommand'
+      '../../../../../../../core/utils/packageManager'
     );
     const installed = await areDepsInstalled(featureRoot);
 

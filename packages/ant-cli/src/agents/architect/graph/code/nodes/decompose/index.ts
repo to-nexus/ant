@@ -665,7 +665,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const _featureRoot = state.deps?.fileSystem?.getRootPath();
     if (_featureRoot) {
       try {
-        const { detectPackageManager } = await import('../../../../../common/tool/handlers/runCommand');
+        const { detectPackageManager } = await import('../../../../../../core/utils/packageManager');
         const detectedPM = await detectPackageManager(_featureRoot);
         if (detectedPM) {
           for (const key of ['frontend', 'backend'] as const) {

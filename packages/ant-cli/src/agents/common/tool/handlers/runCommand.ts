@@ -35,6 +35,7 @@ import {
   describeInjection,
 } from '../../../../utils/commandInject';
 import { shouldSkipInstall } from './invalidationScope';
+import { checkOrchestratorPortSafeguard } from '../runCommandSafeguards';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Constants — imported from canonical source to prevent drift
@@ -70,35 +71,6 @@ const PACKAGE_MANAGER_INSTALL_PATTERNS = [
   /\bbundle\s+install\b/i,
   /\bcargo\s+build\b/i,
 ];
-
-/**
- * Detect the package manager from lockfiles or package.json's packageManager field.
- */
-export async function detectPackageManager(
-  featureRootPath: string
-): Promise<'npm' | 'pnpm' | 'yarn' | 'bun' | null> {
-  const codebasePath = path.join(featureRootPath, 'codebase');
-  try {
-    const files = await fs.promises.readdir(codebasePath);
-    if (files.includes('pnpm-lock.yaml')) return 'pnpm';
-    if (files.includes('yarn.lock')) return 'yarn';
-    if (files.includes('bun.lockb') || files.includes('bun.lock')) return 'bun';
-    if (files.includes('package-lock.json')) return 'npm';
-
-    const pkgPath = path.join(codebasePath, 'package.json');
-    try {
-      const pkg = JSON.parse(await fs.promises.readFile(pkgPath, 'utf-8'));
-      if (pkg.packageManager) {
-        const pm = pkg.packageManager as string;
-        if (pm.startsWith('pnpm')) return 'pnpm';
-        if (pm.startsWith('yarn')) return 'yarn';
-        if (pm.startsWith('bun')) return 'bun';
-        if (pm.startsWith('npm')) return 'npm';
-      }
-    } catch { /* no package.json or parse error */ }
-  } catch { /* codebase dir not found */ }
-  return null;
-}
 
 function isBareInstallCommand(command: string): boolean {
   if (/\bgo\s+mod\s+(tidy|download)\b/i.test(command)) return false;
@@ -243,31 +215,40 @@ function makeRejection(command: string, displayText: string): ToolResult {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Stall watchdog helpers (exported for unit-test coverage)
+// Stall watchdog
+//
+// The signature-count Map MUST be a per-invocation local (verification
+// re-entry re-runs `pnpm build` — leaking counts across runs would
+// mis-fire on the first chunk of the second run).
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** Default: fire the watchdog only after ≥ 90s have elapsed. */
-export const STALL_GRACE_MS = 90_000;
-/** Default: `N` identical signatures in the recent window trigger a stall. */
-export const STALL_REPEAT_THRESHOLD = 5;
+function readPositiveInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
-/**
- * Strip varying numeric tokens so repeated "Generating static pages (1/4)"
- * / "(2/4)" / "(3/4)" lines collapse to the same signature. Trimmed to 80
- * chars to keep very long error traces from escaping the repeat counter on
- * an unrelated suffix.
- */
+export const STALL_GRACE_MS = readPositiveInt(process.env.ANT_STALL_GRACE_MS, 60_000);
+export const STALL_REPEAT_THRESHOLD = readPositiveInt(process.env.ANT_STALL_REPEAT_THRESHOLD, 3);
+
+/** Collapses progress counters like "(1/4)" → "(N/N)" so retries match. */
 export function normalizeStderrLineSig(line: string): string {
   return line.replace(/\d+/g, 'N').trim().slice(0, 80);
 }
 
-/**
- * Decide whether the recent stderr tail shows repeated, progress-free
- * output. Returns the dominant signature + its count when the stall
- * criteria are met, or `null` otherwise.
- */
+const STALL_IGNORE_PREFIXES = ['> ', '$ '];
+
+export function pushLineSig(stallMap: Map<string, number>, line: string): void {
+  const sig = normalizeStderrLineSig(line);
+  if (!sig) return;
+  for (const prefix of STALL_IGNORE_PREFIXES) {
+    if (sig.startsWith(prefix)) return;
+  }
+  stallMap.set(sig, (stallMap.get(sig) ?? 0) + 1);
+}
+
 export function detectOutputStall(
-  lineSignatures: readonly string[],
+  stallMap: Map<string, number>,
   startedAt: number,
   opts: { graceMs?: number; repeatThreshold?: number; now?: number } = {},
 ): { repeat: number; signature: string } | null {
@@ -275,14 +256,44 @@ export function detectOutputStall(
   const repeatThreshold = opts.repeatThreshold ?? STALL_REPEAT_THRESHOLD;
   const now = opts.now ?? Date.now();
   if (now - startedAt < graceMs) return null;
-  const counts = new Map<string, number>();
-  for (const s of lineSignatures) counts.set(s, (counts.get(s) || 0) + 1);
   let maxCount = 0;
   let maxSig = '';
-  for (const [sig, c] of counts) {
+  for (const [sig, c] of stallMap) {
     if (c > maxCount) { maxCount = c; maxSig = sig; }
   }
   return maxCount >= repeatThreshold ? { repeat: maxCount, signature: maxSig } : null;
+}
+
+export const STREAM_COALESCE_MS = 250;
+
+export function createOutputStreamer(
+  chatStatus: ToolExecutionContext['chatStatus'],
+  command: string,
+  getSnapshot: () => string,
+) {
+  let pending: NodeJS.Timeout | null = null;
+  let lastEmitted = '';
+  let stopped = false;
+
+  const emit = (): void => {
+    if (stopped) return;
+    const snapshot = getSnapshot();
+    if (snapshot === lastEmitted) return;
+    lastEmitted = snapshot;
+    void chatStatus.streamCommandOutput(command, snapshot).catch(() => {});
+  };
+
+  return {
+    schedule(): void {
+      if (pending || stopped) return;
+      pending = setTimeout(() => { pending = null; emit(); }, STREAM_COALESCE_MS);
+    },
+    flush(): void {
+      if (pending) { clearTimeout(pending); pending = null; }
+      emit();
+      stopped = true;
+    },
+  };
 }
 
 export async function handleRunCommand(
@@ -320,7 +331,6 @@ async function executeCommandLogic(
   };
 
   // Safeguards
-  const { checkOrchestratorPortSafeguard } = await import('../../../architect/graph/code/nodes/tool/utils/helpers');
   checkOrchestratorPortSafeguard(command, ORCHESTRATOR_PORT);
 
   const isDefinitelyInteractive = INTERACTIVE_COMMAND_PATTERNS.some(p => p.test(command));
@@ -394,6 +404,7 @@ async function executeCommandLogic(
   let streamedStderr = '';
 
   const sideEffects: ToolSideEffect[] = [];
+  let streamer: OutputStreamer | null = null;
 
   try {
     // Long-running command path
@@ -450,33 +461,22 @@ async function executeCommandLogic(
       // 'overlay' mode falls through to real execution; result is rewritten below.
     }
 
-    // Stall watchdog — catches commands that keep printing but make no
-    // progress (e.g. Next.js `Static page generation timeout` restarting
-    // itself 3× over ~9 minutes). Independent of wall-clock `timeout`; fires
-    // when the same stderr signature repeats ≥ STALL_REPEAT_THRESHOLD times
-    // after STALL_GRACE_MS has elapsed. See ocean-clinging-motif session
-    // for the motivating case. Helpers live at module scope for unit-tests.
-    const STALL_BUFFER_SIZE = 20;
-    const stderrLineSigs: string[] = [];
+    streamer = createOutputStreamer(ctx.chatStatus, command, () => streamedStdout + streamedStderr);
+    const stallMap = new Map<string, number>();
     const commandStartedAt = Date.now();
     let stallCheckTimer: NodeJS.Timeout | null = null;
-    const pushStderrLine = (line: string) => {
-      const sig = normalizeStderrLineSig(line);
-      if (!sig) return;
-      stderrLineSigs.push(sig);
-      if (stderrLineSigs.length > STALL_BUFFER_SIZE) stderrLineSigs.shift();
+
+    const onChunkCommon = (chunk: string) => {
+      for (const line of chunk.split('\n')) pushLineSig(stallMap, line);
+      streamer!.schedule();
     };
 
     const commandPromise = commandPort.execute(command, {
       cwd: workingDir,
       timeout: effectiveTimeout,
       env: installEnv,
-      onStdout: (chunk: string) => { streamedStdout += chunk; console.log(chunk); },
-      onStderr: (chunk: string) => {
-        streamedStderr += chunk;
-        console.error(chunk);
-        for (const line of chunk.split('\n')) pushStderrLine(line);
-      },
+      onStdout: (chunk: string) => { streamedStdout += chunk; console.log(chunk); onChunkCommon(chunk); },
+      onStderr: (chunk: string) => { streamedStderr += chunk; console.error(chunk); onChunkCommon(chunk); },
       onExit: (code: number) => {
         console.log(`   Exit code: ${code}`);
         if (serverDetectionTimer) { clearTimeout(serverDetectionTimer); serverDetectionTimer = null; }
@@ -496,7 +496,7 @@ async function executeCommandLogic(
 
     const stallPromise = new Promise<{ repeat: number; signature: string }>((resolve) => {
       stallCheckTimer = setInterval(() => {
-        const stall = detectOutputStall(stderrLineSigs, commandStartedAt);
+        const stall = detectOutputStall(stallMap, commandStartedAt);
         if (stall) {
           if (stallCheckTimer) { clearInterval(stallCheckTimer); stallCheckTimer = null; }
           resolve(stall);
@@ -519,6 +519,7 @@ async function executeCommandLogic(
       const elapsedSec = Math.round((Date.now() - commandStartedAt) / 1000);
       console.warn(`\n   ⚠️  [Watchdog] Stalled: "${raceResult.stall.signature}" repeated ${raceResult.stall.repeat}× over ${elapsedSec}s — terminating early\n`);
       commandPromise.catch(() => {});
+      streamer!.flush();
       await ctx.chatStatus.commandComplete(command, false, 124, `Stall watchdog terminated command\n\nOutput:\n${allOutput}`, mergeIndex);
       sideEffects.push({ type: 'commandExecuted', exitCode: 124, command, success: false, hasWarnings: false });
       const tailChars = 5000;
@@ -534,6 +535,7 @@ async function executeCommandLogic(
       invalidateBufferedFiles();
       const allOutput = streamedStdout + streamedStderr;
       commandPromise.catch(() => {});
+      streamer!.flush();
       await ctx.chatStatus.commandComplete(command, true, 0, `Server detected (auto-terminated)\n\nOutput:\n${allOutput}`, mergeIndex);
       sideEffects.push({ type: 'commandExecuted', exitCode: 0, command, success: true, hasWarnings: true });
 
@@ -573,6 +575,7 @@ async function executeCommandLogic(
       console.error(`\n   ❌ Command failed (exit code: ${exitCode})\n`);
     }
 
+    streamer!.flush();
     await ctx.chatStatus.commandComplete(command, success, exitCode, output, mergeIndex);
 
     if (!success) {
@@ -619,6 +622,7 @@ async function executeCommandLogic(
     };
   } catch (error) {
     invalidateBufferedFiles();
+    streamer?.flush();
     const errorMessage = (error as Error).message;
     console.error(`\n   ❌ Command execution error: ${errorMessage}\n`);
     await ctx.chatStatus.commandComplete(command, false, -1, errorMessage, mergeIndex);
@@ -636,6 +640,8 @@ async function executeCommandLogic(
 // Long-running command handler
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+type OutputStreamer = ReturnType<typeof createOutputStreamer>;
+
 async function handleLongRunningCommand(
   ctx: ToolExecutionContext,
   command: string,
@@ -646,6 +652,9 @@ async function handleLongRunningCommand(
   const { spawn } = await import('child_process');
 
   return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const streamer = createOutputStreamer(ctx.chatStatus, command, () => stdout + stderr);
     const isWindows = process.platform === 'win32';
     const shell = isWindows ? 'cmd' : 'sh';
     const shellArgs = isWindows ? ['/c', command] : ['-c', command];
@@ -661,8 +670,6 @@ async function handleLongRunningCommand(
 
     console.log(`   📋 Process spawned with PID: ${child.pid}`);
 
-    let stdout = '';
-    let stderr = '';
     let hasError = false;
     let resolved = false;
 
@@ -671,6 +678,7 @@ async function handleLongRunningCommand(
       resolved = true;
       clearTimeout(startupTimeout);
       clearTimeout(earlyErrorTimeout);
+      streamer.flush();
       if (shouldKill) {
         if (child.pid) await terminateProcessTree(child.pid);
         else child.kill('SIGTERM');
@@ -683,6 +691,7 @@ async function handleLongRunningCommand(
       resolved = true;
       clearTimeout(startupTimeout);
       clearTimeout(earlyErrorTimeout);
+      streamer.flush();
       if (child.pid) await terminateProcessTree(child.pid);
       else child.kill('SIGTERM');
       reject(error);
@@ -692,6 +701,7 @@ async function handleLongRunningCommand(
       const chunk = data.toString();
       stdout += chunk;
       console.log(chunk);
+      streamer.schedule();
       if (ERROR_PATTERNS.test(chunk)) hasError = true;
     });
 
@@ -699,6 +709,7 @@ async function handleLongRunningCommand(
       const chunk = data.toString();
       stderr += chunk;
       console.error(chunk);
+      streamer.schedule();
       if (ERROR_PATTERNS.test(chunk)) hasError = true;
     });
 

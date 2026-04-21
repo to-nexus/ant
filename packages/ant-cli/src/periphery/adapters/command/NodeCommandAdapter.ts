@@ -15,8 +15,6 @@
 
 import { CommandPort, CommandResult, CommandOptions } from "../../../core/ports";
 import { spawn } from "child_process";
-import * as fs from "fs";
-import * as path from "path";
 import { isProcessGroupAlive } from "./processTree";
 import { splitOnShellOperators, tokenizeShellSegment } from "../../../core/utils/shellParser";
 
@@ -303,10 +301,6 @@ export class NodeCommandAdapter implements CommandPort {
         resolve(result);
       };
 
-      const isProcessGroupAlive = (pid: number): boolean => {
-        return isProcessGroupAlive(pid);
-      };
-
       const signalProcessTree = (signal: NodeJS.Signals) => {
         if (!child.pid) return;
         try {
@@ -421,38 +415,5 @@ export class NodeCommandAdapter implements CommandPort {
     });
   }
 
-  /**
-   * Detect package manager
-   */
-  async detectPackageManager(cwd: string): Promise<'npm' | 'pnpm' | 'yarn' | null> {
-    // Check lock files
-    if (fs.existsSync(path.join(cwd, 'pnpm-lock.yaml'))) {
-      return 'pnpm';
-    }
-    if (fs.existsSync(path.join(cwd, 'yarn.lock'))) {
-      return 'yarn';
-    }
-    if (fs.existsSync(path.join(cwd, 'package-lock.json'))) {
-      return 'npm';
-    }
-
-    // Check package.json for packageManager field
-    const pkgPath = path.join(cwd, 'package.json');
-    if (fs.existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        if (pkg.packageManager) {
-          if (pkg.packageManager.startsWith('pnpm')) return 'pnpm';
-          if (pkg.packageManager.startsWith('yarn')) return 'yarn';
-          if (pkg.packageManager.startsWith('npm')) return 'npm';
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    }
-
-    // Default to npm
-    return 'npm';
-  }
 }
 
