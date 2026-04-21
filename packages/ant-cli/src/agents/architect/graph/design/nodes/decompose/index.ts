@@ -10,13 +10,9 @@ import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../../types/task";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
-import {
-  createDefaultTask,
-  createExplainTask,
-  updateKanban,
-  enterDecomposeNode,
-  exitDecomposeNode,
-} from "./helpers";
+import { createDefaultTask, createExplainTask } from "./defaults";
+import { updateKanban } from "./kanbanUpdate";
+import { enterDecomposeNode, exitDecomposeNode } from "./workflowInstrument";
 import { decomposeUiDesign } from "./uiDesignDecompose";
 import { decomposeSystemDesign } from "./systemDesignDecompose";
 import { decomposeSpec } from "./specDecompose";

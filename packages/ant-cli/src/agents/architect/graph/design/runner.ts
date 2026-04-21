@@ -8,6 +8,7 @@ import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
   isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
 } from "../../../common/graph/runnerHelpers";
+import { saveInterruptionCheckpoint } from "./session/checkpoint";
 
 /**
  * Design Graph Runner
@@ -259,38 +260,10 @@ export async function runDesignGraph(initial: DesignGraphState) {
         }
       };
       
-      if (state.deps?.session && state.context.featureFolder) {
-        try {
-          await state.deps.session.updateArtifacts(
-            state.context.project,
-            state.context.featureFolder,
-            'design',
-            {
-              state: {
-                taskQueue: state.taskQueue?.getAll() || [],
-                currentTask: undefined,
-                completedTasks: state.completedTasks || [],
-                completedTasksDetails: state.completedTasksDetails || [],
-                interruption,
-                jobId: state.jobId,
-                jobTiming: state.jobTiming,
-                tokenUsage: state.tokenUsage,
-                overrideDirective: state.overrideDirective,
-                chatSource: state.chatSource,
-                files: state.files || [],
-                filesToDelete: state.filesToDelete || [],
-                resolvedAction: state.resolvedAction,
-                planText: state.planText,
-                conversations: state.conversations || {},
-                userLanguage: state.context.userLanguage,
-              }
-            }
-          );
-          console.log(`💾 [DesignRunner] Interruption checkpoint saved\n`);
-        } catch (saveError) {
-          console.warn('⚠️  [DesignRunner] Failed to save interruption checkpoint:', saveError);
-        }
-      }
+      await saveInterruptionCheckpoint(state, {
+        taskQueue: state.taskQueue?.getAll() ?? [],
+        interruption,
+      });
       
       // Set interruption in state
       state.interruption = interruption;
