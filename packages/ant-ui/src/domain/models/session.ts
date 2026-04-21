@@ -41,7 +41,6 @@ export interface SessionState {
   maxRetries?: number;
   previousAttempts?: any[];
   enforcementHistory?: any[];
-  lastViolations?: any[];
   resolvedCategories?: any[];
 
   // Interruption

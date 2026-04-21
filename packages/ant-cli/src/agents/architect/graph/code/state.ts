@@ -198,9 +198,10 @@ export interface ArchitectGraphState extends TriageableState {
     beDesigns: { [name: string]: string };
   };
   
-  // ✅ Spec Documents (loaded in resolve, selected in decompose, injected in plan)
+  // ✅ Spec Documents (loaded in resolve, injected per-role via artifact pool)
+  // The active spec is derived at runtime from `role='ref'` artifacts via
+  // `ArtifactPoolView.activeSpecRefFilename()`; no state field is needed.
   specDocs?: Record<string, string>;   // All spec-*.md files (filename → content)
-  selectedSpec?: string | null;        // Spec filename chosen by decompose LLM (e.g., "spec-social-login.md")
 
   // Decompose clarify: LLM needs user clarification before completing decomposition
   awaitingDecomposeClarify?: boolean;
@@ -342,14 +343,12 @@ export interface ArchitectGraphState extends TriageableState {
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열
-  violationMessage?: string; // ✅ enforce node에서 생성한 강화된 violation 메시지 (promptBuilder에서 사용)
   fileErrors?: string[];     // ✅ 파일 작업 실패 에러 메시지 (checkTaskStatus에서 violation으로 변환)
 
   retries: number;
   maxRetries: number;
-  
+
   // Progress tracking (for smart retry reset)
-  lastViolations?: Violation[];  // ✅ 구조화된 이전 violations
   previousFileCount?: number; // Previous file count to detect new files
   
   // Attempt history (to prevent repeating same mistakes)

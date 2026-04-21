@@ -58,7 +58,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         initial.maxRetries = session.state.maxRetries || 3;
         initial.previousAttempts = session.state.previousAttempts || [];
         initial.enforcementHistory = session.state.enforcementHistory || [];
-        initial.lastViolations = session.state.lastViolations || [];
         initial.previousFileCount = session.state.previousFileCount;
         initial.resolvedCategories = (session.state.resolvedCategories || []) as any;
         initial.recursionCount = 0;  // Reset per invoke (must match LangGraph's per-invoke recursionLimit)
@@ -222,7 +221,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             maxRetries: session.state.maxRetries || 3,
             previousAttempts: session.state.previousAttempts || [],
             enforcementHistory: session.state.enforcementHistory || [],
-            lastViolations: session.state.lastViolations || [],
             previousFileCount: session.state.previousFileCount,
             resolvedCategories: (session.state.resolvedCategories || []) as any,
             recursionCount: session.state.recursionCount || 0,

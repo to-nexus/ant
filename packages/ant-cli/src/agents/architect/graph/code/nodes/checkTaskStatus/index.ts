@@ -13,7 +13,7 @@
  * R1 — zero `task.type === '...'` comparisons in this file.
  */
 
-import type { ArchitectGraphState } from '../../state';
+import type { ArchitectGraphState, EnforcementFeedback } from '../../state';
 import type { CodeTask } from '../../../../types/task';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TASK_PRIORITIES, TaskTimingHelper } from '../../state';
@@ -181,8 +181,6 @@ export async function checkTaskStatus(
     // ✅ CRITICAL: Clear violations for next task
     // Previous task's violations should not carry over to new task
     state.violations = [];
-    state.lastViolations = [];
-    state.violationMessage = undefined;
     console.log(`🧹 [checkTaskStatus] Cleared violations for next task`);
 
     // Update completedTasks (IDs only)
@@ -330,9 +328,45 @@ export async function checkTaskStatus(
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', 0);
   }
 
-  // Task failed or has violations - propagate violations and recursion tracking
+  // SSOT: each task hook declares whether a violation can be resolved via
+  // regeneration (`isRetryable`). Filter here so downstream routing /
+  // plan sees only retryable ones — warnings flow through as "no violations".
+  const retryableViolations = violations.filter(v => v.isRetryable === true);
+
+  // All non-retryable (warnings only) → clear violations. If the same task
+  // is still alive, signal `_nextPlanEntry: 'retry'` to keep plan from
+  // falling into `handleFreshTaskEntry` (which would emit a duplicate
+  // `task_start` event and reset token counters — defence-in-depth).
+  if (retryableViolations.length === 0) {
+    console.log(`✅ [checkTaskStatus] All violations non-retryable (warnings only)`);
+    return {
+      violations: [],
+      _nextPlanEntry: state.currentTask ? ('retry' as const) : undefined,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    };
+  }
+
+  // Append enforcement feedback — consumed by the learn node's lesson
+  // extraction and persisted to the session checkpoint.
+  const feedback: EnforcementFeedback = {
+    taskId: state.currentTask?.id || 'unknown',
+    taskName: state.currentTask?.name || 'Unknown Task',
+    attemptNumber: (state.retries || 0) + 1,
+    violations: retryableViolations,
+    fixStrategy: 'retry',
+    timestamp: Date.now(),
+  };
+  const enforcementHistory = [...(state.enforcementHistory || []), feedback];
+
+  // Task failed or has retryable violations — propagate to plan for retry.
+  // `state.retries += 1` happens inside `plan/handleRetryEntry` (single
+  // writer). `_nextPlanEntry: 'retry'` tells `resolvePlanEntry` which
+  // branch to take.
   return {
-    violations,
+    violations: retryableViolations,
+    enforcementHistory,
+    _nextPlanEntry: 'retry' as const,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   };

@@ -1,6 +1,6 @@
 {
   "name": "retries-exhausted-learn-exit",
-  "description": "retries == maxRetries → routeAfterCheckTaskStatus exits via learn instead of enforce → learn path (no plan throw). Covers C4.",
+  "description": "retries == maxRetries → routeAfterCheckTaskStatus exits via learn instead of plan retry (no throw). Covers C4.",
   "mode": "stub",
   "timeoutMs": 30000,
   "expectedChildExitCode": 0,

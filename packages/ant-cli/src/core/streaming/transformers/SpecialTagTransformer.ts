@@ -1,17 +1,27 @@
 /**
  * SpecialTagTransformer
- * 
- * LLM 응답의 특수 XML 태그를 사용자 친화적인 메시지로 변환
- * 
- * 지원 태그:
- * - <done>: 완료 메시지
- * - <learn_command>: 학습 명령 요약
- * - (향후 확장 가능)
+ *
+ * Canonical Tag Rendering SSOT.
+ *
+ * Every canonical `<tag>` emitted anywhere in the pipeline (detect / decompose
+ * / execute / learn / ...) MUST be registered here — either with a `transform*`
+ * method that formats it for the chat UI, or with a `consumed: true` entry that
+ * suppresses it. Rendering rules live in this one file; no other module (node
+ * code, XMLStreamParser, ad-hoc chat helpers) is allowed to duplicate the
+ * formatting logic.
+ *
+ * Currently registered tags:
+ * - <done>, <learn_command>, <tasks>, <references>, <detect>       — formatted
+ * - <executionTier>, <prescribedDependencies>                       — formatted
+ * - <techTier>, <boundary>, <directHints>, <specClarify>            — suppressed (internal)
+ * - <unknownPackages>                                               — legacy alias of <prescribedDependencies>
  */
 
 import { UserLanguage, getCompletionMessage } from '../../utils/languageDetector';
-import { formatRACForChat } from '../../types/detection';
-import type { ResolvedActionContext } from '@ant/shared';
+import { formatRACForChat, type RACFormatPhase } from '../../types/detection';
+import type { ResolvedActionContext, Basis } from '@ant/shared';
+import { coerceExecutionTier } from '../../executionTier';
+import { EXECUTION_TIER_LABELS } from '../../executionTier/labels';
 
 export interface TransformResult {
   /** 변환된 텍스트 (없으면 undefined) */
@@ -80,10 +90,47 @@ export class SpecialTagTransformer {
       transform: (match, language) => this.transformReferences(match, language)
     });
     
-    // 5. <detect> 태그 변환기 (detect 노드의 JSON 응답)
+    // 5. <detect> 태그 변환기 (detect 노드의 JSON 응답 — canonical RAC payload)
     this.register({
       pattern: /<detect>\s*([\s\S]*?)\s*<\/detect>/,
       transform: (match, language) => this.transformDetect(match, language)
+    });
+
+    // 6. <executionTier> — 5-tier execution strategy label
+    this.register({
+      pattern: /<executionTier>\s*([\s\S]*?)\s*<\/executionTier>/i,
+      transform: (match, language) => this.transformExecutionTier(match, language)
+    });
+
+    // 7. <prescribedDependencies> (+ legacy <unknownPackages> alias) — new deps declared by design
+    this.register({
+      pattern: /<prescribedDependencies>\s*([\s\S]*?)\s*<\/prescribedDependencies>/i,
+      transform: (match, language) => this.transformPrescribedDependencies(match, language)
+    });
+    this.register({
+      pattern: /<unknownPackages>\s*([\s\S]*?)\s*<\/unknownPackages>/i,
+      transform: (match, language) => this.transformPrescribedDependencies(match, language)
+    });
+
+    // 8. Suppressed canonical tags — consumed without output.
+    // Registered here so "suppression" is owned by this module only (parser
+    // stays payload-agnostic). Any future canonical tag MUST declare its
+    // policy here, even if the policy is "do not render".
+    this.register({
+      pattern: /<techTier>\s*[\s\S]*?\s*<\/techTier>/i,
+      transform: () => ({ consumed: true })
+    });
+    this.register({
+      pattern: /<boundary>\s*[\s\S]*?\s*<\/boundary>/i,
+      transform: () => ({ consumed: true })
+    });
+    this.register({
+      pattern: /<directHints>\s*[\s\S]*?\s*<\/directHints>/i,
+      transform: () => ({ consumed: true })
+    });
+    this.register({
+      pattern: /<specClarify>\s*[\s\S]*?\s*<\/specClarify>/i,
+      transform: () => ({ consumed: true })
     });
   }
   
@@ -296,10 +343,12 @@ export class SpecialTagTransformer {
   }
   
   /**
-   * <detect> 태그 변환 (detect 노드)
-   * 
-   * 환경 감지 결과를 사용자 친화적인 메시지로 변환
-   * ✅ Uses unified RAC + formatRACForChat
+   * `<detect>` tag — canonical RAC payload rendered for chat.
+   *
+   * Accepts the schema defined by `emitDetectOutcome` (phase + full RAC
+   * including `basis`) as well as legacy LLM-streamed payloads that only
+   * carry partial fields. Missing fields are rendered as omitted sections
+   * by `formatRACForChat`.
    */
   private transformDetect(match: RegExpMatchArray, language: UserLanguage): TransformResult {
     try {
@@ -311,32 +360,98 @@ export class SpecialTagTransformer {
         ? (parsed.intentGroup ?? parsed.workType)
         : undefined;
 
-      const mode = parsed.detectedMode || parsed.jobMode || parsed.mode || parsed.designMode || 'generate';
+      const mode = parsed.mode || parsed.detectedMode || parsed.jobMode || parsed.designMode || 'generate';
+
+      const basis: Basis | undefined = (parsed.basis && (parsed.basis.techTier || parsed.basis.visualTier))
+        ? parsed.basis
+        : (parsed.techTier || parsed.visualTier)
+          ? { techTier: parsed.techTier, visualTier: parsed.visualTier }
+          : undefined;
+
+      const source: ResolvedActionContext['source'] = parsed.source === 'explicit' ? 'explicit' : 'infer';
 
       const rac: ResolvedActionContext = {
         mode,
         intentGroup: intentGroup && intentGroup !== 'error' ? intentGroup : undefined,
         intent: parsed.intentId,
         domain: parsed.domain,
-        source: 'infer',
-        hasExplicitFields: false,
+        target: Array.isArray(parsed.target) ? parsed.target : undefined,
+        basis,
+        source,
+        hasExplicitFields: source === 'explicit',
       };
 
-      const reasoning: { intent?: string; domain?: string } = {
-        intent: parsed.detectedModeReasoning || parsed.jobModeReasoning || parsed.modeReasoning || parsed.designModeReasoning || undefined,
-        domain: parsed.domainReasoning || undefined,
-      };
+      const reasoning: { intent?: string; domain?: string } | undefined = (parsed.reasoning || parsed.detectedModeReasoning || parsed.jobModeReasoning || parsed.modeReasoning || parsed.designModeReasoning || parsed.domainReasoning)
+        ? {
+            intent: parsed.reasoning?.intent
+              ?? parsed.detectedModeReasoning
+              ?? parsed.jobModeReasoning
+              ?? parsed.modeReasoning
+              ?? parsed.designModeReasoning
+              ?? undefined,
+            domain: parsed.reasoning?.domain ?? parsed.domainReasoning ?? undefined,
+          }
+        : undefined;
 
-      const formatted = formatRACForChat(rac, reasoning, language);
+      const phase: RACFormatPhase = parsed.phase === 'decompose-final' ? 'decompose-final' : 'detect';
+      const formatted = formatRACForChat(rac, reasoning, language, phase);
       return { text: formatted, consumed: true };
 
     } catch (error) {
       console.warn('[SpecialTagTransformer] Failed to parse detect tag:', error);
       const isKorean = language === 'ko';
-      return { 
+      return {
         text: isKorean ? '⚠️ 환경 분석 결과 파싱 실패' : '⚠️ Failed to parse environment analysis',
-        consumed: true 
+        consumed: true
       };
+    }
+  }
+
+  /**
+   * `<executionTier>N</executionTier>` — 5-tier execution strategy label.
+   * Values 0..4 map to labels in EXECUTION_TIER_LABELS. Unparseable values
+   * fall back via coerceExecutionTier (Reflex, safe read-only).
+   */
+  private transformExecutionTier(match: RegExpMatchArray, language: UserLanguage): TransformResult {
+    const body = (match[1] || '').trim();
+    const n = Number(body);
+    const tierId = Number.isInteger(n) && n >= 0 && n <= 4
+      ? (n as 0 | 1 | 2 | 3 | 4)
+      : coerceExecutionTier(undefined, 'SpecialTagTransformer');
+
+    const label = EXECUTION_TIER_LABELS[tierId];
+    const isKorean = language === 'ko';
+    const header = isKorean
+      ? `\n🎯 **실행 전략**: Tier ${tierId} · ${label.short[language] || label.short.en}\n`
+      : `\n🎯 **Execution Strategy**: Tier ${tierId} · ${label.short[language] || label.short.en}\n`;
+    const desc = label.description[language] || label.description.en;
+    return {
+      text: `${header}   └ ${desc}\n\n`,
+      consumed: true,
+    };
+  }
+
+  /**
+   * `<prescribedDependencies>[...]</prescribedDependencies>` — new deps
+   * declared by design docs. Legacy `<unknownPackages>` is an alias.
+   * Empty array / non-array → consumed without output.
+   */
+  private transformPrescribedDependencies(match: RegExpMatchArray, language: UserLanguage): TransformResult {
+    try {
+      const body = (match[1] || '').trim();
+      if (!body || body === '[]') return { consumed: true };
+      const parsed = JSON.parse(body);
+      if (!Array.isArray(parsed) || parsed.length === 0) return { consumed: true };
+      const pkgs = parsed.filter((p: unknown): p is string => typeof p === 'string' && p.length > 0);
+      if (pkgs.length === 0) return { consumed: true };
+
+      const isKorean = language === 'ko';
+      const header = isKorean ? `\n📦 **새 의존성**\n` : `\n📦 **New Dependencies**\n`;
+      const bullets = pkgs.map(p => `   • \`${p}\``).join('\n');
+      return { text: `${header}${bullets}\n\n`, consumed: true };
+    } catch (error) {
+      console.warn('[SpecialTagTransformer] Failed to parse prescribedDependencies:', error);
+      return { consumed: true };
     }
   }
 }

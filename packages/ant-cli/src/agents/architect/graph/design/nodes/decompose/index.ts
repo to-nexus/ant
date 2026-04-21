@@ -19,6 +19,7 @@ import { decomposeSpec } from "./specDecompose";
 import { BOUNDARY, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import { ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { ExecutionTierId, recordUserTurnMeta } from "../../../../../../core/executionTier";
+import { emitDetectOutcome } from "../../../../../../core/streaming/emitDetectOutcome";
 
 // ============================================
 // UI Design Prerequisites Validation
@@ -199,6 +200,22 @@ async function handleDefaultTask(
 // ============================================
 
 export async function decompose(state: DesignGraphState): Promise<DesignGraphState> {
+  const result = await runDesignDecompose(state);
+
+  // Re-emit the finalized basis once the sub-handler has completed.
+  // Routed through the Canonical Tag Rendering SSOT (SpecialTagTransformer
+  // via emitDetectOutcome) — no bespoke formatting lives here.
+  if (result.resolvedAction) {
+    void emitDetectOutcome(result.resolvedAction, {
+      locale: result._uiLocale ?? state._uiLocale,
+      phase: 'decompose-final',
+    });
+  }
+
+  return result;
+}
+
+async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphState> {
   const phaseStart = Date.now();
 
   console.log('\n📋 ══════════════════════════ DESIGN DECOMPOSE PHASE ══════════════════════════');

@@ -107,7 +107,7 @@ export function routeAfterCheckTaskStatus(state: ArchitectGraphState): string {
   }
 
   if (state.retries < state.maxRetries) {
-    return 'enforce';
+    return 'plan';
   }
 
   console.log(`⚠️  Task "${state.currentTask?.name}" exhausted retries (${state.retries}/${state.maxRetries})`);

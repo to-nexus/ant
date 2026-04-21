@@ -71,6 +71,10 @@ function isTypeScriptProject(state: ArchitectGraphState): boolean {
  * possible sources (current violations, accumulated diagnostic retry context,
  * prior-attempt summary). Returning undefined when everything is empty keeps
  * the prompt template's `{{#if isRetry}}` branch clean.
+ *
+ * Violation guidance (cross_worker_conflict / file_operation_failed) is
+ * appended here — formatter authority lives in one place (plan) after the
+ * enforce node removal (docs/tmp/enforce-node-removal-handoff.md §3.5).
  */
 export function composeViolationsText(
   violations: import('../../../state').Violation[] | undefined,
@@ -84,10 +88,79 @@ export function composeViolationsText(
   // lives next to the summary rendering logic.
   const effectiveViolations = dedupeViolationsAgainstSummary(violations, retrySummaryText);
 
-  if (effectiveViolations?.length) parts.push(formatViolations(effectiveViolations));
+  if (effectiveViolations?.length) {
+    parts.push(formatViolations(effectiveViolations));
+    const guidance = renderViolationGuidance(effectiveViolations);
+    if (guidance) parts.push(guidance);
+  }
   if (diagnosticRetryContext) parts.push(diagnosticRetryContext);
   if (retrySummaryText) parts.push(retrySummaryText);
   return parts.length ? parts.join('\n') : undefined;
+}
+
+/**
+ * Type-specific, actionable guidance that replaces the previous
+ * `enforce` node's special formatter branches. Ported verbatim from
+ * `nodes/enforce/index.ts` L85~L129 (pre-removal); behaviour-equivalent.
+ *
+ * The branching key is `violations[0]?.type` — mirrors the original
+ * contract where the enforce node routed on the leading violation.
+ */
+export function renderViolationGuidance(
+  violations: import('../../../state').Violation[],
+): string | undefined {
+  const errorType = violations[0]?.type;
+
+  if (errorType === 'cross_worker_conflict') {
+    const conflictFiles = violations
+      .map(v => v.file)
+      .filter(Boolean);
+    const fileList = conflictFiles.map(f => `  - ${f}`).join('\n');
+
+    return [
+      '',
+      '🚨 CROSS-WORKER FILE CONFLICT',
+      '',
+      'Another parallel task already created these files:',
+      fileList,
+      '',
+      '⛔ DO NOT use <file> tag to overwrite these files directly.',
+      '',
+      '✅ REQUIRED (2 steps):',
+      '1. Call read_file("path") to get the CURRENT content and version',
+      '2. Then EITHER:',
+      '   a. Use <file path="path"> with MERGED content (full rewrite)',
+      '   b. Use edit_file tool to partially modify',
+    ].join('\n');
+  }
+
+  if (errorType === 'file_operation_failed') {
+    const searchBlockErrors = violations.filter(v =>
+      v.message.includes('Search block not found') ||
+      v.message.includes('Duplicate edit'),
+    );
+    if (searchBlockErrors.length === 0) return undefined;
+
+    const files = searchBlockErrors
+      .map(v => v.file)
+      .filter(Boolean)
+      .join(', ');
+
+    return [
+      '',
+      `🚨 PREVIOUS ATTEMPT FAILED: ${searchBlockErrors.length} file edit error(s)`,
+      '',
+      `Files: ${files}`,
+      '',
+      'REASON: Search block mismatch (outdated content)',
+      '',
+      '✅ REQUIRED FIX (2 steps):',
+      '1. Call read_file("path") to get CURRENT content',
+      '2. Use EXACT old_str from read_file result in edit_file tool',
+    ].join('\n');
+  }
+
+  return undefined;
 }
 
 /**
@@ -187,6 +260,24 @@ async function handleRetryEntry(
   flags: PlanEntryFlags,
 ): Promise<PlanEntryContext> {
   const nextTask = state.currentTask!;
+
+  // Single writer of `state.retries` for retry re-entry. Previously split
+  // across enforce (+1) / routing (compare) / checkTaskStatus (reset);
+  // post-enforce-removal this is the only +1 site.
+  //
+  // Increment runs BEFORE the max-retries guard so the throw boundary
+  // exactly matches pre-enforce-removal semantics. Pre-removal flow:
+  //     enforce: retries N → N+1
+  //     plan:    if (N+1 >= maxRetries) throw
+  // Post-removal equivalent:
+  //     plan:    retries N → N+1, if (N+1 >= maxRetries) throw
+  // Both throw at `state.retries === maxRetries`, running retries
+  // `1..maxRetries-1` before termination. Without this ordering the
+  // routing guard (`retries < maxRetries`) would preempt the throw
+  // and allow one extra retry, making `max_retries_exceeded`
+  // unreachable — a regression for sequential mode which has no
+  // post-graph `unresolved_violations` check (unlike TaskWorker).
+  state.retries = (state.retries || 0) + 1;
 
   if (state.retries >= state.maxRetries) {
     console.error(`\n❌ [Plan] Max retries (${state.maxRetries}) exceeded for task: ${nextTask.name}`);

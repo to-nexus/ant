@@ -139,8 +139,7 @@ export interface SessionState {
   // History
   previousAttempts?: any[];
   enforcementHistory?: any[];
-  lastViolations?: any[];
-  
+
   // Progress Tracking
   previousFileCount?: number;
   resolvedCategories?: string[];
