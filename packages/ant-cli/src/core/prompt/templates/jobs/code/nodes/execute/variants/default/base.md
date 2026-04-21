@@ -237,7 +237,7 @@ MODIFY: app/page.tsx - Add import and render new component
 - Build/dev verification is NOT your responsibility in feature tasks
 - Output `<done>true</done>` immediately
 
-{{#if hasUiInDocuments}}
+{{#if hasUi}}
 ### Visual Design Reference (on-demand)
 
 UI design documents are available at `outputs/design/ui/`. Use `read_file` to inspect sections relevant to your current task:
@@ -265,7 +265,7 @@ Use `figma_get_design_context` and `figma_get_screenshot` to inspect visual deta
 Sub-role is determined by priority:
 
 **priority 200 (Token Infrastructure)**
-{{#if hasUiInDocuments}}
+{{#if hasUi}}
 - **Scope**: ui-tokens.json → CSS custom properties / styling framework config / **runtime integration**
 - **Constraint**: Token infrastructure only. Do NOT create components.
 - **Completeness**: Token files without import chain are incomplete. Scope includes:
@@ -301,7 +301,7 @@ Sub-role is determined by priority:
 **Figma available**: Use Figma MCP tools to supplement design document details.{{#if figmaStartNodeId}} Target node: `{{figmaStartNodeId}}`.{{else}} Use `figma_get_metadata` with nodeId `0:1` to discover available nodes.{{/if}}
 {{/if}}
 
-{{#if hasUiInDocuments}}
+{{#if hasUi}}
 **Actions:** Read ui-doc → implement token/component infrastructure → Output `<done>true</done>`
 {{else}}
 **Actions:** Observe visual tier policies → derive and implement token infrastructure → Output `<done>true</done>`
@@ -322,7 +322,7 @@ Sub-role is determined by priority:
 
 **File organization**: Component files extracted from skeleton sections are within scope — same DOM elements, different file. The plan's `create` list specifies which extractions to perform.
 
-{{#if hasUiInDocuments}}
+{{#if hasUi}}
 **Visual source**: Design tokens (ui-tokens.json) and layout properties (ui-spec.json). Token names, `visibleWhen` conditions, and `interactionStates` elements are all in scope.
 {{else}}
 {{#if figmaAvailable}}

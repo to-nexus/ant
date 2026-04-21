@@ -44,7 +44,7 @@ asks.
 
 {{> jobs/shared/injections/action-context}}
 
-{{#if hasDesignDoc}}
+{{#if hasSystemDesignRef}}
 🚨 **CRITICAL: API Contract contains IMMUTABLE specifications**
 
 **Use EXACT specifications from API Contract:**

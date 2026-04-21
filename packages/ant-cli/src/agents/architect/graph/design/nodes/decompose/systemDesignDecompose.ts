@@ -356,10 +356,10 @@ export async function decomposeSystemDesign(
     spec = specParts.join('\n\n---\n\n');
   }
 
-  const hasExistingDesign = Boolean(designContent && designContent.trim().length > 0);
-  const designPreview = designContent ? designContent.split('\n').slice(0, 50).join('\n') + '\n...' : '';
-
-  // Extract existing system design file names (pattern-filtered, not all .md)
+  // Extract existing system design file names (pattern-filtered, not all .md).
+  // Used as a refactor-mode filename constraint only — the document CONTENT
+  // is already injected via role-annotated pool sections (ArtifactPipeline),
+  // so no separate "existing design preview" block is needed here.
   const existingDesignFiles = state.existingDesignDocs
     ? Object.keys(state.existingDesignDocs).filter(isSystemDesignFile)
     : [];
@@ -381,8 +381,6 @@ export async function decomposeSystemDesign(
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   const prompt = await promptAdapter.render('jobs/design/nodes/decompose/variants/system-design/base', {
     spec,
-    hasExistingDesign,
-    designPreview,
     detectedMode: jobMode,
     existingDesignFiles: promptExistingFiles,
     primaryDesignFile: promptPrimaryFile,
@@ -401,7 +399,7 @@ export async function decomposeSystemDesign(
       usedTemplates: ['jobs/design/nodes/decompose/variants/system-design/rules'],
       injectedVariables: {
         spec: spec ? `[${spec.length} chars]` : undefined,
-        hasExistingDesign,
+        hasSystemDesignRef: pool.hasSystemDesignRef(),
         environment: detectedEnv,
         resolvedTargetFiles,
         useToolMode,

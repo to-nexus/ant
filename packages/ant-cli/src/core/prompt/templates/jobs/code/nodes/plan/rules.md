@@ -234,7 +234,7 @@ In your `<analysis>` section, cover:
 **Constraint**: Do NOT use `search_web` for internal architecture decisions or standard language features.
 
 {{#if (eq taskType "design-system")}}
-{{#if hasUiDoc}}
+{{#if hasUi}}
 **FOR `design-system` TASKS:**
 
 1. **TOKEN INVENTORY**
@@ -286,7 +286,7 @@ In your `<analysis>` section, cover:
    - **Constraint**: Assign `parallelGroup` to a label that identifies this task's exclusive file set (e.g., the skeleton file name or route). Tasks that share any output file MUST have the same `parallelGroup`; tasks with entirely disjoint files MUST have different values.
    - **Constraint**: When file ownership is ambiguous (e.g., a shared layout or barrel index), assign the same `parallelGroup` — conservative grouping reduces parallelism but prevents concurrent write conflicts.
 
-{{#if hasUiDoc}}
+{{#if hasUi}}
 4. **ASSET INVENTORY**
    - Search ui-assets.json for assets related to this task
    - List ALL assets with source → destination mappings

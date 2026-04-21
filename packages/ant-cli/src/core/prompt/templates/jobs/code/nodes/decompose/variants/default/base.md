@@ -49,13 +49,20 @@ when refs exist but the directive is unrelated to their content, prefer
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
-{{#if uiHint}}
-{{{uiHint}}}
-{{/if}}
 {{#if assetsHint}}
 {{{assetsHint}}}
 {{/if}}
 
+{{#if uiArtifactPaths.length}}
+## UI Document Sections (available for `uiSections` task assignment)
+
+Use these IDs when populating `uiSections` on `"ui"` and `"design-system"` tasks.
+
+{{#each uiArtifactPaths}}
+- `{{this.id}}` ({{this.role}})
+{{/each}}
+
+{{/if}}
 {{> jobs/code/nodes/decompose/variants/default/scope-rules}}
 
 {{> jobs/code/nodes/decompose/variants/default/mode-guide}}
@@ -65,49 +72,6 @@ when refs exist but the directive is unrelated to their content, prefer
 {{> jobs/code/nodes/decompose/variants/default/existing-code-check}}
 
 {{> jobs/code/nodes/decompose/variants/default/design-doc-guide}}
-
-{{#if specDoc}}
-════════════════════════════════════════════════════════════════════════════════
-## Feature Specification
-
-{{{specDoc}}}
-
-{{#if specApiContract}}
-
-────────────────────────────────────────
-
-## API Contract (Reference)
-
-{{{specApiContract}}}
-{{/if}}
-
-════════════════════════════════════════════════════════════════════════════════
-{{/if}}
-
-{{#if designDocsMeta}}
-════════════════════════════════════════════════════════════════════════════════
-## Design Document Availability
-
-{{designDocsMeta}}
-
-════════════════════════════════════════════════════════════════════════════════
-{{/if}}
-
-{{#if hasSpecDocs}}
-════════════════════════════════════════════════════════════════════════════════
-## Spec Documents Available
-
-The following feature-scoped specification documents exist:
-{{specDocsMeta}}
-
-**You MUST output a `<selectedSpec>` tag.** Select the spec relevant to the directive, or null if none applies.
-
-`<selectedSpec>spec-social-login.md</selectedSpec>`
-
-If no spec doc is relevant: `<selectedSpec>null</selectedSpec>`
-
-════════════════════════════════════════════════════════════════════════════════
-{{/if}}
 
 YOUR TASK:
 
