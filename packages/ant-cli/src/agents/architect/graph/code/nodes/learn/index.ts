@@ -4,16 +4,15 @@ import { SessionRun } from "../../../../../../core/types";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../core/utils/docMetadata";
 import { designSubdirOf, DESIGN_DIR } from "@ant/shared";
-import type { FeatureBoundaryLine } from "@ant/shared";
 
 import { extractCodeLessons, extractTags } from './lessonExtractor';
 import {
-  buildBreadcrumb,
   collectTouchedFilesFromTrace,
   type TouchedFromTrace,
 } from '../../../../../../core/context/breadcrumb';
 import { recordClassification } from '../../../../../../core/utils/featureBiases';
 import { PROMOTION_TOUCHED_THRESHOLD } from '@ant/shared';
+import { getExecutionTier } from '../../../../../../core/executionTier';
 
 class LessonQueue {
   private queue: Array<() => Promise<void>> = [];
@@ -61,125 +60,6 @@ class LessonQueue {
 }
 
 const lessonQueue = new LessonQueue();
-
-/**
- * §2.4 Breadcrumb / Boundary policy (session redesign).
- *
- * Observation targets (matrix rows):
- *   - mode !== 'explain' && complexity === 'todo'
- *       → append BC + Boundary (full write)
- *   - mode !== 'explain' && complexity === 'exploratory' && touched ≥ 3
- *       → append BC only (mini-BC; no Boundary so the user_turn stays in T2)
- *   - mode === 'explain' && complexity === 'todo'
- *       → append Boundary only (T1 unchanged; collapse the explainer turn)
- *   - otherwise → no write
- *
- * SSOT for touched files: trace.jsonl `file_write` events attributed to
- * `state.turnId` (see core/context/breadcrumb.ts). Write tools emit these
- * via the tool / direct node hooks.
- *
- * The helper is side-effect only (appends to feature.jsonl); return value
- * is unused. Failures are caller's responsibility to log.
- */
-export async function applyBreadcrumbBoundaryMatrix(
-  state: ArchitectGraphState,
-  preComputedTouched?: TouchedFromTrace,
-): Promise<void> {
-  const session = state.deps?.session;
-  if (!session) return;
-  const mode = state.resolvedAction?.mode;
-  const complexity = state.complexity;
-  const jobId = state.jobId;
-  const turnId = state.turnId;
-  const jobType = 'code' as const;
-
-  if (!jobId || !turnId) {
-    // Without turnId the breadcrumb/boundary cannot be attributed. This
-    // happens only in tests / resume-without-feature-context; the absence
-    // itself is observable (log) and the matrix is skipped safely.
-    console.warn('⚠️  [Learn] skip breadcrumb/boundary matrix (missing turnId)');
-    return;
-  }
-
-  // Matrix row selection — no early return until after classification so
-  // the log line explains which branch triggered.
-  const isExplain = mode === 'explain';
-  let wantBreadcrumb = false;
-  let wantBoundary = false;
-  let rowLabel = 'noop';
-
-  // I/O dedup: `learn()` can pre-compute `touched` once and share it with
-  // `recordClassificationBias` so the matrix + bias paths hit trace.jsonl
-  // a single time per job. Fall back to a fresh read when the helper is
-  // invoked directly (tests / future consumers).
-  const touched = preComputedTouched
-    ?? (await collectTouchedFilesFromTrace(session, turnId));
-  const touchedCount = touched.all.size;
-
-  if (!isExplain && complexity === 'todo') {
-    wantBreadcrumb = true;
-    wantBoundary = true;
-    rowLabel = 'todo-full';
-  } else if (!isExplain && complexity === 'exploratory' && touchedCount >= 3) {
-    wantBreadcrumb = true;
-    rowLabel = 'exploratory-mini';
-  } else if (isExplain && complexity === 'todo') {
-    wantBoundary = true;
-    rowLabel = 'explain-boundary';
-  }
-
-  console.log(
-    `🧭 [Learn] breadcrumb matrix: mode=${mode} complexity=${complexity} touched=${touchedCount} row=${rowLabel}`,
-  );
-
-  if (!wantBreadcrumb && !wantBoundary) return;
-
-  if (wantBreadcrumb) {
-    const anchorsSource = Array.from(touched.all);
-    const summary = buildBreadcrumbSummary({
-      directive: state.directive || '',
-      touchedCount,
-      mode,
-    });
-    const breadcrumb = buildBreadcrumb({
-      jobId,
-      turnId,
-      jobType,
-      mode,
-      touched: anchorsSource,
-      created: touched.created,
-      modified: touched.modified,
-      deleted: touched.deleted,
-      summary,
-      traceRangeRef: touched.range,
-    });
-    try {
-      await session.appendBreadcrumb(breadcrumb);
-      console.log(
-        `📝 [Learn] breadcrumb appended (scope=${breadcrumb.scope} touched=${touchedCount})`,
-      );
-    } catch (err) {
-      console.warn('⚠️  [Learn] appendBreadcrumb failed:', err);
-    }
-  }
-
-  if (wantBoundary) {
-    const boundary: FeatureBoundaryLine = {
-      type: 'boundary',
-      ts: new Date().toISOString(),
-      jobId,
-      turnId,
-      jobType,
-      reason: 'auto_job_complete_todo',
-    };
-    try {
-      await session.appendBoundary(boundary);
-      console.log(`📌 [Learn] boundary appended (reason=${boundary.reason})`);
-    } catch (err) {
-      console.warn('⚠️  [Learn] appendBoundary failed:', err);
-    }
-  }
-}
 
 /**
  * §19 misclassify_guard — append a featureBiases.jsonl sample when the
@@ -243,36 +123,6 @@ export async function recordClassificationBias(
         `touched=${actualTouched} escalated=${escalated}`,
     );
   }
-}
-
-/**
- * Build a noun-form one-line summary for the breadcrumb.
- *
- * FPOP constraint (inline contract — no LLM render today):
- *   - Observation target: the job's outcome.
- *   - Principle: single-line noun-form phrase surfacing the artefact.
- *   - Constraint: no verb-form sentences, no concrete file enumerations,
- *     no platform-specific examples (files/counts belong in anchors/stats).
- *
- * The helper sticks to observable state — directive title + optional scale
- * hint — rather than inferring intent from code paths. When an LLM-driven
- * summariser replaces this helper, the same constraint applies; the rules
- * promoted to a template at that point will be wired via `promptBuilder`
- * so the reverse-coverage matrix stays green.
- */
-function buildBreadcrumbSummary(input: {
-  directive: string;
-  touchedCount: number;
-  mode?: string;
-}): string {
-  const directive = (input.directive || '').trim();
-  const firstLine = directive.split(/\r?\n/)[0] ?? '';
-  const trimmed = firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
-  const scale =
-    input.touchedCount > 0 ? ` · ${input.touchedCount} files` : '';
-  const modeTag = input.mode ? ` · ${input.mode}` : '';
-  const core = trimmed.length > 0 ? trimmed : 'code change';
-  return `${core}${modeTag}${scale}`;
 }
 
 /**
@@ -591,9 +441,15 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Session redesign §2.4 — Breadcrumb / Boundary policy matrix.
+    // Session redesign §2.4 — Breadcrumb / Boundary via tier facade.
     // Runs once at the end of a code job (isLastTask) to capture the
     // job's trace into feature.jsonl for future resolve/plan/direct use.
+    //
+    // `getExecutionTier(state)` reads `state.executionTier` (written by
+    // decompose) or falls back to `selectExecutionTier(mode, complexity)`.
+    // Tier 3 Task is the ONLY tier that emits breadcrumb + boundary;
+    // lower tiers Noop transparently so this block stays uniform across
+    // execution paths.
     //
     // Gated by `!taskFailed` so a failed run does not poison downstream
     // feature.jsonl readers. §19 featureBiases has a different failure
@@ -601,9 +457,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (isLastTask && !taskFailed) {
       try {
-        await applyBreadcrumbBoundaryMatrix(state, touchedForLearn);
+        const executionTier = getExecutionTier(state);
+        await executionTier.breadcrumb(state, touchedForLearn);
+        await executionTier.boundary(state);
       } catch (err) {
-        console.warn('⚠️  [Learn] breadcrumb/boundary matrix failed:', err);
+        console.warn('⚠️  [Learn] tier breadcrumb/boundary failed:', err);
       }
     }
 

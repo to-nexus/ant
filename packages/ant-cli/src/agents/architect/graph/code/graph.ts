@@ -655,6 +655,7 @@ export const CodeGraphChannels = {
       awaitingDecomposeClarify: Annotation<any>,
       complexity: Annotation<any>,
       complexityDecidedBy: Annotation<any>,
+      executionTier: Annotation<any>,
       directHints: Annotation<any>,
       directMode: Annotation<any>,
       featureContext: Annotation<any>,

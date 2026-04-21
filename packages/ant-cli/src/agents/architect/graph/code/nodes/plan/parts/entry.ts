@@ -27,7 +27,7 @@ import { getTechTier } from '@ant/shared';
 import { CONV_KEYS } from '../../../../../../common/graph/conversations';
 import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
-import { formatViolations } from '../../shared/violationFormatter';
+import { formatViolations } from '../../../utils/violationFormatter';
 import { detectTestFilesFromDisk } from '../testFileDetector';
 import {
   MAX_VERIFICATION_ATTEMPTS,
@@ -58,7 +58,7 @@ interface PlanEntryFlags {
   preservedRetries: number;
 }
 
-export function isTypeScriptProject(state: ArchitectGraphState): boolean {
+function isTypeScriptProject(state: ArchitectGraphState): boolean {
   const taskTiers = state.currentTask?.techTiers;
   const firstTierLang = taskTiers && taskTiers.length > 0
     ? taskTiers[0].language
@@ -101,7 +101,7 @@ export function composeViolationsText(
  * the tool hook on actual file writes, not here — while `onInstallResolved`
  * also persists the adopted hash when deps are newly consistent.
  */
-export async function recomputeInstallNeeded(
+async function recomputeInstallNeeded(
   state: ArchitectGraphState,
   opts?: { detectPmIfMissing?: boolean },
 ): Promise<void> {
@@ -412,7 +412,7 @@ async function handleFreshTaskEntry(
   // Checkpoint save
   if (!isWorkerCtx && state.deps?.session && state.context.featureFolder) {
     try {
-      const { saveCheckpoint } = await import('../../checkpoint');
+      const { saveCheckpoint } = await import('../../../session/checkpoint');
       await saveCheckpoint({
         ...state,
         currentTask: nextTask,

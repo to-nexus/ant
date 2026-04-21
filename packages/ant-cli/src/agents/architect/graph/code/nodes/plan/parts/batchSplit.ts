@@ -31,7 +31,7 @@ export const MAX_BATCH_SPLIT_CYCLES = 10;
  * Strip markdown code fences from a string if present.
  * Handles: ```json\n...\n```, ```\n...\n```, etc.
  */
-export function stripMarkdownFences(text: string): string {
+function stripMarkdownFences(text: string): string {
   const trimmed = text.trim();
   const fenceMatch = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n\s*```$/);
   if (fenceMatch) return fenceMatch[1].trim();
@@ -67,7 +67,7 @@ export function hasEmptyImplementation(planText: string | undefined): boolean {
  * When overlap exists, error sub-tasks must run exclusively (sequential).
  * When no overlap, they can safely run in parallel.
  */
-export function computeBatchFileOverlap(batches: any[]): boolean {
+function computeBatchFileOverlap(batches: any[]): boolean {
   const extractFiles = (b: any): Set<string> => {
     const files = new Set<string>();
     for (const m of (b.modify || [])) files.add(typeof m === 'string' ? m : m.file);

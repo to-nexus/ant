@@ -34,19 +34,27 @@ describe('parseLLMResponse — complexity classification', () => {
     expect(r.complexity).toBe('exploratory');
   });
 
-  it('parses <complexity>todo</complexity>', () => {
+  it('parses <complexity>task</complexity>', () => {
+    const r = parseLLMResponse(makeResponse('<complexity>task</complexity>'));
+    expect(r.complexity).toBe('task');
+  });
+
+  it('accepts legacy <complexity>todo</complexity> as alias of "task"', () => {
+    // Pre-5-tier-rename literal stays accepted so cached LLM outputs /
+    // older prompt revisions keep parsing. Normalization is documented
+    // on `normalizeComplexity` in responseParser.ts.
     const r = parseLLMResponse(makeResponse('<complexity>todo</complexity>'));
-    expect(r.complexity).toBe('todo');
+    expect(r.complexity).toBe('task');
   });
 
-  it('defaults to "todo" when tag is absent', () => {
+  it('defaults to "task" when tag is absent', () => {
     const r = parseLLMResponse(makeResponse(''));
-    expect(r.complexity).toBe('todo');
+    expect(r.complexity).toBe('task');
   });
 
-  it('defaults to "todo" on unknown values (safe narrowing)', () => {
+  it('defaults to "task" on unknown values (safe narrowing)', () => {
     const r = parseLLMResponse(makeResponse('<complexity>megafeature</complexity>'));
-    expect(r.complexity).toBe('todo');
+    expect(r.complexity).toBe('task');
   });
 
   it('is case-insensitive and trims whitespace', () => {
@@ -64,13 +72,13 @@ describe('parseLLMResponse — complexityDecidedBy', () => {
   it('reports decidedBy="llm" even for unknown tag values (LLM emitted *something*)', () => {
     const r = parseLLMResponse(makeResponse('<complexity>megafeature</complexity>'));
     expect(r.complexityDecidedBy).toBe('llm');
-    expect(r.complexity).toBe('todo'); // normalised fallback
+    expect(r.complexity).toBe('task'); // normalised fallback
   });
 
   it('reports decidedBy="heuristic" when the tag is absent (fallback default)', () => {
     const r = parseLLMResponse(makeResponse(''));
     expect(r.complexityDecidedBy).toBe('heuristic');
-    expect(r.complexity).toBe('todo');
+    expect(r.complexity).toBe('task');
   });
 });
 

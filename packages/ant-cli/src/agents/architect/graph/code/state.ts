@@ -8,6 +8,7 @@ import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
 import type { ResolvedActionContext, ResolvedArtifact, Boundary, Complexity, DecidedBy, SpecClarify } from '@ant/shared';
+import type { ExecutionTierId } from "../../../../core/executionTier";
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 import type { VerificationSession } from "./tasks/verification/model/Session";
 // `PlanEntry` is phase-blind (consumed by router/plan/enforce regardless of
@@ -523,14 +524,27 @@ export interface ArchitectGraphState extends TriageableState {
    * Complexity classification decided by Decompose.
    * Combined with `resolvedAction.mode` it selects the execution tier:
    *   oneshot/exploratory  → `direct` node (ReAct loop, no plan/execute)
-   *   todo                 → full `plan` / `execute` pipeline
+   *   task                 → full `plan` / `execute` pipeline
    *
    * - Writer: decompose node, once per job (or re-decompose).
    * - Readers: `routeAfterDecompose`, `direct` node, learn/breadcrumb policy.
    * - Reset rule: never reset within a job; re-decompose overwrites.
-   * Safe default when LLM output is missing: `'todo'` (parseLLMResponse fallback).
+   * Safe default when LLM output is missing: `'task'` (parseLLMResponse fallback).
    */
   complexity?: Complexity;
+
+  /**
+   * Execution tier selected from `(mode, complexity)` via
+   * `core/executionTier::selectExecutionTier`. Derived field — decompose
+   * writes it once alongside `complexity`; phase nodes read it via
+   * `getExecutionTier(state)` and MUST NOT re-derive or inspect `mode` /
+   * `complexity` directly.
+   *
+   * Kept optional because the `learn` / `design` job graphs may bypass
+   * decompose; `getExecutionTier` falls back to
+   * `selectExecutionTier(mode, complexity)` when this channel is absent.
+   */
+  executionTier?: ExecutionTierId;
 
   /**
    * Provenance of `complexity` — mirrors `ParsedDecomposeResponse.complexityDecidedBy`.
@@ -575,7 +589,7 @@ export interface ArchitectGraphState extends TriageableState {
 
   /**
    * Spec clarify choice emitted by Decompose when:
-   *   complexity === 'todo' && mode !== 'explain'
+   *   complexity === 'task' && mode !== 'explain'
    *   && no system design doc && no relevant spec
    * When present, graph routes to `__end__` to await user choice.
    * Triggering logic belongs to `decompose_spec_clarify` (next todo);

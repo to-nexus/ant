@@ -21,7 +21,7 @@ import { CodeTask } from '../../../../../types/task';
 import { combineCodeContext, TaskKeywords } from '../combineCodeContext';
 import { generateTaskKeywords, displayKeywords, logKeywords } from '../keywordGeneration';
 import { loadReferenceContexts } from '../referenceLoader';
-import { extractFilesFromViolations } from '../../shared/violationFormatter';
+import { extractFilesFromViolations } from '../../../utils/violationFormatter';
 
 export interface PlanRagResult {
   projectCodeContext: any;
@@ -183,5 +183,3 @@ export async function runPlanRAG(
     directoryTree,
   };
 }
-
-export { EMPTY_CONTEXT };

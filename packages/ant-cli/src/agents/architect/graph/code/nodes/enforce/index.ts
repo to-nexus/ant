@@ -14,8 +14,9 @@
  */
 
 import { ArchitectGraphState, Violation, EnforcementFeedback } from "../../state";
-import { formatViolations } from "../shared/violationFormatter";
+import { formatViolations } from "../../utils/violationFormatter";
 import { logErrorPriority, getTopPriorityError, prioritizeViolations } from "./errorPriority";
+import { DEFAULT_TASK_TYPE } from "../../tasks/_shared/types";
 
 /**
  * Check if violations are retryable (재시도로 해결 가능한지)
@@ -91,7 +92,7 @@ export async function enforce(state: ArchitectGraphState): Promise<ArchitectGrap
   
   const errorContext = {
     directive: state.context.task || '',
-    taskType: state.currentTask?.type || 'feature',
+    taskType: state.currentTask?.type || DEFAULT_TASK_TYPE,
     taskName: state.currentTask?.name || 'Unknown',
     retryCount: state.retries
   };
