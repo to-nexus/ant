@@ -11,6 +11,7 @@ import type { DesignGraphState } from '../../state.js';
 import type { InferredAction, Mode, DesignDomain } from '@ant/shared';
 import { isFigmaDataPopulated, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
+import { runEstimatingLLMStream } from '../../../../../common/graph/llmHelpers.js';
 import { resolveDesignTargetFiles } from '../../../../../../core/types/detection.js';
 import { logPrompt } from '../../../../../../core/utils/promptLogger.js';
 import * as path from 'path';
@@ -110,31 +111,17 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     const chatAPI = getChatAPIClient();
     await chatAPI.showChatStatus('placeholder');
 
-    let response = '';
-    let capturedUsage: any = undefined;
-    for await (const event of llm.stream(
-      [{ role: 'user', content: prompt }],
-      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: false },
-    )) {
-      if (event.type === 'retry') { response = ''; capturedUsage = undefined; continue; }
-      if (event.text) response += event.text;
-      const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers.js');
-      const usage = extractTokenUsageFromStreamEvent(event);
-      if (usage) capturedUsage = usage;
-    }
+    const { response } = await runEstimatingLLMStream(
+      state,
+      'detect',
+      () => llm.stream(
+        [{ role: 'user', content: prompt }],
+        { temperature: LLM_TEMPERATURE.DETECT, maxTokens: LLM_MAX_TOKENS.DEFAULT, enableThinking: false },
+      ),
+      () => {},
+      { subNode: 'design', promptChars: prompt.length },
+    );
 
-    if (capturedUsage) {
-      const { accumulateTokenUsage, logTokenUsageToFile } = await import('../../../../../common/graph/llmHelpers.js');
-      accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true });
-      if (state.deps?.kanbanUpdate?.updateTokenUsage && state.tokenUsage) {
-        state.deps.kanbanUpdate.updateTokenUsage(state.tokenUsage);
-      }
-      logTokenUsageToFile(state.context?.featurePath, state.jobId || state._httpJobId, capturedUsage, {
-        taskId: 'estimating', taskName: 'detect', node: 'detect', callIndex: 0, estimatedPromptChars: prompt.length,
-      });
-    }
-
-    // Parse
     const parsed = parseDesignDetectResponse(response);
 
     // skipTriage override: explain→generate when redirect context
