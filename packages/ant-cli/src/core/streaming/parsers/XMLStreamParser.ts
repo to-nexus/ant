@@ -26,7 +26,6 @@ interface ParserContext {
   clarifyContent: string;  // ✅ NEW: Accumulate clarify content (discarded)
   clarifyStartEmitted: boolean;  // ✅ Track if clarify_start action was already emitted
   insideFunctionCalls: boolean;  // ✅ SAFETY: <function_calls> tag (suppress hallucinated XML tool calls)
-  insideAnalysis: boolean;  // <analysis> tag (plan node — strip tags, stream content as response)
   insidePlan: boolean;  // <plan> tag (plan node — emit plan_start/plan_content/plan_end)
   currentFilePath: string | null;
   currentAppendPath: string | null;  // ✅ NEW
@@ -47,7 +46,6 @@ export class XMLStreamParser implements IStreamParser {
     clarifyContent: '',  // ✅ NEW
     clarifyStartEmitted: false,  // ✅ NEW
     insideFunctionCalls: false,  // ✅ SAFETY
-    insideAnalysis: false,
     insidePlan: false,
     currentFilePath: null,
     currentAppendPath: null,  // ✅ NEW
@@ -434,69 +432,7 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 16h. Check for <analysis> opening (strip tag, stream content as response)
-      if (!this.context.insideAnalysis && this.buffer.includes('<analysis>')) {
-        const startIdx = this.buffer.indexOf('<analysis>');
-        
-        const beforeTag = this.buffer.substring(0, startIdx);
-        if (beforeTag.trim()) {
-          actions.push({
-            type: 'response',
-            data: { content: beforeTag }
-          });
-        }
-        
-        this.buffer = this.buffer.substring(startIdx + '<analysis>'.length);
-        this.context.insideAnalysis = true;
-        
-        continueParsingLoop = true;
-        continue;
-      }
-      
-      // 16i. Check for </analysis> closing
-      if (this.context.insideAnalysis && this.buffer.includes('</analysis>')) {
-        const endIdx = this.buffer.indexOf('</analysis>');
-        const fragment = this.buffer.substring(0, endIdx);
-        
-        this.buffer = this.buffer.substring(endIdx + '</analysis>'.length);
-        this.context.insideAnalysis = false;
-        
-        if (fragment.trim()) {
-          actions.push({
-            type: 'response',
-            data: { content: fragment }
-          });
-        }
-        
-        continueParsingLoop = true;
-        continue;
-      }
-      
-      // 16j. Stream content inside <analysis> (line-based, like response text)
-      if (this.context.insideAnalysis && this.buffer.length > 0) {
-        const lookahead = '</analysis>';
-        
-        if (this.buffer.length > lookahead.length) {
-          const searchableContent = this.buffer.substring(0, this.buffer.length - lookahead.length);
-          const lastNewlineIdx = searchableContent.lastIndexOf('\n');
-          
-          if (lastNewlineIdx >= 0) {
-            const completeLines = searchableContent.substring(0, lastNewlineIdx + 1);
-            this.buffer = this.buffer.substring(completeLines.length);
-            
-            if (completeLines.trim()) {
-              actions.push({
-                type: 'response',
-                data: { content: completeLines }
-              });
-            }
-            continueParsingLoop = true;
-          }
-        }
-        continue;
-      }
-      
-      // 16k. Check for <plan> opening (emit plan_start action for PlanCard)
+      // 16h. Check for <plan> opening (emit plan_start action for PlanCard)
       if (!this.context.insidePlan && this.buffer.includes('<plan>')) {
         const startIdx = this.buffer.indexOf('<plan>');
         
@@ -844,7 +780,6 @@ export class XMLStreamParser implements IStreamParser {
           !this.context.insideLearnCommand &&
           !this.context.insideClarify &&
           !this.context.insideFunctionCalls &&
-          !this.context.insideAnalysis &&
           !this.context.insidePlan &&
           !this.context.insideFile) {
         
@@ -854,7 +789,7 @@ export class XMLStreamParser implements IStreamParser {
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
           // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
           // Note: detect/references tags are NOT parsed - they flow through as normal response for SpecialTagTransformer
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|profile|analysis|plan|file|delete|append|learn_command|clarify|function_calls|done)[\s>])/s);
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|profile|plan|file|delete|append|learn_command|clarify|function_calls|done)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
@@ -968,15 +903,6 @@ export class XMLStreamParser implements IStreamParser {
       else if (this.context.insideAppend && this.context.currentFilePath) {
         console.warn(`⚠️ [XMLParser] Discarding unterminated <append> block on finalize for ${this.context.currentFilePath}`);
       }
-      // If inside analysis, emit remaining content as response
-      else if (this.context.insideAnalysis) {
-        if (hasActualContent) {
-          actions.push({
-            type: 'response',
-            data: { content: this.buffer }
-          });
-        }
-      }
       // If inside plan, emit remaining content + plan_end
       else if (this.context.insidePlan) {
         if (hasActualContent) {
@@ -1030,7 +956,6 @@ export class XMLStreamParser implements IStreamParser {
       clarifyContent: '',  // ✅ NEW
       clarifyStartEmitted: false,  // ✅ NEW
       insideFunctionCalls: false,  // ✅ SAFETY
-      insideAnalysis: false,
       insidePlan: false,
       currentFilePath: null,
       currentAppendPath: null,

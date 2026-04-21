@@ -58,7 +58,7 @@ Language-specific diagnostic hints are provided below.
 
 ### Step 4: Produce Remediation Plan
 
-Output your analysis and structured plan.
+Output the structured plan.
 
 {{#if isRetry}}
 ────────────────────────────────────────────────────────────────────────────────
@@ -95,11 +95,6 @@ Choose the format based on remediation scope:
 ### Format A: Single Plan (fewer than 5 files to modify AND only 1 root cause)
 
 ```
-<analysis>
-(Your reasoning: what the error is, what code you investigated, what root cause you identified,
-which files need changes, in what order)
-</analysis>
-
 <plan>
 {
   "task": {
@@ -137,13 +132,9 @@ which files need changes, in what order)
 
 When multiple independent root causes exist or many files need changes, group fixes into batches by root cause.
 
-```
-<analysis>
-(Your reasoning: what errors exist, how they group, what root causes you identified.
-Explain WHY you grouped them this way — related errors that share a root cause
-or have cross-file dependencies MUST be in the same batch.)
-</analysis>
+Batch grouping MUST reflect root-cause and cross-file dependency relationships — related errors that share a root cause or cross-file dependencies belong in the same batch.
 
+```
 <plan>
 {
   "task": {
@@ -190,8 +181,6 @@ or have cross-file dependencies MUST be in the same batch.)
 **Constraint**: If investigation reveals the error is already resolved, output an empty plan:
 
 ```
-<analysis>Error investigated — no code changes needed. [explanation]</analysis>
-
 <plan>
 {
   "task": { "id": "{{taskId}}", "goal": "No errors found" },
@@ -220,5 +209,5 @@ or have cross-file dependencies MUST be in the same batch.)
 - Modifying source files (use the code execution phase for that)
 - Persistent background processes
 
-**Constraint**: After reading error-related files and optionally running diagnostics, produce `<analysis>` and `<plan>` promptly. Do NOT continue calling tools after sufficient information is gathered.
+**Constraint**: After reading error-related files and optionally running diagnostics, produce `<plan>` promptly. Do NOT continue calling tools after sufficient information is gathered.
 {{/if}}

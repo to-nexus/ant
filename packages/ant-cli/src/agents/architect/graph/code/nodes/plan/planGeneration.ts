@@ -812,13 +812,13 @@ export function selectFinalizePrompt(task: CodeTask): string {
   return isDiagnosticTask
     ? 'You have finished exploring and analyzing the codebase. Based on ALL the tool results above, ' +
       'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
-      'and output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
+      'and output `<plan>{JSON}</plan>`. ' +
       'If 15 or more files need modification, use the BATCHED format: the JSON must contain a top-level "batches" array ' +
       'where each batch groups related fixes by root cause (with "name", "rationale", "modify", "create", "delete" fields). ' +
       'Otherwise use the single-plan format with an "implementation" object containing "modify", "create", "delete" arrays. ' +
       'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.'
     : 'You have finished exploring. Based on ALL the tool results above, ' +
-      'produce your final implementation plan NOW. Output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
+      'produce your final implementation plan NOW. Output `<plan>{JSON}</plan>`. ' +
       'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.';
 }
 
