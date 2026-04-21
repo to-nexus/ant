@@ -4,6 +4,7 @@
 
 import { ArchitectGraphState } from './state';
 import { getTaskConcurrency } from './parallel/types';
+import { isDirectTier } from '../../../../core/executionTier';
 
 export function routeAfterResolve(state: ArchitectGraphState): string {
   const isResume = state.isResume === true;
@@ -57,16 +58,17 @@ export function routeAfterDecompose(state: ArchitectGraphState): string {
     console.log(`⏸️  [Decompose→Router] ${reason} → __end__`);
     return '__end__';
   }
-  if (state.complexity === 'oneshot' || state.complexity === 'exploratory') {
-    console.log(`[Decompose→Router] complexity=${state.complexity} → direct`);
+  const tier = state.executionTier;
+  if (tier !== undefined && isDirectTier(tier)) {
+    console.log(`[Decompose→Router] executionTier=${tier} → direct`);
     return 'direct';
   }
   const concurrency = getTaskConcurrency();
   if (concurrency > 1) {
-    console.log(`[Decompose→Router] complexity=${state.complexity ?? 'task'} ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
+    console.log(`[Decompose→Router] executionTier=${tier ?? 'task'} ANT_TASK_CONCURRENCY=${concurrency} → parallelOrchestrator`);
     return 'parallelOrchestrator';
   }
-  console.log(`[Decompose→Router] complexity=${state.complexity ?? 'task'} ANT_TASK_CONCURRENCY=1 → sequential plan`);
+  console.log(`[Decompose→Router] executionTier=${tier ?? 'task'} ANT_TASK_CONCURRENCY=1 → sequential plan`);
   return 'plan';
 }
 

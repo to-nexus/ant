@@ -27,6 +27,7 @@ import { isTestCodeTask } from '../../tasks/test-code/model/is';
 import { isDocTask } from '../../tasks/doc/model/is';
 import { isExplainTask } from '../../tasks/explain/model/is';
 import type { PlanPromptCtx } from '../../tasks/_shared/types';
+import { formatCodeContext } from '../../tasks/_shared/helpers/planPrompt';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -749,6 +750,51 @@ export async function runPlanLLMWithTools(
 }
 
 /**
+ * Select the no-more-tools synthesis prompt used when the plan↔tool loop
+ * is out of budget. Diagnostic tasks (verification + decompose-emitted
+ * error tasks) get the BATCHED-or-single directive so the downstream
+ * `processDiagnosticBatchSplit` can legitimately split large remediation
+ * plans (Format B in `plan/variants/error/base.md:136`); all other task
+ * types get the implementation-plan directive.
+ *
+ * Error tasks created by a previous batch-split carry `prePlanText` and
+ * are short-circuited earlier in `maybePrePlannedFastPath`, so this
+ * branch only ever runs against decompose-emitted error tasks.
+ */
+export function selectFinalizePrompt(task: CodeTask): string {
+  const isDiagnosticTask = isVerificationTask(task) || isErrorTask(task);
+  return isDiagnosticTask
+    ? 'You have finished exploring and analyzing the codebase. Based on ALL the tool results above, ' +
+      'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
+      'and output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
+      'If 15 or more files need modification, use the BATCHED format: the JSON must contain a top-level "batches" array ' +
+      'where each batch groups related fixes by root cause (with "name", "rationale", "modify", "create", "delete" fields). ' +
+      'Otherwise use the single-plan format with an "implementation" object containing "modify", "create", "delete" arrays. ' +
+      'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.'
+    : 'You have finished exploring. Based on ALL the tool results above, ' +
+      'produce your final implementation plan NOW. Output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
+      'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.';
+}
+
+/**
+ * Empty-plan shortcut predicate for `finalizePlanFromExploration`.
+ * When a diagnostic task's finalized plan reports "no errors to fix"
+ * (either explicit `diagnostics.totalErrors === 0` or all-empty
+ * implementation buckets), callers return `planText === ''` so execute
+ * can immediately mark the task done.
+ */
+export function shouldShortCircuitEmptyPlan(task: CodeTask, parsed: any): boolean {
+  const isDiagnosticTask = isVerificationTask(task) || isErrorTask(task);
+  if (!isDiagnosticTask) return false;
+  return (
+    parsed?.diagnostics?.totalErrors === 0 ||
+    (parsed?.implementation?.modify?.length === 0 &&
+     parsed?.implementation?.create?.length === 0 &&
+     (parsed?.implementation?.delete?.length ?? 0) === 0)
+  );
+}
+
+/**
  * Finalize plan from tool exploration context.
  *
  * Called when the plan↔tool loop hits PLAN_TOOL_LOOP_MAX. Instead of
@@ -770,21 +816,7 @@ export async function finalizePlanFromExploration(
   const llmToUse = await selectLLMForTask(llm, task, state);
   if (!llmToUse?.stream) return null;
 
-  // Verification-only batched-plan instruction. Error tasks take the
-  // `prePlanText` fast-path in `nodes/plan/index.ts maybePrePlannedFastPath`
-  // and never reach this finalize step — the batched format directive is
-  // only ever emitted for verification's diagnostic tool-loop.
-  const finalizePrompt = isVerificationTask(task)
-    ? 'You have finished exploring and analyzing the codebase. Based on ALL the tool results above, ' +
-      'produce your final diagnostic remediation plan NOW. Analyze all errors found, group by root cause, ' +
-      'and output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
-      'If 15 or more files need modification, use the BATCHED format: the JSON must contain a top-level "batches" array ' +
-      'where each batch groups related fixes by root cause (with "name", "rationale", "modify", "create", "delete" fields). ' +
-      'Otherwise use the single-plan format with an "implementation" object containing "modify", "create", "delete" arrays. ' +
-      'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.'
-    : 'You have finished exploring. Based on ALL the tool results above, ' +
-      'produce your final implementation plan NOW. Output `<analysis>` followed by `<plan>{JSON}</plan>`. ' +
-      'Do NOT call any more tools. Your response MUST contain exactly one `<plan>` block.';
+  const finalizePrompt = selectFinalizePrompt(task);
 
   const finalizeMessage: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }> = [
     ...history,
@@ -901,15 +933,8 @@ export async function finalizePlanFromExploration(
         const parsed = JSON.parse(planText);
         await validatePrescribedPackages(parsed, state);
 
-        // Verification-only shortcut: no errors → empty planText for
-        // immediate done. Error tasks never reach this function
-        // (prePlanText fast-path) so the check is verification-specific.
-        if (isVerificationTask(task) &&
-            (parsed.diagnostics?.totalErrors === 0 ||
-             (parsed.implementation?.modify?.length === 0 &&
-              parsed.implementation?.create?.length === 0 &&
-              (parsed.implementation?.delete?.length ?? 0) === 0))) {
-          console.log(`✅ [Plan] Verification plan shows no errors — returning empty planText for immediate done`);
+        if (shouldShortCircuitEmptyPlan(task, parsed)) {
+          console.log(`✅ [Plan] Diagnostic plan shows no errors — returning empty planText for immediate done`);
           await savePlanTextForDebug(state, task, planText);
           return '';
         }
@@ -922,9 +947,4 @@ export async function finalizePlanFromExploration(
 
   console.warn(`⚠️ [Plan] finalizePlanFromExploration failed to produce valid <plan>, falling back`);
   return null;
-}
-
-function formatCodeContext(ctx: any): string {
-  if (!ctx?.files || !Array.isArray(ctx.files) || ctx.files.length === 0) return '';
-  return `**Retrieved Files** (${ctx.files.length} files):\n\n${ctx.files.map((f: any) => `- \`${f.path}\``).join('\n')}`;
 }

@@ -22,28 +22,6 @@ import {
   getTraceJsonlPath,
 } from "../../../core/utils/sessionPaths";
 
-/**
- * Legacy complexity literal fallback.
- *
- * Pre-5-tier-rename `feature.jsonl` lines carry `complexity: 'todo'`. The
- * SSOT type ({@link import('@ant/shared').Complexity}) no longer includes
- * `'todo'`; readers therefore upgrade the literal on the fly so older
- * workspaces keep resuming. Writers emit `'task'` only — no file rewrite
- * occurs (append-only invariant preserved).
- */
-let legacyComplexityLoggedOnce = false;
-function normalizeLegacyComplexity<T extends { complexity?: string }>(line: T): T {
-  if ((line as any).complexity === 'todo') {
-    if (!legacyComplexityLoggedOnce) {
-      legacyComplexityLoggedOnce = true;
-      console.debug(
-        "📦 [FileSessionAdapter] legacy complexity literal migrated on read: 'todo' → 'task' (on-disk unchanged)",
-      );
-    }
-    return { ...line, complexity: 'task' } as T;
-  }
-  return line;
-}
 
 /**
  * Simple async mutex for serializing file I/O.
@@ -411,7 +389,7 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
-   * Append user_turn_meta patch line (complexity/decidedBy/reason).
+   * Append user_turn_meta patch line (executionTier/reason).
    * 
    * Decompose 판정 결과를 기록. resolve가 로드 시 user_turn과 turnId 기준 병합.
    */
@@ -511,7 +489,7 @@ export class FileSessionAdapter implements SessionPort {
       if (line.type === 'user_turn') {
         userTurns.push(line);
       } else if (line.type === 'user_turn_meta') {
-        userTurnMetas.push(normalizeLegacyComplexity(line));
+        userTurnMetas.push(line);
       }
     }
 
@@ -578,7 +556,7 @@ export class FileSessionAdapter implements SessionPort {
    * (UI tier badge — §18 `tier_ui_badge`).
    *
    * Unlike `loadSinceBoundary`, this ignores the boundary cursor — the UI
-   * tier badge needs to render mode/complexity/decidedBy/reason for every
+   * tier badge needs to render mode/executionTier/reason for every
    * non-collapsed turn, including those that survived the latest Hard Reset
    * but are still visible in the trace.
    *
@@ -595,7 +573,7 @@ export class FileSessionAdapter implements SessionPort {
     for (const line of all) {
       if (line.collapsed) continue;
       if (line.type === 'user_turn') userTurns.push(line);
-      else if (line.type === 'user_turn_meta') userTurnMetas.push(normalizeLegacyComplexity(line));
+      else if (line.type === 'user_turn_meta') userTurnMetas.push(line);
     }
     return { userTurns, userTurnMetas };
   }

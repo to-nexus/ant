@@ -7,7 +7,7 @@ import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/promp
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
-import type { ResolvedActionContext, ResolvedArtifact, Boundary, Complexity, DecidedBy, SpecClarify } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify } from '@ant/shared';
 import type { ExecutionTierId } from "../../../../core/executionTier";
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
 import type { VerificationSession } from "./tasks/verification/model/Session";
@@ -517,62 +517,34 @@ export interface ArchitectGraphState extends TriageableState {
   boundary?: Boundary;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Session Redesign (5-Tier Execution Model) — Mode × Complexity routing
+  // Session Redesign (5-Tier Execution Model)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   /**
-   * Complexity classification decided by Decompose.
-   * Combined with `resolvedAction.mode` it selects the execution tier:
-   *   oneshot/exploratory  → `direct` node (ReAct loop, no plan/execute)
-   *   task                 → full `plan` / `execute` pipeline
+   * 5-tier execution strategy selected by the Tier Entry Node LLM
+   * (`<executionTier>` tag from Decompose). SSOT for routing, loop limits,
+   * breadcrumb / boundary / compact strategy selection.
    *
-   * - Writer: decompose node, once per job (or re-decompose).
-   * - Readers: `routeAfterDecompose`, `direct` node, learn/breadcrumb policy.
+   *   Tier 0 Reflex       → direct path, read-only (explain × oneshot)
+   *   Tier 1 OneShot      → direct path, 1-2 step ReAct
+   *   Tier 2 Exploratory  → direct path, multi-step ReAct
+   *   Tier 3 Task         → plan / execute pipeline (directive-only task)
+   *   Tier 4 RefsGrounded → plan / execute pipeline (refs-grounded task)
+   *
+   * - Writer: decompose node (LLM output) or `selectExecutionTier` fallback.
+   * - Readers: `routeAfterDecompose`, `direct` node, learn / breadcrumb policy,
+   *   all phase nodes via `getExecutionTier(state)`.
    * - Reset rule: never reset within a job; re-decompose overwrites.
-   * Safe default when LLM output is missing: `'task'` (parseLLMResponse fallback).
-   */
-  complexity?: Complexity;
-
-  /**
-   * Execution tier selected from `(mode, complexity)` via
-   * `core/executionTier::selectExecutionTier`. Derived field — decompose
-   * writes it once alongside `complexity`; phase nodes read it via
-   * `getExecutionTier(state)` and MUST NOT re-derive or inspect `mode` /
-   * `complexity` directly.
-   *
-   * Kept optional because the `learn` / `design` job graphs may bypass
-   * decompose; `getExecutionTier` falls back to
-   * `selectExecutionTier(mode, complexity)` when this channel is absent.
    */
   executionTier?: ExecutionTierId;
 
   /**
-   * Provenance of `complexity` — mirrors `ParsedDecomposeResponse.complexityDecidedBy`.
-   * Plumbed through state so downstream observability writers (learn → §19
-   * `featureBiases`) can distinguish LLM judgements from heuristic fallbacks
-   * without joining feature.jsonl `user_turn_meta`.
-   *
-   * - Writer: decompose node (mirrors parser output).
-   * - Readers: learn node (`recordClassificationBias`).
-   * - Reset rule: follows `complexity` — never reset within a job; re-decompose overwrites.
-   */
-  complexityDecidedBy?: DecidedBy;
-
-  /**
-   * Hints produced alongside `complexity` for the `direct` node.
-   * `targetFiles` applies to oneshot (generate/refactor mode) when concrete
-   * targets are identifiable from directive+context.
-   * `explorationScope` applies to exploratory mode (any) to narrow the ReAct
-   * observation surface.
+   * Hints produced by Decompose for the `direct` node (Tier 0-2 paths).
+   * `targetFiles` applies when concrete targets are identifiable from
+   * directive+context (generate/refactor). `explorationScope` narrows the
+   * ReAct observation surface for exploratory tiers.
    */
   directHints?: { targetFiles?: string[]; explorationScope?: string };
-
-  /**
-   * Narrow view of `complexity` used by the `direct` node to pick a loop
-   * budget: `'oneshot'` (limited steps) vs `'exploratory'` (extended steps).
-   * Derived from `complexity` in decompose; preserved across retries.
-   */
-  directMode?: 'oneshot' | 'exploratory';
 
   /**
    * T2+T3 context loaded from feature.jsonl by resolve (session redesign).

@@ -42,8 +42,7 @@
   },
   "tier": {
     "modeTooltip": "모드",
-    "complexityTooltip": "복잡도",
-    "decidedByTooltip": "판정 주체"
+    "executionTierTooltip": "실행 티어"
   },
   "sidebar": {
     "chatWith": "{{agent}}와 채팅",

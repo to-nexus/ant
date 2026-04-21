@@ -10,7 +10,7 @@ import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import type { TokenUsage, PhaseTrackingState } from '../../../common/graph/llmHelpers';
 import type { TriageableState, WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import type { PromptPort } from '../../../../core/ports/prompt';
-import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata, ExecutionTierId } from '@ant/shared';
 import type { Conversations } from '../../../common/graph/conversations';
 
 export const PlanAnnotation = Annotation.Root({
@@ -22,6 +22,7 @@ export const PlanAnnotation = Annotation.Root({
   isConversationContinuation: Annotation<any>,
   pendingToolCalls: Annotation<any>,
   phaseTokenUsages: Annotation<any>,
+  executionTier: Annotation<any>,
 } as const);
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
@@ -56,6 +57,13 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   _uiLocale?: 'ko' | 'en';
   recursionCount: number;
   recursionLimit: number;
+
+  /**
+   * 5-tier execution strategy — LLM direct output from the Tier Entry Node
+   * (plan uses Detect). Phase nodes consume via `getExecutionTier(state)`
+   * only.
+   */
+  executionTier?: ExecutionTierId;
 }
 
 /** Helper to read planMode from resolvedAction */

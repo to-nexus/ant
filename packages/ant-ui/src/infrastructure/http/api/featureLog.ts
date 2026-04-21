@@ -40,7 +40,7 @@ export async function getFeatureBreadcrumbs(
 /**
  * Fetch user_turn + user_turn_meta lines from feature.jsonl (tier badge — §18).
  * Collapsed lines are excluded. The UI merges the two arrays by turnId to
- * render `mode · complexity · decidedBy · reason` badges on each turn.
+ * render `mode · executionTier · reason` badges on each turn.
  */
 export async function getFeatureTurnMeta(
   projectId: string,

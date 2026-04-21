@@ -63,26 +63,20 @@ const lessonQueue = new LessonQueue();
 
 /**
  * §19 misclassify_guard — append a featureBiases.jsonl sample when the
- * current job shows a signal that Decompose's initial complexity
+ * current job shows a signal that Decompose's initial executionTier
  * classification may have been wrong.
  *
  * Trigger conditions (OR):
  *   - `needsEscalation === true` → direct emitted an escalation signal
- *     at least once on this job (true whether decompose re-routed back
- *     to direct or onward to plan/parallelOrchestrator)
+ *     at least once on this job
  *   - `_promotedThisJob === true` → direct was re-entered after a prior
  *     escalation (strict subset of the above, kept for clarity)
  *   - touched-file count > PROMOTION_TOUCHED_THRESHOLD → exceeded the
  *     same threshold that powers `shouldEscalate`
  *
- * When `state.complexity` is undefined (no decomposed prediction on this
- * run) there's nothing to compare against — skip. When `featurePath` is
- * missing (resume-without-context / test harness) — skip.
- *
- * Provenance: forwards `state.complexityDecidedBy` so aggregation
- * readers can distinguish LLM judgements from heuristic fallbacks
- * without joining feature.jsonl `user_turn_meta` (§4.1 contract —
- * see `decompose/responseParser.ts` ParsedDecomposeResponse doc).
+ * When `state.executionTier` is undefined (no tier prediction on this run)
+ * there's nothing to compare against — skip. When `featurePath` is missing
+ * (resume-without-context / test harness) — skip.
  *
  * Side-effect only (append). `recordClassification` swallows write
  * failures and returns `false`; the caller uses the return value to
@@ -93,10 +87,10 @@ export async function recordClassificationBias(
   preComputedTouched?: TouchedFromTrace,
 ): Promise<void> {
   const featurePath = state.context?.featurePath;
-  const predicted = state.complexity;
+  const predicted = state.executionTier;
   const jobId = state.jobId;
   const turnId = state.turnId;
-  if (!featurePath || !predicted || !jobId || !turnId) return;
+  if (!featurePath || predicted === undefined || !jobId || !turnId) return;
 
   const session = state.deps?.session;
   const touched = preComputedTouched
@@ -110,16 +104,14 @@ export async function recordClassificationBias(
   const recorded = await recordClassification({
     featurePath,
     jobId,
-    predictedComplexity: predicted,
-    decidedBy: state.complexityDecidedBy,
+    predictedTier: predicted,
     actualTouched,
     escalated,
     directive: state.directive,
   });
   if (recorded) {
     console.log(
-      `📊 [Learn] featureBiases sample recorded: predicted=${predicted} ` +
-        `decidedBy=${state.complexityDecidedBy ?? 'unknown'} ` +
+      `📊 [Learn] featureBiases sample recorded: predictedTier=${predicted} ` +
         `touched=${actualTouched} escalated=${escalated}`,
     );
   }
@@ -340,8 +332,8 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   //
   // Must not be gated by `!hasOrchestratorFailure`: orchestrator-level
   // failures (tasks_failed / recursion_limit / consecutive_timeouts)
-  // are exactly the cases where an under-predicted complexity tends to
-  // blow up the recursion budget or the per-task retry budget. Those
+  // are exactly the cases where an under-predicted executionTier tends
+  // to blow up the recursion budget or the per-task retry budget. Those
   // are the strongest misclass signals we can collect, so we record
   // them unconditionally. Worker-context calls are still skipped —
   // workers do not own the classification, the main graph does.
@@ -446,7 +438,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // job's trace into feature.jsonl for future resolve/plan/direct use.
     //
     // `getExecutionTier(state)` reads `state.executionTier` (written by
-    // decompose) or falls back to `selectExecutionTier(mode, complexity)`.
+    // decompose) or falls back to `selectExecutionTier(mode, hasRefs)`.
     // Tier 3 Task is the ONLY tier that emits breadcrumb + boundary;
     // lower tiers Noop transparently so this block stays uniform across
     // execution paths.

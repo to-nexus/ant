@@ -160,7 +160,7 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
 
   it('loadSinceBoundary returns user_turn + user_turn_meta after latest boundary and ALL breadcrumbs', async () => {
     const t1: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'one' };
-    const m1: FeatureUserTurnMetaLine = { type: 'user_turn_meta', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', complexity: 'oneshot', decidedBy: 'llm', reason: 'trivial' };
+    const m1: FeatureUserTurnMetaLine = { type: 'user_turn_meta', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', executionTier: 1 };
     const bc1: FeatureBreadcrumbLine = { type: 'breadcrumb', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', scope: 'modification', summary: 'bc1', anchors: { files: ['a.ts'] }, stats: { modified: 1 } };
     const b1: FeatureBoundaryLine = { type: 'boundary', ts: '2026-04-20T00:00:04Z', jobId: 'j1', turnId: 't-1', jobType: 'code', reason: 'auto_job_complete_todo' };
     const t2: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:05Z', jobId: 'j2', turnId: 't-2', jobType: 'code', text: 'two' };
@@ -190,7 +190,7 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
 
   it('appendBoundary collapses prior user_turn / user_turn_meta but preserves breadcrumbs', async () => {
     const t: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hi' };
-    const m: FeatureUserTurnMetaLine = { type: 'user_turn_meta', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', complexity: 'task', decidedBy: 'llm', reason: 'multi-file' };
+    const m: FeatureUserTurnMetaLine = { type: 'user_turn_meta', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', executionTier: 3 };
     const bc: FeatureBreadcrumbLine = { type: 'breadcrumb', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', scope: 'modification', summary: 'kept', anchors: {}, stats: {} };
 
     await adapter.appendLine('feature', t);

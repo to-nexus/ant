@@ -12,6 +12,7 @@ import {
 } from '../strategies/boundary';
 import { atBoundaryCollapse } from '../strategies/collapse';
 import { thresholdLLMCompact } from '../strategies/compact';
+import { ExecutionTierId } from '../types';
 
 /**
  * Tier 3 — any mode × complexity=task. Full pipeline:
@@ -30,7 +31,7 @@ import { thresholdLLMCompact } from '../strategies/compact';
  * process handles back-to-back jobs with different modes).
  */
 export class Tier3Task extends BaseTier {
-  readonly id = 3 as const;
+  readonly id = ExecutionTierId.Task;
   readonly label = 'Task' as const;
 
   constructor(mode: Mode) {

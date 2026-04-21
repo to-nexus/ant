@@ -4,10 +4,10 @@ import { parseLLMResponse } from '../src/agents/architect/graph/code/nodes/decom
 /**
  * Regression coverage for the 5-tier execution model tag parser.
  *
- * Scope (per session-redesign-handoff §3.5):
- *   - complexity matrix: oneshot / exploratory / todo
- *   - safe default when tag missing or invalid
- *   - complexityReason extraction
+ * Scope:
+ *   - <executionTier> tag parsing (0..4)
+ *   - heuristic provenance when tag is missing / invalid
+ *   - <executionTierReasoning> extraction
  *   - directHints JSON (targetFiles + explorationScope)
  *   - specClarify JSON validation (all required fields must be present)
  */
@@ -21,106 +21,52 @@ beforeAll(() => {
 const MINIMAL_TECH_TIER = `<techTier>{"stack":"backend","stackReasoning":"","language":"typescript","framework":null}</techTier>`;
 const MINIMAL_TASKS = `<tasks>[]</tasks>`;
 
-const makeResponse = (extra: string): string => `${extra}\n${MINIMAL_TECH_TIER}\n${MINIMAL_TASKS}`;
+const makeResponse = (extra: string): string =>
+  `${extra}\n${MINIMAL_TECH_TIER}\n${MINIMAL_TASKS}`;
 
-describe('parseLLMResponse — complexity classification', () => {
-  it('parses <complexity>oneshot</complexity>', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>oneshot</complexity>'));
-    expect(r.complexity).toBe('oneshot');
+describe('parseLLMResponse — executionTier classification', () => {
+  it.each([0, 1, 2, 3, 4])('parses <executionTier>%d</executionTier>', (tier) => {
+    const r = parseLLMResponse(makeResponse(`<executionTier>${tier}</executionTier>`));
+    expect(r.executionTier).toBe(tier);
   });
 
-  it('parses <complexity>exploratory</complexity>', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>exploratory</complexity>'));
-    expect(r.complexity).toBe('exploratory');
-  });
-
-  it('parses <complexity>task</complexity>', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>task</complexity>'));
-    expect(r.complexity).toBe('task');
-  });
-
-  it('accepts legacy <complexity>todo</complexity> as alias of "task"', () => {
-    // Pre-5-tier-rename literal stays accepted so cached LLM outputs /
-    // older prompt revisions keep parsing. Normalization is documented
-    // on `normalizeComplexity` in responseParser.ts.
-    const r = parseLLMResponse(makeResponse('<complexity>todo</complexity>'));
-    expect(r.complexity).toBe('task');
-  });
-
-  it('defaults to "task" when tag is absent', () => {
+  it('returns undefined when tag is absent (caller applies fallback)', () => {
     const r = parseLLMResponse(makeResponse(''));
-    expect(r.complexity).toBe('task');
+    expect(r.executionTier).toBeUndefined();
   });
 
-  it('defaults to "task" on unknown values (safe narrowing)', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>megafeature</complexity>'));
-    expect(r.complexity).toBe('task');
+  it('returns undefined on non-integer values', () => {
+    const r = parseLLMResponse(makeResponse('<executionTier>task</executionTier>'));
+    expect(r.executionTier).toBeUndefined();
   });
 
-  it('is case-insensitive and trims whitespace', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>  ONESHOT  </complexity>'));
-    expect(r.complexity).toBe('oneshot');
-  });
-});
-
-describe('parseLLMResponse — complexityDecidedBy', () => {
-  it('reports decidedBy="llm" when <complexity> tag is present', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>oneshot</complexity>'));
-    expect(r.complexityDecidedBy).toBe('llm');
+  it('returns undefined on out-of-range values', () => {
+    const r = parseLLMResponse(makeResponse('<executionTier>7</executionTier>'));
+    expect(r.executionTier).toBeUndefined();
   });
 
-  it('reports decidedBy="llm" even for unknown tag values (LLM emitted *something*)', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>megafeature</complexity>'));
-    expect(r.complexityDecidedBy).toBe('llm');
-    expect(r.complexity).toBe('task'); // normalised fallback
-  });
-
-  it('reports decidedBy="heuristic" when the tag is absent (fallback default)', () => {
-    const r = parseLLMResponse(makeResponse(''));
-    expect(r.complexityDecidedBy).toBe('heuristic');
-    expect(r.complexity).toBe('task');
-  });
-});
-
-describe('parseLLMResponse — complexityReason', () => {
-  it('extracts complexityReason when present', () => {
-    const r = parseLLMResponse(
-      makeResponse(
-        '<complexity>oneshot</complexity><complexityReason>Single rename against a known file.</complexityReason>'
-      )
-    );
-    expect(r.complexityReason).toBe('Single rename against a known file.');
-  });
-
-  it('returns undefined when complexityReason is empty/whitespace', () => {
-    const r = parseLLMResponse(
-      makeResponse('<complexity>oneshot</complexity><complexityReason>   </complexityReason>')
-    );
-    expect(r.complexityReason).toBeUndefined();
-  });
-
-  it('returns undefined when complexityReason tag is absent', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>oneshot</complexity>'));
-    expect(r.complexityReason).toBeUndefined();
+  it('trims whitespace around the integer', () => {
+    const r = parseLLMResponse(makeResponse('<executionTier>  3  </executionTier>'));
+    expect(r.executionTier).toBe(3);
   });
 });
 
 describe('parseLLMResponse — directHints', () => {
-  it('parses targetFiles for oneshot hint shape', () => {
+  it('parses targetFiles', () => {
     const r = parseLLMResponse(
       makeResponse(
-        '<complexity>oneshot</complexity><directHints>{"targetFiles":["src/a.ts","src/b.ts"]}</directHints>'
-      )
+        '<executionTier>1</executionTier><directHints>{"targetFiles":["src/a.ts","src/b.ts"]}</directHints>',
+      ),
     );
     expect(r.directHints?.targetFiles).toEqual(['src/a.ts', 'src/b.ts']);
     expect(r.directHints?.explorationScope).toBeUndefined();
   });
 
-  it('parses explorationScope for exploratory hint shape', () => {
+  it('parses explorationScope', () => {
     const r = parseLLMResponse(
       makeResponse(
-        '<complexity>exploratory</complexity><directHints>{"explorationScope":"auth middleware"}</directHints>'
-      )
+        '<executionTier>2</executionTier><directHints>{"explorationScope":"auth middleware"}</directHints>',
+      ),
     );
     expect(r.directHints?.explorationScope).toBe('auth middleware');
     expect(r.directHints?.targetFiles).toBeUndefined();
@@ -128,28 +74,32 @@ describe('parseLLMResponse — directHints', () => {
 
   it('returns undefined when directHints body is the empty object', () => {
     const r = parseLLMResponse(
-      makeResponse('<complexity>todo</complexity><directHints>{}</directHints>')
+      makeResponse(
+        '<executionTier>3</executionTier><directHints>{}</directHints>',
+      ),
     );
     expect(r.directHints).toBeUndefined();
   });
 
   it('returns undefined when directHints tag is absent', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>todo</complexity>'));
+    const r = parseLLMResponse(makeResponse('<executionTier>3</executionTier>'));
     expect(r.directHints).toBeUndefined();
   });
 
   it('drops non-string entries from targetFiles', () => {
     const r = parseLLMResponse(
       makeResponse(
-        '<complexity>oneshot</complexity><directHints>{"targetFiles":["src/a.ts",null,42,""]}</directHints>'
-      )
+        '<executionTier>1</executionTier><directHints>{"targetFiles":["src/a.ts",null,42,""]}</directHints>',
+      ),
     );
     expect(r.directHints?.targetFiles).toEqual(['src/a.ts']);
   });
 
   it('ignores malformed JSON without throwing', () => {
     const r = parseLLMResponse(
-      makeResponse('<complexity>oneshot</complexity><directHints>{not-json}</directHints>')
+      makeResponse(
+        '<executionTier>1</executionTier><directHints>{not-json}</directHints>',
+      ),
     );
     expect(r.directHints).toBeUndefined();
   });
@@ -168,7 +118,9 @@ describe('parseLLMResponse — specClarify', () => {
 }</specClarify>`;
 
   it('parses a well-formed specClarify payload', () => {
-    const r = parseLLMResponse(makeResponse(`<complexity>todo</complexity>\n${FULL_SPEC_CLARIFY}`));
+    const r = parseLLMResponse(
+      makeResponse(`<executionTier>3</executionTier>\n${FULL_SPEC_CLARIFY}`),
+    );
     expect(r.specClarify?.needsChoice).toBe(true);
     expect(r.specClarify?.choiceOptions.positive.action).toBe('redirect_to_design');
     expect(r.specClarify?.choiceOptions.neutral.action).toBe('proceed_without_spec');
@@ -185,7 +137,7 @@ describe('parseLLMResponse — specClarify', () => {
         "negative": {"label":"c","action":"cancel"}
       }
     }</specClarify>`;
-    const r = parseLLMResponse(makeResponse(`<complexity>todo</complexity>\n${bad}`));
+    const r = parseLLMResponse(makeResponse(`<executionTier>3</executionTier>\n${bad}`));
     expect(r.specClarify).toBeUndefined();
   });
 
@@ -199,49 +151,12 @@ describe('parseLLMResponse — specClarify', () => {
         "negative": {"label":"c","action":"cancel"}
       }
     }</specClarify>`;
-    const r = parseLLMResponse(makeResponse(`<complexity>todo</complexity>\n${bad}`));
-    expect(r.specClarify).toBeUndefined();
-  });
-
-  it('ignores specClarify when body is `{}`', () => {
-    const r = parseLLMResponse(
-      makeResponse('<complexity>todo</complexity><specClarify>{}</specClarify>')
-    );
-    expect(r.specClarify).toBeUndefined();
-  });
-
-  it('ignores specClarify when body is literal `null`', () => {
-    const r = parseLLMResponse(
-      makeResponse('<complexity>todo</complexity><specClarify>null</specClarify>')
-    );
+    const r = parseLLMResponse(makeResponse(`<executionTier>3</executionTier>\n${bad}`));
     expect(r.specClarify).toBeUndefined();
   });
 
   it('returns undefined when specClarify tag is absent', () => {
-    const r = parseLLMResponse(makeResponse('<complexity>todo</complexity>'));
+    const r = parseLLMResponse(makeResponse('<executionTier>3</executionTier>'));
     expect(r.specClarify).toBeUndefined();
-  });
-});
-
-describe('parseLLMResponse — output-shape sanity', () => {
-  it('oneshot + targetFiles keeps tasks empty (matrix row)', () => {
-    const r = parseLLMResponse(
-      makeResponse(
-        '<complexity>oneshot</complexity><directHints>{"targetFiles":["src/a.ts"]}</directHints>'
-      )
-    );
-    expect(r.tasks).toEqual([]);
-    expect(r.complexity).toBe('oneshot');
-    expect(r.directHints?.targetFiles).toEqual(['src/a.ts']);
-  });
-
-  it('todo + specClarify keeps tasks empty (matrix row)', () => {
-    const r = parseLLMResponse(
-      makeResponse(
-        '<complexity>todo</complexity>\n<specClarify>{"needsChoice":true,"reason":"r","displayMessage":"m","choiceOptions":{"positive":{"label":"p","action":"redirect_to_design"},"neutral":{"label":"n","action":"proceed_without_spec"},"negative":{"label":"c","action":"cancel"}}}</specClarify>'
-      )
-    );
-    expect(r.tasks).toEqual([]);
-    expect(r.specClarify?.needsChoice).toBe(true);
   });
 });

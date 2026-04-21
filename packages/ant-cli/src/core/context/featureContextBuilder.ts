@@ -7,7 +7,7 @@
  *
  * Responsibilities:
  *  - Merge `user_turn_meta` patch lines into their owning `user_turn` by
- *    `turnId` (complexity / decidedBy / reason → the same line).
+ *    `turnId` (executionTier / reason → the same line).
  *  - Drop collapsed lines (Collapse mechanism is applied at adapter write
  *    time but the reader stays defensive against legacy entries).
  *  - Limit breadcrumbs to the most recent N (window per card spec; defaults
@@ -34,17 +34,15 @@ export const DEFAULT_BREADCRUMB_WINDOW = 5;
 
 /**
  * Shape consumed by plan/direct prompt renderers (Handlebars). Keep the
- * user_turn as the base line and surface meta fields (`complexity` etc.)
- * as optional patches so templates can reference either side uniformly.
+ * user_turn as the base line and surface the meta's `executionTier` as
+ * an optional patch so templates can reference either side uniformly.
  *
  * We deliberately intersect with `Omit<FeatureUserTurnMetaLine, 'type'>`'s
  * patch fields — intersecting with the full meta line would collapse the
  * `type` discriminant to `never` ('user_turn' & 'user_turn_meta').
  */
 export type MergedUserTurn = FeatureUserTurnLine & {
-  complexity?: FeatureUserTurnMetaLine['complexity'];
-  decidedBy?: FeatureUserTurnMetaLine['decidedBy'];
-  reason?: FeatureUserTurnMetaLine['reason'];
+  executionTier?: FeatureUserTurnMetaLine['executionTier'];
 };
 
 export interface FeatureContext {
@@ -77,16 +75,14 @@ export function mergeFeatureContext(
 ): FeatureContext {
   const metaByTurn = new Map<
     string,
-    Pick<FeatureUserTurnMetaLine, 'complexity' | 'decidedBy' | 'reason'>
+    Pick<FeatureUserTurnMetaLine, 'executionTier'>
   >();
   for (const meta of input.userTurnMetas) {
     // Defensive: ignore collapsed meta patches — adapter already filters but
     // legacy entries may slip through.
     if ((meta as { collapsed?: true }).collapsed) continue;
     metaByTurn.set(meta.turnId, {
-      complexity: meta.complexity,
-      decidedBy: meta.decidedBy,
-      reason: meta.reason,
+      executionTier: meta.executionTier,
     });
   }
 

@@ -3,7 +3,7 @@ import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../_common/errorHandler";
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
-import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type Complexity, type DecidedBy, type SpecClarify } from '@ant/shared';
+import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type ExecutionTierId, type SpecClarify } from '@ant/shared';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { DEFAULT_TASK_TYPE } from '../../tasks/_shared/types';
 import { isVerificationTask } from '../../tasks/verification';
@@ -102,41 +102,29 @@ export interface ParsedDecomposeResponse {
   selectedSpec?: string | null;
   unknownPackages?: string[];
   boundary?: Boundary;
-  /** 3-way classification: oneshot | exploratory | task. Safe default: 'task'. */
-  complexity: Complexity;
-  /** 1-sentence rationale for the complexity classification. */
-  complexityReason?: string;
   /**
-   * Who produced the final `complexity` classification:
-   *   - `'llm'`       → LLM emitted a `<complexity>` tag (normal path)
-   *   - `'heuristic'` → tag missing / malformed → `normalizeComplexity` fell
-   *                     back to `'task'` (still safe, but observable)
-   *
-   * `'user'` is reserved for future overrule UX; the parser never produces
-   * it because LLM output is machine input. Consumers writing
-   * `user_turn_meta` patches MUST forward this value so the UI tier badge
-   * and `featureBiases` sample can distinguish LLM judgements from
-   * degraded fallbacks.
+   * 5-tier execution strategy — LLM emits `<executionTier>N</executionTier>`.
+   * `undefined` when the tag is missing; callers treat this as a prompt
+   * violation and default to Tier 0 Reflex (safe read-only).
    */
-  complexityDecidedBy: DecidedBy;
-  /** Hints consumed by the `direct` node when complexity is oneshot/exploratory. */
+  executionTier?: ExecutionTierId;
+  /** Hints consumed by the `direct` node for Tier 0-2 paths. */
   directHints?: { targetFiles?: string[]; explorationScope?: string };
-  /** Design-redirect choice when todo requires spec that is missing (see SpecClarify). */
+  /** Design-redirect choice when task requires spec that is missing (see SpecClarify). */
   specClarify?: SpecClarify;
 }
 
 /**
- * Strict narrow for Complexity. Unknown strings fall back to 'task'.
- *
- * Legacy literal `'todo'` (pre-5-tier rename) is accepted as an alias of
- * `'task'` so LLM outputs quoting the old literal (e.g. from cached few-shots
- * or older prompt revisions) still parse cleanly.
+ * Strict narrow for ExecutionTierId. Unknown / malformed inputs return
+ * `undefined` so the caller can apply the `selectExecutionTier` fallback.
  */
-function normalizeComplexity(raw: string | undefined): Complexity {
-  const v = (raw || '').trim().toLowerCase();
-  if (v === 'oneshot' || v === 'exploratory' || v === 'task') return v;
-  if (v === 'todo') return 'task';
-  return 'task';
+function normalizeExecutionTier(raw: string | undefined): ExecutionTierId | undefined {
+  const v = (raw || '').trim();
+  if (!v) return undefined;
+  const n = Number(v);
+  if (!Number.isInteger(n)) return undefined;
+  if (n < 0 || n > 4) return undefined;
+  return n as ExecutionTierId;
 }
 
 /**
@@ -253,25 +241,13 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       console.log(`📋 [Decompose] Boundary classification: ${boundary}`);
     }
 
-    // Complexity classification (session redesign 5-tier model)
-    const complexityMatch = rawResponse.match(/<complexity>\s*([\s\S]*?)\s*<\/complexity>/i);
-    const complexity = normalizeComplexity(complexityMatch?.[1]);
-    // `decidedBy` tracks whether the classification came from the LLM's
-    // `<complexity>` tag or from the heuristic fallback. Consumers
-    // (user_turn_meta writer, §19 featureBiases sample, future overrule UX)
-    // rely on this distinction to audit classification quality.
-    const complexityDecidedBy: DecidedBy = complexityMatch ? 'llm' : 'heuristic';
-    if (!complexityMatch) {
-      console.warn('⚠️  [Decompose] No <complexity> tag found — defaulting to "task"');
+    // ExecutionTier classification (LLM-judged, 5-tier SSOT)
+    const tierMatch = rawResponse.match(/<executionTier>\s*([\s\S]*?)\s*<\/executionTier>/i);
+    const executionTier = normalizeExecutionTier(tierMatch?.[1]);
+    if (executionTier === undefined) {
+      console.warn('⚠️  [Decompose] No <executionTier> tag found — caller will default to Tier 0 (Reflex) as safe fallback');
     } else {
-      console.log(`🧭 [Decompose] Complexity: ${complexity}`);
-    }
-
-    let complexityReason: string | undefined;
-    const reasonMatch = rawResponse.match(/<complexityReason>\s*([\s\S]*?)\s*<\/complexityReason>/i);
-    if (reasonMatch) {
-      const r = reasonMatch[1].trim();
-      if (r) complexityReason = r;
+      console.log(`🧭 [Decompose] ExecutionTier: ${executionTier}`);
     }
 
     let directHints: { targetFiles?: string[]; explorationScope?: string } | undefined;
@@ -326,9 +302,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       selectedSpec,
       unknownPackages,
       boundary,
-      complexity,
-      complexityReason,
-      complexityDecidedBy,
+      executionTier,
       directHints,
       specClarify,
     };

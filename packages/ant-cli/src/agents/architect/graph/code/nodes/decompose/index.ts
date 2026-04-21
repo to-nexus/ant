@@ -28,7 +28,7 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
-import { selectExecutionTier } from "../../../../../../core/executionTier";
+import { ExecutionTierId } from "../../../../../../core/executionTier";
 
 
 /**
@@ -464,12 +464,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     selectedSpec,
     unknownPackages,
     boundary: parsedBoundary,
-    complexity,
-    complexityReason,
-    complexityDecidedBy,
+    executionTier: parsedExecutionTier,
     directHints,
     specClarify,
   } = parsed;
+
+  // LLM's <executionTier> is the SSOT. If the tag is missing (prompt
+  // violation), degrade to Tier 0 Reflex (safe read-only).
+  const executionTier = parsedExecutionTier ?? ExecutionTierId.Reflex;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4.6: SpecClarify short-circuit
@@ -501,7 +503,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
               ...(existing?.state || {}),
               awaitingDecomposeClarify: true,
               specClarify,
-              complexity,
+              executionTier,
               directHints,
               resolvedAction: state.resolvedAction,
               directive: state.directive,
@@ -521,28 +523,26 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       ...state,
       awaitingDecomposeClarify: true,
       specClarify,
-      complexity,
-      executionTier: selectExecutionTier(state.resolvedAction?.mode, complexity),
+      executionTier,
       directHints,
       _phaseTimings: { ...(state._phaseTimings || {}), decompose: Date.now() - phaseStart },
     };
   }
 
   const mode = state.resolvedAction?.mode;
-  const directMode: 'oneshot' | 'exploratory' | undefined =
-    complexity === 'oneshot' || complexity === 'exploratory' ? complexity : undefined;
+  const isDirectPath = executionTier <= 2;
 
-  if (directMode) {
-    console.log(`🎯 [Decompose] Direct tier selected: complexity=${complexity}, mode=${mode || 'unknown'} (tasks=${tasks.length})`);
-    // Matrix SSOT: oneshot/exploratory → `<tasks>[]`. If the LLM emits tasks
+  if (isDirectPath) {
+    console.log(`🎯 [Decompose] Direct tier selected: executionTier=${executionTier}, mode=${mode || 'unknown'} (tasks=${tasks.length})`);
+    // Matrix SSOT: Tier 0~2 → `<tasks>[]`. If the LLM emits tasks
     // anyway, the direct node bypasses the queue — passing them through
     // `validateTasks` / `createTaskQueue` would raise spurious "final
     // verification missing" errors and abort an otherwise-valid direct path.
     // Observe the violation (warn), then clear to keep the queue empty.
     if (tasks.length > 0) {
       console.warn(
-        `⚠️  [Decompose] LLM emitted ${tasks.length} task(s) for complexity='${complexity}' — ` +
-        `expected '<tasks>[]' per the Output shape matrix. Ignoring tasks; direct node will consume directHints only.`
+        `⚠️  [Decompose] LLM emitted ${tasks.length} task(s) for executionTier=${executionTier} — ` +
+        `expected '<tasks>[]' for Tier 0~2. Ignoring tasks; direct node will consume directHints only.`,
       );
       tasks.length = 0;
     }
@@ -836,11 +836,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     _estimatingTokenUsage: estimatingTokenUsage,
     _phaseTimings: finalPhaseTimings,
     boundary: finalBoundary,
-    complexity,
-    complexityDecidedBy,
-    executionTier: selectExecutionTier(state.resolvedAction?.mode, complexity),
+    executionTier,
     directHints,
-    directMode,
     specClarify: undefined,
     awaitingDecomposeClarify: false,
   };
@@ -860,26 +857,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 9.5: user_turn_meta patch (§18 tier_ui_badge + featureContext hint)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Decompose has produced the final complexity classification for this
-  // turn. The patch line feeds TWO downstream consumers:
-  //   1. UI tier badge (TraceActivityView)      — `complexity / decidedBy / reason`
-  //   2. resolve → featureContextBuilder         — complexity hint in prompt
+  // Decompose (code's Tier Entry Node) has produced the final executionTier
+  // classification for this turn. Patch line feeds UI tier badge and the
+  // resolve → featureContextBuilder prompt hint.
   //
-  // Design SSOT: `docs/architecture/18-session-redesign.md` §4.1 ("user_turn_meta
-  // — complexity 판정 패치 (decompose 후 learn에서 append)"). The doc originally
-  // said "learn에서 append", but learn only runs in the `plan` path
-  // (`todo` complexity); `oneshot`/`exploratory` hand off to `direct` +
-  // `parallelOrchestrator` which exit without visiting learn's isLastTask
-  // branch. Writing here covers every path uniformly.
+  // Idempotency: if decompose re-runs (e.g. after `proceed_without_spec`),
+  // a fresh meta line is appended. Reader merges by turnId and keeps the
+  // latest.
   //
-  // Idempotency: if decompose re-runs (e.g. after `proceed_without_spec`
-  // resumed the specClarify pause), we append a fresh meta line. The
-  // feature.jsonl reader merges by turnId and picks the latest, so extra
-  // lines are acceptable; the alternative (tracking "already written")
-  // would require new state plumbing for zero net benefit.
-  //
-  // Side-effect only. Failures are logged and swallowed — meta is an
-  // observability patch; the job must never abort on its absence.
+  // Side-effect only. Failures logged and swallowed.
   if (state.deps?.session && state.turnId && timingJobId) {
     try {
       await state.deps.session.appendUserTurnMeta({
@@ -888,21 +874,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         jobId: timingJobId,
         turnId: state.turnId,
         jobType: 'code',
-        complexity,
-        decidedBy: complexityDecidedBy,
-        reason: (complexityReason && complexityReason.length > 0)
-          ? complexityReason
-          // Fallback keeps `reason` a non-empty string (required by
-          // FeatureUserTurnMetaLine). The value is still observable: readers
-          // can see the classification came from a heuristic fallback with
-          // no LLM rationale, or from the LLM without an explicit reason.
-          : (complexityDecidedBy === 'heuristic'
-            ? 'heuristic fallback — no <complexity> tag'
-            : 'classification emitted without <complexityReason>'),
+        executionTier,
       });
-      console.log(
-        `🧭 [Decompose] user_turn_meta appended (complexity=${complexity} decidedBy=${complexityDecidedBy})`,
-      );
+      console.log(`🧭 [Decompose] user_turn_meta appended (executionTier=${executionTier})`);
     } catch (err) {
       console.warn('⚠️  [Decompose] appendUserTurnMeta failed:', err);
     }
