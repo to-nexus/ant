@@ -210,19 +210,8 @@ export class ExecutionLogger {
   async logVerificationRetry(taskId: string, data: {
     taskName: string;
     attempt: number;
-    /** @deprecated Retained for schema stability; summary-based retention carries the signal. */
-    preservedHistoryLength: number;
-    preservedCallIndex: number;
     violationsFromPrevAttempt: number;
-    // Retention metadata from `describeRetryRetention` — summary kept, not
-    // raw conversations. Passed gates help post-mortem diagnose "which
-    // cache was preserved across the retry boundary".
-    retentionMode?: 'summary' | 'full' | 'none';
-    summaryInjected?: boolean;
-    summaryLen?: number;
-    passedGatesAtRetry?: Array<'typecheck' | 'build' | 'test'>;
-    // Observability for Phase 0 / Phase A: the unified attempt counter and
-    // last plan hash are the primary signals for diagnosing "LLM stuck" loops.
+    preservedPlanMessages: number;
     verificationAttempts?: number;
     prevPlanHash?: string;
     carryOverSize?: number;

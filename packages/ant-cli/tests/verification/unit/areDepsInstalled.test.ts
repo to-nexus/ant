@@ -19,7 +19,12 @@ import { areDepsInstalled } from '../../../src/agents/common/tool/handlers/inval
 
 async function makeFeatureRoot(layout: {
   pkg?: Record<string, any> | null;
-  installedModules?: string[];
+  /**
+   * Either a bare name (no version check — installed package.json will be `{}`)
+   * or `{ name, version }` to seed an explicit installed version for semver
+   * satisfaction tests.
+   */
+  installedModules?: Array<string | { name: string; version: string }>;
 }): Promise<string> {
   const featureRoot = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), 'ant-deps-test-'),
@@ -37,11 +42,17 @@ async function makeFeatureRoot(layout: {
   if (layout.installedModules && layout.installedModules.length > 0) {
     const nm = path.join(codebase, 'node_modules');
     await fs.promises.mkdir(nm, { recursive: true });
-    for (const name of layout.installedModules) {
+    for (const entry of layout.installedModules) {
+      const name = typeof entry === 'string' ? entry : entry.name;
+      const version = typeof entry === 'string' ? undefined : entry.version;
       const parts = name.split('/');
       const dir = path.join(nm, ...parts);
       await fs.promises.mkdir(dir, { recursive: true });
-      await fs.promises.writeFile(path.join(dir, 'package.json'), '{}');
+      const pkgBody = version ? { name, version } : {};
+      await fs.promises.writeFile(
+        path.join(dir, 'package.json'),
+        JSON.stringify(pkgBody),
+      );
     }
   }
 
@@ -149,5 +160,104 @@ describe('areDepsInstalled', () => {
     const link = path.join(linkParent, 'react');
     await fs.promises.symlink(actual, link, 'dir');
     expect(await areDepsInstalled(r)).toBe(true);
+  });
+
+  describe('semver version match (slim-burning-melon regression)', () => {
+    it('returns false when installed version does not satisfy the declared range', async () => {
+      const r = await root({
+        pkg: { devDependencies: { jsdom: '^24.1.3' } },
+        installedModules: [{ name: 'jsdom', version: '29.0.2' }],
+      });
+      expect(await areDepsInstalled(r)).toBe(false);
+    });
+
+    it('returns true when installed version satisfies the declared range', async () => {
+      const r = await root({
+        pkg: { devDependencies: { jsdom: '^24.1.3' } },
+        installedModules: [{ name: 'jsdom', version: '24.1.3' }],
+      });
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('returns true for exact-version match', async () => {
+      const r = await root({
+        pkg: { dependencies: { react: '19.0.0' } },
+        installedModules: [{ name: 'react', version: '19.0.0' }],
+      });
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('returns false for exact-version mismatch', async () => {
+      const r = await root({
+        pkg: { dependencies: { react: '19.0.0' } },
+        installedModules: [{ name: 'react', version: '18.3.1' }],
+      });
+      expect(await areDepsInstalled(r)).toBe(false);
+    });
+
+    it('returns true when the spec is `*` (any version)', async () => {
+      const r = await root({
+        pkg: { dependencies: { react: '*' } },
+        installedModules: [{ name: 'react', version: '18.3.1' }],
+      });
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('skips version check for workspace protocol', async () => {
+      const r = await root({
+        pkg: { dependencies: { '@ant/shared': 'workspace:^' } },
+        installedModules: [{ name: '@ant/shared', version: '1.0.0' }],
+      });
+      // workspace: → existence-only, not range-checked.
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('skips version check for git URLs', async () => {
+      const r = await root({
+        pkg: { dependencies: { foo: 'git+https://github.com/x/foo.git' } },
+        installedModules: [{ name: 'foo', version: '0.0.1' }],
+      });
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('skips version check for file: protocol', async () => {
+      const r = await root({
+        pkg: { dependencies: { foo: 'file:../local-foo' } },
+        installedModules: [{ name: 'foo', version: '0.0.1' }],
+      });
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('skips version check for bare npm tags like `latest` / `next`', async () => {
+      const r = await root({
+        pkg: { dependencies: { foo: 'latest' } },
+        installedModules: [{ name: 'foo', version: '0.0.1' }],
+      });
+      // `latest` is not a valid semver range → existence-only.
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('installed package.json without version field → no version check, existence suffices', async () => {
+      const r = await root({
+        pkg: { dependencies: { foo: '^1.0.0' } },
+        installedModules: ['foo'],
+      });
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('one dep out of many failing semver → false', async () => {
+      const r = await root({
+        pkg: {
+          dependencies: { react: '^19.0.0', 'react-dom': '^19.0.0' },
+          devDependencies: { jsdom: '^24.1.3' },
+        },
+        installedModules: [
+          { name: 'react', version: '19.1.0' },
+          { name: 'react-dom', version: '19.1.0' },
+          { name: 'jsdom', version: '29.0.2' }, // ← mismatch
+        ],
+      });
+      expect(await areDepsInstalled(r)).toBe(false);
+    });
   });
 });

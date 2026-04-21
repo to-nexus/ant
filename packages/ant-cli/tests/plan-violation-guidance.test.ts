@@ -81,10 +81,8 @@ describe('composeViolationsText — formatter + guidance composition', () => {
         violation({ type: 'cross_worker_conflict', file: 'src/a.ts', message: 'conflict a' }),
       ],
       undefined,
-      undefined,
     )!;
 
-    // Generic formatter emits `1. [CRITICAL] cross_worker_conflict` first.
     const formatterIdx = text.indexOf('cross_worker_conflict');
     const guidanceIdx = text.indexOf('CROSS-WORKER FILE CONFLICT');
     expect(formatterIdx).toBeGreaterThanOrEqual(0);
@@ -92,18 +90,16 @@ describe('composeViolationsText — formatter + guidance composition', () => {
   });
 
   it('returns undefined when all inputs are empty', () => {
-    expect(composeViolationsText(undefined, undefined, undefined)).toBeUndefined();
-    expect(composeViolationsText([], undefined, undefined)).toBeUndefined();
+    expect(composeViolationsText(undefined, undefined)).toBeUndefined();
+    expect(composeViolationsText([], undefined)).toBeUndefined();
   });
 
-  it('includes diagnosticRetryContext + retrySummaryText when present', () => {
+  it('includes diagnosticRetryContext when present', () => {
     const text = composeViolationsText(
       [violation({ type: 'type_error', message: 'x' })],
       'diag-context',
-      'summary-text',
     )!;
     expect(text).toContain('type_error');
     expect(text).toContain('diag-context');
-    expect(text).toContain('summary-text');
   });
 });

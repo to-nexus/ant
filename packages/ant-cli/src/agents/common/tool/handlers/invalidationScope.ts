@@ -14,6 +14,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import semver from 'semver';
 import type { InvalidationScope } from '../types';
 
 const TEST_PATH_PATTERNS: RegExp[] = [
@@ -72,29 +73,18 @@ function extension(base: string): string {
 }
 
 /**
- * Are all declared JS dependencies present in `codebase/node_modules/`?
+ * Are all declared JS deps present in `codebase/node_modules/` AND (for
+ * semver-range specs) does the installed version satisfy the spec?
  *
- * Returns:
- *   - `true`  — every entry in `dependencies ∪ devDependencies` is resolvable
- *               under `codebase/node_modules/<name>`.
- *   - `false` — at least one declared dep is missing, OR package.json was
- *               read but the node_modules root is absent.
- *   - `null`  — not a JS project (package.json missing/unreadable). Callers
- *               treat this as "dependency status unknown, observe nothing".
+ * Returns `true` when every `dependencies ∪ devDependencies` entry resolves
+ * and its version (when declared as a semver range) satisfies the spec.
+ * Returns `false` when any dep is missing or its installed version fails
+ * `semver.satisfies`. Returns `null` when package.json is absent/unreadable.
  *
- * `peerDependencies` and `optionalDependencies` are excluded — the former is
- * a host contract (not required locally), the latter can be legitimately
- * absent (platform-specific, already declared as such by npm semantics).
- *
- * This is the cross-task SSOT for install status: codebase itself is the
- * witness, so no in-memory hash cache or persisted hash file is needed. The
- * filesystem port is already shared across workers, so parallel-worker
- * install results surface automatically on the next observation.
- *
- * Package-manager layout coverage: npm / pnpm (symlinks to `.pnpm/`) / yarn
- * classic / bun all populate `node_modules/<name>/`. Yarn PnP
- * (no node_modules) is NOT covered — users of that layout would need a
- * separate manifest probe; out of scope here.
+ * Non-range specs (git, file:, workspace:*, link:, npm tags) fall back to
+ * existence-only — resolving those accurately needs the lockfile, which is
+ * outside this module's SSOT. `peerDependencies` / `optionalDependencies`
+ * are excluded. Yarn PnP is not covered.
  */
 export async function areDepsInstalled(featureRootPath: string): Promise<boolean | null> {
   const codebasePath = path.join(featureRootPath, 'codebase');
@@ -120,8 +110,36 @@ export async function areDepsInstalled(featureRootPath: string): Promise<boolean
     } catch {
       return false;
     }
+
+    const spec = required[name];
+    if (!spec || !isSemverRangeSpec(spec)) continue;
+
+    let installedVersion: string | undefined;
+    try {
+      const depPkg = JSON.parse(
+        await fs.promises.readFile(path.join(modPath, 'package.json'), 'utf-8'),
+      );
+      installedVersion = typeof depPkg.version === 'string' ? depPkg.version : undefined;
+    } catch {
+      // Missing/unreadable dep package.json → treat as version-unknown.
+      continue;
+    }
+    if (!installedVersion) continue;
+
+    if (!semver.satisfies(installedVersion, spec, { includePrerelease: true })) {
+      return false;
+    }
   }
   return true;
+}
+
+/** True iff the spec is a semver range (version check is meaningful). */
+function isSemverRangeSpec(spec: string): boolean {
+  const s = spec.trim();
+  if (!s) return false;
+  if (/^(?:git|git\+|https?:|file:|link:|workspace:|npm:|portal:|patch:)/.test(s)) return false;
+  if (/^(?:\.?\.\/|\/)/.test(s)) return false;
+  return semver.validRange(s, { includePrerelease: true }) !== null;
 }
 
 /**

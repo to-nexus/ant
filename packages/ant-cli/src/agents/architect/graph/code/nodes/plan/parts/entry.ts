@@ -1,26 +1,14 @@
 /**
  * plan/parts/entry.ts — STEP 0 entry dispatcher for the plan node.
  *
- * Extracted from `nodes/plan/index.ts` as part of T6b-α. Behaviour is
- * byte-identical to the inline implementation; only module boundary moves.
+ * Conversation retention policy:
+ *   - NODE_PLAN is preserved across retry / reverify and plan→execute
+ *     handoffs within the same task.
+ *   - NODE_EXECUTE is cleared at every plan entry so each execute tool-loop
+ *     starts fresh.
+ *   - Both slots are cleared at fresh task entry (task boundary).
  *
- * Responsibilities:
- *   - `resolvePlanEntry(state)` selects one of four handlers based on the
- *     entry reason and returns a `PlanEntryContext` the orchestrator
- *     consumes to drive STEP 0.5~STEP 4.
- *   - Handlers own the per-reason state mutations (conversations clears,
- *     tracker resets, retry-summary rendering) so the orchestrator has no
- *     branching on entry reason.
- *   - `recomputeInstallNeeded` centralises the dep-file-hash probe shared
- *     across retry / reverify / fresh paths.
- *
- * R1 invariants preserved:
- *   - Task-type discrimination uses the `isVerificationTask` predicate
- *     from `tasks/verification/model/is.ts` (imported via the bundle
- *     barrel). No literal `task.type === '...'` comparisons remain.
- *     Session hydration dispatches through `hooksForTaskType(nextTask.type)
- *     ?.plan?.initSession` so task types that do not carry a session
- *     (error/setup/ui/...) are no-ops automatically.
+ * R1: task-type discrimination uses `isVerificationTask` / `hooksForTaskType`.
  */
 
 import { getTechTier } from '@ant/shared';
@@ -33,18 +21,11 @@ import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
 import { isVerificationTask } from '../../../tasks/verification';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
-import {
-  summarizeForRetry,
-  renderRetrySummary,
-  describeRetryRetention,
-  dedupeViolationsAgainstSummary,
-} from '../../../../../../../core/context/taskRetryRetention';
 
 export interface PlanEntryContext {
   nextTask: CodeTask;
   isRetry: boolean;
   preservedRetries: number;
-  retrySummaryText: string | undefined;
   skipKeywordAndRAG: boolean;
   inToolLoop: boolean;
 }
@@ -64,34 +45,22 @@ function isTypeScriptProject(state: ArchitectGraphState): boolean {
 }
 
 /**
- * Compose the verification prompt's `violationsText` from its three
- * possible sources (current violations, accumulated diagnostic retry context,
- * prior-attempt summary). Returning undefined when everything is empty keeps
- * the prompt template's `{{#if isRetry}}` branch clean.
- *
- * Violation guidance (cross_worker_conflict / file_operation_failed) is
- * appended here — formatter authority lives in one place (plan) after the
- * enforce node removal (docs/tmp/enforce-node-removal-handoff.md §3.5).
+ * Compose the verification prompt's `violationsText` from the current
+ * cycle's violations and accumulated diagnostic retry context. Prior-attempt
+ * context lives on `state.conversations[NODE_PLAN]`, not in this string.
  */
 export function composeViolationsText(
   violations: import('../../../state').Violation[] | undefined,
   diagnosticRetryContext: string | undefined,
-  retrySummaryText: string | undefined,
 ): string | undefined {
   const parts: string[] = [];
 
-  // Delegate dedupe to the shared retention module so the policy "retry
-  // summary already describes this failure — drop verification_incomplete"
-  // lives next to the summary rendering logic.
-  const effectiveViolations = dedupeViolationsAgainstSummary(violations, retrySummaryText);
-
-  if (effectiveViolations?.length) {
-    parts.push(formatViolations(effectiveViolations));
-    const guidance = renderViolationGuidance(effectiveViolations);
+  if (violations?.length) {
+    parts.push(formatViolations(violations));
+    const guidance = renderViolationGuidance(violations);
     if (guidance) parts.push(guidance);
   }
   if (diagnosticRetryContext) parts.push(diagnosticRetryContext);
-  if (retrySummaryText) parts.push(retrySummaryText);
   return parts.length ? parts.join('\n') : undefined;
 }
 
@@ -244,7 +213,6 @@ function handleToolLoopReentry(
     nextTask,
     isRetry: flags.isRetry,
     preservedRetries: flags.preservedRetries,
-    retrySummaryText: undefined,
     skipKeywordAndRAG: false,
     inToolLoop: flags.inToolLoop,
   };
@@ -279,39 +247,25 @@ async function handleRetryEntry(
 
   const prevCallIndex = state._executeCallIndex || 0;
   const isVerificationRetry = isVerificationTask(nextTask);
-  let retrySummaryText: string | undefined;
 
   if (isVerificationRetry) {
-    // Snapshot the inbound violation count before clearing so the retry log
-    // reflects the previous attempt's failure count rather than the cleared 0.
     const prevViolationCount = state.violations?.length ?? 0;
-
-    // Session owns the retry attempt counter; `state.retries` stays 0 for
-    // verification because `checkRetryTermination` owns termination.
     state.verification?.onPlanEntry('retry');
     state._executeCallIndex = 0;
     const sessionAttempts = state.verification?.attempts() ?? 0;
-    retrySummaryText = renderRetrySummary(summarizeForRetry({
-      violations: state.violations,
-      lastPlan: state.planText,
-    }, {
-      attemptCount: sessionAttempts,
-      commandHistory: state.commandHistory,
-    }));
     state.violations = [];
     state.conversations = {
       ...state.conversations,
       [CONV_KEYS.NODE_EXECUTE]: [],
-      [CONV_KEYS.NODE_PLAN]: [],
     };
     state._executeModifiedFiles = false;
     await recomputeInstallNeeded(state);
+    const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
     console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (verificationAttempts=${sessionAttempts})`);
-    console.log(`   ♻️  Reset: conversations cleared, _executeCallIndex ${prevCallIndex}→0`);
-    console.log(`   ♻️  Preserved: _finalTaskLoopCount = ${state._finalTaskLoopCount || 0}\n`);
+    console.log(`   ♻️  node:execute cleared, _executeCallIndex ${prevCallIndex}→0`);
+    console.log(`   ♻️  node:plan preserved (${preservedMsgCount} messages)\n`);
     if (nextTask && state.context?.featurePath && state._httpJobId) {
       const _taskRef = nextTask;
-      const _retention = describeRetryRetention(retrySummaryText, state.verification?.passed());
       const _planHashes = state.verification?.snapshot().planHistoryHashes;
       const _prevPlanHash = _planHashes?.[_planHashes.length - 1];
       const _carryOverBytes = JSON.stringify(snapshotFromState(state) || {}).length;
@@ -323,14 +277,8 @@ async function handleRetryEntry(
         }).logVerificationRetry(_taskRef.id, {
           taskName: _taskRef.name,
           attempt: sessionAttempts,
-          // @deprecated placeholders — summary-based retention is the SSOT for carried retry context.
-          preservedHistoryLength: 0,
-          preservedCallIndex: 0,
           violationsFromPrevAttempt: prevViolationCount,
-          retentionMode: _retention.retentionMode,
-          summaryInjected: _retention.summaryInjected,
-          summaryLen: _retention.summaryLen,
-          passedGatesAtRetry: _retention.passedGatesAtRetry,
+          preservedPlanMessages: preservedMsgCount,
           verificationAttempts: sessionAttempts,
           prevPlanHash: _prevPlanHash,
           carryOverSize: _carryOverBytes,
@@ -340,28 +288,20 @@ async function handleRetryEntry(
   } else {
     state._executeCallIndex = 0;
     state._finalTaskLoopCount = 0;
-    retrySummaryText = renderRetrySummary(summarizeForRetry({
-      violations: state.violations,
-      lastPlan: state.planText,
-    }, {
-      attemptCount: (state.retries || 0) + 1,
-      commandHistory: state.commandHistory,
-    }));
     state.violations = [];
     state.conversations = {
       ...state.conversations,
       [CONV_KEYS.NODE_EXECUTE]: [],
-      [CONV_KEYS.NODE_PLAN]: [],
     };
+    const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
     console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-    console.log(`   ♻️  Reset: _executeCallIndex ${prevCallIndex}→0, conversations cleared; retry summary flows via violationsText\n`);
+    console.log(`   ♻️  node:execute cleared, node:plan preserved (${preservedMsgCount} messages)\n`);
   }
 
   return {
     nextTask,
     isRetry: flags.isRetry,
     preservedRetries: flags.preservedRetries,
-    retrySummaryText,
     skipKeywordAndRAG: false,
     inToolLoop: flags.inToolLoop,
   };
@@ -380,7 +320,7 @@ async function handleReverifyEntry(
   state.verification?.onPlanEntry('reverify');
 
   state._executeCallIndex = 0;
-  state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] };
+  state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [] };
   state._executeModifiedFiles = false;
   state.violations = [];
 
@@ -390,7 +330,6 @@ async function handleReverifyEntry(
     nextTask,
     isRetry: flags.isRetry,
     preservedRetries: flags.preservedRetries,
-    retrySummaryText: undefined,
     skipKeywordAndRAG: true,
     inToolLoop: flags.inToolLoop,
   };
@@ -424,6 +363,11 @@ async function handleFreshTaskEntry(
   resetTaskTokenUsage(state);
   state._executeCallIndex = 0;
   state._planSearchWebCount = 0;
+  state.conversations = {
+    ...state.conversations,
+    [CONV_KEYS.NODE_PLAN]: [],
+    [CONV_KEYS.NODE_EXECUTE]: [],
+  };
 
   if (isVerificationTask(nextTask)) {
     const isResumedVerification = !!state.verification && state.verification.attempts() > 0;
@@ -500,7 +444,6 @@ async function handleFreshTaskEntry(
     nextTask,
     isRetry: flags.isRetry,
     preservedRetries: flags.preservedRetries,
-    retrySummaryText: undefined,
     skipKeywordAndRAG: false,
     inToolLoop: flags.inToolLoop,
   };
