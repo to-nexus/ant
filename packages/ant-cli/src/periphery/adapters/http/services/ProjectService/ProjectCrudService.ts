@@ -103,8 +103,8 @@ export class ProjectCrudService {
     
     // ✅ Get LLM config from environment variables
     const envModel = process.env.AI_MODEL_NAME;
-    const modelOpus = envModel || 'claude-opus-4-6';
-    const modelSonnet = envModel || 'claude-sonnet-4-6';
+    const modelOpus = envModel || 'claude-opus-4-7';
+    const modelSonnet = envModel || 'claude-sonnet-4-7';
     
     // ✅ Determine if Cloud Mode
     const isCloudMode = userContext.userId !== 'local' && userContext.organizationId !== 'local';
@@ -132,16 +132,16 @@ export class ProjectCrudService {
       ...(defaultGithubRepo ? { githubRepo: defaultGithubRepo } : {}),
       llmModels: {
         design: {
-          default: modelOpus,
+          default: modelSonnet,
         },
         code: {
-          default: modelOpus,
+          default: modelSonnet,
         },
         learn: {
           default: modelSonnet,
         },
         plan: {
-          default: modelOpus,
+          default: modelSonnet,
         },
         visual: {
           default: 'gemini-3.1-pro-preview',
@@ -363,8 +363,8 @@ export class ProjectCrudService {
     
     // Get environment variable defaults for LLM (per-job)
     const envModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
-    const fallbackOpus = envModel || 'claude-opus-4-6';
-    const fallbackSonnet = envModel || 'claude-sonnet-4-6';
+    const fallbackOpus = envModel || 'claude-opus-4-7';
+    const fallbackSonnet = envModel || 'claude-sonnet-4-7';
     
     try {
       const configData = await fs.promises.readFile(configPath, 'utf-8');
@@ -377,15 +377,15 @@ export class ProjectCrudService {
       
       // ✅ Ensure job-level structure exists with defaults
       if (!config.llmModels.design) {
-        config.llmModels.design = { default: fallbackOpus };
+        config.llmModels.design = { default: fallbackSonnet };
       } else if (!config.llmModels.design.default) {
-        config.llmModels.design.default = fallbackOpus;
+        config.llmModels.design.default = fallbackSonnet;
       }
       
       if (!config.llmModels.code) {
-        config.llmModels.code = { default: fallbackOpus };
+        config.llmModels.code = { default: fallbackSonnet };
       } else if (!config.llmModels.code.default) {
-        config.llmModels.code.default = fallbackOpus;
+        config.llmModels.code.default = fallbackSonnet;
       }
       
       if (!config.llmModels.learn) {
@@ -395,9 +395,9 @@ export class ProjectCrudService {
       }
       
       if (!config.llmModels.plan) {
-        config.llmModels.plan = { default: fallbackOpus };
+        config.llmModels.plan = { default: fallbackSonnet };
       } else if (!config.llmModels.plan.default) {
-        config.llmModels.plan.default = fallbackOpus;
+        config.llmModels.plan.default = fallbackSonnet;
       }
       
       if (!config.llmModels.visual) {
@@ -450,16 +450,16 @@ export class ProjectCrudService {
         repoType: isCloudMode ? 'cloud' : 'local',
         llmModels: {
           design: {
-            default: fallbackOpus,
+            default: fallbackSonnet,
           },
           code: {
-            default: fallbackOpus,
+            default: fallbackSonnet,
           },
           learn: {
             default: fallbackSonnet,
           },
           plan: {
-            default: fallbackOpus,
+            default: fallbackSonnet,
           },
           visual: {
             default: 'gemini-3.1-pro-preview',

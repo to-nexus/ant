@@ -22,7 +22,7 @@ const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
     id: 'llm',
     displayName: 'LLM',
     provider: 'Anthropic',  // Default (overridden by config)
-    model: 'claude-sonnet-4-6',     // Default (overridden by config)
+    model: 'claude-sonnet-4-7',     // Default (overridden by config)
     icon: '🤖'
   },
   'embedding-model': {

@@ -144,28 +144,28 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
 /**
  * Default workspace config
  * If AI_MODEL_NAME env var is set, all jobs use that model (override).
- * Otherwise, design/code default to Opus, plan/learn default to Sonnet.
+ * Otherwise, plan/design/code/learn default to Sonnet; reviewer/doc default to Opus.
  */
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
   const envModel = process.env.AI_MODEL_NAME;
-  const modelOpus = envModel || 'claude-opus-4-6';
-  const modelSonnet = envModel || 'claude-sonnet-4-6';
+  const modelOpus = envModel || 'claude-opus-4-7';
+  const modelSonnet = envModel || 'claude-sonnet-4-7';
   
   return {
     projectName,
     repoType: 'local',
     llmModels: {
       design: {
-        default: modelOpus,
+        default: modelSonnet,
       },
       code: {
-        default: modelOpus,
+        default: modelSonnet,
       },
       learn: {
         default: modelSonnet,
       },
       plan: {
-        default: modelOpus,
+        default: modelSonnet,
       },
       visual: {
         default: 'gemini-3-flash-preview',

@@ -35,6 +35,6 @@ export async function checkHealth(): Promise<boolean> {
 export function fetchAvailableModels(): Promise<AvailableModelsResponse> {
   return apiGet<AvailableModelsResponse>(`${API_BASE()}/models`).catch(() => ({
     models: [],
-    default: 'claude-sonnet-4-6',
+    default: 'claude-sonnet-4-7',
   }));
 }
