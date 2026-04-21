@@ -28,6 +28,7 @@ import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStr
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { getTools } from './tools';
+import { parseClarifyTags } from '../../../../../common/clarify';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
 
@@ -349,14 +350,18 @@ export async function docGen(
       console.warn(`⚠️  [DocGen] Approaching call limit (${newCallIndex}/${maxCalls}) — ${maxCalls - newCallIndex} calls remaining`);
     }
 
-    // ✅ Spec clarify detection: if LLM response contains <clarify> tags, pause for user input
-    if (intentGroup === 'design-spec' && textResponse.includes('<clarify>')) {
-      const clarifyMatch = textResponse.match(/<clarify>([\s\S]*?)<\/clarify>/);
-      if (clarifyMatch) {
+    // Spec clarify detection: if LLM response contains <clarify> tags, pause for user input.
+    // Content-level clarify — asks about spec document gaps within the committed
+    // design-spec intent, so NOT gated by `isIntentCommitted`.
+    if (intentGroup === 'design-spec') {
+      const clarifyBlocks = parseClarifyTags(textResponse);
+      if (clarifyBlocks.length > 0) {
         console.log(`💬 [DocGen/Spec] Clarify block detected, pausing for user input`);
-        
-        const clarifyContent = clarifyMatch[1].trim();
-        
+
+        // docGen's prompt uses the bare `<clarify>` body syntax (no attribute,
+        // free-form bullet list). The parser stores the full body as `question`.
+        const clarifyContent = clarifyBlocks.map(b => b.question).join('\n\n');
+
         // Send clarify content as a chat message
         await chatAPI.sendLLMEvent({ type: 'text', text: `\n\n**추가 정보가 필요합니다:**\n\n${clarifyContent}\n` });
         await chatAPI.finalizeMessage();
