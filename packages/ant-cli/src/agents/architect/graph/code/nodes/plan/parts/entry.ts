@@ -312,7 +312,8 @@ async function handleRetryEntry(
     if (nextTask && state.context?.featurePath && state._httpJobId) {
       const _taskRef = nextTask;
       const _retention = describeRetryRetention(retrySummaryText, state.verification?.passed());
-      const _prevPlanHash = state.verification?.snapshot().planHistoryHashes.at(-1);
+      const _planHashes = state.verification?.snapshot().planHistoryHashes;
+      const _prevPlanHash = _planHashes?.[_planHashes.length - 1];
       const _carryOverBytes = JSON.stringify(snapshotFromState(state) || {}).length;
       import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
         getExecutionLogger({
