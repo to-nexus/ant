@@ -1,7 +1,7 @@
 /**
  * TaskResponseCard - Contained card for worker graph text output
  *
- * Renders LLM text responses (analysis, inter-tag text) inside a bounded card
+ * Renders LLM inter-tag text responses inside a bounded card
  * with ReactMarkdown. Used in worker graph nodes (plan, codeGen, docGen)
  * to prevent unbounded text streaming in parallel execution.
  *
