@@ -21,13 +21,15 @@
 | # | 폴더/파일 | 책임 | 존재 조건 |
 |---|---|---|---|
 | ① | `graph.ts` · `state.ts` · `routing.ts` · `runner.ts` | 그래프 조립, state 타입, edge predicate, entry | 모든 그래프 필수 |
-| ② | `nodes/{name}/` | phase 노드 (graph.addNode 대상) 1개 = 1 디렉토리 | 모든 그래프 필수 |
+| ② | `nodes/{name}/` | phase 노드 (graph.addNode 대상) 1개 = 1 디렉토리. `nodes/_common/` 은 phase-공유 state-aware 헬퍼 전용 (§2.4) | 모든 그래프 필수 |
 | ③ | `routers/` 또는 `routing.ts` | edge predicate. **순수 함수, state mutation 금지** | 모든 그래프 필수 |
 | ④ | `parallel/` | 오케스트레이션 (worker/queue) | 필요 시 |
-| ⑤ | `session/` | 체크포인트/리저움 | 필요 시 |
+| ⑤ | `session/` | 체크포인트·리저움 **로직 전용**. LLM 프롬프트 adapter (SessionContextBuilder 계열) 는 포함하지 않음 — 사용 노드 내부 (`nodes/{name}/`) 또는 `utils/` 로 귀속. **다른 job graph 의 `session/` 을 cross-import 하는 것도 금지** (R5) — 각 job 은 자기 `session/` SSOT 를 소유한다. `session.updateArtifacts` 직접 호출도 이 폴더 내부로 응집 (axis ⑤ SSOT) | 필요 시 |
 | ⑥ | `config/` | 상수/환경 | 필요 시 |
 | ⑦ | `tasks/{taskType}/` | **task.type-specific cross-phase 모듈** (0..N) | task.type 분기가 생길 때 필수 |
 | ⑧ | `utils/` | **pure helper only** (도메인 로직 금지) | 필요 시 |
+
+> **축 외 SSOT**: cross-agent Tier 전략 (`Breadcrumb / Boundary / Collapse / Compact` — operation-per-strategy + Tier facade) 은 `packages/ant-cli/src/core/executionTier/` 에 둔다. agent graph 의 8축은 아니지만 phase 노드는 `getExecutionTier(state)` 를 경유해 접근한다 (R1 + D11). 매트릭스는 [18-session-redesign.md §5.1.1](./18-session-redesign.md).
 
 ### 2.1 `tasks/{taskType}/` 내부 표준 구조
 
@@ -56,6 +58,44 @@ tasks/{taskType}/
 - **얕은 구현** (test-code, doc, feature): 필요한 hook만 (예: `scheduling.ts` + `conversations.ts`). model 없어도 됨.
 - **공통 진입**: `tasks/_shared/registry.ts` 가 `hooksIfActive(state)` (state 기반) / `hooksForTaskType(taskType)` (ctx-only) 두 엔트리 제공.
 
+### 2.2 `nodes/{name}/` 내부 표준 구조
+
+phase 노드 디렉토리는 **graph.addNode 대상 1개 = 1 디렉토리** 가 원칙이며, 그 안에 다음 파일 규약을 따른다.
+
+| 파일 | 역할 | 존재 조건 |
+|---|---|---|
+| `index.ts` | 노드 함수 본체 — `graph.addNode` 로 전달되는 `(state) => Partial<State>` | 필수 |
+| `tools.ts` | state-aware tool-set selector — `export async function getTools(state): Promise<ToolDefinition[]>` | 해당 노드가 툴을 소비 + state / 환경 기반 필터링이 필요할 때 |
+| `buildMessages.ts` · `buildSystemPrompt.ts` | per-node prompt adapter — `core/prompt` PromptBuilder 소비 | 필요 시 (T6b-ι 규약) |
+| `parts/` | phase-invariant 파이프라인 sub-step | 필요 시 |
+
+**tools.ts 규약**:
+- 파일명은 반드시 `tools.ts`. `toolDefinitions.ts` / `getXxxTools.ts` 같은 per-노드 커스텀 네이밍 금지.
+- Export 는 **단일 엔트리** `export async function getTools(state): Promise<ToolDefinition[]>`. 각 job 의 GraphState (예: `ArchitectGraphState`, `DesignGraphState`) 를 받는다. 노드가 복수 옵션을 요구하면 (`useSourceFileTool` 등) 두 번째 옵션 인자로 수용하되, 시그니처 이름은 `getTools` 로 통일.
+- state / 런타임 기반 필터링 (figma gating, reference tool 여부, explain mode 분기) 은 전부 `tools.ts` 내부에 응집한다. 호출부 (index.ts) 는 `const tools = await getTools(state, opts)` 한 줄이 되어야 한다.
+- 툴을 인라인으로 고르는 패턴은 발견 즉시 `tools.ts` 로 추출한다.
+
+### 2.3 `nodes/{phase}/helpers.ts` 안티패턴
+
+`nodes/{phase}/helpers.ts` / `utils.ts` 에 아래 성격이 혼재하면 축 ② / ⑤ / ⑧ 이 한 파일에 겹친 것이다. 발견 즉시 분산한다.
+
+- `saveCheckpoint` / `session.updateArtifacts` 직접 호출 → `session/{파일}.ts` (axis ⑤ SSOT)
+- pure parser / sanitizer → `utils/` (axis ⑧)
+- state-aware phase-공유 헬퍼 (kanban / token tracking / workflow instrument) → `nodes/_common/` (§2.4)
+- phase 전용 default / fallback factory → 해당 phase 디렉토리 내 별도 파일 (`nodes/{phase}/defaults.ts` 등)
+
+phase-local 단일 헬퍼만 남으면 `helpers.ts` 로 유지 가능.
+
+### 2.4 `nodes/_common/`
+
+phase 노드 아닌 **phase-공유 헬퍼 (state-aware)** 가 필요하면 `nodes/_common/` 에 둔다. 순수 함수는 `utils/` 에 둔다.
+
+- underscore prefix 는 **"non-phase-node internal"** 을 명시 — `graph.addNode` 대상이 아니라는 점을 폴더명만으로 구분한다.
+- 판정 기준: state / runtime port (session, llm, registry, orchestrator) 참조가 있으면 `_common/`, 순수 string/type 변환이면 `utils/`.
+- 대표 예 (code graph):
+  - `_common/`: `emitFileWriteTrace.ts`, `invokeLLMWithTools.ts`, `runToolCallsAndCollect.ts`, `errorHandler.ts`
+  - `utils/`: `parseReActResponse.ts`, `violationFormatter.ts`, `responseCleaners.ts`, `codeMetrics.ts`
+
 ---
 
 ## 3. 규칙 R1 ~ R5
@@ -77,6 +117,20 @@ rg "task\.type === '[a-z-]+'" \
   --glob '!packages/ant-cli/src/agents/architect/graph/code/tasks/**'
 # 기대: 0 matches
 ```
+
+#### R1-carve-out (static type predicate 허용)
+
+Phase layer (phase `nodes/`, `routers/`, `parallel/`, common/tool handlers) 가 `tasks/{type}/model/is.ts` 의 type predicate (`isDocTask` / `isErrorTask` / `isVerificationTask` / `isSetupTask` / `isUiTask` / `isFeatureTask` / `isDesignSystemTask` / `isTestCodeTask` / `isExplainTask`) 를 **직접 import** 하는 것은 **조건부로 허용**한다. 다음을 **모두** 충족해야 한다.
+
+1. Predicate 가 **순수 함수** — state / ctx / 런타임 의존이 0. `task.type` 리터럴 비교만 수행.
+2. `task.type === '...'` 리터럴 비교가 **predicate 구현 파일 내부에만** 존재하며, phase 파일로 새어 나가지 않는다. (phase 파일에서는 predicate 호출만 노출된다.)
+3. Hook 으로 뽑아도 state context 가 필요 없는 **"static per-type fact"** 인 경우 (예: skip-planning, router discrimination, tool filter gating).
+
+위 3조건 중 하나라도 어긋나면 반드시 `tasks/{type}/hooks/` 로 이주시킨다. 특히 "조건부 로직 + state 참조" 가 predicate 호출 근처에 섞이기 시작하면 carve-out 이 아니라 hook 누락이다.
+
+**Regression guard**: `packages/ant-cli/tests/regression/staticPredicateCount.test.ts` 가 phase layer 의 predicate 참조 수를 pin 한다. 증가 시 CI 실패로 위 3조건 재검토를 강제한다.
+
+**배경**: T6b-κ 결정 ([docs/tmp/verification-task-redesign-handoff.md](../tmp/verification-task-redesign-handoff.md)) 에서 `isDocTask` / `isErrorTask` 등의 phase 직접 사용을 수용하되, 무제한 확장을 막기 위해 본 조항으로 좁게 허용한다. 본 조항은 해당 결정의 SSOT.
 
 ### R2 (model phase-blind)
 
@@ -121,6 +175,10 @@ cross-job 공유 task 도메인이 생기면 `common/graph/tasks/{taskType}/` �
 | tool handler가 `{ currentTask: { type } } as any` fake cast | R1 | `hooksForTaskType(ctx.currentTaskType)` |
 | `TaskResumeState` 하나에 모든 job 필드가 섞임 | R5 | `BaseTaskResumeState` + `{Job}TaskResumeState` |
 | verification/error 공통 판정이 여러 phase에서 중복 | R1 + R3 | 각 site 에서 `isVerificationTask(t) \|\| isErrorTask(t)` 를 명시적으로 작성 — 두 type 은 session 소유 / 명령 가드 / plan entry 경로에서 **갈라지므로** alias 로 묶지 않음 (T6b-η) |
+| phase 노드 내 state-aware tool selector 가 인라인 / 이름 제각각 (`toolDefinitions.ts`, `getXxxTools.ts`, `index.ts` 인라인) | axis ② (§2.2) | `nodes/{name}/tools.ts` 로 추출, `export async function getTools(state): Promise<ToolDefinition[]>` 단일 시그니처 준수 |
+| `nodes/` 바로 아래에 `graph.addNode` 대상 아닌 헬퍼 디렉토리 (`nodes/shared/`, `nodes/checkpoint/` 등) | axis ② / ⑤ | state-aware 헬퍼는 `nodes/_common/` (§2.4), 체크포인트는 `session/`, prompt adapter 는 소비 노드 내부 또는 `utils/` |
+| `design/nodes/X.ts` 같은 job-A 파일이 `code/session/*` 등 job-B 의 session 을 cross-import | R5 + axis ⑤ | 대상 job 의 `session/*.ts` SSOT 를 신설하고 직접 호출. `as any` 우회 금지 |
+| `nodes/{phase}/helpers.ts` 안에 `saveCheckpoint` / `session.updateArtifacts` 가 숨어있음 | axis ⑤ | `session/checkpoint.ts` 로 이관. wrapper 이름은 boundary 의미를 담는다 (`saveDecomposeCheckpoint`, `saveTaskCompleteCheckpoint` 등) |
 
 ---
 
@@ -130,6 +188,9 @@ cross-job 공유 task 도메인이 생기면 `common/graph/tasks/{taskType}/` �
 
 - [ ] `graph.ts` / `state.ts` / `runner.ts` / `routing.ts` (또는 `routers/`) 4파일 생성 (축 ①)
 - [ ] phase 노드는 `nodes/{name}/` 디렉토리로 (축 ②). `nodes/{name}.ts` 단일 파일은 지양.
+- [ ] phase-공유 state-aware 헬퍼는 `nodes/_common/` (§2.4). 순수 헬퍼는 `utils/`. `nodes/shared/` 같은 모호한 폴더 금지.
+- [ ] session 체크포인트 write 는 `session/checkpoint.ts` SSOT 를 경유 (§2 축 ⑤). `session.updateArtifacts` 직접 호출은 session SSOT 파일 이외 금지.
+- [ ] state-aware tool selector 는 `nodes/{name}/tools.ts` + `getTools(state)` 규약 준수 (§2.2).
 - [ ] routers는 순수 predicate만 (축 ③). state mutation 금지.
 - [ ] task.type 분기 발생 시 반드시 `tasks/{type}/hooks/` 로 이주 (축 ⑦). R1 준수.
 - [ ] task type별 도메인 state는 `tasks/{type}/model/Session.ts` 에 응집. state.ts 에는 `state.{type}?: Session` 한 필드만 (R4).
