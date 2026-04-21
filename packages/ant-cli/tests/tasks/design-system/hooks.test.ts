@@ -30,7 +30,7 @@
 import { describe, it, expect } from 'vitest';
 
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/design-system/hooks/conversations';
-import { hooks as dsBundle } from '../../../src/agents/architect/graph/code/tasks/design-system';
+import { hooks as dsBundle, isDesignSystemTask } from '../../../src/agents/architect/graph/code/tasks/design-system';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
 
 import type { CodeTask } from '../../../src/agents/architect/types/task';
@@ -94,5 +94,26 @@ describe('tasks/design-system/hooks/conversations', () => {
   it('convKey — task-id-scoped', () => {
     expect(convHook.convKey(task('d1'))).toBe('node:execute:design-system:d1');
     expect(convHook.convKey(task('tokens'))).toBe('node:execute:design-system:tokens');
+  });
+});
+
+describe('tasks/design-system/model/is — isDesignSystemTask', () => {
+  // Introduced in T6b-κ together with isTestCodeTask / isExplainTask so
+  // phase-layer call sites (`nodes/execute/tools.ts
+  // isFrontendTask`, `nodes/decompose/responseParser.ts
+  // deriveArtifactPolicy`) can retire the last literal
+  // `taskType === 'design-system'` comparisons and delegate to the
+  // per-task predicate SSOT.
+  it('returns true only for design-system tasks', () => {
+    expect(isDesignSystemTask({ type: 'design-system' })).toBe(true);
+    expect(isDesignSystemTask({ type: 'ui' })).toBe(false);
+    expect(isDesignSystemTask({ type: 'feature' })).toBe(false);
+    expect(isDesignSystemTask({ type: 'verification' })).toBe(false);
+  });
+
+  it('handles null / undefined / missing type defensively', () => {
+    expect(isDesignSystemTask(null)).toBe(false);
+    expect(isDesignSystemTask(undefined)).toBe(false);
+    expect(isDesignSystemTask({})).toBe(false);
   });
 });

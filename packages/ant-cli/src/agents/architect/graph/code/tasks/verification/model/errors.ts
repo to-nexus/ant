@@ -7,12 +7,29 @@
  * a discriminated union + `instanceof` check give the orchestrator an
  * unambiguous signal with no regex surprises.
  *
- * The five kinds map 1:1 to the `VerificationOutcome` terminal branch
- * (see `outcome.ts`). Adding a new kind requires:
+ * Throw sites (all in the phase layer — the T5-era `makeTerminalError`
+ * hook that wrapped construction was retired in the T8 post-review
+ * alongside `Session.evaluate` since no phase caller ever consumed it):
+ *
+ *   - `max_retries_exceeded`   → `nodes/plan/parts/entry.ts`
+ *                                (handleRetryEntry when
+ *                                 `state.retries >= state.maxRetries`)
+ *   - `batch_cycle_limit`      → `nodes/plan/parts/batchSplit.ts`
+ *                                (processDiagnosticBatchSplit when
+ *                                 Session.batchSplitCount exceeds
+ *                                 `MAX_BATCH_SPLIT_CYCLES`)
+ *   - `unresolved_violations`  → `parallel/TaskWorker.ts`
+ *                                (worker subgraph exited with violations
+ *                                 the plan loop never cleared)
+ *
+ * `budget_exhausted` and `no_progress` remain legal kinds in the union
+ * for future wiring (e.g. a batch-split escalation that detects loops
+ * against `Session.isPlanRepeated`) but are not currently produced.
+ * Adding a new kind requires:
  *   1. Extending `VerificationTerminalKind` below.
- *   2. Producing it from `VerificationSession.evaluate(...)`.
- *   3. Covering it in `tests/tasks/verification/session.test.ts` "all kinds"
- *      fixture.
+ *   2. Adding a throw site somewhere in the phase layer (or wiring a
+ *      hook through which the phase layer can throw).
+ *   3. Covering it in `tests/tasks/verification/terminalError.test.ts`.
  * Orchestrator-side handling is automatic (classifyTerminalError recognises
  * every instance).
  *

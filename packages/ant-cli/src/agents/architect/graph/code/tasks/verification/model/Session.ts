@@ -24,7 +24,6 @@ import type { Gate } from './gates';
 import { GATE_ORDER } from './gates';
 import type { VerificationSnapshot } from './snapshot';
 import { EMPTY_SNAPSHOT } from './snapshot';
-import type { VerificationOutcome } from './outcome';
 import { countRepeatedHash, normalizePlanForHash } from './planHash';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -49,7 +48,6 @@ export const MAX_VERIFICATION_ATTEMPTS = envInt(
 export const DEEP_DIAGNOSTIC_THRESHOLD = envInt('ANT_DEEP_DIAGNOSTIC_THRESHOLD', 2);
 
 const PLAN_HISTORY_BODY_LIMIT = 3;
-const MAX_BATCH_SPLIT_CYCLES = 10;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Plan-entry vocabulary
@@ -74,13 +72,6 @@ export interface VerificationSessionEnv {
   isTs: boolean;
   /** At least one test file is present; the `test` gate is required. */
   hasTests: boolean;
-}
-
-export interface EvaluateArgs {
-  planText?: string;
-  totalErrors?: number;
-  modifyCount?: number;
-  batches?: number;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -289,84 +280,6 @@ export class VerificationSession {
   }
 
   // ──────────────────────────────────────────────────────────────────────
-  // Evaluation (decision-only, no plan parsing)
-  // ──────────────────────────────────────────────────────────────────────
-
-  /**
-   * Inspect the current session state plus any caller-supplied parsed
-   * plan metadata and produce a typed verdict. Pure wrt the session (no
-   * mutation) — the caller is responsible for any subsequent transitions
-   * (e.g. throwing `VerificationTerminalError`, calling `onBatchSplit`).
-   */
-  evaluate(args: EvaluateArgs = {}): VerificationOutcome {
-    const { planText, totalErrors, modifyCount, batches } = args;
-
-    // 1. Already complete — skip the rest of the cycle.
-    if (this.isComplete()) {
-      return { kind: 'short_circuit', reason: 'already_complete' };
-    }
-
-    // 2. Batch cycle limit — hard stop on runaway cascade.
-    if (this._batchSplitCount >= MAX_BATCH_SPLIT_CYCLES) {
-      return {
-        kind: 'terminal',
-        errorKind: 'batch_cycle_limit',
-        message: `Batch split cycle limit (${MAX_BATCH_SPLIT_CYCLES}) exceeded.`,
-      };
-    }
-
-    // 3. Repeated plan escalation (needs planText).
-    if (planText) {
-      const repeat = this.isPlanRepeated(planText);
-      if (repeat.count >= 2) {
-        return {
-          kind: 'terminal',
-          errorKind: 'no_progress',
-          message: `Same plan hash observed ${repeat.count} consecutive attempts.`,
-        };
-      }
-      if (repeat.count === 1 && (modifyCount ?? 0) > 0) {
-        return { kind: 'force_split', reason: 'repeated_plan' };
-      }
-    }
-
-    // 4. Budget exhausted with work still pending.
-    if (this.remainingBudget() <= 0) {
-      if ((modifyCount ?? 0) >= 2 && (batches ?? 0) <= 1) {
-        return { kind: 'force_split', reason: 'budget_low' };
-      }
-      return {
-        kind: 'terminal',
-        errorKind: 'budget_exhausted',
-        message: `Verification attempts exhausted (${this._attempts}/${MAX_VERIFICATION_ATTEMPTS}).`,
-      };
-    }
-
-    // 5. Diagnostic volume thresholds — force split when consolidated plan
-    //    exceeds escalation thresholds.
-    const thresholdErrors = envInt('ANT_VERIFICATION_SPLIT_ERRORS', 6);
-    const thresholdFiles = envInt('ANT_VERIFICATION_SPLIT_FILES', 4);
-    const hasBatches = (batches ?? 0) > 1;
-    if (!hasBatches && (modifyCount ?? 0) >= 2) {
-      if ((totalErrors ?? 0) >= thresholdErrors) {
-        return { kind: 'force_split', reason: 'too_many_errors' };
-      }
-      if ((modifyCount ?? 0) >= thresholdFiles) {
-        return { kind: 'force_split', reason: 'too_many_files' };
-      }
-    }
-
-    // 6. Empty plan with no further work is a short-circuit, not a
-    //    continue: there is nothing for execute to do and the cycle should
-    //    route directly to checkTaskStatus.
-    if (planText !== undefined && isEmptyPlanBody(planText)) {
-      return { kind: 'short_circuit', reason: 'empty_plan' };
-    }
-
-    return { kind: 'continue' };
-  }
-
-  // ──────────────────────────────────────────────────────────────────────
   // Mutations (the only legal writers)
   // ──────────────────────────────────────────────────────────────────────
 
@@ -492,34 +405,3 @@ export class VerificationSession {
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ────────────────────────────────────────────────────────────────────────────
-
-/**
- * Return true when the plan JSON has no actionable
- * `modify`/`create`/`delete` entries and no batches. Whitespace-only or
- * fenced-empty bodies also qualify.
- */
-function isEmptyPlanBody(planText: string): boolean {
-  if (!planText) return true;
-  const body = planText
-    .trim()
-    .replace(/^```(?:json)?\s*\n?/, '')
-    .replace(/\n?```$/, '')
-    .trim();
-  if (!body.length) return true;
-  try {
-    const parsed = JSON.parse(body);
-    const impl = parsed.implementation ?? {};
-    const modifyCount = Array.isArray(impl.modify) ? impl.modify.length : 0;
-    const createCount = Array.isArray(impl.create) ? impl.create.length : 0;
-    const deleteCount = Array.isArray(impl.delete) ? impl.delete.length : 0;
-    const hasBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
-    return !hasBatches && modifyCount === 0 && createCount === 0 && deleteCount === 0;
-  } catch {
-    // Unparseable but non-empty text — treat as "has content" so the
-    // execute path can try to salvage the LLM's intent.
-    return false;
-  }
-}

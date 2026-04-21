@@ -2,8 +2,12 @@
  * tasks/error/index.ts — error task bundle.
  *
  * Error tasks carry four domain-specific fields on `CodeTask`
- * (`prePlanText`, `errors`, `category`, `remediationMode`) — see
- * `model/ErrorTaskData.ts` for the read accessor.
+ * (`prePlanText`, `errors`, `category`, `remediationMode`) read directly
+ * from the task at the phase-layer call sites (plan fast-path, execute
+ * framing, batch-split emission). An earlier iteration exposed a
+ * `readErrorData` / `hasPrePlanText` accessor pair under `model/
+ * ErrorTaskData.ts`; it was retired as dead API surface when every
+ * consumer settled on direct field access.
  *
  * Hooks published:
  *   - decompose.isExclusive        — error tasks always head-of-queue
@@ -41,16 +45,13 @@ export const hooks: TaskHooks = {
   command: { guard: commandGuard },
   orchestrator: {
     // Error tasks do not publish `hasOwnAttemptCounter` / `attemptCount` /
-    // `attachSnapshot` / `restoreIntoWorkerState`. When the orchestrator
-    // classifies a transient failure it falls back to the shared
-    // `task._failedAttempts` tally (see `parallel/TaskOrchestrator.ts`
-    // ~L523). Verification owns its own counter via the Session; error
-    // does not — only the post-completion side effect below lives on the
-    // error bundle.
+    // `restoreIntoWorkerState`. When the orchestrator classifies a
+    // transient failure it falls back to the shared `task._failedAttempts`
+    // tally (see `parallel/TaskOrchestrator.ts` ~L523). Verification owns
+    // its own counter via the Session; error does not — only the post-
+    // completion side effect below lives on the error bundle.
     onTaskComplete: orchestratorOnTaskComplete,
   },
 };
 
 export { isErrorTask } from './model/is';
-export { readErrorData, hasPrePlanText } from './model/ErrorTaskData';
-export type { ErrorTaskData, RemediationMode } from './model/ErrorTaskData';

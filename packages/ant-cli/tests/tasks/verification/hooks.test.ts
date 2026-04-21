@@ -2,17 +2,19 @@
  * L2 — `tasks/verification/hooks/*` adapter invariants.
  *
  * Locks the contract the hook layer promises to the phase layer (T6 callers)
- * and the orchestrator. Scope matches the T5 handoff checklist:
+ * and the orchestrator. Scope (post T11 follow-up review — `onEntry` /
+ * `classifyEntry` / `shortCircuitAfterPlan` were retired as dead surface;
+ * the phase layer calls `Session.onPlanEntry` / reads `_nextPlanEntry` /
+ * short-circuits via `llmResponse.done` directly. Earlier T7/T8 follow-ups
+ * removed `attachSnapshot` / `captureOnFailure` and `decideOutcome` /
+ * `maybeSplit` / `makeTerminalError` on the same grounds):
  *
- *   - plan.decideOutcome   — every `VerificationOutcome.kind`
- *   - plan.maybeSplit      — force-split boundary + no-split passthrough
- *   - plan.makeTerminalError — typed VerificationTerminalError with snapshot
- *   - plan.onEntry / plan.classifyEntry
- *   - check.evaluate       — session path + legacy-tracker fallback
- *   - router.shortCircuitAfterPlan / routeAfterDone
+ *   - plan.initSession / plan.buildPrompt
+ *   - check.evaluate       — session path
+ *   - router.routeAfterDone
  *   - command.guard        — execute/plan-phase loop guards
  *   - tool.onEvent         — side-effect → session mutation
- *   - orchestrator.attemptCount / attachSnapshot / restoreIntoWorkerState
+ *   - orchestrator.attemptCount / restoreIntoWorkerState
  *   - decompose.isExclusive + conversations.convKey
  *   - tasks/_shared/registry.ts — verification entry is the bundle
  */
@@ -21,9 +23,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   VerificationSession,
-  MAX_VERIFICATION_ATTEMPTS,
 } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
-import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/verification/model/errors';
 import type { VerificationSnapshot } from '../../../src/agents/architect/graph/code/tasks/verification/model/snapshot';
 
 import * as planHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/plan';
@@ -65,29 +65,6 @@ function task(id: string, overrides: Partial<CodeTask> = {}): CodeTask {
     description: `task ${id}`,
     ...overrides,
   } as CodeTask;
-}
-
-function plan(opts: {
-  modify?: number;
-  batches?: number;
-  totalErrors?: number;
-  seed?: string;
-}): string {
-  const body: Record<string, unknown> = {
-    implementation: {
-      modify: Array.from({ length: opts.modify ?? 0 }, (_, i) => ({
-        file: `src/${opts.seed ?? 'x'}-${i}.ts`,
-        change: 'edit',
-      })),
-    },
-    diagnostics: { totalErrors: opts.totalErrors ?? 0 },
-  };
-  if (opts.batches && opts.batches > 1) {
-    (body as any).batches = Array.from({ length: opts.batches }, (_, i) => ({
-      modify: [{ file: `src/batch-${i}.ts`, change: 'edit' }],
-    }));
-  }
-  return JSON.stringify(body);
 }
 
 /**
@@ -143,7 +120,6 @@ describe('tasks/_shared/registry — verification entry', () => {
   it('returns the verification bundle', () => {
     const hooks = hooksForTaskType('verification');
     expect(hooks).toBe(verificationBundle);
-    expect(hooks?.plan?.decideOutcome).toBe(planHook.decideOutcome);
     // T6b-β — plan.buildPrompt lands here so planGeneration.ts dispatches
     // the verification-variant render via the hook.
     expect(hooks?.plan?.buildPrompt).toBe(planHook.buildPrompt);
@@ -151,9 +127,10 @@ describe('tasks/_shared/registry — verification entry', () => {
     expect(hooks?.tool?.onEvent).toBe(toolHook.onEvent);
     expect(hooks?.command?.guard).toBe(commandHook.guard);
     expect(hooks?.check?.evaluate).toBe(checkHook.evaluate);
-    expect(hooks?.router?.shortCircuitAfterPlan).toBe(routerHook.shortCircuitAfterPlan);
+    expect(hooks?.router?.routeAfterDone).toBe(routerHook.routeAfterDone);
     expect(hooks?.orchestrator?.hasOwnAttemptCounter).toBe(true);
-    expect(hooks?.orchestrator?.captureOnFailure).toBe(true);
+    expect(hooks?.orchestrator?.attemptCount).toBe(orchHook.attemptCount);
+    expect(hooks?.orchestrator?.restoreIntoWorkerState).toBe(orchHook.restoreIntoWorkerState);
     expect(hooks?.decompose?.isExclusive).toBe(decompHook.isExclusive);
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
@@ -169,113 +146,12 @@ describe('tasks/_shared/registry — verification entry', () => {
 // plan hook
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('hooks/plan', () => {
-  it('onEntry forwards retry/reverify to Session (bumps attempts)', () => {
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    const state = stateWith(session);
-    expect(session.attempts()).toBe(0);
-    planHook.onEntry(state, 'retry');
-    expect(session.attempts()).toBe(1);
-    planHook.onEntry(state, 'reverify');
-    expect(session.attempts()).toBe(2);
-  });
-
-  it('onEntry fresh/resumed/toolLoop are no-ops', () => {
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    planHook.onEntry(stateWith(session), 'fresh');
-    planHook.onEntry(stateWith(session), 'resumed');
-    planHook.onEntry(stateWith(session), 'toolLoop');
-    expect(session.attempts()).toBe(0);
-  });
-
-  it('classifyEntry returns retry/reverify from _nextPlanEntry; null otherwise', () => {
-    expect(planHook.classifyEntry(stateWith(undefined, { _nextPlanEntry: 'retry' }))).toBe('retry');
-    expect(planHook.classifyEntry(stateWith(undefined, { _nextPlanEntry: 'reverify' }))).toBe('reverify');
-    expect(planHook.classifyEntry(stateWith(undefined, { _nextPlanEntry: 'fresh' }))).toBeNull();
-    expect(planHook.classifyEntry(stateWith(undefined))).toBeNull();
-  });
-
-  it('decideOutcome — continue when plan is modest and within budget', () => {
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: true });
-    const outcome = planHook.decideOutcome(stateWith(session), plan({ modify: 1, totalErrors: 1 }));
-    expect(outcome.kind).toBe('continue');
-  });
-
-  it('decideOutcome — short_circuit on already_complete', () => {
-    const session = VerificationSession.createFresh({ isTs: false, hasTests: false });
-    session.onCommand('build', true);
-    const outcome = planHook.decideOutcome(stateWith(session), plan({ modify: 0 }));
-    expect(outcome.kind).toBe('short_circuit');
-  });
-
-  it('decideOutcome — never returns force_split (that is maybeSplit\'s domain)', () => {
-    // Handoff §6.2 boundary: decideOutcome sees only planText, so
-    // `Session.evaluate` never receives parsed fan-out metadata and
-    // therefore cannot surface a force_split verdict. The same plan that
-    // would trigger force_split through maybeSplit (see below) must
-    // resolve to `continue` here.
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    const outcome = planHook.decideOutcome(stateWith(session), plan({ modify: 5, totalErrors: 2 }));
-    expect(outcome.kind).toBe('continue');
-  });
-
-  it('decideOutcome — terminal when budget is exhausted', () => {
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    for (let i = 0; i < MAX_VERIFICATION_ATTEMPTS; i++) session.onPlanEntry('retry');
-    const outcome = planHook.decideOutcome(stateWith(session), plan({ modify: 1, totalErrors: 1 }));
-    expect(outcome.kind).toBe('terminal');
-    if (outcome.kind === 'terminal') {
-      expect(outcome.errorKind).toBe('budget_exhausted');
-    }
-  });
-
-  it('decideOutcome — returns continue when session missing', () => {
-    const outcome = planHook.decideOutcome(stateWith(undefined), plan({ modify: 5 }));
-    expect(outcome.kind).toBe('continue');
-  });
-
-  it('maybeSplit — returns envelope when outcome is force_split and bumps cycle counter', () => {
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    const before = session.batchSplitCount();
-    const result = planHook.maybeSplit(
-      stateWith(session),
-      plan({ modify: 5, totalErrors: 2 }),
-    );
-    expect(result).not.toBeNull();
-    expect(result?.reason).toBe('too_many_files');
-    expect(session.batchSplitCount()).toBe(before + 1);
-  });
-
-  it('maybeSplit — returns null on continue outcome', () => {
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    const result = planHook.maybeSplit(stateWith(session), plan({ modify: 1, totalErrors: 1 }));
-    expect(result).toBeNull();
-  });
-
-  it('makeTerminalError — typed error with snapshot', () => {
-    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    session.onPlanEntry('retry');
-    const err = planHook.makeTerminalError(stateWith(session), {
-      kind: 'terminal',
-      errorKind: 'budget_exhausted',
-      message: 'out of attempts',
-    });
-    expect(err).toBeInstanceOf(VerificationTerminalError);
-    const typed = err as VerificationTerminalError;
-    expect(typed.kind).toBe('budget_exhausted');
-    expect(typed.message).toBe('out of attempts');
-    expect(typed.carryOver?.attempts).toBe(1);
-  });
-
-  it('makeTerminalError — unknown errorKind falls back to unresolved_violations', () => {
-    const err = planHook.makeTerminalError(stateWith(undefined), {
-      kind: 'terminal',
-      errorKind: 'not-a-kind',
-      message: 'mystery',
-    });
-    expect((err as VerificationTerminalError).kind).toBe('unresolved_violations');
-  });
-});
+// plan.initSession + plan.buildPrompt tests live below in dedicated
+// describe blocks. Earlier `onEntry` / `classifyEntry` tests were
+// removed in the T11 post-review along with the hook slots — the phase
+// layer now calls `Session.onPlanEntry` / reads `_nextPlanEntry`
+// directly from `nodes/plan/parts/entry.ts` (tests covering that path
+// live in `tests/plan-entry-dispatcher.test.ts`).
 
 // ────────────────────────────────────────────────────────────────────────────
 // plan.buildPrompt — verification variant (T6b-β)
@@ -574,23 +450,11 @@ describe('hooks/check', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('hooks/router', () => {
-  it('shortCircuitAfterPlan — true when session already complete', () => {
-    const session = VerificationSession.createFresh({ isTs: false, hasTests: false });
-    session.onCommand('build', true);
-    expect(routerHook.shortCircuitAfterPlan(stateWith(session))).toBe(true);
-  });
-
-  it('shortCircuitAfterPlan — true when plan is empty', () => {
-    expect(routerHook.shortCircuitAfterPlan(
-      stateWith(undefined, { planText: JSON.stringify({ implementation: {} }) }),
-    )).toBe(true);
-  });
-
-  it('shortCircuitAfterPlan — false when plan has modify entries', () => {
-    expect(routerHook.shortCircuitAfterPlan(
-      stateWith(undefined, { planText: plan({ modify: 1 }) }),
-    )).toBe(false);
-  });
+  // `shortCircuitAfterPlan` was retired in the T11 post-review as dead
+  // surface — the plan node already flips `llmResponse.done = true` on
+  // its own short-circuit paths (batch split, diagnostic pass, empty
+  // implementation) so `routeAfterPlan` reads the flag directly and
+  // never consults a task-type hook.
 
   it('routeAfterDone — checkTaskStatus when plan is empty', () => {
     expect(routerHook.routeAfterDone(stateWith(undefined, { planText: '' }))).toBe('checkTaskStatus');
@@ -626,9 +490,8 @@ describe('hooks/router', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('hooks/orchestrator', () => {
-  it('hasOwnAttemptCounter + captureOnFailure are true', () => {
+  it('hasOwnAttemptCounter is true', () => {
     expect(orchHook.hasOwnAttemptCounter).toBe(true);
-    expect(orchHook.captureOnFailure).toBe(true);
   });
 
   it('attemptCount reads from resumeState.verification snapshot', () => {
@@ -646,19 +509,6 @@ describe('hooks/orchestrator', () => {
     // source and missing data reports zero.
     const t = task('t1', { resumeState: {} } as any);
     expect(orchHook.attemptCount(t)).toBe(0);
-  });
-
-  it('attachSnapshot writes to task.resumeState.verification', () => {
-    const t = task('t1');
-    const snap: VerificationSnapshot = {
-      required: ['build'],
-      passed: [],
-      attemptedThisCycle: [],
-      attempts: 2,
-      planHistoryHashes: [],
-    };
-    orchHook.attachSnapshot(t, snap);
-    expect((t as any).resumeState.verification).toBe(snap);
   });
 
   it('restoreIntoWorkerState rehydrates session from snapshot', () => {

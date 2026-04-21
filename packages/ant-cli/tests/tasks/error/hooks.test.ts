@@ -5,7 +5,6 @@
  *   - decompose.isExclusive   — always true
  *   - conversations.convKey   — task-id-scoped, `node:execute:error:<id>`
  *   - model/is.isErrorTask    — narrow discriminator (no verification leak)
- *   - model/ErrorTaskData     — read accessor surfaces the four CodeTask fields
  *   - registry entry          — `hooksForTaskType('error')` returns the bundle
  */
 
@@ -18,10 +17,6 @@ import * as commandHook from '../../../src/agents/architect/graph/code/tasks/err
 import * as orchestratorHook from '../../../src/agents/architect/graph/code/tasks/error/hooks/orchestrator';
 import { hooks as errorBundle } from '../../../src/agents/architect/graph/code/tasks/error';
 import { isErrorTask } from '../../../src/agents/architect/graph/code/tasks/error/model/is';
-import {
-  readErrorData,
-  hasPrePlanText,
-} from '../../../src/agents/architect/graph/code/tasks/error/model/ErrorTaskData';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
 import { TASK_PRIORITIES } from '../../../src/agents/architect/graph/code/state';
 
@@ -236,37 +231,6 @@ describe('tasks/error/model', () => {
     expect(isErrorTask({ type: 'verification' })).toBe(false);
     expect(isErrorTask({ type: 'feature' })).toBe(false);
     expect(isErrorTask(undefined)).toBe(false);
-  });
-
-  it('readErrorData — surfaces the four CodeTask fields', () => {
-    const t = task('e1', {
-      prePlanText: 'prebuilt plan body',
-      errors: ['TS2307: cannot find module foo'],
-      category: 'missing_import',
-      remediationMode: 'patch',
-    } as Partial<CodeTask>);
-    expect(readErrorData(t)).toEqual({
-      prePlanText: 'prebuilt plan body',
-      errors: ['TS2307: cannot find module foo'],
-      category: 'missing_import',
-      remediationMode: 'patch',
-    });
-  });
-
-  it('readErrorData — omits fields that are malformed on the task', () => {
-    const t = task('e2', { errors: 'not-an-array' as unknown as string[], category: 123 as unknown as string });
-    expect(readErrorData(t)).toEqual({
-      prePlanText: undefined,
-      errors: undefined,
-      category: undefined,
-      remediationMode: undefined,
-    });
-  });
-
-  it('hasPrePlanText — true only for non-empty strings', () => {
-    expect(hasPrePlanText(task('with', { prePlanText: 'body' }))).toBe(true);
-    expect(hasPrePlanText(task('empty', { prePlanText: '' }))).toBe(false);
-    expect(hasPrePlanText(task('none'))).toBe(false);
   });
 });
 
