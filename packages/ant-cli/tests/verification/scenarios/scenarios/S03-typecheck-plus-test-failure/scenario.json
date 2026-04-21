@@ -5,7 +5,7 @@
   "timeoutMs": 30000,
   "expectedChildExitCode": "any",
   "expected": {
-    "routeSequence": ["plan", "execute", "checkTaskStatus", "enforce", "plan"],
+    "routeSequence": ["plan", "execute", "checkTaskStatus", "plan"],
     "violations": ["verification_incomplete"]
   }
 }

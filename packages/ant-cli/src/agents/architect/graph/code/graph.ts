@@ -14,7 +14,6 @@ import { direct } from "./nodes/direct";
 import { plan } from "./nodes/plan";
 import { execute } from "./nodes/execute/index";
 import { tool } from "./nodes/tool";
-import { enforce } from "./nodes/enforce";
 import { learn } from "./nodes/learn";
 import { checkTaskStatus } from "./nodes/checkTaskStatus";
 import { routeAfterExecute } from "./routers/executeRouter";
@@ -606,7 +605,6 @@ export const CodeGraphChannels = {
       fileErrors: Annotation<any>,
       retries: Annotation<any>,
       maxRetries: Annotation<any>,
-      lastViolations: Annotation<any>,
       previousFileCount: Annotation<any>,
       previousAttempts: Annotation<any>,
       enforcementHistory: Annotation<any>,
@@ -692,7 +690,6 @@ export function buildCodeGraph() {
   graph.addNode("execute", execute as any);
   graph.addNode("tool", tool as any);
   graph.addNode("checkTaskStatus", checkTaskStatus as any);
-  graph.addNode("enforce", enforce as any);
   graph.addNode("learn", learn as any);
   graph.addNode("parallelOrchestrator", parallelOrchestrator as any);
 
@@ -786,16 +783,13 @@ export function buildCodeGraph() {
   );
 
   // checkTaskStatus: 태스크 완료 상태 확인 및 라우팅
-  // All task types: execute(done) → checkTaskStatus
+  // All task types: execute(done) → checkTaskStatus → (plan retry | learn)
   graph.addConditionalEdges(
     "checkTaskStatus" as any,
     routing.routeAfterCheckTaskStatus as any,
-    { enforce: "enforce", learn: "learn" } as any
+    { plan: "plan", learn: "learn" } as any
   );
 
-  // ✅ KEY CHANGE: Enforce → Plan (not Execute)
-  // This allows the agent to re-analyze the problem and create a better strategy
-  graph.addEdge("enforce" as any, "plan" as any);
   
   // ✅ Learn node routing - continue to next task or end
   // Universal rule: if orchestrator set an interruption (task failure, recursion limit,

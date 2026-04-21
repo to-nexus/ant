@@ -184,13 +184,13 @@ function checkFlagSet(flagNames: string[], session: any, trace: TraceEntry[]): s
 
 function checkViolations(expectedTypes: string[], session: any, trace: TraceEntry[]): string[] {
   const seen = new Set<string>();
-  const stateViolations = session?.state?.violations ?? session?.state?.lastViolations ?? [];
+  const stateViolations = session?.state?.violations ?? [];
   if (Array.isArray(stateViolations)) {
     for (const v of stateViolations) {
       if (v && typeof v.type === 'string') seen.add(v.type);
     }
   }
-  // Trace may carry violation info via execute/enforce nodes (extra.violations)
+  // Trace may carry violation info via execute / checkTaskStatus nodes (extra.violations)
   for (const entry of trace) {
     const extras = (entry.extra ?? {}) as Record<string, unknown>;
     if (Array.isArray(extras.violations)) {

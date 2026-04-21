@@ -12,7 +12,7 @@
  * R1 — zero `task.type === '...'` comparisons in this file.
  */
 
-import type { ArchitectGraphState } from '../../state';
+import type { ArchitectGraphState, EnforcementFeedback } from '../../state';
 import { TaskTimingHelper } from '../../state';
 import { evaluateTaskStatus } from './evaluate';
 
@@ -149,9 +149,39 @@ export async function workerCheckTaskStatus(
     } as any;
   }
 
-  // Task has violations — propagate for enforce
+  // SSOT: task hook declares `isRetryable`; filter down to retryable here.
+  const retryableViolations = violations.filter(v => v.isRetryable === true);
+
+  // All non-retryable → clear violations, signal retry intent if the same
+  // task is alive (defence-in-depth against handleFreshTaskEntry fallthrough).
+  if (retryableViolations.length === 0) {
+    console.log(`✅ [Worker checkTaskStatus] All violations non-retryable (warnings only)`);
+    return {
+      _taskCompleted: false,
+      violations: [],
+      _nextPlanEntry: state.currentTask ? ('retry' as const) : undefined,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    } as any;
+  }
+
+  // Append enforcement feedback for learn-phase lesson extraction.
+  const feedback: EnforcementFeedback = {
+    taskId: state.currentTask?.id || 'unknown',
+    taskName: state.currentTask?.name || 'Unknown Task',
+    attemptNumber: (state.retries || 0) + 1,
+    violations: retryableViolations,
+    fixStrategy: 'retry',
+    timestamp: Date.now(),
+  };
+  const enforcementHistory = [...(state.enforcementHistory || []), feedback];
+
+  // Task has retryable violations — propagate to plan for retry.
+  // `state.retries += 1` is owned by `plan/handleRetryEntry`.
   return {
-    violations,
+    violations: retryableViolations,
+    enforcementHistory,
+    _nextPlanEntry: 'retry' as const,
     _taskCompleted: false,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,

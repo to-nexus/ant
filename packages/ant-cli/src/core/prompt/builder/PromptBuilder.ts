@@ -430,10 +430,6 @@ export class PromptBuilder implements PromptPort {
     return sections.join('\n\n');
   }
 
-  async renderEnforcement(violationMessage: string): Promise<string> {
-    return await this.render('jobs/code/nodes/enforce/variants/default/rules-enforcement', { errorText: violationMessage });
-  }
-
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Helpers
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
