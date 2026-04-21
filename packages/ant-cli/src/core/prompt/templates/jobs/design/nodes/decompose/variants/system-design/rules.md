@@ -14,7 +14,7 @@
 
 **Constraint**: The presence of reference documents alone does NOT imply Tier 4. Only when the design breakdown is systematically grounded in them does the tier become `4`. If refs exist but the directive asks for something unrelated, prefer `3`.
 
-⚠️ **Blind spot**: Design jobs almost always land on tier `3` or `4`. Tiers `0`–`2` apply only when the directive is a question, a targeted single-document refactor, or a narrow exploration — do NOT inflate the tier "to be safe".
+⚠️ **Blind spot**: Classify by observation, not by job-type expectation. Each tier's principle stands on its own — a narrow single-document refactor is tier `1` even in a design job; a multi-chapter systematic rewrite anchored in a supplied PRD is tier `4` even for a small feature.
 
 ---
 

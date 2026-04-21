@@ -18,7 +18,7 @@ import { decomposeSystemDesign } from "./systemDesignDecompose";
 import { decomposeSpec } from "./specDecompose";
 import { BOUNDARY, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import { ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
-import { ExecutionTierId } from "../../../../../../core/executionTier";
+import { ExecutionTierId, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
 // ============================================
 // UI Design Prerequisites Validation
@@ -118,15 +118,29 @@ async function preloadCompletedTasks(state: DesignGraphState): Promise<any[]> {
 // Explain Mode Handler
 // ============================================
 
-function handleExplainMode(
+async function handleExplainMode(
   state: DesignGraphState,
   timing: TimingContext
-): DesignGraphState {
+): Promise<DesignGraphState> {
   const explainTask = createExplainTask(state);
   const taskQueue = new TaskQueue<DesignTask>();
   taskQueue.push(explainTask);
 
   updateKanban(state, explainTask, []);
+
+  // Explain mode does not call the LLM for tier judgment — it is a
+  // read-only explanation path, so Tier 0 Reflex is the fixed tier.
+  // Recording the meta patch keeps parity with the three LLM-driven
+  // decompose* variants so the UI tier badge and the resolve →
+  // featureContextBuilder hint see a consistent event shape.
+  await recordUserTurnMeta({
+    session: state.deps?.session,
+    turnId: state.turnId,
+    jobId: timing.newJobId,
+    jobType: 'design',
+    executionTier: ExecutionTierId.Reflex,
+    nodeLabel: 'DesignDecompose:explain',
+  });
 
   return {
     ...state,
@@ -155,6 +169,18 @@ async function handleDefaultTask(
 
   updateKanban(state, null, taskQueue.getAll());
 
+  // No spec / source to ground the breakdown — no LLM tier judgment
+  // runs. Inject Tier 0 Reflex as the fixed tier and record the meta
+  // patch (parity with the three decompose* variants above).
+  await recordUserTurnMeta({
+    session: state.deps?.session,
+    turnId: state.turnId,
+    jobId: timing.newJobId,
+    jobType: 'design',
+    executionTier: ExecutionTierId.Reflex,
+    nodeLabel: 'DesignDecompose:fallback',
+  });
+
   return {
     ...state,
     taskQueue,
@@ -166,6 +192,7 @@ async function handleDefaultTask(
     boundary: BOUNDARY.LIGHTWEIGHT,
   } as any;
 }
+
 
 // ============================================
 // Main Entry Point
@@ -204,7 +231,7 @@ export async function decompose(state: DesignGraphState): Promise<DesignGraphSta
     // Explain mode: skip decompose, create single explain task
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (state.resolvedAction?.mode === 'explain') {
-      return handleExplainMode(state, timing);
+      return await handleExplainMode(state, timing);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
