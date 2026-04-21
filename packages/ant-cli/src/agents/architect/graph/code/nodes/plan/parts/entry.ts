@@ -205,6 +205,10 @@ async function handleRetryEntry(
   let retrySummaryText: string | undefined;
 
   if (isVerificationRetry) {
+    // Snapshot the inbound violation count before clearing so the retry log
+    // reflects the previous attempt's failure count rather than the cleared 0.
+    const prevViolationCount = state.violations?.length ?? 0;
+
     // Session owns the retry/reverify attempt counter and per-cycle gate
     // invalidation (onPlanEntry('retry') clears `attemptedThisCycle`).
     state.verification?.onPlanEntry('retry');
@@ -244,9 +248,12 @@ async function handleRetryEntry(
           taskName: _taskRef.name,
           attempt: _retryAttempt,
           maxAttempts: _retryMax,
+          // preservedHistoryLength / preservedCallIndex are @deprecated schema
+          // placeholders — summary-based retention (RetrySummary injection) is
+          // the SSOT for carried retry context, so these stay 0.
           preservedHistoryLength: 0,
           preservedCallIndex: 0,
-          violationsFromPrevAttempt: state.violations?.length ?? 0,
+          violationsFromPrevAttempt: prevViolationCount,
           retentionMode: _retention.retentionMode,
           summaryInjected: _retention.summaryInjected,
           summaryLen: _retention.summaryLen,

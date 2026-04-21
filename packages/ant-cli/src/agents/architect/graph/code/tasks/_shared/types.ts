@@ -84,6 +84,36 @@ export interface PlanPromptCtx {
   options?: { hasTools?: boolean };
 }
 
+/**
+ * Result from `TaskPlanHook.buildPrompt`.
+ *
+ * Hooks may return either a plain string (back-compat) or this object so they
+ * can publish a variable snapshot (`vars`) that the phase layer merges into
+ * the `logPrompt` `injectedVariables` payload. Without this the
+ * `Injected Variables` section in `prompt-*.md` logs can only record values
+ * the phase layer directly sees — variant-specific template variables the
+ * hook injects (e.g. verification's `dependencyStatus`, `cachedPassedSteps`)
+ * would be invisible to debug observation.
+ *
+ * The contract is R1-compliant: hooks stay responsible for their variant's
+ * variable vocabulary; the phase layer just spreads the snapshot into its
+ * logging payload and never inspects individual keys.
+ */
+export interface PlanPromptResult {
+  /** Fully-assembled prompt string (same value the hook used to return). */
+  text: string;
+  /** Template-rendered variable snapshot for debug logging only. */
+  vars?: Record<string, unknown>;
+}
+
+/**
+ * Normalise a `buildPrompt` return value into a `PlanPromptResult`.
+ * Keeps call sites blind to the union shape.
+ */
+export function toPlanPromptResult(value: string | PlanPromptResult): PlanPromptResult {
+  return typeof value === 'string' ? { text: value } : value;
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Hook interfaces
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -118,8 +148,12 @@ export interface TaskPlanHook {
    * concatenated with any basis section). Used by verification / error whose
    * prompts live under dedicated `jobs/code/nodes/plan/variants/{type}/base`
    * templates and bypass the generic `jobs/code/nodes/plan/base` path.
+   *
+   * Hooks may return either a plain string (legacy) or a `PlanPromptResult`
+   * with a `vars` snapshot for debug-log visibility. The phase layer
+   * normalises both shapes through `toPlanPromptResult()`.
    */
-  buildPrompt?(ctx: PlanPromptCtx): Promise<string> | string;
+  buildPrompt?(ctx: PlanPromptCtx): Promise<string | PlanPromptResult> | string | PlanPromptResult;
   /**
    * Contribute extra template variables merged into the generic plan base
    * render. Used by task types that mostly follow the generic path but need

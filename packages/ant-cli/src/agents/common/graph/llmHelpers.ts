@@ -36,6 +36,7 @@ function initTokenUsage(): TokenUsage {
     totalTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    callCount: 0,
   };
 }
 
@@ -69,6 +70,7 @@ export function accumulateTokenUsage(
     state._currentTaskTokenUsage.inputTokens += usage.inputTokens;
     state._currentTaskTokenUsage.outputTokens += usage.outputTokens;
     state._currentTaskTokenUsage.totalTokens = computeTotal(state._currentTaskTokenUsage);
+    state._currentTaskTokenUsage.callCount = (state._currentTaskTokenUsage.callCount ?? 0) + 1;
     
     if (usage.cacheReadTokens) {
       state._currentTaskTokenUsage.cacheReadTokens = 
@@ -89,6 +91,7 @@ export function accumulateTokenUsage(
     state.tokenUsage.inputTokens += usage.inputTokens;
     state.tokenUsage.outputTokens += usage.outputTokens;
     state.tokenUsage.totalTokens = computeTotal(state.tokenUsage);
+    state.tokenUsage.callCount = (state.tokenUsage.callCount ?? 0) + 1;
     
     if (usage.cacheReadTokens) {
       state.tokenUsage.cacheReadTokens = 
@@ -128,6 +131,7 @@ export function upsertPhaseTokenUsage(
     existing.tokenUsage.outputTokens += usage.outputTokens;
     existing.tokenUsage.totalTokens =
       existing.tokenUsage.inputTokens + existing.tokenUsage.outputTokens;
+    existing.tokenUsage.callCount = (existing.tokenUsage.callCount ?? 0) + 1;
     if (usage.cacheReadTokens) {
       existing.tokenUsage.cacheReadTokens =
         (existing.tokenUsage.cacheReadTokens || 0) + usage.cacheReadTokens;
@@ -141,7 +145,7 @@ export function upsertPhaseTokenUsage(
     state.phaseTokenUsages.push({
       phase,
       label,
-      tokenUsage: { ...usage },
+      tokenUsage: { ...usage, callCount: usage.callCount ?? 1 },
     });
   }
 }

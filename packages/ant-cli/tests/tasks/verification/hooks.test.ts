@@ -200,8 +200,12 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
       remainingTasks: undefined,
       options: { hasTools: true },
     });
-    expect(out).toContain('BASIS_SECTION');
-    expect(out).toContain('BODY:jobs/code/nodes/plan/variants/verification/base');
+    expect(out.text).toContain('BASIS_SECTION');
+    expect(out.text).toContain('BODY:jobs/code/nodes/plan/variants/verification/base');
+    // T6-결함4 — hook publishes a vars snapshot for debug logging.
+    expect(out.vars).toBeDefined();
+    expect(out.vars?.dependencyStatusKind).toBe('unknown');
+    expect(out.vars?.hasViolationsText).toBe(false);
 
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
     expect(base).toBeDefined();
@@ -215,7 +219,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
     for (let i = 0; i < 3; i++) session.onPlanEntry('retry'); // attempts=3 → deep mode
     session.markInstallNeeded(true);
-    await planHook.buildPrompt({
+    const out = await planHook.buildPrompt({
       state: stateWith(session, {
         deps: { promptBuilder } as any,
       } as Partial<ArchitectGraphState>),
@@ -230,11 +234,16 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     expect(base?.vars.isDeepDiagnostic).toBe(true);
     expect(base?.vars.diagnosticAttempts).toBe(3);
     expect(base?.vars.isRetry).toBe(true);
+    // vars snapshot mirrors the same observations for debug-log visibility.
+    expect(out.vars?.dependencyStatusKind).toBe('changed');
+    expect(out.vars?.isDeepDiagnostic).toBe(true);
+    expect(out.vars?.diagnosticAttempts).toBe(3);
+    expect(out.vars?.hasViolationsText).toBe(true);
   });
 
   it('omits dependencyStatus when Session has no dep-hash observation yet', async () => {
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
-    await planHook.buildPrompt({
+    const out = await planHook.buildPrompt({
       state: stateWith(undefined, { deps: { promptBuilder } as any } as Partial<ArchitectGraphState>),
       task: task('v3'),
       projectCodeContext: undefined,
@@ -245,6 +254,8 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/verification/base');
     expect(base?.vars.dependencyStatus).toBeUndefined();
     expect(base?.vars.isDeepDiagnostic).toBe(false);
+    expect(out.vars?.dependencyStatusKind).toBe('unknown');
+    expect(out.vars?.cachedPassedStepsCount).toBe(0);
   });
 
   it('throws when promptBuilder is unavailable', async () => {
@@ -272,7 +283,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     session.onCommand('typecheck', true);                     // typecheck re-passes
 
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
-    await planHook.buildPrompt({
+    const out = await planHook.buildPrompt({
       state: stateWith(session, {
         deps: { promptBuilder } as any,
       } as Partial<ArchitectGraphState>),
@@ -290,6 +301,10 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     expect(base?.vars.cachedPassedSteps).toContain('typecheck');
     expect(base?.vars.cachedPassedSteps).not.toContain('build');
     expect(base?.vars.cachedPassedSteps).not.toContain('test');
+    // vars snapshot aligns with the same Session observations.
+    expect(out.vars?.dependencyStatusKind).toBe('changed');
+    expect(out.vars?.cachedPassedStepsCount).toBe(1);
+    expect(out.vars?.cachedPassedStepsRendered).toBe(true);
   });
 });
 
