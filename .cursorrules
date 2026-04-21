@@ -105,6 +105,24 @@ const graph = new StateGraph<GraphState>({
 state.parsedUiDocs = value;
 ```
 
+### Derived Channels — `state.executionTier`
+
+`state.executionTier?: ExecutionTierId` is a **derived** channel. Decompose writes it once via `selectExecutionTier(mode, complexity)` (see `core/executionTier/selectExecutionTier.ts`); downstream phase nodes access the execution tier through `getExecutionTier(state)` only.
+
+```typescript
+// ✅ Phase nodes use the facade:
+import { getExecutionTier } from '../../../../../../core/executionTier';
+
+const executionTier = getExecutionTier(state);
+await executionTier.breadcrumb(state, touched);
+await executionTier.boundary(state);
+
+// ❌ Do NOT inspect `mode` / `complexity` literals in phase code:
+if (state.resolvedAction?.mode === 'explain' && state.complexity === 'task') { ... }
+```
+
+Mode dispatch lives in **exactly one place**: `Tier3Task`'s constructor in `core/executionTier/tiers/Tier3Task.ts`. See [docs/architecture/18-session-redesign.md §5.1.1](docs/architecture/18-session-redesign.md) for the tier strategy matrix and the D11 invariant guard.
+
 ---
 
 ## Design Job UI Documents
