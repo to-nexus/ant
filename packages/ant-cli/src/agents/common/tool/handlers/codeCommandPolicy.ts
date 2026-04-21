@@ -21,10 +21,17 @@ export interface CodeCommandPolicyResult {
   reason?: string;
 }
 
+/**
+ * Policy-rejection `ToolResult`. Policy-level Go allow-list rejection is
+ * NOT a command execution failure — the content is tagged with `[Policy]`
+ * so the tool_result formatter doesn't prepend `Error:` (which would make
+ * the LLM mis-handle it as a real build failure). Aligned with
+ * `common/tool/handlers/runCommand.ts::makeRejection` and the task-hook
+ * reject()s in verification/error.
+ */
 function makeRejection(command: string, reason: string): ToolResult {
   return {
-    content: reason,
-    error: reason,
+    content: `[Policy] ${reason}`,
     sideEffects: [{ type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false }],
   };
 }

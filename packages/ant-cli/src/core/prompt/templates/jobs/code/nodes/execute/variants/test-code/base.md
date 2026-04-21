@@ -4,7 +4,13 @@ You are generating the minimum set of tests that verify the integrated codebase 
 
 ## Scope
 
-**Write test files ONLY.** Do NOT execute tests — verification handles that. Do NOT modify application source code.
+**In scope**:
+- Test files (and minimal test configuration if the project lacks one).
+- Test-runner dependencies: add packages to the project's dependency manifest AND install them so the verification phase can execute the tests.
+
+**Not in scope**:
+- Executing tests — the verification phase runs them.
+- Modifying application source code — test files observe the source, they do not change it.
 
 ## Pre-loaded Context
 
