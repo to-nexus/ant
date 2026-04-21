@@ -18,10 +18,10 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 |---|---|---|---|
 | **Context** (구조) | T1 Artifact / T2 user_turn / T3 Breadcrumb | 구조적 (파일 저장 레이어) | `feature.jsonl` append 시점 |
 | **Mode** (의도) | `generate` / `refactor` / `explain` | **Detect 노드** (`ResolvedAction.mode`) | Triage 직전 |
-| **Complexity** (규모) | `oneshot` / `exploratory` / `todo` | **Decompose 노드** (LLM 3-way 판정) | decompose LLM 1회 호출 |
+| **Complexity** (규모) | `oneshot` / `exploratory` / `task` | **Decompose 노드** (LLM 3-way 판정) | decompose LLM 1회 호출 |
 
 설계 제약:
-- 세 축은 서로 **교환 불가**. 한 축이 다른 축을 함의하지 않는다. (예: `explain`도 `todo`가 될 수 있고 `generate`도 `oneshot`일 수 있음)
+- 세 축은 서로 **교환 불가**. 한 축이 다른 축을 함의하지 않는다. (예: `explain`도 `task`가 될 수 있고 `generate`도 `oneshot`일 수 있음)
 - Heuristic/Overrule은 **제외**. MVP는 LLM 판정만 신뢰 (D10)
 - Tier 내부는 균일 — 같은 Tier 셀에 도달한 실행은 **동일 파이프라인 + 동일 프롬프트**를 쓴다 (D11). 프롬프트가 `taskQueue.size`, `touched 수` 같은 런타임 관측치로 if/else 분기하지 않는다.
 
@@ -36,8 +36,10 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 | 0 | Reflex | `explain` | oneshot + tool 0~1 | `direct` (read-only) | 최소 비용, read-only tools만 |
 | 1 | One-shot | 모두 | oneshot | `direct` | 1~2 step ReAct |
 | 2 | Exploratory | 모두 | exploratory | `direct` (ReAct) | 최대 `ANT_DIRECT_MAX_STEPS`(=10) step |
-| 3 | Todo | `generate`/`refactor` | todo | `decompose → plan → execute` | 기존 full pipeline |
+| 3 | Task | 모두 | task | `decompose → plan → execute` | 기존 full pipeline (mode별 Breadcrumb/Boundary 분기는 Tier 내부 구성자에서만) |
 | 4 | Plan | — | — | `design` / `plan` (별도 jobtype) | Mode×Complexity 미적용 (D5) |
+
+> **용어**: 리터럴 `'task'` 는 이전 `'todo'` 를 대체한 이름이다. `TaskStatus='todo'` (Kanban 카드 상태)와 구별하기 위해 2026-04-21 rename. 기존 `feature.jsonl` 라인의 `'todo'` 리터럴은 `FileSessionAdapter.normalizeLegacyComplexity` 에서 읽기 시점에 `'task'` 로 매핑된다.
 
 ### 2.2 판정 매트릭스 (Decompose 프롬프트 출력 shape)
 
@@ -45,19 +47,19 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 |---|---|---|---|
 | `explain` | oneshot | `[]` | `{ "explorationScope": "..." }` |
 | `explain` | exploratory | `[]` | `{ "explorationScope": "..." }` |
-| `explain` | todo | 1 explain task (priority 200) | `{}` |
+| `explain` | task | 1 explain task (priority 200) | `{}` |
 | `generate`/`refactor` | oneshot | `[]` | `{ "targetFiles": [...] }` |
 | `generate`/`refactor` | exploratory | `[]` | `{ "explorationScope": "..." }` |
-| `generate`/`refactor` | todo | 전체 breakdown | `{}` |
+| `generate`/`refactor` | task | 전체 breakdown | `{}` |
 
 ### 2.3 메타데이터 정책 매트릭스 (feature.jsonl 기록)
 
 | Mode | Complexity | T2 (user_turn) | T3 (breadcrumb) | Boundary |
 |---|---|---|---|---|
-| `explain` | 모두 | 기록 | ❌ (T1 무수정) | `todo`만 ✅ |
+| `explain` | 모두 | 기록 | ❌ (T1 무수정) | `task`만 ✅ |
 | `generate`/`refactor` | oneshot | 기록 | ❌ | ❌ |
 | `generate`/`refactor` | exploratory | 기록 | `touched ≥ 3` → mini-BC | ❌ |
-| `generate`/`refactor` | todo | collapse(boundary 시) | ✅ bubble-up | ✅ `auto_job_complete_todo` |
+| `generate`/`refactor` | task | collapse(boundary 시) | ✅ bubble-up | ✅ `auto_job_complete_todo` (on-disk 리터럴은 legacy 호환 유지) |
 | `ask`/`inline-ask` | — | **미기록** (feature.jsonl 안 감) | ❌ | ❌ |
 
 **Hard Reset**은 축에 무관한 별도 이벤트 — `FeatureBoundaryLine.reason = 'user_reset'`, `jobType = 'reset'`.
@@ -127,7 +129,7 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
   "jobId": "job-a1b2c3",
   "turnId": "t-4f5e6d7c",
   "jobType": "code",
-  "complexity": "todo",
+  "complexity": "task",
   "decidedBy": "llm",
   "reason": "multi-file feature spanning UI + theme context"
 }
@@ -207,7 +209,29 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 | **비용** | I/O만 (LLM 없음) | 1회 LLM call (graceful degradation: 실패 시 원형 반환) |
 | **구현** | `FileSessionAdapter.appendBoundary` / `collapseAll` | `core/context/featureContextBuilder.ts#compactFeatureContext` |
 
-두 메커니즘은 **직교**. Compact는 상한을 못 맞출 때 보강하는 안전망, Collapse는 `todo` 완료 시 정식 경계.
+두 메커니즘은 **직교**. Compact는 상한을 못 맞출 때 보강하는 안전망, Collapse는 `task` 완료 시 정식 경계.
+
+### 5.1.1 Tier-별 strategy 매트릭스 (operation-per-strategy + Tier facade)
+
+Breadcrumb / Boundary / Collapse / Compact 네 operation은 각각 Strategy 객체로 캡슐화되어 있으며, Tier facade 가 생성자에서 조합한다 (`core/executionTier/`).
+
+| Tier | Breadcrumb | Boundary | Collapse | Compact |
+|---|---|---|---|---|
+| 0 Reflex (`explain` × oneshot) | Noop | Noop | Noop | Noop |
+| 1 OneShot (any × oneshot) | Noop | Noop | Noop | ThresholdLLM |
+| 2 Exploratory (any × exploratory) | Mini (`touched ≥ 3`) | Noop | Noop | ThresholdLLM |
+| 3 Task — `generate`/`refactor` | Full (bubble-up) | AutoComplete | AtBoundary | ThresholdLLM |
+| 3 Task — `explain` | Noop | ExplainOnly | AtBoundary | ThresholdLLM |
+| 4 Plan (`design`/`plan`) | Noop | Noop | Noop | Noop |
+
+**D11 불변식**: 위 표의 "mode 분기"는 `Tier3Task` 생성자 **한 곳에서만** 수행된다. Phase 노드 / routers / parallel / tool handlers / 공유 operation strategy 내부에서 `mode === '...'` / `complexity === '...'` 리터럴 비교가 등장하면 R1 위반이자 D11 위반. 검증:
+
+```bash
+rg "mode === '(explain|generate|refactor)'|complexity === '(oneshot|exploratory|task)'" \
+  packages/ant-cli/src/core/executionTier/tiers/ \
+  --glob '!Tier3Task.ts'
+# expect: 0
+```
 
 ### 5.2 Breadcrumb Bubble-up (T3)
 
@@ -241,7 +265,7 @@ direct 노드 ReAct 루프 내부에서 `shouldEscalate(state, touchedFiles)` �
 | `proceed_without_spec` | `_specClarifyBypassed=true` 기록 → `isResume: true` 재개 |
 | `cancel` | `markUserStopped` + failed + idempotency lock release |
 
-발동 조건 4-AND: `mode ∈ {generate, refactor}` ∧ `complexity === 'todo'` ∧ spec 부재 ∧ system-design 부재. Triage에서 처리하던 design redirect 책임은 Decompose로 **완전히 이관**됐다 (§4 `triage_scope_cleanup` 참조).
+발동 조건 4-AND: `mode ∈ {generate, refactor}` ∧ `complexity === 'task'` ∧ spec 부재 ∧ system-design 부재. Triage에서 처리하던 design redirect 책임은 Decompose로 **완전히 이관**됐다 (§4 `triage_scope_cleanup` 참조).
 
 ---
 
@@ -270,8 +294,9 @@ direct 노드 ReAct 루프 내부에서 `shouldEscalate(state, touchedFiles)` �
 | `packages/ant-cli/src/core/ports/session.ts` | `SessionPort` (append* / load* / collapse*) |
 | `packages/ant-cli/src/periphery/adapters/session/FileSessionAdapter.ts` | 유일 구현체. per-file mutex 동시성 안전 |
 | `packages/ant-cli/src/composition/recordUserTurn.ts` | orchestrator → 2-file user_turn atomic append |
-| `packages/ant-cli/src/core/context/featureContextBuilder.ts` | `buildFeatureContext` / `mergeFeatureContext` / `compactFeatureContext` |
-| `packages/ant-cli/src/core/context/breadcrumb.ts` | `buildBreadcrumb` / `collectTouchedFilesFromTrace` |
+| `packages/ant-cli/src/core/context/featureContextBuilder.ts` | `buildFeatureContext` / `mergeFeatureContext` / `compactFeatureContext` / `hydrateFeatureContext` |
+| `packages/ant-cli/src/core/context/breadcrumb.ts` | `buildBreadcrumb` / `buildBreadcrumbSummary` / `collectTouchedFilesFromTrace` |
+| `packages/ant-cli/src/core/executionTier/` | 5-Tier Execution Strategy. `selectExecutionTier(mode, complexity)` 매트릭스 + `Tier0Reflex` / `Tier1OneShot` / `Tier2Exploratory` / `Tier3Task` / `Tier4Plan` facade. Phase 노드는 `getExecutionTier(state)` 로만 접근 (§5.1.1) |
 | `packages/ant-cli/src/core/utils/featureBiases.ts` | `recordClassification` / `readClassifications` (misclassify 계측 §19) |
 | `packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/` | 3-way complexity 판정 + `<specClarify>` emit |
 | `packages/ant-cli/src/agents/architect/graph/code/nodes/direct/` | ReAct 루프 + `shouldEscalate` |
