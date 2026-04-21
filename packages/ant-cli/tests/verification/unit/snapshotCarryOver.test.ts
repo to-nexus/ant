@@ -26,7 +26,7 @@ describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
     session.markAttempted('build');
     session.onCommand('typecheck', true);
     session.onCommand('build', true);
-    session.onInstallResolved('abc123');
+    session.markInstallNeeded(false);
     session.onPlanApplied('{"plan":1}');
     session.onPlanApplied('{"plan":2}');
 
@@ -56,7 +56,7 @@ describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
     // carried on the `verification` snapshot owned by the Session.
     expect(snap!.verification).toBeDefined();
     expect(snap!.verification!.attempts).toBe(3);
-    expect(snap!.verification!.depHash).toBe('abc123');
+    expect(snap!.verification!.installNeeded).toBe(false);
     expect(snap!.verification!.passed.sort()).toEqual(['build', 'typecheck'].sort());
     expect(snap!.verification!.planHistoryBodies).toEqual(['{"plan":1}', '{"plan":2}']);
   });

@@ -45,10 +45,12 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       activePhase: state._activePhase as 'plan' | 'execute' | undefined,
       currentTaskType: (state.currentTask as any)?.type,
       // T4b-β: verification cycle state is carried by `state.verification`
-      // (VerificationSession). Tool handlers that need gate / dep-hash
+      // (VerificationSession). Tool handlers that need gate / install
       // information read it off the session directly via the
-      // `verificationSession` slot — no tracker / depHash fan-out from
-      // state is necessary any more.
+      // `verificationSession` slot — no tracker fan-out from state is
+      // necessary any more. Dep install status itself lives on the codebase
+      // (package.json vs node_modules/<name>) and is observed directly by
+      // `areDepsInstalled` at plan entry (F3), not carried as a tool signal.
       verificationSession: state.verification,
       retries: state.retries,
       // Deep-diagnostic activates once the Session's attempt count crosses
