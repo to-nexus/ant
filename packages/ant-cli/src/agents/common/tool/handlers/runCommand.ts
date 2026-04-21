@@ -72,10 +72,27 @@ const PACKAGE_MANAGER_INSTALL_PATTERNS = [
   /\bcargo\s+build\b/i,
 ];
 
+// Flags that signal intent to re-resolve/re-install (e.g. to recover a
+// missing optional native binding). These bypass the skip guard because
+// `areDepsInstalled` can only observe declared deps.
+const REINSTALL_INTENT_FLAG_PATTERNS: RegExp[] = [
+  /\s--force\b/,
+  /\s--no-frozen-lockfile\b/,
+  /\s--frozen-lockfile=false\b/,
+  /\s--fix-lockfile\b/,
+  /\s--shamefully-hoist\b/,
+  /\s-f\b/,
+];
+
+function hasReinstallIntentFlag(command: string): boolean {
+  return REINSTALL_INTENT_FLAG_PATTERNS.some(p => p.test(command));
+}
+
 function isBareInstallCommand(command: string): boolean {
   if (/\bgo\s+mod\s+(tidy|download)\b/i.test(command)) return false;
   if (/\bgo\s+get\b/i.test(command)) return false;
   if (/\bcargo\s+build\b/i.test(command)) return false;
+  if (hasReinstallIntentFlag(command)) return false;
 
   if (/\b(npm|pnpm)\s+(install|i|ci)\s*($|--|-\s)/.test(command)) return true;
   if (/\byarn\s+(install\s*($|--|-\s))/.test(command)) return true;

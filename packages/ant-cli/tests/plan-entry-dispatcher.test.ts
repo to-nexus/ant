@@ -14,6 +14,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { __testing__ } from '../src/agents/architect/graph/code/nodes/plan';
 import { VerificationSession } from '../src/agents/architect/graph/code/tasks/verification/model/Session';
+import { CONV_KEYS } from '../src/agents/common/graph/conversations';
 
 const { resolvePlanEntry } = __testing__;
 
@@ -101,7 +102,6 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     const ctx = await resolvePlanEntry(state);
 
     expect(ctx.isRetry).toBe(true);
-    expect(ctx.retrySummaryText).toBeTruthy();
 
     // Verification delegates retry accounting to the Session via the
     // `checkRetryTermination` hook; the phase layer does NOT bump
@@ -120,5 +120,59 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     expect(snap.attempts).toBe(1);
 
     expect(state.violations).toEqual([]);
+  });
+
+  it('preserves node:plan conversation across retry, clears node:execute', async () => {
+    const state = makeFreshVerificationState();
+    state.currentTask = {
+      id: 't1',
+      name: 'verify',
+      description: 'Verification task',
+      type: 'verification',
+      priority: 1000,
+    };
+    state._nextPlanEntry = 'retry';
+    state.verification = VerificationSession.rehydrate({
+      required: ['build'],
+      passed: [],
+      attemptedThisCycle: [],
+      attempts: 0,
+      planHistoryHashes: [],
+    });
+    state.conversations = {
+      [CONV_KEYS.NODE_PLAN]: [
+        { role: 'user', content: 'prior plan round 1' },
+        { role: 'assistant', content: 'prior diagnostic observation' },
+      ],
+      [CONV_KEYS.NODE_EXECUTE]: [
+        { role: 'user', content: 'prior execute round 1' },
+      ],
+    };
+
+    await resolvePlanEntry(state);
+
+    // Intra-task retry must inherit the prior plan-phase conversation so
+    // the LLM sees policy rejections / tool outputs / prior reasoning.
+    expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(2);
+    expect(state.conversations[CONV_KEYS.NODE_PLAN][1].content).toBe(
+      'prior diagnostic observation',
+    );
+    // Execute tool-loop always restarts fresh.
+    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+  });
+
+  it('clears node:plan at fresh task entry (task boundary)', async () => {
+    const state = makeFreshVerificationState();
+    // Seed a prior conversation as if a previous task left chatter.
+    state.conversations = {
+      [CONV_KEYS.NODE_PLAN]: [{ role: 'user', content: 'stale from prior task' }],
+      [CONV_KEYS.NODE_EXECUTE]: [{ role: 'user', content: 'stale' }],
+    };
+
+    await resolvePlanEntry(state);
+
+    // Fresh task entry must wipe both conversation slots to isolate tasks.
+    expect(state.conversations[CONV_KEYS.NODE_PLAN]).toEqual([]);
+    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
   });
 });

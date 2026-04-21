@@ -293,7 +293,6 @@ export async function generatePlanText(
   violations?: Violation[],
   uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
   remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>,  // ✅ Remaining tasks for cross-task awareness
-  extraViolationContext?: string,  // rendered prior-attempt summary for retry re-entries (taskRetryRetention.ts)
 ): Promise<string> {
   if (!taskRequiresPlan(task)) {
     return '';
@@ -304,10 +303,7 @@ export async function generatePlanText(
   }
   
   const llmToUse = await selectLLMForTask(llm, task, state);
-  const baseText = violations && violations.length > 0 ? formatViolations(violations) : undefined;
-  const violationsText = extraViolationContext
-    ? (baseText ? `${baseText}\n${extraViolationContext}` : extraViolationContext)
-    : baseText;
+  const violationsText = violations && violations.length > 0 ? formatViolations(violations) : undefined;
   const { prompt, vars: hookVars } = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks);
 
   // ✅ Log prompt structure (not content)

@@ -161,7 +161,7 @@ async function maybePrePlannedFastPath(
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
     workspaceConfig: state.workspaceConfig,
-    conversations: { [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] },
+    conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
     _activePhase: 'execute' as const,
     // prePlanText path only fires for error tasks, so the preceding
     // verification session should not leak into the error-task execution.
@@ -215,7 +215,7 @@ async function maybeSetupFastPath(
     recursionLimit: state.recursionLimit,
     workspaceConfig: state.workspaceConfig,
     _activePhase: 'execute' as const,
-    conversations: { [CONV_KEYS.NODE_PLAN]: [] },
+    conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
   };
 }
 
@@ -333,7 +333,7 @@ async function runMainPlanLLM(
   rag: Awaited<ReturnType<typeof runPlanRAG>>,
   forceNoTools: boolean,
 ): Promise<ArchitectGraphState | { planText: string }> {
-  const { nextTask, retrySummaryText } = entry;
+  const { nextTask } = entry;
   const llm = state.deps?.llm as LLMClient | undefined;
   const requiresPlan = taskRequiresPlan(nextTask);
   const isVerification = isVerificationTask(nextTask);
@@ -355,7 +355,6 @@ async function runMainPlanLLM(
     const violationsText = composeViolationsText(
       state.violations,
       diagnosticRetryContext,
-      retrySummaryText,
     );
     const { blocks: contentBlocks, vars: hookLogVars } = await buildPlanPromptBlocks(
       state, nextTask, rag.projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true },
@@ -395,7 +394,6 @@ async function runMainPlanLLM(
     state.violations,
     uiDocForPlan,
     remainingTasks,
-    retrySummaryText,
   );
   return { planText: planText ?? '' };
 }
@@ -488,7 +486,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       recursionLimit: state.recursionLimit,
       workspaceConfig: state.workspaceConfig,
       _activePhase: 'execute' as const,
-      conversations: { [CONV_KEYS.NODE_PLAN]: [] },
+      conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
       llmResponse: (batchSplitOccurred || diagnosticPass || emptyImplShortCircuit)
         ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
         : { done: false, textResponse: '', thinking: '', toolCalls: [] },
