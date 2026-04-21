@@ -19,7 +19,16 @@ import type { Mode } from './detection';
 // Common types
 // ═══════════════════════════════════════════════════════════════════════
 
-export type Complexity = 'oneshot' | 'exploratory' | 'todo';
+/**
+ * Complexity classification emitted by Decompose.
+ *
+ * Literal `'task'` denotes the "decompose → plan → execute" full-pipeline route.
+ * Prior to the 5-tier rename it was spelled `'todo'`; legacy on-disk
+ * `feature.jsonl` lines may still carry the old literal. `FileSessionAdapter`
+ * normalizes them on read (see `normalizeLegacyComplexity`). Writers MUST
+ * emit `'task'` only.
+ */
+export type Complexity = 'oneshot' | 'exploratory' | 'task';
 
 export type DecidedBy = 'user' | 'heuristic' | 'llm';
 
@@ -83,7 +92,7 @@ export interface FeatureUserTurnMetaLine extends LineBase {
  * 
  * 생성 규칙:
  * - mode='explain': 생성 안 함 (T1 무수정)
- * - mode in {generate, refactor} + complexity='todo': 항상 생성 (bubble-up 적용)
+ * - mode in {generate, refactor} + complexity='task': 항상 생성 (bubble-up 적용)
  * - mode in {generate, refactor} + complexity='exploratory' + touched≥3: mini-BC
  * - 그 외: 생성 안 함
  */
@@ -118,7 +127,7 @@ export interface FeatureBreadcrumbLine extends LineBase {
  * boundary — 대화 맥락 경계 마커
  *
  * 생성 규칙:
- * - complexity='todo' 완료 → 자동 boundary (mode 무관)
+ * - complexity='task' 완료 → 자동 boundary (mode 무관)
  * - Hard Reset → 명시 boundary (`reason: 'user_reset'`)
  * - 그 외 → 생성 안 함
  *

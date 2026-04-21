@@ -9,6 +9,7 @@ import { PreviewStatusPanel } from './components/PreviewStatusPanel';
 import { PREVIEW_BASE } from '@/infrastructure/http/api';
 import { useState, useEffect, useCallback } from 'react';
 import { RotateCcw } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { QuickStartCTA } from '../common/QuickStartCTA';
 import { CreationWizardModal } from '../CreationWizardModal';
 import { makeFeatureKey } from '@/domain/store/slices/previewSlice';
@@ -220,10 +221,11 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
             aria-label={t('chat:context.resetTooltip')}
             className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
           >
-            <RotateCcw
-              className={`h-3 w-3 ${isResetting ? 'animate-spin' : ''}`}
-              aria-hidden="true"
-            />
+            {isResetting ? (
+              <Spinner size="sm" tone="inherit" className="h-3 w-3 shrink-0" />
+            ) : (
+              <RotateCcw className="h-3 w-3 shrink-0" aria-hidden="true" />
+            )}
             <span>{t('chat:context.resetLabel')}</span>
           </button>
         </div>
