@@ -178,6 +178,26 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     }
   };
 
+  /**
+   * Batch toggle used by dir-level cards (ui-source `ant` / `handoff`).
+   * If every supplied path is already selected → deselect them all; otherwise
+   * add the missing ones. Single `updateActionMetadata` call avoids the
+   * state-races that looped `toggleFile` calls would trigger.
+   */
+  const toggleFiles = (paths: string[], field: 'refs' | 'context') => {
+    if (paths.length === 0) return;
+    const current = field === 'refs' ? (actionMetadata.refs ?? []) : (actionMetadata.context ?? []);
+    const currentSet = new Set(current);
+    const allSelected = paths.every(p => currentSet.has(p));
+    const next = allSelected
+      ? current.filter(p => !paths.includes(p))
+      : [...current, ...paths.filter(p => !currentSet.has(p))];
+    updateActionMetadata({ [field]: next.length > 0 ? next : undefined });
+    if (field === 'refs' && slots?.target.kind === 'revise') {
+      updateActionMetadata({ target: next.length > 0 ? next : undefined });
+    }
+  };
+
   const codebaseHasFiles = gitStatus?.codebaseHasFiles ?? false;
   const codebaseRequired = slots ? slots.refs.some(r => r.codebase && r.locked) : false;
   const refEntries = useMemo(() => slots ? resolveSlotEntries(slots.refs, fileTree, selectedCtx, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedCtx, warningCtx, codebaseHasFiles]);
@@ -252,6 +272,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   entries={refEntries}
                   selected={selectedRefs}
                   onToggle={(p) => toggleFile(p, 'refs')}
+                  onToggleMany={(paths) => toggleFiles(paths, 'refs')}
                   onHighlightDir={(dir) => highlightArtifactDirs([dir])}
                   onCreateIntent={handleCreateIntent}
                   onUploadDir={handleUploadDir}
@@ -279,6 +300,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   entries={ctxEntries}
                   selected={selectedCtx}
                   onToggle={(p) => toggleFile(p, 'context')}
+                  onToggleMany={(paths) => toggleFiles(paths, 'context')}
                   onHighlightDir={(dir) => highlightArtifactDirs([dir])}
                   onCreateIntent={handleCreateIntent}
                   onToggleSpotlight={handleToggleSpotlight}
