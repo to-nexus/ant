@@ -83,14 +83,15 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   }));
 
   // Feature log (trace.jsonl + feature.jsonl breadcrumbs) — UI SSOT for chat / timeline.
-  // Requires workspaceResolver to resolve feature paths; other feature-scoped
-  // routes (figma, org, transfer) follow the same presence check pattern.
-  // chatService is wired so that POST /context/reset (§17 Hard Reset)
-  // delegates to the §16.2 Clear·Reset SSOT pipeline instead of bypassing it.
+  // Requires workspaceResolver to resolve feature paths. chatService /
+  // kanbanService / stateStore are wired so POST /context/reset (Hard
+  // Reset) can perform the full Redis + disk + kanban pipeline.
   if (deps.workspaceResolver) {
     router.use(createFeatureLogRoutes({
       workspaceResolver: deps.workspaceResolver,
       chatService: deps.chatService,
+      kanbanService: deps.kanbanService,
+      stateStore: deps.stateStore,
       fileTreeNotifier: deps.fileTreeNotifier,
     }));
   }

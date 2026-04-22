@@ -8,9 +8,12 @@
  *  - `appendUserTurn` trace-failure policy (feature SSOT preserved, no rollback)
  *  - `appendUserTurnMeta` → loadSinceBoundary merge
  *  - `appendBoundary` collapses prior user_turn/user_turn_meta (preserves T3)
- *  - `collapseTurn` synchronises both files
- *  - `collapseAll` with new default `jobType: 'reset'` boundary + explicit override
  *  - `FileMutex` serialisation under concurrent appends
+ *
+ * Note: Hard Reset used to go through `collapseAll` / `collapseTurn` here,
+ * but it now physically unlinks the session files from the HTTP handler
+ * via `clearCanonicalDirectory`. Integration-level coverage lives in
+ * the feature-log route test instead.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -209,56 +212,6 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
     expect(byType.user_turn_meta.collapsed).toBe(true);
     expect(byType.breadcrumb.collapsed).toBeUndefined();
     expect(byType.boundary.collapsed).toBeUndefined();
-  });
-
-  // ─────────────────────────────────────────────────────────────────────
-  // collapseTurn (per-turn invalidation)
-  // ─────────────────────────────────────────────────────────────────────
-
-  it('collapseTurn marks matching turnId in both files', async () => {
-    const a: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'jA', turnId: 't-A', jobType: 'code', text: 'A' };
-    const b: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:02Z', jobId: 'jB', turnId: 't-B', jobType: 'code', text: 'B' };
-    await adapter.appendUserTurn(a);
-    await adapter.appendUserTurn(b);
-
-    await adapter.collapseTurn('t-A');
-
-    const featureLines = await readJsonl<any>(featurePath);
-    const traceLines = await readJsonl<any>(tracePath);
-
-    expect(featureLines.find((l) => l.turnId === 't-A').collapsed).toBe(true);
-    expect(featureLines.find((l) => l.turnId === 't-B').collapsed).toBeUndefined();
-    expect(traceLines.find((l) => l.turnId === 't-A').collapsed).toBe(true);
-    expect(traceLines.find((l) => l.turnId === 't-B').collapsed).toBeUndefined();
-  });
-
-  // ─────────────────────────────────────────────────────────────────────
-  // collapseAll (Hard Reset)
-  // ─────────────────────────────────────────────────────────────────────
-
-  it('collapseAll defaults boundary jobType to the agent-agnostic "reset" literal', async () => {
-    const a: FeatureUserTurnLine = { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'jA', turnId: 't-A', jobType: 'design', text: 'A' };
-    await adapter.appendUserTurn(a);
-
-    await adapter.collapseAll('user_reset', 'j-reset', 't-reset');
-
-    const featureLines = await readJsonl<any>(featurePath);
-    const boundaries = featureLines.filter((l) => l.type === 'boundary');
-    expect(boundaries).toHaveLength(1);
-    expect(boundaries[0].jobType).toBe('reset');
-    expect(boundaries[0].reason).toBe('user_reset');
-
-    expect(featureLines.find((l) => l.turnId === 't-A').collapsed).toBe(true);
-
-    const traceLines = await readJsonl<any>(tracePath);
-    expect(traceLines.every((l) => l.collapsed === true)).toBe(true);
-  });
-
-  it('collapseAll respects an explicit jobType override for job-scoped collapses', async () => {
-    await adapter.collapseAll('user_reset', 'j-reset', 't-reset', 'code');
-    const featureLines = await readJsonl<any>(featurePath);
-    const boundary = featureLines.find((l) => l.type === 'boundary');
-    expect(boundary.jobType).toBe('code');
   });
 
   // ─────────────────────────────────────────────────────────────────────
