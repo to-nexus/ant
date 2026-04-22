@@ -54,7 +54,7 @@ export class MessageManager {
     // Without this, Job Worker may start before user message is in Redis,
     // causing assistant message to appear before user message.
     // Durable user_turn record is written by orchestrator.recordUserTurn
-    // against trace.jsonl — this scratchpad only drives live SSE delivery.
+    // against chat.jsonl — this scratchpad only drives live SSE delivery.
     try {
       await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext);
     } catch (err) {
@@ -391,7 +391,7 @@ export class MessageManager {
       const text = collectAssistantText(session.currentMessage.contents);
       if (text.trim().length > 0) {
         this.persistence
-          .emitAssistantMessageTrace({
+          .emitAssistantMessageLine({
             projectId,
             featureName,
             userContext: session.userContext,
@@ -407,8 +407,8 @@ export class MessageManager {
       }
     }
 
-    // Save streaming scratchpad to Redis (durable SSOT is trace.jsonl,
-    // written incrementally by LLMResponseService + TraceAppender).
+    // Save streaming scratchpad to Redis (durable SSOT is chat.jsonl,
+    // written incrementally by LLMResponseService + ChatLogAppender).
     this.sessionManager.saveSessionAsync(projectId, featureName, session, session.userContext).catch(err => {
       logger.warn('Failed to save session to Redis', { component: 'MessageManager' }, err);
     });
@@ -457,7 +457,7 @@ export class MessageManager {
     session.messages.push(errorMsg);
 
     // Save streaming scratchpad to Redis (durable mirror is emitted to
-    // trace.jsonl as an assistant_message below).
+    // chat.jsonl as an assistant_message below).
     this.sessionManager.saveSessionAsync(projectId, featureName, session).catch(err => {
       logger.warn('Failed to save error message to Redis', { component: 'MessageManager' }, err);
     });
@@ -468,11 +468,11 @@ export class MessageManager {
       message: errorMsg
     }, session.userContext);
 
-    // Mirror to trace.jsonl so the Activity tab picks up the error without
+    // Mirror to chat.jsonl so the Activity tab picks up the error without
     // needing to read chat.json. Fire-and-forget — never block the HTTP
     // response just because the log write is slow.
     this.persistence
-      .emitAssistantMessageTrace({
+      .emitAssistantMessageLine({
         projectId,
         featureName,
         userContext: session.userContext,
@@ -536,7 +536,7 @@ export class MessageManager {
         `Auto-resolved ${staleResolutions.length} stale cancelled message(s) before creating new one for job ${jobId}`,
         { component: 'MessageManager' },
       );
-      // Mirror to trace.jsonl so the durable log stays consistent with the
+      // Mirror to chat.jsonl so the durable log stays consistent with the
       // scratchpad (otherwise a subsequent refresh would re-show the cards
       // as actionable).
       for (const { cardId, originalJobId } of staleResolutions) {
@@ -643,7 +643,7 @@ export class MessageManager {
 
     if (newlyResolvedCardIds.length > 0) {
       await this.sessionManager.saveSessionAsync(projectId, featureName, session, userContext);
-      // Mirror the resolution to trace.jsonl so the durable log stays in
+      // Mirror the resolution to chat.jsonl so the durable log stays in
       // sync with the in-memory scratchpad. addCancelledMessageAsync emits
       // choice_presented with cardId=messageId, so the same cardId pairs
       // the presented + resolved lines.
@@ -676,7 +676,7 @@ export class MessageManager {
 }
 
 /**
- * Collapse assistant-visible text content into a single trace.jsonl line.
+ * Collapse assistant-visible text content into a single chat.jsonl line.
  * Only `type: 'text'` content blocks are concatenated — thinking / tool /
  * file / command cards stay in their own trace line types so they are not
  * duplicated in the assistant_message text.

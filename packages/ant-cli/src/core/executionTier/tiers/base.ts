@@ -12,7 +12,7 @@
 import type { FeatureBoundaryLine } from '@ant/shared';
 import type { SessionPort } from '../../ports/session';
 import type { FeatureContext, CompactFeatureContextDeps } from '../../context/featureContextBuilder';
-import type { TouchedFromTrace } from '../../context/breadcrumb';
+import type { TouchedFromChatLog } from '../../context/breadcrumb';
 import type { ExecutionTier, ExecutionTierState, ExecutionTierId } from '../types';
 import type { BreadcrumbStrategy } from '../strategies/breadcrumb';
 import type { BoundaryStrategy } from '../strategies/boundary';
@@ -32,7 +32,7 @@ export abstract class BaseTier implements ExecutionTier {
 
   constructor(protected readonly strategies: TierComposition) {}
 
-  breadcrumb(state: ExecutionTierState, touched?: TouchedFromTrace): Promise<void> {
+  breadcrumb(state: ExecutionTierState, touched?: TouchedFromChatLog): Promise<void> {
     return this.strategies.breadcrumb.apply(state, touched);
   }
 

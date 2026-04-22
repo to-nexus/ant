@@ -224,11 +224,11 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
       case 'messages_cleared': {
         set({ chatMessages: [] });
         // `scope` tells us how aggressive the backend collapse was:
-        // - 'full' (Hard Reset / §17 hard_reset): BOTH trace.jsonl and
+        // - 'full' (Hard Reset / §17 hard_reset): BOTH chat.jsonl and
         //   feature.jsonl were collapsed + a user_reset boundary was
         //   appended. Wipe the feature-log breadcrumb cache so the Timeline
         //   tab does not keep stale rows until a feature switch.
-        // - 'chat' (DELETE /chat/messages, default): only trace.jsonl was
+        // - 'chat' (DELETE /chat/messages, default): only chat.jsonl was
         //   collapsed. feature.jsonl (breadcrumbs, user_turn, user_turn_meta)
         //   is preserved so the LLM still remembers the conversation for the
         //   next turn — keep breadcrumbs intact in the UI as well.

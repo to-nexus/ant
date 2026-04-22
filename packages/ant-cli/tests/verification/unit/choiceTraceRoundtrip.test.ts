@@ -2,8 +2,8 @@
  * Round-trip tests for choice_presented / choice_resolved trace lines.
  *
  * Covers the session redesign §16.2 refactor: chat.json is retired, choice
- * cards live in trace.jsonl as presented/resolved pairs, and
- * `buildChatMessagesFromTrace` rebuilds them as legacy `ChatMessage`
+ * cards live in chat.jsonl as presented/resolved pairs, and
+ * `buildChatMessagesFromChatLog` rebuilds them as legacy `ChatMessage`
  * content so the existing UI can render them unchanged.
  */
 
@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { SessionPersistence } from '../../../src/periphery/adapters/http/services/ChatService/SessionPersistence';
 import { FileSessionAdapter } from '../../../src/periphery/adapters/session/FileSessionAdapter';
-import { buildChatMessagesFromTrace } from '../../../src/periphery/adapters/http/services/ChatService/TraceToChatMessages';
+import { buildChatMessagesFromChatLog } from '../../../src/periphery/adapters/http/services/ChatService/ChatLogToMessages';
 import type { UserContext } from '../../../src/core/types/user';
 
 function makeResolverStub(featurePath: string) {
@@ -74,8 +74,8 @@ describe('choice_presented / choice_resolved round-trip', () => {
       payload: { reason: 'user_interrupt', jobId: 'job-1' },
     });
 
-    const traceLines = await adapter.loadAllTrace();
-    const messages = buildChatMessagesFromTrace({ traceLines });
+    const chatLines = await adapter.loadAllChat();
+    const messages = buildChatMessagesFromChatLog({ chatLines });
     // user + assistant
     expect(messages).toHaveLength(2);
     const asst = messages[1];
@@ -112,8 +112,8 @@ describe('choice_presented / choice_resolved round-trip', () => {
       resolvedLabel: 'Saved: outputs/evals/code/…',
     });
 
-    const traceLines = await adapter.loadAllTrace();
-    const messages = buildChatMessagesFromTrace({ traceLines });
+    const chatLines = await adapter.loadAllChat();
+    const messages = buildChatMessagesFromChatLog({ chatLines });
     const asst = messages[1];
     const c = asst.contents[0];
     expect(c.type).toBe('choice_card');
@@ -144,8 +144,8 @@ describe('choice_presented / choice_resolved round-trip', () => {
       },
     });
 
-    const traceLines = await adapter.loadAllTrace();
-    const messages = buildChatMessagesFromTrace({ traceLines });
+    const chatLines = await adapter.loadAllChat();
+    const messages = buildChatMessagesFromChatLog({ chatLines });
     const c = messages[1].contents[0];
     expect(c.type).toBe('triage_choice');
     expect((c.metadata as any)?.choiceOptions?.positive?.action).toBe('redirect');
@@ -176,8 +176,8 @@ describe('choice_presented / choice_resolved round-trip', () => {
       answer: { resolvedAnswers: { 0: 'a' } },
     });
 
-    const traceLines = await adapter.loadAllTrace();
-    const messages = buildChatMessagesFromTrace({ traceLines });
+    const chatLines = await adapter.loadAllChat();
+    const messages = buildChatMessagesFromChatLog({ chatLines });
     const c = messages[1].contents[0];
     expect(c.type).toBe('choice_card');
     expect((c.metadata as any)?.resolvedAnswers?.[0]).toBe('a');

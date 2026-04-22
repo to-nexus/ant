@@ -12,8 +12,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { TraceLine, ChatStatusLine, ChatStatusType } from '@ant/shared';
-import { buildChatMessagesFromTrace } from '../src/periphery/adapters/http/services/ChatService/TraceToChatMessages';
+import type { ChatLine, ChatStatusLine, ChatStatusType } from '@ant/shared';
+import { buildChatMessagesFromChatLog } from '../src/periphery/adapters/http/services/ChatService/ChatLogToMessages';
 import { generateChatStatusContent } from '../src/core/llm-response/generateStatusContent';
 
 function mkChatStatus(
@@ -32,7 +32,7 @@ function mkChatStatus(
   };
 }
 
-function mkUserTurn(turnId = 't-aaaa', text = 'hello'): TraceLine {
+function mkUserTurn(turnId = 't-aaaa', text = 'hello'): ChatLine {
   return {
     type: 'user_turn',
     ts: '2026-04-23T00:00:00.000Z',
@@ -75,11 +75,11 @@ describe('chat SSOT roundtrip — (statusType, metadata) → MessageContent', ()
 
   for (const row of rows) {
     it(`${row.name}: replay produces the same MessageContent the live path built`, () => {
-      const lines: TraceLine[] = [
+      const lines: ChatLine[] = [
         mkUserTurn(),
         mkChatStatus(row.statusType, row.metadata),
       ];
-      const messages = buildChatMessagesFromTrace({ traceLines: lines });
+      const messages = buildChatMessagesFromChatLog({ chatLines: lines });
       expect(messages.map((m) => m.role)).toEqual(['user', 'assistant']);
 
       const assistant = messages[1];
@@ -117,113 +117,67 @@ describe('chat SSOT roundtrip — (statusType, metadata) → MessageContent', ()
     // list_files / search_code cards, leaving WorkingCard with only an
     // icon and no text. After the SSOT collapse `content` is always
     // generated from the same function the live path uses.
-    const lines: TraceLine[] = [
+    const lines: ChatLine[] = [
       mkUserTurn(),
       mkChatStatus('read', { filePath: '' }),
     ];
-    const messages = buildChatMessagesFromTrace({ traceLines: lines });
+    const messages = buildChatMessagesFromChatLog({ chatLines: lines });
     const card = messages[1].contents[0];
     expect(card.type).toBe('read');
     expect(card.content).not.toBe('');
   });
 
-  it('chat_status(file_edit) + companion file_write dedup to a single card', () => {
-    // During the migration both lines exist; dedup should prefer the
-    // chat_status path so the UI does not render two FileCards for the
-    // same edit.
-    const lines: TraceLine[] = [
+  it('assistant_thinking and chat_status interleave in timestamp order', () => {
+    const base = { jobId: 'job-1', turnId: 't-aaaa', jobType: 'code' as const };
+    const lines: ChatLine[] = [
       mkUserTurn(),
-      mkChatStatus('file_edit', {
-        filePath: 'src/x.ts',
-        diffBefore: 'a',
-        diffAfter: 'b',
-      }),
       {
-        type: 'file_write',
-        ts: '2026-04-23T00:00:02.000Z',
-        jobId: 'job-1',
-        turnId: 't-aaaa',
-        jobType: 'code',
-        path: 'src/x.ts',
-        operation: 'update',
-        diffBefore: 'a',
-        diffAfter: 'b',
+        type: 'assistant_thinking',
+        ts: '2026-04-23T00:00:00.500Z',
+        ...base,
+        text: 'Reading the file first…',
       },
-    ];
-    const messages = buildChatMessagesFromTrace({ traceLines: lines });
-    const assistant = messages[1];
-    expect(assistant.contents.map((c) => c.type)).toEqual(['file_edit']);
-    expect(assistant.contents[0].metadata?.diffBefore).toBe('a');
-    expect(assistant.contents[0].metadata?.diffAfter).toBe('b');
-  });
-
-  it('chat_status(command) + companion run_command dedup to a single card', () => {
-    const lines: TraceLine[] = [
-      mkUserTurn(),
-      mkChatStatus('command', {
-        command: 'pnpm test',
-        exitCode: 0,
-        output: 'ok',
-      }),
-      {
-        type: 'run_command',
-        ts: '2026-04-23T00:00:02.000Z',
-        jobId: 'job-1',
-        turnId: 't-aaaa',
-        jobType: 'code',
-        cmd: 'pnpm test',
-        exitCode: 0,
-        stdout: 'ok',
-      },
-    ];
-    const messages = buildChatMessagesFromTrace({ traceLines: lines });
-    const assistant = messages[1];
-    expect(assistant.contents.map((c) => c.type)).toEqual(['command']);
-    expect(assistant.contents[0].metadata?.command).toBe('pnpm test');
-    expect(assistant.contents[0].metadata?.exitCode).toBe(0);
-  });
-
-  it('chat_status(read) + companion tool_call(read_file) dedup to a single card', () => {
-    const lines: TraceLine[] = [
-      mkUserTurn(),
       mkChatStatus('read', { filePath: 'src/auth.ts' }),
       {
-        type: 'tool_call',
+        type: 'assistant_message',
         ts: '2026-04-23T00:00:02.000Z',
-        jobId: 'job-1',
-        turnId: 't-aaaa',
-        jobType: 'code',
-        tool: 'read_file',
-        args: { path: 'src/auth.ts' },
+        ...base,
+        text: 'Here is what I found.',
       },
     ];
-    const messages = buildChatMessagesFromTrace({ traceLines: lines });
-    const assistant = messages[1];
-    expect(assistant.contents.map((c) => c.type)).toEqual(['read']);
-    expect(assistant.contents[0].metadata?.filePath).toBe('src/auth.ts');
-    expect(assistant.contents[0].content).toContain('src/auth.ts');
+    const messages = buildChatMessagesFromChatLog({ chatLines: lines });
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(messages[1].contents.map((c) => c.type)).toEqual(['thinking', 'read', 'text']);
   });
 
-  it('legacy tool_call(read_file) without chat_status still renders a non-empty label', () => {
-    // Backward-compat guard: feature folders created before the SSOT
-    // collapse only have tool_call lines. The patched
-    // dispatchToolCallToContent now produces content via the shared
-    // generator, so legacy data does not regress the WorkingCard either.
-    const lines: TraceLine[] = [
+  it('choice_presented + choice_resolved pair renders a single resolved card', () => {
+    const base = { jobId: 'job-1', turnId: 't-aaaa', jobType: 'code' as const };
+    const lines: ChatLine[] = [
       mkUserTurn(),
       {
-        type: 'tool_call',
+        type: 'choice_presented',
+        ts: '2026-04-23T00:00:01.000Z',
+        ...base,
+        cardId: 'card-1',
+        cardType: 'cancelled',
+        prompt: 'Job paused — resume?',
+        payload: { reason: 'user_paused', jobId: 'job-1' },
+      },
+      {
+        type: 'choice_resolved',
         ts: '2026-04-23T00:00:02.000Z',
-        jobId: 'job-1',
-        turnId: 't-aaaa',
-        jobType: 'code',
-        tool: 'read_file',
-        args: { path: 'src/auth.ts' },
+        ...base,
+        cardId: 'card-1',
+        choiceSelected: 'resume',
+        resolvedLabel: 'Resumed',
       },
     ];
-    const messages = buildChatMessagesFromTrace({ traceLines: lines });
+    const messages = buildChatMessagesFromChatLog({ chatLines: lines });
     const card = messages[1].contents[0];
-    expect(card.type).toBe('read');
-    expect(card.content).toContain('src/auth.ts');
+    expect(card.type).toBe('cancelled');
+    expect(card.content).toBe('Job paused — resume?');
+    expect(card.metadata?.resolvedLabel).toBe('Resumed');
+    expect(card.metadata?.choiceSelected).toBe('resume');
+    expect(card.metadata?.resolved).toBe(true);
   });
 });

@@ -197,7 +197,10 @@ export async function runScenario(
   // a different LangGraph (workerGraph.ts) that does NOT emit verification
   // trace events, so the observedRouteSequence would come back empty.
   // The doc explicitly puts parallelism out of scope (§10 "스코프 경계").
-  const tracePath = path.join(runDir, 'trace.jsonl');
+  // Verification-scenario trace file — unrelated to the chat log SSOT.
+  // This file is consumed by `utils/verificationTrace.ts` to record
+  // node/router execution order for deterministic scenario testing.
+  const tracePath = path.join(runDir, 'verification-trace.jsonl');
   const env: Record<string, string> = {
     ...sanitizedBaseEnv(),
     ANT_WORKSPACE_BASE_PATH: runDir,

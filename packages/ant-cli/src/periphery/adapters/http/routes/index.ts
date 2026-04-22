@@ -82,7 +82,7 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     stateStore: deps.stateStore
   }));
 
-  // Feature log (trace.jsonl + feature.jsonl breadcrumbs) — UI SSOT for chat / timeline.
+  // Feature log (chat.jsonl + feature.jsonl breadcrumbs) — UI SSOT for chat / timeline.
   // Requires workspaceResolver to resolve feature paths. chatService /
   // kanbanService / stateStore are wired so POST /context/reset (Hard
   // Reset) can perform the full Redis + disk + kanban pipeline.

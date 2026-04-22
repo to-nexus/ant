@@ -6,7 +6,7 @@ import type { ActionMetadata } from '@ant/shared';
  *
  * Posts to the optimistic-write endpoint so the user's message shows up
  * immediately via the SSE `user_message` broadcast, ahead of the worker's
- * durable `user_turn` record in trace.jsonl (session redesign §16.2).
+ * durable `user_turn` record in chat.jsonl (session redesign §16.2).
  * Must be called BEFORE executeCodeJob().
  */
 export async function addChatUserMessage(
@@ -29,7 +29,7 @@ export async function addChatUserMessage(
 /**
  * Clear chat history for a feature.
  *
- * Session redesign §16.2: the backend collapses `trace.jsonl` only (the UI
+ * Session redesign §16.2: the backend collapses `chat.jsonl` only (the UI
  * chat SSOT). `feature.jsonl` (LLM prompt context) is intentionally
  * preserved so conversation continuity is maintained. A `messages_cleared`
  * SSE event with `scope: 'chat'` is broadcast so the UI drops chat messages

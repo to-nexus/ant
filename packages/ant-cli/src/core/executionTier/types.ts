@@ -16,7 +16,7 @@ import { ExecutionTierId } from '@ant/shared';
 import type { FeatureBoundaryLine } from '@ant/shared';
 import type { SessionPort } from '../ports/session';
 import type { FeatureContext, CompactFeatureContextDeps } from '../context/featureContextBuilder';
-import type { TouchedFromTrace } from '../context/breadcrumb';
+import type { TouchedFromChatLog } from '../context/breadcrumb';
 
 export { ExecutionTierId };
 
@@ -44,7 +44,7 @@ export interface ExecutionTier {
    *
    * Side-effect only; caller's responsibility to log failures.
    */
-  breadcrumb(state: ExecutionTierState, touched?: TouchedFromTrace): Promise<void>;
+  breadcrumb(state: ExecutionTierState, touched?: TouchedFromChatLog): Promise<void>;
 
   /**
    * Append a boundary (§4.2 Boundary / primary Collapse trigger). Some

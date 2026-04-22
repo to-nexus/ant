@@ -300,7 +300,7 @@ export function createFeaturesRoutes(deps: {
 
         // Collapse feature.jsonl lines tied to the invalidated jobIds so future
         // prompts (resolve → plan/direct) no longer inject their user_turn /
-        // user_turn_meta / breadcrumb lines as context. trace.jsonl is left
+        // user_turn_meta / breadcrumb lines as context. chat.jsonl is left
         // intact so the UI chat / activity view retains the history of the
         // deleted job — matching the §16.2 "Chat Clear vs Job Clear" split.
         try {

@@ -10,7 +10,7 @@ import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent, ChatSession } from '../chat/types';
 import type { CommandExecutionPhase } from './types';
 import { logger } from '../../utils/logger';
-import { getTraceAppender } from './traceAppenderRegistry';
+import { getChatLogAppender } from './chatLogAppenderRegistry';
 
 export class CommandExecutionHandler {
   private activeCommands: Map<string, number> = new Map();  // command -> contentIndex
@@ -39,27 +39,20 @@ export class CommandExecutionHandler {
   /**
    * Complete command execution (final state, collapsible).
    *
-   * Emits BOTH the legacy `run_command` line (for readers that predate
-   * the chat SSOT collapse) AND a `chat_status` line carrying
-   * `statusType='command'` + `{command, exitCode, output}` metadata. The
-   * latter replays through `generateChatStatusContent` to produce the
-   * same TerminalCard the live path broadcast. The legacy emission is
-   * removed in a follow-up commit once no feature depends on it.
+   * Emits a `chat_status` line carrying `statusType='command'` +
+   * `{command, exitCode, output}` metadata. Replay reproduces the
+   * TerminalCard through `generateChatStatusContent('command', metadata)`
+   * — the same function the live path used.
    */
   async completeCommand(command: string, output: string, exitCode: number): Promise<void> {
     await this.addCommandExecution(command, 'complete', { output, exitCode });
 
-    const appender = getTraceAppender();
+    const appender = getChatLogAppender();
     if (appender) {
-      const truncatedOutput = truncateOutput(output);
-      appender.appendRunCommand(command, {
-        stdout: truncatedOutput,
-        exitCode,
-      });
       appender.appendChatStatus('command', {
         command,
         exitCode,
-        output: truncatedOutput,
+        output: truncateOutput(output),
       });
     }
   }
@@ -229,7 +222,7 @@ export class CommandExecutionHandler {
 }
 
 /**
- * Cap stdout captured in trace.jsonl so a noisy command does not inflate the
+ * Cap stdout captured in chat.jsonl so a noisy command does not inflate the
  * UI log. UI tail rendering only shows first/last few KB; anything longer is
  * not actionable context.
  */

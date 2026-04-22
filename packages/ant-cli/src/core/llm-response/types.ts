@@ -13,7 +13,7 @@ export interface LLMResponseEnv {
   projectId: string;
   featureName: string;
   jobId: string;
-  /** jobType — used by the trace.jsonl appender to tag every emitted line */
+  /** jobType — used by the chat.jsonl appender to tag every emitted line */
   jobType?: import('@ant/shared').LogJobType;
   /** agent name — passed through to the FileSessionAdapter for trace writes */
   agent?: string;

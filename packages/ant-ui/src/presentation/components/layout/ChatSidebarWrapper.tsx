@@ -52,7 +52,7 @@ export function ChatSidebarWrapper({
     kanbanData?.interruption?.canResume === true &&
     kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;
 
-  // Sweep = trace.jsonl collapse only. Chat view gets cleaned up but the
+  // Sweep = chat.jsonl collapse only. Chat view gets cleaned up but the
   // LLM retains conversation context (feature.jsonl intact). Gated only by
   // "job not currently streaming" to avoid clearing mid-response.
   const handleSweepChat = async () => {
@@ -85,7 +85,7 @@ export function ChatSidebarWrapper({
     );
   };
 
-  // Reset = hard reset (feature.jsonl + trace.jsonl both collapse + boundary).
+  // Reset = hard reset (feature.jsonl + chat.jsonl both collapse + boundary).
   // The next job starts from an empty context. Blocked while any job on this
   // feature is running OR an interrupted job still awaits dismiss/resume.
   const handleResetContext = async () => {
@@ -181,7 +181,7 @@ export function ChatSidebarWrapper({
         ),
         right: (
           <div className="flex items-center gap-1">
-            {/* Sweep: tidy up chat view (trace.jsonl collapse). Context preserved. */}
+            {/* Sweep: tidy up chat view (chat.jsonl collapse). Context preserved. */}
             {canSweep && (
               <button
                 onClick={handleSweepChat}
@@ -194,7 +194,7 @@ export function ChatSidebarWrapper({
               </button>
             )}
 
-            {/* Reset: hard reset (feature.jsonl + trace.jsonl + boundary). */}
+            {/* Reset: hard reset (feature.jsonl + chat.jsonl + boundary). */}
             {selectedFeature && (
               <button
                 onClick={handleResetContext}
