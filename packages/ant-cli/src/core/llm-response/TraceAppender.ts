@@ -1,11 +1,25 @@
 /**
- * TraceAppender — fire-and-forget trace.jsonl writer
+ * TraceAppender — fire-and-forget chat.jsonl writer
  *
- * Session redesign §2.4 / §16.2: trace.jsonl is the UI rendering SSOT for
- * chat history. This helper writes 5 line types (assistant_thinking /
- * tool_call / run_command / assistant_message / job_status) from the worker
- * process, complementing the pre-existing writers (`user_turn` via
- * orchestrator + `file_write` via tool side-effects).
+ * Session redesign §2.4 / §16.2 (updated by "chat SSOT fragmentation purge"):
+ * chat.jsonl is the UI rendering SSOT for chat history. The historical name
+ * was `trace.jsonl`; the writer keeps the `TraceAppender` class name during
+ * the migration (to avoid a flag-day rename) but every new line it emits
+ * lives in `chat.jsonl`.
+ *
+ * Canonical emission path:
+ *   `ChatStatusHandler.showChatStatus(type, metadata)` →
+ *     `appendChatStatus(statusType, metadata)` →
+ *     `chat_status` line in `chat.jsonl`
+ *
+ * Every replay then feeds the persisted `(statusType, metadata)` pair back
+ * into `generateStatusContent` to rebuild the identical `MessageContent`
+ * — there is no "replay-side builder".
+ *
+ * The legacy per-event emitters (`appendToolCall` / `appendFileWrite` /
+ * `appendRunCommand` / `appendJobStatus`) are retained for one migration
+ * step while callers switch to `showChatStatus`; they will be removed in a
+ * follow-up commit.
  *
  * Fire-and-forget: all writes swallow errors through a warn log. The chat
  * rendering path must never block LLM streaming or tool execution.
@@ -18,6 +32,8 @@
 
 import type {
   LogJobType,
+  ChatStatusType,
+  ChatStatusLine,
   TraceThinkingLine,
   TraceToolCallLine,
   TraceRunCommandLine,
@@ -72,6 +88,29 @@ export class TraceAppender {
       ...this.base(),
       type: 'assistant_thinking',
       text,
+    };
+    this.safeAppend(line);
+  }
+
+  /**
+   * Persist a chat status card — the canonical on-disk shape for every
+   * non-structural chat card (read / list / search / file_* / command_* /
+   * mkdir / generic tool / choice cards / ...). Called by
+   * {@link ChatStatusHandler#showChatStatus} immediately after the matching
+   * `MessageContent` is built, so that replay can feed `(statusType,
+   * metadata)` back through `generateStatusContent` to reproduce the same
+   * card content byte-for-byte.
+   */
+  appendChatStatus(
+    statusType: ChatStatusType,
+    metadata?: Record<string, unknown>,
+  ): void {
+    if (!statusType || !this.turnId) return;
+    const line: ChatStatusLine = {
+      ...this.base(),
+      type: 'chat_status',
+      statusType,
+      metadata,
     };
     this.safeAppend(line);
   }
@@ -217,11 +256,12 @@ export class TraceAppender {
       | TraceJobStatusLine
       | TraceChoicePresentedLine
       | TraceChoiceResolvedLine
-      | TraceFileWriteLine,
+      | TraceFileWriteLine
+      | ChatStatusLine,
   ): void {
-    this.session.appendLine('trace', line).catch((err) => {
+    this.session.appendLine('chat', line).catch((err) => {
       logger.warn(
-        `[Trace] appendLine(${line.type}) failed: ${(err as Error)?.message ?? err}`,
+        `[Chat] appendLine(${line.type}) failed: ${(err as Error)?.message ?? err}`,
         { component: 'TraceAppender' },
       );
     });

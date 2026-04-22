@@ -34,6 +34,7 @@
  */
 
 import type { MessageContent } from '../chat/types';
+import { generateChatStatusContent } from './generateStatusContent';
 
 /**
  * Tools whose handlers emit dedicated `ChatStatusType` progress + result
@@ -152,54 +153,70 @@ export function dispatchToolCallToContent(
   }
 
   // Dedicated-status tools — synthesize the "result" card.
+  //
+  // `content` MUST be the same label the live path displayed, so WorkingCard
+  // (which uses `content` as its visible label) doesn't render as an empty
+  // icon. The live path calls `generateChatStatusContent(statusType, md)`;
+  // we call the same function here so replay matches broadcast byte-for-byte.
+  //
+  // NOTE: for post-migration data every dedicated-status tool also has a
+  // companion `chat_status` line (emitted by the tool handler's
+  // `showChatStatus('read'|'listed_files'|…)` call) which supersedes this
+  // branch via the chat_status-first preference in TraceToChatMessages.
+  // This branch remains authoritative only for legacy feature folders
+  // whose chat log predates the SSOT collapse.
   if (toolName === 'read_file') {
     const filePath = typeof argObj.path === 'string' ? argObj.path : '';
+    const metadata = { filePath, error: error ? true : undefined, timestamp: ts };
     return {
       type: 'read',
-      content: '',
-      metadata: { filePath, error: error ? true : undefined, timestamp: ts },
+      content: generateChatStatusContent('read', metadata),
+      metadata,
     };
   }
   if (toolName === 'list_files') {
     const directory = typeof argObj.directory === 'string' ? argObj.directory : '';
     const pattern = typeof argObj.pattern === 'string' ? argObj.pattern : undefined;
+    const metadata = {
+      directory,
+      pattern,
+      error: error ? true : undefined,
+      timestamp: ts,
+    };
     return {
       type: 'listed_files',
-      content: '',
-      metadata: {
-        directory,
-        pattern,
-        error: error ? true : undefined,
-        timestamp: ts,
-      },
+      content: generateChatStatusContent('listed_files', metadata),
+      metadata,
     };
   }
   if (toolName === 'search_code') {
     const pattern = typeof argObj.pattern === 'string' ? argObj.pattern : '';
     const filePattern = typeof argObj.file_pattern === 'string' ? argObj.file_pattern : undefined;
+    const metadata = {
+      pattern,
+      file_pattern: filePattern,
+      error: error ? true : undefined,
+      timestamp: ts,
+    };
     return {
       type: 'searched_code',
-      content: '',
-      metadata: {
-        pattern,
-        file_pattern: filePattern,
-        error: error ? true : undefined,
-        timestamp: ts,
-      },
+      content: generateChatStatusContent('searched_code', metadata),
+      metadata,
     };
   }
   if (toolName === 'search_reference_code') {
     const project = typeof argObj.project === 'string' ? argObj.project : 'reference project';
     const query = typeof argObj.query === 'string' ? argObj.query : '';
+    const metadata = {
+      project,
+      query,
+      error: error ? true : undefined,
+      timestamp: ts,
+    };
     return {
       type: 'searched_reference',
-      content: '',
-      metadata: {
-        project,
-        query,
-        error: error ? true : undefined,
-        timestamp: ts,
-      },
+      content: generateChatStatusContent('searched_reference', metadata),
+      metadata,
     };
   }
 

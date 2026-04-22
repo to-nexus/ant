@@ -1,15 +1,22 @@
 /**
- * TraceToChatMessages — build `ChatMessage[]` from trace.jsonl.
+ * TraceToChatMessages — build `ChatMessage[]` from chat.jsonl (legacy name:
+ * trace.jsonl).
  *
- * Session redesign §16.2: trace.jsonl is the durable SSOT for chat
- * rendering. This adapter rebuilds the legacy `ChatMessage[]` shape the
- * UI expects so `ChatHistory` / `MessageItem` keep working unchanged.
- * breadcrumbs / user_turn_meta are consumed elsewhere (Timeline tab,
- * tier badge) — this adapter only reads trace lines.
+ * Session redesign §16.2 (revised by "chat SSOT fragmentation purge"):
+ * chat.jsonl is the durable SSOT for chat rendering. The canonical on-disk
+ * shape is the `chat_status` line; every non-structural chat card replays
+ * by feeding `(statusType, metadata)` back through `generateStatusContent`
+ * — the same function the live path uses. Legacy line kinds
+ * (`tool_call` / `file_write` / `run_command` / `job_status`) are still
+ * handled here for feature folders created before the SSOT collapse; they
+ * will be removed in a follow-up commit once no recent data contains them.
+ *
+ * breadcrumbs / user_turn_meta are consumed elsewhere (Timeline tab, tier
+ * badge) — this adapter only reads chat log lines.
  *
  * Shape contract:
  * - One `role='user'` ChatMessage per distinct turnId (populated from the
- *   trace `user_turn` line).
+ *   `user_turn` line).
  * - One `role='assistant'` ChatMessage per distinct turnId (populated from
  *   all non-user events in that turn, in chronological order).
  * - Empty / untagged events (no turnId) go to a synthetic `__untagged__`
@@ -25,13 +32,28 @@ import type {
   TraceLine,
   TraceChoicePresentedLine,
   TraceChoiceResolvedLine,
+  ChatStatusLine,
+  ChatStatusType,
 } from '@ant/shared';
 import type { ChatMessage, MessageContent } from './types';
 import { dispatchToolCallToContent } from '../../../../../core/llm-response/toolDispatch';
+import { generateChatStatusContent } from '../../../../../core/llm-response/generateStatusContent';
 
 export interface TraceInput {
   traceLines: TraceLine[];
 }
+
+/**
+ * Lookup from a tool name (persisted in legacy `tool_call` lines) to the
+ * `chat_status.statusType` its handler emits today. Used to dedup when
+ * both representations coexist in the same turn bucket.
+ */
+const TOOL_TO_DEDICATED_STATUS_TYPE: Record<string, ChatStatusType> = {
+  read_file: 'read',
+  list_files: 'listed_files',
+  search_code: 'searched_code',
+  search_reference_code: 'searched_reference',
+};
 
 /**
  * Convert trace lines to a ChatMessage[] view.
@@ -138,8 +160,41 @@ function toAssistantMessage(
   let lastThinkingIdx: number | null = null;
   let assistantId = `assistant-${bucket.turnId}`;
 
+  // Chat SSOT: `showChatStatus` also emits `choice_presented` during the
+  // migration so choice_resolved pairing keeps working. When BOTH a
+  // chat_status('triage_choice'|'choice_card') AND a matching
+  // choice_presented line are present for the same card, prefer the
+  // choice_presented rendering path (it already overlays resolution).
+  // Detect this by collecting cardIds seen in choice_presented lines.
+  const choicePresentedCardIds = new Set<string>();
+  // Dedicated-status tools (`read_file` / `list_files` / `search_code` /
+  // `search_reference_code`) now emit a `chat_status` line via
+  // `showChatStatus('read'|'listed_files'|…)` in their handler. The
+  // companion `tool_call` line still exists in the log (LLMEventHandler
+  // appends it tool-agnostically) but its rendering would duplicate the
+  // chat_status card. Collect the statusTypes we have seen in
+  // `chat_status` so the `tool_call` case below can skip them.
+  const chatStatusTypesSeen = new Set<string>();
+  for (const ev of bucket.events) {
+    if (ev.type === 'choice_presented') choicePresentedCardIds.add(ev.cardId);
+    if (ev.type === 'chat_status') chatStatusTypesSeen.add(ev.statusType);
+  }
+
   for (const ev of bucket.events) {
     switch (ev.type) {
+      case 'chat_status': {
+        lastThinkingIdx = null;
+        // Skip choice-card chat_status when a companion choice_presented
+        // line carries the authoritative payload (with resolvedLabel /
+        // choiceSelected overlay) for the same cardId.
+        const cardId = (ev.metadata && typeof ev.metadata.cardId === 'string')
+          ? ev.metadata.cardId
+          : undefined;
+        if (cardId && choicePresentedCardIds.has(cardId)) break;
+        const status = renderChatStatus(ev);
+        if (status) contents.push(status);
+        break;
+      }
       case 'assistant_thinking': {
         // Adjacent thinking lines merge into a single content block so the
         // UI collapses the reasoning the same way live streaming would.
@@ -160,8 +215,15 @@ function toAssistantMessage(
       }
       case 'tool_call': {
         lastThinkingIdx = null;
+        // Post-SSOT dedup: dedicated-status tools now have an authoritative
+        // `chat_status` line (`read` / `listed_files` / `searched_code` /
+        // `searched_reference`). When that line is present in this turn's
+        // bucket, rendering the `tool_call` too would produce a duplicate
+        // card — skip it.
+        const dedupStatusType = TOOL_TO_DEDICATED_STATUS_TYPE[ev.tool];
+        if (dedupStatusType && chatStatusTypesSeen.has(dedupStatusType)) break;
         // SSOT: core/llm-response/toolDispatch.ts decides which tools
-        // materialise a card vs. defer to a companion trace line
+        // materialise a card vs. defer to a companion chat log line
         // (file_write owns file ops; run_command owns TerminalCard).
         const content = dispatchToolCallToContent(ev.tool, ev.args, ev.error, ev.ts);
         if (content) contents.push(content);
@@ -294,6 +356,27 @@ function renderChoiceCard(
   return {
     type,
     content: presented.prompt ?? '',
+    metadata: metadata as MessageContent['metadata'],
+  };
+}
+
+/**
+ * Rebuild a `MessageContent` from a persisted `chat_status` line using
+ * the exact same function the live path used (`generateChatStatusContent`)
+ * so the replayed card body is byte-identical to the broadcast copy.
+ *
+ * The persisted `metadata` is passed through unchanged — WorkingCard /
+ * FileCard / TerminalCard / choice card components read the same keys
+ * they read in live mode (`filePath`, `diffBefore`/`diffAfter`, `command`
+ * + `exitCode`, `pattern`, etc.).
+ */
+function renderChatStatus(ev: ChatStatusLine): MessageContent | null {
+  const statusType = ev.statusType as ChatStatusType;
+  const metadata = { ...(ev.metadata ?? {}), timestamp: ev.ts } as Record<string, unknown>;
+  const content = generateChatStatusContent(statusType, metadata as Record<string, any>);
+  return {
+    type: statusType as MessageContent['type'],
+    content,
     metadata: metadata as MessageContent['metadata'],
   };
 }
