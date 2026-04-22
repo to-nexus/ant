@@ -25,9 +25,9 @@ interface AgentJobToolbarProps {
  *
  *   padding(8) + agent(28) + gap(4) + job(28)
  *   + gap(8) [left↔right gutter]
- *   + battery(28) + gap(4) + more(22)
+ *   + ring(14) + gap(6) + more(22)
  *   + gap(8) [gauge↔send] + send/stop(28) + padding(8)
- *   = 174px (hard minimum)
+ *   = 162px (hard minimum)
  *
  * We start the compact transition at 360px so that text labels disappear
  * well before the layout would otherwise overflow.
@@ -36,7 +36,7 @@ const COMPACT_BREAKPOINT_PX = 360;
 
 /**
  * Minimum width enforced on the toolbar itself (agent icon + job icon + one
- * battery + more + send/stop, in icon-only form). Applied to both the
+ * ring + more + send/stop, in icon-only form). Applied to both the
  * toolbar <div> and the chat-input Unified Frame that wraps it.
  *
  * Any narrower and the agent/job/gauge/send group cannot be drawn without
@@ -71,7 +71,7 @@ export const CHAT_SIDEBAR_STANDARD_WIDTH_PX = 500;
 
 /**
  * Bottom toolbar: agent dropdown, job-type dropdown (with green active dot),
- * token gauge (one battery per active worker, overflow → more-dropdown),
+ * token gauge (one ring per active worker, overflow → more-dropdown),
  * and submit/stop button.
  *
  * Responsive behaviour: when the toolbar's own width drops below
