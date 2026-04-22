@@ -76,12 +76,65 @@ describe('isBareInstallCommand', () => {
     });
 
     it('`pnpm install some-pkg` is not bare (has positional arg)', () => {
-      // Regex anchors on `($|--|-\s)` so a package name after `install` fails.
       expect(isBareInstallCommand('pnpm install react')).toBe(false);
     });
 
     it('`npm install lodash` is not bare', () => {
       expect(isBareInstallCommand('npm install lodash')).toBe(false);
+    });
+
+    /**
+     * Regression guard for the `lime-diving-minty` test-code failure:
+     * `npm install --save-dev <pkg>` was incorrectly classified as bare by
+     * the old `install\s*($|--|-\s)` regex, causing the skip guard to
+     * reject the command. Flagged installs with positional targets must
+     * be recognised as non-bare — the scope of `--save-dev` is dev
+     * dependencies but the *packages being added* are still positional.
+     */
+    it('`npm install --save-dev jest` is not bare (flag + positional)', () => {
+      expect(isBareInstallCommand('npm install --save-dev jest')).toBe(false);
+    });
+
+    it('`npm install --save-dev jest @testing-library/react` is not bare', () => {
+      expect(
+        isBareInstallCommand('npm install --save-dev jest @testing-library/react'),
+      ).toBe(false);
+    });
+
+    it('`npm install -D jest` (short dev flag) is not bare', () => {
+      expect(isBareInstallCommand('npm install -D jest')).toBe(false);
+    });
+
+    it('`pnpm install --save-dev @types/jest` is not bare', () => {
+      expect(isBareInstallCommand('pnpm install --save-dev @types/jest')).toBe(false);
+    });
+
+    it('positional pkg followed by flag is still not bare', () => {
+      expect(isBareInstallCommand('npm install jest --save-dev')).toBe(false);
+    });
+
+    it('install piped into another command still respects positional target', () => {
+      expect(
+        isBareInstallCommand('npm install --save-dev jest | tail -5'),
+      ).toBe(false);
+    });
+  });
+
+  describe('install with flags only (still bare)', () => {
+    it('`npm install --save-dev` (no pkg target) is bare', () => {
+      // No positional argument ⇒ this reduces to "install declared deps,
+      // apply --save-dev scope". Semantics are unusual but the skip
+      // guard is correct to treat it as a candidate.
+      expect(isBareInstallCommand('npm install --save-dev')).toBe(true);
+    });
+
+    it('`npm install --silent` is bare', () => {
+      expect(isBareInstallCommand('npm install --silent')).toBe(true);
+    });
+
+    it('`npm install 2>&1` (stderr redirect only) is bare', () => {
+      // `2>&1` is a shell redirection, not a package argument.
+      expect(isBareInstallCommand('npm install 2>&1')).toBe(true);
     });
   });
 
