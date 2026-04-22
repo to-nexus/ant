@@ -61,12 +61,122 @@ describe('TraceToChatMessages — buildChatMessagesFromTrace', () => {
       { type: 'text', content: 'refactor the auth module' },
     ]);
     const asst = messages[1];
+    // read_file is a dedicated-status tool — toolDispatch SSOT routes
+    // it to the `read` WorkingCard content type instead of a generic
+    // `tool_action`.
     expect(asst.contents.map((c) => c.type)).toEqual([
       'thinking',
-      'tool_action',
+      'read',
       'text',
     ]);
-    expect(asst.contents[1].metadata?.toolName).toBe('read_file');
+    expect(asst.contents[1].metadata?.filePath).toBe('src/auth.ts');
+  });
+
+  it('skips tool_call(run_command) — the companion run_command line owns the TerminalCard', () => {
+    const lines: TraceLine[] = [
+      mkLine({
+        type: 'user_turn',
+        ts: '2026-04-20T00:00:00.000Z',
+        jobId: 'job-1',
+        turnId: 't-rc',
+        jobType: 'code',
+        text: 'run tests',
+        sourceRef: 'feature.jsonl#t-rc',
+      }),
+      mkLine({
+        type: 'tool_call',
+        ts: '2026-04-20T00:00:01.000Z',
+        jobId: 'job-1',
+        turnId: 't-rc',
+        jobType: 'code',
+        tool: 'run_command',
+        args: { command: 'pnpm test' },
+      }),
+      mkLine({
+        type: 'run_command',
+        ts: '2026-04-20T00:00:02.000Z',
+        jobId: 'job-1',
+        turnId: 't-rc',
+        jobType: 'code',
+        cmd: 'pnpm test',
+        exitCode: 0,
+        stdout: 'ok',
+      }),
+    ];
+    const messages = buildChatMessagesFromTrace({ traceLines: lines });
+    const asst = messages[1];
+    // Only one card: the `command` one from the run_command line.
+    // tool_call(run_command) is intentionally skipped to avoid duplication.
+    expect(asst.contents.map((c) => c.type)).toEqual(['command']);
+  });
+
+  it('skips tool_call(edit_file) — the companion file_write line owns the FileCard', () => {
+    const lines: TraceLine[] = [
+      mkLine({
+        type: 'user_turn',
+        ts: '2026-04-20T00:00:00.000Z',
+        jobId: 'job-1',
+        turnId: 't-ef',
+        jobType: 'code',
+        text: 'tweak',
+        sourceRef: 'feature.jsonl#t-ef',
+      }),
+      mkLine({
+        type: 'tool_call',
+        ts: '2026-04-20T00:00:01.000Z',
+        jobId: 'job-1',
+        turnId: 't-ef',
+        jobType: 'code',
+        tool: 'edit_file',
+        args: { path: 'src/x.ts', old_str: 'a', new_str: 'b' },
+      }),
+      mkLine({
+        type: 'file_write',
+        ts: '2026-04-20T00:00:02.000Z',
+        jobId: 'job-1',
+        turnId: 't-ef',
+        jobType: 'code',
+        path: 'src/x.ts',
+        operation: 'update',
+        diffBefore: 'a',
+        diffAfter: 'b',
+      }),
+    ];
+    const messages = buildChatMessagesFromTrace({ traceLines: lines });
+    const asst = messages[1];
+    expect(asst.contents.map((c) => c.type)).toEqual(['file_edit']);
+    expect(asst.contents[0].metadata?.filePath).toBe('src/x.ts');
+    expect(asst.contents[0].metadata?.diffBefore).toBe('a');
+    expect(asst.contents[0].metadata?.diffAfter).toBe('b');
+  });
+
+  it('renders a failure FileCard from tool_call(edit_file) when error is set', () => {
+    const lines: TraceLine[] = [
+      mkLine({
+        type: 'user_turn',
+        ts: '2026-04-20T00:00:00.000Z',
+        jobId: 'job-1',
+        turnId: 't-ff',
+        jobType: 'code',
+        text: 'fail',
+        sourceRef: 'feature.jsonl#t-ff',
+      }),
+      mkLine({
+        type: 'tool_call',
+        ts: '2026-04-20T00:00:01.000Z',
+        jobId: 'job-1',
+        turnId: 't-ff',
+        jobType: 'code',
+        tool: 'edit_file',
+        args: { path: 'src/x.ts', old_str: 'a', new_str: 'b' },
+        error: 'old_str not found',
+      }),
+    ];
+    const messages = buildChatMessagesFromTrace({ traceLines: lines });
+    const asst = messages[1];
+    expect(asst.contents.map((c) => c.type)).toEqual(['file_edit_failed']);
+    expect(asst.contents[0].metadata?.filePath).toBe('src/x.ts');
+    expect(asst.contents[0].metadata?.reason).toBe('old_str not found');
   });
 
   it('merges adjacent thinking lines into a single content block', () => {
@@ -105,7 +215,7 @@ describe('TraceToChatMessages — buildChatMessagesFromTrace', () => {
     expect(asst.contents[0].content).toBe('Step 1 analysis\nStep 2 plan');
   });
 
-  it('maps file_write operations to file_create / file_edit / file_delete', () => {
+  it('maps file_write operations to file_create / file_edit / file_delete with rich payload', () => {
     const base = {
       ts: '2026-04-20T00:00:00.000Z',
       jobId: 'job-1',
@@ -125,6 +235,7 @@ describe('TraceToChatMessages — buildChatMessagesFromTrace', () => {
         ts: '2026-04-20T00:00:01.000Z',
         path: 'src/new.ts',
         operation: 'create',
+        content: 'export const a = 1;\n',
       }),
       mkLine({
         type: 'file_write',
@@ -132,6 +243,8 @@ describe('TraceToChatMessages — buildChatMessagesFromTrace', () => {
         ts: '2026-04-20T00:00:02.000Z',
         path: 'src/old.ts',
         operation: 'update',
+        diffBefore: 'const a = 1;',
+        diffAfter: 'const a = 2;',
       }),
       mkLine({
         type: 'file_write',
@@ -139,6 +252,14 @@ describe('TraceToChatMessages — buildChatMessagesFromTrace', () => {
         ts: '2026-04-20T00:00:03.000Z',
         path: 'src/gone.ts',
         operation: 'delete',
+      }),
+      mkLine({
+        type: 'file_write',
+        ...base,
+        ts: '2026-04-20T00:00:04.000Z',
+        path: 'src/bad.ts',
+        operation: 'create',
+        error: 'disk full',
       }),
     ];
 
@@ -148,12 +269,22 @@ describe('TraceToChatMessages — buildChatMessagesFromTrace', () => {
       'file_create',
       'file_edit',
       'file_delete',
+      'file_create_failed',
     ]);
     expect(asst.contents.map((c) => c.metadata?.filePath)).toEqual([
       'src/new.ts',
       'src/old.ts',
       'src/gone.ts',
+      'src/bad.ts',
     ]);
+    // create surfaces full content
+    expect(asst.contents[0].content).toBe('export const a = 1;\n');
+    // update leaves content empty, surfaces diff via metadata
+    expect(asst.contents[1].content).toBe('');
+    expect(asst.contents[1].metadata?.diffBefore).toBe('const a = 1;');
+    expect(asst.contents[1].metadata?.diffAfter).toBe('const a = 2;');
+    // failed create carries the error in `reason`
+    expect(asst.contents[3].metadata?.reason).toBe('disk full');
   });
 
   it('preserves run_command metadata (command, exitCode, stdout)', () => {

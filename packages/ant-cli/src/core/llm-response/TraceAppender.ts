@@ -25,6 +25,7 @@ import type {
   TraceJobStatusLine,
   TraceChoicePresentedLine,
   TraceChoiceResolvedLine,
+  TraceFileWriteLine,
 } from '@ant/shared';
 import { FileSessionAdapter } from '../../periphery/adapters/session/FileSessionAdapter';
 import { logger } from '../../utils/logger';
@@ -107,6 +108,40 @@ export class TraceAppender {
     this.safeAppend(line);
   }
 
+  /**
+   * Emit a `file_write` trace line mirroring a ChatAPI file-op completion.
+   *
+   * Callers pass the same payload they gave to `FileOperationHandler`:
+   * - `operation='create'` → `{ content }` (or `{ error }` on failure)
+   * - `operation='update'` → `{ diffBefore, diffAfter }` (or `{ error }`)
+   * - `operation='delete'` → `{ content? }`
+   *
+   * Fire-and-forget. Trace writes must never block chat streaming.
+   */
+  appendFileWrite(
+    operation: 'create' | 'update' | 'delete',
+    filePath: string,
+    payload: {
+      content?: string;
+      diffBefore?: string;
+      diffAfter?: string;
+      error?: string;
+    } = {},
+  ): void {
+    if (!filePath || !this.turnId) return;
+    const line: TraceFileWriteLine = {
+      ...this.base(),
+      type: 'file_write',
+      path: filePath,
+      operation,
+      content: payload.content,
+      diffBefore: payload.diffBefore,
+      diffAfter: payload.diffAfter,
+      error: payload.error,
+    };
+    this.safeAppend(line);
+  }
+
   appendAssistantMessage(text: string): void {
     if (!text || !this.turnId) return;
     const line: TraceAssistantMessageLine = {
@@ -181,7 +216,8 @@ export class TraceAppender {
       | TraceAssistantMessageLine
       | TraceJobStatusLine
       | TraceChoicePresentedLine
-      | TraceChoiceResolvedLine,
+      | TraceChoiceResolvedLine
+      | TraceFileWriteLine,
   ): void {
     this.session.appendLine('trace', line).catch((err) => {
       logger.warn(
