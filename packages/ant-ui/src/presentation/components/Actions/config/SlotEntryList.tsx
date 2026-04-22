@@ -2,12 +2,18 @@ import { useTranslation } from 'react-i18next';
 import { Plus, Upload, FolderOpen } from 'lucide-react';
 import { getFileDescription, getDirDescription } from '@ant/shared';
 import { FileCard } from './FileCard';
-import type { SlotEntry } from './types';
+import type { SlotEntry, SlotSubgroup, SlotWarning } from './types';
 
 interface SlotEntryListProps {
   entries: SlotEntry[];
   selected: Set<string>;
   onToggle: (path: string) => void;
+  /**
+   * Batch-toggle for dir-level cards (ui-source `ant` / `handoff`):
+   * selects all supplied file paths when none are selected, otherwise
+   * deselects them all. Falls back to per-file `onToggle` when absent.
+   */
+  onToggleMany?: (paths: string[]) => void;
   onHighlightDir: (dir: string) => void;
   onCreateIntent: (intentId: string) => void;
   onUploadDir?: (dir: string) => void;
@@ -18,9 +24,112 @@ interface SlotEntryListProps {
   lang: 'en' | 'ko';
 }
 
-export function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onCreateIntent, onUploadDir, onToggleSpotlight, onViewFile, spotlightPath, showEmptyActions = true, lang }: SlotEntryListProps) {
+export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHighlightDir, onCreateIntent, onUploadDir, onToggleSpotlight, onViewFile, spotlightPath, showEmptyActions = true, lang }: SlotEntryListProps) {
   const { t } = useTranslation('actions');
   const showSlotLabels = entries.length > 1;
+
+  // ── ui-source subgroup renderers (captured closures) ────────────────────
+  type SubgroupCtx = { isLocked: boolean; lockedBySlot?: boolean };
+
+  const renderFigmaSubgroup = (sg: SlotSubgroup, ctx: SubgroupCtx): React.ReactNode[] => {
+    if (!sg.hasFiles) {
+      return [(
+        <FileCard
+          key={`${sg.dir}-empty`}
+          name={sg.humanLabel?.[lang] || sg.label[lang] || sg.label.en}
+          path={`${sg.dir}/`}
+          empty
+          emptyStyle="gray"
+          disabled={ctx.isLocked}
+          lang={lang}
+        />
+      )];
+    }
+    return sg.files.map(f => (
+      <FileCard
+        key={f.path}
+        name={f.name}
+        path={f.path}
+        warnings={f.warnings}
+        description={getFileDescription(f.name, sg.dir)}
+        selected={!ctx.isLocked && f.warnings.length === 0 && selected.has(f.path)}
+        disabled={ctx.isLocked}
+        locked={ctx.lockedBySlot}
+        onToggle={ctx.isLocked ? undefined : () => onToggle(f.path)}
+        onViewFile={onViewFile ? () => onViewFile(f.path) : undefined}
+        spotlight={{
+          active: spotlightPath === f.path,
+          onClick: () => onToggleSpotlight('file', f.path),
+          title: t('emptySlot.viewInExplorer'),
+        }}
+        lang={lang}
+      />
+    ));
+  };
+
+  const renderDirSubgroup = (sg: SlotSubgroup, ctx: SubgroupCtx): React.ReactNode[] => {
+    const name = sg.humanLabel?.[lang] || sg.humanLabel?.en || sg.label[lang] || sg.label.en;
+    const dirDesc = getDirDescription(sg.dir)?.description ?? null;
+
+    if (!sg.hasFiles) {
+      return [(
+        <FileCard
+          key={`${sg.dir}-empty`}
+          name={name}
+          path={`${sg.dir}/`}
+          description={dirDesc}
+          icon={<FolderOpen className="w-4 h-4 text-gray-400 shrink-0" />}
+          empty
+          emptyStyle="gray"
+          disabled={ctx.isLocked}
+          spotlight={{
+            active: spotlightPath === sg.dir,
+            onClick: () => onToggleSpotlight('dir', sg.dir),
+            title: t('emptySlot.viewInExplorer'),
+          }}
+          lang={lang}
+        />
+      )];
+    }
+
+    // Dir-level aggregation: valid files determine selection; warnings from all
+    // files surface on the single card so the user sees why a bundle is unusable.
+    const filePaths = sg.files.map(f => f.path);
+    const validFilePaths = sg.files.filter(f => f.warnings.length === 0).map(f => f.path);
+    const togglePaths = validFilePaths.length > 0 ? validFilePaths : filePaths;
+    const allSelected = togglePaths.length > 0 && togglePaths.every(p => selected.has(p));
+    const aggregatedWarnings: SlotWarning[] = sg.files.flatMap(f => f.warnings);
+    const firstFilePath = sg.files[0]?.path;
+
+    const handleToggle = ctx.isLocked
+      ? undefined
+      : () => {
+        if (onToggleMany) onToggleMany(togglePaths);
+        else togglePaths.forEach(p => onToggle(p));
+      };
+
+    return [(
+      <FileCard
+        key={`${sg.dir}-dir`}
+        name={name}
+        path={`${sg.dir}/ (${sg.files.length})`}
+        warnings={aggregatedWarnings}
+        description={dirDesc}
+        icon={<FolderOpen className={`w-4 h-4 ${allSelected && !ctx.isLocked ? 'text-emerald-500' : 'text-gray-400'} shrink-0`} />}
+        selected={!ctx.isLocked && aggregatedWarnings.length === 0 && allSelected}
+        disabled={ctx.isLocked}
+        locked={ctx.lockedBySlot}
+        onToggle={handleToggle}
+        onViewFile={onViewFile && firstFilePath ? () => onViewFile(firstFilePath) : undefined}
+        spotlight={{
+          active: spotlightPath === sg.dir,
+          onClick: () => onToggleSpotlight('dir', sg.dir),
+          title: t('emptySlot.viewInExplorer'),
+        }}
+        lang={lang}
+      />
+    )];
+  };
 
   return (
     <div className="space-y-1.5">
@@ -51,62 +160,30 @@ export function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onC
         }
 
         // ── UI Source slot: hard-exclusive between three subgroups ──
+        // Rendering contract:
+        //   - `figma` is rendered file-level (the single figma.json reference carries
+        //     file-scoped warnings — URL unset, MCP disconnected — that only make sense
+        //     per file).
+        //   - `ant` and `handoff` are rendered dir-level (one card per subgroup): the
+        //     ant bundle is a conceptual trio (tokens/assets/spec) and handoff is a
+        //     free-form bundle; enumerating individual files adds no useful affordance.
+        //   - No subgroup header: each card's name + info tooltip already explains the
+        //     source, and reducing chrome keeps the slot compact.
         if (entry.def.type === 'ui-source' && entry.subgroups) {
-          // Determine which subgroup currently owns a selection (first wins —
-          // BE `validateUiSourceExclusivity` guarantees there is at most one).
+          // First subgroup owning any selection wins; BE `validateUiSourceExclusivity`
+          // guarantees mutual exclusivity so the "first" heuristic is sufficient.
           const activeSubgroupId = entry.subgroups.find(sg =>
             sg.files.some(f => selected.has(f.path)),
           )?.id;
 
-          const groupBlocks = entry.subgroups.map(sg => {
+          const cards = entry.subgroups.flatMap(sg => {
             const isLocked = activeSubgroupId !== undefined && activeSubgroupId !== sg.id;
-            const header = (
-              <div key={`${entry.def.path}-${sg.id}-header`} className="flex items-center gap-1.5 pt-1 first:pt-0">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  {sg.humanLabel?.[lang] || sg.humanLabel?.en || sg.label[lang] || sg.label.en}
-                </span>
-              </div>
-            );
-
-            if (!sg.hasFiles) {
-              return [header, (
-                <FileCard
-                  key={`${entry.def.path}-${sg.id}-empty`}
-                  name={sg.humanLabel?.[lang] || sg.label[lang] || sg.label.en}
-                  path={`${sg.dir}/`}
-                  empty
-                  emptyStyle="gray"
-                  disabled={isLocked}
-                  lang={lang}
-                />
-              )];
-            }
-
-            const cards = sg.files.map(f => (
-              <FileCard
-                key={f.path}
-                name={f.name}
-                path={f.path}
-                warnings={f.warnings}
-                description={getFileDescription(f.name, sg.dir)}
-                selected={!isLocked && f.warnings.length === 0 && selected.has(f.path)}
-                disabled={isLocked}
-                locked={entry.def.locked}
-                onToggle={isLocked ? undefined : () => onToggle(f.path)}
-                onViewFile={onViewFile ? () => onViewFile(f.path) : undefined}
-                spotlight={{
-                  active: spotlightPath === f.path,
-                  onClick: () => onToggleSpotlight('file', f.path),
-                  title: t('emptySlot.viewInExplorer'),
-                }}
-                lang={lang}
-              />
-            ));
-            return [header, ...cards];
+            return sg.id === 'figma'
+              ? renderFigmaSubgroup(sg, { isLocked, lockedBySlot: entry.def.locked })
+              : renderDirSubgroup(sg, { isLocked, lockedBySlot: entry.def.locked });
           });
 
-          const flat = groupBlocks.flat();
-          return slotLabel ? [slotLabel, ...flat] : flat;
+          return slotLabel ? [slotLabel, ...cards] : cards;
         }
 
         if (!entry.hasFiles) {
