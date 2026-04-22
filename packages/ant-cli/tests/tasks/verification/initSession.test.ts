@@ -88,7 +88,6 @@ describe('verification.plan.initSession', () => {
     const partial = VerificationSession.rehydrate({
       required: [],
       passed: [],
-      attemptedThisCycle: [],
       attempts: 3,
       planHistoryHashes: [],
     });

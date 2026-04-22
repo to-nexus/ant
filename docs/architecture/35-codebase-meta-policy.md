@@ -79,14 +79,18 @@ SSOT 는 setup 이 찍고, 나머지는 읽기만 한다. "운영 중 변경" �
 
 ### 에이전트 디스패치
 
-ArtifactPipeline 은 `codebase/ANT.md` 파일의 존재를 감지하여 다음 템플릿 변수를 세팅한다:
+`loadAntrules(featureRoot)` (`core/artifact/antrules.ts`) 가 단일 필드 `antrulesContent: string | undefined` 를 반환한다:
 
-- `hasAntMd: boolean`
-- `antMdContent: string | undefined` (1500자 초과 시 truncate)
+- `undefined` — 파일 없음 / 읽기 실패 / trim 후 빈 문자열
+- 비어있지 않은 문자열 — 컨텐츠 (1500자 초과 시 truncate + `read_file` 포인터 footer)
 
-공통 partial `jobs/code/base/injections/ant-md.md` 가 `hasAntMd` 를 gate 로 내용을 렌더한다. plan / execute 의 기본 base 템플릿 및 모든 variant (verification · error · test-code · feature · ui · design-system · integration) 가 이 partial 을 include 하므로 주입은 **매번** 일어난다.
+공통 partial `jobs/code/base/injections/ant-md.md` 가 `{{#if antrulesContent}}` 로 gate 하여 내용을 렌더한다. plan / execute 의 기본 base 템플릿 및 모든 variant (verification · error · test-code · feature · ui · design-system · integration) 가 이 partial 을 include 하므로 주입은 **매번** 일어난다.
 
 partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 하다고 판단하면 `read_file codebase/ANT.md` 로 자율 조회할 수 있다. 즉 "매 프롬프트 주입 + 필요 시 자율 read" 의 이중 전달.
+
+### 호출 경로 파편화 방지
+
+각 plan hook (generic / verification / error) 이 개별적으로 `loadAntrules` 를 호출하면 hook 을 추가할 때마다 주입을 잊을 위험이 생긴다. `PlanPromptCtx.antrulesContent` 에 phase layer (`buildPlanPrompt` in `planGeneration.ts`) 가 미리 담아 넘기고, 모든 hook 은 `ctx.antrulesContent` 를 소비할 뿐이다. Execute 쪽도 `buildMessages.ts` 한 지점에서만 `loadAntrules` 를 호출 — 호출 경로는 plan 1곳, execute 1곳.
 
 ## 3. 실무 가이드라인
 

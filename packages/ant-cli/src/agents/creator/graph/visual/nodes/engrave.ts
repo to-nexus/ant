@@ -8,13 +8,12 @@
  */
 
 import { VisualGraphState, SvgSketch } from '../types.js';
-import { accumulateTokenUsage, beginNodePhase } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 
 export async function engraveNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
-  beginNodePhase(state as any, 'engrave', 'Engrave');
   const phaseStart = Date.now();
 
   console.log('\n✒️ [Visual:Engrave] Generating SVG code...');

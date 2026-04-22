@@ -19,6 +19,7 @@ import { routeAfterExecute } from '../routers/executeRouter';
 import { routeAfterPlan } from '../routers/planRouter';
 import { routeAfterTool } from '../routers/toolRouter';
 import { workerCheckTaskStatus } from '../nodes/checkTaskStatus/workerIndex';
+import { withPhaseTracking } from '../../../../common/graph/llmHelpers';
 import type { WorkerGraphBuilder } from './types';
 
 /**
@@ -46,8 +47,8 @@ function buildWorkerSubgraph() {
   const graph = new StateGraph(CodeWorkerSubgraphAnnotation);
 
   // Register nodes
-  graph.addNode('plan', plan as any);
-  graph.addNode('execute', execute as any);
+  graph.addNode('plan', withPhaseTracking('plan', plan) as any);
+  graph.addNode('execute', withPhaseTracking('execute', execute) as any);
   graph.addNode('tool', tool as any);
   graph.addNode('checkTaskStatus', workerCheckTaskStatus as any);
   graph.addNode('learn', workerLearn as any);

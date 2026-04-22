@@ -23,7 +23,7 @@ import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
  * cycles.
  */
 export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
-  const { state, task, projectCodeContext, violationsText, options } = ctx;
+  const { state, task, projectCodeContext, violationsText, options, antrulesContent } = ctx;
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) {
     throw new Error('[Plan] PromptBuilder not available');
@@ -69,6 +69,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     hasLanguageHints: !!languageHints,
     packageManager,
     hasPackageManager: !!packageManager,
+    antrulesContent,
     resolvedAction: state.resolvedAction,
   });
 

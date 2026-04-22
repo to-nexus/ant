@@ -23,6 +23,7 @@ import { learn } from '../nodes/learn';
 import type { WorkerGraphBuilder } from '../../../../common/graph/parallelTypes';
 import { routeAfterDocGen } from '../routers/docGenRouter';
 import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
+import { withPhaseTracking } from '../../../../common/graph/llmHelpers';
 import { designDirOf } from '@ant/shared';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
@@ -233,8 +234,8 @@ function buildDesignWorkerSubgraph(_includeInstallValidate: boolean) {
   const graph = new StateGraph(DesignWorkerSubgraphAnnotation);
 
   // Register nodes
-  graph.addNode('plan', plan as any);
-  graph.addNode('docGen', docGen as any);
+  graph.addNode('plan', withPhaseTracking('plan', plan) as any);
+  graph.addNode('docGen', withPhaseTracking('docGen', docGen) as any);
   graph.addNode('tool', tool as any);
   graph.addNode('checkTaskStatus', workerCheckTaskStatus as any);
   graph.addNode('learn', workerLearn as any);

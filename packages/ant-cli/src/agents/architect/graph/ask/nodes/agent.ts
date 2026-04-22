@@ -13,7 +13,7 @@ import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
 import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
 import { buildAssistantMessage } from '../../../../common/tool/messageBuilder';
-import { accumulateTokenUsage, beginNodePhase } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { formatWorkspaceState } from '../../../../common/graph/nodes/triage/workspaceAnalyzer.js';
 import { AgentRegistry } from '../../../../common/graph/nodes/triage/AgentRegistry.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
@@ -53,8 +53,6 @@ async function buildSystemPrompt(state: AskGraphState): Promise<string> {
  * Uses Anthropic native format (same as Code Job)
  */
 export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphState>> {
-  beginNodePhase(state as any, 'ask', 'Ask');
-
   if (DEBUG) {
     console.log('\n🤖 [Agent] Processing...');
     console.log(`   Question: ${state.question.substring(0, 50)}...`);

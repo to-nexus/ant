@@ -526,7 +526,6 @@ describe('hooks/orchestrator', () => {
     orchHook.restoreIntoWorkerState(ws, {
       required: ['build', 'typecheck'],
       passed: ['typecheck'],
-      attemptedThisCycle: [],
       attempts: 1,
       planHistoryHashes: [],
     });

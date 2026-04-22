@@ -48,7 +48,6 @@ import {
 import { runPlanToolLoopPhase } from './parts/planLLM';
 import { maybeApplyPlanHistory } from './parts/planHistory';
 import { runPlanRAG } from './parts/rag';
-import { beginNodePhase } from '../../../../../common/graph/llmHelpers';
 import { normalizePlanForHash } from '../../tasks/verification/model/planHash';
 import { isVerificationTask } from '../../tasks/verification';
 import { isErrorTask } from '../../tasks/error';
@@ -316,8 +315,6 @@ async function runMainPlanLLM(
  * Main plan orchestrator. See module header for the phase ordering.
  */
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
-  beginNodePhase(state as any, 'plan', 'Plan');
-
   state.recursionCount = (state.recursionCount || 0) + 1;
 
   // Verification scenario harness — no-op in production.

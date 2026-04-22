@@ -4,8 +4,10 @@
  * Covers verification scenario matrix entries:
  *   - C14: verification fresh entry initialises `state.verification`
  *          (VerificationSession) via the plan hook.
- *   - C15: retry entry clears per-cycle `attemptedThisCycle` while
- *          preserving already-passed gates and the required set.
+ *   - C15: retry entry preserves already-passed gates and the required
+ *          set while bumping `session.attempts()`. The retired
+ *          `attemptedThisCycle` field is no longer a concern — `passed`
+ *          is the single source for every command-policy guard.
  *
  * The dispatcher is a pure state transformer for these branches; this suite
  * exercises it directly without the full LangGraph harness.

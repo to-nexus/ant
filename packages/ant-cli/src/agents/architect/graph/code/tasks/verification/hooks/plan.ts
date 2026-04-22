@@ -47,7 +47,6 @@ import {
 } from '../model/configSnapshot';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
 import { VerificationTerminalError } from '../model/errors';
-import { loadAntMd } from '../../../../../../../core/artifact/antMd';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Hook implementations
@@ -187,7 +186,7 @@ function renderSessionSummary(
  *     session already considers passed.
  */
 export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
-  const { state, task, projectCodeContext, violationsText, options } = ctx;
+  const { state, task, projectCodeContext, violationsText, options, antrulesContent } = ctx;
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) {
     throw new Error('[Plan] PromptBuilder not available');
@@ -262,12 +261,6 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     taskTechTiers,
   );
 
-  // codebase/ANT.md — project-wide ant-agent settings (export style, test
-  // setup, naming, ...). Loaded every verification cycle so the partial
-  // `jobs/code/base/injections/ant-md` included from the variant base
-  // template can gate-render the content.
-  const antMd = loadAntMd(state.context?.featurePath);
-
   const body = await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
     taskId: task.id,
     taskName: task.name,
@@ -290,8 +283,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     cachedPassedSteps,
     sessionSummary,
     hasSessionSummary: !!sessionSummary,
-    hasAntMd: antMd.has,
-    antMdContent: antMd.content,
+    antrulesContent,
     resolvedAction: state.resolvedAction,
   });
 

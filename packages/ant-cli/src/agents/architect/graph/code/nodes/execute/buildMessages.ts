@@ -34,7 +34,7 @@ import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/Cach
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { formatGitDiffForPrompt } from "../../../../../../core/codebase/GitDiffSummary";
 import { hooksIfActive } from "../../tasks/_shared/registry";
-import { loadAntMd } from "../../../../../../core/artifact/antMd";
+import { loadAntrules } from "../../../../../../core/artifact/antrules";
 
 const DEFAULT_EXECUTE_TEMPLATES = {
   base: 'jobs/code/nodes/execute/variants/default/base',
@@ -352,15 +352,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // `Session.dependencyStatus()`; doc / explain opt out (see
       // `observeMissingDepsForTask`).
       hasMissingDependency: await observeMissingDepsForTask(state),
-      // codebase/ANT.md — project-wide ant-agent settings. Loaded on every
-      // execute invocation so the partial
+      // codebase/ANT.md — project-wide ant-agent settings. Loaded on
+      // every execute invocation so the partial
       // `jobs/code/base/injections/ant-md` included from every execute
-      // variant's base template can gate-render. See
-      // `docs/architecture/35-codebase-meta-policy.md`.
-      ...(() => {
-        const antMd = loadAntMd(state.context?.featurePath);
-        return { hasAntMd: antMd.has, antMdContent: antMd.content };
-      })(),
+      // variant's base template can gate-render via `{{#if antrulesContent}}`.
+      // See `docs/architecture/35-codebase-meta-policy.md`.
+      antrulesContent: loadAntrules(state.context?.featurePath),
       // Task-specific vars (e.g. error's remediationMode{Upstream,Refactor}).
       // Placed last so the hook's keys override generic defaults if ever
       // required; today error is the sole publisher and it only adds keys.

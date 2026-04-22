@@ -12,7 +12,7 @@ import { Annotation } from '@langchain/langgraph';
 import type { StateDefinition, StateType } from '@langchain/langgraph';
 import type { TokenUsage } from './llmHelpers';
 import type { TriageResult, WorkspaceState } from './nodes/triage/types';
-import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata } from '@ant/shared';
+import type { ResolvedActionContext, ResolvedArtifact, ActionMetadata, PhaseTokenUsage } from '@ant/shared';
 import type { Conversations } from './conversations';
 import { conversationsReducer } from './conversations';
 
@@ -26,6 +26,13 @@ export const ResolvableFields = {
   deps: Annotation<Record<string, any> | undefined>,
   _httpJobId: Annotation<string | undefined>,
   tokenUsage: Annotation<TokenUsage | undefined>,
+  /**
+   * Latest-LLM-call snapshot for the currently-running graph node.
+   * Seeded by `withPhaseTracking()` at graph wiring, overwritten by
+   * `accumulateTokenUsage()`, broadcast by the same to the chat-input
+   * token gauge. See docs/architecture/13-token-usage-tracking.md.
+   */
+  currentPhaseTokenUsage: Annotation<PhaseTokenUsage | undefined>,
   _uiLocale: Annotation<string | undefined>,
   _phaseTimings: Annotation<Record<string, number> | undefined>,
   actionMetadata: Annotation<ActionMetadata | undefined>,
