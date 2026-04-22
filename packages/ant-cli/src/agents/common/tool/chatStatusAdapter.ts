@@ -78,9 +78,9 @@ export function createChatStatusReporter(): ChatStatusReporter {
       const client = await getClient();
       await client.streamCommandOutput(command, output);
     },
-    async commandComplete(command, success, exitCode, output, mergeIndex) {
+    async commandComplete(command, success, exitCode, output) {
       const client = await getClient();
-      await client.commandComplete(command, success, exitCode, output, mergeIndex);
+      await client.commandComplete(command, success, exitCode, output);
     },
 
     async finalizeMessage() {

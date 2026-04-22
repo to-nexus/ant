@@ -46,7 +46,21 @@ export interface ChatStatusReporter {
    * before broadcasting to keep Redis pub/sub payloads small.
    */
   streamCommandOutput(command: string, output: string): Promise<void>;
-  commandComplete(command: string, success: boolean, exitCode: number, output: string, mergeIndex: number | undefined): Promise<void>;
+  /**
+   * Mark the running command complete and capture its terminal output.
+   *
+   * `success` is retained for historical call-site ergonomics but carries
+   * no information the other fields do not already encode; implementations
+   * ignore it. The `mergeIndex` that prior versions used to target a
+   * specific content slot was never consumed by the backend and is
+   * removed.
+   */
+  commandComplete(
+    command: string,
+    success: boolean,
+    exitCode: number,
+    output: string,
+  ): Promise<void>;
 
   finalizeMessage(): Promise<void>;
 }
