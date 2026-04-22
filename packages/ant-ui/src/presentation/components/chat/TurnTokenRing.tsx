@@ -2,28 +2,39 @@ import { useMemo } from 'react';
 import { CONTEXT_WINDOW_MAX_TOKENS, type PhaseTokenUsage } from '@ant/shared';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
-export interface BatteryGaugeProps {
-  /** Phase snapshot rendered as a single battery. */
+export interface TokenRingProps {
+  /** Phase snapshot rendered as a single ring. */
   phase: PhaseTokenUsage;
   /**
-   * When set, the Tooltip is rendered without its own trigger and the battery
+   * When set, the Tooltip is rendered without its own trigger and the ring
    * is drawn inline. Used by `TurnTokenGauge`'s more-dropdown where the outer
    * list row handles click-to-open semantics for the nested tooltip.
    */
   variant?: 'standalone' | 'in-list';
 }
 
+// ── Ring geometry ─────────────────────────────────────────────────────────
+// Donut shape: empty track + clockwise fill starting at 12 o'clock.
+// A ring avoids the "full = good" cue a battery icon carries; here a full
+// ring means the context window is nearly saturated (i.e. bad).
+const SIZE = 14;           // overall pixel box
+const STROKE_WIDTH = 3;    // ring thickness (reads as a donut, not a circle)
+const RADIUS = (SIZE - STROKE_WIDTH) / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
 /**
- * Phone-battery pictogram representing "context fullness of the latest LLM
- * call" for a single graph node / worker. Two stacked segments inside the body
- * show the input / output split at a glance; click opens a tooltip with the
- * precise numbers.
+ * Compact context-fullness ring for a single graph node / worker. Two arcs
+ * (input + output) together form the filled portion, drawn clockwise from
+ * 12 o'clock over an empty track. Click opens a tooltip with precise numbers.
  */
-export function BatteryGauge({ phase, variant = 'standalone' }: BatteryGaugeProps) {
+export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
   const view = useMemo(() => buildView(phase), [phase]);
   if (!view) return null;
 
-  const battery = (
+  const inputLen = (view.inputPct / 100) * CIRCUMFERENCE;
+  const outputLen = (view.outputPct / 100) * CIRCUMFERENCE;
+
+  const ring = (
     <div
       className="flex items-center"
       role="progressbar"
@@ -32,44 +43,68 @@ export function BatteryGauge({ phase, variant = 'standalone' }: BatteryGaugeProp
       aria-valuenow={Math.round(view.totalPct)}
       aria-label={view.ariaLabel}
     >
-      <div
-        className={`relative w-[26px] h-[12px] rounded-[2px] border ${view.chrome} overflow-hidden flex`}
-      >
-        <div
-          className={`${view.inputFill} transition-all duration-300 ease-out`}
-          style={{ width: `${view.inputPct}%` }}
+      <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+        {/* Empty track */}
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          strokeWidth={STROKE_WIDTH}
+          className="stroke-gray-300 dark:stroke-gray-600"
         />
-        <div
-          className={`${view.outputFill} transition-all duration-300 ease-out`}
-          style={{ width: `${view.outputPct}%` }}
-        />
-      </div>
-      <div className={`w-[2px] h-[6px] rounded-r-[1px] ${view.cap}`} />
+        {/* Progress arcs — rotate -90deg so drawing starts at 12 o'clock */}
+        <g transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}>
+          {inputLen > 0 && (
+            <circle
+              cx={SIZE / 2}
+              cy={SIZE / 2}
+              r={RADIUS}
+              fill="none"
+              strokeWidth={STROKE_WIDTH}
+              strokeLinecap="butt"
+              strokeDasharray={`${inputLen} ${CIRCUMFERENCE - inputLen}`}
+              className={`${view.inputStroke} transition-[stroke-dasharray] duration-300 ease-out`}
+            />
+          )}
+          {outputLen > 0 && (
+            <circle
+              cx={SIZE / 2}
+              cy={SIZE / 2}
+              r={RADIUS}
+              fill="none"
+              strokeWidth={STROKE_WIDTH}
+              strokeLinecap="butt"
+              strokeDasharray={`${outputLen} ${CIRCUMFERENCE - outputLen}`}
+              strokeDashoffset={-inputLen}
+              className={`${view.outputStroke} transition-[stroke-dasharray] duration-300 ease-out`}
+            />
+          )}
+        </g>
+      </svg>
     </div>
   );
 
   if (variant === 'in-list') {
-    // List rows handle their own click target (the row itself), so the
-    // battery is rendered inline. A nested Tooltip on top still works
-    // because Tooltip renders via portal at z-9999.
     return (
       <Tooltip content={view.tooltip} placement="left">
-        {battery}
+        {ring}
       </Tooltip>
     );
   }
 
   return (
     <Tooltip content={view.tooltip} placement="top">
-      {battery}
+      {ring}
     </Tooltip>
   );
 }
 
 /**
- * Headline string used by the more-dropdown row title — compact "Worker N · Task · 17%".
+ * Headline string used by the more-dropdown row title — compact
+ * "Worker N · Task · 17%".
  */
-export function summarizeBattery(phase: PhaseTokenUsage): { title: string; percent: string } {
+export function summarizeRing(phase: PhaseTokenUsage): { title: string; percent: string } {
   const input = phase.tokenUsage?.inputTokens ?? 0;
   const output = phase.tokenUsage?.outputTokens ?? 0;
   const total = input + output;
@@ -99,25 +134,23 @@ function buildView(phase: PhaseTokenUsage) {
   const zone: 'ok' | 'warn' | 'danger' =
     totalPct >= 95 ? 'danger' : totalPct >= 80 ? 'warn' : 'ok';
 
-  const chrome =
+  // OK zone: theme-adaptive neutral (white on dark, slate on light). Input is
+  // solid, output is a lighter variant so the two segments remain visually
+  // distinguishable within a single ring. Warn/danger zones keep amber/red
+  // to preserve the "context filling up" warning signal across themes.
+  const inputStroke =
     zone === 'danger'
-      ? 'border-red-500/70 dark:border-red-400/70'
+      ? 'stroke-red-500'
       : zone === 'warn'
-      ? 'border-amber-500/70 dark:border-amber-400/70'
-      : 'border-gray-400/70 dark:border-gray-500/70';
+      ? 'stroke-amber-500'
+      : 'stroke-slate-700 dark:stroke-white';
 
-  const inputFill =
-    zone === 'danger' ? 'bg-red-500' : zone === 'warn' ? 'bg-amber-500' : 'bg-blue-500';
-
-  const outputFill =
-    zone === 'danger' ? 'bg-red-300' : zone === 'warn' ? 'bg-amber-300' : 'bg-emerald-400';
-
-  const cap =
+  const outputStroke =
     zone === 'danger'
-      ? 'bg-red-500/70 dark:bg-red-400/70'
+      ? 'stroke-red-300'
       : zone === 'warn'
-      ? 'bg-amber-500/70 dark:bg-amber-400/70'
-      : 'bg-gray-400/70 dark:bg-gray-500/70';
+      ? 'stroke-amber-300'
+      : 'stroke-slate-400 dark:stroke-white/50';
 
   const fmt = (n: number) => n.toLocaleString();
   const fmtPct = (p: number) => (p < 1 ? '<1%' : `${Math.round(p)}%`);
@@ -139,14 +172,14 @@ function buildView(phase: PhaseTokenUsage) {
       <div className="h-px my-0.5 bg-gray-200 dark:bg-gray-700" />
       <div className="flex items-center justify-between gap-3 tabular-nums">
         <span className="flex items-center gap-1.5">
-          <span className={`inline-block w-2 h-2 rounded-sm ${inputFill}`} />
+          <span className={`inline-block w-2 h-2 rounded-sm ${swatchFor(inputStroke)}`} />
           Input
         </span>
         <span>{fmt(input)}</span>
       </div>
       <div className="flex items-center justify-between gap-3 tabular-nums">
         <span className="flex items-center gap-1.5">
-          <span className={`inline-block w-2 h-2 rounded-sm ${outputFill}`} />
+          <span className={`inline-block w-2 h-2 rounded-sm ${swatchFor(outputStroke)}`} />
           Output
         </span>
         <span>{fmt(output)}</span>
@@ -162,13 +195,21 @@ function buildView(phase: PhaseTokenUsage) {
     totalPct,
     inputPct,
     outputPct,
-    chrome,
-    inputFill,
-    outputFill,
-    cap,
+    inputStroke,
+    outputStroke,
     tooltip,
     ariaLabel,
   };
+}
+
+/**
+ * Tooltip legend swatches share the ring's zone color. Map stroke-* class
+ * to a matching bg-* class so the legend squares stay in sync. Handles
+ * compound classes like "stroke-slate-700 dark:stroke-white" by replacing
+ * every stroke- prefix (including variant-scoped ones).
+ */
+function swatchFor(strokeClass: string): string {
+  return strokeClass.replace(/(^|\s|:)stroke-/g, '$1bg-');
 }
 
 function headerTitleFor(phase: PhaseTokenUsage): string {

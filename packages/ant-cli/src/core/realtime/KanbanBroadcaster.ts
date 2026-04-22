@@ -36,6 +36,15 @@ import { getAgentForJobSafe } from '../utils/sessionPaths';
 /** Sentinel key for "no workerId" snapshots stored in cachedCurrentPhaseTokenUsages. */
 const MAIN_WORKER_KEY = -1;
 
+/**
+ * Phases that run on the sequential/main graph BEFORE a task queue exists.
+ * Their snapshots live in the `MAIN_WORKER_KEY` slot and must be dropped
+ * once tasks start executing (parallel workers take over, or the main graph
+ * moves on to plan/execute) — otherwise the chat-input gauge keeps showing a
+ * stale "decompose" battery for the entire parallel-orchestration phase.
+ */
+const ESTIMATING_PHASES = new Set(['triage', 'detect', 'decompose']);
+
 export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private redis: Redis;
   private pubRedis: Redis; // Separate connection for publish
@@ -139,6 +148,9 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.estimatingLabel = undefined;
     this.estimatingStartedAt = undefined;
     this.estimatingNodeId = undefined;
+    // Also drop the estimating battery so the chat-input gauge empties
+    // when a graph terminates without tasks (e.g. triage → __end__).
+    this.dropMainEstimatingSnapshotIfPresent();
     console.log(`[KanbanBroadcaster] 🧹 Estimating activity cleared`);
     
     // Broadcast immediately so frontend removes the loading banner.
@@ -257,6 +269,20 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
+   * Drop the `MAIN_WORKER_KEY` slot iff it currently holds an estimating
+   * snapshot (triage / detect / decompose). Used at estimating→task
+   * boundaries so the stale "작업계획수립중" battery disappears.
+   * Non-estimating snapshots (plan, execute, learn, etc.) are preserved —
+   * sequential mode relies on them for the main-graph gauge.
+   */
+  private dropMainEstimatingSnapshotIfPresent(): void {
+    const main = this.cachedCurrentPhaseTokenUsages.get(MAIN_WORKER_KEY);
+    if (main && ESTIMATING_PHASES.has(main.phase)) {
+      this.cachedCurrentPhaseTokenUsages.delete(MAIN_WORKER_KEY);
+    }
+  }
+
+  /**
    * Snapshot estimating phase token usage, included in all subsequent broadcasts.
    * Called once at end of decompose node.
    */
@@ -358,6 +384,12 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       this.estimatingLabel = undefined;
       this.estimatingStartedAt = undefined;
       this.estimatingNodeId = undefined;
+      // Drop the main-graph estimating snapshot so the chat-input gauge
+      // stops showing a stale "decompose" battery alongside the worker
+      // batteries during parallel orchestration. Idempotent: once the
+      // slot is empty or holds a non-estimating phase (e.g. learn), this
+      // is a no-op.
+      this.dropMainEstimatingSnapshotIfPresent();
     }
 
     // ✅ FIX: Use cached token usage as fallback when not explicitly provided.
