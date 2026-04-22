@@ -58,6 +58,8 @@ asks.
 {{> jobs/code/base/injections/system-design-guide}}
 {{/if}}
 
+{{> jobs/code/base/injections/ant-md}}
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 🚨 YOUR ROLE: Plan provides GUIDANCE, CodeGen determines PATHS
 ────────────────────────────────────────────────────────────────────────────────

@@ -4,6 +4,8 @@ You are analyzing a user-reported error and creating a structured remediation pl
 
 {{> jobs/shared/injections/action-context}}
 
+{{> jobs/code/base/injections/ant-md}}
+
 ## Role
 
 Your responsibility is to **investigate the user-reported error by reading code, and produce a structured fix plan**.

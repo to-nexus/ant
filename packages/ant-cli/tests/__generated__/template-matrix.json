@@ -290,6 +290,12 @@
       "basis-registry"
     ]
   },
+  "jobs/code/base/injections/ant-md": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/batch-execution": {
     "sources": [
       "partial-ref",

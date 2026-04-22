@@ -47,6 +47,7 @@ import {
 } from '../model/configSnapshot';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
 import { VerificationTerminalError } from '../model/errors';
+import { loadAntMd } from '../../../../../../../core/artifact/antMd';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Hook implementations
@@ -261,6 +262,12 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     taskTechTiers,
   );
 
+  // codebase/ANT.md — project-wide ant-agent settings (export style, test
+  // setup, naming, ...). Loaded every verification cycle so the partial
+  // `jobs/code/base/injections/ant-md` included from the variant base
+  // template can gate-render the content.
+  const antMd = loadAntMd(state.context?.featurePath);
+
   const body = await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
     taskId: task.id,
     taskName: task.name,
@@ -283,6 +290,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     cachedPassedSteps,
     sessionSummary,
     hasSessionSummary: !!sessionSummary,
+    hasAntMd: antMd.has,
+    antMdContent: antMd.content,
     resolvedAction: state.resolvedAction,
   });
 
