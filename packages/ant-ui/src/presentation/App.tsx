@@ -108,6 +108,7 @@ function App() {
     setIsResizingExplorer,
     setIsChatCollapsed,
     setIsResizingChat,
+    expandChat,
   } = layout;
   
   // ✅ Resize handlers (extracted to hook)
@@ -517,7 +518,7 @@ function App() {
             selectedAgent={selectedAgent || ''}
             selectedProject={selectedProject || null}
             selectedFeature={selectedFeature || null}
-            onExpand={() => setIsChatCollapsed(false)}
+            onExpand={expandChat}
             onCollapse={() => setIsChatCollapsed(true)}
             onResizeStart={() => setIsResizingChat(true)}
           />

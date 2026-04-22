@@ -38,6 +38,9 @@ export interface TokenTrackingState {
  * Resets the `currentPhaseTokenUsage` snapshot so subsequent `accumulateTokenUsage`
  * calls overwrite cleanly.
  *
+ * The seeded snapshot carries `workerId` / `taskName` so parallel workers each
+ * produce their own battery entry on the chat-input gauge.
+ *
  * ⚠️ SSOT: Do NOT call this directly from inside a graph node. The two authorized
  * callers are:
  *  - `withPhaseTracking()` wrapping the node at graph wiring (phase label lookup
@@ -50,10 +53,14 @@ export function beginNodePhase(
   phase: string,
   label?: string,
 ): void {
+  const workerId = (state as any).workerId;
+  const taskName = (state as any).currentTask?.name;
   state.currentPhaseTokenUsage = {
     phase,
     ...(label && { label }),
     tokenUsage: initTokenUsage(),
+    ...(typeof workerId === 'number' && { workerId }),
+    ...(typeof taskName === 'string' && taskName.length > 0 && { taskName }),
   };
 }
 

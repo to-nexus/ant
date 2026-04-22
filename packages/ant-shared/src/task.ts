@@ -69,6 +69,14 @@ export interface PhaseTokenUsage {
   phase: string;
   label?: string;
   tokenUsage: TaskTokenUsage;
+  /**
+   * Worker identity (only set when the snapshot originated inside a parallel
+   * worker subgraph). Undefined for the main graph / sequential execution.
+   * Used by the context-gauge to render one battery per concurrent worker.
+   */
+  workerId?: number;
+  /** Optional running task name tied to this worker, for tooltip disambiguation. */
+  taskName?: string;
 }
 
 // ============================================
@@ -196,13 +204,16 @@ export interface KanbanData {
   phaseTokenUsages?: PhaseTokenUsage[];
 
   /**
-   * Latest single LLM call snapshot for the currently-running (or just-completed) graph node.
-   * Overwritten on each stream `done` event; reset at node entry via beginNodePhase().
-   * Used by the chat input context gauge — represents "current context fullness".
-   * NOT cumulative: each call replaces the previous snapshot since inputTokens already includes
-   * full prompt (system + history + current) per Anthropic's request semantics.
+   * Latest single LLM-call snapshots for every actively-tracked graph node,
+   * keyed internally by `workerId` (undefined → main graph / sequential).
+   *
+   * - Overwritten per worker on each stream `done` event.
+   * - Preserved across SSE gaps via `kanbanReducer` when a broadcast omits it.
+   * - Cleared per worker when a parallel worker terminates.
+   *
+   * The chat-input context gauge renders one battery per entry.
    */
-  currentPhaseTokenUsage?: PhaseTokenUsage;
+  currentPhaseTokenUsages?: PhaseTokenUsage[];
 
   // Job metadata
   jobType?: string;

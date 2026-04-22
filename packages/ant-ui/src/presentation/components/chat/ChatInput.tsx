@@ -16,7 +16,7 @@ import { useChatSubmit } from './hooks/useChatSubmit';
 import { useResizableHeight } from './hooks/useResizableHeight';
 import { useMentionAutocomplete } from './hooks/useMentionAutocomplete';
 import { ChatFileChangeSummary } from './ChatFileChangeSummary';
-import { AgentJobToolbar } from './AgentJobToolbar';
+import { AgentJobToolbar, CHAT_INPUT_MIN_WIDTH_PX } from './AgentJobToolbar';
 import { ActionMetadataBadges } from './ActionMetadataBadges';
 import { MentionDropdown } from './MentionDropdown';
 
@@ -165,8 +165,11 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
       )}
 
       {/* Unified Frame */}
-      <div className="relative border border-gray-300 dark:border-gray-600 rounded-lg 
-                      bg-white dark:bg-gray-800">
+      <div
+        style={{ minWidth: `${CHAT_INPUT_MIN_WIDTH_PX}px` }}
+        className="relative border border-gray-300 dark:border-gray-600 rounded-lg
+                      bg-white dark:bg-gray-800"
+      >
         {/* Resize Handle */}
         <div
           className="absolute top-0 left-0 right-0 cursor-ns-resize hover:bg-blue-500/20 
