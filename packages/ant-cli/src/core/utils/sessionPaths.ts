@@ -127,10 +127,10 @@ export function getFeatureJsonlPath(featurePath: string): string {
  * Get the path to chat.jsonl — the UI chat display SSOT.
  *
  * Every `ChatLine` is append-only journaled here. Reads and writes share
- * this single path. Features whose chat log predates this file name must
- * migrate by renaming on disk
- * (`mv sessions/chat.jsonl sessions/chat.jsonl`) — the legacy name is
- * no longer inspected.
+ * this single path. Features whose chat log predates this rename
+ * (when the file was named `trace.jsonl`) must migrate by renaming on
+ * disk (`mv sessions/trace.jsonl sessions/chat.jsonl`) — the pre-rename
+ * name is no longer inspected.
  *
  * @param featurePath - Absolute path to the feature directory
  * @returns Absolute path to chat.jsonl

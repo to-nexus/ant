@@ -817,14 +817,15 @@ async function handleLongRunningCommand(
       // Skip the entire finalizer if another path already resolved. Node
       // occasionally fires both 'error' and 'exit' for the same child; the
       // first one to reach this point owns the outcome. Without this guard
-      // two `commandComplete` calls produce two `run_command` lines.
+      // two `commandComplete` calls would emit two `chat_status('command')`
+      // cards for the same invocation.
       if (resolved) return;
       hasError = true;
       stderr += err.message;
       // Keep chat.jsonl symmetric: every long-running invocation must
-      // finalize via `commandComplete` so a `run_command` line pairs with
-      // the initial `tool_call`. Spawn failure is the one internal path
-      // that previously skipped this.
+      // finalize via `commandComplete` so the `chat_status('command')`
+      // card is emitted exactly once per execution. Spawn failure is the
+      // one internal path that previously skipped this.
       await ctx.chatStatus.commandComplete(command, false, -1, `Spawn error:\n${err.message}`);
       safeReject(new Error(`❌ FAILED TO SPAWN PROCESS: ${command}\n\nSpawn error: ${err.message}`));
     });
@@ -910,9 +911,10 @@ async function handleLongRunningCommand(
 
     child.on('exit', async (code, signal) => {
       // Mirror of the `child.on('error')` guard — any earlier finalizer
-      // (earlyErrorTimeout, startupTimeout, 'error') already emitted the
-      // run_command line and resolved the outer promise. A late exit fire
-      // would otherwise emit a second `run_command` for the same tool_call.
+      // (earlyErrorTimeout, startupTimeout, 'error') already called
+      // `commandComplete` (which emits the `chat_status('command')`
+      // line) and resolved the outer promise. A late exit fire would
+      // otherwise emit a second `chat_status` card for the same command.
       if (resolved) return;
       const output = stdout + stderr;
       if (code === 0 && !hasError) {
