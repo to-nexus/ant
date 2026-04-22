@@ -52,6 +52,7 @@ function IntentVariant(_props: IntentFooterProps) {
   const selectedProject = useStore(s => s.selectedProject);
   const selectedFeature = useStore(s => s.selectedFeature);
   const actionMetadata = useStore(s => s.actionMetadata);
+  const updateActionMetadata = useStore(s => s.updateActionMetadata);
 
   const policy = useActionFooterPolicy();
 
@@ -59,6 +60,12 @@ function IntentVariant(_props: IntentFooterProps) {
 
   const handleChatStart = () => {
     if (!derived || !policy.canStartChat) return;
+    // Manual set path for `explicit` — gated by canStartChat per the invariant
+    // in useExplicitAutoSync. Restores the badge if user previously removed it;
+    // no-op when already on.
+    if (actionMetadata.explicit !== true) {
+      updateActionMetadata({ explicit: true });
+    }
     requestAnimationFrame(() => {
       const input = document.querySelector('textarea[data-chat-input]') as HTMLTextAreaElement | null;
       input?.focus();
