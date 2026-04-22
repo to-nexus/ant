@@ -293,7 +293,7 @@ async function makeRejection(
   mergeIndex: number | undefined,
 ): Promise<ToolResult> {
   const content = `[Policy] ${displayText}`;
-  await ctx.chatStatus.commandComplete(command, false, -1, content, mergeIndex);
+  await ctx.chatStatus.commandComplete(command, false, -1, content);
   return {
     content,
     sideEffects: [{ type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false }],
@@ -549,7 +549,7 @@ async function executeCommandLogic(
         const r = raceResult.result;
         const output = r.stdout + r.stderr;
         sideEffects.push({ type: 'commandExecuted', exitCode: r.exitCode, command, success: r.success, hasWarnings: false });
-        await ctx.chatStatus.commandComplete(command, r.success, r.exitCode, output, mergeIndex);
+        await ctx.chatStatus.commandComplete(command, r.success, r.exitCode, output);
         return {
           content: r.success
             ? `✅ COMMAND SUCCEEDED: ${command}\nExit Code: ${r.exitCode}\n\nOutput:\n${output}`
@@ -620,7 +620,7 @@ async function executeCommandLogic(
       console.warn(`\n   ⚠️  [Watchdog] Stalled: "${raceResult.stall.signature}" repeated ${raceResult.stall.repeat}× over ${elapsedSec}s — terminating early\n`);
       commandPromise.catch(() => {});
       streamer!.flush();
-      await ctx.chatStatus.commandComplete(command, false, 124, `Stall watchdog terminated command\n\nOutput:\n${allOutput}`, mergeIndex);
+      await ctx.chatStatus.commandComplete(command, false, 124, `Stall watchdog terminated command\n\nOutput:\n${allOutput}`);
       sideEffects.push({ type: 'commandExecuted', exitCode: 124, command, success: false, hasWarnings: false });
       const tailChars = 5000;
       const tail = allOutput.length > tailChars ? allOutput.slice(-tailChars) : allOutput;
@@ -636,7 +636,7 @@ async function executeCommandLogic(
       const allOutput = streamedStdout + streamedStderr;
       commandPromise.catch(() => {});
       streamer!.flush();
-      await ctx.chatStatus.commandComplete(command, true, 0, `Server detected (auto-terminated)\n\nOutput:\n${allOutput}`, mergeIndex);
+      await ctx.chatStatus.commandComplete(command, true, 0, `Server detected (auto-terminated)\n\nOutput:\n${allOutput}`);
       sideEffects.push({ type: 'commandExecuted', exitCode: 0, command, success: true, hasWarnings: true });
 
       return {
@@ -676,7 +676,7 @@ async function executeCommandLogic(
     }
 
     streamer!.flush();
-    await ctx.chatStatus.commandComplete(command, success, exitCode, output, mergeIndex);
+    await ctx.chatStatus.commandComplete(command, success, exitCode, output);
 
     if (!success) {
       sideEffects.push({ type: 'commandExecuted', exitCode: exitCode ?? 1, command, success: false, hasWarnings: false });
@@ -725,7 +725,7 @@ async function executeCommandLogic(
     streamer?.flush();
     const errorMessage = (error as Error).message;
     console.error(`\n   ❌ Command execution error: ${errorMessage}\n`);
-    await ctx.chatStatus.commandComplete(command, false, -1, errorMessage, mergeIndex);
+    await ctx.chatStatus.commandComplete(command, false, -1, errorMessage);
 
     sideEffects.push({ type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false });
     return {
@@ -825,13 +825,13 @@ async function handleLongRunningCommand(
       // finalize via `commandComplete` so a `run_command` line pairs with
       // the initial `tool_call`. Spawn failure is the one internal path
       // that previously skipped this.
-      await ctx.chatStatus.commandComplete(command, false, -1, `Spawn error:\n${err.message}`, mergeIndex);
+      await ctx.chatStatus.commandComplete(command, false, -1, `Spawn error:\n${err.message}`);
       safeReject(new Error(`❌ FAILED TO SPAWN PROCESS: ${command}\n\nSpawn error: ${err.message}`));
     });
 
     const earlyErrorTimeout = setTimeout(() => {
       if (hasError) {
-        ctx.chatStatus.commandComplete(command, false, 1, `Early error:\n${stderr}\n${stdout}`, mergeIndex);
+        ctx.chatStatus.commandComplete(command, false, 1, `Early error:\n${stderr}\n${stdout}`);
         safeReject(new Error(`❌ SERVER FAILED TO START: ${command}\n\nEarly startup failure detected.\n\nError output:\n${stderr.slice(0, 2000)}`));
       }
     }, EARLY_ERROR_TIMEOUT);
@@ -882,7 +882,7 @@ async function handleLongRunningCommand(
 
         if (!httpTestResult.ok && httpTestResult.error) {
           await ctx.chatStatus.commandComplete(command, false, 1,
-            `Server started but page render failed!\n\n❌ HTTP Test Failed: ${httpTestResult.error}`, mergeIndex);
+            `Server started but page render failed!\n\n❌ HTTP Test Failed: ${httpTestResult.error}`);
           safeReject(new Error(`❌ SERVER STARTED BUT PAGE RENDER FAILED: ${command}\n\nHTTP Test Error: ${httpTestResult.error}\n\nStartup output:\n${stdout.slice(0, 1500)}`));
           return;
         }
@@ -893,7 +893,7 @@ async function handleLongRunningCommand(
           ? `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server is running in background (PID: ${child.pid}).`
           : `Server started successfully.\n\nStartup output:\n${stdout}\n\n✅ Server was terminated after verification.`;
 
-        await ctx.chatStatus.commandComplete(command, true, 0, outputMsg, mergeIndex);
+        await ctx.chatStatus.commandComplete(command, true, 0, outputMsg);
 
         const displayText = `✅ SERVER STARTED SUCCESSFULLY: ${command}\n\n✅ HTTP verification passed\n\nStartup output:\n${stdout.slice(0, 2000)}${stdout.length > 2000 ? '\n...(truncated)' : ''}`;
 
@@ -903,7 +903,7 @@ async function handleLongRunningCommand(
           safeResolve(displayText, true);
         }
       } else if (hasError) {
-        await ctx.chatStatus.commandComplete(command, false, 1, `Error:\n${stderr}\n${stdout}`, mergeIndex);
+        await ctx.chatStatus.commandComplete(command, false, 1, `Error:\n${stderr}\n${stdout}`);
         safeReject(new Error(`❌ SERVER FAILED TO START: ${command}\n\nError:\n${stderr.slice(0, 2000)}`));
       }
     }, effectiveStartupTimeout);
@@ -916,10 +916,10 @@ async function handleLongRunningCommand(
       if (resolved) return;
       const output = stdout + stderr;
       if (code === 0 && !hasError) {
-        await ctx.chatStatus.commandComplete(command, true, 0, output, mergeIndex);
+        await ctx.chatStatus.commandComplete(command, true, 0, output);
         safeResolve(`✅ Command completed: ${command}\n\nOutput:\n${output.slice(0, 3000)}`, true);
       } else {
-        await ctx.chatStatus.commandComplete(command, false, code || 1, output, mergeIndex);
+        await ctx.chatStatus.commandComplete(command, false, code || 1, output);
         safeReject(new Error(`❌ SERVER FAILED TO START: ${command}\n\nExit code: ${code || 'killed'}\nSignal: ${signal || 'none'}\n\nError output:\n${stderr.slice(0, 2000)}`));
       }
     });

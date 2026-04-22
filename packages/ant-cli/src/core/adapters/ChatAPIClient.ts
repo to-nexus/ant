@@ -447,7 +447,19 @@ export class ChatAPIClient {
     return service?.startCommand(command);
   }
 
-  async commandComplete(command: string, success: boolean, exitCode: number, output: string, commandIndex?: number): Promise<void> {
+  /**
+   * Mark a running command as complete.
+   *
+   * The `success` argument is retained for interface parity with the
+   * pre-chat-SSOT signature but carries no information `exitCode` does
+   * not already encode. It is accepted and silently ignored.
+   */
+  async commandComplete(
+    command: string,
+    _success: boolean,
+    exitCode: number,
+    output: string,
+  ): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
     await service?.completeCommand(command, output, exitCode);
