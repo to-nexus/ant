@@ -91,8 +91,12 @@ type ArtifactPolicy = { refs?: string[]; context?: string[] };
  *                 ui-tokens/assets/spec JSON pool.
  *   - 'figma'   → ignore `uiSections`; inject the figma.json reference and
  *                 defer real data to live MCP exploration at execute time.
- *   - 'handoff' → ignore `uiSections` (handoff has no schema); inject the
- *                 whole handoff bundle via wildcard.
+ *   - 'handoff' → ignore `uiSections` (handoff has no schema); select the
+ *                 handoff directory via wildcard. `loadResolvedArtifacts`
+ *                 replaces each file's content with a STUB (path + size +
+ *                 kind + read_file hint) so the bundle behaves like source
+ *                 code: execute/plan read files on demand rather than
+ *                 receiving the whole bundle inline.
  * When undefined, fall back to 'ant' semantics for backward compatibility.
  */
 export function deriveArtifactPolicy(

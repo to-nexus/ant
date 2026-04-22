@@ -57,7 +57,15 @@ const PREDICATES = [
  */
 // +1: uiSource-aware task classification in decompose/responseParser.ts
 // (UiSource 3-source overhaul — resolveType-derived `isUiRelated` branch).
-const MEASURED_COUNT = 93;
+// +1: batchSplit.ts `plan_too_short` log enrichment. Adds a second
+// `isVerificationTask(nextTask)` call so the emitted debug log carries
+// `isVerification` / `verificationComplete` / `nextOutcome` fields —
+// needed so operators stop mis-reading the verification happy-path
+// completion as a "gave up" signal (verification-loop postmortem Fix D).
+// R1 conditions still hold: predicate is pure; `task.type === '...'`
+// stays inside `tasks/verification/model/is.ts`; a hook would not add
+// value for a pure log-shape classification.
+const MEASURED_COUNT = 94;
 
 async function walkSourceFiles(dir: string, out: string[]): Promise<void> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
