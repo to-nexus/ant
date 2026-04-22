@@ -5,7 +5,7 @@
  *   Layer 1-3 (user-selectable): visualLanguage, surfaceSystem, spatialSystem
  *   Layer 4-6 (auto-derived):    interactionGrammar, componentSemantics, visualHierarchyRules
  *
- * Consumed by both FE (BasisSelector UI) and BE (PromptBuilder, decompose).
+ * Consumed by both FE (BasisWizard UI) and BE (PromptBuilder, decompose).
  */
 
 import type {

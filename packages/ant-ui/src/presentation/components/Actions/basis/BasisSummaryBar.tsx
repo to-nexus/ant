@@ -3,7 +3,8 @@ import { useStore } from '@/domain/store';
 import type { BasisSlotConfig, Basis } from '@ant/shared';
 import {
   STACK_OPTIONS, TECH_TIER_LANGUAGES, FRAMEWORK_LABELS,
-  VISUAL_LANGUAGE_OPTIONS, SURFACE_SYSTEM_OPTIONS, SPATIAL_SYSTEM_OPTIONS,
+  VISUAL_LANGUAGE_OPTIONS, SURFACE_SYSTEM_OPTIONS,
+  isVisualTierActive,
 } from '@ant/shared';
 import { TierBadge as TierBadgeComponent, type TierBadgeData } from './TierBadge';
 
@@ -21,7 +22,6 @@ const LAYER_KEY_LABELS: Record<string, { en: string; ko: string }> = {
   framework: { en: 'Framework', ko: '프레임워크' },
   visualLanguage: { en: 'Visual', ko: '비주얼' },
   surfaceSystem: { en: 'Surface', ko: '서피스' },
-  spatialSystem: { en: 'Spatial', ko: '공간' },
 };
 
 function keyLabel(key: string, lang: 'en' | 'ko') {
@@ -93,14 +93,13 @@ export function getTierBadgeRows(
     }
   }
 
-  if (basisSlot.visualTier) {
+  if (isVisualTierActive(basisSlot, display?.techTier)) {
     const badges: TierBadgeData[] = [];
     const vt = display?.visualTier;
 
     const visLayers = [
       { key: 'visualLanguage' as const, options: VISUAL_LANGUAGE_OPTIONS },
       { key: 'surfaceSystem' as const, options: SURFACE_SYSTEM_OPTIONS },
-      { key: 'spatialSystem' as const, options: SPATIAL_SYSTEM_OPTIONS },
     ];
 
     for (const { key, options } of visLayers) {

@@ -91,7 +91,7 @@ basis는 detect와 decompose 구간에서 점진적으로 확정된다:
 
 | 단계 | 확정 내용 | 소스 |
 |------|-----------|------|
-| detect | `RAC.basis.techTier` (preset) | UI BasisSelector → `ActionMetadata.basis` (explicit 경로만) |
+| detect | `RAC.basis.techTier` (preset) | UI BasisWizard → `ActionMetadata.basis` (explicit 경로만) |
 | detect | `RAC.basis.visualTier` (preset) | UI BasisWizard → `ActionMetadata.basis.visualTier` |
 | decompose | `RAC.basis.techTier` (final) | `mergeTechTierConfigs(preset, inferred)` — preset 필드 우선, 빈 필드는 LLM 추론으로 채움 |
 | decompose | `RAC.basis.visualTier` (final) | `resolveVisualTierFromDecompose(llmResponse, preset)` — `gen-code-directive` intent에서만 실행 |

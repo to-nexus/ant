@@ -170,7 +170,7 @@ Infer:    strategy.run() → InferredAction → mergeWithMetadata() → resolveT
 | 타입 | 정의 |
 |------|------|
 | `ConfigSlots` | `refs: SlotDef[]`, `context: SlotDef[]`, `target: TargetDef`, `basis?: BasisSlotConfig`, `chatRequiresRefs?`, `buildRequiresRefs?`, `buildRequiresContext?`, `buildDisabled?`, `refsSingleSelect?` |
-| `BasisSlotConfig` | `techTier?: boolean`, `visualTier?: boolean` — BasisSelector 렌더링 조건 |
+| `BasisSlotConfig` | `techTier?: boolean`, `visualTier?: boolean` — BasisWizard 렌더링 조건 |
 | `SlotDef` | `path`, `label`, `type: 'dir'\|'file'`, `required`, `locked?`, `excludeSelectedRefs?`, `createIntent?`, `humanLabel?`, `codebase?`, `excludeFiles?` |
 | `TargetDef` | `kind: 'generate'\|'revise'\|'codebase'\|'chat-only'` + kind별 필드 |
 | `OutputSpec` | `prefix`, `ext`, `label`, `isPattern`, `warnIfExists?` |

@@ -17,7 +17,6 @@ export interface BasisWizardState {
       designSystem?: string;
       visualLanguage?: string;
       surfaceSystem?: string;
-      spatialSystem?: string;
     };
   };
 }

@@ -55,11 +55,28 @@ export interface BasisSlotConfig {
   defaults?: { stack?: 'frontend' | 'backend' | 'fullstack' };
 }
 
+/**
+ * Runtime gate for Visual Tier availability.
+ *
+ * Visual Tier is conceptually a policy for UI-producing artifacts.
+ * BasisSlotConfig.visualTier = true declares "possible", not "always required".
+ * For stack === 'backend' artifacts, visual tier is meaningless and must be
+ * suppressed across every surface (wizard tab, summary row, decompose merge,
+ * prompt injection). All four surfaces read this single predicate.
+ */
+export function isVisualTierActive(
+  basisSlot: BasisSlotConfig | undefined,
+  techTier: import('./rac').TechTierConfig | undefined,
+): boolean {
+  if (!basisSlot?.visualTier) return false;
+  return techTier?.stack !== 'backend';
+}
+
 export interface ConfigSlots {
   refs: SlotDef[];
   context: SlotDef[];
   target: TargetDef;
-  /** Basis preset selector visibility. When present, BasisSelector renders for the matching tiers. */
+  /** Basis preset selector visibility. When present, BasisWizard renders for the matching tiers. */
   basis?: BasisSlotConfig;
   /** Override chat ref gating. Default: same as build ref gate.
    *  false → chat without refs (directive-capable intent).
