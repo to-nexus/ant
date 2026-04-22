@@ -27,6 +27,13 @@ export interface SlotSubgroup {
   files: SlotFileEntry[];
   hasFiles: boolean;
   hasValidFiles: boolean;
+  /**
+   * Subgroup-level validity warnings (missing-required-file, incomplete
+   * bundle). Rendered alongside per-file warnings on dir-level cards so the
+   * user sees one universal "invalid" indicator regardless of whether the
+   * cause is a broken file, an empty file, or a missing file in the bundle.
+   */
+  warnings?: SlotWarning[];
 }
 
 export interface SlotEntry {

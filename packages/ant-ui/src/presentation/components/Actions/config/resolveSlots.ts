@@ -1,3 +1,4 @@
+import { getDirDescription } from '@ant/shared';
 import type { SlotDef } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
 import type { SlotWarning, SlotFileEntry, SlotEntry, SlotSubgroup, FileWarningContext } from './types';
@@ -82,14 +83,24 @@ export function resolveSlotEntries(
           if (excludePaths && excludePaths.size > 0) {
             files = files.filter(f => !excludePaths.has(f.path));
           }
+          // Subgroup-level completeness check: ant requires its full canonical
+          // trio (ui-tokens/assets/spec.json) — a partial bundle is invalid.
+          // handoff has no required-file list (free-form); figma is file-level
+          // and handles its own warnings per file.
+          const subgroupWarnings = resolveSubgroupWarnings(sub.id, sub.dir, files);
+          const filesValid = files.every(f => f.warnings.length === 0);
+          const hasFiles = files.length > 0;
           return {
             id: sub.id,
             dir: sub.dir,
             label: sub.label,
             humanLabel: sub.humanLabel,
             files,
-            hasFiles: files.length > 0,
-            hasValidFiles: files.some(f => f.warnings.length === 0),
+            hasFiles,
+            // hasValidFiles must reflect BOTH per-file validity and bundle
+            // completeness — useActionReadiness gates off it.
+            hasValidFiles: hasFiles && filesValid && subgroupWarnings.length === 0,
+            warnings: subgroupWarnings.length > 0 ? subgroupWarnings : undefined,
           };
         });
         const allFiles = subgroups.flatMap(s => s.files);
@@ -97,7 +108,7 @@ export function resolveSlotEntries(
           def,
           files: allFiles,
           hasFiles: allFiles.length > 0,
-          hasValidFiles: allFiles.some(f => f.warnings.length === 0),
+          hasValidFiles: subgroups.some(s => s.hasValidFiles),
           subgroups,
         };
       }
@@ -124,6 +135,44 @@ export function resolveSlotEntries(
       const hasValidFiles = files.some(f => f.warnings.length === 0);
       return { def, files, hasFiles, hasValidFiles };
     });
+}
+
+/**
+ * Compute bundle-level warnings for a ui-source subgroup.
+ *
+ * Scoped to the `ant` canonical subgroup: its three files (ui-tokens.json,
+ * ui-assets.json, ui-spec.json) form a single conceptual bundle, so any
+ * missing file makes the entire bundle invalid. Only literal patterns
+ * (no `*` wildcards) from DirDescription.expectedFiles are treated as
+ * required — wildcard patterns (`fe-system-*.md` etc.) never apply here
+ * but the filter makes the helper safe for any dir that happens to
+ * declare both literal and wildcard expectations.
+ *
+ * `figma` and `handoff` return no subgroup warnings:
+ *   - figma is rendered file-level; per-file warnings already surface the
+ *     URL/MCP issues.
+ *   - handoff is a free-form bundle with no required-file contract.
+ */
+function resolveSubgroupWarnings(
+  id: SlotSubgroup['id'],
+  dir: string,
+  files: SlotFileEntry[],
+): SlotWarning[] {
+  if (id !== 'ant') return [];
+  const desc = getDirDescription(dir);
+  const required = (desc?.expectedFiles ?? []).filter(p => !p.includes('*'));
+  if (required.length === 0) return [];
+  const present = new Set(files.map(f => f.name));
+  const missing = required.filter(name => !present.has(name));
+  if (missing.length === 0) return [];
+  const list = missing.join(', ');
+  return [{
+    type: 'invalid-file',
+    message: {
+      en: `Ant UI bundle is incomplete — missing ${missing.length}/${required.length} file(s): ${list}. Run a UI design job to regenerate the full set.`,
+      ko: `Ant UI 번들이 불완전합니다 — ${required.length}개 중 ${missing.length}개 파일 누락: ${list}. UI 설계 잡을 실행해 전체 세트를 재생성하세요.`,
+    },
+  }];
 }
 
 export function findFileNode(tree: FileNode[], path: string): FileNode | null {
