@@ -1,7 +1,7 @@
 /**
- * L1 — `codebase/ANT.md` loader invariants.
+ * L1 — `codebase/ANTRULES.md` loader invariants.
  *
- * ANT.md is the SSOT for ant-agent settings in a given codebase
+ * ANTRULES.md is the SSOT for ant-agent settings in a given codebase
  * (see docs/architecture/35-codebase-meta-policy.md). The loader:
  *   - returns `undefined` on missing / unreadable / empty-content file
  *   - caps content at 1500 chars with a truncation footer
@@ -18,7 +18,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import {
   ANTRULES_MAX_CHARS,
-  ANT_MD_RELATIVE_PATH,
+  ANTRULES_RELATIVE_PATH,
   loadAntrules,
 } from '../../src/core/artifact/antrules';
 
@@ -43,33 +43,33 @@ describe('loadAntrules', () => {
   });
 
   it('returns undefined when the file is empty (trimmed length 0)', () => {
-    fs.writeFileSync(path.join(root, ANT_MD_RELATIVE_PATH), '   \n\n  ');
+    fs.writeFileSync(path.join(root, ANTRULES_RELATIVE_PATH), '   \n\n  ');
     expect(loadAntrules(root)).toBeUndefined();
   });
 
   it('returns trimmed content for a small file', () => {
-    const body = '# ANT.md\n\n## Export Style\n- default export\n';
-    fs.writeFileSync(path.join(root, ANT_MD_RELATIVE_PATH), `\n${body}\n`);
+    const body = '# ANTRULES.md\n\n## Export Style\n- default export\n';
+    fs.writeFileSync(path.join(root, ANTRULES_RELATIVE_PATH), `\n${body}\n`);
     expect(loadAntrules(root)).toBe(body.trim());
   });
 
   it('truncates content above the cap and appends a read_file pointer', () => {
     const huge = 'A'.repeat(ANTRULES_MAX_CHARS + 500);
-    fs.writeFileSync(path.join(root, ANT_MD_RELATIVE_PATH), huge);
+    fs.writeFileSync(path.join(root, ANTRULES_RELATIVE_PATH), huge);
     const out = loadAntrules(root);
     expect(out).toBeDefined();
     // The prefix matches the original body up to the cap.
     expect(out!.startsWith('A'.repeat(ANTRULES_MAX_CHARS))).toBe(true);
     // The footer tells the LLM it is truncated and points at read_file.
     expect(out!).toMatch(/truncated/i);
-    expect(out!).toMatch(/read_file.*codebase\/ANT\.md/);
+    expect(out!).toMatch(/read_file.*codebase\/ANTRULES\.md/);
   });
 
   it('policy contract — canonical relative path', () => {
-    expect(ANT_MD_RELATIVE_PATH).toBe('codebase/ANT.md');
+    expect(ANTRULES_RELATIVE_PATH).toBe('codebase/ANTRULES.md');
   });
 
-  it('non-ANT.md files in the codebase directory do not influence the loader', () => {
+  it('non-ANTRULES.md files in the codebase directory do not influence the loader', () => {
     fs.writeFileSync(path.join(root, 'codebase', 'README.md'), '# readme');
     fs.writeFileSync(path.join(root, 'codebase', 'docs.md'), 'docs');
     expect(loadAntrules(root)).toBeUndefined();

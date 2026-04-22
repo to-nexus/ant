@@ -84,7 +84,7 @@ export interface PlanPromptCtx {
   }> | undefined;
   options?: { hasTools?: boolean };
   /**
-   * Pre-loaded `codebase/ANT.md` content (project-wide ant-agent
+   * Pre-loaded `codebase/ANTRULES.md` content (project-wide ant-agent
    * settings). `undefined` when the file is missing / empty / unreadable.
    *
    */
