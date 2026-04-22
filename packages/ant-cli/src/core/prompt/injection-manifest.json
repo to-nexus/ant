@@ -6,6 +6,7 @@
     "visual-source-authority": [],
     "ui-design-policy": [],
     "action-context": ["resolvedAction"],
+    "role-guide": [],
     "refactor-guidance": ["resolvedAction"],
     "explain-guidance": ["resolvedAction"],
     "visual-tier-detection": ["availableVisualLanguages", "availableSurfaceSystems", "availableSpatialSystems"]

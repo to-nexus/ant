@@ -50,11 +50,18 @@ const results: Record<string, PromptBuildResult> = {};
 // Fingerprint Constants
 // ============================================
 
+// Under the 3-axis role model (Authority / Edit-scope / Task-scope), `ref`
+// and `context` are BOTH authoritative inputs rendered under a single
+// "## Provided Documents" section. Authority is conveyed by hierarchical
+// [ref] / [context] labels and the role-guide partial wording, not by
+// separate "Primary References" / "Background Context" section headers
+// (which were the legacy binary Authority/Background dichotomy this
+// refactor removed). See `jobs/shared/injections/role-guide.md`.
 const ART_FP = {
-  PRIMARY_SECTION: '## Primary References',
-  PRIMARY_GUIDE: 'Follow these documents as the implementation source',
-  BACKGROUND_SECTION: '## Background Context',
-  BACKGROUND_GUIDE: 'Use these for understanding only',
+  DOCS_SECTION: '## Provided Documents',
+  REF_HEADER_PREFIX: '### [ref]',
+  CTX_HEADER_PREFIX: '### [context]',
+  ROLE_GUIDE_AUTHORITY: 'both authoritative inputs',
   REF_MARKER: '__ART_REF_MARKER_e7b3a1__',
   CTX_MARKER: '__ART_CTX_MARKER_f9d2c4__',
   DIR_ROLE_MARKER: '__ART_DIR_ROLE_MARKER_a1b2c3__',
@@ -208,8 +215,8 @@ function collectResult(key: string, scenario: string, template: string, result: 
     ctxMarkerInInjections: injText.includes(ART_FP.CTX_MARKER),
     refMarkerInUser: userText.includes(ART_FP.REF_MARKER),
     ctxMarkerInUser: userText.includes(ART_FP.CTX_MARKER),
-    refInPrimarySection: injText.includes(ART_FP.PRIMARY_SECTION) && injText.includes(ART_FP.REF_MARKER),
-    ctxInBackgroundSection: injText.includes(ART_FP.BACKGROUND_SECTION) && injText.includes(ART_FP.CTX_MARKER),
+    refInPrimarySection: injText.includes(ART_FP.DOCS_SECTION) && injText.includes(ART_FP.REF_HEADER_PREFIX) && injText.includes(ART_FP.REF_MARKER),
+    ctxInBackgroundSection: injText.includes(ART_FP.DOCS_SECTION) && injText.includes(ART_FP.CTX_HEADER_PREFIX) && injText.includes(ART_FP.CTX_MARKER),
     directiveMarkerInInjections: injText.includes(ART_FP.DIRECTIVE_MARKER),
     directiveMarkerInUser: userText.includes(ART_FP.DIRECTIVE_MARKER),
     directiveHeaderInInjections: injText.includes(ART_FP.DIRECTIVE_HEADER),
@@ -261,37 +268,38 @@ describe('A1: code execute — ref + context', () => {
     expect(result.sections.failedTemplates).toHaveLength(0);
   });
 
-  it('REF marker appears in Primary References section of injections', () => {
-    assertMarkerInSection(
-      result.sections.injections,
-      ART_FP.REF_MARKER,
-      ART_FP.PRIMARY_SECTION,
-      ART_FP.BACKGROUND_SECTION,
-    );
+  it('REF marker appears under [ref] sub-header inside Provided Documents', () => {
+    const docsIdx = result.sections.injections.indexOf(ART_FP.DOCS_SECTION);
+    const refHeaderIdx = result.sections.injections.indexOf(ART_FP.REF_HEADER_PREFIX);
+    const refMarkerIdx = result.sections.injections.indexOf(ART_FP.REF_MARKER);
+    expect(docsIdx, 'Provided Documents section must exist').toBeGreaterThan(-1);
+    expect(refHeaderIdx, '[ref] sub-header must exist').toBeGreaterThan(docsIdx);
+    expect(refMarkerIdx, 'REF marker must appear after [ref] sub-header').toBeGreaterThan(refHeaderIdx);
   });
 
-  it('CTX marker appears in Background Context section of injections', () => {
-    assertMarkerInSection(
-      result.sections.injections,
-      ART_FP.CTX_MARKER,
-      ART_FP.BACKGROUND_SECTION,
-    );
+  it('CTX marker appears under [context] sub-header inside Provided Documents', () => {
+    const docsIdx = result.sections.injections.indexOf(ART_FP.DOCS_SECTION);
+    const ctxHeaderIdx = result.sections.injections.indexOf(ART_FP.CTX_HEADER_PREFIX);
+    const ctxMarkerIdx = result.sections.injections.indexOf(ART_FP.CTX_MARKER);
+    expect(docsIdx, 'Provided Documents section must exist').toBeGreaterThan(-1);
+    expect(ctxHeaderIdx, '[context] sub-header must exist').toBeGreaterThan(docsIdx);
+    expect(ctxMarkerIdx, 'CTX marker must appear after [context] sub-header').toBeGreaterThan(ctxHeaderIdx);
   });
 
-  it('REF marker is NOT in Background section', () => {
-    const bgStart = result.sections.injections.indexOf(ART_FP.BACKGROUND_SECTION);
-    expect(bgStart, 'Background section header must exist').toBeGreaterThan(-1);
-    const bgText = result.sections.injections.slice(bgStart);
-    expect(bgText).not.toContain(ART_FP.REF_MARKER);
+  it('REF marker is NOT in [context] sub-section', () => {
+    const ctxHeaderIdx = result.sections.injections.indexOf(ART_FP.CTX_HEADER_PREFIX);
+    expect(ctxHeaderIdx, '[context] sub-header must exist').toBeGreaterThan(-1);
+    const ctxText = result.sections.injections.slice(ctxHeaderIdx);
+    expect(ctxText).not.toContain(ART_FP.REF_MARKER);
   });
 
-  it('CTX marker is NOT in Primary section', () => {
-    const priStart = result.sections.injections.indexOf(ART_FP.PRIMARY_SECTION);
-    const bgStart = result.sections.injections.indexOf(ART_FP.BACKGROUND_SECTION);
-    expect(priStart, 'Primary section header must exist').toBeGreaterThan(-1);
-    expect(bgStart, 'Background section header must exist').toBeGreaterThan(priStart);
-    const priText = result.sections.injections.slice(priStart, bgStart);
-    expect(priText).not.toContain(ART_FP.CTX_MARKER);
+  it('CTX marker is NOT in [ref] sub-section (refs render before context)', () => {
+    const refHeaderIdx = result.sections.injections.indexOf(ART_FP.REF_HEADER_PREFIX);
+    const ctxHeaderIdx = result.sections.injections.indexOf(ART_FP.CTX_HEADER_PREFIX);
+    expect(refHeaderIdx).toBeGreaterThan(-1);
+    expect(ctxHeaderIdx).toBeGreaterThan(refHeaderIdx);
+    const refText = result.sections.injections.slice(refHeaderIdx, ctxHeaderIdx);
+    expect(refText).not.toContain(ART_FP.CTX_MARKER);
   });
 
   it('no duplicate: REF marker exactly once across full output', () => {
@@ -344,8 +352,13 @@ describe('A2: code execute — ref only', () => {
     expect(result.sections.failedTemplates).toHaveLength(0);
   });
 
-  it('REF marker in Primary section of injections', () => {
-    assertMarkerInSection(result.sections.injections, ART_FP.REF_MARKER, ART_FP.PRIMARY_SECTION);
+  it('REF marker under [ref] sub-header inside Provided Documents', () => {
+    const docsIdx = result.sections.injections.indexOf(ART_FP.DOCS_SECTION);
+    const refHeaderIdx = result.sections.injections.indexOf(ART_FP.REF_HEADER_PREFIX);
+    const refMarkerIdx = result.sections.injections.indexOf(ART_FP.REF_MARKER);
+    expect(docsIdx).toBeGreaterThan(-1);
+    expect(refHeaderIdx).toBeGreaterThan(docsIdx);
+    expect(refMarkerIdx).toBeGreaterThan(refHeaderIdx);
   });
 
   it('CTX marker nowhere in full output', () => {
@@ -353,11 +366,10 @@ describe('A2: code execute — ref only', () => {
     expect(result.user).not.toContain(ART_FP.CTX_MARKER);
   });
 
-  it('Background header exists but has no content markers', () => {
-    expect(result.sections.injections).toContain(ART_FP.BACKGROUND_SECTION);
-    const bgStart = result.sections.injections.indexOf(ART_FP.BACKGROUND_SECTION);
-    const bgText = result.sections.injections.slice(bgStart);
-    expect(bgText).not.toContain(ART_FP.CTX_MARKER);
+  it('no [context] sub-header rendered when no context artifacts', () => {
+    // Under the 3-axis model, [context] sub-header is omitted when the
+    // documents array has no context entries — no empty section placeholder.
+    expect(result.sections.injections).not.toContain(ART_FP.CTX_HEADER_PREFIX);
   });
 
   it('no duplicate: REF marker exactly once', () => {
@@ -397,8 +409,13 @@ describe('A3: code execute — context only', () => {
     expect(result.sections.failedTemplates).toHaveLength(0);
   });
 
-  it('CTX marker in Background section of injections', () => {
-    assertMarkerInSection(result.sections.injections, ART_FP.CTX_MARKER, ART_FP.BACKGROUND_SECTION);
+  it('CTX marker under [context] sub-header inside Provided Documents', () => {
+    const docsIdx = result.sections.injections.indexOf(ART_FP.DOCS_SECTION);
+    const ctxHeaderIdx = result.sections.injections.indexOf(ART_FP.CTX_HEADER_PREFIX);
+    const ctxMarkerIdx = result.sections.injections.indexOf(ART_FP.CTX_MARKER);
+    expect(docsIdx).toBeGreaterThan(-1);
+    expect(ctxHeaderIdx).toBeGreaterThan(docsIdx);
+    expect(ctxMarkerIdx).toBeGreaterThan(ctxHeaderIdx);
   });
 
   it('REF marker nowhere in full output', () => {
@@ -444,9 +461,10 @@ describe('A4: no artifacts, no resolvedAction', () => {
     expect(result.sections.failedTemplates).toHaveLength(0);
   });
 
-  it('Primary/Background headers NOT in injections', () => {
-    expect(result.sections.injections).not.toContain(ART_FP.PRIMARY_SECTION);
-    expect(result.sections.injections).not.toContain(ART_FP.BACKGROUND_SECTION);
+  it('Provided Documents section NOT in injections (no artifacts, no RAC)', () => {
+    expect(result.sections.injections).not.toContain(ART_FP.DOCS_SECTION);
+    expect(result.sections.injections).not.toContain(ART_FP.REF_HEADER_PREFIX);
+    expect(result.sections.injections).not.toContain(ART_FP.CTX_HEADER_PREFIX);
   });
 
   it('no artifact markers anywhere', () => {
@@ -651,22 +669,16 @@ describe('A8: directive role — silent drop', () => {
     expect(result.sections.failedTemplates).toHaveLength(0);
   });
 
-  it('Primary/Background headers rendered (documents array non-empty)', () => {
-    expect(result.sections.injections).toContain(ART_FP.PRIMARY_SECTION);
-    expect(result.sections.injections).toContain(ART_FP.BACKGROUND_SECTION);
+  it('Provided Documents section rendered (documents array non-empty)', () => {
+    expect(result.sections.injections).toContain(ART_FP.DOCS_SECTION);
   });
 
-  it('DIR_ROLE_MARKER NOT in Primary References section', () => {
-    const priStart = result.sections.injections.indexOf(ART_FP.PRIMARY_SECTION);
-    const bgStart = result.sections.injections.indexOf(ART_FP.BACKGROUND_SECTION);
-    const priText = result.sections.injections.slice(priStart, bgStart);
-    expect(priText).not.toContain(ART_FP.DIR_ROLE_MARKER);
-  });
-
-  it('DIR_ROLE_MARKER NOT in Background Context section', () => {
-    const bgStart = result.sections.injections.indexOf(ART_FP.BACKGROUND_SECTION);
-    const bgText = result.sections.injections.slice(bgStart);
-    expect(bgText).not.toContain(ART_FP.DIR_ROLE_MARKER);
+  it('DIR_ROLE_MARKER NOT anywhere in injections (role="directive" is silently dropped)', () => {
+    // The action-context partial renders only role='ref' and role='context'
+    // entries via its two {{#each documents}}{{#if (eq role "...")}} blocks.
+    // role='directive' artifacts therefore never reach the prompt; the RAC
+    // directive text flows through a separate injection (directive.md).
+    expect(result.sections.injections).not.toContain(ART_FP.DIR_ROLE_MARKER);
   });
 });
 

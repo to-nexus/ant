@@ -103,22 +103,30 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   }
 
   const refs = selectedDocs.filter(a => a.role === 'ref');
-  const ctx = selectedDocs.filter(a => a.role === 'context');
   // Artifacts without explicit role assignment fall back to context
-  const untagged = selectedDocs.filter(a => a.role !== 'ref' && a.role !== 'context');
+  const ctx = selectedDocs.filter(a => a.role !== 'ref');
 
-  if (refs.length > 0) {
-    content.push({
-      type: 'text',
-      text: `\n\n# Primary References\n\n${refs.map(a => `## ${a.path}\n\n${a.content}`).join('\n\n')}`
-    });
-  }
-  const allContext = [...ctx, ...untagged];
-  if (allContext.length > 0) {
-    content.push({
-      type: 'text',
-      text: `\n\n# PRD (Requirements)\n\n${allContext.map(a => a.content).join('\n\n')}`
-    });
+  if (refs.length > 0 || ctx.length > 0) {
+    // SSOT: both `ref` and `context` are authoritative inputs; `ref` is the
+    // original source material and wins on direct conflict. Task-scope is
+    // bounded by `ref` (or directive when no ref), while `context` supplies
+    // implementation detail only. Mirror `jobs/shared/injections/role-guide.md`
+    // wording so the LLM sees consistent authority semantics across phases.
+    const sections: string[] = [
+      '## Provided Documents',
+      '',
+      '**Principle**: `ref` and `context` documents are both authoritative inputs. Use all of them.',
+      '',
+      '**Constraint**: `ref` is the original source material. When `ref` and `context` directly conflict on the same property, `ref` wins. Otherwise both are equally binding.',
+      '',
+      '**Constraint**: Task scope is determined by `ref` (or by the directive when no `ref` is provided). `context` supplies implementation detail but does NOT expand scope.',
+      '',
+      '**Constraint**: Provided documents are INPUTS. Do NOT edit them; writes this turn go to the Output Target.',
+      '',
+    ];
+    for (const a of refs) sections.push(`### [ref] ${a.path}`, '', a.content, '');
+    for (const a of ctx)  sections.push(`### [context] ${a.path}`, '', a.content, '');
+    content.push({ type: 'text', text: sections.join('\n') });
   }
   
   // ✅ 4. Inject previously generated UI docs from pool (gated by task.include from decompose)
@@ -204,7 +212,10 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     text: resourcesSummary
   });
   
-  // ✅ 3. PRD Context (if available) — from artifact pool (include policy set by decompose)
+  // ✅ 3. Source artifacts (PRD / requirements) — from artifact pool (include policy set by decompose)
+  // SSOT: mirror role-guide wording. Source docs arrive via the RAC as
+  // `role='context'` for Figma/Ref UI intents and as `role='ref'` for desc
+  // intents; either way they are authoritative inputs (ref wins on conflict).
   const freshTaskInclude = (task as DesignTask | undefined)?.include;
   const freshTaskSourceFiles = (task as DesignTask)?.sourceFiles;
   let freshSourceArtifacts = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
@@ -213,12 +224,25 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
       freshTaskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
     );
   }
-  const freshCombinedSource = freshSourceArtifacts.map(a => a.content).join('\n\n');
-  if (freshCombinedSource) {
-    content.push({
-      type: 'text',
-      text: `\n\n# PRD (Requirements)\n\n${freshCombinedSource}`
-    });
+  if (freshSourceArtifacts.length > 0) {
+    // SSOT: mirror role-guide wording (see buildUiDesignMessages comment).
+    const refs = freshSourceArtifacts.filter(a => a.role === 'ref');
+    const ctx = freshSourceArtifacts.filter(a => a.role !== 'ref');
+    const sections: string[] = [
+      '## Provided Documents',
+      '',
+      '**Principle**: `ref` and `context` documents are both authoritative inputs. Use all of them.',
+      '',
+      '**Constraint**: `ref` is the original source material. When `ref` and `context` directly conflict on the same property, `ref` wins. Otherwise both are equally binding.',
+      '',
+      '**Constraint**: Task scope is determined by `ref` (or by the directive when no `ref` is provided). `context` supplies implementation detail but does NOT expand scope.',
+      '',
+      '**Constraint**: Provided documents are INPUTS. Do NOT edit them; writes this turn go to the Output Target.',
+      '',
+    ];
+    for (const a of refs) sections.push(`### [ref] ${a.path}`, '', a.content, '');
+    for (const a of ctx)  sections.push(`### [context] ${a.path}`, '', a.content, '');
+    content.push({ type: 'text', text: sections.join('\n') });
   }
   
   // ✅ 4. Inject previously generated UI docs from pool (gated by task.include from decompose)

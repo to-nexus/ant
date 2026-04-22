@@ -24,22 +24,20 @@ when refs exist but the directive is unrelated to their content, prefer
 ════════════════════════════════════════════════════════════════════════════════
 ## Provided Documents
 
-**Role guide:**
-- **ref** — Authoritative specification. Implementation MUST conform to this document.
-- **context** — Background information. Use to understand scope and intent; not prescriptive.
+{{> jobs/shared/injections/role-guide}}
 
-{{#if contextArtifacts.length}}
-{{#each contextArtifacts}}
-### [context] {{this.path}}
+{{#if refArtifacts.length}}
+{{#each refArtifacts}}
+### [ref] {{this.path}}
 
 {{{this.content}}}
 
 {{#unless @last}}────────────────────────────────────────{{/unless}}
 {{/each}}
 {{/if}}
-{{#if refArtifacts.length}}
-{{#each refArtifacts}}
-### [ref] {{this.path}}
+{{#if contextArtifacts.length}}
+{{#each contextArtifacts}}
+### [context] {{this.path}}
 
 {{{this.content}}}
 

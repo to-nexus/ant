@@ -210,38 +210,50 @@ The transformer registry is the self-documenting inventory. If it isn't there, i
 
 ## Post-RAC Template Condition SSOT
 
-**Post-RAC template `{{#if ...}}` conditions branch on ONE of three flag categories — Gate, Contract, Background — chosen by what the block enforces, NOT by the role an artifact happens to carry today. `ArtifactPoolView` is the single source of truth for all three categories. "Availability meta" blocks that duplicate content already injected via role sections are forbidden; "functional meta" (IDs that LLM output schemas reference) is allowed.**
+**Post-RAC template `{{#if ...}}` conditions default to **Gate** (`hasX` — role-agnostic). Role-scoped flags (`hasXRef` / `hasXContext`) are reserved for the rare case where a block's language must distinguish `ref` vs `context` roles — under the 3-axis role model this is almost never warranted. `ArtifactPoolView` is the single source of truth. "Availability meta" blocks that duplicate content already injected via role sections are forbidden; "functional meta" (IDs that LLM output schemas reference) is allowed.**
 
-The RAC-derived pool ([packages/ant-cli/src/agents/common/graph/loadDocumentsForRAC.ts](packages/ant-cli/src/agents/common/graph/loadDocumentsForRAC.ts)) annotates every artifact with `role='ref'` or `role='context'`. The intent matrix ([packages/ant-shared/src/action-config-matrix.ts](packages/ant-shared/src/action-config-matrix.ts)) assigns DIFFERENT roles to the same artifact kind across intents (e.g. UI=ref for `gen-code-sys` but UI=context for `gen-code-spec` / `rev-code`), so blocks whose semantics are identical for ref and context MUST gate on presence (Gate), not role.
+The RAC-derived pool ([packages/ant-cli/src/agents/common/graph/loadDocumentsForRAC.ts](packages/ant-cli/src/agents/common/graph/loadDocumentsForRAC.ts)) annotates every artifact with `role='ref'` or `role='context'`. The intent matrix ([packages/ant-shared/src/action-config-matrix.ts](packages/ant-shared/src/action-config-matrix.ts)) assigns DIFFERENT roles to the same artifact kind across intents (e.g. UI=ref for `gen-code-sys` but UI=context for `gen-code-spec` / `rev-code`). Under the 3-axis role model, `ref` and `context` are BOTH authoritative inputs — the canonical role definition lives in [jobs/shared/injections/role-guide.md](packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/role-guide.md) and is rendered wherever artifacts are injected. Consequently blocks whose guidance applies to either role MUST gate on presence (Gate), not role.
 
-### 3-category taxonomy
+### 3-axis role model (SSOT: [role-guide.md](packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/role-guide.md))
+
+| Axis | What it decides | Determined by |
+|---|---|---|
+| **Authority** | Which input wins on conflict | `role` (ref wins over context; both are binding otherwise) |
+| **Edit-scope** | Which file(s) are physically written this turn | `target.kind` / `refs.locked` (NOT role) |
+| **Task-scope** | How broad the decomposition / plan goes | Presence of `ref` artifacts (or directive when absent); `context` never expands scope |
+
+### 3-category taxonomy (template flags)
 
 ```
 Template block
    │
    └─ What does this block's copy enforce?
-      ├─ "The doc is authoritative — implementation MUST conform / IMMUTABLE"
+      ├─ "The kind of doc is available; activate guidance/inventory/ladder"
+      │      → Gate flag:     hasUi / hasSystemDesign / hasSpec / hasSources
+      │                       (DEFAULT — covers every Authority-agnostic block)
+      │
+      ├─ "The block language must specifically discriminate `ref` vs `context`
+      │   for conflict resolution — extremely rare under 3-axis model"
       │      → Contract flag:  hasUiRef / hasSystemDesignRef / hasSpecRef / hasSourcesRef
       │
-      ├─ "The doc is background — read if useful, no conformance demand"
-      │      → Background flag: hasUiContext / hasSystemDesignContext / …
-      │
-      └─ "The kind of doc is available; activate guidance/inventory/ladder"
-             → Gate flag:     hasUi / hasSystemDesign / hasSpec / hasSources
+      └─ "The block must specifically fire ONLY on `context` artifacts"
+             → Background flag: hasUiContext / hasSystemDesignContext / …
+                                (DEPRECATED — no known legitimate use-site)
 ```
 
 | Category | Naming | Semantics | Current use-sites |
 |---|---|---|---|
-| **Gate** | `hasUi`, `hasSystemDesign`, `hasSpec`, `hasSources` | Post-RAC pool has the artifact kind (role-agnostic) | decompose design-system ladder; plan TOKEN / ASSET / LAYOUT INVENTORY; execute visual source hint |
-| **Contract** | `hasUiRef`, `hasSystemDesignRef`, `hasSpecRef`, `hasSourcesRef` | `role='ref'` — block language says "IMMUTABLE / MUST conform" | plan base "API Contract IMMUTABLE" (`hasSystemDesignRef`) |
-| **Background** | `hasUiContext`, `hasSystemDesignContext`, … | `role='context'` — block explicitly scopes doc as background | reserved for future use |
+| **Gate** | `hasUi`, `hasSystemDesign`, `hasSpec`, `hasSources` | Post-RAC pool has the artifact kind (role-agnostic) | decompose design-system ladder; plan TOKEN / ASSET / LAYOUT INVENTORY; plan base "API Contract IMMUTABLE"; execute visual source hint |
+| **Contract** | `hasUiRef`, `hasSystemDesignRef`, `hasSpecRef`, `hasSourcesRef` | `role='ref'` present AND the block's copy specifically discriminates ref vs context for conflict resolution | **no known legitimate use-site today** — the former `hasSystemDesignRef` user moved to Gate `hasSystemDesign` because the IMMUTABLE directive applies regardless of role |
+| **Background** | `hasUiContext`, `hasSystemDesignContext`, … | `role='context'` present | **DEPRECATED** — reserved helper kept for test surfaces; no legitimate template use-site under 3-axis model |
 
-**Gate-first principle**: when unsure, default to Gate. Contract is warranted ONLY when the copy literally says "IMMUTABLE / MUST conform / authoritative"; otherwise the block leaks the implementation detail "which intent am I in?" into a rendering decision it shouldn't own.
+**Gate-first principle (stronger under 3-axis model)**: Role-scoped flags (`*Ref` / `*Context`) are almost always WRONG. `ref` and `context` are both authoritative inputs — any block that gives guidance for either role should gate on Gate (`hasX`). Introducing a new `*Ref` / `*Context` flag requires a documented rationale explaining why the block's behaviour differs between the two roles.
 
 ### ❌ ABSOLUTELY FORBIDDEN
 
-- `{{#if hasUiDoc}}` / `{{#if hasUiDocs}}` / `{{#if hasDesignDoc}}` / `{{#if hasUiInDocuments}}` / any ad-hoc alias — templates must use the exact `ArtifactPoolView` method names (`hasUi`, `hasUiRef`, `hasUiContext`, …).
-- Adding role-scoped conditions (`hasUiRef`) for blocks whose semantics are identical across ref / context — that's the intent-matrix regression this SSOT is designed to prevent. Use Gate.
+- `{{#if hasUiDoc}}` / `{{#if hasUiDocs}}` / `{{#if hasDesignDoc}}` / `{{#if hasUiInDocuments}}` / any ad-hoc alias — templates must use the exact `ArtifactPoolView` method names (`hasUi`, `hasSystemDesign`, …).
+- Adding role-scoped conditions (`hasUiRef` / `hasUiContext`) without an explicit per-block rationale that the block MUST behave differently for `ref` vs `context`. Under the 3-axis model the default is Gate — role-scoped use is the exception, not the rule.
+- Reintroducing "ref = authoritative, context = background" wording anywhere. The canonical Role Guide is [jobs/shared/injections/role-guide.md](packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/role-guide.md); any phase needing to show role semantics MUST include that partial instead of reinventing wording.
 - "Availability meta" blocks that repeat filenames / paths already visible in role sections (`designDocsMeta`, `uiSectionsSummary`, `uiHint`, "Available source files: …").
 - Introducing `insideXxx` path-scan flags for post-RAC phases (those flags are valid ONLY for pre-RAC triage / detect).
 - Passing raw `pool.hasUi()` as a template variable without a documented Gate rationale — wrap the call in a node-level constant with a comment citing this section.
@@ -249,10 +261,7 @@ Template block
 ### ✅ CORRECT
 
 - Add helpers on `ArtifactPoolView` exactly once per (category × kind); nodes only consume them, never inline new path predicates.
-- Per use-site, run this check silently:
-  1. Does the block's copy say "IMMUTABLE / MUST conform"? → Contract (`*Ref`).
-  2. Does the block explicitly frame the doc as background? → Background (`*Context`).
-  3. Otherwise → Gate (`hasX`).
+- Per use-site, default to Gate. Only reach for Contract / Background if the block's copy genuinely requires per-role dispatch (document why in a comment).
 - **Functional meta is allowed**: path / id lists that the LLM output schema binds to (e.g. `uiSections` IDs, refactor-mode `targetFile` enum) are not "availability meta" — they are inputs the LLM consumes. Keep them, sourced from the pool, clearly commented as "Functional meta".
 
 ### Pre-RAC exception
@@ -261,9 +270,13 @@ Template block
 
 ### Why This Matters
 
-Every `hasUiRef`-only check that should have been Gate is a silent regression waiting for the next intent addition. The taxonomy converts the "which intent assigns which role?" question — which phase nodes have no business answering — into a property of the template block's own language. If the block says "IMMUTABLE", it's Contract; otherwise it's Gate.
+The 3-axis model untangles three independent concerns that the legacy "ref=authoritative / context=background" wording had conflated: **which input wins on conflict** (Authority), **which file gets edited this turn** (Edit-scope), and **how wide the task decomposition goes** (Task-scope). Once the axes are separated, nearly every template block that previously looked "ref-specific" turns out to be Authority-agnostic — it applies to whichever artifact kind is present, regardless of role. Hence the stronger Gate-first default.
 
-The historical regression: decompose / plan rules gated `design-system` task creation and token inventory on `hasUiRef`. For `gen-code-spec` / `rev-code`, UI is context — so the guidance silently disappeared, task decomposition skipped the token ladder, and plans went out without the inventory checklist. `hasUi` (Gate) covers all four code intents with a single flag while `hasSystemDesignRef` legitimately stays Contract (its block literally says "IMMUTABLE").
+Historical regressions this SSOT prevents:
+
+1. **Decompose / plan design-system ladder hidden for non-`ref` UI** — `hasUiRef` silently dropped `gen-code-spec` / `rev-code` (UI=context) into the no-ui-docs branch, so token inventory and design-system task guidance disappeared. Fixed by moving to `hasUi` (Gate).
+2. **"API Contract IMMUTABLE" notice silently skipped for non-`ref` sys-design** — the legacy `hasSystemDesignRef` gate only fired for `gen-code-sys`; `gen-code-spec` / `rev-code` (sys=context) silently lost the immutability directive despite system-design being an authoritative input. Fixed by moving to `hasSystemDesign` (Gate).
+3. **"Background Context / Do NOT treat as implementation source" wording** — the old action-context copy demoted every `context` artifact regardless of the intent's actual authority matrix, breaking `gen-ui-figma` (PRD as context is content SSOT), `gen-code-directive` (refs empty, PRD as context is sole authority), and every `rev-*` intent. Fixed by replacing with the 3-axis Role Guide partial.
 
 ### Enforcement
 
@@ -273,12 +286,18 @@ The historical regression: decompose / plan rules gated `design-system` task cre
 rg "\{\{#if (hasUi|hasSystemDesign|hasSpec|hasSources)(Ref|Context)?\}\}" \
   packages/ant-cli/src/core/prompt/templates/jobs \
   --glob '!**/nodes/triage/**' --glob '!**/nodes/detect/**'
-# Expected: all matches resolve to real ArtifactPoolView methods; no aliases.
+# Expected: Gate flags dominate; role-scoped use is rare and documented per-site.
 
 # Legacy aliases must be absent from POST-RAC templates (pre-RAC is exempt).
 rg "\{\{#if (hasUiDoc|hasUiDocs|hasDesignDoc|hasUiInDocuments)\}\}" \
   packages/ant-cli/src/core/prompt/templates/jobs \
   --glob '!**/nodes/triage/**' --glob '!**/nodes/detect/**'
+# Expected: 0 matches.
+
+# Legacy "context = background" wording must be absent.
+rg -i "Background Context|Do NOT treat as implementation source|for understanding only|not prescriptive|secondary, for reference only" \
+  packages/ant-cli/src/core/prompt/templates \
+  packages/ant-cli/src/agents
 # Expected: 0 matches.
 ```
 
