@@ -84,7 +84,8 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       if (state._activePhase === 'plan' && event.toolName === 'search_web' && !event.result.error) {
         state._planSearchWebCount = (state._planSearchWebCount ?? 0) + 1;
       }
-      // NOTE: chat.jsonl `file_write` lines are emitted by
+      // NOTE: chat.jsonl `chat_status` lines (statusType=file_create /
+      // file_edit / file_delete + failed variants) are emitted by
       // `FileOperationHandler.addFileOperation` (SSOT) when tool handlers
       // call `ctx.chatStatus.completeFileCreation/Edit/Deletion`. No
       // separate emission is needed here.

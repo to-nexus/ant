@@ -244,7 +244,8 @@ export async function direct(
       // sideEffects and therefore must not push the loop toward
       // escalation.
       //
-      // Trace.jsonl `file_write` lines are emitted by
+      // chat.jsonl `chat_status` lines (statusType=file_create /
+      // file_edit / file_delete + failed variants) are emitted by
       // `FileOperationHandler.addFileOperation` (see
       // core/llm-response/FileOperationHandler.ts) when tool handlers
       // call `ctx.chatStatus.completeFileCreation/Edit/Deletion`. No

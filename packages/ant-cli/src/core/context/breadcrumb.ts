@@ -48,7 +48,7 @@ export interface BuildBreadcrumbInput {
   deleted?: string[];
   /** Noun-form 1-line summary (see learn/rules.md FPOP constraint). */
   summary: string;
-  /** Optional chat.jsonl range (startTs/endTs) for UI trace view. */
+  /** Optional chat.jsonl range (startTs/endTs) for UI activity view. */
   traceRangeRef?: { startTs: string; endTs: string };
   /** Explicit timestamp override (tests). Defaults to `new Date().toISOString()`. */
   ts?: string;

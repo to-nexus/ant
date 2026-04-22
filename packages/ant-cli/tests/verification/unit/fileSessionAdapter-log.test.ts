@@ -1,9 +1,10 @@
 /**
  * §16 `ui_render_migration` — adapter-level log readers
  *
- * Covers the additive helpers used by the new `/trace` + `/breadcrumbs`
- * HTTP endpoints: `loadAllChat` (with sinceTs + jobTypes filters) and
- * `loadAllBreadcrumbs` (skipping collapsed lines).
+ * Covers `loadAllChat` (with sinceTs + jobTypes filters) and
+ * `loadAllBreadcrumbs` (skipping collapsed lines). The `/breadcrumbs`
+ * HTTP endpoint reads the latter; chat history flows through
+ * `ChatService.getMessagesAsync`, which calls `loadAllChat` internally.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -38,8 +39,8 @@ describe('FileSessionAdapter — feature-log readers', () => {
     const chatLines: ChatLine[] = [
       { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hi', sourceRef: 'feature.jsonl#t-1' },
       { type: 'assistant_message', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hello' },
-      { type: 'tool_call', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', tool: 'read_file', collapsed: true },
-      { type: 'file_write', ts: '2026-04-20T00:00:04Z', jobId: 'j1', turnId: 't-1', jobType: 'code', path: 'src/x.ts', operation: 'create' },
+      { type: 'chat_status', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', statusType: 'read', metadata: { filePath: 'src/a.ts' }, collapsed: true },
+      { type: 'chat_status', ts: '2026-04-20T00:00:04Z', jobId: 'j1', turnId: 't-1', jobType: 'code', statusType: 'file_create', metadata: { filePath: 'src/x.ts' } },
     ];
     await writeJsonl(getChatJsonlPath(tmpDir), chatLines);
 
@@ -47,7 +48,7 @@ describe('FileSessionAdapter — feature-log readers', () => {
     const out = await adapter.loadAllChat();
 
     expect(out.length).toBe(3);
-    expect(out.map(l => l.type)).toEqual(['user_turn', 'assistant_message', 'file_write']);
+    expect(out.map(l => l.type)).toEqual(['user_turn', 'assistant_message', 'chat_status']);
   });
 
   it('loadAllChat filters by sinceTs (strictly greater)', async () => {

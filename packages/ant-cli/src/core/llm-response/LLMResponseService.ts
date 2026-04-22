@@ -92,7 +92,6 @@ export class LLMResponseService {
     this.chatStatusHandler = new ChatStatusHandler(
       this.sessionStore,
       this.contentMerger,
-      this.broadcaster
     );
     
     // Enabled if all required env vars are present
@@ -559,12 +558,14 @@ export class LLMResponseService {
 }
 
 /**
- * Collapse assistant-visible text content into a single chat.jsonl line.
+ * Collapse assistant-visible text content into a single chat.jsonl
+ * `assistant_message` line.
  *
- * Intentionally conservative: we concatenate `text` + `thinking` content
- * blocks in order, trimming duplicates between adjacent blocks. Tool status
- * cards, file cards and command cards stay in their own trace line types
- * (tool_call / file_write / run_command) so they are not duplicated here.
+ * Intentionally conservative: we collect only `type === 'text'` blocks
+ * in order. Tool status, file, and command cards are persisted as
+ * separate `chat_status` lines by `ChatStatusHandler` /
+ * `FileOperationHandler` / `CommandExecutionHandler`; rolling them into
+ * the assistant_message would double-render on replay.
  */
 function collectAssistantText(
   contents: Array<{ type: string; content: string }>,

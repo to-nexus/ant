@@ -31,7 +31,7 @@ export interface FeatureBiasRecord {
   jobId: string;
   /** Execution tier predicted by the Tier Entry Node at the start of the job. */
   predictedTier: ExecutionTierId;
-  /** Observed touched-file count (chat.jsonl file_write SSOT). */
+  /** Observed touched-file count (chat.jsonl file-op chat_status SSOT). */
   actualTouched: number;
   /** Whether the direct → decompose runtime escalation fired. */
   escalated: boolean;

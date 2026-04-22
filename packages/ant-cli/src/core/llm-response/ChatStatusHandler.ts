@@ -20,7 +20,6 @@
  */
 
 import type { SessionStore } from './SessionStore';
-import type { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent } from '../chat/types';
 import type { ChatStatusType } from './types';
@@ -50,10 +49,15 @@ const LIVE_ONLY_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
 ]);
 
 export class ChatStatusHandler {
+  /**
+   * Live SSE broadcast is the responsibility of `ContentMerger.addContent`,
+   * which calls `broadcaster.broadcastContentAdd/Update` internally. This
+   * class therefore never touches `MessageBroadcaster` directly —
+   * `sessionStore` + `contentMerger` are the only dependencies.
+   */
   constructor(
     private sessionStore: SessionStore,
     private contentMerger: ContentMerger,
-    private broadcaster: MessageBroadcaster
   ) {}
 
   /**
@@ -62,10 +66,19 @@ export class ChatStatusHandler {
    * Side effects, in order:
    *   1. Build the `MessageContent` via `generateChatStatusContent`.
    *   2. Hand it to `ContentMerger` (live SSE broadcast + merge).
-   *   3. Append a `chat_status` line to `chat.jsonl` (durable SSOT).
-   *   4. For choice cards, also emit the legacy `choice_presented` line
-   *      during the migration so existing `choice_resolved` pairing logic
-   *      keeps working until readers switch to `chat_status`-only.
+   *   3. Persist the card to `chat.jsonl`, branching by card class:
+   *      - Choice cards (`triage_choice` / `choice_card`) → emit a
+   *        `choice_presented` line carrying `cardId`. A later
+   *        `choice_resolved` line is paired via `cardId` to flip the
+   *        buttons to a resolved label on replay.
+   *      - Every other non-live-only card → emit a `chat_status` line
+   *        with `(statusType, metadata)`; replay feeds the same pair
+   *        back through `generateChatStatusContent` to rebuild the
+   *        identical MessageContent.
+   *   4. Live-only types (`placeholder`, `thinking`) skip persistence:
+   *      placeholder is a transient shimmer, thinking is persisted as a
+   *      single collapsed `assistant_thinking` line by LLMEventHandler
+   *      when the block closes.
    *
    * Returns the content index (the position inside the current assistant
    * message's `contents` array), or `-1` when no message is active.

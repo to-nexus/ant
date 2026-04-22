@@ -18,9 +18,12 @@ import {
  * collapses the user_turn into T3, and a breadcrumb surfaces the
  * produced documents as path anchors for the next resolve cycle.
  *
- * SSOT for touched files: chat.jsonl `file_write` (see
- * core/context/breadcrumb.ts). `state.files` is consulted as a fallback
- * when the trace is empty (e.g. docGen wrote via non-tool paths).
+ * SSOT for touched files: chat.jsonl `chat_status` lines with
+ * statusType in {file_create, file_edit, file_delete} (+ failed
+ * variants) — see core/context/breadcrumb.ts
+ * `collectTouchedFilesFromChatLog`. `state.files` is consulted as a
+ * fallback when the chat log is empty (e.g. docGen wrote via non-tool
+ * paths).
  */
 async function applyDesignBreadcrumbBoundary(
   state: DesignGraphState,
