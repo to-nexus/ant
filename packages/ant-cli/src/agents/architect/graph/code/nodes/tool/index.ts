@@ -15,7 +15,6 @@ import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
-import { emitFileWriteTrace } from '../_common/emitFileWriteTrace';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 
 const registry = createCodeToolRegistry();
@@ -85,36 +84,24 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       if (state._activePhase === 'plan' && event.toolName === 'search_web' && !event.result.error) {
         state._planSearchWebCount = (state._planSearchWebCount ?? 0) + 1;
       }
-      // Emit trace.jsonl file_write events (SSOT for touched-file collection
-      // in learn/breadcrumb — see core/context/breadcrumb.ts). Best-effort:
-      // failures log and continue so tool execution never regresses.
-      emitFileWriteTrace({
-        session: state.deps?.session,
-        jobId: state.jobId,
-        turnId: state.turnId,
-        jobType: 'code',
-        sideEffects: event.result.sideEffects,
-      });
+      // NOTE: trace.jsonl `file_write` lines are emitted by
+      // `FileOperationHandler.addFileOperation` (SSOT) when tool handlers
+      // call `ctx.chatStatus.completeFileCreation/Edit/Deletion`. No
+      // separate emission is needed here.
       // R1 — task-type-specific side-effect handling lives on the task's
       // tool hook (verification: gate invalidation / install status / deep-
       // diagnostic marking via the Session API). The inline switch below
-      // owns only phase-blind bookkeeping (command history + modified
-      // file flag) that the hook layer does not mediate.
+      // owns only phase-blind bookkeeping (command history) that the hook
+      // layer does not mediate. `_executeModifiedFiles` is computed in
+      // `buildReturn` from `executionEvents` and returned as a state
+      // update so LangGraph's `LastValue` reducer commits it to the
+      // graph state — direct `state._executeModifiedFiles = true`
+      // mutation was a latent bug (mutations outside the return object
+      // never propagate via the Annotation channel).
       hooksIfActive(state)?.tool?.onEvent(state, event);
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
         switch (effect.type) {
-          case 'verificationInvalidated': {
-            // Phase-blind side effect: track that the execute phase touched
-            // files so the downstream router knows whether a reverify is
-            // warranted. Gate invalidation is performed by the verification
-            // tool hook (see tasks/verification/hooks/tool.ts onEvent).
-            if (state._activePhase !== 'plan') {
-              state._executeModifiedFiles = true;
-            }
-            break;
-          }
-
           case 'commandExecuted': {
             const { exitCode, command, success } = effect;
             const commandExecuted = { command, success, exitCode };
@@ -149,12 +136,22 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       };
     });
 
+    // SSOT for `_executeModifiedFiles`: any execute-phase tool invocation
+    // whose side effects include `verificationInvalidated` (emitted by
+    // file-mutating handlers: edit_file / create_file / delete_file) flips
+    // the flag so `routeAfterDone` can reach the reverify branch. Returned
+    // from the node so LangGraph actually commits it to graph state.
+    const touchedFiles = state._activePhase !== 'plan' && executionEvents.some(e =>
+      (e.result.sideEffects || []).some(ef => ef.type === 'verificationInvalidated'),
+    );
+
     const base: Partial<ArchitectGraphState> = {
       llmResponse: { ...state.llmResponse!, toolCalls: [] },
       toolResults: [...(state.toolResults || []), ...allToolResults],
       planText: state.planText,
       recursionCount: (state.recursionCount || 0) + 1,
       recursionLimit: state.recursionLimit,
+      ...(touchedFiles ? { _executeModifiedFiles: true } : {}),
       ...hookUpdates,
     };
 

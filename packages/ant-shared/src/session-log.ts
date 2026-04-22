@@ -194,11 +194,29 @@ export interface TraceToolCallLine extends LineBase {
   error?: string;
 }
 
+/**
+ * Durable record of a file mutation observable by chat UI.
+ *
+ * Schema matches ChatAPI (`LLMResponseService.FileOperationHandler`)
+ * signatures 1:1 so trace replay can re-render the same FileCard:
+ *
+ * - `operation='create'` carries full `content` (mirrors
+ *   `completeFileCreation(path, content)`).
+ * - `operation='update'` carries `diffBefore` + `diffAfter` (mirrors
+ *   `completeFileEdit(path, diffBefore, diffAfter)`).
+ * - `operation='delete'` optionally carries the previous content for
+ *   context display (mirrors `completeFileDeletion(path, content?)`).
+ * - `error` is set when the mutation failed (mirrors
+ *   `failFileCreation` / `failFileEdit`).
+ */
 export interface TraceFileWriteLine extends LineBase {
   type: 'file_write';
   path: string;
-  diff?: string;
   operation?: 'create' | 'update' | 'delete';
+  content?: string;
+  diffBefore?: string;
+  diffAfter?: string;
+  error?: string;
 }
 
 /**

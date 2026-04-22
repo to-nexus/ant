@@ -27,6 +27,7 @@ import type {
   TraceChoiceResolvedLine,
 } from '@ant/shared';
 import type { ChatMessage, MessageContent } from './types';
+import { dispatchToolCallToContent } from '../../../../../core/llm-response/toolDispatch';
 
 export interface TraceInput {
   traceLines: TraceLine[];
@@ -159,30 +160,32 @@ function toAssistantMessage(
       }
       case 'tool_call': {
         lastThinkingIdx = null;
-        contents.push({
-          type: 'tool_action',
-          content: renderToolSummary(ev.tool, ev.args, ev.error),
-          metadata: {
-            toolName: ev.tool,
-            actionIcon: ev.error ? '⚠️' : '🔧',
-            timestamp: ev.ts,
-          },
-        });
+        // SSOT: core/llm-response/toolDispatch.ts decides which tools
+        // materialise a card vs. defer to a companion trace line
+        // (file_write owns file ops; run_command owns TerminalCard).
+        const content = dispatchToolCallToContent(ev.tool, ev.args, ev.error, ev.ts);
+        if (content) contents.push(content);
         break;
       }
       case 'file_write': {
         lastThinkingIdx = null;
+        const isFailed = typeof ev.error === 'string' && ev.error.length > 0;
         const type: MessageContent['type'] =
           ev.operation === 'create'
-            ? 'file_create'
+            ? (isFailed ? 'file_create_failed' : 'file_create')
             : ev.operation === 'delete'
-              ? 'file_delete'
-              : 'file_edit';
+              ? (isFailed ? 'file_delete_failed' : 'file_delete')
+              : (isFailed ? 'file_edit_failed' : 'file_edit');
         contents.push({
           type,
-          content: '',
+          // file_create / file_delete surface `content`, file_edit surfaces
+          // a diff via metadata; FileCard reads both shapes.
+          content: ev.operation === 'update' ? '' : (ev.content ?? ''),
           metadata: {
             filePath: ev.path,
+            diffBefore: ev.diffBefore,
+            diffAfter: ev.diffAfter,
+            reason: isFailed ? ev.error : undefined,
             timestamp: ev.ts,
           },
         });
@@ -293,23 +296,6 @@ function renderChoiceCard(
     content: presented.prompt ?? '',
     metadata: metadata as MessageContent['metadata'],
   };
-}
-
-/**
- * Render a short human-readable summary for a tool call card. Mirrors
- * `handleGenericToolUse` from the live streaming path so the UI row looks
- * the same whether it comes from chat.json or from trace.jsonl.
- */
-function renderToolSummary(tool: string, args: unknown, error?: string): string {
-  if (error) return `${tool}: ${error}`;
-  if (args == null) return tool;
-  try {
-    const json = JSON.stringify(args);
-    if (json.length > 200) return `${tool}: ${json.slice(0, 200)}…`;
-    return `${tool}: ${json}`;
-  } catch {
-    return tool;
-  }
 }
 
 function cmp(a: string, b: string): number {

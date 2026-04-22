@@ -11,6 +11,7 @@ import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent, ChatSession } from '../chat/types';
 import type { FileOperationPhase } from './types';
 import { logger } from '../../utils/logger';
+import { getTraceAppender } from './traceAppenderRegistry';
 
 export class FileOperationHandler {
   constructor(
@@ -122,11 +123,57 @@ export class FileOperationHandler {
 
     // Try to update existing in-progress content
     const updated = await this.tryUpdateExisting(session, operation, filePath, phase, options);
-    
-    if (updated) return;
-    
-    // No existing content found - add new content
-    await this.addNewFileOperation(session, operation, filePath, phase, options);
+
+    if (!updated) {
+      // No existing content found - add new content
+      await this.addNewFileOperation(session, operation, filePath, phase, options);
+    }
+
+    // Terminal phases (complete / failed) are the SSOT for trace.jsonl
+    // `file_write` emission — chat SSE and durable trace share one call site.
+    if (phase === 'complete' || phase === 'failed') {
+      this.emitFileWriteTrace(operation, filePath, phase, options);
+    }
+  }
+
+  /**
+   * Mirror a terminal file-op onto trace.jsonl. Fire-and-forget — the
+   * appender internally swallows I/O errors so chat streaming is never
+   * blocked. Skips when the trace appender is not initialised (tests,
+   * processes without a recorded user_turn).
+   */
+  private emitFileWriteTrace(
+    operation: 'edit' | 'create' | 'delete',
+    filePath: string,
+    phase: FileOperationPhase,
+    options?: {
+      content?: string;
+      diffBefore?: string;
+      diffAfter?: string;
+      error?: string;
+    },
+  ): void {
+    const appender = getTraceAppender();
+    if (!appender) return;
+    const traceOp: 'create' | 'update' | 'delete' =
+      operation === 'edit' ? 'update' : operation;
+    const payload: {
+      content?: string;
+      diffBefore?: string;
+      diffAfter?: string;
+      error?: string;
+    } = {};
+    if (phase === 'failed') {
+      payload.error = options?.error;
+    } else {
+      if (operation === 'create' || operation === 'delete') {
+        payload.content = options?.content;
+      } else {
+        payload.diffBefore = options?.diffBefore;
+        payload.diffAfter = options?.diffAfter;
+      }
+    }
+    appender.appendFileWrite(traceOp, filePath, payload);
   }
 
   /**

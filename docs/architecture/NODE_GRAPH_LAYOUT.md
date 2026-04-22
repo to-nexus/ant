@@ -93,7 +93,7 @@ phase 노드 아닌 **phase-공유 헬퍼 (state-aware)** 가 필요하면 `node
 - underscore prefix 는 **"non-phase-node internal"** 을 명시 — `graph.addNode` 대상이 아니라는 점을 폴더명만으로 구분한다.
 - 판정 기준: state / runtime port (session, llm, registry, orchestrator) 참조가 있으면 `_common/`, 순수 string/type 변환이면 `utils/`.
 - 대표 예 (code graph):
-  - `_common/`: `emitFileWriteTrace.ts`, `invokeLLMWithTools.ts`, `runToolCallsAndCollect.ts`, `errorHandler.ts`
+  - `_common/`: `invokeLLMWithTools.ts`, `runToolCallsAndCollect.ts`, `errorHandler.ts`
   - `utils/`: `parseReActResponse.ts`, `violationFormatter.ts`, `responseCleaners.ts`, `codeMetrics.ts`
 
 ---

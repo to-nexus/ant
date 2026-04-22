@@ -339,12 +339,6 @@ export class ChatAPIClient {
     await service?.streamFileContent(filePath, content);
   }
 
-  async updateFileProgress(filePath: string, phase: 'writing'): Promise<void> {
-    if (!this.enabled) return;
-    // For 'writing' phase, use streamFileContent with empty content
-    // The service handles the phase transition
-  }
-
   async completeFileCreation(filePath: string, content: string): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
@@ -391,18 +385,6 @@ export class ChatAPIClient {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
     await service?.completeFileDeletion(filePath, content);
-  }
-
-  async addFileOperation(
-    operation: 'edit' | 'create' | 'delete', 
-    filePath: string,
-    content?: string,
-    diffBefore?: string,
-    diffAfter?: string
-  ): Promise<void> {
-    if (!this.enabled) return;
-    const service = await getLLMResponseService();
-    await service?.addFileOperation(operation, filePath, content, diffBefore, diffAfter);
   }
 
   // ============================================================================
