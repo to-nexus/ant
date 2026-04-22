@@ -46,6 +46,7 @@ export async function handleCreateFile(
     console.log(`   ⚠️  Shadow tool used - LLM should use <file> XML tag instead`);
 
     await ctx.chatStatus.completeFileCreation(resolved.displayPath, content);
+    ctx.recordFileTouch?.('create', resolved.displayPath);
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
       await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);

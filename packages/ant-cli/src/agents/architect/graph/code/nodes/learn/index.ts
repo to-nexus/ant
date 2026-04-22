@@ -254,6 +254,14 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     ? `feature/${state.context.featureFolder}`
     : `feature/${state.context.project}-arch-${Date.now()}`;
   
+  // Per-task touched-files SSOT — written by tool handlers
+  // (`ToolExecutionContext.recordFileTouch`) and the XML `<file>` streaming
+  // path (`FileRenderer.onFileTouched`), both of which push into
+  // `currentTask.touchedFiles`. chat.jsonl file_* events are an ephemeral
+  // UI feed and MUST NOT be the source here (see cursorrules: session
+  // state lives in code.json / feature.jsonl).
+  const filePaths = state.currentTask?.touchedFiles ?? [];
+
   const lessonMetadata = {
     relatedFiles: filePaths,
     tags: extractTags(lessons, state.directive || ''),

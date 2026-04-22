@@ -65,6 +65,16 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // Phase 3-15 — surface plan-phase search_web usage to the handler.
       planSearchWebCount: state._planSearchWebCount ?? 0,
       planSearchWebLimit: parseInt(process.env.ANT_PLAN_SEARCH_WEB_MAX || '3', 10),
+      // Per-task touched-files SSOT. chat.jsonl file_* events are ephemeral
+      // UI feed — the durable record lives on `currentTask.touchedFiles`
+      // and persists into `code.json.state.completedTasksDetails[i]` when
+      // `checkTaskStatus` pushes the completed task. Readers: learn node
+      // (lessonMetadata.relatedFiles / SessionRun.output.files).
+      recordFileTouch: (_op, p) => {
+        if (!state.currentTask) return;
+        const arr = (state.currentTask.touchedFiles ??= []);
+        if (!arr.includes(p)) arr.push(p);
+      },
     };
   },
 

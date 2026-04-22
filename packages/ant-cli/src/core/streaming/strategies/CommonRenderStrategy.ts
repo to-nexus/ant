@@ -37,7 +37,8 @@ export class CommonRenderStrategy implements IRenderStrategy {
     jobType?: 'code' | 'design',
     featurePath?: string,
     codebasePath?: string,
-    fileTreeUpdate?: FileTreeUpdatePort
+    fileTreeUpdate?: FileTreeUpdatePort,
+    onFileTouched?: (filePath: string) => void,
   ) {
     this.chatAPI = chatAPI;
     
@@ -52,7 +53,8 @@ export class CommonRenderStrategy implements IRenderStrategy {
       writeImmediately,
       jobType,
       featurePath,
-      codebasePath
+      codebasePath,
+      onFileTouched,
     });
   }
   
