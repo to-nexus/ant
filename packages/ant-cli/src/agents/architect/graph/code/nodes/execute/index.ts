@@ -556,9 +556,23 @@ export async function execute(
       const conflictPaths = new Set(fileConflicts.map(c => c.path));
       const cleanedResponse = cleanFileContentWithConflicts(textResponse, conflictPaths);
 
+      // Assistant turn: when tool_use blocks are present in the LLM response
+      // they MUST be included in history. Otherwise the tool node's trailing
+      // `user(tool_result)` has no matching tool_use in the preceding
+      // assistant and Anthropic API rejects with 400
+      // `messages.N.content.M: unexpected tool_use_id`. The mirror of this
+      // invariant lives in the normal execute-return path a few hundred
+      // lines below (search for the other `buildAssistantMessage` call) —
+      // keep them aligned. Regression: job `bitter-looping-nurse`
+      // (2026-04-22). Plain-string assistant is only valid when no tool_use
+      // exists.
+      const assistantMessage = toolCalls.length > 0
+        ? buildAssistantMessage({ text: cleanedResponse || undefined, toolCalls })
+        : (cleanedResponse ? { role: 'assistant' as const, content: cleanedResponse } : null);
+
       const newHistory = [
         ...nodeExecute,
-        ...(cleanedResponse ? [{ role: 'assistant' as const, content: cleanedResponse }] : []),
+        ...(assistantMessage ? [assistantMessage] : []),
         { role: 'user' as const, content: mergeInstruction },
       ];
 
