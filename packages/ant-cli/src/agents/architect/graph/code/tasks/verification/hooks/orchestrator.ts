@@ -14,10 +14,10 @@
  * Snapshot *capture* / *attach* stays task-type-blind: the orchestrator
  * writes the full `WorkerSnapshot` onto `task.resumeState` at every
  * carry-over boundary because cross-task fields (planText / conversations
- * / projectCodeContext / retries / violations / enforcementHistory) must
- * be preserved regardless of `task.type`. Restore is the only asymmetric
- * side because it has to revive the session *instance* from its plain-
- * object snapshot projection.
+ * / retries / violations / enforcementHistory) must be preserved
+ * regardless of `task.type`. Restore is the only asymmetric side because
+ * it has to revive the session *instance* from its plain-object snapshot
+ * projection.
  *
  * `TaskOrchestrator` / `TaskWorker` dispatch via
  * `hooksForTaskType(task.type)?.orchestrator?.*` and never know this

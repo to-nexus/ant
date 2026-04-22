@@ -90,7 +90,6 @@ export async function workerCheckTaskStatus(
       _batchSplitRequeued: false,
       _executeCallIndex: 0,
       planText: '',
-      projectCodeContext: undefined,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     } as any;
@@ -141,7 +140,6 @@ export async function workerCheckTaskStatus(
       violations: [],
       conversations: {},
       planText: '',
-      projectCodeContext: undefined,
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       recursionCount: state.recursionCount,

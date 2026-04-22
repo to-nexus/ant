@@ -117,7 +117,7 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
     const vars = await planHook.extraTemplateVars({
       state: { deps: { promptBuilder } } as any,
       task: task('s1', { techTiers: [{ language: 'typescript' }] } as any),
-      projectCodeContext: undefined,
+
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
@@ -132,7 +132,7 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
     await planHook.extraTemplateVars({
       state: { deps: { promptBuilder } } as any,
       task: task('s2', { techTiers: [{ language: 'Go' }] } as any),
-      projectCodeContext: undefined,
+
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
@@ -145,7 +145,7 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
     const vars = await planHook.extraTemplateVars({
       state: { deps: { promptBuilder } } as any,
       task: task('s3', { techTiers: [] } as any),
-      projectCodeContext: undefined,
+
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
@@ -163,7 +163,7 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
     const vars = await planHook.extraTemplateVars({
       state: { deps: { promptBuilder } } as any,
       task: task('s4', { techTiers: [{ language: 'rust' }] } as any),
-      projectCodeContext: undefined,
+
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
@@ -176,7 +176,7 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
     const vars = await planHook.extraTemplateVars({
       state: { deps: {} } as any,
       task: task('s5', { techTiers: [{ language: 'typescript' }] } as any),
-      projectCodeContext: undefined,
+
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,

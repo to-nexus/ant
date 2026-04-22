@@ -26,8 +26,8 @@ export const RETRIEVAL_CONFIG = {
   INTEGRATION_TOTAL_MAX: 30,
 
   /**
-   * Maximum total characters for all file content in projectCodeContext.
-   * 200K chars ≈ ~70K tokens at 2.8 chars/token ratio.
+   * Maximum total characters for all file content in the plan-local code
+   * context (PlanCodeContext). 200K chars ≈ ~70K tokens at 2.8 chars/token.
    * Files exceeding this cumulative limit are excluded from content loading
    * (paths still retained). Acts as a safety net alongside file-count limits.
    */
@@ -35,7 +35,7 @@ export const RETRIEVAL_CONFIG = {
 
   /**
    * Maximum lines per individual file. Files larger than this are truncated
-   * to the first MAX_FILE_LINES lines when loaded into projectCodeContext.
+   * to the first MAX_FILE_LINES lines when loaded.
    */
   MAX_FILE_LINES: 500,
   

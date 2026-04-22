@@ -46,11 +46,6 @@ export interface TokenUsageBreakdown {
 export interface BaseTaskResumeState {
   planText?: string;
   conversations?: Record<string, any[]>;
-  projectCodeContext?: {
-    source: string;
-    filePaths: string[];
-    stats: any;
-  };
   retries?: number;
   violations?: any[];
   enforcementHistory?: any[];

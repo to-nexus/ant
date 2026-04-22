@@ -116,7 +116,6 @@ export async function checkTaskStatus(
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       planText: '',
-      projectCodeContext: undefined,
       // Task boundary clears per-task verification state. Session is the
       // authoritative SSOT; clearing it transfers ownership to the next
       // task's `initSession` call (plan/parts/entry.ts). Resumed workers
@@ -296,7 +295,6 @@ export async function checkTaskStatus(
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       planText: '',
-      projectCodeContext: undefined,
       // Task boundary clears. Next verification task pops with a clean
       // Session via `initSession`; a resumed task bypasses this path
       // (TaskWorker restores via resumeState.verification).

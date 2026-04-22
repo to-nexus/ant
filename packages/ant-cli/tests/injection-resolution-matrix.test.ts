@@ -339,34 +339,6 @@ describe('Tier D: Data presence flags', () => {
     expect(injections).toContain('jobs/shared/injections/memory');
   });
 
-  it('hasGitDiff → git-diff injection (code only)', () => {
-    const injections = resolveAutoInjections({
-      job: 'code', data: { hasGitDiff: true },
-    });
-    expect(injections).toContain('jobs/code/base/injections/git-diff');
-  });
-
-  it('hasGitDiff on design job → NO git-diff injection', () => {
-    const injections = resolveAutoInjections({
-      job: 'design', data: { hasGitDiff: true },
-    });
-    expect(injections).not.toContain('jobs/code/base/injections/git-diff');
-  });
-
-  it('hasRetrievedCode → retrieved-code injection', () => {
-    const injections = resolveAutoInjections({
-      job: 'code', data: { hasRetrievedCode: true },
-    });
-    expect(injections).toContain('jobs/code/base/injections/retrieved-code');
-  });
-
-  it('hasReferenceCode → reference-code injection', () => {
-    const injections = resolveAutoInjections({
-      job: 'code', data: { hasReferenceCode: true },
-    });
-    expect(injections).toContain('jobs/code/base/injections/reference-code');
-  });
-
   it('hasRetryContext → retry-context injection (execute node)', () => {
     const injections = resolveAutoInjections({
       job: 'code', node: 'execute', data: { hasRetryContext: true },
@@ -627,22 +599,13 @@ describe('Jobs without techTier', () => {
 // ============================================
 
 describe('Setup task: config injection', () => {
-  it('setup without projectCode → language/setup/config', () => {
+  it('setup → language/setup/config (new project = empty codebase by definition)', () => {
     const injections = resolveAutoInjections({
       job: 'code', node: 'execute', taskType: 'setup',
       techTier: makeTechTier({ language: 'typescript' }),
-      data: { hasProjectCode: false },
+      data: {},
     });
     expect(injections).toContain('jobs/code/nodes/execute/basis/techTier/typescript/setup/config');
-  });
-
-  it('setup with projectCode → NO language/setup/config', () => {
-    const injections = resolveAutoInjections({
-      job: 'code', node: 'execute', taskType: 'setup',
-      techTier: makeTechTier({ language: 'typescript' }),
-      data: { hasProjectCode: true },
-    });
-    expect(injections).not.toContain('jobs/code/nodes/execute/basis/techTier/typescript/setup/config');
   });
 
   it('setup → language/setup/constraints', () => {

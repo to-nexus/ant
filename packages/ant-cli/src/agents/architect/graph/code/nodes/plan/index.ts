@@ -205,8 +205,6 @@ async function maybeSetupFastPath(
   return {
     ...state,
     currentTask: nextTask,
-    projectCodeContext: emptyCodeContext,
-    referenceCodeContexts: [],
     lessons: [],
     planText: setupPlanText,
     _executeBudget: computeBudgetFromPlanText(setupPlanText ?? ''),
@@ -270,7 +268,7 @@ async function runMainPlanLLM(
   if (tryToolsFirst) {
     const violationsText = composeViolationsText(state.violations);
     const { blocks: contentBlocks, vars: hookLogVars } = await buildPlanPromptBlocks(
-      state, nextTask, rag.projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true },
+      state, nextTask, rag.codeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true },
     );
     const messages = [{ role: 'user' as const, content: contentBlocks }];
     const result = await runPlanLLMWithTools(state, messages, nextTask, { extraLogVars: hookLogVars });
@@ -282,8 +280,6 @@ async function runMainPlanLLM(
         conversations: { [CONV_KEYS.NODE_PLAN]: result.nodePlanHistory },
         _activePhase: 'plan' as const,
         llmResponse: result.llmResponse,
-        projectCodeContext: rag.projectCodeContext,
-        referenceCodeContexts: rag.referenceCodeContexts,
         lessons: rag.lessons,
       };
     }
@@ -302,7 +298,7 @@ async function runMainPlanLLM(
     llm!,
     nextTask,
     state,
-    rag.projectCodeContext,
+    rag.codeContext,
     rag.referenceCodeContexts,
     state.violations,
     uiDocForPlan,
@@ -387,8 +383,6 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
     const updatedState: ArchitectGraphState = {
       ...state,
       currentTask: nextTask,
-      projectCodeContext: rag.projectCodeContext,
-      referenceCodeContexts: rag.referenceCodeContexts,
       lessons: rag.lessons,
       planText,
       _executeBudget: planText ? computeBudgetFromPlanText(planText) : undefined,

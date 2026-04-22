@@ -1,15 +1,18 @@
 /**
- * Code Context Types
- * 
- * Standardized interfaces for codebase context across all nodes
+ * Reference Code Context Types
+ *
+ * The main-project code context used to live here as `ProjectCodeContext`
+ * — removed along with the state channel. Plan-local code context now
+ * lives inline in `nodes/plan/combineCodeContext.ts` as `PlanCodeContext`.
  */
 
 import { GitDiffSummary } from '../../codebase/GitDiffSummary';
 
 /**
- * Base code context (common structure)
+ * Reference project code context (opt-in via `state.referenceRequests`).
+ * Rendered into the plan prompt; not consumed by execute.
  */
-export interface BaseCodeContext {
+export interface ReferenceCodeContext {
   filePaths: string[];
   files: Array<{
     path: string;
@@ -20,30 +23,6 @@ export interface BaseCodeContext {
     filesLoaded: number;
     estimatedTokens: number;
   };
-}
-
-/**
- * Main project code context
- * Source: decompose (paths only), plan (with content), or execute (accumulated)
- */
-export interface ProjectCodeContext extends BaseCodeContext {
-  source: 'decompose' | 'plan' | 'execute';
-  directoryTree?: string;
-}
-
-/**
- * Reference project code context
- */
-export interface ReferenceCodeContext extends BaseCodeContext {
   project: string;
   branch?: string;
 }
-
-/**
- * Aggregated code contexts for prompt
- */
-export interface AggregatedCodeContexts {
-  project?: ProjectCodeContext;
-  references: ReferenceCodeContext[];
-}
-

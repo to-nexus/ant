@@ -378,7 +378,7 @@ Handlebars를 사용하며, 조건부 섹션(`{{#if}}`)과 반복(`{{#each}}`)�
 | `resolvedAction` | detect 노드 — RAC 객체 (intent, mode, target, refs, context, artifacts) |
 | `taskDescription` | decompose에서 생성된 태스크 설명 |
 | `previousChaptersSummary` | 이전 챕터 요약 (Design Job) |
-| `projectCodeContext` | plan 노드의 RAG + 파일 트리 |
+| `projectCodeContext` | plan 노드의 로컬 RAG 결과 (task 진입 1회) — plan 템플릿 전용, state 에 저장되지 않음 |
 
 ## FPOP 원칙
 

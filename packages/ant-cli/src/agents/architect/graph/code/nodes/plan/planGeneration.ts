@@ -84,7 +84,7 @@ export interface BuildPlanPromptResult {
 async function buildPlanPrompt(
   state: ArchitectGraphState,
   task: CodeTask,
-  projectCodeContext: any,
+  codeContext: any,
   violationsText: string | undefined,
   uiDoc: string | undefined,
   remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined,
@@ -103,7 +103,7 @@ async function buildPlanPrompt(
   const promptCtx: PlanPromptCtx = {
     state,
     task,
-    projectCodeContext,
+    codeContext,
     violationsText,
     uiDoc,
     remainingTasks,
@@ -143,7 +143,7 @@ async function buildPlanPrompt(
   }
 
   const taskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
-  const fmtCtx = formatCodeContext(projectCodeContext);
+  const fmtCtx = formatCodeContext(codeContext);
 
   const _planBasis = state.resolvedAction?.basis;
   if (!_planBasis) {
@@ -188,7 +188,7 @@ async function buildPlanPrompt(
     directive: state.directive || '', taskType: task.type,
     documents: planDocs, hasDocuments: allDocs.length > 0,
     isSpecDriven: isSpecDriven || false,
-    projectCodeContext: fmtCtx, directoryTree: projectCodeContext?.directoryTree || '',
+    projectCodeContext: fmtCtx, directoryTree: codeContext?.directoryTree || '',
     hasProjectCodeContext: !!fmtCtx,
     violationsText, isRetry: !!violationsText,
     remainingTasks, hasRemainingTasks: remainingTasks && remainingTasks.length > 0,
@@ -224,13 +224,13 @@ export interface BuildPlanPromptBlocksResult {
 export async function buildPlanPromptBlocks(
   state: ArchitectGraphState,
   task: CodeTask,
-  projectCodeContext: any,
+  codeContext: any,
   violationsText: string | undefined,
   uiDoc: string | undefined,
   remainingTasks: Array<{ id: string; name: string; description: string; priority: number }> | undefined,
   options?: { hasTools?: boolean },
 ): Promise<BuildPlanPromptBlocksResult> {
-  const { prompt: fullPrompt, vars } = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks, options);
+  const { prompt: fullPrompt, vars } = await buildPlanPrompt(state, task, codeContext, violationsText, uiDoc, remainingTasks, options);
 
   // Cache split: use the SAME compacted artifacts that buildPlanPrompt rendered
   // into fullPrompt. Using un-compacted originals would cause replace() mismatches.
@@ -300,7 +300,7 @@ export async function generatePlanText(
   llm: LLMClient,
   task: CodeTask,
   state: ArchitectGraphState,
-  projectCodeContext: any,
+  codeContext: any,
   referenceCodeContexts: any[],
   violations?: Violation[],
   uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
@@ -316,7 +316,7 @@ export async function generatePlanText(
   
   const llmToUse = await selectLLMForTask(llm, task, state);
   const violationsText = violations && violations.length > 0 ? formatViolations(violations) : undefined;
-  const { prompt, vars: hookVars } = await buildPlanPrompt(state, task, projectCodeContext, violationsText, uiDoc, remainingTasks);
+  const { prompt, vars: hookVars } = await buildPlanPrompt(state, task, codeContext, violationsText, uiDoc, remainingTasks);
 
   // ✅ Log prompt structure (not content)
   const jobId = state._httpJobId || 'unknown';
@@ -341,7 +341,7 @@ export async function generatePlanText(
             directive: state.directive ? `[${state.directive.length} chars]` : undefined,
             include: task.include || undefined,
             packages: task.packages || undefined,
-            hasProjectCodeContext: !!projectCodeContext,
+            hasProjectCodeContext: !!codeContext,
             isRetry: !!violationsText,
             // hook-supplied variant variables (verification / error /
             // extraTemplateVars-only bundles). Empty for the generic path.
@@ -429,7 +429,6 @@ export async function generatePlanText(
         node: 'plan-planGen',
         callIndex: 0,
         nodeHistoryLength: 0,
-        projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
         estimatedPromptChars: prompt.length,
         taskCumulativeInput: 0,
         taskCumulativeOutput: 0,

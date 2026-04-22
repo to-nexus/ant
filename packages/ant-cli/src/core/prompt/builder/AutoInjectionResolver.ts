@@ -30,10 +30,6 @@ export interface AutoInjectionInput {
   data: {
     hasDirective?: boolean;
     hasMemory?: boolean;
-    hasGitDiff?: boolean;
-    hasRetrievedCode?: boolean;
-    hasReferenceCode?: boolean;
-    hasProjectCode?: boolean;
     hasRetryContext?: boolean;
     hasLessons?: boolean;
     hasSessionContext?: boolean;
@@ -108,14 +104,10 @@ export class AutoInjectionResolver {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Code job: data-presence injections (Tier D)
+    // Code job: refactor behavioural-debugging guard
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (job === 'code') {
-      if (data.hasGitDiff) injections.push(`${jobPrefix}/git-diff`);
-      if (data.hasRetrievedCode) injections.push(`${jobPrefix}/retrieved-code`);
-      if (data.hasReferenceCode) injections.push(`${jobPrefix}/reference-code`);
-
-      const isRefactor = mode === 'refactor' || (data.hasProjectCode && taskType === 'error');
+      const isRefactor = mode === 'refactor' || taskType === 'error';
       const isExplicit = resolvedAction?.source === 'explicit';
       if ((isExplicit && resolvedAction?.mode === 'refactor') || isRefactor) {
         injections.push(`${jobPrefix}/behavioral-debugging`);
@@ -177,7 +169,9 @@ export class AutoInjectionResolver {
         injections.push('jobs/code/nodes/execute/injections/runtime-error-fix');
       }
 
-      if (!data.hasProjectCode && job === 'code' && taskType === 'setup' && language) {
+      // Setup task = new project definition = no existing code. Inject the
+      // language-specific setup/config partial to seed the first build.
+      if (job === 'code' && taskType === 'setup' && language) {
         injections.push(`jobs/${job}/nodes/execute/basis/techTier/${language}/setup/config`);
       }
     }

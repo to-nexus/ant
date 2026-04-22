@@ -84,25 +84,13 @@ describe('Fix 3: detectTestFilesFromDisk scans filesystem', () => {
     expect(detectTestFilesFromDisk('/nonexistent/path')).toBe(false);
   });
 
-  it('existing detectTestFiles(RAG) misses files written during job execution', async () => {
-    // PROOF: RAG context was loaded at job start (no test files).
-    // detectTestFiles returns false. But detectTestFilesFromDisk finds the file.
-    const { detectTestFiles, detectTestFilesFromDisk } = await import(
-      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
-    );
-
-    const staleRagContext = {
-      filePaths: ['src/index.ts', 'src/utils.ts'],  // test files not in RAG snapshot
-      directoryTree: undefined,
-    };
-
+  it('disk scan picks up test files written during job execution', async () => {
     // Simulate: test files were written to disk DURING the job
     makeFs(['src/utils.test.ts']);
 
-    // OLD approach (stale): misses test files → testsRequired = false (BUG)
-    expect(detectTestFiles(staleRagContext as any)).toBe(false);
-
-    // NEW approach (disk scan): finds test files → testsRequired = true (FIXED)
+    const { detectTestFilesFromDisk } = await import(
+      '../src/agents/architect/graph/code/nodes/plan/testFileDetector'
+    );
     expect(detectTestFilesFromDisk(tmpDir)).toBe(true);
   });
 });

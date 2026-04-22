@@ -86,23 +86,19 @@ function extractProblem(state: ArchitectGraphState): string {
 
 function extractSolution(state: ArchitectGraphState): string {
   const parts: string[] = [];
-  const filePaths = state.projectCodeContext?.filePaths || [];
-  
+
   const filesToDelete = state.filesToDelete || [];
-  if (filePaths.length > 0) {
-    parts.push(`Generated ${filePaths.length} file(s)`);
-  }
   if (filesToDelete.length > 0) {
     parts.push(`deleted ${filesToDelete.length} file(s)`);
   }
-  
+
   parts.push(`using ${state.resolvedAction?.mode || 'generate'} mode`);
-  
+
   const _techTier = getTechTier(state);
   if (_techTier) {
     parts.push(`with ${_techTier.language}${_techTier.framework ? ` + ${_techTier.framework}` : ''}`);
   }
-  
+
   return parts.join(', ') + '.';
 }
 
@@ -136,9 +132,9 @@ function extractAntipatterns(state: ArchitectGraphState): string[] {
   return antipatterns;
 }
 
-function extractRelatedFiles(state: ArchitectGraphState): string[] {
-  const filePaths = state.projectCodeContext?.filePaths || [];
-  return filePaths.slice(0, 5);
+function extractRelatedFiles(_state: ArchitectGraphState): string[] {
+  // Observability consumers read `git diff` post-run for the file list.
+  return [];
 }
 
 function extractReferences(state: ArchitectGraphState): string[] {
@@ -179,26 +175,15 @@ function extractDirectiveId(state: ArchitectGraphState): string {
 
 function extractPatterns(state: ArchitectGraphState): string[] {
   const patterns: string[] = [];
-  
+
   const _tt = getTechTier(state);
   if (_tt?.framework) {
     patterns.push(_tt.framework);
   }
-  
+
   if (state.resolvedAction?.mode) {
     patterns.push(state.resolvedAction.mode);
   }
-  
-  const filePaths = state.projectCodeContext?.filePaths || [];
-  const hasTests = filePaths.some(fp => fp.includes('test') || fp.includes('spec'));
-  if (hasTests) {
-    patterns.push('test-driven-development');
-  }
-  
-  const hasComponents = filePaths.some(fp => fp.includes('component'));
-  if (hasComponents) {
-    patterns.push('component-based-architecture');
-  }
-  
+
   return patterns.length > 0 ? patterns : ['general-implementation'];
 }

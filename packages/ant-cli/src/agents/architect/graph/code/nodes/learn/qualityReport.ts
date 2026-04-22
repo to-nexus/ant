@@ -37,12 +37,21 @@ export async function generateQualityReport(
   console.log('\n🔬 Generating code quality report...\n');
 
   try {
-    // Collect generated files from state
-    const generatedFiles = (state.projectCodeContext?.files || []).map(f => ({
-      path: f.path,
-      content: f.content
-    }));
-    
+    // Collect files touched this job from git (uncommitted changes inside `codebase/`).
+    // Reads content from disk — the LLM's writes have already been flushed by
+    // FileRenderer before `learn` runs.
+    let generatedFiles: Array<{ path: string; content: string }> = [];
+    try {
+      const changed = await gitPort.getChangedFiles();
+      const codebaseChanged = changed.filter(p => p.startsWith('codebase/') || p.startsWith('codebase\\'));
+      for (const filePath of codebaseChanged) {
+        try {
+          const content = await fileSystem.readFile(filePath);
+          if (content) generatedFiles.push({ path: filePath, content });
+        } catch { /* skip unreadable */ }
+      }
+    } catch { /* git failed — skip report */ }
+
     if (generatedFiles.length === 0) {
       console.log('⚠️  No files to evaluate');
       return null;

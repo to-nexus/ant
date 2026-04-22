@@ -64,16 +64,19 @@ export type PlanEntry = 'fresh' | 'resumed' | 'toolLoop' | 'retry' | 'reverify';
 /**
  * Prompt-build context passed to `plan.buildPrompt` / `plan.extraTemplateVars`.
  *
- * Replaces the seven-argument `buildPlanPrompt(state, task, projectCodeContext,
- * violationsText, uiDoc, remainingTasks, options)` signature as the single
- * carrier the phase layer hands hooks when composing plan prompts (T6b-β).
+ * The single carrier the phase layer hands hooks when composing plan prompts.
  * Task-specific hooks read only the fields they need; the phase layer fills
  * every slot so hooks do not reach back into the graph state for data.
+ *
+ * `codeContext` is the plan-node's local RAG result (files + directoryTree +
+ * gitDiff) — a pure parameter, NOT a state channel. Hooks may render it
+ * into the variant template via `formatCodeContext`. Opaque `unknown` keeps
+ * this type module decoupled from `nodes/plan/combineCodeContext`.
  */
 export interface PlanPromptCtx {
   state: ArchitectGraphState;
   task: CodeTask;
-  projectCodeContext: unknown;
+  codeContext: unknown;
   violationsText: string | undefined;
   uiDoc: string | undefined;
   remainingTasks: Array<{
@@ -262,11 +265,11 @@ export interface TaskOrchestratorHook {
    * Note: snapshot *capture* / *attach* remains task-type-blind — the
    * orchestrator writes the full `WorkerSnapshot` onto `task.resumeState`
    * at all three carry-over boundaries (transient re-queue, interruption,
-   * batch split) because the cross-task fields (planText / conversations
-   * / projectCodeContext / retries / violations / enforcementHistory)
-   * must be preserved regardless of `task.type`. Restore is the only
-   * asymmetric side because it needs to revive the session *instance*
-   * from its plain-object snapshot projection.
+   * batch split) because the cross-task fields (planText / conversations /
+   * retries / violations / enforcementHistory) must be preserved regardless
+   * of `task.type`. Restore is the only asymmetric side because it needs
+   * to revive the session *instance* from its plain-object snapshot
+   * projection.
    */
   restoreIntoWorkerState?(workerState: Record<string, unknown>, resume: unknown): void;
   /**
@@ -291,15 +294,11 @@ export interface TaskConversationsHook {
 /**
  * Context passed to execute-node hooks. The `buildMessages` adapter fills
  * every slot before calling the hook so hooks never read back into graph
- * state beyond what is exposed here (mirrors the `PlanPromptCtx` pattern
- * introduced in T6b-β).
+ * state beyond what is exposed here.
  */
 export interface ExecutePromptCtx {
   state: ArchitectGraphState;
   task: CodeTask;
-  /** `ProjectCodeContext` from the plan node (post-compaction). Kept loose
-   *  to avoid coupling this type module to `nodes/plan/combineCodeContext`. */
-  projectCodeContext: unknown;
 }
 
 /**
@@ -349,8 +348,6 @@ export interface TaskExecuteHook {
   runtimePlanFraming?: { label: string; description: string };
   /** Fallback line shown in runtime context when `state.planText` is empty. */
   emptyPlanFallback?(task: CodeTask): string | null;
-  /** Whether to append `projectCodeContext.directoryTree` to runtime context. */
-  includeDirectoryTree?: boolean;
 }
 
 export interface TaskSchedulingHook {

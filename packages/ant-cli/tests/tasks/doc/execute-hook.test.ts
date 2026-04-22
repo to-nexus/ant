@@ -29,10 +29,6 @@ describe('tasks/doc/hooks/execute', () => {
     expect(executeHook.skipCrossTaskContext).toBeUndefined();
   });
 
-  it('opts into directoryTree injection', () => {
-    expect(executeHook.includeDirectoryTree).toBe(true);
-  });
-
   it('publishes no remediation framing or extra vars', () => {
     expect(executeHook.runtimePlanFraming).toBeUndefined();
     expect(executeHook.emptyPlanFallback).toBeUndefined();

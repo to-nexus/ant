@@ -30,7 +30,7 @@ export interface RetentionContext {
  */
 export function decideRetention(ctx: RetentionContext): RetentionDecision {
   if (ctx.jobType === 'code') {
-    return { action: 'discard', reason: 'code job loads fresh projectCodeContext per task' };
+    return { action: 'discard', reason: 'code job discards conversation at task boundary' };
   }
 
   if (!ctx.nextTask) {
