@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildRuntimeContext,
-  generateFileTree,
 } from '../src/agents/architect/graph/code/nodes/execute/buildMessages';
 import {
   buildRuntimeContext as buildDesignRuntimeContext,
@@ -13,7 +12,6 @@ function makeCodeState(overrides: Record<string, any> = {}): any {
     planText: null,
     runtimeAssetsIndex: null,
     otherWorkerFileSummary: null,
-    projectCodeContext: { filePaths: [], files: [] },
     context: {},
     ...overrides,
   };
@@ -61,40 +59,6 @@ describe('buildRuntimeContext (code)', () => {
   it('returns string even with minimal state', () => {
     const result = buildRuntimeContext(makeCodeState({ currentTask: null }));
     expect(typeof result).toBe('string');
-  });
-});
-
-describe('generateFileTree', () => {
-  it('returns null when no filePaths', () => {
-    const result = generateFileTree(makeCodeState());
-    expect(result).toBeNull();
-  });
-
-  it('includes Files Loaded section when content-loaded files exist', () => {
-    const result = generateFileTree(makeCodeState({
-      projectCodeContext: {
-        filePaths: ['src/index.ts', 'src/app.ts'],
-        files: [
-          { path: 'src/index.ts', content: 'console.log("hi")' },
-        ],
-      },
-    }));
-    expect(result).not.toBeNull();
-    expect(result).toContain('Files Loaded with Content');
-    expect(result).toContain('index.ts');
-  });
-
-  it('includes Existing Files section for path-only files', () => {
-    const result = generateFileTree(makeCodeState({
-      projectCodeContext: {
-        filePaths: ['src/utils.ts'],
-        files: [],
-      },
-    }));
-    expect(result).not.toBeNull();
-    expect(result).toContain('Existing Files');
-    expect(result).toContain('DO NOT recreate');
-    expect(result).toContain('utils.ts');
   });
 });
 

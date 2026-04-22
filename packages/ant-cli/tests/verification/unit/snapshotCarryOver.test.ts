@@ -31,11 +31,6 @@ describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
     const state = {
       planText: '{"task":{"id":"x"}}',
       conversations: { 'node:plan': [] },
-      projectCodeContext: {
-        source: 'plan',
-        filePaths: ['a.ts'],
-        stats: { filesLoaded: 1 },
-      },
       retries: 2,
       violations: [{ type: 'syntax_error' }],
       enforcementHistory: [{ reason: 'retry' }],
@@ -62,12 +57,6 @@ describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
   it('returns null when state itself is null/undefined', () => {
     expect(snapshotFromState(null as any)).toBeNull();
     expect(snapshotFromState(undefined as any)).toBeNull();
-  });
-
-  it('omits projectCodeContext when state.projectCodeContext is undefined', () => {
-    const snap = snapshotFromState({ planText: 'x', retries: 0 });
-    expect(snap).not.toBeNull();
-    expect(snap!.projectCodeContext).toBeUndefined();
   });
 
   it('round-trips via VerificationSession.rehydrate', () => {

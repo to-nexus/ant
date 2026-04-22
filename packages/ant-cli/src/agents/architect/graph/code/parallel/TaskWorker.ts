@@ -47,13 +47,6 @@ export function snapshotFromState(state: any): WorkerSnapshot | null {
   return {
     planText: state.planText,
     conversations: state.conversations,
-    projectCodeContext: state.projectCodeContext
-      ? {
-          source: state.projectCodeContext.source,
-          filePaths: state.projectCodeContext.filePaths || [],
-          stats: state.projectCodeContext.stats,
-        }
-      : undefined,
     retries: state.retries,
     violations: state.violations,
     enforcementHistory: state.enforcementHistory,
@@ -209,7 +202,6 @@ export class TaskWorker<T extends BaseTask> {
       ...(task.interrupted && (task as any).resumeState ? {
         planText: (task as any).resumeState.planText || '',
         conversations: (task as any).resumeState.conversations || {},
-        projectCodeContext: (task as any).resumeState.projectCodeContext,
         retries: (task as any).resumeState.retries || 0,
         violations: (task as any).resumeState.violations || [],
         enforcementHistory: (task as any).resumeState.enforcementHistory || [],

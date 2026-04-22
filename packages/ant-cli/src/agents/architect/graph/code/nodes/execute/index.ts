@@ -245,63 +245,42 @@ export async function execute(
   );
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
   
-  // ✅ Code job: Build existingFiles from projectCodeContext + referenceCodeContexts
-  // These contain the actual codebase files loaded by the plan node
-  // This prevents LLM from accidentally using <file> on existing files
+  // existingFiles guardrail: FileRegistry distinguishes overwrite vs new-create
+  // at `<file>` tag emit time. Seed from a one-shot disk listing of `codebase/`
+  // so sequential-mode runs still catch overwrites without SharedFileBuffer.
+  // In parallel mode SharedFileBuffer appends cross-worker writes below.
   //
-  // CRITICAL: All paths are normalized via normalizeToCodebasePath to ensure
-  // consistent path format between what was written (FileRenderer) and what
-  // is looked up (FileRegistry.isExisting). Without normalization, paths like
-  // "src/application/x" and "codebase/src/application/x" would be treated as different.
+  // All paths are normalised via normalizeToCodebasePath to stay consistent
+  // with what FileRenderer writes (`"src/app/x"` vs `"codebase/src/app/x"`).
   const existingFiles = new Set<string>();
-  
-  // ✅ Compute codebaseRel for consistent normalization
+
   const codebaseRel = (() => {
     if (!repoRootForWrites || !state.deps?.fileSystem) return 'codebase';
     const wsRoot = state.deps.fileSystem.getRootPath?.();
     if (!wsRoot) return 'codebase';
     return path.relative(wsRoot, repoRootForWrites).replace(/\\/g, '/') || 'codebase';
   })();
-  
-  // ✅ CRITICAL: Use filePaths instead of files array
-  // - files array may be empty (content not saved to session for memory optimization)
-  // - filePaths array always contains the list of known files
-  if (state.projectCodeContext?.filePaths) {
-    for (const filePath of state.projectCodeContext.filePaths) {
-      if (filePath) {
-        // Normalize to ensure consistent format in the Set
-        const { normalized } = normalizeToCodebasePath(filePath, codebaseRel);
-        existingFiles.add(normalized);
-      }
-    }
-  }
-  
-  // ✅ FALLBACK: Also add files from files array if available
-  if (state.projectCodeContext?.files) {
-    for (const file of state.projectCodeContext.files) {
-      if (file.path) {
-        const { normalized } = normalizeToCodebasePath(file.path, codebaseRel);
-        existingFiles.add(normalized);
-      }
-    }
-  }
-  
-  console.log(`📊 [CodeGen] existingFiles from projectCodeContext: filePaths=${state.projectCodeContext?.filePaths?.length ?? 0}, files=${state.projectCodeContext?.files?.length ?? 0}, existingFilesSet=${existingFiles.size}`);
 
-  // Add files from referenceCodeContexts
-  if (state.referenceCodeContexts) {
-    for (const refContext of state.referenceCodeContexts) {
-      if (refContext?.files) {
-        for (const file of refContext.files) {
-          if (file.path) {
-            const { normalized } = normalizeToCodebasePath(file.path, codebaseRel);
-            existingFiles.add(normalized);
-          }
-        }
+  const fileSystemForListing = state.deps?.fileSystem;
+  if (fileSystemForListing) {
+    try {
+      const diskPaths = await fileSystemForListing.listFiles('codebase', [
+        'node_modules', '.git', 'dist', 'build', '.next', '.nuxt',
+        'coverage', '__pycache__', 'venv', '.venv', 'target',
+        '*.lock', 'pnpm-lock.yaml', 'package-lock.json', 'yarn.lock',
+      ]);
+      for (const p of diskPaths) {
+        const { normalized } = normalizeToCodebasePath(p, codebaseRel);
+        existingFiles.add(normalized);
       }
+    } catch (err) {
+      console.warn(`⚠️  [CodeGen] listFiles('codebase') failed — existingFiles guardrail will rely on SharedFileBuffer only:`, err instanceof Error ? err.message : err);
     }
   }
-  
+
+  console.log(`📊 [CodeGen] existingFiles seeded from disk: ${existingFiles.size} path(s)`);
+
+
   // ✅ Cross-worker awareness: Track other workers' files SEPARATELY
   // These paths are added to existingFiles (for LLM prompt context — "this file exists")
   // but also tracked in otherWorkerPaths so FileRegistry.isKnownAtStart() returns false
@@ -421,7 +400,6 @@ export async function execute(
               node: 'execute',
               callIndex: callIdx,
               nodeHistoryLength: nodeExecute.length,
-              projectCodeContextFiles: state.projectCodeContext?.files?.length || 0,
               estimatedPromptChars: 0,
               taskCumulativeInput: (taskUsage?.inputTokens || 0) - (capturedUsage.inputTokens || 0),
               taskCumulativeOutput: (taskUsage?.outputTokens || 0) - (capturedUsage.outputTokens || 0),
@@ -462,14 +440,10 @@ export async function execute(
 
     // Detect files written in this call. The paths list is only used to
     // (a) flag `_executeModifiedFiles` for the downstream router and (b)
-    // invalidate verification gates on the Session. projectCodeContext
-    // itself is NOT mutated here — the plan-phase RAG snapshot remains the
-    // canonical block2 surface for the whole task's execute loop.
-    // Previously this block mid-loop-merged streamedFiles into
-    // `projectCodeContext.filePaths`, which duplicated information already
-    // surfaced via conversation tool_results and destabilised block2
-    // cache hashes. See docs/architecture notes from the verification-loop
-    // postmortem.
+    // invalidate verification gates on the Session. Files newly written in
+    // this turn surface to the LLM via conversation tool_results (edit_file /
+    // create_file / delete_file) and via streamed `<file>` tag markers in
+    // the assistant message — no state channel carries file snapshots.
     const earlyStreamedPaths = (finalizeResult?.streamedFiles || [])
       .map((fp: string) => normalizeToCodebasePath(fp, codebaseRel).normalized);
     const touchedInThisCall = earlyStreamedPaths.length > 0;
@@ -649,15 +623,8 @@ export async function execute(
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', state.workerId ?? 0);
     }
     
-    // projectCodeContext is NOT mutated in the execute loop. New files
-    // written this turn reach the LLM via conversation tool_results (for
-    // edit_file / create_file / delete_file) and via streamed `<file>`
-    // tag markers in the assistant message. The plan-phase RAG snapshot
-    // is the authoritative source for the block2 retrieved-code injection
-    // for the whole task lifetime. Cross-task propagation happens through
-    // the next task's plan RAG (fresh re-scan) — no mid-loop handoff
-    // needed here. Removing the prior mid-loop merge eliminated the block2
-    // cache instability the verification-loop postmortem traced.
+    // Cross-task propagation happens purely through disk state — the next
+    // task's plan node runs its own RAG, and execute reads files on demand.
 
     // ✅ CRITICAL: Only mark done if LLM explicitly output <done>true</done>
     // Use explicitDone from streaming pipeline (detected by SpecialTagTransformer)

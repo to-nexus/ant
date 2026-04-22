@@ -11,7 +11,6 @@
  *     user directive — preserving a stale directive would bias the agent)
  *   - remediation plan framing in runtime context
  *   - "build/test passed" fallback when the plan is empty
- *   - directoryTree in runtime context (used by list_files-avoiding path)
  *
  * R2 compliance: depends on `_shared/types` only; no imports from `nodes/`,
  * `routers/`, or `parallel/`.
@@ -45,5 +44,4 @@ export const executeHook: TaskExecuteHook = {
   sanitizeDirective: () => '',
   runtimePlanFraming,
   emptyPlanFallback,
-  includeDirectoryTree: true,
 };

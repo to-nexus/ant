@@ -290,7 +290,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
     const out = await planHook.buildPrompt({
       state,
       task: task('err1', { prePlanText: 'prebuilt', errors: ['TS2307'], category: 'missing_import', remediationMode: 'patch' } as any),
-      projectCodeContext: { files: [{ path: 'src/a.ts' }] },
+      codeContext: { files: [{ path: 'src/a.ts' }] },
       violationsText: 'prior failure context',
       uiDoc: undefined,
       remainingTasks: undefined,
@@ -318,7 +318,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
     const out = await planHook.buildPrompt({
       state: { deps: { promptBuilder } } as any,
       task: task('err2'),
-      projectCodeContext: undefined,
+      codeContext: undefined,
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
@@ -333,7 +333,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
       planHook.buildPrompt({
         state: { deps: {} } as any,
         task: task('err3'),
-        projectCodeContext: undefined,
+        codeContext: undefined,
         violationsText: undefined,
         uiDoc: undefined,
         remainingTasks: undefined,

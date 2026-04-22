@@ -164,21 +164,7 @@ export interface SessionState {
   
   // Token usage
   tokenUsage?: TaskTokenUsage;
-  
-  // Project Code Context (for LLM RAG)
-  projectCodeContext?: {
-    source: 'plan' | 'execute' | 'decompose';
-    filePaths: string[];
-    files: any[];
-    stats?: {
-      filesLoaded: number;
-      stackTraceCount?: number;
-      semanticCount?: number;
-      deduplicatedCount?: number;
-      estimatedTokens?: number;
-    };
-  };
-  
+
   // Multi-Turn Conversation (cross-run semantic history)
   conversation?: ConversationEntry[];
 

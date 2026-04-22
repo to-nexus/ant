@@ -227,22 +227,19 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     );
   }
   
-  // Generate quality evaluation report
-  const filePaths = state.projectCodeContext?.filePaths || [];
-  if (filePaths.length > 0) {
-    try {
-      const gitPort = state.gitPort || state.deps?.git;
-      const fileSystem = state.deps?.fileSystem;
-      if (gitPort && fileSystem) {
-        const { generateQualityReport } = await import('./qualityReport');
-        const report = await generateQualityReport(state, gitPort, fileSystem);
-        if (report) {
-          state.evaluationReport = report;
-        }
+  // Generate quality evaluation report from disk (tracks files touched this job).
+  try {
+    const gitPort = state.gitPort || state.deps?.git;
+    const fileSystem = state.deps?.fileSystem;
+    if (gitPort && fileSystem) {
+      const { generateQualityReport } = await import('./qualityReport');
+      const report = await generateQualityReport(state, gitPort, fileSystem);
+      if (report) {
+        state.evaluationReport = report;
       }
-    } catch (error) {
-      console.warn('⚠️  Quality report generation failed:', error);
     }
+  } catch (error) {
+    console.warn('⚠️  Quality report generation failed:', error);
   }
   
   // Extract lessons

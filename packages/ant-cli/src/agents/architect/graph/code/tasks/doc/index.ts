@@ -37,9 +37,7 @@
  *
  * Phase-layer `task.type === 'doc'` residuals were resolved in T6b-κ
  * (the skip-planning gate at `nodes/plan/planGeneration.ts
- * taskRequiresPlan` now calls `isDocTask` directly). Execute-phase
- * dirTree gating has been lifted into the `execute` hook slot at
- * T6b-ι (`includeDirectoryTree: true` below).
+ * taskRequiresPlan` now calls `isDocTask` directly).
  */
 
 import type { TaskHooks } from '../_shared/types';

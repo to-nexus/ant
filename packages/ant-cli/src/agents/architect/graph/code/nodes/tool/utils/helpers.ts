@@ -39,12 +39,6 @@ export function buildTaskReminder(state: ArchitectGraphState): string {
     taskReminder += `\n**SETUP:** Generate config files, run install if rules permit, then <done>true</done>. No mkdir.`;
   }
 
-  const filePaths = state.projectCodeContext?.filePaths;
-  if (filePaths && filePaths.length > 0) {
-    taskReminder += `\n\nFiles already created in this session (${filePaths.length}) — do NOT recreate:\n` +
-      filePaths.map(fp => `  - ${fp}`).join('\n');
-  }
-
   return taskReminder;
 }
 

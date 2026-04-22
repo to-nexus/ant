@@ -28,7 +28,14 @@ import { RETRIEVAL_CONFIG } from "../../config/retrievalConfig";
 import { isVerificationTask } from "../../tasks/verification";
 import { isErrorTask } from "../../tasks/error";
 
-export interface ProjectCodeContext {
+/**
+ * Plan-local code context shape returned by `combineCodeContext`.
+ *
+ * Consumed by `runPlanRAG` → `buildPlanPrompt` as a local parameter.
+ * NOT a state channel — lives only for the duration of a single plan
+ * node invocation.
+ */
+export interface PlanCodeContext {
   filePaths: string[];
   files: Array<{ path: string; content: string; source: 'vector_db' | 'local' }>;
   stats: {
@@ -39,13 +46,12 @@ export interface ProjectCodeContext {
     estimatedTokens?: number;
   };
   gitDiff?: GitDiffSummary;
-  directoryTree?: string;  // ✅ Directory structure for path decisions
+  directoryTree?: string;
   source: 'plan';
 }
 
-// ✅ Extended return type to include lessons
 export interface CombinedCodeContextResult {
-  context: ProjectCodeContext;
+  context: PlanCodeContext;
   lessons: LessonResult[];
 }
 
@@ -81,11 +87,6 @@ export async function combineCodeContext(
   git: GitPort,
   directoryTree?: string
 ): Promise<CombinedCodeContextResult | null> {
-  if (state.retries > 0 && state.projectCodeContext) {
-    console.log(`♻️  [CodeContext] Retry #${state.retries}: reusing existing context (${state.projectCodeContext.files.length} files) to preserve cache`);
-    return { context: state.projectCodeContext as ProjectCodeContext, lessons: [] };
-  }
-
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) {
     console.warn(`   ⚠️  FileSystemPort not available, skipping RAG`);
@@ -210,7 +211,7 @@ export async function combineCodeContext(
       // Non-critical
     }
 
-    const projectCodeContext: ProjectCodeContext = {
+    const codeContext: PlanCodeContext = {
       filePaths: [],
       files: preloadedFiles,
       stats: {
@@ -223,14 +224,14 @@ export async function combineCodeContext(
     };
 
     if (directoryTree) {
-      projectCodeContext.directoryTree = directoryTree;
+      codeContext.directoryTree = directoryTree;
     } else {
       try {
-        projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
+        codeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
       } catch { /* Non-critical */ }
     }
 
-    return { context: projectCodeContext, lessons: [] };
+    return { context: codeContext, lessons: [] };
   }
 
   // Determine if this task needs an extended file quota (integration tasks
@@ -370,7 +371,7 @@ export async function combineCodeContext(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Create context object
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const projectCodeContext: ProjectCodeContext = {
+  const codeContext: PlanCodeContext = {
     filePaths: budgetedFiles.map(f => f.path),
     files: budgetedFiles,
     stats: {
@@ -382,49 +383,48 @@ export async function combineCodeContext(
     },
     source: 'plan' as const
   };
-  
-  console.log(`   ✅ Total: ${projectCodeContext.stats.filesLoaded} files (${requiredFiles.length} required + ${errorFiles.length} error + ${semanticFiles.length} semantic)`);
-  if (projectCodeContext.stats.deduplicatedCount > 0) {
-    console.log(`   🔄 Deduplicated: ${projectCodeContext.stats.deduplicatedCount} duplicates removed`);
+
+  console.log(`   ✅ Total: ${codeContext.stats.filesLoaded} files (${requiredFiles.length} required + ${errorFiles.length} error + ${semanticFiles.length} semantic)`);
+  if (codeContext.stats.deduplicatedCount > 0) {
+    console.log(`   🔄 Deduplicated: ${codeContext.stats.deduplicatedCount} duplicates removed`);
   }
-  
-  if (projectCodeContext.filePaths.length > 0) {
-    projectCodeContext.filePaths.forEach((f: string) => console.log(`      📄 ${f}`));
+
+  if (codeContext.filePaths.length > 0) {
+    codeContext.filePaths.forEach((f: string) => console.log(`      📄 ${f}`));
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Git diff summary
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (git) {
     const gitDiffResult = await generateGitDiffSummary(
-      git, 
-      state.context.workingDir, 
-      projectCodeContext.filePaths
+      git,
+      state.context.workingDir,
+      codeContext.filePaths
     );
-    projectCodeContext.gitDiff = gitDiffResult ?? undefined;
+    codeContext.gitDiff = gitDiffResult ?? undefined;
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Directory tree (reuse pre-generated or generate fresh)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (directoryTree) {
-    projectCodeContext.directoryTree = directoryTree;
+    codeContext.directoryTree = directoryTree;
     console.log(`   📂 Directory tree reused from earlier generation`);
   } else {
     try {
-      projectCodeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
-      if (projectCodeContext.directoryTree) {
+      codeContext.directoryTree = await generateDirectoryTree(fileSystem, 4);
+      if (codeContext.directoryTree) {
         console.log(`   📂 Directory tree generated`);
       }
     } catch (err) {
       console.warn(`   ⚠️  Could not generate directory tree:`, err instanceof Error ? err.message : err);
     }
   }
-  
-  // ✅ Return both context and lessons
+
   return {
-    context: projectCodeContext,
-    lessons
+    context: codeContext,
+    lessons,
   };
 }
 

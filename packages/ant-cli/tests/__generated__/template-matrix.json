@@ -314,12 +314,6 @@
       "manifest"
     ]
   },
-  "jobs/code/base/injections/git-diff": {
-    "sources": [
-      "auto-injection",
-      "manifest"
-    ]
-  },
   "jobs/code/base/injections/mock-adapter-contract": {
     "sources": [
       "partial-ref",
@@ -347,18 +341,6 @@
     ]
   },
   "jobs/code/base/injections/preview-setup": {
-    "sources": [
-      "auto-injection",
-      "manifest"
-    ]
-  },
-  "jobs/code/base/injections/reference-code": {
-    "sources": [
-      "auto-injection",
-      "manifest"
-    ]
-  },
-  "jobs/code/base/injections/retrieved-code": {
     "sources": [
       "auto-injection",
       "manifest"

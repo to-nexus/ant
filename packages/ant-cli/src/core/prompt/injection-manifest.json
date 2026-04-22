@@ -12,9 +12,6 @@
     "visual-tier-detection": ["availableVisualLanguagesWithModes", "availableSurfaceSystems", "availableSpatialSystems", "resolvedAction"]
   },
   "jobs/code/base/injections": {
-    "git-diff": ["gitDiff"],
-    "retrieved-code": ["files", "filePaths", "stats"],
-    "reference-code": ["contexts"],
     "text-format-compact": [],
     "tool-calling-rules-compact": [],
     "system-design-guide": [],

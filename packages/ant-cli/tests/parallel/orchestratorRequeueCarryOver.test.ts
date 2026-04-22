@@ -70,7 +70,6 @@ function simulateWorkerSpawn(task: CodeTask): Record<string, unknown> {
     Object.assign(workerState, {
       planText: resume.planText || '',
       conversations: resume.conversations || {},
-      projectCodeContext: resume.projectCodeContext,
       retries: resume.retries || 0,
       violations: resume.violations || [],
       enforcementHistory: resume.enforcementHistory || [],

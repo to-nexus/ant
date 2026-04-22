@@ -1,18 +1,17 @@
 /**
  * plan/parts/rag.ts — RAG orchestration for STEP 0.8~STEP 2.5.
  *
- * Extracted from `nodes/plan/index.ts` as part of T6b-α. Behaviour is
- * byte-identical to the inline implementation; only module boundary moves.
- *
  * Responsibilities:
  *   - STEP 0.8 — directory tree (early, for keyword LLM).
  *   - STEP 1   — task-specific keyword generation.
  *   - STEP 2   — combine code context (Vector DB + Git + Local + references).
- *   - STEP 2.5 — ensure `projectCodeContext` always exists (empty fallback).
+ *   - STEP 2.5 — ensure `codeContext` always exists (empty fallback).
  *
- * Returns the same `{ projectCodeContext, referenceCodeContexts, lessons,
- * taskKeywords, directoryTree }` bundle the orchestrator hands to the
- * plan-LLM phase.
+ * Returns `{ codeContext, referenceCodeContexts, lessons, taskKeywords,
+ * directoryTree }` — a LOCAL bundle for the plan LLM. Callers consume it
+ * inline for prompt rendering; no state channel receives any of these
+ * fields. RAG is scoped to one task-entry snapshot; execute reads files
+ * on demand through tool calls.
  */
 
 import type { LLMClient } from '../../../../../../../core/ports';
@@ -24,7 +23,7 @@ import { loadReferenceContexts } from '../referenceLoader';
 import { extractFilesFromViolations } from '../../../utils/violationFormatter';
 
 export interface PlanRagResult {
-  projectCodeContext: any;
+  codeContext: any;
   referenceCodeContexts: any[];
   lessons: any[];
   taskKeywords: TaskKeywords;
@@ -135,7 +134,7 @@ export async function runPlanRAG(
     entry.skipKeywordAndRAG,
   );
 
-  let projectCodeContext: any = undefined;
+  let codeContext: any = undefined;
   let referenceCodeContexts: any[] = [];
   let lessons: any[] = [];
 
@@ -153,11 +152,11 @@ export async function runPlanRAG(
       directoryTree,
     );
     if (combinedResult) {
-      projectCodeContext = combinedResult.context;
+      codeContext = combinedResult.context;
       lessons = combinedResult.lessons || [];
     }
 
-    if (projectCodeContext && state.referenceRequests && state.referenceRequests.length > 0) {
+    if (codeContext && state.referenceRequests && state.referenceRequests.length > 0) {
       const { extractFilesFromCode } = await import('../utils');
       referenceCodeContexts = await loadReferenceContexts(
         state,
@@ -170,13 +169,13 @@ export async function runPlanRAG(
     }
   }
 
-  if (!projectCodeContext) {
-    projectCodeContext = { ...EMPTY_CONTEXT };
-    console.log(`   ℹ️  No files loaded - using empty projectCodeContext`);
+  if (!codeContext) {
+    codeContext = { ...EMPTY_CONTEXT };
+    console.log(`   ℹ️  No files loaded - using empty codeContext`);
   }
 
   return {
-    projectCodeContext,
+    codeContext,
     referenceCodeContexts,
     lessons,
     taskKeywords,

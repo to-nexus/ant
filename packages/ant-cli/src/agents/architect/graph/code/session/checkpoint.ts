@@ -35,7 +35,6 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     currentTask: state.currentTask?.name,
     queueSize: state.taskQueue?.size() ?? 0,
     referenceRequestsCount: state.referenceRequests?.length ?? 0,
-    projectCodeContextFilesCount: state.projectCodeContext?.filePaths?.length ?? 0  // ✅ DEBUG: Check if projectCodeContext is present
   });
   
   try {
@@ -75,17 +74,6 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       userLanguage: state.context.userLanguage,
       resolvedAction: state.resolvedAction,
       directive: state.directive,
-      projectCodeContext: state.projectCodeContext ? {
-        source: state.projectCodeContext.source,
-        filePaths: state.projectCodeContext.filePaths || [],
-        files: [],
-        stats: state.projectCodeContext.stats || { filesLoaded: 0, estimatedTokens: 0 }
-      } : {
-        source: 'plan' as const,
-        filePaths: [],
-        files: [],
-        stats: { filesLoaded: 0, stackTraceCount: 0, semanticCount: 0, deduplicatedCount: 0, estimatedTokens: 0 }
-      },
       ...(state.jobId && { jobId: state.jobId }),
       ...(state.jobTiming && { jobTiming: state.jobTiming }),
       ...(state.tokenUsage && { tokenUsage: state.tokenUsage }),

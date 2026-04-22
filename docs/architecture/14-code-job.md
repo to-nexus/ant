@@ -185,10 +185,12 @@ batch split은 단일 검증 실패를 여러 독립 error 태스크로 쪼개�
 runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다:
 - taskQueue, completedTasks, completedTasksDetails
 - resolvedAction (basis.techTier 포함)
-- referenceRequests, projectCodeContext (경로만)
+- referenceRequests
 - planText, conversationHistory
 - directive, overrideDirective, chatSource
 - jobTiming, tokenUsage, recursionCount
+
+Plan 단계의 RAG 결과(`PlanCodeContext` — files / filePaths / directoryTree / gitDiff)는 task 진입 시 1회 생성되는 plan-local 값으로 state에 저장되지 않는다. 재개 시 다음 plan 노드가 새로 RAG를 수행한다. Execute 는 plan.json 의 modify/create 경로만 `read_file` 툴로 on-demand 조회한다.
 
 ## Split Injection
 
