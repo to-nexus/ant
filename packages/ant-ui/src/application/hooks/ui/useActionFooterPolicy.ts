@@ -31,10 +31,6 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'no-workspace', buildDisabledReason: 'no-workspace' };
   }
 
-  if (actionMetadata.explicit) {
-    return { canStartChat: false, canBuild: false, isBuilding: isRunning, chatDisabledReason: 'explicit-active', buildDisabledReason: 'explicit-active' };
-  }
-
   if (isRunning) {
     return { canStartChat: false, canBuild: false, isBuilding: true, chatDisabledReason: 'job-running', buildDisabledReason: 'job-running' };
   }

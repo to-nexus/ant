@@ -6,6 +6,7 @@ import {
   type IntentId,
 } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
+import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 
 export interface MentionSuggestion {
   type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'command';
@@ -101,6 +102,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
   const fileTree = useStore(s => s.fileTree);
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const actionMetadata = useStore(s => s.actionMetadata);
+  const { canStartChat } = useActionFooterPolicy();
 
   const allFilePaths = useMemo(() => flattenFilePaths(fileTree), [fileTree]);
 
@@ -167,7 +169,12 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
 
     if (suggestion.type === 'command') {
       if (suggestion.id === '@explicit') {
-        updateActionMetadata({ explicit: true });
+        // Manual set path — gated by canStartChat to preserve the invariant
+        // that `explicit === true` ⇒ metadata is complete. Manual removal
+        // and all other metadata paths remain unconditional.
+        if (canStartChat) {
+          updateActionMetadata({ explicit: true });
+        }
         const newMessage = (beforeMention + afterCursor).trimStart();
         setIsOpen(false);
         setSelectedIndex(0);
@@ -200,15 +207,21 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
           context: [...(actionMetadata.context || []).filter(c => c !== suggestion.id), suggestion.id],
         });
         break;
-      case 'explicit':
-        updateActionMetadata({ explicit: suggestion.id === 'true' });
+      case 'explicit': {
+        const next = suggestion.id === 'true';
+        // Setting `explicit: true` requires canStartChat (invariant gate).
+        // Clearing is always allowed.
+        if (!next || canStartChat) {
+          updateActionMetadata({ explicit: next ? true : undefined });
+        }
         break;
+      }
     }
 
     setIsOpen(false);
     setSelectedIndex(0);
     return { newMessage: newMessage.trimStart(), newCursorPos: beforeMention.length };
-  }, [message, cursorPos, matchStart, updateActionMetadata, actionMetadata]);
+  }, [message, cursorPos, matchStart, updateActionMetadata, actionMetadata, canStartChat]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent): false | { newMessage: string; newCursorPos: number } => {
     if (!showSuggestions) return false;
