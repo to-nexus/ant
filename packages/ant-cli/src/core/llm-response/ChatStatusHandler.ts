@@ -1,8 +1,22 @@
 /**
- * ChatStatusHandler - Handles chat status messages in job workers
- * 
- * Generates and broadcasts status messages for various operations
- * (exploring, retrieving, reading, thinking, etc.)
+ * ChatStatusHandler — single entry point for every chat card.
+ *
+ * Chat SSOT contract (see "chat SSOT fragmentation purge" plan):
+ *  1. Live path: every chat card (read / list / search / file_* /
+ *     command_* / mkdir / generic tool / choice card / …) is emitted by
+ *     calling `showChatStatus(type, metadata)`.
+ *  2. `showChatStatus` calls `generateChatStatusContent(type, metadata)`
+ *     to produce the card body string, hands the resulting `MessageContent`
+ *     to `ContentMerger` for live SSE broadcast, AND appends a single
+ *     `chat_status` line to `chat.jsonl` via `appender.appendChatStatus`.
+ *  3. Replay path reads `chat_status` lines and feeds `(statusType,
+ *     metadata)` back through `generateChatStatusContent` — the same
+ *     function the live path used — so the restored `MessageContent` is
+ *     byte-identical to the broadcast copy.
+ *
+ * Result: no "replay-side builder" exists, the chat log content IS the
+ * chat, and new card kinds require a single edit in
+ * `generateChatStatusContent`.
  */
 
 import type { SessionStore } from './SessionStore';
@@ -12,20 +26,28 @@ import type { MessageContent } from '../chat/types';
 import type { ChatStatusType } from './types';
 import { logger } from '../../utils/logger';
 import { getTraceAppender } from './traceAppenderRegistry';
+import { generateChatStatusContent } from './generateStatusContent';
 import * as crypto from 'crypto';
 
-const PROCESSING_LABELS: Record<string, { progress: string; complete: string }> = {
-  bg_removal: { progress: 'Removing background', complete: 'Background removed' },
-  upscale: { progress: 'Upscaling image', complete: 'Image upscaled' },
-  optimize: { progress: 'Optimizing image', complete: 'Image optimized' },
-};
-
-function formatFigmaTarget(nodeId?: string, nodeName?: string): string | null {
-  if (!nodeId) return null;
-  if (nodeId === '0:1' || nodeId === '0-1') return null;
-  if (nodeName) return nodeName.length > 200 ? nodeName.slice(0, 197) + '...' : nodeName;
-  return `node: ${nodeId}`;
-}
+/**
+ * Chat status emissions that do NOT produce a persisted `chat_status`
+ * line.
+ *
+ * - `placeholder` is a live-only shimmer card injected when an assistant
+ *   message starts; it carries no semantic content and is replaced as
+ *   soon as the first real card arrives.
+ * - `thinking` is streamed token-by-token by `LLMEventHandler`; the final
+ *   collapsed block is persisted separately via
+ *   `appender.appendThinking(finalText)`. Persisting every chunk here
+ *   would duplicate the block.
+ *
+ * Every other `ChatStatusType` emits exactly one `chat_status` line so
+ * replay can reproduce the identical MessageContent.
+ */
+const LIVE_ONLY_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
+  'placeholder',
+  'thinking',
+]);
 
 export class ChatStatusHandler {
   constructor(
@@ -35,20 +57,25 @@ export class ChatStatusHandler {
   ) {}
 
   /**
-   * Show chat status message
-   * 
-   * Rules:
-   * - Content text is auto-generated based on type
-   * - Auto-merge or disappear based on next content type (handled by ContentMerger)
-   * 
-   * Returns the content index
+   * Show chat status message — the single entry point for every chat card.
+   *
+   * Side effects, in order:
+   *   1. Build the `MessageContent` via `generateChatStatusContent`.
+   *   2. Hand it to `ContentMerger` (live SSE broadcast + merge).
+   *   3. Append a `chat_status` line to `chat.jsonl` (durable SSOT).
+   *   4. For choice cards, also emit the legacy `choice_presented` line
+   *      during the migration so existing `choice_resolved` pairing logic
+   *      keeps working until readers switch to `chat_status`-only.
+   *
+   * Returns the content index (the position inside the current assistant
+   * message's `contents` array), or `-1` when no message is active.
    */
   showChatStatus(type: ChatStatusType, metadata?: Record<string, any>): number {
     const session = this.sessionStore.getSession();
     const ctx = this.sessionStore.getContext();
 
     if (!session || !session.currentMessage) {
-      logger.warn(`No active message for chat status`, { 
+      logger.warn(`No active message for chat status`, {
         component: 'ChatStatusHandler',
         projectId: ctx.projectId,
         featureName: ctx.featureName
@@ -56,15 +83,14 @@ export class ChatStatusHandler {
       return -1;
     }
 
-    // Auto-generate content text based on type
     const content = this.generateStatusContent(type, metadata);
 
     // Durable mirror preparation: for interactive card types, mint a
     // stable cardId BEFORE we build the message content so that
     //   (a) the SSE broadcast carries it,
-    //   (b) the later choice_resolved trace line can reference the same id.
+    //   (b) the later choice_resolved chat log line can reference the same id.
     const isChoiceCard = type === 'triage_choice' || type === 'choice_card';
-    const appender = isChoiceCard ? getTraceAppender() : null;
+    const appender = getTraceAppender();
     const mergedMetadata: Record<string, any> = {
       provider: 'system',
       timestamp: new Date().toISOString(),
@@ -82,7 +108,6 @@ export class ChatStatusHandler {
       metadata: mergedMetadata as MessageContent['metadata'],
     };
 
-    // Use ContentMerger for intelligent merging
     const contentIndex = this.contentMerger.addContent(
       ctx.projectId,
       ctx.featureName,
@@ -90,15 +115,27 @@ export class ChatStatusHandler {
       messageContent
     );
 
-    // Update Redis asynchronously
     this.sessionStore.updateCurrentMessage().catch(err => {
-      logger.warn(`Failed to update current message in Redis`, { 
-        component: 'ChatStatusHandler' 
+      logger.warn(`Failed to update current message in Redis`, {
+        component: 'ChatStatusHandler'
       }, err);
     });
 
-    // Durable mirror: emit choice_presented to trace.jsonl. The cardId was
-    // minted above so any later resolution line pairs with this card.
+    // Durable SSOT mirror — chat.jsonl. Every non-live-only status emits a
+    // single `chat_status` line carrying `(statusType, metadata)`; replay
+    // feeds that pair back through `generateChatStatusContent` to rebuild
+    // the identical MessageContent.
+    if (appender && !LIVE_ONLY_STATUS_TYPES.has(type)) {
+      // Strip purely-presentational fields that the replay reader
+      // re-derives or never consumes.
+      const { provider: _provider, timestamp: _timestamp, ...persistedMetadata } = mergedMetadata;
+      appender.appendChatStatus(type, persistedMetadata);
+    }
+
+    // Backward-compat legacy mirror: keep emitting `choice_presented` for
+    // choice cards during the migration so existing `choice_resolved`
+    // wiring (paired via cardId) continues to work until the replay
+    // reader is switched to the chat_status-only path.
     if (isChoiceCard && appender && mergedMetadata.cardId) {
       const cardType = type === 'triage_choice'
         ? 'triage_choice'
@@ -114,8 +151,8 @@ export class ChatStatusHandler {
   }
 
   /**
-   * Remove a chat status UI element by its content index
-   * Used when a progress indicator (e.g. retrieving) finishes with 0 results
+   * Remove a chat status UI element by its content index.
+   * Used when a progress indicator (e.g. retrieving) finishes with 0 results.
    */
   removeChatStatus(contentIndex: number, expectedType?: string): void {
     const session = this.sessionStore.getSession();
@@ -138,346 +175,31 @@ export class ChatStatusHandler {
     });
   }
 
-  /**
-   * Helper: Add exploring status
-   */
   addExploringStatus(current: number, total: number): number {
     return this.showChatStatus('exploring', { filesCount: current, totalFiles: total });
   }
 
-  /**
-   * Helper: Add explored result
-   */
   addExploredResult(filesCount: number, filesList?: string[]): number {
     return this.showChatStatus('explored', { filesCount, filesList });
   }
 
-  /**
-   * Helper: Add reading file status
-   */
   addReadingFile(filePath: string): number {
     return this.showChatStatus('reading', { filePath });
   }
 
-  /**
-   * Helper: Add read complete
-   */
   addReadComplete(filePath: string, error?: string): number {
     return this.showChatStatus('read', { filePath, error });
   }
 
   /**
-   * Generate status content text based on type
+   * Generate status content text based on type.
+   *
+   * Thin delegation to the module-level {@link generateChatStatusContent}
+   * so replay readers (`chat.jsonl` → ChatMessage[]) can call the exact
+   * same function without instantiating a `ChatStatusHandler` (which
+   * requires a live `SessionStore` / broadcaster).
    */
   private generateStatusContent(type: ChatStatusType, metadata?: Record<string, any>): string {
-    switch (type) {
-      case 'placeholder':
-        return 'Planning next moves...';
-        
-      case 'exploring': {
-        const filesCount = metadata?.filesCount ?? 0;
-        const totalFiles = metadata?.totalFiles ?? 0;
-        return filesCount > 0 
-          ? `Exploring: ${filesCount}/${totalFiles} files`
-          : 'Exploring: codebase...';
-      }
-      
-      case 'explored': {
-        const filesCount = metadata?.filesCount ?? 0;
-        const error = metadata?.error;
-        const content = metadata?.content;
-        if (error) return `❌ Explore Failed: ${error}`;
-        if (content) return content;
-        return `Explored: ${filesCount} files with uncommitted changes`;
-      }
-      
-      case 'retrieving': {
-        const query = metadata?.query ?? '';
-        return query 
-          ? `Retrieving from Vector DB: '${query}'...`
-          : 'Retrieving from Vector DB...';
-      }
-      
-      case 'retrieved': {
-        const filesCount = metadata?.filesCount ?? 0;
-        const error = metadata?.error;
-        const content = metadata?.content;
-        if (error) return `❌ Retrieval Failed: ${error}`;
-        if (content) return content;
-        return `Retrieved: ${filesCount} files from Vector DB`;
-      }
-      
-      case 'grepping': {
-        const keywords = metadata?.keywords ?? [];
-        const query = metadata?.query ?? '';
-        if (keywords.length > 0) {
-          return `Searching local files: ${keywords.slice(0, 3).join(', ')}${keywords.length > 3 ? '...' : ''}`;
-        }
-        if (query) return `Searching local files: '${query}'`;
-        return 'Searching local files...';
-      }
-      
-      case 'grepped': {
-        const filesCount = metadata?.filesCount ?? 0;
-        const error = metadata?.error;
-        if (error) return `❌ Local Search Failed: ${error}`;
-        return `Grepped: ${filesCount} files`;
-      }
-      
-      case 'listing_files': {
-        const directory = metadata?.directory ?? '.';
-        const pattern = metadata?.pattern;
-        return pattern 
-          ? `📂 Listing files in ${directory} (${pattern})...`
-          : `📂 Listing files in ${directory}...`;
-      }
-      
-      case 'listed_files': {
-        const filesCount = metadata?.filesCount ?? 0;
-        const totalFiles = metadata?.totalFiles;
-        const pattern = metadata?.pattern;
-        const error = metadata?.error;
-        if (error) return `❌ File Listing Failed: ${error}`;
-        if (pattern) return `Listed: ${filesCount}/${totalFiles} files (${pattern})`;
-        return `Listed: ${filesCount}/${totalFiles} files`;
-      }
-      
-      case 'searching_code': {
-        const pattern = metadata?.pattern ?? '';
-        const filePattern = metadata?.file_pattern;
-        return filePattern
-          ? `🔍 Searching code: "${pattern}" in ${filePattern}...`
-          : `🔍 Searching code: "${pattern}"...`;
-      }
-      
-      case 'searched_code': {
-        const filesCount = metadata?.filesCount ?? 0;
-        const totalMatches = metadata?.totalMatches ?? 0;
-        const error = metadata?.error;
-        if (error) return `❌ Code Search Failed: ${error}`;
-        if (totalMatches > 0) return `Found: ${totalMatches} matches in ${filesCount} files`;
-        return `Found: ${filesCount} files`;
-      }
-      
-      case 'reading': {
-        const filePath = metadata?.filePath ?? '';
-        return filePath ? `Reading: ${filePath}...` : 'Reading: file...';
-      }
-      
-      case 'read': {
-        const filePath = metadata?.filePath ?? '';
-        const error = metadata?.error;
-        if (error) return `❌ Read Failed: ${filePath || error}`;
-        return filePath ? `Read: ${filePath}` : 'Read: file';
-      }
-
-      case 'reading_source': {
-        const fn = metadata?.filePath ?? '';
-        const range = metadata?.startLine ? ` (L${metadata.startLine}-L${metadata.endLine || '?'})` : '';
-        return fn ? `Reading source: ${fn}${range}...` : 'Reading source doc...';
-      }
-
-      case 'read_source': {
-        const fn = metadata?.filePath ?? '';
-        const error = metadata?.error;
-        if (error) return `❌ Read Source Failed: ${fn || error}`;
-        const range = metadata?.startLine
-          ? ` (L${metadata.startLine}-L${metadata.endLine || '?'} of ${metadata.totalLines || '?'})`
-          : metadata?.totalLines ? ` (${metadata.totalLines} lines)` : '';
-        return fn ? `Read source: ${fn}${range}` : 'Read source doc';
-      }
-      
-      case 'thinking':
-        return '';  // Empty content, will be filled by LLM tokens
-        
-      case 'indexing': {
-        const message = metadata?.message ?? 'codebase...';
-        return `Indexing: ${message}`;
-      }
-      
-      case 'indexed': {
-        const filesIndexed = metadata?.filesIndexed ?? 0;
-        const chunks = metadata?.chunks ?? 0;
-        const tokens = metadata?.tokens ?? 0;
-        const duration = metadata?.duration ? `in ${(metadata.duration / 1000).toFixed(1)}s` : '';
-        const error = metadata?.error;
-        if (error) return `❌ Indexing Failed: ${error}`;
-        return `✅ Indexed: ${filesIndexed} files → ${chunks} chunks (~${Math.round(tokens / 1000)}K tokens) ${duration}`.trim();
-      }
-      
-      case 'analyzing': {
-        const message = metadata?.message ?? 'files...';
-        return `Analyzing: ${message}`;
-      }
-      
-      case 'analyzed': {
-        const content = metadata?.content;
-        const keywordCount = metadata?.keywordCount ?? 0;
-        const stackTraceCount = metadata?.stackTraceCount ?? 0;
-        const semanticCount = metadata?.semanticCount ?? 0;
-        const error = metadata?.error;
-        if (error) return `❌ Analysis Failed: ${error}`;
-        if (content) return content;
-        if (keywordCount > 0) {
-          return `🔑 Keywords Generated: ${stackTraceCount} stack trace + ${semanticCount} semantic`;
-        }
-        return `✅ Analyzed: ${metadata?.filesCount ?? 0} files`;
-      }
-      
-      case 'storing': {
-        const message = metadata?.message ?? 'lesson...';
-        return `Storing: ${message}`;
-      }
-      
-      case 'stored': {
-        const message = metadata?.message;
-        const error = metadata?.error;
-        if (error) return `❌ Storage Failed: ${error}`;
-        return `Stored: ${message ?? 'lesson successfully'}`;
-      }
-      
-      case 'learning': {
-        const taskName = metadata?.taskName ?? 'task';
-        return `Learning lessons from: ${taskName}...`;
-      }
-      
-      case 'learned': {
-        const filesWritten = metadata?.filesWritten ?? 0;
-        const branch = metadata?.branch ?? '';
-        const content = metadata?.content;
-        const error = metadata?.error;
-        if (error) return `❌ Learning Failed: ${error}`;
-        if (content) return content;
-        return `Lessons learned: ${filesWritten} file(s) (${branch})`;
-      }
-      
-      case 'searching_reference': {
-        const project = metadata?.project ?? 'reference project';
-        const query = metadata?.query ?? '';
-        return query 
-          ? `🔍 Searching ${project}: "${query}"...`
-          : `🔍 Searching ${project}...`;
-      }
-      
-      case 'searched_reference': {
-        const project = metadata?.project ?? 'reference project';
-        const filesCount = metadata?.filesCount ?? 0;
-        const error = metadata?.error;
-        if (error) return `❌ Search Failed (${project}): ${error}`;
-        return `Found ${filesCount} file(s) in ${project}`;
-      }
-      
-      case 'context_loaded': {
-        const items = metadata?.items as Array<{ label: string; detail?: string }> | undefined;
-        if (!items || items.length === 0) return 'Context loaded';
-        return items.map(item => 
-          item.detail ? `${item.label} (${item.detail})` : item.label
-        ).join(', ');
-      }
-      
-      case 'processing': {
-        const action = metadata?.action ?? 'processing';
-        const label = PROCESSING_LABELS[action] ?? { progress: action, complete: action };
-        const target = metadata?.target ?? '';
-        return target ? `${label.progress}: ${target}...` : `${label.progress}...`;
-      }
-
-      case 'processed': {
-        const action = metadata?.action ?? 'processing';
-        const label = PROCESSING_LABELS[action] ?? { progress: action, complete: action };
-        const target = metadata?.target ?? '';
-        const error = metadata?.error;
-        if (error) return `❌ ${label.complete} failed${target ? `: ${target}` : ''}`;
-        const sizeKB = metadata?.sizeKB;
-        const base = target ? `${label.complete}: ${target}` : label.complete;
-        return sizeKB ? `${base} (${sizeKB} KB)` : base;
-      }
-
-      case 'downloading': {
-        const filename = metadata?.filename ?? 'asset';
-        return `Downloading: ${filename}...`;
-      }
-
-      case 'downloaded': {
-        const filename = metadata?.filename ?? 'asset';
-        const error = metadata?.error;
-        if (error) return `❌ Download Failed: ${filename}`;
-        const sizeKB = metadata?.sizeKB;
-        return sizeKB ? `Downloaded: ${filename} (${sizeKB} KB)` : `Downloaded: ${filename}`;
-      }
-
-      case 'figma_calling': {
-        const toolName = metadata?.toolName ?? 'MCP tool';
-        const label = toolName.replace(/^figma_/, '');
-        const target = formatFigmaTarget(metadata?.nodeId, metadata?.nodeName);
-        return target ? `Figma: ${label} (${target})...` : `Figma: ${label}...`;
-      }
-
-      case 'figma_called': {
-        const toolName = metadata?.toolName ?? 'MCP tool';
-        const label = toolName.replace(/^figma_/, '');
-        const error = metadata?.error;
-        const target = formatFigmaTarget(metadata?.nodeId, metadata?.nodeName);
-        if (error) return target ? `❌ Figma Failed: ${label} (${target})` : `❌ Figma Failed: ${label}`;
-        return target ? `Figma: ${label} (${target})` : `Figma: ${label}`;
-      }
-
-      case 'tool_action':
-        return metadata?.content || 'Processing...';
-      
-      case 'triage_choice':
-        // ✅ triage_choice uses message from metadata (the LLM's explanation)
-        return metadata?.message || 'Processing...';
-      
-      case 'choice_card':
-        // ✅ choice_card uses title from metadata (generic choice cards: eval_save, etc.)
-        return metadata?.title || 'Choice required';
-      
-      case 'loading': {
-        return 'Loading required files...';
-      }
-      
-      case 'loaded': {
-        const filesCount = metadata?.filesCount ?? 0;
-        const content = metadata?.content;
-        const error = metadata?.error;
-        if (error) return `❌ Loading Failed: ${error}`;
-        if (content) return content;
-        return `Loaded: ${filesCount} required files`;
-      }
-      
-      case 'file_create_failed':
-      case 'file_edit_failed':
-      case 'file_delete_failed': {
-        const filePath = metadata?.filePath ?? 'file';
-        const reason = metadata?.reason ?? 'Unknown error';
-        return `❌ ${filePath}: ${reason}`;
-      }
-      
-      case 'file_conflict': {
-        const filePath = metadata?.filePath ?? 'file';
-        const ownerTask = metadata?.ownerTask ?? 'another task';
-        return `⚠️ File conflict: ${filePath} (owned by "${ownerTask}")`;
-      }
-      
-      case 'file_conflict_retry': {
-        const filePath = metadata?.filePath ?? 'file';
-        const attempt = metadata?.attempt ?? 1;
-        const maxRetries = metadata?.maxRetries ?? 3;
-        return `🔄 Retrying file write: ${filePath} (attempt ${attempt}/${maxRetries})`;
-      }
-      
-      case 'plan_generating':
-        return metadata?.content ?? '';
-      
-      case 'plan':
-        return metadata?.content ?? '';
-      
-      case 'task_response':
-        return metadata?.content ?? '';
-      
-      default:
-        return 'Processing...';
-    }
+    return generateChatStatusContent(type, metadata);
   }
 }

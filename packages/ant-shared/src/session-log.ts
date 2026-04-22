@@ -1,15 +1,24 @@
 /**
  * Session Log Types
- * 
+ *
  * Types for feature.jsonl (context SSOT, prompt injection source) and
- * trace.jsonl (UI SSOT, chat display source).
- * 
+ * chat.jsonl (UI SSOT, chat display source).
+ *
  * Design principle (책임 MECE):
  * - feature.jsonl: LLM 프롬프트 주입용. T2(user_turn) + T3(breadcrumb) + boundary
- * - trace.jsonl: UI 채팅 렌더용. 실행 과정의 모든 이벤트. 맥락 전달 대상 아님
+ * - chat.jsonl: UI 채팅 렌더용. 실행 과정에서 발생한 모든 채팅 이벤트의 영속
+ *   저장. 라이브 스트림은 `ChatStatusHandler.showChatStatus` 한 곳에서 생성되고,
+ *   동일 함수가 `chat_status` 라인으로 직렬화한다. 복원(replay) 은 그 라인을
+ *   다시 `generateStatusContent(statusType, metadata)` 에 통과시키기만 하면
+ *   라이브와 동일한 `MessageContent` 를 얻는다 — "복구 전용 빌더" 는 존재하지
+ *   않는다.
  * - user_turn만 양쪽 복제 (의미상 공유 자원)
- * 
+ *
  * Append-only JSONL. 각 라인은 독립적 JSON 객체.
+ *
+ * NOTE: 이전 파일 이름은 `trace.jsonl` 이었다. 내용이 곧 채팅이므로 `chat.jsonl`
+ * 로 개명되었지만, 기존 워크스페이스와의 호환을 위해 reader 는 두 경로를 모두
+ * 읽는다 (쓰기는 항상 `chat.jsonl`).
  */
 
 import type { JobType } from './job';
@@ -165,93 +174,92 @@ export type FeatureLine =
   | FeatureBoundaryLine;
 
 // ═══════════════════════════════════════════════════════════════════════
-// trace.jsonl line types (UI-only)
+// chat.jsonl (a.k.a. legacy trace.jsonl) line types (UI-only)
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
+ * Chat status card type — SSOT for every progress/result indicator the
+ * chat UI renders. `generateStatusContent(type, metadata)` in
+ * `ChatStatusHandler` is the single function that turns a
+ * `(ChatStatusType, metadata)` pair into a `MessageContent.content` string;
+ * both the live broadcast path and the replay path call that same function
+ * so rendering is always identical.
+ *
+ * When this union grows, `generateStatusContent` must gain a matching case
+ * and the identifier here becomes part of the on-disk schema.
+ */
+export type ChatStatusType =
+  | 'placeholder'
+  | 'exploring' | 'explored'
+  | 'retrieving' | 'retrieved'
+  | 'grepping' | 'grepped'
+  | 'listing_files' | 'listed_files'
+  | 'searching_code' | 'searched_code'
+  | 'reading' | 'read'
+  | 'reading_source' | 'read_source'
+  | 'thinking'
+  | 'indexing' | 'indexed'
+  | 'analyzing' | 'analyzed'
+  | 'loading' | 'loaded'
+  | 'storing' | 'stored'
+  | 'searching_reference' | 'searched_reference'
+  | 'tool_action'
+  | 'learning' | 'learned'
+  | 'context_loaded'
+  | 'triage_choice'
+  | 'choice_card'
+  | 'cancelled'
+  | 'file_creating' | 'file_writing' | 'file_create' | 'file_create_failed'
+  | 'file_editing' | 'file_updating' | 'file_edit' | 'file_edit_failed'
+  | 'file_deleting' | 'file_delete' | 'file_delete_failed'
+  | 'file_conflict' | 'file_conflict_retry'
+  | 'command_running' | 'command_streaming' | 'command'
+  | 'processing' | 'processed'
+  | 'downloading' | 'downloaded'
+  | 'figma_calling' | 'figma_called'
+  | 'plan_generating' | 'plan'
+  | 'task_response'
+  | 'text';
+
+/**
  * user_turn — feature.jsonl 사본 (text만 유지)
- * 
+ *
  * sourceRef:
  * - code/design/plan: `feature.jsonl#<turnId>`
  * - ask/inline-ask: `ask-only` (원본이 feature.jsonl에 없음)
  */
-export interface TraceUserTurnLine extends LineBase {
+export interface ChatUserTurnLine extends LineBase {
   type: 'user_turn';
   text: string;
   sourceRef: string;
 }
 
-export interface TraceThinkingLine extends LineBase {
+export interface ChatThinkingLine extends LineBase {
   type: 'assistant_thinking';
   text: string;
 }
 
-export interface TraceToolCallLine extends LineBase {
-  type: 'tool_call';
-  tool: string;
-  args?: unknown;
-  result?: unknown;
-  error?: string;
-}
-
 /**
- * Durable record of a file mutation observable by chat UI.
+ * Durable record of a single chat-UI status card emission.
  *
- * Schema matches ChatAPI (`LLMResponseService.FileOperationHandler`)
- * signatures 1:1 so trace replay can re-render the same FileCard:
+ * Emitted by `ChatLogAppender.appendChatStatus(statusType, metadata)`
+ * immediately after `ChatStatusHandler.showChatStatus` creates the
+ * corresponding `MessageContent`. On replay, readers feed the pair back
+ * into `generateStatusContent` to rebuild the identical content string.
  *
- * - `operation='create'` carries full `content` (mirrors
- *   `completeFileCreation(path, content)`).
- * - `operation='update'` carries `diffBefore` + `diffAfter` (mirrors
- *   `completeFileEdit(path, diffBefore, diffAfter)`).
- * - `operation='delete'` optionally carries the previous content for
- *   context display (mirrors `completeFileDeletion(path, content?)`).
- * - `error` is set when the mutation failed (mirrors
- *   `failFileCreation` / `failFileEdit`).
+ * This is the SSOT for every non-structural chat card — file card,
+ * command card, read/list/search status, choice cards (via
+ * `ChatChoicePresentedLine`), etc. If a new card surfaces, the migration
+ * path is: add the type to `ChatStatusType` + a case in
+ * `generateStatusContent` — no new line kind required.
  */
-export interface TraceFileWriteLine extends LineBase {
-  type: 'file_write';
-  path: string;
-  operation?: 'create' | 'update' | 'delete';
-  content?: string;
-  diffBefore?: string;
-  diffAfter?: string;
-  error?: string;
+export interface ChatStatusLine extends LineBase {
+  type: 'chat_status';
+  statusType: ChatStatusType;
+  metadata?: Record<string, unknown>;
 }
 
-/**
- * `run_command` is the SSOT for every command invocation outcome — success,
- * runtime failure, policy rejection, spawn failure, stall watchdog trip,
- * etc. Exactly one `run_command` line pairs with each `tool_call` for
- * `run_command` so debug readers can correlate without searching alternate
- * line types.
- *
- * Semantics:
- *   - `exitCode === 0` and no error signals → success.
- *   - `exitCode > 0` → the process ran and exited with a non-zero code
- *     (normal failure, non-zero compiler/test exit, etc.).
- *   - `exitCode === -1` → the command did not actually execute. This
- *     covers policy rejections (interactive, bare-install skip, write-path
- *     violation, command not allowed) and pre-spawn errors. The rejection
- *     or error message is carried in `stdout`. Existing side-effect
- *     `commandExecuted` emits the same -1 sentinel.
- */
-export interface TraceRunCommandLine extends LineBase {
-  type: 'run_command';
-  cmd: string;
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number;
-}
-
-export interface TraceJobStatusLine extends LineBase {
-  type: 'job_status';
-  phase: string;
-  progress?: number;
-  message?: string;
-}
-
-export interface TraceAssistantMessageLine extends LineBase {
+export interface ChatAssistantMessageLine extends LineBase {
   type: 'assistant_message';
   text: string;
 }
@@ -261,14 +269,14 @@ export interface TraceAssistantMessageLine extends LineBase {
  *
  * Session redesign §16.2 Step 4: choice cards (triage / cancelled /
  * eval_save / clarifying / spec_complete / ...) are observable UI events
- * recorded in trace.jsonl so the Chat/Activity view can rebuild them on
+ * recorded in chat.jsonl so the Chat/Activity view can rebuild them on
  * refresh without chat.json.
  *
- * Pair with {@link TraceChoiceResolvedLine} via `cardId`. Unpaired
+ * Pair with {@link ChatChoiceResolvedLine} via `cardId`. Unpaired
  * `choice_presented` lines render as actionable cards; paired lines render
  * with the `resolvedLabel` from the matching resolved line.
  */
-export interface TraceChoicePresentedLine extends LineBase {
+export interface ChatChoicePresentedLine extends LineBase {
   type: 'choice_presented';
   /** Stable id so a later choice_resolved can back-reference this card */
   cardId: string;
@@ -290,9 +298,9 @@ export interface TraceChoicePresentedLine extends LineBase {
 /**
  * User's response to a previously presented choice card.
  */
-export interface TraceChoiceResolvedLine extends LineBase {
+export interface ChatChoiceResolvedLine extends LineBase {
   type: 'choice_resolved';
-  /** Matches {@link TraceChoicePresentedLine.cardId} */
+  /** Matches {@link ChatChoicePresentedLine.cardId} */
   cardId: string;
   /** Machine action chosen ('proceed' | 'dismiss' | 'save' | ...) */
   choiceSelected: string;
@@ -302,16 +310,99 @@ export interface TraceChoiceResolvedLine extends LineBase {
   answer?: Record<string, unknown>;
 }
 
+export type ChatLine =
+  | ChatUserTurnLine
+  | ChatThinkingLine
+  | ChatStatusLine
+  | ChatAssistantMessageLine
+  | ChatChoicePresentedLine
+  | ChatChoiceResolvedLine;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Legacy line types + union (DEPRECATED — to be removed after callers migrate)
+//
+// These were the per-event line kinds before `chat_status` became the
+// single SSOT. They are retained as type aliases / interfaces so the
+// current writers (TraceAppender.appendToolCall / appendFileWrite /
+// appendRunCommand / appendJobStatus) compile during the migration. A
+// follow-up commit collapses them into `ChatStatusLine` and removes these
+// declarations.
+// ═══════════════════════════════════════════════════════════════════════
+
+/** @deprecated Use {@link ChatUserTurnLine}. */
+export type TraceUserTurnLine = ChatUserTurnLine;
+/** @deprecated Use {@link ChatThinkingLine}. */
+export type TraceThinkingLine = ChatThinkingLine;
+/** @deprecated Use {@link ChatAssistantMessageLine}. */
+export type TraceAssistantMessageLine = ChatAssistantMessageLine;
+/** @deprecated Use {@link ChatChoicePresentedLine}. */
+export type TraceChoicePresentedLine = ChatChoicePresentedLine;
+/** @deprecated Use {@link ChatChoiceResolvedLine}. */
+export type TraceChoiceResolvedLine = ChatChoiceResolvedLine;
+
+/**
+ * @deprecated `tool_call` lines are being folded into {@link ChatStatusLine}
+ * (`statusType` carries the card kind). Retained temporarily so live writers
+ * compile while callers migrate. New readers should NOT match this.
+ */
+export interface TraceToolCallLine extends LineBase {
+  type: 'tool_call';
+  tool: string;
+  args?: unknown;
+  result?: unknown;
+  error?: string;
+}
+
+/**
+ * @deprecated Replaced by `chat_status` lines carrying `statusType`
+ * `file_create` / `file_edit` / `file_delete` (plus failed variants).
+ * Retained for one migration step.
+ */
+export interface TraceFileWriteLine extends LineBase {
+  type: 'file_write';
+  path: string;
+  operation?: 'create' | 'update' | 'delete';
+  content?: string;
+  diffBefore?: string;
+  diffAfter?: string;
+  error?: string;
+}
+
+/**
+ * @deprecated Replaced by `chat_status` lines carrying `statusType='command'`
+ * with the command / exit code in metadata. Retained for one migration step.
+ */
+export interface TraceRunCommandLine extends LineBase {
+  type: 'run_command';
+  cmd: string;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+}
+
+/**
+ * @deprecated Chat view skips `job_status` entirely (SSE workflow stream
+ * drives phase UI). Retained only so the old reader/writer code compiles.
+ * This will disappear in the same follow-up commit.
+ */
+export interface TraceJobStatusLine extends LineBase {
+  type: 'job_status';
+  phase: string;
+  progress?: number;
+  message?: string;
+}
+
+/**
+ * @deprecated Union of every (current + legacy) chat log line. Prefer
+ * {@link ChatLine} in new code; this alias includes the legacy shapes so
+ * the migration can flip readers one-by-one without a flag day.
+ */
 export type TraceLine =
-  | TraceUserTurnLine
-  | TraceThinkingLine
+  | ChatLine
   | TraceToolCallLine
   | TraceFileWriteLine
   | TraceRunCommandLine
-  | TraceJobStatusLine
-  | TraceAssistantMessageLine
-  | TraceChoicePresentedLine
-  | TraceChoiceResolvedLine;
+  | TraceJobStatusLine;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Spec clarify (Decompose output)
