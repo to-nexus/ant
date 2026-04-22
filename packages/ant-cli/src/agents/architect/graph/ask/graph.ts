@@ -15,6 +15,7 @@ import { AskAnnotation } from './state';
 import { agentNode, routeAfterAgent } from './nodes/agent';
 import { toolNode } from './nodes/tool';
 import { respondNode } from './nodes/respond';
+import { withPhaseTracking } from '../../../common/graph/llmHelpers';
 
 /**
  * Build Ask LangGraph
@@ -22,7 +23,7 @@ import { respondNode } from './nodes/respond';
 export function buildAskGraph() {
   const graph = new StateGraph(AskAnnotation);
   
-  graph.addNode('agent', agentNode as any);
+  graph.addNode('agent', withPhaseTracking('agent', agentNode) as any);
   graph.addNode('tool', toolNode as any);
   graph.addNode('respond', respondNode as any);
   

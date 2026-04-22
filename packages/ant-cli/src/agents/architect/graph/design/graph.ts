@@ -26,6 +26,7 @@ import {
   saveOrchestratorFailures,
 } from './session/checkpoint';
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
+import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import { designDirOf } from "@ant/shared";
 import path from "node:path";
 import { toFeatureRelative, appendOrUpdatePool, scanDesignOutputs } from '../../../../core/prompt/builder/ArtifactPipeline';
@@ -742,9 +743,9 @@ export function buildDesignGraph() {
   graph.addNode('detect' as const, createDetectNode(designDetectStrategy) as any);
   graph.addNode("figmaExplore" as const, figmaExplore as any);  // ✅ Figma exploration (Phase 0)
   graph.addNode("decompose" as const, decompose as any);
-  graph.addNode("revise" as const, revise as any);  // ✅ Task queue revision (on resume with new directive)
-  graph.addNode("plan" as const, plan as any);
-  graph.addNode("docGen" as const, docGen as any);  // ✅ XML streaming + immediate file writes (like code job)
+  graph.addNode("revise" as const, withPhaseTracking('revise', revise) as any);  // ✅ Task queue revision (on resume with new directive)
+  graph.addNode("plan" as const, withPhaseTracking('plan', plan) as any);
+  graph.addNode("docGen" as const, withPhaseTracking('docGen', docGen) as any);  // ✅ XML streaming + immediate file writes (like code job)
   graph.addNode("tool" as const, tool as any);  // ✅ Tool execution (for UI Design multimodal image loading)
   graph.addNode("checkTaskStatus" as const, checkTaskStatus as any);
   graph.addNode("learn" as const, learn as any);

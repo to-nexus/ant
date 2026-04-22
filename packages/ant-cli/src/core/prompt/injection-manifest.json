@@ -22,7 +22,7 @@
     "ui-source-figma": ["figmaFileKey", "figmaStartNodeId"],
     "ui-source-handoff": [],
     "ui-source-dispatch": ["uiSource"],
-    "ant-md": ["hasAntMd", "antMdContent"],
+    "ant-md": ["antrulesContent"],
     "batch-execution": [],
     "batch-gather": [],
     "plan-tools-batch": [],

@@ -34,6 +34,7 @@ import { engraveNode, routeAfterEngrave } from './nodes/engrave.js';
 import { deliverNode } from './nodes/deliver.js';
 import { explainNode } from './nodes/explain.js';
 import { triage } from '../../../common/graph/nodes/triage/index.js';
+import { withPhaseTracking } from '../../../common/graph/llmHelpers.js';
 
 /**
  * Router after triage for visual job.
@@ -86,12 +87,12 @@ export function buildVisualGraph() {
   graph.addNode('resolve', createResolveNode(visualResolveStrategy) as any);
   graph.addNode('triage', triage as any);
   graph.addNode('detect', createDetectNode(visualDetectStrategy) as any);
-  graph.addNode('direct', directNode as any);
-  graph.addNode('sketch', sketchNode as any);
-  graph.addNode('render', renderNode as any);
-  graph.addNode('engrave', engraveNode as any);
+  graph.addNode('direct', withPhaseTracking('direct', directNode) as any);
+  graph.addNode('sketch', withPhaseTracking('sketch', sketchNode) as any);
+  graph.addNode('render', withPhaseTracking('render', renderNode) as any);
+  graph.addNode('engrave', withPhaseTracking('engrave', engraveNode) as any);
   graph.addNode('deliver', deliverNode as any);
-  graph.addNode('explain', explainNode as any);
+  graph.addNode('explain', withPhaseTracking('explain', explainNode) as any);
 
   // Fixed edges
   graph.addEdge('__start__' as any, 'resolve' as any);

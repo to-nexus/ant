@@ -34,7 +34,6 @@ import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormal
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
-import { beginNodePhase } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
 import { isErrorTask } from '../../tasks/error';
@@ -44,8 +43,6 @@ export async function execute(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
   console.log('\n💭 [Execute] Starting reasoning...\n');
-
-  beginNodePhase(state as any, 'execute', 'Execute');
 
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;

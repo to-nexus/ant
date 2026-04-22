@@ -5,7 +5,6 @@ import { ArchitectGraphState } from "../../state";
 import { CodeTask, TaskQueue } from "../../../../types/task";
 import { saveCheckpoint } from "../../session/checkpoint";
 import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatingLabels";
-import { beginNodePhase } from "../../../../../common/graph/llmHelpers";
 
 /**
  * Revise Node (replaces replanDecision + modifyTasks + clearStateForReplan)
@@ -19,8 +18,6 @@ import { beginNodePhase } from "../../../../../common/graph/llmHelpers";
  * 4. Always routes to → plan
  */
 export async function revise(state: ArchitectGraphState): Promise<ArchitectGraphState> {
-  beginNodePhase(state as any, 'revise', 'Revise');
-
   const phaseStart = Date.now();
 
   state.recursionCount = (state.recursionCount || 0) + 1;

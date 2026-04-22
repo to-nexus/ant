@@ -27,7 +27,6 @@ import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrche
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
-import { beginNodePhase } from '../../../../../common/graph/llmHelpers';
 import { getTools } from './tools';
 import { parseClarifyTags } from '../../../../../common/clarify';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
@@ -43,8 +42,6 @@ const MAX_NO_OUTPUT_CALLS = 15;
 export async function docGen(
   state: DesignGraphState
 ): Promise<Partial<DesignGraphState>> {
-  beginNodePhase(state as any, 'docGen', 'Document Generation');
-
   // ✅ Increment recursion count (track node execution for UI gauge)
   state.recursionCount = (state.recursionCount || 0) + 1;
   

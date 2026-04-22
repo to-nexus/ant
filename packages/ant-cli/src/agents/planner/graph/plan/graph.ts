@@ -21,6 +21,7 @@ import { toolNode } from './nodes/tool';
 import { triage } from '../../../common/graph/nodes/triage';
 import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
 import { planDetectStrategy } from './nodes/detect/strategy.js';
+import { withPhaseTracking } from '../../../common/graph/llmHelpers';
 
 /**
  * Route after triage for planner agent.
@@ -65,7 +66,7 @@ export function buildPlanGraph() {
   graph.addNode('resolve', createResolveNode(planResolveStrategy) as any);
   graph.addNode('triage', triage as any);
   graph.addNode('detect', createDetectNode(planDetectStrategy) as any);
-  graph.addNode('generate', generateNode as any);
+  graph.addNode('generate', withPhaseTracking('generate', generateNode) as any);
   graph.addNode('tool', toolNode as any);
   
   // Edges: resolve → triage → (conditional) → detect → generate → ... → END
