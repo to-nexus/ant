@@ -85,21 +85,21 @@ For full 8-axis layout and rules R1~R5, see [docs/architecture/NODE_GRAPH_LAYOUT
 
 ## Retry Authority SSOT — `violation.isRetryable`
 
-**재시도 가능 여부는 `violation.isRetryable` 플래그 하나가 SSOT다. `enforce` 노드는 이 플래그만 읽어 라우팅하고, 절대 score / retry count / 타입 매핑표로 재판단하지 않는다.**
+**재시도 가능 여부는 `violation.isRetryable` 플래그 하나가 SSOT다. `checkTaskStatus` 는 이 플래그만 읽어 라우팅하고, 절대 score / retry count / 타입 매핑표로 재판단하지 않는다.** (기존 `enforce/` 노드 표현은 리팩터링으로 `nodes/checkTaskStatus/` 에 통합되었다. `enforce` 는 더 이상 노드 이름이 아닌 함수적 역할 이름이다.)
 
 이는 R1 의 자연스러운 확장이다. 재시도 판정을 task hook 이 소유해야 하는 이유 — `check.evaluate` 가 violation 의 성격(회복 가능한 일시적 실패 vs. 구조적 blocker)을 가장 정확히 안다. 이 판단을 phase 노드가 score 로 뒤집는 순간, task hook 의 의사결정은 무효화되고 "phase가 task-type 내부를 알아야 하는" 반패턴이 재발한다.
 
 ### ❌ ABSOLUTELY FORBIDDEN
 
-- `enforce/` (또는 임의의 phase 노드) 에서 violation 에 score 를 매기거나 retry count 기반 감점으로 재시도 여부를 뒤집기
+- `checkTaskStatus/` (또는 임의의 phase 노드) 에서 violation 에 score 를 매기거나 retry count 기반 감점으로 재시도 여부를 뒤집기
 - `criticalTypes` 같은 violation 타입 배열을 phase 노드에 두고 "중요 타입은 예외적으로 retry" 논리 작성
 - `top-N same-type slice` / `focusedViolations` 같은 "plan 에 보낼 violation 을 phase 가 사전 필터" 하는 코드
-- violation 생성 지점(`tasks/*/hooks/check.ts`, `nodes/checkTaskStatus/evaluate.ts`) 에서 `isRetryable` 를 누락(`undefined`) 한 채 반환 — enforce 가 `v.isRetryable === true` 로 strict 비교하므로 누락 시 모두 drop 된다
+- violation 생성 지점(`tasks/*/hooks/check.ts`, `nodes/checkTaskStatus/evaluate.ts`) 에서 `isRetryable` 를 누락(`undefined`) 한 채 반환 — `checkTaskStatus` 가 `v.isRetryable === true` 로 strict 비교하므로 누락 시 모두 drop 된다
 
 ### ✅ CORRECT
 
 - violation 생성 지점에서 `isRetryable: true | false` 를 명시 선언. 재시도로 해결 가능한 transient error 는 true, warning-only / structural blocker 는 false.
-- `enforce/index.ts` 는 `violations.filter(v => v.isRetryable === true)` 만 수행. 결과가 비면 `violations: []` 로 클리어 + (currentTask 살아있으면) `_nextPlanEntry: 'retry'` 세팅.
+- `nodes/checkTaskStatus/index.ts` (및 `workerIndex.ts`) 는 `violations.filter(v => v.isRetryable === true)` 만 수행. 결과가 비면 `violations: []` 로 클리어 + (currentTask 살아있으면) `_nextPlanEntry: 'retry'` 세팅.
 - violation 그룹핑 / 우선순위 / root-cause 선택은 plan 프롬프트 (`Error Grouping Principle` / `Fix Priority Principle` / `rootCauseSelfCheck`) 가 담당. phase 코드는 관여하지 않는다.
 
 ### Why This Matters

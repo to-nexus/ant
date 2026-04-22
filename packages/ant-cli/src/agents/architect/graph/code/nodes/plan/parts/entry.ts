@@ -7,10 +7,16 @@
  *     `[]` because the subsequent plan-LLM call rebuilds the initial
  *     `user` message from scratch via `buildPlanPromptBlocks` and any
  *     preserved history would be overwritten on the first round anyway.
- *     Prior-attempt context is carried across retries via the verification
- *     Session's `planHistoryBodies()` → `diagnosticRetryContext` channel
- *     (see `buildDiagnosticRetryContext` in `nodes/plan/index.ts`), which
- *     is the SSOT for retry-phase reasoning continuity.
+ *     Prior-attempt reasoning continuity now flows through two channels:
+ *       (a) the verification Session's summary surface rendered in the
+ *           verification-variant plan template (attempts counter, passed
+ *           / missing gates, `isDeepDiagnostic` flag, etc.), and
+ *       (b) LLM-self-service `read_file sessions/architect/code.json`
+ *           when the rules-level hint prompts it. The prior "embed every
+ *           completed error sub-task's prePlanText into the system prompt"
+ *           narrative channel was removed in the verification-loop
+ *           postmortem (§4.1) — it violated task-boundary isolation,
+ *           R1 phase-blindness, and the "state lives on disk" principle.
  *   - NODE_EXECUTE is cleared at every plan entry so each execute tool-loop
  *     starts fresh.
  *   - Both slots are cleared at fresh task entry (task boundary).
@@ -52,23 +58,22 @@ function isTypeScriptProject(state: ArchitectGraphState): boolean {
 }
 
 /**
- * Compose the verification prompt's `violationsText` from the current
- * cycle's violations and accumulated diagnostic retry context. Prior-attempt
- * context lives on `state.conversations[NODE_PLAN]`, not in this string.
+ * Compose the plan-prompt's `violationsText` from the current cycle's
+ * violations alone. Prior-attempt reasoning continuity is carried via
+ * (a) the verification Session's own summary surface in the task-specific
+ * `plan.buildPrompt` hook, and (b) the LLM's own `read_file` lookups
+ * into `sessions/architect/code.json` when the rules-level pointer fires.
+ * This function MUST stay task-type-blind; any task-specific retry copy
+ * belongs in the task's plan hook (R1).
  */
 export function composeViolationsText(
   violations: import('../../../state').Violation[] | undefined,
-  diagnosticRetryContext: string | undefined,
 ): string | undefined {
-  const parts: string[] = [];
-
-  if (violations?.length) {
-    parts.push(formatViolations(violations));
-    const guidance = renderViolationGuidance(violations);
-    if (guidance) parts.push(guidance);
-  }
-  if (diagnosticRetryContext) parts.push(diagnosticRetryContext);
-  return parts.length ? parts.join('\n') : undefined;
+  if (!violations?.length) return undefined;
+  const parts: string[] = [formatViolations(violations)];
+  const guidance = renderViolationGuidance(violations);
+  if (guidance) parts.push(guidance);
+  return parts.join('\n');
 }
 
 /**
@@ -266,9 +271,12 @@ async function handleRetryEntry(
     // conversation is never actually consumed by the retry path
     // (`runPlanToolLoopPhase` falls through because `_activePhase` is
     // `'execute'` at retry entry, and the first plan-LLM call of the new
-    // attempt overwrites NODE_PLAN anyway). The authoritative channel for
-    // carrying retry context is `session.planHistoryBodies()` →
-    // `buildDiagnosticRetryContext` in `nodes/plan/index.ts`.
+    // attempt overwrites NODE_PLAN anyway). Retry reasoning continuity
+    // now flows through the verification Session's summary surface in
+    // the variant template (attempts, gates, deep-diagnostic flag) and
+    // LLM-self-service `read_file sessions/architect/code.json`; the
+    // previous `buildDiagnosticRetryContext` narrative channel was
+    // removed (postmortem §4.1).
     state.conversations = {
       ...state.conversations,
       [CONV_KEYS.NODE_EXECUTE]: [],
@@ -278,7 +286,7 @@ async function handleRetryEntry(
     await recomputeInstallNeeded(state);
     console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (verificationAttempts=${sessionAttempts})`);
     console.log(`   ♻️  node:execute cleared, _executeCallIndex ${prevCallIndex}→0`);
-    console.log(`   ♻️  node:plan reset (had ${priorPlanMsgCount} msgs; retry context flows via session.planHistoryBodies)\n`);
+    console.log(`   ♻️  node:plan reset (had ${priorPlanMsgCount} msgs; retry context via Session summary + sessions/architect/code.json)\n`);
     if (nextTask && state.context?.featurePath && state._httpJobId) {
       const _taskRef = nextTask;
       const _planHashes = state.verification?.snapshot().planHistoryHashes;

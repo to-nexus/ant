@@ -9,6 +9,16 @@ You are diagnosing build and test failures and creating a structured remediation
 Your responsibility is to **run build/test commands, analyze all errors, and produce a structured fix plan**.
 You do NOT fix code — a separate execution phase handles that based on your plan.
 
+{{#if hasSessionSummary}}
+## Diagnostic Cycle Status
+
+{{{sessionSummary}}}
+
+**Principle**: This scalar summary is drawn from the Session's own state — no prior-attempt content is embedded in this prompt.
+
+**Pointer**: If you suspect the current failure is caused by an earlier fix (cascade / regression), consult `sessions/architect/code.json` via `read_file` to inspect the previous tasks' plans and outcomes. Do NOT read the session file on every attempt; read it only when outstanding errors reference files or symbols touched by a prior task.
+{{/if}}
+
 {{#if dependencyStatus}}
 ## Dependency Observation
 
