@@ -76,12 +76,9 @@ describe('renderViolationGuidance — type-specific actionable guidance', () => 
 
 describe('composeViolationsText — formatter + guidance composition', () => {
   it('appends guidance AFTER the generic formatter output', () => {
-    const text = composeViolationsText(
-      [
-        violation({ type: 'cross_worker_conflict', file: 'src/a.ts', message: 'conflict a' }),
-      ],
-      undefined,
-    )!;
+    const text = composeViolationsText([
+      violation({ type: 'cross_worker_conflict', file: 'src/a.ts', message: 'conflict a' }),
+    ])!;
 
     const formatterIdx = text.indexOf('cross_worker_conflict');
     const guidanceIdx = text.indexOf('CROSS-WORKER FILE CONFLICT');
@@ -89,17 +86,20 @@ describe('composeViolationsText — formatter + guidance composition', () => {
     expect(guidanceIdx).toBeGreaterThan(formatterIdx);
   });
 
-  it('returns undefined when all inputs are empty', () => {
-    expect(composeViolationsText(undefined, undefined)).toBeUndefined();
-    expect(composeViolationsText([], undefined)).toBeUndefined();
+  it('returns undefined when violations are absent', () => {
+    // Post-postmortem-§4.1 signature: the second "diagnosticRetryContext"
+    // argument was removed alongside `buildDiagnosticRetryContext`.
+    // Retry reasoning now flows through Session summary + on-disk
+    // session JSON self-service, not through an inline narrative.
+    expect(composeViolationsText(undefined)).toBeUndefined();
+    expect(composeViolationsText([])).toBeUndefined();
   });
 
-  it('includes diagnosticRetryContext when present', () => {
-    const text = composeViolationsText(
-      [violation({ type: 'type_error', message: 'x' })],
-      'diag-context',
-    )!;
+  it('renders violations without any narrative injection channel', () => {
+    const text = composeViolationsText([
+      violation({ type: 'type_error', message: 'x' }),
+    ])!;
     expect(text).toContain('type_error');
-    expect(text).toContain('diag-context');
+    // No trailing "diag-context" style narrative — by design.
   });
 });

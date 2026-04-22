@@ -42,6 +42,18 @@ already passed, proceed to the next; otherwise execute it.
 
 ## Diagnostic Protocol Rules
 
+### Mandatory Plan Emission
+
+**Principle**: Every plan cycle ends with exactly one `<plan>` block. The plan phase has no "silent finish" state — the downstream execute phase depends on a concrete plan (or an explicit no-errors sentinel) to know how to proceed.
+
+**Constraint**: Do NOT end the plan response without emitting `<plan>...</plan>`. Emitting `<done>`, a bare explanation, or empty output is a protocol violation and causes the task to loop until the retry terminator fires.
+
+**Constraint**: If your diagnostic observations conclude that no remediation is needed, emit the no-errors sentinel plan (see the empty-plan template in the base prompt) — NOT an empty response.
+
+**Constraint**: If you are uncertain whether remediation is needed, run one more verification command to collect evidence. Do NOT default to "no response" when uncertain.
+
+**Blind spot**: A verification failure observed earlier in the diagnostic cycle (violations from a previous attempt, failing gate output) REQUIRES a remediation `<plan>`. Emitting the no-errors sentinel while violations are still outstanding will be detected as a repeated-give-up pattern and terminate the task with `no_progress`.
+
 ### Error Grouping Principle
 
 **Constraint**: A single root cause often produces multiple compiler/runtime errors.
@@ -104,11 +116,15 @@ If you are unsure which build command to use, observe:
 
 Use `read_file` on the project root's configuration files to determine the correct build command.
 
-### Prior-Attempt Summary
+### Prior-Attempt Lookup
 
-**Principle**: When this task re-enters for a retry, a compact summary of the previous attempt (plan JSON, normalized error signals, command history) is already present as the first system-level message.
+**Principle**: Prior attempts are durable on disk, not embedded in this prompt. `sessions/architect/code.json` is the SSOT — it records every completed task's plan body, diagnostics, and outcome across the whole feature session.
 
-**Constraint**: Treat that summary as authoritative context. Do NOT re-read files whose contents were already observed in the prior attempt unless you have an observation-backed reason to believe they changed.
+**Constraint**: When a diagnostic cycle shows signs of cascading failure (the outstanding error names a file touched by a previously completed task, the same symptom reappears after a prior fix, batch-split count is rising), issue ONE `read_file` call against `sessions/architect/code.json` and extract only the completed-task entries relevant to the files under investigation.
+
+**Constraint**: Do NOT read the session file on every attempt. Read it only when the evidence above is present. The Diagnostic Cycle Status banner (when rendered) tells you how many attempts and batch splits have occurred — use it to gate the lookup.
+
+**Constraint**: Do NOT paste session JSON wholesale into the plan. Extract the relevant fix rationale and cite it in your root-cause analysis.
 
 ### Cached Verification Steps
 

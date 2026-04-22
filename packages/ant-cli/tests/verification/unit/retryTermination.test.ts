@@ -76,11 +76,31 @@ describe('checkRetryTermination', () => {
     expect(checkRetryTermination(state)).toBeNull();
   });
 
-  it('returns null when planText is empty', () => {
+  it('does not fire when planText is empty but the trailing history is a non-empty plan', () => {
+    // Fresh empty cycle after two recorded non-empty plans: the empty
+    // planText hash does not match PLAN_A's hash, so the streak counter
+    // is zero and no termination fires.
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
     session.onPlanApplied(PLAN_A);
     session.onPlanApplied(PLAN_A);
     const state = makeState({ verification: session, planText: '' });
     expect(checkRetryTermination(state)).toBeNull();
+  });
+
+  it('throws no_progress when two consecutive empty plans register as a repeated-hash streak', () => {
+    // Silent give-up regression — prior to the empty-plan-guard removal
+    // a `!state.planText` early-return in `checkRetryTermination` and a
+    // matching guard in `onPlanApplied` made this pattern invisible.
+    // Now empty planText hashes to a stable SHA-1 value and participates
+    // in the normal repetition detector.
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    session.onPlanApplied('');
+    session.onPlanApplied('');
+    const state = makeState({ verification: session, planText: '' });
+    const result = checkRetryTermination(state);
+    expect(result).toBeInstanceOf(VerificationTerminalError);
+    expect(result?.kind).toBe('no_progress');
+    expect(result?.message).toContain('empty plan');
+    expect(result?.carryOver?.planHistoryHashes.length).toBe(2);
   });
 });

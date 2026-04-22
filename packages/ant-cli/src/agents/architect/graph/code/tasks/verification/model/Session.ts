@@ -203,9 +203,17 @@ export class VerificationSession {
    * Count how many consecutive trailing history entries share the
    * candidate plan's hash. `{ repeated: false, count: 0 }` means the plan
    * is new.
+   *
+   * Empty-plan handling: the empty string hashes to a stable SHA-1 value
+   * (`normalizePlanForHash` falls into the catch branch and hashes the
+   * collapsed empty body). Thus two consecutive empty-plan cycles — the
+   * LLM's "silent give-up" pattern where the plan phase emits neither
+   * `<plan>` nor a valid JSON body — register as a repeated hash and the
+   * plan retry terminator can fire `no_progress` through the same
+   * mechanism that catches literal repeated plans. No separate counter
+   * is needed.
    */
   isPlanRepeated(planText: string): { repeated: boolean; count: number } {
-    if (!planText) return { repeated: false, count: 0 };
     const hash = normalizePlanForHash(planText);
     const count = countRepeatedHash(this._planHistoryHashes, hash);
     return { repeated: count > 0, count };
@@ -307,13 +315,23 @@ export class VerificationSession {
   }
 
   /**
-   * Record a plan that has been applied (past tense). Pushes the body to
-   * the bounded body buffer and the hash to the unbounded hash list. The
-   * hash list stays compact because it stores 40-char strings only.
+   * Record a plan that has been applied (past tense). The hash list is
+   * always appended — even when `planText` is empty — because the hash
+   * sequence is the ground truth for the retry terminator's repeated-
+   * plan detection. An empty string has a stable SHA-1 value, so two
+   * consecutive empty-plan cycles show up as `isPlanRepeated.count === 2`
+   * and `checkRetryTermination` can fire `no_progress` without any
+   * parallel counter.
+   *
+   * The body buffer, in contrast, skips empty bodies: it is a bounded
+   * prompt-injection channel and empties would only contribute noise
+   * (no readable "previous attempt" to show). This split keeps the
+   * detection channel authoritative while the display channel stays
+   * human-meaningful.
    */
   onPlanApplied(planText: string): void {
-    if (!planText) return;
     this._planHistoryHashes.push(normalizePlanForHash(planText));
+    if (!planText) return;
     this._planHistoryBodies.push(planText);
     while (this._planHistoryBodies.length > PLAN_HISTORY_BODY_LIMIT) {
       this._planHistoryBodies.shift();

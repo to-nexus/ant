@@ -54,3 +54,71 @@
 | `vitest.config.*` | `setupFiles` | `setupFiles` (Vitest) or `setupFilesAfterEnv` (Jest) |
 
 ⚠️ **Blind spot**: `setupFilesAfterSetup` does NOT exist. The correct Jest key is `setupFilesAfterEnv`. Jest ignores unknown keys silently — the setup file never loads and tests fail with missing matchers.
+
+---
+
+### Type Augmentation Discoverability
+
+**Principle**: A test-runner setup file must be reachable by the TypeScript compiler for its type-augmentation side effects (`@testing-library/jest-dom`, `vitest-axe`, etc.) to register custom matchers on the global `expect`.
+
+Observe:
+- Setup file extension: `.ts` vs `.js` under a TS project
+- `tsconfig.json` `include` / `files` — whether the setup path is covered
+- The augmentation package: does it ship a types entry (`/types`, `/matchers`, `/vitest`) or a plain side-effect import?
+
+Constraint: The augmentation import must land in a file the type checker actually compiles. A `.js` setup file under a TS project registers the runtime matchers but contributes no ambient types — `expect(...).toBeInTheDocument()` then fails type check even though the runtime works.
+
+Constraint: Prefer a `.ts` setup file OR a separate `.d.ts` ambient reference (e.g. `/// <reference types="@testing-library/jest-dom" />`). Do NOT copy random augmentation snippets into source files.
+
+⚠️ **Blind spot**: `jest.config.js` + `jest.setup.js` is the most common silent-failure combination. Runtime tests pass; typecheck fails with TS2339 "Property 'toBeInTheDocument' does not exist".
+
+---
+
+### Browser-Emulation Reality Gap
+
+**Principle**: Browser emulators (jsdom, happy-dom, linkedom) implement a SUBSET of Web APIs. Any API your component touches must either be implemented by the emulator or stubbed in the setup file.
+
+Observe:
+- Which Web APIs the component under test references (directly or via dependencies)
+- Whether those APIs are `undefined` in the emulator by default
+- The setup-file hook exposed by the runner (`setupFilesAfterEnv`, `setupFiles`, etc.)
+
+Constraint: Stub missing APIs via plain global assignment in the setup file. Do not use runner-specific stubbing DSLs for platform-level gaps — globals work identically across runners.
+
+Constraint: Stub to a minimum contract the component exercises. Overbroad stubs hide real integration problems.
+
+⚠️ **Blind spot** — commonly missing under jsdom: `IntersectionObserver`, `ResizeObserver`, `matchMedia`, `requestAnimationFrame`, `navigator.clipboard`, `crypto.subtle`, `fetch`, `URL.createObjectURL`, `scrollTo`.
+
+---
+
+### Query-to-Rendered-Accessibility Alignment
+
+**Principle**: Every test query matches something the component actually renders. Queries are only as reliable as the accessible name / role the component produces.
+
+Observe:
+- The component source's `aria-label`, `role`, and visible text BEFORE writing the query
+- How many elements in the rendered tree could share the same text or label substring
+- Whether the rendered text is affected by translation / locale
+
+Constraint: Prefer role-scoped queries (`getByRole(role, { name })`) over free-text queries when the test runs against a component that renders more than one text node. Broad text queries collide whenever the same word appears in brand / nav / footer.
+
+Constraint: When the component's accessible name is dynamic (i18n, prop-driven), match against the SAME source — import the translation key or the prop value rather than hard-coding the expected string.
+
+⚠️ **Blind spot**: `getByText(/keyword/i)` fails with "Found multiple elements" when the keyword appears in brand copy AND body copy. The failure surfaces at runtime, not at compile time, and is indistinguishable from a rendering bug until you inspect the DOM.
+
+---
+
+### Module Export Contract
+
+**Principle**: The import syntax in the test is constrained by the component module's export style. Default vs named exports are not interchangeable.
+
+Observe:
+- The target module's final lines: `export default` vs `export { X }` vs `export const X`
+- The project's convention for components across existing test files (usually one style dominates)
+- Barrel re-exports: a barrel can expose the same symbol under either shape
+
+Constraint: Read the target module's export declarations before writing the import. Do not assume one style from the component name alone.
+
+Constraint: A fix that adds a `named export` to accommodate a test must preserve any existing default export if downstream code imports it. Removing the default to appease one test can break the rest of the codebase.
+
+⚠️ **Blind spot**: `export default function Foo() {}` paired with `import { Foo } from './foo'` surfaces as TS2614 "Module has no exported member". The component works everywhere else and only the test fails — easy to misdiagnose as a test setup problem.
