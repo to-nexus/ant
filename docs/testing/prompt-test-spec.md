@@ -263,8 +263,8 @@ G. Non-prompt (비프롬프트)
 | backend-safety (backend) | O | O | X | O | O | X |
 | visual-source-authority (frontend) | O | O | X | O | X | X |
 | test-code hints | X | X | X | X | O | X |
-| ui-design-guide | X(feature) | X | X | X | X | X |
-| ui-design-guide (taskType=ui) | O | - | - | - | - | - |
+| ui-source-dispatch | X(feature) | X | X | X | X | X |
+| ui-source-dispatch (taskType=ui OR design-system) | O | - | - | - | O | - |
 
 ---
 

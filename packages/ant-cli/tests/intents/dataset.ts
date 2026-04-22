@@ -195,7 +195,7 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('gen-ui-figma'),
     metadata: {
       intent: 'gen-ui-figma',
-      refs: ['inputs/figma.json'],
+      refs: ['outputs/design/ui/figma/figma.json'],
     },
     documents: {},
     routing: {
@@ -264,10 +264,10 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('rev-ui'),
     metadata: {
       intent: 'rev-ui',
-      refs: ['outputs/design/ui/ui-tokens.json'],
+      refs: ['outputs/design/ui/ant/ui-tokens.json'],
     },
     documents: {
-      'outputs/design/ui/ui-tokens.json': { content: LOAD('ui-tokens.json'), role: 'ref' },
+      'outputs/design/ui/ant/ui-tokens.json': { content: LOAD('ui-tokens.json'), role: 'ref' },
     },
     routing: {
       agent: 'architect', jobType: 'design', mode: 'refactor',
@@ -338,11 +338,11 @@ export const FIXTURES: IntentFixture[] = [
     metadata: {
       intent: 'gen-code-sys',
       refs: ['outputs/design/system/fe-system-main.md'],
-      context: ['outputs/design/ui/ui-spec.json'],
+      context: ['outputs/design/ui/ant/ui-spec.json'],
     },
     documents: {
       'outputs/design/system/fe-system-main.md': { content: LOAD('fe-system-main.md'), role: 'ref' },
-      'outputs/design/ui/ui-spec.json': { content: LOAD('ui-spec.json'), role: 'context' },
+      'outputs/design/ui/ant/ui-spec.json': { content: LOAD('ui-spec.json'), role: 'context' },
     },
     routing: { agent: 'architect', jobType: 'code', mode: 'generate' },
     prompt: {

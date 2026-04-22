@@ -237,7 +237,7 @@ interface ParsedUiDocs {
 
 | task.type | 기본 선택 규칙 |
 |-----------|---------------|
-| `ui`, `design-system` | `outputs/design/ui/*` |
+| `ui`, `design-system` | `outputs/design/ui/ant/*` (ant UiSource 기준; figma/handoff 는 per-task `artifactPolicy` 가 직접 지정) |
 | `feature`, `setup`, `test-code`, `doc` | `outputs/design/*` + `inputs/sources` 전체 |
 | `error` | spec + api-contract (spec 존재 시) |
 | `verification` | 빈 배열 |
@@ -285,7 +285,7 @@ Code Job은 Figma Desktop MCP에 직접 연결하여 디자인 정보를 보충�
 
 2단계 감지:
 
-1. **figma.json 검증**: `inputs/figma.json`을 로드하고 `isFigmaDataPopulated()`로 유효성 확인
+1. **figma.json 검증**: `outputs/design/ui/figma/figma.json` (canonical) 을 로드하고 `detectFigmaSource` 헬퍼가 `migrateFigmaConfig` → `isFigmaDataPopulated` → MCP 가용성까지 단일 경로로 판정
 2. **MCP 연결 확인**: local은 `checkLocalMCPAvailability()`, cloud는 `BridgeMCPTransport.isAvailable()`
 
 감지 결과는 `ArchitectGraphState`에 저장:
@@ -319,7 +319,7 @@ Code Job은 Figma Desktop MCP에 직접 연결하여 디자인 정보를 보충�
 
 ### On-demand 접근 (feature 태스크)
 
-`feature` 태스크에서는 UI 문서를 eager injection하지 않고, LLM이 `read_file`로 필요한 시점에 조회한다. 프롬프트에 artifact 경로(`outputs/design/ui-tokens.json` 등)를 안내한다.
+`feature` 태스크에서는 UI 문서를 eager injection하지 않고, LLM이 `read_file`로 필요한 시점에 조회한다. 프롬프트에 artifact 경로(`outputs/design/ui/ant/ui-tokens.json` 등)를 안내한다.
 
 ### Redis 의존성 (Cloud mode)
 

@@ -24,6 +24,30 @@ export type TokenUsage = TaskTokenUsage;
 export interface TokenTrackingState {
   _currentTaskTokenUsage?: TokenUsage;
   tokenUsage?: TokenUsage;  // Job-level token usage
+  /**
+   * Latest single LLM-call snapshot of the currently-running graph node.
+   * Reset at node entry via `beginNodePhase()`. Overwritten (NOT accumulated)
+   * by `accumulateTokenUsage()` since each call's `inputTokens` already
+   * represents the full prompt sent. Used by the chat input context gauge.
+   */
+  currentPhaseTokenUsage?: PhaseTokenUsage;
+}
+
+/**
+ * Mark the start of a graph node's LLM activity.
+ * Resets the `currentPhaseTokenUsage` snapshot so subsequent `accumulateTokenUsage`
+ * calls overwrite cleanly. Call at the top of any node that makes LLM calls.
+ */
+export function beginNodePhase(
+  state: TokenTrackingState,
+  phase: string,
+  label?: string,
+): void {
+  state.currentPhaseTokenUsage = {
+    phase,
+    ...(label && { label }),
+    tokenUsage: initTokenUsage(),
+  };
 }
 
 /**
@@ -101,6 +125,22 @@ export function accumulateTokenUsage(
       state.tokenUsage.cacheCreationTokens = 
         (state.tokenUsage.cacheCreationTokens || 0) + usage.cacheCreationTokens;
     }
+  }
+
+  // Current-node snapshot (overwrite, not accumulate).
+  // Each call's inputTokens already includes the full prompt (system + history +
+  // current message), so accumulating across calls in the same node produces a
+  // misleading number. Overwriting keeps the gauge at the true current context
+  // fullness. Only updates if `beginNodePhase()` has initialized the snapshot.
+  if (state.currentPhaseTokenUsage) {
+    state.currentPhaseTokenUsage.tokenUsage = {
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      totalTokens: usage.inputTokens + usage.outputTokens,
+      ...(usage.cacheReadTokens !== undefined && { cacheReadTokens: usage.cacheReadTokens }),
+      ...(usage.cacheCreationTokens !== undefined && { cacheCreationTokens: usage.cacheCreationTokens }),
+      callCount: 1,
+    };
   }
 }
 
@@ -288,6 +328,12 @@ export function updateKanbanTokenUsage(state: KanbanUpdatableState): void {
   const taskTokens = getTaskTokenUsage(state);
   const jobTokens = getJobTokenUsage(state);
 
+  // Broadcast current-node snapshot regardless of worker/main context so
+  // the chat input gauge reflects the most recent LLM call immediately.
+  if (state.currentPhaseTokenUsage) {
+    state.deps.kanbanUpdate.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
+  }
+
   const isWorkerCtx = state.workerId !== undefined && state.workerId !== null;
   if (isWorkerCtx) {
     state.currentTask.tokenUsage = { ...taskTokens };
@@ -382,10 +428,20 @@ export function applyEstimatingUsage(
   if (!usage) return;
 
   ensureEstimatingActivity(state, nodeId);
+  // Seed the current-node snapshot so `accumulateTokenUsage` has a target to
+  // overwrite. Label is the localized estimating label already used for the
+  // kanban banner — keeps the gauge tooltip wording consistent.
+  if (!state.currentPhaseTokenUsage || state.currentPhaseTokenUsage.phase !== nodeId) {
+    beginNodePhase(state, nodeId, getEstimatingLabel(nodeId, state._uiLocale));
+  }
   accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
 
   if (state.tokenUsage) {
     state.deps?.kanbanUpdate?.updateTokenUsage?.(state.tokenUsage);
+  }
+
+  if (state.currentPhaseTokenUsage) {
+    state.deps?.kanbanUpdate?.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
   }
 
   logTokenUsageToFile(resolveFeaturePath(state), state._httpJobId, usage, {

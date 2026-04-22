@@ -6,6 +6,7 @@ import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useTranslation } from 'react-i18next';
 import type { Agent } from '@/infrastructure/http/api';
 import type { AgentWithMetadata, JobWithMetadata } from './hooks/useAgentJobOptions';
+import { TurnTokenGauge } from './TurnTokenGauge';
 
 interface AgentJobToolbarProps {
   agents: Agent[];
@@ -196,6 +197,7 @@ export function AgentJobToolbar({
 
       {/* Action Buttons */}
       <div className="flex items-center gap-2">
+        <TurnTokenGauge />
         {isRunning ? (
           <button
             onClick={handleStop}

@@ -5,6 +5,7 @@ import { DesignTask, TaskQueue } from "../../../types/task";
 import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
 import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
 import { saveReviseCheckpoint } from "../session/checkpoint";
+import { beginNodePhase } from "../../../../common/graph/llmHelpers";
 
 /**
  * Revise Node for Design Job
@@ -20,8 +21,10 @@ import { saveReviseCheckpoint } from "../session/checkpoint";
  * Design-specific: Tasks produce documents (type: 'doc'), each with a targetFile.
  */
 export async function revise(state: DesignGraphState): Promise<DesignGraphState> {
+  beginNodePhase(state as any, 'revise', 'Revise');
+
   const phaseStart = Date.now();
-  
+
   const llm = state.deps?.llm as LLMClient;
   
   // ✅ Increment recursion count (track node execution for UI gauge)

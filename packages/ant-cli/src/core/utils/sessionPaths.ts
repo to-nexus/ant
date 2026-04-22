@@ -244,7 +244,7 @@ export function getAllSessionPaths(featurePath: string): Array<{ path: string; a
  * Every path listed there MUST have a corresponding factory here.
  */
 const FILE_CONTENT_FACTORIES: Record<string, () => string> = {
-  'inputs/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
+  'outputs/design/ui/figma/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
 };
 
 /**

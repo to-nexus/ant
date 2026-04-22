@@ -95,7 +95,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     designDocUnknownPackages: state.designDocUnknownPackages,
     _sharedFileBuffer: sharedFileBuffer,
     taskQueue: state.taskQueue,
-    figmaAvailable: state.figmaAvailable,
     figmaFileKey: state.figmaFileKey,
     figmaStartNodeId: state.figmaStartNodeId,
   };
@@ -646,7 +645,6 @@ export const CodeGraphChannels = {
       _executeModifiedFiles: Annotation<any>,
       _detectedPackageManager: Annotation<any>,
       _otherWorkerFiles: Annotation<any>,
-      figmaAvailable: Annotation<any>,
       figmaFileKey: Annotation<any>,
       figmaStartNodeId: Annotation<any>,
       boundary: Annotation<any>,

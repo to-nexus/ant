@@ -172,7 +172,7 @@ export interface DesignGraphState extends TriageableState {
   uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under inputs/assets/
   
   // ✅ Figma Integration (All-or-Nothing: Full MCP required)
-  figmaConfig?: FigmaDataConfig;        // Loaded from inputs/figma.json at resolve
+  figmaConfig?: FigmaDataConfig;        // Loaded from outputs/design/ui/figma/figma.json at resolve
   figmaExplorationResult?: FigmaExplorationResult;  // Output of figmaExplore node
   figmaAvailable?: boolean;              // MCP reachable — set by detect node
   figmaFileKey?: string;                 // Parsed from figmaConfig.file URL

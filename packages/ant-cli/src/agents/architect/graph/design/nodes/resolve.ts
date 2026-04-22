@@ -3,7 +3,7 @@ import { WorkspacePathResolver } from "../../../../../core/config/WorkspacePathR
 import { DesignGraphState } from "../state";
 import * as path from "path";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
-import { FIGMA_FILENAME, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
+import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
 import { hydrateFeatureContext } from "../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
@@ -233,25 +233,25 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       if (Object.keys(docs).length > 0) existingDesignDocs = docs;
     } catch { /* Non-critical */ }
 
-    // Load figma.json
+    // Load figma workfile reference from canonical location
     let figmaConfig: FigmaDataConfig | undefined;
     try {
       const fs = await import('fs');
-      const figmaJsonPath = path.join(featurePath, 'inputs', FIGMA_FILENAME);
+      const figmaJsonPath = path.join(featurePath, FIGMA_CONFIG_PATH);
       if (fs.existsSync(figmaJsonPath)) {
         const figmaRaw = fs.readFileSync(figmaJsonPath, 'utf-8');
         const raw = JSON.parse(figmaRaw);
         figmaConfig = migrateFigmaConfig(raw);
         if (JSON.stringify(figmaConfig) !== JSON.stringify(raw)) {
           fs.writeFileSync(figmaJsonPath, JSON.stringify(figmaConfig, null, 2), 'utf-8');
-          console.log(`📄 [Design Resolve] Migrated ${FIGMA_FILENAME} to simplified format`);
+          console.log(`📄 [Design Resolve] Migrated figma.json to simplified format`);
         }
       } else {
         figmaConfig = createEmptyFigmaData();
         fs.mkdirSync(path.dirname(figmaJsonPath), { recursive: true });
         fs.writeFileSync(figmaJsonPath, JSON.stringify(figmaConfig, null, 2), 'utf-8');
       }
-      console.log(`📄 [Design Resolve] Loaded ${FIGMA_FILENAME}: ${figmaConfig.file ? '1 file configured' : 'no file'}`);
+      console.log(`📄 [Design Resolve] Loaded figma.json: ${figmaConfig.file ? '1 file configured' : 'no file'}`);
     } catch { /* Non-critical */ }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

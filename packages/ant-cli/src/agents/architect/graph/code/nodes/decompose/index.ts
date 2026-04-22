@@ -277,19 +277,26 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // task assignment. Full content is NOT embedded here; plan/execute
   // load sections per task via artifactPolicy.
   //
-  // ID = basename (robust against flat `outputs/design/ui-*` paths
-  // that don't share the `AP.UI` prefix — see `isUiArtifactPath` /
-  // `FLAT_UI_DOC_REGEX`).
+  // ID = basename — fine for all three UiSource prefixes
+  // (`outputs/design/ui/{ant,figma,handoff}/…`).
   const uiArtifactPaths = pool.ui.map(a => ({
     id: a.path.split('/').pop() ?? a.path,
     role: a.role,
   }));
+
+  // Discriminate which of the three UiSource kinds the pool carries (or null
+  // when no UI source was selected). Downstream prompts (decompose / plan /
+  // execute) dispatch on `uiSource` to pick the correct interpretation
+  // partial (ui-source-ant / figma / handoff). Hard-exclusive by
+  // construction — `pool.uiSource()` throws on mixed sources.
+  const uiSource = pool.uiSource();
 
   const enrichedVars = {
     ...decomposeVars,
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
     hasErrorInDirective: decomposeVars.hasErrorInDirective || false,
     hasUi,
+    uiSource,
     uiArtifactPaths,
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
     assetsHint,
@@ -618,7 +625,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   if (activeSpecRefFilename) {
     console.log(`📋 [Decompose] Active spec ref: ${activeSpecRefFilename}`);
   }
-  const { taskQueue, featureTasks } = createTaskQueue(tasks, activeSpecRefFilename);
+  const { taskQueue, featureTasks } = createTaskQueue(tasks, activeSpecRefFilename, uiSource ?? undefined);
   logTaskSummary(tasks, referenceRequests);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

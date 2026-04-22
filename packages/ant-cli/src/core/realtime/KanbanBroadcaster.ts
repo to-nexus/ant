@@ -52,6 +52,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedTokenUsage?: TaskTokenUsage;
   private cachedEstimatingTokenUsage?: TaskTokenUsage;
   private cachedPhaseTokenUsages?: PhaseTokenUsage[];
+  private cachedCurrentPhaseTokenUsage?: PhaseTokenUsage;
   // Cached task lists from last updateTaskQueue (NOT from broadcastKanbanUpdate,
   // which is also called during estimating with empty arrays).
   private cachedCurrentTasks: BaseTask[] = [];
@@ -195,6 +196,27 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
+   * Set the latest-LLM-call snapshot for the currently-running graph node.
+   * Overwrites the previous snapshot each call and fires an immediate broadcast
+   * so the chat input context gauge stays real-time.
+   */
+  updateCurrentPhaseTokenUsage(snapshot: PhaseTokenUsage): void {
+    this.cachedCurrentPhaseTokenUsage = snapshot;
+
+    this.broadcastKanbanUpdate(
+      this.jobId,
+      this.cachedCurrentTasks,
+      this.cachedQueue,
+      this.cachedCompletedTasks,
+      this.cachedRecursionCount,
+      this.cachedRecursionLimit,
+      this.cachedTokenUsage,
+    ).catch(err => {
+      console.warn(`[KanbanBroadcaster] Failed to broadcast current phase token usage:`, err.message);
+    });
+  }
+
+  /**
    * Snapshot estimating phase token usage, included in all subsequent broadcasts.
    * Called once at end of decompose node.
    */
@@ -314,6 +336,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
+      ...(this.cachedCurrentPhaseTokenUsage && { currentPhaseTokenUsage: this.cachedCurrentPhaseTokenUsage }),
       ...(this.jobTiming && { jobTiming: this.jobTiming }),
       // Include estimating activity for reconnect/recovery
       ...(this.estimatingLabel && {
@@ -347,6 +370,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
+      ...(this.cachedCurrentPhaseTokenUsage && { currentPhaseTokenUsage: this.cachedCurrentPhaseTokenUsage }),
       jobType: this.jobType,
       agent: this.agent,
       // ✅ Include job-level timing in every broadcast (set once via setJobTiming)

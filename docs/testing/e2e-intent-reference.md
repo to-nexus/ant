@@ -140,13 +140,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-ui-figma",
-      "refs": ["inputs/figma.json"]
+      "refs": ["outputs/design/ui/figma/figma.json"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, workType=ui-design
-- **예상 산출물**: `outputs/design/ui/ui-tokens.json`, `outputs/design/ui/ui-assets.json`, `outputs/design/ui/ui-spec.json`
+- **예상 산출물**: `outputs/design/ui/ant/ui-tokens.json`, `outputs/design/ui/ant/ui-assets.json`, `outputs/design/ui/ant/ui-spec.json`
 - **PASS 기준**: 3개 UI 설계 파일 생성
 - **참고**: figma.json은 `{ "file": "<figma-url>" }` 형식의 설정 파일. 프롬프트에 내용 주입 없음.
 
@@ -165,7 +165,7 @@ curl -X POST http://localhost:4100/api/jobs \
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, workType=ui-design
-- **예상 산출물**: `outputs/design/ui/ui-tokens.json`, `outputs/design/ui/ui-assets.json`, `outputs/design/ui/ui-spec.json`
+- **예상 산출물**: `outputs/design/ui/ant/ui-tokens.json`, `outputs/design/ui/ant/ui-assets.json`, `outputs/design/ui/ant/ui-spec.json`
 - **PASS 기준**: 3개 UI 설계 파일 생성
 
 ### rev-ui
@@ -177,13 +177,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-ui",
-      "refs": ["outputs/design/ui/ui-tokens.json"]
+      "refs": ["outputs/design/ui/ant/ui-tokens.json"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=ui-design
-- **예상 산출물**: `outputs/design/ui/ui-tokens.json` (수정)
+- **예상 산출물**: `outputs/design/ui/ant/ui-tokens.json` (수정)
 - **PASS 기준**: 다크 테마 색상으로 변경
 
 ---
@@ -240,7 +240,7 @@ curl -X POST http://localhost:4100/api/jobs \
       "explicit": true,
       "intent": "gen-code-sys",
       "refs": ["outputs/design/system/fe-system-main.md"],
-      "context": ["outputs/design/ui/ui-spec.json"]
+      "context": ["outputs/design/ui/ant/ui-spec.json"]
     }
   }'
 ```

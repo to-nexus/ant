@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
-import { accumulateTokenUsage, upsertPhaseTokenUsage, TokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage, TokenUsage, beginNodePhase } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
@@ -26,6 +26,7 @@ const MAX_CLARIFY = 5;
 const MAX_TOOL_ROUNDS = 5;
 
 export async function directNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
+  beginNodePhase(state as any, 'direct', 'Direct');
   const phaseStart = Date.now();
   const tokensBefore = {
     input: state.tokenUsage?.inputTokens ?? 0,

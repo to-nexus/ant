@@ -24,7 +24,7 @@ import { createChatStatusReporter } from '../../../../../common/tool/chatStatusA
 import type { ToolExecutionContext } from '../../../../../common/tool/types';
 import { toolResultManager } from '../tool/utils/managers';
 import { saveCheckpoint } from '../../session/checkpoint';
-import { accumulateTokenUsage } from '../../../../../common/graph/llmHelpers';
+import { accumulateTokenUsage, beginNodePhase } from '../../../../../common/graph/llmHelpers';
 import { invokeLLMWithTools } from '../_common/invokeLLMWithTools';
 import { runToolCallsAndCollect } from '../_common/runToolCallsAndCollect';
 import { parseReActResponse } from '../../utils/parseReActResponse';
@@ -44,6 +44,7 @@ function getExploratoryMaxSteps(): number {
 export async function direct(
   state: ArchitectGraphState,
 ): Promise<Partial<ArchitectGraphState>> {
+  beginNodePhase(state as any, 'direct', 'Direct');
   state.recursionCount = (state.recursionCount || 0) + 1;
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

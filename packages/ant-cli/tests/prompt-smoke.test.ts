@@ -264,6 +264,12 @@ describe('Template Smoke Tests', () => {
       'jobs/shared/injections/explain-guidance',
       'jobs/code/nodes/decompose/variants/default/mode-guide',
       'jobs/code/nodes/decompose/variants/default/design-doc-guide',
+      // UiSource dispatcher and its per-(uiSource, taskType) inventory are
+      // wrapped entirely in {{#if uiSource}} so they render empty when no
+      // UI source is active — this is by design (Contract exception per
+      // .cursorrules "Post-RAC Template Condition SSOT").
+      'jobs/code/base/injections/ui-source-dispatch',
+      'jobs/code/nodes/plan/injections/ui-source-inventory',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

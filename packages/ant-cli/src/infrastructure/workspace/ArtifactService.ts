@@ -22,7 +22,7 @@ import {
   generateUiSectionsSummary,
 } from "./UiDocParser";
 import { normalizeTemplateDoc } from "../../core/utils/templateDetector";
-import { designSubdirOf, DESIGN_SUBDIRS, DESIGN_DIR } from "@ant/shared";
+import { DESIGN_SUBDIRS, DESIGN_DIR } from "@ant/shared";
 
 /**
  * Artifact-specific project context.
@@ -219,22 +219,19 @@ export class ArtifactService {
    *   - specToc: Table of contents (for decompose prompt)
    */
   /**
-   * Try to read a UI document from subdirectory first, then flat fallback.
+   * Read a UI document from the canonical ant UiSource location
+   * (`outputs/design/ui/ant/<file>`). Other UiSource kinds (figma / handoff)
+   * are NOT read here — they are handled via the RAC pool or via MCP at
+   * execute time.
    */
   private static async readUiFile(
     fileSystem: FileSystemPort,
     designDir: string,
     fileName: string
   ): Promise<string | undefined> {
-    const subPath = path.join(designDir, designSubdirOf(fileName), fileName);
+    const subPath = path.join(designDir, 'ui', 'ant', fileName);
     if (await fileSystem.fileExists(subPath)) {
       const content = await fileSystem.readFile(subPath);
-      const normalized = ArtifactService.normalizeUserDoc(content) || undefined;
-      if (normalized) return normalized;
-    }
-    const flatPath = path.join(designDir, fileName);
-    if (await fileSystem.fileExists(flatPath)) {
-      const content = await fileSystem.readFile(flatPath);
       return ArtifactService.normalizeUserDoc(content) || undefined;
     }
     return undefined;

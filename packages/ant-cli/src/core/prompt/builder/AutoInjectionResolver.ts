@@ -152,8 +152,13 @@ export class AutoInjectionResolver {
         injections.push('jobs/code/nodes/execute/injections/port-management');
       }
 
-      if (job === 'code' && taskType === 'ui') {
-        injections.push(`${jobPrefix}/ui-design-guide`);
+      // UI interpretation partial — dispatched per UiSource (ant / figma / handoff).
+      // Injected for BOTH 'ui' and 'design-system' task types because a
+      // design-system skeleton task needs the same per-source reading rules
+      // as an individual ui task. The dispatcher itself is a no-op when the
+      // `uiSource` template variable is null.
+      if (job === 'code' && (taskType === 'ui' || taskType === 'design-system')) {
+        injections.push(`${jobPrefix}/ui-source-dispatch`);
       }
 
       // Design job injections

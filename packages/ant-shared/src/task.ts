@@ -7,6 +7,7 @@
 
 import type { JobTiming } from './job';
 import type { InterruptionDetails } from './interruption';
+import type { UiSource } from './canonical';
 
 // ============================================
 // Task Types
@@ -43,6 +44,14 @@ export interface TaskTiming {
   elapsedTime?: number;
   duration?: string;
 }
+
+/**
+ * Anthropic context window (100%) used as the UI context-gauge denominator.
+ * SSOT for both backend ([TokenBudgetManager](../../ant-cli/src/core/utils/tokenBudget.ts) default)
+ * and frontend [TurnTokenGauge](../../ant-ui/src/presentation/components/chat/TurnTokenGauge.tsx).
+ * Update this single constant when migrating to a different model with a different context window.
+ */
+export const CONTEXT_WINDOW_MAX_TOKENS = 200_000;
 
 /** LLM token consumption for a task or aggregate */
 export interface TaskTokenUsage {
@@ -124,6 +133,16 @@ export interface BaseTask {
     refs?: string[];
     context?: string[];
   };
+
+  /**
+   * Which UiSource feeds this task (only meaningful for UI-related task types:
+   * 'ui' and 'design-system'). Orthogonal to `type`:
+   *   - `type` decides WHAT the task produces (e.g. design-system skeleton).
+   *   - `uiSource` decides HOW to interpret the UI input (ant canonical / figma MCP / handoff observation).
+   *
+   * Kept BE-internal (routing + prompt dispatch only); not rendered in Kanban.
+   */
+  uiSource?: UiSource;
 }
 
 // ============================================
@@ -175,6 +194,15 @@ export interface KanbanData {
    * When present, the UI renders phase-based breakdown instead of task-based.
    */
   phaseTokenUsages?: PhaseTokenUsage[];
+
+  /**
+   * Latest single LLM call snapshot for the currently-running (or just-completed) graph node.
+   * Overwritten on each stream `done` event; reset at node entry via beginNodePhase().
+   * Used by the chat input context gauge — represents "current context fullness".
+   * NOT cumulative: each call replaces the previous snapshot since inputTokens already includes
+   * full prompt (system + history + current) per Anthropic's request semantics.
+   */
+  currentPhaseTokenUsage?: PhaseTokenUsage;
 
   // Job metadata
   jobType?: string;

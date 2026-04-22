@@ -35,8 +35,21 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     acceptedExtensions: ['.md', '.json'],
   },
   'outputs/design/ui': {
+    // Parent UI source directory — contains ant/ / figma/ / handoff/ subdirs.
+    allowSubdirs: true,
+  },
+  'outputs/design/ui/ant': {
     allowSubdirs: false,
     acceptedExtensions: ['.json'],
+  },
+  'outputs/design/ui/figma': {
+    allowSubdirs: false,
+    acceptedExtensions: ['.json'],
+  },
+  'outputs/design/ui/handoff': {
+    // Handoff is intentionally free-form — any filetype is accepted and
+    // nested subdirectories are allowed.
+    allowSubdirs: true,
   },
   'outputs/design/system': {
     allowSubdirs: false,

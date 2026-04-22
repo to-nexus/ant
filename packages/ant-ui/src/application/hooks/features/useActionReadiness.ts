@@ -155,7 +155,10 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
   const hasRefs = dirHasFilesDeeply(ctx.fileTree, 'inputs/references');
   const figmaConfigured = ctx.figmaPopulated === true;
   const figmaReady = figmaConfigured && ctx.bridgeConnected === true && ctx.figmaDesktopReachable;
-  const hasUi = dirHasFiles(ctx.fileTree, 'outputs/design/ui');
+  // Design jobs emit ant-canonical outputs at `outputs/design/ui/ant/`;
+  // deep-check the parent so any of the three UiSource subdirectories
+  // (ant / figma / handoff) counts as "UI source present".
+  const hasUi = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/ui');
   const buildReady = figmaReady || hasRefs;
 
   return {
@@ -173,8 +176,8 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
       { id: 'references', active: hasRefs, blockReason: hasRefs ? undefined : { en: 'Upload screenshots to inputs/references/', ko: 'inputs/references/에 스크린샷을 업로드하세요' } },
       { id: 'description', active: true },
     ],
-    outputDir: 'outputs/design/ui',
-    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/ui', 'ui'),
+    outputDir: 'outputs/design/ui/ant',
+    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/ui/ant', 'ui'),
   };
 }
 

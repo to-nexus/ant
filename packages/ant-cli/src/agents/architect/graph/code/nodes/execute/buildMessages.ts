@@ -317,9 +317,14 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // needs presence. See `.cursorrules`
       // "Post-RAC Template Condition SSOT".
       hasUi: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
+      uiSource: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).uiSource(),
       isSpecDriven: new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename() !== null,
-      figmaAvailable: (state.figmaAvailable && !poolView.hasUi()) || false,
-      figmaStartNodeId: state.figmaStartNodeId || undefined,
+      // figmaAvailable is strictly derived from uiSource === 'figma'.
+      // The previous AND-with-!hasUi() gate is obsolete; hard-exclusive UiSource
+      // means figma and ant/handoff never coexist in the same pool.
+      figmaAvailable: state.resolvedAction?.mcpSources?.figma != null,
+      figmaFileKey: state.resolvedAction?.mcpSources?.figma?.fileKey ?? state.figmaFileKey ?? undefined,
+      figmaStartNodeId: state.resolvedAction?.mcpSources?.figma?.nodeId ?? state.figmaStartNodeId ?? undefined,
       runtimeContext: runtimeContextParts.join('\n\n'),
 
       // Injection-specific vars (pre-formatted)
@@ -401,7 +406,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
               `# UI Reference Images\n` +
               `The following image blocks are screenshots/component states from \`inputs/references\`.\n` +
               `Use them to match layout/spacing/visual states.\n` +
-              `IMPORTANT (runtime packaging, NOT authority): These image files are inputs to this prompt only — they are NOT automatically copied into the app runtime (e.g., not placed under \`public/\`). If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) follow explicit instructions in \`outputs/design/ui/ui-assets.json\` (including destination paths).\n\n` +
+              `IMPORTANT (runtime packaging, NOT authority): These image files are inputs to this prompt only — they are NOT automatically copied into the app runtime (e.g., not placed under \`public/\`). If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) follow explicit instructions in \`outputs/design/ui/ant/ui-assets.json\` (including destination paths).\n\n` +
               `${previewList}\n`
           });
         }

@@ -382,9 +382,27 @@
       "manifest"
     ]
   },
-  "jobs/code/base/injections/ui-design-guide": {
+  "jobs/code/base/injections/ui-source-ant": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/ui-source-dispatch": {
     "sources": [
       "auto-injection",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/ui-source-figma": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/ui-source-handoff": {
+    "sources": [
+      "partial-ref",
       "manifest"
     ]
   },
@@ -671,6 +689,12 @@
   "jobs/code/nodes/plan/base": {
     "sources": [
       "render-call"
+    ]
+  },
+  "jobs/code/nodes/plan/injections/ui-source-inventory": {
+    "sources": [
+      "partial-ref",
+      "manifest"
     ]
   },
   "jobs/code/nodes/plan/rules-keyword": {

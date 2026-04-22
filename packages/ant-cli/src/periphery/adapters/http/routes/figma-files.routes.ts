@@ -1,12 +1,13 @@
 /**
  * Figma Files Routes
- * 
- * API endpoints for reading/writing inputs/figma.json in features.
+ *
+ * API endpoints for reading/writing the figma workfile reference
+ * (canonical path: outputs/design/ui/figma/figma.json).
  */
 
 import { Router, Request, Response } from 'express';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { FigmaDataConfig, FIGMA_FILENAME, createEmptyFigmaData, migrateFigmaConfig } from '@ant/shared';
+import { FigmaDataConfig, FIGMA_CONFIG_PATH, createEmptyFigmaData, migrateFigmaConfig } from '@ant/shared';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
@@ -36,12 +37,12 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
       projectId,
       featureName
     );
-    return path.join(featurePath, 'inputs', FIGMA_FILENAME);
+    return path.join(featurePath, FIGMA_CONFIG_PATH);
   };
 
   /**
    * GET /api/figma/config/:projectId/:featureName
-   * Read inputs/figma.json — auto-creates if missing, auto-migrates legacy format.
+   * Read the canonical figma workfile reference — auto-creates if missing, auto-migrates legacy format.
    */
   router.get('/config/:projectId/:featureName', async (req: Request, res: Response) => {
     try {
@@ -80,7 +81,7 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
 
   /**
    * PUT /api/figma/config/:projectId/:featureName
-   * Write inputs/figma.json
+   * Write the canonical figma workfile reference.
    */
   router.put('/config/:projectId/:featureName', async (req: Request, res: Response) => {
     try {

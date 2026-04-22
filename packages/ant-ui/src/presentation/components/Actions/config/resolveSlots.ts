@@ -1,6 +1,6 @@
 import type { SlotDef } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
-import type { SlotWarning, SlotFileEntry, SlotEntry, FileWarningContext } from './types';
+import type { SlotWarning, SlotFileEntry, SlotEntry, SlotSubgroup, FileWarningContext } from './types';
 
 export function resolveFileWarnings(
   filePath: string,
@@ -72,6 +72,34 @@ export function resolveSlotEntries(
       if (def.codebase) {
         const hasFiles = !!codebaseHasFiles;
         return { def, files: [], hasFiles, hasValidFiles: hasFiles };
+      }
+      if (def.type === 'ui-source' && def.uiSources) {
+        const subgroups: SlotSubgroup[] = def.uiSources.map(sub => {
+          let files = listDirWithMeta(fileTree, sub.dir).map(f => {
+            const warnings = warningCtx ? resolveFileWarnings(f.path, f.size, warningCtx, f.isTemplate, f.templateReason, f.templateContentLength, f.templateThreshold) : [];
+            return { name: f.name, path: f.path, size: f.size, warnings };
+          });
+          if (excludePaths && excludePaths.size > 0) {
+            files = files.filter(f => !excludePaths.has(f.path));
+          }
+          return {
+            id: sub.id,
+            dir: sub.dir,
+            label: sub.label,
+            humanLabel: sub.humanLabel,
+            files,
+            hasFiles: files.length > 0,
+            hasValidFiles: files.some(f => f.warnings.length === 0),
+          };
+        });
+        const allFiles = subgroups.flatMap(s => s.files);
+        return {
+          def,
+          files: allFiles,
+          hasFiles: allFiles.length > 0,
+          hasValidFiles: allFiles.some(f => f.warnings.length === 0),
+          subgroups,
+        };
       }
       let files: SlotFileEntry[] = [];
       if (def.type === 'file') {

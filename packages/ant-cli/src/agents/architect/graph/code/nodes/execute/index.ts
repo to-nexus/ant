@@ -34,6 +34,7 @@ import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormal
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { beginNodePhase } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
 import { isErrorTask } from '../../tasks/error';
@@ -43,6 +44,8 @@ export async function execute(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
   console.log('\n💭 [Execute] Starting reasoning...\n');
+
+  beginNodePhase(state as any, 'execute', 'Execute');
 
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
@@ -73,9 +76,9 @@ export async function execute(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Principle:
   // - UI-doc presence is a role-based signal via ArtifactPoolView.hasUi()
-  //   (category match on ARTIFACT_PREFIX.UI = 'outputs/design/ui/').
+  //   (category match on the three UiSource prefixes: ant/figma/handoff).
   // - If the pool lacks UI artifacts, best-effort self-heal by reading the
-  //   canonical location via ArtifactService.loadParsedUiContext() and
+  //   canonical ant-ui location via ArtifactService.loadParsedUiContext() and
   //   appending as role:'context' artifacts.
   // - If docs truly do not exist for this feature, proceed silently with
   //   defaults derived from PRD/design (no fail-fast).
@@ -93,11 +96,11 @@ export async function execute(
         );
         if (parsed) {
           const uiPool: import('@ant/shared').ResolvedArtifact[] = [];
-          if (parsed.tokens) uiPool.push({ path: `${AP.UI}tokens`, content: parsed.tokens, role: 'context' });
-          if (parsed.assets) uiPool.push({ path: `${AP.UI}assets`, content: parsed.assets, role: 'context' });
+          if (parsed.tokens) uiPool.push({ path: `${AP.UI_ANT}tokens`, content: parsed.tokens, role: 'context' });
+          if (parsed.assets) uiPool.push({ path: `${AP.UI_ANT}assets`, content: parsed.assets, role: 'context' });
           if (parsed.specSections) {
             for (const [id, section] of parsed.specSections) {
-              if (section.content) uiPool.push({ path: `${AP.UI_SPEC}${id}`, content: section.content, role: 'context' });
+              if (section.content) uiPool.push({ path: `${AP.UI_ANT_SPEC}${id}`, content: section.content, role: 'context' });
             }
           }
           if (uiPool.length > 0) {

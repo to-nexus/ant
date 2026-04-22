@@ -215,7 +215,7 @@ describe('E2E: Code execute — verification', () => {
   it('stage 1: verification skips static policies', () => {
     expect(result.injections).not.toContain('jobs/code/base/injections/tool-calling-rules-compact');
     expect(result.injections).not.toContain('jobs/shared/injections/visual-source-authority');
-    expect(result.injections).not.toContain('jobs/code/base/injections/ui-design-guide');
+    expect(result.injections).not.toContain('jobs/code/base/injections/ui-source-dispatch');
   });
 
   it('stage 2: no templates fail to render', () => {
