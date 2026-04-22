@@ -186,7 +186,7 @@ function renderSessionSummary(
  *     session already considers passed.
  */
 export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
-  const { state, task, projectCodeContext, violationsText, options, antrulesContent } = ctx;
+  const { state, task, codeContext, violationsText, options, antrulesContent } = ctx;
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) {
     throw new Error('[Plan] PromptBuilder not available');
@@ -222,7 +222,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   // never runs without a populated session because `initSession` is
   // called from plan/parts/entry.ts before any hook fires.
   const isDeepDiagnostic = session?.inDeepMode() ?? false;
-  let fmtCtx = formatCodeContext(projectCodeContext);
+  let fmtCtx = formatCodeContext(codeContext);
   if (isDeepDiagnostic) {
     const configs = await collectConfigSnapshot(state.context?.featurePath);
     const block = renderConfigBlock(configs);
@@ -269,7 +269,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     isErrorTask: false,
     runTests: true,
     projectCodeContext: fmtCtx,
-    directoryTree: (projectCodeContext as any)?.directoryTree || '',
+    directoryTree: (codeContext as any)?.directoryTree || '',
     violationsText,
     isRetry: !!violationsText,
     hasTools: options?.hasTools ?? false,

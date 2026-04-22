@@ -139,11 +139,6 @@ export type WorkerGraphBuilder = (includeInstallValidate: boolean) => {
 export interface WorkerSnapshot {
   planText?: string;
   conversations?: Record<string, Array<{ role: string; content: string | import('../../../core/ports/llm').MessageContentBlock[] }>>;
-  projectCodeContext?: {
-    source: string;
-    filePaths: string[];
-    stats: any;
-  };
   retries?: number;
   violations?: any[];
   enforcementHistory?: any[];

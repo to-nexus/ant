@@ -108,7 +108,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // STEP 2: Codebase file listing (fileSystem-based)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   let codebaseFilePaths: string[] | undefined;
-  let gitDiffResult: any;
+
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 3: Prepare design documents (environment-aware)
@@ -822,20 +822,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 7: Store codebase context (file paths + gitDiff)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const projectCodeContext = codebaseFilePaths && codebaseFilePaths.length > 0 ? {
-    filePaths: codebaseFilePaths,
-    files: [],
-    gitDiff: gitDiffResult,
-    stats: {
-      filesLoaded: codebaseFilePaths.length,
-      estimatedTokens: 0
-    },
-    source: 'decompose' as const
-  } : undefined;
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 8: Handle jobId/jobTiming (for replan scenarios)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { JobTimingManager } = await import('../../../../../common/graph/timing/JobTimingManager');
@@ -894,7 +880,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     featureTasks,
     referenceRequests: referenceRequests || state.referenceRequests || [],
     designDocUnknownPackages: unknownPackages,
-    projectCodeContext,
     referenceCodeContexts: [],
     totalSubtasks: tasks.length + 1,
     subtaskIndex: 0,

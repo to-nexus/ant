@@ -2,65 +2,6 @@
  * Utility functions for Plan node
  */
 
-import type { MessageContentBlock, ToolUseContentBlock, ToolResultContentBlock } from '../../../../../../core/ports/llm';
-
-/**
- * Extract files read during Plan's tool loop from nodePlanHistory.
- *
- * Scans assistant messages for read_file tool_use blocks, matches them with
- * corresponding tool_result blocks in the next user message, and returns
- * deduplicated file entries suitable for merging into projectCodeContext.
- */
-export function extractFilesFromPlanToolLoop(
-  history: Array<{ role: string; content: string | MessageContentBlock[] }>,
-  existingPaths: Set<string>,
-): Array<{ path: string; content: string; source: 'plan_tool_loop' }> {
-  const files: Array<{ path: string; content: string; source: 'plan_tool_loop' }> = [];
-  const seenPaths = new Set<string>();
-
-  for (let i = 0; i < history.length; i++) {
-    const msg = history[i];
-    if (msg.role !== 'assistant' || typeof msg.content === 'string') continue;
-
-    const readFileUses = new Map<string, string>();
-    for (const block of msg.content) {
-      if (block.type === 'tool_use') {
-        const tb = block as ToolUseContentBlock;
-        if (tb.name === 'read_file' && tb.input?.path) {
-          readFileUses.set(tb.id, tb.input.path);
-        }
-      }
-    }
-    if (readFileUses.size === 0) continue;
-
-    // Find corresponding tool_result in next user message
-    const nextMsg = history[i + 1];
-    if (!nextMsg || nextMsg.role !== 'user' || typeof nextMsg.content === 'string') continue;
-
-    for (const block of nextMsg.content) {
-      if (block.type !== 'tool_result') continue;
-      const tb = block as ToolResultContentBlock;
-      const filePath = readFileUses.get(tb.tool_use_id);
-      if (!filePath) continue;
-
-      if (existingPaths.has(filePath) || seenPaths.has(filePath)) continue;
-
-      const content = typeof tb.content === 'string'
-        ? tb.content
-        : Array.isArray(tb.content)
-          ? tb.content.filter(c => c.type === 'text').map(c => (c as { type: 'text'; text: string }).text).join('\n')
-          : '';
-
-      if (content && !content.startsWith('Error:')) {
-        files.push({ path: filePath, content, source: 'plan_tool_loop' });
-        seenPaths.add(filePath);
-      }
-    }
-  }
-
-  return files;
-}
-
 /**
  * Compute CodeGen call budget from planText based on action types.
  * create actions cost ~1 call (<file> tag), modify actions cost ~3 calls (read + edit + retry margin).

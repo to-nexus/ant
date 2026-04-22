@@ -25,14 +25,12 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
-import { ProjectCodeContext } from "../plan/combineCodeContext";
 import { selectArtifacts, selectArtifactsWithPolicy, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { effectiveTechTier, getTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
-import { formatGitDiffForPrompt } from "../../../../../../core/codebase/GitDiffSummary";
 import { hooksIfActive } from "../../tasks/_shared/registry";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
 
@@ -153,18 +151,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     console.warn(`⚠️  [Execute] planText is empty (task: ${state.currentTask.type}, priority: ${state.currentTask.priority})`);
   }
   
-  // Pass RAG-loaded file content directly to the prompt.
-  // Staleness is handled by edit_file's search/replace validation against disk.
-  // System prompt content is cached (cache_control: ephemeral), making this
-  // more token-efficient than stripping content and forcing read_file tool calls.
-  // When total content exceeds CODE_CONTEXT_THRESHOLD, compact to skeleton mode.
-  const executeProjectCodeContext = state.projectCodeContext
-    ? compactProjectCodeContext(
-        state.projectCodeContext as ProjectCodeContext,
-        getTechTier(state)?.language,
-      )
-    : undefined;
-
+  // Execute reads files on-demand via read_file tool. No RAG dump block —
+  // plan already planned WHICH files to modify; execute fetches only those
+  // through its own tool calls. See docs/architecture/14-code-job.md.
   const taskTechTiers = state.currentTask.techTiers ?? (getTechTier(state) ? [getTechTier(state)!] : []);
   const contextWithTechTier = {
     ...state.context,
@@ -237,10 +226,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const { base: templateBase, rules: templateRules } =
     execHook?.templatePaths ?? DEFAULT_EXECUTE_TEMPLATES;
 
-  // Pre-format injection data
-  const formattedGitDiff = executeProjectCodeContext?.gitDiff
-    ? formatGitDiffForPrompt(executeProjectCodeContext.gitDiff)
-    : '';
   const formattedLessons = formatLessonsForPrompt(state.lessons);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -306,9 +291,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       directive: execHook?.sanitizeDirective
         ? execHook.sanitizeDirective(state.directive || '')
         : (state.directive || ''),
-      modificationMode: executeProjectCodeContext?.files && executeProjectCodeContext.files.length > 0
-        ? 'MODIFICATION MODE: Modify existing code'
-        : 'CREATION MODE: Build from scratch',
       referenceRequests: state.referenceRequests || [],
       // Gate flag — execute branches on whether UI artifacts are
       // present in the post-RAC selected pool. Role semantics are
@@ -328,15 +310,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       figmaStartNodeId: state.resolvedAction?.mcpSources?.figma?.nodeId ?? state.figmaStartNodeId ?? undefined,
       runtimeContext: runtimeContextParts.join('\n\n'),
 
-      // Injection-specific vars (pre-formatted)
-      gitDiff: formattedGitDiff,
-      files: executeProjectCodeContext?.files || [],
-      filePaths: executeProjectCodeContext?.filePaths || [],
-      stats: executeProjectCodeContext?.stats,
-      projectCodeContext: executeProjectCodeContext,
-      hasProjectCode: !!(executeProjectCodeContext?.files && executeProjectCodeContext.files.length > 0),
-      contexts: state.referenceCodeContexts || [],
-      referenceCodeContexts: state.referenceCodeContexts || [],
       lessons: formattedLessons,
       content: formattedLessons, // for memory.md
       sessionContext: state.sessionContext ? formatSessionContextForPrompt(state.sessionContext) : '',
@@ -364,7 +337,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       ...(execHook?.extraTemplateVars?.({
         state,
         task: state.currentTask,
-        projectCodeContext: executeProjectCodeContext,
       }) ?? {}),
     },
   };
@@ -585,9 +557,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             planText: state.planText ? `[${state.planText.length} chars]` : undefined,
             detectedMode: state.resolvedAction?.mode,
             taskType: state.currentTask?.type,
-            projectCodeContextFiles: executeProjectCodeContext?.files?.length || 0,
-            projectCodeContextFilePaths: executeProjectCodeContext?.filePaths?.length || 0,
-            referenceCodeContexts: state.referenceCodeContexts?.length || 0,
             uiImageBlocksCount: uiImageBlocks.filter(b => (b as any).type === 'image').length,
             hasViolations: !!(state.violations?.length),
             violationsCount: state.violations?.length || 0,
@@ -699,9 +668,9 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
   
   // Note: Violations are injected at the top of prompt, not here
   
-  // ✅ Session File Manifest: Show files created by OTHER parallel workers
-  // This gives the LLM awareness of cross-worker files without requiring read_file.
-  // Own files are already visible via generateFileTree() (projectCodeContext.filePaths accumulation).
+  // ✅ Session File Manifest: Show files created by OTHER parallel workers.
+  // This gives the LLM awareness of cross-worker writes without requiring read_file.
+  // Own-task file writes surface naturally through conversation tool_results.
   const otherWorkerFiles = state._otherWorkerFiles;
   if (otherWorkerFiles && otherWorkerFiles.length > 0) {
     const MAX_MANIFEST_ENTRIES = 40;
@@ -739,100 +708,7 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(``);
   }
 
-  const dirTree = state.projectCodeContext?.directoryTree;
-  if (dirTree && execHook?.includeDirectoryTree) {
-    lines.push('════════════════════════════════════════════════════════════════════════════════');
-    lines.push('🗂️ Codebase Directory Structure (pre-loaded — do NOT list_files)');
-    lines.push('════════════════════════════════════════════════════════════════════════════════');
-    lines.push('');
-    lines.push(dirTree);
-    lines.push('');
-  }
-
-  const fileTree = generateFileTree(state);
-  if (fileTree) {
-    lines.push(fileTree);
-    lines.push(``);
-  }
-  
   return lines.join('\n');
-}
-
-/**
- * Generate file tree for context.
- *
- * Splits files into two groups based on actual content availability:
- * - "loaded" files (content present) → do NOT re-read
- * - "path only" files (no content)  → read_file when needed for modification
- *
- * This must mirror the labels in retrieved-code.md to avoid prompt contradictions.
- */
-export function generateFileTree(state: ArchitectGraphState): string | null {
-  const filePaths = state.projectCodeContext?.filePaths || [];
-
-  if (filePaths.length === 0) {
-    console.log(`📊 [PromptBuilder] generateFileTree: null (filePaths empty)`);
-    return null;
-  }
-  console.log(`📊 [PromptBuilder] generateFileTree: ${filePaths.length} filePaths`);
-
-  const loadedFiles = state.projectCodeContext?.files || [];
-  const contentLoadedSet = new Set(
-    loadedFiles
-      .filter(f => f.content && f.content.length > 0)
-      .map(f => f.path)
-  );
-
-  const loaded: string[] = [];
-  const pathOnly: string[] = [];
-  for (const fp of filePaths) {
-    if (contentLoadedSet.has(fp)) {
-      loaded.push(fp);
-    } else {
-      pathOnly.push(fp);
-    }
-  }
-
-  const lines: string[] = [];
-
-  if (loaded.length > 0) {
-    lines.push('════════════════════════════════════════════════════════════════════════════════');
-    lines.push('📋 Files Loaded with Content (do NOT re-read)');
-    lines.push('════════════════════════════════════════════════════════════════════════════════');
-    lines.push('These files are already loaded above with full content. Do NOT call read_file on them.');
-    lines.push('');
-    appendTree(lines, loaded);
-  }
-
-  if (pathOnly.length > 0) {
-    lines.push('════════════════════════════════════════════════════════════════════════════════');
-    lines.push('📂 Existing Files (DO NOT recreate — use read_file + <edit> to modify)');
-    lines.push('════════════════════════════════════════════════════════════════════════════════');
-    lines.push('These files already exist on disk. Do NOT output <file> tags for these paths.');
-    lines.push('To change them, use read_file first, then <edit>.');
-    lines.push('');
-    appendTree(lines, pathOnly);
-  }
-
-  return lines.length > 0 ? lines.join('\n') : null;
-}
-
-function appendTree(lines: string[], paths: string[]): void {
-  const dirs: Record<string, string[]> = {};
-  for (const file of paths) {
-    const parts = file.split('/');
-    const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
-    const filename = parts[parts.length - 1];
-    if (!dirs[dir]) dirs[dir] = [];
-    dirs[dir].push(filename);
-  }
-  for (const [dir, filenames] of Object.entries(dirs).sort()) {
-    lines.push(`📁 ${dir}/`);
-    for (const filename of filenames.sort()) {
-      lines.push(`   📄 ${filename}`);
-    }
-    lines.push('');
-  }
 }
 
 /**
@@ -890,104 +766,6 @@ async function buildFoundationContract(state: ArchitectGraphState): Promise<stri
   const result = sections.join('\n');
   console.log(`📋 [Execute] Foundation contract: ${foundationFiles.length} file(s), ${symbolCount} symbol(s), ${result.length} chars`);
   return result;
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Project Code Context Compaction
-// Mirrors Design job's buildCompactedSourceDocs pattern:
-// when total content exceeds threshold, switch to skeleton mode
-// (signatures + line counts) and let LLM use read_file on demand.
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-const CODE_CONTEXT_THRESHOLD = 200_000; // chars (~70K tokens at 2.8 ratio)
-
-/**
- * Compact projectCodeContext when total content exceeds threshold.
- * Priority-based: error-source files keep full content, others get skeleton.
- * Two-pass budget redistribution inspired by sourceSelector.ts.
- */
-function compactProjectCodeContext(
-  context: ProjectCodeContext,
-  language?: string,
-): ProjectCodeContext {
-  if (!context.files || context.files.length === 0) return context;
-
-  const totalChars = context.files.reduce((sum, f) => sum + (f.content?.length || 0), 0);
-  if (totalChars <= CODE_CONTEXT_THRESHOLD) return context;
-
-  console.log(`📦 [CodeContext] Compacting: ${totalChars.toLocaleString()} chars > ${CODE_CONTEXT_THRESHOLD.toLocaleString()} threshold (${context.files.length} files)`);
-
-  const errorSourcePaths = new Set<string>();
-  if (context.stats.errorFilesCount > 0) {
-    for (const f of context.files.slice(0, context.stats.errorFilesCount)) {
-      errorSourcePaths.add(f.path);
-    }
-  }
-
-  let usedChars = 0;
-  const compactedFiles: typeof context.files = [];
-
-  // Pass 1: error-source files keep full content (highest priority)
-  for (const file of context.files) {
-    if (errorSourcePaths.has(file.path)) {
-      compactedFiles.push(file);
-      usedChars += file.content?.length || 0;
-    }
-  }
-
-  // Pass 2: remaining budget distributed to non-error files
-  const remainingBudget = CODE_CONTEXT_THRESHOLD - usedChars;
-  const nonErrorFiles = context.files.filter(f => !errorSourcePaths.has(f.path));
-
-  if (remainingBudget > 0 && nonErrorFiles.length > 0) {
-    const perFileBudget = Math.floor(remainingBudget / nonErrorFiles.length);
-
-    for (const file of nonErrorFiles) {
-      const contentLen = file.content?.length || 0;
-      if (contentLen <= perFileBudget) {
-        compactedFiles.push(file);
-        usedChars += contentLen;
-      } else {
-        const skeleton = buildFileSkeleton(file.path, file.content || '', language);
-        compactedFiles.push({ ...file, content: skeleton });
-        usedChars += skeleton.length;
-      }
-    }
-  } else {
-    for (const file of nonErrorFiles) {
-      const skeleton = buildFileSkeleton(file.path, file.content || '', language);
-      compactedFiles.push({ ...file, content: skeleton });
-      usedChars += skeleton.length;
-    }
-  }
-
-  const skeletonCount = compactedFiles.filter(f =>
-    f.content?.startsWith('[skeleton]')
-  ).length;
-  console.log(`   ✅ Compacted: ${usedChars.toLocaleString()} chars (${skeletonCount} skeleton, ${compactedFiles.length - skeletonCount} full)`);
-
-  return {
-    ...context,
-    files: compactedFiles,
-    stats: {
-      ...context.stats,
-      estimatedTokens: Math.ceil(usedChars / 2.8),
-    },
-  };
-}
-
-/**
- * Build a skeleton representation of a file: line count + exported symbols.
- * LLM can use read_file to access full content when needed.
- */
-function buildFileSkeleton(filePath: string, content: string, language?: string): string {
-  const lineCount = content.split('\n').length;
-  const symbols = extractExportedSymbols(content, language);
-  const symbolsStr = symbols.length > 0 && symbols[0] !== '(symbol extraction not available — use read_file to inspect)'
-    ? `\nExports: ${symbols.slice(0, 15).join(', ')}${symbols.length > 15 ? ` (+${symbols.length - 15} more)` : ''}`
-    : '';
-
-  return `[skeleton — use read_file for full content]\nLines: ${lineCount}${symbolsStr}`;
 }
 
 /**
@@ -1054,38 +832,27 @@ function extractExportedSymbols(content: string, language?: string): string[] {
 /**
  * Build Schema Anchor: concise table/type summary extracted from migration SQL files.
  * Prevents feature tasks from referencing non-existent columns or tables.
- * Works in both parallel mode (otherWorkerFiles) and sequential mode (projectCodeContext).
+ * Active in parallel mode where SharedFileBuffer surfaces cross-worker migration writes.
  */
 async function buildSchemaAnchor(state: ArchitectGraphState): Promise<string | null> {
   const otherWorkerFiles = state._otherWorkerFiles;
-  const codeContextFiles = state.projectCodeContext?.files || [];
+  if (!otherWorkerFiles || otherWorkerFiles.length === 0) return null;
 
   const migrationPaths = new Set<string>();
-  const contentCache = new Map<string, string>();
-
-  if (otherWorkerFiles) {
-    for (const f of otherWorkerFiles) {
-      if (isMigrationFile(f.path)) migrationPaths.add(f.path);
-    }
-  }
-  for (const f of codeContextFiles) {
-    if (f.path && isMigrationFile(f.path)) {
-      migrationPaths.add(f.path);
-      if (f.content) contentCache.set(f.path, f.content);
-    }
+  for (const f of otherWorkerFiles) {
+    if (isMigrationFile(f.path)) migrationPaths.add(f.path);
   }
 
   if (migrationPaths.size === 0) return null;
 
   const fileSystem = state.deps?.fileSystem;
-  const schemas: string[] = [];
+  if (!fileSystem) return null;
 
+  const schemas: string[] = [];
   const sortedPaths = Array.from(migrationPaths).sort();
   for (const filePath of sortedPaths) {
-    let content = contentCache.get(filePath);
-    if (!content && fileSystem) {
-      try { content = await fileSystem.readFile(filePath) || undefined; } catch { /* skip */ }
-    }
+    let content: string | undefined;
+    try { content = await fileSystem.readFile(filePath) || undefined; } catch { /* skip */ }
     if (!content) continue;
 
     const tables = extractTableSchemas(content);

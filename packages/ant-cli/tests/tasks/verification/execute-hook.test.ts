@@ -58,10 +58,6 @@ describe('tasks/verification/hooks/execute', () => {
     expect(msg).toContain('<done>true</done>');
   });
 
-  it('opts into directoryTree injection', () => {
-    expect(executeHook.includeDirectoryTree).toBe(true);
-  });
-
   it('registers the execute hook under the verification bundle', () => {
     expect(verificationBundle.execute).toBe(executeHook);
     expect(hooksForTaskType('verification')?.execute).toBe(executeHook);

@@ -590,7 +590,6 @@ export const CodeGraphChannels = {
         default: () => undefined,
       }),
       runtimeAssetsIndex: Annotation<any>,
-      projectCodeContext: Annotation<any>,
       referenceCodeContexts: Annotation<any>,
       sessionContext: Annotation<any>,
       planText: Annotation<any>({

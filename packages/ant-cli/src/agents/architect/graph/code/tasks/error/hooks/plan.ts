@@ -23,7 +23,7 @@ import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
  * cycles.
  */
 export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
-  const { state, task, projectCodeContext, violationsText, options, antrulesContent } = ctx;
+  const { state, task, codeContext, violationsText, options, antrulesContent } = ctx;
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) {
     throw new Error('[Plan] PromptBuilder not available');
@@ -33,7 +33,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     ? effectiveTechTier(task.techTiers)
     : getTechTier(state);
   const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
-  const fmtCtx = formatCodeContext(projectCodeContext);
+  const fmtCtx = formatCodeContext(codeContext);
 
   let languageHints = '';
   if (techTier?.language) {
@@ -61,7 +61,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     taskDescription: task.description,
     directive: state.directive || '',
     projectCodeContext: fmtCtx,
-    directoryTree: (projectCodeContext as any)?.directoryTree || '',
+    directoryTree: (codeContext as any)?.directoryTree || '',
     violationsText,
     isRetry: !!violationsText,
     hasTools: options?.hasTools ?? false,

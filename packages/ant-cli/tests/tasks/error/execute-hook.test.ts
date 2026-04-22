@@ -61,7 +61,7 @@ describe('tasks/error/hooks/execute', () => {
     const vars = executeHook.extraTemplateVars?.({
       state: {} as any,
       task: errorTask('upstream'),
-      projectCodeContext: undefined,
+
     });
     expect(vars).toEqual({
       remediationModeUpstream: true,
@@ -73,7 +73,7 @@ describe('tasks/error/hooks/execute', () => {
     const vars = executeHook.extraTemplateVars?.({
       state: {} as any,
       task: errorTask('refactor'),
-      projectCodeContext: undefined,
+
     });
     expect(vars).toEqual({
       remediationModeUpstream: false,
@@ -85,7 +85,7 @@ describe('tasks/error/hooks/execute', () => {
     const vars = executeHook.extraTemplateVars?.({
       state: {} as any,
       task: errorTask('patch'),
-      projectCodeContext: undefined,
+
     });
     expect(vars).toEqual({
       remediationModeUpstream: false,
@@ -97,16 +97,12 @@ describe('tasks/error/hooks/execute', () => {
     const vars = executeHook.extraTemplateVars?.({
       state: {} as any,
       task: errorTask(undefined),
-      projectCodeContext: undefined,
+
     });
     expect(vars).toEqual({
       remediationModeUpstream: false,
       remediationModeRefactor: false,
     });
-  });
-
-  it('does NOT opt into directoryTree injection', () => {
-    expect(executeHook.includeDirectoryTree).toBeUndefined();
   });
 
   it('registers the execute hook under the error bundle', () => {

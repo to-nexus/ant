@@ -3,7 +3,7 @@ import type { Conversations } from '../../../common/graph/conversations';
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
 import { ProjectContext } from "../../types";
-import { ProjectCodeContext, ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
+import { ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
@@ -140,9 +140,6 @@ export interface AttemptHistory {
   errorsAttemptedToFix: string[];  // Which errors this attempt tried to fix
 }
 
-// ✅ REMOVED: GeneratedFile interface (replaced by projectCodeContext.files)
-// projectCodeContext.files uses: Array<{ path: string; content: string }>
-
 export interface ValidationResult {
   ok: boolean;
   violations: Violation[];  // ✅ 구조화된 violation
@@ -184,11 +181,11 @@ export interface ArchitectGraphState extends TriageableState {
   selectedDesignFiles?: string[];
   decomposeFilePaths?: string[];
   
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // ✅ REFACTORED: Unified code context structure
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  projectCodeContext?: ProjectCodeContext;      // Main project code
-  referenceCodeContexts: ReferenceCodeContext[]; // Reference projects
+  // Reference projects (opt-in via referenceRequests — plan renders into
+  // prompt, execute does NOT consume). No main-project code context on
+  // state: plan's RAG lives in a local variable (see nodes/plan/parts/rag.ts)
+  // and execute reads files on-demand via read_file tool.
+  referenceCodeContexts: ReferenceCodeContext[];
   
   // ✅ Design Documents — unified map-only structure
   // All docs use {type}-{name}.md pattern (single="main", MSA=service name)

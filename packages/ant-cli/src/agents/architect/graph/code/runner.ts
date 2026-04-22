@@ -82,17 +82,7 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         if (session.state.profile) {
           initial.profile = session.state.profile;
         }
-        
-        if (session.state.projectCodeContext) {
-          initial.projectCodeContext = {
-            ...session.state.projectCodeContext,
-            stats: {
-              filesLoaded: session.state.projectCodeContext.stats?.filesLoaded ?? 0,
-              estimatedTokens: session.state.projectCodeContext.stats?.estimatedTokens ?? 0,
-            },
-          };
-        }
-        
+
         // ✅ Restore planText for task-level resume (skip plan regeneration)
         if (session.state.planText) {
           initial.planText = session.state.planText;
@@ -231,7 +221,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             ...(session.state.resolvedAction && { resolvedAction: session.state.resolvedAction }),
             ...(session.state.referenceRequests && { referenceRequests: session.state.referenceRequests }),
             ...(session.state.designDocUnknownPackages && { designDocUnknownPackages: session.state.designDocUnknownPackages }),
-            ...(session.state.projectCodeContext && { projectCodeContext: session.state.projectCodeContext }),
           } as any;
           if (session.state.userLanguage) {
             state.context.userLanguage = session.state.userLanguage;

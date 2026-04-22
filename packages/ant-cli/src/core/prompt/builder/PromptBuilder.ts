@@ -452,18 +452,6 @@ export class PromptBuilder implements PromptPort {
     return {
       hasDirective: Boolean(v['directive']),
       hasMemory: Boolean(v['memory']),
-      hasGitDiff: Boolean(
-        (v['projectCodeContext'] as any)?.gitDiff,
-      ),
-      hasRetrievedCode: Boolean(
-        (v['projectCodeContext'] as any)?.files?.length > 0,
-      ),
-      hasReferenceCode: Boolean(
-        v['referenceCodeContexts'] && (v['referenceCodeContexts'] as unknown[]).length > 0,
-      ),
-      hasProjectCode: Boolean(
-        v['hasProjectCode'] || (v['projectCodeContext'] as any)?.files?.length > 0,
-      ),
       hasRetryContext: Boolean(v['retryContext']),
       hasLessons: Boolean(v['lessons'] && (v['lessons'] as unknown[]).length > 0),
       hasSessionContext: Boolean((v['sessionContext'] as any)?.totalRuns > 0),

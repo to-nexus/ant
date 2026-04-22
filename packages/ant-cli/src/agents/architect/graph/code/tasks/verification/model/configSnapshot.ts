@@ -122,7 +122,7 @@ export async function collectConfigSnapshot(
 
 /**
  * Render the collected config contents as a markdown block suitable for
- * appending to the `projectCodeContext` prompt variable.
+ * appending to the verification plan prompt's code-context section.
  */
 export function renderConfigBlock(collected: CollectedConfig[]): string {
   if (!collected.length) return '';
