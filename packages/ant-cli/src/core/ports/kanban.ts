@@ -78,14 +78,23 @@ export interface TaskQueueUpdatePort {
   updatePhaseTokenUsages?(phases: PhaseTokenUsage[]): void;
 
   /**
-   * Set the latest-LLM-call snapshot for the currently-running graph node.
-   * Unlike `updatePhaseTokenUsages` (cumulative history per node), this is a single
-   * snapshot overwritten on each LLM call — used by the chat input context-gauge
-   * to show current context fullness (input+output / CONTEXT_WINDOW_MAX_TOKENS).
-   * Broadcasting immediately during running phases; idle FE retains last value
+   * Upsert the latest-LLM-call snapshot for the graph node currently running
+   * on the given worker. `snapshot.workerId` selects the slot — undefined =
+   * main/sequential; every integer workerId gets its own slot so parallel
+   * workers each produce their own battery on the chat-input gauge.
+   *
+   * Unlike `updatePhaseTokenUsages` (cumulative history per node), this is a
+   * single snapshot overwritten on each LLM call. Idle FE retains last value
    * via the kanban reducer's "undefined = preserve" rule.
    */
   updateCurrentPhaseTokenUsage?(snapshot: PhaseTokenUsage): void;
+
+  /**
+   * Drop the per-worker phase snapshot when a parallel worker terminates.
+   * Called from `TaskOrchestrator.onWorkerTerminate` so stale worker
+   * batteries disappear from the chat-input gauge immediately.
+   */
+  clearWorkerPhaseTokenUsage?(workerId: number): void;
 
   /**
    * Update a single in-progress task's token usage and re-broadcast.

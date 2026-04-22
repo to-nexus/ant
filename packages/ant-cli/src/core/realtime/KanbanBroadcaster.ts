@@ -33,6 +33,9 @@ import {
 import { UserContext } from '../types/user';
 import { getAgentForJobSafe } from '../utils/sessionPaths';
 
+/** Sentinel key for "no workerId" snapshots stored in cachedCurrentPhaseTokenUsages. */
+const MAIN_WORKER_KEY = -1;
+
 export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private redis: Redis;
   private pubRedis: Redis; // Separate connection for publish
@@ -52,7 +55,11 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedTokenUsage?: TaskTokenUsage;
   private cachedEstimatingTokenUsage?: TaskTokenUsage;
   private cachedPhaseTokenUsages?: PhaseTokenUsage[];
-  private cachedCurrentPhaseTokenUsage?: PhaseTokenUsage;
+  /**
+   * Per-worker latest-LLM-call snapshot, keyed by `workerId`.
+   * `MAIN_WORKER_KEY` (-1) stands in for "no workerId" (sequential / main graph).
+   */
+  private cachedCurrentPhaseTokenUsages: Map<number, PhaseTokenUsage> = new Map();
   // Cached task lists from last updateTaskQueue (NOT from broadcastKanbanUpdate,
   // which is also called during estimating with empty arrays).
   private cachedCurrentTasks: BaseTask[] = [];
@@ -196,12 +203,16 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   }
 
   /**
-   * Set the latest-LLM-call snapshot for the currently-running graph node.
-   * Overwrites the previous snapshot each call and fires an immediate broadcast
-   * so the chat input context gauge stays real-time.
+   * Upsert the latest-LLM-call snapshot for the given `snapshot.workerId`
+   * slot. Parallel workers each keep their own entry; the sequential / main
+   * graph uses the reserved `MAIN_WORKER_KEY` slot.
+   *
+   * Fires an immediate broadcast so every battery on the chat-input gauge
+   * stays real-time.
    */
   updateCurrentPhaseTokenUsage(snapshot: PhaseTokenUsage): void {
-    this.cachedCurrentPhaseTokenUsage = snapshot;
+    const key = typeof snapshot.workerId === 'number' ? snapshot.workerId : MAIN_WORKER_KEY;
+    this.cachedCurrentPhaseTokenUsages.set(key, snapshot);
 
     this.broadcastKanbanUpdate(
       this.jobId,
@@ -214,6 +225,35 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     ).catch(err => {
       console.warn(`[KanbanBroadcaster] Failed to broadcast current phase token usage:`, err.message);
     });
+  }
+
+  /**
+   * Drop the per-worker snapshot when a parallel worker terminates. The next
+   * broadcast will no longer include that worker's battery.
+   */
+  clearWorkerPhaseTokenUsage(workerId: number): void {
+    if (!this.cachedCurrentPhaseTokenUsages.delete(workerId)) return;
+    this.broadcastKanbanUpdate(
+      this.jobId,
+      this.cachedCurrentTasks,
+      this.cachedQueue,
+      this.cachedCompletedTasks,
+      this.cachedRecursionCount,
+      this.cachedRecursionLimit,
+      this.cachedTokenUsage,
+    ).catch(err => {
+      console.warn(`[KanbanBroadcaster] Failed to broadcast worker cleanup:`, err.message);
+    });
+  }
+
+  /**
+   * Current-phase snapshots as an array for broadcast payloads.
+   * Returns `undefined` when the cache is empty so the broadcaster omits the
+   * field entirely (kanbanReducer then preserves the frontend's last value).
+   */
+  private getCurrentPhaseTokenUsagesArray(): PhaseTokenUsage[] | undefined {
+    if (this.cachedCurrentPhaseTokenUsages.size === 0) return undefined;
+    return Array.from(this.cachedCurrentPhaseTokenUsages.values());
   }
 
   /**
@@ -325,6 +365,8 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     // broadcasts would send tokenUsage: undefined, causing frontend badge to reset to 0.
     const effectiveTokenUsage = tokenUsage ?? this.cachedTokenUsage;
 
+    const currentPhaseTokenUsagesArray = this.getCurrentPhaseTokenUsagesArray();
+
     // 1. Build snapshot for Redis state storage
     const snapshot: TaskQueueSnapshot = {
       currentTask: currentTasks[0] || null,
@@ -336,7 +378,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
-      ...(this.cachedCurrentPhaseTokenUsage && { currentPhaseTokenUsage: this.cachedCurrentPhaseTokenUsage }),
+      ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),
       ...(this.jobTiming && { jobTiming: this.jobTiming }),
       // Include estimating activity for reconnect/recovery
       ...(this.estimatingLabel && {
@@ -370,7 +412,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
-      ...(this.cachedCurrentPhaseTokenUsage && { currentPhaseTokenUsage: this.cachedCurrentPhaseTokenUsage }),
+      ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),
       jobType: this.jobType,
       agent: this.agent,
       // ✅ Include job-level timing in every broadcast (set once via setJobTiming)

@@ -151,3 +151,39 @@ describe('withPhaseTracking — end-to-end broadcast SSOT', () => {
     expect(snapshot.tokenUsage.totalTokens).toBe(14_000);
   });
 });
+
+describe('withPhaseTracking — parallel worker identity', () => {
+  it('propagates state.workerId onto the phase snapshot for broadcast keying', async () => {
+    const updateCurrentPhaseTokenUsage = vi.fn();
+    const state: StateWithDeps & { workerId?: number; currentTask?: { name: string } } = {
+      workerId: 2,
+      currentTask: { name: 'setup-design-system' },
+      deps: { kanbanUpdate: { updateCurrentPhaseTokenUsage } },
+    };
+
+    await withPhaseTracking('plan', (s: typeof state) => {
+      accumulateTokenUsage(s, mkUsage(100, 10));
+      return {} as any;
+    })(state);
+
+    const snapshot = updateCurrentPhaseTokenUsage.mock.calls[0][0];
+    expect(snapshot.workerId).toBe(2);
+    expect(snapshot.taskName).toBe('setup-design-system');
+  });
+
+  it('omits workerId on the snapshot when the state has none (main / sequential)', async () => {
+    const updateCurrentPhaseTokenUsage = vi.fn();
+    const state: StateWithDeps = {
+      deps: { kanbanUpdate: { updateCurrentPhaseTokenUsage } },
+    };
+
+    await withPhaseTracking('plan', (s: StateWithDeps) => {
+      accumulateTokenUsage(s, mkUsage(100, 10));
+      return {} as any;
+    })(state);
+
+    const snapshot = updateCurrentPhaseTokenUsage.mock.calls[0][0];
+    expect(snapshot.workerId).toBeUndefined();
+    expect(snapshot.taskName).toBeUndefined();
+  });
+});
