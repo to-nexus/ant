@@ -137,18 +137,18 @@ Create config files only. **NO source code, NO tests.**
 
 **Blind spot**: `.env` is EASILY FORGOTTEN when `.env.example` is created. Both files MUST be created together with identical variable keys. Variable names defined here become the contract for all subsequent tasks.
 
-**ANT.md (Agent Settings File) — MANDATORY for codebases the ant agent will extend:**
+**ANTRULES.md (Agent Settings File) — MANDATORY for codebases the ant agent will extend:**
 
-You MUST create `codebase/ANT.md` as part of setup. This file tells every subsequent ant task (feature, test-code, integration, verification, error-fix) how to generate consistent files in this codebase. Without it, parallel feature tasks drift into incompatible conventions — e.g. half of components using `export default`, half using `export { X }`, breaking downstream imports and tests.
+You MUST create `codebase/ANTRULES.md` as part of setup. This file tells every subsequent ant task (feature, test-code, integration, verification, error-fix) how to generate consistent files in this codebase. Without it, parallel feature tasks drift into incompatible conventions — e.g. half of components using `export default`, half using `export { X }`, breaking downstream imports and tests.
 
 **Principle**: Pick concrete default values for every section. Do NOT leave placeholders like "TBD" or "to be decided".
 
-**Constraint**: Keep the file under 1500 characters. Long reference material belongs elsewhere (`codebase/docs/` or `codebase/README.md`); ANT.md is a compact settings file.
+**Constraint**: Keep the file under 1500 characters. Long reference material belongs elsewhere (`codebase/docs/` or `codebase/README.md`); ANTRULES.md is a compact settings file.
 
 **Constraint**: Produce exactly these top-level H2 sections (additional sections are allowed but these are the minimum):
 
 ```md
-# ANT.md
+# ANTRULES.md
 
 > ant agent settings for this codebase. Human-facing docs live in README.md / docs/.
 
@@ -165,7 +165,7 @@ You MUST create `codebase/ANT.md` as part of setup. This file tells every subseq
 - Concrete rule per file kind. Example: "Components: kebab-case.tsx (e.g. `hero-section.tsx`). Hooks: `use-*.ts`."
 ```
 
-Write ANT.md alongside the other setup configs (`package.json`, `tsconfig.json`, etc.) — it is part of the project's initial skeleton.
+Write ANTRULES.md alongside the other setup configs (`package.json`, `tsconfig.json`, etc.) — it is part of the project's initial skeleton.
 
 **Framework-Specific Requirements:**
 
@@ -233,9 +233,9 @@ Follow the framework/language-specific setup instructions from:
 
 **Principle**: Before creating a new source file, observe at least one existing sibling file in the same directory. Match the observed export style, import style, file-name casing, and type-annotation style exactly.
 
-**Constraint**: When `codebase/ANT.md` is rendered above (Project Settings block), it overrides sibling observations — ANT.md is the explicit SSOT for project-wide conventions. Sibling observation is the fallback for codebases without ANT.md, not a parallel authority.
+**Constraint**: When `codebase/ANTRULES.md` is rendered above (Project Settings block), it overrides sibling observations — ANTRULES.md is the explicit SSOT for project-wide conventions. Sibling observation is the fallback for codebases without ANTRULES.md, not a parallel authority.
 
-**Constraint**: Do NOT mix conventions within a single commit. If you must introduce a new convention (e.g. a different export style), document it in ANT.md first (separate task) and update sibling files atomically; do not leave mixed styles.
+**Constraint**: Do NOT mix conventions within a single commit. If you must introduce a new convention (e.g. a different export style), document it in ANTRULES.md first (separate task) and update sibling files atomically; do not leave mixed styles.
 
 ⚠️ **Blind spot**: Parallel feature tasks that all create "just this one component" with slightly different conventions produce silent downstream failures — integration files (`page.tsx`) and test files pick one convention and the other half of components break. Sibling observation catches this at creation time.
 

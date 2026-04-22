@@ -352,7 +352,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // `Session.dependencyStatus()`; doc / explain opt out (see
       // `observeMissingDepsForTask`).
       hasMissingDependency: await observeMissingDepsForTask(state),
-      // codebase/ANT.md — project-wide ant-agent settings. Loaded on
+      // codebase/ANTRULES.md — project-wide ant-agent settings. Loaded on
       // every execute invocation so the partial
       // `jobs/code/base/injections/ant-md` included from every execute
       // variant's base template can gate-render via `{{#if antrulesContent}}`.
