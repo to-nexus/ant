@@ -14,15 +14,15 @@
     "timeline": "Timeline"
   },
   "context": {
-    "resetLabel": "Reset context",
-    "resetTooltip": "Clear this feature's conversation context (feature.jsonl · trace.jsonl). Prior lines stay on disk but the UI and the next job start from an empty context.",
-    "resetConfirmTitle": "Reset this feature's context?",
-    "resetConfirm": "The current conversation context for this feature will be cleared. Prior lines remain on disk for audit, but the next job will start with an empty context. Continue?",
-    "resetConfirmAction": "Reset",
-    "resetSuccessTitle": "Context reset",
-    "resetSuccess": "Conversation context has been cleared. The next job will start with an empty context.",
-    "resetFailed": "Failed to reset context.",
-    "resetBlockedByJob": "Cannot reset context while a job is running on this feature. Stop the job first."
+    "resetLabel": "Reset",
+    "resetTooltip": "Permanently delete this feature's sessions (feature.jsonl, trace.jsonl, architect/planner checkpoints). The next job starts fresh.",
+    "resetConfirmTitle": "Delete this feature's sessions?",
+    "resetConfirm": "This will permanently delete feature.jsonl, trace.jsonl, and all architect/planner checkpoints (code.json, design.json, learn.json, plan.json) for this feature. The next job will start from an empty state. Continue?",
+    "resetConfirmAction": "Delete",
+    "resetSuccessTitle": "Sessions deleted",
+    "resetSuccess": "Feature sessions have been deleted. The next job will start fresh.",
+    "resetFailed": "Failed to delete sessions.",
+    "resetBlockedByJob": "Cannot delete sessions while a job is running on this feature. Stop the job first."
   },
   "breadcrumb": {
     "loading": "Loading timeline…",
@@ -40,10 +40,13 @@
   },
   "sidebar": {
     "chatWith": "Chat with {{agent}}",
-    "clearHistory": "Clear Chat History",
-    "clearHistoryConfirm": "This will permanently delete all chat messages for this feature.",
-    "clearHistoryConfirmSub": "Are you sure?",
-    "clearHistoryFailed": "Failed to clear chat history. Please try again later.",
+    "sweepTooltip": "Clean up chat view (conversation context preserved — the next job still remembers prior dialogue)",
+    "sweepTitle": "Clean up chat view?",
+    "sweepConfirm": "The chat view will be cleaned up so it's easier to scroll.",
+    "sweepConfirmSub": "Conversation context is preserved — the next job still remembers prior dialogue.",
+    "sweepConfirmAction": "Clean up",
+    "sweepFailed": "Failed to clean up chat view. Please try again later.",
+    "resetBlockedByInterruption": "Resolve the interrupted job first (resume or dismiss) before resetting context.",
     "offline": "Chat is Offline",
     "expand": "Expand Chat",
     "collapse": "Collapse Chat"

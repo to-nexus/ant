@@ -1,10 +1,14 @@
 import { Router, Request, Response } from 'express';
+import * as path from 'path';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
+import { cleanupStaleRedisJobs, broadcastKanbanReset } from './helpers/sessionCleanup';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
 import type { LogJobType } from '@ant/shared';
 import { logger } from '../../../../utils/logger';
-import type { ChatService } from '../services';
+import type { ChatService, KanbanService } from '../services';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { clearCanonicalDirectory } from '../../../../core/utils/sessionPaths';
 
 const VALID_JOB_TYPES: LogJobType[] = ['code', 'design', 'plan', 'learn', 'ask', 'inline-ask'];
 
@@ -28,18 +32,18 @@ function parseJobTypes(raw: unknown): LogJobType[] | undefined {
 export function createFeatureLogRoutes(deps: {
   workspaceResolver?: any;
   /**
-   * Optional ChatService — when present, `/context/reset` delegates to
-   * `chatService.clearMessagesAsync(..., 'full')` so Hard Reset shares the
-   * SSOT pipeline with the §16.2 Clear path (Redis session purge + local
-   * cache reset + jsonl collapse + draft image cleanup + `messages_cleared`
-   * SSE broadcast). The `scope='full'` flag distinguishes Hard Reset from
-   * DELETE /chat/messages (which defaults to `scope='chat'` and only
-   * collapses trace.jsonl). When ChatService is absent the endpoint falls
-   * back to a direct FileSessionAdapter.collapseAll so the feature-log
-   * collapse still succeeds, but the extra scratchpad / SSE effects are
-   * skipped. Wiring happens in `routes/index.ts`.
+   * Optional ChatService — when present, `/context/reset` reuses
+   * `chatService.clearMessagesAsync(..., 'full')` for the Redis chat
+   * session purge + draft image cleanup + `messages_cleared` SSE
+   * broadcast. Disk wipe (feature.jsonl / trace.jsonl / architect json /
+   * planner json) is handled separately via `clearCanonicalDirectory`
+   * in this handler and does NOT depend on ChatService.
    */
   chatService?: ChatService;
+  /** KanbanService for cache invalidation + kanban SSE broadcast. */
+  kanbanService?: KanbanService;
+  /** StateStorePort for Redis job cleanup + kanban pub/sub. */
+  stateStore?: StateStorePort;
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };
 }): Router {
   const router = Router();
@@ -137,40 +141,35 @@ export function createFeatureLogRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/context/reset
    *
-   * Hard Reset (§17) — aligns with the §16.2 "Clear·Reset 양방향 sync"
-   * SSOT so that Reset triggers the same cleanup pipeline as Clear:
-   *   1. Delete the Redis chat session + local scratchpad cache
-   *      (prevents pending user messages / live currentMessage from
-   *      resurfacing on the next SSE initial_state rebuild).
-   *   2. Collapse every prior line in `feature.jsonl` + `trace.jsonl`
-   *      and append a `user_reset` boundary so subsequent
-   *      `loadSinceBoundary` calls return empty. Original lines stay
-   *      on disk (`collapsed=true`) for audit / recovery.
-   *   3. Purge `{featurePath}/inputs/assets/gen/drafts/` so stale
-   *      image drafts don't survive the reset.
-   *   4. Broadcast `messages_cleared` over SSE so every connected tab
-   *      and the FE feature-log slice wipe their caches in sync (the
-   *      handler in `chatSseHandler.ts` clears both `chatMessages` and
-   *      the feature-log slice per §16.2 Defect C fix).
+   * Hard Reset — wipes this feature's sessions from disk and Redis so the
+   * next job starts from a blank state. Five-stage pipeline:
    *
-   * The endpoint awaits (1)+(2)+(3) before responding so the
-   * immediately-following UI re-fetch of `/trace` / `/breadcrumbs` /
-   * `/user-turn-meta` observes the post-collapse state.
+   *   1. cleanupStaleRedisJobs × ['code','design','learn','plan'] — mark
+   *      paused/running Redis jobs for every job type as failed and evict
+   *      their kanban memory. Mirrors the Job tab X cleanup.
+   *   2. chatService.clearMessagesAsync(scope='full') — delete the Redis
+   *      chat session, purge inputs/assets/gen/drafts, broadcast
+   *      `messages_cleared` SSE. (No disk collapse here; the SessionManager
+   *      full-scope path performs Redis/drafts/SSE only.)
+   *   3. clearCanonicalDirectory(sessions/, 'sessions') — actually delete
+   *      feature.jsonl, trace.jsonl, sessions/architect/*.json,
+   *      sessions/planner/*.json. Canonical subdirectory structure is
+   *      preserved (debug/runtime stay as empty dirs, files inside go).
+   *   4. broadcastKanbanReset × jobType — invalidate KanbanService cache
+   *      and publish a fresh (empty) kanban snapshot so every open tab
+   *      resets its view in sync.
+   *   5. fileTreeNotifier.notifyFileTreeUpdate — file tree is push-based
+   *      and must be explicitly notified of the bulk deletions.
    *
-   * Fallback: if `chatService` was not provided (rare — only if the
-   * composition root skipped Chat wiring), the handler drops back to a
-   * direct FileSessionAdapter.collapseAll so the file-level reset
-   * still happens, accepting that scratchpad / SSE effects are lost in
-   * that degraded configuration.
+   * Requires workspaceResolver. Absent kanbanService/stateStore causes (1)
+   * and (4) to become silent no-ops; the disk wipe still proceeds.
    *
    * Body (optional): { reason?: string }  default: 'user_reset'
-   * Response: { success: true, reason, jobId, turnId }
-   *   - `jobId` / `turnId` are opaque audit identifiers; the FE does
-   *     not consume them, but they're returned for log correlation.
+   * Response: { success: true, reason }
    */
   router.post('/projects/:id/features/:feature/context/reset', async (req: Request, res: Response) => {
     try {
-      if (!deps.workspaceResolver && !deps.chatService) {
+      if (!deps.workspaceResolver) {
         res.status(503).json({ error: 'Workspace resolver not available' });
         return;
       }
@@ -180,31 +179,56 @@ export function createFeatureLogRoutes(deps: {
 
       const rawReason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
       const reason = rawReason === '' ? 'user_reset' : rawReason;
-      const now = Date.now();
-      const jobId = `reset-${now}`;
-      const turnId = `t-reset-${now.toString(16)}`;
 
-      if (deps.chatService) {
-        // SSOT path — shared pipeline with DELETE /chat/messages.
-        // scope='full' so the reset collapses BOTH trace.jsonl and
-        // feature.jsonl (+ user_reset boundary); DELETE /chat/messages keeps
-        // the default scope='chat' which only clears trace.jsonl.
-        await deps.chatService.clearMessagesAsync(projectId, featureName, userContext, 'full');
-        // ChatService.clearMessagesAsync may delete draft images from
-        // disk; the file tree is push-based so we must notify.
-        deps.fileTreeNotifier?.notifyFileTreeUpdate(projectId, featureName, userContext);
-      } else {
-        // Degraded fallback — direct file-level collapse only.
-        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-        const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
-        await adapter.collapseAll(reason, jobId, turnId);
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const jobTypes: Array<'code' | 'design' | 'learn' | 'plan'> = ['code', 'design', 'learn', 'plan'];
+
+      // 1. Redis job cleanup (paused/running → failed, kanban memory evicted)
+      for (const jt of jobTypes) {
+        try {
+          await cleanupStaleRedisJobs(deps.stateStore, deps.kanbanService, projectId, featureName, jt);
+        } catch (err) {
+          logger.warn(`Hard reset: cleanupStaleRedisJobs failed for ${jt}`, { component: 'FeatureLog' }, err);
+        }
       }
 
+      // 2. Chat session Redis + drafts + messages_cleared SSE
+      //    (disk collapse intentionally not run — stage 3 replaces it with
+      //    physical unlink of every session file.)
+      if (deps.chatService) {
+        try {
+          await deps.chatService.clearMessagesAsync(projectId, featureName, userContext, 'full');
+        } catch (err) {
+          logger.warn('Hard reset: chat scratchpad cleanup failed', { component: 'FeatureLog' }, err);
+        }
+      }
+
+      // 3. Physical disk wipe — unlink every file under {featurePath}/sessions/
+      //    while preserving canonical subdirectory structure (architect/,
+      //    architect/debug/*, architect/runtime/*, planner/, planner/debug/*).
+      const sessionsPath = path.join(featurePath, 'sessions');
+      try {
+        await clearCanonicalDirectory(sessionsPath, 'sessions');
+      } catch (err) {
+        logger.error('Hard reset: clearCanonicalDirectory failed', { component: 'FeatureLog' }, err);
+        // Fall through — we still want to broadcast the kanban reset so
+        // the UI reflects whatever state ended up on disk.
+      }
+
+      // 4. Kanban cache invalidation + fresh snapshot broadcast per jobType
+      for (const jt of jobTypes) {
+        await broadcastKanbanReset(deps.stateStore, deps.kanbanService, projectId, featureName, jt, userContext);
+      }
+
+      // 5. File tree push notification (tree is push-based; bulk deletions
+      //    above wouldn't be observed by the FE otherwise)
+      deps.fileTreeNotifier?.notifyFileTreeUpdate(projectId, featureName, userContext);
+
       logger.info(
-        `Feature context reset (project=${projectId}, feature=${featureName}, reason=${reason}, path=${deps.chatService ? 'chat-service' : 'file-only'})`,
+        `Feature context reset (project=${projectId}, feature=${featureName}, reason=${reason})`,
         { component: 'FeatureLog' },
       );
-      res.json({ success: true, reason, jobId, turnId });
+      res.json({ success: true, reason });
     } catch (error: any) {
       logger.error('Feature context reset error', { component: 'FeatureLog' }, error);
       sendErrorResponse(res, 500, error, 'FeatureLog');

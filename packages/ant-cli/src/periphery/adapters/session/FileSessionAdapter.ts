@@ -579,18 +579,6 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
-   * Collapse a specific turnId in both feature.jsonl and trace.jsonl.
-   * 
-   * Used by Hard Reset (everything) or selective invalidation.
-   */
-  async collapseTurn(turnId: string): Promise<void> {
-    await Promise.all([
-      this.collapseTurnInFile(getFeatureJsonlPath(this.featurePath), turnId),
-      this.collapseTurnInFile(getTraceJsonlPath(this.featurePath), turnId),
-    ]);
-  }
-
-  /**
    * Collapse feature.jsonl lines whose `jobId` matches — Job-tab clear.
    *
    * Leaves trace.jsonl untouched so the UI chat / activity view retains the
@@ -628,82 +616,18 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
-   * Collapse ALL trace.jsonl lines — Chat Clear.
+   * Collapse ALL trace.jsonl lines — Chat Clear / Sweep.
    *
    * `feature.jsonl` is intentionally preserved so the LLM retains
-   * conversation context across a chat clear. Hard Reset (context/reset)
-   * continues to use {@link collapseAll}, which collapses both files plus
-   * appends a `user_reset` boundary.
+   * conversation context across a chat clear. Hard Reset does NOT use
+   * this path — it physically unlinks every session file via
+   * `clearCanonicalDirectory` in the `/context/reset` route handler.
    */
   async collapseTraceOnly(): Promise<void> {
     await this.collapseAllInFile(getTraceJsonlPath(this.featurePath));
   }
 
-  /**
-   * Collapse ALL lines in both files (Hard Reset).
-   * Also appends a boundary line to feature.jsonl.
-   *
-   * `reason='user_reset'` (default call path from §17 Hard Reset) marks the
-   * boundary with the agent-agnostic `jobType: 'reset'` literal so UI /
-   * analytics can distinguish it from ordinary `auto_job_complete_todo`
-   * boundaries. Callers invoking this method for a job-scoped collapse may
-   * pass an explicit `jobType` override.
-   */
-  async collapseAll(
-    reason: 'user_reset' | string,
-    jobId: string,
-    turnId: string,
-    jobType?: LogJobType | 'reset',
-  ): Promise<void> {
-    await Promise.all([
-      this.collapseAllInFile(getFeatureJsonlPath(this.featurePath)),
-      this.collapseAllInFile(getTraceJsonlPath(this.featurePath)),
-    ]);
-    // Append boundary marker AFTER collapsing existing lines. Default the
-    // jobType to the agent-agnostic `'reset'` literal unless the caller
-    // explicitly wants to label the boundary with a concrete JobType (e.g.
-    // during a targeted per-job collapse that should appear as `code`).
-    const resolvedJobType: LogJobType | 'reset' = jobType ?? 'reset';
-    const boundary: FeatureBoundaryLine = {
-      type: 'boundary',
-      ts: new Date().toISOString(),
-      jobId,
-      turnId,
-      jobType: resolvedJobType,
-      reason,
-    };
-    await this.appendLine('feature', boundary);
-  }
-
   // ───── Private JSONL helpers ─────
-
-  private async collapseTurnInFile(filePath: string, turnId: string): Promise<void> {
-    const lock = this.getJsonlLock(filePath);
-    await lock.runExclusive(async () => {
-      let content: string;
-      try {
-        content = await fs.readFile(filePath, 'utf-8');
-      } catch (err: any) {
-        if (err.code === 'ENOENT') return;
-        throw err;
-      }
-      const lines = content.split('\n');
-      const newLines = lines.map(l => {
-        if (!l.trim()) return l;
-        try {
-          const obj = JSON.parse(l);
-          if (obj.turnId === turnId && !obj.collapsed) {
-            obj.collapsed = true;
-            return JSON.stringify(obj);
-          }
-          return l;
-        } catch {
-          return l;
-        }
-      });
-      await fs.writeFile(filePath, newLines.join('\n'), 'utf-8');
-    });
-  }
 
   private async collapseAllInFile(filePath: string): Promise<void> {
     const lock = this.getJsonlLock(filePath);

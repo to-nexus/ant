@@ -10,7 +10,6 @@
  * to know about feature paths.
  */
 
-import * as crypto from 'crypto';
 import type { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import type { UserContext } from '../../../../../core/types/user';
 import type {
@@ -18,7 +17,6 @@ import type {
   TraceAssistantMessageLine,
   TraceChoicePresentedLine,
   TraceChoiceResolvedLine,
-  FeatureBoundaryLine,
 } from '@ant/shared';
 import { logger } from '../../../../../utils/logger';
 import { FileSessionAdapter } from '../../../session/FileSessionAdapter';
@@ -221,37 +219,15 @@ export class SessionPersistence {
   }
 
   /**
-   * Collapse the entire session log (trace.jsonl + feature.jsonl) + append a
-   * `user_reset` boundary. Used **only by §17 Hard Reset** (POST
-   * `/context/reset`). Chat Clear now goes through
-   * {@link collapseTraceOnlyLogs} so the LLM retains conversation context.
-   */
-  async collapseSessionLogs(
-    projectId: string,
-    featureName: string,
-    userContext?: UserContext,
-  ): Promise<void> {
-    const adapter = this.makeAdapter(projectId, featureName, userContext);
-    if (!adapter) return;
-    const jobId = `ui-reset-${Date.now()}`;
-    const turnId = `t-reset-${crypto.randomBytes(4).toString('hex')}`;
-    const reason: FeatureBoundaryLine['reason'] = 'user_reset';
-    try {
-      await adapter.collapseAll(reason, jobId, turnId);
-    } catch (err) {
-      logger.warn(
-        `[SessionPersistence] collapseSessionLogs failed: ${(err as Error)?.message ?? err}`,
-        { component: 'SessionPersistence', projectId, featureName },
-      );
-    }
-  }
-
-  /**
-   * Collapse trace.jsonl only — Chat Clear.
+   * Collapse trace.jsonl only — Chat Clear / Sweep.
    *
    * `feature.jsonl` is intentionally preserved so the LLM retains
    * conversation context across a chat clear. The UI chat view, which
    * renders from trace.jsonl, will appear empty.
+   *
+   * Hard Reset does NOT go through here — it physically unlinks the
+   * session files via `clearCanonicalDirectory` in the
+   * `/context/reset` route handler instead.
    */
   async collapseTraceOnlyLogs(
     projectId: string,

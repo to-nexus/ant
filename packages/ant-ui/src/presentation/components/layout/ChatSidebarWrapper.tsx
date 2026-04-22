@@ -1,4 +1,5 @@
-import { ChevronRight, WifiOff, Trash2 } from 'lucide-react';
+import { ChevronRight, WifiOff, Trash2, RefreshCw } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async/primitives';
 import { Bar } from '../Bar';
 import { ChatPanel } from '../chat/ChatPanel';
 import { useStore } from '@/domain/store';
@@ -31,41 +32,96 @@ export function ChatSidebarWrapper({
 }: ChatSidebarWrapperProps) {
   const chatMessages = useStore((state) => state.chatMessages);
   const isRunning = useStore((state) => state.isRunning);
-  const { showConfirm, showError } = useAlertModalContext();
-  const [isClearing, setIsClearing] = useState(false);
+  const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
+  const kanbanData = useStore((state) => state.kanban);
+  const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
+  const resetFeatureContext = useStore((state) => state.resetFeatureContext);
+  const { showConfirm, showError, showSuccess } = useAlertModalContext();
+  const [isSweeping, setIsSweeping] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const { t } = useTranslation('chat');
-  
-  // ✅ Clear chat history handler
-  const handleClearChat = async () => {
+
+  // Feature-scoped guards. `hasRunningJobForFeature` catches other jobs running
+  // on the same feature (siblings of current), while `hasInterruption`
+  // mirrors useChatPolicy — a paused job that hasn't been resumed or
+  // dismissed yet must be resolved before a hard reset.
+  const featureKey = selectedProject && selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
+  const hasRunningJobForFeature = featureKey ? !!runningJobsByFeature[featureKey] : false;
+  const hasInterruption =
+    !isRunning &&
+    kanbanData?.interruption?.canResume === true &&
+    kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;
+
+  // Sweep = trace.jsonl collapse only. Chat view gets cleaned up but the
+  // LLM retains conversation context (feature.jsonl intact). Gated only by
+  // "job not currently streaming" to avoid clearing mid-response.
+  const handleSweepChat = async () => {
     if (!selectedProject || !selectedFeature) return;
-    
+
     showConfirm(
       <>
-        <p>{t('sidebar.clearHistoryConfirm')}</p>
-        <p className="mt-2 font-medium">{t('sidebar.clearHistoryConfirmSub')}</p>
+        <p>{t('sidebar.sweepConfirm')}</p>
+        <p className="mt-2 font-medium">{t('sidebar.sweepConfirmSub')}</p>
       </>,
       {
-        type: 'warning',
-        title: t('sidebar.clearHistory'),
-        confirmText: t('common:button.delete'),
+        type: 'info',
+        title: t('sidebar.sweepTitle'),
+        confirmText: t('sidebar.sweepConfirmAction'),
         cancelText: t('common:button.cancel'),
         onConfirm: async () => {
           try {
-            setIsClearing(true);
+            setIsSweeping(true);
             const { clearChatHistory } = await import('@/infrastructure/http/api');
             await clearChatHistory(selectedProject, selectedFeature);
-            console.log('[ChatSidebar] ✅ Chat history cleared');
+            console.log('[ChatSidebar] Chat view swept');
           } catch (error) {
-            console.error('[ChatSidebar] Failed to clear chat:', error);
-            showError(t('sidebar.clearHistoryFailed'), { title: t('common:error.title') });
+            console.error('[ChatSidebar] Failed to sweep chat:', error);
+            showError(t('sidebar.sweepFailed'), { title: t('common:error.title') });
           } finally {
-            setIsClearing(false);
+            setIsSweeping(false);
           }
         }
       }
     );
   };
-  
+
+  // Reset = hard reset (feature.jsonl + trace.jsonl both collapse + boundary).
+  // The next job starts from an empty context. Blocked while any job on this
+  // feature is running OR an interrupted job still awaits dismiss/resume.
+  const handleResetContext = async () => {
+    if (!selectedProject || !selectedFeature || isResetting) return;
+    if (hasRunningJobForFeature) {
+      showError(t('context.resetBlockedByJob'), { title: t('common:error.title') });
+      return;
+    }
+    if (hasInterruption) {
+      showError(t('sidebar.resetBlockedByInterruption'), { title: t('common:error.title') });
+      return;
+    }
+
+    showConfirm(t('context.resetConfirm'), {
+      title: t('context.resetConfirmTitle'),
+      type: 'warning',
+      confirmText: t('context.resetConfirmAction'),
+      cancelText: t('common:button.cancel'),
+      onConfirm: async () => {
+        try {
+          setIsResetting(true);
+          await resetFeatureContext(selectedProject, selectedFeature);
+          showSuccess(t('context.resetSuccess'), { title: t('context.resetSuccessTitle') });
+        } catch (err) {
+          console.warn('[ChatSidebar] context reset failed:', err);
+          const message = err instanceof Error ? err.message : String(err);
+          showError(`${t('context.resetFailed')}${message ? `\n${message}` : ''}`, {
+            title: t('common:error.title'),
+          });
+        } finally {
+          setIsResetting(false);
+        }
+      }
+    });
+  };
+
   // Collapsed state
   if (isCollapsed) {
     return (
@@ -80,6 +136,14 @@ export function ChatSidebarWrapper({
       </div>
     );
   }
+
+  const canSweep = chatMessages.length > 0 && !isRunning;
+  const resetDisabled = isResetting || hasRunningJobForFeature || hasInterruption;
+  const resetTooltip = hasRunningJobForFeature
+    ? t('context.resetBlockedByJob')
+    : hasInterruption
+      ? t('sidebar.resetBlockedByInterruption')
+      : t('context.resetTooltip');
 
   // Expanded state
   return (
@@ -117,18 +181,32 @@ export function ChatSidebarWrapper({
         ),
         right: (
           <div className="flex items-center gap-1">
-            {/* Clear Chat Button */}
-            {chatMessages.length > 0 && !isRunning && (
+            {/* Sweep: tidy up chat view (trace.jsonl collapse). Context preserved. */}
+            {canSweep && (
               <button
-                onClick={handleClearChat}
-                disabled={isClearing}
-                className="text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center justify-center w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                title={t('sidebar.clearHistory')}
+                onClick={handleSweepChat}
+                disabled={isSweeping}
+                className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center justify-center w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                title={t('sidebar.sweepTooltip')}
+                aria-label={t('sidebar.sweepTooltip')}
               >
-                <Trash2 className="w-4 h-4" />
+                {isSweeping ? <Spinner size="sm" tone="inherit" /> : <RefreshCw className="w-4 h-4" />}
               </button>
             )}
-            
+
+            {/* Reset: hard reset (feature.jsonl + trace.jsonl + boundary). */}
+            {selectedFeature && (
+              <button
+                onClick={handleResetContext}
+                disabled={resetDisabled}
+                className="text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors flex items-center justify-center w-8 h-8 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                title={resetTooltip}
+                aria-label={t('context.resetTooltip')}
+              >
+                {isResetting ? <Spinner size="sm" tone="inherit" /> : <Trash2 className="w-4 h-4" />}
+              </button>
+            )}
+
             {/* Collapse Button */}
             <button
               onClick={onCollapse}
@@ -152,4 +230,3 @@ export function ChatSidebarWrapper({
     </aside>
   );
 }
-

@@ -14,15 +14,15 @@
     "timeline": "타임라인"
   },
   "context": {
-    "resetLabel": "컨텍스트 리셋",
-    "resetTooltip": "이 피처의 대화 맥락(feature.jsonl · trace.jsonl)을 초기화합니다. 기존 기록은 디스크에 보존되지만 UI와 다음 작업에서는 빈 상태로 보입니다.",
-    "resetConfirmTitle": "컨텍스트를 리셋할까요?",
-    "resetConfirm": "이 피처의 현재 대화 맥락이 초기화됩니다. 기존 기록은 디스크에 보존되지만, 다음 작업은 빈 맥락에서 시작합니다. 계속하시겠습니까?",
-    "resetConfirmAction": "리셋",
-    "resetSuccessTitle": "컨텍스트가 리셋되었습니다",
-    "resetSuccess": "대화 맥락을 초기화했습니다. 다음 작업은 빈 맥락에서 시작합니다.",
-    "resetFailed": "컨텍스트 리셋에 실패했습니다.",
-    "resetBlockedByJob": "작업이 실행 중이어서 컨텍스트를 리셋할 수 없습니다. 먼저 작업을 중지해주세요."
+    "resetLabel": "리셋",
+    "resetTooltip": "이 피처의 세션 파일(feature.jsonl, trace.jsonl, architect/planner 체크포인트)을 완전 삭제합니다. 다음 작업은 빈 상태에서 시작합니다.",
+    "resetConfirmTitle": "이 피처의 세션을 삭제할까요?",
+    "resetConfirm": "feature.jsonl, trace.jsonl, 그리고 이 피처의 architect/planner 체크포인트(code.json, design.json, learn.json, plan.json)가 모두 영구 삭제됩니다. 다음 작업은 빈 상태에서 시작합니다. 계속하시겠습니까?",
+    "resetConfirmAction": "삭제",
+    "resetSuccessTitle": "세션이 삭제되었습니다",
+    "resetSuccess": "피처 세션을 삭제했습니다. 다음 작업은 빈 상태에서 시작합니다.",
+    "resetFailed": "세션 삭제에 실패했습니다.",
+    "resetBlockedByJob": "작업이 실행 중이어서 세션을 삭제할 수 없습니다. 먼저 작업을 중지해주세요."
   },
   "breadcrumb": {
     "loading": "타임라인 불러오는 중…",
@@ -40,10 +40,13 @@
   },
   "sidebar": {
     "chatWith": "{{agent}}와 채팅",
-    "clearHistory": "채팅 기록 삭제",
-    "clearHistoryConfirm": "이 피처의 모든 채팅 메시지가 영구 삭제됩니다.",
-    "clearHistoryConfirmSub": "계속하시겠습니까?",
-    "clearHistoryFailed": "채팅 기록 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.",
+    "sweepTooltip": "채팅창 정리 (대화 맥락은 유지됩니다 — 다음 작업은 이전 대화를 기억합니다)",
+    "sweepTitle": "채팅창을 정리할까요?",
+    "sweepConfirm": "스크롤이 불편하지 않도록 채팅창을 정리합니다.",
+    "sweepConfirmSub": "대화 맥락은 유지되어, 다음 작업은 이전 대화를 기억합니다.",
+    "sweepConfirmAction": "정리",
+    "sweepFailed": "채팅창 정리에 실패했습니다. 잠시 후 다시 시도해주세요.",
+    "resetBlockedByInterruption": "중단된 작업을 먼저 해결(재개 또는 dismiss)한 뒤 컨텍스트를 리셋하세요.",
     "offline": "채팅 오프라인",
     "expand": "채팅 확장",
     "collapse": "채팅 축소"
