@@ -9,16 +9,12 @@
  * - chat.jsonl: UI 채팅 렌더용. 실행 과정에서 발생한 모든 채팅 이벤트의 영속
  *   저장. 라이브 스트림은 `ChatStatusHandler.showChatStatus` 한 곳에서 생성되고,
  *   동일 함수가 `chat_status` 라인으로 직렬화한다. 복원(replay) 은 그 라인을
- *   다시 `generateStatusContent(statusType, metadata)` 에 통과시키기만 하면
+ *   다시 `generateChatStatusContent(statusType, metadata)` 에 통과시키기만 하면
  *   라이브와 동일한 `MessageContent` 를 얻는다 — "복구 전용 빌더" 는 존재하지
  *   않는다.
  * - user_turn만 양쪽 복제 (의미상 공유 자원)
  *
  * Append-only JSONL. 각 라인은 독립적 JSON 객체.
- *
- * NOTE: 이전 파일 이름은 `trace.jsonl` 이었다. 내용이 곧 채팅이므로 `chat.jsonl`
- * 로 개명되었지만, 기존 워크스페이스와의 호환을 위해 reader 는 두 경로를 모두
- * 읽는다 (쓰기는 항상 `chat.jsonl`).
  */
 
 import type { JobType } from './job';
@@ -57,7 +53,7 @@ export type LogJobType = JobType;
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * 공통 필수 필드 — 모든 feature/trace 라인에 포함
+ * 공통 필수 필드 — 모든 feature/chat 라인에 포함
  */
 interface LineBase {
   /** ISO 8601 timestamp */
@@ -74,7 +70,7 @@ interface LineBase {
 
 /**
  * user_turn — 사용자 요청의 원문
- * 
+ *
  * 기록 시점: orchestrator가 LangGraph invoke 직전에 append
  * 이 시점엔 아직 mode만 알고 complexity 미정 → user_turn_meta 패치 라인으로 보완
  */
@@ -83,7 +79,7 @@ export interface FeatureUserTurnLine extends LineBase {
   /**
    * 사용자 원본 directive.
    *
-   * Naming SSOT: `text` (matches `TraceUserTurnLine.text` so trace ↔ feature
+   * Naming SSOT: `text` (matches `ChatUserTurnLine.text` so chat ↔ feature
    * pairs share the same field name across the BE↔FE contract).
    */
   text: string;
@@ -133,7 +129,7 @@ export interface FeatureBreadcrumbLine extends LineBase {
     deleted?: number;
     touched?: number;
   };
-  /** trace.jsonl에서 이 작업의 라인 범위 (optional, UI 흔적 뷰용) */
+  /** chat.jsonl에서 이 작업의 라인 범위 (optional, UI 흔적 뷰용) */
   traceRangeRef?: {
     startTs: string;
     endTs: string;
@@ -174,19 +170,19 @@ export type FeatureLine =
   | FeatureBoundaryLine;
 
 // ═══════════════════════════════════════════════════════════════════════
-// chat.jsonl (a.k.a. legacy trace.jsonl) line types (UI-only)
+// chat.jsonl line types (UI-only)
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
  * Chat status card type — SSOT for every progress/result indicator the
- * chat UI renders. `generateStatusContent(type, metadata)` in
- * `ChatStatusHandler` is the single function that turns a
- * `(ChatStatusType, metadata)` pair into a `MessageContent.content` string;
- * both the live broadcast path and the replay path call that same function
- * so rendering is always identical.
+ * chat UI renders. `generateChatStatusContent(type, metadata)` in
+ * `core/llm-response/generateStatusContent.ts` is the single function
+ * that turns a `(ChatStatusType, metadata)` pair into a
+ * `MessageContent.content` string; both the live broadcast path and the
+ * replay path call that same function so rendering is always identical.
  *
- * When this union grows, `generateStatusContent` must gain a matching case
- * and the identifier here becomes part of the on-disk schema.
+ * When this union grows, `generateChatStatusContent` must gain a matching
+ * case and the identifier here becomes part of the on-disk schema.
  */
 export type ChatStatusType =
   | 'placeholder'
@@ -245,13 +241,15 @@ export interface ChatThinkingLine extends LineBase {
  * Emitted by `ChatLogAppender.appendChatStatus(statusType, metadata)`
  * immediately after `ChatStatusHandler.showChatStatus` creates the
  * corresponding `MessageContent`. On replay, readers feed the pair back
- * into `generateStatusContent` to rebuild the identical content string.
+ * into `generateChatStatusContent` to rebuild the identical content
+ * string.
  *
  * This is the SSOT for every non-structural chat card — file card,
- * command card, read/list/search status, choice cards (via
- * `ChatChoicePresentedLine`), etc. If a new card surfaces, the migration
- * path is: add the type to `ChatStatusType` + a case in
- * `generateStatusContent` — no new line kind required.
+ * command card, read/list/search status, mkdir / generic tool, etc.
+ * Choice cards use the paired `ChatChoicePresentedLine` /
+ * `ChatChoiceResolvedLine` because their rendering is stateful
+ * (the card's buttons flip to a resolved label when the user answers).
+ * Everything else flows through `chat_status`.
  */
 export interface ChatStatusLine extends LineBase {
   type: 'chat_status';
@@ -273,8 +271,12 @@ export interface ChatAssistantMessageLine extends LineBase {
  * refresh without chat.json.
  *
  * Pair with {@link ChatChoiceResolvedLine} via `cardId`. Unpaired
- * `choice_presented` lines render as actionable cards; paired lines render
- * with the `resolvedLabel` from the matching resolved line.
+ * `choice_presented` lines render as actionable cards; paired lines
+ * render with the `resolvedLabel` from the matching resolved line.
+ *
+ * Distinct from `chat_status` because the card's visual state is
+ * stateful across two events: initial presentation, then user-driven
+ * resolution (Dismiss / Resume / Save / …). `chat_status` is single-shot.
  */
 export interface ChatChoicePresentedLine extends LineBase {
   type: 'choice_presented';
@@ -317,92 +319,6 @@ export type ChatLine =
   | ChatAssistantMessageLine
   | ChatChoicePresentedLine
   | ChatChoiceResolvedLine;
-
-// ═══════════════════════════════════════════════════════════════════════
-// Legacy line types + union (DEPRECATED — to be removed after callers migrate)
-//
-// These were the per-event line kinds before `chat_status` became the
-// single SSOT. They are retained as type aliases / interfaces so the
-// current writers (TraceAppender.appendToolCall / appendFileWrite /
-// appendRunCommand / appendJobStatus) compile during the migration. A
-// follow-up commit collapses them into `ChatStatusLine` and removes these
-// declarations.
-// ═══════════════════════════════════════════════════════════════════════
-
-/** @deprecated Use {@link ChatUserTurnLine}. */
-export type TraceUserTurnLine = ChatUserTurnLine;
-/** @deprecated Use {@link ChatThinkingLine}. */
-export type TraceThinkingLine = ChatThinkingLine;
-/** @deprecated Use {@link ChatAssistantMessageLine}. */
-export type TraceAssistantMessageLine = ChatAssistantMessageLine;
-/** @deprecated Use {@link ChatChoicePresentedLine}. */
-export type TraceChoicePresentedLine = ChatChoicePresentedLine;
-/** @deprecated Use {@link ChatChoiceResolvedLine}. */
-export type TraceChoiceResolvedLine = ChatChoiceResolvedLine;
-
-/**
- * @deprecated `tool_call` lines are being folded into {@link ChatStatusLine}
- * (`statusType` carries the card kind). Retained temporarily so live writers
- * compile while callers migrate. New readers should NOT match this.
- */
-export interface TraceToolCallLine extends LineBase {
-  type: 'tool_call';
-  tool: string;
-  args?: unknown;
-  result?: unknown;
-  error?: string;
-}
-
-/**
- * @deprecated Replaced by `chat_status` lines carrying `statusType`
- * `file_create` / `file_edit` / `file_delete` (plus failed variants).
- * Retained for one migration step.
- */
-export interface TraceFileWriteLine extends LineBase {
-  type: 'file_write';
-  path: string;
-  operation?: 'create' | 'update' | 'delete';
-  content?: string;
-  diffBefore?: string;
-  diffAfter?: string;
-  error?: string;
-}
-
-/**
- * @deprecated Replaced by `chat_status` lines carrying `statusType='command'`
- * with the command / exit code in metadata. Retained for one migration step.
- */
-export interface TraceRunCommandLine extends LineBase {
-  type: 'run_command';
-  cmd: string;
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number;
-}
-
-/**
- * @deprecated Chat view skips `job_status` entirely (SSE workflow stream
- * drives phase UI). Retained only so the old reader/writer code compiles.
- * This will disappear in the same follow-up commit.
- */
-export interface TraceJobStatusLine extends LineBase {
-  type: 'job_status';
-  phase: string;
-  progress?: number;
-  message?: string;
-}
-
-/**
- * @deprecated Union of every (current + legacy) chat log line. Prefer
- * {@link ChatLine} in new code; this alias includes the legacy shapes so
- * the migration can flip readers one-by-one without a flag day.
- */
-export type TraceLine =
-  | ChatLine
-  | TraceToolCallLine
-  | TraceFileWriteLine
-  | TraceRunCommandLine
-  | TraceJobStatusLine;
 
 // ═══════════════════════════════════════════════════════════════════════
 // Spec clarify (Decompose output)

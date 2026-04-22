@@ -12,7 +12,7 @@
  * JSONL is used instead of a JSON array so each write is a single
  * `fs.appendFile` call — atomic at the OS level for small records and
  * free of read-modify-write races between concurrent workers. This
- * mirrors the feature.jsonl / trace.jsonl convention in the session
+ * mirrors the feature.jsonl / chat.jsonl convention in the session
  * layer.
  *
  * Reader-side consumers intentionally aggregate only on the predicted
@@ -31,7 +31,7 @@ export interface FeatureBiasRecord {
   jobId: string;
   /** Execution tier predicted by the Tier Entry Node at the start of the job. */
   predictedTier: ExecutionTierId;
-  /** Observed touched-file count (trace.jsonl file_write SSOT). */
+  /** Observed touched-file count (chat.jsonl file_write SSOT). */
   actualTouched: number;
   /** Whether the direct → decompose runtime escalation fired. */
   escalated: boolean;

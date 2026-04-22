@@ -1,11 +1,12 @@
 /**
- * Unit tests for the trace.jsonl write-side helpers on SessionPersistence
- * introduced in session redesign §16.2 Step 3.
+ * Unit tests for the chat.jsonl write-side helpers on SessionPersistence
+ * introduced in session redesign §16.2 Step 3 (renamed chat.jsonl in the
+ * SSOT fragmentation purge).
  *
  * Covers:
  * - findTurnIdForJob: latest user_turn for a given jobId
- * - emitAssistantMessageTrace: appends trace line when turnId resolvable
- * - emitAssistantMessageTrace: no-op when no matching turnId
+ * - emitAssistantMessageLine: appends chat log line when turnId resolvable
+ * - emitAssistantMessageLine: no-op when no matching turnId
  *
  * Hard Reset used to live here as `collapseSessionLogs`, but it now
  * physically unlinks the session files from the HTTP route handler.
@@ -33,7 +34,7 @@ const USER_CTX: UserContext = {
   email: 'local@local',
 } as any;
 
-describe('SessionPersistence — trace.jsonl write-side helpers', () => {
+describe('SessionPersistence — chat.jsonl write-side helpers', () => {
   let tmpRoot: string;
   let featurePath: string;
 
@@ -81,7 +82,7 @@ describe('SessionPersistence — trace.jsonl write-side helpers', () => {
     expect(missing).toBeNull();
   });
 
-  it('emitAssistantMessageTrace appends a line when a matching turnId exists', async () => {
+  it('emitAssistantMessageLine appends a line when a matching turnId exists', async () => {
     const adapter = new FileSessionAdapter(featurePath, 'architect', 'proj', 'feat-a');
     await adapter.appendUserTurn(
       {
@@ -96,7 +97,7 @@ describe('SessionPersistence — trace.jsonl write-side helpers', () => {
     );
 
     const persistence = new SessionPersistence(makeResolverStub(featurePath));
-    await persistence.emitAssistantMessageTrace({
+    await persistence.emitAssistantMessageLine({
       projectId: 'proj',
       featureName: 'feat-a',
       userContext: USER_CTX,
@@ -105,17 +106,17 @@ describe('SessionPersistence — trace.jsonl write-side helpers', () => {
       text: '❌ Job failed: boom',
     });
 
-    const traceLines = await adapter.loadAllTrace();
-    const assistantMsg = traceLines.find((l) => l.type === 'assistant_message');
+    const chatLines = await adapter.loadAllChat();
+    const assistantMsg = chatLines.find((l) => l.type === 'assistant_message');
     expect(assistantMsg).toBeDefined();
     expect(assistantMsg?.text).toBe('❌ Job failed: boom');
     expect(assistantMsg?.turnId).toBe('t-42');
   });
 
-  it('emitAssistantMessageTrace is a no-op when no matching turnId', async () => {
+  it('emitAssistantMessageLine is a no-op when no matching turnId', async () => {
     const persistence = new SessionPersistence(makeResolverStub(featurePath));
     // No user_turn recorded yet — nothing to join on.
-    await persistence.emitAssistantMessageTrace({
+    await persistence.emitAssistantMessageLine({
       projectId: 'proj',
       featureName: 'feat-a',
       userContext: USER_CTX,
@@ -124,8 +125,8 @@ describe('SessionPersistence — trace.jsonl write-side helpers', () => {
     });
 
     const adapter = new FileSessionAdapter(featurePath, 'architect', 'proj', 'feat-a');
-    const traceLines = await adapter.loadAllTrace();
-    expect(traceLines).toHaveLength(0);
+    const chatLines = await adapter.loadAllChat();
+    expect(chatLines).toHaveLength(0);
   });
 
 });

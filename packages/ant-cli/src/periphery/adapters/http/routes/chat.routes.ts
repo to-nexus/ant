@@ -48,11 +48,11 @@ export function createChatRoutes(deps: {
    * DELETE /projects/:id/features/:feature/chat/messages
    * Clear all chat messages for a feature.
    *
-   * Session redesign §16.2: this route now collapses trace.jsonl +
+   * Session redesign §16.2: this route now collapses chat.jsonl +
    * feature.jsonl (durable SSOT) via `ChatService.clearMessages`. The
    * legacy GET /chat/messages companion was retired — chat history is
    * now delivered exclusively through the SSE `initial_state.chat`
-   * event (backed by the same trace.jsonl rebuild).
+   * event (backed by the same chat.jsonl rebuild).
    */
   router.delete('/projects/:id/features/:feature/chat/messages', (req: Request, res: Response) => {
     const projectId = req.params.id;

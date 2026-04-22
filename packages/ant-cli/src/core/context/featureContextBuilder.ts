@@ -280,7 +280,7 @@ export async function hydrateFeatureContext(
   // (the one that created the current job) sits in that older half — a real
   // scenario when a long-paused job resumes after other turns accumulated —
   // running the lookup on the post-compact array returns `undefined` and
-  // reintroduces the §12 defect (silent turnId loss → TraceAppender /
+  // reintroduces the §12 defect (silent turnId loss → ChatLogAppender /
   // tier.breadcrumb / tier.boundary / recordClassificationBias all no-op).
   //
   // Keep this search BEFORE the compact step so the owning turn is always

@@ -562,7 +562,7 @@ export async function drainChatBroadcaster(): Promise<void> {
 /**
  * Return the lazily-initialised LLMResponseService for out-of-band callers
  * that need to poke it directly (e.g. `recordUserTurn` propagating a newly
- * generated turnId into the trace.jsonl appender). Does not throw — returns
+ * generated turnId into the chat.jsonl appender). Does not throw — returns
  * `null` whenever initialisation failed or the worker process lacks the
  * required env vars.
  */

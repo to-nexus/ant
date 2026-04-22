@@ -4,30 +4,24 @@ import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { cleanupStaleRedisJobs, broadcastKanbanReset } from './helpers/sessionCleanup';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
-import type { LogJobType } from '@ant/shared';
 import { logger } from '../../../../utils/logger';
 import type { ChatService, KanbanService } from '../services';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { clearCanonicalDirectory } from '../../../../core/utils/sessionPaths';
 
-const VALID_JOB_TYPES: LogJobType[] = ['code', 'design', 'plan', 'learn', 'ask', 'inline-ask'];
-
-function parseJobTypes(raw: unknown): LogJobType[] | undefined {
-  if (typeof raw !== 'string' || raw.trim() === '') return undefined;
-  const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
-  const valid = parts.filter((p): p is LogJobType => (VALID_JOB_TYPES as string[]).includes(p));
-  return valid.length > 0 ? valid : undefined;
-}
-
 /**
  * Feature log routes
  *
  * Exposes read-only access to the session-redesign JSONL sources:
- * - `trace.jsonl` — UI rendering SSOT (chat history, activity feed)
  * - `feature.jsonl` breadcrumbs — navigation timeline
+ * - `feature.jsonl` user_turn / user_turn_meta — tier badge data
  *
- * These endpoints are intended for UI initial-load only. Live updates
- * continue to flow through the SSE workflow/chat streams.
+ * Chat history (chat.jsonl) is NOT served here — the UI fetches chat
+ * messages via `/chat/messages`, which routes through
+ * `ChatService.getMessagesAsync` so the streaming scratchpad overlay is
+ * applied on top of the durable log.
+ *
+ * Live updates flow through the SSE workflow/chat streams.
  */
 export function createFeatureLogRoutes(deps: {
   workspaceResolver?: any;
@@ -35,7 +29,7 @@ export function createFeatureLogRoutes(deps: {
    * Optional ChatService — when present, `/context/reset` reuses
    * `chatService.clearMessagesAsync(..., 'full')` for the Redis chat
    * session purge + draft image cleanup + `messages_cleared` SSE
-   * broadcast. Disk wipe (feature.jsonl / trace.jsonl / architect json /
+   * broadcast. Disk wipe (feature.jsonl / chat.jsonl / architect json /
    * planner json) is handled separately via `clearCanonicalDirectory`
    * in this handler and does NOT depend on ChatService.
    */
@@ -47,40 +41,6 @@ export function createFeatureLogRoutes(deps: {
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };
 }): Router {
   const router = Router();
-
-  /**
-   * GET /projects/:id/features/:feature/trace
-   *
-   * Query params:
-   * - sinceTs (ISO 8601) — return only lines strictly after this timestamp
-   * - jobTypes (comma-separated) — filter by jobType (e.g. "code,design")
-   *
-   * Response: { lines: TraceLine[] }
-   */
-  router.get('/projects/:id/features/:feature/trace', async (req: Request, res: Response) => {
-    try {
-      if (!deps.workspaceResolver) {
-        res.status(503).json({ error: 'Workspace resolver not available' });
-        return;
-      }
-      const projectId = req.params.id;
-      const featureName = req.params.feature;
-      const userContext = extractUserContext(req);
-      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-
-      const sinceTs = typeof req.query.sinceTs === 'string' ? req.query.sinceTs : undefined;
-      const jobTypes = parseJobTypes(req.query.jobTypes);
-
-      // agent is only used to resolve classic session files — trace.jsonl lives at the feature root.
-      const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
-      const lines = await adapter.loadAllTrace({ sinceTs, jobTypes });
-
-      res.json({ lines });
-    } catch (error: any) {
-      logger.error('Feature trace load error', { component: 'FeatureLog' }, error);
-      sendErrorResponse(res, 500, error, 'FeatureLog');
-    }
-  });
 
   /**
    * GET /projects/:id/features/:feature/breadcrumbs
@@ -152,7 +112,7 @@ export function createFeatureLogRoutes(deps: {
    *      `messages_cleared` SSE. (No disk collapse here; the SessionManager
    *      full-scope path performs Redis/drafts/SSE only.)
    *   3. clearCanonicalDirectory(sessions/, 'sessions') — actually delete
-   *      feature.jsonl, trace.jsonl, sessions/architect/*.json,
+   *      feature.jsonl, chat.jsonl, sessions/architect/*.json,
    *      sessions/planner/*.json. Canonical subdirectory structure is
    *      preserved (debug/runtime stay as empty dirs, files inside go).
    *   4. broadcastKanbanReset × jobType — invalidate KanbanService cache

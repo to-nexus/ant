@@ -27,8 +27,8 @@ import { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import { ContentMerger } from '../chat/ContentMerger';
 import { getChatSyncChannel } from '../constants/redis';
 import { logger } from '../../utils/logger';
-import { TraceAppender } from './TraceAppender';
-import { setTraceAppender, clearTraceAppender } from './traceAppenderRegistry';
+import { ChatLogAppender } from './ChatLogAppender';
+import { setChatLogAppender, clearChatLogAppender } from './chatLogAppenderRegistry';
 
 export class LLMResponseService {
   private enabled: boolean;
@@ -48,8 +48,8 @@ export class LLMResponseService {
   // Sync channel subscription (for reconnect snapshot)
   private syncUnsubscribe: (() => Promise<void>) | null = null;
 
-  // trace.jsonl writer (session redesign §16.2 SSOT)
-  private traceAppender: TraceAppender | null = null;
+  // chat.jsonl writer (session redesign §16.2 SSOT)
+  private chatLogAppender: ChatLogAppender | null = null;
 
   constructor(stateStore: StateStorePort, env: LLMResponseEnv) {
     this.stateStore = stateStore;
@@ -58,11 +58,11 @@ export class LLMResponseService {
     this.broadcaster = new MessageBroadcaster(stateStore);
     this.contentMerger = new ContentMerger(this.broadcaster);
 
-    // Register a TraceAppender whenever we have the minimum env to write
-    // trace.jsonl (featurePath + jobId + jobType). Initial turnId is unset —
+    // Register a ChatLogAppender whenever we have the minimum env to write
+    // chat.jsonl (featurePath + jobId + jobType). Initial turnId is unset —
     // the orchestrator calls setTurnId() after recordUserTurn returns.
     if (env.featurePath && env.jobId && env.jobType) {
-      this.traceAppender = new TraceAppender({
+      this.chatLogAppender = new ChatLogAppender({
         featurePath: env.featurePath,
         jobId: env.jobId,
         jobType: env.jobType,
@@ -70,7 +70,7 @@ export class LLMResponseService {
         projectId: env.projectId,
         featureName: env.featureName,
       });
-      setTraceAppender(this.traceAppender);
+      setChatLogAppender(this.chatLogAppender);
     }
     
     // Initialize handlers
@@ -163,13 +163,13 @@ export class LLMResponseService {
   }
 
   /**
-   * Update the active turnId for trace.jsonl appends. Called by the
+   * Update the active turnId for chat.jsonl appends. Called by the
    * orchestrator after `recordUserTurn` resolves — before that point
    * there is no turnId to attach to trace lines.
    */
   setTurnId(turnId: string | null): void {
-    if (this.traceAppender) {
-      this.traceAppender.setTurnId(turnId);
+    if (this.chatLogAppender) {
+      this.chatLogAppender.setTurnId(turnId);
     }
   }
 
@@ -183,12 +183,12 @@ export class LLMResponseService {
       const session = this.sessionStore.getSession();
       const ctx = this.sessionStore.getContext();
 
-      // Emit assistant_message to trace.jsonl before finalization so the UI
+      // Emit assistant_message to chat.jsonl before finalization so the UI
       // has a durable record of the reply text (cancelled / non-cancelled).
-      if (this.traceAppender && session?.currentMessage && !cancelled) {
+      if (this.chatLogAppender && session?.currentMessage && !cancelled) {
         const text = collectAssistantText(session.currentMessage.contents);
         if (text.trim().length > 0) {
-          this.traceAppender.appendAssistantMessage(text);
+          this.chatLogAppender.appendAssistantMessage(text);
         }
       }
 
@@ -550,16 +550,16 @@ export class LLMResponseService {
    * that create multiple LLMResponseService instances in the same process.
    * Production workers exit immediately after the job finishes.
    */
-  disposeTraceAppender(): void {
-    if (this.traceAppender) {
-      clearTraceAppender();
-      this.traceAppender = null;
+  disposeChatLogAppender(): void {
+    if (this.chatLogAppender) {
+      clearChatLogAppender();
+      this.chatLogAppender = null;
     }
   }
 }
 
 /**
- * Collapse assistant-visible text content into a single trace.jsonl line.
+ * Collapse assistant-visible text content into a single chat.jsonl line.
  *
  * Intentionally conservative: we concatenate `text` + `thinking` content
  * blocks in order, trimming duplicates between adjacent blocks. Tool status

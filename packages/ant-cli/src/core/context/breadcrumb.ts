@@ -1,22 +1,22 @@
 /**
- * Breadcrumb Construction + Trace Collection (Phase C — session redesign §12).
+ * Breadcrumb Construction + Chat Log Collection (Phase C — session redesign §12).
  *
  * `buildBreadcrumb` implements the "Bubble-up" algorithm: touched file paths
  * are abstracted into progressively coarser anchors (files → paths → specs →
  * initial_creation) based on the touched count threshold matrix in
  * `BREADCRUMB_THRESHOLDS`. Each tier is capped by `BREADCRUMB_LIMITS`.
  *
- * `collectTouchedFilesFromTrace` reads trace.jsonl for a specific turnId and
- * returns the set of file paths that were written (SSOT: trace file_write
- * events — see §2.4 / §3.2).
+ * `collectTouchedFilesFromChatLog` reads chat.jsonl for a specific turnId
+ * and returns the set of file paths that were written (SSOT:
+ * `chat_status` lines with file-op `statusType`).
  *
  * Both are pure-ish helpers: `buildBreadcrumb` is pure, and
- * `collectTouchedFilesFromTrace` only reads the session port.
+ * `collectTouchedFilesFromChatLog` only reads the session port.
  */
 import type {
   FeatureBreadcrumbLine,
-  TraceLine,
-  TraceFileWriteLine,
+  ChatLine,
+  ChatStatusLine,
   LogJobType,
 } from '@ant/shared';
 import { BREADCRUMB_THRESHOLDS, BREADCRUMB_LIMITS } from '@ant/shared';
@@ -48,7 +48,7 @@ export interface BuildBreadcrumbInput {
   deleted?: string[];
   /** Noun-form 1-line summary (see learn/rules.md FPOP constraint). */
   summary: string;
-  /** Optional trace.jsonl range (startTs/endTs) for UI trace view. */
+  /** Optional chat.jsonl range (startTs/endTs) for UI trace view. */
   traceRangeRef?: { startTs: string; endTs: string };
   /** Explicit timestamp override (tests). Defaults to `new Date().toISOString()`. */
   ts?: string;
@@ -194,33 +194,49 @@ export function buildBreadcrumb(input: BuildBreadcrumbInput): FeatureBreadcrumbL
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// collectTouchedFilesFromTrace
+// collectTouchedFilesFromChatLog
 // ═══════════════════════════════════════════════════════════════════════
 
-export interface TouchedFromTrace {
+export interface TouchedFromChatLog {
   all: Set<string>;
   created: string[];
   modified: string[];
   deleted: string[];
-  /** trace.jsonl ts range covering the first/last file_write for this turn. */
+  /** chat.jsonl ts range covering the first/last file-op line for this turn. */
   range?: { startTs: string; endTs: string };
 }
 
 /**
- * Collect file_write events from trace.jsonl for a given turnId.
- *
- * SSOT: trace.jsonl `type: 'file_write'` lines (see shared/session-log.ts).
- * Reader-side filtering is defensive against mixed turns so the same trace
- * file can serve UI + breadcrumb collection without separate indexing.
- *
- * Returns empty sets when the session port is unavailable or the trace
- * contains no matching events.
+ * Operation implied by each file-op `chat_status.statusType`. `_failed`
+ * variants still count as attempted writes on the corresponding operation
+ * so the breadcrumb reflects the LLM's intent, not just successes.
  */
-export async function collectTouchedFilesFromTrace(
+const FILE_OP_BY_STATUS_TYPE: Record<string, 'create' | 'update' | 'delete'> = {
+  file_create: 'create',
+  file_create_failed: 'create',
+  file_edit: 'update',
+  file_edit_failed: 'update',
+  file_delete: 'delete',
+  file_delete_failed: 'delete',
+};
+
+/**
+ * Collect file-mutation events from chat.jsonl for a given turnId.
+ *
+ * SSOT: `chat_status` lines whose `statusType` is one of
+ * `file_create` / `file_edit` / `file_delete` (plus `*_failed` variants)
+ * and whose `metadata.filePath` is populated. Reader-side filtering is
+ * defensive against mixed turns so the same chat log file can serve UI +
+ * breadcrumb collection without a separate index.
+ *
+ * Returns empty sets when the session port is unavailable or the chat
+ * log contains no matching events.
+ */
+export async function collectTouchedFilesFromChatLog(
   session: SessionPort | undefined,
   turnId: string | undefined,
-): Promise<TouchedFromTrace> {
-  const empty: TouchedFromTrace = {
+): Promise<TouchedFromChatLog> {
+  const empty: TouchedFromChatLog = {
     all: new Set<string>(),
     created: [],
     modified: [],
@@ -228,17 +244,17 @@ export async function collectTouchedFilesFromTrace(
   };
   if (!session || !turnId) return empty;
 
-  let lines: TraceLine[] = [];
+  let lines: ChatLine[] = [];
   try {
-    lines = await session.loadTraceByTurnIds([turnId]);
+    lines = await session.loadChatByTurnIds([turnId]);
   } catch (err) {
-    console.warn('⚠️  [Breadcrumb] loadTraceByTurnIds failed:', err);
+    console.warn('⚠️  [Breadcrumb] loadChatByTurnIds failed:', err);
     return empty;
   }
 
-  const writes = lines.filter(
-    (l): l is TraceFileWriteLine => l.type === 'file_write',
-  );
+  const writes = lines
+    .filter((l): l is ChatStatusLine => l.type === 'chat_status')
+    .filter((l) => l.statusType in FILE_OP_BY_STATUS_TYPE);
   if (writes.length === 0) return empty;
 
   const all = new Set<string>();
@@ -247,18 +263,20 @@ export async function collectTouchedFilesFromTrace(
   const deleted: string[] = [];
 
   for (const w of writes) {
-    if (!w.path) continue;
-    all.add(w.path);
-    switch (w.operation) {
+    const filePath = typeof w.metadata?.filePath === 'string' ? w.metadata.filePath : '';
+    if (!filePath) continue;
+    all.add(filePath);
+    const op = FILE_OP_BY_STATUS_TYPE[w.statusType];
+    switch (op) {
       case 'create':
-        created.push(w.path);
+        created.push(filePath);
         break;
       case 'delete':
-        deleted.push(w.path);
+        deleted.push(filePath);
         break;
       case 'update':
       default:
-        modified.push(w.path);
+        modified.push(filePath);
         break;
     }
   }

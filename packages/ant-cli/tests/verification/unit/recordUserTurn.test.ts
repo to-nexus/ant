@@ -21,7 +21,7 @@ import { FileSessionAdapter } from '../../../src/periphery/adapters/session/File
 import { recordUserTurn, generateTurnId } from '../../../src/composition/recordUserTurn';
 import {
   getFeatureJsonlPath,
-  getTraceJsonlPath,
+  getChatJsonlPath,
 } from '../../../src/core/utils/sessionPaths';
 import type { FeatureUserTurnLine } from '@ant/shared';
 
@@ -58,7 +58,7 @@ describe('recordUserTurn — resume-path turnId preservation', () => {
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ant-rut-'));
     featurePath = getFeatureJsonlPath(tmpDir);
-    tracePath = getTraceJsonlPath(tmpDir);
+    tracePath = getChatJsonlPath(tmpDir);
   });
 
   afterEach(async () => {
@@ -184,7 +184,7 @@ describe('recordUserTurn — resume-path turnId preservation', () => {
     expect(await readJsonl(featurePath)).toHaveLength(0);
   });
 
-  it('inline-ask fresh call skips feature.jsonl but writes trace.jsonl with ask-only sourceRef', async () => {
+  it('inline-ask fresh call skips feature.jsonl but writes chat.jsonl with ask-only sourceRef', async () => {
     await recordUserTurn({
       featurePath: tmpDir,
       jobType: 'inline-ask',
@@ -194,8 +194,8 @@ describe('recordUserTurn — resume-path turnId preservation', () => {
     });
 
     expect(await readJsonl(featurePath)).toHaveLength(0);
-    const traceLines = await readJsonl<any>(tracePath);
-    expect(traceLines).toHaveLength(1);
-    expect(traceLines[0].sourceRef).toBe('ask-only');
+    const chatLines = await readJsonl<any>(tracePath);
+    expect(chatLines).toHaveLength(1);
+    expect(chatLines[0].sourceRef).toBe('ask-only');
   });
 });

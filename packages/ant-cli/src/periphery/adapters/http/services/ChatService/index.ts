@@ -1,14 +1,14 @@
 /**
- * ChatService — Chat API façade backed by trace.jsonl SSOT.
+ * ChatService — Chat API façade backed by chat.jsonl SSOT.
  *
  * Session redesign §16.2 cutover: chat.json is retired. The durable chat
- * history lives in trace.jsonl + feature.jsonl and is rebuilt via
- * {@link buildChatMessagesFromTrace} when the UI asks for history.
+ * history lives in chat.jsonl + feature.jsonl and is rebuilt via
+ * {@link buildChatMessagesFromChatLog} when the UI asks for history.
  *
  * This service keeps a transient in-memory + Redis "streaming scratchpad"
  * so that live SSE delta broadcasts (content_add / content_update /
  * message_start / message_finalized) still flow. The scratchpad is
- * cleared on message finalize — only trace.jsonl survives process exit.
+ * cleared on message finalize — only chat.jsonl survives process exit.
  *
  * Cloud-safe: Redis Pub/Sub drives cross-instance SSE broadcasting.
  */
@@ -17,9 +17,9 @@ import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import type { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import type { UserContext } from '../../../../../core/types/user';
 import type { ChatMessage, MessageContent } from './types';
-import type { TraceLine } from '@ant/shared';
+import type { ChatLine } from '@ant/shared';
 import { FileSessionAdapter } from '../../../session/FileSessionAdapter';
-import { buildChatMessagesFromTrace } from './TraceToChatMessages';
+import { buildChatMessagesFromChatLog } from './ChatLogToMessages';
 
 // Module imports
 import { SessionPersistence } from './SessionPersistence';
@@ -232,11 +232,11 @@ export class ChatService {
    * Get all messages for a feature (async, durable + live).
    *
    * Result is the concatenation of:
-   *   1. Trace-derived history from trace.jsonl + feature.jsonl (SSOT)
+   *   1. Log-derived history from chat.jsonl + feature.jsonl (SSOT)
    *   2. The current in-memory streaming message (if any), which has not
-   *      yet been flushed to trace.jsonl because its turn is still live.
+   *      yet been flushed to chat.jsonl because its turn is still live.
    *
-   * The trace-derived history already surfaces completed turns as user +
+   * The log-derived history already surfaces completed turns as user +
    * assistant ChatMessages (including choice_presented / choice_resolved
    * pairs). The streaming overlay is only the last partial reply.
    */
@@ -245,8 +245,8 @@ export class ChatService {
     featureName: string,
     userContext?: UserContext,
   ): Promise<ChatMessage[]> {
-    // 1. Rebuild completed turns from trace.jsonl
-    const durable = await this.loadTraceDerivedMessages(projectId, featureName, userContext);
+    // 1. Rebuild completed turns from chat.jsonl
+    const durable = await this.loadChatLogDerivedMessages(projectId, featureName, userContext);
 
     // 2. Overlay the streaming scratchpad's currentMessage (if any)
     const session = await this.sessionManager.getOrCreateSessionAsync(
@@ -259,9 +259,9 @@ export class ChatService {
     // 2a. User messages that the UI optimistically POSTed via
     //     /chat/user-message land in session.messages BEFORE the worker
     //     starts and recordUserTurn writes the durable user_turn to
-    //     trace.jsonl. Include any such pending user messages so a refresh
+    //     chat.jsonl. Include any such pending user messages so a refresh
     //     on another pod (or the same pod, during the spawn window) still
-    //     shows them. Dedup by jobId against the trace-derived set.
+    //     shows them. Dedup by jobId against the log-derived set.
     const durableUserJobIds = new Set(
       durable.filter((m) => m.role === 'user' && m.jobId).map((m) => m.jobId as string),
     );
@@ -270,12 +270,12 @@ export class ChatService {
     );
 
     // 2b. The active streaming message is a partial view of the same turn
-    //     that trace.jsonl is accumulating events for (thinking /
-    //     tool_call / file_write / run_command lines are emitted as they
-    //     happen, before finalize writes the terminal assistant_message).
-    //     To avoid a double-render, drop the trace-derived assistant
-    //     message for that same jobId and replace it with the live
-    //     currentMessage (if any).
+    //     that chat.jsonl is accumulating events for (thinking /
+    //     chat_status / choice_presented lines are emitted as they happen,
+    //     before finalize writes the terminal assistant_message). To
+    //     avoid a double-render, drop the log-derived assistant message
+    //     for that same jobId and replace it with the live currentMessage
+    //     (if any).
     const streamingJobId = session.currentMessage?.jobId;
     const filtered = streamingJobId
       ? durable.filter((m) => !(m.role === 'assistant' && m.jobId === streamingJobId))
@@ -290,14 +290,14 @@ export class ChatService {
   }
 
   /**
-   * Load `ChatMessage[]` derived from the durable session log (trace.jsonl).
+   * Load `ChatMessage[]` derived from the durable session log (chat.jsonl).
    * Returns `[]` when the feature path cannot be resolved or the log is empty.
    *
-   * Only trace.jsonl is consulted here — breadcrumbs and user_turn_meta are
+   * Only chat.jsonl is consulted here — breadcrumbs and user_turn_meta are
    * consumed directly by the Timeline / tier-badge surfaces (feature-log
    * slice in the UI), not by Chat rendering.
    */
-  private async loadTraceDerivedMessages(
+  private async loadChatLogDerivedMessages(
     projectId: string,
     featureName: string,
     userContext?: UserContext,
@@ -306,18 +306,18 @@ export class ChatService {
     if (!featurePath) return [];
 
     const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
-    let traceLines: TraceLine[] = [];
+    let chatLines: ChatLine[] = [];
     try {
-      traceLines = await adapter.loadAllTrace();
+      chatLines = await adapter.loadAllChat();
     } catch (err) {
       logger.warn(
-        `[ChatService] loadAllTrace failed for ${projectId}/${featureName}`,
+        `[ChatService] loadAllChat failed for ${projectId}/${featureName}`,
         { component: 'ChatService' },
         err,
       );
     }
 
-    return buildChatMessagesFromTrace({ traceLines });
+    return buildChatMessagesFromChatLog({ chatLines });
   }
 
   /**
@@ -405,7 +405,7 @@ export class ChatService {
 
   /**
    * Apply metadata update to a specific content item, save to Redis and
-   * mirror the choice resolution to trace.jsonl.
+   * mirror the choice resolution to chat.jsonl.
    */
   private async applyContentMetadataUpdate(
     projectId: string,
@@ -485,7 +485,7 @@ export class ChatService {
 
   /**
    * Clear messages for a session (fire-and-forget). Always uses Chat Clear
-   * semantics (trace.jsonl only).
+   * semantics (chat.jsonl only).
    *
    * Prefer {@link clearMessagesAsync} when the caller needs to observe
    * collapse completion or wants Hard Reset semantics (`scope='full'`).
@@ -502,9 +502,9 @@ export class ChatService {
    * `messages_cleared` SSE broadcast — but the jsonl collapse step varies
    * by `scope`:
    *
-   * - `scope='chat'` (default, Chat Clear): only trace.jsonl is collapsed.
+   * - `scope='chat'` (default, Chat Clear): only chat.jsonl is collapsed.
    *   feature.jsonl (LLM context SSOT) is preserved.
-   * - `scope='full'` (§17 Hard Reset): both trace.jsonl and feature.jsonl
+   * - `scope='full'` (§17 Hard Reset): both chat.jsonl and feature.jsonl
    *   are collapsed and a `user_reset` boundary is appended.
    *
    * This is the SSOT entry point for Reset semantics (§16.2 "Clear·Reset

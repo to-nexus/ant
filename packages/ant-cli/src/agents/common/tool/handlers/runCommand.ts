@@ -281,7 +281,7 @@ const packageManagerMutex = new AsyncMutex();
  * into treating an internal guard as a command execution failure.
  *
  * Always routes the rejection through `chatStatus.commandComplete` so
- * trace.jsonl receives exactly one `run_command` line per invocation —
+ * chat.jsonl receives exactly one `run_command` line per invocation —
  * success, non-zero exit, or rejection. No separate rejection line type;
  * the -1 sentinel + `[Policy] ...` prefix in stdout identify rejections
  * for downstream readers.
@@ -821,7 +821,7 @@ async function handleLongRunningCommand(
       if (resolved) return;
       hasError = true;
       stderr += err.message;
-      // Keep trace.jsonl symmetric: every long-running invocation must
+      // Keep chat.jsonl symmetric: every long-running invocation must
       // finalize via `commandComplete` so a `run_command` line pairs with
       // the initial `tool_call`. Spawn failure is the one internal path
       // that previously skipped this.

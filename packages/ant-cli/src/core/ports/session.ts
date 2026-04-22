@@ -6,7 +6,7 @@ import type {
   FeatureUserTurnMetaLine,
   FeatureBreadcrumbLine,
   FeatureBoundaryLine,
-  TraceLine,
+  ChatLine,
   LogJobType,
 } from '@ant/shared';
 
@@ -78,16 +78,16 @@ export interface SessionPort {
   exists(project: string, feature: string, job: SessionableJobType): Promise<boolean>;
 
   // ═══════════════════════════════════════════════════════════════════
-  // feature.jsonl / trace.jsonl — context & UI log (append-only JSONL)
+  // feature.jsonl / chat.jsonl — context & UI log (append-only JSONL)
   // ═══════════════════════════════════════════════════════════════════
 
   /**
-   * Append a generic line to feature.jsonl or trace.jsonl.
+   * Append a generic line to feature.jsonl or chat.jsonl.
    */
-  appendLine(file: 'feature' | 'trace', line: FeatureLine | TraceLine): Promise<void>;
+  appendLine(file: 'feature' | 'chat', line: FeatureLine | ChatLine): Promise<void>;
 
   /**
-   * Append a user_turn atomically — feature.jsonl (unless skipFeature) + trace.jsonl copy.
+   * Append a user_turn atomically — feature.jsonl (unless skipFeature) + chat.jsonl copy.
    * Ask jobtype callers pass skipFeature=true.
    */
   appendUserTurn(line: FeatureUserTurnLine, options?: { skipFeature?: boolean }): Promise<void>;
@@ -122,21 +122,21 @@ export interface SessionPort {
   }>;
 
   /**
-   * Load trace.jsonl lines by turnId (UI).
+   * Load chat.jsonl lines by turnId (UI).
    */
-  loadTraceByTurnIds(turnIds: string[]): Promise<TraceLine[]>;
+  loadChatByTurnIds(turnIds: string[]): Promise<ChatLine[]>;
 
   /**
-   * Load trace.jsonl lines by jobType (UI filtering).
+   * Load chat.jsonl lines by jobType (UI filtering).
    */
-  loadTraceByJobType(jobTypes: LogJobType[]): Promise<TraceLine[]>;
+  loadChatByJobType(jobTypes: LogJobType[]): Promise<ChatLine[]>;
 
   /**
-   * Load ALL trace.jsonl lines (UI initial load).
+   * Load ALL chat.jsonl lines (UI initial load).
    * Supports optional sinceTs (ISO 8601) for incremental fetching.
    * Collapsed lines are excluded.
    */
-  loadAllTrace(opts?: { sinceTs?: string; jobTypes?: LogJobType[] }): Promise<TraceLine[]>;
+  loadAllChat(opts?: { sinceTs?: string; jobTypes?: LogJobType[] }): Promise<ChatLine[]>;
 
   /**
    * Load ALL breadcrumb lines from feature.jsonl (UI timeline).
@@ -160,18 +160,19 @@ export interface SessionPort {
 
   /**
    * Mark feature.jsonl lines with the given jobId as collapsed — Job-tab
-   * clear. Leaves trace.jsonl intact (UI history preserved). Sibling jobs of
-   * the same jobType are not affected because each has a distinct jobId.
+   * clear. Leaves chat.jsonl intact (UI history preserved). Sibling jobs
+   * of the same jobType are not affected because each has a distinct
+   * jobId.
    */
   collapseByJobId(jobId: string): Promise<void>;
 
   /**
-   * Mark ALL trace.jsonl lines as collapsed — Chat Clear / Sweep.
+   * Mark ALL chat.jsonl lines as collapsed — Chat Clear / Sweep.
    *
    * `feature.jsonl` (LLM context SSOT) is intentionally preserved so the
    * conversation can continue after a chat clear. Hard Reset does NOT go
    * through here — the `/context/reset` HTTP handler physically unlinks
    * every session file via `clearCanonicalDirectory`.
    */
-  collapseTraceOnly(): Promise<void>;
+  collapseChatLog(): Promise<void>;
 }
