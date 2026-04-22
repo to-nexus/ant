@@ -13,6 +13,7 @@ import { useSessionLoader } from '@/application/hooks/ui/useSessionLoader';
 import { useJobRestoration } from '@/application/hooks/ui/useJobRestoration';
 import { useGitRefresh } from '@/application/hooks/git';
 import { usePreviewSync } from '@/application/hooks/preview/usePreviewSync';
+import { useExplicitAutoSync } from '@/application/hooks/ui/useExplicitAutoSync';
 import { ServerDownDetector } from '@/application/hooks/ui/useServerDownDetector';
 import { ExplorerPanel } from '@/presentation/components/layout/ExplorerPanel';
 import { MainContentArea } from '@/presentation/components/layout/MainContentArea';
@@ -290,6 +291,12 @@ function App() {
   // / reconnect. Lives at app root so it survives Explorer collapse and any
   // preview-config-editor mount/unmount. See `usePreviewSync` header.
   usePreviewSync();
+
+  // Ambient explicit auto-sync: maintains the invariant that
+  // `actionMetadata.explicit === true` ⇔ metadata is complete enough to
+  // bypass triage. Rising edge auto-set, falling edge auto-clear; manual
+  // removal is preserved and rising edge is only ever fired once per edge.
+  useExplicitAutoSync();
 
   // ✅ Project config is owned by projectConfigSlice now. MainContentArea
   // subscribes to the slice directly via useAsyncResource and dispatches

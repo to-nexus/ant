@@ -59,8 +59,6 @@ function IntentVariant(_props: IntentFooterProps) {
 
   const handleChatStart = () => {
     if (!derived || !policy.canStartChat) return;
-    const store = useStore.getState();
-    store.updateActionMetadata({ explicit: true });
     requestAnimationFrame(() => {
       const input = document.querySelector('textarea[data-chat-input]') as HTMLTextAreaElement | null;
       input?.focus();
@@ -71,7 +69,6 @@ function IntentVariant(_props: IntentFooterProps) {
     if (!derived || !policy.canBuild || !selectedProject || !selectedFeature) return;
 
     const store = useStore.getState();
-    store.updateActionMetadata({ explicit: true });
     store.setRunning(true, undefined, 'generate');
 
     const metadata = { ...useStore.getState().actionMetadata, locale: i18n.language };
