@@ -211,7 +211,21 @@ export class ExecutionLogger {
     taskName: string;
     attempt: number;
     violationsFromPrevAttempt: number;
-    preservedPlanMessages: number;
+    /**
+     * Count of prior NODE_PLAN messages discarded at this retry entry.
+     * Since R2-P1 NODE_PLAN is reset at every retry (prior-attempt
+     * context flows via `planHistoryCount` below); this field is purely
+     * diagnostic and typically matches the trailing round count of the
+     * previous attempt.
+     */
+    priorPlanMessagesDiscarded: number;
+    /**
+     * `session.planHistoryBodies().length` at retry entry. Expected to be
+     * `N-1` when entering retry attempt N, proving that `onPlanApplied`
+     * is called from every plan-LLM short-circuit. A persistent 0 across
+     * retries means the plan-history channel regressed.
+     */
+    planHistoryCount: number;
     verificationAttempts?: number;
     prevPlanHash?: string;
     carryOverSize?: number;

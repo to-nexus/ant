@@ -40,18 +40,22 @@ const PREDICATES = [
  * a predicate usage was converted to a hook, which is always welcome and
  * should be captured as a new, lower pin in the same PR.
  *
- * 91: post-T6b-β audit (R-1) maintains the `isVerificationTask ||
- * isErrorTask` symmetry at the plan phase — used for the empty-plan
- * short-circuit gate in both the main flow (`nodes/plan/index.ts`) and
- * the plan↔tool loop-limit path (`nodes/plan/parts/planLLM.ts`). Each
- * predicate sits inside its defining model file (condition 2), is pure
- * (condition 1), and the dispatch decision is a static per-type fact
- * (condition 3) — a hook would buy nothing over the direct predicate
- * call. The earlier diagnostic finalize-prompt branch was removed when
- * the finalize nudge became task-type-blind and the empty-plan gate
- * converged on the shared `hasEmptyImplementation` predicate.
+ * 92: plan-history SSOT extraction. `nodes/plan/parts/planHistory.ts`
+ * hosts the shared `maybeApplyPlanHistory` guard consumed by the main
+ * plan flow (`nodes/plan/index.ts`) and both short-circuit paths in
+ * `nodes/plan/parts/planLLM.ts`. The helper computes
+ * `isRemediationTask = isVerificationTask(task) || isErrorTask(task)`
+ * exactly once (condition 2 — the literal `task.type === '...'` lives
+ * in the predicate files). Net impact is `+1 import / +1 call pair`
+ * beyond the pre-refactor count: the refactor removed the duplicated
+ * `isRemediationTask` local from the planLLM normal short-circuit but
+ * added `(imports × 2) + (usages × 2)` in the helper module. The
+ * overLimit path in planLLM.ts retains its `isRemediationTask` local
+ * because it still feeds `llmResponse.done` alongside the helper call
+ * — that usage is a different concern (phase-blind execute routing)
+ * and converting it to a hook would not simplify anything.
  */
-const MEASURED_COUNT = 91;
+const MEASURED_COUNT = 92;
 
 async function walkSourceFiles(dir: string, out: string[]): Promise<void> {
   const entries = await fs.readdir(dir, { withFileTypes: true });

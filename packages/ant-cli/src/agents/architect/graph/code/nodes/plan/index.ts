@@ -46,6 +46,7 @@ import {
   processDiagnosticBatchSplit,
 } from './parts/batchSplit';
 import { runPlanToolLoopPhase } from './parts/planLLM';
+import { maybeApplyPlanHistory } from './parts/planHistory';
 import { runPlanRAG } from './parts/rag';
 import { normalizePlanForHash } from '../../tasks/verification/model/planHash';
 import { isVerificationTask } from '../../tasks/verification';
@@ -464,11 +465,10 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
   const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(planText);
 
-  // Single-writer plan-history push. Skipped when batch-split fanned out
-  // or an empty remediation result short-circuited the body.
-  if (planText && !batchSplitOccurred && !emptyImplShortCircuit) {
-    state.verification?.onPlanApplied(planText);
-  }
+  // Single-writer plan-history push. See `parts/planHistory.ts` for the
+  // guard formula — shared with the two short-circuit paths in
+  // `parts/planLLM.ts` so the condition stays in one place.
+  maybeApplyPlanHistory(state, planText, batchSplitOccurred, nextTask);
 
   // STEP 4 — return finalised state.
   try {
