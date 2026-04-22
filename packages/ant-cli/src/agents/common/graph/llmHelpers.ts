@@ -10,7 +10,7 @@
 import { LLMClient, LLMInvokeResult, CacheableContent, LLMStreamEvent } from '../../../core/ports/llm';
 import { TaskTokenUsage, PhaseTokenUsage } from '@ant/shared';
 import { getTokenLogger, TokenLogContext } from '../../../core/utils/tokenLogger';
-import { getEstimatingLabel, type UILocale } from './timing/estimatingLabels';
+import { getEstimatingLabel, resolveNodePhaseLabel, type UILocale } from './timing/estimatingLabels';
 
 /**
  * Re-export TaskTokenUsage as TokenUsage for convenience
@@ -36,7 +36,14 @@ export interface TokenTrackingState {
 /**
  * Mark the start of a graph node's LLM activity.
  * Resets the `currentPhaseTokenUsage` snapshot so subsequent `accumulateTokenUsage`
- * calls overwrite cleanly. Call at the top of any node that makes LLM calls.
+ * calls overwrite cleanly.
+ *
+ * ⚠️ SSOT: Do NOT call this directly from inside a graph node. The two authorized
+ * callers are:
+ *  - `withPhaseTracking()` wrapping the node at graph wiring (phase label lookup
+ *    via `resolveNodePhaseLabel`).
+ *  - `applyEstimatingUsage()` for estimating sub-nodes (triage / detect / decompose)
+ *    when an external subgraph returns a usage snapshot.
  */
 export function beginNodePhase(
   state: TokenTrackingState,
@@ -47,6 +54,28 @@ export function beginNodePhase(
     phase,
     ...(label && { label }),
     tokenUsage: initTokenUsage(),
+  };
+}
+
+/**
+ * Higher-order wrapper that seeds `currentPhaseTokenUsage` for a graph node
+ * before invoking it. Applied at graph wiring time:
+ *
+ *   graph.addNode('plan', withPhaseTracking('plan', plan) as any);
+ *
+ * This is the SSOT for phase initialization — node implementations MUST NOT
+ * call `beginNodePhase` themselves. The label is resolved via
+ * `resolveNodePhaseLabel(phaseId, locale)` so there is exactly one place that
+ * maps phase ids to human-readable wording.
+ */
+export function withPhaseTracking<S extends TokenTrackingState, R>(
+  phaseId: string,
+  node: (state: S) => Promise<R> | R,
+): (state: S) => Promise<R> {
+  return async (state: S): Promise<R> => {
+    const locale = ((state as any)._uiLocale as UILocale | undefined) ?? 'en';
+    beginNodePhase(state, phaseId, resolveNodePhaseLabel(phaseId, locale));
+    return await node(state);
   };
 }
 
@@ -132,6 +161,12 @@ export function accumulateTokenUsage(
   // current message), so accumulating across calls in the same node produces a
   // misleading number. Overwriting keeps the gauge at the true current context
   // fullness. Only updates if `beginNodePhase()` has initialized the snapshot.
+  //
+  // SSOT: accumulateTokenUsage is the SINGLE authorized publisher of the
+  // chat-input token-gauge update. Other helpers
+  // (updateKanbanTokenUsage / applyEstimatingUsage / direct updateTokenUsage
+  // calls in visual nodes) MUST NOT invoke `updateCurrentPhaseTokenUsage` —
+  // they rely on this block to broadcast once per LLM call.
   if (state.currentPhaseTokenUsage) {
     state.currentPhaseTokenUsage.tokenUsage = {
       inputTokens: usage.inputTokens,
@@ -141,6 +176,9 @@ export function accumulateTokenUsage(
       ...(usage.cacheCreationTokens !== undefined && { cacheCreationTokens: usage.cacheCreationTokens }),
       callCount: 1,
     };
+
+    const kanbanUpdate = (state as KanbanUpdatableState).deps?.kanbanUpdate;
+    kanbanUpdate?.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
   }
 }
 
@@ -328,11 +366,9 @@ export function updateKanbanTokenUsage(state: KanbanUpdatableState): void {
   const taskTokens = getTaskTokenUsage(state);
   const jobTokens = getJobTokenUsage(state);
 
-  // Broadcast current-node snapshot regardless of worker/main context so
-  // the chat input gauge reflects the most recent LLM call immediately.
-  if (state.currentPhaseTokenUsage) {
-    state.deps.kanbanUpdate.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
-  }
+  // Note: `updateCurrentPhaseTokenUsage` is NOT broadcast here. That SSOT
+  // lives in `accumulateTokenUsage()` — any LLM call that reaches this
+  // function has already triggered it.
 
   const isWorkerCtx = state.workerId !== undefined && state.workerId !== null;
   if (isWorkerCtx) {
@@ -439,10 +475,7 @@ export function applyEstimatingUsage(
   if (state.tokenUsage) {
     state.deps?.kanbanUpdate?.updateTokenUsage?.(state.tokenUsage);
   }
-
-  if (state.currentPhaseTokenUsage) {
-    state.deps?.kanbanUpdate?.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
-  }
+  // Note: currentPhaseTokenUsage broadcast handled by accumulateTokenUsage (SSOT).
 
   logTokenUsageToFile(resolveFeaturePath(state), state._httpJobId, usage, {
     taskId: 'estimating',

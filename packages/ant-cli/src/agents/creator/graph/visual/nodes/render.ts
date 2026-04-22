@@ -12,10 +12,9 @@ import { VisualGraphState } from '../types.js';
 import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiImageClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
-import { accumulateTokenUsage, upsertPhaseTokenUsage, beginNodePhase } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import type { ImageGenerationOptions } from '../../../../../core/ports/imageGeneration.js';
 export async function renderNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
-  beginNodePhase(state as any, 'render', 'Render');
   const phaseStart = Date.now();
 
   console.log('\n🎨 [Visual:Render] Final high-quality rendering...');

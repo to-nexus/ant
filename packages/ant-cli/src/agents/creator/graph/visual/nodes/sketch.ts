@@ -12,9 +12,8 @@ import { VisualGraphState, SketchImage } from '../types.js';
 import { SafetyBlockError } from '../../../../../periphery/adapters/llm/GeminiImageClient.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
-import { accumulateTokenUsage, upsertPhaseTokenUsage, beginNodePhase } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 export async function sketchNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
-  beginNodePhase(state as any, 'sketch', 'Sketch');
   const phaseStart = Date.now();
 
   console.log('\n✏️ [Visual:Sketch] Generating sketch candidates...');

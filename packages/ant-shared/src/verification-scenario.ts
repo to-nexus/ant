@@ -86,7 +86,6 @@ export interface ScenarioSeedTask {
 export interface ScenarioVerificationSnapshot {
   required: string[];
   passed: string[];
-  attemptedThisCycle?: string[];
   attempts: number;
   planHistoryHashes: string[];
   planHistoryBodies?: string[];

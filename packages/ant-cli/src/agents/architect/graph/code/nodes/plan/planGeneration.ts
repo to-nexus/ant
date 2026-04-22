@@ -17,7 +17,7 @@ import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
-import { loadAntMd } from "../../../../../../core/artifact/antMd";
+import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { getRACDocuments } from "@ant/shared";
 import { getSessionDebugDir } from '../../../../../../core/utils/sessionPaths';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
@@ -94,6 +94,12 @@ async function buildPlanPrompt(
   if (!promptBuilder) throw new Error('[Plan] PromptBuilder not available');
 
   const planHook = hooksForTaskType(task.type)?.plan;
+  // codebase/ANT.md — project-wide ant-agent settings (export style,
+  // test setup, naming, ...). Loaded ONCE per plan render so all hooks
+  // (verification, error, generic) see the same value without each
+  // reaching into state and calling loadAntrules. See
+  // `docs/architecture/35-codebase-meta-policy.md`.
+  const antrulesContent = loadAntrules(state.context?.featurePath);
   const promptCtx: PlanPromptCtx = {
     state,
     task,
@@ -102,6 +108,7 @@ async function buildPlanPrompt(
     uiDoc,
     remainingTasks,
     options,
+    antrulesContent,
   };
 
   // Type-specific full override (verification / error variants).
@@ -176,12 +183,6 @@ async function buildPlanPrompt(
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
   const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
 
-  // codebase/ANT.md — project-wide ant-agent settings (export style, test
-  // setup, naming, ...). Loaded on every plan render so the template
-  // partial `jobs/code/base/injections/ant-md` can gate-render the
-  // content. See `docs/architecture/35-codebase-meta-policy.md`.
-  const antMd = loadAntMd(state.context?.featurePath);
-
   const prompt = await promptBuilder.render('jobs/code/nodes/plan/base', {
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type,
@@ -196,7 +197,7 @@ async function buildPlanPrompt(
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
     resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi, uiSource,
     featureContext: state.featureContext,
-    hasAntMd: antMd.has, antMdContent: antMd.content,
+    antrulesContent,
     ...typeVars,
   });
 

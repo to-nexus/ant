@@ -24,6 +24,7 @@ import { getTaskConcurrency } from "./parallel/types";
 import { hooksForTaskType } from "./tasks/_shared/registry";
 import * as routing from "./routing";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
+import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import type { InterruptionReason } from '../../../../core/types/session';
 
 /**
@@ -682,10 +683,10 @@ export function buildCodeGraph() {
   graph.addNode("triage", triage as any);
   graph.addNode('detect', createDetectNode(codeDetectStrategy) as any);
   graph.addNode("decompose", decompose as any);
-  graph.addNode("direct", direct as any);  // ✅ oneshot / exploratory ReAct loop
-  graph.addNode("revise", revise as any);  // ✅ Task queue revision (continue/modify)
-  graph.addNode("plan", plan as any);
-  graph.addNode("execute", execute as any);
+  graph.addNode("direct", withPhaseTracking('directCode', direct) as any);  // ✅ oneshot / exploratory ReAct loop
+  graph.addNode("revise", withPhaseTracking('revise', revise) as any);  // ✅ Task queue revision (continue/modify)
+  graph.addNode("plan", withPhaseTracking('plan', plan) as any);
+  graph.addNode("execute", withPhaseTracking('execute', execute) as any);
   graph.addNode("tool", tool as any);
   graph.addNode("checkTaskStatus", checkTaskStatus as any);
   graph.addNode("learn", learn as any);

@@ -116,7 +116,6 @@ describe('VerificationSession.rehydrate', () => {
     const snap: VerificationSnapshot = {
       required: ['build'],
       passed: ['build', 'test'], // test no longer required after rehydrate
-      attemptedThisCycle: [],
       attempts: 2,
       planHistoryHashes: [],
     };

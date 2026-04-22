@@ -15,7 +15,7 @@ import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { PlanGraphState, getPlanMode } from '../../state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
-import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage, beginNodePhase } from '../../../../../common/graph/llmHelpers';
+import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { v4 as uuidv4 } from 'uuid';
 import { PLANNER_TOOLS, PLANNER_EXPLAIN_TOOLS } from '../tools';
@@ -38,8 +38,6 @@ import { saveConversationToSession, pruneConversationHistory } from './sessionWr
  * Generate node - LLM generates/refines PRD with real-time file streaming
  */
 export async function generateNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
-  beginNodePhase(state as any, 'generate', 'Generate');
-
   const recursionCount = (state.recursionCount || 0) + 1;
 
   const planMode = getPlanMode(state);
