@@ -23,12 +23,6 @@ export interface VerificationSnapshot {
   /** Gates that have passed in the current diagnostic cycle. */
   passed: Gate[];
   /**
-   * Gates that have been attempted at least once in the current cycle.
-   * Cleared on retry/reverify entry so the plan tool loop can try each
-   * gate again with fresh evidence.
-   */
-  attemptedThisCycle: Gate[];
-  /**
    * Monotonic count of plan re-entries (retry + reverify + orchestrator
    * re-queue). Drives budget / deep-diagnostic / terminal decisions.
    */
@@ -64,7 +58,6 @@ export interface VerificationSnapshot {
 export const EMPTY_SNAPSHOT: VerificationSnapshot = Object.freeze({
   required: [],
   passed: [],
-  attemptedThisCycle: [],
   attempts: 0,
   planHistoryHashes: [],
 });

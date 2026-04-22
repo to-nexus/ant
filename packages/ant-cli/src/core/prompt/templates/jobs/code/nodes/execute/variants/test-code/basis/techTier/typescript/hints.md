@@ -46,14 +46,18 @@
 
 ### Config Property Names
 
-**Principle**: Test runner config files use specific property names. Misspelled keys are silently ignored.
+**Principle**: Test runner config files accept a fixed, documented set of keys. Runners silently ignore unknown keys — a misspelling produces no error but the config section never takes effect.
 
-| Config File | Commonly Confused | Correct Property |
-|-------------|-------------------|-----------------|
-| `jest.config.*` | `setupFilesAfterSetup` | `setupFilesAfterEnv` |
-| `vitest.config.*` | `setupFiles` | `setupFiles` (Vitest) or `setupFilesAfterEnv` (Jest) |
+**Constraint**: Do NOT write a config key from memory. Variants that feel plausible but are hallucinated share a family shape (`setupFiles*`, `moduleNameMapper*`, `testMatch*`, `transform*`). Before writing a key, verify via one of:
+- reading an existing `*.config.*` in this repo with the same runner,
+- reading the runner's published type declarations (e.g. `node_modules/jest/.../Config.d.ts`),
+- reading the runner's documented schema.
 
-⚠️ **Blind spot**: `setupFilesAfterSetup` does NOT exist. The correct Jest key is `setupFilesAfterEnv`. Jest ignores unknown keys silently — the setup file never loads and tests fail with missing matchers.
+**Constraint**: After writing a config, re-read the file and check each key against the verified source. Unknown-key failure mode is silent; eyeball review is the only cheap detector.
+
+⚠️ **Blind spot** — known hallucinated Jest key families, all non-existent: `setupFilesAfterSetup`, `setupFilesAfterFramework`, `setupFilesAfterRun`, `setupFilesBeforeEach`. The correct key is `setupFilesAfterEnv` (singular surface, array value). Any variant ending in a different suffix is a hallucination.
+
+⚠️ **Blind spot** — Vitest uses `setupFiles` (plural array), NOT `setupFilesAfterEnv`. Do NOT port a Jest config's key to Vitest without checking.
 
 ---
 
@@ -122,3 +126,18 @@ Constraint: Read the target module's export declarations before writing the impo
 Constraint: A fix that adds a `named export` to accommodate a test must preserve any existing default export if downstream code imports it. Removing the default to appease one test can break the rest of the codebase.
 
 ⚠️ **Blind spot**: `export default function Foo() {}` paired with `import { Foo } from './foo'` surfaces as TS2614 "Module has no exported member". The component works everywhere else and only the test fails — easy to misdiagnose as a test setup problem.
+
+---
+
+### Mock Factory Shape vs Target Export
+
+**Principle**: A `jest.mock(modulePath, factory)` (or `vi.mock`) replaces the ENTIRE module exports. The factory's shape must exactly mirror the real module's export style — not an approximation.
+
+Observe:
+- Target file's export line: `export default Foo` → the mock factory MUST return `{ default: FakeFoo }`.
+- Target file's `export { Foo }` → the mock factory returns `{ Foo: FakeFoo }`.
+- The `__esModule: true` flag is required when mocking a default export under esModuleInterop; without it `import Foo from '...'` resolves to the whole module object, not the default key.
+
+Constraint: Read the target file's exports BEFORE writing the mock. A mock with the wrong shape causes the imported symbol to be `undefined` at runtime, and the failure surfaces as render-crash noise unrelated to the actual bug.
+
+⚠️ **Blind spot**: Mixing up `{ default: X }` and `{ X }` across many mocks in one test file produces a cascade of "X is not a function" failures. Fix the shape once and the cascade clears; chasing symptoms one-by-one wastes a diagnostic cycle.

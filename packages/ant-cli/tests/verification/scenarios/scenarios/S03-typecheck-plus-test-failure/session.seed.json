@@ -13,9 +13,12 @@
   "retries": 0,
   "maxRetries": 3,
   "verification": {
-    "required": ["typecheck", "build", "test"],
+    "required": [
+      "typecheck",
+      "build",
+      "test"
+    ],
     "passed": [],
-    "attemptedThisCycle": [],
     "attempts": 0,
     "planHistoryHashes": []
   },
