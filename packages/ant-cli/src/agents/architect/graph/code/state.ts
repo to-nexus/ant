@@ -212,8 +212,11 @@ export interface ArchitectGraphState extends TriageableState {
   // Design-prescribed dependencies (extracted by decompose LLM via <prescribedDependencies> tag, injected into plan prompts)
   designDocUnknownPackages?: string[];
   
-  // Figma MCP state
-  figmaAvailable?: boolean;
+  // Figma MCP metadata — populated by resolve when a figma UiSource is
+  // active. Availability itself is derived from
+  // `resolvedAction.mcpSources.figma` (SSOT); these scalars are kept because
+  // worker subgraphs share them via sharedContext and the tool handler reads
+  // `figmaFileKey` from its own ToolExecutionContext.
   figmaFileKey?: string;
   figmaStartNodeId?: string;
 

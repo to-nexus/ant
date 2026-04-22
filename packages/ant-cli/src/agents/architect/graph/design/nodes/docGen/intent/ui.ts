@@ -130,7 +130,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   }
   
   // ✅ 4. Inject previously generated UI docs from pool (gated by task.include from decompose)
-  const previousDocs = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.UI))
+  const previousDocs = (!taskInclude || taskInclude.includes(ARTIFACT_PREFIX.UI_ANT))
     ? buildPreviousUiDocsFromPool(state.artifacts || [], task?.id || '')
     : '';
   if (previousDocs) {
@@ -246,7 +246,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   }
   
   // ✅ 4. Inject previously generated UI docs from pool (gated by task.include from decompose)
-  const freshPreviousDocs = (!freshTaskInclude || freshTaskInclude.includes(ARTIFACT_PREFIX.UI))
+  const freshPreviousDocs = (!freshTaskInclude || freshTaskInclude.includes(ARTIFACT_PREFIX.UI_ANT))
     ? buildPreviousUiDocsFromPool(state.artifacts || [], task?.id || '')
     : '';
   if (freshPreviousDocs) {
@@ -440,7 +440,7 @@ function buildPreviousUiDocsFromPool(
 ): string {
   if (!taskId.startsWith('ui-spec')) return '';
 
-  const uiDocs = selectArtifacts(pool, { include: [ARTIFACT_PREFIX.UI] });
+  const uiDocs = selectArtifacts(pool, { include: [ARTIFACT_PREFIX.UI_ANT] });
   let injectedDocs = '';
 
   for (const a of uiDocs) {

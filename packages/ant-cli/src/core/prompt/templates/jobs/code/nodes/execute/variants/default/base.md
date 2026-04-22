@@ -236,20 +236,10 @@ MODIFY: app/page.tsx - Add import and render new component
 - Build/dev verification is NOT your responsibility in feature tasks
 - Output `<done>true</done>` immediately
 
-{{#if hasUi}}
-### Visual Design Reference (on-demand)
-
-UI design documents are available at `outputs/design/ui/`. Use `read_file` to inspect sections relevant to your current task:
-- `outputs/design/ui/ui-tokens.json` — design tokens (colors, spacing, typography)
-- `outputs/design/ui/ui-assets.json` — asset inventory and mappings
-- `outputs/design/ui/ui-spec.json` — component specs and layout properties
-{{/if}}
-{{#if figmaAvailable}}
-### Figma Visual Reference
-
-Figma design file is available.{{#if figmaStartNodeId}} Target node: `{{figmaStartNodeId}}`.{{else}} Use `figma_get_metadata` with nodeId `0:1` to discover available pages and frames.{{/if}}
-Use `figma_get_design_context` and `figma_get_screenshot` to inspect visual details while implementing. Use `figma_get_variable_defs` to extract design tokens if needed.
-{{/if}}
+{{!-- Visual source guidance is dispatched via `ui-source-dispatch`
+     (auto-injected by AutoInjectionResolver for ui/design-system tasks).
+     The dispatcher renders per-UiSource interpretation rules — the duplicated
+     blocks that lived here have been removed (Phase 4-4). --}}
 
 {{/unless}}
 {{/if}}
@@ -296,12 +286,11 @@ Sub-role is determined by priority:
 - **Principle**: If `components` section is absent or incomplete, observe page `sections` in ui-spec for repeated UI patterns. Extract and generalize into shared components. This is a fallback — explicit `components` specs take precedence.
 - **Constraint**: Do NOT rely on task description for component inventory. The task description defines scope; the ui-spec defines WHAT to build.
 
-{{#if figmaAvailable}}
-**Figma available**: Use Figma MCP tools to supplement design document details.{{#if figmaStartNodeId}} Target node: `{{figmaStartNodeId}}`.{{else}} Use `figma_get_metadata` with nodeId `0:1` to discover available nodes.{{/if}}
-{{/if}}
+{{!-- Per-UiSource guidance is delivered via `ui-source-dispatch` above.
+     Keep only the taskType-level actions here. --}}
 
 {{#if hasUi}}
-**Actions:** Read ui-doc → implement token/component infrastructure → Output `<done>true</done>`
+**Actions:** Read the UI source (as described in the UI Source section above) → implement token/component infrastructure → Output `<done>true</done>`
 {{else}}
 **Actions:** Observe visual tier policies → derive and implement token infrastructure → Output `<done>true</done>`
 {{/if}}
@@ -322,13 +311,9 @@ Sub-role is determined by priority:
 **File organization**: Component files extracted from skeleton sections are within scope — same DOM elements, different file. The plan's `create` list specifies which extractions to perform.
 
 {{#if hasUi}}
-**Visual source**: Design tokens (ui-tokens.json) and layout properties (ui-spec.json). Token names, `visibleWhen` conditions, and `interactionStates` elements are all in scope.
-{{else}}
-{{#if figmaAvailable}}
-**Visual source**: Figma design file.{{#if figmaStartNodeId}} Start with node `{{figmaStartNodeId}}`.{{else}} Use `figma_get_metadata` with nodeId `0:1` to discover available pages and top-level frames first.{{/if}} Use `figma_get_design_context` to inspect node layout and properties. Use `figma_get_screenshot` for visual reference. Use `figma_get_variable_defs` to extract design tokens.
+**Visual source**: Interpreted per the UI Source section above (ant / figma / handoff). Apply the source-specific reading rules defined there.
 {{else}}
 **Visual source**: Visual hints recorded in the plan's analysis section. If the plan notes no hints found, apply CSS framework best practices.
-{{/if}}
 {{/if}}
 
 **Actions:** Read skeleton files → implement styles and component extractions per plan → Output `<done>true</done>`

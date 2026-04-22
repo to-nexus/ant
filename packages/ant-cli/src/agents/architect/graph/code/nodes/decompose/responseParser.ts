@@ -3,7 +3,7 @@ import { TaskQueue } from "../../../../types/task";
 import { CodeTask } from "../../../../types/task";
 import { extractErrorDetails, createErrorViolation } from "../_common/errorHandler";
 import { normalizeLanguage, normalizeFramework } from "../../../../../../utils/languageUtils";
-import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type ExecutionTierId, type SpecClarify } from '@ant/shared';
+import { ARTIFACT_PREFIX, BOUNDARY, type Boundary, type ExecutionTierId, type SpecClarify, type UiSource } from '@ant/shared';
 import { parseExecutionTierTag } from '../../../../../../core/executionTier';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { DEFAULT_TASK_TYPE } from '../../tasks/_shared/types';
@@ -85,12 +85,22 @@ type ArtifactPolicy = { refs?: string[]; context?: string[] };
  * development source by the RAC (see `ArtifactPoolView.activeSpecRefFilename`).
  * The decompose LLM does NOT select specs anymore — the choice is fixed
  * upstream by intent + action metadata.
+ *
+ * `uiSource` selects the interpretation branch for ui/design-system tasks:
+ *   - 'ant'     → honour `uiSections` to build a narrow subset of the canonical
+ *                 ui-tokens/assets/spec JSON pool.
+ *   - 'figma'   → ignore `uiSections`; inject the figma.json reference and
+ *                 defer real data to live MCP exploration at execute time.
+ *   - 'handoff' → ignore `uiSections` (handoff has no schema); inject the
+ *                 whole handoff bundle via wildcard.
+ * When undefined, fall back to 'ant' semantics for backward compatibility.
  */
 export function deriveArtifactPolicy(
   taskType: TaskType,
   packages?: string[],
   uiSections?: string[],
   activeSpecRefFilename?: string | null,
+  uiSource?: UiSource,
 ): ArtifactPolicy | undefined {
   // R1 — phase layer is blind to `task.type`. The predicate helpers below
   // take a `{ type }` shape so this function (which owns only the type
@@ -100,16 +110,24 @@ export function deriveArtifactPolicy(
   if (isVerificationTask(taskShape)) return undefined;
 
   if (isUiTask(taskShape) || isDesignSystemTask(taskShape)) {
+    const src: UiSource = uiSource ?? 'ant';
+    if (src === 'figma') {
+      return { context: [`${ARTIFACT_PREFIX.UI_FIGMA}figma.json`] };
+    }
+    if (src === 'handoff') {
+      return { context: [`${ARTIFACT_PREFIX.UI_HANDOFF}*`] };
+    }
+    // src === 'ant'
     const contextPaths: string[] = [];
     if (uiSections?.length) {
-      contextPaths.push(`${ARTIFACT_PREFIX.UI}tokens`);
+      contextPaths.push(`${ARTIFACT_PREFIX.UI_ANT}tokens`);
       for (const sec of uiSections) {
         if (sec === 'tokens') continue;
-        if (sec === 'assets') contextPaths.push(`${ARTIFACT_PREFIX.UI}assets`);
-        else contextPaths.push(`${ARTIFACT_PREFIX.UI_SPEC}${sec}`);
+        if (sec === 'assets') contextPaths.push(`${ARTIFACT_PREFIX.UI_ANT}assets`);
+        else contextPaths.push(`${ARTIFACT_PREFIX.UI_ANT_SPEC}${sec}`);
       }
     } else {
-      contextPaths.push(`${ARTIFACT_PREFIX.UI}*`);
+      contextPaths.push(`${ARTIFACT_PREFIX.UI_ANT}*`);
     }
     return contextPaths.length > 0 ? { context: contextPaths } : undefined;
   }
@@ -342,7 +360,11 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
  *   graph.ts checkTaskStatus() auto-adds final verification after the first error task completes
  *   as a safety net. Error tasks always delegate build verification to verification.
  */
-export function createTaskQueue(tasks: CodeTask[], activeSpecRefFilename?: string | null): {
+export function createTaskQueue(
+  tasks: CodeTask[],
+  activeSpecRefFilename?: string | null,
+  defaultUiSource?: UiSource,
+): {
   taskQueue: TaskQueue<CodeTask>;
   featureTasks: Map<string, CodeTask>;
 } {
@@ -412,9 +434,18 @@ export function createTaskQueue(tasks: CodeTask[], activeSpecRefFilename?: strin
     const uiSections: string[] | undefined = Array.isArray((task as any).uiSections) ? (task as any).uiSections : undefined;
     const packages: string[] | undefined = Array.isArray((task as any).packages) ? (task as any).packages : undefined;
 
+    // Resolve uiSource: explicit task field wins, otherwise inherit the pool-derived
+    // default from the decompose node. Only UI-related task types consume this field;
+    // everything else drops it. Kept undefined (not written) for non-UI tasks so the
+    // BaseTask.uiSource contract stays clean.
+    const explicitUiSource = typeof (task as any).uiSource === 'string' ? (task as any).uiSource as UiSource : undefined;
+    const inheritedUiSource = explicitUiSource ?? defaultUiSource;
+    const isUiRelated = isUiTask({ type: resolvedType }) || isDesignSystemTask({ type: resolvedType });
+    const uiSource: UiSource | undefined = isUiRelated ? inheritedUiSource : undefined;
+
     // artifactPolicy: role-annotated selection; include: flat backward-compat projection
     const explicitInclude: string[] | undefined = Array.isArray((task as any).include) ? (task as any).include : undefined;
-    const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, activeSpecRefFilename);
+    const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, activeSpecRefFilename, uiSource);
     const include = explicitInclude ?? flattenPolicyToInclude(artifactPolicy);
 
     const normalizedTask: CodeTask = {
@@ -429,6 +460,7 @@ export function createTaskQueue(tasks: CodeTask[], activeSpecRefFilename?: strin
       packages,
       include,
       artifactPolicy,
+      uiSource,
       exclusive: exclusive || undefined,
       parallelGroup,
     };

@@ -187,7 +187,7 @@ No elaboration. Move on.
 |-------------------|---------------------------|-----------------|
 | PRD | `rubric/PRD-RUBRIC.md` | `inputs/sources/prd.md` |
 | System Design | `rubric/SYSTEM-DESIGN-RUBRIC.md` | `outputs/design/system/api-contract-*.md`, `outputs/design/system/fe-system-*.md`, `outputs/design/system/be-system-*.md` |
-| UI Design | `rubric/UI-DESIGN_RUBRIC.md` | `outputs/design/ui/ui-spec.json`, `outputs/design/ui/ui-tokens.json`, `outputs/design/ui/ui-assets.json` |
+| UI Design | `rubric/UI-DESIGN_RUBRIC.md` | `outputs/design/ui/ant/ui-spec.json`, `outputs/design/ui/ant/ui-tokens.json`, `outputs/design/ui/ant/ui-assets.json` |
 | Code | `rubric/CODE-RUBRIC.md` | generated codebase |
 
 ### Scope Resolution

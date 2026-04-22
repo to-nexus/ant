@@ -11,7 +11,7 @@ import { WorkspaceState } from './types';
 import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
 import { MemoryPort } from '../../../../../core/ports';
 import { isTemplateContent } from '../../../../../core/utils/templateDetector';
-import { migrateFigmaConfig, isFigmaDataPopulated } from '@ant/shared';
+import { migrateFigmaConfig, isFigmaDataPopulated, FIGMA_CONFIG_PATH } from '@ant/shared';
 
 /**
  * Count files in a directory (non-recursive by default)
@@ -147,9 +147,11 @@ export async function analyzeWorkspace(
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check Figma config (inputs/figma.json with populated files)
+  // Check Figma workfile reference (outputs/design/ui/figma/figma.json).
+  // `hasFigmaConfig` reflects workfile presence only — MCP reachability is
+  // NOT checked here (that lives in code resolve's `detectFigmaSource`).
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const figmaJsonPath = path.join(featurePath, 'inputs', 'figma.json');
+  const figmaJsonPath = path.join(featurePath, FIGMA_CONFIG_PATH);
   if (fs.existsSync(figmaJsonPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(figmaJsonPath, 'utf-8'));
@@ -159,7 +161,7 @@ export async function analyzeWorkspace(
       // Invalid JSON — treat as no config
     }
   }
-  console.log(`🎨 [WorkspaceAnalyzer] Figma config: ${state.hasFigmaConfig ? 'configured' : 'none'}`);
+  console.log(`🎨 [WorkspaceAnalyzer] Figma workfile: ${state.hasFigmaConfig ? 'configured' : 'none'}`);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Check assets

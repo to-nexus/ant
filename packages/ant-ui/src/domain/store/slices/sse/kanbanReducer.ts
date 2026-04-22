@@ -45,6 +45,12 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
   if (data.phaseTokenUsages === undefined && existingKanban?.phaseTokenUsages !== undefined) {
     data = { ...data, phaseTokenUsages: existingKanban.phaseTokenUsages };
   }
+  // Preserve currentPhaseTokenUsage when incoming update omits it, so the
+  // chat input context gauge retains the last known value during idle periods
+  // (between turns, when the kanban broadcaster has no LLM call to snapshot).
+  if (data.currentPhaseTokenUsage === undefined && existingKanban?.currentPhaseTokenUsage !== undefined) {
+    data = { ...data, currentPhaseTokenUsage: existingKanban.currentPhaseTokenUsage };
+  }
 
   const kanbanJobId = data.jobId;
   const { selectedProject, selectedFeature } = state;

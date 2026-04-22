@@ -116,7 +116,17 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
     ],
     refMediaHints: ['text'],
   },
-  'gen-code-directive': { policies: [], refMediaHints: ['text'] },
+  'gen-code-directive': {
+    policies: [],
+    // UI source context is now selectable for directive-only code jobs too
+    // (matches action-config-matrix's `uiSourceCtx()` slot). Keep the
+    // conditional so the policy fires only when the user actually selects
+    // a UiSource — directive-only jobs without UI input must not receive it.
+    conditionalPolicies: [
+      { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
+    ],
+    refMediaHints: ['text'],
+  },
   'rev-code': {
     policies: [],
     conditionalPolicies: [

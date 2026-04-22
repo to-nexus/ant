@@ -23,7 +23,7 @@ import { learn } from '../nodes/learn';
 import type { WorkerGraphBuilder } from '../../../../common/graph/parallelTypes';
 import { routeAfterDocGen } from '../routers/docGenRouter';
 import { FigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
-import { designSubdirOf } from '@ant/shared';
+import { designDirOf } from '@ant/shared';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -168,8 +168,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     const taskForMarkers = state.currentTask as any;
     if (taskForMarkers?.isLastTaskForDocument && taskForMarkers?.targetFile && state.deps?.fileSystem && state.context?.featurePath) {
       try {
-        const subdir = designSubdirOf(taskForMarkers.targetFile);
-        const filePath = path.join(state.context.featurePath, 'outputs', 'design', subdir, taskForMarkers.targetFile);
+        const filePath = path.join(state.context.featurePath, designDirOf(taskForMarkers.targetFile), taskForMarkers.targetFile);
         const fs = state.deps.fileSystem as any;
         const content = await fs.readFile(filePath);
         const cleaned = (content as string).replace(INTERNAL_MARKER_RE, '');

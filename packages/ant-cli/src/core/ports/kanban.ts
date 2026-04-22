@@ -78,6 +78,16 @@ export interface TaskQueueUpdatePort {
   updatePhaseTokenUsages?(phases: PhaseTokenUsage[]): void;
 
   /**
+   * Set the latest-LLM-call snapshot for the currently-running graph node.
+   * Unlike `updatePhaseTokenUsages` (cumulative history per node), this is a single
+   * snapshot overwritten on each LLM call — used by the chat input context-gauge
+   * to show current context fullness (input+output / CONTEXT_WINDOW_MAX_TOKENS).
+   * Broadcasting immediately during running phases; idle FE retains last value
+   * via the kanban reducer's "undefined = preserve" rule.
+   */
+  updateCurrentPhaseTokenUsage?(snapshot: PhaseTokenUsage): void;
+
+  /**
    * Update a single in-progress task's token usage and re-broadcast.
    * Designed for parallel workers that only know their own task's tokens.
    * Uses the broadcaster's cached task lists from the last updateTaskQueue call.

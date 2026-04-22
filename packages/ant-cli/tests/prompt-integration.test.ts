@@ -74,11 +74,11 @@ describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', ()
   it('ui task → only UI docs selected', () => {
     const pool: ResolvedArtifact[] = [
       { path: 'outputs/design/system/fe-system-main.md', content: 'FE design', role: 'ref' },
-      { path: 'outputs/design/ui/tokens', content: '{ "colors": {} }', role: 'context' },
-      { path: 'outputs/design/ui/spec/header', content: 'Header spec', role: 'context' },
+      { path: 'outputs/design/ui/ant/tokens', content: '{ "colors": {} }', role: 'context' },
+      { path: 'outputs/design/ui/ant/spec/header', content: 'Header spec', role: 'context' },
     ];
     const selected = selectArtifacts(pool, { taskType: 'ui' });
-    expect(selected.every(a => a.path.startsWith('outputs/design/ui/'))).toBe(true);
+    expect(selected.every(a => a.path.startsWith('outputs/design/ui/ant/'))).toBe(true);
     expect(selected.length).toBeGreaterThan(0);
   });
 

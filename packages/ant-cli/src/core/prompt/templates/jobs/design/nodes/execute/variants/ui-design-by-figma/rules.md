@@ -76,7 +76,7 @@ The documents you generate serve different authority levels in code implementati
 
 **Example:**
 ```xml
-<file path="outputs/design/ui/ui-spec.json">
+<file path="outputs/design/ui/ant/ui-spec.json">
 {
   ... existing content unchanged ...,
   "components": {
@@ -136,7 +136,7 @@ Use `<file>` tag:
 
 **For JSON files (ui-tokens.json, ui-assets.json):**
 ```xml
-<file path="outputs/design/ui/ui-tokens.json">
+<file path="outputs/design/ui/ant/ui-tokens.json">
 {
   "colors": { ... },
   "typography": { ... }
@@ -146,7 +146,7 @@ Use `<file>` tag:
 
 **For ui-spec.json:**
 ```xml
-<file path="outputs/design/ui/ui-spec.json">
+<file path="outputs/design/ui/ant/ui-spec.json">
 {
   "layout": { ... },
   "sections": {
@@ -173,7 +173,7 @@ Use `<append>` tag:
 
 **For JSON files (ui-tokens.json, ui-assets.json):**
 ```xml
-<append path="outputs/design/ui/ui-tokens.json">
+<append path="outputs/design/ui/ant/ui-tokens.json">
 {
   "newCategory": { ... }
 }
@@ -183,7 +183,7 @@ The system will automatically merge this into the existing JSON.
 
 **For ui-spec.json:**
 ```xml
-<append path="outputs/design/ui/ui-spec.json">
+<append path="outputs/design/ui/ant/ui-spec.json">
 {
   "sections": {
     "newSection": { ... }
@@ -193,10 +193,10 @@ The system will automatically merge this into the existing JSON.
 ```
 
 **Examples**:
-- `ui-tokens-ch1` or `ui-tokens` → Use `<file path="outputs/design/ui/ui-tokens.json">` (JSON format)
-- `ui-tokens-ch2` → Use `<append path="outputs/design/ui/ui-tokens.json">` (merge into existing JSON)
-- `ui-assets-ch2` → Use `<append path="outputs/design/ui/ui-assets.json">` (merge into existing JSON)
-- `ui-spec-ch3` → Use `<append path="outputs/design/ui/ui-spec.json">` (merge into existing JSON)
+- `ui-tokens-ch1` or `ui-tokens` → Use `<file path="outputs/design/ui/ant/ui-tokens.json">` (JSON format)
+- `ui-tokens-ch2` → Use `<append path="outputs/design/ui/ant/ui-tokens.json">` (merge into existing JSON)
+- `ui-assets-ch2` → Use `<append path="outputs/design/ui/ant/ui-assets.json">` (merge into existing JSON)
+- `ui-spec-ch3` → Use `<append path="outputs/design/ui/ant/ui-spec.json">` (merge into existing JSON)
 
 {{/if}}
 {{/if}}
@@ -214,20 +214,20 @@ The system will automatically merge this into the existing JSON.
 
 ```xml
 <!-- WRONG: Using <file> for chapter 2 -->
-<file path="outputs/design/ui/ui-tokens.json">  ← Will OVERWRITE existing content!
+<file path="outputs/design/ui/ant/ui-tokens.json">  ← Will OVERWRITE existing content!
 
 <!-- WRONG: Wrong path -->
 <file path="inputs/sources/ui-tokens.json">
 
 <!-- WRONG: Creating separate files per chapter -->
-<file path="outputs/design/ui/ui-tokens-ch2.json">  ← All chapters go to same file!
+<file path="outputs/design/ui/ant/ui-tokens-ch2.json">  ← All chapters go to same file!
 ```
 
 ### ✅ CORRECT
 
 ```xml
 <!-- Task: ui-tokens-ch1 (FIRST) -->
-<file path="outputs/design/ui/ui-tokens.json">
+<file path="outputs/design/ui/ant/ui-tokens.json">
 {
   "colors": {
     "primary": { "blue": "#1E40AF" },
@@ -239,7 +239,7 @@ The system will automatically merge this into the existing JSON.
 
 ```xml
 <!-- Task: ui-tokens-ch2 (CONTINUATION) - merge into existing JSON -->
-<append path="outputs/design/ui/ui-tokens.json">
+<append path="outputs/design/ui/ant/ui-tokens.json">
 {
   "typography": {
     "heading": { "family": "Inter, sans-serif", "xl": { "size": "48px", "weight": 700 } }
@@ -250,7 +250,7 @@ The system will automatically merge this into the existing JSON.
 
 ```xml
 <!-- Task: ui-tokens-ch3 (CONTINUATION) -->
-<append path="outputs/design/ui/ui-tokens.json">
+<append path="outputs/design/ui/ant/ui-tokens.json">
 {
   "spacing": { "sm": "8px", "md": "16px", "lg": "24px" }
 }

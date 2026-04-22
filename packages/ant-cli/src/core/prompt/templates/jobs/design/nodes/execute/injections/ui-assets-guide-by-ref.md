@@ -99,7 +99,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 ### Example Output
 
 ```xml
-<file path="outputs/design/ui/ui-assets.json">
+<file path="outputs/design/ui/ant/ui-assets.json">
 {
   "_meta": {
     "pathPattern": { "icons": "src/assets/icons/", "images": "public/images/" }

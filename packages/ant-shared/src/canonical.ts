@@ -43,6 +43,9 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'outputs',                           visibility: 'internal' },
   { path: 'outputs/design',                    visibility: 'ui:outputs' },
   { path: 'outputs/design/ui',                 visibility: 'internal' },
+  { path: 'outputs/design/ui/ant',             visibility: 'internal' },
+  { path: 'outputs/design/ui/figma',           visibility: 'internal' },
+  { path: 'outputs/design/ui/handoff',         visibility: 'internal' },
   { path: 'outputs/design/system',             visibility: 'internal' },
   { path: 'outputs/design/spec',               visibility: 'internal' },
   { path: 'outputs/evals',                     visibility: 'ui:outputs' },
@@ -75,8 +78,16 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
 // ============================================
 
 const CANONICAL_FILE_DEFS: ReadonlyArray<CanonicalFileDef> = [
-  { path: 'inputs/figma.json', visibility: 'ui:inputs' },
+  { path: 'outputs/design/ui/figma/figma.json', visibility: 'internal' },
 ];
+
+/**
+ * Canonical path for the figma workfile reference (URL + fileKey + nodeId metadata).
+ * This file holds ONLY the reference to the Figma workfile; it never stores
+ * any exploration output. design job consumes it to produce ant-ui artifacts
+ * at `outputs/design/ui/ant/`, and code job consumes it at runtime via MCP.
+ */
+export const FIGMA_CONFIG_PATH = 'outputs/design/ui/figma/figma.json' as const;
 
 // ============================================
 // Derived: full canonical path lists
@@ -140,7 +151,7 @@ export const DESIGN_DIR = 'outputs/design' as const;
 
 /**
  * Determine which design subdirectory a file belongs to based on filename.
- *   ui-*.json       → 'ui'
+ *   ui-*.json       → 'ui' (will be placed under ui/ant/)
  *   spec-*.md       → 'spec'
  *   everything else → 'system'  (be-system-*, fe-system-*, api-contract-*)
  */
@@ -152,11 +163,30 @@ export function designSubdirOf(filename: string): DesignSubdir {
 
 /**
  * Build the design output directory path for a given filename.
- * Returns e.g. 'outputs/design/system' or 'outputs/design/ui'.
+ * Returns e.g. 'outputs/design/system' or 'outputs/design/ui/ant' (ui-*.json files live under the ant canonical source).
  */
 export function designDirOf(filename: string): string {
-  return `${DESIGN_DIR}/${designSubdirOf(filename)}`;
+  const sub = designSubdirOf(filename);
+  if (sub === 'ui') return `${DESIGN_DIR}/ui/ant`;
+  return `${DESIGN_DIR}/${sub}`;
 }
+
+// ============================================
+// UiSource — three exclusive kinds of UI design input
+// ============================================
+
+/**
+ * A `UiSource` is the abstract category of UI design input a code/design job
+ * consumes. Exactly one source is chosen per job:
+ *   - 'ant'     — canonical ant artifacts (ui-tokens/assets/spec.json)
+ *   - 'figma'   — figma workfile reference (figma.json + live MCP exploration)
+ *   - 'handoff' — free-form handoff file bundle (html/css/md/json/png...)
+ *
+ * `hasUi()` on `ArtifactPoolView` answers "is ANY UiSource present" — the
+ * per-source interpretation is dispatched from prompts based on `uiSource`.
+ */
+export const UI_SOURCES = ['ant', 'figma', 'handoff'] as const;
+export type UiSource = typeof UI_SOURCES[number];
 
 // ============================================
 // Artifact path prefixes (for ArtifactPoolView matching)
@@ -165,14 +195,40 @@ export function designDirOf(filename: string): string {
 export const ARTIFACT_PREFIX = {
   SYSTEM_DESIGN: `${DESIGN_DIR}/system/` as const,
   SPEC: `${DESIGN_DIR}/spec/` as const,
+  /**
+   * Parent UI directory — union of all three UiSource subdirectories below.
+   * `isUiArtifactPath()` should not match on this alone; it must match on one
+   * of UI_ANT / UI_FIGMA / UI_HANDOFF.
+   */
   UI: `${DESIGN_DIR}/ui/` as const,
-  UI_SPEC: `${DESIGN_DIR}/ui/spec/` as const,
+  UI_ANT: `${DESIGN_DIR}/ui/ant/` as const,
+  UI_FIGMA: `${DESIGN_DIR}/ui/figma/` as const,
+  UI_HANDOFF: `${DESIGN_DIR}/ui/handoff/` as const,
+  /**
+   * Virtual prefix for ui-spec.json sections: `${UI_ANT_SPEC}header` etc.
+   * The on-disk file is `outputs/design/ui/ant/ui-spec.json` (single file); the
+   * pool exposes each parsed section under this synthetic path so task
+   * artifactPolicy can reference specific sections.
+   */
+  UI_ANT_SPEC: `${DESIGN_DIR}/ui/ant/spec/` as const,
   DESIGN: `${DESIGN_DIR}/` as const,
   SOURCES: 'inputs/sources' as const,
   API_CONTRACT: `${DESIGN_DIR}/system/api-contract-` as const,
   FE_SYSTEM: `${DESIGN_DIR}/system/fe-system-` as const,
   BE_SYSTEM: `${DESIGN_DIR}/system/be-system-` as const,
 } as const;
+
+/**
+ * Classify a path into its `UiSource`. Returns null if the path is not under
+ * the UI tree. Paths under `outputs/design/ui/ant/spec/...` map to 'ant' too
+ * (the UI_ANT_SPEC virtual prefix is a subset of UI_ANT).
+ */
+export function uiSourceOfPath(path: string): UiSource | null {
+  if (path.startsWith(ARTIFACT_PREFIX.UI_ANT)) return 'ant';
+  if (path.startsWith(ARTIFACT_PREFIX.UI_FIGMA)) return 'figma';
+  if (path.startsWith(ARTIFACT_PREFIX.UI_HANDOFF)) return 'handoff';
+  return null;
+}
 
 // ============================================
 // Boundary classification (inter-job context bridge)

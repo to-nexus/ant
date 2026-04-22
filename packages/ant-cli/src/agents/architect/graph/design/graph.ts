@@ -26,7 +26,7 @@ import {
   saveOrchestratorFailures,
 } from './session/checkpoint';
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
-import { designSubdirOf } from "@ant/shared";
+import { designDirOf } from "@ant/shared";
 import path from "node:path";
 import { toFeatureRelative, appendOrUpdatePool, scanDesignOutputs } from '../../../../core/prompt/builder/ArtifactPipeline';
 
@@ -38,8 +38,8 @@ async function stripInternalMarkers(
   targetFile: string,
 ): Promise<void> {
   try {
-    const subdir = designSubdirOf(targetFile);
-    const filePath = path.join(featurePath, 'outputs', 'design', subdir, targetFile);
+    const dir = designDirOf(targetFile);
+    const filePath = path.join(featurePath, dir, targetFile);
     const content = await fileSystem.readFile(filePath);
     const cleaned = content.replace(INTERNAL_MARKER_RE, '');
     if (cleaned !== content) {
@@ -73,9 +73,7 @@ async function validateAssetReferences(state: DesignGraphState): Promise<{
   const featurePath = state.context.featurePath;
   const fs = await import('fs/promises');
 
-  const uiSubdirPath = path.join(featurePath, 'outputs', 'design', 'ui', 'ui-assets.json');
-  const uiFlatPath = path.join(featurePath, 'outputs', 'design', 'ui-assets.json');
-  const uiAssetsPath = await fs.access(uiSubdirPath).then(() => uiSubdirPath).catch(() => uiFlatPath);
+  const uiAssetsPath = path.join(featurePath, 'outputs', 'design', 'ui', 'ant', 'ui-assets.json');
   try {
     const content = await fs.readFile(uiAssetsPath, 'utf-8');
     const parsed = JSON.parse(content);

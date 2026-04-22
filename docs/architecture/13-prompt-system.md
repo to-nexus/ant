@@ -227,7 +227,7 @@ RAC 기반 주입도 Tier D에 포함:
 1. `prompt-policy-matrix`에서 해당 intent의 `conditionalPolicies` 조회
 2. `action-config-matrix`의 슬롯과 교차 — `slotPath`에 매칭되는 슬롯이 있고, 해당 경로로 시작하는 아티팩트가 실제로 존재하면 정책 적용
 
-예: `gen-code-sys` intent + `outputs/design/ui` 경로에 UI 설계 문서가 있으면 → `ui-design-policy` 주입.
+예: `gen-code-sys` intent + `outputs/design/ui/ant` 경로에 UI 설계 문서가 있으면 → `ui-design-policy` 주입. 세 UiSource 별 해석 규약은 `ui-source-dispatch` 를 통해 `ui-source-{ant,figma,handoff}.md` 중 하나로 라우팅된다.
 
 ## ArtifactRoleResolver
 

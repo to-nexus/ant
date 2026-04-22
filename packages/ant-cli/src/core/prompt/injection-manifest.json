@@ -18,7 +18,10 @@
     "text-format-compact": [],
     "tool-calling-rules-compact": [],
     "system-design-guide": [],
-    "ui-design-guide": [],
+    "ui-source-ant": [],
+    "ui-source-figma": ["figmaFileKey", "figmaStartNodeId"],
+    "ui-source-handoff": [],
+    "ui-source-dispatch": ["uiSource"],
     "batch-execution": [],
     "batch-gather": [],
     "plan-tools-batch": [],
@@ -37,6 +40,9 @@
     "missing-dependency-fix": [],
     "port-management": [],
     "backend-safety": []
+  },
+  "jobs/code/nodes/plan/injections": {
+    "ui-source-inventory": ["uiSource", "taskType"]
   },
   "jobs/design/base/injections": {
     "document-language": ["userLanguage"],

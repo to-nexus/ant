@@ -25,8 +25,8 @@ describe('selectArtifactsWithPolicy', () => {
     artifact('inputs/sources', 'context', 'prd content'),
     artifact('outputs/design/system/fe-system-main.md', 'ref', 'fe design'),
     artifact('outputs/design/system/api-contract-auth.md', 'ref', 'api contract'),
-    artifact('outputs/design/ui/tokens', 'context', 'ui tokens'),
-    artifact('outputs/design/ui/spec/header', 'context', 'header spec'),
+    artifact('outputs/design/ui/ant/tokens', 'context', 'ui tokens'),
+    artifact('outputs/design/ui/ant/spec/header', 'context', 'header spec'),
   ];
 
   it('refs 패턴에 매칭되는 아티팩트를 role=ref로 반환', () => {
@@ -94,9 +94,9 @@ describe('flattenPolicyToInclude', () => {
   it('refs+context를 하나의 string[]로 합침', () => {
     const result = flattenPolicyToInclude({
       refs: ['outputs/design/spec/'],
-      context: ['outputs/design/ui/'],
+      context: ['outputs/design/ui/ant/'],
     });
-    expect(result).toEqual(['outputs/design/spec/', 'outputs/design/ui/']);
+    expect(result).toEqual(['outputs/design/spec/', 'outputs/design/ui/ant/']);
   });
 
   it('undefined 입력이면 undefined 반환', () => {
@@ -153,33 +153,38 @@ describe('appendOrUpdatePool role conflict', () => {
 });
 
 // ---------------------------------------------------------------------------
-// ArtifactPoolView.hasUi / ui — nested + flat-path fallback
+// ArtifactPoolView.hasUi / ui — three UiSource subdirectories
 // ---------------------------------------------------------------------------
 
 describe('ArtifactPoolView UI detection', () => {
-  it('인정: nested outputs/design/ui/ 경로 (canonical)', () => {
+  it('인정: outputs/design/ui/ant/ 경로 (ant canonical)', () => {
     const pool = [
-      artifact('outputs/design/ui/ui-tokens.json'),
-      artifact('outputs/design/ui/ui-spec.json'),
+      artifact('outputs/design/ui/ant/ui-tokens.json'),
+      artifact('outputs/design/ui/ant/ui-spec.json'),
     ];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(true);
     expect(view.ui).toHaveLength(2);
+    expect(view.uiSource()).toBe('ant');
   });
 
-  it('인정: flat outputs/design/ui-*.json 폴백 (design graph의 uiFlatPath)', () => {
+  it('인정: outputs/design/ui/figma/figma.json', () => {
+    const pool = [artifact('outputs/design/ui/figma/figma.json')];
+    const view = new ArtifactPoolView(pool);
+    expect(view.hasUi()).toBe(true);
+    expect(view.uiSource()).toBe('figma');
+  });
+
+  it('인정: outputs/design/ui/handoff/** (임의 파일)', () => {
     const pool = [
-      artifact('outputs/design/ui-tokens.json'),
-      artifact('outputs/design/ui-assets.json'),
-      artifact('outputs/design/ui-spec.json'),
+      artifact('outputs/design/ui/handoff/page.html'),
+      artifact('outputs/design/ui/handoff/styles.css'),
+      artifact('outputs/design/ui/handoff/notes.md'),
     ];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(true);
-    expect(view.ui.map(a => a.path).sort()).toEqual([
-      'outputs/design/ui-assets.json',
-      'outputs/design/ui-spec.json',
-      'outputs/design/ui-tokens.json',
-    ]);
+    expect(view.ui).toHaveLength(3);
+    expect(view.uiSource()).toBe('handoff');
   });
 
   it('거부: outputs/design/system 같은 비-ui 경로', () => {
@@ -190,51 +195,57 @@ describe('ArtifactPoolView UI detection', () => {
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(false);
     expect(view.ui).toEqual([]);
+    expect(view.uiSource()).toBeNull();
   });
 
   it('거부: design 외부에 ui- 접두가 있어도 UI로 분류하지 않음', () => {
+    const pool = [artifact('inputs/sources/ui-brainstorm.md')];
+    const view = new ArtifactPoolView(pool);
+    expect(view.hasUi()).toBe(false);
+  });
+
+  it('거부: legacy 평탄 경로 outputs/design/ui-*.json 은 더 이상 UI로 매치되지 않음', () => {
     const pool = [
-      artifact('inputs/sources/ui-brainstorm.md'),
+      artifact('outputs/design/ui-tokens.json'),
+      artifact('outputs/design/ui-assets.json'),
     ];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(false);
   });
 
-  it('nested + flat 혼재도 모두 수거', () => {
+  it('uiSource(): 두 UiSource 혼합이면 throw (hard-exclusive invariant)', () => {
     const pool = [
-      artifact('outputs/design/ui/ui-tokens.json'),
-      artifact('outputs/design/ui-assets.json'),
-      artifact('outputs/design/system/fe-system-main.md'),
+      artifact('outputs/design/ui/ant/ui-tokens.json'),
+      artifact('outputs/design/ui/figma/figma.json'),
     ];
     const view = new ArtifactPoolView(pool);
-    expect(view.hasUi()).toBe(true);
-    expect(view.ui).toHaveLength(2);
+    expect(() => view.uiSource()).toThrow(/mixed UI sources/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// selectArtifacts task-type defaults — ui/design-system flat-path
+// selectArtifacts task-type defaults — ui/design-system under ant
 // ---------------------------------------------------------------------------
 
 describe('selectArtifacts ui/design-system default', () => {
-  it('flat-path UI 문서도 ui 태스크 기본 선택에 포함', () => {
+  it('ant 하위 UI 문서가 ui 태스크 기본 선택에 포함', () => {
     const candidates = [
-      artifact('outputs/design/ui/ui-tokens.json'),
-      artifact('outputs/design/ui-assets.json'),
+      artifact('outputs/design/ui/ant/ui-tokens.json'),
+      artifact('outputs/design/ui/ant/ui-assets.json'),
       artifact('outputs/design/system/fe-system-main.md'),
     ];
     const selected = selectArtifacts(candidates, { taskType: 'ui' });
     const paths = selected.map(a => a.path).sort();
     expect(paths).toEqual([
-      'outputs/design/ui-assets.json',
-      'outputs/design/ui/ui-tokens.json',
+      'outputs/design/ui/ant/ui-assets.json',
+      'outputs/design/ui/ant/ui-tokens.json',
     ]);
   });
 
   it('design-system 태스크도 동일 규칙', () => {
     const candidates = [
-      artifact('outputs/design/ui/ui-spec.json'),
-      artifact('outputs/design/ui-tokens.json'),
+      artifact('outputs/design/ui/ant/ui-spec.json'),
+      artifact('outputs/design/ui/ant/ui-tokens.json'),
     ];
     const selected = selectArtifacts(candidates, { taskType: 'design-system' });
     expect(selected).toHaveLength(2);

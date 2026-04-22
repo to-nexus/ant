@@ -32,7 +32,7 @@ export function createExplainTask(state: DesignGraphState): DesignTask {
     priority: 200,
     targetFile: isUi ? 'ui-spec.json' : 'be-system-main.md',
     include: isUi
-      ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI]
+      ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT]
       : [ARTIFACT_PREFIX.SOURCES],
     description: state.directive || 'Analyze and explain the design documents',
   };

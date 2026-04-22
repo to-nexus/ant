@@ -214,10 +214,10 @@ export async function decomposeUiDesign(
         priority: task.priority,
         description: task.description,
         sourceFiles: sf.length > 0 ? sf : undefined,
-        include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI],
+        include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT],
         artifactPolicy: {
           refs: [ARTIFACT_PREFIX.SOURCES],
-          context: [ARTIFACT_PREFIX.UI],
+          context: [ARTIFACT_PREFIX.UI_ANT],
         },
         completed: false,
         targetFile: task.targetFile,
