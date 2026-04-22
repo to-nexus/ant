@@ -11,7 +11,7 @@ import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent, ChatSession } from '../chat/types';
 import type { FileOperationPhase } from './types';
 import { logger } from '../../utils/logger';
-import { getTraceAppender } from './traceAppenderRegistry';
+import { getChatLogAppender } from './chatLogAppenderRegistry';
 
 export class FileOperationHandler {
   constructor(
@@ -129,60 +129,13 @@ export class FileOperationHandler {
       await this.addNewFileOperation(session, operation, filePath, phase, options);
     }
 
-    // Terminal phases (complete / failed) are the SSOT for the chat log
-    // `file_write` emission — chat SSE and the durable chat log share one
-    // call site. Also emits a `chat_status` line carrying the same
-    // `(statusType, metadata)` the live path used so replay reproduces
-    // the card via `generateChatStatusContent` without a separate builder.
+    // Terminal phases (complete / failed) emit a `chat_status` line
+    // carrying the same `(statusType, metadata)` the live path used so
+    // replay reproduces the FileCard via `generateChatStatusContent`
+    // without a separate builder.
     if (phase === 'complete' || phase === 'failed') {
-      this.emitFileWriteTrace(operation, filePath, phase, options);
       this.emitFileChatStatus(operation, filePath, phase, options);
     }
-  }
-
-  /**
-   * Mirror a terminal file-op onto the chat log as a legacy
-   * `file_write` line. Fire-and-forget — the appender internally swallows
-   * I/O errors so chat streaming is never blocked. Skips when the trace
-   * appender is not initialised (tests, processes without a recorded
-   * user_turn).
-   *
-   * This path stays wired during the migration so pre-existing feature
-   * folders (whose readers depend on `file_write`) keep rendering. A
-   * follow-up commit removes it once the chat_status path has soaked.
-   */
-  private emitFileWriteTrace(
-    operation: 'edit' | 'create' | 'delete',
-    filePath: string,
-    phase: FileOperationPhase,
-    options?: {
-      content?: string;
-      diffBefore?: string;
-      diffAfter?: string;
-      error?: string;
-    },
-  ): void {
-    const appender = getTraceAppender();
-    if (!appender) return;
-    const traceOp: 'create' | 'update' | 'delete' =
-      operation === 'edit' ? 'update' : operation;
-    const payload: {
-      content?: string;
-      diffBefore?: string;
-      diffAfter?: string;
-      error?: string;
-    } = {};
-    if (phase === 'failed') {
-      payload.error = options?.error;
-    } else {
-      if (operation === 'create' || operation === 'delete') {
-        payload.content = options?.content;
-      } else {
-        payload.diffBefore = options?.diffBefore;
-        payload.diffAfter = options?.diffAfter;
-      }
-    }
-    appender.appendFileWrite(traceOp, filePath, payload);
   }
 
   /**
@@ -204,7 +157,7 @@ export class FileOperationHandler {
       error?: string;
     },
   ): void {
-    const appender = getTraceAppender();
+    const appender = getChatLogAppender();
     if (!appender) return;
     const statusType =
       phase === 'failed'

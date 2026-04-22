@@ -23,7 +23,7 @@ export interface ResetFeatureContextResponse {
 /**
  * Hard Reset the feature context (§17 hard_reset).
  *
- * Collapses every prior line in `feature.jsonl` and `trace.jsonl` and appends
+ * Collapses every prior line in `feature.jsonl` and `chat.jsonl` and appends
  * a `user_reset` boundary line to `feature.jsonl`. Original lines stay on
  * disk with `collapsed=true` for audit / recovery; the UI reads them as
  * empty after reset.

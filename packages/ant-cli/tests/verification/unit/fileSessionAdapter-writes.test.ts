@@ -23,7 +23,7 @@ import * as os from 'os';
 import { FileSessionAdapter } from '../../../src/periphery/adapters/session/FileSessionAdapter';
 import {
   getFeatureJsonlPath,
-  getTraceJsonlPath,
+  getChatJsonlPath,
 } from '../../../src/core/utils/sessionPaths';
 import type {
   FeatureUserTurnLine,
@@ -31,7 +31,7 @@ import type {
   FeatureBoundaryLine,
   FeatureBreadcrumbLine,
   FeatureLine,
-  TraceLine,
+  ChatLine,
 } from '@ant/shared';
 
 async function readJsonl<T = any>(filePath: string): Promise<T[]> {
@@ -54,7 +54,7 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ant-fsa-writes-'));
     adapter = new FileSessionAdapter(tmpDir, 'architect', 'proj', 'feat');
     featurePath = getFeatureJsonlPath(tmpDir);
-    tracePath = getTraceJsonlPath(tmpDir);
+    tracePath = getChatJsonlPath(tmpDir);
   });
 
   afterEach(async () => {
@@ -66,7 +66,7 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
   // appendUserTurn
   // ─────────────────────────────────────────────────────────────────────
 
-  it('appendUserTurn writes to both feature.jsonl and trace.jsonl by default', async () => {
+  it('appendUserTurn writes to both feature.jsonl and chat.jsonl by default', async () => {
     const line: FeatureUserTurnLine = {
       type: 'user_turn',
       ts: '2026-04-20T00:00:01Z',
@@ -79,13 +79,13 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
     await adapter.appendUserTurn(line);
 
     const featureLines = await readJsonl<FeatureLine>(featurePath);
-    const traceLines = await readJsonl<TraceLine>(tracePath);
+    const chatLines = await readJsonl<ChatLine>(tracePath);
 
     expect(featureLines).toHaveLength(1);
     expect(featureLines[0]).toMatchObject({ type: 'user_turn', turnId: 't-001', text: 'hello' });
 
-    expect(traceLines).toHaveLength(1);
-    expect(traceLines[0]).toMatchObject({
+    expect(chatLines).toHaveLength(1);
+    expect(chatLines[0]).toMatchObject({
       type: 'user_turn',
       turnId: 't-001',
       text: 'hello',
@@ -93,7 +93,7 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
     });
   });
 
-  it('appendUserTurn with skipFeature=true writes only trace.jsonl and uses ask-only sourceRef', async () => {
+  it('appendUserTurn with skipFeature=true writes only chat.jsonl and uses ask-only sourceRef', async () => {
     const line: FeatureUserTurnLine = {
       type: 'user_turn',
       ts: '2026-04-20T00:00:02Z',
@@ -105,15 +105,15 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
     await adapter.appendUserTurn(line, { skipFeature: true });
 
     const featureLines = await readJsonl<FeatureLine>(featurePath);
-    const traceLines = await readJsonl<TraceLine>(tracePath);
+    const chatLines = await readJsonl<ChatLine>(tracePath);
 
     expect(featureLines).toHaveLength(0);
-    expect(traceLines).toHaveLength(1);
-    expect(traceLines[0]).toMatchObject({ sourceRef: 'ask-only', turnId: 't-ask' });
+    expect(chatLines).toHaveLength(1);
+    expect(chatLines[0]).toMatchObject({ sourceRef: 'ask-only', turnId: 't-ask' });
   });
 
-  it('appendUserTurn does NOT collapse feature.jsonl when trace.jsonl append fails (non-ask)', async () => {
-    // Force trace.jsonl append to fail at the filesystem level by pre-creating
+  it('appendUserTurn does NOT collapse feature.jsonl when chat.jsonl append fails (non-ask)', async () => {
+    // Force chat.jsonl append to fail at the filesystem level by pre-creating
     // the path as a DIRECTORY — `fs.appendFile` will then raise EISDIR. This
     // avoids spying on ESM `fs/promises` exports (vitest limitation).
     await fs.mkdir(path.dirname(tracePath), { recursive: true });
@@ -140,7 +140,7 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
   });
 
   it('appendUserTurn with skipFeature=true surfaces trace errors (ask path has no SSOT fallback)', async () => {
-    // Same trick: pre-create trace.jsonl as a directory to force EISDIR.
+    // Same trick: pre-create chat.jsonl as a directory to force EISDIR.
     await fs.mkdir(path.dirname(tracePath), { recursive: true });
     await fs.mkdir(tracePath, { recursive: true });
 

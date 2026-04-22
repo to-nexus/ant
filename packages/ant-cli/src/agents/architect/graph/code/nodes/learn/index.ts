@@ -7,8 +7,8 @@ import { designDirOf, DESIGN_DIR } from "@ant/shared";
 
 import { extractCodeLessons, extractTags } from './lessonExtractor';
 import {
-  collectTouchedFilesFromTrace,
-  type TouchedFromTrace,
+  collectTouchedFilesFromChatLog,
+  type TouchedFromChatLog,
 } from '../../../../../../core/context/breadcrumb';
 import { recordClassification } from '../../../../../../core/utils/featureBiases';
 import { PROMOTION_TOUCHED_THRESHOLD } from '@ant/shared';
@@ -84,7 +84,7 @@ const lessonQueue = new LessonQueue();
  */
 export async function recordClassificationBias(
   state: ArchitectGraphState,
-  preComputedTouched?: TouchedFromTrace,
+  preComputedTouched?: TouchedFromChatLog,
 ): Promise<void> {
   const featurePath = state.context?.featurePath;
   const predicted = state.executionTier;
@@ -94,7 +94,7 @@ export async function recordClassificationBias(
 
   const session = state.deps?.session;
   const touched = preComputedTouched
-    ?? (await collectTouchedFilesFromTrace(session, turnId));
+    ?? (await collectTouchedFilesFromChatLog(session, turnId));
   const actualTouched = touched.all.size;
   const escalated =
     state._promotedThisJob === true || state.needsEscalation === true;
@@ -307,10 +307,10 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // I/O dedup: the §19 featureBiases sampler and the §2.4 breadcrumb
   // matrix (below, inside the session-persistence block) both need the
-  // set of files touched during this turn, which lives in trace.jsonl.
+  // set of files touched during this turn, which lives in chat.jsonl.
   //
   // Compute it once here so the observability path issues a single
-  // `loadTraceByTurnIds` call per learn run. Both helpers accept the
+  // `loadChatByTurnIds` call per learn run. Both helpers accept the
   // pre-computed result and skip their internal fetch.
   //
   // Preconditions mirror the union of the two call sites:
@@ -319,9 +319,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   //   - turnId + session present (collector returns empty otherwise)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const learnSession = state.deps?.session;
-  const touchedForLearn: TouchedFromTrace | undefined =
+  const touchedForLearn: TouchedFromChatLog | undefined =
     isLastTask && !isWorkerContext && state.turnId && learnSession
-      ? await collectTouchedFilesFromTrace(learnSession, state.turnId)
+      ? await collectTouchedFilesFromChatLog(learnSession, state.turnId)
       : undefined;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

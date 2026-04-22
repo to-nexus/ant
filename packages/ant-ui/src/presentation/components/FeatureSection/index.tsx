@@ -97,7 +97,7 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
   const [fixButtonClicked, setFixButtonClicked] = useState(false);
 
   // ✅ Hard Reset (§17) — in-flight flag prevents double-clicks while the
-  // backend collapses feature.jsonl / trace.jsonl and re-fetch completes.
+  // backend collapses feature.jsonl / chat.jsonl and re-fetch completes.
   const [isResetting, setIsResetting] = useState(false);
   const featureKeyForJob = selectedFeature ? `${selectedProject}/${selectedFeature}` : null;
   const hasRunningJobForFeature = featureKeyForJob ? !!runningJobsByFeature[featureKeyForJob] : false;

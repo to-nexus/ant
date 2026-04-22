@@ -25,7 +25,7 @@ import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent } from '../chat/types';
 import type { ChatStatusType } from './types';
 import { logger } from '../../utils/logger';
-import { getTraceAppender } from './traceAppenderRegistry';
+import { getChatLogAppender } from './chatLogAppenderRegistry';
 import { generateChatStatusContent } from './generateStatusContent';
 import * as crypto from 'crypto';
 
@@ -90,7 +90,7 @@ export class ChatStatusHandler {
     //   (a) the SSE broadcast carries it,
     //   (b) the later choice_resolved chat log line can reference the same id.
     const isChoiceCard = type === 'triage_choice' || type === 'choice_card';
-    const appender = getTraceAppender();
+    const appender = getChatLogAppender();
     const mergedMetadata: Record<string, any> = {
       provider: 'system',
       timestamp: new Date().toISOString(),
@@ -103,7 +103,12 @@ export class ChatStatusHandler {
     }
 
     const messageContent: MessageContent = {
-      type,
+      // `ChatStatusType` is the canonical on-disk identifier and is a
+      // structural superset of `MessageContent.type` (adds
+      // `processing` / `downloading` / `figma_calling` / … that the UI
+      // renders through generic card components). The cast documents the
+      // widening — not a semantic change.
+      type: type as MessageContent['type'],
       content,
       metadata: mergedMetadata as MessageContent['metadata'],
     };
@@ -121,30 +126,36 @@ export class ChatStatusHandler {
       }, err);
     });
 
-    // Durable SSOT mirror — chat.jsonl. Every non-live-only status emits a
-    // single `chat_status` line carrying `(statusType, metadata)`; replay
-    // feeds that pair back through `generateChatStatusContent` to rebuild
-    // the identical MessageContent.
-    if (appender && !LIVE_ONLY_STATUS_TYPES.has(type)) {
-      // Strip purely-presentational fields that the replay reader
-      // re-derives or never consumes.
-      const { provider: _provider, timestamp: _timestamp, ...persistedMetadata } = mergedMetadata;
-      appender.appendChatStatus(type, persistedMetadata);
+    // Durable SSOT mirror — chat.jsonl. Two disjoint branches:
+    //
+    //  (a) Choice cards (`triage_choice` / `choice_card`) emit a
+    //      `choice_presented` line only. Its `cardId` lets a later
+    //      `choice_resolved` line overlay the resolved label when the
+    //      user answers (Dismiss / Resume / …). A chat_status line
+    //      would render a second duplicate card on replay because
+    //      choice_presented already rebuilds the card itself.
+    //
+    //  (b) Every other non-live-only card emits a `chat_status` line
+    //      carrying `(statusType, metadata)`; replay feeds that pair
+    //      back through `generateChatStatusContent` to rebuild the
+    //      identical MessageContent.
+    if (!appender || LIVE_ONLY_STATUS_TYPES.has(type)) {
+      return contentIndex;
     }
-
-    // Backward-compat legacy mirror: keep emitting `choice_presented` for
-    // choice cards during the migration so existing `choice_resolved`
-    // wiring (paired via cardId) continues to work until the replay
-    // reader is switched to the chat_status-only path.
-    if (isChoiceCard && appender && mergedMetadata.cardId) {
+    if (isChoiceCard && mergedMetadata.cardId) {
       const cardType = type === 'triage_choice'
         ? 'triage_choice'
         : (mergedMetadata.cardType as string | undefined) ?? 'choice_card';
-      const { message: promptText, cardId: _cardId, ...restPayload } = mergedMetadata;
+      const { message: promptText, cardId: _cardId, provider: _provider, timestamp: _timestamp, ...restPayload } = mergedMetadata;
       appender.appendChoicePresented(mergedMetadata.cardId, cardType, {
         prompt: content,
         payload: { ...restPayload, message: promptText },
       });
+    } else {
+      // Strip purely-presentational fields that the replay reader
+      // re-derives or never consumes.
+      const { provider: _provider, timestamp: _timestamp, ...persistedMetadata } = mergedMetadata;
+      appender.appendChatStatus(type, persistedMetadata);
     }
 
     return contentIndex;

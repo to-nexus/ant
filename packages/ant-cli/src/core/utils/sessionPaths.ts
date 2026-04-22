@@ -25,12 +25,12 @@
  *       debug/
  *         prompts/
  *     feature.jsonl         ← prompt context SSOT (T2+T3)
- *     chat.jsonl            ← UI chat display SSOT (legacy name: trace.jsonl)
+ *     chat.jsonl            ← UI chat display SSOT
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { JobType, SessionableJobType } from '@ant/shared';
+import type { SessionableJobType } from '@ant/shared';
 import { CANONICAL_FEATURE_DIRS, CANONICAL_FEATURE_FILE_PATHS, isCanonicalDir, createEmptyFigmaData } from '@ant/shared';
 
 export { CANONICAL_FEATURE_DIRS, isCanonicalDir };
@@ -124,58 +124,19 @@ export function getFeatureJsonlPath(featurePath: string): string {
 }
 
 /**
- * Get the path to chat.jsonl — the UI chat display SSOT (write path).
+ * Get the path to chat.jsonl — the UI chat display SSOT.
  *
- * Every `ChatLine` is append-only journaled here. Readers should go
- * through {@link getChatJsonlReadPath} to transparently fall back to the
- * legacy `trace.jsonl` name when a feature predates the rename.
+ * Every `ChatLine` is append-only journaled here. Reads and writes share
+ * this single path. Features whose chat log predates this file name must
+ * migrate by renaming on disk
+ * (`mv sessions/chat.jsonl sessions/chat.jsonl`) — the legacy name is
+ * no longer inspected.
  *
  * @param featurePath - Absolute path to the feature directory
  * @returns Absolute path to chat.jsonl
  */
 export function getChatJsonlPath(featurePath: string): string {
   return path.join(featurePath, 'sessions', 'chat.jsonl');
-}
-
-/**
- * Legacy name for the chat log — preserved for backward-compat reads only.
- * New features write to `chat.jsonl`; older features may still have
- * `trace.jsonl` on disk and readers transparently fall back to it.
- */
-export function getLegacyTraceJsonlPath(featurePath: string): string {
-  return path.join(featurePath, 'sessions', 'trace.jsonl');
-}
-
-/**
- * @deprecated Use {@link getChatJsonlPath} for writes, or
- * {@link getChatJsonlReadPath} for reads (which falls back to the legacy
- * file when only the old name is on disk). This alias returns the new
- * write path so existing callers continue to observe the same physical
- * file the writers create, but new code should not take the dependency.
- */
-export function getTraceJsonlPath(featurePath: string): string {
-  return getChatJsonlPath(featurePath);
-}
-
-/**
- * Resolve the chat log path to read from. Prefers `chat.jsonl`; falls back
- * to legacy `trace.jsonl` when only the old file exists. Returns
- * `chat.jsonl` when neither exists (caller treats ENOENT as empty).
- */
-export function getChatJsonlReadPath(featurePath: string): string {
-  const chat = getChatJsonlPath(featurePath);
-  const legacy = getLegacyTraceJsonlPath(featurePath);
-  try {
-    fs.accessSync(chat);
-    return chat;
-  } catch {
-    try {
-      fs.accessSync(legacy);
-      return legacy;
-    } catch {
-      return chat;
-    }
-  }
 }
 
 // ============================================

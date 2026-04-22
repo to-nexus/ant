@@ -6,8 +6,8 @@
  * before the ask runner starts).
  *
  * Jobtype-aware:
- * - code/design/plan → writes to both feature.jsonl and trace.jsonl
- * - ask/inline-ask → writes to trace.jsonl only (sourceRef='ask-only')
+ * - code/design/plan → writes to both feature.jsonl and chat.jsonl
+ * - ask/inline-ask → writes to chat.jsonl only (sourceRef='ask-only')
  * - learn → no user_turn (no user directive)
  *
  * Resume safety: if state.isResume === true, skip (no duplicate record).
@@ -37,7 +37,7 @@ export interface RecordUserTurnParams {
 }
 
 /**
- * Record a user_turn line to feature.jsonl and/or trace.jsonl.
+ * Record a user_turn line to feature.jsonl and/or chat.jsonl.
  *
  * @returns the generated turnId (useful for subsequent meta patches)
  */
@@ -94,7 +94,7 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
   await session.appendUserTurn(line, { skipFeature });
 
   // Let the worker's LLMResponseService know which turnId to tag emitted
-  // trace.jsonl lines with. Fire-and-forget; failures are logged and ignored.
+  // chat.jsonl lines with. Fire-and-forget; failures are logged and ignored.
   await propagateTurnIdToLLMResponseService(turnId);
 
   return turnId;
@@ -127,7 +127,7 @@ async function resolveResumeTurnId(
 
 /**
  * Bridge orchestrator-side turnId into the worker's LLMResponseService
- * (which owns the trace.jsonl appender singleton). Best-effort — any error
+ * (which owns the chat.jsonl appender singleton). Best-effort — any error
  * here must not abort user_turn recording, which has already succeeded.
  */
 async function propagateTurnIdToLLMResponseService(turnId: string): Promise<void> {

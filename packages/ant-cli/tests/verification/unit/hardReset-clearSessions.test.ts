@@ -5,7 +5,7 @@
  * actual file removal to `clearCanonicalDirectory(sessions/, 'sessions')`.
  * This test locks in the expected behaviour:
  *
- *  - feature.jsonl, trace.jsonl (sessions root files) → unlink
+ *  - feature.jsonl, chat.jsonl (sessions root files) → unlink
  *  - sessions/architect/*.json (code / design / learn) → unlink
  *  - sessions/planner/*.json (plan) → unlink
  *  - Deep canonical content (e.g. architect/debug/prompts/foo.txt) → unlink
@@ -22,7 +22,7 @@ import * as os from 'os';
 import {
   clearCanonicalDirectory,
   getFeatureJsonlPath,
-  getTraceJsonlPath,
+  getChatJsonlPath,
   getSessionFilePath,
 } from '../../../src/core/utils/sessionPaths';
 import { FileSessionAdapter } from '../../../src/periphery/adapters/session/FileSessionAdapter';
@@ -59,7 +59,7 @@ describe('Hard Reset — clearCanonicalDirectory on sessions/', () => {
 
     await fs.writeFile(path.join(sessionsDir, 'feature.jsonl'),
       '{"type":"user_turn","ts":"2026-04-20T00:00:00Z","jobId":"j1","turnId":"t-1","jobType":"code","text":"hi"}\n');
-    await fs.writeFile(path.join(sessionsDir, 'trace.jsonl'),
+    await fs.writeFile(path.join(sessionsDir, 'chat.jsonl'),
       '{"type":"user_turn","ts":"2026-04-20T00:00:00Z","jobId":"j1","turnId":"t-1","jobType":"code","text":"hi","sourceRef":"feature.jsonl#t-1"}\n');
     await fs.writeFile(path.join(sessionsDir, 'architect', 'code.json'), '{"sessionId":"s-code","runs":[]}');
     await fs.writeFile(path.join(sessionsDir, 'architect', 'design.json'), '{"sessionId":"s-design","runs":[]}');
@@ -79,7 +79,7 @@ describe('Hard Reset — clearCanonicalDirectory on sessions/', () => {
 
     // Root jsonls gone
     expect(await fileExists(getFeatureJsonlPath(featurePath))).toBe(false);
-    expect(await fileExists(getTraceJsonlPath(featurePath))).toBe(false);
+    expect(await fileExists(getChatJsonlPath(featurePath))).toBe(false);
     // architect checkpoints gone
     expect(await fileExists(getSessionFilePath(featurePath, 'architect', 'code'))).toBe(false);
     expect(await fileExists(getSessionFilePath(featurePath, 'architect', 'design'))).toBe(false);
@@ -107,14 +107,14 @@ describe('Hard Reset — clearCanonicalDirectory on sessions/', () => {
     await clearCanonicalDirectory(path.join(featurePath, 'sessions'), 'sessions');
 
     const adapter = new FileSessionAdapter(featurePath, 'architect', 'proj', 'feat');
-    expect(await adapter.loadAllTrace()).toEqual([]);
+    expect(await adapter.loadAllChat()).toEqual([]);
     expect(await adapter.loadAllBreadcrumbs()).toEqual([]);
     const { userTurns, userTurnMetas } = await adapter.loadFeatureTurnMeta();
     expect(userTurns).toEqual([]);
     expect(userTurnMetas).toEqual([]);
   });
 
-  it('re-appending a user_turn after wipe re-creates feature.jsonl + trace.jsonl', async () => {
+  it('re-appending a user_turn after wipe re-creates feature.jsonl + chat.jsonl', async () => {
     await clearCanonicalDirectory(path.join(featurePath, 'sessions'), 'sessions');
 
     const adapter = new FileSessionAdapter(featurePath, 'architect', 'proj', 'feat');
@@ -128,8 +128,8 @@ describe('Hard Reset — clearCanonicalDirectory on sessions/', () => {
     } as any);
 
     expect(await fileExists(getFeatureJsonlPath(featurePath))).toBe(true);
-    expect(await fileExists(getTraceJsonlPath(featurePath))).toBe(true);
-    const trace = await adapter.loadAllTrace();
+    expect(await fileExists(getChatJsonlPath(featurePath))).toBe(true);
+    const trace = await adapter.loadAllChat();
     expect(trace).toHaveLength(1);
     expect((trace[0] as any).text).toBe('after reset');
   });

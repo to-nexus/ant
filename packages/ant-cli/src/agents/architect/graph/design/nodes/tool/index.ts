@@ -86,7 +86,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
 
   hooks: {
     afterExecution(state, event) {
-      // NOTE: trace.jsonl `file_write` lines are emitted by
+      // NOTE: chat.jsonl `file_write` lines are emitted by
       // `FileOperationHandler.addFileOperation` (SSOT) when tool handlers
       // call `ctx.chatStatus.completeFileCreation/Edit/Deletion`. No
       // separate emission is needed here.

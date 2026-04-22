@@ -7,12 +7,12 @@ import {
   MINI_BREADCRUMB_TOUCHED_THRESHOLD,
 } from '../../../src/core/executionTier/strategies/breadcrumb';
 import type { ExecutionTierState } from '../../../src/core/executionTier/types';
-import type { TouchedFromTrace } from '../../../src/core/context/breadcrumb';
+import type { TouchedFromChatLog } from '../../../src/core/context/breadcrumb';
 
 function makeState(): ExecutionTierState {
   const session = {
     appendBreadcrumb: vi.fn().mockResolvedValue(undefined),
-    loadTraceByTurnIds: vi.fn().mockResolvedValue([]),
+    loadChatByTurnIds: vi.fn().mockResolvedValue([]),
   };
   return {
     jobId: 'job-1',
@@ -23,7 +23,7 @@ function makeState(): ExecutionTierState {
   };
 }
 
-function makeTouched(size: number): TouchedFromTrace {
+function makeTouched(size: number): TouchedFromChatLog {
   const all = new Set<string>();
   for (let i = 0; i < size; i++) all.add(`src/file-${i}.ts`);
   return { all, created: [], modified: Array.from(all), deleted: [] };

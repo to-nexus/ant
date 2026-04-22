@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildBreadcrumb, collectTouchedFilesFromTrace } from '../../../src/core/context/breadcrumb';
+import { buildBreadcrumb, collectTouchedFilesFromChatLog } from '../../../src/core/context/breadcrumb';
 import { BREADCRUMB_LIMITS } from '@ant/shared';
-import type { TraceLine } from '@ant/shared';
+import type { ChatLine } from '@ant/shared';
 
 function baseInput(overrides: Partial<Parameters<typeof buildBreadcrumb>[0]> = {}) {
   return {
@@ -127,38 +127,38 @@ describe('buildBreadcrumb — stats', () => {
   });
 });
 
-describe('collectTouchedFilesFromTrace', () => {
-  function makeSession(lines: TraceLine[]): any {
+describe('collectTouchedFilesFromChatLog', () => {
+  function makeSession(lines: ChatLine[]): any {
     return {
-      loadTraceByTurnIds: async (turnIds: string[]) =>
+      loadChatByTurnIds: async (turnIds: string[]) =>
         lines.filter((l) => turnIds.includes(l.turnId)),
     };
   }
 
   it('returns empty set when no session provided', async () => {
-    const res = await collectTouchedFilesFromTrace(undefined, 't-x');
+    const res = await collectTouchedFilesFromChatLog(undefined, 't-x');
     expect(res.all.size).toBe(0);
     expect(res.created).toEqual([]);
   });
 
   it('returns empty set when no turnId provided', async () => {
     const session = makeSession([]);
-    const res = await collectTouchedFilesFromTrace(session, undefined);
+    const res = await collectTouchedFilesFromChatLog(session, undefined);
     expect(res.all.size).toBe(0);
   });
 
-  it('collects file_write events filtered by turnId + groups by operation', async () => {
+  it('collects file-op chat_status events filtered by turnId + groups by statusType', async () => {
     const ts0 = '2026-04-19T00:00:00.000Z';
     const ts1 = '2026-04-19T00:00:01.000Z';
     const ts2 = '2026-04-19T00:00:02.000Z';
     const session = makeSession([
-      { type: 'file_write', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', path: 'a.ts', operation: 'create' },
-      { type: 'file_write', ts: ts1, jobId: 'j', turnId: 't-1', jobType: 'code', path: 'b.ts', operation: 'update' },
-      { type: 'file_write', ts: ts2, jobId: 'j', turnId: 't-1', jobType: 'code', path: 'c.ts', operation: 'delete' },
+      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', statusType: 'file_create', metadata: { filePath: 'a.ts' } },
+      { type: 'chat_status', ts: ts1, jobId: 'j', turnId: 't-1', jobType: 'code', statusType: 'file_edit', metadata: { filePath: 'b.ts' } },
+      { type: 'chat_status', ts: ts2, jobId: 'j', turnId: 't-1', jobType: 'code', statusType: 'file_delete', metadata: { filePath: 'c.ts' } },
       { type: 'assistant_message', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', text: 'ignore me' },
-      { type: 'file_write', ts: ts0, jobId: 'j', turnId: 't-other', jobType: 'code', path: 'x.ts', operation: 'create' },
+      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-other', jobType: 'code', statusType: 'file_create', metadata: { filePath: 'x.ts' } },
     ]);
-    const res = await collectTouchedFilesFromTrace(session, 't-1');
+    const res = await collectTouchedFilesFromChatLog(session, 't-1');
     expect(Array.from(res.all).sort()).toEqual(['a.ts', 'b.ts', 'c.ts']);
     expect(res.created).toEqual(['a.ts']);
     expect(res.modified).toEqual(['b.ts']);
@@ -166,11 +166,23 @@ describe('collectTouchedFilesFromTrace', () => {
     expect(res.range).toEqual({ startTs: ts0, endTs: ts2 });
   });
 
-  it('returns empty without range when trace has no file_write events', async () => {
+  it('counts _failed file-op statusTypes as attempted writes on the same operation', async () => {
+    const ts0 = '2026-04-19T00:00:00.000Z';
+    const session = makeSession([
+      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', statusType: 'file_edit_failed', metadata: { filePath: 'bad.ts', reason: 'boom' } },
+    ]);
+    const res = await collectTouchedFilesFromChatLog(session, 't-1');
+    expect(Array.from(res.all)).toEqual(['bad.ts']);
+    expect(res.modified).toEqual(['bad.ts']);
+    expect(res.created).toEqual([]);
+    expect(res.deleted).toEqual([]);
+  });
+
+  it('returns empty without range when chat log has no file-op chat_status events', async () => {
     const session = makeSession([
       { type: 'assistant_message', ts: 't', jobId: 'j', turnId: 't-1', jobType: 'code', text: '' },
     ]);
-    const res = await collectTouchedFilesFromTrace(session, 't-1');
+    const res = await collectTouchedFilesFromChatLog(session, 't-1');
     expect(res.all.size).toBe(0);
     expect(res.range).toBeUndefined();
   });

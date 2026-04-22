@@ -20,7 +20,7 @@ function stubSession() {
   return {
     appendBreadcrumb: vi.fn<[FeatureBreadcrumbLine], Promise<void>>().mockResolvedValue(undefined),
     appendBoundary: vi.fn<[FeatureBoundaryLine], Promise<void>>().mockResolvedValue(undefined),
-    loadTraceByTurnIds: vi.fn().mockResolvedValue([]),
+    loadChatByTurnIds: vi.fn().mockResolvedValue([]),
   };
 }
 
@@ -52,16 +52,16 @@ describe('Tier3Task', () => {
   it('mode=generate → Full breadcrumb + AutoComplete boundary (both emitted)', async () => {
     const state = makeState('generate');
     const session = state.deps!.session as any;
-    // Simulate a file_write event so the breadcrumb has touched content.
-    session.loadTraceByTurnIds = vi.fn().mockResolvedValue([
+    // Simulate a file-op chat_status event so the breadcrumb has touched content.
+    session.loadChatByTurnIds = vi.fn().mockResolvedValue([
       {
-        type: 'file_write',
+        type: 'chat_status',
         ts: '2026-04-21T00:00:00Z',
         jobId: 'job-1',
         turnId: 'turn-1',
         jobType: 'code',
-        path: 'src/x.ts',
-        operation: 'create',
+        statusType: 'file_create',
+        metadata: { filePath: 'src/x.ts' },
       },
     ]);
 
@@ -80,15 +80,15 @@ describe('Tier3Task', () => {
   it('mode=refactor → Full breadcrumb + AutoComplete boundary', async () => {
     const state = makeState('refactor');
     const session = state.deps!.session as any;
-    session.loadTraceByTurnIds = vi.fn().mockResolvedValue([
+    session.loadChatByTurnIds = vi.fn().mockResolvedValue([
       {
-        type: 'file_write',
+        type: 'chat_status',
         ts: '2026-04-21T00:00:00Z',
         jobId: 'job-1',
         turnId: 'turn-1',
         jobType: 'code',
-        path: 'src/y.ts',
-        operation: 'update',
+        statusType: 'file_edit',
+        metadata: { filePath: 'src/y.ts' },
       },
     ]);
     const tier = new Tier3Task('refactor');

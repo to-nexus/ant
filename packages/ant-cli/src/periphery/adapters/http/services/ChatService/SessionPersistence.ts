@@ -1,9 +1,10 @@
 /**
- * SessionPersistence — trace.jsonl / feature.jsonl write + collapse helpers
+ * SessionPersistence — chat.jsonl / feature.jsonl write + collapse helpers
  *
- * Session redesign §16.2: chat.json is retired. The Chat API layer now
- * treats `trace.jsonl` (+ `feature.jsonl`) as the SSOT and only keeps a
- * transient in-memory / Redis scratchpad for live streaming.
+ * Session redesign §16.2 (revised by the "chat SSOT fragmentation purge"):
+ * chat.json is retired. The Chat API layer now treats `chat.jsonl`
+ * (+ `feature.jsonl`) as the SSOT and only keeps a transient in-memory /
+ * Redis scratchpad for live streaming.
  *
  * This class is the single place that constructs a {@link FileSessionAdapter}
  * from WorkspaceResolver, so the rest of the ChatService modules don't need
@@ -14,9 +15,9 @@ import type { WorkspaceResolver } from '../../../../../core/config/WorkspacePath
 import type { UserContext } from '../../../../../core/types/user';
 import type {
   LogJobType,
-  TraceAssistantMessageLine,
-  TraceChoicePresentedLine,
-  TraceChoiceResolvedLine,
+  ChatAssistantMessageLine,
+  ChatChoicePresentedLine,
+  ChatChoiceResolvedLine,
 } from '@ant/shared';
 import { logger } from '../../../../../utils/logger';
 import { FileSessionAdapter } from '../../../session/FileSessionAdapter';
@@ -79,10 +80,10 @@ export class SessionPersistence {
   }
 
   /**
-   * Emit an assistant_message line to trace.jsonl. Fire-and-forget: never
+   * Emit an assistant_message line to chat.jsonl. Fire-and-forget: never
    * throws, never blocks the caller.
    */
-  async emitAssistantMessageTrace(params: {
+  async emitAssistantMessageLine(params: {
     projectId: string;
     featureName: string;
     userContext?: UserContext;
@@ -103,7 +104,7 @@ export class SessionPersistence {
         params.userContext,
       ));
     if (!turnId) return;
-    const line: TraceAssistantMessageLine = {
+    const line: ChatAssistantMessageLine = {
       type: 'assistant_message',
       ts: new Date().toISOString(),
       jobId: params.jobId,
@@ -112,7 +113,7 @@ export class SessionPersistence {
       text: params.text,
     };
     try {
-      await adapter.appendLine('trace', line);
+      await adapter.appendLine('chat', line);
     } catch (err) {
       logger.warn(
         `[SessionPersistence] appendLine(assistant_message) failed: ${(err as Error)?.message ?? err}`,
@@ -148,7 +149,7 @@ export class SessionPersistence {
         params.userContext,
       ));
     if (!turnId) return;
-    const line: TraceChoicePresentedLine = {
+    const line: ChatChoicePresentedLine = {
       type: 'choice_presented',
       ts: new Date().toISOString(),
       jobId: params.jobId,
@@ -160,7 +161,7 @@ export class SessionPersistence {
       payload: params.payload,
     };
     try {
-      await adapter.appendLine('trace', line);
+      await adapter.appendLine('chat', line);
     } catch (err) {
       logger.warn(
         `[SessionPersistence] appendLine(choice_presented) failed: ${(err as Error)?.message ?? err}`,
@@ -197,7 +198,7 @@ export class SessionPersistence {
         params.userContext,
       ));
     if (!turnId) return;
-    const line: TraceChoiceResolvedLine = {
+    const line: ChatChoiceResolvedLine = {
       type: 'choice_resolved',
       ts: new Date().toISOString(),
       jobId: params.jobId,
@@ -209,7 +210,7 @@ export class SessionPersistence {
       answer: params.answer,
     };
     try {
-      await adapter.appendLine('trace', line);
+      await adapter.appendLine('chat', line);
     } catch (err) {
       logger.warn(
         `[SessionPersistence] appendLine(choice_resolved) failed: ${(err as Error)?.message ?? err}`,
@@ -219,17 +220,17 @@ export class SessionPersistence {
   }
 
   /**
-   * Collapse trace.jsonl only — Chat Clear / Sweep.
+   * Collapse chat.jsonl only — Chat Clear / Sweep.
    *
    * `feature.jsonl` is intentionally preserved so the LLM retains
    * conversation context across a chat clear. The UI chat view, which
-   * renders from trace.jsonl, will appear empty.
+   * renders from chat.jsonl, will appear empty.
    *
    * Hard Reset does NOT go through here — it physically unlinks the
    * session files via `clearCanonicalDirectory` in the
    * `/context/reset` route handler instead.
    */
-  async collapseTraceOnlyLogs(
+  async collapseChatLogOnly(
     projectId: string,
     featureName: string,
     userContext?: UserContext,
@@ -237,10 +238,10 @@ export class SessionPersistence {
     const adapter = this.makeAdapter(projectId, featureName, userContext);
     if (!adapter) return;
     try {
-      await adapter.collapseTraceOnly();
+      await adapter.collapseChatLog();
     } catch (err) {
       logger.warn(
-        `[SessionPersistence] collapseTraceOnlyLogs failed: ${(err as Error)?.message ?? err}`,
+        `[SessionPersistence] collapseChatLogOnly failed: ${(err as Error)?.message ?? err}`,
         { component: 'SessionPersistence', projectId, featureName },
       );
     }

@@ -18,7 +18,7 @@ import {
  *      current feature.
  *   3. Hard Reset → `resetFeatureContext` wipes the cache and re-fetches.
  *
- * Note: trace.jsonl / user-turn-meta are recorded on disk (BE SSOT) but are
+ * Note: chat.jsonl / user-turn-meta are recorded on disk (BE SSOT) but are
  * no longer mirrored into this slice — the Activity tab that consumed them
  * was retired in favor of the legacy Chat tab (which is fed by its own SSE
  * pipeline). The BE endpoints remain in place for ChatService server-side

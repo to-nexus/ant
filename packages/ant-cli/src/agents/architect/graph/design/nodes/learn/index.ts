@@ -7,7 +7,7 @@ import { saveSessionRun } from './sessionWriter';
 import { extractDesignLessons, storeLessonsToMemory, stripMetaFromContent } from './lessonExtractor';
 import {
   buildBreadcrumb,
-  collectTouchedFilesFromTrace,
+  collectTouchedFilesFromChatLog,
 } from '../../../../../../core/context/breadcrumb';
 
 /**
@@ -18,7 +18,7 @@ import {
  * collapses the user_turn into T3, and a breadcrumb surfaces the
  * produced documents as path anchors for the next resolve cycle.
  *
- * SSOT for touched files: trace.jsonl `file_write` (see
+ * SSOT for touched files: chat.jsonl `file_write` (see
  * core/context/breadcrumb.ts). `state.files` is consulted as a fallback
  * when the trace is empty (e.g. docGen wrote via non-tool paths).
  */
@@ -33,14 +33,14 @@ async function applyDesignBreadcrumbBoundary(
     console.warn('⚠️  [Design Learn] skip breadcrumb/boundary (missing turnId)');
     return;
   }
-  const touched = await collectTouchedFilesFromTrace(session, turnId);
+  const touched = await collectTouchedFilesFromChatLog(session, turnId);
   let pathsFromTrace = Array.from(touched.all);
   let created = touched.created;
   let modified = touched.modified;
   let deleted = touched.deleted;
   let rangeRef = touched.range;
   if (pathsFromTrace.length === 0) {
-    // Fallback — docGen nodes may write via non-tool paths so trace.jsonl
+    // Fallback — docGen nodes may write via non-tool paths so chat.jsonl
     // can be empty even when state.files captured newly produced docs.
     // Reconstruct the created / modified / deleted stats from each file's
     // `actionType` so the breadcrumb accurately reflects what happened

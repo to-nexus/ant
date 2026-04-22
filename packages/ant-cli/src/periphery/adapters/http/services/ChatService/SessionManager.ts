@@ -3,8 +3,8 @@
  *
  * Session redesign §16.2: chat.json is retired. This manager owns the
  * transient message state that backs SSE delta broadcasts; the durable
- * SSOT lives in trace.jsonl (+ feature.jsonl) and is rebuilt via
- * {@link TraceToChatMessages} when the UI asks for history.
+ * SSOT lives in chat.jsonl (+ feature.jsonl) and is rebuilt via
+ * {@link ChatLogToMessages} when the UI asks for history.
  *
  * Session Key Format: "org:user:projectId/featureName"
  */
@@ -203,7 +203,7 @@ export class SessionManager {
     }
 
     // 3. Nothing cached and Redis returned nothing — start a fresh session.
-    // Durable history is in trace.jsonl; this scratchpad is only for the
+    // Durable history is in chat.jsonl; this scratchpad is only for the
     // current streaming turn.
     const session: ChatSession = {
       projectId,
@@ -243,7 +243,7 @@ export class SessionManager {
       return cached.session;
     }
 
-    // Create a fresh session. Durable history lives in trace.jsonl and is
+    // Create a fresh session. Durable history lives in chat.jsonl and is
     // rebuilt on demand by ChatService.getMessagesAsync.
     const session: ChatSession = {
       projectId,
@@ -288,7 +288,7 @@ export class SessionManager {
     // Update local cache
     this.localCache.set(simpleKey, { session, cachedAt: Date.now() });
     
-    // Save to Redis (durable SSOT is trace.jsonl; Redis is streaming scratchpad)
+    // Save to Redis (durable SSOT is chat.jsonl; Redis is streaming scratchpad)
     if (this.stateStore) {
       try {
         await this.stateStore.setChatSession(redisKey, SessionManager.toRedisSession(session));
@@ -414,7 +414,7 @@ export class SessionManager {
   /**
    * Clear all messages in a session.
    *
-   * @param scope  `'chat'` (default) = Chat Clear / Sweep — trace.jsonl is
+   * @param scope  `'chat'` (default) = Chat Clear / Sweep — chat.jsonl is
    *               collapsed in-place so the chat UI is cleaned up while
    *               `feature.jsonl` (LLM context SSOT) is preserved. The LLM
    *               still remembers prior dialogue on the next turn.
@@ -457,13 +457,13 @@ export class SessionManager {
     }
     
     // jsonl handling.
-    //  - scope='chat' (Sweep): collapse trace.jsonl lines in place so the
+    //  - scope='chat' (Sweep): collapse chat.jsonl lines in place so the
     //    chat view is cleared while feature.jsonl (LLM context) survives.
     //  - scope='full' (Hard Reset): no jsonl collapse here; the caller
-    //    physically unlinks feature.jsonl + trace.jsonl + sessions/**/*.json
+    //    physically unlinks feature.jsonl + chat.jsonl + sessions/**/*.json
     //    via clearCanonicalDirectory after this call returns.
     if (scope === 'chat') {
-      await this.persistence.collapseTraceOnlyLogs(projectId, featureName, userContext);
+      await this.persistence.collapseChatLogOnly(projectId, featureName, userContext);
     }
 
     // Clean up draft images associated with chat
@@ -515,7 +515,7 @@ export class SessionManager {
    * Cleanup method - drop the in-memory cache (call on server shutdown).
    *
    * Historically also closed chat.json file watchers; those are retired now
-   * that trace.jsonl is the SSOT and no file is being watched.
+   * that chat.jsonl is the SSOT and no file is being watched.
    */
   cleanup(): void {
     this.localCache.clear();

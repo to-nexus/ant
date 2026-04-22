@@ -157,7 +157,7 @@ export async function orchestrator(params: {
           configData
         );
 
-        // ✅ Record user_turn to trace.jsonl (skipFeature=true — ask는 feature.jsonl 미기록)
+        // ✅ Record user_turn to chat.jsonl (skipFeature=true — ask는 feature.jsonl 미기록)
         await recordUserTurn({
           featurePath,
           jobType: 'inline-ask',
@@ -262,7 +262,7 @@ export async function orchestrator(params: {
         // ✅ Create session with file tree update support (agent-nested)
         const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
 
-        // ✅ Record user_turn (feature.jsonl + trace.jsonl). skipFeature=false for design.
+        // ✅ Record user_turn (feature.jsonl + chat.jsonl). skipFeature=false for design.
         // mode is not yet known for design (Detect runs inside the graph) → undefined.
         // When isResume=true the helper skips the append and only re-propagates the
         // existing turnId into LLMResponseService — see recordUserTurn JSDoc.
@@ -350,7 +350,7 @@ export async function orchestrator(params: {
 
         const session = new FileSessionAdapter(featurePath, 'architect', project, featureName, fileTreeUpdate);
 
-        // ✅ Record user_turn (feature.jsonl + trace.jsonl). Mode may be known via --mode/env.
+        // ✅ Record user_turn (feature.jsonl + chat.jsonl). Mode may be known via --mode/env.
         // When isResume=true the helper skips the append and only re-propagates the
         // existing turnId into LLMResponseService — see recordUserTurn JSDoc.
         await recordUserTurn({
@@ -422,7 +422,7 @@ export async function orchestrator(params: {
       // Create session for planner
       const session = new FileSessionAdapter(featurePath || '', 'planner', project, feature, fileTreeUpdate);
 
-      // ✅ Record user_turn (feature.jsonl + trace.jsonl) — plan is a feature-context job.
+      // ✅ Record user_turn (feature.jsonl + chat.jsonl) — plan is a feature-context job.
       // Use the orchestrator-level `isResume` param (propagated from job-runner via
       // ANT_IS_RESUME). The legacy `!!(overrideDirective && jobId)` heuristic was a
       // false-positive trap — a normal continue endpoint with both fields set looks

@@ -2,7 +2,7 @@
  * §16 `ui_render_migration` — adapter-level log readers
  *
  * Covers the additive helpers used by the new `/trace` + `/breadcrumbs`
- * HTTP endpoints: `loadAllTrace` (with sinceTs + jobTypes filters) and
+ * HTTP endpoints: `loadAllChat` (with sinceTs + jobTypes filters) and
  * `loadAllBreadcrumbs` (skipping collapsed lines).
  */
 
@@ -13,9 +13,9 @@ import * as os from 'os';
 import { FileSessionAdapter } from '../../../src/periphery/adapters/session/FileSessionAdapter';
 import {
   getFeatureJsonlPath,
-  getTraceJsonlPath,
+  getChatJsonlPath,
 } from '../../../src/core/utils/sessionPaths';
-import type { TraceLine, FeatureLine } from '@ant/shared';
+import type { ChatLine, FeatureLine } from '@ant/shared';
 
 describe('FileSessionAdapter — feature-log readers', () => {
   let tmpDir: string;
@@ -28,61 +28,61 @@ describe('FileSessionAdapter — feature-log readers', () => {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   });
 
-  async function writeJsonl(filePath: string, lines: (TraceLine | FeatureLine)[]) {
+  async function writeJsonl(filePath: string, lines: (ChatLine | FeatureLine)[]) {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     const content = lines.map(l => JSON.stringify(l)).join('\n') + '\n';
     await fs.writeFile(filePath, content, 'utf-8');
   }
 
-  it('loadAllTrace returns every non-collapsed line (no filters)', async () => {
-    const traceLines: TraceLine[] = [
+  it('loadAllChat returns every non-collapsed line (no filters)', async () => {
+    const chatLines: ChatLine[] = [
       { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hi', sourceRef: 'feature.jsonl#t-1' },
       { type: 'assistant_message', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hello' },
       { type: 'tool_call', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', tool: 'read_file', collapsed: true },
       { type: 'file_write', ts: '2026-04-20T00:00:04Z', jobId: 'j1', turnId: 't-1', jobType: 'code', path: 'src/x.ts', operation: 'create' },
     ];
-    await writeJsonl(getTraceJsonlPath(tmpDir), traceLines);
+    await writeJsonl(getChatJsonlPath(tmpDir), chatLines);
 
     const adapter = new FileSessionAdapter(tmpDir, 'architect', 'proj', 'feat');
-    const out = await adapter.loadAllTrace();
+    const out = await adapter.loadAllChat();
 
     expect(out.length).toBe(3);
     expect(out.map(l => l.type)).toEqual(['user_turn', 'assistant_message', 'file_write']);
   });
 
-  it('loadAllTrace filters by sinceTs (strictly greater)', async () => {
-    const traceLines: TraceLine[] = [
+  it('loadAllChat filters by sinceTs (strictly greater)', async () => {
+    const chatLines: ChatLine[] = [
       { type: 'assistant_message', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'a' },
       { type: 'assistant_message', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'b' },
       { type: 'assistant_message', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'c' },
     ];
-    await writeJsonl(getTraceJsonlPath(tmpDir), traceLines);
+    await writeJsonl(getChatJsonlPath(tmpDir), chatLines);
 
     const adapter = new FileSessionAdapter(tmpDir, 'architect', 'proj', 'feat');
-    const out = await adapter.loadAllTrace({ sinceTs: '2026-04-20T00:00:02Z' });
+    const out = await adapter.loadAllChat({ sinceTs: '2026-04-20T00:00:02Z' });
 
     expect(out.length).toBe(1);
     expect((out[0] as any).text).toBe('c');
   });
 
-  it('loadAllTrace filters by jobTypes set', async () => {
-    const traceLines: TraceLine[] = [
+  it('loadAllChat filters by jobTypes set', async () => {
+    const chatLines: ChatLine[] = [
       { type: 'assistant_message', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'a' },
       { type: 'assistant_message', ts: '2026-04-20T00:00:02Z', jobId: 'j2', turnId: 't-2', jobType: 'design', text: 'b' },
       { type: 'assistant_message', ts: '2026-04-20T00:00:03Z', jobId: 'j3', turnId: 't-3', jobType: 'plan', text: 'c' },
     ];
-    await writeJsonl(getTraceJsonlPath(tmpDir), traceLines);
+    await writeJsonl(getChatJsonlPath(tmpDir), chatLines);
 
     const adapter = new FileSessionAdapter(tmpDir, 'architect', 'proj', 'feat');
-    const out = await adapter.loadAllTrace({ jobTypes: ['code', 'design'] });
+    const out = await adapter.loadAllChat({ jobTypes: ['code', 'design'] });
 
     expect(out.length).toBe(2);
     expect(out.map(l => l.jobType).sort()).toEqual(['code', 'design']);
   });
 
-  it('loadAllTrace returns empty array when file missing', async () => {
+  it('loadAllChat returns empty array when file missing', async () => {
     const adapter = new FileSessionAdapter(tmpDir, 'architect', 'proj', 'feat');
-    const out = await adapter.loadAllTrace();
+    const out = await adapter.loadAllChat();
     expect(out).toEqual([]);
   });
 

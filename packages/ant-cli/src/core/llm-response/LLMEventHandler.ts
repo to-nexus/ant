@@ -11,8 +11,33 @@ import type { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent } from '../chat/types';
 import { logger } from '../../utils/logger';
-import { getTraceAppender } from './traceAppenderRegistry';
-import { TOOLS_WITH_DEDICATED_STATUS } from './toolDispatch';
+import { getChatLogAppender } from './chatLogAppenderRegistry';
+
+/**
+ * Tools whose handlers emit their own `chat_status` pair (progress +
+ * result). The generic `tool_action` fallback MUST skip these to avoid
+ * a duplicate card sitting alongside the handler-owned one.
+ *
+ * Examples:
+ *   - `read_file`            → `reading` / `read`                (WorkingCard)
+ *   - `list_files`           → `listing_files` / `listed_files`  (WorkingCard)
+ *   - `search_code`          → `searching_code` / `searched_code`(WorkingCard)
+ *   - `run_command`          → `command_running` / `command_streaming` / `command`
+ *                                                                (TerminalCard)
+ *   - `search_reference_code`→ `searching_reference` / `searched_reference`
+ *                                                                (WorkingCard)
+ *
+ * Kept local to the live event handler — this is the only site that
+ * needs to gate the generic fallback; replay rebuilds cards directly
+ * from the persisted `chat_status` line.
+ */
+const TOOLS_WITH_DEDICATED_STATUS: ReadonlySet<string> = new Set([
+  'read_file',
+  'list_files',
+  'search_code',
+  'run_command',
+  'search_reference_code',
+]);
 
 export class LLMEventHandler {
   private lastRedisWrite = 0;
@@ -115,9 +140,9 @@ export class LLMEventHandler {
           durationMs
         };
 
-        // Emit finalized thinking block to trace.jsonl (session redesign §16.2).
+        // Emit finalized thinking block to chat.jsonl (session redesign §16.2).
         // Fire-and-forget — failures must not disrupt streaming.
-        const appender = getTraceAppender();
+        const appender = getChatLogAppender();
         if (appender && thinkingContent.content?.trim()) {
           appender.appendThinking(thinkingContent.content);
         }
@@ -171,21 +196,19 @@ export class LLMEventHandler {
   /**
    * Handle tool use event (LLM tool calls).
    *
-   * Dispatch rules SSOT: `./toolDispatch.ts` (TOOLS_WITH_DEDICATED_STATUS).
+   * Dispatch rules: {@link TOOLS_WITH_DEDICATED_STATUS} gates the generic
+   * tool_action fallback. File mutators and mkdir have their own handler
+   * branches; everything else falls through to `handleGenericToolUse`.
+   *
+   * No `tool_call` line is written here — the chat SSOT is `chat_status`,
+   * which each dedicated handler or the generic fallback emits downstream.
    */
   private handleToolUseEvent(event: LLMStreamEvent): void {
     const session = this.sessionStore.getSession();
-    
+
     if (!event.toolUse || !session?.currentMessage) return;
 
     const { name, input } = event.toolUse;
-
-    // Emit trace.jsonl tool_call — single line per tool_use, regardless of
-    // which UI card path is taken below. Keeps trace SSOT tool-agnostic.
-    const appender = getTraceAppender();
-    if (appender && name) {
-      appender.appendToolCall(name, { args: sanitizeToolArgs(input) });
-    }
 
     // FILE OPERATIONS: edit_file, delete_file (create loading card)
     if (name === 'edit_file' || name === 'delete_file') {
@@ -201,7 +224,7 @@ export class LLMEventHandler {
     }
     // TOOLS WITH DEDICATED STATUS: Skip generic tool_action (their handlers emit own status)
     else if (TOOLS_WITH_DEDICATED_STATUS.has(name)) {
-      // No-op: these tools emit their own chat status in their respective handlers
+      // No-op: these tools emit their own chat_status in their respective handlers
       // (e.g. readFile.ts emits 'reading'/'read', runCommand.ts emits 'command_running'/'command')
     }
     // OTHER TOOLS: Fallback to tool_action
@@ -323,7 +346,7 @@ export class LLMEventHandler {
       metadata: metadata as MessageContent['metadata'],
     });
 
-    const appender = getTraceAppender();
+    const appender = getChatLogAppender();
     if (appender) {
       const { timestamp: _ts, ...persistedMetadata } = metadata;
       appender.appendChatStatus('tool_action', persistedMetadata);
@@ -378,21 +401,3 @@ export class LLMEventHandler {
   }
 }
 
-/**
- * Truncate long string fields in tool args so trace.jsonl does not balloon
- * with full file contents or multi-MB edits. Mirrors the UI's
- * handleGenericToolUse compacting logic (chars > 100 → `(n chars)`).
- */
-function sanitizeToolArgs(input: unknown): unknown {
-  if (!input || typeof input !== 'object') return input;
-  const src = input as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(src)) {
-    if (typeof value === 'string' && value.length > 200) {
-      out[key] = `(${value.length} chars)`;
-    } else {
-      out[key] = value;
-    }
-  }
-  return out;
-}

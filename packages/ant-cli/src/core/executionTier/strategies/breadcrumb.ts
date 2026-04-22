@@ -15,8 +15,8 @@
 import {
   buildBreadcrumb,
   buildBreadcrumbSummary,
-  collectTouchedFilesFromTrace,
-  type TouchedFromTrace,
+  collectTouchedFilesFromChatLog,
+  type TouchedFromChatLog,
 } from '../../context/breadcrumb';
 import type { ExecutionTierState } from '../types';
 
@@ -24,7 +24,7 @@ import type { ExecutionTierState } from '../types';
 export const MINI_BREADCRUMB_TOUCHED_THRESHOLD = 3;
 
 export interface BreadcrumbStrategy {
-  apply(state: ExecutionTierState, touched?: TouchedFromTrace): Promise<void>;
+  apply(state: ExecutionTierState, touched?: TouchedFromChatLog): Promise<void>;
 }
 
 export class NoopBreadcrumb implements BreadcrumbStrategy {
@@ -41,7 +41,7 @@ export class NoopBreadcrumb implements BreadcrumbStrategy {
  */
 async function writeBreadcrumb(
   state: ExecutionTierState,
-  preComputedTouched: TouchedFromTrace | undefined,
+  preComputedTouched: TouchedFromChatLog | undefined,
 ): Promise<void> {
   const session = state.deps?.session;
   if (!session) return;
@@ -49,7 +49,7 @@ async function writeBreadcrumb(
   if (!jobId || !turnId) return;
 
   const touched =
-    preComputedTouched ?? (await collectTouchedFilesFromTrace(session, turnId));
+    preComputedTouched ?? (await collectTouchedFilesFromChatLog(session, turnId));
   const touchedCount = touched.all.size;
   const mode = state.resolvedAction?.mode as
     | 'explain'
@@ -95,12 +95,12 @@ async function writeBreadcrumb(
 export class MiniBreadcrumb implements BreadcrumbStrategy {
   async apply(
     state: ExecutionTierState,
-    touched?: TouchedFromTrace,
+    touched?: TouchedFromChatLog,
   ): Promise<void> {
     const session = state.deps?.session;
     if (!session || !state.turnId) return;
     const observed =
-      touched ?? (await collectTouchedFilesFromTrace(session, state.turnId));
+      touched ?? (await collectTouchedFilesFromChatLog(session, state.turnId));
     if (observed.all.size < MINI_BREADCRUMB_TOUCHED_THRESHOLD) return;
     await writeBreadcrumb(state, observed);
   }
@@ -110,7 +110,7 @@ export class MiniBreadcrumb implements BreadcrumbStrategy {
 export class FullBreadcrumb implements BreadcrumbStrategy {
   async apply(
     state: ExecutionTierState,
-    touched?: TouchedFromTrace,
+    touched?: TouchedFromChatLog,
   ): Promise<void> {
     await writeBreadcrumb(state, touched);
   }
