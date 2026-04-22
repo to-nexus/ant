@@ -48,6 +48,14 @@ export interface FileRendererConfig {
   jobType?: 'code' | 'design';
   featurePath?: string;
   codebasePath?: string; // ✅ For code jobs: absolute path to repo root (codebase dir)
+  /**
+   * Optional hook called on a successful file creation / overwrite (XML
+   * `<file>` streaming path). Mirrors the tool-handler path's
+   * `ToolExecutionContext.recordFileTouch` so `CodeTask.touchedFiles` is
+   * populated regardless of which path the LLM uses. chat.jsonl is
+   * ephemeral — this hook feeds the session SSOT (code.json).
+   */
+  onFileTouched?: (filePath: string) => void;
 }
 
 export class FileRenderer {
@@ -59,6 +67,7 @@ export class FileRenderer {
   private jobType?: 'code' | 'design';
   private featurePath?: string;
   private codebasePath?: string;
+  private onFileTouched?: (filePath: string) => void;
   
   private activeFiles: Map<string, FileStreamInfo> = new Map();
   private lineBuffers: LineBufferManager = new LineBufferManager();
@@ -89,6 +98,7 @@ export class FileRenderer {
     this.jobType = config.jobType;
     this.featurePath = config.featurePath;
     this.codebasePath = config.codebasePath;
+    this.onFileTouched = config.onFileTouched;
   }
   
   /**
@@ -391,6 +401,7 @@ export class FileRenderer {
         }
         this.scheduleFileTreeNotification();
         await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
+        this.onFileTouched?.(filePath);
         return;
       }
 
@@ -466,6 +477,7 @@ export class FileRenderer {
     }
     
     await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
+    this.onFileTouched?.(filePath);
   }
   
   /**

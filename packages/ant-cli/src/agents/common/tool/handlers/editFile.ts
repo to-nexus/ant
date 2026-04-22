@@ -85,6 +85,7 @@ export async function handleEditFile(
     console.log(`   Replaced ${old_str.length} chars with ${new_str.length} chars`);
 
     await ctx.chatStatus.completeFileEdit(resolved.displayPath, old_str, new_str);
+    ctx.recordFileTouch?.('update', resolved.displayPath);
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
       await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);

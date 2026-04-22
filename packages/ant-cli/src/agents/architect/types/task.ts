@@ -88,6 +88,21 @@ export interface CodeTask extends BaseTask {
   errors?: string[];               // Error messages (for error tasks)
   category?: string;               // Error category (for error tasks)
   /**
+   * Per-task SSOT for files mutated during execution.
+   *
+   * Written by tool handlers (create/edit/delete) via
+   * `ToolExecutionContext.recordFileTouch` at the same point where
+   * `chatStatus.completeFile*` emits the UI event. chat.jsonl is an
+   * ephemeral UI feed — this field is the authoritative session record
+   * and gets persisted into `code.json.state.completedTasksDetails[i]`
+   * when `checkTaskStatus` pushes the completed `CodeTask`.
+   *
+   * Dedup-preserving array (first-seen order). Readers: learn node
+   * (lessonMetadata.relatedFiles, SessionRun.output.files, console
+   * "files modified" log).
+   */
+  touchedFiles?: string[];
+  /**
    * Pre-built planText from diagnostic batch split.
    * When present, plan node skips diagnostic generation and uses this directly as planText.
    * Created when a diagnostic task detects many errors and splits into sub-tasks.
