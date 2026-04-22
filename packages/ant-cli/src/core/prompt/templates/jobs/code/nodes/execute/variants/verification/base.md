@@ -2,6 +2,8 @@
 
 You are applying code fixes based on a diagnostic remediation plan that was generated after analyzing build/test errors.
 
+{{> jobs/code/base/injections/ant-md}}
+
 ## Scope
 
 **Build, runtime, and test errors ONLY.** Feature completeness is the responsibility of feature tasks, not this task.

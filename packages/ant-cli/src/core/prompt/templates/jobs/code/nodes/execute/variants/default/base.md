@@ -16,6 +16,8 @@ When writing files, use `codebase/` prefix for all code files.
 
 **Wrong paths (do NOT use):** `app/page.tsx` (missing codebase/ prefix), `features/<feature>/codebase/...` (codebase is at feature root, NOT inside features/).
 
+{{> jobs/code/base/injections/ant-md}}
+
 ## 🎯 CORE PRINCIPLES (ALWAYS APPLY)
 
 ### 1. LAYER-AWARE FIX PRINCIPLE
@@ -135,6 +137,36 @@ Create config files only. **NO source code, NO tests.**
 
 **Blind spot**: `.env` is EASILY FORGOTTEN when `.env.example` is created. Both files MUST be created together with identical variable keys. Variable names defined here become the contract for all subsequent tasks.
 
+**ANT.md (Agent Settings File) — MANDATORY for codebases the ant agent will extend:**
+
+You MUST create `codebase/ANT.md` as part of setup. This file tells every subsequent ant task (feature, test-code, integration, verification, error-fix) how to generate consistent files in this codebase. Without it, parallel feature tasks drift into incompatible conventions — e.g. half of components using `export default`, half using `export { X }`, breaking downstream imports and tests.
+
+**Principle**: Pick concrete default values for every section. Do NOT leave placeholders like "TBD" or "to be decided".
+
+**Constraint**: Keep the file under 1500 characters. Long reference material belongs elsewhere (`codebase/docs/` or `codebase/README.md`); ANT.md is a compact settings file.
+
+**Constraint**: Produce exactly these top-level H2 sections (additional sections are allowed but these are the minimum):
+
+```md
+# ANT.md
+
+> ant agent settings for this codebase. Human-facing docs live in README.md / docs/.
+
+## Export Style
+- One concrete rule, applied uniformly. Example: "default export, single component per file" OR "named export, one symbol per file". Do NOT write both.
+
+## React Imports
+- (Only when React is in the stack.) State whether `import React from "react"` is required for files that use `React.X` namespace types, OR whether named imports (`ReactNode`, `ComponentProps`) are preferred.
+
+## Testing
+- Test framework + setup file path. Example: "Jest + next/jest preset; setup file at `src/test-setup.ts`; test placement `src/__tests__/*.test.tsx`".
+
+## File Naming
+- Concrete rule per file kind. Example: "Components: kebab-case.tsx (e.g. `hero-section.tsx`). Hooks: `use-*.ts`."
+```
+
+Write ANT.md alongside the other setup configs (`package.json`, `tsconfig.json`, etc.) — it is part of the project's initial skeleton.
+
 **Framework-Specific Requirements:**
 
 Follow the framework/language-specific setup instructions from:
@@ -196,6 +228,16 @@ Follow the framework/language-specific setup instructions from:
 - Ensure imports and syntax are correct
 - Copy assets if needed
 - If your feature requires new environment variables, update both `.env.example` and `.env`
+
+### Sibling-Convention Observation
+
+**Principle**: Before creating a new source file, observe at least one existing sibling file in the same directory. Match the observed export style, import style, file-name casing, and type-annotation style exactly.
+
+**Constraint**: When `codebase/ANT.md` is rendered above (Project Settings block), it overrides sibling observations — ANT.md is the explicit SSOT for project-wide conventions. Sibling observation is the fallback for codebases without ANT.md, not a parallel authority.
+
+**Constraint**: Do NOT mix conventions within a single commit. If you must introduce a new convention (e.g. a different export style), document it in ANT.md first (separate task) and update sibling files atomically; do not leave mixed styles.
+
+⚠️ **Blind spot**: Parallel feature tasks that all create "just this one component" with slightly different conventions produce silent downstream failures — integration files (`page.tsx`) and test files pick one convention and the other half of components break. Sibling observation catches this at creation time.
 
 ### Testability Principle
 

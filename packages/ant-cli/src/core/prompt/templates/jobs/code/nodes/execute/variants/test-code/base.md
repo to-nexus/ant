@@ -2,6 +2,8 @@
 
 You are generating the minimum set of tests that verify the integrated codebase is functional.
 
+{{> jobs/code/base/injections/ant-md}}
+
 ## Scope
 
 **In scope**:
