@@ -1032,6 +1032,12 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/role-guide": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/ui-design-policy": {
     "sources": [
       "policy-map",

@@ -150,23 +150,22 @@ async function buildPlanPrompt(
   // Post-RAC template flags — see `.cursorrules`
   // "Post-RAC Template Condition SSOT" for the 3-category semantics.
   //
-  //   `hasSystemDesignRef` (Contract): gates the "API Contract
-  //     IMMUTABLE" notice in plan/base.md. The system-design doc is
-  //     promoted to `role='ref'` via package-mapping in
-  //     `deriveArtifactPolicy` whenever a task's `packages` list
-  //     references fe-system-* / be-system-*, so the immutability
-  //     language is justified.
+  // Under the 3-axis role model (Authority / Edit-scope / Task-scope),
+  // both `ref` and `context` are authoritative inputs, and the
+  // "API Contract IMMUTABLE" directive applies whenever a system-design
+  // doc is present — regardless of whether it is injected via ref or
+  // context. Gate (`hasSystemDesign`) is therefore the correct flag for
+  // the plan/base.md IMMUTABLE notice, not the old role-scoped
+  // `hasSystemDesignRef` (which would have silently skipped gen-code-spec
+  // / rev-code, where sys-design arrives as context).
   //
-  //   `hasUi` (Gate): gates design-system TOKEN INVENTORY / ui ASSET
-  //     INVENTORY / LAYOUT SPECS in plan/rules.md. `deriveArtifactPolicy`
-  //     assigns UI docs `role='context'` for ui/design-system tasks
-  //     regardless of upstream intent — so `hasUiRef` would silently
-  //     drop gen-code-spec / rev-code into the no-ui-docs branch. The
-  //     inventory checklists are identical for ref and context roles,
-  //     so `hasUi` (presence) is the correct gate.
+  //   `hasSystemDesign` (Gate): gates the "API Contract IMMUTABLE" notice.
+  //   `hasUi`           (Gate): gates design-system TOKEN INVENTORY / ui
+  //                              ASSET INVENTORY / LAYOUT SPECS in
+  //                              plan/rules.md.
   const allDocs = getRACDocuments(resolvedActionWithDocs);
   const planPool = new ArtifactPoolView(allDocs);
-  const hasSystemDesignRef = planPool.hasSystemDesignRef();
+  const hasSystemDesign = planPool.hasSystemDesign();
   const hasUi = planPool.hasUi();
 
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
@@ -184,7 +183,7 @@ async function buildPlanPrompt(
     hasTools: options?.hasTools ?? false,
     designDocUnknownPackages: state.designDocUnknownPackages,
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
-    resolvedAction: resolvedActionWithDocs, hasSystemDesignRef, hasUi,
+    resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi,
     featureContext: state.featureContext,
     ...typeVars,
   });
