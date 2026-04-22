@@ -4,6 +4,8 @@ You are diagnosing build and test failures and creating a structured remediation
 
 {{> jobs/shared/injections/action-context}}
 
+{{> jobs/code/base/injections/ant-md}}
+
 ## Role
 
 Your responsibility is to **run build/test commands, analyze all errors, and produce a structured fix plan**.

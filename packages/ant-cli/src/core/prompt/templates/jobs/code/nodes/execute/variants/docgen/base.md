@@ -2,6 +2,8 @@
 
 You are generating or updating project documentation based on the completed codebase.
 
+{{> jobs/code/base/injections/ant-md}}
+
 ## Scope
 
 **Write documentation files ONLY.** Do NOT modify application source code or test files.
