@@ -201,6 +201,23 @@ export interface TraceFileWriteLine extends LineBase {
   operation?: 'create' | 'update' | 'delete';
 }
 
+/**
+ * `run_command` is the SSOT for every command invocation outcome — success,
+ * runtime failure, policy rejection, spawn failure, stall watchdog trip,
+ * etc. Exactly one `run_command` line pairs with each `tool_call` for
+ * `run_command` so debug readers can correlate without searching alternate
+ * line types.
+ *
+ * Semantics:
+ *   - `exitCode === 0` and no error signals → success.
+ *   - `exitCode > 0` → the process ran and exited with a non-zero code
+ *     (normal failure, non-zero compiler/test exit, etc.).
+ *   - `exitCode === -1` → the command did not actually execute. This
+ *     covers policy rejections (interactive, bare-install skip, write-path
+ *     violation, command not allowed) and pre-spawn errors. The rejection
+ *     or error message is carried in `stdout`. Existing side-effect
+ *     `commandExecuted` emits the same -1 sentinel.
+ */
 export interface TraceRunCommandLine extends LineBase {
   type: 'run_command';
   cmd: string;

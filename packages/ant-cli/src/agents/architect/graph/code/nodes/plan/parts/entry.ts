@@ -2,8 +2,15 @@
  * plan/parts/entry.ts — STEP 0 entry dispatcher for the plan node.
  *
  * Conversation retention policy:
- *   - NODE_PLAN is preserved across retry / reverify and plan→execute
- *     handoffs within the same task.
+ *   - NODE_PLAN is preserved ONLY within a single attempt's plan↔tool loop
+ *     (plan→tool→plan re-entries). At retry / reverify entry it is reset to
+ *     `[]` because the subsequent plan-LLM call rebuilds the initial
+ *     `user` message from scratch via `buildPlanPromptBlocks` and any
+ *     preserved history would be overwritten on the first round anyway.
+ *     Prior-attempt context is carried across retries via the verification
+ *     Session's `planHistoryBodies()` → `diagnosticRetryContext` channel
+ *     (see `buildDiagnosticRetryContext` in `nodes/plan/index.ts`), which
+ *     is the SSOT for retry-phase reasoning continuity.
  *   - NODE_EXECUTE is cleared at every plan entry so each execute tool-loop
  *     starts fresh.
  *   - Both slots are cleared at fresh task entry (task boundary).
@@ -250,25 +257,34 @@ async function handleRetryEntry(
 
   if (isVerificationRetry) {
     const prevViolationCount = state.violations?.length ?? 0;
+    const priorPlanMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
     state.verification?.onPlanEntry('retry');
     state._executeCallIndex = 0;
     const sessionAttempts = state.verification?.attempts() ?? 0;
     state.violations = [];
+    // R2-P1: reset NODE_PLAN at retry entry. Prior attempts' plan↔tool
+    // conversation is never actually consumed by the retry path
+    // (`runPlanToolLoopPhase` falls through because `_activePhase` is
+    // `'execute'` at retry entry, and the first plan-LLM call of the new
+    // attempt overwrites NODE_PLAN anyway). The authoritative channel for
+    // carrying retry context is `session.planHistoryBodies()` →
+    // `buildDiagnosticRetryContext` in `nodes/plan/index.ts`.
     state.conversations = {
       ...state.conversations,
       [CONV_KEYS.NODE_EXECUTE]: [],
+      [CONV_KEYS.NODE_PLAN]: [],
     };
     state._executeModifiedFiles = false;
     await recomputeInstallNeeded(state);
-    const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
     console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (verificationAttempts=${sessionAttempts})`);
     console.log(`   ♻️  node:execute cleared, _executeCallIndex ${prevCallIndex}→0`);
-    console.log(`   ♻️  node:plan preserved (${preservedMsgCount} messages)\n`);
+    console.log(`   ♻️  node:plan reset (had ${priorPlanMsgCount} msgs; retry context flows via session.planHistoryBodies)\n`);
     if (nextTask && state.context?.featurePath && state._httpJobId) {
       const _taskRef = nextTask;
       const _planHashes = state.verification?.snapshot().planHistoryHashes;
       const _prevPlanHash = _planHashes?.[_planHashes.length - 1];
       const _carryOverBytes = JSON.stringify(snapshotFromState(state) || {}).length;
+      const _planHistoryCount = state.verification?.planHistoryBodies().length ?? 0;
       import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
         getExecutionLogger({
           featurePath: state.context!.featurePath!,
@@ -278,7 +294,8 @@ async function handleRetryEntry(
           taskName: _taskRef.name,
           attempt: sessionAttempts,
           violationsFromPrevAttempt: prevViolationCount,
-          preservedPlanMessages: preservedMsgCount,
+          priorPlanMessagesDiscarded: priorPlanMsgCount,
+          planHistoryCount: _planHistoryCount,
           verificationAttempts: sessionAttempts,
           prevPlanHash: _prevPlanHash,
           carryOverSize: _carryOverBytes,

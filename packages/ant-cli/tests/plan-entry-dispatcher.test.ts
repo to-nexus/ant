@@ -122,7 +122,7 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     expect(state.violations).toEqual([]);
   });
 
-  it('preserves node:plan conversation across retry, clears node:execute', async () => {
+  it('resets both node:plan and node:execute at verification retry entry', async () => {
     const state = makeFreshVerificationState();
     state.currentTask = {
       id: 't1',
@@ -151,12 +151,13 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
 
     await resolvePlanEntry(state);
 
-    // Intra-task retry must inherit the prior plan-phase conversation so
-    // the LLM sees policy rejections / tool outputs / prior reasoning.
-    expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(2);
-    expect(state.conversations[CONV_KEYS.NODE_PLAN][1].content).toBe(
-      'prior diagnostic observation',
-    );
+    // R2-P1: NODE_PLAN is reset at retry entry. The preserved-across-retry
+    // policy documented earlier was never actually exercised — the retry
+    // path's first plan-LLM call rebuilds the user message from scratch
+    // and overwrites NODE_PLAN on the first round. Prior-attempt context
+    // now flows exclusively via `session.planHistoryBodies()` →
+    // `buildDiagnosticRetryContext` (see nodes/plan/index.ts).
+    expect(state.conversations[CONV_KEYS.NODE_PLAN]).toEqual([]);
     // Execute tool-loop always restarts fresh.
     expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
   });

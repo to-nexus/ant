@@ -30,6 +30,7 @@ import {
   isVerificationPassWithoutCodeGen,
   processDiagnosticBatchSplit,
 } from './batchSplit';
+import { maybeApplyPlanHistory } from './planHistory';
 import { isVerificationTask } from '../../../tasks/verification';
 import { isErrorTask } from '../../../tasks/error';
 
@@ -93,6 +94,7 @@ export async function runPlanToolLoopPhase(
       const diagnosticPass = isVerificationPassWithoutCodeGen(state, finalizedPlan, batchSplitOccurred);
       const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
       const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(finalizedPlan);
+      maybeApplyPlanHistory(state, finalizedPlan, batchSplitOccurred, nextTask);
       const enrichedContext = enrichContextFromPlanToolLoop(state.projectCodeContext, nodePlan);
       state._activePhase = 'execute';
       if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -148,6 +150,7 @@ export async function runPlanToolLoopPhase(
     const planText = processDiagnosticBatchSplit(state, preSplitPlan, nextTask);
     const batchSplitOccurred = preSplitPlan.length > 50 && planText === '';
     const diagnosticPass = isVerificationPassWithoutCodeGen(state, planText, batchSplitOccurred);
+    maybeApplyPlanHistory(state, planText, batchSplitOccurred, nextTask);
     const enrichedContext = enrichContextFromPlanToolLoop(state.projectCodeContext, nodePlan);
     const updatedState: ArchitectGraphState = {
       ...state,

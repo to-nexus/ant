@@ -24,7 +24,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
-import { splitOnShellOperators, hasActualPipe } from '../../../../core/utils/shellParser';
+import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment } from '../../../../core/utils/shellParser';
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
 import { cleanCommandEnv } from '../../../../periphery/adapters/command/NodeCommandAdapter';
 import { AsyncMutex } from '../../../../core/utils/AsyncMutex';
@@ -88,18 +88,74 @@ function hasReinstallIntentFlag(command: string): boolean {
   return REINSTALL_INTENT_FLAG_PATTERNS.some(p => p.test(command));
 }
 
+/**
+ * Shell redirection prefix: `2>`, `>`, `>>`, `<`, `<<`, `&>`, etc.
+ * A token that begins with one of these is part of an I/O redirection,
+ * not a positional argument to the install verb.
+ */
+const REDIRECT_TOKEN_RE = /^(\d*[<>]|&[<>])/;
+
+/**
+ * Whether a package-manager install verb is followed by any positional
+ * (non-flag) argument inside the same shell segment. Used to distinguish
+ * `npm install` (no targets → candidate for skip-guard) from
+ * `npm install --save-dev jest` (explicit package target → must run).
+ *
+ * We tokenize the verb's own segment (everything up to the next `|`,
+ * `&&`, `||`, or `;`) so downstream commands do not leak their
+ * positional args into the decision.
+ */
+function hasPositionalInstallArg(command: string, verb: RegExp): boolean {
+  const segments = splitOnShellOperators(command);
+  const segment = segments.find(s => verb.test(s));
+  if (!segment) return false;
+  const m = verb.exec(segment);
+  if (!m) return false;
+
+  const afterVerb = segment.slice(m.index + m[0].length);
+  for (const token of tokenizeShellSegment(afterVerb)) {
+    if (!token) continue;
+    if (token.startsWith('-')) continue;
+    if (REDIRECT_TOKEN_RE.test(token)) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * "Bare install" = an install command that does not add specific packages.
+ * Flags are allowed (`--silent`, `--save-dev` without a target package,
+ * etc.); positional package names disqualify the command. Package managers
+ * with a dedicated "install declared deps" incantation (`pip install -r`)
+ * are treated as bare.
+ *
+ * Reinstall-intent flags (`--force`, `--no-frozen-lockfile`, ...) also
+ * disqualify because the caller explicitly wants a re-resolve regardless
+ * of the already-installed state.
+ */
 function isBareInstallCommand(command: string): boolean {
   if (/\bgo\s+mod\s+(tidy|download)\b/i.test(command)) return false;
   if (/\bgo\s+get\b/i.test(command)) return false;
   if (/\bcargo\s+build\b/i.test(command)) return false;
   if (hasReinstallIntentFlag(command)) return false;
 
-  if (/\b(npm|pnpm)\s+(install|i|ci)\s*($|--|-\s)/.test(command)) return true;
-  if (/\byarn\s+(install\s*($|--|-\s))/.test(command)) return true;
+  // Verbs whose bare-ness depends on the absence of positional targets.
+  const verbs: RegExp[] = [
+    /\b(npm|pnpm)\s+(install|i|ci)\b/,
+    /\byarn\s+install\b/,
+    /\bpoetry\s+install\b/,
+    /\bbundle\s+install\b/,
+  ];
+  for (const verb of verbs) {
+    if (verb.test(command)) {
+      return !hasPositionalInstallArg(command, verb);
+    }
+  }
+
+  // Bare `yarn` defaults to `yarn install` in yarn-classic projects.
   if (/\byarn\s*$/.test(command)) return true;
+  // pip: only the `-r <file>` form is a declared-deps install.
   if (/\bpip\s+install\s+-r\b/.test(command)) return true;
-  if (/\bpoetry\s+install\s*($|--|-\s)/.test(command)) return true;
-  if (/\bbundle\s+install\s*($|--|-\s)/.test(command)) return true;
   return false;
 }
 
@@ -223,10 +279,23 @@ const packageManagerMutex = new AsyncMutex();
  * The `[Policy]` content prefix + omitted `error` field prevents the
  * tool_result formatter from prepending `Error:` and misleading the LLM
  * into treating an internal guard as a command execution failure.
+ *
+ * Always routes the rejection through `chatStatus.commandComplete` so
+ * trace.jsonl receives exactly one `run_command` line per invocation —
+ * success, non-zero exit, or rejection. No separate rejection line type;
+ * the -1 sentinel + `[Policy] ...` prefix in stdout identify rejections
+ * for downstream readers.
  */
-function makeRejection(command: string, displayText: string): ToolResult {
+async function makeRejection(
+  ctx: ToolExecutionContext,
+  command: string,
+  displayText: string,
+  mergeIndex: number | undefined,
+): Promise<ToolResult> {
+  const content = `[Policy] ${displayText}`;
+  await ctx.chatStatus.commandComplete(command, false, -1, content, mergeIndex);
   return {
-    content: `[Policy] ${displayText}`,
+    content,
     sideEffects: [{ type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false }],
   };
 }
@@ -353,7 +422,12 @@ async function executeCommandLogic(
   const isDefinitelyInteractive = INTERACTIVE_COMMAND_PATTERNS.some(p => p.test(command));
   if (isDefinitelyInteractive) {
     console.warn(`\n   ⚠️ [WARNING] Potentially interactive command detected: ${command}`);
-    return makeRejection(command, `⚠️ COMMAND MAY HANG: ${command}\n\nThis command typically requires interactive input.\n\n✅ Add -y or --yes flag to skip prompts.`);
+    return makeRejection(
+      ctx,
+      command,
+      `⚠️ COMMAND MAY HANG: ${command}\n\nThis command typically requires interactive input.\n\n✅ Add -y or --yes flag to skip prompts.`,
+      undefined,
+    );
   }
 
   const featureRootPath = fileSystem.getRootPath();
@@ -366,7 +440,7 @@ async function executeCommandLogic(
     const skipReason = await shouldSkipInstall(featureRootPath);
     if (skipReason) {
       console.log(`📦 [RunCommand] Bare install skipped — all declared dependencies already installed`);
-      return makeRejection(command, `SKIPPED: ${skipReason}`);
+      return makeRejection(ctx, command, `SKIPPED: ${skipReason}`, undefined);
     }
   }
 
@@ -405,8 +479,12 @@ async function executeCommandLogic(
   if (writeViolations.length > 0) {
     const msg = writeViolations.map(v => `  - "${v.path}" → ${v.reason}`).join('\n');
     console.error(`\n   ❌ [run_command] Write path violation detected:\n${msg}\n`);
-    return makeRejection(command,
-      `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\nViolations:\n${msg}\n\nAll file writes must target paths under codebase/.`);
+    return makeRejection(
+      ctx,
+      command,
+      `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\nViolations:\n${msg}\n\nAll file writes must target paths under codebase/.`,
+      mergeIndex,
+    );
   }
 
   console.log(`\n   🔧 Running command: ${command}`);
@@ -427,7 +505,12 @@ async function executeCommandLogic(
     // Long-running command path
     if (isLongRunning) {
       if (!commandPort.isAllowed(command)) {
-        return makeRejection(command, `❌ COMMAND NOT ALLOWED: ${command}\n\nOnly whitelisted commands are permitted.`);
+        return makeRejection(
+          ctx,
+          command,
+          `❌ COMMAND NOT ALLOWED: ${command}\n\nOnly whitelisted commands are permitted.`,
+          mergeIndex,
+        );
       }
       try {
         const longRunResult = await handleLongRunningCommand(
@@ -730,9 +813,19 @@ async function handleLongRunningCommand(
       if (ERROR_PATTERNS.test(chunk)) hasError = true;
     });
 
-    child.on('error', (err) => {
+    child.on('error', async (err) => {
+      // Skip the entire finalizer if another path already resolved. Node
+      // occasionally fires both 'error' and 'exit' for the same child; the
+      // first one to reach this point owns the outcome. Without this guard
+      // two `commandComplete` calls produce two `run_command` lines.
+      if (resolved) return;
       hasError = true;
       stderr += err.message;
+      // Keep trace.jsonl symmetric: every long-running invocation must
+      // finalize via `commandComplete` so a `run_command` line pairs with
+      // the initial `tool_call`. Spawn failure is the one internal path
+      // that previously skipped this.
+      await ctx.chatStatus.commandComplete(command, false, -1, `Spawn error:\n${err.message}`, mergeIndex);
       safeReject(new Error(`❌ FAILED TO SPAWN PROCESS: ${command}\n\nSpawn error: ${err.message}`));
     });
 
@@ -816,6 +909,11 @@ async function handleLongRunningCommand(
     }, effectiveStartupTimeout);
 
     child.on('exit', async (code, signal) => {
+      // Mirror of the `child.on('error')` guard — any earlier finalizer
+      // (earlyErrorTimeout, startupTimeout, 'error') already emitted the
+      // run_command line and resolved the outer promise. A late exit fire
+      // would otherwise emit a second `run_command` for the same tool_call.
+      if (resolved) return;
       const output = stdout + stderr;
       if (code === 0 && !hasError) {
         await ctx.chatStatus.commandComplete(command, true, 0, output, mergeIndex);
