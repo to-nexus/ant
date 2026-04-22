@@ -55,6 +55,32 @@ const TOOL_TO_DEDICATED_STATUS_TYPE: Record<string, ChatStatusType> = {
   search_reference_code: 'searched_reference',
 };
 
+function fileChatStatusKey(statusType: string, filePath: string): string {
+  return `${statusType}::${filePath}`;
+}
+
+/**
+ * Dedicated-status tool names — mirrors `TOOLS_WITH_DEDICATED_STATUS` in
+ * `core/llm-response/toolDispatch.ts`. Kept as a local Set to avoid a
+ * runtime dependency between replay and the live dispatch module during
+ * the migration.
+ */
+const TOOLS_WITH_DEDICATED_STATUS_BACKING: ReadonlySet<string> = new Set(
+  Object.keys(TOOL_TO_DEDICATED_STATUS_TYPE).concat(['run_command']),
+);
+
+/**
+ * File-mutating tool names — mirrors `FILE_MUTATING_TOOLS` in
+ * `core/llm-response/toolDispatch.ts`. Kept local for the same reason.
+ */
+const FILE_MUTATING_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'edit_file',
+  'delete_file',
+  'file',
+  'write_file',
+  'create_file',
+]);
+
 /**
  * Convert trace lines to a ChatMessage[] view.
  *
@@ -165,7 +191,6 @@ function toAssistantMessage(
   // chat_status('triage_choice'|'choice_card') AND a matching
   // choice_presented line are present for the same card, prefer the
   // choice_presented rendering path (it already overlays resolution).
-  // Detect this by collecting cardIds seen in choice_presented lines.
   const choicePresentedCardIds = new Set<string>();
   // Dedicated-status tools (`read_file` / `list_files` / `search_code` /
   // `search_reference_code`) now emit a `chat_status` line via
@@ -175,9 +200,33 @@ function toAssistantMessage(
   // chat_status card. Collect the statusTypes we have seen in
   // `chat_status` so the `tool_call` case below can skip them.
   const chatStatusTypesSeen = new Set<string>();
+  // File-op dedup: a `chat_status` line with statusType `file_create` /
+  // `file_edit` / `file_delete` (+ failed variants) and metadata
+  // `{filePath}` supersedes the companion `file_write` line.
+  const fileChatStatusKeysSeen = new Set<string>();
+  // Command dedup: `chat_status(statusType='command', metadata.command=X)`
+  // supersedes the companion `run_command` line for the same command.
+  const commandChatStatusSeen = new Set<string>();
   for (const ev of bucket.events) {
     if (ev.type === 'choice_presented') choicePresentedCardIds.add(ev.cardId);
-    if (ev.type === 'chat_status') chatStatusTypesSeen.add(ev.statusType);
+    if (ev.type === 'chat_status') {
+      chatStatusTypesSeen.add(ev.statusType);
+      const md = ev.metadata ?? {};
+      if (
+        ev.statusType === 'file_create' ||
+        ev.statusType === 'file_edit' ||
+        ev.statusType === 'file_delete' ||
+        ev.statusType === 'file_create_failed' ||
+        ev.statusType === 'file_edit_failed' ||
+        ev.statusType === 'file_delete_failed'
+      ) {
+        const fp = typeof md.filePath === 'string' ? md.filePath : '';
+        if (fp) fileChatStatusKeysSeen.add(fileChatStatusKey(ev.statusType, fp));
+      } else if (ev.statusType === 'command') {
+        const cmd = typeof md.command === 'string' ? md.command : '';
+        if (cmd) commandChatStatusSeen.add(cmd);
+      }
+    }
   }
 
   for (const ev of bucket.events) {
@@ -222,6 +271,20 @@ function toAssistantMessage(
         // card — skip it.
         const dedupStatusType = TOOL_TO_DEDICATED_STATUS_TYPE[ev.tool];
         if (dedupStatusType && chatStatusTypesSeen.has(dedupStatusType)) break;
+        // mkdir / generic fallback also emit a `chat_status('tool_action')`
+        // line in this turn. When such a line exists AND the tool_call
+        // would have produced a generic tool_action (i.e. the dispatch
+        // branch returns null for file-mutating tools / run_command
+        // anyway), skip the tool_call so we don't double-render.
+        if (
+          !dedupStatusType &&
+          chatStatusTypesSeen.has('tool_action') &&
+          !TOOLS_WITH_DEDICATED_STATUS_BACKING.has(ev.tool) &&
+          !FILE_MUTATING_TOOL_NAMES.has(ev.tool) &&
+          ev.tool !== 'run_command'
+        ) {
+          break;
+        }
         // SSOT: core/llm-response/toolDispatch.ts decides which tools
         // materialise a card vs. defer to a companion chat log line
         // (file_write owns file ops; run_command owns TerminalCard).
@@ -238,6 +301,11 @@ function toAssistantMessage(
             : ev.operation === 'delete'
               ? (isFailed ? 'file_delete_failed' : 'file_delete')
               : (isFailed ? 'file_edit_failed' : 'file_edit');
+        // Post-SSOT dedup: when a matching `chat_status` line exists for
+        // this turn AND targets the same file path, the chat_status path
+        // is authoritative. Skip the legacy `file_write` rendering.
+        const key = fileChatStatusKey(type, ev.path);
+        if (fileChatStatusKeysSeen.has(key)) break;
         contents.push({
           type,
           // file_create / file_delete surface `content`, file_edit surfaces
@@ -255,6 +323,10 @@ function toAssistantMessage(
       }
       case 'run_command': {
         lastThinkingIdx = null;
+        // Post-SSOT dedup: when a `chat_status(statusType='command')`
+        // line exists for this turn with the same command, the
+        // chat_status path is authoritative. Skip the legacy rendering.
+        if (commandChatStatusSeen.has(ev.cmd)) break;
         contents.push({
           type: 'command',
           content: ev.stdout ?? '',
