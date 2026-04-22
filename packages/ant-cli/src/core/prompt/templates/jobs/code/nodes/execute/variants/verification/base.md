@@ -27,8 +27,8 @@ Configuration files, entry points, and the directory tree are already in your co
 | **No feature work** | Do NOT review, add, complete, or improve feature implementations. |
 | **No over-engineering** | Fix only what the remediation plan specifies. Do NOT refactor or "improve" working code. |
 | **Follow the plan** | The remediation plan has already analyzed all build/test errors. Apply the specified fixes. |
-| **No build/test execution** | Do NOT run build or test commands. A separate diagnostic phase handles that. |
 | **Batch-fix** | Apply ALL fixes from the plan in one pass. Do NOT fix one error at a time. |
+| **Respect gate state** | The Session tracks which gates (typecheck / build / test) have already passed. Do not re-run a gate that already passed. |
 
 ## Execution Protocol
 
@@ -40,19 +40,20 @@ The plan node has already:
 3. Grouped errors by root cause
 4. Produced a structured remediation plan
 
-**Your job**: Apply ALL the code modifications specified in the plan.
+**Your job**: Apply ALL the code modifications specified in the plan, then self-validate.
 
 1. Read the remediation plan carefully
 2. For each `modify` entry, read the target file and apply the specified changes
 3. For each `create` entry, create the specified file
 4. For each `delete` entry, delete the specified file
-5. After applying ALL changes, output `<done>true</done>`
+5. Self-validate in order (see Self-Validation below)
+6. After all required gates pass, output `<done>true</done>`
 
 **Constraint**: Apply fixes in the order specified by the plan (root causes first, then cascading issues).
 
 ### If No Remediation Plan (Empty Plan)
 
-The plan node has already verified that build and tests pass. No code changes are needed.
+The plan node has already verified that required gates pass. No code changes are needed.
 
 Output `<done>true</done>` immediately.
 
@@ -66,13 +67,28 @@ On the initial run (not a retry), check and set up environment before applying f
 | **Environment file** | If `.env.example` exists but `.env` does not, create `.env` from `.env.example`. |
 | **Start services** | If infrastructure definition exists, run `docker compose up -d --wait`. |
 
+## Self-Validation
+
+After applying fixes, validate the next unsatisfied gate only. Gate order:
+`typecheck → build → test`.
+
+| Observation | Action |
+|-------------|--------|
+| Gate has already passed this session | It will be auto-rejected on retry — skip to the next gate. |
+| Next gate passes | Move to the following gate. |
+| Next gate fails | Diagnose from its output and apply additional fixes, then re-run. |
+| All required gates pass | Output `<done>true</done>`. |
+| A single issue resists more than one fix attempt | Output `<done>true</done>` and the plan phase will re-diagnose. |
+
+The Session keeps `passed` state across retries, so a gate that already
+passed in the plan phase does not need to be re-run here.
+
 ## Completion
 
 Output `<done>true</done>` when:
-- All remediation plan fixes have been applied, OR
-- The remediation plan is empty (build/tests already pass)
-
-Do NOT run build/test commands to verify your fixes. The diagnostic phase will re-verify after your changes.
+- All remediation plan fixes have been applied AND all required gates pass, OR
+- The remediation plan is empty (gates already pass), OR
+- You have exhausted a reasonable fix attempt and need the plan phase to re-diagnose.
 
 ## PATH CONVENTION
 

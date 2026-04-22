@@ -22,7 +22,7 @@
 
 - If planText contains a remediation plan: apply ALL specified fixes in batch
 - If planText is empty or indicates no errors: output `<done>true</done>` immediately
-- Do NOT run build or test commands — the plan phase handles diagnostics
+- After applying fixes, self-validate with `tsc` / build / test in order (see Validation Order below)
 
 ### File Scope Restriction
 
@@ -31,6 +31,14 @@
 - `read_file` is permitted ONLY for files referenced in the remediation plan
 - Do NOT read source files, test files, or other files "for context" — the plan already contains all necessary context
 - Do NOT explore the project structure with `list_files` or `search_code` unless the plan instructs it
+
+### Validation Order
+
+| Rule | Effect |
+|------|--------|
+| **Order** | `typecheck → build → test`. Run the next gate only when the previous passed. |
+| **Already-passed** | A gate already green in this session is auto-rejected — do not re-run it. |
+| **Deep-diagnostic mode** | Ordering is relaxed; you may probe out of order when the Session has entered deep mode. |
 
 ### Verification-Specific Constraints
 
@@ -63,7 +71,7 @@
 | `search_code` | Search codebase |
 | `list_files` | List directory contents |
 | `delete_file` | Delete single file |
-| `run_command` | Shell commands (for environment setup only, NOT for build/test) |
+| `run_command` | Shell commands including validation (`tsc`, build, test) and environment setup. Gate commands are policed by the Session's `passed` state — an already-passed gate is rejected automatically. |
 | `mkdir` | Create directory |
 
 ### edit_file: Exact Match Principle
@@ -88,16 +96,16 @@
 
 ## Task Completion
 
-**When all fixes are applied (or no fixes needed), output:**
+**When all required gates pass (or no fixes were needed), output:**
 
 ```xml
 <done>true</done>
 ```
 
 **Rules:**
-1. Output `<done>true</done>` after ALL remediation plan fixes are applied
-2. If planText is empty, output `<done>true</done>` immediately (build already passed)
-3. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
-4. Do NOT run build/test commands to verify — the diagnostic cycle handles re-verification
+1. Apply ALL remediation plan fixes first, then self-validate in `typecheck → build → test` order.
+2. If planText is empty, output `<done>true</done>` immediately (gates already passed).
+3. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first).
+4. If a fix attempt fails to make progress after one round, output `<done>true</done>` and let the diagnostic (plan) phase re-analyze.
 
 **Follow these rules for successful verification.**

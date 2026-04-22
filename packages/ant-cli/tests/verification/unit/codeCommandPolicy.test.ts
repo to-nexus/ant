@@ -153,15 +153,34 @@ describe('F4 — 3-gate ordering guard (test requires build)', () => {
   });
 });
 
-describe('F1/F4 — non-plan phase is not guarded by plan-phase gates', () => {
-  it('execute phase rejects verification commands regardless of *Passed', () => {
+describe('F1/F4 — execute phase shares the same guards as plan phase', () => {
+  it('execute phase rejects an already-passed gate (rerun prevention applies to both phases)', () => {
+    // Post verification-loop postmortem: execute-phase is no longer
+    // blanket-blocked. It runs under the same `already-passed` +
+    // `ordering` guards as plan-phase. An already-passed gate returns
+    // `ALREADY PASSED` so LLM self-validation cannot waste a cycle
+    // re-running what just passed.
     const session = makeSession({
       passed: ['typecheck', 'build', 'test'],
     });
     const ctx = makeCtx(session, { activePhase: 'execute' });
     const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
-    // Execute-phase guard message, not ALREADY PASSED.
+    expect(result?.content).toMatch(/ALREADY PASSED/);
+  });
+
+  it('execute phase allows the next unsatisfied gate (self-validation)', () => {
+    const session = makeSession({ passed: ['typecheck'] });
+    const ctx = makeCtx(session, { activePhase: 'execute' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    expect(result).toBeNull();
+  });
+
+  it('execute phase enforces ordering (build before typecheck passes → BLOCKED)', () => {
+    const session = makeSession({ passed: [] });
+    const ctx = makeCtx(session, { activePhase: 'execute' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
     expect(result?.content).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/tsc --noEmit first/);
   });
 });
 

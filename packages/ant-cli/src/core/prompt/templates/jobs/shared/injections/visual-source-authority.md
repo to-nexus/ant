@@ -8,7 +8,7 @@ A code job consumes exactly one `UiSource` at a time. Which source is active is 
 |------------|----------------------|----------------|
 | `ant`      | `outputs/design/ui/ant/{ui-tokens, ui-assets, ui-spec}.json` | Direct JSON read (schema-based) |
 | `figma`    | Figma workfile (URL only in `figma.json`) | MCP tools at execute time |
-| `handoff`  | `outputs/design/ui/handoff/**` files | Observation of the bundle |
+| `handoff`  | `outputs/design/ui/handoff/**` files | Manifest stubs injected; contents read on demand via `read_file` |
 | *(none)*   | VisualTier policy or framework defaults | See fallback rules |
 
 The three sources NEVER coexist — RAC resolution rejects mixed selections. The prompts therefore receive exactly one interpretation partial via `ui-source-dispatch`.
@@ -17,7 +17,7 @@ The three sources NEVER coexist — RAC resolution rejects mixed selections. The
 
 - **ant** — JSON contents are authoritative. `ui-spec` wins over `system-design` for layout, `ui-tokens` wins for design values, `ui-assets` wins for source→destination mappings.
 - **figma** — The MCP response is authoritative. `figma.json` itself is only a workfile pointer; do not infer tokens or layout from it. Use `figma_get_variable_defs` for tokens when present, `figma_get_design_context` for layout, `figma_get_screenshot` for visual verification.
-- **handoff** — Observable content is authoritative; schema is never assumed. Pick the most explicit representation per property; ignore conflicting evidence from the same bundle.
+- **handoff** — Files read via `read_file` are authoritative for whatever they explicitly show; schema is never assumed. Pick the most explicit representation per property after reading; ignore conflicting evidence from the same bundle. Binary entries are path-only references.
 
 ### Cross-source rules (always apply)
 

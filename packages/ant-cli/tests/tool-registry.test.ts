@@ -344,15 +344,19 @@ describe('applyCodeCommandPolicy', () => {
     expect(result).toBeNull();
   });
 
-  it('should block build/test in verification execute phase', async () => {
+  it('allows build/test/tsc in verification execute phase (self-validation)', async () => {
+    // Verification-loop postmortem: execute-phase is now allowed to
+    // self-validate its own fix. The blanket "BLOCKED: do not run
+    // build/test during execute" policy was removed. The same
+    // already-passed / ordering guards that police plan-phase apply to
+    // execute too — when no gate has passed yet, build is permitted.
     const { applyCodeCommandPolicy } = await import('../src/agents/common/tool/handlers/codeCommandPolicy');
     const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/verification/model/Session');
     ctx.currentTaskType = 'verification';
     ctx.activePhase = 'execute';
     ctx.verificationSession = VerificationSession.createFresh({ isTs: false, hasTests: false });
     const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
-    expect(result).not.toBeNull();
-    expect(result!.content).toContain('BLOCKED');
+    expect(result).toBeNull();
   });
 
   it('should block build before typecheck passes in plan phase (gate ordering)', async () => {

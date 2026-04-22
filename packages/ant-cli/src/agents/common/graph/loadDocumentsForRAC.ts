@@ -8,8 +8,16 @@
  * Path semantics:
  *   - File paths → loaded as a single artifact.
  *   - Directory paths → recursively scanned; every file beneath is loaded as a
- *     separate artifact keeping the original role. Used for handoff bundles
- *     and for UiSource subgroups in general.
+ *     separate artifact keeping the original role. Used for UiSource subgroups
+ *     in general.
+ *
+ * Handoff special case:
+ *   - Paths under `outputs/design/ui/handoff/` are NEVER eager-loaded. Each
+ *     file becomes a STUB artifact (path + size + kind + read_file hint).
+ *     The downstream LLM is expected to invoke `read_file` on the text
+ *     entries it actually needs and reference binaries by path only. This
+ *     mirrors how source code is handled elsewhere and avoids dumping large
+ *     html/css/png bundles into the prompt.
  *
  * Invariants enforced here:
  *   - Hard-exclusive UiSource: a RAC must not mix artifacts from more than one
@@ -20,8 +28,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ResolvedActionContext, ResolvedArtifact, UiSource } from '@ant/shared';
-import { uiSourceOfPath } from '@ant/shared';
+import { ARTIFACT_PREFIX, uiSourceOfPath } from '@ant/shared';
 import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
+import { isBinaryPath } from '../../../core/utils/binaryExtensions';
 
 export function loadResolvedArtifacts(
   resolvedAction: ResolvedActionContext,
@@ -78,14 +87,58 @@ function appendPath(
   if (stat.isDirectory()) {
     for (const child of walkDir(absolute)) {
       const rel = path.relative(featurePath, child).split(path.sep).join('/');
+      if (isHandoffPath(rel)) {
+        try {
+          const s = fs.statSync(child);
+          out.push({ path: rel, content: buildHandoffStub(rel, s.size), role });
+        } catch { /* unreadable child — skip */ }
+        continue;
+      }
       const content = readAndNormalize(child);
       if (content) out.push({ path: rel, content, role });
     }
     return;
   }
 
+  if (isHandoffPath(relativePath)) {
+    out.push({ path: relativePath, content: buildHandoffStub(relativePath, stat.size), role });
+    return;
+  }
   const content = readAndNormalize(absolute);
   if (content) out.push({ path: relativePath, content, role });
+}
+
+/**
+ * Handoff paths are not eager-loaded. Rather than embedding content, we emit
+ * a stub so the downstream prompt surfaces a manifest-style entry and the
+ * execute-phase LLM picks up files on demand via `read_file`. Binaries are
+ * tagged path-only (utf-8 reads would be garbage).
+ */
+function isHandoffPath(rel: string): boolean {
+  return rel === 'outputs/design/ui/handoff' || rel.startsWith(ARTIFACT_PREFIX.UI_HANDOFF);
+}
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+function buildHandoffStub(relPath: string, sizeBytes: number): string {
+  const kind = isBinaryPath(relPath) ? 'binary' : 'text';
+  const size = formatSize(sizeBytes);
+  if (kind === 'binary') {
+    return [
+      `[handoff asset] ${relPath}`,
+      `size: ${size}, kind: binary`,
+      `Reference this path from code output; do NOT call read_file on it.`,
+    ].join('\n');
+  }
+  return [
+    `[handoff file] ${relPath}`,
+    `size: ${size}, kind: text`,
+    `Call read_file("${relPath}") — optionally with startLine/endLine — to observe contents on demand.`,
+  ].join('\n');
 }
 
 function* walkDir(dirAbs: string): Iterable<string> {
