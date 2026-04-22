@@ -254,6 +254,28 @@ describe('plan history', () => {
       ),
     ).toEqual({ repeated: true, count: 1 });
   });
+
+  it('records empty plans as stable hashes and skips the body buffer', () => {
+    // Empty planText is the "silent give-up" signal: the LLM ended the
+    // plan cycle without emitting a `<plan>` block. We still want the
+    // repetition detector to see it (so the hash list IS appended) but
+    // the bounded body buffer is for prompt-injection display and has
+    // no meaningful empty rendering.
+    const s = freshTs();
+    s.onPlanApplied('');
+    s.onPlanApplied('');
+    expect(s.snapshot().planHistoryHashes.length).toBe(2);
+    expect(s.planHistoryBodies()).toEqual([]);
+    expect(s.isPlanRepeated('')).toEqual({ repeated: true, count: 2 });
+  });
+
+  it('isPlanRepeated distinguishes empty from non-empty plan hashes', () => {
+    const s = freshTs();
+    s.onPlanApplied(plan({ modify: 1, seed: 'x' }));
+    s.onPlanApplied(plan({ modify: 1, seed: 'x' }));
+    // Trailing non-empty plan pair — an empty candidate does not match it.
+    expect(s.isPlanRepeated('')).toEqual({ repeated: false, count: 0 });
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────

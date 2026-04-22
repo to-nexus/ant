@@ -84,18 +84,28 @@ const NO_PROGRESS_STREAK = 2;
  * Verification's retry terminator. Returns `no_progress` when the just-failed
  * plan matches the trailing plan-history streak; `null` continues the loop.
  * Runaway is bounded by `state.recursionLimit` at the routing layer.
+ *
+ * Empty-plan coverage: `state.planText === ''` is a legitimate input here.
+ * The plan-phase LLM sometimes emits `<done>true</done>` with no `<plan>`
+ * block mid-retry — a protocol-violation "silent give-up" that used to
+ * evade termination because the old `!state.planText` early-return bailed
+ * out before the hash comparison. Empty strings now flow through
+ * `isPlanRepeated` and hash to a stable value, so two consecutive empties
+ * register as a repeated-plan streak and throw `no_progress` through the
+ * same channel that catches verbatim repeated plans.
  */
 export function checkRetryTermination(
   state: ArchitectGraphState,
 ): VerificationTerminalError | null {
   const session = state.verification;
-  if (!session || !state.planText) return null;
+  if (!session) return null;
 
-  const repeat = session.isPlanRepeated(state.planText);
+  const repeat = session.isPlanRepeated(state.planText ?? '');
   if (repeat.count >= NO_PROGRESS_STREAK) {
+    const planDesc = state.planText ? `the same plan` : `an empty plan`;
     return new VerificationTerminalError(
       'no_progress',
-      `Task "${state.currentTask?.name ?? 'verification'}" stuck: the LLM produced the same plan ${repeat.count} times in a row.`,
+      `Task "${state.currentTask?.name ?? 'verification'}" stuck: the LLM produced ${planDesc} ${repeat.count} times in a row.`,
       session.snapshot(),
     );
   }
@@ -122,6 +132,44 @@ function renderPassedSteps(passed: readonly string[]): string | undefined {
   };
   const rendered = passed.map(s => labels[s]).filter(Boolean).join('\n');
   return rendered || undefined;
+}
+
+/**
+ * Compact session-state banner rendered at the top of the verification
+ * plan prompt when the task has already attempted remediation or
+ * batch-split at least once. Replaces the verbose
+ * `buildDiagnosticRetryContext` narrative that used to embed completed
+ * error sub-tasks' prePlanText and the full planHistoryBodies buffer
+ * (removed per postmortem §4.1). Three principles drive the copy:
+ *
+ *   1. Scalar summary only — attempts / passed / missing gates /
+ *      batch-split count. Details live on disk (`sessions/architect/code.json`)
+ *      and are fetched on demand by the LLM.
+ *   2. Points the LLM at self-service lookup when it suspects cascading
+ *      failure — the rules-level Prior-Attempt Lookup principle tells
+ *      it HOW to call `read_file`.
+ *   3. No task-specific internals — keeps the surface blind to
+ *      individual error sub-tasks' fix content.
+ *
+ * Returns `undefined` on the first attempt so the banner stays silent
+ * when there is nothing to report.
+ */
+function renderSessionSummary(
+  session: { attempts(): number; passed(): readonly string[]; missing(): readonly string[]; batchSplitCount(): number } | undefined,
+): string | undefined {
+  if (!session) return undefined;
+  const attempts = session.attempts();
+  const batchSplits = session.batchSplitCount();
+  if (attempts === 0 && batchSplits === 0) return undefined;
+
+  const passed = session.passed();
+  const missing = session.missing();
+  const parts: string[] = [];
+  parts.push(`- Diagnostic attempts so far: ${attempts}`);
+  parts.push(`- Passed gates: ${passed.length > 0 ? passed.join(', ') : 'none'}`);
+  parts.push(`- Outstanding gates: ${missing.length > 0 ? missing.join(', ') : 'none'}`);
+  if (batchSplits > 0) parts.push(`- Prior batch-split cycles: ${batchSplits}`);
+  return parts.join('\n');
 }
 
 
@@ -199,6 +247,10 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   // is the SSOT once hydrated; legacy tracker is the coexistence bridge.
   const cachedPassedSteps = renderPassedSteps(session?.passed() ?? []);
 
+  // Scalar retry-banner: one-line status drawn from Session. Replaces the
+  // removed `buildDiagnosticRetryContext` narrative (postmortem §4.1).
+  const sessionSummary = renderSessionSummary(session);
+
   const taskTechTiers = task.techTiers?.length
     ? task.techTiers
     : (getTechTier(state) ? [getTechTier(state)!] : []);
@@ -229,6 +281,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     isDeepDiagnostic,
     diagnosticAttempts: session?.attempts() ?? 0,
     cachedPassedSteps,
+    sessionSummary,
+    hasSessionSummary: !!sessionSummary,
     resolvedAction: state.resolvedAction,
   });
 
@@ -247,6 +301,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       hasLanguageHints: !!languageHints,
       hasViolationsText: !!violationsText,
       violationsTextLen: violationsText?.length ?? 0,
+      hasSessionSummary: !!sessionSummary,
+      batchSplitCount: session?.batchSplitCount() ?? 0,
     },
   };
 }

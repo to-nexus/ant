@@ -221,105 +221,6 @@ async function maybeSetupFastPath(
 }
 
 /**
- * Compose the `diagnosticRetryContext` block appended to the plan prompt
- * when a verification task was previously batch-split or retried. All
- * verification cycle state now comes from `state.verification`:
- *
- *   1. `previousBatchDiagnostics()` + `batchSplitCount()` — from the
- *      last `onBatchSplit` call.
- *   2. Completed error sub-tasks (`state.completedTasksDetails`) paired
- *      with their `prePlanText` bodies.
- *   3. `planHistoryBodies()` — up to 3 most recent attempts retained by
- *      the Session (bounded buffer).
- *
- * Returns undefined when the task is not a verification retry or nothing
- * has been captured yet.
- */
-function buildDiagnosticRetryContext(
-  state: ArchitectGraphState,
-  nextTask: CodeTask,
-): string | undefined {
-  if (!isVerificationTask(nextTask)) return undefined;
-  const session = state.verification;
-  if (!session) return undefined;
-
-  const prevBatchDiagnostics = session.previousBatchDiagnostics();
-  const batchSplitCount = session.batchSplitCount();
-
-  let context: string | undefined;
-
-  if (prevBatchDiagnostics) {
-    context =
-      `\n\n### PREVIOUS BATCH SPLIT ATTEMPT (Cycle ${batchSplitCount})\n` +
-      `Error sub-tasks were created and executed, but errors persist.\n` +
-      `Previous diagnostics: ${prevBatchDiagnostics}\n` +
-      `Analyze whether these are NEW errors (cascading from compiler) or SAME errors (fix failed). ` +
-      `Adjust strategy accordingly.`;
-    console.log(`📋 [Plan] Injecting previous batch split context (cycle ${batchSplitCount}) into diagnostic prompt`);
-  }
-
-  if (batchSplitCount > 0) {
-    const completedErrorTasks = (state.completedTasksDetails || [])
-      .filter((t: any) => isErrorTask(t) && (t as any).prePlanText);
-
-    if (completedErrorTasks.length > 0) {
-      const MAX_PLAN_CHARS = 2000;
-      const MAX_TOTAL_CHARS = 8000;
-      let totalChars = 0;
-      const attempts: string[] = [];
-      for (const [i, t] of completedErrorTasks.entries()) {
-        const plan = (t as any).prePlanText!;
-        const truncated = plan.length > MAX_PLAN_CHARS
-          ? plan.substring(0, MAX_PLAN_CHARS) + '... [truncated]'
-          : plan;
-        const entry = `#### Error Fix ${i + 1}: ${t.name}\n${t.description || ''}\n\`\`\`json\n${truncated}\n\`\`\``;
-        totalChars += entry.length;
-        if (totalChars > MAX_TOTAL_CHARS) {
-          attempts.push(`... and ${completedErrorTasks.length - i} more error tasks (truncated)`);
-          break;
-        }
-        attempts.push(entry);
-      }
-
-      const previousAttemptsContext =
-        `\n\n### COMPLETED ERROR FIX TASKS (${completedErrorTasks.length} tasks)\n` +
-        `These fixes were applied. Current errors may be cascading (new layer revealed) ` +
-        `or regression (fix introduced new issues). Use this context to plan accurately.\n\n` +
-        attempts.join('\n\n');
-
-      context = (context || '') + previousAttemptsContext;
-    }
-  }
-
-  const planHistory = [...session.planHistoryBodies()];
-  if (planHistory.length > 0) {
-    const recentHistory = planHistory.slice(-3);
-    let historyContext = `\n\n### PREVIOUS FIXES APPLIED BUT ERROR PERSISTS\n` +
-      `${planHistory.length} remediation plan(s) were applied but the error was NOT resolved:\n\n`;
-    recentHistory.forEach((plan, i) => {
-      const attemptNum = planHistory.length - recentHistory.length + i + 1;
-      historyContext += `#### Attempt ${attemptNum}\n\`\`\`json\n${plan}\n\`\`\`\n\n`;
-    });
-    if (planHistory.length >= 2) {
-      historyContext +=
-        `**ESCALATION**: ${planHistory.length} different fixes have failed. ` +
-        `The error message is likely a SYMPTOM, not the root cause. ` +
-        `Broaden your analysis:\n` +
-        `- Observe **warnings and non-error output** from failed commands — they may identify the true cause\n` +
-        `- Observe **mode-specific behavior** — success in one mode but failure in another points to environment, not code\n` +
-        `- Consider environment-level fixes (scripts, config files, runtime settings) rather than source code changes\n` +
-        `- Do NOT try another variation of the same category of fix\n`;
-    } else {
-      historyContext += `You MUST try a FUNDAMENTALLY DIFFERENT approach. Do NOT repeat the same fix.\n`;
-    }
-    context = (context || '') + historyContext;
-    console.log(`📋 [Plan] Injected ${planHistory.length} previous plan(s) as context — ${planHistory.length >= 2 ? 'ESCALATION triggered' : 'different approach requested'}`);
-  }
-
-  return context;
-}
-
-/**
  * STEP 3 — run the main plan-LLM call. Prefers tool-enabled mode when the
  * task requires exploration; falls back to `generatePlanText` otherwise.
  *
@@ -327,6 +228,22 @@ function buildDiagnosticRetryContext(
  *   - a `ArchitectGraphState` when the LLM chose tool calls (caller
  *     short-circuits and the next graph tick re-enters plan),
  *   - a plain `planText` string when the LLM produced a final plan.
+ *
+ * R1 — this function stays blind to `task.type`. Prior-attempt reasoning
+ * continuity is carried exclusively via the Session-driven summary lines
+ * rendered inside the verification-variant template (see
+ * `tasks/verification/hooks/plan.ts::buildPrompt`) and the
+ * rules-level pointer to `sessions/architect/code.json` for LLM-self-
+ * service lookup. Previously this phase embedded a verification-only
+ * "diagnosticRetryContext" narrative — completed error sub-tasks'
+ * prePlanText and planHistory bodies — directly into the system prompt.
+ * That embedding violated (a) the task-boundary isolation principle
+ * (verification was the sole exception, leaking prior tasks' internals
+ * into the next plan), (b) the R1 phase-blind rule (`isVerificationTask`
+ * branch inside the phase node), and (c) the "state lives on disk, not
+ * in prompts" principle (`sessions/architect/code.json` already holds
+ * the same data). The removal fell out of the verification-loop
+ * postmortem (see `docs/tmp/verification-loop-postmortem.md` §4.1).
  */
 async function runMainPlanLLM(
   state: ArchitectGraphState,
@@ -347,16 +264,11 @@ async function runMainPlanLLM(
   const planToolRounds = nodePlan.length / 2;
   const tryToolsFirst = llm && (requiresPlan || isVerification) && planToolRounds < PLAN_TOOL_LOOP_MAX && !forceNoTools;
 
-  const diagnosticRetryContext = buildDiagnosticRetryContext(state, nextTask);
-
   // UI doc injection is now handled by ArtifactPipeline in planGeneration.ts.
   const uiDocForPlan: string | undefined = undefined;
 
   if (tryToolsFirst) {
-    const violationsText = composeViolationsText(
-      state.violations,
-      diagnosticRetryContext,
-    );
+    const violationsText = composeViolationsText(state.violations);
     const { blocks: contentBlocks, vars: hookLogVars } = await buildPlanPromptBlocks(
       state, nextTask, rag.projectCodeContext, violationsText, uiDocForPlan, remainingTasks, { hasTools: true },
     );
