@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useStore } from '@/domain/store';
 import {
   type Basis,
@@ -6,6 +6,7 @@ import {
   type BasisOption,
   type SupportedLanguage,
   type SupportedStack,
+  type TechTierConfig,
   type VisualTier,
   STACK_OPTIONS,
   TECH_TIER_LANGUAGES,
@@ -14,11 +15,9 @@ import {
   buildBasisPreset,
   VISUAL_LANGUAGE_OPTIONS,
   SURFACE_SYSTEM_OPTIONS,
-  SPATIAL_SYSTEM_OPTIONS,
   deriveInteractionGrammar,
-  deriveVisualHierarchyRules,
+  isVisualTierActive,
   type VisualLanguageVariant,
-  type SpatialSystemVariant,
 } from '@ant/shared';
 import { TECH_STEPS, FULLSTACK_STEPS, VISUAL_STEPS } from './constants';
 import type { BasisWizardState, WizardStepDef } from './types';
@@ -51,10 +50,8 @@ function buildBasisFromSelections(selections: BasisWizardState['selections']): B
   const vt: Partial<VisualTier> = {};
   const vl = selections.visualTier.visualLanguage;
   const ss = selections.visualTier.surfaceSystem;
-  const sp = selections.visualTier.spatialSystem;
   if (isReal(vl)) vt.visualLanguage = vl as any;
   if (isReal(ss)) vt.surfaceSystem = ss as any;
-  if (isReal(sp)) vt.spatialSystem = sp as any;
 
   const ds = selections.visualTier.designSystem;
   const basis = buildBasisPreset({
@@ -136,7 +133,6 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
       const visValues = [
         currentBasis?.visualTier?.visualLanguage,
         currentBasis?.visualTier?.surfaceSystem,
-        currentBasis?.visualTier?.spatialSystem,
       ];
       const firstEmpty = visValues.findIndex(v => v === undefined);
       initStepIndex = firstEmpty === -1 ? visValues.length - 1 : firstEmpty;
@@ -165,16 +161,27 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
           designSystem: currentBasis?.visualTier?.designSystem,
           visualLanguage: currentBasis?.visualTier?.visualLanguage,
           surfaceSystem: currentBasis?.visualTier?.surfaceSystem,
-          spatialSystem: currentBasis?.visualTier?.spatialSystem,
         },
       },
     };
   });
 
   const hasTechTier = !!basisSlot.techTier;
-  const hasVisualTier = !!basisSlot.visualTier;
   const hasDefaultStack = !!basisSlot.defaults?.stack;
   const isFullstack = state.selections.techTier.stack === 'fullstack';
+
+  // Runtime Visual Tier gate: backend-only stacks have no visual policy.
+  // Reacts to live stack selection so the tab appears/disappears as the user edits.
+  const currentTechTierForGate = useMemo<TechTierConfig | undefined>(() => {
+    const stack = state.selections.techTier.stack;
+    if (!stack || stack === AUTO) return undefined;
+    return { stack: stack as any };
+  }, [state.selections.techTier.stack]);
+
+  const hasVisualTier = useMemo(
+    () => isVisualTierActive(basisSlot, currentTechTierForGate),
+    [basisSlot, currentTechTierForGate],
+  );
 
   const techSteps = useMemo((): WizardStepDef[] => {
     if (!hasTechTier) return [];
@@ -243,7 +250,6 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
       switch (layerKey) {
         case 'visualLanguage': return VISUAL_LANGUAGE_OPTIONS;
         case 'surfaceSystem': return SURFACE_SYSTEM_OPTIONS;
-        case 'spatialSystem': return SPATIAL_SYSTEM_OPTIONS;
       }
     }
 
@@ -359,14 +365,15 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
     return getSelectionValue(state.selections, step);
   }, [state.selections]);
 
+  // visualHierarchyRules (VL + spatial) cannot be previewed in the wizard
+  // because spatialSystem is decided at decompose time. Only interactionGrammar
+  // is pure-function of visualLanguage and can be shown live.
   const derivedLayers = useMemo(() => {
     const vl = state.selections.visualTier.visualLanguage;
-    const ss = state.selections.visualTier.spatialSystem;
     return {
       interactionGrammar: vl ? deriveInteractionGrammar(vl as VisualLanguageVariant) : undefined,
-      visualHierarchyRules: vl && ss ? deriveVisualHierarchyRules(vl as VisualLanguageVariant, ss as SpatialSystemVariant) : undefined,
     };
-  }, [state.selections.visualTier.visualLanguage, state.selections.visualTier.spatialSystem]);
+  }, [state.selections.visualTier.visualLanguage]);
 
   const draftBasis = useMemo(
     () => buildBasisFromSelections(state.selections),
@@ -414,7 +421,6 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
           designSystem: saved?.visualTier?.designSystem,
           visualLanguage: saved?.visualTier?.visualLanguage,
           surfaceSystem: saved?.visualTier?.surfaceSystem,
-          spatialSystem: saved?.visualTier?.spatialSystem,
         },
       },
     }));

@@ -4,9 +4,11 @@ import type { BasisWizardState, WizardStepDef } from './types';
 interface DecidedLayersBreadcrumbProps {
   steps: WizardStepDef[];
   state: BasisWizardState;
+  // Only interactionGrammar is a pure function of visualLanguage and can be
+  // previewed in the wizard. visualHierarchyRules depends on spatialSystem,
+  // which is decided at decompose time — so it is not shown here.
   derivedLayers?: {
     interactionGrammar?: string;
-    visualHierarchyRules?: string;
   };
   lang: 'en' | 'ko';
 }
@@ -43,9 +45,6 @@ export function DecidedLayersBreadcrumb({ steps, state, derivedLayers, lang }: D
   if (state.activeTier === 'visualTier' && derivedLayers) {
     if (derivedLayers.interactionGrammar) {
       pills.push({ key: 'ig', label: derivedLayers.interactionGrammar, isAuto: true });
-    }
-    if (derivedLayers.visualHierarchyRules) {
-      pills.push({ key: 'vhr', label: derivedLayers.visualHierarchyRules, isAuto: true });
     }
   }
 

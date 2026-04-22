@@ -117,14 +117,8 @@ Output the tech tier in `<techTier>` tags before `<tasks>`:
 
 {{> jobs/code/nodes/decompose/variants/default/techTier-rules}}
 
-{{#if resolvedAction.basis.visualTier}}
-The following visual design policy has been **pre-determined** by the user.
-A `"design-system"` task at priority 200 is REQUIRED to implement this policy as token infrastructure.
-
-Pre-determined visual tier:
-- visualLanguage: {{resolvedAction.basis.visualTier.visualLanguage}}
-- surfaceSystem: {{resolvedAction.basis.visualTier.surfaceSystem}}
-- spatialSystem: {{resolvedAction.basis.visualTier.spatialSystem}}
+{{#if visualTierActive}}
+A `"design-system"` task at priority 200 is REQUIRED to implement the visual policy as token infrastructure. The visual tier layers are resolved via the `<visualTier>` tag (see visual-tier-detection section) — explicit values from `resolvedAction.basis.visualTier` are authoritative, missing layers are inferred from the work content.
 {{/if}}
 
 **Step 2: Break into Tasks**

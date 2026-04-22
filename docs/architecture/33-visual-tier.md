@@ -1,19 +1,28 @@
 # 33. Visual Tier System
 
-Visual Tier는 6개 레이어로 구성된 시각 디자인 정책 시스템이다. 사용자가 상위 3개 레이어를 선택하면, 하위 3개 레이어가 자동 유도된다.
+Visual Tier는 6개 레이어로 구성된 시각 디자인 정책 시스템이다. techTier와 동일한 **Explicit vs Infer 대칭** 구조를 따른다.
 
 ## Part 1: 시스템 설계
 
 ### 6-Layer 구조
 
-| # | Layer | 역할 | 선택 방식 |
+| # | Layer | 역할 | 결정 방식 |
 |---|-------|------|----------|
-| 1 | `visualLanguage` | 전체 정체성, 색상, 폰트, 고유 시각 효과 (Signature) | 사용자 선택 |
-| 2 | `surfaceSystem` | 패널/컨테이너 표면 처리 (깊이, 보더, 그림자, 투명도) | 사용자 선택 |
-| 3 | `spatialSystem` | 간격 리듬, 밀도, base unit | 사용자 선택 |
-| 4 | `interactionGrammar` | 마이크로 인터랙션 + 매크로 프레젠테이션 모션 | 자동 유도 (VL → IG) |
-| 5 | `componentSemantics` | 컴포넌트 역할 편향 (메트릭/액션/콘텐츠/유틸리티) | 자동 유도 (screenContext → CS) |
-| 6 | `visualHierarchyRules` | 시각 위계 규칙 (무엇이 먼저 보이는가) | 자동 유도 (VL + SS → VH) |
+| 1 | `visualLanguage` | 전체 정체성, 색상, 폰트, 고유 시각 효과 (Signature) | 사용자 선택 또는 Auto(infer) |
+| 2 | `surfaceSystem` | 패널/컨테이너 표면 처리 (깊이, 보더, 그림자, 투명도) | 사용자 선택 또는 Auto(infer) |
+| 3 | `spatialSystem` | 간격 리듬, 밀도, base unit | 항상 Auto (decompose LLM infer) |
+| 4 | `interactionGrammar` | 마이크로 인터랙션 + 매크로 프레젠테이션 모션 | 자동 파생 (VL → IG) |
+| 5 | `componentSemantics` | 컴포넌트 역할 편향 (메트릭/액션/콘텐츠/유틸리티) | 자동 파생 (screenContext → CS) |
+| 6 | `visualHierarchyRules` | 시각 위계 규칙 (무엇이 먼저 보이는가) | 자동 파생 (VL + SS → VH) |
+
+### Explicit vs Infer 대칭
+
+techTier와 동일한 규칙:
+
+- `Basis.visualTier.<layer>` 에 값이 있으면 **explicit** — decompose는 그 값을 그대로 사용.
+- 값이 없으면 **infer** — decompose LLM이 directive + refs + contextArtifacts + PRD 등 RAC pool을 관찰하여 채움.
+
+`spatialSystem` 은 wizard에서 사용자 선택 경로가 제거되었기 때문에 항상 infer 경로를 탄다. `visualLanguage` / `surfaceSystem` 은 wizard에서 Auto 카드를 고르면 explicit 값이 비워져 infer 경로로 전환된다.
 
 ### 자동 유도 매트릭스
 
@@ -34,6 +43,16 @@ resolveVisualTier(userSelection?, autoDetected?, screenContext?) → Partial<Vis
 ```
 
 우선순위: `userSelection > autoDetected > derive > undefined`
+
+### Backend 산출물에서의 런타임 비활성
+
+`@ant/shared` 의 `isVisualTierActive(basisSlot, techTier)` 가 FE wizard / FE summary / BE decompose / prompt 주입 네 지점에서 동일 규칙을 적용한다. 규칙은 단순하다:
+
+```
+visualTier is active  ⇔  basisSlot.visualTier === true  AND  techTier.stack !== 'backend'
+```
+
+`BasisSlotConfig.visualTier` 는 정적 boolean 그대로 유지하고, stack 런타임 값과의 조합만 헬퍼에서 판정한다. 순수 백엔드 산출물(`stack === 'backend'`)에는 wizard 탭이 노출되지 않고, decompose의 visual tier 병합 블록과 `<visualTier>` 프롬프트 주입이 스킵된다.
 
 ### Authority 체계
 
@@ -188,8 +207,8 @@ packages/ant-cli/src/core/prompt/
     └── visualHierarchyRules/
 
 packages/ant-ui/src/presentation/components/Actions/basis/
-├── BasisSummaryBar.tsx           # 자동 유도 레이어 배지 표시
-├── BasisWizard.tsx               # DecidedLayersBreadcrumb 통합
-├── DecidedLayersBreadcrumb.tsx   # 파생 레이어 pill 표시
-└── useBasisWizard.ts             # derivedLayers 계산
+├── BasisSummaryBar.tsx           # 레이어별 배지 표시 (Explicit=선택값, Infer=Auto)
+├── BasisWizard.tsx               # Wizard 쉘 (VL/surface 2스텝, spatial은 항상 Auto)
+├── DecidedLayersBreadcrumb.tsx   # interactionGrammar pill 표시 (VHR은 decompose 이후에만 존재)
+└── useBasisWizard.ts             # 상태 관리 + hasVisualTier 런타임 게이트
 ```

@@ -275,7 +275,7 @@ Sub-role is determined by priority:
 - **⚠️ Blind Spot — Utility prefix collision**: CSS utility frameworks add category prefixes when generating classes. When mapping token keys to framework config, strip any key prefix that duplicates the framework's auto-prefix to avoid double-prefixed class names.
 - **Execution**: Read installed framework config → read tokens → generate files → wire imports → verify entry file initializes framework and imports all token sources
 {{else}}
-{{#if resolvedAction.basis.visualTier}}
+{{#if visualTierActive}}
 - **Scope**: Derive concrete design tokens from visual tier policies in the basis section.
 - **Token source**: No ui-tokens.json available. Observe each visual tier policy layer in the basis section and translate its constraints into concrete token values.
 - **Constraint**: Token infrastructure only. Do NOT create components.
