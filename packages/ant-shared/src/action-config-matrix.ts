@@ -318,7 +318,6 @@ const SYS_DIR = 'outputs/design/system';
  */
 const UI_DIR = 'outputs/design/ui/ant';
 const SPEC_DIR = 'outputs/design/spec';
-const DESIGN_DIR = 'outputs/design';
 const SOURCES_DIR = 'inputs/sources';
 const REFS_DIR = 'inputs/references';
 const ASSETS_DIR = 'inputs/assets';
