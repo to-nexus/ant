@@ -63,7 +63,7 @@ decompose는 LLM에게 태스크 분해와 함께 `<techTier>` 태그로 기술 
 **Preset vs Inferred 이중 경로:**
 
 ```
-UI BasisSelector → ActionMetadata.basis → detect → RAC.basis.techTier (preset)
+UI BasisWizard → ActionMetadata.basis → detect → RAC.basis.techTier (preset)
                                                        ↓
                                              decompose prompt에 주입
                                                        ↓
@@ -74,7 +74,7 @@ UI BasisSelector → ActionMetadata.basis → detect → RAC.basis.techTier (pre
                                               RAC.basis.techTier (final)
 ```
 
-사용자가 UI에서 techTier preset을 설정한 경우(`gen-code-directive` 인텐트의 BasisSelector), decompose 프롬프트에 사전 결정 필드가 주입되어 LLM이 해당 값을 그대로 사용한다. 미설정 필드만 추론한다.
+사용자가 UI에서 techTier preset을 설정한 경우(`gen-code-directive` 인텐트의 BasisWizard), decompose 프롬프트에 사전 결정 필드가 주입되어 LLM이 해당 값을 그대로 사용한다. 미설정 필드만 추론한다.
 
 **LLM 응답 → TechTier 변환 흐름:**
 

@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback } from 'react';
+import { useRef, useMemo, useCallback, useEffect } from 'react';
 import { Settings2, Palette, AlertCircle } from 'lucide-react';
 import { ScrollableTabNav, type TabItem } from '../ScrollableTabNav';
 import { PageTransition } from '../PageTransition';
@@ -14,6 +14,15 @@ export function BasisWizard({ basisSlot, onBack, lang }: BasisWizardProps) {
   const wizard = useBasisWizard(basisSlot);
   const dirRef = useRef<1 | -1>(1);
   const prevStepRef = useRef(wizard.state.stepIndex);
+
+  // Defensive: if the user switches stack to 'backend' while the visualTier
+  // tab is active, the tab disappears (hasVisualTier becomes false). Route
+  // focus back to techTier so the wizard never renders an empty active tier.
+  useEffect(() => {
+    if (wizard.state.activeTier === 'visualTier' && !wizard.hasVisualTier && wizard.hasTechTier) {
+      wizard.switchTier('techTier');
+    }
+  }, [wizard.state.activeTier, wizard.hasVisualTier, wizard.hasTechTier, wizard.switchTier]);
 
   if (wizard.state.stepIndex !== prevStepRef.current) {
     dirRef.current = wizard.state.stepIndex > prevStepRef.current ? 1 : -1;

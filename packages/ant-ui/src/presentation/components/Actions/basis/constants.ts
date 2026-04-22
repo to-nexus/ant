@@ -9,7 +9,7 @@ export const TIER_TAB_ITEMS: WizardTierTabItem[] = [
   {
     id: 'visualTier',
     label: { en: 'Visual Tier', ko: '비주얼 티어' },
-    description: { en: 'Design language, surface, and spacing', ko: '디자인 언어, 서피스, 공간' },
+    description: { en: 'Design language and surface style', ko: '디자인 언어와 서피스 스타일' },
   },
 ];
 
@@ -86,13 +86,6 @@ export const VISUAL_STEPS: WizardStepDef[] = [
     layerKey: 'surfaceSystem',
     title: { en: 'Surface System', ko: '서피스 시스템' },
     description: { en: 'Choose how cards, panels, and containers look', ko: '카드, 패널, 컨테이너의 시각적 스타일을 선택하세요' },
-  },
-  {
-    id: 'spatialSystem',
-    tierKey: 'visualTier',
-    layerKey: 'spatialSystem',
-    title: { en: 'Spatial System', ko: '공간 시스템' },
-    description: { en: 'Set the spacing rhythm and density of your layout', ko: '레이아웃의 간격 리듬과 밀도를 설정하세요' },
   },
 ];
 

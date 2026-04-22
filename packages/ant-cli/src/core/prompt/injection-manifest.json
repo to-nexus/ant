@@ -9,7 +9,7 @@
     "role-guide": [],
     "refactor-guidance": ["resolvedAction"],
     "explain-guidance": ["resolvedAction"],
-    "visual-tier-detection": ["availableVisualLanguages", "availableSurfaceSystems", "availableSpatialSystems"]
+    "visual-tier-detection": ["availableVisualLanguagesWithModes", "availableSurfaceSystems", "availableSpatialSystems", "resolvedAction"]
   },
   "jobs/code/base/injections": {
     "git-diff": ["gitDiff"],

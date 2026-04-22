@@ -235,7 +235,7 @@ CRITICAL:
 - Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. `uiSections: ["tokens", "<component-section>"]`.
 Do NOT embed token setup in setup or ui tasks.
 {{else}}
-{{#if resolvedAction.basis.visualTier}}
+{{#if visualTierActive}}
 **Constraint**: No ui-docs but visualTier policy is active — create ONE `"design-system"` task (priority 200, `parallelGroup: "design-system"`) for token infrastructure derived from visualTier policies. No `uiSections` field (no ui-docs to inject). Do NOT create 201+ tasks — those require ui-spec.
 {{else}}
 **Constraint**: Neither ui-docs nor visualTier policy is active — do NOT create `"design-system"` tasks. Priority 200–299 tasks are `"feature"` only.
@@ -824,7 +824,7 @@ Output in this exact order:
 
 **Constraint**: ALWAYS output `<prescribedDependencies>` tag, even if the array is empty. See "Design-Prescribed Dependency Extraction" section above for extraction rules.
 
-{{#if resolvedAction.basis.visualTier}}
+{{#if visualTierActive}}
 **{{#if needsBoundaryClassification}}6{{else}}5{{/if}}. `<visualTier>` tag** (visual design policy detection):
 
 {{> jobs/shared/injections/visual-tier-detection}}

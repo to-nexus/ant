@@ -15,7 +15,7 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isVisualTierActive, getConfigSlots } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -294,7 +294,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
     assetsHint,
     resolvedAction: state.resolvedAction,
-    availableVisualLanguages: VISUAL_LANGUAGE_VARIANTS.join(', '),
+    visualTierActive: isVisualTierActive(
+      state.resolvedAction?.intent ? getConfigSlots(state.resolvedAction.intent)?.basis : undefined,
+      state.resolvedAction?.basis?.techTier,
+    ),
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
@@ -745,7 +748,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6.6: Apply visualTier from decompose response (gen-code-directive)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (state.resolvedAction?.intent === 'gen-code-directive') {
+  // Gate: backend-only stacks have no visual policy — skip entirely.
+  if (
+    state.resolvedAction?.intent === 'gen-code-directive' &&
+    isVisualTierActive(
+      getConfigSlots(state.resolvedAction.intent)?.basis,
+      state.resolvedAction?.basis?.techTier,
+    )
+  ) {
     const { resolveVisualTierFromDecompose } = await import('../../../../../common/visualTierResolver');
     const resolvedVT = resolveVisualTierFromDecompose(
       rawResponse,

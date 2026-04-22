@@ -17,7 +17,7 @@ import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, VISUAL_LANGUAGE_VARIANTS, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isVisualTierActive, getConfigSlots } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
@@ -104,10 +104,13 @@ export async function decomposeUiDesign(
           })
           .join('\n')
       : undefined,
-    availableVisualLanguages: VISUAL_LANGUAGE_VARIANTS.join(', '),
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
+    visualTierActive: isVisualTierActive(
+      state.resolvedAction?.intent ? getConfigSlots(state.resolvedAction.intent)?.basis : undefined,
+      state.resolvedAction?.basis?.techTier,
+    ),
   });
 
   await safeLogPrompt(
