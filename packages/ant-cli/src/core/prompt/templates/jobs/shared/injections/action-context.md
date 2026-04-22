@@ -10,52 +10,44 @@ The user has explicitly requested: **{{resolvedAction.intentDescription}}**
 
 {{#if resolvedAction.target}}
 ## Output Target
-Generate output ONLY for:
+Write ONLY to the following path(s) this turn. Provided Documents below are INPUTS, not edit targets.
 {{#each resolvedAction.target}}- `{{this}}`
 {{/each}}
-Do NOT generate content for files outside this list.
 {{/if}}
 
-## Primary References
-Follow these documents as the implementation source.
-{{#each resolvedAction.documents}}
-{{#if (eq role "ref")}}
-### {{#if label}}{{label}}{{else}}{{path}}{{/if}}
+## Provided Documents
+
+{{> jobs/shared/injections/role-guide}}
+
+{{#each resolvedAction.documents}}{{#if (eq role "ref")}}
+### [ref] {{#if label}}{{label}}{{else}}{{path}}{{/if}}
 
 {{{content}}}
 
-{{/if}}
-{{/each}}
-
-## Background Context
-Use these for understanding only. Do NOT treat as implementation source.
-{{#each resolvedAction.documents}}
-{{#if (eq role "context")}}
-### {{#if label}}{{label}}{{else}}{{path}}{{/if}}
+{{/if}}{{/each}}{{#each resolvedAction.documents}}{{#if (eq role "context")}}
+### [context] {{#if label}}{{label}}{{else}}{{path}}{{/if}}
 
 {{{content}}}
 
-{{/if}}
-{{/each}}
+{{/if}}{{/each}}
 
 {{else}}
 {{#if resolvedAction.hasExplicitFields}}
 {{#if resolvedAction.target}}
 ## Output Target
-Generate output ONLY for:
+Write ONLY to the following path(s) this turn.
 {{#each resolvedAction.target}}- `{{this}}`
 {{/each}}
-Do NOT generate content for files outside this list.
 {{/if}}
 
 {{#if resolvedAction.refs}}
-The following files were explicitly selected as primary references:
+The following files were explicitly selected as `ref` inputs (original source material):
 {{#each resolvedAction.refs}}- {{this}}
 {{/each}}
 {{/if}}
 
 {{#if resolvedAction.context}}
-Additional context files (secondary, for reference only):
+The following files were explicitly selected as `context` inputs (additional authority; `ref` wins on conflict):
 {{#each resolvedAction.context}}- {{this}}
 {{/each}}
 {{/if}}

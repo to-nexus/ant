@@ -54,10 +54,12 @@ resolve가 `workspaceState.sourceFileNames`를 활용하여 추론한다.
 
 `existingDocument` state 필드는 없다. 문서 내용은 architect와 동일한 패턴으로 `resolvedAction.documents`에 로드되고, `action-context.md` partial이 렌더링한다.
 
-| 역할 | 출처 | 렌더링 위치 |
-|------|------|-------------|
-| `ref` (수정 대상) | `actionMetadata.refs` | `action-context.md` — Primary References |
-| `context` (참고) | `actionMetadata.context` | `action-context.md` — Background Context |
+| 역할 | 출처 | 렌더링 위치 | 의미 (3축 모델) |
+|------|------|-------------|----------------|
+| `ref` | `actionMetadata.refs` | `action-context.md` — `## Provided Documents` / `### [ref] ...` | 원본 (source of truth), 충돌 시 승자 |
+| `context` | `actionMetadata.context` | `action-context.md` — `## Provided Documents` / `### [context] ...` | 동등 권위의 추가 입력, `ref` 와 충돌 시에만 subordinate |
+
+role 의 3축 의미는 [jobs/shared/injections/role-guide.md](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/role-guide.md) SSOT 참조 — Authority (어느 입력을 따를지), Edit-scope (어느 파일을 write 할지), Task-scope (계획을 얼마나 넓게 가져갈지).
 
 ## 그래프 노드 흐름
 

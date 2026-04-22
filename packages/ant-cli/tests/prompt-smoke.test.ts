@@ -499,7 +499,7 @@ describe('Template Smoke Tests', () => {
     expect(engravePartials).toContain('jobs/visual/nodes/engrave/variants/default/rules');
   });
 
-  it('action-context.md renders documents with role labels', async () => {
+  it('action-context.md renders documents with role labels under unified section', async () => {
     await initPartials(TEMPLATES_DIR);
 
     const output = await adapter.render('jobs/shared/injections/action-context', {
@@ -513,13 +513,25 @@ describe('Template Smoke Tests', () => {
       },
     });
 
-    expect(output).toContain('### inputs/sources/prd.md');
+    // Unified "Provided Documents" section with 3-axis role-guide partial
+    expect(output).toContain('## Provided Documents');
+    expect(output).toContain('### [ref] inputs/sources/prd.md');
     expect(output).toContain('# PRD');
-    expect(output).toContain('### outputs/design/system/fe-system-main.md');
+    expect(output).toContain('### [context] outputs/design/system/fe-system-main.md');
     expect(output).toContain('# FE Design');
-    expect(output).toContain('Primary References');
-    expect(output).toContain('Background Context');
-    expect(output).not.toContain('explicitly selected as primary references');
+    // Role-guide partial is rendered
+    expect(output).toContain('ref');
+    expect(output).toContain('context');
+    expect(output).toContain('both authoritative inputs');
+    // Legacy section headers removed
+    expect(output).not.toContain('Primary References');
+    expect(output).not.toContain('Background Context');
+    expect(output).not.toContain('Do NOT treat as implementation source');
+    // refs must render before context (original material first)
+    const refIdx = output.indexOf('### [ref]');
+    const ctxIdx = output.indexOf('### [context]');
+    expect(refIdx).toBeGreaterThan(-1);
+    expect(ctxIdx).toBeGreaterThan(refIdx);
   });
 
   it('action-context.md falls back to path list when no documents', async () => {
@@ -534,11 +546,11 @@ describe('Template Smoke Tests', () => {
       },
     });
 
-    expect(output).toContain('explicitly selected as primary references');
+    expect(output).toContain('selected as `ref` inputs');
     expect(output).toContain('docs/spec.md');
-    expect(output).toContain('Additional context files');
+    expect(output).toContain('selected as `context` inputs');
     expect(output).toContain('docs/notes.md');
-    expect(output).not.toContain('PRIMARY REFERENCE');
+    expect(output).toContain('`ref` wins on conflict');
   });
 
   it('action-context.md renders target list', async () => {
@@ -552,7 +564,8 @@ describe('Template Smoke Tests', () => {
       },
     });
 
-    expect(output).toContain('Generate output ONLY for:');
+    // New wording: Output Target section
+    expect(output).toContain('Output Target');
     expect(output).toContain('src/App.tsx');
     expect(output).toContain('src/main.tsx');
   });
