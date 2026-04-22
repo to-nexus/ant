@@ -13,11 +13,10 @@
  * Cloud-safe: Redis Pub/Sub drives cross-instance SSE broadcasting.
  */
 
-import type { LLMStreamEvent } from '../../../../../core/ports/llm';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import type { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import type { UserContext } from '../../../../../core/types/user';
-import type { ChatMessage, MessageContent, FileOperationPhase, CommandExecutionPhase } from './types';
+import type { ChatMessage, MessageContent } from './types';
 import type { TraceLine } from '@ant/shared';
 import { FileSessionAdapter } from '../../../session/FileSessionAdapter';
 import { buildChatMessagesFromTrace } from './TraceToChatMessages';
@@ -28,16 +27,21 @@ import { SessionManager } from './SessionManager';
 import { MessageBroadcaster } from './MessageBroadcaster';
 import { ContentMerger } from './ContentMerger';
 import { MessageManager } from './MessageManager';
-import { FileOperationHandler } from './FileOperationHandler';
-import { LLMEventHandler } from './LLMEventHandler';
-import { CommandExecutionHandler } from './CommandExecutionHandler';
 import { logger } from '../../../../../utils/logger';
 
 // Re-export types
 export type { MessageContent, ChatMessage } from './types';
 
 /**
- * ChatService - Orchestrates all chat-related operations
+ * ChatService - Orchestrates all chat-related operations.
+ *
+ * Historical note: this façade used to expose `handleLLMStreamEvent`,
+ * `addFileOperation`, and `addCommandExecution` entry points backed by
+ * sibling modules (`LLMEventHandler` / `FileOperationHandler` /
+ * `CommandExecutionHandler`). Those modules had zero external callers —
+ * the real live chat emission happens in `core/llm-response/*` inside the
+ * job-worker process — so they were dead code that only diluted the SSOT.
+ * They were removed in the "chat SSOT fragmentation purge" migration.
  */
 export class ChatService {
   private persistence: SessionPersistence;
@@ -45,20 +49,15 @@ export class ChatService {
   private sessionManager: SessionManager;
   private contentMerger: ContentMerger;
   private messageManager: MessageManager;
-  private fileOperationHandler: FileOperationHandler;
-  private llmEventHandler: LLMEventHandler;
-  private commandExecutionHandler: CommandExecutionHandler;
   private defaultUserContext?: UserContext;
 
   constructor(
-    workspaceRoot: string, 
-    stateStore?: StateStorePort, 
+    workspaceRoot: string,
+    stateStore?: StateStorePort,
     workspaceResolver?: WorkspaceResolver
   ) {
-    // Initialize modules
     this.persistence = new SessionPersistence(workspaceResolver);
     this.broadcaster = new MessageBroadcaster(stateStore);
-    // Pass stateStore to SessionManager for Redis-based session management
     this.sessionManager = new SessionManager(this.persistence, this.broadcaster, stateStore);
     this.contentMerger = new ContentMerger(this.broadcaster);
     this.messageManager = new MessageManager(
@@ -67,13 +66,6 @@ export class ChatService {
       this.broadcaster,
       this.contentMerger
     );
-    this.fileOperationHandler = new FileOperationHandler(this.sessionManager, this.broadcaster);
-    this.llmEventHandler = new LLMEventHandler(
-      this.sessionManager,
-      this.messageManager,
-      this.broadcaster
-    );
-    this.commandExecutionHandler = new CommandExecutionHandler(this.messageManager);
   }
 
   /**
@@ -184,72 +176,6 @@ export class ChatService {
     userContext?: UserContext
   ): Promise<void> {
     await this.messageManager.finalizeCurrentMessageAsync(projectId, featureName, cancelled, userContext);
-  }
-
-  /**
-   * Process LLM stream event and convert to chat content
-   */
-  handleLLMStreamEvent(
-    projectId: string,
-    featureName: string,
-    event: LLMStreamEvent
-  ): void {
-    this.llmEventHandler.handleLLMStreamEvent(projectId, featureName, event);
-  }
-
-  /**
-   * Add file operation notification
-   * Uses Redis for cross-Pod consistency of activeFileOperations
-   */
-  async addFileOperation(
-    projectId: string,
-    featureName: string,
-    operation: 'edit' | 'create' | 'delete',
-    filePath: string,
-    content?: string,
-    diffBefore?: string,
-    diffAfter?: string,
-    phase?: FileOperationPhase,
-    error?: string,
-    jobId?: string,
-    userContext?: UserContext
-  ): Promise<void> {
-    await this.fileOperationHandler.addFileOperation(
-      projectId,
-      featureName,
-      operation,
-      filePath,
-      content,
-      diffBefore,
-      diffAfter,
-      phase,
-      error,
-      jobId,
-      userContext
-    );
-  }
-
-  /**
-   * Add command execution notification
-   */
-  addCommandExecution(
-    projectId: string,
-    featureName: string,
-    command: string,
-    output?: string,
-    exitCode?: number,
-    phase?: CommandExecutionPhase,
-    _mergeIndex?: number
-  ): number {
-    return this.commandExecutionHandler.addCommandExecution(
-      projectId,
-      featureName,
-      command,
-      output,
-      exitCode,
-      phase,
-      _mergeIndex
-    );
   }
 
   /**
