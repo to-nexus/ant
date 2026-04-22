@@ -19,7 +19,9 @@ import {
   getSessionFilePath,
   getSessionsDir,
   getFeatureJsonlPath,
-  getTraceJsonlPath,
+  getChatJsonlPath,
+  getChatJsonlReadPath,
+  getLegacyTraceJsonlPath,
 } from "../../../core/utils/sessionPaths";
 
 
@@ -307,13 +309,18 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
-   * Append a line to feature.jsonl or trace.jsonl (generic).
+   * Append a line to feature.jsonl or chat.jsonl (generic).
    * Append-only. JSON.stringify(line) + '\n'.
+   *
+   * The `'trace'` kind is accepted as a legacy alias for `'chat'` so call
+   * sites can migrate one at a time. Writes always target `chat.jsonl`;
+   * any pre-existing `trace.jsonl` on disk is left untouched and read via
+   * {@link getChatJsonlReadPath}.
    */
-  async appendLine(file: 'feature' | 'trace', line: FeatureLine | TraceLine): Promise<void> {
+  async appendLine(file: 'feature' | 'chat' | 'trace', line: FeatureLine | TraceLine): Promise<void> {
     const filePath = file === 'feature'
       ? getFeatureJsonlPath(this.featurePath)
-      : getTraceJsonlPath(this.featurePath);
+      : getChatJsonlPath(this.featurePath);
 
     const lock = this.getJsonlLock(filePath);
     await lock.runExclusive(async () => {
@@ -357,7 +364,7 @@ export class FileSessionAdapter implements SessionPort {
       await this.appendLine('feature', line);
     }
 
-    // 2. trace.jsonl에 사본 append (항상). Failure here does NOT abort the
+    // 2. chat.jsonl에 사본 append (항상). Failure here does NOT abort the
     //    feature-side record — feature.jsonl is the context SSOT.
     const sourceRef = options.skipFeature
       ? 'ask-only'
@@ -372,7 +379,7 @@ export class FileSessionAdapter implements SessionPort {
       sourceRef,
     };
     try {
-      await this.appendLine('trace', traceCopy);
+      await this.appendLine('chat', traceCopy);
     } catch (traceErr) {
       // For ask/inline-ask skipFeature=true, feature was never written, so the
       // turn is effectively lost for both context AND UI — surface the error.
@@ -497,33 +504,39 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
-   * Load trace.jsonl lines grouped by turnId.
+   * Load chat.jsonl lines grouped by turnId.
    * UI용. 특정 turn의 이벤트 블록을 조회.
+   *
+   * Falls back to the legacy `trace.jsonl` path when a feature predates
+   * the rename and does not yet have `chat.jsonl`.
    */
   async loadTraceByTurnIds(turnIds: string[]): Promise<TraceLine[]> {
-    const filePath = getTraceJsonlPath(this.featurePath);
+    const filePath = getChatJsonlReadPath(this.featurePath);
     const all = await this.readJsonlLines<TraceLine>(filePath);
     const turnSet = new Set(turnIds);
     return all.filter(l => !l.collapsed && turnSet.has(l.turnId));
   }
 
   /**
-   * Load trace.jsonl lines filtered by jobType (UI filtering).
+   * Load chat.jsonl lines filtered by jobType (UI filtering). Falls back
+   * to legacy `trace.jsonl` when that is the only file on disk.
    */
   async loadTraceByJobType(jobTypes: LogJobType[]): Promise<TraceLine[]> {
-    const filePath = getTraceJsonlPath(this.featurePath);
+    const filePath = getChatJsonlReadPath(this.featurePath);
     const all = await this.readJsonlLines<TraceLine>(filePath);
     const jobTypeSet = new Set(jobTypes);
     return all.filter(l => !l.collapsed && jobTypeSet.has(l.jobType));
   }
 
   /**
-   * Load ALL trace.jsonl lines (UI initial load).
-   * Supports optional sinceTs (ISO 8601) and jobTypes filters.
-   * Collapsed lines are excluded.
+   * Load ALL chat log lines (UI initial load). Supports optional sinceTs
+   * (ISO 8601) and jobTypes filters. Collapsed lines are excluded.
+   *
+   * Reader falls back to legacy `trace.jsonl` when the feature was created
+   * before the rename; writers always target `chat.jsonl`.
    */
   async loadAllTrace(opts: { sinceTs?: string; jobTypes?: LogJobType[] } = {}): Promise<TraceLine[]> {
-    const filePath = getTraceJsonlPath(this.featurePath);
+    const filePath = getChatJsonlReadPath(this.featurePath);
     const all = await this.readJsonlLines<TraceLine>(filePath);
     const jobTypeSet = opts.jobTypes && opts.jobTypes.length > 0 ? new Set(opts.jobTypes) : null;
     const sinceTs = opts.sinceTs;
@@ -616,15 +629,20 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
-   * Collapse ALL trace.jsonl lines — Chat Clear / Sweep.
+   * Collapse ALL chat log lines — Chat Clear / Sweep.
    *
    * `feature.jsonl` is intentionally preserved so the LLM retains
    * conversation context across a chat clear. Hard Reset does NOT use
    * this path — it physically unlinks every session file via
    * `clearCanonicalDirectory` in the `/context/reset` route handler.
+   *
+   * Collapses both the current `chat.jsonl` and the legacy
+   * `trace.jsonl` when the latter is still on disk, so clearing a feature
+   * that was created before the rename hides every pre-rename line too.
    */
   async collapseTraceOnly(): Promise<void> {
-    await this.collapseAllInFile(getTraceJsonlPath(this.featurePath));
+    await this.collapseAllInFile(getChatJsonlPath(this.featurePath));
+    await this.collapseAllInFile(getLegacyTraceJsonlPath(this.featurePath));
   }
 
   // ───── Private JSONL helpers ─────
