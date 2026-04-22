@@ -270,8 +270,8 @@ describe('Template Smoke Tests', () => {
       // .cursorrules "Post-RAC Template Condition SSOT").
       'jobs/code/base/injections/ui-source-dispatch',
       'jobs/code/nodes/plan/injections/ui-source-inventory',
-      // `codebase/ANT.md` partial — wrapped in `{{#if antrulesContent}}` so
-      // it renders empty when the target workspace has no ANT.md. By
+      // `codebase/ANTRULES.md` partial — wrapped in `{{#if antrulesContent}}` so
+      // it renders empty when the target workspace has no ANTRULES.md. By
       // design (see docs/architecture/35-codebase-meta-policy.md).
       'jobs/code/base/injections/ant-md',
       'basis/techTier/stack/backend',

@@ -20,17 +20,17 @@
 
 경계가 흐려지면 파편화 리스크가 생긴다. **새 파일을 추가할 때 반드시 위 표에서 1개 층을 지정** 하고 `codebase/` 에 속하면 아래 §2 정책을 따른다.
 
-## 2. `codebase/ANT.md` — ant 에이전트 설정 SSOT
+## 2. `codebase/ANTRULES.md` — ant 에이전트 설정 SSOT
 
 ### 정체성
 
 - **ant 에이전트가 이 코드베이스에서 새 파일을 생성하거나 수정할 때 따라야 하는 결정 규칙** 을 모아둔 단일 엔트리.
-- `README.md` / `ARCHITECTURE.md` / `RUNBOOK.md` 와는 **목적이 다르다**. 이들은 사람 중심 문서 (프로젝트 개요, 모듈 경계, 런 방법). ANT.md 는 에이전트 행동 규칙. 두 축은 독립으로 공존한다.
-- Cursor / Claude Code / OpenAI Codex 생태계에서 `AGENTS.md` / `CLAUDE.md` 가 하는 역할과 유사. 이름은 ant 의 identity 를 반영해 `ANT.md`.
+- `README.md` / `ARCHITECTURE.md` / `RUNBOOK.md` 와는 **목적이 다르다**. 이들은 사람 중심 문서 (프로젝트 개요, 모듈 경계, 런 방법). ANTRULES.md 는 에이전트 행동 규칙. 두 축은 독립으로 공존한다.
+- Cursor / Claude Code / OpenAI Codex 생태계에서 `AGENTS.md` / `CLAUDE.md` 가 하는 역할과 유사. 이름은 ant 의 identity 를 반영해 `ANTRULES.md`.
 
 ### 위치
 
-- `codebase/ANT.md` (루트 평탄 파일). 하위 디렉토리 / 숨김 디렉토리 사용 금지 — 사람 개발자가 저장소 루트 에서 곧장 인지해야 하므로.
+- `codebase/ANTRULES.md` (루트 평탄 파일). 하위 디렉토리 / 숨김 디렉토리 사용 금지 — 사람 개발자가 저장소 루트 에서 곧장 인지해야 하므로.
 
 ### 크기 제약
 
@@ -41,7 +41,7 @@
 ### 섹션 구조 (고정)
 
 ```md
-# ANT.md
+# ANTRULES.md
 
 > ant 에이전트가 이 코드베이스에서 파일 생성·수정 결정을 할 때의 설정.
 > 사람용 설명은 README.md / docs/ 참조.
@@ -75,7 +75,7 @@
 | error / verification 태스크 | **읽기 전용** | ✓ |
 | 운영 중 갱신 | 별도 refactor 태스크 (향후 도입) | — |
 
-SSOT 는 setup 이 찍고, 나머지는 읽기만 한다. "운영 중 변경" 은 ANT.md 가 직접 허용하지 않는다 — 이는 별도 태스크의 책임이므로 범위 밖.
+SSOT 는 setup 이 찍고, 나머지는 읽기만 한다. "운영 중 변경" 은 ANTRULES.md 가 직접 허용하지 않는다 — 이는 별도 태스크의 책임이므로 범위 밖.
 
 ### 에이전트 디스패치
 
@@ -86,7 +86,7 @@ SSOT 는 setup 이 찍고, 나머지는 읽기만 한다. "운영 중 변경" �
 
 공통 partial `jobs/code/base/injections/ant-md.md` 가 `{{#if antrulesContent}}` 로 gate 하여 내용을 렌더한다. plan / execute 의 기본 base 템플릿 및 모든 variant (verification · error · test-code · feature · ui · design-system · integration) 가 이 partial 을 include 하므로 주입은 **매번** 일어난다.
 
-partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 하다고 판단하면 `read_file codebase/ANT.md` 로 자율 조회할 수 있다. 즉 "매 프롬프트 주입 + 필요 시 자율 read" 의 이중 전달.
+partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 하다고 판단하면 `read_file codebase/ANTRULES.md` 로 자율 조회할 수 있다. 즉 "매 프롬프트 주입 + 필요 시 자율 read" 의 이중 전달.
 
 ### 호출 경로 파편화 방지
 
@@ -101,18 +101,18 @@ partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 
 3. 이 파일은 다음 run 에 이어질 에이전트 내부 상태인가? → `sessions/` 층.
 
 혼돈 사례:
-- ❌ "프로젝트 컨벤션" 을 `outputs/design/system/project-conventions.md` 로 만들기 — 1번이 맞는데 2번 선택한 실수. 컨벤션은 `codebase/ANT.md`.
+- ❌ "프로젝트 컨벤션" 을 `outputs/design/system/project-conventions.md` 로 만들기 — 1번이 맞는데 2번 선택한 실수. 컨벤션은 `codebase/ANTRULES.md`.
 - ❌ 런타임 로그를 `codebase/.ant/logs/` 에 기록 — 3번을 1번으로 섞음. `sessions/` 로.
 - ❌ PRD 를 `codebase/docs/PRD.md` 에 영구 저장 — 2번 성격을 1번에 두면 산출물 수명주기 (버전 · 갱신) 가 코드 git 이력과 섞인다.
 
 ### 여러 에이전트 도구와의 공존
 
-`CLAUDE.md`, `AGENTS.md`, `.cursorrules` 가 이미 있다면 ANT.md 와 공존 가능. 에이전트별 설정은 **해당 에이전트만** 읽으므로 충돌 없음. 단, 동일 규칙이 여러 파일에 중복되면 drift 가 발생하니 ANT.md 가 기준이면 다른 파일들은 ANT.md 포인터만 두는 편을 권장.
+`CLAUDE.md`, `AGENTS.md`, `.cursorrules` 가 이미 있다면 ANTRULES.md 와 공존 가능. 에이전트별 설정은 **해당 에이전트만** 읽으므로 충돌 없음. 단, 동일 규칙이 여러 파일에 중복되면 drift 가 발생하니 ANTRULES.md 가 기준이면 다른 파일들은 ANTRULES.md 포인터만 두는 편을 권장.
 
 ## 4. 관련 문서
 
-- [.cursorrules](/.cursorrules) — ant 작업 기본 규약 + ANT.md 요약 포인터
-- [14-code-job.md](14-code-job.md) — 코드 잡의 setup 태스크가 ANT.md 를 어떻게 초기화하는지
+- [.cursorrules](/.cursorrules) — ant 작업 기본 규약 + ANTRULES.md 요약 포인터
+- [14-code-job.md](14-code-job.md) — 코드 잡의 setup 태스크가 ANTRULES.md 를 어떻게 초기화하는지
 - [28-context-management.md](28-context-management.md) — ArtifactPipeline 이 pool 을 구성하는 방식
 
 ## 5. 변경 이력

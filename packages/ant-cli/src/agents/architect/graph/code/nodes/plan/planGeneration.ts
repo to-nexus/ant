@@ -94,7 +94,7 @@ async function buildPlanPrompt(
   if (!promptBuilder) throw new Error('[Plan] PromptBuilder not available');
 
   const planHook = hooksForTaskType(task.type)?.plan;
-  // codebase/ANT.md — project-wide ant-agent settings (export style,
+  // codebase/ANTRULES.md — project-wide ant-agent settings (export style,
   // test setup, naming, ...). Loaded ONCE per plan render so all hooks
   // (verification, error, generic) see the same value without each
   // reaching into state and calling loadAntrules. See

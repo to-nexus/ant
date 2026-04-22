@@ -20,16 +20,16 @@ describe('jobs/code/base/injections/ant-md', () => {
     expect(out.trim()).toBe('');
   });
 
-  it('renders the ANT.md content under a Project Settings header', async () => {
-    const content = '# ANT.md\n\n## Export Style\n- default export\n';
+  it('renders the ANTRULES.md content under a Project Settings header', async () => {
+    const content = '# ANTRULES.md\n\n## Export Style\n- default export\n';
     const out = await adapter.render(TEMPLATE, { antrulesContent: content });
-    expect(out).toMatch(/## Project Settings \(codebase\/ANT\.md\)/);
+    expect(out).toMatch(/## Project Settings \(codebase\/ANTRULES\.md\)/);
     expect(out).toContain(content);
   });
 
   it('surfaces the read_file pointer so the LLM can re-fetch stale content', async () => {
     const out = await adapter.render(TEMPLATE, { antrulesContent: '## X\n- y\n' });
     expect(out).toMatch(/read_file/);
-    expect(out).toMatch(/codebase\/ANT\.md/);
+    expect(out).toMatch(/codebase\/ANTRULES\.md/);
   });
 });
