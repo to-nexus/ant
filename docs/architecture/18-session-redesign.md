@@ -62,7 +62,7 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 | `generate`/`refactor` | task | collapse(boundary 시) | ✅ bubble-up | ✅ `auto_job_complete_todo` (on-disk 리터럴은 legacy 호환 유지) |
 | `ask`/`inline-ask` | — | **미기록** (feature.jsonl 안 감) | ❌ | ❌ |
 
-**Hard Reset**은 축에 무관한 별도 이벤트 — `FeatureBoundaryLine.reason = 'user_reset'`, `jobType = 'reset'`.
+**Hard Reset**은 축에 무관한 별도 이벤트 — boundary 라인을 추가하는 in-place collapse 가 아니라, `sessions/` 트리의 모든 세션 파일(`feature.jsonl` · `trace.jsonl` · `architect/*.json` · `planner/*.json` · debug/runtime 잔여물)을 **물리적으로 unlink** 한다 (`clearCanonicalDirectory`). 다음 job 은 완전히 빈 상태에서 시작한다.
 
 ---
 
@@ -101,7 +101,8 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 | `GET /api/projects/:id/features/:feature/trace` | `trace.jsonl` | Activity 뷰 |
 | `GET .../breadcrumbs` | `feature.jsonl` breadcrumb 라인 | Timeline 뷰 |
 | `GET .../user-turn-meta` | `feature.jsonl` user_turn + user_turn_meta | turn 헤더 배지 |
-| `POST .../context/reset` | `collapseAll('user_reset')` | Hard Reset 버튼 |
+| `POST .../context/reset` | `clearCanonicalDirectory(sessions/)` + Redis/Kanban cleanup | Hard Reset 버튼 (채팅 헤더 🗑️) |
+| `DELETE .../chat/messages` | `collapseTraceOnly` (UI 채팅만 정리) | Sweep 버튼 (채팅 헤더 🔄) |
 | `POST .../chat/decompose-choice` | session state | Spec Clarify 3-way 응답 |
 
 ---
@@ -156,7 +157,7 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
   }
 }
 
-// boundary — 맥락 경계 (todo 완료 또는 Hard Reset)
+// boundary — 맥락 경계 (todo 완료 시점)
 {
   "type": "boundary",
   "ts": "2026-04-20T09:18:23.001Z",
@@ -166,15 +167,8 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
   "reason": "auto_job_complete_todo"
 }
 
-// Hard Reset — jobType widening
-{
-  "type": "boundary",
-  "ts": "2026-04-20T11:02:11.000Z",
-  "jobId": "reset-7f8g9h",
-  "turnId": "t-reset",
-  "jobType": "reset",
-  "reason": "user_reset"
-}
+// Hard Reset은 boundary를 추가하지 않는다 — 대신 `sessions/` 트리의 모든
+// 세션 파일을 물리적으로 삭제한다. 상세는 §2.3 참고.
 ```
 
 ### 4.2 trace.jsonl 라인 타입 (요약)
@@ -184,7 +178,7 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 | `user_turn` | `text`, `sourceRef` (`feature.jsonl#<turnId>` \| `ask-only`) | orchestrator `recordUserTurn` |
 | `assistant_thinking` | `text` | direct/execute LLM 스트리밍 |
 | `tool_call` | `tool`, `args`, `result`, `error?` | `ToolOrchestrator` (TraceAppender) |
-| `file_write` | `path`, `operation: create\|update\|delete`, `diff?` | tool/direct `emitFileWriteTrace` |
+| `file_write` | `path`, `operation: create\|update\|delete`, `content?`, `diffBefore?`, `diffAfter?`, `error?` | `FileOperationHandler` (chat SSE + trace 동시 발행 SSOT) |
 | `run_command` | `cmd`, `stdout`, `stderr`, `exitCode` | run_command tool handler |
 | `job_status` | `phase`, `progress?`, `message?` | LLMResponseService |
 | `assistant_message` | `text` | LLMResponseService (finalize) |
@@ -207,7 +201,7 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 | **대상** | `loadSinceBoundary` 이전의 모든 user_turn / meta / breadcrumb | window 초과 T2 user_turn (breadcrumb는 제외) |
 | **수단** | `collapsed=true` 마킹 (파일 보존) | LLM 요약 → `FeatureContext.summary` 별도 필드 |
 | **비용** | I/O만 (LLM 없음) | 1회 LLM call (graceful degradation: 실패 시 원형 반환) |
-| **구현** | `FileSessionAdapter.appendBoundary` / `collapseAll` | `core/context/featureContextBuilder.ts#compactFeatureContext` |
+| **구현** | `FileSessionAdapter.appendBoundary` (+ Sweep 전용 `collapseTraceOnly` / Job 탭 X 전용 `collapseByJobId`) | `core/context/featureContextBuilder.ts#compactFeatureContext` |
 
 두 메커니즘은 **직교**. Compact는 상한을 못 맞출 때 보강하는 안전망, Collapse는 `task` 완료 시 정식 경계.
 

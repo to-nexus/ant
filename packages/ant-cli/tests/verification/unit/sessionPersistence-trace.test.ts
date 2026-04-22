@@ -6,8 +6,9 @@
  * - findTurnIdForJob: latest user_turn for a given jobId
  * - emitAssistantMessageTrace: appends trace line when turnId resolvable
  * - emitAssistantMessageTrace: no-op when no matching turnId
- * - collapseSessionLogs: marks prior user_turn as collapsed + appends
- *   user_reset boundary
+ *
+ * Hard Reset used to live here as `collapseSessionLogs`, but it now
+ * physically unlinks the session files from the HTTP route handler.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -127,29 +128,4 @@ describe('SessionPersistence — trace.jsonl write-side helpers', () => {
     expect(traceLines).toHaveLength(0);
   });
 
-  it('collapseSessionLogs marks prior user_turn as collapsed and appends user_reset boundary', async () => {
-    const adapter = new FileSessionAdapter(featurePath, 'architect', 'proj', 'feat-a');
-    await adapter.appendUserTurn(
-      {
-        type: 'user_turn',
-        ts: '2026-04-20T00:00:00.000Z',
-        jobId: 'job-1',
-        turnId: 't-1',
-        jobType: 'code',
-        text: 'before reset',
-      } as any,
-      { skipFeature: false },
-    );
-
-    const persistence = new SessionPersistence(makeResolverStub(featurePath));
-    await persistence.collapseSessionLogs('proj', 'feat-a', USER_CTX);
-
-    const { userTurns } = await adapter.loadSinceBoundary();
-    // After user_reset boundary, loadSinceBoundary should return empty.
-    expect(userTurns).toHaveLength(0);
-
-    const traceLines = await adapter.loadAllTrace();
-    // Trace user_turn line also collapses → excluded from loadAllTrace.
-    expect(traceLines).toHaveLength(0);
-  });
 });

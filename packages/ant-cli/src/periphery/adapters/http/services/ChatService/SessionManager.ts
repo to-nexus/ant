@@ -414,15 +414,20 @@ export class SessionManager {
   /**
    * Clear all messages in a session.
    *
-   * @param scope  `'chat'` (default) = Chat Clear — trace.jsonl only;
-   *               feature.jsonl (LLM context) is preserved so the
-   *               conversation continuity is kept.
-   *               `'full'` = Hard Reset — both trace.jsonl and feature.jsonl
-   *               are collapsed with a `user_reset` boundary appended.
+   * @param scope  `'chat'` (default) = Chat Clear / Sweep — trace.jsonl is
+   *               collapsed in-place so the chat UI is cleaned up while
+   *               `feature.jsonl` (LLM context SSOT) is preserved. The LLM
+   *               still remembers prior dialogue on the next turn.
+   *               `'full'` = Hard Reset — does NOT touch jsonl files here.
+   *               The caller (feature-log.routes `/context/reset`) performs
+   *               the physical disk wipe via `clearCanonicalDirectory`
+   *               after this method returns. `scope='full'` in this method
+   *               limits itself to Redis chat session purge, local cache
+   *               drop, draft image cleanup, and the `messages_cleared`
+   *               SSE broadcast.
    *
    * Redis scratchpad reset, local cache drop, draft image cleanup, and the
-   * `messages_cleared` SSE broadcast run in both scopes. Only the jsonl
-   * collapse step differs.
+   * `messages_cleared` SSE broadcast run in both scopes.
    */
   async clearMessagesAsync(
     projectId: string, 
@@ -451,12 +456,13 @@ export class SessionManager {
       }
     }
     
-    // Collapse jsonl logs. scope='full' (Hard Reset) also rewrites
-    // feature.jsonl + appends a boundary; scope='chat' only clears the UI
-    // timeline so LLM context remains intact.
-    if (scope === 'full') {
-      await this.persistence.collapseSessionLogs(projectId, featureName, userContext);
-    } else {
+    // jsonl handling.
+    //  - scope='chat' (Sweep): collapse trace.jsonl lines in place so the
+    //    chat view is cleared while feature.jsonl (LLM context) survives.
+    //  - scope='full' (Hard Reset): no jsonl collapse here; the caller
+    //    physically unlinks feature.jsonl + trace.jsonl + sessions/**/*.json
+    //    via clearCanonicalDirectory after this call returns.
+    if (scope === 'chat') {
       await this.persistence.collapseTraceOnlyLogs(projectId, featureName, userContext);
     }
 
