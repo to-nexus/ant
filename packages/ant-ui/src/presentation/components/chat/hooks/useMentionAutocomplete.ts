@@ -21,13 +21,16 @@ type MentionPrefix = (typeof MENTION_PREFIXES)[number];
 
 type FileMentionPrefix = '@target:' | '@ref:' | '@ctx:';
 
-const COMMAND_MENU: MentionSuggestion[] = [
+const COMMAND_MENU_BASE: MentionSuggestion[] = [
   { type: 'command', id: '@intent:', label: 'intent', description: '작업 의도를 지정' },
   { type: 'command', id: '@target:', label: 'target', description: '대상 파일을 지정' },
   { type: 'command', id: '@ref:',    label: 'ref',    description: '참조 문서를 추가' },
   { type: 'command', id: '@ctx:',    label: 'ctx',    description: '컨텍스트 문서를 추가' },
-  { type: 'command', id: '@explicit',label: 'explicit',description: '추론 생략, 직접 지정' },
 ];
+
+const EXPLICIT_COMMAND: MentionSuggestion = {
+  type: 'command', id: '@explicit', label: 'explicit', description: '추론 생략, 직접 지정',
+};
 
 function flattenFilePaths(nodes: FileNode[], prefix = ''): string[] {
   const paths: string[] = [];
@@ -127,10 +130,15 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     return { prefix: null as MentionPrefix | null, query: '', matchStart: -1, commandQuery: null as string | null };
   }, [message, cursorPos]);
 
+  // `@explicit` suggestion surfaces iff it's both settable (canStartChat) and not already on.
+  // Mirrors the ActionFooter button policy so the two entry points are symmetrical.
+  const explicitSettable = canStartChat && actionMetadata.explicit !== true;
+
   const suggestions = useMemo((): MentionSuggestion[] => {
     if (commandQuery !== null) {
-      if (commandQuery === '') return COMMAND_MENU;
-      return COMMAND_MENU.filter(c => c.label.startsWith(commandQuery));
+      const menu = explicitSettable ? [...COMMAND_MENU_BASE, EXPLICIT_COMMAND] : COMMAND_MENU_BASE;
+      if (commandQuery === '') return menu;
+      return menu.filter(c => c.label.startsWith(commandQuery));
     }
 
     if (!prefix) return [];
@@ -153,13 +161,14 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         return buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent);
 
       case '@explicit':
+        if (!explicitSettable) return [];
         if (q === '') return [{ type: 'explicit', id: 'true', label: 'Explicit', description: 'Skip triage, use metadata as-is' }];
         return [];
 
       default:
         return [];
     }
-  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent]);
+  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, explicitSettable]);
 
   const showSuggestions = (prefix !== null || commandQuery !== null) && suggestions.length > 0;
 
