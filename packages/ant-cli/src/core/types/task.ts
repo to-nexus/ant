@@ -47,6 +47,7 @@ export interface TaskQueueSnapshot {
   tokenUsage?: TaskTokenUsage;
   estimatingTokenUsage?: TaskTokenUsage;
   phaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
+  currentPhaseTokenUsage?: import('@ant/shared').PhaseTokenUsage;
   jobTiming?: import('@ant/shared').JobTiming;
   // Node activity banner (for reconnect/recovery)
   estimatingLabel?: string;

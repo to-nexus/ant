@@ -37,10 +37,19 @@ import { ArtifactPoolView } from '../src/core/artifact/ArtifactPipeline';
 function slotToArtifact(
   slot: SlotDef,
   role: 'ref' | 'context',
-): ResolvedArtifact | null {
+): ResolvedArtifact | ResolvedArtifact[] | null {
   // Codebase slots are not file-backed — they represent the project
   // code itself and never surface as ResolvedArtifact entries.
   if (slot.codebase) return null;
+  // ui-source slots carry three hard-exclusive subgroups (ant / figma /
+  // handoff). For the Gate guarantee we only need ONE subgroup populated,
+  // so synthesise a single artifact under the ant subgroup. The hard-
+  // exclusive invariant (`ArtifactPoolView.uiSource()`) only throws on
+  // multi-source mixes, which this synthesiser never produces.
+  if (slot.type === 'ui-source' && slot.uiSources && slot.uiSources.length > 0) {
+    const ant = slot.uiSources.find(s => s.id === 'ant') ?? slot.uiSources[0];
+    return { path: `${ant.dir}/dummy.md`, content: '# synthetic', role };
+  }
   // Empty-hint slots (e.g. `emptyRef()`, directive-only intents) have
   // no path and must be skipped.
   if (!slot.path) return null;
@@ -52,14 +61,13 @@ function buildSyntheticPool(intent: IntentId): ResolvedArtifact[] {
   const slots = getConfigSlots(intent);
   if (!slots) return [];
   const out: ResolvedArtifact[] = [];
-  for (const s of slots.refs) {
-    const a = slotToArtifact(s, 'ref');
-    if (a) out.push(a);
-  }
-  for (const s of slots.context) {
-    const a = slotToArtifact(s, 'context');
-    if (a) out.push(a);
-  }
+  const push = (v: ResolvedArtifact | ResolvedArtifact[] | null) => {
+    if (!v) return;
+    if (Array.isArray(v)) out.push(...v);
+    else out.push(v);
+  };
+  for (const s of slots.refs) push(slotToArtifact(s, 'ref'));
+  for (const s of slots.context) push(slotToArtifact(s, 'context'));
   return out;
 }
 
@@ -179,7 +187,7 @@ describe('role-flag intent matrix — post-RAC Gate guarantees', () => {
     // re-stamps role='ref' on the selected artifacts. The Contract
     // flag then fires without any change to the intent matrix.
     const userPromoted: ResolvedArtifact[] = [
-      { path: 'outputs/design/ui/ui-spec.json', content: '{}', role: 'ref' },
+      { path: 'outputs/design/ui/ant/ui-spec.json', content: '{}', role: 'ref' },
     ];
     const view = new ArtifactPoolView(userPromoted);
     expect(view.hasUi()).toBe(true);

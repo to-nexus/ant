@@ -11,7 +11,11 @@
 // Constants
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export const FIGMA_FILENAME = 'figma.json';
+// Note: canonical workfile path lives in `canonical.ts` as `FIGMA_CONFIG_PATH`
+// (`outputs/design/ui/figma/figma.json`). Do not re-introduce a bare
+// `FIGMA_FILENAME` constant — absolute paths must be assembled from
+// `FIGMA_CONFIG_PATH` to keep the figma UiSource location SSOT in one place.
+
 export const FIGMA_MCP_ENDPOINT = 'http://127.0.0.1:3845/mcp';
 export const FIGMA_LOCAL_ASSET_ORIGINS = [
   'http://127.0.0.1:3845',
@@ -20,12 +24,16 @@ export const FIGMA_LOCAL_ASSET_ORIGINS = [
 export const ASSET_PROXY_TOOL_NAME = '_ant_asset_download';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Figma Data Configuration (inputs/figma.json schema)
+// Figma Data Configuration (outputs/design/ui/figma/figma.json schema)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 /**
  * figma.json schema — single Figma URL pointing to a file or node.
  * Figma Desktop MCP only supports the active tab, so one file at a time.
+ *
+ * This file holds ONLY the workfile reference (URL); it never stores any
+ * exploration output. Canonical location is `FIGMA_CONFIG_PATH`
+ * (see `canonical.ts`): `outputs/design/ui/figma/figma.json`.
  */
 export interface FigmaDataConfig {
   file: string | null;

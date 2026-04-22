@@ -232,19 +232,7 @@ Before emitting `<plan>`, internally consider the observations below. These are 
 
 {{#if (eq taskType "design-system")}}
 {{#if hasUi}}
-**FOR `design-system` TASKS:**
-
-1. **TOKEN INVENTORY**
-   - Extract ALL token keys and values from ui-tokens.json
-   - Group by category (colors, typography, spacing, etc.)
-   - Identify target output: CSS custom properties and/or styling framework theme config
-   - Record tokens with ACTUAL values (not just key names): `--color-bg-default: #1a1a2e`
-
-2. **INTEGRATION CHAIN**
-   - Identify the global CSS entry file and the CSS framework in use
-   - Plan the import chain: entry file → token files, typography files
-   - Plan the framework bridge: CSS vars → utility classes
-   - Each integration file must appear in `create` or `modify`
+{{> jobs/code/nodes/plan/injections/ui-source-inventory}}
 {{else}}
 **FOR `design-system` TASKS (visualTier-driven):**
 
@@ -284,15 +272,7 @@ Before emitting `<plan>`, internally consider the observations below. These are 
    - **Constraint**: When file ownership is ambiguous (e.g., a shared layout or barrel index), assign the same `parallelGroup` — conservative grouping reduces parallelism but prevents concurrent write conflicts.
 
 {{#if hasUi}}
-4. **ASSET INVENTORY**
-   - Search ui-assets.json for assets related to this task
-   - List ALL assets with source → destination mappings
-
-5. **LAYOUT & COMPONENT SPECS**
-   - Extract layout properties from ui-spec (flexDirection, alignItems, grid*)
-   - Record token references with ACTUAL values (not just key names)
-   - Record `visibleWhen` conditions and the parent component where enforcement is needed
-   - Record all interactive elements (preset buttons, toggles, conditional content) from `interactionStates`
+{{> jobs/code/nodes/plan/injections/ui-source-inventory}}
 
 {{else}}
 4. **VISUAL HINTS FROM SYSTEM DESIGN**

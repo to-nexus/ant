@@ -255,7 +255,7 @@ Works with any design tool output (Figma live files, screenshots, wireframes, et
 
 **Prerequisites:**
 - Required:
-  - Reference images (inputs/references/) OR Figma design files configured (inputs/figma.json)
+  - Reference images (inputs/references/) OR Figma design files configured (outputs/design/ui/figma/figma.json)
 - Recommended:
   - Asset files like icons and images (inputs/assets/)
 

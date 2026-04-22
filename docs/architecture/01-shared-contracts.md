@@ -227,7 +227,7 @@ Figma 데이터 설정 및 MCP 연동 타입. Design Job과 Code Job 모두에�
 
 | 타입/함수 | 정의 |
 |-----------|------|
-| `FigmaDataConfig` | `{ file: string \| null }` — 단일 Figma URL (inputs/figma.json 스키마) |
+| `FigmaDataConfig` | `{ file: string \| null }` — 단일 Figma URL (canonical 경로: `outputs/design/ui/figma/figma.json`; 스키마는 URL 만 포함하며 탐색 결과는 저장하지 않음) |
 | `FigmaMCPTool` | `'get_metadata' \| 'get_design_context' \| 'get_screenshot' \| 'get_variable_defs'` |
 | `MCPToolResult` | MCP 도구 실행 결과 (`content`, `isError`) |
 | `FigmaExplorationResult` | `variationMatrix`, `annotations`, `componentStateMatrix`, `variableDefs`, `totalFrameCount`, `downloadedAssets`, `nodeSummary`, `explorationErrors` |
@@ -262,7 +262,7 @@ Feature 디렉토리 구조의 SSOT. 모든 정규 디렉토리/파일이 visibi
 | 타입/함수 | 정의 |
 |-----------|------|
 | `CANONICAL_FEATURE_DIRS` | 모든 정규 디렉토리 경로 배열 |
-| `CANONICAL_FEATURE_FILE_PATHS` | 정규 파일 경로 배열 (`inputs/figma.json`) |
+| `CANONICAL_FEATURE_FILE_PATHS` | 정규 파일 경로 배열 (`outputs/design/ui/figma/figma.json`). `UiSource` enum (`ant` \| `figma` \| `handoff`), `ARTIFACT_PREFIX.UI_ANT / UI_FIGMA / UI_HANDOFF / UI_ANT_SPEC`, `FIGMA_CONFIG_PATH`, `uiSourceOfPath()` 도 이 모듈에서 export. |
 | `UI_VISIBLE_INPUT_DIRS` | ArtifactsPanel Inputs 섹션에 표시할 디렉토리 이름 |
 | `UI_VISIBLE_OUTPUT_DIRS` | ArtifactsPanel Outputs 섹션에 표시할 디렉토리 이름 |
 | `UI_VISIBLE_INPUT_FILES` | ArtifactsPanel Inputs 섹션에 표시할 파일 이름 |

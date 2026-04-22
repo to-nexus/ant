@@ -47,8 +47,8 @@
  * Gate category — not Contract.
  */
 
-import type { ResolvedArtifact } from '@ant/shared';
-import { ARTIFACT_PREFIX, DESIGN_DIR } from '@ant/shared';
+import type { ResolvedArtifact, UiSource } from '@ant/shared';
+import { ARTIFACT_PREFIX, DESIGN_DIR, uiSourceOfPath } from '@ant/shared';
 import { compactContent } from '../utils/contentCompactor';
 import { normalizeTemplateDoc } from '../utils/templateDetector';
 import * as fs from 'fs';
@@ -59,19 +59,15 @@ import * as pathMod from 'path';
 // ────────────────────────────────────────────────────────────────
 
 /**
- * An artifact counts as "UI" if it lives under the nested
- * `outputs/design/ui/` subdirectory, OR uses the flat-path fallback
- * `outputs/design/ui-*` (tokens/assets/spec written directly under
- * `outputs/design/`). The flat-path fallback is a supported output
- * shape (see `agents/architect/graph/design/graph.ts validateAssetReferences`);
- * without covering it, every UI presence flag (`hasUi` / `hasUiRef` /
- * `hasUiContext` and the `pool.ui` selector) would silently turn off
- * whenever design docs were written to the flat path.
+ * An artifact counts as "UI" if it lives under ANY of the three UiSource
+ * subdirectories: `outputs/design/ui/{ant,figma,handoff}/`. The parent
+ * `outputs/design/ui/` directory is NOT sufficient on its own — paths must
+ * resolve to a specific UiSource.
  */
-const FLAT_UI_DOC_REGEX = new RegExp(`^${DESIGN_DIR}/ui-[^/]+$`);
-
 export function isUiArtifactPath(p: string): boolean {
-  return p.startsWith(ARTIFACT_PREFIX.UI) || FLAT_UI_DOC_REGEX.test(p);
+  return p.startsWith(ARTIFACT_PREFIX.UI_ANT)
+    || p.startsWith(ARTIFACT_PREFIX.UI_FIGMA)
+    || p.startsWith(ARTIFACT_PREFIX.UI_HANDOFF);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -301,6 +297,34 @@ export class ArtifactPoolView {
     return this.pool.some(a => a.role === 'context' && isUiArtifactPath(a.path));
   }
 
+  /**
+   * Discriminate which `UiSource` this pool carries. Exactly one or none; a
+   * pool containing artifacts from two UI sources is an invariant violation
+   * caused by slot-merging bugs and throws so the caller can bail early
+   * rather than producing a confused prompt.
+   *
+   * `uiSource` is a Contract-flavoured flag (per-source branching in prompts)
+   * and MUST be consumed by `ui-source-dispatch.md` to select the correct
+   * interpretation partial. See .cursorrules "Post-RAC Template Condition
+   * SSOT" — this flag is one of the documented exceptions to Gate-first.
+   */
+  uiSource(): UiSource | null {
+    let found: UiSource | null = null;
+    for (const a of this.pool) {
+      const src = uiSourceOfPath(a.path);
+      if (src === null) continue;
+      if (found === null) {
+        found = src;
+      } else if (found !== src) {
+        throw new Error(
+          `ArtifactPoolView.uiSource: pool contains mixed UI sources (${found}, ${src}); ` +
+          'hard-exclusive invariant violated at RAC resolution time.',
+        );
+      }
+    }
+    return found;
+  }
+
   hasSourcesRef(): boolean {
     return this.pool.some(a => a.role === 'ref' && a.path.startsWith(ARTIFACT_PREFIX.SOURCES));
   }
@@ -432,7 +456,7 @@ export function getDesignDocByPackageFromPool(pkg: string, artifacts: ResolvedAr
 
 /**
  * Strip feature-path prefix from a project-root-relative path.
- * e.g. 'features/proj/feat/outputs/design/ui/ui-tokens.json' → 'outputs/design/ui/ui-tokens.json'
+ * e.g. 'features/proj/feat/outputs/design/ui/ant/ui-tokens.json' → 'outputs/design/ui/ant/ui-tokens.json'
  */
 export function toFeatureRelative(filePath: string, featurePath: string): string {
   const featurePrefix = featurePath.replace(/^\//, '').replace(/\/?$/, '/');

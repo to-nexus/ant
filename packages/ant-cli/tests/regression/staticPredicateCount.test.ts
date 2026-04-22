@@ -55,7 +55,9 @@ const PREDICATES = [
  * — that usage is a different concern (phase-blind execute routing)
  * and converting it to a hook would not simplify anything.
  */
-const MEASURED_COUNT = 92;
+// +1: uiSource-aware task classification in decompose/responseParser.ts
+// (UiSource 3-source overhaul — resolveType-derived `isUiRelated` branch).
+const MEASURED_COUNT = 93;
 
 async function walkSourceFiles(dir: string, out: string[]): Promise<void> {
   const entries = await fs.readdir(dir, { withFileTypes: true });

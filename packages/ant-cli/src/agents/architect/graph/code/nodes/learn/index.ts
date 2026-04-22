@@ -3,7 +3,7 @@ import { ArchitectGraphState } from "../../state";
 import { SessionRun } from "../../../../../../core/types";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../core/utils/docMetadata";
-import { designSubdirOf, DESIGN_DIR } from "@ant/shared";
+import { designDirOf, DESIGN_DIR } from "@ant/shared";
 
 import { extractCodeLessons, extractTags } from './lessonExtractor';
 import {
@@ -278,7 +278,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   const _workerId = state.workerId;
   const isWorkerContext = _workerId !== undefined && _workerId !== null;
 
-  if (!isWorkerContext && state.figmaAvailable) {
+  if (!isWorkerContext && state.resolvedAction?.mcpSources?.figma != null) {
     try {
       const { saveFigmaMCPDebugLog } = await import('../../../../../../periphery/adapters/figma/figmaMCPHandler');
       await saveFigmaMCPDebugLog(state.context?.featurePath || '', state._httpJobId || '');
@@ -469,9 +469,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
           const meta = buildConsumedMeta(jobId);
 
           const markFile = async (filename: string) => {
-            const subdir = designSubdirOf(filename);
             const isJson = filename.endsWith('.json');
-            for (const dir of [path.join(featureDirRel, 'outputs/design', subdir), path.join(featureDirRel, 'outputs/design')]) {
+            const canonicalDir = path.join(featureDirRel, designDirOf(filename));
+            for (const dir of [canonicalDir]) {
               const filePath = path.join(dir, filename);
               if (await state.deps!.fileSystem!.fileExists(filePath)) {
                 const content = await state.deps!.fileSystem!.readFile(filePath);

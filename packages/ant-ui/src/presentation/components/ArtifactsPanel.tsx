@@ -1053,18 +1053,6 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}
           fileIndicators={{
-            'figma.json': (
-              <FigmaStatusIndicator
-                isPopulated={figmaPopulated}
-                bridgeConnected={bridgeConnected === true}
-                figmaDesktopReachable={figmaDesktopReachable}
-                onOpenSettings={() => {
-                  openMainPanelTab('accountConfig');
-                  setAccountConfigScrollTarget('figma');
-                }}
-                t={t}
-              />
-            ),
             ...Object.fromEntries(
               templateFiles.map(n => [n.name, <TemplateStatusIndicator key={n.name} reason={n.templateReason} contentLength={n.templateContentLength} threshold={n.templateThreshold} t={t} />])
             ),
@@ -1089,6 +1077,20 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDropError={showDropError}
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}
+          fileIndicators={{
+            'figma.json': (
+              <FigmaStatusIndicator
+                isPopulated={figmaPopulated}
+                bridgeConnected={bridgeConnected === true}
+                figmaDesktopReachable={figmaDesktopReachable}
+                onOpenSettings={() => {
+                  openMainPanelTab('accountConfig');
+                  setAccountConfigScrollTarget('figma');
+                }}
+                t={t}
+              />
+            ),
+          }}
         />
         <DirectoryView
           title={t('panel.sessions')}

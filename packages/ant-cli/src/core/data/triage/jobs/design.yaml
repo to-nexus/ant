@@ -29,7 +29,7 @@ modes:
               path: inputs/references
               description: Reference images (inputs/references/)
             - type: figma_config
-              description: Figma design files configured (inputs/figma.json)
+              description: Figma design files configured (outputs/design/ui/figma/figma.json)
       recommended:
         - id: assets
           type: directory_with_files

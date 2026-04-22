@@ -230,9 +230,21 @@ CRITICAL:
 **Constraint**: `"design-system"` description MUST NOT enumerate specific component names (e.g., "Button, Input, Modal, Toast"). The executor observes ui-spec at runtime to determine which shared components to create. Description should define SCOPE, not a component inventory.
 
 {{#if hasUi}}
-**Constraint**: ui-docs exist — create `"design-system"` task(s):
+{{#if (eq uiSource 'ant')}}
+**Constraint**: ant canonical UI documents exist — create `"design-system"` task(s):
 - Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure. `uiSections: ["tokens"]`.
 - Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. `uiSections: ["tokens", "<component-section>"]`.
+{{/if}}
+{{#if (eq uiSource 'figma')}}
+**Constraint**: figma workfile reference is selected — create `"design-system"` task(s) that will consume the workfile via MCP at execute time:
+- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure. Do NOT set `uiSections` (Figma has no section schema). The execute stage will call `figma_get_variable_defs` to extract tokens.
+- Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. The execute stage observes frames via `figma_get_design_context`.
+{{/if}}
+{{#if (eq uiSource 'handoff')}}
+**Constraint**: a handoff bundle is selected — create `"design-system"` task(s) that will observe the bundle:
+- Priority 200 (`parallelGroup: "design-system"`): token-to-CSS infrastructure derived from whatever the handoff files explicitly show. Do NOT set `uiSections` (handoff has no schema).
+- Priority 201+ (`parallelGroup: "design-system"`): ONLY if framework-level wiring or shared component library is needed. Components MUST be extracted from patterns observable in the handoff.
+{{/if}}
 Do NOT embed token setup in setup or ui tasks.
 {{else}}
 {{#if visualTierActive}}
@@ -436,13 +448,21 @@ the full path so the executor can copy it directly into the install command.
 When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify which UI doc sections are needed.
 
 {{#if hasUi}}
+{{#if (eq uiSource 'ant')}}
 - `"design-system"` (priority 200): `"uiSections": ["tokens"]`
 - `"design-system"` (priority 201+): `"uiSections": ["tokens", "<component-section>"]`
 - `"ui"` tasks: `"uiSections": ["tokens", "<component-section>"]`
   If omitted, ALL UI docs are injected (not recommended for large docs).
+{{/if}}
+{{#if (eq uiSource 'figma')}}
+- `uiSections` is NOT used for the figma UI source — Figma has no section schema. Tasks receive the figma.json reference; the execute stage calls MCP tools to extract data.
+{{/if}}
+{{#if (eq uiSource 'handoff')}}
+- `uiSections` is NOT used for the handoff UI source — handoff has no schema. Tasks receive the full handoff bundle; the execute stage observes file contents directly.
+{{/if}}
 {{else}}
-- `"design-system"` tasks: `uiSections` is NOT applicable (no ui-docs).
-- `"ui"` tasks: `uiSections` is NOT applicable (no ui-docs).
+- `"design-system"` tasks: `uiSections` is NOT applicable (no UI source selected).
+- `"ui"` tasks: `uiSections` is NOT applicable (no UI source selected).
 {{/if}}
 
 ---

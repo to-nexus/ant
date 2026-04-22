@@ -167,6 +167,10 @@ async function buildPlanPrompt(
   const planPool = new ArtifactPoolView(allDocs);
   const hasSystemDesign = planPool.hasSystemDesign();
   const hasUi = planPool.hasUi();
+  // `uiSource` — Contract-flavoured discriminator; plan/rules.md dispatches
+  // the TOKEN/ASSET/LAYOUT inventory branch to the correct per-source
+  // template. Hard-exclusive by construction (throws on mixed sources).
+  const uiSource = planPool.uiSource();
 
   // Per-type contributions (e.g. setup → { setupConstraints, hasSetupConstraints }).
   const typeVars = (await planHook?.extraTemplateVars?.(promptCtx)) ?? {};
@@ -183,7 +187,7 @@ async function buildPlanPrompt(
     hasTools: options?.hasTools ?? false,
     designDocUnknownPackages: state.designDocUnknownPackages,
     hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
-    resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi,
+    resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi, uiSource,
     featureContext: state.featureContext,
     ...typeVars,
   });

@@ -168,9 +168,9 @@ function renderTargetSection(rac: ResolvedActionContext, isKorean: boolean): str
 function renderDesignUiOutputSection(rac: ResolvedActionContext, isKorean: boolean): string {
   if (rac.intentGroup !== 'design-ui') return '';
   let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
-  out += `   • \`outputs/design/ui/ui-tokens.json\`\n`;
-  out += `   • \`outputs/design/ui/ui-assets.json\`\n`;
-  out += `   • \`outputs/design/ui/ui-spec.json\`\n\n`;
+  out += `   • \`outputs/design/ui/ant/ui-tokens.json\`\n`;
+  out += `   • \`outputs/design/ui/ant/ui-assets.json\`\n`;
+  out += `   • \`outputs/design/ui/ant/ui-spec.json\`\n\n`;
   return out;
 }
 

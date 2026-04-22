@@ -23,9 +23,9 @@ Figma 파이프라인이 우선한다. `gen-ui-figma` intent이거나, `rev-ui`�
 
 | 항목 | by-ref | by-figma |
 |------|--------|----------|
-| 입력 소스 | `inputs/references/` 이미지 | `inputs/figma.json` 설정 |
+| 입력 소스 | `inputs/references/` 이미지 | `outputs/design/ui/figma/figma.json` 설정 |
 | 보조 입력 | `inputs/assets/` (사용자 제공) | `inputs/assets/` (사용자 제공) |
-| 출력 | `outputs/design/ui-tokens.json`, `ui-assets.json`, `ui-spec.json` | 동일 |
+| 출력 | `outputs/design/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` | 동일 |
 | 문서 의존 체인 | tokens ∥ assets → spec | 동일 |
 
 ## 공통 구조
@@ -198,7 +198,7 @@ detect (isFigmaPipeline → true)
 ### 데이터 플로우
 
 ```
-inputs/figma.json
+outputs/design/ui/figma/figma.json
   → resolve: state.figmaConfig 로드
   → detect: isFigmaPipeline(intent, figmaPopulated) → true
   → figmaExplore: MCP 어댑터 직접 호출 → state.figmaExplorationResult
@@ -282,9 +282,9 @@ figma_get_metadata 등 도구 결과가 클 때, `buildFigmaChildOutline`이 자
 
 → 상세: [26-figma-integration-infra.md](26-figma-integration-infra.md) (감지·인증·연결 흐름, MCP 전송 경로, 프론트엔드 상태 판정)
 
-### inputs/figma.json
+### outputs/design/ui/figma/figma.json (canonical)
 
-Figma 연동의 유일한 정규 입력 파일. 피처 생성 시 빈 문서로 자동 생성된다.
+Figma 연동의 유일한 정규 참조 파일 (`FIGMA_CONFIG_PATH`). 피처 생성 시 빈 문서로 자동 생성되며, URL/fileKey/nodeId 메타 외에 어떤 탐색 결과도 저장하지 않는다.
 
 ```json
 {

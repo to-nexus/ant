@@ -13,6 +13,7 @@
  */
 
 import type { MessageContentBlock } from '../ports/llm';
+import { CONTEXT_WINDOW_MAX_TOKENS } from '@ant/shared';
 
 export interface TokenAreaBudgets {
   systemPrompt: number;         // System prompt + rules + profile
@@ -48,7 +49,7 @@ export class TokenBudgetManager {
   
   constructor(config?: Partial<TokenBudgetConfig>) {
     this.config = {
-      maxTokens: config?.maxTokens || 200000,  // Anthropic limit
+      maxTokens: config?.maxTokens || CONTEXT_WINDOW_MAX_TOKENS,
       safetyMargin: config?.safetyMargin || 0.10,  // 10% margin
       warningThreshold: config?.warningThreshold || 0.80,  // 80% threshold
       toolOverheadTokens: config?.toolOverheadTokens || 2000,  // ~7-8 tools × ~250 tokens each

@@ -8,13 +8,14 @@
 
 import { VisualGraphState } from '../types.js';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
-import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, beginNodePhase } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 
 export async function explainNode(state: VisualGraphState): Promise<Partial<VisualGraphState>> {
+  beginNodePhase(state as any, 'explain', 'Explain');
   const phaseStart = Date.now();
 
   console.log('\n💡 [Visual:Explain] Answering visual design question...');

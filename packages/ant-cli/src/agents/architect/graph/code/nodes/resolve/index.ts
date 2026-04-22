@@ -102,45 +102,19 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       }
     }
 
-    // Figma MCP re-detection on resume
-    state.figmaAvailable = false;
-    state.figmaFileKey = undefined;
-    state.figmaStartNodeId = undefined;
-    try {
-      const featurePathResume = state.context.featurePath;
-      if (featurePathResume) {
-        const pathMod = await import('path');
-        const figmaJsonPath = pathMod.join(featurePathResume, 'inputs', 'figma.json');
-        const figmaRaw = await state.deps?.fileSystem?.readFile?.(figmaJsonPath);
-        if (figmaRaw) {
-          const { isFigmaDataPopulated, extractFigmaUrlParts } = await import('@ant/shared');
-          const figmaConfig = JSON.parse(figmaRaw);
-          if (isFigmaDataPopulated(figmaConfig)) {
-            const serverMode = process.env.ANT_SERVER_MODE || 'local';
-            let figmaUp = false;
-            if (serverMode === 'local') {
-              const { checkLocalMCPAvailability } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
-              figmaUp = await checkLocalMCPAvailability();
-            } else {
-              const { createMCPTransport } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
-              const transport = createMCPTransport({ serverMode: 'cloud', userId: state.context?.userId, redis: state.deps?.redis });
-              figmaUp = await transport.isAvailable();
-            }
-            if (figmaUp && figmaConfig.file) {
-              const parts = extractFigmaUrlParts(figmaConfig.file);
-              if (parts.fileKey) {
-                state.figmaAvailable = true;
-                state.figmaFileKey = parts.fileKey;
-                state.figmaStartNodeId = parts.nodeId;
-              }
-            }
-          }
-        }
-      }
-      console.log(`🎨 [Resolve/Resume] Figma MCP: ${state.figmaAvailable ? `available (fileKey=${state.figmaFileKey})` : 'unavailable'}`);
-    } catch {
-      console.log(`🎨 [Resolve/Resume] Figma MCP: detection failed, disabled`);
-    }
+    // Figma MCP re-detection on resume — SSOT is `detectFigmaSource`; the
+    // returned metadata feeds both state scalars (for worker sharedContext)
+    // and `resolvedAction.mcpSources.figma` so execute / tool nodes read
+    // from one place.
+    const { detectFigmaSource } = await import('./detectFigmaSource');
+    const figmaDetected = await detectFigmaSource(state.context.featurePath, {
+      fileSystem: state.deps?.fileSystem,
+      redis: state.deps?.redis,
+      userId: state.context?.userId,
+    });
+    state.figmaFileKey = figmaDetected.available ? figmaDetected.fileKey : undefined;
+    state.figmaStartNodeId = figmaDetected.available ? figmaDetected.startNodeId : undefined;
+    console.log(`🎨 [Resolve/Resume] Figma MCP: ${figmaDetected.available ? `available (fileKey=${figmaDetected.fileKey})` : 'unavailable'}`);
 
     // Index runtime assets
     state.runtimeAssetsIndex = await indexRuntimeAssets(state.context.featurePath);
@@ -172,7 +146,6 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       context: state.context,
       artifacts,
       profile: state.profile,
-      figmaAvailable: state.figmaAvailable,
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
       runtimeAssetsIndex: state.runtimeAssetsIndex,
@@ -230,39 +203,17 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
     console.log(`📄 [Resolve] Design: ${design ? 'loaded' : 'none'}, PRD: ${prd ? 'loaded' : 'none'}, UI: ${parsedUiDocs ? 'loaded' : 'none'}`);
 
-    // Figma MCP availability detection
-    let figmaAvailable = false;
-    let figmaFileKey: string | undefined;
-    let figmaStartNodeId: string | undefined;
-    try {
-      const figmaJsonPath = path.join(featurePath, 'inputs', 'figma.json');
-      const figmaRaw = await fileSystem?.readFile?.(figmaJsonPath);
-      if (figmaRaw) {
-        const { isFigmaDataPopulated, extractFigmaUrlParts } = await import('@ant/shared');
-        const figmaConfig = JSON.parse(figmaRaw);
-        if (isFigmaDataPopulated(figmaConfig)) {
-          const serverMode = process.env.ANT_SERVER_MODE || 'local';
-          if (serverMode === 'local') {
-            const { checkLocalMCPAvailability } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
-            figmaAvailable = await checkLocalMCPAvailability();
-          } else {
-            const { createMCPTransport } = await import('../../../../../../periphery/adapters/figma/MCPTransport');
-            const transport = createMCPTransport({ serverMode: 'cloud', userId: state.context?.userId, redis: state.deps?.redis });
-            figmaAvailable = await transport.isAvailable();
-          }
-          if (figmaAvailable && figmaConfig.file) {
-            const parts = extractFigmaUrlParts(figmaConfig.file);
-            if (parts.fileKey) {
-              figmaFileKey = parts.fileKey;
-              figmaStartNodeId = parts.nodeId;
-            } else {
-              figmaAvailable = false;
-            }
-          }
-        }
-      }
-    } catch { /* figma.json missing or malformed */ }
-    console.log(`🎨 [Resolve] Figma MCP: ${figmaAvailable ? `available (fileKey=${figmaFileKey})` : 'unavailable'}`);
+    // Figma MCP availability — unified via `detectFigmaSource`
+    const { detectFigmaSource } = await import('./detectFigmaSource');
+    const figmaDetected = await detectFigmaSource(featurePath, {
+      fileSystem,
+      redis: state.deps?.redis,
+      userId: state.context?.userId,
+    });
+    const figmaFileKey = figmaDetected.available ? figmaDetected.fileKey : undefined;
+    const figmaStartNodeId = figmaDetected.available ? figmaDetected.startNodeId : undefined;
+    const figmaFileUrl = figmaDetected.available ? figmaDetected.fileUrl : undefined;
+    console.log(`🎨 [Resolve] Figma MCP: ${figmaDetected.available ? `available (fileKey=${figmaFileKey})` : 'unavailable'}`);
 
     const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
     const specDocs = await ArtifactService.loadSpecDocuments(context, gitPort, fileSystem);
@@ -331,6 +282,29 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
 
     const referenceContexts: ReferenceContext[] = [];
 
+    // When the RAC's UI slot resolved to the figma source AND the MCP is
+    // reachable, populate `resolvedAction.mcpSources.figma`. This is the SSOT
+    // for downstream `tools.ts` / `buildMessages.ts` to derive figma
+    // availability — no separate `state.figmaAvailable` scalar is needed.
+    const resolvedActionWithMcp = (() => {
+      const ra = state.resolvedAction;
+      if (!ra || !figmaDetected.available || !figmaFileKey) return ra;
+      const anyRacPath = [...(ra.refs ?? []), ...(ra.context ?? [])]
+        .some(p => p.startsWith('outputs/design/ui/figma/'));
+      if (!anyRacPath) return ra;
+      return {
+        ...ra,
+        mcpSources: {
+          ...(ra.mcpSources ?? {}),
+          figma: {
+            fileUrl: figmaFileUrl ?? '',
+            fileKey: figmaFileKey,
+            nodeId: figmaStartNodeId,
+          },
+        },
+      };
+    })();
+
     return {
       context,
       featurePath: context.featurePath,
@@ -339,8 +313,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       sessionContext,
       profile: undefined,
       referenceContexts,
-      resolvedAction: state.resolvedAction,
-      figmaAvailable,
+      resolvedAction: resolvedActionWithMcp,
       figmaFileKey,
       figmaStartNodeId,
       featureContext,
@@ -392,15 +365,15 @@ function buildArtifactPool(opts: {
 
   if (opts.parsedUiDocs) {
     if (opts.parsedUiDocs.tokens) {
-      pool.push({ path: `${ARTIFACT_PREFIX.UI}tokens`, content: opts.parsedUiDocs.tokens, role: 'context' });
+      pool.push({ path: `${ARTIFACT_PREFIX.UI_ANT}tokens`, content: opts.parsedUiDocs.tokens, role: 'context' });
     }
     if (opts.parsedUiDocs.assets) {
-      pool.push({ path: `${ARTIFACT_PREFIX.UI}assets`, content: opts.parsedUiDocs.assets, role: 'context' });
+      pool.push({ path: `${ARTIFACT_PREFIX.UI_ANT}assets`, content: opts.parsedUiDocs.assets, role: 'context' });
     }
     if (opts.parsedUiDocs.specSections) {
       for (const [id, section] of opts.parsedUiDocs.specSections) {
         if (section.content) {
-          pool.push({ path: `${ARTIFACT_PREFIX.UI_SPEC}${id}`, content: section.content, role: 'context' });
+          pool.push({ path: `${ARTIFACT_PREFIX.UI_ANT_SPEC}${id}`, content: section.content, role: 'context' });
         }
       }
     }

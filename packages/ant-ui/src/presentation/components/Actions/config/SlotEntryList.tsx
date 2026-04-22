@@ -50,6 +50,65 @@ export function SlotEntryList({ entries, selected, onToggle, onHighlightDir, onC
           return slotLabel ? [slotLabel, card] : card;
         }
 
+        // ── UI Source slot: hard-exclusive between three subgroups ──
+        if (entry.def.type === 'ui-source' && entry.subgroups) {
+          // Determine which subgroup currently owns a selection (first wins —
+          // BE `validateUiSourceExclusivity` guarantees there is at most one).
+          const activeSubgroupId = entry.subgroups.find(sg =>
+            sg.files.some(f => selected.has(f.path)),
+          )?.id;
+
+          const groupBlocks = entry.subgroups.map(sg => {
+            const isLocked = activeSubgroupId !== undefined && activeSubgroupId !== sg.id;
+            const header = (
+              <div key={`${entry.def.path}-${sg.id}-header`} className="flex items-center gap-1.5 pt-1 first:pt-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {sg.humanLabel?.[lang] || sg.humanLabel?.en || sg.label[lang] || sg.label.en}
+                </span>
+              </div>
+            );
+
+            if (!sg.hasFiles) {
+              return [header, (
+                <FileCard
+                  key={`${entry.def.path}-${sg.id}-empty`}
+                  name={sg.humanLabel?.[lang] || sg.label[lang] || sg.label.en}
+                  path={`${sg.dir}/`}
+                  empty
+                  emptyStyle="gray"
+                  disabled={isLocked}
+                  lang={lang}
+                />
+              )];
+            }
+
+            const cards = sg.files.map(f => (
+              <FileCard
+                key={f.path}
+                name={f.name}
+                path={f.path}
+                warnings={f.warnings}
+                description={getFileDescription(f.name, sg.dir)}
+                selected={!isLocked && f.warnings.length === 0 && selected.has(f.path)}
+                disabled={isLocked}
+                locked={entry.def.locked}
+                onToggle={isLocked ? undefined : () => onToggle(f.path)}
+                onViewFile={onViewFile ? () => onViewFile(f.path) : undefined}
+                spotlight={{
+                  active: spotlightPath === f.path,
+                  onClick: () => onToggleSpotlight('file', f.path),
+                  title: t('emptySlot.viewInExplorer'),
+                }}
+                lang={lang}
+              />
+            ));
+            return [header, ...cards];
+          });
+
+          const flat = groupBlocks.flat();
+          return slotLabel ? [slotLabel, ...flat] : flat;
+        }
+
         if (!entry.hasFiles) {
           const humanName = entry.def.humanLabel?.[lang] || entry.def.humanLabel?.en || entry.def.label[lang] || entry.def.label.en;
           const showWarningStyle = showEmptyActions && entry.def.required;

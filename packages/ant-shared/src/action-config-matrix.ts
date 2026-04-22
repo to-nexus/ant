@@ -92,11 +92,28 @@ export interface ConfigSlots {
   refsSingleSelect?: boolean;
 }
 
+/**
+ * Subgroup descriptor used by `type: 'ui-source'` slots.
+ * The three UiSource ids (ant / figma / handoff) map to concrete
+ * subdirectories under `outputs/design/ui/`. The slot is hard-exclusive:
+ * exactly one subgroup may be selected at a time.
+ */
+export interface UiSourceSubgroup {
+  id: import('./canonical').UiSource;
+  dir: string;
+  label: { en: string; ko: string };
+  humanLabel?: { en: string; ko: string };
+}
+
 export interface SlotDef {
   path: string;
   label: { en: string; ko: string };
-  /** 'dir' = expand to list files inside; 'file' = single file entry */
-  type: 'dir' | 'file';
+  /**
+   * 'dir' = expand to list files inside
+   * 'file' = single file entry
+   * 'ui-source' = UiSource subgroup selector (ant / figma / handoff, hard-exclusive)
+   */
+  type: 'dir' | 'file' | 'ui-source';
   /**
    * Whether this slot's files must be present for the action to work properly.
    * - true: auto-selected when files exist; amber warning when empty
@@ -118,6 +135,8 @@ export interface SlotDef {
   codebase?: boolean;
   /** Filenames to exclude from this slot's file listing (e.g. ['prd.md'] to hide canonical output) */
   excludeFiles?: string[];
+  /** Populated only for `type: 'ui-source'`: the three hard-exclusive UiSource subgroups. */
+  uiSources?: UiSourceSubgroup[];
 }
 
 export type TargetDef =
@@ -177,6 +196,55 @@ interface CtxOpts {
 
 function ctxDir(path: string, label: { en: string; ko: string }, opts?: CtxOpts): SlotDef {
   return { path, label, type: 'dir', required: false, excludeSelectedRefs: opts?.excludeSelectedRefs, createIntent: opts?.createIntent, humanLabel: opts?.humanLabel, excludeFiles: opts?.excludeFiles };
+}
+
+// ── ui-source slot helpers (3 hard-exclusive UiSource subgroups) ─────────────
+
+const UI_SOURCE_SUBGROUPS: UiSourceSubgroup[] = [
+  {
+    id: 'ant',
+    dir: 'outputs/design/ui/ant',
+    label: { en: 'Ant Canonical', ko: 'Ant 설계 문서' },
+    humanLabel: { en: 'Ant Canonical UI Documents (ui-tokens / ui-assets / ui-spec)', ko: 'Ant 설계 문서 (ui-tokens / ui-assets / ui-spec)' },
+  },
+  {
+    id: 'figma',
+    dir: 'outputs/design/ui/figma',
+    label: { en: 'Figma', ko: 'Figma' },
+    humanLabel: { en: 'Figma Workfile Reference (figma.json, interpreted via MCP)', ko: 'Figma 작업 파일 참조 (figma.json, MCP 로 해석)' },
+  },
+  {
+    id: 'handoff',
+    dir: 'outputs/design/ui/handoff',
+    label: { en: 'Handoff', ko: '핸드오프' },
+    humanLabel: { en: 'Handoff File Bundle (free-form html/css/md/json/png)', ko: '핸드오프 파일 번들 (html/css/md/json/png 자유 형식)' },
+  },
+];
+
+/** UI source slot as refs (primary authoritative input). */
+function uiSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
+  return {
+    path: 'outputs/design/ui',
+    label: L.uiDesign,
+    type: 'ui-source',
+    required: true,
+    uiSources: UI_SOURCE_SUBGROUPS,
+    createIntent: opts?.createIntent,
+    humanLabel: opts?.humanLabel ?? HL.uiDesign,
+  };
+}
+
+/** UI source slot as context (supplementary background input). */
+function uiSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
+  return {
+    path: 'outputs/design/ui',
+    label: L.uiDesign,
+    type: 'ui-source',
+    required: false,
+    uiSources: UI_SOURCE_SUBGROUPS,
+    createIntent: opts?.createIntent,
+    humanLabel: opts?.humanLabel ?? HL.uiDesign,
+  };
 }
 
 function emptyRef(): SlotDef {
@@ -241,7 +309,14 @@ const HL = {
 // ============================================
 
 const SYS_DIR = 'outputs/design/system';
-const UI_DIR = 'outputs/design/ui';
+/**
+ * Canonical ant-ui output directory.
+ * UI design jobs (gen-ui-figma / gen-ui-ref / gen-ui-desc) emit their tokens
+ * /assets/spec JSON bundle here — this is the `UiSource.ant` slot. Figma and
+ * handoff UI sources live under `outputs/design/ui/{figma,handoff}/` and are
+ * selected via `type: 'ui-source'` slots instead.
+ */
+const UI_DIR = 'outputs/design/ui/ant';
 const SPEC_DIR = 'outputs/design/spec';
 const DESIGN_DIR = 'outputs/design';
 const SOURCES_DIR = 'inputs/sources';
@@ -308,7 +383,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 
   // ── UI Design: Gen ─────────────────────────
   'gen-ui-figma': {
-    refs: [refFile('inputs/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
+    refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
   },
@@ -328,7 +403,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 
   // ── UI Design: Rev ─────────────────────────
   'rev-ui': {
-    refs: [refDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
+    refs: [uiSourceRef({ createIntent: 'gen-ui-desc' })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'revise' },
     buildDisabled: true,
@@ -341,7 +416,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [
       ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
-      ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign }),
+      uiSourceCtx({ createIntent: 'gen-ui-desc' }),
     ],
     target: { kind: 'generate', dir: SPEC_DIR, outputs: SPEC_OUTPUTS },
     chatRequiresRefs: false,
@@ -359,21 +434,21 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 
   // ── Code: Gen (3 pipeline-specific intents) ──
   'gen-code-sys': {
-    refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), refDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
+    refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceRef({ createIntent: 'gen-ui-desc' })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     basis: { techTier: true, visualTier: true },
   },
   'gen-code-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
-    context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceCtx({ createIntent: 'gen-ui-desc' }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     refsSingleSelect: true,
     basis: { techTier: true, visualTier: true },
   },
   'gen-code-directive': {
     refs: [emptyRef()],
-    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [uiSourceCtx({ createIntent: 'gen-ui-desc' }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     buildDisabled: true,
     basis: { techTier: true, visualTier: true },
@@ -382,7 +457,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   // ── Code: Rev (codebase required; spec docs as opt-in ref, design docs as context) ──
   'rev-code': {
     refs: [codebaseRef(), refDir(SPEC_DIR, L.specDocs, { required: false, createIntent: 'gen-spec', humanLabel: HL.specDocs })],
-    context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), ctxDir(UI_DIR, L.uiDesign, { createIntent: 'gen-ui-desc', humanLabel: HL.uiDesign })],
+    context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceCtx({ createIntent: 'gen-ui-desc' })],
     target: { kind: 'codebase' },
   },
 
@@ -431,7 +506,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
   },
   'explain-ui': {
-    refs: [refDir(UI_DIR, L.uiDesign, { humanLabel: HL.uiDesign })],
+    refs: [uiSourceRef()],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
   },

@@ -143,7 +143,7 @@ describe('Tier I: Intent policies completeness', () => {
 describe('Tier N: Artifact-conditional policies', () => {
   it('gen-code-sys with UI artifact triggers ui-design-policy', () => {
     const artifacts: ResolvedArtifact[] = [
-      { path: 'outputs/design/ui/ui-spec.json', content: 'mock', role: 'context' },
+      { path: 'outputs/design/ui/ant/ui-spec.json', content: 'mock', role: 'context' },
     ];
     const policies = resolveTierN('gen-code-sys', artifacts);
     expect(policies).toContain('jobs/shared/injections/ui-design-policy');
@@ -157,17 +157,22 @@ describe('Tier N: Artifact-conditional policies', () => {
     expect(policies).not.toContain('jobs/shared/injections/ui-design-policy');
   });
 
-  it('gen-code-directive has no conditional policies', () => {
+  it('gen-code-directive with UI artifact triggers ui-design-policy (new: all code intents accept UI source as context)', () => {
     const artifacts: ResolvedArtifact[] = [
-      { path: 'outputs/design/ui/ui-spec.json', content: 'mock', role: 'context' },
+      { path: 'outputs/design/ui/ant/ui-spec.json', content: 'mock', role: 'context' },
     ];
     const policies = resolveTierN('gen-code-directive', artifacts);
+    expect(policies).toContain('jobs/shared/injections/ui-design-policy');
+  });
+
+  it('gen-code-directive without UI artifact has no conditional policies', () => {
+    const policies = resolveTierN('gen-code-directive', []);
     expect(policies).toHaveLength(0);
   });
 
   it('rev-code with UI artifact triggers ui-design-policy', () => {
     const artifacts: ResolvedArtifact[] = [
-      { path: 'outputs/design/ui/ui-tokens.json', content: 'mock', role: 'context' },
+      { path: 'outputs/design/ui/ant/ui-tokens.json', content: 'mock', role: 'context' },
     ];
     const policies = resolveTierN('rev-code', artifacts);
     expect(policies).toContain('jobs/shared/injections/ui-design-policy');
@@ -483,34 +488,43 @@ describe('Behavioral-debugging injection', () => {
 });
 
 // ============================================
-// UI task: ui-design-guide injection
+// UI task: ui-source-dispatch injection
 // ============================================
 
-describe('UI task: ui-design-guide injection', () => {
-  it('code job + taskType=ui → ui-design-guide', () => {
+describe('UI task: ui-source-dispatch injection', () => {
+  it('code job + taskType=ui → ui-source-dispatch', () => {
     const injections = resolveAutoInjections({
       job: 'code', node: 'execute', taskType: 'ui',
       techTier: makeTechTier(),
       data: {},
     });
-    expect(injections).toContain('jobs/code/base/injections/ui-design-guide');
+    expect(injections).toContain('jobs/code/base/injections/ui-source-dispatch');
   });
 
-  it('code job + taskType=feature → NO ui-design-guide', () => {
+  it('code job + taskType=design-system → ui-source-dispatch (NEW: design-system also injected)', () => {
+    const injections = resolveAutoInjections({
+      job: 'code', node: 'execute', taskType: 'design-system',
+      techTier: makeTechTier(),
+      data: {},
+    });
+    expect(injections).toContain('jobs/code/base/injections/ui-source-dispatch');
+  });
+
+  it('code job + taskType=feature → NO ui-source-dispatch', () => {
     const injections = resolveAutoInjections({
       job: 'code', node: 'execute', taskType: 'feature',
       techTier: makeTechTier(),
       data: {},
     });
-    expect(injections).not.toContain('jobs/code/base/injections/ui-design-guide');
+    expect(injections).not.toContain('jobs/code/base/injections/ui-source-dispatch');
   });
 
-  it('design job + taskType=ui → NO ui-design-guide', () => {
+  it('design job + taskType=ui → NO ui-source-dispatch', () => {
     const injections = resolveAutoInjections({
       job: 'design', node: 'execute', taskType: 'ui',
       data: {},
     });
-    expect(injections).not.toContain('jobs/code/base/injections/ui-design-guide');
+    expect(injections).not.toContain('jobs/code/base/injections/ui-source-dispatch');
   });
 });
 

@@ -16,22 +16,22 @@ describe('deriveArtifactPolicy', () => {
     expect(result).toBeDefined();
     expect(result!.context).toBeDefined();
     expect(result!.refs).toBeUndefined();
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI}tokens`);
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI}assets`);
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_SPEC}header`);
+    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}tokens`);
+    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}assets`);
+    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT_SPEC}header`);
   });
 
   it('design-system taskType: uiSections -> context paths', () => {
     const result = deriveArtifactPolicy('design-system', undefined, ['layout']);
     expect(result).toBeDefined();
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI}tokens`);
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_SPEC}layout`);
+    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}tokens`);
+    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT_SPEC}layout`);
   });
 
   it('ui taskType: no uiSections -> wildcard context', () => {
     const result = deriveArtifactPolicy('ui');
     expect(result).toBeDefined();
-    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI}*`);
+    expect(result!.context).toContain(`${ARTIFACT_PREFIX.UI_ANT}*`);
   });
 
   it('fe-/be- packages -> refs paths', () => {

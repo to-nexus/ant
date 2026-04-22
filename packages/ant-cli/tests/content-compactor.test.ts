@@ -73,7 +73,7 @@ describe('compactContent', () => {
       const result = compactContent(content, {
         threshold: 100,
         label: 'ui-assets.json',
-        filePath: 'outputs/design/ui/ui-assets.json',
+        filePath: 'outputs/design/ui/ant/ui-assets.json',
         contentType: 'json',
       });
 

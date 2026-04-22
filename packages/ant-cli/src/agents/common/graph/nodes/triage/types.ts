@@ -129,14 +129,14 @@ export interface WorkspaceState {
   hasScreens: boolean;           // inputs/references/screens/
   hasComponents: boolean;        // inputs/references/components/
   hasAssets: boolean;            // inputs/assets/
-  hasFigmaConfig: boolean;       // inputs/figma.json with populated file value
+  hasFigmaConfig: boolean;       // outputs/design/ui/figma/figma.json with populated file value (workfile reference only; MCP reachability is NOT included — see code resolve's detectFigmaSource for the combined check)
   screenCount?: number;
   componentCount?: number;
   assetCount?: number;
   
   // Design job - system-design mode
   hasSystemDesignDoc: boolean;   // outputs/design/system/*-system-*.md or api-contract-*.md
-  hasUiDocs: boolean;            // outputs/design/ui/ui-*.json
+  hasUiDocs: boolean;            // outputs/design/ui/ant/ui-*.json (ant UiSource present)
   
   // Evaluations
   hasEvals: boolean;             // outputs/evals/ has any reports

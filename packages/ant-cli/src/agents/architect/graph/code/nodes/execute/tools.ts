@@ -63,8 +63,10 @@ export async function getTools(state: ArchitectGraphState): Promise<ToolDefiniti
     toolNames.push(ToolName.SEARCH_REFERENCE);
   }
 
-  const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
-  const figmaToolsEnabled = state.figmaAvailable && !new ArtifactPoolView(state.artifacts || []).hasUi();
+  // Figma MCP tools surface iff the RAC's UiSource resolved to 'figma'.
+  // SSOT: `resolvedAction.mcpSources.figma` (populated by resolve when the
+  // figma UiSource slot is active and the MCP endpoint was reachable).
+  const figmaToolsEnabled = state.resolvedAction?.mcpSources?.figma != null;
   if (figmaToolsEnabled) {
     // R1 — phase layer is blind to `task.type`; delegate to the per-task
     // predicates defined in `tasks/{ui,feature,design-system}/model/is.ts`.

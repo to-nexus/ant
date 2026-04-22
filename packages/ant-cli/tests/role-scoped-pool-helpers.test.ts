@@ -14,8 +14,8 @@ import { describe, it, expect } from 'vitest';
 import type { ResolvedArtifact } from '@ant/shared';
 import { ArtifactPoolView } from '../src/core/artifact/ArtifactPipeline';
 
-const UI_TOKENS = 'outputs/design/ui/ui-tokens.json';
-const UI_SPEC = 'outputs/design/ui/ui-spec.json';
+const UI_TOKENS = 'outputs/design/ui/ant/ui-tokens.json';
+const UI_SPEC = 'outputs/design/ui/ant/ui-spec.json';
 const FE_SYSTEM = 'outputs/design/system/fe-system-main.md';
 const BE_SYSTEM = 'outputs/design/system/be-system-main.md';
 const SPEC_LOGIN = 'outputs/design/spec/spec-login.md';

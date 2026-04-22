@@ -71,7 +71,7 @@ triage가 확인하는 핵심 상태와 감지 조건 (`workspaceAnalyzer.ts` �
 | `hasUiDocs` | `outputs/design/ui/` 또는 `outputs/design/`에 `ui-tokens.json`, `ui-assets.json`, `ui-spec.json` 중 하나 이상 존재 |
 | `hasSpecDocs` | `outputs/design/spec/` 또는 `outputs/design/`에 `spec-*.md` 패턴 파일 존재 |
 | `hasDesignDoc` | `outputs/design/` 전체(system/, ui/, spec/, flat)에 `.md` 또는 `.json` 파일 하나 이상 존재 |
-| `hasFigmaConfig` | `inputs/figma.json` 존재하고 `isFigmaDataPopulated` = true |
+| `hasFigmaConfig` | `outputs/design/ui/figma/figma.json` 존재하고 `isFigmaDataPopulated` = true |
 | `hasScreens` | `inputs/references/screens/`에 파일 존재 |
 | `hasCodebase` | vector DB에 인덱스된 파일 존재 |
 

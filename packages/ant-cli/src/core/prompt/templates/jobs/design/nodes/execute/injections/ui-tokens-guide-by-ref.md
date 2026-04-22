@@ -82,7 +82,7 @@ Use `<file>` tag to create the initial JSON file.
 **Parallel chapter** - use `<append>` to add YOUR categories:
 
 ```xml
-<append path="outputs/design/ui/ui-tokens.json">
+<append path="outputs/design/ui/ant/ui-tokens.json">
 {
   "YOUR_CATEGORY": { /* tokens extracted from screenshots */ }
 }
@@ -92,7 +92,7 @@ Use `<file>` tag to create the initial JSON file.
 **First task** - use `<file>` to create the document:
 
 ```xml
-<file path="outputs/design/ui/ui-tokens.json">
+<file path="outputs/design/ui/ant/ui-tokens.json">
 {
   "YOUR_CATEGORY": { /* tokens extracted from screenshots */ }
 }

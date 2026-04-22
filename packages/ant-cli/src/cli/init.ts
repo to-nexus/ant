@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getDefaultWorkspaceConfig } from "../core/types/workspace";
 import { getInitFeatureDirs } from '../core/utils/sessionPaths';
-import { createEmptyFigmaData, FIGMA_FILENAME } from '@ant/shared';
+import { createEmptyFigmaData, FIGMA_CONFIG_PATH } from '@ant/shared';
 
 /**
  * Initialize a new workspace with boilerplate structure
@@ -154,10 +154,10 @@ export function initFeature(workspaceName: string, featureName: string): void {
   // ✅ Reference images folder (may be sent to LLM as multimodal blocks)
   fs.mkdirSync(path.join(featureDir, "inputs/references"), { recursive: true });
 
-  // ✅ Empty figma.json (Figma integration placeholder)
-  // createEmptyFigmaData, FIGMA_FILENAME imported at top level (ESM)
+  // ✅ Empty figma.json (canonical workfile reference location)
+  fs.mkdirSync(path.join(featureDir, "outputs/design/ui/figma"), { recursive: true });
   fs.writeFileSync(
-    path.join(featureDir, "inputs", FIGMA_FILENAME),
+    path.join(featureDir, FIGMA_CONFIG_PATH),
     JSON.stringify(createEmptyFigmaData(), null, 2),
     "utf8"
   );
@@ -199,7 +199,7 @@ export function initFeature(workspaceName: string, featureName: string): void {
   console.log("");
   console.log("🚀 Next steps:");
   console.log(`  1. Edit inputs/sources/prd.md`);
-  console.log(`  2. (Optional) Configure Figma in inputs/figma.json`);
+  console.log(`  2. (Optional) Configure Figma in outputs/design/ui/figma/figma.json`);
   console.log(`  3. Add reference images to inputs/references/`);
   console.log(`  4. Generate design: npm run dev architect design workspace/${workspaceName}/${featureName}`);
 }
