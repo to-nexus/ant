@@ -418,31 +418,6 @@ export class LLMResponseService {
   // ============================================================================
 
   /**
-   * Add file operation notification with content
-   */
-  async addFileOperation(
-    operation: 'edit' | 'create' | 'delete', 
-    filePath: string,
-    content?: string,
-    diffBefore?: string,
-    diffAfter?: string
-  ): Promise<void> {
-    if (!this.enabled) return;
-
-    switch (operation) {
-      case 'create':
-        await this.completeFileCreation(filePath, content || '');
-        break;
-      case 'edit':
-        await this.completeFileEdit(filePath, diffBefore || '', diffAfter || '');
-        break;
-      case 'delete':
-        await this.completeFileDeletion(filePath, content);
-        break;
-    }
-  }
-
-  /**
    * Legacy: Add command execution notification
    */
   async addCommandExecution(command: string, output?: string, exitCode?: number): Promise<void> {

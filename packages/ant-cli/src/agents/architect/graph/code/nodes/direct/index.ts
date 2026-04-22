@@ -28,7 +28,6 @@ import { accumulateTokenUsage } from '../../../../../common/graph/llmHelpers';
 import { invokeLLMWithTools } from '../_common/invokeLLMWithTools';
 import { runToolCallsAndCollect } from '../_common/runToolCallsAndCollect';
 import { parseReActResponse } from '../../utils/parseReActResponse';
-import { emitFileWriteTrace } from '../_common/emitFileWriteTrace';
 import { shouldEscalate } from './shouldEscalate';
 import { DIRECT_LOOP_LIMITS } from '@ant/shared';
 import { tierToDirectMode } from '../../../../../../core/executionTier';
@@ -241,12 +240,15 @@ export async function direct(
       state.recursionCount = (state.recursionCount || 0) + 1;
 
       // Aggregate touched files for runtime escalate. SSOT is
-      // `ev.result.sideEffects` — the same source emitFileWriteTrace
-      // forwards to trace.jsonl. This keeps the escalation heuristic and
-      // the breadcrumb/touched accounting on the exact same set of files
-      // (actual mutations, not attempted writes). A failed edit_file call
-      // has no sideEffects and therefore must not push the loop toward
-      // escalation — the scope hasn't actually widened.
+      // `ev.result.sideEffects` — a failed edit_file call has no
+      // sideEffects and therefore must not push the loop toward
+      // escalation.
+      //
+      // Trace.jsonl `file_write` lines are emitted by
+      // `FileOperationHandler.addFileOperation` (see
+      // core/llm-response/FileOperationHandler.ts) when tool handlers
+      // call `ctx.chatStatus.completeFileCreation/Edit/Deletion`. No
+      // separate emission is needed here.
       for (const ev of batch.events) {
         const effects = ev.result.sideEffects;
         if (effects && effects.length > 0) {
@@ -262,13 +264,6 @@ export async function direct(
             }
           }
         }
-        emitFileWriteTrace({
-          session: state.deps?.session,
-          jobId: state.jobId,
-          turnId: state.turnId,
-          jobType: 'code',
-          sideEffects: effects,
-        });
       }
 
       if (!effectivePromoted && shouldEscalate(state, touchedFiles)) {
