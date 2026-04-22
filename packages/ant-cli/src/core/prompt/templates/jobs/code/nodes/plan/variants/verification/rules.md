@@ -28,7 +28,13 @@
 
 **Constraint**: Produce `<plan>` as soon as the failing command's output AND the referenced source file(s) are in context. One `read_file` per source file named in the error is sufficient — do NOT issue follow-up `search_code` calls after the file has been read. If the error message does not name any file, ONE targeted `search_code` is permitted; then produce `<plan>` from the located site.
 
-**Constraint**: Each verification command type (build, test) must be executed at most once per diagnostic cycle. Re-running a failed command without code changes produces identical results. A separate execution phase applies code fixes, after which a fresh diagnostic cycle re-verifies automatically.
+### Gate Re-run Principle
+
+**Principle**: A verification gate's output is a pure function of the source tree's current state. Re-running the same gate without a source-file change since its last observation produces identical output.
+
+**Constraint**: After observing a gate's failure, proceed directly to producing the remediation `<plan>` from that output. Do NOT re-run the same gate in the same plan cycle to "double check" or "confirm" — it wastes a tool slot and cannot change the result.
+
+**Constraint**: A gate that already reports as passed (the runtime will annotate "ALREADY PASSED") does not need to be re-run. Move to the next gate in the ordering.
 
 ### Verification Gate Ordering
 

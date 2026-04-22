@@ -67,16 +67,20 @@ export function guard(
     return null;
   }
 
-  // Plan-phase loop guard — requires the session to reason about cached
-  // pass state and in-cycle attempts.
+  // Plan-phase loop guard — all decisions derive from `passed` + `required`.
+  // Per-cycle "attempted" tracking was retired (see postmortem on
+  // `attemptedThisCycle`): every legitimate guard reduces to a query on
+  // observable gate state, and the retired marker was the direct cause of
+  // the `fatal-ironing-judge` regression (batch-split carry-over blocked
+  // the post-error-fix typecheck).
   if (ctx.activePhase !== 'plan' || !session) return null;
 
   const passed = new Set(session.passed());
-  const attempted = new Set(session.attemptedThisCycle());
   const required = new Set(session.required());
 
-  // Already-passed guard — independent of deep-mode so cache preservation
-  // works across retry/reverify boundaries.
+  // Already-passed guard — authoritative across retry / reverify /
+  // batch-split boundaries because `passed` is invalidated only by an
+  // actual source-file change via `onFileChanged`.
   if (isTypecheckCommand(command) && passed.has('typecheck')) {
     return reject(
       command,
@@ -96,42 +100,17 @@ export function guard(
     );
   }
 
-  // Failed-in-this-cycle guard — relaxed in deep-diagnostic mode so the LLM
-  // can probe config / dependency variants.
-  if (isTypecheckCommand(command) && attempted.has('typecheck') && !deep) {
+  // Gate-ordering guards — deep-diagnostic mode bypasses the ordering so
+  // the LLM can probe config / dependency variants. Within normal mode
+  // the project's declared-gate order (typecheck → build → test) is
+  // enforced via `passed` alone.
+  if (isBuildCommand(command) && required.has('typecheck') && !passed.has('typecheck') && !deep) {
     return reject(
       command,
-      'BLOCKED: typecheck already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.',
+      'BLOCKED: Run tsc --noEmit first and confirm it passes. Build embeds type checking, so running it before typecheck passes produces duplicate noise.',
     );
   }
 
-  if (isBuildCommand(command) && required.has('typecheck') && !attempted.has('typecheck')) {
-    return reject(
-      command,
-      'BLOCKED: Run tsc --noEmit first for comprehensive error discovery before the build command.',
-    );
-  }
-
-  if (
-    isBuildCommand(command) &&
-    attempted.has('typecheck') &&
-    !passed.has('typecheck') &&
-    !deep
-  ) {
-    return reject(
-      command,
-      'BLOCKED: type check (tsc --noEmit) failed. Build embeds type checking internally and will fail with the same errors. Produce the remediation plan from tsc output.',
-    );
-  }
-
-  if (isBuildCommand(command) && attempted.has('build') && !deep) {
-    return reject(
-      command,
-      'BLOCKED: build already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.',
-    );
-  }
-
-  // 3-gate ordering: tests require a passing build.
   if (isTestCommand(command) && !passed.has('build') && !deep) {
     return reject(
       command,
@@ -139,18 +118,8 @@ export function guard(
     );
   }
 
-  if (isTestCommand(command) && attempted.has('test') && !deep) {
-    return reject(
-      command,
-      'BLOCKED: test already failed in this diagnostic cycle. Produce the remediation plan from the existing error output.',
-    );
-  }
-
-  // Preemptive attempt marker — prevents a concurrent LLM batch from
-  // queueing the same gate twice before `onCommand(gate, success)` lands.
-  if (isTypecheckCommand(command)) session.markAttempted('typecheck');
-  if (isBuildCommand(command)) session.markAttempted('build');
-  if (isTestCommand(command)) session.markAttempted('test');
-
+  // Re-run discipline lives in the prompt (`Gate Re-run Principle` in
+  // `plan/variants/verification/rules.md`), bounded by
+  // `PLAN_TOOL_LOOP_MAX`. No per-cycle attempt counter here.
   return null;
 }

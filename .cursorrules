@@ -1,5 +1,15 @@
 # Ant CLI Project Rules
 
+## Codebase Meta Document Policy
+
+**워크스페이스는 3층으로 배타 분리: `codebase/` (코드 + 코드의 메타, git 추적), `outputs/` (디자인·생성 산출물, 세션 간 영속), `sessions/` (에이전트 런타임/디버그, 일시).** 새 파일을 추가할 때 반드시 이 중 하나를 고르고, 경계를 넘지 않는다.
+
+**`codebase/ANT.md` 는 ant 에이전트 작업 설정 SSOT.** export style / React imports / test setup / file naming 등 "ant 가 이 코드베이스에서 새 파일을 만들 때 따를 규칙" 을 한 곳에 모음. README / ARCHITECTURE 와 독립. 크기 상한 1500자. setup 태스크가 초기화, 다른 태스크는 읽기 전용. 매 plan/execute 프롬프트에 자동 주입되며 LLM 은 필요 시 `read_file codebase/ANT.md` 로 자율 조회 가능.
+
+전체 정책은 [docs/architecture/35-codebase-meta-policy.md](docs/architecture/35-codebase-meta-policy.md).
+
+---
+
 ## Unified Distributed System Principle
 
 **Ant is ALWAYS a distributed system. There is NO separate "local mode" implementation.**

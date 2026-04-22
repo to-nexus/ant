@@ -13,9 +13,12 @@
   "retries": 0,
   "maxRetries": 3,
   "verification": {
-    "required": ["build"],
-    "passed": ["build"],
-    "attemptedThisCycle": [],
+    "required": [
+      "build"
+    ],
+    "passed": [
+      "build"
+    ],
     "attempts": 0,
     "planHistoryHashes": []
   },

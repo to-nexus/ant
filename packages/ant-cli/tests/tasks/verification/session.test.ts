@@ -290,6 +290,21 @@ describe('batch split + install', () => {
     expect(s.batchSplitCount()).toBe(1);
     expect(s.previousBatchDiagnostics()).toBe('{"totalErrors":3}');
   });
+
+  it('onBatchSplit also bumps the generic attempt counter so deep-mode can engage', () => {
+    // A batch-split is a plan-cycle failure just like retry/reverify. If
+    // attempts did not grow, `inDeepMode()` (which gates config-snapshot
+    // injection) would stay false across an arbitrary chain of splits.
+    const s = freshTs();
+    expect(s.attempts()).toBe(0);
+    expect(s.inDeepMode()).toBe(false);
+    s.onBatchSplit('{}');
+    expect(s.attempts()).toBe(1);
+    s.onBatchSplit('{}');
+    expect(s.attempts()).toBe(2);
+    // Default DEEP_DIAGNOSTIC_THRESHOLD is 2.
+    expect(s.inDeepMode()).toBe(true);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────

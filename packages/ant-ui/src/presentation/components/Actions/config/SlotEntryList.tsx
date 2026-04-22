@@ -78,7 +78,6 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
           name={name}
           path={`${sg.dir}/`}
           description={dirDesc}
-          icon={<FolderOpen className="w-4 h-4 text-gray-400 shrink-0" />}
           empty
           emptyStyle="gray"
           disabled={ctx.isLocked}
@@ -120,7 +119,6 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
         path={`${sg.dir}/ (${sg.files.length})`}
         warnings={aggregatedWarnings}
         description={dirDesc}
-        icon={<FolderOpen className={`w-4 h-4 ${allSelected && !ctx.isLocked ? 'text-emerald-500' : 'text-gray-400'} shrink-0`} />}
         selected={!ctx.isLocked && aggregatedWarnings.length === 0 && allSelected}
         disabled={ctx.isLocked}
         locked={ctx.lockedBySlot}

@@ -22,8 +22,6 @@ describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
     session.onPlanEntry('retry');
     session.onPlanEntry('retry');
     session.onPlanEntry('retry');
-    session.markAttempted('typecheck');
-    session.markAttempted('build');
     session.onCommand('typecheck', true);
     session.onCommand('build', true);
     session.markInstallNeeded(false);

@@ -88,12 +88,9 @@ export interface VerificationSessionSurface {
   required(): Array<'typecheck' | 'build' | 'test'>;
   missing(): Array<'typecheck' | 'build' | 'test'>;
   passed(): Array<'typecheck' | 'build' | 'test'>;
-  attemptedThisCycle(): Array<'typecheck' | 'build' | 'test'>;
   isComplete(): boolean;
   dependencyStatus(): 'current' | 'changed' | 'unknown';
   inDeepMode(): boolean;
-  /** Preemptive attempt marker used by the command-policy guard. */
-  markAttempted(gate: 'typecheck' | 'build' | 'test'): void;
 }
 
 export interface ToolExecutionContext {
