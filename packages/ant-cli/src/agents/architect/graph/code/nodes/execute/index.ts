@@ -241,7 +241,17 @@ export async function execute(
     'code',  // ✅ jobType: 'code' (no LAST_SECTION handling needed)
     undefined,  // ✅ Code job: no featurePath
     repoRootForWrites,  // ✅ Code job: write files under repoRoot (codebase)
-    state.deps?.fileTreeUpdate  // ✅ For real-time file tree updates via Redis Pub/Sub
+    state.deps?.fileTreeUpdate,  // ✅ For real-time file tree updates via Redis Pub/Sub
+    // Per-task touched-files SSOT — mirrors the tool-handler path
+    // (`ToolExecutionContext.recordFileTouch`) so `<file>` XML streaming
+    // and `create_file`/`edit_file` tool calls converge on the same
+    // `CodeTask.touchedFiles` array that checkTaskStatus then persists
+    // into `code.json.state.completedTasksDetails[i]`.
+    (filePath) => {
+      if (!state.currentTask) return;
+      const arr = (state.currentTask.touchedFiles ??= []);
+      if (!arr.includes(filePath)) arr.push(filePath);
+    },
   );
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
   

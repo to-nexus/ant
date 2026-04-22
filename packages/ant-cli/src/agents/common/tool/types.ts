@@ -117,6 +117,18 @@ export interface ToolExecutionContext {
   project?: string;
   featureFolder?: string;
 
+  /**
+   * Record a file-mutation event to the active task's per-task SSOT
+   * (`CodeTask.touchedFiles`). Called at the same spot where
+   * `chatStatus.completeFile*` emits the UI event — chat.jsonl is
+   * ephemeral, this path is the authoritative session record that
+   * persists into `code.json` via `completedTasksDetails`.
+   *
+   * Optional because design/non-task contexts may omit it; handlers
+   * must use optional-chaining (`ctx.recordFileTouch?.(...)`).
+   */
+  recordFileTouch?: (op: 'create' | 'update' | 'delete', path: string) => void;
+
   // === Optional ports (per job) ===
   command?: CommandPort;
   git?: GitPort;
