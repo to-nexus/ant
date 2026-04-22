@@ -92,13 +92,18 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
       )];
     }
 
-    // Dir-level aggregation: valid files determine selection; warnings from all
-    // files surface on the single card so the user sees why a bundle is unusable.
+    // Dir-level aggregation: valid files determine selection; per-file warnings
+    // AND subgroup-level bundle warnings (e.g. ant missing ui-tokens.json) both
+    // surface on the single card so the user sees one universal "invalid"
+    // indicator regardless of the cause.
     const filePaths = sg.files.map(f => f.path);
     const validFilePaths = sg.files.filter(f => f.warnings.length === 0).map(f => f.path);
     const togglePaths = validFilePaths.length > 0 ? validFilePaths : filePaths;
     const allSelected = togglePaths.length > 0 && togglePaths.every(p => selected.has(p));
-    const aggregatedWarnings: SlotWarning[] = sg.files.flatMap(f => f.warnings);
+    const aggregatedWarnings: SlotWarning[] = [
+      ...(sg.warnings ?? []),
+      ...sg.files.flatMap(f => f.warnings),
+    ];
     const firstFilePath = sg.files[0]?.path;
 
     const handleToggle = ctx.isLocked
