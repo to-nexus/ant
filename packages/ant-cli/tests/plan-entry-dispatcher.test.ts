@@ -75,7 +75,7 @@ describe('resolvePlanEntry — fresh verification task (C14)', () => {
 });
 
 describe('resolvePlanEntry — verification retry (C15)', () => {
-  it('clears attemptedThisCycle while preserving passed + required gates', async () => {
+  it('preserves passed + required gates and bumps session attempts', async () => {
     const state = makeFreshVerificationState();
     state.currentTask = {
       id: 't1',
@@ -85,13 +85,14 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
       priority: 1000,
     };
     state._nextPlanEntry = 'retry';
-    // Seed a rehydrated session with two gates already passed and the full
-    // attempted set populated — the retry branch must clear the attempted
-    // set while preserving passed + required.
+    // Seed a rehydrated session with two gates already passed — the retry
+    // branch must preserve `passed` (gate cache is authoritative across
+    // retry / reverify / batch-split boundaries). The retired
+    // `attemptedThisCycle` field is intentionally absent from the seed;
+    // rehydrate silently drops any legacy value.
     state.verification = VerificationSession.rehydrate({
       required: ['typecheck', 'build', 'test'],
       passed: ['typecheck', 'build'],
-      attemptedThisCycle: ['typecheck', 'build', 'test'],
       attempts: 0,
       planHistoryHashes: [],
     });
@@ -111,8 +112,6 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     expect(state.retries).toBe(1);
 
     const snap = state.verification.snapshot();
-    // onPlanEntry('retry') clears attemptedThisCycle
-    expect(snap.attemptedThisCycle).toEqual([]);
     // passed / required preserved
     expect(snap.passed.sort()).toEqual(['build', 'typecheck'].sort());
     expect(snap.required.sort()).toEqual(['build', 'test', 'typecheck'].sort());
@@ -135,7 +134,6 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     state.verification = VerificationSession.rehydrate({
       required: ['build'],
       passed: [],
-      attemptedThisCycle: [],
       attempts: 0,
       planHistoryHashes: [],
     });

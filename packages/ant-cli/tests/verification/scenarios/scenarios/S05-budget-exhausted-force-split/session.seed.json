@@ -15,7 +15,6 @@
   "verification": {
     "required": [],
     "passed": [],
-    "attemptedThisCycle": [],
     "attempts": 999,
     "planHistoryHashes": []
   },

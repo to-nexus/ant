@@ -69,7 +69,6 @@ export class VerificationSession {
   // out the whole Set; the Sets themselves are mutated in place.
   private readonly _required: Set<Gate>;
   private readonly _passed: Set<Gate>;
-  private readonly _attemptedThisCycle: Set<Gate>;
   private readonly _planHistoryHashes: string[];
   private readonly _planHistoryBodies: string[];
 
@@ -81,7 +80,6 @@ export class VerificationSession {
   private constructor(init: {
     required: Iterable<Gate>;
     passed: Iterable<Gate>;
-    attemptedThisCycle: Iterable<Gate>;
     attempts: number;
     planHistoryHashes: string[];
     planHistoryBodies: string[];
@@ -91,7 +89,6 @@ export class VerificationSession {
   }) {
     this._required = new Set(init.required);
     this._passed = new Set(init.passed);
-    this._attemptedThisCycle = new Set(init.attemptedThisCycle);
     this._attempts = Math.max(0, init.attempts | 0);
     this._planHistoryHashes = [...init.planHistoryHashes];
     this._planHistoryBodies = [...init.planHistoryBodies];
@@ -121,20 +118,24 @@ export class VerificationSession {
     return new VerificationSession({
       required,
       passed: [],
-      attemptedThisCycle: [],
       attempts: 0,
       planHistoryHashes: [],
       planHistoryBodies: [],
     });
   }
 
-  /** Rehydrate from a snapshot produced by a previous worker invocation. */
+  /**
+   * Rehydrate from a snapshot produced by a previous worker invocation.
+   * Unknown / legacy fields on `snap` are silently ignored — the snapshot
+   * is the *projection*, not the contract (`attemptedThisCycle` is a
+   * retired field left in older session files and is intentionally
+   * dropped here).
+   */
   static rehydrate(snap: VerificationSnapshot | undefined | null): VerificationSession {
     const safe = snap ?? EMPTY_SNAPSHOT;
     return new VerificationSession({
       required: safe.required ?? [],
       passed: safe.passed ?? [],
-      attemptedThisCycle: safe.attemptedThisCycle ?? [],
       attempts: safe.attempts ?? 0,
       planHistoryHashes: safe.planHistoryHashes ?? [],
       planHistoryBodies: safe.planHistoryBodies ?? [],
@@ -183,11 +184,6 @@ export class VerificationSession {
   /** All required gates, in canonical order. */
   required(): Gate[] {
     return GATE_ORDER.filter(g => this._required.has(g));
-  }
-
-  /** Gates attempted (success or failure) in the current cycle. */
-  attemptedThisCycle(): Gate[] {
-    return GATE_ORDER.filter(g => this._attemptedThisCycle.has(g));
   }
 
   attempts(): number {
@@ -260,41 +256,33 @@ export class VerificationSession {
 
   /**
    * Transition bookkeeping for a plan-node re-entry. `retry` and `reverify`
-   * bump the attempt counter and clear the cycle's attempted set so the
-   * plan tool loop can try each gate afresh. `fresh`/`resumed`/`toolLoop`
-   * are idempotent no-ops at the session level (the phase layer handles
-   * fresh initialisation via `createFresh`).
+   * bump the attempt counter; `fresh`/`resumed`/`toolLoop` are idempotent
+   * no-ops at the session level (the phase layer handles fresh
+   * initialisation via `createFresh`).
+   *
+   * Per-cycle "attempted" tracking was removed when the
+   * `attemptedThisCycle` field retired — `passed` is the single source for
+   * every command-policy guard now (see
+   * `tasks/verification/hooks/command.ts`). A batch-split or error-fix
+   * cycle that lands here no longer carries stale "typecheck already
+   * attempted" state.
    */
   onPlanEntry(reason: PlanEntry): void {
     if (reason === 'retry' || reason === 'reverify') {
       this._attempts += 1;
-      this._attemptedThisCycle.clear();
     }
   }
 
   /**
    * A verification-gate command executed. When the command maps to a known
-   * gate and exited 0, that gate flips to passed; otherwise we only
-   * remember that the gate was attempted in this cycle so repeat calls are
-   * guarded against loops.
+   * required gate and exited 0 the gate flips to passed; failure clears
+   * the passed bit. The command-policy guard reads `passed()` directly —
+   * there is no separate "attempted" bookkeeping.
    */
   onCommand(gate: Gate | undefined, success: boolean): void {
     if (!gate || !this._required.has(gate)) return;
-    this._attemptedThisCycle.add(gate);
     if (success) this._passed.add(gate);
     else this._passed.delete(gate);
-  }
-
-  /**
-   * Preemptive attempt marker — called by the command-policy guard before
-   * the command actually executes so a concurrent request for the same
-   * gate in the same cycle is rejected with "already attempted" instead
-   * of racing past the loop guard. The downstream `onCommand(...)` update
-   * then records the pass/fail outcome.
-   */
-  markAttempted(gate: Gate): void {
-    if (!this._required.has(gate)) return;
-    this._attemptedThisCycle.add(gate);
   }
 
   /**
@@ -351,9 +339,19 @@ export class VerificationSession {
   /**
    * A batch-split cycle just fired. Bumps the cycle counter and stores the
    * diagnostics summary for injection into the follow-up prompt.
+   *
+   * Also bumps the generic attempt counter. A batch-split is "one more
+   * diagnostic failure that did not resolve the task"; treating it as a
+   * non-event would leave `inDeepMode()` stuck at false across an
+   * arbitrary chain of splits (because `onPlanEntry('retry'/'reverify')`
+   * is not on the batch-split → requeue → fresh-entry path). Counting
+   * it here keeps the `attempts` axis monotonic across ANY plan-cycle
+   * failure, which is what deep-diagnostic mode and the plan prompt's
+   * "Diagnostic attempts so far: N" banner both depend on.
    */
   onBatchSplit(snapshotJson: string): void {
     this._batchSplitCount += 1;
+    this._attempts += 1;
     this._previousBatchDiagnostics = snapshotJson;
   }
 
@@ -366,7 +364,6 @@ export class VerificationSession {
     return {
       required: this.required(),
       passed: this.passed(),
-      attemptedThisCycle: GATE_ORDER.filter(g => this._attemptedThisCycle.has(g)),
       attempts: this._attempts,
       planHistoryHashes: [...this._planHistoryHashes],
       planHistoryBodies: [...this._planHistoryBodies],

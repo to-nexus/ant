@@ -71,31 +71,24 @@ function task(id: string, overrides: Partial<CodeTask> = {}): CodeTask {
  * Build a minimal VerificationSessionSurface for command-guard tests. The
  * shape mirrors what `VerificationSession` publishes but lets each test
  * seed just the state it needs without rehydrating a full session.
+ *
+ * Post-`attemptedThisCycle` retirement: guard logic queries `passed` +
+ * `required` only. No `attempted` / `markAttempted` members exist.
  */
 function mkSession(opts: {
   required?: Array<'typecheck' | 'build' | 'test'>;
   passed?: Array<'typecheck' | 'build' | 'test'>;
-  attempted?: Array<'typecheck' | 'build' | 'test'>;
   deep?: boolean;
 } = {}) {
   const required = new Set(opts.required ?? ['build']);
   const passed = new Set(opts.passed ?? []);
-  const attempted = new Set(opts.attempted ?? []);
-  const attemptLog: Array<'typecheck' | 'build' | 'test'> = [];
   return {
     required: () => [...required] as Array<'typecheck' | 'build' | 'test'>,
     missing: () => [...required].filter(g => !passed.has(g)) as Array<'typecheck' | 'build' | 'test'>,
     passed: () => [...passed] as Array<'typecheck' | 'build' | 'test'>,
-    attemptedThisCycle: () => [...attempted] as Array<'typecheck' | 'build' | 'test'>,
     isComplete: () => [...required].every(g => passed.has(g)),
     dependencyStatus: () => 'unknown' as const,
     inDeepMode: () => opts.deep === true,
-    markAttempted: (gate: 'typecheck' | 'build' | 'test') => {
-      attemptLog.push(gate);
-      attempted.add(gate);
-    },
-    // Test-only introspection of preemptive markAttempted calls.
-    _markedAttempts: attemptLog,
   };
 }
 
@@ -392,25 +385,35 @@ describe('hooks/command', () => {
     expect(res?.error).toBeUndefined();
   });
 
-  it('guard — plan-phase requires typecheck before build', () => {
+  it('guard — plan-phase requires typecheck to pass before build (ordering)', () => {
     const res = commandHook.guard(
-      mkCtx(),
+      mkCtx({
+        verificationSession: mkSession({ required: ['typecheck', 'build'] }),
+      }),
       { command: 'pnpm build' },
     );
     expect(res?.content).toContain('Run tsc --noEmit first');
   });
 
-  it('guard — deep-diagnostic relaxes failed-in-cycle block', () => {
+  it('guard — deep-diagnostic bypasses tsc-first ordering', () => {
     const ctx = mkCtx({
       isDeepDiagnostic: true,
       verificationSession: mkSession({
         required: ['typecheck', 'build'],
-        attempted: ['typecheck', 'build'],
         deep: true,
       }),
     });
-    // Build after failed typecheck is still ordered, but "already failed" block lifts.
     const res = commandHook.guard(ctx, { command: 'pnpm build' });
+    expect(res).toBeNull();
+  });
+
+  it('guard — plan-phase no longer blocks re-running a non-passed typecheck (prompt-enforced)', () => {
+    // `attemptedThisCycle` was retired. Re-run discipline lives in the
+    // prompt (Gate Re-run Principle) bounded by PLAN_TOOL_LOOP_MAX.
+    const ctx = mkCtx({
+      verificationSession: mkSession({ required: ['typecheck', 'build'] }),
+    });
+    const res = commandHook.guard(ctx, { command: 'tsc --noEmit' });
     expect(res).toBeNull();
   });
 
@@ -422,11 +425,6 @@ describe('hooks/command', () => {
     expect(res?.content).toContain('run the build command');
   });
 
-  it('guard — marks typecheck/build/test as attempted on pass-through', () => {
-    const session = mkSession({ required: ['typecheck'] });
-    commandHook.guard(mkCtx({ verificationSession: session }), { command: 'tsc --noEmit' });
-    expect((session as any)._markedAttempts).toContain('typecheck');
-  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
