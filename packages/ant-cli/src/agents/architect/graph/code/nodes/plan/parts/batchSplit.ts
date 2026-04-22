@@ -154,7 +154,28 @@ export function processDiagnosticBatchSplit(
     return planText;
   }
   if (!planText || planText.length <= 50) {
-    logBatchSplit({ action: 'skipped', reason: 'plan_too_short', planTextLen: planText?.length ?? 0, taskName: nextTask.name });
+    // `plan_too_short` here is a NORMAL outcome on the happy path: for
+    // verification tasks whose Session has all required gates passing,
+    // the plan-LLM intentionally emits an empty/near-empty plan. The
+    // plan node then fires `isVerificationPassWithoutCodeGen` which
+    // flips `llmResponse.done = true` so the task completes without
+    // another execute call. Without the extra fields below, an operator
+    // reading `batch_split: skipped` followed immediately by
+    // `task_complete` could easily mistake it for a "gave up" signal.
+    const isVerification = isVerificationTask(nextTask);
+    const verificationComplete = state.verification?.isComplete() ?? false;
+    const willPassViaShortcut = isVerification && verificationComplete;
+    logBatchSplit({
+      action: 'skipped',
+      reason: 'plan_too_short',
+      planTextLen: planText?.length ?? 0,
+      taskName: nextTask.name,
+      isVerification,
+      verificationComplete,
+      nextOutcome: willPassViaShortcut
+        ? 'pass_via_empty_plan_shortcut'
+        : 'skip_to_execute_or_check',
+    });
     return planText;
   }
   if (!state.taskQueue || typeof state.taskQueue.push !== 'function' || typeof state.taskQueue.getAll !== 'function') {

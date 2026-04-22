@@ -460,25 +460,23 @@ export async function execute(
       }
     }
 
-    // ✅ Reliable projectCodeContext update from streamedFiles.
-    // streamedFiles always contains written file paths regardless of registry state.
-    // Used as the base for ALL return paths (conflict, tool-call, no-done, normal)
-    // to guarantee filePaths propagation to the next execute turn.
+    // Detect files written in this call. The paths list is only used to
+    // (a) flag `_executeModifiedFiles` for the downstream router and (b)
+    // invalidate verification gates on the Session. projectCodeContext
+    // itself is NOT mutated here — the plan-phase RAG snapshot remains the
+    // canonical block2 surface for the whole task's execute loop.
+    // Previously this block mid-loop-merged streamedFiles into
+    // `projectCodeContext.filePaths`, which duplicated information already
+    // surfaced via conversation tool_results and destabilised block2
+    // cache hashes. See docs/architecture notes from the verification-loop
+    // postmortem.
     const earlyStreamedPaths = (finalizeResult?.streamedFiles || [])
       .map((fp: string) => normalizeToCodebasePath(fp, codebaseRel).normalized);
-    let earlyUpdatedProjectCodeContext = state.projectCodeContext;
-    if (earlyStreamedPaths.length > 0) {
-      const prevPaths = state.projectCodeContext?.filePaths || [];
-      const merged = Array.from(new Set([...prevPaths, ...earlyStreamedPaths]));
-      earlyUpdatedProjectCodeContext = state.projectCodeContext
-        ? { ...state.projectCodeContext, filePaths: merged }
-        : { source: 'execute' as const, filePaths: merged, files: [], stats: { filesLoaded: merged.length, estimatedTokens: 0 } };
-
-      // Streamed files touched code → invalidate every verification gate
-      // via the Session. The legacy `_verificationTracker` fan-out has
-      // been removed alongside the state field (T4b-β).
+    const touchedInThisCall = earlyStreamedPaths.length > 0;
+    if (touchedInThisCall) {
+      // Session is an instance whose mutations propagate by reference
+      // across node boundaries — invalidating gates here is safe.
       state.verification?.onFileChanged('all');
-      state._executeModifiedFiles = true;
     }
 
     // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file
@@ -614,9 +612,9 @@ export async function execute(
         },
         conversations: { [CONV_KEYS.NODE_EXECUTE]: newHistory },
         fileErrors: undefined,
-        projectCodeContext: earlyUpdatedProjectCodeContext,
         _executeCallIndex: newCallIndex,
         _finalTaskLoopCount: 0,
+        ...(touchedInThisCall ? { _executeModifiedFiles: true } : {}),
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         profile: state.profile,
@@ -651,37 +649,15 @@ export async function execute(
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', state.workerId ?? 0);
     }
     
-    // ✅ Return LLM response (state에 저장)
-    
-    // ✅ CRITICAL: Accumulate created/modified files to projectCodeContext
-    // Uses earlyUpdatedProjectCodeContext (from finalizeResult.streamedFiles) as the
-    // reliable base. The `files` array from registry.getFileInfo may be empty when
-    // the registry loses content tracking, but streamedFiles always has the paths.
-    // Without this, existingFiles Set is empty on each turn, causing:
-    // - Duplicate file creation (same files recreated 3-4 times in setup tasks)
-    // - generateFileTree returning null (LLM doesn't see existing files)
-    const newFilePaths = files
-      .filter(f => f.actionType === 'create' || f.actionType === 'edit')
-      .map(f => normalizeToCodebasePath(f.path, codebaseRel).normalized);
-    
-    let updatedProjectCodeContext = earlyUpdatedProjectCodeContext;
-    
-    if (newFilePaths.length > 0) {
-      const existingPaths = earlyUpdatedProjectCodeContext?.filePaths || [];
-      const combinedPaths = Array.from(new Set([...existingPaths, ...newFilePaths]));
-      
-      updatedProjectCodeContext = earlyUpdatedProjectCodeContext ? {
-        ...earlyUpdatedProjectCodeContext,
-        filePaths: combinedPaths
-      } : {
-        source: 'execute' as const,
-        filePaths: combinedPaths,
-        files: [],
-        stats: { filesLoaded: combinedPaths.length, estimatedTokens: 0 }
-      };
-    }
-    
-    console.log(`📊 [CodeGen] projectCodeContext update: early=${earlyUpdatedProjectCodeContext?.filePaths?.length ?? 0}, registryFiles=${newFilePaths.length}, final=${updatedProjectCodeContext?.filePaths?.length ?? 0}`);
+    // projectCodeContext is NOT mutated in the execute loop. New files
+    // written this turn reach the LLM via conversation tool_results (for
+    // edit_file / create_file / delete_file) and via streamed `<file>`
+    // tag markers in the assistant message. The plan-phase RAG snapshot
+    // is the authoritative source for the block2 retrieved-code injection
+    // for the whole task lifetime. Cross-task propagation happens through
+    // the next task's plan RAG (fresh re-scan) — no mid-loop handoff
+    // needed here. Removing the prior mid-loop merge eliminated the block2
+    // cache instability the verification-loop postmortem traced.
 
     // ✅ CRITICAL: Only mark done if LLM explicitly output <done>true</done>
     // Use explicitDone from streaming pipeline (detected by SpecialTagTransformer)
@@ -797,9 +773,9 @@ export async function execute(
           },
           conversations: { [CONV_KEYS.NODE_EXECUTE]: newHistory },
           fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
-          projectCodeContext: updatedProjectCodeContext,
           _executeCallIndex: newCallIndex,
           _finalTaskLoopCount: newFinalTaskLoopCount,
+          ...(touchedInThisCall ? { _executeModifiedFiles: true } : {}),
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           profile: state.profile,
@@ -827,9 +803,9 @@ export async function execute(
       },
       ...(toolCallHistory ? { conversations: { [CONV_KEYS.NODE_EXECUTE]: toolCallHistory } } : {}),
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
-      projectCodeContext: updatedProjectCodeContext,
       _executeCallIndex: newCallIndex,
       _finalTaskLoopCount: newFinalTaskLoopCount,
+      ...(touchedInThisCall ? { _executeModifiedFiles: true } : {}),
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       profile: state.profile,

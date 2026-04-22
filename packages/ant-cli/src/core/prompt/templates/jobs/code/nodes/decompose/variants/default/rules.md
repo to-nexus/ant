@@ -458,7 +458,7 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 - `uiSections` is NOT used for the figma UI source — Figma has no section schema. Tasks receive the figma.json reference; the execute stage calls MCP tools to extract data.
 {{/if}}
 {{#if (eq uiSource 'handoff')}}
-- `uiSections` is NOT used for the handoff UI source — handoff has no schema. Tasks receive the full handoff bundle; the execute stage observes file contents directly.
+- `uiSections` is NOT used for the handoff UI source — handoff has no schema. Tasks receive a STUB manifest of the handoff bundle (path + size + kind per file); the execute stage picks up text contents via `read_file` on demand and references binaries by path only.
 {{/if}}
 {{else}}
 - `"design-system"` tasks: `uiSections` is NOT applicable (no UI source selected).

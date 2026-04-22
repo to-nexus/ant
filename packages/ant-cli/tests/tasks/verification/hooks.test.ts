@@ -356,18 +356,47 @@ describe('hooks/command', () => {
     expect(res).toBeNull();
   });
 
-  it('guard — execute-phase blocks build/test/typecheck', () => {
+  it('guard — execute-phase is allowed to run tsc/build/test (post verification-loop postmortem)', () => {
+    // The legacy blanket blocker "BLOCKED: do not run build/test/typecheck
+    // during execute" was removed. execute now self-validates under the
+    // same already-passed + ordering rules as plan (the rules fire
+    // regardless of `activePhase`). `routeAfterDone` short-circuits to
+    // `checkTaskStatus` the moment `session.isComplete()` goes true.
     const res = commandHook.guard(
-      mkCtx({ activePhase: 'execute' }),
+      mkCtx({
+        activePhase: 'execute',
+        verificationSession: mkSession({ required: ['typecheck', 'build'] }),
+      }),
+      { command: 'tsc --noEmit' },
+    );
+    expect(res).toBeNull();
+  });
+
+  it('guard — already-passed rejection fires in execute phase too', () => {
+    const res = commandHook.guard(
+      mkCtx({
+        activePhase: 'execute',
+        verificationSession: mkSession({
+          required: ['typecheck', 'build'],
+          passed: ['typecheck'],
+        }),
+      }),
+      { command: 'tsc --noEmit' },
+    );
+    expect(res?.content).toContain('[Policy]');
+    expect(res?.content).toContain('ALREADY PASSED');
+    expect(res?.error).toBeUndefined();
+  });
+
+  it('guard — ordering guard fires in execute phase too (build before typecheck passes)', () => {
+    const res = commandHook.guard(
+      mkCtx({
+        activePhase: 'execute',
+        verificationSession: mkSession({ required: ['typecheck', 'build'] }),
+      }),
       { command: 'pnpm build' },
     );
-    // Policy rejections carry the explanation in `content` (prefixed with
-    // `[Policy] ` so the tool_result formatter does not mis-label the
-    // internal guard as a command execution failure). `error` is left
-    // unset intentionally — see reject() in verification/hooks/command.ts.
-    expect(res?.content).toContain('[Policy]');
-    expect(res?.content).toContain('execute phase');
-    expect(res?.error).toBeUndefined();
+    expect(res?.content).toContain('Run tsc --noEmit first');
   });
 
   it('guard — plan-phase blocks already-passed typecheck', () => {

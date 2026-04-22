@@ -38,6 +38,21 @@ function reject(command: string, reason: string): ToolResult {
  * Verification guard. Returns a rejection `ToolResult` when the command
  * should be blocked, or `null` to let the command proceed. The `null` path
  * lets `applyCodeCommandPolicy` fall through to its default execution path.
+ *
+ * Phase-agnostic invariants:
+ *   - `already-passed`  — a gate already green in the current Session is
+ *     never re-run (applies to both plan-phase and execute-phase callers).
+ *   - `ordering`        — typecheck must pass before build; build must
+ *     pass before test (bypassed in deep-diagnostic mode only).
+ *
+ * Execute-phase is now allowed to run `tsc / build / test` directly. The
+ * previous blanket rejection ("Do not run build/test/typecheck during
+ * execute") was removed alongside the verification-loop postmortem: the
+ * LLM can and should validate its own fix in one execute pass when the
+ * plan phase already ran the diagnostic cycle. `routeAfterDone` picks
+ * `checkTaskStatus` (instead of `plan`/reverify) the moment
+ * `session.isComplete()` flips true, so a self-validated execute ends
+ * the task in a single cycle.
  */
 export function guard(
   ctx: ToolExecutionContext,
@@ -50,37 +65,17 @@ export function guard(
   if (isDiagnosticInspectCommand(command)) return null;
 
   const session = ctx.verificationSession;
+  if (!session) return null;
+
   const deep = ctx.isDeepDiagnostic === true;
-
-  // Execute-phase guard: verification tasks must not re-run build/test/
-  // typecheck while in the execute phase. The plan phase is the sole owner
-  // of diagnostic-gate commands for a verification task.
-  if (ctx.activePhase !== 'plan' && session) {
-    if (isBuildCommand(command) || isTestCommand(command) || isTypecheckCommand(command)) {
-      return reject(
-        command,
-        'BLOCKED: Do not run build/test/typecheck commands during the execute phase. ' +
-          'Apply the code fixes from the remediation plan and output <done>true</done>. ' +
-          'The diagnostic phase will re-verify after your changes.',
-      );
-    }
-    return null;
-  }
-
-  // Plan-phase loop guard — all decisions derive from `passed` + `required`.
-  // Per-cycle "attempted" tracking was retired (see postmortem on
-  // `attemptedThisCycle`): every legitimate guard reduces to a query on
-  // observable gate state, and the retired marker was the direct cause of
-  // the `fatal-ironing-judge` regression (batch-split carry-over blocked
-  // the post-error-fix typecheck).
-  if (ctx.activePhase !== 'plan' || !session) return null;
-
   const passed = new Set(session.passed());
   const required = new Set(session.required());
 
   // Already-passed guard — authoritative across retry / reverify /
   // batch-split boundaries because `passed` is invalidated only by an
-  // actual source-file change via `onFileChanged`.
+  // actual source-file change via `onFileChanged`. Applies to both plan
+  // and execute phases (an execute-phase self-validation should not
+  // re-run a gate that just passed).
   if (isTypecheckCommand(command) && passed.has('typecheck')) {
     return reject(
       command,
@@ -103,7 +98,7 @@ export function guard(
   // Gate-ordering guards — deep-diagnostic mode bypasses the ordering so
   // the LLM can probe config / dependency variants. Within normal mode
   // the project's declared-gate order (typecheck → build → test) is
-  // enforced via `passed` alone.
+  // enforced via `passed` alone. Applies to both plan and execute phases.
   if (isBuildCommand(command) && required.has('typecheck') && !passed.has('typecheck') && !deep) {
     return reject(
       command,

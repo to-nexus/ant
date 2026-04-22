@@ -5,21 +5,7 @@
 import * as path from 'path';
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
-
-const BINARY_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff', '.tif',
-  '.woff', '.woff2', '.ttf', '.eot', '.otf',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2',
-  '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv', '.flv',
-  '.exe', '.dll', '.so', '.dylib', '.bin', '.dat',
-  '.sqlite', '.db', '.wasm',
-]);
-
-function isBinaryFile(filePath: string): boolean {
-  const ext = path.extname(filePath).toLowerCase();
-  return BINARY_EXTENSIONS.has(ext);
-}
+import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
 
 export async function handleReadFile(
   ctx: ToolExecutionContext,
@@ -31,7 +17,7 @@ export async function handleReadFile(
     return { content: 'read_file requires path', error: 'read_file requires path' };
   }
 
-  if (isBinaryFile(filePath)) {
+  if (isBinaryPath(filePath)) {
     const ext = path.extname(filePath).toLowerCase();
     console.log(`[readFile] ⚠️ Binary file detected: ${filePath} (${ext})`);
     const content = `[Binary file: ${filePath}]\nThis is a binary file (${ext}) and cannot be read as text.\n\nTo check if file exists: use list_files("${path.dirname(filePath)}")\nTo use in code: reference the path directly (e.g., url('${filePath}') or <img src="${filePath}" />)\nTo copy: use run_command("cp source dest")\n\nProceed with your next action.`;

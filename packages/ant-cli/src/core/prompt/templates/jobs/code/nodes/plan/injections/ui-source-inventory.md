@@ -37,11 +37,12 @@
 {{/if}}
 
 {{#if (eq uiSource 'handoff')}}
-1. **TOKEN INVENTORY (observational)**
-   - Scan the injected handoff files for repeating colour, spacing, radius, typography values
-   - Pick the most explicit representation per property (e.g. CSS custom property over HTML attribute)
-   - Constraint: Do NOT assume schema consistency across files; merge only when content explicitly states the relation
-   - Record tokens with ACTUAL values and the source filename they were observed in
+1. **TOKEN INVENTORY (deferred to read_file)**
+   - The handoff bundle is injected as a STUB manifest (path + size + kind). File contents are not pre-loaded. Scan the manifest and pick the minimum set of text entries likely to carry token-level information (css, design-system markdown, json).
+   - Plan to call `read_file("<path>", startLine, endLine)` at execute time on each selected entry; do NOT dump contents into this plan.
+   - Record for each planned read: (a) the path, (b) the property family expected (colour / spacing / radius / typography), (c) why that file is the most explicit source per property.
+   - Constraint: Do NOT assume schema consistency across files. If two files claim the same property, the plan MUST pick ONE authoritative file rather than merging.
+   - Constraint: Do NOT plan reads on binary-kind entries — reference them by path only.
 
 2. **INTEGRATION CHAIN**
    - Identify the global CSS entry file and the CSS framework in use
@@ -79,13 +80,15 @@
 {{/if}}
 
 {{#if (eq uiSource 'handoff')}}
-4. **HANDOFF EVIDENCE MAP**
-   - For each injected handoff file relevant to this task, record which visual aspect it covers (layout / tokens / asset list / copy / interaction)
-   - Constraint: One task may read multiple handoff files; two tasks must NOT claim exclusive ownership of the same file unless the content explicitly partitions
+4. **HANDOFF EVIDENCE MAP (read-plan, not content)**
+   - The bundle is injected as a STUB manifest. For each manifest entry the task might consult, record: (a) the path, (b) the visual aspect it likely covers (layout / tokens / asset list / copy / interaction), (c) whether execute will need a full read or a ranged read (`startLine` / `endLine`).
+   - Constraint: Binary-kind entries (png/jpg/woff/…) appear in the plan ONLY as `<img src>` / `url(...)` references. Never schedule `read_file` on them.
+   - Constraint: One task may plan to read multiple handoff files; two tasks must NOT both claim exclusive ownership of the same file unless the content partitions cleanly.
 
-5. **LAYOUT & COMPONENT OBSERVATION**
-   - Extract layout properties ONLY from what the handoff files explicitly show
-   - Constraint: If a property is not observable, note it as "unspecified" and defer to framework conventions — do NOT invent
+5. **LAYOUT & COMPONENT OBSERVATION (deferred to read_file)**
+   - Do NOT commit to specific layout values here — they come from `read_file` at execute time against the paths recorded in step 4.
+   - Plan the extraction order: which file is read first, what property is expected from it, and what to do if the observation is absent.
+   - Constraint: If a property is not observable in any planned read, note it as "unspecified" and defer to framework conventions — do NOT invent.
 {{/if}}
 
 {{/if}}
