@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, ChevronDown, Square } from 'lucide-react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { Send, ChevronDown, Square, Bot, Briefcase } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
@@ -20,8 +20,63 @@ interface AgentJobToolbarProps {
 }
 
 /**
+ * Responsive breakpoint (pixels of toolbar container width) below which all
+ * buttons collapse to icon-only. Derived from the minimum fit target:
+ *
+ *   padding(8) + agent(28) + gap(4) + job(28)
+ *   + gap(8) [left↔right gutter]
+ *   + battery(28) + gap(4) + more(22)
+ *   + gap(8) [gauge↔send] + send/stop(28) + padding(8)
+ *   = 174px (hard minimum)
+ *
+ * We start the compact transition at 360px so that text labels disappear
+ * well before the layout would otherwise overflow.
+ */
+const COMPACT_BREAKPOINT_PX = 360;
+
+/**
+ * Minimum width enforced on the toolbar itself (agent icon + job icon + one
+ * battery + more + send/stop, in icon-only form). Applied to both the
+ * toolbar <div> and the chat-input Unified Frame that wraps it.
+ *
+ * Any narrower and the agent/job/gauge/send group cannot be drawn without
+ * overlapping.
+ */
+export const CHAT_INPUT_MIN_WIDTH_PX = 190;
+
+/**
+ * Minimum width of the whole chat sidebar (`aside`) that guarantees every
+ * footer button stays visible in icon-only mode. Larger than
+ * `CHAT_INPUT_MIN_WIDTH_PX` because the sidebar adds outer chrome:
+ *
+ *   aside border-l (1) + ChatInput `p-3` (12 left + 12 right)
+ *   + Unified Frame border (1 left + 1 right)                    = 27
+ *   + toolbar minimum                                         + 190
+ *   -----------------------------------------------------------------
+ *                                                               = 217
+ *
+ * We round up to **220px** for a small breathing margin. `useLayoutState`
+ * clamps `chatWidth` at this value and `useResizeHandlers` auto-collapses
+ * anything narrower.
+ */
+export const CHAT_SIDEBAR_MIN_WIDTH_PX = 220;
+
+/**
+ * Default / "standard" chat sidebar width. Used as the initial value and as
+ * the width restored when the user expands from the collapsed bar state.
+ * If the user had previously dragged below this value before collapsing,
+ * expanding resets back to standard so the footer isn't cramped.
+ */
+export const CHAT_SIDEBAR_STANDARD_WIDTH_PX = 500;
+
+/**
  * Bottom toolbar: agent dropdown, job-type dropdown (with green active dot),
+ * token gauge (one battery per active worker, overflow → more-dropdown),
  * and submit/stop button.
+ *
+ * Responsive behaviour: when the toolbar's own width drops below
+ * `COMPACT_BREAKPOINT_PX`, every labeled button collapses to icon-only so
+ * that the gauge and send/stop button still fit.
  */
 export function AgentJobToolbar({
   agents,
@@ -49,6 +104,19 @@ export function AgentJobToolbar({
   const [showAgentMenu, setShowAgentMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const agentMenuRef = useRef<HTMLDivElement>(null);
+
+  // Compact mode: measured via ResizeObserver on the toolbar container.
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  useLayoutEffect(() => {
+    const host = toolbarRef.current;
+    if (!host) return;
+    const update = () => setCompact(host.clientWidth < COMPACT_BREAKPOINT_PX);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -93,26 +161,47 @@ export function AgentJobToolbar({
 
   const handleStop = () => stopJob();
 
+  const agentLabel = currentAgent?.displayLabel || '🤖 Agent';
+  const jobLabel =
+    chatPolicy.reason === 'no-job' ? '🎯 Job' : currentJob?.label || '🎯 Job';
+
   return (
-    <div className="flex items-center justify-between px-2 py-1.5 
-                    border-t border-gray-200 dark:border-gray-700
-                    bg-gray-50 dark:bg-gray-800/50">
-      <div className="flex items-center gap-2">
+    <div
+      ref={toolbarRef}
+      style={{ minWidth: `${CHAT_INPUT_MIN_WIDTH_PX}px` }}
+      className="flex items-center justify-between gap-2 px-2 py-1.5
+                 border-t border-gray-200 dark:border-gray-700
+                 bg-gray-50 dark:bg-gray-800/50"
+    >
+      <div className="flex items-center gap-1 flex-shrink-0">
         {/* Agent Selector */}
         <div className="relative" ref={agentMenuRef}>
           <button
             onClick={() => setShowAgentMenu(!showAgentMenu)}
             disabled={!chatPolicy.canChangeJob}
-            className="flex items-center gap-1 px-2 py-1 text-xs
-                       bg-white dark:bg-gray-700 
+            className={`flex items-center gap-1 text-xs
+                       bg-white dark:bg-gray-700
                        border border-gray-300 dark:border-gray-600
                        text-gray-700 dark:text-gray-200
-                       rounded hover:bg-gray-100 dark:hover:bg-gray-600 
+                       rounded hover:bg-gray-100 dark:hover:bg-gray-600
                        transition-colors
-                       disabled:opacity-50 disabled:cursor-not-allowed"
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2 py-1'}`}
+            title={compact ? agentLabel : undefined}
+            aria-label={compact ? agentLabel : undefined}
           >
-            <span>{currentAgent?.displayLabel || '🤖 Agent'}</span>
-            <ChevronDown className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${showAgentMenu ? 'rotate-180' : ''}`} />
+            {compact ? (
+              <Bot className="w-3.5 h-3.5" />
+            ) : (
+              <>
+                <span className="truncate max-w-[120px]">{agentLabel}</span>
+                <ChevronDown
+                  className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${
+                    showAgentMenu ? 'rotate-180' : ''
+                  }`}
+                />
+              </>
+            )}
           </button>
 
           {showAgentMenu && agentsWithMetadata.length > 0 && (
@@ -149,18 +238,29 @@ export function AgentJobToolbar({
           <button
             onClick={() => setShowJobMenu(!showJobMenu)}
             disabled={!chatPolicy.canChangeJob}
-            className="flex items-center gap-1 px-2 py-1 text-xs
-                       bg-white dark:bg-gray-700 
+            className={`flex items-center gap-1 text-xs
+                       bg-white dark:bg-gray-700
                        border border-gray-300 dark:border-gray-600
                        text-gray-700 dark:text-gray-200
-                       rounded hover:bg-gray-100 dark:hover:bg-gray-600 
+                       rounded hover:bg-gray-100 dark:hover:bg-gray-600
                        transition-colors
-                       disabled:opacity-50 disabled:cursor-not-allowed"
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2 py-1'}`}
+            title={compact ? jobLabel : undefined}
+            aria-label={compact ? jobLabel : undefined}
           >
-            <span>
-              {chatPolicy.reason === 'no-job' ? '🎯 Job' : (currentJob?.label || '🎯 Job')}
-            </span>
-            <ChevronDown className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${showJobMenu ? 'rotate-180' : ''}`} />
+            {compact ? (
+              <Briefcase className="w-3.5 h-3.5" />
+            ) : (
+              <>
+                <span className="truncate max-w-[120px]">{jobLabel}</span>
+                <ChevronDown
+                  className={`w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform ${
+                    showJobMenu ? 'rotate-180' : ''
+                  }`}
+                />
+              </>
+            )}
           </button>
 
           {showJobMenu && jobsWithMetadata.length > 0 && (
@@ -195,40 +295,46 @@ export function AgentJobToolbar({
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex items-center gap-2">
-        <TurnTokenGauge />
+      {/* Middle: Token Gauge (fills remaining space) */}
+      <TurnTokenGauge />
+
+      {/* Right: Send / Stop */}
+      <div className="flex items-center gap-1 flex-shrink-0">
         {isRunning ? (
           <button
             onClick={handleStop}
             disabled={isStopping}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded
-                       bg-red-500 hover:bg-red-600 
+            className={`flex items-center gap-1 text-xs rounded
+                       bg-red-500 hover:bg-red-600
                        text-white
                        border border-red-600 dark:border-red-500
                        transition-colors
-                       disabled:opacity-50 disabled:cursor-not-allowed"
-            title={t('input.stopJob')}
+                       disabled:opacity-50 disabled:cursor-not-allowed
+                       ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2.5 py-1'}`}
+            title={isStopping ? t('input.stopping') : t('input.stopJob')}
+            aria-label={isStopping ? t('input.stopping') : t('input.stop')}
           >
             <Square className="w-3 h-3" fill="currentColor" />
-            <span>{isStopping ? t('input.stopping') : t('input.stop')}</span>
+            {!compact && <span>{isStopping ? t('input.stopping') : t('input.stop')}</span>}
           </button>
         ) : (
           <button
             onClick={onSubmit}
             disabled={!canSubmit}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded
-                       bg-blue-500 hover:bg-blue-600 
+            className={`flex items-center gap-1 text-xs rounded
+                       bg-blue-500 hover:bg-blue-600
                        text-white
                        border border-blue-600 dark:border-blue-500
                        transition-colors
-                       disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-200 
+                       disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-200
                        disabled:dark:bg-gray-700 disabled:text-gray-400 disabled:dark:text-gray-500
-                       disabled:border-gray-300 disabled:dark:border-gray-600"
+                       disabled:border-gray-300 disabled:dark:border-gray-600
+                       ${compact ? 'w-7 h-7 justify-center p-0' : 'px-2.5 py-1'}`}
             title={chatPolicy.canSendMessage ? t('input.sendMessage') : t('input.completeSelection')}
+            aria-label={t('input.send')}
           >
             <Send className="w-3 h-3" />
-            <span>{t('input.send')}</span>
+            {!compact && <span>{t('input.send')}</span>}
           </button>
         )}
       </div>

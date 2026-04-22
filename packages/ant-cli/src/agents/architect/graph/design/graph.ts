@@ -536,6 +536,8 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
             console.warn(`[Design ParallelOrchestrator] Failed to clear terminated worker ${workerId}:`, err.message);
           });
         }
+        // Drop the worker's chat-input gauge battery entry on termination.
+        state.deps?.kanbanUpdate?.clearWorkerPhaseTokenUsage?.(workerId);
       },
       onInterruption: (reason, runningTaskIds) => {
         if (state.context?.featurePath && state._httpJobId) {

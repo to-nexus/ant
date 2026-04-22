@@ -162,6 +162,9 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             console.warn(`[ParallelOrchestrator] Failed to clear terminated worker ${workerId}:`, err.message);
           });
         }
+        // ✅ Also drop the worker's battery from the chat-input token gauge so
+        // the tooltip / more-dropdown no longer lists a terminated worker.
+        state.deps?.kanbanUpdate?.clearWorkerPhaseTokenUsage?.(workerId);
       },
       onInterruption: (reason, runningTaskIds) => {
         // ✅ Log job_interrupted event to debug/logs/
