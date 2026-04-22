@@ -243,25 +243,27 @@ export class LLMEventHandler {
   }
 
   /**
-   * Handle mkdir tool use
+   * Handle mkdir tool use.
+   *
+   * Routes through `addToolActionContent` so the emission path is shared
+   * with the generic fallback: one `MessageContent` insertion into the
+   * live session AND one `chat_status('tool_action', metadata)` line to
+   * chat.jsonl. Replay reproduces the identical card via
+   * `generateChatStatusContent` — the `content` stored in metadata is
+   * the same label the live path rendered.
    */
   private handleMkdirToolUse(input: any): void {
     const dirPath = input.path;
-    
-    this.addContent({
-      type: 'tool_action',
+    this.addToolActionContent({
+      toolName: 'mkdir',
+      actionIcon: '📁',
       content: `Created directory: ${dirPath}`,
-      metadata: {
-        toolName: 'mkdir',
-        actionIcon: '📁',
-        filePath: dirPath,
-        timestamp: new Date().toISOString()
-      }
+      extra: { filePath: dirPath },
     });
   }
 
   /**
-   * Handle generic tool use (fallback)
+   * Handle generic tool use (fallback).
    * Truncates long string values in input to prevent UI overflow.
    */
   private handleGenericToolUse(toolName: string, input: any): void {
@@ -277,15 +279,55 @@ export class LLMEventHandler {
       ? `${toolName}: ${json.substring(0, 200)}...`
       : `${toolName}: ${json}`;
 
+    this.addToolActionContent({
+      toolName,
+      actionIcon: '🔧',
+      content: displayContent,
+    });
+  }
+
+  /**
+   * Unified `tool_action` emission used by mkdir / generic tool paths.
+   *
+   * Both paths previously built a `MessageContent` inline and pushed it
+   * via `addContent`, leaving the durable chat log without a
+   * `chat_status` mirror. Here we:
+   *   1. Build the same MessageContent the live path needs (unchanged).
+   *   2. Append it via ContentMerger for live SSE broadcast.
+   *   3. Emit one `chat_status` line with `statusType='tool_action'` and
+   *      the same metadata so replay rebuilds the card through
+   *      `generateChatStatusContent('tool_action', metadata)`.
+   *
+   * The `content` string is copied into metadata so
+   * `generateChatStatusContent` (which reads `metadata.content` for
+   * tool_action) can rebuild the label verbatim.
+   */
+  private addToolActionContent(args: {
+    toolName: string;
+    actionIcon: string;
+    content: string;
+    extra?: Record<string, unknown>;
+  }): void {
+    const timestamp = new Date().toISOString();
+    const metadata: Record<string, unknown> = {
+      toolName: args.toolName,
+      actionIcon: args.actionIcon,
+      content: args.content,
+      timestamp,
+      ...(args.extra ?? {}),
+    };
+
     this.addContent({
       type: 'tool_action',
-      content: displayContent,
-      metadata: {
-        toolName,
-        actionIcon: '🔧',
-        timestamp: new Date().toISOString()
-      }
+      content: args.content,
+      metadata: metadata as MessageContent['metadata'],
     });
+
+    const appender = getTraceAppender();
+    if (appender) {
+      const { timestamp: _ts, ...persistedMetadata } = metadata;
+      appender.appendChatStatus('tool_action', persistedMetadata);
+    }
   }
 
   /**

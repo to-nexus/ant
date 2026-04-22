@@ -129,18 +129,27 @@ export class FileOperationHandler {
       await this.addNewFileOperation(session, operation, filePath, phase, options);
     }
 
-    // Terminal phases (complete / failed) are the SSOT for trace.jsonl
-    // `file_write` emission — chat SSE and durable trace share one call site.
+    // Terminal phases (complete / failed) are the SSOT for the chat log
+    // `file_write` emission — chat SSE and the durable chat log share one
+    // call site. Also emits a `chat_status` line carrying the same
+    // `(statusType, metadata)` the live path used so replay reproduces
+    // the card via `generateChatStatusContent` without a separate builder.
     if (phase === 'complete' || phase === 'failed') {
       this.emitFileWriteTrace(operation, filePath, phase, options);
+      this.emitFileChatStatus(operation, filePath, phase, options);
     }
   }
 
   /**
-   * Mirror a terminal file-op onto trace.jsonl. Fire-and-forget — the
-   * appender internally swallows I/O errors so chat streaming is never
-   * blocked. Skips when the trace appender is not initialised (tests,
-   * processes without a recorded user_turn).
+   * Mirror a terminal file-op onto the chat log as a legacy
+   * `file_write` line. Fire-and-forget — the appender internally swallows
+   * I/O errors so chat streaming is never blocked. Skips when the trace
+   * appender is not initialised (tests, processes without a recorded
+   * user_turn).
+   *
+   * This path stays wired during the migration so pre-existing feature
+   * folders (whose readers depend on `file_write`) keep rendering. A
+   * follow-up commit removes it once the chat_status path has soaked.
    */
   private emitFileWriteTrace(
     operation: 'edit' | 'create' | 'delete',
@@ -174,6 +183,51 @@ export class FileOperationHandler {
       }
     }
     appender.appendFileWrite(traceOp, filePath, payload);
+  }
+
+  /**
+   * Emit a `chat_status` line for a terminal file-op so replay
+   * reproduces the FileCard via `generateChatStatusContent(statusType,
+   * metadata)` — the exact same function the live path called through
+   * `ChatStatusHandler.showChatStatus`. Uses the same metadata keys the
+   * live FileCard reads (`filePath`, `content`, `diffBefore`, `diffAfter`,
+   * `reason`) so the UI branch stays shared across broadcast and replay.
+   */
+  private emitFileChatStatus(
+    operation: 'edit' | 'create' | 'delete',
+    filePath: string,
+    phase: FileOperationPhase,
+    options?: {
+      content?: string;
+      diffBefore?: string;
+      diffAfter?: string;
+      error?: string;
+    },
+  ): void {
+    const appender = getTraceAppender();
+    if (!appender) return;
+    const statusType =
+      phase === 'failed'
+        ? (operation === 'create'
+            ? 'file_create_failed'
+            : operation === 'delete'
+              ? 'file_delete_failed'
+              : 'file_edit_failed')
+        : (operation === 'create'
+            ? 'file_create'
+            : operation === 'delete'
+              ? 'file_delete'
+              : 'file_edit');
+    const metadata: Record<string, unknown> = { filePath };
+    if (phase === 'failed') {
+      metadata.reason = options?.error;
+    } else if (operation === 'create' || operation === 'delete') {
+      metadata.content = options?.content;
+    } else {
+      metadata.diffBefore = options?.diffBefore;
+      metadata.diffAfter = options?.diffAfter;
+    }
+    appender.appendChatStatus(statusType, metadata);
   }
 
   /**

@@ -37,18 +37,29 @@ export class CommandExecutionHandler {
   }
 
   /**
-   * Complete command execution (final state, collapsible)
+   * Complete command execution (final state, collapsible).
+   *
+   * Emits BOTH the legacy `run_command` line (for readers that predate
+   * the chat SSOT collapse) AND a `chat_status` line carrying
+   * `statusType='command'` + `{command, exitCode, output}` metadata. The
+   * latter replays through `generateChatStatusContent` to produce the
+   * same TerminalCard the live path broadcast. The legacy emission is
+   * removed in a follow-up commit once no feature depends on it.
    */
   async completeCommand(command: string, output: string, exitCode: number): Promise<void> {
     await this.addCommandExecution(command, 'complete', { output, exitCode });
 
-    // Emit run_command line to trace.jsonl (session redesign §16.2). Only
-    // emit on terminal phase so we write exactly once per command.
     const appender = getTraceAppender();
     if (appender) {
+      const truncatedOutput = truncateOutput(output);
       appender.appendRunCommand(command, {
-        stdout: truncateOutput(output),
+        stdout: truncatedOutput,
         exitCode,
+      });
+      appender.appendChatStatus('command', {
+        command,
+        exitCode,
+        output: truncatedOutput,
       });
     }
   }
