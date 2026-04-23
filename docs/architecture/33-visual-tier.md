@@ -44,21 +44,38 @@ resolveVisualTier(userSelection?, autoDetected?, screenContext?) → Partial<Vis
 
 우선순위: `userSelection > autoDetected > derive > undefined`
 
-### Backend 산출물에서의 런타임 비활성
+### 런타임 비활성 Gate (SSOT)
 
-`@ant/shared` 의 `isVisualTierActive(basisSlot, techTier)` 가 FE wizard / FE summary / BE decompose / prompt 주입 네 지점에서 동일 규칙을 적용한다. 규칙은 단순하다:
+`@ant/shared` 의 `isVisualTierActive(basisSlot, techTier, hasUiDoc)` 가 FE wizard / FE summary / BE decompose / prompt 주입 네 지점에서 동일 규칙을 적용한다. 세 개의 축 중 하나라도 닫히면 Visual Tier가 비활성된다:
 
 ```
-visualTier is active  ⇔  basisSlot.visualTier === true  AND  techTier.stack !== 'backend'
+visualTier is active  ⇔  basisSlot.visualTier === true
+                     AND  techTier.stack !== 'backend'
+                     AND  !hasUiDoc
 ```
 
-`BasisSlotConfig.visualTier` 는 정적 boolean 그대로 유지하고, stack 런타임 값과의 조합만 헬퍼에서 판정한다. 순수 백엔드 산출물(`stack === 'backend'`)에는 wizard 탭이 노출되지 않고, decompose의 visual tier 병합 블록과 `<visualTier>` 프롬프트 주입이 스킵된다.
+| 축 | 닫히는 조건 | 의미 |
+|---|---|---|
+| slot | `basisSlot.visualTier !== true` | 인텐트가 visual tier 자체를 opt-in 하지 않음 |
+| stack | `techTier.stack === 'backend'` | 순수 백엔드 산출물 — 시각 정책 없음 |
+| uiDoc | `hasUiDoc === true` | **UI 디자인 문서가 RAC에 포함됨** — 문서가 곧 디자인 시스템 |
+
+`BasisSlotConfig.visualTier` 는 정적 boolean 그대로 유지하고, 런타임 값들과의 조합만 헬퍼에서 판정한다.
+
+**`hasUiDoc` 의 정의 — "사용자가 선택한 RAC 에 UI 문서가 있는가"**
+
+파일시스템에 UI 산출물이 존재하는 것으로는 불충분하다. "문서가 RAC 에 포함됐다" = 사용자가 ref 또는 context 슬롯에 넣기로 결정했다는 뜻이다. 세 UiSource (`ant` / `figma` / `handoff`) 중 하나라도 포함되면 true.
+
+- **FE** — `pathsContainUiDoc([...actionMetadata.refs, ...actionMetadata.context])` (`@ant/shared/canonical.ts`).
+- **BE** — `ArtifactPoolView.hasUi()` 가 post-RAC pool 전반에 동일 판정 (`ArtifactPipeline.ts`).
+
+UI 문서가 있을 때 gate 가 닫히는 이유: UI 디자인 문서(ant/figma/handoff)는 그 자체가 **디자인 시스템 권위**다. 병렬로 visual tier 프롬프트를 주입하면 중복되고 충돌 가능성이 있다. FE 는 사용자의 preset 값을 화면상 유지할 수 있지만, BE decompose 는 UI doc 이 감지되는 즉시 `resolvedAction.basis.visualTier` 를 `undefined` 로 비워서 downstream 프롬프트가 스테일한 preset 을 참조하지 못하게 한다.
 
 ### Authority 체계
 
 프롬프트에서 시각 정책의 우선순위:
 
-1. **UI artifacts** (디자인 문서의 구체적 지시) — 최고 우선
+1. **UI artifacts** (디자인 문서의 구체적 지시) — 최고 우선. 존재 시 Visual Tier gate 를 닫는 근거.
 2. **VL tokens** (Palette, Typography의 구체 값)
 3. **VL principles** (Identity, Signature의 방향성)
 4. **Framework defaults** — 최저 우선

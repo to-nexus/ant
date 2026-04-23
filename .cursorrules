@@ -270,6 +270,49 @@ The transformer registry is the self-documenting inventory. If it isn't there, i
 
 ---
 
+## Visual Tier Activation SSOT — `isVisualTierActive(basisSlot, techTier, hasUiDoc)`
+
+**Visual Tier 가 활성화되는지 판정하는 predicate 는 [`@ant/shared/action-config-matrix.ts`](packages/ant-shared/src/action-config-matrix.ts) 의 `isVisualTierActive` 하나가 SSOT다. 세 축 중 하나라도 닫히면 비활성이며, FE wizard / FE summary / BE code decompose / BE design decompose 네 지점 모두 이 predicate 만 호출한다.**
+
+```
+active ⇔ basisSlot.visualTier === true
+       AND techTier.stack !== 'backend'
+       AND !hasUiDoc
+```
+
+| 축 | 닫히는 조건 | 출처 |
+|---|---|---|
+| slot | `basisSlot.visualTier !== true` | 인텐트별 정적 config |
+| stack | `techTier.stack === 'backend'` | 런타임 RAC basis |
+| uiDoc | `hasUiDoc === true` | FE: `pathsContainUiDoc(actionMetadata.refs + context)` / BE: `ArtifactPoolView.hasUi()` |
+
+`hasUiDoc` 은 **사용자가 RAC 에 포함시킨 UI 디자인 문서**(ant / figma / handoff)의 존재 여부다. 파일시스템에 존재하는 것만으로는 부족하고, `refs` 또는 `context` 슬롯으로 사용자가 결정해 넣어야 true. UI 디자인 문서 자체가 디자인 시스템 권위이므로 병렬 visual tier 주입은 중복이다.
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- visual tier 활성 여부를 판단하는 자체 헬퍼 / 인라인 조건식을 새로 만들기. 네 지점 모두 `isVisualTierActive` 만 호출한다.
+- `{{#if visualTierActive}}` 이외의 템플릿 이름으로 같은 게이트를 이중화하기 (`{{#if hasVisualTier}}`, `{{#if hasUiDoc}}` 등 alias 금지). 템플릿 변수는 node-level 에서 `isVisualTierActive(...)` 결과를 `visualTierActive` 로 넘긴다.
+- `hasUiDoc` 을 "파일시스템에 UI artifact 가 있는가" 로 해석하기. 항상 post-RAC pool (BE) 또는 `actionMetadata.refs`/`context` (FE) 기준.
+- `hasUi` 가 true 인데 `resolvedAction.basis.visualTier` 를 계속 downstream 으로 흘려보내기. `decompose` 는 UI doc 감지 시 preset 을 `undefined` 로 비워 downstream 프롬프트가 스테일 값을 읽지 못하게 한다.
+
+### ✅ CORRECT
+
+- BE 노드에서 `isVisualTierActive(basisSlot, techTier, pool.hasUi())` 호출 → 결과를 `visualTierActive` 템플릿 변수로 주입.
+- FE 에서 `pathsContainUiDoc([...refs, ...context])` 로 `hasUiDoc` 계산 후 동일 predicate 호출 (`useBasisWizard`, `BasisSummaryBar`).
+- UI doc 이 RAC 에 들어오면 visual tier 관련 모든 프롬프트 (`visual-tier-detection` 주입, basis 의 visualTier 블록) 를 스킵.
+
+### Enforcement
+
+```bash
+# predicate 호출 지점이 헬퍼 하나에만 의존하는지 확인
+rg -n "isVisualTierActive\(" --type ts
+# Expected: FE 두 지점(useBasisWizard, BasisSummaryBar) + BE 두 지점(code decompose, design decompose)
+```
+
+전체 설계는 [docs/architecture/33-visual-tier.md](docs/architecture/33-visual-tier.md) 참고.
+
+---
+
 ## Post-RAC Template Condition SSOT
 
 **Post-RAC template `{{#if ...}}` conditions default to **Gate** (`hasX` — role-agnostic). Role-scoped flags (`hasXRef` / `hasXContext`) are reserved for the rare case where a block's language must distinguish `ref` vs `context` roles — under the 3-axis role model this is almost never warranted. `ArtifactPoolView` is the single source of truth. "Availability meta" blocks that duplicate content already injected via role sections are forbidden; "functional meta" (IDs that LLM output schemas reference) is allowed.**

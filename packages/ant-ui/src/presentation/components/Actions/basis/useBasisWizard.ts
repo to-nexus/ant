@@ -17,6 +17,7 @@ import {
   SURFACE_SYSTEM_OPTIONS,
   deriveInteractionGrammar,
   isVisualTierActive,
+  pathsContainUiDoc,
   type VisualLanguageVariant,
 } from '@ant/shared';
 import { TECH_STEPS, FULLSTACK_STEPS, VISUAL_STEPS } from './constants';
@@ -178,9 +179,21 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
     return { stack: stack as any };
   }, [state.selections.techTier.stack]);
 
+  // UI design docs (ant / figma / handoff) that the user included in RAC
+  // (refs or context) act as the design-system authority — when present,
+  // the Visual Tier gate must close regardless of other inputs. SSOT'd
+  // with BE via `isVisualTierActive(..., hasUiDoc)` in @ant/shared.
+  const hasUiDoc = useMemo(
+    () => pathsContainUiDoc([
+      ...(actionMetadata.refs ?? []),
+      ...(actionMetadata.context ?? []),
+    ]),
+    [actionMetadata.refs, actionMetadata.context],
+  );
+
   const hasVisualTier = useMemo(
-    () => isVisualTierActive(basisSlot, currentTechTierForGate),
-    [basisSlot, currentTechTierForGate],
+    () => isVisualTierActive(basisSlot, currentTechTierForGate, hasUiDoc),
+    [basisSlot, currentTechTierForGate, hasUiDoc],
   );
 
   const techSteps = useMemo((): WizardStepDef[] => {
