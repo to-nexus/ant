@@ -9,7 +9,7 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
-import { getArtifactDirPolicy, validateFileForDir } from '../../../../core/utils/artifact-dir-policy';
+import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
 
 /**
  * File operations (read, write, delete, upload)

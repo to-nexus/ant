@@ -1,11 +1,15 @@
 /**
- * Artifact Directory Policy (Frontend Mirror)
+ * Artifact Directory Policy (SSOT)
  *
  * Defines which file types and subdirectories are allowed in each canonical
- * artifact directory. Used for client-side pre-validation in ArtifactsPanel.
+ * artifact directory. Consumed by both sides of the BE↔FE upload contract:
+ *   - BE: packages/ant-cli/src/periphery/adapters/http/routes/files.routes.ts
+ *         (server-side upload / move / zip-extract validation)
+ *   - FE: packages/ant-ui/src/presentation/components/ArtifactsPanel.tsx
+ *         (client-side pre-validation and `<input accept>` wiring, via
+ *          packages/ant-ui/src/shared/utils/canonical-dirs.ts re-export)
  *
- * Mirror: packages/ant-cli/src/core/utils/artifact-dir-policy.ts
- * Keep both files in sync.
+ * Single source of truth — do not fork this file into package-local mirrors.
  */
 
 export type ArtifactDirPolicy = {
@@ -20,7 +24,8 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     allowSubdirs: false,
     // Only text-formattable files are injected into prompts.
     // Images are not processed here — use inputs/references/ for design reference images.
-    acceptedExtensions: ['.md', '.txt', '.json', '.yaml', '.yml'],
+    // Must stay in sync with ArtifactService.getSource()'s textExtensions list.
+    acceptedExtensions: ['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.xml', '.csv'],
   },
   'inputs/assets': {
     allowSubdirs: true,

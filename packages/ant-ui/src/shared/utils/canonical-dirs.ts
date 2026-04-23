@@ -5,10 +5,9 @@
  * This module re-exports them and adds frontend-only derived utilities.
  */
 
-export { getArtifactDirPolicy, validateFileForDir } from './artifact-dir-policy';
-export type { ArtifactDirPolicy } from './artifact-dir-policy';
+export { getArtifactDirPolicy, validateFileForDir, isCanonicalDir } from '@ant/shared';
+export type { ArtifactDirPolicy } from '@ant/shared';
 
-export { isCanonicalDir } from '@ant/shared';
 import { CANONICAL_FEATURE_DIRS } from '@ant/shared';
 
 const CANONICAL_FEATURE_DIRS_SET = new Set(CANONICAL_FEATURE_DIRS);
