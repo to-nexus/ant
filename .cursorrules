@@ -138,13 +138,42 @@ rg "type:\s*'\w+' as ViolationType" packages/ant-cli/src -A 5 | rg -c "isRetryab
 
 ### 5-Tier × Verification 매트릭스 (코드잡)
 
-| Tier | 의미 | 쓰기 | tasks | 검증 |
+| Tier | 의미 | 쓰기 | tasks (decompose 시점) | 검증 |
 |---|---|---|---|---|
 | 0 Reflex | 읽기+텍스트 답변 | 금지 | 0 | N/A (direct) |
 | 1 OneShot | 검증 불필요한 제한적 쓰기 | 허용 (2 step) | 0 | 없음 (direct) |
-| **2 Exploratory** | 단일 작업 단위 (single unit of work) | 허용 | **정확히 1** | **task 자체가 inline self-verify (`selfVerifyOnDone: true`)** |
+| **2 Exploratory** | 단일 작업 단위 (single unit of work) | 허용 | **정확히 1** | **task 자체가 inline self-verify (`selfVerifyOnDone: true`)**. 단, plan 단계에서 작업량이 임계치를 넘으면 `batchSplit` 이 Tier 3 구조로 runtime escalate — 아래 "Tier 2 runtime escalate" 참고. |
 | 3 Task | 다중 작업 단위 | 허용 | **>= 2 with verification task** | verification task가 gate 담당 |
 | 4 RefsGrounded | Tier 3 + refs-grounded | 허용 | >= 2 | Tier 3와 동일 |
+
+### batchSplit 의 두 경로
+
+**`batchSplit.ts` 는 parent 태스크의 성격에 따라 두 경로로 분기한다. `state.executionTier` channel 은 두 경로 모두에서 바뀌지 않으며, Tier 2 escalate 는 tier 승격이 아닌 큐-구조 확장이다.**
+
+**Path A — parent = verification (Tier 3/4 Final Verification split)**
+
+기존 동작 유지: 원본 verification 을 **재큐** + N 개 error 서브태스크. `_failedAttempts` orchestrator 재시도 버짓을 보존하기 위해 동일 식별자로 재큐한다 (`still-lacing-north` 인시던트 주석: 버짓 리셋 시 무한 재시도 회귀).
+
+**Path B — parent = error (Tier 3/4) 또는 Tier 2 runtime escalate**
+
+원본을 **큐에서 제거** + N 개 서브태스크(type 계승) + (이미 Final Verification 이 없으면) 새 Final Verification (priority 1000) 을 추가. 원본을 `{...nextTask}` 로 재큐하면 표현(type=error) 과 역할(gate) 이 어긋나 execute 프롬프트가 "remediation plan 을 새로 내라" 로 잘못 안내되고, `prePlanText` 없이 diagnostic 을 처음부터 재생성해 `firm-jolting-horse` 류 재탐색 루프를 일으킨다.
+
+| | Path A (verification parent) | Path B (error parent / Tier 2 escalate) |
+|---|---|---|
+| 발동 조건 | `isVerificationTask(nextTask)` | `isErrorTask(nextTask)` OR `state.executionTier === 2 && nextTask.selfVerifyOnDone === true` |
+| 원본 처리 | **재큐** (identity / `_failedAttempts` 보존, clean state: timing/_failed/_failureReason 만 클리어) | **소멸** |
+| 서브태스크 type | `'error'` (verification plan 이 fix batch 로 쪼갠 것이므로 적용 주체는 error) | `nextTask.type` 계승 (Tier 3/4 error → error, Tier 2 feature → feature, ui → ui, setup → setup) |
+| 서브태스크 `selfVerifyOnDone` | 설정 안 함 — gate 는 재큐된 원본 verification 이 담당 | 설정 안 함 — gate 는 Final Verification 이 담당 |
+| 새 Final Verification 추가 | 없음 (원본이 역할 수행) | `hasFinalVerification(queue, running, completed)` 이 false 면 push. priority 1000, `resumeState.verification` = Session snapshot |
+| Session snapshot 이관 | 재큐된 원본의 `resumeState.verification` | 새 Final Verification 의 `resumeState.verification` |
+| 공통 상한 | `MAX_BATCH_SPLIT_CYCLES = 10` (Session.batchSplitCount) — 초과 시 `VerificationTerminalError` |
+
+### ❌ batchSplit 관련 추가 금지
+
+- Path B 에서 원본을 `{...nextTask}` 로 재큐하는 옛 패턴 부활. 표현-역할 불일치 + 맥락 손실로 `firm-jolting-horse` 회귀 (수정 후 재큐된 원본이 9분 재탐색 루프 돌다 plan-format 위반으로 task_fail).
+- Path A 에서 원본을 drop-and-replace 로 바꾸기. 새 verification task 는 `_failedAttempts` 를 0 으로 리셋하므로 각 split cycle 마다 full retry budget 이 재발급되어 `still-lacing-north` 무한 재시도 회귀.
+- `batchSplit` 서브태스크의 `type` 을 parent 와 무관하게 하드코딩. Path B 에서 Tier 2 escalate feature task 가 `type='error'` 서브로 쪼개지면 execute variant / hooks 가 실제 작업 semantic 과 어긋난다. Path A 는 반대 방향: fix 적용 주체이므로 항상 `'error'`.
+- Path B 에서 Final Verification 의 `resumeState.verification` 누락 — 맥락 없이 처음부터 진단/plan 을 재생성하게 되어 재탐색 루프 재발.
 
 ### ❌ ABSOLUTELY FORBIDDEN
 
@@ -157,11 +186,12 @@ rg "type:\s*'\w+' as ViolationType" packages/ant-cli/src -A 5 | rg -c "isRetryab
 
 ### ✅ CORRECT
 
-- decompose 프롬프트가 Tier 2면 `<tasks>` 안에 정확히 1개 (+ `selfVerifyOnDone: true`) 만 emit.
+- decompose 프롬프트가 Tier 2면 `<tasks>` 안에 정확히 1개 (+ `selfVerifyOnDone: true`) 만 emit. **runtime escalate 후 큐 크기 변화는 decompose 불변식과 무관** — decompose 시점 1개가 기준.
 - Tier 3/4 decompose가 feature/error/ui/setup 중 무엇을 포함하든 반드시 verification task (priority 1000) 동반.
+- Tier 2 runtime escalate 후 모양: 서브태스크 N (type 계승) + verification 1 — Tier 3 decompose 결과와 동형.
 - `error/hooks/command.ts` 는 `ctx.currentTaskSelfVerifyOnDone === true` 에 한해 build/test/typecheck 허용. 그 외 Tier 3+ error 태스크는 기존대로 BLOCK.
 - `direct` 노드는 `PromptBuilder.build()` 를 task-blind config로 호출 (currentTask/planText/violations 제외, system/rules/base/vars는 execute와 동등).
-- `error/hooks/orchestrator.ts::onTaskComplete` 의 Final Verification auto-enqueue는 defense-in-depth 로깅만 — 정상 경로에서 fires-never 이 기대값.
+- `error/hooks/orchestrator.ts::onTaskComplete` 의 Final Verification auto-enqueue는 defense-in-depth 로깅만 — 정상 경로(Tier 2 inline / Tier 2 escalate / Tier 3/4 decompose) 에서 fires-never 이 기대값.
 
 ### Enforcement
 

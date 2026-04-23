@@ -131,7 +131,7 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
   });
 
   describe('C6: batches >= 2 → split', () => {
-    it('creates sub-tasks, re-enqueues original, and bumps Session.batchSplitCount', () => {
+    it('verification parent: re-enqueues original (retry-budget preserved), produces error sub-tasks, bumps Session.batchSplitCount', () => {
       const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
       const state = makeState({ verification: session });
       const task = makeTask();
@@ -149,10 +149,16 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(out).toBe('');
       expect(state._batchSplitRequeued).toBe(true);
       const all = state.taskQueue.getAll();
+
+      // Parent=verification path (A): original task is re-queued (same
+      // identity) to preserve `_failedAttempts` retry budget — see
+      // still-lacing-north comment. Sub-tasks apply fixes and therefore
+      // use type='error' regardless of the parent's type.
       const errors = all.filter((t: any) => t.type === 'error');
       const verifications = all.filter((t: any) => t.type === 'verification');
       expect(errors.length).toBe(2);
       expect(verifications.length).toBe(1);
+
       // The Session now owns the cycle counter — the re-queued task's
       // resumeState carries the snapshot with batchSplitCount=1.
       expect(session.batchSplitCount()).toBe(1);
@@ -161,6 +167,40 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       for (const e of errors) {
         expect((e as any).prePlanText).toBeTruthy();
       }
+    });
+
+    it('error parent (Tier 3/4): drops original, enqueues Final Verification, sub-tasks inherit error type', () => {
+      // Error-task parents take path B (drop-and-replace). Since the
+      // gate fires on `isErrorTask(nextTask)` regardless of verification
+      // context, we use an explicit error-band priority + name.
+      const state = makeState();
+      const task = makeTask({ type: 'error', priority: 100, name: 'fix compile errors' });
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 2 },
+        implementation: { modify: [] },
+        batches: [
+          { name: 'fix a', modify: ['a.ts'] },
+          { name: 'fix b', modify: ['b.ts'] },
+        ],
+      });
+
+      const out = processDiagnosticBatchSplit(state, plan, task);
+
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+      const all = state.taskQueue.getAll();
+
+      // Original MUST be dropped.
+      expect(all.some((t: any) => t.id === task.id)).toBe(false);
+      const subTasks = all.filter((t: any) => t.priority === (task.priority! - 1));
+      const finalVerifications = all.filter((t: any) => t.priority === 1000);
+      expect(subTasks.length).toBe(2);
+      expect(finalVerifications.length).toBe(1);
+      for (const s of subTasks) {
+        expect((s as any).type).toBe('error');
+        expect((s as any).prePlanText).toBeTruthy();
+      }
+      expect(finalVerifications[0].type).toBe('verification');
     });
   });
 
@@ -181,6 +221,9 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
 
       expect(out).toBe('');
       expect(state._batchSplitRequeued).toBe(true);
+      // Parent=verification (default makeTask) → path A: original re-queued
+      // + 2 error sub-tasks (sub type is always 'error' for verification
+      // parents, regardless of modify count / force trigger).
       const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
       expect(errors.length).toBe(2);
     });
