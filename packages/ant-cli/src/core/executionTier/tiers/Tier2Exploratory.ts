@@ -6,13 +6,9 @@ import { thresholdLLMCompact } from '../strategies/compact';
 import { ExecutionTierId } from '../types';
 
 /**
- * Tier 2 — any × exploratory. ReAct up to ANT_DIRECT_MAX_STEPS.
- * Mini-breadcrumb fires when ≥ 3 files were touched; no boundary (the
- * user_turn stays in T2 so follow-up questions keep their context).
- */
-export class Tier2Exploratory extends BaseTier {
-  readonly id = ExecutionTierId.Exploratory;
-  readonly label = 'Exploratory' as const;
+ * Tier 2 Exploratory — single unit of work executed through the task
+ * pipeline (n=1 task with `selfVerifyOnDone`). The sole task owns inline
+ * install/typecheck/build/test gates before declaring `<done>`.
 
   static readonly instance: Tier2Exploratory = new Tier2Exploratory({
     breadcrumb: miniBreadcrumb,
