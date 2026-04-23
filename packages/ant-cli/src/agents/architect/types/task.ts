@@ -88,6 +88,21 @@ export interface CodeTask extends BaseTask {
   errors?: string[];               // Error messages (for error tasks)
   category?: string;               // Error category (for error tasks)
   /**
+   * Tier-Verification Alignment: Tier 2 (SingleTask) flag.
+   *
+   * When `true`, this task takes ownership of its own verification gates
+   * (install → typecheck → build → test) before emitting `<done>true</done>`.
+   * The executor's task-type-specific command guard allows build/test/typecheck
+   * during the execute phase for any task carrying this flag; the execute
+   * prompt surfaces a self-verify-inline partial so the LLM knows to run the
+   * gates before declaring completion.
+   *
+   * Set ONLY by decompose for Tier 2 (exactly one task) breakdowns. Tier 3/4
+   * breakdowns never set this flag — their dedicated verification task (priority
+   * 1000) governs the gates instead.
+   */
+  selfVerifyOnDone?: boolean;
+  /**
    * Per-task SSOT for files mutated during execution.
    *
    * Written by tool handlers (create/edit/delete) via

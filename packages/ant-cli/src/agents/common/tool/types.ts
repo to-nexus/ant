@@ -145,6 +145,21 @@ export interface ToolExecutionContext {
   activePhase?: 'plan' | 'execute';
   currentTaskType?: string;
   /**
+   * Tier-Verification Alignment (Phase 1): Tier 2 SingleTask flag.
+   *
+   * Mirrors `CodeTask.selfVerifyOnDone`. When `true`, the active task owns
+   * its install/typecheck/build/test gates inline, so task-type command
+   * guards (`error`, `verification`, plus the cross-task Go guard in
+   * `codeCommandPolicy`) MUST allow those commands during the execute phase
+   * for this task. Tier 3/4 tasks never carry this flag — a dedicated
+   * verification task owns gates, and build/test/typecheck remain blocked
+   * in error/feature/ui/setup execute phases.
+   *
+   * Kept as a flat boolean (rather than exposing `currentTask` wholesale)
+   * to avoid pulling the code-graph task type into the common tool layer.
+   */
+  currentTaskSelfVerifyOnDone?: boolean;
+  /**
    * Read-only handle onto the active task's `VerificationSession` (when
    * the current task is verification-typed). Command-policy hooks consult
    * the session for gate state and dependency observation status instead
