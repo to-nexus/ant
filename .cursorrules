@@ -132,6 +132,57 @@ rg "type:\s*'\w+' as ViolationType" packages/ant-cli/src -A 5 | rg -c "isRetryab
 
 ---
 
+## Tier-Verification Alignment SSOT (Phase 1: 코드잡)
+
+**5-tier × task × verification matrix는 core/executionTier 에 정의된 잡-중립 SSOT이며, 코드잡은 Phase 1에서 이 matrix를 준수한다. 다른 잡은 Phase 2에서 채택 예정이지만 enum/파서/`isDirectTier`/`isTaskTier` helper는 이미 공유된다.**
+
+### 5-Tier × Verification 매트릭스 (코드잡)
+
+| Tier | 의미 | 쓰기 | tasks | 검증 |
+|---|---|---|---|---|
+| 0 Reflex | 읽기+텍스트 답변 | 금지 | 0 | N/A (direct) |
+| 1 OneShot | 검증 불필요한 제한적 쓰기 | 허용 (2 step) | 0 | 없음 (direct) |
+| **2 SingleTask** | 단일 작업 단위 | 허용 | **정확히 1** | **task 자체가 inline self-verify (`selfVerifyOnDone: true`)** |
+| 3 Task | 다중 작업 단위 | 허용 | **>= 2 with verification task** | verification task가 gate 담당 |
+| 4 RefsGrounded | Tier 3 + refs-grounded | 허용 | >= 2 | Tier 3와 동일 |
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- `tasks.length` 기반으로 verification 전략을 런타임 분기하는 코드 — Tier가 이미 이 결정을 인코딩한다.
+- Tier 3/4에서 `tasks.length < 2` 허용 (responseParser가 throw). "error-only n=1 허용" 같은 `allTasksAreRemediation` 분기 부활 금지.
+- Tier 2에서 task 2개 이상 생성. 1개를 초과하는 단위는 Tier 3으로 분류.
+- Tier 2 task에서 `selfVerifyOnDone: true`를 누락 (explain 제외) — 누락 시 verification gate를 아무도 돌리지 않는 silent-bug.
+- `direct` 노드에서 `promptBuilder.render()` 로 base layer (agents/architect, jobs/code/base/system, antrules, tool-calling-rules 등) 를 우회한 프롬프트 조립 — `build()` 만 사용.
+- Tier 3+ error task의 `command.guard` 에서 `selfVerifyOnDone` 없이 build/test/typecheck 허용. Tier 3+ 에러 태스크는 반드시 후속 verification task에게 gate를 양도한다.
+
+### ✅ CORRECT
+
+- decompose 프롬프트가 Tier 2면 `<tasks>` 안에 정확히 1개 (+ `selfVerifyOnDone: true`) 만 emit.
+- Tier 3/4 decompose가 feature/error/ui/setup 중 무엇을 포함하든 반드시 verification task (priority 1000) 동반.
+- `error/hooks/command.ts` 는 `ctx.currentTaskSelfVerifyOnDone === true` 에 한해 build/test/typecheck 허용. 그 외 Tier 3+ error 태스크는 기존대로 BLOCK.
+- `direct` 노드는 `PromptBuilder.build()` 를 task-blind config로 호출 (currentTask/planText/violations 제외, system/rules/base/vars는 execute와 동등).
+- `error/hooks/orchestrator.ts::onTaskComplete` 의 Final Verification auto-enqueue는 defense-in-depth 로깅만 — 정상 경로에서 fires-never 이 기대값.
+
+### Enforcement
+
+```bash
+# 1. allTasksAreRemediation 류 n=1 허용 분기 부활 금지 (active code only — JSDoc references are OK)
+rg "const\s+allTasksAreRemediation|if\s*\(allTasksAreRemediation" packages/ant-cli/src
+# Expected: 0 matches
+
+# 2. direct 노드가 promptBuilder.render()로 base layer 우회하는지 확인
+rg "promptBuilder\.render\('jobs/code/nodes/direct" packages/ant-cli/src
+# Expected: 0 matches (build() 로 대체)
+
+# 3. isDirectTier 경계가 tier<=1인지 확인
+rg "isDirectTier" packages/ant-cli/src/core/executionTier/derive.ts -A 2 | rg "tier <= 1"
+# Expected: 1 match
+```
+
+전체 배경은 docs/architecture/ 의 Tier 관련 문서 또는 `core/executionTier/index.ts` JSDoc 참고.
+
+---
+
 ## LangGraph State Management
 
 ### channels Definition Required
