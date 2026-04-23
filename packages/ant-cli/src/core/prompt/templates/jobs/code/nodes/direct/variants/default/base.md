@@ -1,3 +1,7 @@
+{{> jobs/code/base/injections/antrules}}
+
+{{> jobs/code/base/injections/dep-self-contained}}
+
 {{#if featureContext}}
 ════════════════════════════════════════════════════════════════════════════════
 ## Prior Context
