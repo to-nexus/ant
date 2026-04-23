@@ -18,7 +18,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, ArrowUpRight, Download, FileText, FolderPlus, Upload, Trash2, CheckCircle, Pencil } from 'lucide-react';
-import { Button } from '../../common/button';
+import { Button } from './common/button';
 import { cn } from '@/shared/utils/design-system';
 
 interface FileActionMenuProps {

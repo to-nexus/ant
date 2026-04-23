@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { fetchFileBlob, fetchFileContent, isBinaryImageFilePath, isSvgFilePath, saveFileContent, type FileNode } from '@/infrastructure/http/api';
+import { fetchFileBlob, isBinaryImageFilePath, isSvgFilePath } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -26,82 +26,71 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [lineHeights, setLineHeights] = useState<number[]>([]);
-  
-  // ✅ Memoize lines to prevent infinite loop
+
   const lines = useMemo(() => value.split('\n'), [value]);
   const lineCount = lines.length;
-  
-  // Measure line heights after render and on resize
+
   useEffect(() => {
     const measureLineHeights = () => {
       if (!measureRef.current || !editorRef.current) return;
-      
+
       const measureDiv = measureRef.current;
-      // textarea clientWidth includes padding; subtract padding to get content width
       const style = getComputedStyle(editorRef.current);
       const paddingLeft = parseFloat(style.paddingLeft) || 0;
       const paddingRight = parseFloat(style.paddingRight) || 0;
       const editorContentWidth = editorRef.current.clientWidth - paddingLeft - paddingRight;
-      
-      // Set the measure div to same width as editor content area
+
       measureDiv.style.width = `${editorContentWidth}px`;
-      
+
       const heights: number[] = [];
       lines.forEach((line, i) => {
-        // Create a temp span to measure this line
         const span = document.createElement('span');
         span.style.whiteSpace = 'pre-wrap';
         span.style.overflowWrap = 'break-word';
-        span.textContent = line || ' '; // Empty lines need a space to have height
+        span.textContent = line || ' ';
         measureDiv.innerHTML = '';
         measureDiv.appendChild(span);
         heights[i] = span.offsetHeight;
       });
-      
+
       setLineHeights(heights);
     };
-    
+
     measureLineHeights();
-    
-    // Re-measure on window resize
+
     const resizeObserver = new ResizeObserver(measureLineHeights);
     if (editorRef.current) {
       resizeObserver.observe(editorRef.current);
     }
-    
+
     return () => resizeObserver.disconnect();
-  }, [lines]);  // ✅ Now safe: lines is memoized
-  
-  // Sync scroll between editor and line numbers
+  }, [lines]);
+
   const handleScroll = useCallback(() => {
     if (editorRef.current && lineNumbersRef.current) {
       lineNumbersRef.current.scrollTop = editorRef.current.scrollTop;
     }
   }, []);
-  
-  // Handle textarea change — native <textarea> yields correct text without DOM quirks
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
   }, [onChange]);
-  
-  // Calculate width for line numbers (based on max line count)
+
   const lineNumberWidth = Math.max(String(lineCount).length * 8 + 16, 32);
-  const lineHeight = 22; // Base line height in px (text-sm with leading-[1.625] ≈ 14 * 1.625)
-  
+  const lineHeight = 22;
+
   return (
     <div 
       ref={containerRef}
       className="flex flex-1 border rounded-lg overflow-hidden bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-400"
     >
-      {/* Hidden measure div */}
       <div
         ref={measureRef}
         className="absolute invisible font-mono text-sm leading-[1.625] p-0"
         style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word' }}
         aria-hidden="true"
       />
-      
-      {/* Line numbers column */}
+
       <div
         ref={lineNumbersRef}
         className="flex-shrink-0 overflow-hidden select-none bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700"
@@ -119,8 +108,7 @@ function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorPro
           ))}
         </div>
       </div>
-      
-      {/* Textarea editor — no contentEditable quirks, paste works natively */}
+
       <textarea
         ref={editorRef}
         value={value}
@@ -145,49 +133,157 @@ interface FileEditorPanelProps {
   onClose?: () => void;
 }
 
+/**
+ * FileEditorPanel
+ *
+ * The editor's single source of truth for the displayed file is the
+ * `currentFile: AsyncFields<FileResource>` slice in `fileSlice`. This
+ * component subscribes to that slice for content, meta (template warning),
+ * dirty buffer and save status — it never holds the remote body in local
+ * state. See docs/architecture/ui-async-policy.md "Remote Resource
+ * Single-SSOT".
+ */
 export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const { t } = useTranslation('artifacts');
   const { showError } = useAlertModalContext();
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
-  const fileReloadTrigger = useStore((state) => state.fileReloadTrigger);
-  const fileReloadTarget = useStore((state) => state.fileReloadTarget);
   const lastViewMode = useStore((state) => state.lastViewMode);
   const setLastViewMode = useStore((state) => state.setLastViewMode);
-  
-  const [fileContent, setFileContent] = useState('');
-  const [editedContent, setEditedContent] = useState('');
-  const [hasChanges, setHasChanges] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'raw' | 'preview'>('raw');
-  const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
-  const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
+
+  // FileResource slice — the single SSOT for the file being edited.
+  const fileStatus = useStore((s) => s.currentFile.status);
+  const fileData = useStore((s) => s.currentFile.data);
+  const fileBuffer = useStore((s) => s.currentFile.buffer);
+  const savingStatus = useStore((s) => s.currentFile.savingStatus);
+  const openFile = useStore((s) => s.openFile);
+  const updateBuffer = useStore((s) => s.updateBuffer);
+  const saveCurrentFile = useStore((s) => s.saveCurrentFile);
+  const discardBuffer = useStore((s) => s.discardBuffer);
 
   const bridgeConnected = useStore((state) => state.bridgeConnected);
   const figmaDesktopReachable = useStore((state) => state.figmaDesktopReachable);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
-  const setFigmaPopulated = useStore((state) => state.setFigmaPopulated);
 
-  const fileTree = useStore((state) => state.fileTree);
+  const [viewMode, setViewMode] = useState<'raw' | 'preview'>('raw');
+  const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
+  const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
 
   const isFigmaFile = selectedFile?.endsWith('figma.json') ?? false;
+  const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
 
-  const currentFileNode = useMemo((): FileNode | null => {
-    if (!fileTree || !selectedFile) return null;
-    const parts = selectedFile.split('/');
-    let nodes = fileTree;
-    for (let i = 0; i < parts.length; i++) {
-      const node = nodes.find(n => n.name === parts[i]);
-      if (!node) return null;
-      if (i === parts.length - 1) return node.type === 'file' ? node : null;
-      if (!node.children) return null;
-      nodes = node.children;
+  // Derived editor content: buffer when dirty, else the server ground truth.
+  // Binary files don't use this path (they have no text content).
+  const editedContent = fileBuffer ?? fileData?.content ?? '';
+  const hasChanges = fileBuffer !== null;
+  const saving = savingStatus === 'saving';
+  const loading = fileStatus === 'loading';
+
+  // Re-open / fetch when the selected path changes. The slice itself guards
+  // against stale responses if the user moves on mid-flight.
+  useEffect(() => {
+    if (!selectedProject || !selectedFeature || !selectedFile) return;
+    if (isBinaryImageFile) return; // binary files load via blob below
+    openFile(selectedFile);
+  }, [selectedProject, selectedFeature, selectedFile, isBinaryImageFile, openFile]);
+
+  // Binary image preview — loaded via blob, independent of FileResource text
+  // content. Still subscribes to path changes.
+  useEffect(() => {
+    let cancelled = false;
+
+    const cleanupBlob = () => {
+      setBinaryPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+
+    if (!isBinaryImageFile || !selectedProject || !selectedFeature || !selectedFile) {
+      cleanupBlob();
+      return;
     }
-    return null;
-  }, [fileTree, selectedFile]);
+
+    cleanupBlob();
+    (async () => {
+      try {
+        const blob = await fetchFileBlob(selectedProject, selectedFeature, selectedFile);
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        setBinaryPreviewUrl(url);
+      } catch (err) {
+        if (!cancelled) console.error('Failed to load image:', err);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isBinaryImageFile, selectedProject, selectedFeature, selectedFile]);
+
+  // Cleanup blob URLs on unmount.
+  useEffect(() => () => {
+    if (binaryPreviewUrl) URL.revokeObjectURL(binaryPreviewUrl);
+    if (svgPreviewUrl) URL.revokeObjectURL(svgPreviewUrl);
+  }, [binaryPreviewUrl, svgPreviewUrl]);
+
+  const isSvgFile = isSvgFilePath(selectedFile);
+  const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
+  const isJsonFile = selectedFile?.toLowerCase().match(/\.json$/);
+  const isJsonlFile = selectedFile?.toLowerCase().match(/\.jsonl$/);
+  const isYamlFile = selectedFile?.toLowerCase().match(/\.(yaml|yml)$/);
+  const hasMultipleModes = (isMarkdownFile || isSvgFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile;
+
+  useEffect(() => {
+    if (hasMultipleModes) {
+      setViewMode(lastViewMode);
+    } else {
+      setViewMode('raw');
+    }
+  }, [selectedFile, hasMultipleModes, lastViewMode]);
+
+  // Build/refresh SVG preview URL from edited content (preview mode only)
+  useEffect(() => {
+    if (!isSvgFile) return;
+    if (viewMode !== 'preview') return;
+    if (!editedContent) return;
+
+    if (svgPreviewUrl) {
+      URL.revokeObjectURL(svgPreviewUrl);
+      setSvgPreviewUrl(null);
+    }
+
+    let svgContent = editedContent;
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(svgContent, 'image/svg+xml');
+      const svgEl = doc.querySelector('svg');
+      if (svgEl) {
+        const w = svgEl.getAttribute('width');
+        const h = svgEl.getAttribute('height');
+        const needsWidth = !w || w === '100%';
+        const needsHeight = !h || h === '100%';
+        if (needsWidth || needsHeight) {
+          const viewBox = svgEl.getAttribute('viewBox');
+          if (viewBox) {
+            const parts = viewBox.trim().split(/[\s,]+/);
+            if (parts.length === 4) {
+              svgEl.setAttribute('width', parts[2]);
+              svgEl.setAttribute('height', parts[3]);
+              svgContent = new XMLSerializer().serializeToString(doc);
+            }
+          }
+        }
+      }
+    } catch {
+      // parse failed — use as-is
+    }
+
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    setSvgPreviewUrl(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSvgFile, viewMode, editedContent]);
 
   // ── Smart edit ────────────────────────────────────────
   const smartEditConfig = useMemo(
@@ -221,201 +317,47 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
         return 'figma_not_connected';
       }
     }
-    if (currentFileNode?.isTemplate) {
-      if (currentFileNode.templateReason === 'file_empty') return 'template_empty';
-      if (currentFileNode.templateReason === 'marker_and_short_content') return 'template_marker';
+    // Template state: always sourced from the FileResource meta (the server
+    // recomputes it on every write and returns it in the mutation response,
+    // so this reflects the last saved state with no SSE dependency).
+    const meta = fileData?.meta;
+    if (meta?.isTemplate) {
+      if (meta.templateReason === 'file_empty') return 'template_empty';
       return 'template_marker';
     }
     return null;
-  }, [smartEditConfig, deserializeResult, isFigmaFile, editedContent, bridgeConnected, figmaDesktopReachable, currentFileNode]);
+  }, [smartEditConfig, deserializeResult, isFigmaFile, editedContent, bridgeConnected, figmaDesktopReachable, fileData]);
 
-  // ── Reset handler (smart edit files only) ─────────────
+  const handleContentChange = useCallback((newContent: string) => {
+    updateBuffer(newContent);
+  }, [updateBuffer]);
+
   const handleReset = useCallback(() => {
     if (!smartEditConfig) return;
     const empty = smartEditConfig.createEmpty();
     handleContentChange(empty);
-  }, [smartEditConfig]);
+  }, [smartEditConfig, handleContentChange]);
 
   const isAlreadyEmpty = useMemo(
     () => (smartEditConfig ? editedContent === smartEditConfig.createEmpty() : true),
     [smartEditConfig, editedContent],
   );
 
-  // Check file types for preview support
-  const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
-  const isSvgFile = isSvgFilePath(selectedFile);
-  const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
-  const isJsonFile = selectedFile?.toLowerCase().match(/\.json$/);
-  const isJsonlFile = selectedFile?.toLowerCase().match(/\.jsonl$/);
-  const isYamlFile = selectedFile?.toLowerCase().match(/\.(yaml|yml)$/);
-  
-  // 파일이 두 가지 이상 모드를 지원하는지 확인
-  const hasMultipleModes = (isMarkdownFile || isSvgFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile;
-  
-  // Apply last view mode when file changes (only for files with multiple modes)
-  useEffect(() => {
-    if (hasMultipleModes) {
-      // 두 가지 모드를 지원하는 파일: 마지막 보기 모드 적용
-      setViewMode(lastViewMode);
-    } else {
-      // 하나의 모드만 지원하는 파일: raw 모드로 설정하되 lastViewMode는 업데이트하지 않음
-      setViewMode('raw');
-    }
-  }, [selectedFile, hasMultipleModes, lastViewMode]);
-
-  useEffect(() => {
-    if (!selectedProject || !selectedFeature || !selectedFile) {
-      setFileContent('');
-      setEditedContent('');
-      setHasChanges(false);
-      if (binaryPreviewUrl) {
-        URL.revokeObjectURL(binaryPreviewUrl);
-        setBinaryPreviewUrl(null);
-      }
-      if (svgPreviewUrl) {
-        URL.revokeObjectURL(svgPreviewUrl);
-        setSvgPreviewUrl(null);
-      }
-      return;
-    }
-
-    loadFileContent();
-  }, [selectedProject, selectedFeature, selectedFile]);
-
-  // ✅ Force reload when upload overwrote this file (even if selectedFile didn't change)
-  useEffect(() => {
-    if (!selectedProject || !selectedFeature || !selectedFile) return;
-    if (!fileReloadTrigger) return;
-    if (fileReloadTarget && fileReloadTarget !== selectedFile) return;
-    loadFileContent();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileReloadTrigger]);
-
-  // Cleanup blob URL on unmount
-  useEffect(() => {
-    return () => {
-      if (binaryPreviewUrl) {
-        URL.revokeObjectURL(binaryPreviewUrl);
-      }
-      if (svgPreviewUrl) {
-        URL.revokeObjectURL(svgPreviewUrl);
-      }
-    };
-  }, [binaryPreviewUrl, svgPreviewUrl]);
-
-  // Build/refresh SVG preview URL from edited content (preview mode only)
-  useEffect(() => {
-    if (!isSvgFile) return;
-    if (viewMode !== 'preview') return;
-    if (!editedContent) return;
-
-    if (svgPreviewUrl) {
-      URL.revokeObjectURL(svgPreviewUrl);
-      setSvgPreviewUrl(null);
-    }
-
-    // SVGs without explicit width/height fall back to the HTML replaced-element
-    // default of 300x150, causing square icons to render as wide rectangles.
-    // Extract dimensions from viewBox and set them explicitly.
-    let svgContent = editedContent;
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(svgContent, 'image/svg+xml');
-      const svgEl = doc.querySelector('svg');
-      if (svgEl) {
-        const w = svgEl.getAttribute('width');
-        const h = svgEl.getAttribute('height');
-        const needsWidth = !w || w === '100%';
-        const needsHeight = !h || h === '100%';
-        if (needsWidth || needsHeight) {
-          const viewBox = svgEl.getAttribute('viewBox');
-          if (viewBox) {
-            const parts = viewBox.trim().split(/[\s,]+/);
-            if (parts.length === 4) {
-              svgEl.setAttribute('width', parts[2]);
-              svgEl.setAttribute('height', parts[3]);
-              svgContent = new XMLSerializer().serializeToString(doc);
-            }
-          }
-        }
-      }
-    } catch {
-      // Parse failed — use original content as-is
-    }
-
-    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    setSvgPreviewUrl(url);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSvgFile, viewMode, editedContent]);
-
-  const loadFileContent = async () => {
-    if (!selectedProject || !selectedFeature || !selectedFile) return;
-    
-    try {
-      setLoading(true);
-      // Reset previous image preview URL if any
-      if (binaryPreviewUrl) {
-        URL.revokeObjectURL(binaryPreviewUrl);
-        setBinaryPreviewUrl(null);
-      }
-      if (svgPreviewUrl) {
-        URL.revokeObjectURL(svgPreviewUrl);
-        setSvgPreviewUrl(null);
-      }
-
-      if (isBinaryImageFile) {
-        const blob = await fetchFileBlob(selectedProject, selectedFeature, selectedFile);
-        const url = URL.createObjectURL(blob);
-        setBinaryPreviewUrl(url);
-        setFileContent('');
-        setEditedContent('');
-        setHasChanges(false);
-      } else {
-        const content = await fetchFileContent(selectedProject, selectedFeature, selectedFile);
-        setFileContent(content.content);
-        setEditedContent(content.content);
-        setHasChanges(false);
-      }
-    } catch (error) {
-      console.error('Failed to load file content:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!selectedProject || !selectedFeature || !selectedFile) return;
     if (isBinaryImageFile) return;
-    
     try {
-      setSaving(true);
-      await saveFileContent(selectedProject, selectedFeature, selectedFile, editedContent);
-      setFileContent(editedContent);
-      setHasChanges(false);
-
-      if (isFigmaFile) {
-        try {
-          const parsed = JSON.parse(editedContent);
-          setFigmaPopulated(isFigmaDataPopulated(parsed));
-        } catch {
-          setFigmaPopulated(false);
-        }
-      }
+      await saveCurrentFile();
     } catch (error) {
       console.error('Failed to save file:', error);
       showError(t('error.saveFailed'), { title: t('common:error.title') });
-    } finally {
-      setSaving(false);
     }
-  };
+  }, [selectedProject, selectedFeature, selectedFile, isBinaryImageFile, saveCurrentFile, showError, t]);
 
-  const handleContentChange = (newContent: string) => {
-    setEditedContent(newContent);
-    setHasChanges(newContent !== fileContent);
-  };
+  const handleRevert = useCallback(() => {
+    discardBuffer();
+  }, [discardBuffer]);
 
-  // 보기 모드 변경 핸들러 (두 가지 모드를 지원하는 파일에서만 store 업데이트)
   const handleViewModeChange = (mode: 'raw' | 'preview') => {
     setViewMode(mode);
     if (hasMultipleModes) {
@@ -428,7 +370,6 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
       {/* Header */}
       <div className="pb-3 flex-shrink-0 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between">
-          {/* File path */}
           <div className="flex-1 min-w-0">
             <div className="text-sm text-gray-700 dark:text-gray-300 truncate" title={selectedFile}>
               {selectedFile}
@@ -437,18 +378,9 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
               <div className="text-xs text-orange-500 mt-0.5">● Modified</div>
             )}
           </div>
-          
-          {/* Binary image actions (Reload / Open) */}
+
           {isBinaryImageFile && (
             <div className="flex items-center gap-2 ml-4">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={loadFileContent}
-                disabled={loading || saving}
-              >
-                Reload
-              </Button>
               {binaryPreviewUrl && (
                 <Button size="sm" variant="ghost" asChild>
                   <a
@@ -464,7 +396,6 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             </div>
           )}
 
-          {/* Header warning — single, priority-ordered */}
           {headerWarning === 'syntax_error' && (
             <div className="flex items-center gap-1.5 ml-4 px-2.5 py-1.5 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
               <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
@@ -503,8 +434,8 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
               <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
               <span className="text-xs text-amber-700 dark:text-amber-300">
                 {t('editor.templateMarker', {
-                  contentLength: currentFileNode?.templateContentLength ?? 0,
-                  threshold: currentFileNode?.templateThreshold ?? 50,
+                  contentLength: fileData?.meta.templateContentLength ?? 0,
+                  threshold: fileData?.meta.templateThreshold ?? 50,
                 })}
               </span>
             </div>
@@ -518,7 +449,6 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             </div>
           )}
 
-          {/* Preview/Raw Toggle - Markdown, SVG, JSON, JSONL, YAML */}
           {(isMarkdownFile || isSvgFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile && (
             <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md h-9 p-0.5">
               <button
@@ -549,7 +479,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
           )}
         </div>
       </div>
-      
+
       {/* Content */}
       <div className="flex-1 flex flex-col overflow-hidden pt-4">
         {loading ? (
@@ -583,7 +513,6 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             )}
           </div>
         ) : viewMode === 'preview' && isMarkdownFile ? (
-          /* Markdown Preview - Read-only */
           <div className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
@@ -593,23 +522,19 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             </ReactMarkdown>
           </div>
         ) : viewMode === 'preview' && isJsonFile ? (
-          /* JSON Preview - Read-only */
           <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             <JsonYamlPreview content={editedContent} fileType="json" />
           </div>
         ) : viewMode === 'preview' && isJsonlFile ? (
-          /* JSONL Preview - Read-only */
           <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             <JsonYamlPreview content={editedContent} fileType="jsonl" />
           </div>
         ) : viewMode === 'preview' && isYamlFile ? (
-          /* YAML Preview - Read-only */
           <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             <JsonYamlPreview content={editedContent} fileType="yaml" />
           </div>
         ) : (
           <>
-            {/* Raw Editor — smart edit or line-numbered depending on config */}
             {useSmartEdit && deserializeResult.ok ? (
               <SmartEditEditor
                 content={editedContent}
@@ -623,8 +548,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                 onChange={handleContentChange}
               />
             )}
-            
-            {/* Action buttons at the bottom */}
+
             <div className="flex gap-2 justify-end mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
               {smartEditConfig && (
                 <Button
@@ -639,7 +563,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={loadFileContent}
+                onClick={handleRevert}
                 disabled={loading || saving || !hasChanges}
               >
                 {t('fileEditor.revert')}

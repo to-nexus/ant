@@ -137,26 +137,23 @@ export function createFilesRoutes(deps: {
     }
   });
   
-  // Get file content
+  // Get file content — returns FileResource (content + ground-truth meta)
   router.get(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
     try {
       const projectId = req.params[0];
       const featureName = req.params[1];
       const filePath = req.params[2];
-      
+
       if (!filePath) {
         res.status(400).json({ error: 'File path is required' });
         return;
       }
-      
+
       const userContext = extractUserContext(req);
-      const workspaceResolver = (deps.projectService as any).workspaceResolver;
-      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const fullPath = resolveSafePath(featurePath, filePath);
-      
+
       try {
-        const content = await fs.promises.readFile(fullPath, 'utf-8');
-        res.json({ path: filePath, content });
+        const resource = await deps.projectService.readFile(projectId, featureName, filePath, userContext);
+        res.json(resource);
       } catch (error: any) {
         if (error.code === 'ENOENT') {
           res.status(404).json({ error: 'File not found' });
@@ -171,27 +168,26 @@ export function createFilesRoutes(deps: {
     }
   });
   
-  // Update/Create file content
+  // Update/Create file content — returns FileResource (normalized content + recomputed meta)
   router.put(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
     try {
       const projectId = req.params[0];
       const featureName = req.params[1];
       const filePath = req.params[2];
       const { content } = req.body;
-      
+
       if (!filePath) {
         res.status(400).json({ error: 'File path is required' });
         return;
       }
-      
+
       if (content === undefined) {
         res.status(400).json({ error: 'content is required' });
         return;
       }
-      
+
       const userContext = extractUserContext(req);
 
-      // Validate file extension against artifact dir policy
       const parentDir = path.dirname(filePath).replace(/\\/g, '/');
       const extCheck = validateFileForDir(parentDir, path.basename(filePath));
       if (!extCheck.valid) {
@@ -202,27 +198,21 @@ export function createFilesRoutes(deps: {
         });
       }
 
-      const workspaceResolver = (deps.projectService as any).workspaceResolver;
-      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const fullPath = path.join(featurePath, filePath);
+      logger.debug(`[files.routes] Writing file: ${projectId}/${featureName}/${filePath}`);
 
-      logger.debug(`[files.routes] Creating/updating file:`);
-      logger.debug(`   Project: ${projectId}`);
-      logger.debug(`   Feature: ${featureName}`);
-      logger.debug(`   File path: ${filePath}`);
-      logger.debug(`   Full path: ${fullPath}`);
-      
-      // Ensure directory exists
-      await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-      
-      // Write file
-      await fs.promises.writeFile(fullPath, content, 'utf-8');
-      
+      const resource = await deps.projectService.writeFile(
+        projectId,
+        featureName,
+        filePath,
+        content,
+        userContext,
+      );
+
       if (deps.fileTreeNotifier) {
         try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
       }
 
-      res.json({ success: true, path: filePath });
+      res.json(resource);
     } catch (error: any) {
       logger.error('Error creating/updating file', { component: 'Files' }, error);
       sendErrorResponse(res, 500, error, 'Files');

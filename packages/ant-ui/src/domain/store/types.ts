@@ -1,8 +1,9 @@
 import { Session } from '@/domain/models/session';
-import { Feature, FileNode, FileContent, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
+import { Feature, FileNode, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import type { ChatMessage } from '@/domain/models/chat';
 import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
+import type { CurrentFileState } from './slices/fileSlice';
 
 // ==================
 // Store State Types
@@ -29,9 +30,12 @@ export interface ProjectState {
 export interface FileState {
   selectedFile: string | undefined;
   fileTree: FileNode[];
-  fileContent: FileContent | undefined;
-  fileReloadTrigger: number;
-  fileReloadTarget: string | undefined;
+  /**
+   * AsyncFields<FileResource> + dirty buffer + save status — the single
+   * source of truth for the file the editor is displaying. See
+   * slices/fileSlice.ts and docs/architecture/ui-async-policy.md.
+   */
+  currentFile: CurrentFileState;
   lastViewMode: 'raw' | 'preview';
   unseenArtifacts: string[];  // Unseen artifact file paths for badge notifications
   figmaPopulated: boolean | null;  // null=loading, true=has files, false=empty/error
