@@ -61,9 +61,9 @@ export function createChatStatusReporter(): ChatStatusReporter {
       const client = await getClient();
       await client.completeFileDeletion(path);
     },
-    async completeFileCreation(path, content) {
+    async completeFileCreation(path, content, stats) {
       const client = await getClient();
-      await client.completeFileCreation(path, content);
+      await client.completeFileCreation(path, content, stats);
     },
     async failFileCreation(path, error) {
       const client = await getClient();

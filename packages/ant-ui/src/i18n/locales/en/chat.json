@@ -58,6 +58,7 @@
     "unknownFile": "Unknown file",
     "created": "Created",
     "modified": "Modified",
+    "overwritten": "Overwrote",
     "deleted": "Deleted",
     "failed": "Failed",
     "cancelled": "Cancelled",
