@@ -80,6 +80,7 @@
     "raw": "Raw",
     "preview": "Preview",
     "svgPreviewFailed": "Failed to load SVG preview.",
+    "htmlPreviewFailed": "Failed to load HTML preview.",
     "parseError": "Parse error",
     "figmaEmpty": "No Figma URLs configured",
     "figmaNotConnected": "Ant Desktop not connected",
