@@ -15,7 +15,7 @@ import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { PlanGraphState, getPlanMode } from '../../state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
-import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers';
+import { extractTokenUsageFromStreamEvent, accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { v4 as uuidv4 } from 'uuid';
 import { PLANNER_TOOLS, PLANNER_EXPLAIN_TOOLS } from '../tools';
@@ -183,6 +183,11 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   await chatAPI.showChatStatus('placeholder');
   
   try {
+    // T1 pre-call estimate — include system prompt for realistic context size.
+    applyEstimatedInputTokensFromMessages(state as any, [
+      ...messages,
+      { role: 'system', content: systemPrompt },
+    ]);
     for await (const event of llm.stream(messages, {
       system: systemPrompt,
       tools: toolDefinitions,
@@ -194,6 +199,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
         toolCalls.length = 0;
         continue;
       }
+      maybeUpdatePhaseTokenUsage(state, event);
       await orchestrator.processEvent(event);
       
       if (event.type === 'text' && event.text) {

@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
-import { accumulateTokenUsage, upsertPhaseTokenUsage, TokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
@@ -399,12 +399,16 @@ async function streamWithToolLoop(
     let text = '';
     const toolUses: Array<{ id: string; name: string; input: Record<string, any>; thoughtSignature?: string }> = [];
 
+    // T1 pre-call estimate per tool-loop round.
+    applyEstimatedInputTokensFromMessages(state, currentMessages);
+
     for await (const event of llm.stream(currentMessages, { tools })) {
       if (event.type === 'retry') {
         text = '';
         toolUses.length = 0;
         continue;
       }
+      maybeUpdatePhaseTokenUsage(state, event);
       if (event.type === 'text' && event.text) {
         text += event.text;
       }
@@ -462,7 +466,10 @@ async function streamWithToolLoop(
   });
 
   let finalText = '';
+  // T1 pre-call estimate for the final text-only call.
+  applyEstimatedInputTokensFromMessages(state, currentMessages);
   for await (const event of llm.stream(currentMessages, { tools: undefined })) {
+    maybeUpdatePhaseTokenUsage(state, event);
     if (event.type === 'text' && event.text) {
       finalText += event.text;
     }
