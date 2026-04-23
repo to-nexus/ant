@@ -2,15 +2,11 @@
 
 ### Test Framework
 
-**Principle**: Observe `package.json` and existing config files to determine the project's test framework. Do NOT introduce a new framework if one is already configured.
+**Principle**: A test runner observable in the project's manifest or config files is the selected runner for this task. Write all tests against that runner. Do NOT introduce a second runner alongside one already configured.
 
-| Checkpoint | Observation Target |
-|-----------|-------------------|
-| **`jest.config.*` or `jest` in package.json** | Use Jest |
-| **`vitest.config.*` or `vitest` in package.json** | Use Vitest |
-| **No test framework configured** | Prefer Vitest for modern projects. Add minimal config. |
+**Constraint**: When no runner is observable, select one and add its minimum config — do NOT scatter a half-configured toolchain across files.
 
-**Constraint**: Do NOT mix test frameworks. If the project uses Jest, write all tests with Jest.
+**Constraint**: Runner selection is independent of runner-dep completeness. Observing a runner commits this task to that runner; it says nothing about whether the runner's typed-support, augmentation, or config-key set is already satisfied. Close those separately per the Self-Contained Dependency Principle injected above.
 
 ---
 
@@ -55,9 +51,7 @@
 
 **Constraint**: After writing a config, re-read the file and check each key against the verified source. Unknown-key failure mode is silent; eyeball review is the only cheap detector.
 
-⚠️ **Blind spot** — known hallucinated Jest key families, all non-existent: `setupFilesAfterSetup`, `setupFilesAfterFramework`, `setupFilesAfterRun`, `setupFilesBeforeEach`. The correct key is `setupFilesAfterEnv` (singular surface, array value). Any variant ending in a different suffix is a hallucination.
-
-⚠️ **Blind spot** — Vitest uses `setupFiles` (plural array), NOT `setupFilesAfterEnv`. Do NOT port a Jest config's key to Vitest without checking.
+⚠️ **Blind spot**: Two runners that share ecosystem heritage (e.g. Jest / Vitest) expose **different** setup-file keys. Do NOT port a config key from one runner to the other on the assumption of similarity; verify against the target runner's schema.
 
 ---
 

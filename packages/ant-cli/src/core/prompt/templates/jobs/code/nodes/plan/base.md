@@ -58,7 +58,9 @@ asks.
 {{> jobs/code/base/injections/system-design-guide}}
 {{/if}}
 
-{{> jobs/code/base/injections/ant-md}}
+{{> jobs/code/base/injections/antrules}}
+
+{{> jobs/code/base/injections/dep-self-contained}}
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🚨 YOUR ROLE: Plan provides GUIDANCE, CodeGen determines PATHS

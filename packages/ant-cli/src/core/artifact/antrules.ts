@@ -1,24 +1,10 @@
 /**
- * `codebase/ANTRULES.md` loader — ant-agent settings file for the target
- * codebase.
+ * `codebase/ANTRULES.md` loader.
  *
- * See `docs/architecture/35-codebase-meta-policy.md` for the full policy:
- * ANTRULES.md is a **live document** that records cross-task invariants
- * ant must follow when creating or modifying files in a given codebase —
- * export style, library version compatibility, decided test runner,
- * import conventions, lint status, anti-pattern avoidance, etc.
- *
- * Write ownership is shared by all code-job tasks: setup seeds an initial
- * skeleton with only what it is confident about, and every subsequent
- * task may append or modify as it discovers new invariants during its
- * own work. There is no "writer-only" task — this loader simply reads
- * the current snapshot for prompt injection.
- *
- * The loader returns a single `string | undefined`:
- *   - `undefined` when the file is missing, unreadable, or empty
- *   - the trimmed content (with a truncation footer when > 1500 chars)
- *     when present
- *
+ * ANTRULES.md is the codebase-specific deviation ledger. See
+ * `docs/architecture/35-codebase-meta-policy.md` for scope, 3-condition
+ * filter, and write ownership. Returns trimmed content (≤ 1500 chars with
+ * a truncation footer when longer) or `undefined` for missing / empty.
  */
 
 import * as fs from 'node:fs';

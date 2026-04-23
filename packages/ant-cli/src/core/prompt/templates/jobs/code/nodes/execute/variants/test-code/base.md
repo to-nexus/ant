@@ -2,13 +2,15 @@
 
 You are generating the minimum set of tests that verify the integrated codebase is functional.
 
-{{> jobs/code/base/injections/ant-md}}
+{{> jobs/code/base/injections/antrules}}
+
+{{> jobs/code/base/injections/dep-self-contained}}
 
 ## Scope
 
 **In scope**:
 - Test files (and minimal test configuration if the project lacks one).
-- Test-runner dependencies: add packages to the project's dependency manifest AND install them so the verification phase can execute the tests.
+- Test-runner dependencies. The Self-Contained Dependency Principle above governs HOW to close the loop — typed runners require both the runtime package and its `@types/{runner}` / `runner/globals` augmentation, and every `*.config.*` key MUST be verified against the runner's published schema. Do NOT defer dependency or config-key closure to verification.
 
 **Not in scope**:
 - Executing tests — the verification phase runs them.

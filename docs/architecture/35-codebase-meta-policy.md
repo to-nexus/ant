@@ -20,28 +20,126 @@
 
 경계가 흐려지면 파편화 리스크가 생긴다. **새 파일을 추가할 때 반드시 위 표에서 1개 층을 지정** 하고 `codebase/` 에 속하면 아래 §2 정책을 따른다.
 
-## 2. `codebase/ANTRULES.md` — ant 에이전트 설정 SSOT (live document)
+## 2. `codebase/ANTRULES.md` — 3-조건 필터 기반의 deviation ledger
 
-### 정체성
+### 단일 목적
 
-- **ant 에이전트가 이 코드베이스에서 새 파일을 생성하거나 수정할 때 따라야 하는 cross-task 불변성** 을 기록하는 live document.
-- `README.md` / `ARCHITECTURE.md` / `RUNBOOK.md` 와는 **목적이 다르다**. 이들은 사람 중심 문서 (프로젝트 개요, 모듈 경계, 런 방법). ANTRULES.md 는 에이전트 행동 규칙. 두 축은 독립으로 공존한다.
-- Cursor / Claude Code / OpenAI Codex 생태계에서 `AGENTS.md` / `CLAUDE.md` 가 하는 역할과 유사. 이름은 ant 의 identity 를 반영해 `ANTRULES.md`.
+`codebase/ANTRULES.md` 는 **이 코드베이스에서만 유효하고, 자동으로 유추되지 않으며, 후속 task 가 같은 결정을 반복해야 일관성이 유지되는 잔여 집합** 을 기록한다. 그 외의 책임 영역 (decompose / prompt / config file) 을 침범하지 않는다.
 
-### 설계 원칙 — append/modify 를 모두 허용하는 live document
+### 3-조건 필터 (ALL 만족 시에만 기록)
 
-이 파일은 "setup 이 예측해서 찍는 선제적 skeleton" 이 아니라 **"작업 중에 발견된 cross-task 불변성을 누적·반영하는 살아있는 기록"** 이다. 초기에 작성된 규칙이 실제 작업에서 틀린 것으로 드러나면 덮어써서 최신 상태를 유지한다.
+어떤 사실을 ANTRULES 에 기록할 자격은 아래 세 조건을 **모두** 만족할 때만 부여된다. 하나라도 빠지면 다른 SSOT 가 담당하고 ANTRULES 에는 들어가지 않는다.
 
-실제로 유용한 기록 범주 (예시, 엄격한 enum 아님):
+| # | 조건 | 실패 시 실제 담당 |
+|---|---|---|
+| 1 | **Codebase-local** — 이 프로젝트에서만 유효한 선택. system-wide default / techTier hint 로 커버되면 안 된다. | 시스템 prompt / techTier hints |
+| 2 | **Not auto-derivable** — `package.json`, `tsconfig.json`, lockfile, 프레임워크 관습, 명시적 config 파일, 기존 파일 구조 어디에도 기록되지 않는다. | 해당 config 파일 / 기존 코드 |
+| 3 | **Cross-task invariant** — 후속 task (또는 세션) 가 같은 선택을 반복해야 일관성이 유지된다. 이 task 만의 일회성 선택이면 제외. | 해당 task 의 plan / task description |
 
-- **Export style** — default vs named (병렬 태스크 drift 의 1차 원인)
-- **File naming** — kebab-case / camelCase / PascalCase 규칙
-- **Library version compatibility** — 테스트 러너 · 주요 의존성의 호환성 제약 (e.g. "zustand v4 ≠ React 18 breaking change — use v5")
-- **Decided test runner** — test-code 태스크가 실제 설치·검증 후 선택한 러너
-- **Import conventions** — React import 스타일, path alias 규약
-- **Environment variable naming** — `VITE_*` / `NEXT_PUBLIC_*` / 프로젝트 prefix
-- **Anti-patterns to avoid** — 검증에서 발견된 "이 패턴은 v3 API 와 충돌하니 쓰지 말 것"
-- **Lint rule status** — 해제/활성 상태와 이유
+### 침범 금지 원칙
+
+ANTRULES 는 아래 세 영역의 책임을 **건드리지 않는다**:
+
+| 영역 | 담당 | 예시 |
+|---|---|---|
+| "이번 task 는 무엇을 할지" | **decompose** | "hero-section.tsx 를 작성한다" |
+| "TypeScript / Next 에서 일반적으로 이렇게 해야 한다" | **prompt (system / techTier)** | "`moduleResolution: node` 필수" |
+| "기계가 읽는 사실" | **config 파일** | `package.json` 의 deps, `tsconfig.paths` |
+
+ANTRULES 는 세 영역 어디에도 속하지 않는 **잔여 집합** 만 가져간다. decompose 가 매 task description 에 `techTier: nextjs` 를 이미 주입하는데 ANTRULES 에 "Framework: Next.js" 를 적으면 SSOT 가 둘이 되고 drift 의 씨앗이 된다.
+
+### 전형적인 허용 / 금지 사례
+
+#### ✅ 허용 — 2축
+
+- **프로젝트 고유 컨벤션 (decompose / prompt 로 표현 불가능한 미세 선택)**
+  - 파일 네이밍 case (`kebab-case.tsx`, `PascalCase.ts`)
+  - Hooks 파일명 prefix (`use-*.ts`)
+  - Export 스타일 선호 (named 우선, default 예외)
+  - 디렉토리 조직 규약 (e.g. "sections/ 는 top-level 페이지 블록만, components/ui 는 primitive 만")
+  - Lint rule 의 특정 해석 (`no-unused-vars: warn` 로 의도적 완화 + 이유)
+  - 커스텀 도메인 용어 매핑 (e.g. "`pulse` = project code name; code 에 `Pulse` 로 등장")
+
+- **시점-국지 (point-in-time) 패키지 호환 / pinning rationale**
+  - "`shadcn X v0.4` 가 `react@19` 와 충돌 — `react@18` 에 pin, upstream PR #NNN 머지 전까지"
+  - "Node 22.6 의 `--experimental-strip-types` 버그로 22.5 고정"
+  - "jest 30 migration 전까지 `jest.config.ts` 대신 `.js` 유지"
+  - "Tailwind v4 의 `@theme` 직접 선언 방식이 Next 15.1 과 호환성 이슈 — v3 고정"
+
+#### ❌ 금지 — 이미 다른 SSOT 가 담당
+
+| 금지 항목 | 실제 SSOT |
+|---|---|
+| "Framework: Next.js 15, App Router" | `package.json` + techTier |
+| "Styling: Tailwind v3" | `package.json` + `tailwind.config.ts` |
+| "Test runner: Jest 29 via `next/jest`" | `package.json` + `jest.config.*` |
+| "Source root: `src/`" | `tsconfig paths` + 프레임워크 관습 |
+| "`@/` alias resolves to `src/`" | `tsconfig paths` |
+| "Config file: `tailwind.config.ts` at codebase root" | 파일 시스템 |
+| "Icons: `lucide-react`" | `package.json` |
+| "TypeScript strict mode" | `tsconfig.json` |
+| "Scan path: `src/**/*.{ts,tsx}`" | `tailwind.config.ts` 본체 |
+
+이들을 ANTRULES 에 적는 순간 SSOT 가 둘이 된다. 코드 / 설정이 바뀌었을 때 ANTRULES 는 자동으로 업데이트되지 않으므로 stale 해지고, LLM 이 "authoritative" 로 믿으면 회귀가 발생한다.
+
+### Before / After — `lapis-bonding-fruit` 실제 사례
+
+이 3-조건 필터 도입 전 setup-project 가 생성한 ANTRULES (933 chars) 중 필터를 통과하는 항목만 남기면 다음과 같다.
+
+**Before (933 chars, 7 섹션)**:
+```md
+# ANTRULES.md
+
+## Framework
+- Next.js 15, App Router, TypeScript strict mode.
+- Source root: `src/` — all application code lives under `codebase/src/`.
+
+## Styling
+- Tailwind CSS v3.
+- Config file: `tailwind.config.ts` at codebase root.
+- Source scan path: `src/**/*.{ts,tsx}`.
+- Design tokens extend `theme.extend` in `tailwind.config.ts`.
+
+## Testing
+- Jest 29 + React Testing Library 16 via `next/jest` (SWC pipeline).
+- Do NOT add `babel.config.js` — it disables SWC project-wide.
+- Setup file: `jest.setup.ts` (imports `@testing-library/jest-dom`).
+
+## Icons
+- Use `lucide-react` exclusively for all icon needs.
+
+## Aliases
+- `@/` resolves to `src/`.
+
+## File Naming
+- Components: `kebab-case.tsx`.
+- Hooks: `use-*.ts`.
+- Utilities: `kebab-case.ts`.
+
+## Export Style
+- Named exports preferred; default export only for Next.js page/layout files.
+```
+
+**After (4 항목만 유효)**:
+```md
+# ANTRULES.md
+
+## Testing
+- Do NOT add `babel.config.js` — it disables SWC project-wide (next/jest 의 interaction hazard).
+
+## File Naming
+- Components: `kebab-case.tsx`.
+- Hooks: `use-*.ts`.
+- Utilities: `kebab-case.ts`.
+
+## Export Style
+- Named exports preferred; default export only for Next.js page/layout files.
+```
+
+제거된 5 섹션 (`Framework`, `Styling`, `Icons`, `Aliases`, `Styling/Scan path` 등) 은 모두 `package.json` / `tsconfig.json` / `tailwind.config.ts` 에서 자동 유추되는 사실이었다. 남긴 항목:
+- `babel.config.js` 금지 — **조건 1·2·3 모두 만족** (next/jest 특유 hazard, 어떤 config 에도 안 적혀 있음, 후속 task 가 쉽게 실수할 수 있음)
+- 파일 네이밍 3종 — **조건 2 만족** (next.js 는 파일명에 무관심, tsconfig 에도 없음) + 조건 3 (후속 task 가 일관성을 유지해야 함)
+- Export style — 위와 동일
 
 ### 위치
 
@@ -51,46 +149,18 @@
 
 - 권장 상한: **1500자**. 초과 시 ant 파이프라인이 truncate + 경고 로깅.
 - 근거: 매 plan / execute 프롬프트에 자동 주입되므로 토큰 비용 · 캐시 안정성에 직접 영향.
-- 장문 레퍼런스 (아키텍처 상세 · 온보딩 가이드) 는 `codebase/docs/...` 또는 `codebase/README.md` 에 분리.
+- 3-조건 필터를 제대로 적용하면 대부분의 프로젝트에서 500자 이하로 수렴한다. 1500자 에 근접한다면 필터 재검토 신호.
 
-### 섹션 구조 — 자유 형식, 권장 예시
+### 섹션 구조 — 자유 형식, 고정 골격 없음
 
-고정 섹션은 **없다**. 아래는 권장 예시이며 프로젝트의 현재 상태에 해당하는 섹션만 포함한다. 모르는 것 / 아직 결정 안 된 것은 **섹션을 아예 생략**한다 (placeholder 나 "TBD" 대신).
-
-```md
-# ANTRULES.md
-
-> ant 에이전트가 이 코드베이스에서 파일 생성·수정 결정을 할 때의 설정.
-> 사람용 설명은 README.md / docs/ 참조.
-
-## Export Style
-- (예) default export, single component per file.
-
-## React Imports
-- (React 스택일 때만) `import React from 'react'` required when using `React.JSX.Element`.
-
-## Testing
-- setup 시점: Node/언어 버전, 패키지 매니저, 이미 추가된 test-runner 의존성, 호환성 노트.
-- 이후 test-code 태스크가 실제 선택한 runner / setup file / placement 를 append.
-
-## File Naming
-- Components: kebab-case.tsx. Hooks: `use-*.ts`.
-
-## Library Compatibility
-- (예, feature 태스크가 발견 후 추가) `zustand@^4` 는 React 18 concurrent mode 와 충돌; v5 를 사용할 것.
-```
-
-필요 시 `## Security`, `## Lint`, `## Anti-Patterns`, `## Glossary` 등 자유 추가.
+고정 섹션은 **없다**. 3-조건 필터를 통과한 항목이 있는 경우에만 해당 제목으로 섹션을 만든다. 통과 항목이 없으면 **파일 자체를 생성하지 않는다** (empty skeleton 금지). `setup` task 는 더 이상 "모든 카테고리를 미리 시드" 하지 않는다 — 발견 기반으로만 append.
 
 ### 쓰기 / 읽기 소유권 — 모든 태스크가 write 가능
 
 | 주체 | 권한 |
 |---|---|
-| setup task | read + write. 디자인 문서에 명시된 것 / setup 시점에 실제 설치된 의존성 등 **확신하는 것만** 초기 skeleton 에 기록. 모르는 섹션은 생략. **허위 금지 문구 작성 금지** ("Do not add test files" 같은 것). |
-| feature / ui / integration / design-system | read + write. 자기 작업 중 발견한 cross-task 불변성 (타입 규약, import style 결정 등) 을 추가/수정. |
-| test-code | read + write. 실제 설치·검증한 test runner / setup file / placement 등을 `## Testing` 에 append 하거나 기존 내용을 수정. |
-| error / verification | read + write. 수정 중 발견한 anti-pattern 이나 호환성 제약을 추가. |
-| doc | read + write. 문서 작성 중 발견한 명명 규약 불일치 등을 반영. |
+| 모든 code-job task (setup / feature / ui / integration / design-system / test-code / error / verification / doc) | read + write. 3-조건 필터를 통과한 cross-task 불변성 **만** 기록. 필터를 통과하지 못하면 기록 금지. |
+| verification task | 특히 중요 — 실증한 deviation (예: "jest 30 까지 `.ts` config 사용 금지, `.js` 유지") 을 append 하는 주 생산자. 단 "`setupFilesAfterEnv` 가 맞는 키" 같은 공식 schema 에서 derivable 한 사실은 techTier hint 대상이지 ANTRULES 대상이 아님. |
 
 **단일 writer 는 없다**. 각 태스크는 자기 관찰로 기록·수정할 수 있다. 충돌 (병렬 태스크가 동시에 수정) 은 SharedFileBuffer + LLM-merge 로직으로 자연 해소된다 (별도 lock 불필요 — 기존 `edit_file` / `<file>` 의 cross-worker conflict 메커니즘 재사용).
 
@@ -101,13 +171,17 @@
 - `undefined` — 파일 없음 / 읽기 실패 / trim 후 빈 문자열
 - 비어있지 않은 문자열 — 컨텐츠 (1500자 초과 시 truncate + `read_file` 포인터 footer)
 
-공통 partial `jobs/code/base/injections/ant-md.md` 가 `{{#if antrulesContent}}` 로 gate 하여 내용을 렌더한다. plan / execute 의 기본 base 템플릿 및 모든 variant (verification · error · test-code · feature · ui · design-system · integration) 가 이 partial 을 include 하므로 주입은 **매번** 일어난다.
+공통 partial `jobs/code/base/injections/antrules.md` 가 `{{#if antrulesContent}}` 로 gate 하여 내용을 렌더한다. 파티얼 본문은 3-조건 필터를 매번 재노출 — content 존재 분기에서는 "이 block 의 stale 가능성을 의심하고 실제 code 를 신뢰하라" 는 완화 프레이밍으로, undefined 분기에서는 "새 파일 생성 전 3-조건 필터 통과 여부 확인" 으로 LLM 에게 상기시킨다.
 
-partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 하다고 판단하면 `read_file codebase/ANTRULES.md` 로 자율 조회할 수 있다. 즉 "매 프롬프트 주입 + 필요 시 자율 read" 의 이중 전달.
+partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 하다고 판단하면 `read_file codebase/ANTRULES.md` 로 자율 조회할 수 있다. 즉 "매 프롬프트 주입 + 필요 시 자율 read + 의심 기반 SSOT 재확인" 의 삼중 전달.
 
 ### 호출 경로 파편화 방지
 
 각 plan hook (generic / verification / error) 이 개별적으로 `loadAntrules` 를 호출하면 hook 을 추가할 때마다 주입을 잊을 위험이 생긴다. `PlanPromptCtx.antrulesContent` 에 phase layer (`buildPlanPrompt` in `planGeneration.ts`) 가 미리 담아 넘기고, 모든 hook 은 `ctx.antrulesContent` 를 소비할 뿐이다. Execute 쪽도 `buildMessages.ts` 한 지점에서만 `loadAntrules` 를 호출 — 호출 경로는 plan 1곳, execute 1곳.
+
+### 의존성 자급자족 원칙 — ANTRULES 의 책임이 아니다
+
+"어떤 라이브러리를 쓰려면 설치해야 한다" 같은 **class-of-bug 차원의 기본 원칙** 은 ANTRULES 가 담당하지 않는다. 이는 `jobs/code/base/injections/dep-self-contained.md` 파티얼이 **모든 code-job execute / plan variant 에 고정 주입** 한다 (doc / explain 제외). ANTRULES 는 이 원칙에 의존하되 대체하지 않는다 — "이 프로젝트는 Jest 29 를 쓴다" 는 decompose / package.json SSOT, "이 프로젝트에서 쓰기로 한 Jest 는 `@types/jest` 를 요구한다" 는 dep-self-contained SSOT. ANTRULES 는 "이 프로젝트는 jest 30 migration 전까지 config 파일을 `.js` 로 유지한다" 같은 **점-국지 deviation** 만 담당.
 
 ## 3. 실무 가이드라인
 
@@ -118,9 +192,20 @@ partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 
 3. 이 파일은 다음 run 에 이어질 에이전트 내부 상태인가? → `sessions/` 층.
 
 혼돈 사례:
-- ❌ "프로젝트 컨벤션" 을 `outputs/design/system/project-conventions.md` 로 만들기 — 1번이 맞는데 2번 선택한 실수. 컨벤션은 `codebase/ANTRULES.md`.
+- ❌ "프로젝트 컨벤션" 을 `outputs/design/system/project-conventions.md` 로 만들기 — 1번이 맞는데 2번 선택한 실수. 컨벤션은 `codebase/ANTRULES.md` (단, 3-조건 필터 통과 시).
 - ❌ 런타임 로그를 `codebase/.ant/logs/` 에 기록 — 3번을 1번으로 섞음. `sessions/` 로.
 - ❌ PRD 를 `codebase/docs/PRD.md` 에 영구 저장 — 2번 성격을 1번에 두면 산출물 수명주기 (버전 · 갱신) 가 코드 git 이력과 섞인다.
+
+### ANTRULES 기록 전 self-check
+
+어떤 사실을 ANTRULES 에 적기 전 다음 네 질문에 답한다. **모두 NO 일 때만** 기록 자격.
+
+1. `package.json` / `tsconfig.json` / `*.config.*` / lockfile 에 이미 있는가?
+2. 프레임워크 공식 관습 / techTier 기본값으로 유추되는가?
+3. decompose 가 task description 에 이미 주입하는 정보인가?
+4. 이 task 만의 일회성 선택인가 (후속 task 가 반복할 필요 없는가)?
+
+하나라도 YES 라면 ANTRULES 대신 **해당 SSOT** 에 기록하거나 기록하지 않는다.
 
 ### 여러 에이전트 도구와의 공존
 
@@ -129,10 +214,11 @@ partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 
 ## 4. 관련 문서
 
 - [.cursorrules](/.cursorrules) — ant 작업 기본 규약 + ANTRULES.md 요약 포인터
-- [14-code-job.md](14-code-job.md) — 코드 잡의 setup 태스크가 ANTRULES.md 를 어떻게 초기화하는지
+- [14-code-job.md](14-code-job.md) — 코드 잡의 setup 태스크가 ANTRULES.md 를 어떻게 초기화하는지 (3-조건 필터 적용 후의 축소된 seed 범위)
 - [28-context-management.md](28-context-management.md) — ArtifactPipeline 이 pool 을 구성하는 방식
 
 ## 5. 변경 이력
 
 - 2026-04-22: 최초 작성 (policy 도입). `attempted-cycle-removal` 작업 중 `outputs/design/system/project-conventions.md` 초안이 경계 위반임을 발견하면서 원칙화.
 - 2026-04-23: §2 재작성. 원래 의도 (발견 기반 live log) 대비 현 구현 (setup 선제 skeleton, 4섹션 고정, 읽기 전용) 의 drift 가 `plum-molding-bench` 에서 setup 이 `Do not add test files` 같은 허위 금지 문구를 생성 → test-code 태스크 무한 루프로 드러났음. "4섹션 고정" 해제, "모든 태스크가 read+write 가능", "허위 금지 문구 금지", scope 를 광범위 cross-task 불변성으로 명시.
+- 2026-04-23 (dep-self-contained 리팩터): `lapis-bonding-fruit` 에서 setup-project 가 생성한 933자 ANTRULES 중 5/7 섹션이 `package.json` / `tsconfig.json` 재선언으로 밝혀지면서 SSOT drift 위험이 구조화됨. §2 를 3-조건 필터 기반으로 재작성. 파티얼 파일명을 `ant-md.md` → `antrules.md` 로 rename 하여 파일명과 대상이 일치하게 조정. "Treat them as authoritative" 프레이밍을 "stale 가능성을 의심, 실제 code 를 SSOT 로 신뢰" 로 완화. "의존성 자급자족 원칙" 은 별도 partial (`dep-self-contained`) 로 분리 — ANTRULES 의 책임에서 제외.
