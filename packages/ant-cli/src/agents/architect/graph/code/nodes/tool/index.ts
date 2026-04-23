@@ -43,6 +43,12 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       figmaFileKey: state.figmaFileKey,
       activePhase: state._activePhase as 'plan' | 'execute' | undefined,
       currentTaskType: (state.currentTask as any)?.type,
+      // Tier-Verification Alignment: Tier 2 SingleTask flag flows from the
+      // task into the command-policy layer. When true, task-type guards lift
+      // the default build/test/typecheck block so the task can run its own
+      // verification gate chain before emitting <done>true</done>.
+      currentTaskSelfVerifyOnDone:
+        (state.currentTask as any)?.selfVerifyOnDone === true ? true : undefined,
       // T4b-β: verification cycle state is carried by `state.verification`
       // (VerificationSession). Tool handlers that need gate / install
       // information read it off the session directly via the

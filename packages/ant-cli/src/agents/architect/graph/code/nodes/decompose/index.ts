@@ -570,20 +570,21 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
 
   const mode = state.resolvedAction?.mode;
-  const isDirectPath = executionTier <= 2;
+  const isDirectPath = executionTier <= 1;
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 4.7: Silent-failure guard — empty task queue at Tier 3/4 generate/refactor
+  // STEP 4.7: Silent-failure guard — empty task queue at Tier 2+ generate/refactor
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Tier 3/4 mandates a non-empty task breakdown for generate/refactor
-  // modes UNLESS the LLM emits a valid <specClarify>. When a malformed
+  // Tier 2+ mandates a non-empty task breakdown for generate/refactor
+  // modes UNLESS the LLM emits a valid <specClarify> (Tier 3/4 only —
+  // Tier 2 is single-unit and cannot clarify). When a malformed
   // specClarify (e.g. body wrapped in a markdown code fence) is dropped
   // by the tag parser, the job silently completes with 0 files, masking
   // a critical prompt violation as success. Fail loudly instead — the
   // retry / re-decompose path is far less damaging than a no-op success.
-  const isTaskTier = executionTier >= 3;
+  const isTaskTierLocal = executionTier >= 2;
   const isTaskBreakdownMode = mode === 'generate' || mode === 'refactor';
-  if (isTaskTier && isTaskBreakdownMode && tasks.length === 0 && !specClarify) {
+  if (isTaskTierLocal && isTaskBreakdownMode && tasks.length === 0 && !specClarify) {
     const intentCommitted = isIntentCommitted(state);
     const metadataIntent = state.actionMetadata?.intent;
     const resolvedIntent = state.resolvedAction?.intent;
@@ -595,11 +596,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       `\n` +
       (intentCommitted
         ? `Committed intent (ActionsPanel explicit OR @-mention actionMetadata) MUST emit a ` +
-          `non-empty task breakdown at Tier 3/4 generate/refactor. specClarify is gated off ` +
+          `non-empty task breakdown at Tier 2+ generate/refactor. specClarify is gated off ` +
           `for committed intents — the LLM has no valid path to an empty queue here.\n`
-        : `Tier 3/4 generate/refactor MUST emit either a non-empty task breakdown OR a valid ` +
-          `<specClarify> payload. Observed: tasks=[], specClarify=undefined — this is a critical ` +
-          `prompt violation that would otherwise silently complete the job with 0 files.\n`
+        : `Tier 2+ generate/refactor MUST emit a non-empty task breakdown (Tier 2 = exactly 1 task ` +
+          `with selfVerifyOnDone, Tier 3/4 = >= 2 tasks with verification task). Tier 3/4 may also ` +
+          `emit a valid <specClarify> payload. Observed: tasks=[], specClarify=undefined — this is a ` +
+          `critical prompt violation that would otherwise silently complete the job with 0 files.\n`
       ) +
       `\n` +
       `Common causes:\n` +
@@ -613,7 +615,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   if (isDirectPath) {
     console.log(`🎯 [Decompose] Direct tier selected: executionTier=${executionTier}, mode=${mode || 'unknown'} (tasks=${tasks.length})`);
-    // Matrix SSOT: Tier 0~2 → `<tasks>[]`. If the LLM emits tasks
+    // Matrix SSOT: Tier 0~1 → `<tasks>[]`. If the LLM emits tasks
     // anyway, the direct node bypasses the queue — passing them through
     // `validateTasks` / `createTaskQueue` would raise spurious "final
     // verification missing" errors and abort an otherwise-valid direct path.
@@ -621,7 +623,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     if (tasks.length > 0) {
       console.warn(
         `⚠️  [Decompose] LLM emitted ${tasks.length} task(s) for executionTier=${executionTier} — ` +
-        `expected '<tasks>[]' for Tier 0~2. Ignoring tasks; direct node will consume directHints only.`,
+        `expected '<tasks>[]' for Tier 0~1. Ignoring tasks; direct node will consume directHints only.`,
       );
       tasks.length = 0;
     }
@@ -640,7 +642,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   if (activeSpecRefFilename) {
     console.log(`📋 [Decompose] Active spec ref: ${activeSpecRefFilename}`);
   }
-  const { taskQueue, featureTasks } = createTaskQueue(tasks, activeSpecRefFilename, uiSource ?? undefined);
+  const { taskQueue, featureTasks } = createTaskQueue(
+    tasks,
+    activeSpecRefFilename,
+    uiSource ?? undefined,
+    executionTier,
+  );
   logTaskSummary(tasks, referenceRequests);
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
