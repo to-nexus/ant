@@ -60,27 +60,26 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     const context = state.context;
     const featurePath = context.featurePath || '';
 
-    // Reload existingDesignDocs from disk (not stored in session)
+    // Reload existingDesignDocs from disk (canonical outputs/design/system/ only; not stored in session)
     let existingDesignDocs: Record<string, string> | undefined;
     if (featurePath) {
       const fs = await import('fs');
       try {
-        const designDirAbs = path.join(featurePath, DESIGN_DIR);
-        const reloaded: Record<string, string> = {};
-        for (const dir of [path.join(designDirAbs, DESIGN_SUBDIR.SYSTEM), designDirAbs]) {
-          if (!fs.existsSync(dir)) continue;
-          const entries = fs.readdirSync(dir, { withFileTypes: true });
+        const systemDir = path.join(featurePath, DESIGN_DIR, DESIGN_SUBDIR.SYSTEM);
+        if (fs.existsSync(systemDir)) {
+          const reloaded: Record<string, string> = {};
+          const entries = fs.readdirSync(systemDir, { withFileTypes: true });
           for (const e of entries) {
-            if (e.isDirectory() || reloaded[e.name]) continue;
+            if (e.isDirectory()) continue;
             if (DESIGN_FILE_PATTERNS.some(p => p.test(e.name))) {
-              const content = fs.readFileSync(path.join(dir, e.name), 'utf-8');
+              const content = fs.readFileSync(path.join(systemDir, e.name), 'utf-8');
               if (content?.trim()) reloaded[e.name] = content;
             }
           }
-        }
-        if (Object.keys(reloaded).length > 0) {
-          existingDesignDocs = reloaded;
-          console.log(`📄 [Design Resolve] Reloaded existingDesignDocs: [${Object.keys(reloaded).join(', ')}]`);
+          if (Object.keys(reloaded).length > 0) {
+            existingDesignDocs = reloaded;
+            console.log(`📄 [Design Resolve] Reloaded existingDesignDocs: [${Object.keys(reloaded).join(', ')}]`);
+          }
         }
       } catch { /* Non-critical */ }
     }
@@ -213,24 +212,23 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
     const design = designResult?.content || undefined;
 
-    // Scan existing system design documents
+    // Scan existing system design documents (canonical outputs/design/system/ only)
     let existingDesignDocs: Record<string, string> | undefined;
     try {
       const fs = await import('fs');
-      const designDirAbs = path.join(featurePath, DESIGN_DIR);
-      const docs: Record<string, string> = {};
-      for (const dir of [path.join(designDirAbs, DESIGN_SUBDIR.SYSTEM), designDirAbs]) {
-        if (!fs.existsSync(dir)) continue;
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
+      const systemDir = path.join(featurePath, DESIGN_DIR, DESIGN_SUBDIR.SYSTEM);
+      if (fs.existsSync(systemDir)) {
+        const docs: Record<string, string> = {};
+        const entries = fs.readdirSync(systemDir, { withFileTypes: true });
         for (const e of entries) {
-          if (e.isDirectory() || docs[e.name]) continue;
+          if (e.isDirectory()) continue;
           if (DESIGN_FILE_PATTERNS.some(p => p.test(e.name))) {
-            const content = fs.readFileSync(path.join(dir, e.name), 'utf-8');
+            const content = fs.readFileSync(path.join(systemDir, e.name), 'utf-8');
             if (content?.trim()) docs[e.name] = content;
           }
         }
+        if (Object.keys(docs).length > 0) existingDesignDocs = docs;
       }
-      if (Object.keys(docs).length > 0) existingDesignDocs = docs;
     } catch { /* Non-critical */ }
 
     // Load figma workfile reference from canonical location

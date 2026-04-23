@@ -5,6 +5,8 @@ import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathRe
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
 import { GitHelper } from '../helper/GitHelper';
+import { ensureCanonicalStructure } from '../../../../../../core/utils/sessionPaths';
+import { RESERVED_FEATURE_NAME } from '../../../../../../core/utils/branchUtils';
 import { logger } from '../../../../../../utils/logger';
 
 export interface WorktreeInfo {
@@ -53,6 +55,20 @@ export class WorktreeService {
       projectId,
       featureName
     });
+
+    // Ensure canonical feature structure (outputs/design/ui/{ant,figma,handoff}, sessions/*, etc).
+    // Critical for Git-remote operations (Clone/Init/Sync/Pull/Commit/Push) that restore feature
+    // branches without routing through FeatureCrudService.createFeature — this is the single
+    // guard that keeps canonical directories consistent for every worktree entry point. Idempotent.
+    //
+    // Must use getFeaturePath (ant feature dir) — NOT path.dirname(worktreePath), which can point
+    // to the project root (for `_base` reserved feature) or a local dev dir outside the workspace
+    // (local-repo mode returns resolveLocalPath(config.localPath) as codebase).
+    if (featureName !== RESERVED_FEATURE_NAME) {
+      const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      await fs.promises.mkdir(featurePath, { recursive: true });
+      await ensureCanonicalStructure(featurePath);
+    }
 
     // Ensure main codebase has git initialized
     const git = GitHelper.getGitInstanceSafe(mainCodebasePath);

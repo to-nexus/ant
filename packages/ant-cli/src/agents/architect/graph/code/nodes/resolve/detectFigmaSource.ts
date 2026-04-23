@@ -2,12 +2,10 @@
  * detectFigmaSource
  *
  * Single entry point for detecting the figma workfile reference + MCP
- * availability from a feature workspace. Replaces the two near-identical
- * blocks that previously lived inside the resolve node's `onResume` and
- * `loadArtifacts` branches, which had drifted on:
- *   - which path to read (`inputs/figma.json` vs new canonical location)
- *   - whether to run `migrateFigmaConfig` (only triage/design/HTTP did)
- *   - how to reset state fields on failure
+ * availability from a feature workspace. The workfile reference is read
+ * from the canonical `FIGMA_CONFIG_PATH` (`outputs/design/ui/figma/figma.json`)
+ * — every caller shares this same SSOT path, and `migrateFigmaConfig` runs
+ * unconditionally so resume / loadArtifacts branches cannot drift on schema.
  *
  * Output shape is a flat metadata object; the caller projects it onto
  * state (figmaFileKey / figmaStartNodeId) and onto the RAC
