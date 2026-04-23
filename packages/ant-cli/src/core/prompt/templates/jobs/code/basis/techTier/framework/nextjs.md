@@ -9,6 +9,8 @@ Blind-spot reminders. Pre-training gap only. Verify current library behaviour wi
 - Date / random / locale rendered directly (not gated by `useEffect`) → drift.
 - Both `app/` and `src/app/` present → only one resolves.
 - Server Component (= no `'use client'` directive at top of the file) passing event handler or callback function props to children → `next build` fails at prerender with "Event handlers cannot be passed to Client Component props". Colocate the interactive subtree in its own `'use client'` file.
+- `<Image src="https://...">` without the host in `next.config.*` `images.remotePatterns` → client-hydration throw "hostname not configured"; `next build` / `next start` pass because validation runs only in the browser. Component file and `next.config.*` MUST be updated together. ⚠️ pravatar / picsum / unsplash are training-data reflex offenders; rule is host-agnostic.
+- `process.env.X` read in client code without the `NEXT_PUBLIC_` prefix → inlined as `undefined` in the browser bundle; no build or type error, feature just stops working. Prefix = client-visible; un-prefixed = server-only (prefixing a secret leaks it to the client). ⚠️ Plain `process.env.X` is a universal non-Next reflex that silently breaks here.
 
 ## Version Notes
 
