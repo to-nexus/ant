@@ -1,5 +1,29 @@
 /**
- * core/executionTier — 5-Tier Execution Strategy facade.
+ * core/executionTier — 5-Tier Execution Strategy facade (JOB-NEUTRAL).
+ *
+ * This directory is the single source of truth for the 5-tier execution
+ * strategy across every job in ant (code / design / plan / visual / ask /
+ * learn). It intentionally carries NO imports from `agents/` or `jobs/`:
+ * every consumer imports from here, never the other direction. Design job
+ * adoption (Phase 2 of Tier-Verification Alignment) will reuse the same
+ * enum, parser, and derive helpers by import — do not fork per-job copies.
+ *
+ * Tier semantics (Tier-Verification Alignment SSOT, Phase 1 = code job):
+ *   Tier 0 Reflex       → direct path, read-only textual answer.
+ *   Tier 1 OneShot      → direct path, verification-unneeded write only.
+ *   Tier 2 SingleTask   → task path, exactly 1 task with `selfVerifyOnDone`.
+ *   Tier 3 Task         → task path, >= 2 tasks with mandatory verification.
+ *   Tier 4 RefsGrounded → task path, >= 2 tasks, refs-grounded breakdown.
+ *
+ * The direct/task path boundary is `tier <= 1` → direct, `tier >= 2` →
+ * task pipeline. See `derive.ts` for the helper functions that encode this.
+ *
+ * Design job (Phase 2) will define its own Tier 0/1/2 semantics appropriate
+ * to a jobs that has no build/test gate (e.g. Tier 1 = trivial doc edit,
+ * Tier 2 = single design unit). The shared infrastructure (this directory,
+ * `parseExecutionTierTag`, `recordUserTurnMeta`, `isDirectTier`/`isTaskTier`)
+ * is designed so adoption only requires routing changes on the design
+ * graph — no forks here.
  *
  * Usage in phase nodes:
  *
