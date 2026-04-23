@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CONTEXT_WINDOW_MAX_TOKENS, type PhaseTokenUsage } from '@ant/shared';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
@@ -28,7 +29,8 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
  * 12 o'clock over an empty track. Click opens a tooltip with precise numbers.
  */
 export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
-  const view = useMemo(() => buildView(phase), [phase]);
+  const { t } = useTranslation('common');
+  const view = useMemo(() => buildView(phase, t), [phase, t]);
   if (!view) return null;
 
   const inputLen = (view.inputPct / 100) * CIRCUMFERENCE;
@@ -64,7 +66,7 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
               strokeWidth={STROKE_WIDTH}
               strokeLinecap="butt"
               strokeDasharray={`${inputLen} ${CIRCUMFERENCE - inputLen}`}
-              className={`${view.inputStroke} transition-[stroke-dasharray] duration-300 ease-out`}
+              className={`${view.inputStroke} ${view.estimating ? 'opacity-60' : ''} transition-[stroke-dasharray] duration-300 ease-out`}
             />
           )}
           {outputLen > 0 && (
@@ -87,14 +89,14 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
 
   if (variant === 'in-list') {
     return (
-      <Tooltip content={view.tooltip} placement="left">
+      <Tooltip content={view.tooltip} placement="left" trigger="hover">
         {ring}
       </Tooltip>
     );
   }
 
   return (
-    <Tooltip content={view.tooltip} placement="top">
+    <Tooltip content={view.tooltip} placement="top" trigger="hover">
       {ring}
     </Tooltip>
   );
@@ -103,8 +105,14 @@ export function TokenRing({ phase, variant = 'standalone' }: TokenRingProps) {
 /**
  * Headline string used by the more-dropdown row title — compact
  * "Worker N · Task · 17%".
+ *
+ * `t` is the `react-i18next` `t` fn bound to the `common` namespace so the
+ * "Main" / "Worker N" labels follow the active locale.
  */
-export function summarizeRing(phase: PhaseTokenUsage): { title: string; percent: string } {
+export function summarizeRing(
+  phase: PhaseTokenUsage,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): { title: string; percent: string } {
   const input = phase.tokenUsage?.inputTokens ?? 0;
   const output = phase.tokenUsage?.outputTokens ?? 0;
   const total = input + output;
@@ -112,19 +120,28 @@ export function summarizeRing(phase: PhaseTokenUsage): { title: string; percent:
   const pctText = pct < 1 ? '<1%' : `${Math.round(pct)}%`;
 
   const parts: string[] = [];
-  if (typeof phase.workerId === 'number') parts.push(`Worker ${phase.workerId}`);
-  else parts.push('Main');
+  if (typeof phase.workerId === 'number') {
+    parts.push(t('turnTokenGauge.worker', { n: phase.workerId }));
+  } else {
+    parts.push(t('turnTokenGauge.main'));
+  }
   if (phase.taskName) parts.push(phase.taskName);
   else if (phase.label) parts.push(phase.label);
   return { title: parts.join(' · '), percent: pctText };
 }
 
-function buildView(phase: PhaseTokenUsage) {
+function buildView(
+  phase: PhaseTokenUsage,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+) {
   if (!phase?.tokenUsage) return null;
   const input = phase.tokenUsage.inputTokens ?? 0;
   const output = phase.tokenUsage.outputTokens ?? 0;
   const total = input + output;
-  if (total <= 0) return null;
+  // Cursor-style: render the ring even at 0 tokens. The empty donut track
+  // is the visual placeholder for "node active, no usage yet" — it does
+  // not disappear between LLM calls or before the first `usage_partial`.
+  const estimating = phase.estimating === true;
 
   const max = CONTEXT_WINDOW_MAX_TOKENS;
   const totalPct = clampPct((total / max) * 100);
@@ -155,15 +172,17 @@ function buildView(phase: PhaseTokenUsage) {
   const fmt = (n: number) => n.toLocaleString();
   const fmtPct = (p: number) => (p < 1 ? '<1%' : `${Math.round(p)}%`);
 
-  const headerTitle = headerTitleFor(phase);
+  const headerTitle = headerTitleFor(phase, t);
 
   const tooltip = (
     <div className="flex flex-col gap-1 text-xs min-w-[180px]">
       {headerTitle && (
-        <div className="text-[11px] text-gray-500 dark:text-gray-400">{headerTitle}</div>
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 max-w-[220px] break-words">
+          {headerTitle}
+        </div>
       )}
       <div className="flex items-center justify-between gap-3 font-semibold">
-        <span>Context</span>
+        <span>{t('turnTokenGauge.context')}</span>
         <span className="tabular-nums">{fmtPct(totalPct)}</span>
       </div>
       <div className="text-[11px] tabular-nums text-gray-600 dark:text-gray-300">
@@ -171,25 +190,35 @@ function buildView(phase: PhaseTokenUsage) {
       </div>
       <div className="h-px my-0.5 bg-gray-200 dark:bg-gray-700" />
       <div className="flex items-center justify-between gap-3 tabular-nums">
-        <span className="flex items-center gap-1.5">
-          <span className={`inline-block w-2 h-2 rounded-sm ${swatchFor(inputStroke)}`} />
-          Input
-        </span>
+        <span>{t('turnTokenGauge.input')}</span>
         <span>{fmt(input)}</span>
       </div>
       <div className="flex items-center justify-between gap-3 tabular-nums">
-        <span className="flex items-center gap-1.5">
-          <span className={`inline-block w-2 h-2 rounded-sm ${swatchFor(outputStroke)}`} />
-          Output
-        </span>
+        <span>{t('turnTokenGauge.output')}</span>
         <span>{fmt(output)}</span>
       </div>
+      {estimating && (
+        <div className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400 italic">
+          {t('turnTokenGauge.estimatingNote')}
+        </div>
+      )}
     </div>
   );
 
-  const ariaLabel =
-    `${headerTitle ? headerTitle + ', ' : ''}` +
-    `context ${fmtPct(totalPct)}, input ${fmt(input)}, output ${fmt(output)}, max ${fmt(max)}`;
+  const ariaLabel = headerTitle
+    ? t('turnTokenGauge.ariaLabelWithTitle', {
+        title: headerTitle,
+        totalPct: fmtPct(totalPct),
+        input: fmt(input),
+        output: fmt(output),
+        max: fmt(max),
+      })
+    : t('turnTokenGauge.ariaLabel', {
+        totalPct: fmtPct(totalPct),
+        input: fmt(input),
+        output: fmt(output),
+        max: fmt(max),
+      });
 
   return {
     totalPct,
@@ -199,22 +228,19 @@ function buildView(phase: PhaseTokenUsage) {
     outputStroke,
     tooltip,
     ariaLabel,
+    estimating,
   };
 }
 
-/**
- * Tooltip legend swatches share the ring's zone color. Map stroke-* class
- * to a matching bg-* class so the legend squares stay in sync. Handles
- * compound classes like "stroke-slate-700 dark:stroke-white" by replacing
- * every stroke- prefix (including variant-scoped ones).
- */
-function swatchFor(strokeClass: string): string {
-  return strokeClass.replace(/(^|\s|:)stroke-/g, '$1bg-');
-}
 
-function headerTitleFor(phase: PhaseTokenUsage): string {
+function headerTitleFor(
+  phase: PhaseTokenUsage,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   const parts: string[] = [];
-  if (typeof phase.workerId === 'number') parts.push(`Worker ${phase.workerId}`);
+  if (typeof phase.workerId === 'number') {
+    parts.push(t('turnTokenGauge.worker', { n: phase.workerId }));
+  }
   if (phase.taskName) parts.push(phase.taskName);
   else if (phase.label) parts.push(phase.label);
   return parts.join(' · ');

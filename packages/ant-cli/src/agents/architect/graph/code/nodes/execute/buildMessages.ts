@@ -33,6 +33,8 @@ import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/Cach
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { hooksIfActive } from "../../tasks/_shared/registry";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
+import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormalizer";
+import { resolveCodebaseRel } from "./codebaseRel";
 
 const DEFAULT_EXECUTE_TEMPLATES = {
   base: 'jobs/code/nodes/execute/variants/default/base',
@@ -628,6 +630,13 @@ async function buildModifyTargetsSection(state: ArchitectGraphState): Promise<st
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) return null;
 
+  // Align with FileRenderer / execute/index.ts — plan targets may be written
+  // as bare `src/...` paths while the workspace-rooted fileSystem needs the
+  // `codebase/` prefix. Without this normalization every modify target reads
+  // as "file not found", which used to emit "treat as new creation" and
+  // pushed the LLM into `<file>` (overwrite) instead of `edit_file`.
+  const codebaseRel = await resolveCodebaseRel(state);
+
   const blocks: string[] = [];
   let totalChars = 0;
 
@@ -636,14 +645,20 @@ async function buildModifyTargetsSection(state: ArchitectGraphState): Promise<st
       blocks.push(`\n[remaining modify targets omitted — use \`read_file\` to fetch: ${paths.slice(blocks.length).join(', ')}]`);
       break;
     }
+    const { normalized } = normalizeToCodebasePath(p, codebaseRel);
     let content: string | undefined;
     try {
-      content = await fileSystem.readFile(p) ?? undefined;
+      content = await fileSystem.readFile(normalized) ?? undefined;
     } catch {
       content = undefined;
     }
     if (content === undefined) {
-      blocks.push(`### ${p}\n\n[file not found on disk — treat as new creation if still listed in plan.modify, otherwise use \`read_file\` to verify]`);
+      blocks.push(
+        `### ${p}\n\n` +
+        `[file not found on disk at \`${normalized}\` — call \`read_file\` to verify the current location before deciding. ` +
+        `If the file truly does not exist, create it with \`<file>\`. ` +
+        `If it exists at a different path, call \`edit_file\` on that path — do NOT use \`<file>\` on existing files.]`
+      );
       continue;
     }
     let body = content;

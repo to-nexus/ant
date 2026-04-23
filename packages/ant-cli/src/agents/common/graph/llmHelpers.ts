@@ -36,17 +36,25 @@ export interface TokenTrackingState {
 /**
  * Mark the start of a graph node's LLM activity.
  * Resets the `currentPhaseTokenUsage` snapshot so subsequent `accumulateTokenUsage`
- * calls overwrite cleanly.
+ * calls overwrite cleanly AND broadcasts the zero-seed immediately so the
+ * chat-input gauge does not linger on the previous node's final numbers.
  *
  * The seeded snapshot carries `workerId` / `taskName` so parallel workers each
  * produce their own battery entry on the chat-input gauge.
  *
- * ⚠️ SSOT: Do NOT call this directly from inside a graph node. The two authorized
- * callers are:
+ * ⚠️ SSOT: preferred callers:
  *  - `withPhaseTracking()` wrapping the node at graph wiring (phase label lookup
  *    via `resolveNodePhaseLabel`).
  *  - `applyEstimatingUsage()` for estimating sub-nodes (triage / detect / decompose)
  *    when an external subgraph returns a usage snapshot.
+ *
+ * Direct calls are permitted for nodes that (a) are NOT wrapped by
+ * `withPhaseTracking` AND (b) need the gauge seeded EARLY so in-flight
+ * `usage_partial` events have a target to overwrite before
+ * `applyEstimatingUsage` runs at stream end (e.g. code-graph `decompose`).
+ * `applyEstimatingUsage` tolerates a pre-existing snapshot for the same
+ * phase id — it re-seeds only when absent or mismatched — so such direct
+ * calls are idempotent with the estimating bookkeeping.
  */
 export function beginNodePhase(
   state: TokenTrackingState,
@@ -62,6 +70,20 @@ export function beginNodePhase(
     ...(typeof workerId === 'number' && { workerId }),
     ...(typeof taskName === 'string' && taskName.length > 0 && { taskName }),
   };
+
+  // Broadcast the zero-seed snapshot immediately so the chat-input token gauge
+  // resets the moment control moves to a new node — before the next LLM call
+  // has produced any usage. Without this, the gauge would hold the previous
+  // phase's final numbers (e.g. plan=170k) until the first `done` event of the
+  // new node, which can be tens of seconds later for long-streaming nodes.
+  //
+  // SSOT note: this is NOT a violation of the "single publisher" rule on the
+  // accumulate path. `beginNodePhase` is the node-entry publisher; the
+  // accumulate / partial publishers sit downstream on the LLM-call path.
+  // Together they form three disjoint publishing moments (entry, in-flight,
+  // terminal), each with distinct semantics.
+  const kanbanUpdate = (state as KanbanUpdatableState).deps?.kanbanUpdate;
+  kanbanUpdate?.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
 }
 
 /**
@@ -169,11 +191,23 @@ export function accumulateTokenUsage(
   // misleading number. Overwriting keeps the gauge at the true current context
   // fullness. Only updates if `beginNodePhase()` has initialized the snapshot.
   //
-  // SSOT: accumulateTokenUsage is the SINGLE authorized publisher of the
-  // chat-input token-gauge update. Other helpers
-  // (updateKanbanTokenUsage / applyEstimatingUsage / direct updateTokenUsage
-  // calls in visual nodes) MUST NOT invoke `updateCurrentPhaseTokenUsage` —
-  // they rely on this block to broadcast once per LLM call.
+  // SSOT: the chat-input token-gauge snapshot has FOUR authorized publishers,
+  // partitioned by distinct moments in a phase's LLM lifecycle:
+  //   1. `beginNodePhase` — seeds a zero snapshot on node entry so the gauge
+  //      resets promptly rather than holding the previous node's final value.
+  //   2. `applyEstimatedInputTokens` — optional pre-call approximation
+  //      (prompt-char → tokens) tagged `estimating: true`, covers the gap
+  //      before the first API event arrives.
+  //   3. `updatePhaseTokenUsageSnapshot` — fires mid-stream from
+  //      `usage_partial` events (Anthropic `message_start`/`message_delta`,
+  //      Gemini `usageMetadata` chunks). Overwrite-only; clears `estimating`.
+  //   4. `accumulateTokenUsage` (this function) — fires once per LLM call at
+  //      the terminal `done` event, carrying the FINAL usage. Also clears
+  //      `estimating` as a safety net for providers without usage_partial.
+  // Other helpers (updateKanbanTokenUsage / applyEstimatingUsage / direct
+  // updateTokenUsage calls in visual nodes) MUST NOT invoke
+  // `updateCurrentPhaseTokenUsage` directly — they rely on the four publishers
+  // above.
   if (state.currentPhaseTokenUsage) {
     state.currentPhaseTokenUsage.tokenUsage = {
       inputTokens: usage.inputTokens,
@@ -183,10 +217,158 @@ export function accumulateTokenUsage(
       ...(usage.cacheCreationTokens !== undefined && { cacheCreationTokens: usage.cacheCreationTokens }),
       callCount: 1,
     };
+    // Clear any `estimating` flag installed by `applyEstimatedInputTokens`.
+    // Providers that never emit `usage_partial` (currently OpenAI) would
+    // otherwise leave the snapshot in the "estimating" visual state
+    // permanently since `maybeUpdatePhaseTokenUsage` wouldn't fire.
+    if (state.currentPhaseTokenUsage.estimating) {
+      state.currentPhaseTokenUsage.estimating = false;
+    }
 
     const kanbanUpdate = (state as KanbanUpdatableState).deps?.kanbanUpdate;
     kanbanUpdate?.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
   }
+}
+
+/**
+ * Mid-stream overwrite of `state.currentPhaseTokenUsage` + broadcast.
+ *
+ * Called from stream consumers when the LLM adapter emits a `usage_partial`
+ * event (Anthropic `message_start`/`message_delta`, Gemini `usageMetadata`
+ * chunks). Unlike `accumulateTokenUsage`:
+ *   - Does NOT touch `_currentTaskTokenUsage` or `state.tokenUsage` — the
+ *     per-task and per-job counters remain authoritative via the `done` event
+ *     only. Partial snapshots would over-count if accumulated.
+ *   - Does NOT log to the token debug file.
+ *   - Same overwrite-then-broadcast contract as `accumulateTokenUsage`'s
+ *     current-phase block, so the chat-input gauge reflects in-flight usage.
+ *
+ * No-op when `beginNodePhase()` has not seeded a snapshot (estimating pre-RAC
+ * nodes may run without one).
+ */
+export function updatePhaseTokenUsageSnapshot(
+  state: TokenTrackingState,
+  usage: TokenUsage,
+): void {
+  if (!state.currentPhaseTokenUsage) return;
+
+  state.currentPhaseTokenUsage.tokenUsage = {
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.inputTokens + usage.outputTokens,
+    ...(usage.cacheReadTokens !== undefined && { cacheReadTokens: usage.cacheReadTokens }),
+    ...(usage.cacheCreationTokens !== undefined && { cacheCreationTokens: usage.cacheCreationTokens }),
+    callCount: 1,
+  };
+
+  const kanbanUpdate = (state as KanbanUpdatableState).deps?.kanbanUpdate;
+  kanbanUpdate?.updateCurrentPhaseTokenUsage?.(state.currentPhaseTokenUsage);
+}
+
+/**
+ * One-line stream-loop helper. Call inside `for await (const event of stream)`
+ * and it will transparently update the chat-input gauge snapshot whenever the
+ * LLM adapter emits a `usage_partial` event. No-op for other event types.
+ *
+ * Also clears the `estimating` flag on any update path since any API-derived
+ * usage supersedes the pre-call approximation installed by
+ * `applyEstimatedInputTokens`.
+ */
+export function maybeUpdatePhaseTokenUsage(
+  state: TokenTrackingState,
+  event: { type?: string; usage?: TokenUsage },
+): void {
+  if (event.type === 'usage_partial' && event.usage) {
+    updatePhaseTokenUsageSnapshot(state, event.usage);
+    if (state.currentPhaseTokenUsage?.estimating) {
+      state.currentPhaseTokenUsage.estimating = false;
+    }
+  }
+}
+
+/**
+ * Very rough char→token ratio. Tuned for mixed English/Korean workloads:
+ *   - English latin text: ~4 chars/token
+ *   - Korean / CJK: ~1.5–2 chars/token
+ *   - Code & markdown: ~3.5 chars/token
+ * The middle-ground ratio `3` is deliberately on the pessimistic side so the
+ * pre-call estimate does not visually over-promise headroom.
+ *
+ * We intentionally avoid importing tiktoken / an Anthropic tokenizer here:
+ *   - Tokenizer startup cost (WASM / dictionary load) > 50 ms, dwarfing the
+ *     100–500 ms gap R3 is trying to fill.
+ *   - Ratios differ per provider; the gauge is a coarse visual indicator, not
+ *     an accounting surface. The real numbers arrive within hundreds of ms
+ *     via R1's `usage_partial` path and overwrite this estimate.
+ */
+const APPROX_CHARS_PER_TOKEN = 3;
+
+export function approxTokenCountFromChars(chars: number): number {
+  if (!Number.isFinite(chars) || chars <= 0) return 0;
+  return Math.round(chars / APPROX_CHARS_PER_TOKEN);
+}
+
+/**
+ * Seed the chat-input gauge with a provisional input-token count derived from
+ * the built prompt's character size. Intended to be called immediately BEFORE
+ * issuing the LLM stream — covers the 100–500 ms gap before the first
+ * `usage_partial` event arrives.
+ *
+ * Marks the snapshot with `estimating: true`. Will be overwritten (and the
+ * flag cleared) as soon as `maybeUpdatePhaseTokenUsage` / the `done` event
+ * delivers API-reported usage.
+ *
+ * Requires `beginNodePhase` to have seeded `state.currentPhaseTokenUsage`
+ * (no-op otherwise).
+ */
+export function applyEstimatedInputTokens(
+  state: TokenTrackingState,
+  promptChars: number,
+): void {
+  const snapshot = state.currentPhaseTokenUsage;
+  if (!snapshot) return;
+
+  const approxInput = approxTokenCountFromChars(promptChars);
+  if (approxInput <= 0) return;
+
+  snapshot.tokenUsage = {
+    inputTokens: approxInput,
+    outputTokens: 0,
+    totalTokens: approxInput,
+    callCount: 0,
+  };
+  snapshot.estimating = true;
+
+  const kanbanUpdate = (state as KanbanUpdatableState).deps?.kanbanUpdate;
+  kanbanUpdate?.updateCurrentPhaseTokenUsage?.(snapshot);
+}
+
+/**
+ * Convenience wrapper: sums character length of a messages[] array and
+ * feeds it to `applyEstimatedInputTokens`. Intended for the common case
+ * where a node has just built the `messages` payload and is about to call
+ * `llm.stream(messages, ...)`.
+ *
+ * Accepts both string and structured (MessageContentBlock[] / CacheableContent[])
+ * content shapes — structured content is char-counted via JSON.stringify.
+ *
+ * Centralizing this logic keeps every LLM entry point to a one-liner and
+ * avoids per-site ad-hoc char-count reducers drifting apart.
+ */
+export function applyEstimatedInputTokensFromMessages(
+  state: TokenTrackingState,
+  messages: Array<{ role: string; content: string | unknown }>,
+): void {
+  if (!state.currentPhaseTokenUsage) return;
+  const chars = messages.reduce(
+    (sum, m) =>
+      sum +
+      (typeof m.content === 'string'
+        ? m.content.length
+        : JSON.stringify(m.content ?? '').length),
+    0,
+  );
+  applyEstimatedInputTokens(state, chars);
 }
 
 /**
@@ -509,6 +691,18 @@ export async function runEstimatingLLM(
   opts: EstimatingOpts = {},
 ): Promise<{ content: string; usage?: TokenUsage }> {
   ensureEstimatingActivity(state, nodeId);
+
+  // T1 pre-call estimate — seed the chat-input gauge so detect/triage
+  // nodes reveal input-token progress immediately instead of waiting for
+  // the full LLM response. Requires a current-phase snapshot; seed one if
+  // the caller hasn't via `beginNodePhase`.
+  if (opts.promptChars && opts.promptChars > 0) {
+    if (!state.currentPhaseTokenUsage || state.currentPhaseTokenUsage.phase !== nodeId) {
+      beginNodePhase(state, nodeId, getEstimatingLabel(nodeId, state._uiLocale));
+    }
+    applyEstimatedInputTokens(state, opts.promptChars);
+  }
+
   const { content, usage } = await invoke();
   if (usage) {
     applyEstimatingUsage(state, nodeId, usage, opts);
@@ -533,6 +727,17 @@ export async function runEstimatingLLMStream(
 ): Promise<{ response: string; usage?: TokenUsage }> {
   ensureEstimatingActivity(state, nodeId);
 
+  // T1 pre-stream estimate — makes the chat-input gauge reflect detect /
+  // decompose / triage input size BEFORE the first usage_partial event.
+  // Seed `currentPhaseTokenUsage` if the caller hasn't, so both T1 and the
+  // in-flight `maybeUpdatePhaseTokenUsage` below have a target to write.
+  if (opts.promptChars && opts.promptChars > 0) {
+    if (!state.currentPhaseTokenUsage || state.currentPhaseTokenUsage.phase !== nodeId) {
+      beginNodePhase(state, nodeId, getEstimatingLabel(nodeId, state._uiLocale));
+    }
+    applyEstimatedInputTokens(state, opts.promptChars);
+  }
+
   let response = '';
   let capturedUsage: TokenUsage | undefined;
 
@@ -544,6 +749,13 @@ export async function runEstimatingLLMStream(
       if (typeof next === 'string') response = next;
       continue;
     }
+
+    // In-flight gauge update from usage_partial events. During estimating
+    // phases `beginNodePhase` may not have been invoked yet (the caller
+    // seeds on first `applyEstimatingUsage`), in which case this is a
+    // silent no-op — acceptable because the subsequent final 'done' still
+    // publishes via `applyEstimatingUsage`.
+    maybeUpdatePhaseTokenUsage(state, event);
 
     const usage = extractTokenUsageFromStreamEvent(event);
     if (usage) capturedUsage = usage;

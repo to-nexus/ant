@@ -104,8 +104,9 @@ describe('accumulateTokenUsage — SSOT broadcast', () => {
     accumulateTokenUsage(state, mkUsage(200, 20));
     accumulateTokenUsage(state, mkUsage(300, 30));
 
-    expect(updateCurrentPhaseTokenUsage).toHaveBeenCalledTimes(3);
-    const lastCall = updateCurrentPhaseTokenUsage.mock.calls[2][0];
+    // 1 zero-seed broadcast from beginNodePhase + 3 from accumulateTokenUsage
+    expect(updateCurrentPhaseTokenUsage).toHaveBeenCalledTimes(4);
+    const lastCall = updateCurrentPhaseTokenUsage.mock.calls[3][0];
     expect(lastCall.phase).toBe('plan');
     expect(lastCall.tokenUsage.inputTokens).toBe(300);
   });
@@ -143,8 +144,9 @@ describe('withPhaseTracking — end-to-end broadcast SSOT', () => {
       return {} as any;
     })(state);
 
-    expect(updateCurrentPhaseTokenUsage).toHaveBeenCalledTimes(1);
-    const snapshot = updateCurrentPhaseTokenUsage.mock.calls[0][0];
+    // 1 zero-seed broadcast from withPhaseTracking/beginNodePhase + 1 from accumulateTokenUsage
+    expect(updateCurrentPhaseTokenUsage).toHaveBeenCalledTimes(2);
+    const snapshot = updateCurrentPhaseTokenUsage.mock.calls[1][0];
     expect(snapshot.phase).toBe('execute');
     expect(snapshot.tokenUsage.inputTokens).toBe(12_000);
     expect(snapshot.tokenUsage.outputTokens).toBe(2_000);

@@ -27,6 +27,7 @@ import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrche
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { getTools } from './tools';
 import { parseClarifyTags } from '../../../../../common/clarify';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
@@ -198,6 +199,9 @@ export async function docGen(
   const isAfterToolCall = getConv(state.conversations, CONV_KEYS.NODE_DOCGEN).length > 0;
   
   try {
+    // T1 pre-call estimate — covers every docGen round (continuation after
+    // tool-result merges new messages into history).
+    applyEstimatedInputTokensFromMessages(state, messages);
     // ✅ Stream with XML parsing + tool calling support
     // Thinking is always enabled; thinking blocks are preserved in conversation
     // history by the tool node so the API accepts them on subsequent turns.
@@ -215,7 +219,9 @@ export async function docGen(
         pendingToolCalls = [];
         continue;
       }
-      
+
+      maybeUpdatePhaseTokenUsage(state, event);
+
       // ✅ Pass to orchestrator for XML parsing (<file>, <append>, <edit>)
       await orchestrator.processEvent(event);
       

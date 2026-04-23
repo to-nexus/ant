@@ -145,6 +145,7 @@ export async function direct(
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       enableThinking: step === 0,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
+      state,
     });
 
     if (response.tokenUsage) {

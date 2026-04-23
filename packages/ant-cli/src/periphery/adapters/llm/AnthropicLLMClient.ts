@@ -267,7 +267,27 @@ export class AnthropicLLMClient implements LLMClient {
     
     // ✅ Track token usage (accumulate from message_start and message_delta)
     let tokenUsage: TaskTokenUsage | undefined;
-    
+
+    // ✅ In-flight usage_partial throttling.
+    // message_delta 이벤트는 초당 여러 번 발생할 수 있으므로 게이지 업데이트가
+    // Redis/SSE 를 범람시키지 않도록 아래 조건 중 하나를 만족할 때만 partial 을 내보낸다.
+    //   - 마지막 emit 이후 500ms 경과
+    //   - outputTokens 이 마지막 emit 대비 100 이상 증가
+    // message_start 직후의 최초 snapshot 은 조건 없이 즉시 방출 (입력 토큰을
+    // 스트림 시작 수백 ms 내에 UI 에 보여주는 것이 D1 수정의 핵심 목적).
+    const PARTIAL_USAGE_MIN_INTERVAL_MS = 500;
+    const PARTIAL_USAGE_MIN_TOKEN_DELTA = 100;
+    let lastPartialEmitAt = 0;
+    let lastPartialOutputTokens = 0;
+    const buildPartialUsage = (): TaskTokenUsage | undefined =>
+      tokenUsage && {
+        inputTokens: tokenUsage.inputTokens,
+        outputTokens: tokenUsage.outputTokens,
+        totalTokens: tokenUsage.totalTokens,
+        ...(tokenUsage.cacheReadTokens !== undefined && { cacheReadTokens: tokenUsage.cacheReadTokens }),
+        ...(tokenUsage.cacheCreationTokens !== undefined && { cacheCreationTokens: tokenUsage.cacheCreationTokens }),
+      };
+
     // Idle timeout: if no stream event is received for 90s, treat as terminated.
     // Handles Mac sleep/wake and silent network partitions where the TCP connection
     // appears open but data has stopped flowing (no OS-level "terminated" error).
@@ -302,8 +322,22 @@ export class AnthropicLLMClient implements LLMClient {
         } else if (totalPromptTokens > 160000) {
           console.warn(`⚠️  [PRICING] ${totalPromptTokens.toLocaleString()} prompt tokens — approaching 200K tier (${((totalPromptTokens / 200000) * 100).toFixed(0)}%)`);
         }
+
+        // Emit initial usage_partial immediately so chat-input gauge reflects the
+        // prompt size within a few hundred ms of the LLM call starting.
+        lastPartialEmitAt = Date.now();
+        lastPartialOutputTokens = outputTokens;
+        yield {
+          type: 'usage_partial',
+          usage: buildPartialUsage(),
+          metadata: {
+            provider: 'anthropic',
+            model: this.modelName,
+            timestamp: new Date().toISOString(),
+          },
+        };
       }
-      
+
       // ✅ Update usage from message_delta (incremental updates)
       if (event.type === 'message_delta' && (event as any).usage) {
         const usage = (event as any).usage;
@@ -320,6 +354,26 @@ export class AnthropicLLMClient implements LLMClient {
             inputTokens: 0,
             outputTokens,
             totalTokens: outputTokens,
+          };
+        }
+
+        // Throttled partial emit during streaming.
+        const now = Date.now();
+        const tokenDelta = (tokenUsage.outputTokens || 0) - lastPartialOutputTokens;
+        if (
+          now - lastPartialEmitAt >= PARTIAL_USAGE_MIN_INTERVAL_MS ||
+          tokenDelta >= PARTIAL_USAGE_MIN_TOKEN_DELTA
+        ) {
+          lastPartialEmitAt = now;
+          lastPartialOutputTokens = tokenUsage.outputTokens || 0;
+          yield {
+            type: 'usage_partial',
+            usage: buildPartialUsage(),
+            metadata: {
+              provider: 'anthropic',
+              model: this.modelName,
+              timestamp: new Date().toISOString(),
+            },
           };
         }
       }

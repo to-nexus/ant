@@ -137,14 +137,38 @@ export class GeminiLLMClient implements LLMClient {
     });
 
     let tokenUsage: TaskTokenUsage | undefined;
+    // Throttle partial emits: Gemini streams may surface usageMetadata per chunk.
+    let lastPartialEmitAt = 0;
+    let lastPartialOutputTokens = 0;
+    const PARTIAL_USAGE_MIN_INTERVAL_MS = 500;
+    const PARTIAL_USAGE_MIN_TOKEN_DELTA = 100;
 
     for await (const chunk of response) {
       if (chunk.usageMetadata) {
+        const prev = tokenUsage;
         tokenUsage = {
           inputTokens: chunk.usageMetadata.promptTokenCount ?? 0,
           outputTokens: chunk.usageMetadata.candidatesTokenCount ?? 0,
           totalTokens: (chunk.usageMetadata.promptTokenCount ?? 0) + (chunk.usageMetadata.candidatesTokenCount ?? 0),
         };
+
+        // Emit usage_partial so the chat-input gauge reflects in-flight usage.
+        // First observation: emit immediately (exposes prompt size). Subsequent:
+        // throttle by time+delta to avoid Redis/SSE flood.
+        const now = Date.now();
+        const outputDelta = tokenUsage.outputTokens - lastPartialOutputTokens;
+        const shouldEmit =
+          !prev ||
+          now - lastPartialEmitAt >= PARTIAL_USAGE_MIN_INTERVAL_MS ||
+          outputDelta >= PARTIAL_USAGE_MIN_TOKEN_DELTA;
+        if (shouldEmit) {
+          lastPartialEmitAt = now;
+          lastPartialOutputTokens = tokenUsage.outputTokens;
+          yield {
+            type: 'usage_partial',
+            usage: { ...tokenUsage },
+          };
+        }
       }
 
       if (!chunk.candidates?.[0]?.content?.parts) continue;

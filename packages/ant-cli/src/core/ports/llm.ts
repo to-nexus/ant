@@ -117,6 +117,7 @@ export type LLMStreamEventType =
   | 'error'
   | 'done'
   | 'retry'
+  | 'usage_partial'  // ✅ In-flight token usage snapshot (Anthropic message_start/delta, Gemini usageMetadata chunks). Overwrite-only; not yet finalized.
   // UI events (for file operations, commands)
   | 'file_creating'
   | 'file_create'

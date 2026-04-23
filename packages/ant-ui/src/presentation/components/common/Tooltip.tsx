@@ -17,6 +17,19 @@ export interface TooltipProps {
   placement?: 'top' | 'bottom' | 'left' | 'right';
   /** Additional CSS class for tooltip */
   className?: string;
+  /**
+   * Trigger policy.
+   * - 'click' (default): toggle on click, close on outside click.
+   * - 'hover': open on mouseenter, close on mouseleave (with a small delay
+   *   so the pointer can cross the arrow/gap into the tooltip body without
+   *   flickering). Click toggling is disabled in hover mode.
+   *
+   * Added for TurnTokenGauge/TokenRing which is a read-only indicator where
+   * the Cursor-style hover tooltip matches expectations. Kept opt-in so
+   * every other Tooltip consumer in the app stays on the original click
+   * semantics unchanged.
+   */
+  trigger?: 'click' | 'hover';
 }
 
 /**
@@ -47,12 +60,14 @@ export const Tooltip: React.FC<TooltipProps> = ({
   content,
   placement = 'top',
   className = '',
+  trigger = 'click',
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const tooltipId = useRef<string>(`tooltip-${Math.random().toString(36).substr(2, 9)}`);
+  const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ✅ Subscribe to global tooltip state
   useEffect(() => {
@@ -70,7 +85,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
 
   const toggleTooltip = (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     if (isVisible) {
       // Close this tooltip
       setIsVisible(false);
@@ -83,6 +98,35 @@ export const Tooltip: React.FC<TooltipProps> = ({
       setTimeout(() => updatePosition(), 0);
     }
   };
+
+  const openHover = () => {
+    if (hoverCloseTimer.current) {
+      clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+    if (isVisible) return;
+    setActiveTooltip(tooltipId.current);
+    setIsVisible(true);
+    setTimeout(() => updatePosition(), 0);
+  };
+
+  const scheduleHoverClose = () => {
+    if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
+    // Short delay lets the pointer traverse the gap/arrow into the tooltip
+    // body without flicker. The tooltip body itself cancels the timer on
+    // mouseenter to keep it open while interacting.
+    hoverCloseTimer.current = setTimeout(() => {
+      setIsVisible(false);
+      setActiveTooltip(null);
+      hoverCloseTimer.current = null;
+    }, 150);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverCloseTimer.current) clearTimeout(hoverCloseTimer.current);
+    };
+  }, []);
 
   const updatePosition = () => {
     if (!triggerRef.current || !tooltipRef.current) return;
@@ -133,9 +177,13 @@ export const Tooltip: React.FC<TooltipProps> = ({
     setPosition({ top, left });
   };
 
-  // Close on click outside
+  // Close on click outside — click mode only. Hover mode relies on
+  // mouseleave + close-timer; binding a click-outside listener in hover
+  // mode would close the tooltip the moment the user clicks anywhere
+  // inside it.
   useEffect(() => {
     if (!isVisible) return;
+    if (trigger !== 'click') return;
 
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -158,7 +206,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
       clearTimeout(timeoutId);
       document.removeEventListener('click', handleClickOutside);
     };
-  }, [isVisible]);
+  }, [isVisible, trigger]);
 
   // Update position on resize/scroll
   useEffect(() => {
@@ -173,10 +221,14 @@ export const Tooltip: React.FC<TooltipProps> = ({
     }
   }, [isVisible]);
 
+  const isHover = trigger === 'hover';
+
   // ✅ Render tooltip content (will be portaled to document.body)
   const tooltipContent = isVisible && (
     <div
       ref={tooltipRef}
+      onMouseEnter={isHover ? openHover : undefined}
+      onMouseLeave={isHover ? scheduleHoverClose : undefined}
       className={`fixed z-[9999] px-3 py-2 text-sm rounded-lg shadow-2xl transition-opacity duration-200 whitespace-normal ${className}
         bg-amber-50 dark:bg-slate-900
         text-gray-900 dark:text-gray-100
@@ -200,8 +252,10 @@ export const Tooltip: React.FC<TooltipProps> = ({
     <>
       <div
         ref={triggerRef}
-        onClick={toggleTooltip}
-        style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}
+        onClick={isHover ? undefined : toggleTooltip}
+        onMouseEnter={isHover ? openHover : undefined}
+        onMouseLeave={isHover ? scheduleHoverClose : undefined}
+        style={{ display: 'inline-flex', alignItems: 'center', cursor: isHover ? 'default' : 'pointer' }}
       >
         {children}
       </div>

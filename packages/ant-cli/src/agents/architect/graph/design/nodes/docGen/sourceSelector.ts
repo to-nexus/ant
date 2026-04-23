@@ -7,6 +7,7 @@
 
 import type { LLMClient, ToolDefinition, LLMStreamEvent, MessageContentBlock } from '../../../../../../core/ports/llm';
 import type { TaskTokenUsage } from '@ant/shared';
+import type { TokenTrackingState } from '../../../../../common/graph/llmHelpers';
 
 // Re-export combining functions from shared module for backward compatibility
 export {
@@ -84,6 +85,13 @@ export interface DecomposeToolLoopOptions {
   enableThinking?: boolean;
   thinkingBudget?: number;
   maxRounds?: number;
+  /**
+   * Optional graph state. When supplied, `usage_partial` events from the
+   * underlying LLM adapter overwrite `state.currentPhaseTokenUsage` so the
+   * chat-input token gauge reflects in-flight usage during the tool loop.
+   * Requires the caller to have seeded the snapshot via `beginNodePhase()`.
+   */
+  state?: TokenTrackingState;
 }
 
 /**
@@ -106,7 +114,7 @@ export async function decomposeWithToolLoop(
   toolHandler: (name: string, args: Record<string, any>) => string | Promise<string>,
   options: DecomposeToolLoopOptions,
 ): Promise<{ response: string; usage?: TaskTokenUsage }> {
-  const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
+  const { extractTokenUsageFromStreamEvent, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } = await import('../../../../../common/graph/llmHelpers');
   const maxRounds = options.maxRounds ?? 10;
   let allMessages = [...messages];
   let totalUsage: TaskTokenUsage | undefined;
@@ -126,6 +134,11 @@ export async function decomposeWithToolLoop(
       console.warn(`⚠️ [Decompose RAG] Final round (${round + 1}/${maxRounds}) — tools stripped, forcing final response`);
     }
 
+    // T1 pre-call estimate per tool-loop round.
+    if (options.state) {
+      applyEstimatedInputTokensFromMessages(options.state, allMessages);
+    }
+
     for await (const event of llm.stream(allMessages, {
       tools: roundTools.length > 0 ? roundTools : undefined,
       temperature: options.temperature,
@@ -140,6 +153,9 @@ export async function decomposeWithToolLoop(
         toolCalls.length = 0;
         roundUsage = undefined;
         continue;
+      }
+      if (options.state) {
+        maybeUpdatePhaseTokenUsage(options.state, event);
       }
       if (event.text) response += event.text;
       if (event.thinking) thinking += event.thinking;

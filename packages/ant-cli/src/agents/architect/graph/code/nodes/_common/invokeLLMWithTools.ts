@@ -8,7 +8,12 @@
  */
 
 import type { LLMClient, MessageContentBlock, ToolDefinition } from '../../../../../../core/ports/llm';
-import type { TokenUsage } from '../../../../../common/graph/llmHelpers';
+import {
+  applyEstimatedInputTokensFromMessages,
+  maybeUpdatePhaseTokenUsage,
+  type TokenTrackingState,
+  type TokenUsage,
+} from '../../../../../common/graph/llmHelpers';
 
 export interface InvokeLLMWithToolsInput {
   llm: LLMClient;
@@ -17,6 +22,13 @@ export interface InvokeLLMWithToolsInput {
   maxTokens?: number;
   enableThinking?: boolean;
   thinkingBudget?: number;
+  /**
+   * Graph state carrying `currentPhaseTokenUsage`. When provided, in-flight
+   * `usage_partial` events from the stream overwrite the chat-input gauge
+   * snapshot live instead of waiting for the terminal `done` event. Optional
+   * so non-graph callers (if any) stay unaffected.
+   */
+  state?: TokenTrackingState;
 }
 
 export interface InvokeLLMWithToolsResult {
@@ -32,7 +44,7 @@ export async function invokeLLMWithTools(
   input: InvokeLLMWithToolsInput,
 ): Promise<InvokeLLMWithToolsResult> {
   const {
-    llm, messages, tools, maxTokens, enableThinking, thinkingBudget,
+    llm, messages, tools, maxTokens, enableThinking, thinkingBudget, state,
   } = input;
 
   let thinking = '';
@@ -41,6 +53,10 @@ export async function invokeLLMWithTools(
   let done = false;
   let tokenUsage: TokenUsage | undefined;
   const toolCalls: InvokeLLMWithToolsResult['toolCalls'] = [];
+
+  // T1 pre-call estimate — ReAct loop iterates; each call rebuilds
+  // messages[] (history grows) so re-seed per iteration.
+  if (state) applyEstimatedInputTokensFromMessages(state, messages);
 
   for await (const event of llm.stream(messages as any, {
     tools,
@@ -57,6 +73,10 @@ export async function invokeLLMWithTools(
       toolCalls.length = 0;
       continue;
     }
+
+    // In-flight gauge update from usage_partial events (Anthropic/Gemini).
+    // No-op when `state` is not supplied or no phase snapshot is seeded.
+    if (state) maybeUpdatePhaseTokenUsage(state, event);
 
     switch (event.type) {
       case 'thinking':

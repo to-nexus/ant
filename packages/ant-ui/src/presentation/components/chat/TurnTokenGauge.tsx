@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { MoreHorizontal } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { type PhaseTokenUsage } from '@ant/shared';
@@ -44,20 +45,30 @@ export function TurnTokenGauge() {
   const GAP = 6;
   const MORE_W = 22;
 
-  const fit = computeVisibleCount(slotWidth, visiblePhases.length, RING_W, GAP, MORE_W);
+  // Display order: newest first (leftmost) → oldest last (rightmost). The
+  // backend publishes `currentPhaseTokenUsages` in creation order (main, then
+  // workers as they spawn), so reversing gives the "new entries push from the
+  // left" behavior the user expects.
+  const ordered = [...visiblePhases].reverse();
 
-  const inline = visiblePhases.slice(0, fit.inlineCount);
-  const overflow = visiblePhases.slice(fit.inlineCount);
+  const fit = computeVisibleCount(slotWidth, ordered.length, RING_W, GAP, MORE_W);
 
+  const inline = ordered.slice(0, fit.inlineCount);
+  const overflow = ordered.slice(fit.inlineCount);
+
+  // More-button goes on the LEFT so overflow (oldest gauges) is visually
+  // aggregated to the left of the newest-on-the-left inline rings.
+  // `justify-end` keeps the whole cluster pinned to the right edge of the
+  // chat-input toolbar slot.
   return (
     <div
       ref={hostRef}
       className="flex items-center gap-1.5 min-w-0 overflow-hidden flex-1 justify-end"
     >
+      {fit.showMore && overflow.length > 0 && <MoreRingsDropdown phases={overflow} />}
       {inline.map((phase, idx) => (
         <TokenRing key={ringKey(phase, idx)} phase={phase} />
       ))}
-      {overflow.length > 0 && <MoreRingsDropdown phases={overflow} />}
     </div>
   );
 }
@@ -73,6 +84,7 @@ interface MoreRingsDropdownProps {
  * Tooltip rendered on top via portal.
  */
 function MoreRingsDropdown({ phases }: MoreRingsDropdownProps) {
+  const { t } = useTranslation('common');
   // The row-level Tooltip reads `kanban.currentPhaseTokenUsages`; when a
   // worker terminates mid-interaction, the active tooltip closes naturally
   // because its `phase` prop changes and the global tooltip state resets.
@@ -89,8 +101,8 @@ function MoreRingsDropdown({ phases }: MoreRingsDropdownProps) {
                    text-gray-500 dark:text-gray-300
                    hover:bg-gray-100 dark:hover:bg-gray-700
                    transition-colors"
-        aria-label={`${phases.length} more gauges`}
-        title={`${phases.length} more`}
+        aria-label={t('turnTokenGauge.moreAria', { count: phases.length })}
+        title={t('turnTokenGauge.moreTitle', { count: phases.length })}
       >
         <MoreHorizontal className="w-3 h-3" />
       </button>
@@ -99,10 +111,11 @@ function MoreRingsDropdown({ phases }: MoreRingsDropdownProps) {
 }
 
 function MoreDropdownList({ phases }: { phases: PhaseTokenUsage[] }) {
+  const { t } = useTranslation('common');
   return (
     <ul className="flex flex-col gap-0.5 min-w-[180px] max-h-[240px] overflow-y-auto">
       {phases.map((phase, idx) => {
-        const summary = summarizeRing(phase);
+        const summary = summarizeRing(phase, t);
         return (
           <li
             key={ringKey(phase, idx)}
@@ -124,15 +137,20 @@ function MoreDropdownList({ phases }: { phases: PhaseTokenUsage[] }) {
 }
 
 /**
- * Keep phases whose snapshot carries at least one non-zero token count.
- * Empty/zero snapshots appear briefly at node entry before the first LLM
- * response and would render as empty rings — hide them until data lands.
+ * Keep every phase that has a valid snapshot, including zero-token ones.
+ *
+ * Cursor-style UX: the gauge should stay visible from the moment a job
+ * starts a node (T0 zero-seed), not blink in only after the first LLM
+ * response. The ring itself renders an empty donut track at 0%, so a
+ * freshly-seeded phase looks like a neutral placeholder until T1 (prompt
+ * estimate) or T2 (first usage_partial) fills it in.
+ *
+ * The one thing we still hide is "phase object with no tokenUsage at all"
+ * (defensive — shouldn't happen since `beginNodePhase` always seeds one).
  */
 function filterActive(phases?: PhaseTokenUsage[]): PhaseTokenUsage[] {
   if (!phases || phases.length === 0) return [];
-  return phases.filter(
-    (p) => (p?.tokenUsage?.inputTokens ?? 0) + (p?.tokenUsage?.outputTokens ?? 0) > 0,
-  );
+  return phases.filter((p) => p?.tokenUsage != null);
 }
 
 function ringKey(phase: PhaseTokenUsage, idx: number): string {
@@ -141,9 +159,17 @@ function ringKey(phase: PhaseTokenUsage, idx: number): string {
 }
 
 /**
- * Decide how many rings fit inline. When every ring fits, skip the
- * more-button entirely. Otherwise reserve space for the more-button and
- * fit as many rings as the remaining slot allows.
+ * Decide how many rings fit inline and whether the "more" button is needed.
+ *
+ * Width math:
+ *   - All `total` rings inline:     total*ringW + (total-1)*gap
+ *   - N rings + more-button:        N*ringW + (N-1)*gap + gap + moreW   (N ≥ 1)
+ *   - More-button only:             moreW
+ *
+ * Special case: when exactly ONE ring would be hidden behind the more-button,
+ * rendering the ring directly is always cheaper because `ringW < moreW`
+ * (14 < 22). We skip the more-button in that case so users see every gauge
+ * whenever there is room for it.
  */
 function computeVisibleCount(
   slotWidth: number,
@@ -151,20 +177,27 @@ function computeVisibleCount(
   ringW: number,
   gap: number,
   moreW: number,
-): { inlineCount: number } {
-  if (total <= 0) return { inlineCount: 0 };
+): { inlineCount: number; showMore: boolean } {
+  if (total <= 0) return { inlineCount: 0, showMore: false };
   // If we haven't measured yet, render up to 3 to avoid layout thrash.
-  if (slotWidth <= 0) return { inlineCount: Math.min(3, total) };
+  if (slotWidth <= 0) return { inlineCount: Math.min(3, total), showMore: total > 3 };
 
   const fitsAll = total * ringW + (total - 1) * gap;
-  if (fitsAll <= slotWidth) return { inlineCount: total };
+  if (fitsAll <= slotWidth) return { inlineCount: total, showMore: false };
 
   // Need the more button; reserve moreW + gap for it.
   const usable = slotWidth - moreW - gap;
-  if (usable <= 0) return { inlineCount: 0 };
-  // Each inline ring costs ringW + gap (the last item has no trailing gap
-  // before the more button, but we need one gap between rings and one
-  // between the last ring and the more button — same count).
-  const inlineCount = Math.max(0, Math.floor((usable + gap) / (ringW + gap)));
-  return { inlineCount: Math.min(inlineCount, total - 1) };
+  if (usable <= 0) return { inlineCount: 0, showMore: true };
+  // Each inline ring costs ringW + gap.
+  let inlineCount = Math.max(0, Math.floor((usable + gap) / (ringW + gap)));
+  inlineCount = Math.min(inlineCount, total - 1);
+
+  // Common-sense skip: if only ONE ring would be hidden, show it instead of
+  // the more-button. Swapping moreW(22) for ringW(14) actually REDUCES total
+  // width by 8px (moreW - ringW = 8; gap unchanged), so this always fits.
+  if (total - inlineCount === 1) {
+    return { inlineCount: total, showMore: false };
+  }
+
+  return { inlineCount, showMore: true };
 }

@@ -8,7 +8,7 @@
 
 import { VisualGraphState } from '../types.js';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
-import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
@@ -70,8 +70,12 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
 
     let responseText = '';
 
+    // T1 pre-call estimate covers both the stream and invoke paths below.
+    applyEstimatedInputTokensFromMessages(state, messages);
+
     if (llm.stream) {
       for await (const event of llm.stream(messages)) {
+        maybeUpdatePhaseTokenUsage(state, event);
         if (event.type === 'text' && event.text) {
           responseText += event.text;
           await chatAPI.sendLLMEvent({ type: 'text', text: event.text });

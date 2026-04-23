@@ -78,5 +78,17 @@
     "title": "Server Disconnected",
     "message": "The server connection was lost. Your in-progress work can be resumed after the server restarts.",
     "confirm": "OK"
+  },
+  "turnTokenGauge": {
+    "context": "Context",
+    "input": "Input",
+    "output": "Output",
+    "main": "Main",
+    "worker": "Worker {{n}}",
+    "estimatingNote": "Estimated from prompt size — actual usage arrives shortly",
+    "moreAria": "{{count}} more gauges",
+    "moreTitle": "{{count}} more",
+    "ariaLabel": "context {{totalPct}}, input {{input}}, output {{output}}, max {{max}}",
+    "ariaLabelWithTitle": "{{title}}, context {{totalPct}}, input {{input}}, output {{output}}, max {{max}}"
   }
 }

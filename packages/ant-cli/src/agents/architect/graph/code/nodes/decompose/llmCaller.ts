@@ -9,10 +9,19 @@
 
 import { LLMClient, ToolDefinition } from "../../../../../../core/ports";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
+import type { TokenTrackingState } from "../../../../../common/graph/llmHelpers";
 
 interface CallDecomposeOptions {
   tools?: ToolDefinition[];
   toolHandler?: (name: string, args: Record<string, any>) => string | Promise<string>;
+  /**
+   * Optional graph state. When supplied, any `usage_partial` events surfaced
+   * by the LLM adapter will overwrite `state.currentPhaseTokenUsage` so the
+   * chat-input token gauge tracks decompose usage live instead of only after
+   * the stream completes. Requires the caller to have seeded the snapshot via
+   * `beginNodePhase()`.
+   */
+  state?: TokenTrackingState;
 }
 
 /**
@@ -62,6 +71,7 @@ export async function callLLMForDecompose(
         maxTokens: LLM_MAX_TOKENS.DEFAULT,
         enableThinking: true,
         thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
+        state: options.state,
       },
     );
     return { response, tokenUsage: usage };
@@ -85,6 +95,13 @@ export async function callLLMForDecompose(
   let response = '';
   let capturedUsage: any = undefined;
   
+  const { extractTokenUsageFromStreamEvent, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } = await import('../../../../../common/graph/llmHelpers');
+
+  // T1 pre-call estimate per tool-loop iteration.
+  if (options?.state) {
+    applyEstimatedInputTokensFromMessages(options.state, messages);
+  }
+
   for await (const event of llmToUse.stream(messages, {
     temperature: LLM_TEMPERATURE.DECOMPOSE,
     maxTokens: LLM_MAX_TOKENS.DEFAULT,
@@ -102,14 +119,17 @@ export async function callLLMForDecompose(
       });
       continue;
     }
-    
+
+    if (options?.state) {
+      maybeUpdatePhaseTokenUsage(options.state, event);
+    }
+
     await orchestrator.processEvent(event);
     
     if (event.text) {
       response += event.text;
     }
     
-    const { extractTokenUsageFromStreamEvent } = await import('../../../../../common/graph/llmHelpers');
     const usage = extractTokenUsageFromStreamEvent(event);
     if (usage) {
       capturedUsage = usage;
