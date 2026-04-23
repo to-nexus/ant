@@ -270,6 +270,42 @@ describe('Template Smoke Tests', () => {
     expect(partials).toContain('jobs/code/nodes/decompose/variants/default/output-unit-splitting');
   });
 
+  it('decompose/rules.md encodes UI pairing rule with renderable-only predicate', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render(
+      'jobs/code/nodes/decompose/variants/default/rules',
+      { ...SAMPLE_VARS, techTier: { language: 'typescript', stack: 'frontend' } },
+    );
+
+    // UI pairing rule is reachable from rules.md
+    expect(output).toContain('UI pairing rule');
+    // Renderable predicate is explicit
+    expect(output).toContain('RENDERABLE');
+    expect(output).toContain('renderable feature');
+    // Zero-ui case (backend-only / CLI-only / library-only) is allowed
+    expect(output).toContain('ZERO ui tasks');
+    // Globals exclusion: ui tasks never touch global style layer
+    expect(output).toContain('MUST NOT touch global style layer');
+    // Pairing via parallelGroup (not priority)
+    expect(output).toContain('shares its `parallelGroup` with its paired renderable feature');
+
+    // Anti-regression: the pre-fix "SAME parallelGroup" wording must be gone
+    expect(output).not.toContain('share the SAME `parallelGroup`');
+    // The new DISTINCT wording replaces it
+    expect(output).toContain('DISTINCT `parallelGroup`');
+
+    // Partial standalone render carries the same sentinels
+    const partialOnly = await adapter.render(
+      'jobs/code/nodes/decompose/variants/default/output-unit-splitting',
+      SAMPLE_VARS,
+    );
+    expect(partialOnly).toContain('UI pairing rule');
+    expect(partialOnly).toContain('DISTINCT `parallelGroup`');
+    expect(partialOnly).toContain('ui task count equals the renderable feature task count');
+    expect(partialOnly).toContain('globals exclusion');
+  });
+
   it('secure-coding partial is resolved inside execute/rules and plan/rules', async () => {
     await initPartials(TEMPLATES_DIR);
 

@@ -212,7 +212,7 @@ CRITICAL:
 | `"feature"` | Something **new** — headless | Source code, logic, APIs. Always unstyled structure (skeleton only) |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
 | `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
-| `"ui"` | Visual **implementation** | Apply styles to skeleton. Always created, even without ui-doc (priority 650–699) |
+| `"ui"` | Visual **implementation** | Apply styles to a renderable feature skeleton. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 650–699). See UI pairing rule in Independent Output Unit Splitting. |
 
 **Principle** — `"design-system"` priority ladder (REQUIRED when visualTier or ui-docs exist):
 - **200**: Token → CSS infrastructure (token variables, CSS custom-property generation, runtime import). Always the first `design-system` task.
@@ -533,7 +533,7 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 **Constraint**: Do NOT create a separate task for copying assets. UI tasks handle asset integration as part of their implementation.
 
-**Constraint**: `"feature"` tasks (frontend components) MUST always be headless — unstyled structure only. A corresponding `"ui"` task provides the visual pass.
+**Constraint**: Renderable `"feature"` tasks (visual-unit category — sections / routes / screens / modals / pages) MUST always be headless — unstyled structure only. A corresponding `"ui"` task provides the visual pass per renderable feature. Non-renderable feature tasks (workers, commands, library symbols, pipeline stages, wiring, shared foundations, data-fetching, server handlers) do NOT get a paired ui task. See the UI pairing rule in Independent Output Unit Splitting for the predicate and counting.
 
 ---
 
@@ -657,7 +657,7 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 - `type: "design-system"` (priority 201+, wiring) -> `exclusive: false`, `parallelGroup: "design-system"` (shared group serializes token→wiring; foundation barrier ensures 300+ tasks wait)
 - `type: "feature"` (priority 200–299 shared foundation) -> `parallelGroup` (foundation barrier ensures 300+ tasks wait; Schema sub-task is `exclusive`)
 - `type: "feature"` (priority 600–649 integration) -> `parallelGroup` (integration barrier ensures all feature tasks complete first)
-- `type: "ui"` (priority 650–699) -> `parallelGroup` (group with corresponding skeleton task)
+- `type: "ui"` (priority 650–699) -> `parallelGroup` EQUAL to its paired renderable feature task's `parallelGroup`. One ui task per renderable feature (see UI pairing rule in Independent Output Unit Splitting). No ui task for non-renderable features (workers / commands / library symbols / pipeline stages / wiring / shared foundations).
 - `type: "error"` -> always exclusive
 - `type: "verification"` -> always exclusive
 - `type: "test-code"` (single package) -> exclusive
