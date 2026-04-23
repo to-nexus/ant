@@ -332,12 +332,13 @@ export interface ArchitectGraphState extends TriageableState {
   /**
    * Paths of files that existed under `codebase/` at the moment execute
    * started. Populated from the same `listFiles('codebase', ...)` call that
-   * seeds `FileRegistry.existingFiles`. Rendered in `buildRuntimeContext`
-   * as the `Existing Codebase Files` manifest so the LLM can dispatch
-   * between `<file>` (new) and `edit_file` (existing) without fallthrough
-   * to `list_files` — the refactor that removed `projectCodeContext` left
-   * execute blind here and variant prompts still reference phantom
-   * "directory tree" / "retrieved context" sections.
+   * seeds `FileRegistry.existingFiles`. Rendered in
+   * `buildTaskInvariantContext` as the `Existing Codebase Files` manifest
+   * so the LLM can dispatch between `<file>` (new) and `edit_file`
+   * (existing) without fallthrough to `list_files` — the refactor that
+   * removed `projectCodeContext` left execute blind here and variant
+   * prompts still reference phantom "directory tree" / "retrieved context"
+   * sections.
    */
   _existingCodebaseFiles?: string[];
 

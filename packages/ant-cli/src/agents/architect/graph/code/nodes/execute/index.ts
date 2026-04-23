@@ -262,10 +262,10 @@ export async function execute(
   // In parallel mode SharedFileBuffer appends cross-worker writes below.
   //
   // The same disk listing is captured into `_existingCodebaseFiles` so
-  // `buildRuntimeContext` can surface a path manifest to the LLM. This is
-  // the file-awareness channel that replaced the `projectCodeContext`
-  // injection removed in commit cbb4d924 — guardrail + prompt share one
-  // source of truth so they never drift.
+  // `buildTaskInvariantContext` can surface a path manifest to the LLM.
+  // This is the file-awareness channel that replaced the
+  // `projectCodeContext` injection removed in commit cbb4d924 — guardrail
+  // + prompt share one source of truth so they never drift.
   //
   // All paths are normalised via normalizeToCodebasePath to stay consistent
   // with what FileRenderer writes (`"src/app/x"` vs `"codebase/src/app/x"`).
@@ -294,8 +294,8 @@ export async function execute(
 
   console.log(`📊 [CodeGen] existingFiles seeded from disk: ${existingFiles.size} path(s)`);
 
-  // Publish the disk listing to state so `buildRuntimeContext` can render
-  // the `Existing Codebase Files` manifest. Cross-worker writes are
+  // Publish the disk listing to state so `buildTaskInvariantContext` can
+  // render the `Existing Codebase Files` manifest. Cross-worker writes are
   // surfaced separately via `_otherWorkerFiles` (populated upstream) and
   // must NOT be mixed in here.
   state._existingCodebaseFiles = existingCodebaseDiskFiles;
