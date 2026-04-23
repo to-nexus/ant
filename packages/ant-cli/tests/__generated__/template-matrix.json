@@ -529,11 +529,13 @@
   },
   "jobs/code/nodes/direct/variants/default/base": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
   "jobs/code/nodes/direct/variants/default/rules": {
     "sources": [
+      "build-callsite",
       "render-call"
     ]
   },
@@ -604,6 +606,12 @@
     "sources": [
       "auto-injection",
       "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/code/nodes/execute/injections/self-verify-inline": {
+    "sources": [
+      "partial-ref",
       "manifest"
     ]
   },

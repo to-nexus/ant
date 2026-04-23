@@ -97,6 +97,10 @@ Scope is determined by the remediation mode carried through the plan's `rootCaus
 // Use: "</" + "file>" instead of "</file>" in string literals
 ```
 
+{{#if currentTask.selfVerifyOnDone}}
+{{> jobs/code/nodes/execute/injections/self-verify-inline}}
+{{/if}}
+
 ---
 
 ## Task Completion
@@ -107,12 +111,23 @@ Scope is determined by the remediation mode carried through the plan's `rootCaus
 <done>true</done>
 ```
 
-**Rules:**
-1. Apply ALL remediation plan fixes (Phase 1)
-2. Run build command from `diagnostics.command` to verify (Phase 2)
-3. If build passes: output `<done>true</done>`
-4. If new errors appear in YOUR target files: fix them, re-run build once, then output `<done>true</done>`
-5. If planText is empty, output `<done>true</done>` immediately (error already resolved)
-6. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
+{{#if currentTask.selfVerifyOnDone}}
+**Rules (Tier 2 — this task owns verification inline):**
+1. Apply ALL remediation plan fixes.
+2. Run the verification gate chain per the **Self-Verify Before Done** section above (install if deps changed → typecheck → build → test).
+3. Emit `<done>true</done>` ONLY after every applicable gate passes.
+4. If a gate fails, iterate WITHIN this loop (read error, minimal fix, re-run gate) until it passes or the scope clearly exceeds this task.
+5. If the scope exceeds this task, emit `<needsEscalation>true</needsEscalation>` instead of `<done>true</done>`.
+6. If planText is empty, emit `<done>true</done>` immediately (nothing to fix or verify).
+7. Do NOT emit `<done>true</done>` while a tool call is still pending a result.
+{{else}}
+**Rules (Tier 3+ — a dedicated verification task follows this one):**
+1. Apply ALL remediation plan fixes.
+2. Do NOT run `build` / `test` / `typecheck` from this task — the next verification task owns those gates. The command guard blocks those commands for you; running them wastes a diagnostic cycle.
+3. Installing dependencies (npm/pnpm/pip/go mod) is still allowed when the remediation plan requires it.
+4. Emit `<done>true</done>` once every remediation fix in the plan is applied.
+5. If planText is empty, emit `<done>true</done>` immediately (the error was already resolved upstream).
+6. Do NOT emit `<done>true</done>` while a tool call is still pending a result.
+{{/if}}
 
 **Follow these rules for successful error fixing.**
