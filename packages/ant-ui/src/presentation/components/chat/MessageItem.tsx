@@ -48,7 +48,7 @@ export function MessageItem({ message }: MessageItemProps) {
             {message.actionMetadata && Object.keys(message.actionMetadata).length > 0 && (
               <ActionMetadataBadges metadata={message.actionMetadata} readOnly />
             )}
-            <div className="text-sm text-gray-900 dark:text-gray-100 select-text">
+            <div className="text-sm text-gray-900 dark:text-gray-100 select-text whitespace-pre-wrap">
               {message.contents[0]?.content}
             </div>
           </div>
