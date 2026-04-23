@@ -7,11 +7,11 @@
  *   - STEP 2   — combine code context (Vector DB + Git + Local + references).
  *   - STEP 2.5 — ensure `codeContext` always exists (empty fallback).
  *
- * Returns `{ codeContext, referenceCodeContexts, lessons, taskKeywords,
- * directoryTree }` — a LOCAL bundle for the plan LLM. Callers consume it
- * inline for prompt rendering; no state channel receives any of these
- * fields. RAG is scoped to one task-entry snapshot; execute reads files
- * on demand through tool calls.
+ * Returns `{ codeContext, lessons, taskKeywords, directoryTree }` — a
+ * LOCAL bundle for the plan LLM. Callers consume it inline for prompt
+ * rendering; no state channel receives any of these fields. RAG is
+ * scoped to one task-entry snapshot; execute reads files on demand
+ * through tool calls.
  */
 
 import type { LLMClient } from '../../../../../../../core/ports';
@@ -19,12 +19,10 @@ import { ArchitectGraphState } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
 import { combineCodeContext, TaskKeywords } from '../combineCodeContext';
 import { generateTaskKeywords, displayKeywords, logKeywords } from '../keywordGeneration';
-import { loadReferenceContexts } from '../referenceLoader';
 import { extractFilesFromViolations } from '../../../utils/violationFormatter';
 
 export interface PlanRagResult {
   codeContext: any;
-  referenceCodeContexts: any[];
   lessons: any[];
   taskKeywords: TaskKeywords;
   directoryTree: string | undefined;
@@ -135,7 +133,6 @@ export async function runPlanRAG(
   );
 
   let codeContext: any = undefined;
-  let referenceCodeContexts: any[] = [];
   let lessons: any[] = [];
 
   const retriever = state.deps?.retriever;
@@ -155,18 +152,6 @@ export async function runPlanRAG(
       codeContext = combinedResult.context;
       lessons = combinedResult.lessons || [];
     }
-
-    if (codeContext && state.referenceRequests && state.referenceRequests.length > 0) {
-      const { extractFilesFromCode } = await import('../utils');
-      referenceCodeContexts = await loadReferenceContexts(
-        state,
-        taskKeywords,
-        retriever,
-        vectorDB,
-        git,
-        extractFilesFromCode,
-      );
-    }
   }
 
   if (!codeContext) {
@@ -176,7 +161,6 @@ export async function runPlanRAG(
 
   return {
     codeContext,
-    referenceCodeContexts,
     lessons,
     taskKeywords,
     directoryTree,

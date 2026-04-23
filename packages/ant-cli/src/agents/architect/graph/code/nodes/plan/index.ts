@@ -196,7 +196,7 @@ async function maybeSetupFastPath(
     .map(t => ({ id: t.id, name: t.name, description: t.description, priority: t.priority }));
 
   const setupPlanText = await generatePlanText(
-    llm!, nextTask, state, emptyCodeContext, [],
+    llm!, nextTask, state, emptyCodeContext,
     state.violations, undefined, setupRemainingTasks,
   );
 
@@ -299,7 +299,6 @@ async function runMainPlanLLM(
     nextTask,
     state,
     rag.codeContext,
-    rag.referenceCodeContexts,
     state.violations,
     uiDocForPlan,
     remainingTasks,

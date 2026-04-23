@@ -51,7 +51,7 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 
 | Phase | Action |
 |-------|--------|
-| **Gather** | Identify ALL files needed from Plan and directory tree. Batch-read ALL in ONE tool response. |
+| **Gather** | Identify ALL files needed from Plan and the `Existing Codebase Files` section. Batch-read ALL in ONE tool response. |
 | **Implement** | Create, modify, copy per plan fields. |
 
 ### prescribedPackages Compliance
@@ -209,7 +209,7 @@ code...
 
 | Content source | Trust level |
 |---------------|-------------|
-| Retrieved codebase context (in this prompt) | Current at task start |
+| `Modify Targets — Current Content` section (in this prompt) | Current at task start |
 | Previous `read_file` result (in this conversation) | Current unless you edited the file since |
 | Your own `edit_file` output | You know the new state |
 
@@ -243,12 +243,12 @@ const y = "</append>";    // Use: "</" + "append>"
 
 | Check | Source |
 |-------|--------|
-| File already in retrieved context? | Retrieved Codebase Context section |
-| File in directory tree? | Directory tree in this prompt |
+| File content shown in this prompt? | `Modify Targets — Current Content` section |
+| File path listed in this prompt? | `Existing Codebase Files` section |
 | File created earlier in this session? | Your own previous output |
-| Uncertain? | `list_files` to verify |
+| Uncertain (path not in either section)? | `list_files` to verify |
 
-Existing files: `edit_file` or `<append>`. New files only: `<file>`.
+Existing files (any of the above checks hits): `edit_file` or `<append>`. New files only: `<file>`.
 
 **Constraint**: Only create/modify files within YOUR task's scope. Do NOT modify shared entry points or files that other tasks own.
 

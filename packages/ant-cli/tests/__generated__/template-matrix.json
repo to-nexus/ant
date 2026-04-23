@@ -477,6 +477,11 @@
       "partial-ref"
     ]
   },
+  "jobs/code/nodes/decompose/variants/default/inclusion-rubric": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/code/nodes/decompose/variants/default/mode-guide": {
     "sources": [
       "render-call",

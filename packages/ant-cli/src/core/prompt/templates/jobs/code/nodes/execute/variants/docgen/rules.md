@@ -11,9 +11,9 @@
 **Constraint**: Your FIRST actions MUST be observing existing documentation and codebase structure.
 Do NOT write any documentation file before understanding what already exists.
 
-- Config and source files are pre-loaded in your context — observe them for build/run/test commands.
-- Directory structure is pre-loaded in your context — do NOT use `list_files` for exploration.
-- `read_file` is permitted for existing documentation files that need inspection before updating.
+- The `Existing Codebase Files` section (below) lists every file under `codebase/` at task start — use it to detect existing README / docs and to identify config files instead of `list_files`.
+- The `Modify Targets — Current Content` section (below) carries current content of every `plan.modify` target (typically existing docs to update).
+- `read_file` is required for config / source / doc files whose content is NOT in `Modify Targets`; batch these reads upfront.
 
 ### Documentation Constraints
 

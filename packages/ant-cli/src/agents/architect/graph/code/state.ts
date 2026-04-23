@@ -3,7 +3,6 @@ import type { Conversations } from '../../../common/graph/conversations';
 import { GitPort, MemoryPort, LLMClient, CodebaseAnalyzerPort, ChunkPort, SessionPort, CommandPort, TaskQueueUpdatePort } from "../../../../core/ports";
 import type { PromptBuilder } from "../../../../core/prompt/builder/PromptBuilder";
 import { ProjectContext } from "../../types";
-import { ReferenceCodeContext } from "../../../../core/prompt/types/CodeContext";
 import { CodeTask, TaskQueue as BaseTaskQueue } from "../../types/task";
 import { TokenUsage } from '../../../common/graph/llmHelpers';
 import { TriageableState } from '../../../common/graph/nodes/triage/types';
@@ -179,13 +178,6 @@ export interface ArchitectGraphState extends TriageableState {
   resolvedArtifacts?: ResolvedArtifact[];
 
   selectedDesignFiles?: string[];
-  decomposeFilePaths?: string[];
-  
-  // Reference projects (opt-in via referenceRequests — plan renders into
-  // prompt, execute does NOT consume). No main-project code context on
-  // state: plan's RAG lives in a local variable (see nodes/plan/parts/rag.ts)
-  // and execute reads files on-demand via read_file tool.
-  referenceCodeContexts: ReferenceCodeContext[];
   
   // ✅ Design Documents — unified map-only structure
   // All docs use {type}-{name}.md pattern (single="main", MSA=service name)
@@ -340,6 +332,17 @@ export interface ArchitectGraphState extends TriageableState {
   _detectedPackageManager?: string;
   /** Files written by other parallel tasks/workers (for session manifest in execute) */
   _otherWorkerFiles?: Array<{ path: string; taskName?: string }>;
+  /**
+   * Paths of files that existed under `codebase/` at the moment execute
+   * started. Populated from the same `listFiles('codebase', ...)` call that
+   * seeds `FileRegistry.existingFiles`. Rendered in `buildRuntimeContext`
+   * as the `Existing Codebase Files` manifest so the LLM can dispatch
+   * between `<file>` (new) and `edit_file` (existing) without fallthrough
+   * to `list_files` — the refactor that removed `projectCodeContext` left
+   * execute blind here and variant prompts still reference phantom
+   * "directory tree" / "retrieved context" sections.
+   */
+  _existingCodebaseFiles?: string[];
 
   requiredIntegrations: IntegrationRequirement[];
   violations?: Violation[];  // ✅ 구조화된 violation 배열

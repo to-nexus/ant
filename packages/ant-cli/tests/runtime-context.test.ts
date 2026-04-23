@@ -31,22 +31,22 @@ function makeDesignState(overrides: Record<string, any> = {}): any {
 }
 
 describe('buildRuntimeContext (code)', () => {
-  it('includes Current Task section when currentTask is present', () => {
-    const result = buildRuntimeContext(makeCodeState());
+  it('includes Current Task section when currentTask is present', async () => {
+    const result = await buildRuntimeContext(makeCodeState());
     expect(result).toContain('Current Task');
     expect(result).toContain('Build API');
   });
 
-  it('includes IMPLEMENTATION PLAN when planText is present', () => {
-    const result = buildRuntimeContext(makeCodeState({
+  it('includes IMPLEMENTATION PLAN when planText is present', async () => {
+    const result = await buildRuntimeContext(makeCodeState({
       planText: '{"create":[],"modify":[],"assets":[]}',
     }));
     expect(result).toContain('IMPLEMENTATION PLAN');
     expect(result).toContain('create');
   });
 
-  it('includes assets section when runtimeAssetsIndex has files', () => {
-    const result = buildRuntimeContext(makeCodeState({
+  it('includes assets section when runtimeAssetsIndex has files', async () => {
+    const result = await buildRuntimeContext(makeCodeState({
       runtimeAssetsIndex: {
         count: 1,
         files: ['logo.png'],
@@ -56,9 +56,26 @@ describe('buildRuntimeContext (code)', () => {
     expect(result).toContain('logo.png');
   });
 
-  it('returns string even with minimal state', () => {
-    const result = buildRuntimeContext(makeCodeState({ currentTask: null }));
+  it('returns string even with minimal state', async () => {
+    const result = await buildRuntimeContext(makeCodeState({ currentTask: null }));
     expect(typeof result).toBe('string');
+  });
+
+  it('includes Existing Codebase Files section when manifest is populated', async () => {
+    const result = await buildRuntimeContext(makeCodeState({
+      _existingCodebaseFiles: ['codebase/src/app.ts', 'codebase/src/utils.ts'],
+    }));
+    expect(result).toContain('Existing Codebase Files');
+    expect(result).toContain('codebase/src/app.ts');
+    expect(result).toContain('codebase/src/utils.ts');
+    expect(result).toContain('edit_file');
+  });
+
+  it('omits Existing Codebase Files section when manifest is empty', async () => {
+    const result = await buildRuntimeContext(makeCodeState({
+      _existingCodebaseFiles: [],
+    }));
+    expect(result).not.toContain('Existing Codebase Files');
   });
 });
 

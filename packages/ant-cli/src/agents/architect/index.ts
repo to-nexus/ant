@@ -414,7 +414,6 @@ export async function architectAgent(
           retries: 0,
           maxRetries: 3,  // ✅ Allow multiple retries for dependency fixes
           completedTasksDetails: [],  // ✅ Initialize completedTasksDetails
-          referenceCodeContexts: [],  // ✅ Initialize reference code contexts
           subtaskIndex: 0,
           totalSubtasks: 0,
           _httpJobId: resolvedJobId,  // ✅ For real-time tracking and resume

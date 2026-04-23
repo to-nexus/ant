@@ -13,9 +13,9 @@
 **Constraint**: Your FIRST actions MUST be observing the codebase structure and source code.
 Do NOT write any test file before understanding the actual code's coupling and abstraction boundaries.
 
-- Config and source files are pre-loaded in your context — observe them for test targets.
-- Directory structure is pre-loaded in your context — do NOT use `list_files` for exploration.
-- `read_file` is permitted for source files that need deeper inspection to determine test strategy.
+- The `Existing Codebase Files` section (below) lists every file under `codebase/` at task start — use it as your project structure reference instead of `list_files`.
+- The `Modify Targets — Current Content` section (below) carries current content of every `plan.modify` target.
+- `read_file` is required for source files whose content is NOT in `Modify Targets`; batch these reads upfront rather than discovering incrementally.
 
 ### Test Generation Constraints
 
