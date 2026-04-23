@@ -8,17 +8,16 @@ You are applying code fixes based on a diagnostic remediation plan that was gene
 
 **Build, runtime, and test errors ONLY.** Feature completeness is the responsibility of feature tasks, not this task.
 
-## Pre-loaded Context
+## Codebase Awareness
 
-Configuration files, entry points, and the directory tree are already in your context. Use them directly — do NOT re-read or re-list what is already provided.
+This prompt surfaces two file-awareness channels — consult them before calling `list_files` or `read_file`:
 
-| Context | Use for |
-|---------|---------|
-| **Config files** (go.mod, package.json, Makefile, etc.) | Build commands, dependencies |
-| **Infrastructure files** (docker-compose.yml, etc.) | Whether infrastructure is required |
-| **Entry point** (main.go, index.ts, etc.) | Environment variable requirements |
-| **Environment files** (.env.example, .env) | Connection configuration |
-| **Directory tree** | Project structure — do NOT call `list_files` |
+| Channel | What it carries | Use for |
+|---------|-----------------|---------|
+| `Existing Codebase Files` section (below) | Path list of every file under `codebase/` at task start | Dispatch: path present → `edit_file`; path absent → `<file>` |
+| `Modify Targets — Current Content` section (below) | Current on-disk content of every `plan.modify` target | Build exact `edit_file` `old_str` without a prior `read_file` |
+
+Fall back to `list_files` / `read_file` only when a path is not covered by either section (e.g. config or entry-point files not listed in the remediation plan's modify set).
 
 ## Constraints
 

@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { prepareDesignDocument } from '../src/agents/architect/graph/code/nodes/decompose/designSelector';
 import { compactContent } from '../src/core/utils/contentCompactor';
 import { resolveToRAC } from '@ant/shared';
-import type { ResolvedActionContext, ActionMetadata, ResolvedArtifact } from '@ant/shared';
+import type { ResolvedActionContext } from '@ant/shared';
 
 function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
@@ -17,20 +17,6 @@ function deepClone<T>(obj: T): T {
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
-
-function makeAssembledContext(overrides?: Partial<any>): any {
-  return {
-    referenceCodeContexts: [],
-    stats: {
-      hasProjectCode: false,
-      hasDesignDoc: false,
-      hasDirective: false,
-      hasMemory: false,
-      hasMissingDependency: false,
-    },
-    ...overrides,
-  } as any;
-}
 
 function makeResolvedAction(overrides?: Partial<ResolvedActionContext>): ResolvedActionContext {
   return {
