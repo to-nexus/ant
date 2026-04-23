@@ -84,9 +84,9 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       assetsList: assetsList || '',
       figmaPopulated: figmaPopulated || false,
       hasUiDocs: await hasUiDocsOnDisk(featurePath),
-      hasUiTokens: await fileExistsInDirs('ui-tokens.json', featurePath),
-      hasUiAssets: await fileExistsInDirs('ui-assets.json', featurePath),
-      hasUiSpec: await fileExistsInDirs('ui-spec.json', featurePath),
+      hasUiTokens: await fileExistsInAntDir('ui-tokens.json', featurePath),
+      hasUiAssets: await fileExistsInAntDir('ui-assets.json', featurePath),
+      hasUiSpec: await fileExistsInAntDir('ui-spec.json', featurePath),
       hasSystemDocs,
       hasSystemDesign: existingDocNames.some(f => f.startsWith('be-system-') || f.startsWith('fe-system-')),
       hasApiContract: existingDocNames.some(f => f.startsWith('api-contract-')),
@@ -512,18 +512,19 @@ async function scanInputs(featurePath: string) {
   return { hasReferences, referencesList, hasAssets, assetsList, uiAssetsList, uiReferences };
 }
 
-async function fileExistsInDirs(filename: string, featurePath: string): Promise<boolean> {
-  const uiDir = path.join(featurePath, DESIGN_DIR, DESIGN_SUBDIR.UI);
-  const outputsDir = path.join(featurePath, DESIGN_DIR);
-  for (const dir of [uiDir, outputsDir]) {
-    try { await fsp.access(path.join(dir, filename)); return true; } catch { /* next */ }
+async function fileExistsInAntDir(filename: string, featurePath: string): Promise<boolean> {
+  const antDir = path.join(featurePath, DESIGN_DIR, DESIGN_SUBDIR.UI, 'ant');
+  try {
+    await fsp.access(path.join(antDir, filename));
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 }
 
 async function hasUiDocsOnDisk(featurePath: string): Promise<boolean> {
-  const tokens = await fileExistsInDirs('ui-tokens.json', featurePath);
-  const assets = await fileExistsInDirs('ui-assets.json', featurePath);
-  const spec = await fileExistsInDirs('ui-spec.json', featurePath);
+  const tokens = await fileExistsInAntDir('ui-tokens.json', featurePath);
+  const assets = await fileExistsInAntDir('ui-assets.json', featurePath);
+  const spec = await fileExistsInAntDir('ui-spec.json', featurePath);
   return tokens && assets && spec;
 }

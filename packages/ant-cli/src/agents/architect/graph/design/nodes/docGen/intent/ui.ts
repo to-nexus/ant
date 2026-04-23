@@ -93,13 +93,8 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
     : selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
   if (taskSourceFiles?.length) {
     selectedDocs = selectedDocs.filter(a =>
-      taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
+      taskSourceFiles.some(f => a.path.endsWith('/' + f)),
     );
-  }
-
-  // Figma config injection (may not be in pool)
-  if (figmaMode && state.figmaConfig && !selectedDocs.some(a => a.path.endsWith('figma.json'))) {
-    selectedDocs.push({ path: 'inputs/sources/figma.json', content: JSON.stringify(state.figmaConfig, null, 2), role: 'context' });
   }
 
   const refs = selectedDocs.filter(a => a.role === 'ref');
@@ -169,7 +164,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
-            sourceDocs: selectedDocs.length > 0 ? `[${selectedDocs.reduce((s, a) => s + (a.content?.length || 0), 0)} chars, refs=${refs.length}, ctx=${allContext.length}]` : undefined,
+            sourceDocs: selectedDocs.length > 0 ? `[${selectedDocs.reduce((s, a) => s + (a.content?.length || 0), 0)} chars, refs=${refs.length}, ctx=${ctx.length}]` : undefined,
             previousDocs: previousDocs ? `[${(previousDocs as string).length} chars]` : undefined,
             uiReferences: state.uiReferences ? {
               count: state.uiReferences.length,
@@ -221,7 +216,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   let freshSourceArtifacts = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
   if (freshTaskSourceFiles?.length) {
     freshSourceArtifacts = freshSourceArtifacts.filter(a =>
-      freshTaskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
+      freshTaskSourceFiles.some(f => a.path.endsWith('/' + f)),
     );
   }
   if (freshSourceArtifacts.length > 0) {
@@ -312,7 +307,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
-            sourceDocs: freshCombinedSource ? `[${freshCombinedSource.length} chars]` : undefined,
+            sourceDocs: freshSourceArtifacts.length > 0 ? `[${freshSourceArtifacts.reduce((s, a) => s + (a.content?.length || 0), 0)} chars, count=${freshSourceArtifacts.length}]` : undefined,
             previousDocs: freshPreviousDocs ? `[${freshPreviousDocs.length} chars]` : undefined,
             isUiTokensTask,
             isUiSpecTask,

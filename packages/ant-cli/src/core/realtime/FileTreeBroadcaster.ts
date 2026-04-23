@@ -26,6 +26,7 @@ import {
 } from './types';
 import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
 import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
+import { ensureCanonicalStructure } from '../utils/sessionPaths';
 import { GitChangeBroadcaster } from './GitChangeBroadcaster';
 
 // File patterns to exclude from tree
@@ -112,10 +113,16 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
     }
     
     try {
-      // 1. Build file tree from filesystem
+      // 1. Reconcile canonical structure BEFORE scanning so the cached tree always
+      // reflects the current CANONICAL_FEATURE_DIRS. Without this the worker
+      // overwrites the API-server-reconciled tree (from FileOperationService.getFileTree)
+      // with a stale snapshot, which hides newly added canonical dirs for 24h (cache TTL).
+      await ensureCanonicalStructure(this.projectPath);
+
+      // 2. Build file tree from filesystem
       const tree = await this.buildFileTree(this.projectPath);
 
-      // 2. Cache in Redis for cross-pod initial state (bypasses NFS attribute caching)
+      // 3. Cache in Redis for cross-pod initial state (bypasses NFS attribute caching)
       const cacheKey = `${REDIS_KEYS.ARTIFACTS.FILETREE}${userContext.userId}:${projectId}:${featureName}`;
       await this.pubRedis.set(cacheKey, JSON.stringify(tree), 'EX', REDIS_TTL.ARTIFACTS.FILETREE);
 
