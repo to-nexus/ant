@@ -60,16 +60,31 @@ export interface BasisSlotConfig {
  *
  * Visual Tier is conceptually a policy for UI-producing artifacts.
  * BasisSlotConfig.visualTier = true declares "possible", not "always required".
- * For stack === 'backend' artifacts, visual tier is meaningless and must be
- * suppressed across every surface (wizard tab, summary row, decompose merge,
- * prompt injection). All four surfaces read this single predicate.
+ *
+ * Three axes suppress Visual Tier across every surface (FE wizard tab, FE
+ * summary row, BE decompose merge, BE prompt injection):
+ *
+ * 1. `basisSlot.visualTier === false` (or missing) — intent does not opt in.
+ * 2. `techTier.stack === 'backend'` — visual policy meaningless for backend-only.
+ * 3. `hasUiDoc === true` — a UI design document (ant / figma / handoff) is
+ *    already present as ref or context in the RAC. The UI doc IS the design
+ *    system authority; a parallel visualTier would be redundant and
+ *    potentially conflicting. "Present" means the user selected the doc into
+ *    a RAC slot, NOT that it merely exists in the workspace.
+ *
+ * All four surfaces read this single predicate. BE surfaces source `hasUiDoc`
+ * from `ArtifactPoolView.hasUi()` over the post-RAC pool; FE surfaces source
+ * it from `pathsContainUiDoc(actionMetadata.refs + context)`.
  */
 export function isVisualTierActive(
   basisSlot: BasisSlotConfig | undefined,
   techTier: import('./rac').TechTierConfig | undefined,
+  hasUiDoc?: boolean,
 ): boolean {
   if (!basisSlot?.visualTier) return false;
-  return techTier?.stack !== 'backend';
+  if (techTier?.stack === 'backend') return false;
+  if (hasUiDoc) return false;
+  return true;
 }
 
 export interface ConfigSlots {
@@ -217,7 +232,7 @@ const UI_SOURCE_SUBGROUPS: UiSourceSubgroup[] = [
     id: 'handoff',
     dir: 'outputs/design/ui/handoff',
     label: { en: 'Handoff', ko: '핸드오프' },
-    humanLabel: { en: 'Handoff File Bundle (free-form html/css/md/json/png)', ko: '핸드오프 파일 번들 (html/css/md/json/png 자유 형식)' },
+    humanLabel: { en: 'Handoff (CLAUDE DESIGN)', ko: '핸드오프 (CLAUDE DESIGN)' },
   },
 ];
 
