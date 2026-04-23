@@ -6,6 +6,9 @@
  */
 
 import { UserContext } from '../types/user';
+import type { FileNode, FileResource } from '@ant/shared';
+
+export type { FileNode, FileResource };
 
 export interface LogEntry {
   type: 'info' | 'stdout' | 'stderr' | 'error';
@@ -59,18 +62,6 @@ export interface Feature {
   createdAt?: string;
 }
 
-export interface FileNode {
-  name: string;
-  path: string;
-  type: 'file' | 'directory';
-  children?: FileNode[];
-}
-
-export interface FileContent {
-  path: string;
-  content: string;
-  mimeType?: string;
-}
 
 /**
  * Job Execution Port

@@ -24,8 +24,8 @@ export function createFileTreeSseHandler(get: any): (data: any) => void {
       const oldFigma = findFigmaJsonNode(get().fileTree);
       const newFigma = findFigmaJsonNode(tree);
       const figmaChanged =
-        (oldFigma?.size !== newFigma?.size) ||
-        (oldFigma?.modifiedTime !== newFigma?.modifiedTime) ||
+        (oldFigma?.meta?.size !== newFigma?.meta?.size) ||
+        (oldFigma?.meta?.mtime !== newFigma?.meta?.mtime) ||
         (!oldFigma && !!newFigma) ||
         (!!oldFigma && !newFigma);
 

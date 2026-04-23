@@ -210,6 +210,80 @@ comments.
 
 ---
 
+## 7.5 Remote Resource Single-SSOT
+
+A "remote resource" is any entity whose authoritative state lives on the
+server (file content, project config, git status, …). The following rules
+extend §2 specifically for these resources.
+
+### 7.5.1 One resource, one slice, one subscriber graph
+
+The resource's content, its metadata, its dirty edit buffer, and its save
+status are **all the same remote resource** and MUST live in the same
+slice. If two surfaces need to render or mutate the same resource, they
+subscribe to the same slice.
+
+- Forbidden: loading the body into component-local `useState<string>` and
+  reading the metadata from a different slice.
+- Forbidden: mutating a resource without a single slice action. Save,
+  discard, stale, and reload belong to the slice as named actions.
+- Canonical example: `currentFile: AsyncFields<FileResource> & { buffer,
+  savingStatus }` in [fileSlice.ts](../../packages/ant-ui/src/domain/store/slices/fileSlice.ts).
+  Every editor surface (body, header template warning, save button,
+  dirty indicator) subscribes to `currentFile` — none of them holds the
+  remote body in local state.
+
+### 7.5.2 Mutate-with-ground-truth response
+
+A mutating endpoint (`PUT` / `POST` / `PATCH`) MUST return the resource
+as computed by the server. The frontend replaces its slice `data` with
+that response — it does not wait for SSE, polling, or a follow-up GET.
+
+- The server is the only place that can recompute derived metadata
+  (e.g. `FileResource.meta.isTemplate`). The frontend must not re-derive
+  metadata from a local write; it must read it from the response.
+- If the backend cannot recompute ground truth in the mutation handler
+  (rare), the slice performs an explicit refetch in the same action and
+  only then flips `savingStatus` to `idle`. A bare "fire PUT, wait for
+  SSE" pattern is forbidden — it couples UI correctness to SSE arrival.
+
+### 7.5.3 SSE is for foreign mutations, not self-echoes
+
+SSE events exist to tell the frontend about changes that came from
+**another source**: a different tab, another client, a background agent,
+an external tool. For the mutation the current tab just issued, the
+response body is the truth.
+
+- Slices compare an echo token (`mtime`, `rev`, `etag`, …) between the
+  SSE payload and the resource they just wrote. If they match, the SSE
+  is suppressed.
+- When the tokens differ, the slice transitions to `refreshing: true`
+  and re-fetches (e.g. `markCurrentFileStale`). It never drops the
+  user's dirty buffer in the process.
+- Consequence: a UI surface correctness is never gated on SSE arrival.
+  Disconnected SSE only delays notification of other clients' changes;
+  it does not cause local stale state.
+
+### 7.5.4 No parallel ghost surfaces
+
+When refactoring a remote resource into this pattern, delete — do not
+leave — the old surfaces in the same change:
+
+- Legacy fields on the slice whose only consumer is dead code.
+- Reload-trigger counters / targets whose publisher is disconnected.
+- HTTP routes that bypass the service layer (e.g. raw `fs.writeFile`
+  instead of the service write path). A single write path guarantees
+  identical normalisation (template marker stripping, etc.) and identical
+  meta recomputation for every client.
+- Duplicate inline implementations of the server meta computation
+  (tree builder vs. single-file reader). Extract one helper and share.
+
+If you find a parallel surface that "happens to work today", the next
+drift in logic will break one of them silently. Remove it in the same
+PR that introduces the SSOT slice.
+
+---
+
 ## 8. Rollback
 
 Each migration step is one commit behind its predecessor. The order

@@ -19,6 +19,7 @@
  *   - file-descriptions.ts  : FILE_DESCRIPTIONS
  *   - deploy.ts             : DeployConfig
  *   - git.ts                : GitStatusResponse, GitChangesResponse, FileChange
+ *   - file-resource.ts      : FileResource, FileResourceMeta, FileNode, TemplateReason
  */
 
 export * from './job';
@@ -41,3 +42,4 @@ export * from './sse-events';
 export * from './verification-scenario';
 export * from './git';
 export * from './session-log';
+export * from './file-resource';

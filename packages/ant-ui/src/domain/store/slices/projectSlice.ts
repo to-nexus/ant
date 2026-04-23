@@ -100,7 +100,7 @@ export const createProjectSlice: StateCreator<
       } as any);
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
-      if (state.setFileContent) state.setFileContent(undefined);
+      if (state.resetCurrentFile) state.resetCurrentFile();
       if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
       // Scrub Git / project config SSOT so the old project's data can't
       // flash into the next project's UI. Re-fetch is driven by useGitRefresh.
@@ -141,7 +141,7 @@ export const createProjectSlice: StateCreator<
       } as any);
       if (state.selectFile) state.selectFile(undefined);
       if (state.setFileTree) state.setFileTree([]);
-      if (state.setFileContent) state.setFileContent(undefined);
+      if (state.resetCurrentFile) state.resetCurrentFile();
       if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
       // Scrub previous project's Git state so `deriveGitMenuState` sees
       // `{kind: 'loading'}` until the new project's data arrives. Re-fetch
@@ -241,7 +241,7 @@ export const createProjectSlice: StateCreator<
     // Clear related state from other slices
     if (state.selectFile) state.selectFile(undefined);
     if (state.setFileTree) state.setFileTree([]);
-    if (state.setFileContent) state.setFileContent(undefined);
+    if (state.resetCurrentFile) state.resetCurrentFile();
     if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
     // Drop the outgoing feature's git state so the next feature enters
     // `{kind: 'loading'}` instead of showing stale commit/push counts. The

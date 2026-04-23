@@ -1,9 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { FileNode, FileResource } from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
-import { isTemplateContent, normalizeTemplateDoc, getTemplateReason } from '../../../../../core/utils/templateDetector';
+import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
+import { computeFileMeta, shouldEvaluateTemplate } from '../../../../../core/utils/computeFileMeta';
 
 const TREE_EXCLUDE = new Set([
   'node_modules',
@@ -17,6 +19,9 @@ const TREE_EXCLUDE = new Set([
  * FileOperationService
  * 
  * Handles file and directory operations within features.
+ * 
+ * Every file-meta surface (tree / read / write) routes template state
+ * computation through `computeFileMeta` — there is no inline duplication.
  * 
  * Deletion / clearing behavior:
  * - Canonical directories (defined in CANONICAL_FEATURE_DIRS): contents cleared,
@@ -37,35 +42,37 @@ export class FileOperationService {
   private async smartClearDirectory(dirPath: string, relativePath: string): Promise<void> {
     return clearCanonicalDirectory(dirPath, relativePath);
   }
+
+  private resolveFullPath(projectId: string, featureName: string, filePath: string, userContext: UserContext): { featurePath: string; fullPath: string } {
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const fullPath = path.join(featurePath, filePath);
+    if (!fullPath.startsWith(featurePath)) {
+      throw new Error('Invalid file path');
+    }
+    return { featurePath, fullPath };
+  }
   
   /**
    * Get file tree for a feature
    */
-  async getFileTree(projectId: string, featureName: string, userContext: UserContext): Promise<any> {
+  async getFileTree(projectId: string, featureName: string, userContext: UserContext): Promise<FileNode[]> {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
     // Reconcile canonical dirs/files for existing features (retroactive for newly added entries)
     await ensureCanonicalStructure(featurePath);
 
-    const buildTree = async (dirPath: string, relativePath: string = ''): Promise<any> => {
+    const buildTree = async (dirPath: string, relativePath: string = ''): Promise<FileNode[]> => {
       let items: fs.Dirent[] = [];
       try {
-        // ✅ Use Dirent to sort directories-first without extra stat calls
         items = await fs.promises.readdir(dirPath, { withFileTypes: true });
-      } catch (err) {
-        // 폴더가 없으면 빈 배열 반환
+      } catch {
         return [];
       }
-      
-      const tree: any[] = [];
 
-      // ✅ 빈 폴더일 경우 빈 배열 반환 (children: []로 처리됨)
-      // 자기 자신을 다시 반환하지 않음 (design/design 중복 버그 수정)
       if (items.length === 0) {
         return [];
       }
 
-      // ✅ Sort: directories first, then files; both by name
       const sorted = items
         .filter(d => !d.name.startsWith('.') && !TREE_EXCLUDE.has(d.name))
         .sort((a, b) => {
@@ -75,8 +82,8 @@ export class FileOperationService {
           return a.name.localeCompare(b.name);
         });
 
+      const tree: FileNode[] = [];
       for (const item of sorted) {
-
         const fullPath = path.join(dirPath, item.name);
         const itemRelativePath = relativePath ? `${relativePath}/${item.name}` : item.name;
 
@@ -86,36 +93,39 @@ export class FileOperationService {
             name: item.name,
             path: itemRelativePath,
             type: 'directory',
-            children
+            children,
           });
-        } else {
-          const node: any = {
-            name: item.name,
-            path: itemRelativePath,
-            type: 'file'
-          };
-
-          try {
-            const stats = await fs.promises.stat(fullPath);
-            node.size = stats.size;
-            node.modifiedTime = stats.mtime.toISOString();
-          } catch { /* skip stat failures */ }
-
-          if (itemRelativePath.startsWith('inputs/sources/')) {
-            try {
-              const content = await fs.promises.readFile(fullPath, 'utf-8');
-              const result = getTemplateReason(content, node.size ?? 0);
-              if (result.reason) {
-                node.isTemplate = true;
-                node.templateReason = result.reason;
-                if (result.contentLength !== undefined) node.templateContentLength = result.contentLength;
-                if (result.threshold !== undefined) node.templateThreshold = result.threshold;
-              }
-            } catch { /* skip read failures */ }
-          }
-
-          tree.push(node);
+          continue;
         }
+
+        let size = 0;
+        let mtimeMs = 0;
+        try {
+          const stats = await fs.promises.stat(fullPath);
+          size = stats.size;
+          mtimeMs = stats.mtimeMs;
+        } catch { /* skip stat failures */ }
+
+        let content: string | null = null;
+        if (shouldEvaluateTemplate(itemRelativePath)) {
+          try {
+            content = await fs.promises.readFile(fullPath, 'utf-8');
+          } catch { /* skip read failures */ }
+        }
+
+        const meta = computeFileMeta({
+          relativePath: itemRelativePath,
+          content,
+          size,
+          mtime: mtimeMs,
+        });
+
+        tree.push({
+          name: item.name,
+          path: itemRelativePath,
+          type: 'file',
+          meta,
+        });
       }
 
       return tree;
@@ -123,13 +133,12 @@ export class FileOperationService {
 
     try {
       const tree = await buildTree(featurePath);
-      // 최상위 featurePath가 비어있으면 빈 폴더 반환
       if (tree.length === 0) {
         return [{
           name: path.basename(featurePath),
           path: '',
           type: 'directory',
-          children: []
+          children: [],
         }];
       }
       return tree;
@@ -139,42 +148,42 @@ export class FileOperationService {
         name: path.basename(featurePath),
         path: '',
         type: 'directory',
-        children: []
+        children: [],
       }];
     }
   }
   
   /**
-   * Read file content
+   * Read file as a FileResource (content + ground-truth meta).
    */
-  async readFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<string> {
-    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const fullPath = path.join(featurePath, filePath);
-    
-    // Security: prevent path traversal
-    if (!fullPath.startsWith(featurePath)) {
-      throw new Error('Invalid file path');
-    }
-    
-    return await fs.promises.readFile(fullPath, 'utf-8');
+  async readFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<FileResource> {
+    const { fullPath } = this.resolveFullPath(projectId, featureName, filePath, userContext);
+
+    const [content, stats] = await Promise.all([
+      fs.promises.readFile(fullPath, 'utf-8'),
+      fs.promises.stat(fullPath),
+    ]);
+
+    const meta = computeFileMeta({
+      relativePath: filePath,
+      content,
+      size: stats.size,
+      mtime: stats.mtimeMs,
+    });
+
+    return { projectId, featureName, path: filePath, content, meta };
   }
   
   /**
-   * Write file content
+   * Write file content and return the ground-truth FileResource (normalized
+   * content + recomputed meta). This is the single mutation surface for text
+   * files; HTTP PUT routes MUST delegate here.
    */
-  async writeFile(projectId: string, featureName: string, filePath: string, content: string, userContext: UserContext): Promise<void> {
-    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const fullPath = path.join(featurePath, filePath);
-    
-    // Security: prevent path traversal
-    if (!fullPath.startsWith(featurePath)) {
-      throw new Error('Invalid file path');
-    }
-    
-    // Ensure directory exists
+  async writeFile(projectId: string, featureName: string, filePath: string, content: string, userContext: UserContext): Promise<FileResource> {
+    const { fullPath } = this.resolveFullPath(projectId, featureName, filePath, userContext);
+
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
 
-    // Auto-strip ant:template marker when user saves real content in sources
     let finalContent = content;
     if (filePath.startsWith('inputs/sources/')) {
       const normalized = normalizeTemplateDoc(content);
@@ -184,6 +193,16 @@ export class FileOperationService {
     }
 
     await fs.promises.writeFile(fullPath, finalContent, 'utf-8');
+
+    const stats = await fs.promises.stat(fullPath);
+    const meta = computeFileMeta({
+      relativePath: filePath,
+      content: finalContent,
+      size: stats.size,
+      mtime: stats.mtimeMs,
+    });
+
+    return { projectId, featureName, path: filePath, content: finalContent, meta };
   }
   
   /**
@@ -193,14 +212,8 @@ export class FileOperationService {
    * - Files: deleted
    */
   async deleteFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<void> {
-    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const fullPath = path.join(featurePath, filePath);
-    
-    // Security: prevent path traversal
-    if (!fullPath.startsWith(featurePath)) {
-      throw new Error('Invalid file path');
-    }
-    
+    const { fullPath } = this.resolveFullPath(projectId, featureName, filePath, userContext);
+
     const stat = await fs.promises.stat(fullPath);
     
     if (stat.isDirectory()) {
@@ -230,16 +243,13 @@ export class FileOperationService {
     for (const file of files) {
       const fullPath = path.join(featurePath, file.path);
       
-      // Security: prevent path traversal
       if (!fullPath.startsWith(featurePath)) {
         throw new Error(`Invalid file path: ${file.path}`);
       }
       
-      // Ensure directory exists
       await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
       
       await fs.promises.writeFile(fullPath, file.content);
     }
   }
 }
-
