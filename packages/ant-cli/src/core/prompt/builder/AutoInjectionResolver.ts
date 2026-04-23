@@ -249,13 +249,18 @@ export class AutoInjectionResolver {
    * outside PromptBuilder (e.g. design docGen logging) reuse the same
    * decision logic instead of duplicating the framework/language mapping.
    *
-   * Code job scope: `taskType ∈ {verification, error, ui, feature, setup}`.
-   * Blind-spot hints are prevention knowledge (forbidden patterns, version
-   * boundaries) — they must reach the LLM at WRITE time (feature/setup) too,
-   * not only at diagnosis time (verification/error). Hints complement, rather
-   * than duplicate, the dedicated `setup/config` injection. `test-code` and
-   * `doc` task types remain excluded — the framework blind-spot catalog is
-   * not relevant to test scaffolding or documentation authoring.
+   * Code job scope: `taskType ∈ {verification, error, ui, feature, setup,
+   * test-code}`. Blind-spot hints are prevention knowledge (forbidden
+   * patterns, version boundaries, toolchain compatibility) — they must
+   * reach the LLM at WRITE time (feature / setup / test-code) as well as
+   * diagnosis time (verification / error). `test-code` was previously
+   * excluded on the assumption that "test scaffolding does not need
+   * framework hints"; in practice test configuration (Jest ↔ SWC/Babel,
+   * jsdom versions, `"type": "module"` interactions) is one of the most
+   * framework-sensitive surfaces in a code job, so the hints now reach it
+   * as well. Hints complement, rather than duplicate, the dedicated
+   * `setup/config` injection. `doc` and `explain` remain excluded — they
+   * do not generate buildable code.
    *
    * Design job scope: all task types when language/framework are detectable.
    */
@@ -269,7 +274,7 @@ export class AutoInjectionResolver {
     const language = this.resolveTechTierLanguage(tiers);
 
     if (job === 'code') {
-      const injectable = ['verification', 'error', 'ui', 'feature', 'setup'].includes(taskType ?? '');
+      const injectable = ['verification', 'error', 'ui', 'feature', 'setup', 'test-code'].includes(taskType ?? '');
       if (!injectable) return paths;
       if (framework) paths.push(`jobs/code/basis/techTier/framework/${framework}`);
       if (language) paths.push(`jobs/code/basis/techTier/language/${language}`);

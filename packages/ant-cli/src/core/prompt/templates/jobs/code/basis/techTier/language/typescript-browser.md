@@ -1,21 +1,12 @@
 # TypeScript (Browser) Hints
 
-Blind-spot reminders. Pre-training gap only.
+Blind-spot reminders. Pre-training gap only. Framework-specific React / Next.js pitfalls live in `framework/react.md` and `framework/nextjs.md` — this file covers language-level and generic browser-tooling blind spots only.
 
 ## Forbidden Patterns
 
 - Importing Node-only modules (`fs`, `path`, `crypto`, `child_process`) in client code → bundler emits "Module not found" only when reachable.
-- `typeof window` / `document` branches changing rendered JSX → SSR hydration mismatch.
 - Recent Web APIs (`Intl.Segmenter`, `structuredClone`) without checking browserslist.
 - Side-effectful top-level module code (`new WebSocket(...)`) in SSR-shared modules → connection at build/server time.
-
-## Symptom → Upstream Cues
-
-If the shim repeats across ≥ 5 files, fix upstream:
-
-- Many files adding `import type { JSX } from 'react'` → React 19. Verify `@types/react` and tsconfig `jsx`.
-- Repeated `// @ts-expect-error` near one library → types are wrong; use `skipLibCheck` or declaration override.
-- Every component re-exporting its own props type → shared `types.ts` is missing.
 
 ## Version Notes
 

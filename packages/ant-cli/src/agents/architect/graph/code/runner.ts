@@ -75,10 +75,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
           initial.referenceRequests = session.state.referenceRequests;
         }
         
-        if (session.state.designDocUnknownPackages) {
-          initial.designDocUnknownPackages = session.state.designDocUnknownPackages;
-        }
-        
         if (session.state.profile) {
           initial.profile = session.state.profile;
         }
@@ -220,7 +216,6 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
             ...(session.state.jobTiming && { jobTiming: session.state.jobTiming }),
             ...(session.state.resolvedAction && { resolvedAction: session.state.resolvedAction }),
             ...(session.state.referenceRequests && { referenceRequests: session.state.referenceRequests }),
-            ...(session.state.designDocUnknownPackages && { designDocUnknownPackages: session.state.designDocUnknownPackages }),
           } as any;
           if (session.state.userLanguage) {
             state.context.userLanguage = session.state.userLanguage;

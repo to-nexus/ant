@@ -12,9 +12,8 @@
  *
  * Currently registered tags:
  * - <done>, <learn_command>, <tasks>, <references>, <detect>       — formatted
- * - <executionTier>, <prescribedDependencies>                       — formatted
+ * - <executionTier>                                                 — formatted
  * - <techTier>, <boundary>, <directHints>, <specClarify>            — suppressed (internal)
- * - <unknownPackages>                                               — legacy alias of <prescribedDependencies>
  */
 
 import { UserLanguage, getCompletionMessage } from '../../utils/languageDetector';
@@ -100,16 +99,6 @@ export class SpecialTagTransformer {
     this.register({
       pattern: /<executionTier>\s*([\s\S]*?)\s*<\/executionTier>/i,
       transform: (match, language) => this.transformExecutionTier(match, language)
-    });
-
-    // 7. <prescribedDependencies> (+ legacy <unknownPackages> alias) — new deps declared by design
-    this.register({
-      pattern: /<prescribedDependencies>\s*([\s\S]*?)\s*<\/prescribedDependencies>/i,
-      transform: (match, language) => this.transformPrescribedDependencies(match, language)
-    });
-    this.register({
-      pattern: /<unknownPackages>\s*([\s\S]*?)\s*<\/unknownPackages>/i,
-      transform: (match, language) => this.transformPrescribedDependencies(match, language)
     });
 
     // 8. Suppressed canonical tags — consumed without output.
@@ -431,28 +420,5 @@ export class SpecialTagTransformer {
     };
   }
 
-  /**
-   * `<prescribedDependencies>[...]</prescribedDependencies>` — new deps
-   * declared by design docs. Legacy `<unknownPackages>` is an alias.
-   * Empty array / non-array → consumed without output.
-   */
-  private transformPrescribedDependencies(match: RegExpMatchArray, language: UserLanguage): TransformResult {
-    try {
-      const body = (match[1] || '').trim();
-      if (!body || body === '[]') return { consumed: true };
-      const parsed = JSON.parse(body);
-      if (!Array.isArray(parsed) || parsed.length === 0) return { consumed: true };
-      const pkgs = parsed.filter((p: unknown): p is string => typeof p === 'string' && p.length > 0);
-      if (pkgs.length === 0) return { consumed: true };
-
-      const isKorean = language === 'ko';
-      const header = isKorean ? `\n📦 **새 의존성**\n` : `\n📦 **New Dependencies**\n`;
-      const bullets = pkgs.map(p => `   • \`${p}\``).join('\n');
-      return { text: `${header}${bullets}\n\n`, consumed: true };
-    } catch (error) {
-      console.warn('[SpecialTagTransformer] Failed to parse prescribedDependencies:', error);
-      return { consumed: true };
-    }
-  }
 }
 

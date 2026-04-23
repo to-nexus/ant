@@ -47,9 +47,9 @@ async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string
 
 export async function handleSearchCode(
   ctx: ToolExecutionContext,
-  args: { pattern: string; file_pattern?: string },
+  args: { pattern: string; file_pattern?: string; include_dependencies?: boolean },
 ): Promise<ToolResult> {
-  const { pattern, file_pattern } = args;
+  const { pattern, file_pattern, include_dependencies } = args;
 
   if (!pattern) {
     return { content: 'search_code requires pattern', error: 'search_code requires pattern' };
@@ -68,7 +68,19 @@ export async function handleSearchCode(
   try {
     const segments = resolvedRoot.fsPath.split('/');
     const isInsideDeps = segments.includes('node_modules') || segments.includes('vendor');
-    const excludes = isInsideDeps ? ['.git'] : DEFAULT_EXCLUDES;
+    // `include_dependencies=true` drops `node_modules` from excludes,
+    // enabling library-grounding searches (e.g., looking up real API shape in
+    // `@types/*.d.ts` when the build error suggests a version boundary). The
+    // default path keeps `node_modules` excluded for performance on routine
+    // project-code searches.
+    let excludes: string[];
+    if (isInsideDeps) {
+      excludes = ['.git'];
+    } else if (include_dependencies) {
+      excludes = DEFAULT_EXCLUDES.filter(e => e !== 'node_modules');
+    } else {
+      excludes = DEFAULT_EXCLUDES;
+    }
 
     console.log(`[searchCode] Ripgrep: ${resolvedRoot.displayPath} (fsPath: ${resolvedRoot.fsPath}, excludes: ${excludes})`);
 

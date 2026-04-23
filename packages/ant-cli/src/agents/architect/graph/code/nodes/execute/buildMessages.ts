@@ -43,9 +43,8 @@ const DEFAULT_PLAN_FRAMING = {
   label: '📋 IMPLEMENTATION PLAN (Structured JSON - FOLLOW EXACTLY)',
   description:
     'The following JSON contains the exact implementation instructions.\n' +
-    '- `prescribedPackages`: External dependencies with discovered API signatures — MUST import and call these APIs in the files listed in `usedBy`\n' +
-    '- `create`: Files to create with integration points\n' +
-    '- `modify`: Files to modify with specific changes\n' +
+    '- `create`: Files to create with integration points. Import paths and observed API signatures of design-prescribed dependencies are inlined in each entry\'s `purpose`.\n' +
+    '- `modify`: Files to modify with specific changes. Dependency signatures relevant to the change are inlined in `changes`.\n' +
     '- `assets`: Asset copy operations (source → destination)',
 } as const;
 
@@ -58,15 +57,16 @@ let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string }
  * plan entry backs this check; we do not introduce a parallel observation
  * path.
  *
- * Active task types: `setup`, `feature`, `design-system`, `ui`, `test-code`.
- * A task that declares or relies on dependencies owns the install within the
- * same cycle — observation + prompt guidance carries that responsibility to
- * the LLM.
+ * Active task types: every code-writing type that can edit `package.json`
+ * or rely on it. That set deliberately includes `verification` and `error`
+ * now — the prior exclusion ("plan already carries `Session.dependencyStatus()`")
+ * was wrong in practice: the plan-phase status lands in the plan template only,
+ * but the actual `edit_file(package.json)` happens in execute. Without the
+ * execute-side injection, the LLM got no "install required" directive right
+ * next to the file-edit tool, leading to plans like "add `@types/jest` and
+ * install" being honored as edit-only (observed in `lean-falling-dwarf`).
  *
  * Excluded task types:
- *   - `verification`, `error` — carry the dependency signal via
- *     `Session.dependencyStatus()` at plan entry; double-injection would
- *     fragment the SSOT.
  *   - `doc`, `explain` — do not modify code / cannot legitimately install.
  *
  * Returns `false` when `areDepsInstalled` reports `null` (non-JS project);
@@ -76,7 +76,6 @@ let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string }
 export async function observeMissingDepsForTask(state: ArchitectGraphState): Promise<boolean> {
   const type = state.currentTask?.type;
   if (!type) return false;
-  if (type === 'verification' || type === 'error') return false;
   if (type === 'doc' || type === 'explain') return false;
   const featureRoot = state.deps?.fileSystem?.getRootPath?.();
   if (!featureRoot) return false;

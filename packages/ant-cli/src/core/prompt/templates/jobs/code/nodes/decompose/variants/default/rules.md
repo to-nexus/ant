@@ -412,23 +412,6 @@ a private package (without the fully-qualified module path) force the Setup exec
 to reconstruct the path — a frequent source of hallucinated module names. Include
 the full path so the executor can copy it directly into the install command.
 
-### Design-Prescribed Dependency Extraction
-
-**Observation target**: Does the design document reference packages that are NOT part of the language standard library and NOT widely-known open-source packages? These are **design-prescribed dependencies** — packages the design document mandates for this project (organization-internal repos, private packages, project-specific libraries).
-
-**Protocol**:
-1. Scan the design document for import paths, module declarations, backtick-quoted package references, and section headings that name packages
-2. For each design-prescribed dependency (not standard library, not widely-known open-source), include its fully-qualified import path in the `<prescribedDependencies>` output
-3. If only a shorthand is given (e.g., `packages/router`), reconstruct the full import path from context (e.g., nearby full-path references, module path prefix, or org prefix in the design document)
-
-**Constraint**: Include ONLY design-prescribed dependencies. Do NOT include well-known open-source packages or standard library packages.
-
-**Constraint**: Output the fully-qualified import path (e.g., `github.com/org/repo/sub/pkg`), not shorthand.
-
-**Constraint**: List each subpackage individually — the plan phase needs to know which specific subpackages to discover via tools.
-
-**Constraint**: If no design-prescribed dependencies exist, output an empty array `[]`.
-
 ---
 
 ## UI Sections (split injection)
@@ -830,16 +813,8 @@ Output in this exact order:
 
 **Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. Feature names become `feature/{name}` branches.
 
-**{{#if needsBoundaryClassification}}5{{else}}4{{/if}}. `<prescribedDependencies>` tag** (REQUIRED, even if empty):
-
-<prescribedDependencies>
-["github.com/org/repo/sub/pkg-a", "github.com/org/repo/sub/pkg-b"]
-</prescribedDependencies>
-
-**Constraint**: ALWAYS output `<prescribedDependencies>` tag, even if the array is empty. See "Design-Prescribed Dependency Extraction" section above for extraction rules.
-
 {{#if visualTierActive}}
-**{{#if needsBoundaryClassification}}6{{else}}5{{/if}}. `<visualTier>` tag** (visual design policy detection):
+**{{#if needsBoundaryClassification}}5{{else}}4{{/if}}. `<visualTier>` tag** (visual design policy detection):
 
 {{> jobs/shared/injections/visual-tier-detection}}
 {{/if}}

@@ -26,7 +26,9 @@
 
 **Constraint**: When you need to read multiple files referenced in build errors, issue ALL reads in ONE response. Do NOT read files one at a time.
 
-**Constraint**: Produce `<plan>` as soon as the failing command's output AND the referenced source file(s) are in context. One `read_file` per source file named in the error is sufficient — do NOT issue follow-up `search_code` calls after the file has been read. If the error message does not name any file, ONE targeted `search_code` is permitted; then produce `<plan>` from the located site.
+**Constraint**: Produce `<plan>` as soon as the failing command's output AND the referenced source file(s) are in context. One `read_file` per source file named in the error is sufficient. If the error message does not name any file, ONE targeted `search_code` is permitted to locate the site.
+
+**Grounding Principle**: When the error references a library symbol, version boundary, or framework API (e.g., `Cannot find namespace 'JSX'`, `ERR_REQUIRE_ESM`, `next/font requires SWC`), verify the real contract in the installed library rather than guessing from pre-training knowledge. Use `search_code` with `include_dependencies: true` or `read_file` on `node_modules/@types/*.d.ts`, `node_modules/<pkg>/package.json`, or the package's actual source. One focused library lookup is cheaper than five rounds of speculative fixes.
 
 ### Gate Re-run Principle
 

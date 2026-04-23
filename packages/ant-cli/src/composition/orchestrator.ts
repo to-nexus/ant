@@ -165,6 +165,7 @@ export async function orchestrator(params: {
           directive: overrideDirective || input,
           projectId: project,
           isResume,
+          actionMetadata,
         }).catch(err => {
           console.warn('[Orchestrator:InlineAsk] Failed to record user_turn:', err);
         });
@@ -273,6 +274,7 @@ export async function orchestrator(params: {
           directive: overrideDirective || input,
           isResume,
           session,
+          actionMetadata,
         }).catch(err => {
           console.warn('[Orchestrator:Design] Failed to record user_turn:', err);
         });
@@ -361,6 +363,7 @@ export async function orchestrator(params: {
           mode,
           isResume,
           session,
+          actionMetadata,
         }).catch(err => {
           console.warn('[Orchestrator:Code] Failed to record user_turn:', err);
         });
@@ -435,6 +438,7 @@ export async function orchestrator(params: {
           directive: overrideDirective || input,
           isResume,
           session,
+          actionMetadata,
         }).catch(err => {
           console.warn('[Orchestrator:Planner] Failed to record user_turn:', err);
         });

@@ -488,6 +488,12 @@
       "partial-ref"
     ]
   },
+  "jobs/code/nodes/decompose/variants/default/output-unit-splitting": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
   "jobs/code/nodes/decompose/variants/default/rules": {
     "sources": [
       "render-call"

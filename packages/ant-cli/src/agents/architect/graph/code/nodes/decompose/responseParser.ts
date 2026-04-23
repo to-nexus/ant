@@ -163,7 +163,6 @@ export interface ParsedDecomposeResponse {
   tasks: CodeTask[];
   referenceRequests?: Array<{project: string; branch?: string; reason?: string}>;
   techTier?: ParsedTechTier;
-  unknownPackages?: string[];
   boundary?: Boundary;
   /**
    * 5-tier execution strategy — LLM emits `<executionTier>N</executionTier>`.
@@ -255,27 +254,6 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     // `<selectedSpec>` was removed — the active spec is derived from RAC
     // role='ref' artifacts at the caller. See `ArtifactPoolView.activeSpecRefFilename()`.
 
-    // Extract design-prescribed dependencies from <prescribedDependencies> tag (OPTIONAL)
-    // Also accepts legacy <unknownPackages> tag for backward compatibility with cached sessions.
-    let unknownPackages: string[] | undefined;
-    const prescribedDepsMatch = rawResponse.match(/<prescribedDependencies>\s*([\s\S]*?)\s*<\/prescribedDependencies>/)
-      || rawResponse.match(/<unknownPackages>\s*([\s\S]*?)\s*<\/unknownPackages>/);
-    if (prescribedDepsMatch) {
-      try {
-        const parsed = JSON.parse(prepareTagJson(prescribedDepsMatch[1]));
-        if (Array.isArray(parsed)) {
-          unknownPackages = parsed.length > 0 ? parsed.filter((p: unknown) => typeof p === 'string' && p.length > 0) : undefined;
-          if (unknownPackages && unknownPackages.length > 0) {
-            console.log(`📦 [Decompose] Design-prescribed dependencies extracted: ${unknownPackages.join(', ')}`);
-          }
-        } else {
-          console.warn('⚠️  [Decompose] <prescribedDependencies> tag content is not an array, ignoring');
-        }
-      } catch (error) {
-        console.warn('⚠️  [Decompose] Failed to parse <prescribedDependencies> tag content:', error);
-      }
-    }
-
     let boundary: Boundary | undefined;
     const boundaryMatch = rawResponse.match(/<boundary>\s*(heavyweight|lightweight)\s*<\/boundary>/i);
     if (boundaryMatch) {
@@ -340,7 +318,6 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       tasks,
       referenceRequests,
       techTier,
-      unknownPackages,
       boundary,
       executionTier,
       directHints,

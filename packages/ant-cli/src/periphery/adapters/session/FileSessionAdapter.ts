@@ -350,7 +350,7 @@ export class FileSessionAdapter implements SessionPort {
    */
   async appendUserTurn(
     line: FeatureUserTurnLine,
-    options: { skipFeature?: boolean } = {},
+    options: { skipFeature?: boolean; actionMetadata?: import('@ant/shared').ActionMetadata } = {},
   ): Promise<void> {
     // 1. feature.jsonl에 append (skipFeature가 true면 건너뜀). 실패 시 throw.
     if (!options.skipFeature) {
@@ -370,6 +370,7 @@ export class FileSessionAdapter implements SessionPort {
       jobType: line.jobType,
       text: line.text,
       sourceRef,
+      ...(options.actionMetadata && Object.keys(options.actionMetadata).length > 0 && { actionMetadata: options.actionMetadata }),
     };
     try {
       await this.appendLine('chat', chatCopy);

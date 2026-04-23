@@ -127,10 +127,13 @@ describe('Code job techTier injection — golden snapshot', () => {
     ]);
   });
 
-  it('test-code task → no hint injection (not relevant to test scaffolding)', () => {
+  it('test-code task → both framework + language hints injected (test config is framework-sensitive)', () => {
     expect(
       codePaths([{ framework: 'nextjs', language: 'typescript', stack: 'frontend' }], 'test-code'),
-    ).toEqual([]);
+    ).toEqual([
+      'jobs/code/basis/techTier/framework/nextjs',
+      'jobs/code/basis/techTier/language/typescript-browser',
+    ]);
   });
 
   it('doc task → no hint injection (not relevant to documentation authoring)', () => {

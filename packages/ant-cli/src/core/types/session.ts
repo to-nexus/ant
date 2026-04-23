@@ -202,9 +202,6 @@ export interface SessionState {
   estimatingStartedAt?: number;
   estimatingNodeId?: string;
 
-  // Code Job: design-prescribed dependencies
-  designDocUnknownPackages?: string[];
-
   // Design Job: Figma & UI
   figmaConfig?: any;
   figmaExplorationResult?: any;

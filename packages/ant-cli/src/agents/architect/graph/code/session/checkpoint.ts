@@ -69,7 +69,6 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       overrideDirective: state.overrideDirective,
       chatSource: state.chatSource,
       referenceRequests: state.referenceRequests || [],
-      designDocUnknownPackages: state.designDocUnknownPackages,
       profile: state.profile,
       userLanguage: state.context.userLanguage,
       resolvedAction: state.resolvedAction,
