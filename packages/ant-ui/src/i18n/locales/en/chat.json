@@ -14,7 +14,6 @@
     "timeline": "Timeline"
   },
   "context": {
-    "resetLabel": "Reset",
     "resetTooltip": "Permanently delete this feature's sessions (feature.jsonl, chat.jsonl, architect/planner checkpoints). The next job starts fresh.",
     "resetConfirmTitle": "Delete this feature's sessions?",
     "resetConfirm": "This will permanently delete feature.jsonl, chat.jsonl, and all architect/planner checkpoints (code.json, design.json, learn.json, plan.json) for this feature. The next job will start from an empty state. Continue?",
