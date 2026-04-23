@@ -177,29 +177,28 @@ export async function analyzeWorkspace(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const designPath = path.join(featurePath, DESIGN_DIR);
   
-  const listDesignDir = (subdir?: string) => {
-    const dir = subdir ? path.join(designPath, subdir) : designPath;
+  const listDesignSubdir = (subdir: string) => {
+    const dir = path.join(designPath, subdir);
     if (!fs.existsSync(dir)) return [] as string[];
     return fs.readdirSync(dir);
   };
 
-  // System design - check subdirectory first, then flat
+  // System design — canonical outputs/design/system/ only
   {
-    const systemFiles = [...listDesignDir('system'), ...listDesignDir()];
-    state.hasSystemDesignDoc = systemFiles.some(f => 
+    const systemFiles = listDesignSubdir('system');
+    state.hasSystemDesignDoc = systemFiles.some(f =>
       (f.startsWith('fe-system-') || f.startsWith('be-system-') || f.startsWith('api-contract-')) && f.endsWith('.md')
     );
   }
-  
-  // UI docs — check ui/ subdir first, then flat
-  const uiDir = path.join(designPath, 'ui');
-  const existsInUi = (name: string) =>
-    fs.existsSync(path.join(uiDir, name)) || fs.existsSync(path.join(designPath, name));
-  state.hasUiDocs = existsInUi('ui-tokens.json') || existsInUi('ui-assets.json') || existsInUi('ui-spec.json');
-  
-  // Spec documents — check spec/ subdir first, then flat
+
+  // UI docs — canonical outputs/design/ui/ant/ only (SSOT for ant UiSource)
+  const uiAntDir = path.join(designPath, 'ui', 'ant');
+  const existsInUiAnt = (name: string) => fs.existsSync(path.join(uiAntDir, name));
+  state.hasUiDocs = existsInUiAnt('ui-tokens.json') || existsInUiAnt('ui-assets.json') || existsInUiAnt('ui-spec.json');
+
+  // Spec documents — canonical outputs/design/spec/ only
   {
-    const specFiles = [...listDesignDir('spec'), ...listDesignDir()].filter(f =>
+    const specFiles = listDesignSubdir('spec').filter(f =>
       f.startsWith('spec-') && f.endsWith('.md')
     );
     state.hasSpecDocs = specFiles.length > 0;
@@ -209,13 +208,12 @@ export async function analyzeWorkspace(
     }
   }
 
-  // Any design document (across all subdirectories)
+  // Any design document (across canonical subdirectories)
   {
     const allDesignFiles = [
-      ...listDesignDir('system'),
-      ...listDesignDir('ui'),
-      ...listDesignDir('spec'),
-      ...listDesignDir(),
+      ...listDesignSubdir('system'),
+      ...listDesignSubdir('ui/ant'),
+      ...listDesignSubdir('spec'),
     ].filter(f => f.endsWith('.md') || f.endsWith('.json'));
     state.hasDesignDoc = allDesignFiles.length > 0;
   }
