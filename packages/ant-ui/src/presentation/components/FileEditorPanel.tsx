@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { fetchFileBlob, isBinaryImageFilePath, isSvgFilePath } from '@/infrastructure/http/api';
+import { fetchFileBlob, isBinaryImageFilePath, isHtmlFilePath, isSvgFilePath } from '@/infrastructure/http/api';
 import { Button } from '@/presentation/components/common/button';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -170,6 +170,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const [viewMode, setViewMode] = useState<'raw' | 'preview'>('raw');
   const [binaryPreviewUrl, setBinaryPreviewUrl] = useState<string | null>(null);
   const [svgPreviewUrl, setSvgPreviewUrl] = useState<string | null>(null);
+  const [htmlPreviewUrl, setHtmlPreviewUrl] = useState<string | null>(null);
 
   const isFigmaFile = selectedFile?.endsWith('figma.json') ?? false;
   const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
@@ -225,14 +226,17 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   useEffect(() => () => {
     if (binaryPreviewUrl) URL.revokeObjectURL(binaryPreviewUrl);
     if (svgPreviewUrl) URL.revokeObjectURL(svgPreviewUrl);
-  }, [binaryPreviewUrl, svgPreviewUrl]);
+    if (htmlPreviewUrl) URL.revokeObjectURL(htmlPreviewUrl);
+  }, [binaryPreviewUrl, svgPreviewUrl, htmlPreviewUrl]);
 
   const isSvgFile = isSvgFilePath(selectedFile);
+  const isHtmlFile = isHtmlFilePath(selectedFile);
   const isMarkdownFile = selectedFile?.toLowerCase().match(/\.(md|markdown)$/);
   const isJsonFile = selectedFile?.toLowerCase().match(/\.json$/);
   const isJsonlFile = selectedFile?.toLowerCase().match(/\.jsonl$/);
   const isYamlFile = selectedFile?.toLowerCase().match(/\.(yaml|yml)$/);
-  const hasMultipleModes = (isMarkdownFile || isSvgFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile;
+  const hasMultipleModes =
+    (isMarkdownFile || isSvgFile || isHtmlFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile;
 
   useEffect(() => {
     if (hasMultipleModes) {
@@ -284,6 +288,30 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
     setSvgPreviewUrl(url);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSvgFile, viewMode, editedContent]);
+
+  // HTML preview — blob document in sandboxed iframe (scripts disabled by default)
+  useEffect(() => {
+    if (!isHtmlFile) {
+      setHtmlPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    if (viewMode !== 'preview') {
+      setHtmlPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+
+    setHtmlPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      const blob = new Blob([editedContent], { type: 'text/html;charset=utf-8' });
+      return URL.createObjectURL(blob);
+    });
+  }, [isHtmlFile, viewMode, editedContent]);
 
   // ── Smart edit ────────────────────────────────────────
   const smartEditConfig = useMemo(
@@ -449,7 +477,8 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             </div>
           )}
 
-          {(isMarkdownFile || isSvgFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile && (
+          {(isMarkdownFile || isSvgFile || isHtmlFile || isJsonFile || isJsonlFile || isYamlFile) &&
+            !isBinaryImageFile && (
             <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md h-9 p-0.5">
               <button
                 onClick={() => handleViewModeChange('raw')}
@@ -532,6 +561,19 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
         ) : viewMode === 'preview' && isYamlFile ? (
           <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             <JsonYamlPreview content={editedContent} fileType="yaml" />
+          </div>
+        ) : viewMode === 'preview' && isHtmlFile ? (
+          <div className="flex-1 min-h-0 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            {htmlPreviewUrl ? (
+              <iframe
+                title={selectedFile || 'html-preview'}
+                src={htmlPreviewUrl}
+                sandbox=""
+                className="h-full min-h-[70vh] w-full border-0 bg-white"
+              />
+            ) : (
+              <div className="p-4 text-sm text-gray-500 dark:text-gray-400">{t('editor.htmlPreviewFailed')}</div>
+            )}
           </div>
         ) : (
           <>

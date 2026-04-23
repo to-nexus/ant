@@ -80,6 +80,7 @@
     "raw": "편집",
     "preview": "미리보기",
     "svgPreviewFailed": "SVG 프리뷰를 불러오지 못했습니다.",
+    "htmlPreviewFailed": "HTML 미리보기를 불러오지 못했습니다.",
     "parseError": "파싱 오류",
     "figmaEmpty": "Figma URL이 설정되지 않았습니다",
     "figmaNotConnected": "Ant Desktop 미연결",
