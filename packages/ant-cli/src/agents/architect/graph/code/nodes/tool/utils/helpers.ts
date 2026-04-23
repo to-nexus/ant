@@ -22,7 +22,9 @@ export function getTempFilePath(state: ArchitectGraphState, filePath: string): s
  * Build task reminder text for tool call loops.
  * Appended to every tool result message so the LLM keeps task identity
  * in its recency window. Full task context is already in messages[0]
- * (Block 3 / buildRuntimeContext), so this is intentionally minimal
+ * (Block 2 / buildTaskInvariantContext for the plan + Current Task,
+ * Block 3 / buildTurnVariableContext for parallel-task manifests and
+ * modify-target current contents), so this is intentionally minimal
  * to reduce per-turn token accumulation in conversation history.
  */
 export function buildTaskReminder(state: ArchitectGraphState): string {

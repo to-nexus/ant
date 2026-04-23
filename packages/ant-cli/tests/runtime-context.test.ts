@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildRuntimeContext,
+  buildTaskInvariantContext,
+  buildTurnVariableContext,
 } from '../src/agents/architect/graph/code/nodes/execute/buildMessages';
 import {
   buildRuntimeContext as buildDesignRuntimeContext,
@@ -11,7 +12,6 @@ function makeCodeState(overrides: Record<string, any> = {}): any {
     currentTask: { id: 'task-1', name: 'Build API', description: 'Create REST endpoints' },
     planText: null,
     runtimeAssetsIndex: null,
-    otherWorkerFileSummary: null,
     context: {},
     ...overrides,
   };
@@ -30,15 +30,15 @@ function makeDesignState(overrides: Record<string, any> = {}): any {
   };
 }
 
-describe('buildRuntimeContext (code)', () => {
+describe('buildTaskInvariantContext (code)', () => {
   it('includes Current Task section when currentTask is present', async () => {
-    const result = await buildRuntimeContext(makeCodeState());
+    const result = await buildTaskInvariantContext(makeCodeState());
     expect(result).toContain('Current Task');
     expect(result).toContain('Build API');
   });
 
   it('includes IMPLEMENTATION PLAN when planText is present', async () => {
-    const result = await buildRuntimeContext(makeCodeState({
+    const result = await buildTaskInvariantContext(makeCodeState({
       planText: '{"create":[],"modify":[],"assets":[]}',
     }));
     expect(result).toContain('IMPLEMENTATION PLAN');
@@ -46,7 +46,7 @@ describe('buildRuntimeContext (code)', () => {
   });
 
   it('includes assets section when runtimeAssetsIndex has files', async () => {
-    const result = await buildRuntimeContext(makeCodeState({
+    const result = await buildTaskInvariantContext(makeCodeState({
       runtimeAssetsIndex: {
         count: 1,
         files: ['logo.png'],
@@ -57,12 +57,12 @@ describe('buildRuntimeContext (code)', () => {
   });
 
   it('returns string even with minimal state', async () => {
-    const result = await buildRuntimeContext(makeCodeState({ currentTask: null }));
+    const result = await buildTaskInvariantContext(makeCodeState({ currentTask: null }));
     expect(typeof result).toBe('string');
   });
 
   it('includes Existing Codebase Files section when manifest is populated', async () => {
-    const result = await buildRuntimeContext(makeCodeState({
+    const result = await buildTaskInvariantContext(makeCodeState({
       _existingCodebaseFiles: ['codebase/src/app.ts', 'codebase/src/utils.ts'],
     }));
     expect(result).toContain('Existing Codebase Files');
@@ -72,9 +72,55 @@ describe('buildRuntimeContext (code)', () => {
   });
 
   it('omits Existing Codebase Files section when manifest is empty', async () => {
-    const result = await buildRuntimeContext(makeCodeState({
+    const result = await buildTaskInvariantContext(makeCodeState({
       _existingCodebaseFiles: [],
     }));
+    expect(result).not.toContain('Existing Codebase Files');
+  });
+
+  it('does not include turn-variable content (parallel tasks manifest, modify targets)', async () => {
+    const result = await buildTaskInvariantContext(makeCodeState({
+      _otherWorkerFiles: [{ path: 'codebase/src/other.ts', taskName: 'other-task' }],
+    }));
+    expect(result).not.toContain('Files Created by Parallel Tasks');
+    expect(result).not.toContain('other-task');
+  });
+});
+
+describe('buildTurnVariableContext (code)', () => {
+  it('includes parallel tasks manifest when _otherWorkerFiles is populated', async () => {
+    const result = await buildTurnVariableContext(makeCodeState({
+      _otherWorkerFiles: [
+        { path: 'codebase/src/foundation.ts', taskName: 'foundation-task' },
+      ],
+    }));
+    expect(result).toContain('Files Created by Parallel Tasks');
+    expect(result).toContain('foundation-task');
+    expect(result).toContain('codebase/src/foundation.ts');
+  });
+
+  it('marks parallel list as authoritative over Existing Codebase Files', async () => {
+    const result = await buildTurnVariableContext(makeCodeState({
+      _otherWorkerFiles: [{ path: 'codebase/src/x.ts', taskName: 't' }],
+    }));
+    // The manifest explicitly tells the LLM the parallel list wins on overlap
+    expect(result).toMatch(/authoritative|precedence|parallel writer owns/i);
+  });
+
+  it('omits parallel manifest when _otherWorkerFiles is empty', async () => {
+    const result = await buildTurnVariableContext(makeCodeState({
+      _otherWorkerFiles: [],
+    }));
+    expect(result).not.toContain('Files Created by Parallel Tasks');
+  });
+
+  it('does not include task-invariant content (Current Task, plan, existing files)', async () => {
+    const result = await buildTurnVariableContext(makeCodeState({
+      planText: '{"create":[]}',
+      _existingCodebaseFiles: ['codebase/src/app.ts'],
+    }));
+    expect(result).not.toContain('Current Task');
+    expect(result).not.toContain('IMPLEMENTATION PLAN');
     expect(result).not.toContain('Existing Codebase Files');
   });
 });
