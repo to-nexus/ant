@@ -13,7 +13,7 @@ import type { UserLanguage } from '../utils/languageDetector';
 
 export interface ExecutionTierLabel {
   /** Stable technical name, matches ExecutionTier.label. */
-  name: 'Reflex' | 'OneShot' | 'SingleTask' | 'Task' | 'RefsGrounded';
+  name: 'Reflex' | 'OneShot' | 'Exploratory' | 'Task' | 'RefsGrounded';
   /** Short display label per locale. */
   short: Record<UserLanguage, string>;
   /** One-line description per locale. */
@@ -52,12 +52,12 @@ export const EXECUTION_TIER_LABELS: Record<ExecutionTierId, ExecutionTierLabel> 
     },
   },
   [ExecutionTierId.Exploratory]: {
-    name: 'SingleTask',
+    name: 'Exploratory',
     short: {
-      ko: '단일 태스크',
-      en: 'SingleTask',
-      ja: '単一タスク',
-      zh: '单任务',
+      ko: '탐색 실행',
+      en: 'Exploratory',
+      ja: '探索実行',
+      zh: '探索执行',
     },
     description: {
       ko: '단일 태스크가 자체 검증(install/typecheck/build/test)까지 수행',

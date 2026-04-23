@@ -145,7 +145,7 @@ export interface ToolExecutionContext {
   activePhase?: 'plan' | 'execute';
   currentTaskType?: string;
   /**
-   * Tier-Verification Alignment (Phase 1): Tier 2 SingleTask flag.
+   * Tier-Verification Alignment (Phase 1): Tier 2 Exploratory self-verify flag.
    *
    * Mirrors `CodeTask.selfVerifyOnDone`. When `true`, the active task owns
    * its install/typecheck/build/test gates inline, so task-type command

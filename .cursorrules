@@ -142,7 +142,7 @@ rg "type:\s*'\w+' as ViolationType" packages/ant-cli/src -A 5 | rg -c "isRetryab
 |---|---|---|---|---|
 | 0 Reflex | 읽기+텍스트 답변 | 금지 | 0 | N/A (direct) |
 | 1 OneShot | 검증 불필요한 제한적 쓰기 | 허용 (2 step) | 0 | 없음 (direct) |
-| **2 SingleTask** | 단일 작업 단위 | 허용 | **정확히 1** | **task 자체가 inline self-verify (`selfVerifyOnDone: true`)** |
+| **2 Exploratory** | 단일 작업 단위 (single unit of work) | 허용 | **정확히 1** | **task 자체가 inline self-verify (`selfVerifyOnDone: true`)** |
 | 3 Task | 다중 작업 단위 | 허용 | **>= 2 with verification task** | verification task가 gate 담당 |
 | 4 RefsGrounded | Tier 3 + refs-grounded | 허용 | >= 2 | Tier 3와 동일 |
 
