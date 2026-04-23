@@ -228,6 +228,8 @@ export interface ChatUserTurnLine extends LineBase {
   type: 'user_turn';
   text: string;
   sourceRef: string;
+  /** Structured context from the Actions panel (intent, target, refs, context). Persisted so badges survive page refresh. */
+  actionMetadata?: import('./actions').ActionMetadata;
 }
 
 export interface ChatThinkingLine extends LineBase {

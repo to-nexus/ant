@@ -34,6 +34,8 @@ export interface RecordUserTurnParams {
   agent?: string;
   projectId?: string;
   featureName?: string;
+  /** Structured context from the Actions panel. Persisted to chat.jsonl so mention badges survive page refresh. */
+  actionMetadata?: import('@ant/shared').ActionMetadata;
 }
 
 /**
@@ -53,6 +55,7 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
     agent = "architect",
     projectId,
     featureName,
+    actionMetadata,
   } = params;
 
   const session = params.session
@@ -91,7 +94,7 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
     mode,
   };
 
-  await session.appendUserTurn(line, { skipFeature });
+  await session.appendUserTurn(line, { skipFeature, actionMetadata });
 
   // Let the worker's LLMResponseService know which turnId to tag emitted
   // chat.jsonl lines with. Fire-and-forget; failures are logged and ignored.

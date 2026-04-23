@@ -7,7 +7,11 @@
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
-import { decideInvalidationScope } from './invalidationScope';
+import {
+  decideInvalidationScope,
+  isDepManifestPath,
+  DEP_MANIFEST_INSTALL_HINT,
+} from './invalidationScope';
 
 export async function handleCreateFile(
   ctx: ToolExecutionContext,
@@ -77,8 +81,9 @@ export async function handleCreateFile(
       },
     ];
 
+    const manifestSuffix = isDepManifestPath(resolved.displayPath) ? DEP_MANIFEST_INSTALL_HINT : '';
     return {
-      content: prependFixMessage(resolved, resultMsg),
+      content: prependFixMessage(resolved, resultMsg + manifestSuffix),
       sideEffects,
     };
   } catch (e) {

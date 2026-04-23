@@ -91,7 +91,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     jobTiming: state.jobTiming,
     featureTasks: state.featureTasks,
     referenceRequests: state.referenceRequests,
-    designDocUnknownPackages: state.designDocUnknownPackages,
     _sharedFileBuffer: sharedFileBuffer,
     taskQueue: state.taskQueue,
     figmaFileKey: state.figmaFileKey,
@@ -238,7 +237,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
                   // ✅ FIX: Preserve decompose-phase context in checkpoint.
                   // onCheckpoint does a full replace of session.state, so any field
                   // not listed here is lost on session reload / resume.
-                  designDocUnknownPackages: state.designDocUnknownPackages,
                   profile: state.profile,
                   resolvedAction: state.resolvedAction,
                   referenceRequests: state.referenceRequests,
@@ -334,52 +332,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   console.log(`   Failed: ${result.failedTasks.length}`);
   console.log(`   Remaining: ${result.remainingQueue.length}`);
   console.log(`   Interrupted: ${result.hasInterruptedTasks}`);
-
-  // Post-job: design-prescribed package coverage report
-  if (state.designDocUnknownPackages?.length && state.context?.featurePath && state._httpJobId) {
-    try {
-      const { getSessionDebugDir } = await import('../../../../core/utils/sessionPaths');
-      const planFilePath = path.join(
-        getSessionDebugDir(state.context.featurePath, 'architect', 'plans'),
-        `plan-${state._httpJobId}.json`,
-      );
-      const planFileContent = await import('fs/promises').then(fs => fs.readFile(planFilePath, 'utf-8'));
-      const planEntries: any[] = JSON.parse(planFileContent);
-      const depManifestNames = new Set(['go-mod', 'package-json', 'requirements-txt', 'cargo-toml', 'pubspec-yaml']);
-      const usedInCode = new Set<string>();
-      for (const entry of planEntries) {
-        for (const pp of entry.plan?.prescribedPackages || []) {
-          if (pp.usedBy?.some((u: string) => !depManifestNames.has(u))) {
-            usedInCode.add(pp.package);
-          }
-        }
-      }
-      const emptyApisInCode = new Set<string>();
-      for (const entry of planEntries) {
-        for (const pp of entry.plan?.prescribedPackages || []) {
-          if (pp.usedBy?.some((u: string) => !depManifestNames.has(u)) && (!pp.apis || pp.apis.length === 0)) {
-            emptyApisInCode.add(pp.package);
-          }
-        }
-      }
-      if (emptyApisInCode.size > 0) {
-        console.warn(
-          `⚠️  [PackageCoverage] Packages used in code but with empty apis (likely import-only, no real API calls): ${[...emptyApisInCode].join(', ')}`,
-        );
-      }
-      const missing = state.designDocUnknownPackages.filter(p => !usedInCode.has(p));
-      if (missing.length > 0) {
-        console.warn(
-          `⚠️  [PackageCoverage] Design-prescribed packages with no code usage across all tasks: ${missing.join(', ')}\n` +
-          `   These packages were declared in dependency manifests but no feature task included them in prescribedPackages with actual code modules.`,
-        );
-      } else {
-        console.log(`✅ [PackageCoverage] All ${state.designDocUnknownPackages.length} design-prescribed packages have code usage`);
-      }
-    } catch {
-      // Plan file may not exist (e.g., resumed job with pre-existing plans)
-    }
-  }
 
   // ✅ Log parallel_complete event to debug/logs/
   if (state.context?.featurePath && state._httpJobId) {
@@ -620,7 +572,6 @@ export const CodeGraphChannels = {
       evaluationReport: Annotation<any>,
       lessons: Annotation<any>,
       referenceRequests: Annotation<any>,
-      designDocUnknownPackages: Annotation<any>,
       branch: Annotation<any>,
       filesWritten: Annotation<any>,
       reportFile: Annotation<any>,

@@ -67,6 +67,36 @@ function lastSegment(filePath: string): string {
   return segments[segments.length - 1] || '';
 }
 
+/**
+ * Does this path point to a dependency manifest (package.json / go.mod /
+ * Cargo.toml / pyproject.toml / Gemfile / lockfiles)? Used by file-write
+ * tool handlers to surface an "install required" action hint in the tool
+ * result — so the same turn that edited the manifest must run the package
+ * manager install before outputting `<done>`.
+ *
+ * Exposed as `isDepManifestPath` for handlers; internal scope logic keeps
+ * consuming `DEP_MANIFEST_BASENAMES` directly.
+ */
+export function isDepManifestPath(rawPath: string | undefined): boolean {
+  if (!rawPath) return false;
+  const normalized = rawPath.replace(/^\.\/+/, '').toLowerCase();
+  const base = lastSegment(normalized);
+  return DEP_MANIFEST_BASENAMES.has(base);
+}
+
+/**
+ * Canonical action hint appended to the tool result when a dependency
+ * manifest is edited / created / deleted. The hint is deliberately phrased
+ * as a hard rule so the LLM treats the next action as install, not done.
+ *
+ * Complementary to the `missing-dependency-fix` prompt injection (which is
+ * static, attached at buildMessages time) — this hint fires at the exact
+ * moment the manifest is touched, giving the LLM an in-the-flow directive
+ * right where the relevant tool call just completed.
+ */
+export const DEP_MANIFEST_INSTALL_HINT =
+  '\n\n⚠️ Dependency manifest modified. You MUST run the package-manager install command (e.g. `npm install`, `pnpm install`, `yarn install`, `go mod tidy`, `cargo fetch`, `pip install -r requirements.txt`, `poetry install` — match the project lockfile) BEFORE outputting `<done>`. Skipping install leaves declared deps unresolved and the subsequent build/test gate will fail with the same "module not found" error.';
+
 function extension(base: string): string {
   const idx = base.lastIndexOf('.');
   return idx < 0 ? '' : base.substring(idx).toLowerCase();

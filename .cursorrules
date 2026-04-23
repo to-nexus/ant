@@ -202,7 +202,6 @@ This is the central authority for how XML-style markers become chat UI. Fragment
 | `<references>` | formatted | reference repo list |
 | `<detect>` | formatted | RAC + basis (detect / decompose-final phases) |
 | `<executionTier>` | formatted | 5-tier strategy label |
-| `<prescribedDependencies>` (+ legacy `<unknownPackages>`) | formatted | new dependency list |
 | `<techTier>`, `<boundary>`, `<directHints>`, `<specClarify>` | consumed | internal state only |
 
 ### Why This Matters

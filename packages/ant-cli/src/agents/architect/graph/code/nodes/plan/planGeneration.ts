@@ -193,8 +193,6 @@ async function buildPlanPrompt(
     violationsText, isRetry: !!violationsText,
     remainingTasks, hasRemainingTasks: remainingTasks && remainingTasks.length > 0,
     hasTools: options?.hasTools ?? false,
-    designDocUnknownPackages: state.designDocUnknownPackages,
-    hasDesignDocUnknownPackages: state.designDocUnknownPackages && state.designDocUnknownPackages.length > 0,
     resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi, uiSource,
     featureContext: state.featureContext,
     antrulesContent,
@@ -460,15 +458,7 @@ export async function generatePlanText(
   }
   
   const planText = planMatch[1].trim();
-  
-  // Validate JSON structure and prescribedPackages
-  try {
-    const parsed = JSON.parse(planText);
-    await validatePrescribedPackages(parsed, state);
-  } catch (jsonError) {
-    console.warn(`⚠️  [Plan] Failed to parse plan JSON for validation — prescribedPackages check skipped. Error: ${(jsonError as Error).message}`);
-  }
-  
+
   if (planText.length < 50) {
     throw new Error(`[Plan] Generated plan is too short (${planText.length} chars). This indicates plan generation failure.`);
   }
@@ -546,34 +536,6 @@ async function savePlanTextForDebug(
   } catch (err) {
     // Non-blocking - plan save failed
   }
-}
-
-/**
- * Validate prescribedPackages structure within a single task plan.
- * Checks for missing field and declared-but-unused packages (empty usedBy).
- */
-async function validatePrescribedPackages(parsed: any, state: ArchitectGraphState): Promise<void> {
-  const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
-  if (!new ArtifactPoolView(state.artifacts || []).hasSystemDesign()) return;
-
-  const prescribed: any[] | undefined = parsed.prescribedPackages;
-  if (!prescribed || !Array.isArray(prescribed)) {
-    console.warn(`⚠️  [Plan] prescribedPackages field missing — design docs exist but no packages declared`);
-    return;
-  }
-
-  if (prescribed.length > 0) {
-    const noUsage = prescribed.filter((p: any) => !p.usedBy?.length);
-    if (noUsage.length > 0) {
-      console.warn(`⚠️  [Plan] Prescribed packages declared but not used: ${noUsage.map((p: any) => p.package).join(', ')}`);
-    }
-    const emptyApis = prescribed.filter((p: any) => !p.apis || p.apis.length === 0);
-    if (emptyApis.length > 0) {
-      console.warn(`⚠️  [Plan] Prescribed packages with empty apis (signatures not discovered): ${emptyApis.map((p: any) => p.package).join(', ')}`);
-    }
-    console.log(`📦 [Plan] prescribedPackages: ${prescribed.map((p: any) => p.package).join(', ')}`);
-  }
-
 }
 
 /** Max plan↔tool round-trips before forcing plan finalization.
@@ -946,11 +908,6 @@ export async function finalizePlanFromExploration(
     const planText = planMatch[1].trim();
     if (planText.length >= 50) {
       console.log(`✅ [Plan] Finalized plan from exploration (${planText.length} chars)`);
-
-      try {
-        const parsed = JSON.parse(planText);
-        await validatePrescribedPackages(parsed, state);
-      } catch { /* non-blocking */ }
 
       await savePlanTextForDebug(state, task, planText);
       return planText;

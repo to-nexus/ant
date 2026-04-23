@@ -111,17 +111,19 @@ function toUserMessage(bucket: {
   userLine?: ChatLine;
 }): ChatMessage | null {
   if (!bucket.userLine || bucket.userLine.type !== 'user_turn') return null;
+  const line = bucket.userLine;
   return {
     id: `user-${bucket.turnId}`,
     role: 'user',
-    timestamp: bucket.userLine.ts,
+    timestamp: line.ts,
     jobId: bucket.jobId,
     contents: [
       {
         type: 'text',
-        content: bucket.userLine.text,
+        content: line.text,
       },
     ],
+    ...(line.actionMetadata && Object.keys(line.actionMetadata).length > 0 && { actionMetadata: line.actionMetadata }),
   };
 }
 

@@ -7,7 +7,11 @@
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
-import { decideInvalidationScope } from './invalidationScope';
+import {
+  decideInvalidationScope,
+  isDepManifestPath,
+  DEP_MANIFEST_INSTALL_HINT,
+} from './invalidationScope';
 
 const MAX_IO_RETRIES = 3;
 
@@ -118,8 +122,9 @@ export async function handleEditFile(
       },
     ];
 
+    const manifestSuffix = isDepManifestPath(resolved.displayPath) ? DEP_MANIFEST_INSTALL_HINT : '';
     return {
-      content: prependFixMessage(resolved, `File edited successfully: ${resolved.displayPath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.`),
+      content: prependFixMessage(resolved, `File edited successfully: ${resolved.displayPath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.${manifestSuffix}`),
       sideEffects,
     };
   } catch (e) {

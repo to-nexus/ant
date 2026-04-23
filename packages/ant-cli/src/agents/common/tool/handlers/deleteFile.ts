@@ -4,7 +4,11 @@
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
-import { decideInvalidationScope } from './invalidationScope';
+import {
+  decideInvalidationScope,
+  isDepManifestPath,
+  DEP_MANIFEST_INSTALL_HINT,
+} from './invalidationScope';
 
 export async function handleDeleteFile(
   ctx: ToolExecutionContext,
@@ -43,8 +47,9 @@ export async function handleDeleteFile(
       },
     ];
 
+    const manifestSuffix = isDepManifestPath(resolved.displayPath) ? DEP_MANIFEST_INSTALL_HINT : '';
     return {
-      content: prependFixMessage(resolved, `File deleted successfully: ${resolved.displayPath}`),
+      content: prependFixMessage(resolved, `File deleted successfully: ${resolved.displayPath}${manifestSuffix}`),
       sideEffects,
     };
   } catch (e) {

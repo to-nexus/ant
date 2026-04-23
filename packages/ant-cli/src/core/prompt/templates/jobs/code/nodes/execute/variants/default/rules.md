@@ -38,7 +38,6 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 ```json
 {
   "task": { "id": "...", "goal": "..." },
-  "prescribedPackages": [{ "package": "...", "apis": [...], "usedBy": [...] }],
   "implementation": {
     "create": [{ "name": "...", "location": "...", "purpose": "..." }],
     "modify": [{ "target": "...", "action": "...", "changes": [...] }],
@@ -54,13 +53,13 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 | **Gather** | Identify ALL files needed from Plan and the `Existing Codebase Files` section. Batch-read ALL in ONE tool response. |
 | **Implement** | Create, modify, copy per plan fields. |
 
-### prescribedPackages Compliance
+### Dependency Compliance
 
-**Constraint**: If the plan contains a `prescribedPackages` array, those packages MUST be imported and used in the modules listed in `usedBy`. Do NOT substitute with alternative packages. The `apis` list contains function signatures observed during planning. Use these for correct parameter types and return types. If a signature seems incomplete or you need APIs beyond what is listed, observe the actual package source before guessing.
+**Constraint**: When a `create`/`modify` entry names a specific package import path or inlines an observed API signature, use those exactly. Do NOT substitute with alternative packages. If the entry's `purpose`/`changes` describes a function call with specific parameter or return types, call the function with those types — do NOT reinfer from the package name.
 
-**Constraint**: This applies to both `create` and `modify` operations. If a `modify` entry adds new functionality that a prescribed package covers, use the prescribed package.
+**Constraint**: If a signature inlined in the plan entry seems incomplete or you need APIs beyond what is listed, observe the actual package source in `codebase/node_modules/{package}/` before guessing (use `read_file` or `search_code` with `include_dependencies: true`).
 
-⚠️ **Blind spot**: Training data associates common functionality with well-known packages. When `prescribedPackages` lists a wrapper around a well-known package, the instinct is to bypass the wrapper and use the underlying package directly. The prescribed package exists for a reason — use it as specified.
+⚠️ **Blind spot**: Training data associates common functionality with well-known packages. When the plan entry names a wrapper around a well-known package (e.g., an organization-internal HTTP client wrapping `axios`), the instinct is to bypass the wrapper and use the underlying package directly. The prescribed wrapper exists for a reason — use it as specified.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 2. Implementation Decisions (Your Judgment)

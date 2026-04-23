@@ -2,10 +2,14 @@
  * observeMissingDepsForTask — task-type gate coverage.
  *
  * Guards the behavioural contract that activates the `missing-dependency-fix`
- * injection via `hasMissingDependency`. A task that declares or relies on
- * deps owns the install within the same cycle. Verification / error own the
- * signal through `Session.dependencyStatus()` and must not double-inject;
- * doc / explain do not install.
+ * injection via `hasMissingDependency`. Every code-writing task that can
+ * edit `package.json` (or rely on it being installed) must own the install
+ * within the same execute cycle — this includes `verification` and `error`,
+ * whose plan phase may emit `modify: package.json` entries. The prior
+ * exclusion relied on the plan-phase `Session.dependencyStatus()` reaching
+ * the execute prompt, but that status lands in the plan template only; the
+ * actual `edit_file(package.json)` happens in execute without the install
+ * directive. Only `doc` / `explain` remain excluded — they do not install.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -35,7 +39,15 @@ beforeEach(() => {
 });
 
 describe('observeMissingDepsForTask — active task types (missing deps ⇒ true)', () => {
-  const activeTypes: TaskType[] = ['setup', 'feature', 'design-system', 'ui', 'test-code'];
+  const activeTypes: TaskType[] = [
+    'setup',
+    'feature',
+    'design-system',
+    'ui',
+    'test-code',
+    'verification',
+    'error',
+  ];
 
   for (const type of activeTypes) {
     it(`${type}: returns true when deps are not installed`, async () => {
@@ -57,10 +69,10 @@ describe('observeMissingDepsForTask — active task types (missing deps ⇒ true
 });
 
 describe('observeMissingDepsForTask — excluded task types (never observe)', () => {
-  const excludedTypes: TaskType[] = ['verification', 'error', 'doc', 'explain'];
+  const excludedTypes: TaskType[] = ['doc', 'explain'];
 
   for (const type of excludedTypes) {
-    it(`${type}: returns false without touching areDepsInstalled (SSOT/scope protection)`, async () => {
+    it(`${type}: returns false without touching areDepsInstalled (doc / explain cannot install)`, async () => {
       (areDepsInstalled as ReturnType<typeof vi.fn>).mockResolvedValue(false);
       const state: any = {
         currentTask: { type },
