@@ -45,7 +45,6 @@ Generate a **concrete implementation plan** for this task.
     "id": "task-id",
     "goal": "One-line goal description"
   },
-  "prescribedPackages": [],
   "implementation": {
     "create": [...],
     "modify": [...],
@@ -67,27 +66,20 @@ Do NOT wrap reasoning in any tag before `<plan>`. Any pre-`<plan>` text will be 
     "id": "[task identifier from input]",
     "goal": "[one-line goal derived from your reasoning]"
   },
-  "prescribedPackages": [
-    {
-      "package": "[import path from design document]",
-      "apis": ["[full function/type signature as observed — include parameter types and return types]"],
-      "usedBy": ["[name of create or modify entry that uses this package]"]
-    }
-  ],
   "implementation": {
     "create": [
       {
         "name": "[module name]",
         "type": "[component | util | hook | api | service | class]",
         "location": "[semantic area - observe from directory tree]",
-        "purpose": "[what this module does — behavior only, no import paths]"
+        "purpose": "[what this module does, which packages it imports (with exact import path), and which observed API signatures it calls — behavior + inline dependency wiring]"
       }
     ],
     "modify": [
       {
         "target": "[file path or semantic description]",
         "action": "[what to do]",
-        "changes": ["[specific change 1]", "[specific change 2]"]
+        "changes": ["[specific change 1, with any observed API signatures the change relies on, quoted inline]", "[specific change 2]"]
       }
     ],
     "assets": [
@@ -105,12 +97,7 @@ Do NOT wrap reasoning in any tag before `<plan>`. Any pre-`<plan>` text will be 
 }
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `prescribedPackages` | Yes | Design-document-referenced packages discovered via tools. Empty array `[]` if none. |
-| `prescribedPackages[].package` | Yes | Exact import path from design document |
-| `prescribedPackages[].apis` | Yes | Full function/type signatures observed via tools. Include parameter types and return types — names alone are insufficient. |
-| `prescribedPackages[].usedBy` | Yes | Names of `create` or `modify` entries that use this package |
+Design-prescribed package APIs (import paths + observed signatures) are carried inline in the `purpose`/`changes` of whichever `create`/`modify` entry uses them. No separate structured field — execute reads the natural-language description and implements from there.
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 📐 MODIFY FIELD CONSTRAINT
@@ -127,27 +114,18 @@ Do NOT wrap reasoning in any tag before `<plan>`. Any pre-`<plan>` text will be 
 ⚠️ **Blind spot**: After tool exploration, the instinct is to write a short summary rather than preserving the specificity of what was observed. The observed specificity IS the value — losing it forces CodeGen into redundant exploration.
 
 ────────────────────────────────────────────────────────────────────────────────
-## 📦 PRESCRIBED PACKAGES AND PURPOSE SEPARATION
+## 📦 INLINE DEPENDENCY DISCIPLINE
 ────────────────────────────────────────────────────────────────────────────────
 
-**Principle**: `purpose` and `prescribedPackages` have distinct, non-overlapping roles.
+**Principle**: When a `create`/`modify` entry relies on a design-prescribed or otherwise non-obvious package, the entry's `purpose` or `changes` MUST record the observed import path and the exact function/type signatures the code will call. Execute cannot see your tool output — it sees ONLY these natural-language entries.
 
-| Field | Describes | Does NOT describe |
-|-------|-----------|-------------------|
-| `purpose` | What the module achieves (behavior, responsibility) | Which packages to import |
-| `prescribedPackages` | Which design-doc packages to use and their discovered APIs | What the module does |
+**Constraint**: Copy signatures exactly as observed via `search_code` / `read_file` on `node_modules/`. Parameter types AND return types. Names alone are insufficient.
 
-**Constraint**: `purpose` MUST NOT contain import paths, package names, or "use X instead of Y" comparisons. Import decisions are derived exclusively from `prescribedPackages`.
+**Constraint**: If a design-prescribed package provides the functionality a module needs, use it. Do NOT substitute with well-known alternatives. Record the import path inline in the entry that uses it so the substitution cannot happen silently.
 
-**Constraint**: `prescribedPackages` MUST list every design-document-referenced package whose API was discovered via tools during analysis. If no prescribed packages exist, use an empty array.
+⚠️ **Blind spot**: Discovering an API via tools but then omitting the signatures from the entry that uses the package — the discovery effort is wasted and the implementation phase falls back to well-known alternatives from training data. Inline the observed signatures at the exact `create`/`modify` entry that needs them.
 
-**Constraint**: Each `prescribedPackages` entry MUST include `apis` with full signatures (discovered via tools). Copy signatures exactly as observed — do NOT abbreviate to names only. The implementation phase relies on these for correct parameter usage. `usedBy` must list which create modules use this package.
-
-**Constraint**: If a prescribed package provides the functionality a module needs, that module MUST use the prescribed package. Do NOT substitute with well-known alternatives.
-
-⚠️ **Blind spot**: The `purpose` field easily becomes an implementation instruction when specifying exact imports. If `purpose` contains import paths that conflict with `prescribedPackages`, CodeGen receives contradictory guidance. Keep `purpose` behavioral — what the module does — not technical — which package it imports.
-
-⚠️ **Blind spot**: Discovering an API via tools but then omitting it from `prescribedPackages` — the discovery effort is wasted and CodeGen falls back to well-known alternatives from training data.
+⚠️ **Blind spot**: The same package used by several entries does not require duplicating the full signature in each one. Declare the full signatures in the first entry that introduces the package; later entries may reference it by name (e.g., "use `fn` as defined under create.Foo").
 
 ────────────────────────────────────────────────────────────────────────────────
 ## 🔒 TASK SCOPE PRINCIPLE
@@ -303,15 +281,15 @@ Before emitting `<plan>`, internally consider the observations below. These are 
 **Protocol**:
 1. Identify packages referenced in the design document (import statements, backtick-quoted paths, code examples)
 2. Classify each: well-known (in training data) vs design-prescribed (organization-internal, private, project-specific)
-3. For design-prescribed dependencies present in the dependency manifest, discover their exported API via tools before finalizing the plan
+3. For design-prescribed dependencies present in the dependency manifest, discover their exported API via tools before finalizing the plan (see `plan-tools-batch` for the observation protocol — `search_code(include_dependencies:true)` on `node_modules/{pkg}/**/*.d.ts` for TS/JS, `go doc` for Go, etc.)
 4. For design-prescribed dependencies NOT in the manifest, attempt installation via `run_command`, then discover the API
-5. Record every discovered package in `prescribedPackages` with concrete API details and map to modules via `usedBy`
+5. Record the observed import path and exact signatures **inline** in the relevant `implementation.modify`/`create` entry's `purpose` or `changes` — whichever entry uses the package. Execute reads from that natural-language description; there is no separate structured field.
 
-**Constraint**: Design-prescribed dependencies MUST appear in `prescribedPackages` and be used by the modules listed in `usedBy`. Do NOT substitute with standard library or alternative packages.
+**Constraint**: Design-prescribed dependencies MUST be used by the modules that need them. Do NOT substitute with standard library or alternative packages. Inline the import path in the entry so the substitution cannot happen silently.
 
 **Constraint**: Do NOT assume or guess design-prescribed dependency APIs from naming conventions. Observe the actual exported API via tools first.
 
-**Constraint**: If installation fails, use the design document's code examples and usage patterns as the API reference — include the prescribed import paths in `prescribedPackages` so CodeGen writes the correct imports.
+**Constraint**: If installation fails, use the design document's code examples and usage patterns as the API reference — inline the prescribed import paths in the `purpose`/`changes` of the entry that uses the package so CodeGen writes the correct imports.
 
 ⚠️ **Blind spot**: The instinct is to skip design-prescribed dependencies and use familiar alternatives — especially when they are absent from the dependency manifest. Design-prescribed packages exist for a reason. Attempt installation first; if that fails, the design document's own code examples are the authoritative API reference.
 {{/unless}}
@@ -327,8 +305,7 @@ Before outputting, verify:
 - [ ] No duplicate modules (checked directory tree)
 - [ ] Cross-boundary deps use local interfaces, not full implementations
 - [ ] Shared utilities in dedicated files, not inlined in multiple modules
-- [ ] `prescribedPackages` lists all design-doc packages discovered via tools (empty array if none)
-- [ ] `purpose` fields contain behavior only — no import paths or package names
+- [ ] Every design-prescribed package's import path and observed signatures appear inline in the `purpose`/`changes` of the `create`/`modify` entry that uses it
 - [ ] For `design-system`: token inventory complete (keys + actual values)
 - [ ] For `ui`: skeleton files in `modify` (to update imports after component extraction); extracted component files in `create`
 - [ ] For `ui`: `parallelGroup` assigned — same value for tasks sharing files, different values for disjoint file sets

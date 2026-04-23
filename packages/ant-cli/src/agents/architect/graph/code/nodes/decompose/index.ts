@@ -424,7 +424,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         // CRITICAL: FileSessionAdapter.updateArtifacts replaces session.state
         // wholesale. Load the existing state first and merge the pause markers
         // so jobId / jobTiming / tokenUsage / estimatingTokenUsage / profile /
-        // designDocUnknownPackages / userLanguage / etc. survive the pause.
+        // userLanguage / etc. survive the pause.
         const existing = await state.deps.session.load(
           state.context.project,
           state.context.featureFolder,
@@ -471,7 +471,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     tasks,
     referenceRequests,
     techTier: parsedTechTier,
-    unknownPackages,
     boundary: parsedBoundary,
     executionTier: parsedExecutionTier,
     directHints,
@@ -513,8 +512,8 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         // CRITICAL: Preserve prior session.state when marking specClarify.
         // FileSessionAdapter.updateArtifacts replaces state wholesale, so a
         // partial patch would wipe jobId / jobTiming / tokenUsage /
-        // estimatingTokenUsage / profile / designDocUnknownPackages and
-        // break resume continuity after proceed_without_spec.
+        // estimatingTokenUsage / profile and break resume continuity after
+        // proceed_without_spec.
         const existing = await state.deps.session.load(
           state.context.project,
           state.context.featureFolder,
@@ -880,7 +879,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     taskQueue,
     featureTasks,
     referenceRequests: referenceRequests || state.referenceRequests || [],
-    designDocUnknownPackages: unknownPackages,
     totalSubtasks: tasks.length + 1,
     subtaskIndex: 0,
     completedTasks: state.completedTasks || [],

@@ -85,7 +85,7 @@ export const ARCHITECT_TOOLS = {
   
   search_code: {
     name: 'search_code',
-    description: 'Search the codebase with ripgrep. Use a ripgrep regex; matches are returned as `file:line:content`.',
+    description: 'Search the codebase with ripgrep. Use a ripgrep regex; matches are returned as `file:line:content`. By default `node_modules` and `vendor` are excluded; set `include_dependencies: true` to grep installed library source (e.g., `@types/*.d.ts`) when a build error suggests a version-boundary or API-shape question.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -95,7 +95,11 @@ export const ARCHITECT_TOOLS = {
         },
         file_pattern: {
           type: 'string',
-          description: 'Ripgrep glob to restrict files (optional). Examples: "**/*.tsx", "src/**/*.{ts,tsx}", "!**/*.test.ts" (exclude).',
+          description: 'Ripgrep glob to restrict files (optional). Examples: "**/*.tsx", "src/**/*.{ts,tsx}", "!**/*.test.ts" (exclude). When `include_dependencies` is true, you may target library files directly: "node_modules/@types/react/*.d.ts".',
+        },
+        include_dependencies: {
+          type: 'boolean',
+          description: 'Include `node_modules` / `vendor` in the search scope (default: false). Use when the build error names a library symbol and you need to verify the real API shape or version contract rather than guessing from pre-training knowledge.',
         },
       },
       required: ['pattern'],
