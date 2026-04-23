@@ -258,8 +258,15 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     );
   }
 
-  const runtimeContext = await buildRuntimeContext(state);
-  if (runtimeContext) runtimeContextParts.push(runtimeContext);
+  // Split into task-invariant (Block 2, cached) vs turn-variable (Block 3,
+  // uncached) parts. See CacheBlockMapper docblock for the invariance axis.
+  // Invariant part is wired into `buildCacheableBlocks(..., { taskInvariantParts })`
+  // below; variable part stays in the `runtimeContext` template var (Block 3).
+  const [taskInvariantRuntime, turnVariableRuntime] = await Promise.all([
+    buildTaskInvariantContext(state),
+    buildTurnVariableContext(state),
+  ]);
+  if (turnVariableRuntime) runtimeContextParts.push(turnVariableRuntime);
 
   const _basisDiag = state.resolvedAction?.basis;
   if (!_basisDiag) {
@@ -453,6 +460,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const preflightManager = new TokenBudgetManager();
   const blocks = buildCacheableBlocks(promptResult, {
     contextParts: [foundationContract, schemaAnchor].filter(Boolean) as string[],
+    taskInvariantParts: taskInvariantRuntime ? [taskInvariantRuntime] : undefined,
     mediaBlocks: uiImageBlocks.length > 0 ? uiImageBlocks : undefined,
     tokenPreflight: {
       maxBlock2Tokens: preflightManager.getAreaBudgets().projectContext,
@@ -686,19 +694,23 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
 }
 
 /**
- * Build runtime context (task, plan, file manifests, enforcement).
+ * Task-invariant runtime context — Current Task header + plan JSON +
+ * runtime-assets index + existing-codebase-files manifest.
  *
- * CRITICAL: This is appended to EVERY user message, even during tool call loops!
- * This ensures task constraints (especially setup task restrictions) are always visible.
+ * Every section rendered here is fixed for the lifetime of a single task
+ * (plan node writes `state.planText` once; `runtimeAssetsIndex` is
+ * sealed in `resolve/index.ts`; `_existingCodebaseFiles` is sealed in
+ * `execute/index.ts` at task entry). The caller (`buildMessages`)
+ * forwards this string into `buildCacheableBlocks` as a
+ * `taskInvariantParts` entry so it participates in Block 2 (cached).
  *
- * Async because the `Modify Targets — Current Content` section reads each
- * plan.modify target from disk. Disk I/O is capped by `MODIFY_CONTENT_*`
- * budgets above so a single runtime-context build stays bounded.
+ * Keep this function free of anything that mutates per execute recursion
+ * — those belong in `buildTurnVariableContext` below. See
+ * `CacheBlockMapper` docblock for the full invariance invariant.
  */
-export async function buildRuntimeContext(state: ArchitectGraphState): Promise<string> {
+export async function buildTaskInvariantContext(state: ArchitectGraphState): Promise<string> {
   const lines: string[] = [];
-  
-  
+
   const execHook = hooksIfActive(state)?.execute;
 
   if (state.currentTask) {
@@ -777,64 +789,15 @@ export async function buildRuntimeContext(state: ArchitectGraphState): Promise<s
     lines.push(``);
   }
   
-  // Note: Violations are injected at the top of prompt, not here
-  
-  // ✅ Session File Manifest: Show files created by OTHER parallel workers.
-  // This gives the LLM awareness of cross-worker writes without requiring read_file.
-  // Own-task file writes surface naturally through conversation tool_results.
-  const otherWorkerFiles = state._otherWorkerFiles;
-  if (otherWorkerFiles && otherWorkerFiles.length > 0) {
-    const MAX_MANIFEST_ENTRIES = 40;
-    const filesToShow = otherWorkerFiles.slice(0, MAX_MANIFEST_ENTRIES);
-    
-    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(`📋 Files Created by Parallel Tasks`);
-    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(``);
-    lines.push(`The following files were created by other tasks running in parallel with yours.`);
-    lines.push(`Do NOT create duplicates. If you need to import from or extend these files, use \`read_file\` to check their content first.`);
-    lines.push(``);
-    
-    // Group by task name for readability
-    const byTask = new Map<string, string[]>();
-    for (const f of filesToShow) {
-      const taskKey = f.taskName || 'unknown';
-      if (!byTask.has(taskKey)) byTask.set(taskKey, []);
-      byTask.get(taskKey)!.push(f.path);
-    }
-    
-    for (const [taskName, paths] of byTask) {
-      lines.push(`**${taskName}**:`);
-      for (const p of paths) {
-        lines.push(`  - ${p}`);
-      }
-    }
-    
-    if (otherWorkerFiles.length > MAX_MANIFEST_ENTRIES) {
-      lines.push(``);
-      lines.push(`... and ${otherWorkerFiles.length - MAX_MANIFEST_ENTRIES} more files`);
-    }
-    lines.push(``);
-    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(``);
-  }
-
-  // Existing Codebase Files manifest — replaces the `projectCodeContext`
-  // directory-tree / file-manifest injection removed in commit cbb4d924.
-  // Paths-only (no content) so token cost stays small; content for plan
-  // modify targets is surfaced by the section that follows.
-  //
-  // Dedupe against `_otherWorkerFiles`: when a parallel task writes to a
-  // path that already exists on disk, the parallel-tasks section (above)
-  // carries the richer semantics (taskName + cross-worker ownership) —
-  // surfacing the same path under "Existing Codebase Files" would falsely
-  // suggest it is safe to `edit_file` without cross-worker conflict.
-  const otherWorkerPathSet = new Set<string>(
-    (otherWorkerFiles ?? []).map(f => f.path),
-  );
-  const existingFiles = (state._existingCodebaseFiles ?? []).filter(
-    p => !otherWorkerPathSet.has(p),
-  );
+  // Existing Codebase Files manifest — paths-only listing of files that
+  // exist on disk at TASK START. Sealed by `execute/index.ts` L301 via
+  // `state._existingCodebaseFiles = existingCodebaseDiskFiles` so this
+  // slice is invariant across recursions. The per-recursion parallel
+  // worker manifest lives in `buildTurnVariableContext` and takes
+  // precedence when paths overlap (wording there makes the ordering
+  // explicit — raw dedupe here would make the invariant Block 2 slice
+  // depend on a Block 3 value).
+  const existingFiles = state._existingCodebaseFiles ?? [];
   if (existingFiles.length > 0) {
     const shown = existingFiles.slice(0, MANIFEST_MAX_ENTRIES);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
@@ -855,10 +818,77 @@ export async function buildRuntimeContext(state: ArchitectGraphState): Promise<s
     lines.push(``);
   }
 
+  return lines.join('\n');
+}
+
+/**
+ * Turn-variable runtime context — parallel-worker file manifest + plan
+ * modify-target current contents.
+ *
+ * Both sections can change **within** a single task's execute recursion:
+ *
+ *   - `_otherWorkerFiles` is re-collected at every `execute/index.ts`
+ *     entry from `sharedBuffer.getWrittenByOtherTasks()` (L121~135);
+ *     parallel workers that complete between two recursions appear here
+ *     even though the task itself did nothing.
+ *   - `buildModifyTargetsSection` reads the current on-disk content of
+ *     each `plan.modify` target; when this task's previous recursion
+ *     called `edit_file`, the rendered content differs on the next call.
+ *
+ * Because of those, this string is forwarded into Block 3 (uncached)
+ * via the existing `runtimeContext` template variable — NOT into
+ * `taskInvariantParts`.
+ *
+ * Violation text is pushed separately at the call site in
+ * `buildMessages` (see `runtimeContextParts[0]`) — it is also Block 3
+ * material but lives in the existing "previous attempt failed" framing
+ * that predates this split.
+ */
+export async function buildTurnVariableContext(state: ArchitectGraphState): Promise<string> {
+  const lines: string[] = [];
+
+  // Session File Manifest: Show files created by OTHER parallel workers.
+  // Re-collected at every execute entry, so cannot be cached.
+  const otherWorkerFiles = state._otherWorkerFiles;
+  if (otherWorkerFiles && otherWorkerFiles.length > 0) {
+    const MAX_MANIFEST_ENTRIES = 40;
+    const filesToShow = otherWorkerFiles.slice(0, MAX_MANIFEST_ENTRIES);
+
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(`📋 Files Created by Parallel Tasks`);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(``);
+    lines.push(`The following files were created by other tasks running in parallel with yours.`);
+    lines.push(`If a path here also appears under "Existing Codebase Files" above, THIS list is authoritative (the parallel writer owns the file).`);
+    lines.push(`Do NOT create duplicates. If you need to import from or extend these files, use \`read_file\` to check their content first.`);
+    lines.push(``);
+
+    // Group by task name for readability
+    const byTask = new Map<string, string[]>();
+    for (const f of filesToShow) {
+      const taskKey = f.taskName || 'unknown';
+      if (!byTask.has(taskKey)) byTask.set(taskKey, []);
+      byTask.get(taskKey)!.push(f.path);
+    }
+
+    for (const [taskName, paths] of byTask) {
+      lines.push(`**${taskName}**:`);
+      for (const p of paths) {
+        lines.push(`  - ${p}`);
+      }
+    }
+
+    if (otherWorkerFiles.length > MAX_MANIFEST_ENTRIES) {
+      lines.push(``);
+      lines.push(`... and ${otherWorkerFiles.length - MAX_MANIFEST_ENTRIES} more files`);
+    }
+    lines.push(``);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(``);
+  }
+
   // Modify Targets — current on-disk content for every plan.modify entry.
-  // Lets the LLM build precise `edit_file` calls without a `read_file`
-  // round-trip. Skips silently when the plan JSON has no modify array
-  // (setup / doc / explain tasks — Gate-on-presence, not task-type branch).
+  // Changes after `edit_file` tool calls so it cannot be cached.
   const modifyTargetsSection = await buildModifyTargetsSection(state);
   if (modifyTargetsSection) {
     lines.push(modifyTargetsSection);
@@ -866,6 +896,7 @@ export async function buildRuntimeContext(state: ArchitectGraphState): Promise<s
 
   return lines.join('\n');
 }
+
 
 /**
  * Build Foundation Contract: exported symbol summary from completed foundation task files.
