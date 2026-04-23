@@ -11,7 +11,8 @@
  * Tier semantics (Tier-Verification Alignment SSOT, Phase 1 = code job):
  *   Tier 0 Reflex       → direct path, read-only textual answer.
  *   Tier 1 OneShot      → direct path, verification-unneeded write only.
- *   Tier 2 SingleTask   → task path, exactly 1 task with `selfVerifyOnDone`.
+ *   Tier 2 Exploratory  → task path, exactly 1 task with `selfVerifyOnDone`
+ *                         (single unit of work, task owns inline verification).
  *   Tier 3 Task         → task path, >= 2 tasks with mandatory verification.
  *   Tier 4 RefsGrounded → task path, >= 2 tasks, refs-grounded breakdown.
  *

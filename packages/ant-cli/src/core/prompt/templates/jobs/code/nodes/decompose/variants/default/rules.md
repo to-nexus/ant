@@ -17,7 +17,7 @@ OUTPUT FORMAT:
 |---|---|---|
 | `0` | Reflex        | Read-only textual answer. The directive can be answered from its own wording plus what is already visible in this prompt. No file edits required. |
 | `1` | OneShot       | A single write where verification is genuinely unneeded: comment-only edits, typo/text fixes, string-literal swaps with no logic impact, deterministically-safe config tweaks. If you cannot confidently judge "no verification needed", do NOT pick Tier 1 — escalate to Tier 2. |
-| `2` | SingleTask    | A single unit of work that requires verification (install/typecheck/build/test) to confirm correctness. The task owns its own verification inline. Exactly one task is emitted. |
+| `2` | Exploratory   | A single unit of work that requires verification (install/typecheck/build/test) to confirm correctness. The task owns its own verification inline. Exactly one task is emitted. |
 | `3` | Task          | Multiple independent units of work that benefit from separate persistence boundaries, verification, or parallelism. A dedicated verification task governs build/test. No external reference document grounds the breakdown. |
 | `4` | RefsGrounded  | Multiple independent units of work, AND the breakdown is anchored in an external reference document (plan, spec, PRD, design) supplied as a ref in this prompt. Same verification-task requirement as Tier 3. |
 
@@ -87,24 +87,24 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
 
 ### Mode shapes the meaning of each tier
 
-**Principle**: The unit of "action" differs by mode. The same five tiers apply, but what counts as Reflex / OneShot / SingleTask / Task / RefsGrounded is mode-specific.
+**Principle**: The unit of "action" differs by mode. The same five tiers apply, but what counts as Reflex / OneShot / Exploratory / Task / RefsGrounded is mode-specific.
 
 - `explain` mode: the action is producing an explanation.
   - `0` Reflex        — answerable from the directive alone, no codebase look-up.
   - `1` OneShot       — answerable by pointing at a single known file or symbol, no write.
-  - `2` SingleTask    — one explain task covers the full answer (observation → written artefact).
+  - `2` Exploratory   — one explain task covers the full answer (observation → written artefact).
   - `3` Task          — answer must be structured as multiple chapter-scale artefacts.
   - `4` RefsGrounded  — answer systematically maps a supplied reference document.
 - `refactor` mode: the action is a code change.
   - `0` Reflex        — (rare) answer is "no change required"; no edits planned.
   - `1` OneShot       — verification genuinely unneeded (comment/typo/safe).
-  - `2` SingleTask    — one refactor unit that needs verification (task owns install/typecheck/build/test).
+  - `2` Exploratory   — one refactor unit that needs verification (task owns install/typecheck/build/test).
   - `3` Task          — change spans multiple independent persistence boundaries; verification task governs gates.
   - `4` RefsGrounded  — the refactor plan comes from a supplied reference document.
 - `generate` mode: the action is producing new code.
   - `0` Reflex        — (rare) directive is a question disguised as generation; no files planned.
   - `1` OneShot       — trivial addition where verification is genuinely unneeded.
-  - `2` SingleTask    — one generated unit that needs verification (task owns install/typecheck/build/test).
+  - `2` Exploratory   — one generated unit that needs verification (task owns install/typecheck/build/test).
   - `3` Task          — multi-boundary or multi-concern implementation; verification task governs gates.
   - `4` RefsGrounded  — the implementation scope is enumerated by a supplied reference document.
 
@@ -163,7 +163,7 @@ The tag content MUST be a single JSON object with these fields (no others):
 ---
 
 First, analyze step by step (think through):
-- **Classify executionTier first**: `0` Reflex, `1` OneShot, `2` SingleTask, `3` Task, or `4` RefsGrounded? (see ExecutionTier Classification above)
+- **Classify executionTier first**: `0` Reflex, `1` OneShot, `2` Exploratory, `3` Task, or `4` RefsGrounded? (see ExecutionTier Classification above)
 - If tier is `0` or `1`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`.
 - If tier is `2`: emit exactly ONE task with `selfVerifyOnDone: true` (or `false` for explain). Skip the multi-task breakdown rules (Shared Foundation / Parallel Execution / Final Verification task — the lone task owns inline self-verify instead).
 {{#unless intentClarifyDisabled}}
@@ -225,7 +225,7 @@ Each task object MUST follow this schema:
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
 | `uiSections` | When type is 'ui' or 'design-system' | Array of UI doc section IDs to inject (see specification for available sections) |
-| `selfVerifyOnDone` | Tier 2 only | `true` when the task must run install/typecheck/build/test gates before `<done>` (Tier 2 SingleTask). Omit or `false` at Tier 3/4 (the dedicated verification task governs gates). |
+| `selfVerifyOnDone` | Tier 2 only | `true` when the task must run install/typecheck/build/test gates before `<done>` (Tier 2 Exploratory, single unit of work). Omit or `false` at Tier 3/4 (the dedicated verification task governs gates). |
 | `description` | Yes | Scope boundary + design doc section reference |
 
 CRITICAL:
@@ -298,7 +298,7 @@ Do NOT embed token setup in setup or ui tasks.
 
 **Constraint (Tier 3/4)**: Tier 3 and Tier 4 breakdowns MUST include a dedicated verification task. The breakdown total is always `>= 2` tasks — any non-verification work plus the verification task.
 
-**Constraint (Tier 2)**: Tier 2 (SingleTask) does NOT emit a separate verification task. The sole task runs gates inline via `selfVerifyOnDone: true`.
+**Constraint (Tier 2)**: Tier 2 (Exploratory, single unit of work) does NOT emit a separate verification task. The sole task runs gates inline via `selfVerifyOnDone: true`.
 
 ---
 
@@ -314,7 +314,7 @@ Do NOT embed token setup in setup or ui tasks.
 |---|---|
 | 4 (RefsGrounded) | Include test-code task(s). Systematic work anchored on external references crosses boundaries whose contracts the tests encode. |
 | 3 (Task) | Omit test-code task(s) by default. Feature tasks absorb test updates in their own description when the change keeps a single package's existing coverage consistent. Include test-code task(s) only when the directive explicitly requests tests, or when the planned change invalidates tests in a different package than the one being edited. |
-| 2 (SingleTask) | Not applicable — test-code is its own task type. If tests must be authored, classify as Tier 3 instead. The sole Tier 2 task absorbs minimal inline test tweaks only. |
+| 2 (Exploratory) | Not applicable — test-code is its own task type. If tests must be authored, classify as Tier 3 instead. The sole Tier 2 task absorbs minimal inline test tweaks only. |
 | 0–1 | Not applicable — task breakdown is `[]` at these tiers. |
 
 **Constraint**: Do NOT include a test-code task in an existing project solely because prior test files were observed. File presence is not a signal.
@@ -366,7 +366,7 @@ Do NOT embed token setup in setup or ui tasks.
 |---|---|
 | 4 (RefsGrounded) | Include doc task(s). Systematic work anchored on external references reshapes public surfaces that external readers consult. |
 | 3 (Task) | Omit doc task(s) by default. Feature tasks absorb inline description updates in their own scope when the change stays inside an existing public surface. Include doc task(s) only when the planned work introduces a new public surface (new command, new entry point, new service boundary) or renames an existing one. |
-| 2 (SingleTask) | Not applicable — doc is its own task type. If documentation must be authored, classify as Tier 3 instead. |
+| 2 (Exploratory) | Not applicable — doc is its own task type. If documentation must be authored, classify as Tier 3 instead. |
 | 0–1 | Not applicable — task breakdown is `[]` at these tiers. |
 
 **Constraint**: Do NOT include doc task(s) in an existing project solely because feature count is high. Count is not a signal.

@@ -9,7 +9,8 @@
  * Boundary SSOT (Tier-Verification Alignment Phase 1):
  *   Tier 0 Reflex     → direct, read-only answer
  *   Tier 1 OneShot    → direct, verification-unneeded write (comment/typo/safe)
- *   Tier 2 SingleTask → task path, exactly 1 task with selfVerifyOnDone
+ *   Tier 2 Exploratory → task path, exactly 1 task with selfVerifyOnDone
+ *                        (single unit of work, task owns inline verification)
  *   Tier 3 Task       → task path, >= 2 tasks with mandatory verification task
  *   Tier 4 RefsGrounded → task path, >= 2 tasks with mandatory verification task
  *

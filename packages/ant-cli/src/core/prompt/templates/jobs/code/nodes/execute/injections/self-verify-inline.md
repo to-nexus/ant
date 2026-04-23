@@ -1,6 +1,6 @@
 ---
 
-## Self-Verify Before Done (Tier 2 SingleTask)
+## Self-Verify Before Done (Tier 2 Exploratory — single unit of work)
 
 **Principle**: This task is a single-unit-of-work breakdown. A separate verification task does NOT follow; the runtime expects THIS task to own install/typecheck/build/test gates before declaring completion.
 

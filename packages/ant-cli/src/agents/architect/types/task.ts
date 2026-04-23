@@ -88,7 +88,7 @@ export interface CodeTask extends BaseTask {
   errors?: string[];               // Error messages (for error tasks)
   category?: string;               // Error category (for error tasks)
   /**
-   * Tier-Verification Alignment: Tier 2 (SingleTask) flag.
+   * Tier-Verification Alignment: Tier 2 (Exploratory, single unit of work) flag.
    *
    * When `true`, this task takes ownership of its own verification gates
    * (install → typecheck → build → test) before emitting `<done>true</done>`.

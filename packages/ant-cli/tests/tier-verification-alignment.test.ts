@@ -59,7 +59,7 @@ const finalVerificationTask = (): CodeTask => ({
   description: 'validate build + tests',
 });
 
-describe('createTaskQueue — Tier 2 (SingleTask)', () => {
+describe('createTaskQueue — Tier 2 (Exploratory, single unit of work)', () => {
   it('accepts exactly 1 task with selfVerifyOnDone:true', () => {
     const tasks: CodeTask[] = [
       errorTask({ selfVerifyOnDone: true } as any),
@@ -97,7 +97,7 @@ describe('createTaskQueue — Tier 2 (SingleTask)', () => {
   it('throws when Tier 2 emits 0 tasks', () => {
     expect(() =>
       createTaskQueue([], null, undefined, ExecutionTierId.Exploratory),
-    ).toThrow(/Tier 2 \(SingleTask\) requires EXACTLY one task/);
+    ).toThrow(/Tier 2 \(Exploratory.*\) requires EXACTLY one task/);
   });
 
   it('throws when Tier 2 emits 2+ tasks', () => {
@@ -107,7 +107,7 @@ describe('createTaskQueue — Tier 2 (SingleTask)', () => {
     ];
     expect(() =>
       createTaskQueue(tasks, null, undefined, ExecutionTierId.Exploratory),
-    ).toThrow(/Tier 2 \(SingleTask\) requires EXACTLY one task/);
+    ).toThrow(/Tier 2 \(Exploratory.*\) requires EXACTLY one task/);
   });
 
   it('throws when Tier 2 non-explain task is missing selfVerifyOnDone:true', () => {

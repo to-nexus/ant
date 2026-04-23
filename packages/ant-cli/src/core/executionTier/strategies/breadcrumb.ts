@@ -3,7 +3,7 @@
  *
  * Variants:
  *   - {@link NoopBreadcrumb}  — tiers that never emit breadcrumbs (0 / 1 / 3-explain)
- *   - {@link MiniBreadcrumb}  — Tier 2 SingleTask; emit only when touched ≥ 3
+ *   - {@link MiniBreadcrumb}  — Tier 2 Exploratory; emit only when touched ≥ 3
  *   - {@link FullBreadcrumb}  — Tier 3 Task (generate/refactor); always emit
  *
  * Strategies are stateless singletons (module-level `const` via `new X()`).
@@ -20,7 +20,7 @@ import {
 } from '../../context/breadcrumb';
 import type { ExecutionTierState } from '../types';
 
-/** Threshold for the Tier 2 SingleTask mini-breadcrumb (§2.4). */
+/** Threshold for the exploratory mini-breadcrumb (§2.4). */
 export const MINI_BREADCRUMB_TOUCHED_THRESHOLD = 3;
 
 export interface BreadcrumbStrategy {
