@@ -3,21 +3,21 @@
  *
  * Error tasks apply fixes from an upstream remediation plan (batch-split
  * output carried on `prePlanText`, or a freshly-generated plan in the rare
- * no-prePlanText path). They are NOT diagnostic tasks: they do not discover
- * errors, they do not gate build/test/typecheck, and they do not own a
- * `VerificationSession`.
+ * no-prePlanText path).
  *
- * Rule (confirmed with product owner): error tasks modify code and may
- * install dependencies when the remediation plan requires it, but they
- * must NEVER run build / test / typecheck themselves. The next scheduled
- * verification cycle re-runs those gates after the fix lands. Running
- * build here would waste a plan→execute→enforce cycle; the codeCommandPolicy
- * Go allow-list must remain verification-only so error tasks cannot
- * silently trigger build/test through a shared gate.
+ * Default (Tier 3/4) semantics: error tasks are NOT diagnostic tasks — they
+ * do not discover errors, they do not gate build/test/typecheck, and they
+ * do not own a `VerificationSession`. The next scheduled verification task
+ * re-runs those gates after the fix lands; running them here wastes a
+ * plan→execute→enforce cycle.
  *
- * The guard mirrors verification's execute-phase guard minus the session
- * dependency. Plan-phase commands pass through (rare, but the no-prePlanText
- * path still needs inspection to build its plan).
+ * Tier 2 (SingleTask) exception: when `ctx.currentTaskSelfVerifyOnDone` is
+ * true, the error task IS the only task in the breakdown and owns its own
+ * verification inline. In that case the execute-phase block is lifted so
+ * the LLM can run install/typecheck/build/test per the
+ * `self-verify-inline` partial's gate chain. Install continues to pass
+ * through regardless of tier (the remediation plan may legitimately add
+ * dependencies in either configuration).
  *
  * R1 — the body of this hook is where task-type-specific command logic is
  * allowed to live; the common handler stays blind to `task.type`.
@@ -56,15 +56,20 @@ export function guard(
   // fix location before writing it.
   if (isDiagnosticInspectCommand(command)) return null;
 
-  // Execute-phase block: build/test/typecheck are the diagnostic surface and
-  // belong to verification, not to fix-application. The diagnostic cycle
-  // re-verifies automatically after the error task finishes.
+  // Tier 2 exception: the sole task owns inline self-verify, so
+  // build/test/typecheck are expected and required here.
+  if (ctx.currentTaskSelfVerifyOnDone === true) return null;
+
+  // Execute-phase block (Tier 3/4 default): build/test/typecheck are the
+  // diagnostic surface and belong to the dedicated verification task, not
+  // to fix-application. The verification task re-verifies automatically
+  // after the error task completes.
   if (ctx.activePhase !== 'plan') {
     if (isBuildCommand(command) || isTestCommand(command) || isTypecheckCommand(command)) {
       return reject(
         command,
         'BLOCKED: Error tasks apply fixes from the remediation plan and must not run build/test/typecheck. ' +
-          'Apply the code changes and output <done>true</done> — the next diagnostic cycle re-verifies automatically. ' +
+          'Apply the code changes and output <done>true</done> — the next verification task re-verifies automatically. ' +
           'Installing dependencies (npm/pnpm/pip/go mod) is still allowed when the remediation plan requires it.',
       );
     }

@@ -1,23 +1,36 @@
 /**
  * error/hooks/orchestrator.ts — TaskOrchestratorHook.onTaskComplete
  *
- * Replaces the two duplicated `task.type === 'error'` auto-add-final-
- * verification branches previously inlined in `graph.ts`:
+ * Defense-in-depth fallback under the Tier-Verification Alignment SSOT.
  *
- *   - L309~331 — sequential checkTaskStatus path (after a task is marked
- *     complete, push a Final Verification (Recheck) task when no final
- *     verification already exists anywhere in the pipeline).
- *   - L512~530 — parallelOrchestrator onTaskComplete callback (same
- *     guarantee in the parallel path).
+ * Primary path (decompose prompt SSOT):
+ *   - Tier 2 error task: ships with `selfVerifyOnDone: true` — the single
+ *     task owns its own install/typecheck/build/test gates inline. No
+ *     subsequent Final Verification is needed, and this hook is a NOOP for
+ *     Tier 2 tasks (gated by the `selfVerifyOnDone` check below).
+ *   - Tier 3/4 error task(s): decompose MUST emit a dedicated verification
+ *     task (priority 1000). `responseParser.createTaskQueue` now enforces
+ *     this at decompose time via the `executionTier >= 3 && !hasFinalTask`
+ *     throw. Under the primary path, Final Verification is already queued
+ *     by the time any error task completes, and this hook observes
+ *     `hasFinalVerification === true` and returns early.
  *
- * Both sites share the same intent ("error task done, make sure a build /
- * test recheck follows"). Centralising that decision here removes the
- * task-type branch from the phase layer (R1) and keeps the error-family
- * logic in one file (R2).
+ * Fallback path (this hook):
+ *   - If the decompose LLM violates the SSOT and emits Tier 3/4 error task(s)
+ *     without a Final Verification, `responseParser.createTaskQueue` throws
+ *     at decompose time. This hook only fires if a pre-alignment session
+ *     resumes (Tier 3 error task WITHOUT Final Verification in queue), and
+ *     then it auto-enqueues one as a recovery signal so the pipeline
+ *     terminates in a verified state. The console.warn surfaces the
+ *     violation so it is visible in logs, rather than silently papering over
+ *     a regression.
  *
- * The caller feeds a pre-materialised snapshot of the queue / running /
- * completed task lists; we never touch the live queue in-place for the
- * guard checks. Final task is pushed via the provided `taskQueue.push`.
+ * Historically this hook replaced two duplicated inline branches in
+ * `graph.ts` (sequential checkTaskStatus + parallelOrchestrator onTaskComplete).
+ * Centralising kept the task-type branch out of the phase layer (R1). Under
+ * Tier-Verification Alignment the primary trigger is gone, but the
+ * centralisation property is still worth preserving — hence the demotion to
+ * a logged safety net rather than outright removal.
  */
 
 import type { CodeTask } from '../../../../../types/task';
@@ -46,7 +59,26 @@ export function onTaskComplete(ctx: TaskCompleteCtx): void {
   if (!taskQueue) return;
   if (task.type !== 'error') return;
 
+  // Tier-Verification Alignment: Tier 2 error tasks own inline self-verify.
+  // Auto-enqueueing a Final Verification here would double-verify the same
+  // single-unit work and violate the "tasks.length === 1" invariant of
+  // Tier 2. NEVER fire for Tier 2 (detected via selfVerifyOnDone).
+  if ((task as any).selfVerifyOnDone === true) return;
+
   if (hasFinalVerification(queueSnapshot, runningSnapshot, completedSnapshot)) return;
+
+  // Reaching this branch means Tier 3/4 shipped error task(s) without a
+  // Final Verification — decompose's SSOT guard should have rejected this at
+  // responseParser.createTaskQueue time. Surface the violation loudly; the
+  // auto-add keeps the pipeline terminating in a verified state rather than
+  // papering over the regression silently.
+  console.warn(
+    `⚠️  [Prompt Violation Fallback] Final Verification auto-added after error task ` +
+      `"${task.id ?? task.name}" — decompose failed to emit one at Tier 3/4. ` +
+      `Under Tier-Verification Alignment SSOT this auto-enqueue should never fire on the ` +
+      `primary path; if you see this in logs, the decompose prompt / responseParser guard ` +
+      `has regressed and needs investigation.`,
+  );
 
   const techTiers: TechTier[] = [
     resolvedAction?.basis?.techTier?.frontend,
@@ -62,5 +94,5 @@ export function onTaskComplete(ctx: TaskCompleteCtx): void {
     techTiers,
   };
   taskQueue.push(finalTask);
-  console.log(`📋 Added Final Verification to confirm all errors resolved`);
+  console.log(`📋 Added Final Verification to confirm all errors resolved (fallback)`);
 }

@@ -1,16 +1,23 @@
 /**
- * Direct Node — single-turn ReAct loop for Tier 0-2 (oneshot / exploratory).
+ * Direct Node — single-turn ReAct loop for Tier 0-1.
  *
  * Alternative execution path to plan/execute, chosen when the Tier Entry
- * Node classifies the job as Tier 0, 1, or 2 (`isDirectTier`). Independent
- * of currentTask: the loop opens and closes within a single graph
- * invocation, then routes to `learn` (success) or back to `decompose`
- * (escalation).
+ * Node classifies the job as Tier 0 (read-only textual answer) or Tier 1
+ * (verification-unneeded write — comment/typo/safe config) via
+ * `isDirectTier`. Independent of currentTask: the loop opens and closes
+ * within a single graph invocation, then routes to `learn` (success) or
+ * back to `decompose` (escalation).
+ *
+ * Tier 2+ cases route to the task pipeline (plan → execute →
+ * checkTaskStatus) — single-unit work at Tier 2 runs as 1 task with
+ * `selfVerifyOnDone` so verification is owned by the task itself; Tier 3/4
+ * decompose into >= 2 tasks with a mandatory verification task.
  *
  * Tool policy: explain mode → read-only set; generate/refactor → full code set.
  * Loop budget derived from tier via `tierToDirectMode`:
- *   Tier 0, 1 → DIRECT_LOOP_LIMITS.oneshot (= 2 steps)
- *   Tier 2    → ANT_DIRECT_MAX_STEPS (default 10)
+ *   Tier 0 → undefined  (no tool loop; assistant answers via text)
+ *   Tier 1 → 'oneshot'  (DIRECT_LOOP_LIMITS.oneshot — up to 2 steps)
+ *   Tier 2+ → undefined (direct does not apply; routing never sends those here)
  */
 
 import { ArchitectGraphState } from '../../state';
@@ -29,8 +36,9 @@ import { invokeLLMWithTools } from '../_common/invokeLLMWithTools';
 import { runToolCallsAndCollect } from '../_common/runToolCallsAndCollect';
 import { parseReActResponse } from '../../utils/parseReActResponse';
 import { shouldEscalate } from './shouldEscalate';
-import { DIRECT_LOOP_LIMITS } from '@ant/shared';
+import { DIRECT_LOOP_LIMITS, getTechTier } from '@ant/shared';
 import { tierToDirectMode } from '../../../../../../core/executionTier';
+import { loadAntrules } from '../../../../../../core/artifact/antrules';
 
 const registry = createCodeToolRegistry();
 
@@ -59,8 +67,18 @@ export async function direct(
     ? tierToDirectMode(state.executionTier)
     : 'oneshot';
   const isExplainMode = mode === 'explain';
+  // Loop budget:
+  //   Tier 0 (`directMode === undefined`): single assistant turn, no tool
+  //     loop — the read-only answer resolves in the first response.
+  //   Tier 1 (`directMode === 'oneshot'`): DIRECT_LOOP_LIMITS.oneshot steps.
+  //   The legacy 'exploratory' budget is retained in the env override for
+  //   safety, but routing no longer reaches this node with Tier 2+.
   const maxSteps =
-    directMode === 'oneshot' ? DIRECT_LOOP_LIMITS.oneshot : getExploratoryMaxSteps();
+    directMode === undefined
+      ? 1
+      : directMode === 'oneshot'
+        ? DIRECT_LOOP_LIMITS.oneshot
+        : getExploratoryMaxSteps();
 
   const tools = await getTools(state);
 
@@ -80,24 +98,59 @@ export async function direct(
     );
   }
 
-  // Render per-turn framing (rules + base). Re-rendered each turn is cheap;
-  // the directive / featureContext may evolve on resume.
-  const renderedRules = await promptBuilder.render(
-    'jobs/code/nodes/direct/variants/default/rules',
-    { mode, directMode, isExplainMode, maxSteps },
-  );
-  const renderedBase = await promptBuilder.render(
-    'jobs/code/nodes/direct/variants/default/base',
-    {
+  // Tier-Verification Alignment: Tier 0/1 direct still runs through the same
+  // `PromptBuilder.build()` pipeline as execute so the agent identity
+  // (`agents/architect/base` via `jobs/code/base/system`), the critical rules
+  // (Task Priority Hierarchy, Preserve Existing Code, Code Completeness,
+  // Self-Verification mental checks), and the common injections
+  // (tool-calling-rules, text-format, secure-coding, persistence-schema,
+  // antrules partial + codebase/ANTRULES.md content) all flow in. The only
+  // things excluded are task-specific surfaces (currentTask, planText,
+  // violations, retryContext, task-type variant rules) because Tier 0/1
+  // has no task by construction.
+  const executionTierForPrompt = state.executionTier !== undefined ? state.executionTier : 0;
+  const promptResult = await promptBuilder.build({
+    templates: {
+      system: 'jobs/code/base/system',
+      base: 'jobs/code/nodes/direct/variants/default/base',
+      rules: 'jobs/code/nodes/direct/variants/default/rules',
+    },
+    intent: state.resolvedAction?.intent,
+    techContext: {
+      techTier: getTechTier(state) ?? undefined,
+      mode,
+      resolvedAction: state.resolvedAction,
+    },
+    basis: state.resolvedAction?.basis,
+    pipeline: {
+      sanitizeInput: true,
+      includeBasis: true,
+      includeExamples: false,
+      applyPolicyGuardrails: false,
+      formatForLLM: false,
+    },
+    // Direct path intentionally omits artifacts: Tier 0 answers via text,
+    // Tier 1 writes in a narrow known surface without needing full RAC
+    // content. If a directive really needs artifact context the Tier Entry
+    // Node should escalate to Tier 2 (which runs through the full execute
+    // pipeline with artifact selection).
+    vars: {
       directive: state.directive || '',
       directHints: state.directHints || {},
       featureContext: state.featureContext,
       mode,
       directMode,
+      isExplainMode,
+      maxSteps,
+      executionTier: executionTierForPrompt,
+      isTier0: executionTierForPrompt === 0,
+      isTier1: executionTierForPrompt === 1,
+      antrulesContent: loadAntrules(state.context?.featurePath),
+      userLanguage: state.context?.userLanguage || 'en',
     },
-  );
+  });
 
-  const framing = `${renderedRules}\n\n${renderedBase}`;
+  const framing = [promptResult.system, promptResult.user].filter(Boolean).join('\n\n');
 
   let history = [...getConv(state.conversations, CONV_KEYS.NODE_DIRECT)] as any[];
   let success = false;
