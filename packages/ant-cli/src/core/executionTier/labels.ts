@@ -13,7 +13,7 @@ import type { UserLanguage } from '../utils/languageDetector';
 
 export interface ExecutionTierLabel {
   /** Stable technical name, matches ExecutionTier.label. */
-  name: 'Reflex' | 'OneShot' | 'Exploratory' | 'Task' | 'RefsGrounded';
+  name: 'Reflex' | 'OneShot' | 'SingleTask' | 'Task' | 'RefsGrounded';
   /** Short display label per locale. */
   short: Record<UserLanguage, string>;
   /** One-line description per locale. */
@@ -45,25 +45,25 @@ export const EXECUTION_TIER_LABELS: Record<ExecutionTierId, ExecutionTierLabel> 
       zh: '单次执行',
     },
     description: {
-      ko: '단일 편집으로 완결되는 작업',
-      en: 'Completes in a single directed edit',
-      ja: '単一の編集で完了',
-      zh: '通过单次编辑完成',
+      ko: '검증이 필요 없는 초단순 편집 (주석/오탈자 등)',
+      en: 'Verification-unneeded trivial edit (comments / typos)',
+      ja: '検証不要の軽微な編集(コメント/誤字等)',
+      zh: '无需验证的轻微修改(注释/错字等)',
     },
   },
   [ExecutionTierId.Exploratory]: {
-    name: 'Exploratory',
+    name: 'SingleTask',
     short: {
-      ko: '탐색 실행',
-      en: 'Exploratory',
-      ja: '探索実行',
-      zh: '探索执行',
+      ko: '단일 태스크',
+      en: 'SingleTask',
+      ja: '単一タスク',
+      zh: '单任务',
     },
     description: {
-      ko: '코드베이스를 가볍게 탐색하며 직접 수행',
-      en: 'Light codebase exploration, direct execution',
-      ja: 'コードベースを軽く探索して直接実行',
-      zh: '轻量探索代码库后直接执行',
+      ko: '단일 태스크가 자체 검증(install/typecheck/build/test)까지 수행',
+      en: 'Single task owns inline verification (install/typecheck/build/test)',
+      ja: '単一タスクが検証(install/typecheck/build/test)まで担当',
+      zh: '单任务自带检验(install/typecheck/build/test)',
     },
   },
   [ExecutionTierId.Task]: {
