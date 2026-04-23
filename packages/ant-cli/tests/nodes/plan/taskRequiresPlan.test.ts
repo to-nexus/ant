@@ -1,14 +1,21 @@
 /**
  * L2 — `nodes/plan/planGeneration.ts` taskRequiresPlan predicate.
  *
- * Introduced in T6b-κ together with isTestCodeTask / isDocTask /
- * isExplainTask so the skip-planning gate lives as a disjunction of
- * per-task predicates (R1) instead of a cascade of literal
- * `task.type !== '...'` comparisons in the phase layer.
+ * Introduced in T6b-κ together with isDocTask / isExplainTask so the
+ * skip-planning gate lives as a disjunction of per-task predicates (R1)
+ * instead of a cascade of literal `task.type !== '...'` comparisons in
+ * the phase layer.
+ *
+ * F2 (2026-04) moved test-code back into the standard plan path — the
+ * earlier `isTestCodeTask` skip branch was a phase-layer R1 residual
+ * that trapped test-code in a silent retry loop when its check.evaluate
+ * hook fired `incomplete_implementation` violations (no plan-LLM meant
+ * no way for violations to reach the next execute prompt).
  *
  * This test locks:
- *   - verification / test-code / doc / explain tasks are skipped
+ *   - verification / doc / explain tasks are skipped
  *   - FINAL_VERIFICATION priority short-circuits regardless of type
+ *   - test-code is NO LONGER skipped — flows through standard plan
  *   - every other task type (feature / ui / design-system / error /
  *     setup) still requires plan text
  */
@@ -37,10 +44,6 @@ describe('nodes/plan/planGeneration — taskRequiresPlan', () => {
   describe('skips plan generation', () => {
     it('verification tasks — covered by isVerificationTask', () => {
       expect(taskRequiresPlan(task('verification'))).toBe(false);
-    });
-
-    it('test-code tasks — covered by isTestCodeTask', () => {
-      expect(taskRequiresPlan(task('test-code'))).toBe(false);
     });
 
     it('doc tasks — covered by isDocTask', () => {
@@ -78,6 +81,14 @@ describe('nodes/plan/planGeneration — taskRequiresPlan', () => {
 
     it('setup tasks', () => {
       expect(taskRequiresPlan(task('setup'))).toBe(true);
+    });
+
+    it('test-code tasks — F2 restored standard plan path', () => {
+      // Previously skipped via `isTestCodeTask` (R1 residual). F2 moved
+      // test-code back into the standard plan path so keyword / RAG /
+      // planGen run like every other code-writing task and retries can
+      // actually surface violations to the next prompt.
+      expect(taskRequiresPlan(task('test-code'))).toBe(true);
     });
   });
 });
