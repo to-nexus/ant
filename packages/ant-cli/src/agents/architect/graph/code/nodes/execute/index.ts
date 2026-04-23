@@ -33,6 +33,7 @@ import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormal
 import { resolveCodebaseRel } from './codebaseRel';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
+import { buildMergeUserContent } from './mergeUserContent';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
@@ -602,10 +603,20 @@ export async function execute(
         ? buildAssistantMessage({ text: cleanedResponse || undefined, toolCalls })
         : (cleanedResponse ? { role: 'assistant' as const, content: cleanedResponse } : null);
 
+      // User turn: Anthropic requires that `assistant(tool_use)` be followed
+      // by a user message whose content STARTS with `tool_result` blocks —
+      // one per `tool_use_id`. If we inject merge instructions as plain
+      // text here we leave the tool_use blocks orphaned and the next
+      // execute LLM call rejects with 400
+      // `tool_use ids were found without tool_result blocks immediately after`.
+      // Regression: job `ivory-fanning-knoll` (2026-04-24). See
+      // `mergeUserContent.ts` for the shared invariant + rationale.
+      const mergeUserContent = buildMergeUserContent(toolCalls, mergeInstruction);
+
       const newHistory = [
         ...nodeExecute,
         ...(assistantMessage ? [assistantMessage] : []),
-        { role: 'user' as const, content: mergeInstruction },
+        { role: 'user' as const, content: mergeUserContent },
       ];
 
       // Workflow exit
@@ -626,7 +637,12 @@ export async function execute(
           thinking,
           thinkingSignature: thinkingSignature || undefined,
           textResponse,
-          toolCalls,
+          // Clear toolCalls: synthetic tool_result blocks above already
+          // closed the tool_use pairing in history. Leaving toolCalls
+          // non-empty would route to the `tool` node which would append
+          // ANOTHER `user(tool_result)` and produce a malformed trailing
+          // sequence (see ivory-fanning-knoll regression comment above).
+          toolCalls: [],
           done: false,
           tokenUsage: capturedUsage,
         },
