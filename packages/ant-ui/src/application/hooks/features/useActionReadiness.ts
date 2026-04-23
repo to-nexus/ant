@@ -81,7 +81,7 @@ function listFilesInDir(tree: FileNode[], dirPath: string): { name: string; path
   if (!node || node.type !== 'directory' || !node.children) return [];
   return node.children
     .filter(c => c.type === 'file')
-    .map(c => ({ name: c.name, path: `${dirPath}/${c.name}`, size: c.size }));
+    .map(c => ({ name: c.name, path: `${dirPath}/${c.name}`, size: c.meta?.size }));
 }
 
 function fileExists(tree: FileNode[], filePath: string): boolean {

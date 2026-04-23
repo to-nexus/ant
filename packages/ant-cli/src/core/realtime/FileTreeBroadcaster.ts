@@ -16,6 +16,7 @@
 import { Redis } from 'ioredis';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { FileNode } from '@ant/shared';
 import { FileTreeUpdatePort } from '../ports';
 import { UserContext } from '../types/user';
 import { 
@@ -24,7 +25,7 @@ import {
   BroadcasterOptions 
 } from './types';
 import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
-import { isTemplateContent, getTemplateReason } from '../utils/templateDetector';
+import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
 import { GitChangeBroadcaster } from './GitChangeBroadcaster';
 
 // File patterns to exclude from tree
@@ -43,15 +44,6 @@ const EXCLUDE_PATTERNS = [
   'codebase',  // Git worktree directory — browsed via IDE, not Explorer
 ];
 
-interface FileTreeNode {
-  name: string;
-  type: 'file' | 'directory';
-  path: string;
-  children?: FileTreeNode[];
-  size?: number;
-  modifiedTime?: string;
-  isTemplate?: boolean;
-}
 
 export class FileTreeBroadcaster implements FileTreeUpdatePort {
   private pubRedis: Redis;
@@ -150,25 +142,24 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   }
 
   /**
-   * Build file tree from filesystem
+   * Build file tree from filesystem. All meta computation routes through
+   * `computeFileMeta` — no inline template evaluation here.
    */
-  private async buildFileTree(dirPath: string, relativePath: string = ''): Promise<FileTreeNode[]> {
-    const nodes: FileTreeNode[] = [];
-    
+  private async buildFileTree(dirPath: string, relativePath: string = ''): Promise<FileNode[]> {
+    const nodes: FileNode[] = [];
+
     try {
       const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-      
+
       for (const entry of entries) {
-        // Skip excluded patterns
         if (EXCLUDE_PATTERNS.some(pattern => entry.name === pattern || entry.name.startsWith('.'))) {
           continue;
         }
-        
+
         const fullPath = path.join(dirPath, entry.name);
         const relPath = relativePath ? path.join(relativePath, entry.name) : entry.name;
-        
+
         if (entry.isDirectory()) {
-          // Recursively build children
           const children = await this.buildFileTree(fullPath, relPath);
           nodes.push({
             name: entry.name,
@@ -176,56 +167,54 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
             path: relPath,
             children,
           });
-        } else if (entry.isFile()) {
-          try {
-            const stats = await fs.promises.stat(fullPath);
-            const node: FileTreeNode = {
-              name: entry.name,
-              type: 'file',
-              path: relPath,
-              size: stats.size,
-              modifiedTime: stats.mtime.toISOString(),
-            };
-
-            if (relPath.startsWith('inputs/sources/')) {
-              try {
-                const content = await fs.promises.readFile(fullPath, 'utf-8');
-                const result = getTemplateReason(content, stats.size);
-                if (result.reason) {
-                  node.isTemplate = true;
-                  (node as any).templateReason = result.reason;
-                  if (result.contentLength !== undefined) (node as any).templateContentLength = result.contentLength;
-                  if (result.threshold !== undefined) (node as any).templateThreshold = result.threshold;
-                }
-              } catch { /* skip read failures */ }
-            }
-
-            nodes.push(node);
-          } catch {
-            nodes.push({
-              name: entry.name,
-              type: 'file',
-              path: relPath,
-            });
-          }
+          continue;
         }
+
+        if (!entry.isFile()) continue;
+
+        let size = 0;
+        let mtimeMs = 0;
+        try {
+          const stats = await fs.promises.stat(fullPath);
+          size = stats.size;
+          mtimeMs = stats.mtimeMs;
+        } catch { /* skip stat failures */ }
+
+        let content: string | null = null;
+        if (shouldEvaluateTemplate(relPath)) {
+          try {
+            content = await fs.promises.readFile(fullPath, 'utf-8');
+          } catch { /* skip read failures */ }
+        }
+
+        const meta = computeFileMeta({
+          relativePath: relPath,
+          content,
+          size,
+          mtime: mtimeMs,
+        });
+
+        nodes.push({
+          name: entry.name,
+          type: 'file',
+          path: relPath,
+          meta,
+        });
       }
-      
-      // Sort: directories first, then alphabetically
+
       nodes.sort((a, b) => {
         if (a.type !== b.type) {
           return a.type === 'directory' ? -1 : 1;
         }
         return a.name.localeCompare(b.name);
       });
-      
+
     } catch (error: any) {
-      // Return empty if directory doesn't exist or can't be read
       if (error.code !== 'ENOENT') {
         console.warn(`[FileTreeBroadcaster] Warning reading ${dirPath}:`, error.message);
       }
     }
-    
+
     return nodes;
   }
 

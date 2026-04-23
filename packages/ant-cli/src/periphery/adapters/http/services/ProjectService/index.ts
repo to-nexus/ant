@@ -1,4 +1,4 @@
-import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
+import type { GitStatusResponse, GitChangesResponse, FileNode, FileResource } from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
@@ -139,15 +139,15 @@ export class ProjectService {
   // File Operations (delegated)
   // =====================================
   
-  async getFileTree(projectId: string, featureName: string, userContext: UserContext): Promise<any> {
+  async getFileTree(projectId: string, featureName: string, userContext: UserContext): Promise<FileNode[]> {
     return this.fileOps.getFileTree(projectId, featureName, userContext);
   }
   
-  async readFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<string> {
+  async readFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<FileResource> {
     return this.fileOps.readFile(projectId, featureName, filePath, userContext);
   }
   
-  async writeFile(projectId: string, featureName: string, filePath: string, content: string, userContext: UserContext): Promise<void> {
+  async writeFile(projectId: string, featureName: string, filePath: string, content: string, userContext: UserContext): Promise<FileResource> {
     return this.fileOps.writeFile(projectId, featureName, filePath, content, userContext);
   }
   

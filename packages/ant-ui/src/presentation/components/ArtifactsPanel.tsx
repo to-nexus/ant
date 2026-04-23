@@ -10,7 +10,7 @@ import { textColors, cn } from '@/shared/utils/design-system';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { FileActionMenu } from './FeatureDetails/components/FileActionMenu';
+import { FileActionMenu } from './FileActionMenu';
 import { isCanonicalDir, isStructuralCanonicalDir, getArtifactDirPolicy, validateFileForDir } from '@/shared/utils/canonical-dirs';
 import { ApiError } from '@/infrastructure/http/api/client';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
@@ -976,7 +976,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
 
   const templateFiles = allInputsNodes
     .find(node => node.name === 'sources')?.children
-    ?.filter(n => n.type === 'file' && n.isTemplate) || [];
+    ?.filter(n => n.type === 'file' && n.meta?.isTemplate) || [];
 
   const allOutputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
   const outputsNodes = allOutputsNodes.filter(node =>
@@ -1054,7 +1054,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onMarkSeen={markArtifactsSeen}
           fileIndicators={{
             ...Object.fromEntries(
-              templateFiles.map(n => [n.name, <TemplateStatusIndicator key={n.name} reason={n.templateReason} contentLength={n.templateContentLength} threshold={n.templateThreshold} t={t} />])
+              templateFiles.map(n => [n.name, <TemplateStatusIndicator key={n.name} reason={n.meta?.templateReason ?? undefined} contentLength={n.meta?.templateContentLength} threshold={n.meta?.templateThreshold} t={t} />])
             ),
           }}
         />
