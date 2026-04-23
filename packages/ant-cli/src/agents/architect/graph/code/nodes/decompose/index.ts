@@ -343,6 +343,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             'jobs/code/nodes/decompose/variants/default/error-or-general',
             'jobs/code/nodes/decompose/variants/default/existing-code-check',
             'jobs/code/nodes/decompose/variants/default/design-doc-guide',
+            'jobs/code/nodes/decompose/variants/default/output-unit-splitting',
           ],
           injectedVariables: {
             directive: decomposeVars.directive ? `[${decomposeVars.directive.length} chars]` : undefined,
