@@ -29,6 +29,12 @@ export function isSvgFilePath(filePath: string | undefined | null): boolean {
   return filePath.toLowerCase().endsWith('.svg');
 }
 
+export function isHtmlFilePath(filePath: string | undefined | null): boolean {
+  if (!filePath) return false;
+  const lower = filePath.toLowerCase();
+  return lower.endsWith('.html') || lower.endsWith('.htm');
+}
+
 /** Binary image files (non-text). SVG is excluded because it is text-editable. */
 export function isBinaryImageFilePath(filePath: string | undefined | null): boolean {
   return isImageFilePath(filePath) && !isSvgFilePath(filePath);
