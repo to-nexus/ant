@@ -121,11 +121,23 @@ function buildRetryContext(state: ArchitectGraphState) {
 
 /**
  * Build messages for LLM using PromptEngine with Prompt Caching
- * 
+ *
  * ✅ Caching Strategy:
  * 1. System prompt + rules + profiles (cached - rarely changes)
- * 2. Project code context + design doc (cached - changes per task)
- * 3. Current task + directive (not cached - changes every turn)
+ * 2. Selected artifact pool + foundation/schema anchors (cached per task)
+ * 3. Runtime context — plan JSON, Existing Codebase Files manifest,
+ *    Modify Targets current content, violations, current task (not cached;
+ *    changes every turn)
+ *
+ * File awareness (after commit cbb4d924 removed `projectCodeContext`):
+ * - Path manifest: `_existingCodebaseFiles` (seeded in execute/index.ts
+ *   from the same disk listing that seeds `FileRegistry.existingFiles`)
+ *   is rendered as the `Existing Codebase Files` section so the LLM can
+ *   distinguish new creation from modification without a `list_files`
+ *   round-trip.
+ * - Modify content: `implementation.modify[]` targets in `state.planText`
+ *   are read from disk and rendered as `Modify Targets — Current Content`
+ *   so `edit_file` calls can be constructed without a prior `read_file`.
  */
 export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -245,7 +257,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     );
   }
 
-  const runtimeContext = buildRuntimeContext(state);
+  const runtimeContext = await buildRuntimeContext(state);
   if (runtimeContext) runtimeContextParts.push(runtimeContext);
 
   const _basisDiag = state.resolvedAction?.basis;
@@ -578,13 +590,103 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   return messages;
 }
 
+const MANIFEST_MAX_ENTRIES = 100;
+const MODIFY_CONTENT_PER_FILE_CAP = 30_000;
+const MODIFY_CONTENT_TOTAL_CAP = 80_000;
+
 /**
- * Build runtime context (task, plan, enforcement, file tree)
- * 
+ * Extract `implementation.modify[].target` paths from a plan-JSON string.
+ * Tolerant of code-fence wrapping and non-JSON content (returns []).
+ */
+function extractPlanModifyPaths(planText: string | undefined): string[] {
+  if (!planText) return [];
+  const stripped = planText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+  try {
+    const parsed = JSON.parse(stripped);
+    const modify = parsed?.implementation?.modify;
+    if (!Array.isArray(modify)) return [];
+    const paths: string[] = [];
+    for (const entry of modify) {
+      const target = typeof entry === 'string' ? entry : entry?.target;
+      if (typeof target === 'string' && target.length > 0) paths.push(target);
+    }
+    return paths;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Render the `Modify Targets — Current Content` section — reads each
+ * plan.modify target from disk and lays out its current content so the
+ * LLM can build exact `edit_file` calls without a prior `read_file`
+ * round-trip. Caps per-file and total chars to protect the token budget.
+ */
+async function buildModifyTargetsSection(state: ArchitectGraphState): Promise<string | null> {
+  const paths = extractPlanModifyPaths(state.planText);
+  if (paths.length === 0) return null;
+
+  const fileSystem = state.deps?.fileSystem;
+  if (!fileSystem) return null;
+
+  const blocks: string[] = [];
+  let totalChars = 0;
+
+  for (const p of paths) {
+    if (totalChars >= MODIFY_CONTENT_TOTAL_CAP) {
+      blocks.push(`\n[remaining modify targets omitted — use \`read_file\` to fetch: ${paths.slice(blocks.length).join(', ')}]`);
+      break;
+    }
+    let content: string | undefined;
+    try {
+      content = await fileSystem.readFile(p) ?? undefined;
+    } catch {
+      content = undefined;
+    }
+    if (content === undefined) {
+      blocks.push(`### ${p}\n\n[file not found on disk — treat as new creation if still listed in plan.modify, otherwise use \`read_file\` to verify]`);
+      continue;
+    }
+    let body = content;
+    if (body.length > MODIFY_CONTENT_PER_FILE_CAP) {
+      body = body.slice(0, MODIFY_CONTENT_PER_FILE_CAP) + `\n... [truncated at ${MODIFY_CONTENT_PER_FILE_CAP} chars, use \`read_file\` for full content]`;
+    }
+    const budgetLeft = MODIFY_CONTENT_TOTAL_CAP - totalChars;
+    if (body.length > budgetLeft) {
+      body = body.slice(0, Math.max(0, budgetLeft)) + `\n... [truncated — total budget reached, use \`read_file\` for full content]`;
+    }
+    totalChars += body.length;
+    blocks.push(`### ${p}\n\n\`\`\`\n${body}\n\`\`\``);
+  }
+
+  if (blocks.length === 0) return null;
+
+  return [
+    `════════════════════════════════════════════════════════════════════════════════`,
+    `📝 Modify Targets — Current Content`,
+    `════════════════════════════════════════════════════════════════════════════════`,
+    ``,
+    `The following files are listed in plan.modify. Their current on-disk content is below.`,
+    `Use \`edit_file\` for partial changes. Do NOT re-emit these via \`<file>\` tag — that would overwrite.`,
+    ``,
+    blocks.join('\n\n'),
+    ``,
+    `════════════════════════════════════════════════════════════════════════════════`,
+    ``,
+  ].join('\n');
+}
+
+/**
+ * Build runtime context (task, plan, file manifests, enforcement).
+ *
  * CRITICAL: This is appended to EVERY user message, even during tool call loops!
  * This ensures task constraints (especially setup task restrictions) are always visible.
+ *
+ * Async because the `Modify Targets — Current Content` section reads each
+ * plan.modify target from disk. Disk I/O is capped by `MODIFY_CONTENT_*`
+ * budgets above so a single runtime-context build stays bounded.
  */
-export function buildRuntimeContext(state: ArchitectGraphState): string {
+export async function buildRuntimeContext(state: ArchitectGraphState): Promise<string> {
   const lines: string[] = [];
   
   
@@ -706,6 +808,51 @@ export function buildRuntimeContext(state: ArchitectGraphState): string {
     lines.push(``);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     lines.push(``);
+  }
+
+  // Existing Codebase Files manifest — replaces the `projectCodeContext`
+  // directory-tree / file-manifest injection removed in commit cbb4d924.
+  // Paths-only (no content) so token cost stays small; content for plan
+  // modify targets is surfaced by the section that follows.
+  //
+  // Dedupe against `_otherWorkerFiles`: when a parallel task writes to a
+  // path that already exists on disk, the parallel-tasks section (above)
+  // carries the richer semantics (taskName + cross-worker ownership) —
+  // surfacing the same path under "Existing Codebase Files" would falsely
+  // suggest it is safe to `edit_file` without cross-worker conflict.
+  const otherWorkerPathSet = new Set<string>(
+    (otherWorkerFiles ?? []).map(f => f.path),
+  );
+  const existingFiles = (state._existingCodebaseFiles ?? []).filter(
+    p => !otherWorkerPathSet.has(p),
+  );
+  if (existingFiles.length > 0) {
+    const shown = existingFiles.slice(0, MANIFEST_MAX_ENTRIES);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(`📋 Existing Codebase Files`);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(``);
+    lines.push(`The following files ALREADY EXIST on disk at task start.`);
+    lines.push(`For changes to these files: use \`edit_file\` tool (search/replace).`);
+    lines.push(`Do NOT use \`<file>\` tag on any of these paths — it overwrites all content.`);
+    lines.push(``);
+    for (const p of shown) lines.push(`  - ${p}`);
+    if (existingFiles.length > MANIFEST_MAX_ENTRIES) {
+      lines.push(``);
+      lines.push(`... and ${existingFiles.length - MANIFEST_MAX_ENTRIES} more files`);
+    }
+    lines.push(``);
+    lines.push(`════════════════════════════════════════════════════════════════════════════════`);
+    lines.push(``);
+  }
+
+  // Modify Targets — current on-disk content for every plan.modify entry.
+  // Lets the LLM build precise `edit_file` calls without a `read_file`
+  // round-trip. Skips silently when the plan JSON has no modify array
+  // (setup / doc / explain tasks — Gate-on-presence, not task-type branch).
+  const modifyTargetsSection = await buildModifyTargetsSection(state);
+  if (modifyTargetsSection) {
+    lines.push(modifyTargetsSection);
   }
 
   return lines.join('\n');

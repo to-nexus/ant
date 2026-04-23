@@ -14,16 +14,16 @@ You are generating the minimum set of tests that verify the integrated codebase 
 - Executing tests — the verification phase runs them.
 - Modifying application source code — test files observe the source, they do not change it.
 
-## Pre-loaded Context
+## Codebase Awareness
 
-Configuration files, entry points, source code, and the directory tree are already in your context. Use them directly — do NOT re-read or re-list what is already provided.
+This prompt surfaces two file-awareness channels — consult them before calling `list_files` or `read_file`:
 
-| Context | Use for |
-|---------|---------|
-| **Config files** | Test runner, dependencies |
-| **Source files** | Test targets — observe actual coupling and abstraction boundaries |
-| **Entry point** | Startup/health test target |
-| **Directory tree** | Project structure — do NOT call `list_files` |
+| Channel | What it carries | Use for |
+|---------|-----------------|---------|
+| `Existing Codebase Files` section (below) | Path list of every file under `codebase/` at task start | Identify test targets and existing config files without `list_files` |
+| `Modify Targets — Current Content` section (below) | Current on-disk content of every `plan.modify` target | Build exact `edit_file` `old_str` without a prior `read_file` |
+
+Fall back to `read_file` only when you need the full body of a source file that is NOT already surfaced by the Modify Targets section. Since test files observe source files, expect most source content to require a `read_file` call — the modify-targets section carries content for files you will write to, not read from.
 
 ## Observation Targets
 

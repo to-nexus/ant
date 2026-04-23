@@ -17,15 +17,16 @@ When writing files, use `codebase/` prefix for all code files.
 
 **Fix ONLY what the remediation plan specifies.** Do NOT add features, refactor unrelated code, or "improve" working modules.
 
-## Pre-loaded Context
+## Codebase Awareness
 
-Configuration files, entry points, and the directory tree are already in your context.
+This prompt surfaces two file-awareness channels — consult them before calling `list_files` or `read_file`:
 
-| Context | Use for |
-|---------|---------|
-| **Config files** | Build commands, dependencies |
-| **Entry point** | Environment variable requirements |
-| **Directory tree** | Project structure — do NOT call `list_files` for exploration |
+| Channel | What it carries | Use for |
+|---------|-----------------|---------|
+| `Existing Codebase Files` section (below) | Path list of every file under `codebase/` at task start | Dispatch: path present → `edit_file`; path absent → `<file>` |
+| `Modify Targets — Current Content` section (below) | Current on-disk content of every `plan.modify` target | Build exact `edit_file` `old_str` without a prior `read_file` |
+
+Fall back to `list_files` / `read_file` only when a path is not covered by either section.
 
 ## Execution Protocol
 

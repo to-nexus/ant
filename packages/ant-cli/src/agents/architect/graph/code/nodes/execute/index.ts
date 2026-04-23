@@ -260,9 +260,16 @@ export async function execute(
   // so sequential-mode runs still catch overwrites without SharedFileBuffer.
   // In parallel mode SharedFileBuffer appends cross-worker writes below.
   //
+  // The same disk listing is captured into `_existingCodebaseFiles` so
+  // `buildRuntimeContext` can surface a path manifest to the LLM. This is
+  // the file-awareness channel that replaced the `projectCodeContext`
+  // injection removed in commit cbb4d924 — guardrail + prompt share one
+  // source of truth so they never drift.
+  //
   // All paths are normalised via normalizeToCodebasePath to stay consistent
   // with what FileRenderer writes (`"src/app/x"` vs `"codebase/src/app/x"`).
   const existingFiles = new Set<string>();
+  const existingCodebaseDiskFiles: string[] = [];
 
   const codebaseRel = (() => {
     if (!repoRootForWrites || !state.deps?.fileSystem) return 'codebase';
@@ -282,6 +289,7 @@ export async function execute(
       for (const p of diskPaths) {
         const { normalized } = normalizeToCodebasePath(p, codebaseRel);
         existingFiles.add(normalized);
+        existingCodebaseDiskFiles.push(normalized);
       }
     } catch (err) {
       console.warn(`⚠️  [CodeGen] listFiles('codebase') failed — existingFiles guardrail will rely on SharedFileBuffer only:`, err instanceof Error ? err.message : err);
@@ -290,12 +298,20 @@ export async function execute(
 
   console.log(`📊 [CodeGen] existingFiles seeded from disk: ${existingFiles.size} path(s)`);
 
+  // Publish the disk listing to state so `buildRuntimeContext` can render
+  // the `Existing Codebase Files` manifest. Cross-worker writes are
+  // surfaced separately via `_otherWorkerFiles` (populated upstream) and
+  // must NOT be mixed in here.
+  state._existingCodebaseFiles = existingCodebaseDiskFiles;
 
-  // ✅ Cross-worker awareness: Track other workers' files SEPARATELY
-  // These paths are added to existingFiles (for LLM prompt context — "this file exists")
-  // but also tracked in otherWorkerPaths so FileRegistry.isKnownAtStart() returns false
-  // for them. This forces the writeNewFile() path in FileRenderer, triggering
-  // SharedFileBuffer's ownership check instead of a silent overwrite.
+
+  // ✅ Cross-worker awareness: Track other workers' files SEPARATELY.
+  // These paths are added to existingFiles so FileRegistry sees them as
+  // pre-existing, but also tracked in otherWorkerPaths so
+  // FileRegistry.isKnownAtStart() returns false for them. This forces the
+  // writeNewFile() path in FileRenderer, triggering SharedFileBuffer's
+  // ownership check instead of a silent overwrite. The LLM-facing manifest
+  // for these paths is produced separately via `_otherWorkerFiles`.
   const otherWorkerPaths = new Set<string>();
   const workerFS = state.deps?.fileSystem as any;
   if (workerFS?.sharedBuffer && typeof workerFS.sharedBuffer.getAllWrittenPaths === 'function') {

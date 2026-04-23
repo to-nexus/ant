@@ -880,7 +880,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     featureTasks,
     referenceRequests: referenceRequests || state.referenceRequests || [],
     designDocUnknownPackages: unknownPackages,
-    referenceCodeContexts: [],
     totalSubtasks: tasks.length + 1,
     subtaskIndex: 0,
     completedTasks: state.completedTasks || [],

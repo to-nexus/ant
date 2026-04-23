@@ -301,7 +301,6 @@ export async function generatePlanText(
   task: CodeTask,
   state: ArchitectGraphState,
   codeContext: any,
-  referenceCodeContexts: any[],
   violations?: Violation[],
   uiDoc?: string,  // ✅ UI spec/assets doc for UI-related tasks
   remainingTasks?: Array<{ id: string; name: string; description: string; priority: number }>,  // ✅ Remaining tasks for cross-task awareness

@@ -8,16 +8,16 @@ You are generating or updating project documentation based on the completed code
 
 **Write documentation files ONLY.** Do NOT modify application source code or test files.
 
-## Pre-loaded Context
+## Codebase Awareness
 
-Configuration files, source code, test files, and the directory tree are already in your context. Use them directly — do NOT re-read or re-list what is already provided.
+This prompt surfaces two file-awareness channels — consult them before calling `list_files` or `read_file`:
 
-| Context | Use for |
-|---------|---------|
-| **Config files** | Install, build, run, test commands |
-| **Source files** | Architecture understanding, component relationships |
-| **Test files** | Test run commands, test framework |
-| **Directory tree** | Project structure, package boundaries |
+| Channel | What it carries | Use for |
+|---------|-----------------|---------|
+| `Existing Codebase Files` section (below) | Path list of every file under `codebase/` at task start | Project structure, package boundaries, existing README / docs detection |
+| `Modify Targets — Current Content` section (below) | Current on-disk content of every `plan.modify` target | Update existing docs with exact `edit_file` calls |
+
+Fall back to `read_file` when you need the body of a source / test / config file that is not already surfaced (documentation rendering often requires reading source code, which is typically NOT in the modify-targets section since doc tasks write docs, not source).
 
 ## Observation Targets
 
