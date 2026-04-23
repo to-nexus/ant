@@ -32,20 +32,61 @@ import * as crypto from 'crypto';
  * Chat status emissions that do NOT produce a persisted `chat_status`
  * line.
  *
- * - `placeholder` is a live-only shimmer card injected when an assistant
- *   message starts; it carries no semantic content and is replaced as
- *   soon as the first real card arrives.
- * - `thinking` is streamed token-by-token by `LLMEventHandler`; the final
- *   collapsed block is persisted separately via
- *   `appender.appendThinking(finalText)`. Persisting every chunk here
- *   would duplicate the block.
+ * Two classes of entries:
  *
- * Every other `ChatStatusType` emits exactly one `chat_status` line so
- * replay can reproduce the identical MessageContent.
+ * 1. Structurally transient cards — carry no semantic content.
+ *    - `placeholder`: live-only shimmer injected when an assistant message
+ *      starts; replaced by the first real card.
+ *    - `thinking`: streamed token-by-token by `LLMEventHandler`; the final
+ *      collapsed block is persisted separately via
+ *      `appender.appendThinking(finalText)`.
+ *
+ * 2. In-progress / chunk cards that pair with a terminal card.
+ *    The live path's `ContentMerger` merges these into a single slot
+ *    (either via `tryFallbackMerge` for "~ing → ~ed" pairs, via
+ *    explicit `_mergeIndex` for list/read-source, or via
+ *    `canAppendContent` for plan-chunk append). `ChatLogToMessages`
+ *    has no merge pass, so persisting every in-progress / chunk line
+ *    would make replay render N cards where live renders 1. Keeping
+ *    them live-only matches the shape already enforced by
+ *    `FileOperationHandler` (only terminal `file_create` / `file_edit`
+ *    / `file_delete` are persisted).
+ *
+ *    Every paired terminal card (`read`, `learned`, `listed_files`,
+ *    `plan`, `explored`, …) IS persisted and carries the final
+ *    metadata the UI needs, so replay reproduces the merged state
+ *    byte-identically from a single line.
  */
 const LIVE_ONLY_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
+  // (1) transient
   'placeholder',
   'thinking',
+  // (2) in-progress halves of "~ing / ~ed" pairs
+  'exploring',
+  'retrieving',
+  'grepping',
+  'reading',
+  'reading_source',
+  'listing_files',
+  'searching_code',
+  'searching_reference',
+  'indexing',
+  'analyzing',
+  'storing',
+  'learning',
+  'loading',
+  'processing',
+  'downloading',
+  'figma_calling',
+  // Note: `command_running` / `command_streaming` are emitted by
+  // `CommandExecutionHandler` directly through `ContentMerger.addContent`
+  // and never reach this gate; only the terminal `command` line is
+  // persisted there. They are therefore intentionally absent from this
+  // set — they are not members of `ChatStatusType`.
+  //
+  // plan chunk append — the final `plan` line carries the accumulated
+  // `metadata.content` so replay reproduces the full card.
+  'plan_generating',
 ]);
 
 export class ChatStatusHandler {
