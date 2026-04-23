@@ -334,9 +334,9 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
  * Create task queue from parsed tasks
  *
  * Tier-Verification Alignment (SSOT):
- *   - Tier 2 (SingleTask) → MUST emit exactly 1 task with `selfVerifyOnDone:true`.
- *     The sole task owns install/typecheck/build/test inline; no separate
- *     verification task.
+ *   - Tier 2 (Exploratory, single unit of work) → MUST emit exactly 1 task with
+ *     `selfVerifyOnDone:true`. The sole task owns install/typecheck/build/test
+ *     inline; no separate verification task.
  *   - Tier 3 / Tier 4 (Task / RefsGrounded) → MUST emit `>= 2` tasks INCLUDING a
  *     dedicated verification task (priority 1000).
  *   - Tier 0 / Tier 1 → `<tasks>[]`. Caller (`decompose/index.ts`) short-circuits
@@ -369,8 +369,9 @@ export function createTaskQueue(
   // Tier-Verification Alignment — count / shape validation
   // ─────────────────────────────────────────────────────────────
   //
-  // Tier 2 (SingleTask): exactly 1 task, with `selfVerifyOnDone === true`
-  // (except for explain tasks which have no gates to run).
+  // Tier 2 (Exploratory, single unit of work): exactly 1 task, with
+  // `selfVerifyOnDone === true` (except for explain tasks which have no
+  // gates to run).
   //
   // Tier 3/4 (Task / RefsGrounded): >= 2 tasks, verification task mandatory.
   //
@@ -380,7 +381,7 @@ export function createTaskQueue(
   if (executionTier === 2) {
     if (tasks.length !== 1) {
       throw new Error(
-        `❌ [Decompose] Tier 2 (SingleTask) requires EXACTLY one task, got ${tasks.length}.\n` +
+        `❌ [Decompose] Tier 2 (Exploratory, single unit of work) requires EXACTLY one task, got ${tasks.length}.\n` +
         `If the directive truly needs more than one independent unit of work, classify as ` +
         `Tier 3 instead (with a mandatory verification task). If it needs less, classify as ` +
         `Tier 0/1 and emit <tasks>[] via the direct path.\n`
@@ -420,7 +421,7 @@ export function createTaskQueue(
   if (hasFinalTask) {
     console.log(`✅ [createTaskQueue] Final Verification task validated (created by LLM)`);
   } else if (executionTier === 2) {
-    console.log(`✅ [createTaskQueue] Tier 2 SingleTask — inline selfVerifyOnDone owns verification`);
+    console.log(`✅ [createTaskQueue] Tier 2 Exploratory — inline selfVerifyOnDone owns verification`);
   }
 
   tasks.forEach(task => {
@@ -466,7 +467,7 @@ export function createTaskQueue(
     const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, activeSpecRefFilename, uiSource);
     const include = explicitInclude ?? flattenPolicyToInclude(artifactPolicy);
 
-    // Tier-Verification Alignment: Tier 2 SingleTask flag passthrough.
+    // Tier-Verification Alignment: Tier 2 Exploratory self-verify flag passthrough.
     //   - Emitted by the decompose LLM at Tier 2 (exactly one task).
     //   - Ignored (dropped) at Tier 3/4 because the dedicated verification task
     //     governs gates there; letting the flag leak onto a Tier 3 task would

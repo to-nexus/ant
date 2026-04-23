@@ -3,8 +3,8 @@
  * Alignment (Phase 1).
  *
  * The boundary shifted from `tier <= 2 → direct` to `tier <= 1 → direct`.
- * Tier 2 is now a task-path tier (SingleTask with `selfVerifyOnDone`), not
- * a direct ReAct loop.
+ * Tier 2 (Exploratory) is now a task-path tier (single unit of work with
+ * `selfVerifyOnDone`), not a direct ReAct loop.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -24,7 +24,7 @@ describe('isDirectTier — boundary is tier <= 1', () => {
     expect(isDirectTier(ExecutionTierId.OneShot)).toBe(true);
   });
 
-  it('Tier 2 SingleTask → NOT direct (task path)', () => {
+  it('Tier 2 Exploratory → NOT direct (task path)', () => {
     expect(isDirectTier(ExecutionTierId.Exploratory)).toBe(false);
   });
 
@@ -46,7 +46,7 @@ describe('isTaskTier — boundary is tier >= 2', () => {
     expect(isTaskTier(ExecutionTierId.OneShot)).toBe(false);
   });
 
-  it('Tier 2 SingleTask → task path', () => {
+  it('Tier 2 Exploratory → task path', () => {
     expect(isTaskTier(ExecutionTierId.Exploratory)).toBe(true);
   });
 
@@ -80,7 +80,7 @@ describe('tierToDirectMode — Tier 0 undefined, Tier 1 oneshot, Tier 2+ undefin
     expect(tierToDirectMode(ExecutionTierId.OneShot)).toBe('oneshot');
   });
 
-  it('Tier 2 SingleTask → undefined (routed to task path, not direct)', () => {
+  it('Tier 2 Exploratory → undefined (routed to task path, not direct)', () => {
     expect(tierToDirectMode(ExecutionTierId.Exploratory)).toBeUndefined();
   });
 

@@ -11,7 +11,7 @@
  * re-runs those gates after the fix lands; running them here wastes a
  * plan→execute→enforce cycle.
  *
- * Tier 2 (SingleTask) exception: when `ctx.currentTaskSelfVerifyOnDone` is
+ * Tier 2 (Exploratory) exception: when `ctx.currentTaskSelfVerifyOnDone` is
  * true, the error task IS the only task in the breakdown and owns its own
  * verification inline. In that case the execute-phase block is lifted so
  * the LLM can run install/typecheck/build/test per the
