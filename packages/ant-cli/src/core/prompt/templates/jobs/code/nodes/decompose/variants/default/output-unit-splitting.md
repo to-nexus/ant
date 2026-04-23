@@ -30,7 +30,7 @@
 | **File independence** | Does each unit produce its own source file with no cross-unit source-file overlap? |
 | **Shared integration point** | Do the units share at most ONE integration point (mount page, root command, barrel export, pipeline driver)? |
 
-**Constraint**: When ALL three checkpoints above are yes, emit ONE `feature` task per output unit. All per-unit tasks share the SAME `parallelGroup`; none is `exclusive`.
+**Constraint**: When ALL three checkpoints above are yes, emit ONE `feature` task per output unit. Each per-unit task uses a DISTINCT `parallelGroup` (per-unit output files do not overlap, so distinct groups enable parallel execution); none is `exclusive`. See Parallel Execution rules for the group-vs-file correspondence.
 
 **Constraint**: Do NOT split below the unit level. A fragment of a unit (a sub-section inside a section, a flag of a command, one method of an exported class) is NOT an independent output unit.
 
@@ -41,6 +41,30 @@
 **Constraint**: When both are yes, emit exactly ONE wiring task: `type: "feature"`, priority 600, owning the integration point file. Per-unit feature tasks MUST NOT create or modify the integration point file.
 
 **Constraint**: When only one unit exists, OR units do not share an integration point, DO NOT emit a wiring task.
+
+### UI pairing rule
+
+**Observation target**: For each feature task emitted by this rubric or by Task Scope Constraint, is its output RENDERABLE — i.e. a file that renders user-visible UI?
+
+**Principle — renderable categories**: Only the `visual unit` category produces renderable output. The other categories (`command`, `worker`, `exported symbol cluster`, `pipeline stage`) are non-renderable. Among feature tasks that do NOT fall under those five categories, wiring tasks (priority 600–649, composition-only), shared foundation tasks (priority 200–299, types / schema / utilities), data-fetching / state-management tasks, and server-side handler tasks are also non-renderable.
+
+**Principle — pairing**: UI work mirrors the renderable subset of feature splitting. For each RENDERABLE feature task, emit exactly one per-unit ui task that pairs with it. For each NON-RENDERABLE feature task, emit NO ui task.
+
+**Constraint — count**: The ui task count equals the renderable feature task count. If zero renderable features exist (backend-only, CLI-only, library-only project), emit ZERO ui tasks — do NOT create a ceremonial ui task.
+
+**Constraint — pairing via parallelGroup**: Each per-unit ui task shares its `parallelGroup` with its paired renderable feature task. Same `parallelGroup` serializes them on the same output file (feature emits the skeleton first; ui restyles it second).
+
+**Constraint — priority**: Per-unit ui tasks use priority in the 650–699 range. Distinguishability between ui tasks comes from `parallelGroup` (which matches the paired feature), not from priority.
+
+**Constraint — globals exclusion**: Per-unit ui tasks MUST NOT touch global style layer files (project-wide CSS, theme config, token infrastructure). Those files are owned by the `design-system` task at priority 200. If global styling gaps are observed, extend the `design-system` task rather than absorbing them into a ui task.
+
+⚠️ **Blind spot**: The singular phrasing "A corresponding ui task" in UI Task Descriptions describes a per-renderable-feature pairing, NOT a per-project singleton. Reading it as "one ui task per project" collapses N renderable units into one ui task and erases the parallelism the feature split gained.
+
+⚠️ **Blind spot**: "Always created" in Task Type Rules means "one ui task per renderable feature when renderable features exist" — NOT "a ui task must exist in every project". Backend-only / CLI-only / library-only projects have zero renderable features and therefore ZERO ui tasks.
+
+⚠️ **Blind spot**: Wiring tasks compose (import + mount) but do not style. They are NON-renderable in the ui-pairing sense even though their output file is a page/route component. Page-level visual styling (smooth-scroll, section landmarks, global transitions) is the `design-system` task's concern, not a ui task's.
+
+⚠️ **Blind spot**: A ui task paired with its feature task via the same `parallelGroup` is the natural placement. Putting the ui task in a separate `parallelGroup` (e.g. `"ui-main"`) lets it run concurrently with the feature task, causing a file-write race on the skeleton file.
 
 ### Description shape
 
