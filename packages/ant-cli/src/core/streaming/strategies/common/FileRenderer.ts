@@ -354,8 +354,29 @@ export class FileRenderer {
    * Handle create or append operation
    */
   private async handleCreateOrAppend(filePath: string, fileInfo: FileStreamInfo): Promise<void> {
+    // Capture pre-write line count for <file> overwrites so the UI can
+    // render `+Y -X` instead of `+Y` alone. Scoped to code jobs because
+    // design overwrites get auto-converted to append (deep-merge) and
+    // have no clean old→new diff. Read is best-effort — failure just
+    // drops the stat, preserving legacy behaviour. Declared at method
+    // scope so the final `completeFileCreation` call can read it
+    // regardless of which sub-branch performed the disk write.
+    let diffBeforeLines: number | undefined;
+
     if (this.writeImmediately && this.gitPort && fileInfo.contentBuffer) {
       const fsPath = this.resolveFileSystemPath(filePath);
+
+      const isOverwrite = (fileInfo as any).isOverwrite === true;
+      if (isOverwrite && this.jobType === 'code' && this.fileSystem) {
+        try {
+          const oldContent = await this.fileSystem.readFile(fsPath);
+          if (oldContent != null) {
+            diffBeforeLines = oldContent.split('\n').length;
+          }
+        } catch {
+          diffBeforeLines = undefined;
+        }
+      }
 
       // Guard: code jobs must write only under codebase/. Reject sibling dirs
       // (inputs/, outputs/, sessions/) which are legitimate for design jobs but not code.
@@ -409,7 +430,6 @@ export class FileRenderer {
         if (!this.fileSystem) throw new Error('FileSystemPort not available');
         
         // Cross-worker conflict detection for file creation and overwrite
-        const isOverwrite = (fileInfo as any).isOverwrite === true;
         if (isOverwrite) {
           const workerFS = this.fileSystem as any;
           if (typeof workerFS.writeOverwrite === 'function') {
@@ -476,7 +496,11 @@ export class FileRenderer {
       }
     }
     
-    await this.chatAPI.completeFileCreation(filePath, fileInfo.contentBuffer);
+    await this.chatAPI.completeFileCreation(
+      filePath,
+      fileInfo.contentBuffer,
+      diffBeforeLines !== undefined ? { diffBeforeLines } : undefined,
+    );
     this.onFileTouched?.(filePath);
   }
   

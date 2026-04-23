@@ -110,6 +110,18 @@ export function FileCard({ content, operation }: FileCardProps) {
       return { added: diffAfter.split('\n').length, removed: diffBefore.split('\n').length, total: null };
     } else if (operation === 'edit' && (content.metadata?.diffBeforeLines || content.metadata?.diffAfterLines)) {
       return { added: content.metadata.diffAfterLines ?? 0, removed: content.metadata.diffBeforeLines ?? 0, total: null };
+    } else if (operation === 'create' && content.metadata?.diffBeforeLines) {
+      // Overwrite-create: `<file>` tag replaced an existing file. Render
+      // `+Y -X` using the new content length for `added` and the pre-write
+      // line count (captured by FileRenderer) for `removed`.
+      const totalLines = fileContent
+        ? fileContent.split('\n').length
+        : (content.metadata.lineCount ?? 0);
+      return {
+        added: totalLines,
+        removed: content.metadata.diffBeforeLines,
+        total: totalLines,
+      };
     } else if (fileContent) {
       const totalLines = fileContent.split('\n').length;
       return { 
@@ -128,11 +140,21 @@ export function FileCard({ content, operation }: FileCardProps) {
   };
   
   const lineStats = calculateLineStats();
+  // Overwrite-create case is an "edit" in spirit — show `+added -removed`
+  // with the edit label even though the underlying event type is `file_create`.
+  const isOverwriteCreate =
+    operation === 'create' && (content.metadata?.diffBeforeLines ?? 0) > 0;
   
   // Determine operation details (Copilot/Cursor style - subtle, modern)
   const operationConfig = {
     create: {
-      labelCompleted: isFailed ? t('card.failed') : t('card.created'),
+      // Overwrite-create (`<file>` tag on an existing file) labels as
+      // "Overwrote" — semantically closer to an edit than a fresh create.
+      labelCompleted: isFailed
+        ? t('card.failed')
+        : isOverwriteCreate
+          ? t('card.overwritten')
+          : t('card.created'),
       labelActive: isCreating ? t('card.creating') : t('card.writing'),
       bgColor: isFailed ? 'bg-red-50/50 dark:bg-red-900/10' : 'bg-white dark:bg-gray-800/50',
       borderColor: isFailed ? 'border-red-300 dark:border-red-800' : 'border-gray-200 dark:border-gray-700',
@@ -208,7 +230,7 @@ export function FileCard({ content, operation }: FileCardProps) {
             </div>
           ) : isCompleted && (
             <>
-              {operation === 'edit' && (lineStats.added > 0 || lineStats.removed > 0) && (
+              {(operation === 'edit' || isOverwriteCreate) && (lineStats.added > 0 || lineStats.removed > 0) && (
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   {lineStats.added >= 0 && (
                     <span className="text-[10px] text-green-600 dark:text-green-400 font-mono font-medium">
@@ -222,7 +244,7 @@ export function FileCard({ content, operation }: FileCardProps) {
                   )}
                 </div>
               )}
-              {operation === 'create' && lineStats.total != null && (
+              {operation === 'create' && !isOverwriteCreate && lineStats.total != null && (
                 <span className="text-[10px] text-green-600 dark:text-green-400 font-mono font-medium flex-shrink-0">
                   +{lineStats.total}
                 </span>

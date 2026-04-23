@@ -339,10 +339,14 @@ export class ChatAPIClient {
     await service?.streamFileContent(filePath, content);
   }
 
-  async completeFileCreation(filePath: string, content: string): Promise<void> {
+  async completeFileCreation(
+    filePath: string,
+    content: string,
+    stats?: { diffBeforeLines?: number },
+  ): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
-    await service?.completeFileCreation(filePath, content);
+    await service?.completeFileCreation(filePath, content, stats);
   }
 
   async startFileEdit(filePath: string): Promise<void> {

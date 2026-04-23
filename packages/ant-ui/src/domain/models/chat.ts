@@ -150,7 +150,11 @@ export interface MessageContent {
     selectedDraftIndex?: number;  // Persisted after user selects a draft
     // File card summary (lightweight persistence — content stripped, stats kept)
     lineCount?: number;       // Total lines written (file_create)
-    diffBeforeLines?: number; // Lines removed (file_edit)
+    // Lines removed. Set by:
+    //   - completeFileEdit (edit_file tool path)
+    //   - completeFileCreation with overwrite (<file> tag on existing file)
+    // FileCard uses this to render `+Y -X` instead of bare `+Y` for overwrites.
+    diffBeforeLines?: number;
     diffAfterLines?: number;  // Lines added (file_edit)
   };
 }

@@ -120,7 +120,11 @@ export interface MessageContentMetadata {
   imagePath?: string;       // Feature-relative path to saved image file
   // File card summary (lightweight persistence — content stripped, stats kept)
   lineCount?: number;       // Total lines written (file_create)
-  diffBeforeLines?: number; // Lines removed (file_edit)
+  // Lines removed. Set by:
+  //   - completeFileEdit (edit_file tool path)
+  //   - completeFileCreation with overwrite (FileRenderer <file> tag on existing file)
+  // FE FileCard uses this to render `+Y -X` instead of a bare `+Y` for overwrites.
+  diffBeforeLines?: number;
   diffAfterLines?: number;  // Lines added (file_edit)
   // Merge control
   _mergeIndex?: number;   // Explicit merge target index

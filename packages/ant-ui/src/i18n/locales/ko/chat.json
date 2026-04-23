@@ -58,6 +58,7 @@
     "unknownFile": "알 수 없는 파일",
     "created": "생성됨",
     "modified": "수정됨",
+    "overwritten": "덮어씀",
     "deleted": "삭제됨",
     "failed": "실패",
     "cancelled": "취소됨",

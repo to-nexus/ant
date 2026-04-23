@@ -35,10 +35,23 @@ export class FileOperationHandler {
   }
 
   /**
-   * Complete file creation (final state, collapsible)
+   * Complete file creation (final state, collapsible).
+   *
+   * `stats.diffBeforeLines` is set by `FileRenderer` when a `<file>` tag
+   * overwrites a pre-existing file. Carrying it through this code path
+   * (instead of switching to `completeFileEdit`) keeps the streaming UX
+   * unchanged while letting the FE `FileCard` render `+Y -X` for
+   * overwrites instead of a misleading `+Y` alone.
    */
-  async completeFileCreation(filePath: string, content: string): Promise<void> {
-    await this.addFileOperation('create', filePath, 'complete', { content });
+  async completeFileCreation(
+    filePath: string,
+    content: string,
+    stats?: { diffBeforeLines?: number },
+  ): Promise<void> {
+    await this.addFileOperation('create', filePath, 'complete', {
+      content,
+      diffBeforeLines: stats?.diffBeforeLines,
+    });
   }
 
   /**
@@ -101,6 +114,8 @@ export class FileOperationHandler {
       content?: string;
       diffBefore?: string;
       diffAfter?: string;
+      /** Lines removed. Set by `completeFileCreation` on overwrite, or by `completeFileEdit`. */
+      diffBeforeLines?: number;
       error?: string;
     }
   ): Promise<void> {
@@ -154,6 +169,7 @@ export class FileOperationHandler {
       content?: string;
       diffBefore?: string;
       diffAfter?: string;
+      diffBeforeLines?: number;
       error?: string;
     },
   ): void {
@@ -176,6 +192,11 @@ export class FileOperationHandler {
       metadata.reason = options?.error;
     } else if (operation === 'create' || operation === 'delete') {
       metadata.content = options?.content;
+      // Overwrite-create carries `diffBeforeLines` so replay reproduces
+      // the `+Y -X` FileCard header. Omitted for true new creation.
+      if (operation === 'create' && options?.diffBeforeLines !== undefined) {
+        metadata.diffBeforeLines = options.diffBeforeLines;
+      }
     } else {
       metadata.diffBefore = options?.diffBefore;
       metadata.diffAfter = options?.diffAfter;
@@ -195,6 +216,7 @@ export class FileOperationHandler {
       content?: string;
       diffBefore?: string;
       diffAfter?: string;
+      diffBeforeLines?: number;
       error?: string;
     }
   ): Promise<boolean> {
@@ -255,6 +277,7 @@ export class FileOperationHandler {
         filePath,
         diffBefore: options?.diffBefore,
         diffAfter: options?.diffAfter,
+        diffBeforeLines: options?.diffBeforeLines ?? existingContent.metadata?.diffBeforeLines,
         reason: (phase === 'failed' && options?.error) ? options.error : existingContent.metadata?.reason,
         timestamp: new Date().toISOString()
       }
@@ -313,6 +336,7 @@ export class FileOperationHandler {
       content?: string;
       diffBefore?: string;
       diffAfter?: string;
+      diffBeforeLines?: number;
       error?: string;
     }
   ): Promise<void> {
@@ -326,6 +350,7 @@ export class FileOperationHandler {
         filePath,
         diffBefore: options?.diffBefore,
         diffAfter: options?.diffAfter,
+        diffBeforeLines: options?.diffBeforeLines,
         reason: (phase === 'failed' && options?.error) ? options.error : undefined,
         timestamp: new Date().toISOString()
       }
