@@ -42,6 +42,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('decompose', state._uiLocale), 'decompose');
   }
+
+  // Seed chat-input gauge snapshot so in-flight usage_partial events from the
+  // decompose LLM stream have a target to overwrite. Without this seed,
+  // `maybeUpdatePhaseTokenUsage` inside the stream loop is a silent no-op and
+  // the gauge only updates after `applyEstimatingUsage` runs at stream end.
+  const { beginNodePhase } = await import('../../../../../common/graph/llmHelpers');
+  beginNodePhase(state, 'decompose', getEstimatingLabel('decompose', state._uiLocale));
   
   // Increment recursion count
   state.recursionCount = (state.recursionCount || 0) + 1;
@@ -324,7 +331,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const fullSystem = envContract ? `${decomposeSystem}\n\n---\n\n${envContract}` : decomposeSystem;
   const decomposeUser = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/base', enrichedVars);
   const prompts = { system: fullSystem, user: decomposeUser };
-  
+
+  // T1 pre-call estimate. `beginNodePhase` ran at node entry so the snapshot
+  // exists; seed an approximate input count now so the chat-input gauge
+  // reflects prompt size immediately rather than only after the first
+  // `usage_partial` event from the LLM adapter.
+  const { applyEstimatedInputTokens } = await import('../../../../../common/graph/llmHelpers');
+  applyEstimatedInputTokens(state, prompts.system.length + prompts.user.length);
+
   const jobId = state._httpJobId || 'unknown';
   if (state.context.featurePath) {
     try {
@@ -397,6 +411,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         if (!discoveryResult.startsWith('Error: Unknown tool')) return discoveryResult;
         return `Error: Unknown tool "${name}"`;
       },
+      state,
     });
     rawResponse = result.response;
     decomposeTokenUsage = result.tokenUsage;

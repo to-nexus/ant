@@ -17,7 +17,6 @@
  * - referenceFilter.ts: Reference context filtering
  */
 
-import path from 'node:path';
 import { ArchitectGraphState } from '../../state';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
@@ -31,9 +30,11 @@ import { buildMessages } from './buildMessages';
 import { getTools } from './tools';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
+import { resolveCodebaseRel } from './codebaseRel';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
 import { isErrorTask } from '../../tasks/error';
@@ -271,12 +272,7 @@ export async function execute(
   const existingFiles = new Set<string>();
   const existingCodebaseDiskFiles: string[] = [];
 
-  const codebaseRel = (() => {
-    if (!repoRootForWrites || !state.deps?.fileSystem) return 'codebase';
-    const wsRoot = state.deps.fileSystem.getRootPath?.();
-    if (!wsRoot) return 'codebase';
-    return path.relative(wsRoot, repoRootForWrites).replace(/\\/g, '/') || 'codebase';
-  })();
+  const codebaseRel = await resolveCodebaseRel(state);
 
   const fileSystemForListing = state.deps?.fileSystem;
   if (fileSystemForListing) {
@@ -363,7 +359,13 @@ export async function execute(
 
   // ✅ Track token usage for this LLM call
   let capturedUsage: any = undefined;
-  
+
+  // T1 pre-call estimate — centralised helper sums char-length over both
+  // string and structured message content. Seeds the chat-input gauge
+  // before the first `usage_partial` event arrives; overwritten (and
+  // `estimating` flag cleared) by the first usage event from the LLM.
+  applyEstimatedInputTokensFromMessages(state, messages);
+
   try {
     // ✅ Single stream (no loop!)
     for await (const event of llmToUse.stream(messages, {
@@ -381,7 +383,11 @@ export async function execute(
         capturedUsage = undefined;
         continue;
       }
-      
+
+      // In-flight gauge update from usage_partial events (Anthropic/Gemini).
+      // Overwrite-only; job/task counters are updated at 'done' below.
+      maybeUpdatePhaseTokenUsage(state, event);
+
       await orchestrator.processEvent(event);
       
       if (event.type === 'thinking') {

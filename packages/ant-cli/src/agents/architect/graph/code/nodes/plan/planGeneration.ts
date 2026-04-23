@@ -16,7 +16,7 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
-import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokens } from "../../../../../common/graph/llmHelpers";
+import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokens, applyEstimatedInputTokensFromMessages } from "../../../../../common/graph/llmHelpers";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { getRACDocuments } from "@ant/shared";
@@ -623,6 +623,9 @@ export async function runPlanLLMWithTools(
   let tokenUsage: any = undefined;
 
   const isFirstRound = messages.length <= 1;
+  // T1 per-iteration estimate: tool-loop calls can change messages[] shape
+  // significantly between rounds — re-seed so the gauge tracks each request.
+  applyEstimatedInputTokensFromMessages(state, messages);
   for await (const event of llmToUse.stream(messages, {
     tools,
     maxTokens: LLM_MAX_TOKENS.DEFAULT,
@@ -847,6 +850,8 @@ export async function finalizePlanFromExploration(
   let textResponse = '';
   let tokenUsage: any = undefined;
 
+  // T1 pre-call estimate for the finalize pass.
+  applyEstimatedInputTokensFromMessages(state, finalizeMessage);
   for await (const event of llmToUse.stream(finalizeMessage, {
     maxTokens: LLM_MAX_TOKENS.DEFAULT,
     enableThinking: true,

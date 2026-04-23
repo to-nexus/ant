@@ -147,6 +147,7 @@ export async function decomposeUiDesign(
           maxTokens: LLM_MAX_TOKENS.DEFAULT,
           enableThinking: true,
           thinkingBudget: 10000,
+          state: state as any,
         },
       );
       textResponse = response;

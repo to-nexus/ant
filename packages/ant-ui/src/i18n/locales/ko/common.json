@@ -78,5 +78,17 @@
     "title": "서버 연결 끊김",
     "message": "서버와의 연결이 끊어졌습니다. 진행 중이던 작업은 서버 재시작 후 이어서 작업할 수 있습니다.",
     "confirm": "확인"
+  },
+  "turnTokenGauge": {
+    "context": "컨텍스트",
+    "input": "입력",
+    "output": "출력",
+    "main": "메인",
+    "worker": "워커 {{n}}",
+    "estimatingNote": "프롬프트 크기로 추정한 값 — 실제 사용량이 곧 반영됩니다",
+    "moreAria": "게이지 {{count}}개 더",
+    "moreTitle": "{{count}}개 더",
+    "ariaLabel": "컨텍스트 {{totalPct}}, 입력 {{input}}, 출력 {{output}}, 최대 {{max}}",
+    "ariaLabelWithTitle": "{{title}}, 컨텍스트 {{totalPct}}, 입력 {{input}}, 출력 {{output}}, 최대 {{max}}"
   }
 }

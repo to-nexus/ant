@@ -439,6 +439,7 @@ export async function decomposeSystemDesign(
           maxTokens: LLM_MAX_TOKENS.DEFAULT,
           enableThinking: true,
           thinkingBudget: 10000,
+          state: state as any,
         },
       );
       applyEstimatingUsage(state, 'decompose', usage, { subNode: 'system', callIndex: callIdx++, promptChars: prompt.length });

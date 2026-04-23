@@ -77,6 +77,17 @@ export interface PhaseTokenUsage {
   workerId?: number;
   /** Optional running task name tied to this worker, for tooltip disambiguation. */
   taskName?: string;
+  /**
+   * Provisional snapshot flag. True while the numbers come from a pre-call
+   * prompt-size approximation (char → token ratio, no API-reported usage yet).
+   * The flag is cleared as soon as a `usage_partial` or `done` event from the
+   * LLM adapter overwrites the snapshot with API-reported figures.
+   *
+   * The chat-input token gauge can render a distinct visual cue (dashed ring,
+   * paler fill, tooltip note) when this is true so users understand the number
+   * is an estimate, not a measurement.
+   */
+  estimating?: boolean;
 }
 
 // ============================================

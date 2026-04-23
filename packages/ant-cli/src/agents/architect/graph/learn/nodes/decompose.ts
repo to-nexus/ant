@@ -62,12 +62,19 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
     existingFiles: new Set(),
   });
   
+  const { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokens } = await import('../../../../common/graph/llmHelpers');
+
+  // T1 pre-call estimate — combinedPrompt is a single string.
+  applyEstimatedInputTokens(state as any, combinedPrompt.length);
+
   let responseText = '';
   for await (const event of llm.stream([{ role: 'user', content: combinedPrompt }])) {
     if (event.type === 'retry') {
       responseText = '';
       continue;
     }
+    maybeUpdatePhaseTokenUsage(state as any, event);
+
     // Pass to orchestrator for UI display
     await orchestrator.processEvent(event);
     

@@ -13,7 +13,7 @@ import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
 import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
 import { buildAssistantMessage } from '../../../../common/tool/messageBuilder';
-import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers.js';
+import { accumulateTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../common/graph/llmHelpers.js';
 import { formatWorkspaceState } from '../../../../common/graph/nodes/triage/workspaceAnalyzer.js';
 import { AgentRegistry } from '../../../../common/graph/nodes/triage/AgentRegistry.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
@@ -125,6 +125,12 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   const isFirstCall = nodeAgent.length === 0;
   
   try {
+    // T1 pre-call estimate. Also factor in the system prompt so the gauge
+    // reflects realistic input context size (system prompt can dominate).
+    applyEstimatedInputTokensFromMessages(state as any, [
+      ...messages,
+      { role: 'system', content: systemPrompt },
+    ]);
     // Use streaming API
     for await (const event of llm.stream(messages, { 
       system: systemPrompt,
@@ -139,6 +145,10 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
         toolCall = undefined;
         continue;
       }
+
+      // In-flight chat-input gauge update (no-op for non-usage_partial events).
+      maybeUpdatePhaseTokenUsage(state as any, event);
+
       // Handle thinking events - show thinking card in UI
       if (event.type === 'thinking' && event.thinking) {
         if (!streamingStarted) {
