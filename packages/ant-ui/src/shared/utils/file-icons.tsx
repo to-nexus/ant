@@ -35,7 +35,8 @@ import {
   SiYarn,
   SiYaml,
   SiGnubash,
-  SiMake
+  SiMake,
+  SiJson
 } from 'react-icons/si';
 
 export interface FileIconConfig {
@@ -73,6 +74,7 @@ const FILE_ICON_MAP: Record<string, FileIconConfig> = {
   'json': { icon: Braces, color: 'text-[#FFCA28]' },          // JSON yellow
   'jsonc': { icon: Braces, color: 'text-[#FFCA28]' },
   'json5': { icon: Braces, color: 'text-[#FFCA28]' },
+  'jsonl': { icon: SiJson, color: 'text-[#FFCA28]' },         // JSONL — line-delimited JSON (JSON official logo)
   'yaml': { icon: SiYaml, color: 'text-[#CB171E]' },           // YAML red
   'yml': { icon: SiYaml, color: 'text-[#CB171E]' },
   'toml': { icon: FileCode, color: 'text-gray-600 dark:text-gray-400' },

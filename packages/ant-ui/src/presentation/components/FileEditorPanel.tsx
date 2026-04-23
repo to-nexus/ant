@@ -246,10 +246,11 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const isSvgFile = isSvgFilePath(selectedFile);
   const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
   const isJsonFile = selectedFile?.toLowerCase().match(/\.json$/);
+  const isJsonlFile = selectedFile?.toLowerCase().match(/\.jsonl$/);
   const isYamlFile = selectedFile?.toLowerCase().match(/\.(yaml|yml)$/);
   
   // 파일이 두 가지 이상 모드를 지원하는지 확인
-  const hasMultipleModes = (isMarkdownFile || isSvgFile || isJsonFile || isYamlFile) && !isBinaryImageFile;
+  const hasMultipleModes = (isMarkdownFile || isSvgFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile;
   
   // Apply last view mode when file changes (only for files with multiple modes)
   useEffect(() => {
@@ -517,8 +518,8 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             </div>
           )}
 
-          {/* Preview/Raw Toggle - Markdown, SVG, JSON, YAML */}
-          {(isMarkdownFile || isSvgFile || isJsonFile || isYamlFile) && !isBinaryImageFile && (
+          {/* Preview/Raw Toggle - Markdown, SVG, JSON, JSONL, YAML */}
+          {(isMarkdownFile || isSvgFile || isJsonFile || isJsonlFile || isYamlFile) && !isBinaryImageFile && (
             <div className="flex items-center gap-1 ml-4 bg-gray-100 dark:bg-gray-900 rounded-md h-9 p-0.5">
               <button
                 onClick={() => handleViewModeChange('raw')}
@@ -595,6 +596,11 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
           /* JSON Preview - Read-only */
           <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
             <JsonYamlPreview content={editedContent} fileType="json" />
+          </div>
+        ) : viewMode === 'preview' && isJsonlFile ? (
+          /* JSONL Preview - Read-only */
+          <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+            <JsonYamlPreview content={editedContent} fileType="jsonl" />
           </div>
         ) : viewMode === 'preview' && isYamlFile ? (
           /* YAML Preview - Read-only */
