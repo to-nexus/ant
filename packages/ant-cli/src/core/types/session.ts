@@ -232,8 +232,9 @@ export interface SessionState {
 
   /**
    * Hints produced by the Tier Entry Node for the `direct` node
-   * (Tier 0-2 paths). Persisted so resume paths can rebuild direct-node
-   * context without re-running decompose.
+   * (Tier 0 / Tier 1 paths). Persisted so resume paths can rebuild
+   * direct-node context without re-running decompose. Tier 2+ routes to
+   * the task pipeline and does not consume `directHints`.
    */
   directHints?: { targetFiles?: string[]; explorationScope?: string };
 

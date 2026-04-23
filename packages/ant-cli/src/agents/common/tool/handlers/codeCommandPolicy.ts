@@ -55,20 +55,23 @@ export function applyCodeCommandPolicy(
     return null;
   }
 
-  // Go build/test/run/vet block. Only verification may run these (in the
-  // plan phase, where tool-loop diagnoses build errors). Error tasks apply
-  // fixes from a remediation plan and MUST NOT re-run build/test — the
-  // diagnostic cycle re-verifies after their changes land. Feature / setup
-  // / ui / doc / test-code tasks have no legitimate reason to invoke the
-  // Go toolchain either. The per-task `command.guard` hook further narrows
-  // (verification enforces gate ordering; error blocks all of
-  // build/test/typecheck in the execute phase).
+  // Go build/test/run/vet block. Verification tasks run these in the plan
+  // phase (where the tool-loop diagnoses build errors), AND Tier 2 tasks
+  // flagged `selfVerifyOnDone: true` run these in the execute phase as their
+  // inline verification gates. Every other task type has no legitimate
+  // reason to invoke the Go toolchain — error tasks defer to the following
+  // verification task (Tier 3/4) or to their own self-verify loop (Tier 2),
+  // and feature / setup / ui / doc / test-code tasks never run build gates
+  // directly. The per-task `command.guard` hook further narrows behaviour
+  // for each task type.
   const GO_BUILD_PATTERNS = /\bgo\s+(build|test|run|vet)\b/;
-  if (GO_BUILD_PATTERNS.test(command) && !isVerificationTask({ type: taskType })) {
+  const allowedByVerificationTask = isVerificationTask({ type: taskType });
+  const allowedBySelfVerifyFlag = ctx.currentTaskSelfVerifyOnDone === true;
+  if (GO_BUILD_PATTERNS.test(command) && !allowedByVerificationTask && !allowedBySelfVerifyFlag) {
     console.warn(`   ⛔ [RunCommand] Blocked Go build command in ${taskType} task: ${command}`);
     return makeRejection(
       command,
-      `⛔ BLOCKED: ${command}\n\nGo build/test/run/vet commands are only allowed in verification tasks (plan phase). Error tasks apply fixes from the remediation plan — the next diagnostic cycle re-verifies automatically.\nContinue writing code files and output <done>true</done> when complete.`,
+      `⛔ BLOCKED: ${command}\n\nGo build/test/run/vet commands are allowed only in verification tasks or Tier 2 single-tasks flagged with selfVerifyOnDone. For Tier 3+ error/feature tasks, the following verification task owns build/test — the diagnostic cycle re-verifies automatically after your fix lands.\nContinue writing code files and output <done>true</done> when complete.`,
     );
   }
 
