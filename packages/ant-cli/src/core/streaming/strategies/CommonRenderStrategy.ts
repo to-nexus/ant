@@ -24,6 +24,12 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private tagTransformer: SpecialTagTransformer;  // ✅ Store for explicitDone access
   private planContentIndex: number | undefined;
   private planTaskTitle: string | undefined;
+  // Accumulates every `plan_content` chunk so the terminal `plan` emit
+  // can carry the full text in `metadata.content`. Intermediate
+  // `plan_generating` emits are LIVE_ONLY (see ChatStatusHandler), so
+  // the only line persisted to chat.jsonl is the final `plan` one —
+  // replay reproduces the card from that single line.
+  private planContentBuffer: string = '';
   private parallelTaskName: string | undefined;
   private taskResponseIndex: number | undefined;
   private taskResponseBuffer: string = '';
@@ -113,6 +119,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
       case 'plan_content': {
         const planChunk = action.data.content || '';
         if (planChunk) {
+          this.planContentBuffer += planChunk;
           await this.chatAPI.showChatStatus('plan_generating', { content: planChunk });
         }
         break;
@@ -120,11 +127,19 @@ export class CommonRenderStrategy implements IRenderStrategy {
         
       case 'plan_end':
         if (this.planContentIndex !== undefined) {
+          // Persist the full accumulated plan text on the terminal `plan`
+          // line so `ChatLogToMessages` replay can reproduce the final
+          // card from a single jsonl entry. The live path keeps
+          // `_preserveContent` so the already-appended UI content is
+          // untouched.
           await this.chatAPI.showChatStatus('plan', {
+            content: this.planContentBuffer,
+            ...(this.planTaskTitle ? { taskName: this.planTaskTitle } : {}),
             _mergeIndex: this.planContentIndex,
-            _preserveContent: true
+            _preserveContent: true,
           });
           this.planContentIndex = undefined;
+          this.planContentBuffer = '';
         }
         break;
       
@@ -196,5 +211,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
     this.fileRenderer.reset();
     this.taskResponseIndex = undefined;
     this.taskResponseBuffer = '';
+    this.planContentIndex = undefined;
+    this.planContentBuffer = '';
   }
 }

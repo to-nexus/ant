@@ -71,6 +71,12 @@ describe('chat SSOT roundtrip — (statusType, metadata) → MessageContent', ()
     { name: 'command', statusType: 'command', metadata: { command: 'pnpm test', exitCode: 0, output: 'ok' } },
     { name: 'context_loaded', statusType: 'context_loaded', metadata: { items: [{ label: 'PRD', detail: '5234 chars' }] }, expectContentContains: 'PRD' },
     { name: 'indexed', statusType: 'indexed', metadata: { filesIndexed: 10, chunks: 50, tokens: 12000, duration: 3500 }, expectContentContains: '10 files' },
+    // Plan card: live path accumulates `plan_content` chunks into a single
+    // card and emits only the terminal `plan` line with the full text in
+    // `metadata.content`. Replay must reproduce the full plan from that
+    // single line — not from per-chunk `plan_generating` lines (those
+    // are now LIVE_ONLY and never hit chat.jsonl).
+    { name: 'plan (full content)', statusType: 'plan', metadata: { content: '### Plan\n- step one\n- step two\n', taskName: 'Main task' }, expectContentContains: 'step one' },
   ];
 
   for (const row of rows) {
