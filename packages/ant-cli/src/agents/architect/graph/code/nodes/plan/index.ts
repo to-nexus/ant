@@ -179,7 +179,7 @@ async function maybeSetupFastPath(
   state: ArchitectGraphState,
   entry: PlanEntryContext,
 ): Promise<ArchitectGraphState | null> {
-  const { nextTask, preservedRetries } = entry;
+  const { nextTask } = entry;
   if (!isSetupTask(nextTask)) return null;
   const llm = state.deps?.llm as LLMClient | undefined;
   console.log(`⚡ [Plan] Setup task — skipping keyword/RAG/tool-loop (no existing code to search)`);
@@ -208,7 +208,9 @@ async function maybeSetupFastPath(
     lessons: [],
     planText: setupPlanText,
     _executeBudget: computeBudgetFromPlanText(setupPlanText ?? ''),
-    retries: preservedRetries,
+    // retries intentionally NOT set — handleRetryEntry is the single
+    // writer (bc1e45b9). `...state` propagates whatever value is
+    // correct for this entry path.
     completedTasksDetails: state.completedTasksDetails || [],
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
@@ -318,7 +320,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
 
   // STEP 0: entry classification.
   const entry = await resolvePlanEntry(state);
-  const { nextTask, isRetry, preservedRetries, skipKeywordAndRAG } = entry;
+  const { nextTask, isRetry, skipKeywordAndRAG } = entry;
 
   await workflowEnter(state, nextTask);
 
@@ -337,7 +339,7 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   }
 
   // STEP 0.9 — plan↔tool loop re-entry.
-  const toolLoop = await runPlanToolLoopPhase(state, nextTask, preservedRetries);
+  const toolLoop = await runPlanToolLoopPhase(state, nextTask);
   if (toolLoop.kind === 'return') return toolLoop.state;
   const forceNoTools = !!toolLoop.forceNoTools;
 
@@ -385,7 +387,8 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
       lessons: rag.lessons,
       planText,
       _executeBudget: planText ? computeBudgetFromPlanText(planText) : undefined,
-      retries: preservedRetries,
+      // retries intentionally NOT set — handleRetryEntry is the single
+      // writer (bc1e45b9). `...state` propagates the correct value.
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,

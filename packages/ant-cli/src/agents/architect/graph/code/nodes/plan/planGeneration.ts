@@ -16,6 +16,7 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
+import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokens } from "../../../../../common/graph/llmHelpers";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { getRACDocuments } from "@ant/shared";
@@ -24,7 +25,6 @@ import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { isVerificationTask } from '../../tasks/verification';
 import { isErrorTask } from '../../tasks/error';
-import { isTestCodeTask } from '../../tasks/test-code/model/is';
 import { isDocTask } from '../../tasks/doc/model/is';
 import { isExplainTask } from '../../tasks/explain/model/is';
 import { toPlanPromptResult, type PlanPromptCtx } from '../../tasks/_shared/types';
@@ -275,9 +275,13 @@ export async function buildPlanPromptBlocks(
  * Tasks that skip planning (LLM never produces a `planText` here; execute
  * node drives directly):
  *   - verification (final pass — diagnostics drive remediation, not a plan)
- *   - test-code    (flows through a dedicated template path)
  *   - doc          (documentation tasks render without a plan stage)
  *   - explain      (response-only mode; no implementation plan needed)
+ *
+ * test-code used to live here (R1 residual) but was moved back into the
+ * standard plan path in F2 (2026-04 test-code infinite-loop fix) so test
+ * authoring benefits from keyword / RAG observation and violation
+ * feedback on retry like every other code-writing task.
  *
  * R1 — phase layer delegates to per-task predicates so the
  * literal comparisons live only inside `tasks/{type}/model/is.ts`.
@@ -288,7 +292,6 @@ export async function buildPlanPromptBlocks(
 export function taskRequiresPlan(task: CodeTask): boolean {
   if (task.priority === TASK_PRIORITIES.FINAL_VERIFICATION) return false;
   if (isVerificationTask(task)) return false;
-  if (isTestCodeTask(task)) return false;
   if (isDocTask(task)) return false;
   if (isExplainTask(task)) return false;
   return true;
@@ -376,6 +379,10 @@ export async function generatePlanText(
   let response = '';
   let capturedUsage: any = undefined;
 
+  // R3: Provisional input-token estimate from prompt char-size. Overwritten
+  // by the first `usage_partial` event from the LLM adapter.
+  applyEstimatedInputTokens(state, prompt.length);
+
   for await (const event of llmToUse.stream(
     [{ role: 'user', content: prompt }],
     {
@@ -395,6 +402,10 @@ export async function generatePlanText(
       });
       continue;
     }
+
+    // In-flight gauge update from usage_partial events (Anthropic/Gemini).
+    // Overwrite-only; job/task counters are updated at 'done' below.
+    maybeUpdatePhaseTokenUsage(state, event);
 
     await orchestrator.processEvent(event);
 
@@ -632,6 +643,10 @@ export async function runPlanLLMWithTools(
       continue;
     }
 
+    // In-flight gauge update from usage_partial events (Anthropic/Gemini).
+    // Overwrite-only; job/task counters are updated at 'done' below.
+    maybeUpdatePhaseTokenUsage(state, event);
+
     await orchestrator.processEvent(event);
 
     if (event.type === 'thinking') {
@@ -847,6 +862,10 @@ export async function finalizePlanFromExploration(
       });
       continue;
     }
+
+    // In-flight gauge update from usage_partial events (Anthropic/Gemini).
+    // Overwrite-only; job/task counters are updated at 'done' below.
+    maybeUpdatePhaseTokenUsage(state, event);
 
     await orchestrator.processEvent(event);
 
