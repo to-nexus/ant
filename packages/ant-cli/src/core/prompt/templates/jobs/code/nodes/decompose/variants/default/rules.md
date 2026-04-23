@@ -148,8 +148,8 @@ First, analyze step by step (think through):
     - If ANY files exist, setup is already done
   - What are the main features to implement?
   - What is the optimal task breakdown?
-  - Does test-code apply? (see Test Generation Task — judge from codebase origin and your `<executionTier>` decision)
-  - Does doc apply? (see Documentation Task — judge from codebase origin and your `<executionTier>` decision)
+  - Does test-code apply? (see Test Generation Task — codebase origin decides first; consult `<executionTier>` only in the existing-project branch)
+  - Does doc apply? (see Documentation Task — codebase origin decides first; consult `<executionTier>` only in the existing-project branch)
 
 Then output the tags in the order defined in the Output Sequence section below.
 
@@ -272,34 +272,29 @@ Do NOT embed token setup in setup or ui tasks.
 
 **Principle**: A test generation task (`type: "test-code"`, priority 700) creates or updates tests that verify implemented functionality. It runs after all feature and integration tasks, before documentation and verification.
 
-**Observation target**: Two observations decide inclusion.
+{{> jobs/code/nodes/decompose/variants/default/inclusion-rubric taskType="test-code" deliverable="tests" fromScratchRationale="A testing baseline ships with the initial build."}}
 
-| Observation | Signal |
-|---|---|
-| **Codebase origin** | from-scratch (a setup task is being created and no prior code files are present) vs. existing project (prior code files are present and no setup task is needed) |
-| **Your `<executionTier>` decision** | The tier value you emit on this same response. Tier 3 (Task) means breadth-bounded by the directive; Tier 4 (RefsGrounded) means systematic work anchored on external reference documents |
-
-**Principle** — from-scratch: a testing baseline must ship with the initial build. Include test-code task(s) regardless of your `<executionTier>` decision.
-
-**Principle** — existing project: the need for a dedicated test-code task scales up with your `<executionTier>` decision.
+### Existing-project branch
 
 | Your `<executionTier>` | Inclusion guidance |
 |---|---|
 | 4 (RefsGrounded) | Include test-code task(s). Systematic work anchored on external references crosses boundaries whose contracts the tests encode. |
-| 3 (Task) | Omit test-code task(s) by default. Feature tasks absorb test updates in their own description when the change keeps a single package's existing coverage consistent. Include test-code task(s) only when the directive explicitly asks for tests, or when the planned change invalidates tests in a different package than the one being edited. |
+| 3 (Task) | Omit test-code task(s) by default. Feature tasks absorb test updates in their own description when the change keeps a single package's existing coverage consistent. Include test-code task(s) only when the directive explicitly requests tests, or when the planned change invalidates tests in a different package than the one being edited. |
 | 0–2 | Not applicable — task breakdown is `[]` at these tiers. |
 
-**Constraint**: Do NOT include a test-code task solely because prior test files were observed. File presence is not a reason; combine it with your `<executionTier>` decision and with directive intent.
+**Constraint**: Do NOT include a test-code task in an existing project solely because prior test files were observed. File presence is not a signal.
 
-**Constraint**: Do NOT include a test-code task solely because feature count is high. Count is not a signal; breadth of the executionTier classification is.
+**Constraint**: Do NOT include a test-code task in an existing project solely because feature count is high. Count is not a signal.
+
+⚠️ **Blind spot**: Adding a test-code task to every existing-project breakdown "to be safe" inflates tokens and serializes work the feature tasks could have absorbed. At Tier 3, the default is to embed test maintenance in the feature task's description — a separate test-code task is the exception.
+
+### Common constraints
 
 **Constraint**: Do NOT include a test-code task when no feature tasks exist (error-only jobs).
 
 **Constraint**: When test-code is included, the task writes test files ONLY. It does NOT execute tests — verification handles that.
 
 **Constraint**: When test-code is included, the description references the implemented features by scope (not by file path). The executor observes actual code to determine test targets.
-
-⚠️ **Blind spot**: Adding a test-code task to every breakdown "to be safe" inflates tokens and serializes work the feature tasks could have absorbed. In an existing project at Tier 3, the default is to embed test maintenance in the feature task's description — a separate test-code task is the exception.
 
 ### Per-Package Test Splitting
 
@@ -328,16 +323,9 @@ Do NOT embed token setup in setup or ui tasks.
 
 **Principle**: A documentation task (`type: "doc"`, priority 800) generates or updates project documentation after all feature and test generation tasks complete, observing the complete codebase.
 
-**Observation target**: Two observations decide inclusion.
+{{> jobs/code/nodes/decompose/variants/default/inclusion-rubric taskType="doc" deliverable="documentation" fromScratchRationale="Seed documentation ships with the initial build."}}
 
-| Observation | Signal |
-|---|---|
-| **Codebase origin** | from-scratch (a setup task is being created and no prior code files are present) vs. existing project (prior code files are present and no setup task is needed) |
-| **Your `<executionTier>` decision** | The tier value you emit on this same response. Tier 3 (Task) means breadth-bounded by the directive; Tier 4 (RefsGrounded) means systematic work anchored on external reference documents |
-
-**Principle** — from-scratch: seed documentation ships with the initial build. Include doc task(s) regardless of your `<executionTier>` decision.
-
-**Principle** — existing project: the need for a dedicated doc task scales up with your `<executionTier>` decision.
+### Existing-project branch
 
 | Your `<executionTier>` | Inclusion guidance |
 |---|---|
@@ -345,11 +333,11 @@ Do NOT embed token setup in setup or ui tasks.
 | 3 (Task) | Omit doc task(s) by default. Feature tasks absorb inline description updates in their own scope when the change stays inside an existing public surface. Include doc task(s) only when the planned work introduces a new public surface (new command, new entry point, new service boundary) or renames an existing one. |
 | 0–2 | Not applicable — task breakdown is `[]` at these tiers. |
 
-**Constraint**: Do NOT include doc task(s) solely because feature count is high. Count is not a signal; public-surface change combined with your `<executionTier>` is.
+**Constraint**: Do NOT include doc task(s) in an existing project solely because feature count is high. Count is not a signal.
 
 **Constraint**: Do NOT include doc task(s) for pure internal refactors or bug fixes in an existing project — there is no external surface change for readers to reconsult.
 
-⚠️ **Blind spot**: "3+ features → docs" was a proxy rule that misfires on refactors and internal fan-out. Observe whether external readers must re-read docs to use the result; if not, omit.
+⚠️ **Blind spot**: "3+ features → docs" was a proxy rule that misfires on existing-project refactors and internal fan-out. Observe whether external readers must re-read docs to use the result; if not, omit.
 
 ### Per-Package Doc Splitting
 
