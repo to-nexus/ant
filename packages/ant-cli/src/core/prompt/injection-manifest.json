@@ -38,7 +38,8 @@
     "runtime-error-fix": [],
     "missing-dependency-fix": [],
     "port-management": [],
-    "backend-safety": []
+    "backend-safety": [],
+    "self-verify-inline": []
   },
   "jobs/code/nodes/plan/injections": {
     "ui-source-inventory": ["uiSource", "taskType"]
