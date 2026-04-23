@@ -5,7 +5,7 @@ import { ChevronRight, ChevronDown } from 'lucide-react';
 
 interface JsonYamlPreviewProps {
   content: string;
-  fileType: 'json' | 'yaml';
+  fileType: 'json' | 'jsonl' | 'yaml';
 }
 
 interface RenderValueProps {
@@ -119,9 +119,67 @@ function RenderValue({ value, indent, defaultExpanded = true }: RenderValueProps
   return <span className="text-gray-600 dark:text-gray-400">{String(value)}</span>;
 }
 
+interface JsonlLine {
+  index: number;
+  parsed: unknown;
+  error: string | null;
+  raw: string;
+}
+
+function JsonlPreview({ content, t }: { content: string; t: (key: string) => string }) {
+  const lines = useMemo<JsonlLine[]>(() => {
+    return content
+      .split('\n')
+      .map((raw, i) => ({ raw, index: i }))
+      .filter(({ raw }) => raw.trim() !== '')
+      .map(({ raw, index }) => {
+        try {
+          return { index, parsed: JSON.parse(raw), error: null, raw };
+        } catch (e) {
+          return { index, parsed: null, error: e instanceof Error ? e.message : t('editor.parseError'), raw };
+        }
+      });
+  }, [content, t]);
+
+  if (lines.length === 0) {
+    return (
+      <div className="p-4 text-gray-500 dark:text-gray-400 text-sm">
+        Empty file
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 font-mono text-sm leading-relaxed space-y-2">
+      {lines.map(({ index, parsed, error, raw }) => (
+        <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
+          <div className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-xs text-gray-400 dark:text-gray-500 select-none">
+            Line {index + 1}
+          </div>
+          <div className="p-2">
+            {error ? (
+              <>
+                <div className="text-red-500 dark:text-red-400 text-xs mb-1">⚠️ Parse Error: {error}</div>
+                <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap">{raw}</pre>
+              </>
+            ) : (
+              <RenderValue value={parsed} indent={1} />
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function JsonYamlPreview({ content, fileType }: JsonYamlPreviewProps) {
   const { t } = useTranslation('artifacts');
-  const { parsed, error } = useMemo(() => {
+
+  if (fileType === 'jsonl') {
+    return <JsonlPreview content={content} t={t} />;
+  }
+
+  const { parsed, error } = (() => {
     if (!content.trim()) {
       return { parsed: null, error: null };
     }
@@ -135,7 +193,7 @@ export function JsonYamlPreview({ content, fileType }: JsonYamlPreviewProps) {
     } catch (e) {
       return { parsed: null, error: e instanceof Error ? e.message : t('editor.parseError') };
     }
-  }, [content, fileType, t]);
+  })();
 
   if (error) {
     return (
