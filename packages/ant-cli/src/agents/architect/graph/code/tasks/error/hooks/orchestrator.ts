@@ -3,27 +3,32 @@
  *
  * Defense-in-depth fallback under the Tier-Verification Alignment SSOT.
  *
- * Primary path (decompose prompt SSOT):
- *   - Tier 2 error task: ships with `selfVerifyOnDone: true` — the single
- *     task owns its own install/typecheck/build/test gates inline. No
- *     subsequent Final Verification is needed, and this hook is a NOOP for
- *     Tier 2 tasks (gated by the `selfVerifyOnDone` check below).
+ * Primary paths (decompose / batchSplit SSOT):
+ *   - Tier 2 error task, completes without split: ships with
+ *     `selfVerifyOnDone: true` — the single task owns its own
+ *     install/typecheck/build/test gates inline. No subsequent Final
+ *     Verification is needed, and this hook is a NOOP for Tier 2 tasks
+ *     (gated by the `selfVerifyOnDone` check below).
+ *   - Tier 2 escalate / Tier 3+ error batch-split (batchSplit Path B):
+ *     `batchSplit.ts` drops the original task and enqueues N sub-tasks
+ *     (type inherits parent for Tier 2 escalate, 'error' for Tier 3+
+ *     error parents per the verification-plan semantic) plus a Final
+ *     Verification at priority 1000 when none is already queued. Sub-
+ *     tasks therefore complete with a Final Verification already in
+ *     queue, and this hook's `hasFinalVerification` guard returns early.
  *   - Tier 3/4 error task(s): decompose MUST emit a dedicated verification
- *     task (priority 1000). `responseParser.createTaskQueue` now enforces
- *     this at decompose time via the `executionTier >= 3 && !hasFinalTask`
+ *     task (priority 1000). `responseParser.createTaskQueue` enforces this
+ *     at decompose time via the `executionTier >= 3 && !hasFinalTask`
  *     throw. Under the primary path, Final Verification is already queued
  *     by the time any error task completes, and this hook observes
  *     `hasFinalVerification === true` and returns early.
  *
  * Fallback path (this hook):
- *   - If the decompose LLM violates the SSOT and emits Tier 3/4 error task(s)
- *     without a Final Verification, `responseParser.createTaskQueue` throws
- *     at decompose time. This hook only fires if a pre-alignment session
- *     resumes (Tier 3 error task WITHOUT Final Verification in queue), and
- *     then it auto-enqueues one as a recovery signal so the pipeline
- *     terminates in a verified state. The console.warn surfaces the
- *     violation so it is visible in logs, rather than silently papering over
- *     a regression.
+ *   - Fires only when none of the primary paths above have queued a Final
+ *     Verification. Historically this covers pre-alignment sessions that
+ *     resumed with Tier 3 error tasks but no Final Verification. The
+ *     console.warn surfaces the regression so it is visible in logs rather
+ *     than silently papering over the SSOT violation.
  *
  * Historically this hook replaced two duplicated inline branches in
  * `graph.ts` (sequential checkTaskStatus + parallelOrchestrator onTaskComplete).
