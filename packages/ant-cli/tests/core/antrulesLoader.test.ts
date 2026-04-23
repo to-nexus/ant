@@ -1,8 +1,9 @@
 /**
  * L1 — `codebase/ANTRULES.md` loader invariants.
  *
- * ANTRULES.md is the SSOT for ant-agent settings in a given codebase
- * (see docs/architecture/35-codebase-meta-policy.md). The loader:
+ * ANTRULES.md is the codebase-specific **deviation ledger** gated by the
+ * 3-condition filter (see docs/architecture/35-codebase-meta-policy.md).
+ * The loader:
  *   - returns `undefined` on missing / unreadable / empty-content file
  *   - caps content at 1500 chars with a truncation footer
  *   - trims surrounding whitespace
@@ -23,7 +24,7 @@ import {
 } from '../../src/core/artifact/antrules';
 
 function makeTmpFeatureRoot(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-md-test-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'antrules-loader-test-'));
   fs.mkdirSync(path.join(dir, 'codebase'), { recursive: true });
   return dir;
 }

@@ -4,7 +4,9 @@ You are diagnosing build and test failures and creating a structured remediation
 
 {{> jobs/shared/injections/action-context}}
 
-{{> jobs/code/base/injections/ant-md}}
+{{> jobs/code/base/injections/antrules}}
+
+{{> jobs/code/base/injections/dep-self-contained}}
 
 ## Role
 

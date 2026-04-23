@@ -4,7 +4,9 @@
 
 **워크스페이스는 3층으로 배타 분리: `codebase/` (코드 + 코드의 메타, git 추적), `outputs/` (디자인·생성 산출물, 세션 간 영속), `sessions/` (에이전트 런타임/디버그, 일시).** 새 파일을 추가할 때 반드시 이 중 하나를 고르고, 경계를 넘지 않는다.
 
-**`codebase/ANTRULES.md` 는 ant 에이전트 작업 설정 live document.** export style / naming / library compatibility / decided test runner / anti-patterns 등 **작업 중 발견되는 cross-task 불변성** 을 누적 기록. README / ARCHITECTURE 와 독립. 크기 상한 1500자. **모든 code-job 태스크가 read + write 가능** — setup 은 확신하는 것만 초기 skeleton 으로 찍고 모르는 건 생략하며, 후속 태스크가 자기 발견 (예: test-code 가 실제 설치한 runner, feature 가 발견한 lib 충돌) 을 append/modify. **허위 금지 문구 금지** (`Do not add test files` 같은 선제적 prohibition 은 작성 금지 — 결정 부재는 섹션 자체를 생략해서 표현). 매 plan/execute 프롬프트에 자동 주입되며 LLM 은 필요 시 `read_file codebase/ANTRULES.md` 로 자율 조회 가능.
+**`codebase/ANTRULES.md` 는 3-조건 필터를 통과한 codebase-local deviation 만 담는 ledger.** 기록 자격: (1) codebase-local (techTier / framework 기본값 아님), (2) not auto-derivable (`package.json` / `tsconfig.json` / config 파일 / 기존 파일에서 유추 불가능), (3) cross-task invariant (후속 task 가 같은 선택을 반복해야 함). 세 조건을 **모두** 만족할 때만 적는다. 정당한 예: 파일 네이밍 케이스, hooks 파일명 prefix, export 스타일 선호, `lucide` vs `heroicons` 아이콘 라이브러리 선호 같은 **코드가 기록 안 하는 프로젝트 고유 컨벤션**; 또는 시점-국지 패키지 pinning rationale (`shadcn X v0.4` incompatible with `react@19` → pinned 18). **금지**: Framework / Test runner / Source root / Alias / Config file location 재선언 — 이들은 `package.json` / `tsconfig.json` / 파일시스템이 이미 SSOT. decompose (무엇을 할지) / prompt (일반 원칙) / config 파일 (기계가 읽는 사실) 의 책임을 침범 금지. 1500자 상한. **허위 금지 문구 금지** (`Do not add test files` 같은 선제적 prohibition). 모든 code-job 태스크가 read + write 가능; 3-조건 필터 통과 사실이 없으면 파일 생성 자체를 하지 않는다. 매 plan/execute 프롬프트에 자동 주입되며 LLM 은 stale 의심 시 `read_file codebase/ANTRULES.md` 로 확인 후 **실제 code 를 SSOT 로 신뢰**.
+
+"라이브러리를 쓰려면 설치해야 한다" 같은 class-of-bug 기본 원칙은 ANTRULES 가 아니라 별도 partial `jobs/code/base/injections/dep-self-contained.md` 가 모든 code-job execute / plan variant 에 고정 주입한다 (doc / explain 제외).
 
 전체 정책은 [docs/architecture/35-codebase-meta-policy.md](docs/architecture/35-codebase-meta-policy.md).
 

@@ -290,7 +290,7 @@
       "basis-registry"
     ]
   },
-  "jobs/code/base/injections/ant-md": {
+  "jobs/code/base/injections/antrules": {
     "sources": [
       "partial-ref",
       "manifest"
@@ -311,6 +311,12 @@
   "jobs/code/base/injections/behavioral-debugging": {
     "sources": [
       "auto-injection",
+      "manifest"
+    ]
+  },
+  "jobs/code/base/injections/dep-self-contained": {
+    "sources": [
+      "partial-ref",
       "manifest"
     ]
   },

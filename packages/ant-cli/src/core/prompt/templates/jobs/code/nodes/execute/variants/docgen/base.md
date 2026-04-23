@@ -2,7 +2,7 @@
 
 You are generating or updating project documentation based on the completed codebase.
 
-{{> jobs/code/base/injections/ant-md}}
+{{> jobs/code/base/injections/antrules}}
 
 ## Scope
 

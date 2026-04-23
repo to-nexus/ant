@@ -16,7 +16,9 @@ When writing files, use `codebase/` prefix for all code files.
 
 **Wrong paths (do NOT use):** `app/page.tsx` (missing codebase/ prefix), `features/<feature>/codebase/...` (codebase is at feature root, NOT inside features/).
 
-{{> jobs/code/base/injections/ant-md}}
+{{> jobs/code/base/injections/antrules}}
+
+{{> jobs/code/base/injections/dep-self-contained}}
 
 ## 🎯 CORE PRINCIPLES (ALWAYS APPLY)
 
@@ -137,39 +139,31 @@ Create config files only. **NO source code, NO tests.**
 
 **Blind spot**: `.env` is EASILY FORGOTTEN when `.env.example` is created. Both files MUST be created together with identical variable keys. Variable names defined here become the contract for all subsequent tasks.
 
-**ANTRULES.md (Agent Settings File) — create the initial skeleton:**
+**ANTRULES.md (Agent Settings File) — gated by the 3-condition filter:**
 
-Create `codebase/ANTRULES.md` as part of setup. This file is a **live document**: every subsequent ant task reads it and may add or modify rules based on what that task discovers during its own work (library compatibility, decided test runner, lint rule status, anti-pattern avoidance, etc). Your job here is the **initial skeleton** — not a pre-decision of every convention.
+`codebase/ANTRULES.md` is **deviation-only**. Create it ONLY when a fact discovered during setup passes ALL three conditions:
 
-**Principle**: Record ONLY rules you are confident about at this point in time, derived from the design document or your own setup actions. Sections whose subject has not been decided yet (e.g. test runner not yet chosen, React import style irrelevant for a non-React stack) MUST be omitted — the later responsible task will append them.
+1. **Codebase-local** — this project's choice, not a techTier / framework standard
+2. **Not auto-derivable** — `package.json`, `tsconfig.json`, `*.config.*`, or the filesystem do NOT already carry it
+3. **Cross-task invariant** — a sibling or future task must repeat this choice to preserve consistency
+
+Setup's job at this point is typically **NOT** to seed ANTRULES. Framework / test-runner / lib / alias / source-root decisions all fail condition 2 because they are already declared in the manifests and configs you are writing alongside this. Do NOT seed them redundantly.
+
+**Legitimate setup-time seeds** (the minority case) are things like:
+
+| Example | Why it passes the filter |
+|---|---|
+| "Do NOT add `babel.config.js` — disables SWC project-wide" | next/jest hazard not encoded anywhere; future task could innocently add and silently break builds |
+| "`shadcn X v0.4` pinned because incompatible with `react@19` (upstream PR #NNN)" | Pinning rationale not in `package.json` (only the version number is); future task bumping deps needs the rationale |
+| Explicit file-naming case rule ("Components: kebab-case.tsx") when the framework is case-agnostic | Convention not enforced by any tool config; future tasks must follow |
 
 **Constraint — no fabricated prohibitions**: Phrases like "Do not add test files", "No test framework configured", or any rule banning future work you are not sure will happen are FORBIDDEN. Absence of a decision is expressed by NOT writing that section, NEVER by prohibiting a sibling task that is scheduled to make the decision.
 
-**Constraint**: Keep the file under 1500 characters. Long reference material belongs elsewhere (`codebase/docs/` or `codebase/README.md`); ANTRULES.md is a compact settings file.
+**Constraint — no redundant restatements**: Do NOT seed sections named `Framework`, `Styling`, `Source Root`, `Aliases`, `Icons`, or `Testing` that merely restate what `package.json` / `tsconfig.json` / your config files already declare. These create dual-SSOT drift. If the deep Testing section is just "Jest 29 + RTL via next/jest" — that is `package.json`'s job; omit it. If there is a genuine cross-task hazard (like "Do NOT add `babel.config.js`"), record that hazard as a one-line entry under a minimal heading.
 
-**Suggested sections** (include ONLY those that apply to this project's current state):
+**Constraint**: Keep the file under 1500 characters. In practice, setup-time ANTRULES should be **zero or a handful of lines**. Long reference material belongs elsewhere (`codebase/docs/` or `codebase/README.md`).
 
-```md
-# ANTRULES.md
-
-> ant agent settings for this codebase. Human-facing docs live in README.md / docs/.
-
-## Export Style
-- (example, when decided) named export, one symbol per file.
-
-## React Imports
-- (only when React is in the stack) whether `import React from "react"` is required or named imports are preferred.
-
-## Testing
-- Record ONLY facts established at setup time: Node/language version, package manager, any test-runner dependency already in the manifest, compatibility notes (e.g. "ESM-only — choose a vitest-compatible framework"). Do NOT pick a specific runner / file placement / setup-file path unless the design doc explicitly specifies one — the test-code task appends those details when it runs.
-
-## File Naming
-- Concrete rule per file kind, e.g. "Components: kebab-case.tsx. Hooks: use-*.ts."
-```
-
-Later tasks can add sections such as `## Library Compatibility`, `## Lint Rules`, `## Anti-Patterns`, etc. — ANTRULES.md grows as the project learns about itself.
-
-Write ANTRULES.md alongside the other setup configs (`package.json`, `tsconfig.json`, etc.) — it is part of the project's initial skeleton.
+**Default action**: If NO deviation passes the 3-condition filter at setup time, do NOT create the file at all. Later tasks will create it the moment a filter-passing invariant is discovered (via the injected antrules partial guidance).
 
 **Framework-Specific Requirements:**
 
@@ -237,9 +231,9 @@ Follow the framework/language-specific setup instructions from:
 
 **Principle**: Before creating a new source file, observe at least one existing sibling file in the same directory. Match the observed export style, import style, file-name casing, and type-annotation style exactly.
 
-**Constraint**: When `codebase/ANTRULES.md` is rendered above (Project Settings block), it overrides sibling observations — ANTRULES.md is the explicit SSOT for project-wide conventions. Sibling observation is the fallback for codebases without ANTRULES.md, not a parallel authority.
+**Constraint**: Siblings are the primary evidence of project conventions — the actual code is always the SSOT. `codebase/ANTRULES.md` (when rendered in the Project Settings block above) supplements siblings only for **codebase-specific deviations** that pass the 3-condition filter (codebase-local + not auto-derivable + cross-task invariant). On conflict: if the ANTRULES entry clearly passes the filter, it wins; if it merely restates what siblings already show, it is redundant noise — trust the siblings.
 
-**Constraint**: Do NOT mix conventions within a single commit. If you must introduce a new convention (e.g. a different export style), update `codebase/ANTRULES.md` in the same commit to reflect the new rule, and update sibling files atomically; do not leave mixed styles. (ANTRULES.md is a live document — any task may add or modify rules it discovers.)
+**Constraint**: Do NOT mix conventions within a single commit. If a new convention genuinely emerges (e.g. flipping to a different export style across the codebase) AND the decision passes the 3-condition filter, record it in `codebase/ANTRULES.md` in the same commit and update sibling files atomically; do not leave mixed styles. A one-off inconsistency with an existing sibling pattern is a mistake to fix, not a new convention to record.
 
 ⚠️ **Blind spot**: Parallel feature tasks that all create "just this one component" with slightly different conventions produce silent downstream failures — integration files (`page.tsx`) and test files pick one convention and the other half of components break. Sibling observation catches this at creation time.
 

@@ -306,7 +306,7 @@ describe('Template Smoke Tests', () => {
     expect(partialOnly).toContain('globals exclusion');
   });
 
-  it('setup ANTRULES guidance — no forbidden prohibitions, includes live-document wording (F0)', async () => {
+  it('setup ANTRULES guidance — 3-condition filter, no forbidden prohibitions (F0 + dep-self-contained refactor)', async () => {
     await initPartials(TEMPLATES_DIR);
 
     const output = await adapter.render(
@@ -328,15 +328,27 @@ describe('Template Smoke Tests', () => {
     expect(forbiddenSection![0]).toMatch(/No test framework configured/);
     // Must carry the "no fabricated prohibitions" constraint
     expect(output).toMatch(/no fabricated prohibitions/i);
-    // Must describe ANTRULES as a live document modifiable by later tasks
-    expect(output).toMatch(/live document/i);
-    // Test-code authoring is explicitly framed as the owner of runner selection
+    // Sharpened semantics (2026-04-23 refactor): setup no longer seeds a
+    // full inventory. The 3-condition filter must be named in the setup
+    // section so the LLM knows when NOT to create ANTRULES at all.
+    expect(output).toMatch(/3-condition filter/i);
+    expect(output).toMatch(/Codebase-local/);
+    expect(output).toMatch(/Not auto-derivable/);
+    expect(output).toMatch(/Cross-task invariant/);
+    // Explicit anti-pattern callout: setup MUST NOT restate what package.json
+    // / tsconfig / config files already declare.
+    expect(output).toMatch(/no redundant restatements/i);
+    expect(output).toMatch(/drift/i);
+    // Default action when nothing passes the filter: do not create the file.
+    expect(output).toMatch(/Default action/);
+    // Test-code authoring remains explicit owner of runner selection (this
+    // lives in the separate FORBIDDEN block, not the ANTRULES seed block).
     expect(output).toMatch(/test-code task/i);
     // L186 replacement: specific forbidden (files + scripts) rather than vague "testing infrastructure"
     expect(output).toMatch(/DO NOT create test files or run test setup scripts/);
   });
 
-  it('ant-md partial guidance — "Updating ANTRULES.md" appears in the standard execute base (F0)', async () => {
+  it('antrules partial guidance — "Updating ANTRULES.md" appears in the standard execute base (F0)', async () => {
     await initPartials(TEMPLATES_DIR);
 
     const output = await adapter.render(
@@ -350,6 +362,60 @@ describe('Template Smoke Tests', () => {
 
     expect(output).toMatch(/Updating ANTRULES\.md/);
     expect(output).toMatch(/cross-task invariant/i);
+  });
+
+  const DEP_PARTIAL_HEADER = '## Self-Contained Dependency Principle';
+  const DEP_VARIANTS_INCLUDED = [
+    'jobs/code/nodes/execute/variants/default/base',
+    'jobs/code/nodes/execute/variants/test-code/base',
+    'jobs/code/nodes/execute/variants/verification/base',
+    'jobs/code/nodes/execute/variants/error/base',
+    'jobs/code/nodes/plan/base',
+    'jobs/code/nodes/plan/variants/verification/base',
+    'jobs/code/nodes/plan/variants/error/base',
+  ];
+  const DEP_VARIANTS_EXCLUDED = ['jobs/code/nodes/execute/variants/docgen/base'];
+
+  for (const template of DEP_VARIANTS_INCLUDED) {
+    it(`dep-self-contained partial appears in ${template}`, async () => {
+      await initPartials(TEMPLATES_DIR);
+      const output = await adapter.render(template, {
+        ...SAMPLE_VARS,
+        antrulesContent: undefined,
+        currentTask: { id: 't', name: 't', type: 'feature', description: 'x', priority: 300 },
+      });
+      expect(output).toContain(DEP_PARTIAL_HEADER);
+      expect(output).toMatch(/setupFilesAfterFramework/);
+    });
+  }
+
+  for (const template of DEP_VARIANTS_EXCLUDED) {
+    it(`dep-self-contained partial is absent from ${template}`, async () => {
+      await initPartials(TEMPLATES_DIR);
+      const output = await adapter.render(template, {
+        ...SAMPLE_VARS,
+        antrulesContent: undefined,
+        currentTask: { id: 't', name: 't', type: 'doc', description: 'x', priority: 800 },
+      });
+      expect(output).not.toContain(DEP_PARTIAL_HEADER);
+    });
+  }
+
+  it('verification execute rules carry the ANTRULES write-back checkpoint with the 3-condition filter', async () => {
+    await initPartials(TEMPLATES_DIR);
+    const output = await adapter.render(
+      'jobs/code/nodes/execute/variants/verification/rules',
+      SAMPLE_VARS,
+    );
+    expect(output).toMatch(/ANTRULES Write-Back/i);
+    expect(output).toMatch(/Codebase-local/);
+    expect(output).toMatch(/Not auto-derivable/);
+    expect(output).toMatch(/Cross-task invariant/);
+    // Filter-failing shapes must be explicitly rerouted away from ANTRULES
+    // (manifest, techTier hints, or filesystem evidence itself).
+    expect(output).toMatch(/manifest IS the SSOT|Edit the manifest/);
+    expect(output).toMatch(/derivable from the library/);
+    expect(output).toMatch(/Silence is the correct action/);
   });
 
   it('secure-coding partial is resolved inside execute/rules and plan/rules', async () => {

@@ -51,6 +51,32 @@
 
 ---
 
+## Pre-`<done>` Checkpoint — ANTRULES Write-Back
+
+**Principle**: Verification is the phase that empirically discovers deviations. When a fix you just applied produces a **cross-task invariant** (next job / session would repeat the same mistake without knowing what you learned), record it in `codebase/ANTRULES.md` BEFORE emitting `<done>true</done>`.
+
+**Filter gate — all three conditions must hold** (from the Project Settings block above):
+
+1. **Codebase-local** — this project's choice, not a standard every project in the same stack inherits
+2. **Not auto-derivable** — `package.json`, `tsconfig.json`, `*.config.*`, or the filesystem do NOT already carry this fact
+3. **Cross-task invariant** — a sibling or future task must repeat this choice to preserve consistency
+
+Matrix — apply the filter to the kind of deviation at hand:
+
+| Deviation shape | Passes filter? | Where to record |
+|---|---|---|
+| Package-pinning rationale tied to a known upstream incompatibility | ✅ all three | ANTRULES (one line with the rationale) |
+| Temporary tool-version workaround (e.g. staying on an older config format until a migration) | ✅ all three | ANTRULES (one line with the rationale and termination condition) |
+| Correct config key name documented in the library's own schema | ❌ condition 2 — derivable from the library | techTier hint or the config file itself |
+| Required dependency entry | ❌ condition 2 — once written to the manifest, the manifest IS the SSOT | Edit the manifest |
+| Config file rename or extension change | ❌ condition 2 — the filesystem shows it | None; the repo itself is evidence |
+
+**Constraint**: If every filter-check fails, do NOT touch ANTRULES.md. Silence is the correct action. A filter-failing entry actively harms the next task by seeding drift.
+
+**Constraint**: When you DO append, keep the entry to one or two lines with the rationale that cannot be derived from the code alone. Do NOT paste diagnostic output or fix commands.
+
+---
+
 ## Interaction Methods
 
 **`<file>`, `<append>` are XML streaming tags. File editing uses tool calls.**
