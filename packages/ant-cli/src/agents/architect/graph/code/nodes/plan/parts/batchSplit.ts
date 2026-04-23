@@ -17,13 +17,34 @@
  * boundary intentionally established by R1.
  */
 
-import { ArchitectGraphState } from '../../../state';
+import { ArchitectGraphState, TASK_PRIORITIES } from '../../../state';
 import { CodeTask } from '../../../../../types/task';
+import type { TechTier } from '@ant/shared';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { appendTrace } from '../../../../../../../utils/verificationTrace';
 import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
 import { isVerificationTask } from '../../../tasks/verification';
 import { isErrorTask } from '../../../tasks/error';
+
+/**
+ * Final Verification presence check. Mirrors the helper in
+ * `tasks/error/hooks/orchestrator.ts` — we duplicate the small predicate
+ * instead of importing because the hook's dedup fallback and the escalate
+ * path here have different call shapes and lifecycles; the priority check
+ * plus "any completed verification" semantics is identical either way.
+ */
+function hasFinalVerification(
+  queue: readonly CodeTask[],
+  running: readonly CodeTask[],
+  completed: readonly CodeTask[],
+): boolean {
+  const inFinalPriority = (t: CodeTask): boolean =>
+    t.priority === TASK_PRIORITIES.FINAL_VERIFICATION;
+  if (queue.some(inFinalPriority)) return true;
+  if (running.some(inFinalPriority)) return true;
+  if (completed.some((t: CodeTask) => t.type === 'verification')) return true;
+  return false;
+}
 
 export const MAX_BATCH_SPLIT_CYCLES = 10;
 
@@ -129,14 +150,26 @@ export function processDiagnosticBatchSplit(
   planText: string,
   nextTask: CodeTask,
 ): string {
-  // Gate is BOTH verification and error. Error tasks created by a previous
-  // batch-split carry `prePlanText` and fast-path past this function (see
-  // `nodes/plan/index.ts maybePrePlannedFastPath`). But error tasks emitted
-  // directly by decompose (no prePlanText) fall through to normal planning
-  // and may legitimately produce a multi-batch remediation plan that should
-  // also be split. Cascading splits are bounded by
-  // `MAX_BATCH_SPLIT_CYCLES` on the Session.
-  const isBatchSplitCandidate = isVerificationTask(nextTask) || isErrorTask(nextTask);
+  // Gate covers three populations:
+  //   1. Verification tasks (Tier 3/4 final gate) — existing path.
+  //   2. Error tasks emitted by decompose (Tier 3/4) — existing path. Error
+  //      sub-tasks produced by a previous split carry `prePlanText` and
+  //      fast-path past this function (see `plan/index.ts
+  //      maybePrePlannedFastPath`); decompose-emitted error tasks fall
+  //      through normal planning and may produce a multi-batch plan.
+  //   3. Tier 2 escalate — any task type (feature/ui/error/setup/explain is
+  //      filtered out by `selfVerifyOnDone`) whose plan exceeds the split
+  //      thresholds. On escalate the original task is DROPPED and a
+  //      verification task is enqueued in its place, morphing the queue
+  //      into the Tier 3 shape (N sub-tasks + 1 verification).
+  //      `executionTier` channel stays at 2 — this is queue-structure
+  //      escalation, not a tier-channel promotion. See `.cursorrules`
+  //      "Tier-Verification Alignment SSOT → Tier 2 runtime escalate".
+  // Cascading splits are bounded by `MAX_BATCH_SPLIT_CYCLES` on the Session.
+  const isTier2EscalateCandidate =
+    state.executionTier === 2 && (nextTask as CodeTask).selfVerifyOnDone === true;
+  const isBatchSplitCandidate =
+    isVerificationTask(nextTask) || isErrorTask(nextTask) || isTier2EscalateCandidate;
 
   const logBatchSplit = (data: Record<string, any>) => {
     if (state.context?.featurePath && state._httpJobId) {
@@ -304,11 +337,32 @@ export function processDiagnosticBatchSplit(
         rootCauseSelfCheck: selfCheck ?? { mode: planMode },
       });
 
+      // Sub-task type policy:
+      //   - parent = verification (Tier 3/4 Final Verification) → sub = 'error'.
+      //     The verification plan narrows into file-level fix batches; each
+      //     batch APPLIES a diagnostic fix (that is error-task semantic).
+      //     The subsequent Final Verification re-runs gates. Keeping sub-
+      //     tasks as 'error' matches the existing Tier 3/4 contract and
+      //     avoids loading a verification execute variant that would try
+      //     to run gates instead of applying fixes.
+      //   - parent = error (Tier 3/4) → sub = 'error' (same as parent).
+      //   - parent = Tier 2 runtime escalate (feature/ui/setup/error) →
+      //     sub inherits parent.type. The execute variant / hooks must
+      //     match the work's semantic (e.g. a feature batch applies
+      //     component skeletons, not diagnostic fixes).
+      //
+      // `selfVerifyOnDone` is intentionally NOT set on sub-tasks — gate
+      // responsibility is handed off to the verification task enqueued
+      // below (Tier 2 escalate / Tier 3/4 error drop-and-replace) or to
+      // the pre-existing Final Verification in the queue (Tier 3/4 verification).
+      const subType: CodeTask['type'] = isVerificationTask(nextTask)
+        ? 'error'
+        : nextTask.type;
       const subTask: CodeTask = {
-        id: `error-fix-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        id: `${subType}-fix-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         name: `Fix: ${batch.name}`,
         description: batch.rationale || batch.name,
-        type: 'error',
+        type: subType,
         priority: (nextTask.priority || 500) - 1,
         prePlanText: batchPlanText,
         exclusive: hasFileOverlap,
@@ -331,31 +385,79 @@ export function processDiagnosticBatchSplit(
       batchNames: parsed.batches.map((b: any) => b.name),
     }));
 
-    // Re-enqueue the original task (clean state) instead of creating a new one.
-    // Priority FINAL_VERIFICATION(1000) > error priority(999) ensures it runs last.
+    // Branch on parent role — the two paths have different invariants:
     //
-    // Capture the current state as a `WorkerSnapshot` and attach it to the
-    // task's `resumeState` so the next worker invocation rehydrates the
-    // verification session (attempts, plan history, batch-split counter,
-    // previous diagnostics). Error sub-tasks pushed above do NOT need a
-    // snapshot — their `prePlanText` is self-contained.
+    //   A. parent = verification (Tier 3/4 Final Verification that split
+    //      into fix batches). Historical behaviour preserved: re-enqueue
+    //      the original so its orchestrator retry budget (`_failedAttempts`)
+    //      stays attached to the same task identity. Resetting that budget
+    //      by spawning a fresh verification task is the legacy
+    //      `still-lacing-north` regression — the snapshot ships via
+    //      resumeState.verification but `_failedAttempts` must not reset.
     //
-    // `_failedAttempts` is NOT reset here: verification tasks read the
-    // attempt counter off `resumeState.verification.attempts` while other
-    // task types preserve their orchestrator retry budget. Resetting was a
-    // legacy pattern that accidentally granted unlimited orchestrator
-    // retries — root cause of the post-batch-split transient-retry cycle
-    // observed in the `still-lacing-north` incident.
+    //   B. parent = error (Tier 3/4) or Tier 2 runtime escalate (any type
+    //      with selfVerifyOnDone). Drop the original and enqueue a
+    //      dedicated Final Verification (priority 1000). The original's
+    //      role was "apply fixes then (for Tier 2) own inline gates";
+    //      after splitting, sub-tasks apply the fixes and the Final
+    //      Verification (existing or newly-enqueued) owns gates. Keeping
+    //      the original around as an `error` task led to the
+    //      `firm-jolting-horse` regression: type=error + role=gate
+    //      produced an execute prompt that told the LLM to emit a fresh
+    //      remediation plan (having no memory of the sub-tasks' edits),
+    //      burning minutes on re-discovery before failing on plan format.
+    //
+    // Both paths capture the same Session snapshot so verification cycle
+    // state (batchSplitCount / planHistory / prevDiagnostics) carries to
+    // the follow-up verification entry.
     const snapshot = snapshotFromState(state);
-    const requeuedTask: CodeTask = {
-      ...nextTask,
-      timing: undefined,
-      interrupted: !!snapshot ? true : undefined,
-      _failed: undefined,
-      _failureReason: undefined,
-      resumeState: snapshot ?? undefined,
-    } as CodeTask;
-    state.taskQueue.push(requeuedTask);
+    if (isVerificationTask(nextTask)) {
+      // Path A — preserve the original verification task's identity &
+      // retry budget. `timing` / `_failed*` are cleared because the next
+      // run starts fresh, but `_failedAttempts` is deliberately NOT reset
+      // (see still-lacing-north comment above).
+      const requeuedTask: CodeTask = {
+        ...nextTask,
+        timing: undefined,
+        interrupted: !!snapshot ? true : undefined,
+        _failed: undefined,
+        _failureReason: undefined,
+        resumeState: snapshot ?? undefined,
+      } as CodeTask;
+      state.taskQueue.push(requeuedTask);
+    } else {
+      // Path B — drop-and-replace with a dedicated Final Verification.
+      // Dedup: if a Final Verification is already queued / running /
+      // completed (Tier 3/4 decompose emits one; nested splits may have
+      // already enqueued), skip to avoid double-gating. `onTaskComplete`
+      // on error tasks has the symmetric fallback.
+      const alreadyHasFinalVerification = hasFinalVerification(
+        state.taskQueue.getAll(),
+        [],
+        state.completedTasksDetails ?? [],
+      );
+      if (!alreadyHasFinalVerification) {
+        const techTiers: TechTier[] = [
+          state.resolvedAction?.basis?.techTier?.frontend,
+          state.resolvedAction?.basis?.techTier?.backend,
+        ].filter((t): t is TechTier => !!t);
+        const verificationTask: CodeTask = {
+          id: `final-verification-batch-split-${Date.now()}`,
+          name: `Final Verification (batch-split of "${nextTask.name}")`,
+          type: 'verification',
+          priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+          description: `Verify that the batch-split sub-tasks of "${nextTask.name}" resolved the diagnosed issues.`,
+          techTiers,
+          resumeState: snapshot ?? undefined,
+        };
+        state.taskQueue.push(verificationTask);
+      }
+    }
+    // `_batchSplitRequeued` semantics: "this plan cycle is handed off to
+    // newly-enqueued tasks; do NOT mark the current task as completed in
+    // checkTaskStatus." Applies to both paths — path A re-queues the
+    // original so the current cycle shouldn't mark it complete; path B
+    // drops the original, which likewise must not be recorded as complete.
     state._batchSplitRequeued = true;
     appendTrace({
       node: 'plan',
