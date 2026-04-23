@@ -17,15 +17,19 @@
  *                                    `CONV_KEYS.NODE_EXECUTE`).
  *   - check.evaluate               — async disk scan for real test files
  *                                    via `detectTestFilesFromDisk`.
+ *   - execute                      — test-code-specific execute template
+ *                                    variant and skipExamples flag.
+ *
+ * Test-code flows through the standard `jobs/code/nodes/plan` path
+ * (keyword / RAG / planGen) like feature / ui / design-system tasks —
+ * the earlier "skip plan for test-code" branch (a phase-layer R1
+ * residual) was removed in F2 (2026-04). Planning lets test authoring
+ * observe existing sources and manifest before deciding runner, and
+ * surfaces retry violations back through `composeViolationsText`.
  *
  * Intentionally absent:
- *   - plan.buildPrompt / extraTemplateVars — test-code flows through the
- *     shared `jobs/code/nodes/plan` path; there is no `plan/variants/
- *     test-code/` template and no planGeneration.ts branch to port. The
- *     `task.type !== 'test-code'` guard in `planGeneration.ts` that
- *     skips planning for this type is a predicate on the phase side
- *     (pre-existing R1 residual, T6b follow-up) and does not translate
- *     to a hook here.
+ *   - plan.buildPrompt / extraTemplateVars — no variant template needed;
+ *     the generic plan prompt is sufficient.
  *   - check.budgetExhaustedHint — the generic "Break down the task scope"
  *     hint is correct for test-code; only verification overrides.
  *   - scheduling consumer flags `preUiBarrier / preDocBarrier /
@@ -33,14 +37,6 @@
  *     barrier.
  *   - scheduling producer flags `blocksUi / blocksTestgen /
  *     blocksIntegration` — test-code only activates the doc barrier.
- *
- * Execute-phase R1 residuals resolved by T6b-ι (`execute` hook slot:
- * template-variant + skipExamples). The skip-planning gate in
- * `nodes/plan/planGeneration.ts taskRequiresPlan` now delegates to the
- * `isTestCodeTask` predicate re-exported below (T6b-κ). The one
- * remaining residual — `nodes/decompose/validation.ts` allowed-types
- * list — is a literal enumeration (R3-equivalent) rather than a
- * behavioural branch and does not need predicate adoption.
  */
 
 import type { TaskHooks } from '../_shared/types';

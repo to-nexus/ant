@@ -45,7 +45,6 @@ export type PlanToolLoopOutcome =
 export async function runPlanToolLoopPhase(
   state: ArchitectGraphState,
   nextTask: CodeTask,
-  preservedRetries: number,
 ): Promise<PlanToolLoopOutcome> {
   const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
   if (!(state._activePhase === 'plan' && nodePlan.length > 0)) {
@@ -77,7 +76,8 @@ export async function runPlanToolLoopPhase(
         _executeBudget: computeBudgetFromPlanText(finalizedPlan),
         _activePhase: 'execute' as const,
         conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
-        retries: preservedRetries,
+        // retries intentionally NOT set — handleRetryEntry is the single
+        // writer (bc1e45b9). `...state` propagates the correct value.
         completedTasksDetails: state.completedTasksDetails || [],
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
@@ -121,7 +121,8 @@ export async function runPlanToolLoopPhase(
       _executeBudget: computeBudgetFromPlanText(planText),
       _activePhase: 'execute' as const,
       conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
-      retries: preservedRetries,
+      // retries intentionally NOT set — handleRetryEntry is the single
+      // writer (bc1e45b9). `...state` propagates the correct value.
       completedTasksDetails: state.completedTasksDetails || [],
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,

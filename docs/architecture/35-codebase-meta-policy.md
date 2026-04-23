@@ -20,17 +20,32 @@
 
 경계가 흐려지면 파편화 리스크가 생긴다. **새 파일을 추가할 때 반드시 위 표에서 1개 층을 지정** 하고 `codebase/` 에 속하면 아래 §2 정책을 따른다.
 
-## 2. `codebase/ANTRULES.md` — ant 에이전트 설정 SSOT
+## 2. `codebase/ANTRULES.md` — ant 에이전트 설정 SSOT (live document)
 
 ### 정체성
 
-- **ant 에이전트가 이 코드베이스에서 새 파일을 생성하거나 수정할 때 따라야 하는 결정 규칙** 을 모아둔 단일 엔트리.
+- **ant 에이전트가 이 코드베이스에서 새 파일을 생성하거나 수정할 때 따라야 하는 cross-task 불변성** 을 기록하는 live document.
 - `README.md` / `ARCHITECTURE.md` / `RUNBOOK.md` 와는 **목적이 다르다**. 이들은 사람 중심 문서 (프로젝트 개요, 모듈 경계, 런 방법). ANTRULES.md 는 에이전트 행동 규칙. 두 축은 독립으로 공존한다.
 - Cursor / Claude Code / OpenAI Codex 생태계에서 `AGENTS.md` / `CLAUDE.md` 가 하는 역할과 유사. 이름은 ant 의 identity 를 반영해 `ANTRULES.md`.
 
+### 설계 원칙 — append/modify 를 모두 허용하는 live document
+
+이 파일은 "setup 이 예측해서 찍는 선제적 skeleton" 이 아니라 **"작업 중에 발견된 cross-task 불변성을 누적·반영하는 살아있는 기록"** 이다. 초기에 작성된 규칙이 실제 작업에서 틀린 것으로 드러나면 덮어써서 최신 상태를 유지한다.
+
+실제로 유용한 기록 범주 (예시, 엄격한 enum 아님):
+
+- **Export style** — default vs named (병렬 태스크 drift 의 1차 원인)
+- **File naming** — kebab-case / camelCase / PascalCase 규칙
+- **Library version compatibility** — 테스트 러너 · 주요 의존성의 호환성 제약 (e.g. "zustand v4 ≠ React 18 breaking change — use v5")
+- **Decided test runner** — test-code 태스크가 실제 설치·검증 후 선택한 러너
+- **Import conventions** — React import 스타일, path alias 규약
+- **Environment variable naming** — `VITE_*` / `NEXT_PUBLIC_*` / 프로젝트 prefix
+- **Anti-patterns to avoid** — 검증에서 발견된 "이 패턴은 v3 API 와 충돌하니 쓰지 말 것"
+- **Lint rule status** — 해제/활성 상태와 이유
+
 ### 위치
 
-- `codebase/ANTRULES.md` (루트 평탄 파일). 하위 디렉토리 / 숨김 디렉토리 사용 금지 — 사람 개발자가 저장소 루트 에서 곧장 인지해야 하므로.
+- `codebase/ANTRULES.md` (루트 평탄 파일). 하위 디렉토리 / 숨김 디렉토리 사용 금지 — 사람 개발자가 저장소 루트에서 곧장 인지해야 하므로.
 
 ### 크기 제약
 
@@ -38,7 +53,9 @@
 - 근거: 매 plan / execute 프롬프트에 자동 주입되므로 토큰 비용 · 캐시 안정성에 직접 영향.
 - 장문 레퍼런스 (아키텍처 상세 · 온보딩 가이드) 는 `codebase/docs/...` 또는 `codebase/README.md` 에 분리.
 
-### 섹션 구조 (고정)
+### 섹션 구조 — 자유 형식, 권장 예시
+
+고정 섹션은 **없다**. 아래는 권장 예시이며 프로젝트의 현재 상태에 해당하는 섹션만 포함한다. 모르는 것 / 아직 결정 안 된 것은 **섹션을 아예 생략**한다 (placeholder 나 "TBD" 대신).
 
 ```md
 # ANTRULES.md
@@ -50,32 +67,32 @@
 - (예) default export, single component per file.
 
 ## React Imports
-- (예) `import React from 'react'` required when using `React.JSX.Element` / `React.ReactNode`.
+- (React 스택일 때만) `import React from 'react'` required when using `React.JSX.Element`.
 
 ## Testing
-- Framework: (예) Jest + next/jest preset
-- Setup file: `src/test-setup.ts`
-- Test placement: `src/__tests__/*.test.tsx`
+- setup 시점: Node/언어 버전, 패키지 매니저, 이미 추가된 test-runner 의존성, 호환성 노트.
+- 이후 test-code 태스크가 실제 선택한 runner / setup file / placement 를 append.
 
 ## File Naming
-- Components: (예) kebab-case.tsx
-- Hooks: `use-*.ts`
+- Components: kebab-case.tsx. Hooks: `use-*.ts`.
+
+## Library Compatibility
+- (예, feature 태스크가 발견 후 추가) `zustand@^4` 는 React 18 concurrent mode 와 충돌; v5 를 사용할 것.
 ```
 
-필요 시 `## Security`, `## Lint`, `## Glossary` 등 추가 가능. 기본 4 섹션은 고정.
+필요 시 `## Security`, `## Lint`, `## Anti-Patterns`, `## Glossary` 등 자유 추가.
 
-### 쓰기 / 읽기 소유권
+### 쓰기 / 읽기 소유권 — 모든 태스크가 write 가능
 
-| 주체 | 쓰기 | 읽기 |
-|---|---|---|
-| setup task | 초기 skeleton 생성 | — |
-| design-system task | 원칙적으로 안 건드림 (필요 시 `## Testing` 보강) | ✓ |
-| feature / integration / ui 태스크 | **읽기 전용** | ✓ |
-| test-code 태스크 | **읽기 전용** | ✓ |
-| error / verification 태스크 | **읽기 전용** | ✓ |
-| 운영 중 갱신 | 별도 refactor 태스크 (향후 도입) | — |
+| 주체 | 권한 |
+|---|---|
+| setup task | read + write. 디자인 문서에 명시된 것 / setup 시점에 실제 설치된 의존성 등 **확신하는 것만** 초기 skeleton 에 기록. 모르는 섹션은 생략. **허위 금지 문구 작성 금지** ("Do not add test files" 같은 것). |
+| feature / ui / integration / design-system | read + write. 자기 작업 중 발견한 cross-task 불변성 (타입 규약, import style 결정 등) 을 추가/수정. |
+| test-code | read + write. 실제 설치·검증한 test runner / setup file / placement 등을 `## Testing` 에 append 하거나 기존 내용을 수정. |
+| error / verification | read + write. 수정 중 발견한 anti-pattern 이나 호환성 제약을 추가. |
+| doc | read + write. 문서 작성 중 발견한 명명 규약 불일치 등을 반영. |
 
-SSOT 는 setup 이 찍고, 나머지는 읽기만 한다. "운영 중 변경" 은 ANTRULES.md 가 직접 허용하지 않는다 — 이는 별도 태스크의 책임이므로 범위 밖.
+**단일 writer 는 없다**. 각 태스크는 자기 관찰로 기록·수정할 수 있다. 충돌 (병렬 태스크가 동시에 수정) 은 SharedFileBuffer + LLM-merge 로직으로 자연 해소된다 (별도 lock 불필요 — 기존 `edit_file` / `<file>` 의 cross-worker conflict 메커니즘 재사용).
 
 ### 에이전트 디스패치
 
@@ -118,3 +135,4 @@ partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 
 ## 5. 변경 이력
 
 - 2026-04-22: 최초 작성 (policy 도입). `attempted-cycle-removal` 작업 중 `outputs/design/system/project-conventions.md` 초안이 경계 위반임을 발견하면서 원칙화.
+- 2026-04-23: §2 재작성. 원래 의도 (발견 기반 live log) 대비 현 구현 (setup 선제 skeleton, 4섹션 고정, 읽기 전용) 의 drift 가 `plum-molding-bench` 에서 setup 이 `Do not add test files` 같은 허위 금지 문구를 생성 → test-code 태스크 무한 루프로 드러났음. "4섹션 고정" 해제, "모든 태스크가 read+write 가능", "허위 금지 문구 금지", scope 를 광범위 cross-task 불변성으로 명시.

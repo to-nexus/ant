@@ -137,15 +137,17 @@ Create config files only. **NO source code, NO tests.**
 
 **Blind spot**: `.env` is EASILY FORGOTTEN when `.env.example` is created. Both files MUST be created together with identical variable keys. Variable names defined here become the contract for all subsequent tasks.
 
-**ANTRULES.md (Agent Settings File) — MANDATORY for codebases the ant agent will extend:**
+**ANTRULES.md (Agent Settings File) — create the initial skeleton:**
 
-You MUST create `codebase/ANTRULES.md` as part of setup. This file tells every subsequent ant task (feature, test-code, integration, verification, error-fix) how to generate consistent files in this codebase. Without it, parallel feature tasks drift into incompatible conventions — e.g. half of components using `export default`, half using `export { X }`, breaking downstream imports and tests.
+Create `codebase/ANTRULES.md` as part of setup. This file is a **live document**: every subsequent ant task reads it and may add or modify rules based on what that task discovers during its own work (library compatibility, decided test runner, lint rule status, anti-pattern avoidance, etc). Your job here is the **initial skeleton** — not a pre-decision of every convention.
 
-**Principle**: Pick concrete default values for every section. Do NOT leave placeholders like "TBD" or "to be decided".
+**Principle**: Record ONLY rules you are confident about at this point in time, derived from the design document or your own setup actions. Sections whose subject has not been decided yet (e.g. test runner not yet chosen, React import style irrelevant for a non-React stack) MUST be omitted — the later responsible task will append them.
+
+**Constraint — no fabricated prohibitions**: Phrases like "Do not add test files", "No test framework configured", or any rule banning future work you are not sure will happen are FORBIDDEN. Absence of a decision is expressed by NOT writing that section, NEVER by prohibiting a sibling task that is scheduled to make the decision.
 
 **Constraint**: Keep the file under 1500 characters. Long reference material belongs elsewhere (`codebase/docs/` or `codebase/README.md`); ANTRULES.md is a compact settings file.
 
-**Constraint**: Produce exactly these top-level H2 sections (additional sections are allowed but these are the minimum):
+**Suggested sections** (include ONLY those that apply to this project's current state):
 
 ```md
 # ANTRULES.md
@@ -153,17 +155,19 @@ You MUST create `codebase/ANTRULES.md` as part of setup. This file tells every s
 > ant agent settings for this codebase. Human-facing docs live in README.md / docs/.
 
 ## Export Style
-- One concrete rule, applied uniformly. Example: "default export, single component per file" OR "named export, one symbol per file". Do NOT write both.
+- (example, when decided) named export, one symbol per file.
 
 ## React Imports
-- (Only when React is in the stack.) State whether `import React from "react"` is required for files that use `React.X` namespace types, OR whether named imports (`ReactNode`, `ComponentProps`) are preferred.
+- (only when React is in the stack) whether `import React from "react"` is required or named imports are preferred.
 
 ## Testing
-- Test framework + setup file path. Example: "Jest + next/jest preset; setup file at `src/test-setup.ts`; test placement `src/__tests__/*.test.tsx`".
+- Record ONLY facts established at setup time: Node/language version, package manager, any test-runner dependency already in the manifest, compatibility notes (e.g. "ESM-only — choose a vitest-compatible framework"). Do NOT pick a specific runner / file placement / setup-file path unless the design doc explicitly specifies one — the test-code task appends those details when it runs.
 
 ## File Naming
-- Concrete rule per file kind. Example: "Components: kebab-case.tsx (e.g. `hero-section.tsx`). Hooks: `use-*.ts`."
+- Concrete rule per file kind, e.g. "Components: kebab-case.tsx. Hooks: use-*.ts."
 ```
+
+Later tasks can add sections such as `## Library Compatibility`, `## Lint Rules`, `## Anti-Patterns`, etc. — ANTRULES.md grows as the project learns about itself.
 
 Write ANTRULES.md alongside the other setup configs (`package.json`, `tsconfig.json`, etc.) — it is part of the project's initial skeleton.
 
@@ -183,7 +187,7 @@ Follow the framework/language-specific setup instructions from:
 - ✅ Use project-specific defaults for ports (avoid baking platform-specific values into code)
 - ✅ Backend services SHOULD be able to bind to a port provided by the environment in managed runtimes
 - ✅ If using env vars in frontend/build tools, use framework-specific keys (e.g. `VITE_*`, `NEXT_PUBLIC_*`) or project-defined keys
-- ❌ DO NOT setup testing infrastructure (excluded)
+- ❌ DO NOT create test files or run test setup scripts — the test-code task owns test authoring. Adding a test-runner dependency to the manifest is allowed only when the design doc explicitly specifies one at this stage.
 - ✅ Install ALL dependencies needed for the project
 - ✅ Use exact versions from design doc if specified
 - ❌ DO NOT set `container_name` for any service in docker-compose.yml. The platform namespaces containers using a project-scoped `-p` flag. An explicit `container_name` bypasses that namespace and causes container name conflicts across runs or projects.
@@ -235,7 +239,7 @@ Follow the framework/language-specific setup instructions from:
 
 **Constraint**: When `codebase/ANTRULES.md` is rendered above (Project Settings block), it overrides sibling observations — ANTRULES.md is the explicit SSOT for project-wide conventions. Sibling observation is the fallback for codebases without ANTRULES.md, not a parallel authority.
 
-**Constraint**: Do NOT mix conventions within a single commit. If you must introduce a new convention (e.g. a different export style), document it in ANTRULES.md first (separate task) and update sibling files atomically; do not leave mixed styles.
+**Constraint**: Do NOT mix conventions within a single commit. If you must introduce a new convention (e.g. a different export style), update `codebase/ANTRULES.md` in the same commit to reflect the new rule, and update sibling files atomically; do not leave mixed styles. (ANTRULES.md is a live document — any task may add or modify rules it discovers.)
 
 ⚠️ **Blind spot**: Parallel feature tasks that all create "just this one component" with slightly different conventions produce silent downstream failures — integration files (`page.tsx`) and test files pick one convention and the other half of components break. Sibling observation catches this at creation time.
 

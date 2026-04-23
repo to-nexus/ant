@@ -38,7 +38,6 @@ import { hooksForTaskType } from '../../../tasks/_shared/registry';
 export interface PlanEntryContext {
   nextTask: CodeTask;
   isRetry: boolean;
-  preservedRetries: number;
   skipKeywordAndRAG: boolean;
   inToolLoop: boolean;
 }
@@ -46,7 +45,6 @@ export interface PlanEntryContext {
 interface PlanEntryFlags {
   inToolLoop: boolean;
   isRetry: boolean;
-  preservedRetries: number;
 }
 
 function isTypeScriptProject(state: ArchitectGraphState): boolean {
@@ -197,11 +195,15 @@ export async function resolvePlanEntry(state: ArchitectGraphState): Promise<Plan
   const entryReason = inToolLoop ? undefined : state._nextPlanEntry;
   if (!inToolLoop) state._nextPlanEntry = undefined;
   const isRetry = entryReason === 'retry';
-  // Scenario harness escape hatch: when ANT_SCENARIO_PRESERVE_RETRIES=1,
-  // never reset retries from a non-retry plan entry either.
-  const preserveRetriesAlways = process.env.ANT_SCENARIO_PRESERVE_RETRIES === '1';
-  const preservedRetries = (inToolLoop || isRetry || preserveRetriesAlways) ? state.retries : 0;
-  const flags: PlanEntryFlags = { inToolLoop, isRetry, preservedRetries };
+  // Retry counter is OWNED by handleRetryEntry (single writer per bc1e45b9).
+  // state.retries flows through plan unchanged — plan's return objects MUST
+  // NOT override it. Fresh-task entry relies on TaskWorker seeding
+  // (`retries: 0`) and checkTaskStatus success-path reset (`retries: 0`) so
+  // the incoming value is already correct. The retired `preservedRetries`
+  // field and `ANT_SCENARIO_PRESERVE_RETRIES` entry-side override were
+  // dropped with F3 — the env var still seeds `initial.retries` in
+  // `runner.ts` for scenario resume, independent of this path.
+  const flags: PlanEntryFlags = { inToolLoop, isRetry };
 
   if (inToolLoop) {
     return handleToolLoopReentry(state, flags);
@@ -224,7 +226,6 @@ function handleToolLoopReentry(
   return {
     nextTask,
     isRetry: flags.isRetry,
-    preservedRetries: flags.preservedRetries,
     skipKeywordAndRAG: false,
     inToolLoop: flags.inToolLoop,
   };
@@ -326,7 +327,6 @@ async function handleRetryEntry(
   return {
     nextTask,
     isRetry: flags.isRetry,
-    preservedRetries: flags.preservedRetries,
     skipKeywordAndRAG: false,
     inToolLoop: flags.inToolLoop,
   };
@@ -354,7 +354,6 @@ async function handleReverifyEntry(
   return {
     nextTask,
     isRetry: flags.isRetry,
-    preservedRetries: flags.preservedRetries,
     skipKeywordAndRAG: true,
     inToolLoop: flags.inToolLoop,
   };
@@ -468,7 +467,6 @@ async function handleFreshTaskEntry(
   return {
     nextTask,
     isRetry: flags.isRetry,
-    preservedRetries: flags.preservedRetries,
     skipKeywordAndRAG: false,
     inToolLoop: flags.inToolLoop,
   };

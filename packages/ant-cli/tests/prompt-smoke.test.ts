@@ -306,6 +306,52 @@ describe('Template Smoke Tests', () => {
     expect(partialOnly).toContain('globals exclusion');
   });
 
+  it('setup ANTRULES guidance — no forbidden prohibitions, includes live-document wording (F0)', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render(
+      'jobs/code/nodes/execute/variants/default/base',
+      {
+        ...SAMPLE_VARS,
+        currentTask: { id: 'setup-project', name: 'Project Setup', type: 'setup', description: 'Initialize', priority: 100 },
+      },
+    );
+
+    // No rigid "mandatory 4 H2 sections" text
+    expect(output).not.toMatch(/mandatory.*H2 sections|exactly these top-level H2 sections/i);
+    // The fabricated-prohibition exemplars should appear ONLY in the
+    // "FORBIDDEN" constraint that tells the LLM not to generate them.
+    // (regression: plum-molding-bench generated "Do not add test files")
+    const forbiddenSection = output.match(/Constraint — no fabricated prohibitions[\s\S]{0,500}FORBIDDEN/i);
+    expect(forbiddenSection).not.toBeNull();
+    expect(forbiddenSection![0]).toMatch(/Do not add test files/);
+    expect(forbiddenSection![0]).toMatch(/No test framework configured/);
+    // Must carry the "no fabricated prohibitions" constraint
+    expect(output).toMatch(/no fabricated prohibitions/i);
+    // Must describe ANTRULES as a live document modifiable by later tasks
+    expect(output).toMatch(/live document/i);
+    // Test-code authoring is explicitly framed as the owner of runner selection
+    expect(output).toMatch(/test-code task/i);
+    // L186 replacement: specific forbidden (files + scripts) rather than vague "testing infrastructure"
+    expect(output).toMatch(/DO NOT create test files or run test setup scripts/);
+  });
+
+  it('ant-md partial guidance — "Updating ANTRULES.md" appears in the standard execute base (F0)', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const output = await adapter.render(
+      'jobs/code/nodes/execute/variants/default/base',
+      {
+        ...SAMPLE_VARS,
+        antrulesContent: '# ANTRULES.md\n\n## Export Style\n- named\n',
+        currentTask: { id: 'feature-a', name: 'Feature A', type: 'feature', description: 'do', priority: 300 },
+      },
+    );
+
+    expect(output).toMatch(/Updating ANTRULES\.md/);
+    expect(output).toMatch(/cross-task invariant/i);
+  });
+
   it('secure-coding partial is resolved inside execute/rules and plan/rules', async () => {
     await initPartials(TEMPLATES_DIR);
 
@@ -349,10 +395,6 @@ describe('Template Smoke Tests', () => {
       // .cursorrules "Post-RAC Template Condition SSOT").
       'jobs/code/base/injections/ui-source-dispatch',
       'jobs/code/nodes/plan/injections/ui-source-inventory',
-      // `codebase/ANTRULES.md` partial — wrapped in `{{#if antrulesContent}}` so
-      // it renders empty when the target workspace has no ANTRULES.md. By
-      // design (see docs/architecture/35-codebase-meta-policy.md).
-      'jobs/code/base/injections/ant-md',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

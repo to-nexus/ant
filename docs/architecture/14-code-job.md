@@ -365,7 +365,7 @@ Code job의 verification 사이클은 7개 축(Axis A–G)으로 분해된다. �
 
 ### 불변식 (Phase 2-9 이후)
 
-1. `preservedRetries`는 `inToolLoop ∨ isRetry ∨ ANT_SCENARIO_PRESERVE_RETRIES=1`일 때만 `state.retries` 유지 — 그 외엔 0.
+1. `state.retries` 의 단일 writer 는 `handleRetryEntry` (bc1e45b9 · F3 2026-04). plan 의 return 객체는 `retries` 를 절대 덮어쓰지 않는다 — `...state` spread 로 자연 영속화. inToolLoop 재진입 경로도 state.retries 를 건드리지 않으므로 override 없이 유지됨. `ANT_SCENARIO_PRESERVE_RETRIES` 는 resume 시점의 `runner.ts` 에서만 seeding 에 사용 (plan 진입 로직에는 영향 없음).
 2. retry/reverify 진입에서 `state.violations`를 클리어하기 **전에** `retrySummaryText` 렌더가 완료되어야 함 (STEP 3 `composeViolationsText` 단일 경로).
 3. `recomputeInstallNeeded` 호출 조건은 분기별로 다르다 (retry 한정 ≠ reverify의 `detectPmIfMissing` ≠ fresh의 verification 전용) — 네 분기를 하나로 합치면 회귀.
 4. `_verificationTracker.testsRequired`, `typecheckRequired`는 fresh task 시점에 한 번 결정되어 이후 상태 변화로 변경되지 않는다.
