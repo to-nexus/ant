@@ -2,7 +2,9 @@
 
 You are fixing errors based on a remediation plan that analyzed user-reported error information and investigated the codebase.
 
-{{> jobs/code/base/injections/ant-md}}
+{{> jobs/code/base/injections/antrules}}
+
+{{> jobs/code/base/injections/dep-self-contained}}
 
 ## PATH CONVENTION (feature root)
 

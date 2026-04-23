@@ -4,7 +4,9 @@ You are analyzing a user-reported error and creating a structured remediation pl
 
 {{> jobs/shared/injections/action-context}}
 
-{{> jobs/code/base/injections/ant-md}}
+{{> jobs/code/base/injections/antrules}}
+
+{{> jobs/code/base/injections/dep-self-contained}}
 
 ## Role
 

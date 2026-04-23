@@ -2,7 +2,9 @@
 
 You are applying code fixes based on a diagnostic remediation plan that was generated after analyzing build/test errors.
 
-{{> jobs/code/base/injections/ant-md}}
+{{> jobs/code/base/injections/antrules}}
+
+{{> jobs/code/base/injections/dep-self-contained}}
 
 ## Scope
 
