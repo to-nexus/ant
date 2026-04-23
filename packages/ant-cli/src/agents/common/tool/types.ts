@@ -34,7 +34,7 @@ export interface ChatStatusReporter {
   completeFileEdit(path: string, oldStr: string, newStr: string): Promise<void>;
   failFileEdit(path: string, error: string): Promise<void>;
   completeFileDeletion(path: string): Promise<void>;
-  completeFileCreation(path: string, content: string): Promise<void>;
+  completeFileCreation(path: string, content: string, stats?: { diffBeforeLines?: number }): Promise<void>;
   failFileCreation(path: string, error: string): Promise<void>;
 
   commandStart(command: string): Promise<number | undefined>;

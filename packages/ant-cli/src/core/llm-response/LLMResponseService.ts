@@ -341,10 +341,14 @@ export class LLMResponseService {
     await this.fileOperationHandler.streamFileContent(filePath, content);
   }
 
-  async completeFileCreation(filePath: string, content: string): Promise<void> {
+  async completeFileCreation(
+    filePath: string,
+    content: string,
+    stats?: { diffBeforeLines?: number },
+  ): Promise<void> {
     if (!this.enabled) return;
     if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.completeFileCreation(filePath, content);
+    await this.fileOperationHandler.completeFileCreation(filePath, content, stats);
   }
 
   async startFileEdit(filePath: string): Promise<void> {

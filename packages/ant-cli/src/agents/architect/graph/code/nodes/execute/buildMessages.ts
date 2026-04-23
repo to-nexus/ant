@@ -623,7 +623,7 @@ function extractPlanModifyPaths(planText: string | undefined): string[] {
  * LLM can build exact `edit_file` calls without a prior `read_file`
  * round-trip. Caps per-file and total chars to protect the token budget.
  */
-async function buildModifyTargetsSection(state: ArchitectGraphState): Promise<string | null> {
+export async function buildModifyTargetsSection(state: ArchitectGraphState): Promise<string | null> {
   const paths = extractPlanModifyPaths(state.planText);
   if (paths.length === 0) return null;
 
