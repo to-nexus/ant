@@ -120,14 +120,17 @@ export interface RenderViolation {
 
 /**
  * Recursively collect all Handlebars partial references from a template source.
- * Scans for {{> partialName}} and follows each partial's own source for nested refs.
+ * Scans for {{> partialName [hash="value"...]}} and follows each partial's own
+ * source for nested refs. Hash parameters (partial context parameters) are
+ * tolerated — only the partial name is captured, any trailing hash pairs are
+ * skipped.
  */
 export function collectResolvedPartials(templateNames: string[]): string[] {
   const visited = new Set<string>();
   const result: string[] = [];
 
   function walk(source: string): void {
-    const pattern = /\{\{>\s*([\w/\-]+)\s*\}\}/g;
+    const pattern = /\{\{>\s*([\w/\-]+)[^}]*\}\}/g;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(source)) !== null) {
       const name = match[1];
