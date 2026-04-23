@@ -78,6 +78,14 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       ...(state.tokenUsage && { tokenUsage: state.tokenUsage }),
       ...(state._estimatingTokenUsage && { estimatingTokenUsage: state._estimatingTokenUsage }),
       ...(state.interruption && { interruption: state.interruption }),
+      // Tier-Verification Alignment: persist the LLM-classified
+      // executionTier so post-mortem analysis (debug logs, session
+      // inspection) can distinguish direct vs task paths without
+      // reverse-engineering from phaseBreakdown / callCount. Also
+      // persist directHints — the direct node needs these on resume
+      // to rebuild its framing without re-running decompose.
+      ...(state.executionTier !== undefined && { executionTier: state.executionTier }),
+      ...(state.directHints && { directHints: state.directHints }),
       // T7 — Persist the VerificationSession snapshot so resume paths in
       // `runner.ts` can rehydrate the live diagnostic cycle (required/passed
       // gates, attempt counter, plan history, dep hash, batch-split count).

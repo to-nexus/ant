@@ -8,7 +8,6 @@ import { parseExecutionTierTag } from '../../../../../../core/executionTier';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { DEFAULT_TASK_TYPE } from '../../tasks/_shared/types';
 import { isVerificationTask } from '../../tasks/verification';
-import { isErrorTask } from '../../tasks/error';
 import { isFeatureTask } from '../../tasks/feature';
 import { isUiTask } from '../../tasks/ui/model/is';
 import { isDesignSystemTask } from '../../tasks/design-system/model/is';
@@ -170,7 +169,7 @@ export interface ParsedDecomposeResponse {
    * violation and default to Tier 0 Reflex (safe read-only).
    */
   executionTier?: ExecutionTierId;
-  /** Hints consumed by the `direct` node for Tier 0-2 paths. */
+  /** Hints consumed by the `direct` node for Tier 0 / Tier 1 paths. */
   directHints?: { targetFiles?: string[]; explorationScope?: string };
   /** Design-redirect choice when task requires spec that is missing (see SpecClarify). */
   specClarify?: SpecClarify;
@@ -333,59 +332,97 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
 
 /**
  * Create task queue from parsed tasks
- * 
- * ⚠️ CRITICAL: Final Verification task rules
- * - Required if there are feature tasks (features don't get individual validation)
- * - Optional if ALL tasks are error tasks:
- *   Decompose may omit verification for error-only jobs.
- *   graph.ts checkTaskStatus() auto-adds final verification after the first error task completes
- *   as a safety net. Error tasks always delegate build verification to verification.
+ *
+ * Tier-Verification Alignment (SSOT):
+ *   - Tier 2 (SingleTask) → MUST emit exactly 1 task with `selfVerifyOnDone:true`.
+ *     The sole task owns install/typecheck/build/test inline; no separate
+ *     verification task.
+ *   - Tier 3 / Tier 4 (Task / RefsGrounded) → MUST emit `>= 2` tasks INCLUDING a
+ *     dedicated verification task (priority 1000).
+ *   - Tier 0 / Tier 1 → `<tasks>[]`. Caller (`decompose/index.ts`) short-circuits
+ *     before this function is invoked; receiving a non-empty task list at these
+ *     tiers is a contract violation from the caller, not this function's concern.
+ *
+ * `executionTier` is REQUIRED. `decompose/index.ts` always passes the value from
+ * `coerceExecutionTier`, which defaults the Tier 0 Reflex on a missing LLM tag.
+ * There is no pre-alignment legacy caller that omits the argument.
+ *
+ * `error/hooks/orchestrator.ts::onTaskComplete` still auto-enqueues a Final
+ * Verification (downgraded to defense-in-depth) when decompose failed to emit
+ * one at Tier 3/4. That is a regression fallback, not the primary path.
  */
 export function createTaskQueue(
   tasks: CodeTask[],
-  activeSpecRefFilename?: string | null,
-  defaultUiSource?: UiSource,
+  activeSpecRefFilename: string | null | undefined,
+  defaultUiSource: UiSource | undefined,
+  executionTier: ExecutionTierId,
 ): {
   taskQueue: TaskQueue<CodeTask>;
   featureTasks: Map<string, CodeTask>;
 } {
   const taskQueue = new TaskQueue<CodeTask>();
   const featureTasks = new Map<string, CodeTask>();
-  
-  // ✅ Validate Final Verification task conditionally
+
   const hasFinalTask = tasks.some(task => task.priority === TASK_PRIORITIES.FINAL_VERIFICATION);
-  const hasFeatureTasks = tasks.some(task =>
-    isFeatureTask(task) && task.priority !== TASK_PRIORITIES.FINAL_VERIFICATION
-  );
-  // Queue composed entirely of verification / error tasks — no feature
-  // work to validate. A separate Final Verification is redundant because
-  // verification tasks self-validate (they are the gate) and error tasks
-  // are remediation fixes targeted at an existing verification failure.
-  // `isVerificationTask` already absorbs the FINAL_VERIFICATION priority
-  // band, so no separate priority check is needed.
-  const allTasksAreRemediation = tasks.length > 0 && tasks.every(task =>
-    isVerificationTask(task) || isErrorTask(task)
-  );
 
-  // Final task is required only if there are feature tasks
-  if (!hasFinalTask && hasFeatureTasks) {
-    throw new Error(
-      '❌ [Decompose] LLM failed to create Final Verification task (priority 1000)!\n' +
-      '\n' +
-      'Feature tasks detected but no final verification task.\n' +
-      'Final task is required when there are feature tasks (they skip individual validation).\n' +
-      '\n' +
-      'This is a CRITICAL prompt violation. Check decompose prompt compliance.'
-    );
+  // ─────────────────────────────────────────────────────────────
+  // Tier-Verification Alignment — count / shape validation
+  // ─────────────────────────────────────────────────────────────
+  //
+  // Tier 2 (SingleTask): exactly 1 task, with `selfVerifyOnDone === true`
+  // (except for explain tasks which have no gates to run).
+  //
+  // Tier 3/4 (Task / RefsGrounded): >= 2 tasks, verification task mandatory.
+  //
+  // Tier 0 / Tier 1: caller short-circuits before reaching this function —
+  // it only fires when `executionTier >= 2`. Any task count / shape issue at
+  // Tier 0/1 is a caller bug, not surfaced here.
+  if (executionTier === 2) {
+    if (tasks.length !== 1) {
+      throw new Error(
+        `❌ [Decompose] Tier 2 (SingleTask) requires EXACTLY one task, got ${tasks.length}.\n` +
+        `If the directive truly needs more than one independent unit of work, classify as ` +
+        `Tier 3 instead (with a mandatory verification task). If it needs less, classify as ` +
+        `Tier 0/1 and emit <tasks>[] via the direct path.\n`
+      );
+    }
+    const sole = tasks[0];
+    const isExplain = (sole.type as string) === 'explain';
+    const flag = (sole as any).selfVerifyOnDone;
+    if (!isExplain && flag !== true) {
+      throw new Error(
+        `❌ [Decompose] Tier 2 task "${sole.id || sole.name}" is missing selfVerifyOnDone:true.\n` +
+        `Every Tier 2 non-explain task MUST set selfVerifyOnDone:true — the task owns its own ` +
+        `install/typecheck/build/test gates before emitting <done>true</done>. This is the SSOT ` +
+        `that lets the command guard allow verification commands for this task.\n`
+      );
+    }
+  } else if (executionTier >= 3) {
+    if (tasks.length < 2) {
+      throw new Error(
+        `❌ [Decompose] Tier ${executionTier} requires AT LEAST 2 tasks (work task(s) + mandatory ` +
+        `verification task), got ${tasks.length}.\n` +
+        `A single-unit breakdown belongs at Tier 2 with selfVerifyOnDone:true on the sole task. ` +
+        `Tier 3/4 are reserved for multi-unit work where a dedicated verification task governs gates.\n`
+      );
+    }
+    if (!hasFinalTask) {
+      throw new Error(
+        `❌ [Decompose] Tier ${executionTier} breakdown is missing a Final Verification task ` +
+        `(type="verification", priority=1000).\n` +
+        `Every Tier 3/4 breakdown MUST include a dedicated verification task — it is the SSOT for ` +
+        `install/typecheck/build/test gates across the multi-task pipeline. Error tasks and ` +
+        `feature tasks both depend on a following verification task to validate their changes.\n`
+      );
+    }
   }
 
-  // Log decision
-  if (!hasFinalTask && allTasksAreRemediation) {
-    console.log(`✅ [createTaskQueue] Final task skipped (queue is verification/error only — no feature work to validate)`);
-  } else if (hasFinalTask) {
+  if (hasFinalTask) {
     console.log(`✅ [createTaskQueue] Final Verification task validated (created by LLM)`);
+  } else if (executionTier === 2) {
+    console.log(`✅ [createTaskQueue] Tier 2 SingleTask — inline selfVerifyOnDone owns verification`);
   }
-  
+
   tasks.forEach(task => {
     // Determine exclusive flag:
     // - Explicit from LLM takes precedence
@@ -429,6 +466,18 @@ export function createTaskQueue(
     const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, activeSpecRefFilename, uiSource);
     const include = explicitInclude ?? flattenPolicyToInclude(artifactPolicy);
 
+    // Tier-Verification Alignment: Tier 2 SingleTask flag passthrough.
+    //   - Emitted by the decompose LLM at Tier 2 (exactly one task).
+    //   - Ignored (dropped) at Tier 3/4 because the dedicated verification task
+    //     governs gates there; letting the flag leak onto a Tier 3 task would
+    //     trick the command guard into allowing build/test/typecheck during
+    //     execute for tasks that are supposed to defer to verification.
+    const rawSelfVerify = (task as any).selfVerifyOnDone;
+    const selfVerifyOnDone =
+      executionTier === 2 && typeof rawSelfVerify === 'boolean'
+        ? rawSelfVerify
+        : undefined;
+
     const normalizedTask: CodeTask = {
       id: task.id || `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name: task.name,
@@ -444,6 +493,7 @@ export function createTaskQueue(
       uiSource,
       exclusive: exclusive || undefined,
       parallelGroup,
+      selfVerifyOnDone,
     };
     
     taskQueue.push(normalizedTask);

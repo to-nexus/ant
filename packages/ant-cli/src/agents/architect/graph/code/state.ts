@@ -538,10 +538,11 @@ export interface ArchitectGraphState extends TriageableState {
   executionTier?: ExecutionTierId;
 
   /**
-   * Hints produced by Decompose for the `direct` node (Tier 0-2 paths).
+   * Hints produced by Decompose for the `direct` node (Tier 0 / Tier 1 paths).
    * `targetFiles` applies when concrete targets are identifiable from
-   * directive+context (generate/refactor). `explorationScope` narrows the
-   * ReAct observation surface for exploratory tiers.
+   * directive+context (generate/refactor at Tier 1). `explorationScope`
+   * narrows the ReAct observation surface when the directive calls for it.
+   * Tier 2+ routes to the task pipeline and does not consume `directHints`.
    */
   directHints?: { targetFiles?: string[]; explorationScope?: string };
 
