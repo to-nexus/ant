@@ -500,6 +500,8 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 **Exception — shared implementation modules**: When multiple persistence boundaries will be implemented in the SAME output files (same handler, service, or repository file), merge them into a SINGLE task. A second task re-reading, extending, and fixing files the first task created multiplies token cost disproportionately.
 
+**Constraint — exception scope**: This merge exception is persistence-boundary-scoped. It does NOT apply to Independent Output Unit splitting — per-unit output files do not overlap, and the shared integration point is owned by the wiring task (see Independent Output Unit Splitting below).
+
 **Constraint**: Cross-entity dependency via imported interface does NOT constitute shared implementation. If a service for boundary A calls a repository for boundary B through an interface defined by a shared foundation task, A and B produce separate output files — do NOT merge.
 
 **Observation target**: For entities that appear separable by persistence boundary, check whether they share implementation modules.
@@ -520,6 +522,8 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 ---
 
+{{> jobs/code/nodes/decompose/variants/default/output-unit-splitting}}
+
 ## Feature Task Descriptions
 
 **Principle**: Description defines the scope boundary — WHAT the task delivers, not HOW it implements. The Plan phase determines implementation details using available context (design documents, existing codebase, directive).
@@ -533,6 +537,8 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 ⚠️ **Blind spot**: Design documents use directory-like names (`app/`, `handlers/`, `internal/`) to describe architectural layers. Copying these into task descriptions creates a path specification that bypasses the Plan phase — where the language/framework techTier determines actual filesystem paths. Use section references: "route definitions (fe-system §2.1)" not "route definitions in app/ directory".
 
 **Blind spot**: Copying implementation details into descriptions — whether from design documents, PRD, or directive — creates a parallel specification. When parallel tasks reference the same copied details, they generate conflicting implementations. The description marks scope; the Plan phase extracts implementation details from available sources.
+
+**Constraint**: When Independent Output Unit Splitting applies, the description MUST name a single output unit and its delivered scope. Do NOT enumerate multiple units in one description.
 
 ---
 

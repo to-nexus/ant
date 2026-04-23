@@ -227,6 +227,49 @@ describe('Template Smoke Tests', () => {
     }
   });
 
+  it('decompose/rules.md includes Independent Output Unit Splitting unconditionally', async () => {
+    await initPartials(TEMPLATES_DIR);
+
+    const SENTINEL = 'INDEPENDENT OUTPUT UNIT';
+    const EXCEPTION_SCOPE = 'exception scope';
+    const NO_ENUMERATE = 'MUST name a single output unit';
+
+    const render = (techTier: any) => adapter.render(
+      'jobs/code/nodes/decompose/variants/default/rules',
+      { ...SAMPLE_VARS, techTier },
+    );
+
+    // No stack gate: the new rubric must surface for every stack value,
+    // because its applicability is observed from persistence-boundary count
+    // (LLM observation), not from the stack label.
+    for (const stack of ['frontend', 'backend', 'fullstack']) {
+      const output = await render({ language: 'typescript', stack });
+      expect(output, `stack=${stack} missing rubric sentinel`).toContain(SENTINEL);
+      expect(output, `stack=${stack} missing merge-exception scope clause`).toContain(EXCEPTION_SCOPE);
+      expect(output, `stack=${stack} missing feature-desc no-enumeration clause`).toContain(NO_ENUMERATE);
+    }
+
+    // Partial-level render MUST produce non-empty output on its own
+    // (no wrapping {{#if}} — unconditional rubric).
+    const partialOnly = await adapter.render(
+      'jobs/code/nodes/decompose/variants/default/output-unit-splitting',
+      SAMPLE_VARS,
+    );
+    expect(partialOnly).toContain(SENTINEL);
+    expect(partialOnly).toContain('Category identification');
+    expect(partialOnly).toContain('visual unit');
+    expect(partialOnly).toContain('command');
+    expect(partialOnly).toContain('worker');
+    expect(partialOnly).toContain('exported symbol cluster');
+    expect(partialOnly).toContain('pipeline stage');
+  });
+
+  it('decompose/rules.md resolves output-unit-splitting partial via collectResolvedPartials', async () => {
+    await initPartials(TEMPLATES_DIR);
+    const partials = collectResolvedPartials(['jobs/code/nodes/decompose/variants/default/rules']);
+    expect(partials).toContain('jobs/code/nodes/decompose/variants/default/output-unit-splitting');
+  });
+
   it('secure-coding partial is resolved inside execute/rules and plan/rules', async () => {
     await initPartials(TEMPLATES_DIR);
 
