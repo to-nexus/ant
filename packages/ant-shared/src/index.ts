@@ -16,6 +16,7 @@
  *   - figma.ts              : FigmaDataConfig, FigmaExplorationResult
  *   - bridge.ts             : BridgeMessage, BridgeSession
  *   - canonical.ts          : CANONICAL_FEATURE_DIRS, isCanonicalDir
+ *   - artifact-dir-policy.ts: ARTIFACT_DIR_POLICIES, getArtifactDirPolicy, validateFileForDir
  *   - file-descriptions.ts  : FILE_DESCRIPTIONS
  *   - deploy.ts             : DeployConfig
  *   - git.ts                : GitStatusResponse, GitChangesResponse, FileChange
@@ -30,6 +31,7 @@ export * from './workflow';
 export * from './figma';
 export * from './bridge';
 export * from './canonical';
+export * from './artifact-dir-policy';
 export * from './actions';
 export * from './action-config-matrix';
 export * from './file-descriptions';
