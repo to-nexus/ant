@@ -311,6 +311,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     visualTierActive: isVisualTierActive(
       state.resolvedAction?.intent ? getConfigSlots(state.resolvedAction.intent)?.basis : undefined,
       state.resolvedAction?.basis?.techTier,
+      hasUi,
     ),
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
@@ -777,12 +778,16 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6.6: Apply visualTier from decompose response (gen-code-directive)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Gate: backend-only stacks have no visual policy — skip entirely.
+  // Gate: backend-only stacks have no visual policy, and when a UI design
+  // document (ant / figma / handoff) is present in the RAC the doc IS the
+  // design system authority — skip visualTier merge entirely and proactively
+  // clear any pre-existing preset so downstream prompts don't reference it.
   if (
     state.resolvedAction?.intent === 'gen-code-directive' &&
     isVisualTierActive(
       getConfigSlots(state.resolvedAction.intent)?.basis,
       state.resolvedAction?.basis?.techTier,
+      hasUi,
     )
   ) {
     const { resolveVisualTierFromDecompose } = await import('../../../../../common/visualTierResolver');
@@ -803,6 +808,22 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       };
       console.log(`✅ VisualTier: ${resolvedVT.visualLanguage ?? '-'}/${resolvedVT.surfaceSystem ?? '-'}/${resolvedVT.spatialSystem ?? '-'}`);
     }
+  } else if (
+    hasUi &&
+    state.resolvedAction?.basis?.visualTier &&
+    Object.keys(state.resolvedAction.basis.visualTier).length > 0
+  ) {
+    // UI doc wins: drop any pre-seeded visualTier preset so downstream
+    // surfaces (plan / execute prompts, basis re-emit) don't inject a
+    // conflicting visual policy alongside the design-system doc.
+    state.resolvedAction = {
+      ...state.resolvedAction,
+      basis: {
+        ...state.resolvedAction.basis,
+        visualTier: undefined,
+      },
+    };
+    console.log('🎨 VisualTier: suppressed (UI design doc present — doc is the design-system authority)');
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

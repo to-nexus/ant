@@ -110,6 +110,7 @@ export async function decomposeUiDesign(
     visualTierActive: isVisualTierActive(
       state.resolvedAction?.intent ? getConfigSlots(state.resolvedAction.intent)?.basis : undefined,
       state.resolvedAction?.basis?.techTier,
+      pool.hasUi(),
     ),
   });
 
@@ -269,8 +270,18 @@ export async function decomposeUiDesign(
       state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
     }
 
-    // VisualTier resolution (gen-ui-desc)
-    if (state.resolvedAction?.intent === 'gen-ui-desc') {
+    // VisualTier resolution (gen-ui-desc) — suppressed when a UI design doc
+    // (ant / figma / handoff) is already in the RAC pool: the doc IS the
+    // design-system authority and a parallel visualTier would conflict.
+    const uiDocPresent = pool.hasUi();
+    if (
+      state.resolvedAction?.intent === 'gen-ui-desc' &&
+      isVisualTierActive(
+        getConfigSlots(state.resolvedAction.intent)?.basis,
+        state.resolvedAction?.basis?.techTier,
+        uiDocPresent,
+      )
+    ) {
       const { resolveVisualTierFromDecompose } = await import('../../../../../common/visualTierResolver');
       const resolvedVT = resolveVisualTierFromDecompose(
         textResponse,
@@ -289,6 +300,19 @@ export async function decomposeUiDesign(
         };
         console.log(`✅ VisualTier: ${resolvedVT.visualLanguage ?? '-'}/${resolvedVT.surfaceSystem ?? '-'}/${resolvedVT.spatialSystem ?? '-'}`);
       }
+    } else if (
+      uiDocPresent &&
+      state.resolvedAction?.basis?.visualTier &&
+      Object.keys(state.resolvedAction.basis.visualTier).length > 0
+    ) {
+      state.resolvedAction = {
+        ...state.resolvedAction,
+        basis: {
+          ...state.resolvedAction.basis,
+          visualTier: undefined,
+        },
+      };
+      console.log('🎨 VisualTier: suppressed (UI design doc present — doc is the design-system authority)');
     }
 
     // UI design is always frontend

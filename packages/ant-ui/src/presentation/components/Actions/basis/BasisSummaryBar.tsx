@@ -5,6 +5,7 @@ import {
   STACK_OPTIONS, TECH_TIER_LANGUAGES, FRAMEWORK_LABELS,
   VISUAL_LANGUAGE_OPTIONS, SURFACE_SYSTEM_OPTIONS,
   isVisualTierActive,
+  pathsContainUiDoc,
 } from '@ant/shared';
 import { TierBadge as TierBadgeComponent, type TierBadgeData } from './TierBadge';
 
@@ -33,6 +34,7 @@ export function getTierBadgeRows(
   basisSlot: BasisSlotConfig,
   lang: 'en' | 'ko',
   draftBasis?: Basis,
+  hasUiDoc: boolean = false,
 ): TierBadgeRow[] {
   const rows: TierBadgeRow[] = [];
   const display = draftBasis ?? basis;
@@ -93,7 +95,7 @@ export function getTierBadgeRows(
     }
   }
 
-  if (isVisualTierActive(basisSlot, display?.techTier)) {
+  if (isVisualTierActive(basisSlot, display?.techTier, hasUiDoc)) {
     const badges: TierBadgeData[] = [];
     const vt = display?.visualTier;
 
@@ -188,7 +190,14 @@ function TierRow({ row, onReset, onEdit, hasValues }: { row: TierBadgeRow; onRes
 export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, lang, draftBasis, savedBasis, mode = 'default' }: BasisSummaryBarProps) {
   const actionMetadata = useStore(s => s.actionMetadata);
   const basis = mode === 'inline' ? (savedBasis ?? actionMetadata.basis) : actionMetadata.basis;
-  const rows = getTierBadgeRows(basis, basisSlot, lang, draftBasis);
+  // User-included UI design doc in RAC (refs or context) closes the Visual
+  // Tier row: the doc IS the design-system authority. SSOT'd with BE via
+  // `isVisualTierActive(..., hasUiDoc)` in @ant/shared.
+  const hasUiDoc = pathsContainUiDoc([
+    ...(actionMetadata.refs ?? []),
+    ...(actionMetadata.context ?? []),
+  ]);
+  const rows = getTierBadgeRows(basis, basisSlot, lang, draftBasis, hasUiDoc);
   const hasAnyBadge = rows.some(r => r.badges.some(b => !b.isAuto));
 
   if (mode === 'default' && !hasAnyBadge && !draftBasis) {
