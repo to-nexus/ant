@@ -14,6 +14,7 @@ import { createChatSlice, ChatSlice } from './slices/chatSlice';
 import { createFeatureLogSlice, FeatureLogSlice } from './slices/featureLogSlice';
 import { createTransferSlice, TransferSlice } from './slices/transferSlice';
 import { createDeploySlice, DeploySlice } from './slices/deploySlice';
+import { createGitWorldSlice, type GitWorldSlice } from '../git-world';
 import { loadFromStorage, STORAGE_KEYS } from './storage';
 
 // Combined store type
@@ -23,6 +24,7 @@ export type Store = ProjectSlice &
   SSESlice & 
   UISlice & 
   GitSlice & 
+  GitWorldSlice &
   PreviewSlice & 
   DeploySlice &
   AuthSlice & 
@@ -68,6 +70,7 @@ export const useStore = create<Store>((set, get, store) => {
     ...createSSESlice(set, get, store),
     ...createUISlice(set, get, store),
     ...createGitSlice(set, get, store),
+    ...createGitWorldSlice(set, get, store),
     ...createPreviewSlice(set, get, store),
     ...createAuthSlice(set, get, store),
     ...createConfigSlice(set, get, store),

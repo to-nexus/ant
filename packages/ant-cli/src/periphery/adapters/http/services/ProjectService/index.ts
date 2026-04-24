@@ -1,4 +1,14 @@
-import type { GitStatusResponse, GitChangesResponse, FileNode, FileResource } from '@ant/shared';
+import type {
+  GitStatusResponse,
+  GitChangesResponse,
+  FileNode,
+  FileResource,
+  GitSnapshot,
+  GitPatState,
+  GitUserOperation,
+} from '@ant/shared';
+import type { GitChangeBroadcaster } from '../../../../../core/realtime/GitChangeBroadcaster';
+import type { GitOperation, GitWatcherRetryPort } from '../GitService/remote/GitOperation';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
@@ -165,9 +175,33 @@ export class ProjectService {
   }
   
   // =====================================
-  // Git Status Operations (delegated to GitService)
+  // Greenfield Git API (delegated to GitService)
   // =====================================
-  
+
+  async getGitSnapshot(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    opts: { fresh?: boolean } = {},
+  ): Promise<GitSnapshot> {
+    return this.git.getSnapshot(projectId, userContext, featureName, opts);
+  }
+
+  async getGitPat(userContext: UserContext): Promise<GitPatState> {
+    return this.git.getPat(userContext);
+  }
+
+  resolveGitOperation(
+    kind: GitUserOperation['kind'],
+    opts: { broadcaster?: GitChangeBroadcaster; watcher?: GitWatcherRetryPort } = {},
+  ): GitOperation<any, any> | null {
+    return this.git.resolveOperation(kind, opts);
+  }
+
+  // =====================================
+  // Legacy Git Status Operations (delegated to GitService)
+  // =====================================
+
   async getGitStatus(
     projectId: string,
     userContext: UserContext,

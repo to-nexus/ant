@@ -1,5 +1,79 @@
 # Git Operations
 
+> **Greenfield SSOT (git-world)** — 이 문서는 Ant 의 Git 도메인 어휘·상태·SSE
+> 이벤트·REST 엔드포인트의 단일 진실 원천이다. 새 Git 관련 코드를 작성하기
+> 전 본 문서와 `.claude/skills/update-git-world/SKILL.md` 를 먼저 읽는다.
+
+## 0. git-world 계약
+
+**Ant Git 어휘 (FE 공식)** — `publish`, `push`, `pull`, `fetch`, `sync`,
+`commit`, `discard`, `clone` 의 8개 user operation 만이 FE 가 디스패치한다.
+canonical git 어휘 (`status`, `changes`, `initialize`, `publish-branch`) 는
+FE 타입 표면에 등장하지 않는다.
+
+### 타입 SSOT — `@ant/shared/src/git.ts`
+
+| 타입 | 역할 |
+|------|------|
+| `GitSnapshot` | 통합 readonly 상태 (hasGit/hasRemote/ahead/behind/staged/unstaged/untracked 등). `Object.freeze` + `Readonly<>` 로 mutation 금지 |
+| `GitUserOperation` | 8개 user op 의 discriminated union |
+| `GitOperationState` | 4-state FSM (`idle` / `running` / `failed` / `succeeded`) |
+| `GitOperationError` | `{ kind, message, retryable, suggestedAction }` |
+| `GitSuggestedAction` | `configurePat` / `resolveConflict` / `reconfigureRepo` / `runClone` |
+| `GitPatState` | `{ configured, username? }` |
+| `GitStateEventData` | SSE `gitState` 이벤트의 discriminated union (`workingTreeChange` / `operationComplete` / `reconnectRefill`) |
+
+### SSE 1 이벤트 — `gitState`
+
+- `cause: 'workingTreeChange'` — 디스크 변경 힌트. payload 에 snapshot 없음. FE 는 debounce 후 `fetchGitWorldState` 재호출.
+- `cause: 'operationComplete'` — 전체 snapshot + pat + operation FSM. FE 는 바로 replace.
+- `cause: 'reconnectRefill'` — SSE open 시 서버가 발행. 전체 snapshot + pat.
+
+### REST 2 엔드포인트
+
+- `GET  /projects/:id/git/state?feature=...&fresh=true` → `GitStateResponse`
+- `POST /projects/:id/git/ops/:userOp`                 → `GitOperationResponse`
+
+그 외 Git REST 엔드포인트 추가 금지.
+
+### Writer 3개 (FE)
+
+`domain/git-world/` 외부에서 호출 가능한 writer 는 아래 3개 뿐이다:
+
+- `runGitOperation(projectId, op)`
+- `savePat(pat)`
+- `deletePat()`
+
+이 외의 Git/PAT 관련 writer 가 추가되면 ESLint `no-restricted-imports` 및
+`scripts/git-sweep.mjs` 의 P11/P13/P14 패턴에서 걸러진다.
+
+### BE `GitOperation.onSuccess` 대칭 훅
+
+모든 8 operation 은 `run()` 성공 직후 **대칭적으로**:
+
+1. `StatusService.getSnapshot(projectId)` 를 호출해 최신 snapshot 계산
+2. `GitStateBroadcaster.notifyOperationComplete(...)` 로 `gitState` SSE publish
+3. `gitWatcher.retryDeferredWatchers(projectId)` 호출 (deferred watcher 재시도)
+4. 프로젝트 레벨 op (feature 없음) 이면 `autoIndexCodebase` 트리거
+
+특정 op 만 훅 추가/제거하는 비대칭 설계 금지. `scripts/git-sweep.mjs`
+P9 패턴이 이를 감시한다.
+
+### Publish 폴리모픽
+
+`GitUserOperation.kind === 'publish'` 는 상태에 따라 4 가지 BE 동작으로 해결된다:
+
+| 상태 (S) | BE 동작 |
+|----------|---------|
+| S1: `!hasGit && !hasRemote` | `git init` + GitHub repo 생성 + initial push (initialize) |
+| S2: `!hasGit && hasRemote` | `git init` + remote 연결 + push (initialize-with-remote) |
+| S3: `hasGit && !hasRemote` | GitHub repo 생성 + `git push -u` (init-remote) |
+| S4: `hasGit && hasRemote && !hasUpstream` | `git push -u` (publish-branch) |
+
+FE 는 어느 분기인지 알지 못한 채 `{ kind: 'publish' }` 만 디스패치한다.
+
+---
+
 ## 개요
 
 ANT는 GitHub를 통한 Git 연동을 지원한다. 프로젝트 생성 후 Git을 연결하는 2가지 Setup Operation(Clone, Init)과 연결 후 사용하는 6가지 Operation(Push, Pull, Fetch, Commit, Sync, Discard)이 있다.

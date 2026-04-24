@@ -58,9 +58,9 @@ export function useGitActions(
     }
   };
 
-  // Pure push — BE's PushOperation auto-sets `--set-upstream` when the
-  // current branch has no upstream. ActionButton/ProjectSection already
-  // pick the correct CTA via `deriveGitActionCta` / `deriveGitMenuState`.
+  // Pure push — BE auto-sets `--set-upstream` when the current branch has
+  // no upstream. ActionButton/ProjectSection already pick the correct CTA
+  // via `deriveGitActionCta` / `deriveGitMenuState`.
   const handlePush = async () => {
     if (!selectedProject) return;
 

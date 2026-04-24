@@ -40,6 +40,7 @@ export interface RoutesDeps {
   transferService?: any;  // ArtifactTransferService for transfer operations
   stateStore?: any;  // RedisStateStore for transfer state management
   gitWatcherService?: any;  // GitWatcherService for retrying deferred watchers after init/clone
+  gitStateBroadcaster?: any;  // GitChangeBroadcaster for publishing `gitState` SSE events (will be renamed GitStateBroadcaster at cutover)
 }
 
 /**
@@ -56,6 +57,7 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   router.use(createProjectsRoutes({
     projectService: deps.projectService,
     gitWatcherService: deps.gitWatcherService,
+    gitStateBroadcaster: deps.gitStateBroadcaster,
   }));
   
   // Feature CRUD

@@ -138,19 +138,19 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sliceHandlerIds.push(sseManager.registerHandlerWithId('bridge', createBridgeHandler(get)));
     sliceHandlerIds.push(sseManager.registerHandlerWithId('transfer', createTransferHandler(get)));
 
-    // gitChange handler — single registration point for the whole app.
-    // The previous architecture registered this inside useGitChanges, which
-    // (a) created a stale closure over selectedProject/selectedFeature and
-    // (b) re-registered on every hook remount. Reading via get() ensures
-    // feature switches immediately take effect without teardown.
+    // gitState handler — single SSE entry point for the whole git domain.
+    // Two handlers run side-by-side during the greenfield migration:
+    //   1. Legacy bridge: refreshes `gitSlice.gitStatus` / `gitChanges` so
+    //      pre-migration consumers (ProjectSection etc.) keep working.
+    //   2. git-world bridge: drives the new `git-world` slice via its
+    //      internal `_applyGitStateEvent` / `_refreshWorkingTreeDebounced`.
+    // Cutover (Phase 7) removes the legacy handler and keeps only git-world.
     sliceHandlerIds.push(
-      sseManager.registerHandlerWithId('gitChange', (data: SSEMessageMap['gitChange']) => {
+      sseManager.registerHandlerWithId('gitState', (data: SSEMessageMap['gitState']) => {
         const s = get();
         const activeProject = s.selectedProject;
         const activeFeature = s.selectedFeature;
         if (!activeProject) return;
-        // featureName arrives from BE as string; local-no-feature case stores
-        // undefined on the FE. Normalize both sides before comparing.
         const eventFeature = data?.feature || undefined;
         if (
           data?.project !== activeProject ||
@@ -158,7 +158,21 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         ) {
           return;
         }
-        s.fetchGitChanges?.(activeProject, activeFeature);
+
+        // (1) Legacy bridge — drive old slice fetchers.
+        if (data.cause === 'workingTreeChange') {
+          s.fetchGitChanges?.(activeProject, activeFeature);
+        } else if (data.cause === 'operationComplete' || data.cause === 'reconnectRefill') {
+          s.fetchGitChanges?.(activeProject, activeFeature);
+          s.fetchGitStatus?.(activeProject, activeFeature);
+        }
+
+        // (2) git-world bridge — drive new slice.
+        if (data.cause === 'workingTreeChange') {
+          s._refreshWorkingTreeDebounced?.(activeProject, activeFeature);
+        } else {
+          s._applyGitStateEvent?.(data);
+        }
       })
     );
 
