@@ -1,12 +1,34 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type {
-  GitStatusResponse,
-  GitChangesResponse,
   FileChange,
   GitSnapshot,
   GitPatState,
 } from '@ant/shared';
+
+// Internal wire shapes for the private `getGitStatus` / `getGitChanges`
+// helpers that `getSnapshot` composes. These used to be part of the FE
+// contract via `GitStatusResponse`/`GitChangesResponse`; at greenfield
+// cutover they collapsed into `GitSnapshot` and now exist purely as an
+// implementation detail of `StatusService`.
+interface InternalGitStatus {
+  hasGit: boolean;
+  hasCodebase: boolean;
+  codebaseHasFiles: boolean;
+  hasFeatures: boolean;
+  currentBranch?: string;
+  remoteUrl?: string;
+}
+
+interface InternalGitChanges {
+  staged: FileChange[];
+  unstaged: FileChange[];
+  untracked: FileChange[];
+  ahead: number;
+  behind: number;
+  isGitInitialized: boolean;
+  hasUpstream: boolean;
+}
 import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHelper } from '../helper/GitHelper';
@@ -63,7 +85,7 @@ export class StatusService {
     projectId: string,
     userContext: UserContext,
     featureName?: string,
-  ): Promise<GitStatusResponse> {
+  ): Promise<InternalGitStatus> {
     try {
       const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
 
@@ -122,7 +144,7 @@ export class StatusService {
     projectId: string,
     userContext: UserContext,
     featureName?: string,
-  ): Promise<GitChangesResponse> {
+  ): Promise<InternalGitChanges> {
     try {
       const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
 

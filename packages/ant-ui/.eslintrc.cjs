@@ -113,15 +113,13 @@ module.exports = {
       // not reach for private infrastructure paths. See
       // docs/architecture/24-git-operations.md §0 and
       // .claude/skills/update-git-world/SKILL.md.
-      //
-      // Level: `warn` during greenfield migration, `error` at cutover.
       files: ['src/**/*.{ts,tsx}'],
       excludedFiles: [
         'src/domain/git-world/**',
         'src/presentation/components/common/async/primitives/**',
       ],
       rules: {
-        'no-restricted-imports': ['warn', {
+        'no-restricted-imports': ['error', {
           paths: [
             {
               name: 'lucide-react',

@@ -36,13 +36,13 @@ export { KanbanBroadcaster } from './KanbanBroadcaster';
 export { WorkflowBroadcaster } from './WorkflowBroadcaster';
 export { FileTreeBroadcaster } from './FileTreeBroadcaster';
 export { PreviewBroadcaster } from './PreviewBroadcaster';
-export { GitChangeBroadcaster } from './GitChangeBroadcaster';
+export { GitStateBroadcaster } from './GitStateBroadcaster';
 
 import { KanbanBroadcaster } from './KanbanBroadcaster';
 import { WorkflowBroadcaster } from './WorkflowBroadcaster';
 import { FileTreeBroadcaster } from './FileTreeBroadcaster';
 import { PreviewBroadcaster } from './PreviewBroadcaster';
-import { GitChangeBroadcaster } from './GitChangeBroadcaster';
+import { GitStateBroadcaster } from './GitStateBroadcaster';
 import { BroadcasterOptions } from './types';
 import { TaskQueueUpdatePort } from '../ports';
 import { WorkflowStateUpdatePort } from '../ports/workflow';
@@ -55,7 +55,7 @@ export interface RealtimeBroadcasters {
   workflow: WorkflowStateUpdatePort;
   fileTree: FileTreeUpdatePort;
   preview: PreviewUpdatePort;
-  gitChange: GitChangeBroadcaster;
+  gitChange: GitStateBroadcaster;
   close: () => Promise<void>;
 }
 
@@ -75,9 +75,9 @@ export function createRealtimeBroadcasters(
 ): RealtimeBroadcasters {
   const kanban = new KanbanBroadcaster(options);
   const workflow = new WorkflowBroadcaster(options);
-  // Build GitChangeBroadcaster first so FileTreeBroadcaster can DI it for
+  // Build GitStateBroadcaster first so FileTreeBroadcaster can DI it for
   // automatic gitChange co-emit on every file tree update.
-  const gitChange = new GitChangeBroadcaster(options);
+  const gitChange = new GitStateBroadcaster(options);
   const fileTree = new FileTreeBroadcaster(options, gitChange);
   const preview = new PreviewBroadcaster(options);
 

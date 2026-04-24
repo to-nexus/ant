@@ -11,7 +11,7 @@ import { useResizeHandlers } from '@/application/hooks/ui/useResizeHandlers';
 import { useHealthCheck } from '@/application/hooks/ui/useHealthCheck';
 import { useSessionLoader } from '@/application/hooks/ui/useSessionLoader';
 import { useJobRestoration } from '@/application/hooks/ui/useJobRestoration';
-import { useGitRefresh } from '@/application/hooks/git';
+import { useProjectLifecycle } from '@/domain/project-world';
 import { usePreviewSync } from '@/application/hooks/preview/usePreviewSync';
 import { useExplicitAutoSync } from '@/application/hooks/ui/useExplicitAutoSync';
 import { ServerDownDetector } from '@/application/hooks/ui/useServerDownDetector';
@@ -281,12 +281,14 @@ function App() {
     selectedFeature: selectedFeature || null
   });
 
-  // Centralized git auto-refresh: watches selectedProject/selectedFeature and
-  // session restore, then fires fetchGitAll + fetchFromRemote. Previously this
-  // logic was scattered across ProjectSection/GitStatusButton/useGitChanges
-  // with a carrier counter (`gitStatusRefreshTrigger`) and a bypass flag
-  // (`bypassFetchTimer`). One hook, one trigger, one dedup key.
-  useGitRefresh();
+  // Single orchestrator for `(project, feature)` transitions. Replaces the
+  // pre-greenfield tangle of refresh hooks with one effect that:
+  //   1. resets git-world state for the new identity
+  //   2. reconnects SSE (server publishes `reconnectRefill` on open)
+  //   3. primes project config + authoritative git state
+  // See `docs/architecture/24-git-operations.md §0` and
+  // `src/domain/project-world/lifecycle.ts`.
+  useProjectLifecycle();
 
   // Ambient preview sync — single writer for SSE / initial fetch / visibility
   // / reconnect. Lives at app root so it survives Explorer collapse and any

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { useGitState } from '@/application/hooks/git';
+import { useGitSnapshot } from '@/domain/git-world';
 import {
   INTENT_DEFINITIONS,
   getIntentsForAction,
@@ -50,7 +50,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const selectFile = useStore(s => s.selectFile);
   const setMainView = useStore(s => s.setMainView);
   const setAccountConfigScrollTarget = useStore(s => s.setAccountConfigScrollTarget);
-  const gitStatus = useGitState().gitStatus;
+  const gitSnapshot = useGitSnapshot();
   const { toast } = useToastContext();
 
   useEffect(() => {
@@ -198,7 +198,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     }
   };
 
-  const codebaseHasFiles = gitStatus?.codebaseHasFiles ?? false;
+  const codebaseHasFiles = gitSnapshot?.codebaseHasFiles ?? false;
   const codebaseRequired = slots ? slots.refs.some(r => r.codebase && r.locked) : false;
   const refEntries = useMemo(() => slots ? resolveSlotEntries(slots.refs, fileTree, selectedCtx, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedCtx, warningCtx, codebaseHasFiles]);
   const ctxEntries = useMemo(() => slots ? resolveSlotEntries(slots.context, fileTree, selectedRefs, warningCtx) : [], [slots, fileTree, selectedRefs, warningCtx]);

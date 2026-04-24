@@ -6,7 +6,7 @@ import type {
   GitUserOperationKind,
 } from '@ant/shared';
 import { UserContext } from '../../../../../../core/types/user';
-import { GitChangeBroadcaster } from '../../../../../../core/realtime/GitChangeBroadcaster';
+import { GitStateBroadcaster } from '../../../../../../core/realtime/GitStateBroadcaster';
 import { StatusService } from '../status';
 
 /**
@@ -31,7 +31,7 @@ export type IndexingTriggerFn = (
 
 export interface GitOperationDeps {
   statusService: StatusService;
-  broadcaster?: GitChangeBroadcaster;
+  broadcaster?: GitStateBroadcaster;
   watcher?: GitWatcherRetryPort;
   indexer?: IndexingTriggerFn;
   /**

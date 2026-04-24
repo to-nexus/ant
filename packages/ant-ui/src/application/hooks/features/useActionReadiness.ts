@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
-import { useGitState } from '@/application/hooks/git';
+import { useGitSnapshot } from '@/domain/git-world';
 import type { FileNode } from '@/infrastructure/http/api';
 import {
   type IntentGroup,
@@ -22,12 +22,12 @@ import {
 export function useActionReadiness(): Record<IntentGroup, ActionReadiness> {
   const fileTree = useStore(s => s.fileTree);
   const figmaPopulated = useStore(s => s.figmaPopulated);
-  const { gitStatus } = useGitState();
+  const snapshot = useGitSnapshot();
   const bridgeConnected = useStore(s => s.bridgeConnected);
   const figmaDesktopReachable = useStore(s => s.figmaDesktopReachable);
 
   return useMemo(() => {
-    const hasCodebase = gitStatus?.hasCodebase ?? false;
+    const hasCodebase = snapshot?.hasCodebase ?? false;
     const ctx: TreeContext = { fileTree, figmaPopulated, hasCodebase, bridgeConnected, figmaDesktopReachable };
 
     const result = {} as Record<IntentGroup, ActionReadiness>;
@@ -35,7 +35,7 @@ export function useActionReadiness(): Record<IntentGroup, ActionReadiness> {
       result[def.id] = computeReadiness(def.id, ctx);
     }
     return result;
-  }, [fileTree, figmaPopulated, gitStatus, bridgeConnected, figmaDesktopReachable]);
+  }, [fileTree, figmaPopulated, snapshot, bridgeConnected, figmaDesktopReachable]);
 }
 
 interface TreeContext {

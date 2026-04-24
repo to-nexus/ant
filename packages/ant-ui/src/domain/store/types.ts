@@ -2,7 +2,6 @@ import { Session } from '@/domain/models/session';
 import { Feature, FileNode, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import type { ChatMessage } from '@/domain/models/chat';
-import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
 import type { CurrentFileState } from './slices/fileSlice';
 
 // ==================
@@ -140,39 +139,8 @@ export interface UIState {
   accountConfigScrollTarget: string | null;
 }
 
-/**
- * Git phase — an orthogonal "what operation is in flight" flag.
- *
- * Separate from `statusFetchState` / `changesFetchState` because a git action
- * (push/pull/commit…) may run long while background refreshes of the two REST
- * endpoints keep ticking. UI chooses its spinner label based on this phase.
- */
-export type GitPhase =
-  | 'switching'
-  | 'fetching'
-  | 'pushing'
-  | 'pulling'
-  | 'committing'
-  | 'syncing'
-  | 'initializing'
-  | 'cloning'
-  | 'discarding';
-
-export interface GitState {
-  /** Response of `/git/status`. `null` before the first fetch resolves. */
-  gitStatus: GitStatusResponse | null;
-  /** Response of `/git/changes`. `null` before the first fetch resolves. */
-  gitChanges: GitChangesResponse | null;
-  /** Fetch state for `gitStatus`. Never blind-resets `gitStatus` on failure. */
-  statusFetchState: 'idle' | 'pending';
-  /** Fetch state for `gitChanges`. Never blind-resets `gitChanges` on failure. */
-  changesFetchState: 'idle' | 'pending';
-  /** Active git operation (UI label). Setter is a pure writer with no side effects. */
-  gitStatusPhase: GitPhase | null;
-}
-
-// Re-export contract types for convenience (other slices/selectors import from here).
-export type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
+// Git state moved to `domain/git-world/**`. See
+// `docs/architecture/24-git-operations.md §0` for the SSOT contract.
 
 export interface PerFeaturePreviewState {
   status: PreviewStatus | undefined;
@@ -220,7 +188,6 @@ export type StoreState = ProjectState &
   JobState & 
   SSEState & 
   UIState & 
-  GitState & 
   PreviewSliceState & 
   DeploySliceState &
   AuthState & 

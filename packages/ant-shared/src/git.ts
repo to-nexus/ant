@@ -163,29 +163,6 @@ export type GitOperationResponse =
   | GitOperationSuccessResponse
   | GitOperationFailureResponse;
 
-// ---------------------------------------------------------------------------
-// Legacy REST contract — retained only during the greenfield migration window
-// inside a single PR. Both @ant/cli and @ant/ui continue to reference these
-// symbols until cutover removes all old endpoints.
-// ---------------------------------------------------------------------------
-
-/** @deprecated Use {@link GitSnapshot}. Removed at greenfield cutover. */
-export interface GitStatusResponse {
-  hasGit: boolean;
-  hasCodebase: boolean;
-  codebaseHasFiles: boolean;
-  hasFeatures: boolean;
-  currentBranch?: string;
-  remoteUrl?: string;
-}
-
-/** @deprecated Use {@link GitSnapshot}. Removed at greenfield cutover. */
-export interface GitChangesResponse {
-  staged: FileChange[];
-  unstaged: FileChange[];
-  untracked: FileChange[];
-  ahead: number;
-  behind: number;
-  isGitInitialized: boolean;
-  hasUpstream: boolean;
-}
+// Legacy `GitStatusResponse` / `GitChangesResponse` were retired at
+// greenfield cutover. Use `GitSnapshot` and its derived selectors from
+// `domain/git-world/selectors.ts` instead.

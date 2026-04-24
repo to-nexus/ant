@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil } from 'lucide-react';
-import { ProjectConfig, fetchOrgConfig, fetchUserConfig, checkGitHubPATStatus, renameProject, deleteProject } from '@/infrastructure/http/api';
+import { ProjectConfig, fetchOrgConfig, fetchUserConfig, renameProject, deleteProject } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
-import { useGitState } from '@/application/hooks/git';
+import { useGitSnapshot, useGitPat, useGitPatDispatch } from '@/domain/git-world';
 import { STORAGE_KEYS, loadFromStorage, saveToStorage } from '@/domain/store/storage';
 import { useAvailableModels } from './hooks/useAvailableModels';
 import { useConfigEditor } from './hooks/useConfigEditor';
@@ -39,9 +39,16 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const [githubOwnerInfo, setGithubOwnerInfo] = useState<GitHubOwnerInfo>({});
   const [githubRepoManuallyEdited, setGithubRepoManuallyEdited] = useState(false);
 
-  // Git status (determines if branchBase is editable)
-  const { gitStatus } = useGitState();
-  const isGitInitialized = gitStatus?.hasGit ?? false;
+  // Git snapshot (determines if branchBase is editable)
+  const snapshot = useGitSnapshot();
+  const isGitInitialized = snapshot?.hasGit ?? false;
+  const patState = useGitPat();
+  const { fetchGitPat } = useGitPatDispatch();
+
+  // Ensure the PAT slice is primed — owner inference uses `patState.username`.
+  useEffect(() => {
+    if (patState === null) void fetchGitPat();
+  }, [patState, fetchGitPat]);
 
   // Project rename state
   const selectedProject = useStore((state) => state.selectedProject);
@@ -53,19 +60,18 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
 
   // Load GitHub owner info (user override > org > personal) for quick-fill.
-  // Re-runs on mount; AccountConfigEditor fires refreshes explicitly via
-  // fetchGitAll once PAT changes propagate through the store.
+  // Re-runs on mount; AccountConfigEditor triggers authoritative git-world
+  // refreshes (`fetchGitWorldState`) when PAT changes propagate.
   useEffect(() => {
     async function loadGithubOwners() {
       try {
-        const [orgConfig, userConfig, patStatus] = await Promise.all([
+        const [orgConfig, userConfig] = await Promise.all([
           fetchOrgConfig(),
           fetchUserConfig(),
-          checkGitHubPATStatus(),
         ]);
         const orgOwner = orgConfig.github?.owner;
         const userOverride = userConfig.github?.ownerOverride;
-        const personalOwner = patStatus.username;
+        const personalOwner = patState?.username;
         const effectiveOrgOwner = userOverride || orgOwner;
         setGithubOwnerInfo({ orgOwner: effectiveOrgOwner, personalOwner });
 
@@ -347,7 +353,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               onChange={handleChange}
               githubOwnerInfo={githubOwnerInfo}
               projectName={editedConfig.repositoryName}
-              gitStatus={gitStatus}
+              gitSnapshot={snapshot}
             />
           ))}
 

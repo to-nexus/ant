@@ -30,7 +30,7 @@ export interface ProjectConfigActions {
   /**
    * Save an edited ProjectConfig. Returns `{ success, error? }` so editors
    * can surface persistence failures without subscribing to the slice.
-   * On success, triggers `fetchGitAll` so disk-level flags (remoteUrl,
+   * On success, triggers `fetchGitWorldState` so disk-level flags (remoteUrl,
    * hasGit) reflect the new config.
    */
   updateProjectConfig: (
@@ -139,10 +139,12 @@ export const createProjectConfigSlice: StateCreator<
           refreshing: false,
         },
       });
-      // Pull fresh git status/changes so disk flags reflect the new config.
-      const { selectedFeature, fetchGitAll } = get() as any;
-      if (typeof fetchGitAll === 'function') {
-        fetchGitAll(projectId, selectedFeature || undefined);
+      // Pull an authoritative git-world snapshot so disk flags reflect the new
+      // config. `fresh: true` bypasses the remoteExists cache because
+      // githubRepo may have just changed.
+      const { selectedFeature, fetchGitWorldState } = get() as any;
+      if (typeof fetchGitWorldState === 'function') {
+        void fetchGitWorldState(projectId, { feature: selectedFeature || undefined, fresh: true });
       }
       return { success: true };
     } catch (error) {

@@ -47,7 +47,7 @@ export interface ServerDependencies {
   kanbanService: any;
   sessionService: any;
   gitWatcherService: any;
-  gitChangeBroadcaster?: any;
+  gitStateBroadcaster?: any;
   projectService: any;
   chatService: any;
   graphMetadataService: any;

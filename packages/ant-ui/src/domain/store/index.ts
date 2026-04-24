@@ -4,7 +4,6 @@ import { createFileSlice, FileSlice } from './slices/fileSlice';
 import { createJobSlice, JobSlice } from './slices/jobSlice';
 import { createSSESlice, SSESlice } from './slices/sseSlice';
 import { createUISlice, UISlice } from './slices/uiSlice';
-import { createGitSlice, GitSlice } from './slices/gitSlice';
 import { createPreviewSlice, PreviewSlice } from './slices/previewSlice';
 import { createAuthSlice, AuthSlice } from './slices/authSlice';
 import { createConfigSlice, ConfigSlice } from './slices/configSlice';
@@ -23,7 +22,6 @@ export type Store = ProjectSlice &
   JobSlice & 
   SSESlice & 
   UISlice & 
-  GitSlice & 
   GitWorldSlice &
   PreviewSlice & 
   DeploySlice &
@@ -69,7 +67,6 @@ export const useStore = create<Store>((set, get, store) => {
     ...createJobSlice(set, get, store),
     ...createSSESlice(set, get, store),
     ...createUISlice(set, get, store),
-    ...createGitSlice(set, get, store),
     ...createGitWorldSlice(set, get, store),
     ...createPreviewSlice(set, get, store),
     ...createAuthSlice(set, get, store),
