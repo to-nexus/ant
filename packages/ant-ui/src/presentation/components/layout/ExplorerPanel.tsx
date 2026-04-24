@@ -81,6 +81,7 @@ export function ExplorerPanel({
                   hint={t('onboarding:quickstart.fleshOutIdeaHint')}
                   onClick={() => setOnboardingSkipped(false)}
                 />
+                {/* TEMP(action-system-compat): hide design/code CTAs until ProjectWizardModal is compatible.
                 <QuickStartCTA
                   variant="design"
                   title={t('onboarding:quickstart.designSystem')}
@@ -93,6 +94,7 @@ export function ExplorerPanel({
                   hint={t('onboarding:quickstart.codeFromDesignHint')}
                   onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'code' })}
                 />
+                */}
               </div>
             )}
           </>

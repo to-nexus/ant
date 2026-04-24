@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, AlertCircle, Check, X, ArrowRight, Compass, Code2 } from 'lucide-react';
+// TEMP(action-system-compat): Compass/Code2 icons used only by hidden altDesign/altCode shortcuts; re-add when restoring.
+import { Send, AlertCircle, Check, X, ArrowRight } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
@@ -550,6 +551,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
           </div>
 
           {/* Wizard shortcut cards */}
+          {/* TEMP(action-system-compat): hide altDesign/altCode shortcut buttons until ProjectWizardModal is compatible.
           {!isSubmitting && (
             <div
               className="mt-4 flex gap-3"
@@ -591,6 +593,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
               </button>
             </div>
           )}
+          */}
 
           {/* Progress step checklist */}
           {isSubmitting && activeStep !== 'idle' && (
