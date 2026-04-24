@@ -10,6 +10,7 @@ import {
   createApiRoutes
 } from '../../routes';
 import { extractUserContext } from '../../routes/helpers/userContext';
+import { ensureCanonicalFeatureMiddleware } from '../../middleware/ensureCanonicalFeature';
 import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
 import { JobStateTracker } from '../managers/JobStateTracker';
@@ -60,6 +61,7 @@ export class RouteConfigurator {
    */
   configure(app: Express): void {
     this.setupRootRoutes(app);
+    this.setupCanonicalBackfillMiddleware(app);
     this.setupAuthRoutes(app);
     this.setupApiRoutes(app);
     this.setupIDERoutes(app);
@@ -70,6 +72,18 @@ export class RouteConfigurator {
     // SSE routes moved to Realtime Server (see 10-cloud-architecture.md)
     // this.setupSSERoutes(app);
     this.setupJobRoutes(app);
+  }
+
+  /**
+   * Access-time canonical backfill — runs BEFORE any /api sub-router so every
+   * feature-scoped endpoint (api/kanban/job/workflow/…) benefits from the
+   * self-heal. Sub-routers are mounted under `/api` via separate app.use(…)
+   * calls, so attaching the middleware once here is the single SSOT spot.
+   * Skipped (silent) when `workspaceResolver` is absent.
+   */
+  private setupCanonicalBackfillMiddleware(app: Express): void {
+    if (!this.deps.workspaceResolver) return;
+    app.use('/api', ensureCanonicalFeatureMiddleware(this.deps.workspaceResolver));
   }
 
   /**

@@ -32,6 +32,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { SessionableJobType } from '@ant/shared';
 import { CANONICAL_FEATURE_DIRS, CANONICAL_FEATURE_FILE_PATHS, isCanonicalDir, createEmptyFigmaData } from '@ant/shared';
+import { logger } from '../../utils/logger';
 
 export { CANONICAL_FEATURE_DIRS, isCanonicalDir };
 
@@ -144,21 +145,26 @@ export function getChatJsonlPath(featurePath: string): string {
 // ============================================
 
 /**
- * Debug subdirectories per agent (Single Source of Truth for creation).
- * 
- * Used by:
- * - ensureCanonicalStructure() — auto-creates on page access
- * - features.routes.ts — cleanup of debug artifacts on session clear
- * 
- * To add a new debug category, add the subdir name here AND add the
- * corresponding entry to CANONICAL_DIR_DEFS in @ant/shared/canonical.ts
- * so it is preserved (emptied, not deleted) during canonical cleanup.
+ * Debug subdirectories per agent — derived from CANONICAL_FEATURE_DIRS.
+ *
+ * Single source of truth lives in `@ant/shared/canonical.ts`. This map is a
+ * convenience projection (`agent → subdir[]`) used by callers that need the
+ * structured shape (features.routes.ts cleanup, etc).
+ *
+ * Do NOT add entries here directly — add them to CANONICAL_DIR_DEFS in
+ * `@ant/shared/canonical.ts` and this map picks them up automatically.
  */
-export const DEBUG_SUBDIRS: Readonly<Record<string, readonly string[]>> = {
-  architect: ['prompts', 'plans', 'logs', 'tokens', 'figma'],
-  planner: ['prompts'],
-  creator: ['prompts'],
-};
+export const DEBUG_SUBDIRS: Readonly<Record<string, readonly string[]>> = (() => {
+  const acc: Record<string, string[]> = {};
+  for (const dir of CANONICAL_FEATURE_DIRS) {
+    const match = dir.match(/^sessions\/([^/]+)\/debug\/([^/]+)$/);
+    if (match) {
+      const [, agent, sub] = match;
+      (acc[agent] ??= []).push(sub);
+    }
+  }
+  return acc;
+})();
 
 /**
  * Get the debug directory path for an agent.
@@ -270,26 +276,34 @@ export const CANONICAL_FEATURE_FILES: ReadonlyArray<{
 // Ensure Canonical Structure (Reconciliation)
 // ============================================
 
+export interface EnsureCanonicalResult {
+  /** Number of directories that were actually created (pre-existing dirs not counted). */
+  createdDirs: number;
+  /** Number of canonical files that were actually created (pre-existing files not counted). */
+  createdFiles: number;
+}
+
 /**
  * Ensure all canonical directories and files exist within a feature.
- * 
+ *
  * Idempotent — safe to call on every feature access. Only creates what's missing.
  * This enables retroactive application of new CANONICAL_FEATURE_DIRS / FILES
  * entries to features created before the entry was added.
- * 
+ *
  * Design constraints:
  * - Guard: returns immediately if featurePath does not exist (prevents ghost features)
  * - Excludes 'codebase' (managed by WorktreeService, may be a git worktree)
  * - mkdir({ recursive: true }) is a no-op for existing dirs
  * - writeFile with 'wx' flag is atomic exclusive-create (safe under multi-pod concurrency)
- * 
+ *
  * @param featurePath - Absolute path to the feature directory
+ * @returns Count of items actually created this call; zero on a healthy feature.
  */
-export async function ensureCanonicalStructure(featurePath: string): Promise<void> {
+export async function ensureCanonicalStructure(featurePath: string): Promise<EnsureCanonicalResult> {
   try {
     await fs.promises.access(featurePath);
   } catch {
-    return;
+    return { createdDirs: 0, createdFiles: 0 };
   }
 
   const dirs = CANONICAL_FEATURE_DIRS.map(d => path.join(featurePath, d));
@@ -298,54 +312,39 @@ export async function ensureCanonicalStructure(featurePath: string): Promise<voi
     subdirs.map(sub => path.join(featurePath, 'sessions', agent, 'debug', sub)),
   );
 
-  await Promise.all(
-    [...dirs, ...debugDirs].map(d => fs.promises.mkdir(d, { recursive: true })),
+  const dirResults: number[] = await Promise.all(
+    [...dirs, ...debugDirs].map(async (d): Promise<number> => {
+      const created = await fs.promises.mkdir(d, { recursive: true });
+      return typeof created === 'string' ? 1 : 0;
+    }),
   );
+  const createdDirs = dirResults.reduce<number>((a, b) => a + b, 0);
 
-  await Promise.all(CANONICAL_FEATURE_FILES.map(async (file) => {
+  const fileResults: number[] = await Promise.all(CANONICAL_FEATURE_FILES.map(async (file): Promise<number> => {
     const filePath = path.join(featurePath, file.relativePath);
     try {
       await fs.promises.writeFile(filePath, file.getContent(), { flag: 'wx' });
+      return 1;
     } catch (err: any) {
-      if (err.code !== 'EEXIST') throw err;
+      if (err.code === 'EEXIST') return 0;
+      throw err;
     }
   }));
+  const createdFiles = fileResults.reduce<number>((a, b) => a + b, 0);
+
+  if (createdDirs > 0 || createdFiles > 0) {
+    logger.info('[ensureCanonicalStructure] reconciled canonical structure', {
+      component: 'ensureCanonicalStructure',
+    }, { featurePath, createdDirs, createdFiles });
+  }
+
+  return { createdDirs, createdFiles };
 }
 
-// ============================================
-// Init Directories (for feature creation)
-// ============================================
-
-/**
- * Get all session directories that should be created when initializing a feature.
- * Derived from CANONICAL_FEATURE_DIRS (sessions/* entries only).
- * 
- * @param featurePath - Absolute path to the feature directory
- * @returns Array of directory paths to create
- */
-export function getInitSessionDirs(featurePath: string): string[] {
-  return CANONICAL_FEATURE_DIRS
-    .filter(d => d.startsWith('sessions/'))
-    .map(d => path.join(featurePath, d));
-}
-
-/**
- * Get all canonical directories that should be created when initializing a feature.
- * Derived from CANONICAL_FEATURE_DIRS (all entries).
- * 
- * @param featurePath - Absolute path to the feature directory
- * @returns Array of absolute directory paths to create
- */
-export function getInitFeatureDirs(featurePath: string): string[] {
-  // 'codebase' is excluded from CANONICAL_FEATURE_DIRS to avoid polluting
-  // FEATURE_SIBLING_PREFIXES (which would break pathNormalizer Rule 3).
-  // It is added here so the directory is always created on feature init.
-  // WorktreeService may later replace it with a git worktree.
-  return [
-    path.join(featurePath, 'codebase'),
-    ...CANONICAL_FEATURE_DIRS.map(d => path.join(featurePath, d)),
-  ];
-}
+// NOTE: getInitFeatureDirs / getInitSessionDirs were removed — all canonical
+// directory creation MUST route through ensureCanonicalStructure to preserve
+// SSOT. Callers that need per-init path computation should compose
+// CANONICAL_FEATURE_DIRS (and add 'codebase' separately if required).
 
 // ============================================
 // Canonical Directory Clearing (Single Source of Truth)

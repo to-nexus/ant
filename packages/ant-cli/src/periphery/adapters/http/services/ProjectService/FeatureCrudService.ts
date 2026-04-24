@@ -5,6 +5,7 @@ import { UserContext } from '../../../../../core/types/user';
 import { getSessionFilePathByJob, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
 import { isBaseBranch, readBranchBaseFromConfig, RESERVED_FEATURE_NAME } from '../../../../../core/utils/branchUtils';
 import { WorktreeService } from '../GitService/worktree';
+import { logger } from '../../../../../utils/logger';
 
 /**
  * FeatureCrudService
@@ -204,6 +205,31 @@ export class FeatureCrudService {
           // Don't throw - feature directories are created successfully
         }
       }
+    }
+
+    // Post-create canonical invariant probe: if any of the three UiSource
+    // sibling dirs is missing after ensureCanonicalStructure + worktree
+    // setup, surface a structured ERROR log so future regressions are
+    // visible immediately (ties into the access-time backfill observability
+    // emitted from ensureCanonicalStructure). Best-effort — never throws.
+    try {
+      const uiDir = path.join(featurePath, 'outputs/design/ui');
+      const present = await fs.promises.readdir(uiDir).catch(() => [] as string[]);
+      const requiredSiblings = ['ant', 'figma', 'handoff'] as const;
+      const missing = requiredSiblings.filter(sib => !present.includes(sib));
+      if (missing.length > 0) {
+        logger.error('[FeatureCrudService.createFeature] canonical UI sibling missing post-create', {
+          component: 'FeatureCrudService',
+          projectId,
+          featureName,
+        }, { featurePath, missing, present });
+      }
+    } catch (probeErr: any) {
+      logger.warn('[FeatureCrudService.createFeature] canonical invariant probe failed', {
+        component: 'FeatureCrudService',
+        projectId,
+        featureName,
+      }, { error: probeErr?.message ?? String(probeErr) });
     }
   }
   
