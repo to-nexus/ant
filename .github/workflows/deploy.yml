@@ -4,18 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to deploy'
+        description: "Environment to deploy"
         required: true
-        default: 'prod'
+        default: "prod"
         type: choice
         options:
           - dev
           - stage
           - prod
       service:
-        description: 'Service to deploy'
+        description: "Service to deploy"
         required: false
-        default: 'ant-ui'
+        default: "ant-ui"
         type: choice
         options:
           - ant-ui
@@ -24,30 +24,30 @@ on:
           - ant-site
           - ant-visual-processor
       git_ref:
-        description: 'Git reference (commit SHA, branch, or tag) to deploy'
+        description: "Git reference (commit SHA, branch, or tag) to deploy"
         required: false
         type: string
-        default: ''
+        default: ""
       ticket_id:
-        description: 'Jira ticket ID for deployment tracking'
+        description: "Jira ticket ID for deployment tracking"
         required: false
         type: string
-        default: ''
+        default: ""
 
   push:
     branches:
-      - main              # dev 환경 배포
-      - dev               # dev 환경 배포
-      - stage             # stage 환경 배포
+      - main # dev 환경 배포
+      - dev # dev 환경 배포
+      - stage # stage 환경 배포
       - cloud-scalability # dev 환경 배포
-      - "ci/*"            # dev 환경 배포
+      - "ci/*" # dev 환경 배포
     paths:
-      - 'packages/ant-ui/**'
-      - 'packages/ant-cli/**'
-      - 'packages/ant-shared/**'
-      - 'packages/ant-site/**'
-      - 'packages/ant-cli/src/periphery/integrations/visual-processor/server/**'
-      - 'package.json'
+      - "packages/ant-ui/**"
+      - "packages/ant-cli/**"
+      - "packages/ant-shared/**"
+      - "packages/ant-site/**"
+      - "packages/ant-cli/src/periphery/integrations/visual-processor/server/**"
+      - "package.json"
 
   repository_dispatch:
     types: [dev-deploy, stage-deploy, release-deploy]
@@ -62,7 +62,7 @@ jobs:
   # ===========================================
   detect-changes:
     if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || startsWith(github.ref, 'refs/heads/stage') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/')) && github.event_name == 'push'
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       ant-ui-changed: ${{ steps.detect.outputs.ant-ui-changed }}
       ant-cli-changed: ${{ steps.detect.outputs.ant-cli-changed }}
@@ -78,13 +78,13 @@ jobs:
         id: detect
         run: |
           echo "🔍 Comparing ${{ github.event.before }} with ${{ github.sha }}"
-          
+
           # Get changed files
           CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
           echo "📁 Changed files:"
           echo "$CHANGED_FILES"
           echo ""
-          
+
           # Check root package.json changes (triggers all deploy)
           if echo "$CHANGED_FILES" | grep -q "^package.json$"; then
             echo "root-package-changed=true" >> $GITHUB_OUTPUT
@@ -93,7 +93,7 @@ jobs:
             echo "root-package-changed=false" >> $GITHUB_OUTPUT
             echo "❌ No root package.json changed"
           fi
-          
+
           # Check ant-ui changes
           if echo "$CHANGED_FILES" | grep -q "^packages/ant-ui/"; then
             echo "ant-ui-changed=true" >> $GITHUB_OUTPUT
@@ -102,7 +102,7 @@ jobs:
             echo "ant-ui-changed=false" >> $GITHUB_OUTPUT
             echo "❌ No ant-ui files changed"
           fi
-          
+
           # Check ant-shared changes (triggers ant-cli + ant-preview rebuild)
           if echo "$CHANGED_FILES" | grep -q "^packages/ant-shared/"; then
             ANT_SHARED_CHANGED=true
@@ -111,7 +111,7 @@ jobs:
             ANT_SHARED_CHANGED=false
             echo "❌ No ant-shared files changed"
           fi
-          
+
           # Check ant-cli changes (also triggered by ant-shared changes)
           # visual-processor 경로는 제외 (별도 빌드)
           ANT_CLI_CHANGES=$(echo "$CHANGED_FILES" | grep "^packages/ant-cli/" | grep -v "visual-processor/server/" || true)
@@ -122,7 +122,7 @@ jobs:
             echo "ant-cli-changed=false" >> $GITHUB_OUTPUT
             echo "❌ No ant-cli files changed"
           fi
-          
+
           # Check ant-site changes
           if echo "$CHANGED_FILES" | grep -q "^packages/ant-site/"; then
             echo "ant-site-changed=true" >> $GITHUB_OUTPUT
@@ -131,7 +131,7 @@ jobs:
             echo "ant-site-changed=false" >> $GITHUB_OUTPUT
             echo "❌ No ant-site files changed"
           fi
-          
+
           # Check visual-processor changes
           if echo "$CHANGED_FILES" | grep -q "^packages/ant-cli/src/periphery/integrations/visual-processor/server/"; then
             echo "visual-processor-changed=true" >> $GITHUB_OUTPUT
@@ -147,7 +147,7 @@ jobs:
   auto-ant-ui-dev-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: dev
     steps:
       - uses: actions/checkout@v4
@@ -156,8 +156,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -236,7 +236,7 @@ jobs:
   auto-ant-site-dev-deploy:
     needs: detect-changes
     if: (needs.detect-changes.outputs.ant-site-changed == 'true' || needs.detect-changes.outputs.root-package-changed == 'true') && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: dev
     steps:
       - uses: actions/checkout@v4
@@ -245,8 +245,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -270,7 +270,7 @@ jobs:
   auto-all-ant-ui-dev-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.root-package-changed == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/dev') || github.ref == 'refs/heads/cloud-scalability' || startsWith(github.ref, 'refs/heads/ci/'))
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: dev
     steps:
       - uses: actions/checkout@v4
@@ -279,8 +279,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -347,7 +347,7 @@ jobs:
   auto-ant-ui-stage-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.ant-ui-changed == 'true' && needs.detect-changes.outputs.root-package-changed != 'true' && startsWith(github.ref, 'refs/heads/stage')
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: stage
     steps:
       - uses: actions/checkout@v4
@@ -356,8 +356,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -397,7 +397,7 @@ jobs:
   auto-ant-site-stage-deploy:
     needs: detect-changes
     if: (needs.detect-changes.outputs.ant-site-changed == 'true' || needs.detect-changes.outputs.root-package-changed == 'true') && startsWith(github.ref, 'refs/heads/stage')
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: stage
     steps:
       - uses: actions/checkout@v4
@@ -406,8 +406,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -467,7 +467,7 @@ jobs:
   auto-all-ant-ui-stage-deploy:
     needs: detect-changes
     if: needs.detect-changes.outputs.root-package-changed == 'true' && startsWith(github.ref, 'refs/heads/stage')
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: stage
     steps:
       - uses: actions/checkout@v4
@@ -476,8 +476,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -543,7 +543,7 @@ jobs:
   # ===========================================
   manual-ant-ui-deploy:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-ui' && github.event.inputs.environment != 'prod'
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: ${{ github.event.inputs.environment }}
     steps:
       - uses: actions/checkout@v4
@@ -554,8 +554,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -579,7 +579,7 @@ jobs:
   # ===========================================
   manual-ant-site-deploy:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.service == 'ant-site' && github.event.inputs.environment != 'prod'
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: ${{ github.event.inputs.environment }}
     steps:
       - uses: actions/checkout@v4
@@ -590,8 +590,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -670,7 +670,7 @@ jobs:
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-ui')
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: prod
     steps:
       - uses: actions/checkout@v4
@@ -681,8 +681,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
@@ -705,7 +705,7 @@ jobs:
     if: >
       (github.event_name == 'repository_dispatch' && github.event.inputs.environment == 'prod') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' && github.event.inputs.service == 'ant-site')
-    runs-on: ["arc-runner-set"]
+    runs-on: codebuild-cross-gha-runner-${{ github.run_id }}-${{ github.run_attempt }}
     environment: prod
     steps:
       - uses: actions/checkout@v4
@@ -716,8 +716,8 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
       - run: pnpm install --no-frozen-lockfile
       - name: Install AWS CLI
         run: |
