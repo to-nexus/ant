@@ -19,6 +19,7 @@ import { ChoiceCard } from './choiceCard';
 import { PlanCard } from './PlanCard';
 import { TaskResponseCard } from './TaskResponseCard';
 import { TypingIndicator } from './TypingIndicator';
+import { aggregateChatStatuses } from './aggregateChatStatuses';
 
 interface MessageItemProps {
   message: ChatMessage;
@@ -27,17 +28,16 @@ interface MessageItemProps {
 export function MessageItem({ message }: MessageItemProps) {
   const isUser = message.role === 'user';
 
-  // ✅ No client-side deduplication — backend manages file card lifecycle correctly.
-  // In-progress → completed transitions happen via content_update at the same array index,
-  // so each slot in the contents array already reflects its final state.
-  // Multiple completed operations on the same filePath are independent cards
-  // (e.g., planner editing prd.md multiple times across ReAct iterations).
-  const deduplicatedContents = useMemo(() => {
-    return message.contents.map((content, index) => ({
-      content,
-      originalIndex: index,
-    }));
-  }, [message.contents]);
+  // Presentation-only aggregation: adjacent same-family chat-status slots
+  // (read, listed_files, grepped, …) are collapsed into a single
+  // expandable card so long runs of the same tool stop flooding the
+  // chat. See `aggregateChatStatuses` for the full contract. The
+  // underlying `message.contents` is untouched — this mirrors on both
+  // the live SSE path and the chat.jsonl replay path.
+  const aggregatedContents = useMemo(
+    () => aggregateChatStatuses(message.contents),
+    [message.contents],
+  );
 
   return (
     <div className="w-full">
@@ -61,7 +61,7 @@ export function MessageItem({ message }: MessageItemProps) {
             {message.isStreaming && message.contents.length === 0 && (
               <TypingIndicator />
             )}
-            {deduplicatedContents.map(({ content, originalIndex }) => (
+            {aggregatedContents.map(({ content, originalIndex }) => (
               <ContentBlock 
                 key={originalIndex} 
                 content={content} 
