@@ -52,6 +52,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # Copy source code
 COPY packages/ant-shared ./packages/ant-shared
 COPY packages/ant-cli ./packages/ant-cli
+COPY docs ./docs
 
 # Build ant-cli (builds @ant/shared first, then runs tests + build for @ant/cli)
 RUN pnpm build:cli
