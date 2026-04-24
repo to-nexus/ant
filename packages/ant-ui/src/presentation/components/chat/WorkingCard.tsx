@@ -238,6 +238,72 @@ function WorkingIcon({ icon, iconClass, colorClass }: { icon: IconKind; iconClas
   return <IconComp className={`w-4 h-4 ${colorClass} ${iconClass} flex-shrink-0`} />;
 }
 
+/**
+ * Shared header row used by every chat status card layout in this file
+ * (inline strip and expandable card). Keeps the flex chain consistent so
+ * `TruncatableText`'s `truncate` span stays inside the row's `min-w-0`
+ * budget and never wraps the trailing chevron onto a second line.
+ *
+ * Structure:
+ *   [icon][flex-1 min-w-0: title row + optional detail][optional chevron]
+ *
+ * Rendered directly as flex children of its parent row — the caller owns
+ * the outer container (div / button) and its padding / gap / bg color.
+ */
+interface WorkingCardHeaderProps {
+  icon: IconKind;
+  iconClass: string;
+  iconColorClass: string;
+  title: string;
+  titleClassName: string;
+  titleButtonClassName: string;
+  detail?: string | undefined;
+  detailClassName: string;
+  isExpanded: boolean;
+  hasExpandable: boolean;
+}
+
+function WorkingCardHeader({
+  icon,
+  iconClass,
+  iconColorClass,
+  title,
+  titleClassName,
+  titleButtonClassName,
+  detail,
+  detailClassName,
+  isExpanded,
+  hasExpandable,
+}: WorkingCardHeaderProps) {
+  return (
+    <>
+      <WorkingIcon icon={icon} iconClass={iconClass} colorClass={iconColorClass} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1 min-w-0">
+          <TruncatableText
+            text={title}
+            maxLength={60}
+            className={`text-xs font-medium ${titleClassName}`}
+            buttonClassName={titleButtonClassName}
+          />
+        </div>
+        {detail && (
+          <div className={`text-xs mt-0.5 ${detailClassName} break-all`}>
+            {detail}
+          </div>
+        )}
+      </div>
+      {hasExpandable && (
+        <div className="flex-shrink-0">
+          {isExpanded
+            ? <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" />
+            : <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" />}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function WorkingCard({ content, variant }: WorkingCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -280,32 +346,36 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
   }
 
   const hasStats = stats.length > 0;
+  const hasError = !!(content.metadata as { error?: unknown } | undefined)?.error;
   // Progress cards become expandable when an aggregator (see
   // aggregateChatStatuses) has merged multiple slots and attached a
   // `filesList`. Non-aggregated single progress cards render as the
-  // compact inline strip below.
-  const hasExpandable = hasFiles || (!isProgress && hasStats);
+  // compact inline strip below. Error slots never expand — the drawer
+  // would hide the failure path, and a chevron suggests interactivity
+  // that the card does not offer.
+  const hasExpandable = !hasError && (hasFiles || (!isProgress && hasStats));
 
-  // Progress state without a file list → keep the compact inline strip.
+  // Shared header props for both layouts. Title / button colours follow
+  // variant config for in-flight cards and a neutral gray for completed
+  // cards (matches the prior design for the expandable variant).
+  const headerProps: Omit<WorkingCardHeaderProps, 'isExpanded' | 'hasExpandable'> = {
+    icon: Icon,
+    iconClass: isProgress ? iconClass : '',
+    iconColorClass,
+    title: content.content || '',
+    titleClassName: isProgress ? textClass : 'text-gray-700 dark:text-gray-300',
+    titleButtonClassName: isProgress
+      ? `${textClass} opacity-60`
+      : 'text-gray-600 dark:text-gray-400 opacity-60',
+    detail: content.metadata?.detail,
+    detailClassName: detailClass,
+  };
+
+  // Progress state without a file list → compact inline strip (no chevron).
   if (isProgress && !hasFiles) {
     return (
       <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${containerClass}`}>
-        <WorkingIcon icon={Icon} iconClass={iconClass} colorClass={iconColorClass} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1">
-            <TruncatableText
-              text={content.content || ''}
-              maxLength={60}
-              className={`text-xs font-medium ${textClass}`}
-              buttonClassName={`${textClass} opacity-60`}
-            />
-          </div>
-          {content.metadata?.detail && (
-            <div className={`text-xs mt-0.5 ${detailClass}`}>
-              {content.metadata.detail}
-            </div>
-          )}
-        </div>
+        <WorkingCardHeader {...headerProps} isExpanded={false} hasExpandable={false} />
       </div>
     );
   }
@@ -339,28 +409,11 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
         onClick={handleCardClick}
         disabled={!hasExpandable && !isDownloadedAsset}
       >
-        <WorkingIcon icon={Icon} iconClass={isProgress ? iconClass : ''} colorClass={iconColorClass} />
-        <div className="flex-1 min-w-0 flex flex-col items-start">
-          <TruncatableText
-            text={content.content || ''}
-            maxLength={60}
-            className={`text-xs font-medium ${isProgress ? textClass : 'text-gray-700 dark:text-gray-300'}`}
-            buttonClassName={isProgress ? `${textClass} opacity-60` : 'text-gray-600 dark:text-gray-400 opacity-60'}
-          />
-          {isProgress && content.metadata?.detail && (
-            <div className={`text-xs mt-0.5 ${detailClass}`}>
-              {content.metadata.detail}
-            </div>
-          )}
-        </div>
-        {hasExpandable && (
-          <div className="flex-shrink-0">
-            {isExpanded ? 
-              <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" /> :
-              <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400 opacity-60" />
-            }
-          </div>
-        )}
+        <WorkingCardHeader
+          {...headerProps}
+          isExpanded={isExpanded}
+          hasExpandable={hasExpandable}
+        />
       </button>
 
       {/* Image preview block — screenshot (figma_called) or asset thumbnail (downloaded) */}
