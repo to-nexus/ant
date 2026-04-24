@@ -339,18 +339,32 @@ Do NOT embed token setup in setup or ui tasks.
 
 | Checkpoint | Strategy |
 |-----------|----------|
-| **Multiple packages/services observed** | Create one test-code task per package (same priority, distinct `parallelGroup` per package). Each task targets a single package scope. |
-| **Single package** | Create one test-code task (`exclusive: true`). |
+| **Multiple packages/services observed** | Create one test-code **parent** task per package (same priority, distinct `parallelGroup` per package). Each parent targets a single package scope and may self-split further via the Parent-then-Split Pattern below. |
+| **Single package** | Create one test-code **parent** task. Do NOT pre-split into multiple tasks — the parent decides whether to feature-slice during its plan phase (Parent-then-Split Pattern). `exclusive` is optional; the parent is short-lived (typically installs deps + emits a `batches[]` plan) and batch-split replaces it with independently-scoped sub-tasks. |
 
-**Principle**: Each test-code task operates on a single package boundary. This keeps test context scoped and prevents token growth proportional to total project size.
+**Principle**: Each decompose-emitted test-code task is a **parent** that owns:
+1. **Test-runner installation** during its plan phase (parent alone can install — sub-tasks get a command-guard rejection for install commands to prevent lockfile races).
+2. **Feature-slice decision** — whether to split the test work into parallel sub-tasks by emitting `batches[]` in its plan JSON.
 
-**Constraint**: Per-package test-code tasks target independent scopes — assign them the same priority and a **distinct `parallelGroup` per package** so they can run in parallel.
+**Constraint**: Per-package test-code parent tasks target independent scopes — assign them the same priority and a **distinct `parallelGroup` per package** so they can run in parallel.
 
-⚠️ **Blind spot**: Same `parallelGroup` = serialized (cannot run simultaneously). Distinct `parallelGroup` = parallel. Per-package test-code tasks modify independent directories — they MUST have different group IDs.
+⚠️ **Blind spot**: Same `parallelGroup` = serialized (cannot run simultaneously). Distinct `parallelGroup` = parallel. Per-package test-code parent tasks modify independent directories — they MUST have different group IDs.
 
-**Constraint**: Each per-package test-code task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
+**Constraint**: Each per-package test-code parent task MUST specify its target package in the `packages` field. The description states the package scope — the executor observes actual code within that scope to determine test targets.
 
 **Constraint**: Do NOT create a single test-code task that spans all packages in a multi-package project.
+
+### Parent-then-Split Pattern (test-code)
+
+**Why**: Feature-slice granularity varies by codebase — a three-package project with one package containing five feature directories needs a 3×5 parallelism fan-out, which decompose cannot observe from the design document alone. The test-code parent, running in the plan phase, already has codebase read access (`read_file` / `list_files`) and can decide slicing against the actual directory structure.
+
+**Mechanism**: The test-code plan variant (`jobs/code/nodes/plan/variants/test-code/base.md`) prompts the parent to either:
+- Emit a single plan (no `batches[]`) — parent writes every test file itself in execute.
+- Emit a batched plan (`batches[]` with ≥2 entries) — the framework drops the parent and spawns one parallel sub-task per batch with disjoint file scopes. Each sub-task fast-paths through the plan phase and only writes the files listed in its batch.
+
+**Decompose contract**: Emit **one parent per package boundary** with a priority-700 `test-code` type. Do NOT emit `batches[]` at decompose time — the parent's plan phase owns that decision. Do NOT attempt to pre-slice within a package at decompose time.
+
+**Invariant preserved**: The Per-Package Test Splitting rule above still governs cross-package splitting (one parent per package). The parent-then-split mechanism adds a second axis (within-package feature slicing) that decompose is NOT responsible for.
 
 ---
 

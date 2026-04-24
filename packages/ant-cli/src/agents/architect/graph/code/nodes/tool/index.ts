@@ -49,6 +49,16 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // verification gate chain before emitting <done>true</done>.
       currentTaskSelfVerifyOnDone:
         (state.currentTask as any)?.selfVerifyOnDone === true ? true : undefined,
+      // Batch-split sub-tasks carry a non-empty `prePlanText` injected by
+      // `processDiagnosticBatchSplit`. Surface this as a flat flag so
+      // task-type command guards (test-code install block) can reject
+      // shared-state mutations without pulling the whole task into the
+      // common tool layer.
+      currentTaskHasPrePlanText:
+        typeof (state.currentTask as any)?.prePlanText === 'string' &&
+        ((state.currentTask as any).prePlanText as string).length > 0
+          ? true
+          : undefined,
       // T4b-β: verification cycle state is carried by `state.verification`
       // (VerificationSession). Tool handlers that need gate / install
       // information read it off the session directly via the
