@@ -371,6 +371,9 @@ importers:
       vite:
         specifier: ^5.4.21
         version: 5.4.21(@types/node@24.8.1)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@24.8.1)(jiti@1.21.7)(tsx@4.20.6)(yaml@2.8.2)
 
 packages:
 

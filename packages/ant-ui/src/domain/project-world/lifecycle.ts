@@ -7,28 +7,22 @@
  * Whenever `(selectedProject, selectedFeature)` changes, exactly one effect
  * fires and runs:
  *
- *   1. `clearGitWorld()`       — reset snapshot/pat/operation for the new
- *                                 (project, feature) pair. `operation` is
- *                                 preserved so in-flight dispatches survive
- *                                 transient identity flips.
+ *   1. `clearGitWorld()`       — reset snapshot/pat for the new (project,
+ *                                 feature) pair. `operation` is preserved so
+ *                                 in-flight dispatches survive transient
+ *                                 identity flips.
  *   2. `clearProjectConfig()`  — drop cached config so `githubRepo` reloads.
- *   3. `reconnectSSE()`        — the unified SSE stream re-subscribes to the
+ *   3. `initializeSSE()`       — re-subscribe the unified SSE stream to the
  *                                 new (project, feature). Server publishes a
  *                                 `gitState` event with `cause='reconnectRefill'`
- *                                 on open which primes git-world.
+ *                                 on connect-open, which primes git-world.
  *   4. `fetchProjectConfig()`  — populates `githubRepo` (used by GitBadge
  *                                 / GitMenu before disk state arrives).
  *   5. `fetchGitWorldState()`  — final authoritative fetch as a safety net
  *                                 in case the SSE refill event missed (eg.
- *                                 before the subscriber attached).
+ *                                 the subscriber attached after emission).
  *
- * The hook is idempotent: mounting it multiple times in the tree is a bug.
- * It must live on the app root exactly once.
- *
- * NOTE: During the greenfield migration the legacy `setSelectedProject`
- * still performs several of these side-effects inline. That is tolerated
- * because the steps are idempotent; at cutover `setSelectedProject` becomes
- * a pure setter and this hook becomes the only lifecycle driver.
+ * The hook is idempotent and MUST be mounted exactly once near the app root.
  */
 
 import { useEffect } from 'react';
@@ -44,34 +38,36 @@ export function useProjectLifecycle(opts: { enabled?: boolean } = {}): void {
   const selectedFeature = useStore((s: any) => s.selectedFeature as string | undefined);
 
   // Pull actions via getState() inside the effect so we don't re-run it on
-  // every slice re-render. This also keeps the dep list stable — only the
-  // identity (project, feature) triggers orchestration.
+  // every slice re-render. Only identity changes trigger orchestration.
   useEffect(() => {
     if (!enabled) return;
     if (!selectedProject) return;
 
     const state = useStore.getState() as any;
 
-    // (1) Reset git-world for the new identity. Operation is preserved
-    // inside clearGitWorld() by design.
+    // (1) Reset git-world for the new identity.
     try { state.clearGitWorld?.(); } catch { /* no-op */ }
 
     // (2) Drop project-config cache.
     try { state.clearProjectConfig?.(); } catch { /* no-op */ }
 
-    // (3) Reconnect SSE so the server publishes `reconnectRefill` for the
-    // new (project, feature) pair. If SSE is not yet initialized this call
-    // is a no-op; initializeSSE() will pick up the current identity.
+    // (3) Re-subscribe the unified SSE stream. `initializeSSE()` is the
+    // only writer that actually connects — `reconnectSSE(key)` is scoped to
+    // legacy kanban/chat/fileTree keys and does not recognize 'git'. We
+    // call `initializeSSE` directly here; its own guard against missing
+    // (project|feature) is respected — when a project is selected without
+    // a feature, the `setSelectedFeature` path finishes the connection.
     try {
-      state.reconnectSSE?.('git');
+      if (selectedFeature !== undefined && typeof state.initializeSSE === 'function') {
+        state.initializeSSE();
+      }
     } catch { /* no-op */ }
 
     // (4) Prime project config for the new identity.
     try { state.fetchProjectConfig?.(selectedProject); } catch { /* no-op */ }
 
-    // (5) Safety-net fetch of the authoritative git snapshot. The SSE
-    // refill event usually arrives first, but a direct fetch guarantees
-    // UI convergence if the subscriber attached late.
+    // (5) Safety-net authoritative fetch. SSE `reconnectRefill` usually
+    // wins, but the direct call guarantees convergence on slow opens.
     try {
       state.fetchGitWorldState?.(selectedProject, { feature: selectedFeature });
     } catch { /* no-op */ }

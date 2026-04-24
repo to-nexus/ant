@@ -1,10 +1,10 @@
 /**
  * project-world consumer hooks.
  *
- * Thin wrappers over the existing project slice that expose only the
- * lifecycle primitives sanctioned by the greenfield contract. All UI reads
- * flow through here so that later cutover moves from projectSlice /
- * projectConfigSlice to a dedicated slice without touching consumers.
+ * Thin wrappers over the underlying project/projectConfig slices that expose
+ * only the lifecycle primitives sanctioned by the greenfield contract. All
+ * UI reads flow through here so the slice shape (notably the AsyncFields
+ * envelope for `projectConfig`) is insulated from consumers.
  */
 
 import { useMemo } from 'react';
@@ -12,7 +12,6 @@ import { useStore } from '../store';
 import type { Feature } from '@/infrastructure/http/api';
 import {
   buildProjectKey,
-  selectGithubRepo,
   type ProjectSnapshot,
   type ProjectConfigSnapshot,
 } from './selectors';
@@ -26,8 +25,12 @@ interface ProjectWorldStoreSurface {
   setSelectedFeature: (feature: string | undefined) => void;
   fetchProjects: () => Promise<void>;
   fetchFeatures: (projectId?: string) => Promise<Feature[]>;
+  /**
+   * `projectConfig` lives on `projectConfigSlice` as an AsyncFields envelope:
+   *   { status: AsyncStatus; data: ProjectConfig | null; error; refreshing }
+   * Reads below unwrap that shape explicitly.
+   */
   projectConfig?: unknown;
-  projectConfigLoaded?: boolean;
   fetchProjectConfig?: (projectId: string) => Promise<void>;
 }
 
@@ -62,32 +65,48 @@ export function useFeatures(): ReadonlyArray<Feature> {
 }
 
 // ============================================================================
-// Project-config reads (sanctioned subset — github repo + loaded flag)
+// Project-config reads — unwrap the AsyncFields envelope into primitives and
+// re-compose inside `useMemo`. Selectors that return non-primitive objects
+// from `useStore` must not allocate inline (Zustand compares by reference);
+// reading primitives individually keeps rerender counts stable.
 // ============================================================================
 
+function useProjectConfigRaw(): {
+  data: { githubRepo?: string | null; name?: string | null; description?: string | null } | null;
+  status: string;
+} {
+  const data = useStore((s: any) => s.projectConfig?.data ?? null);
+  const status = useStore((s: any) => s.projectConfig?.status ?? 'idle');
+  return { data, status };
+}
+
+export function useProjectConfigSnapshot(): ProjectConfigSnapshot | null {
+  const githubRepo = useStore((s: any) => s.projectConfig?.data?.githubRepo ?? null);
+  const name = useStore((s: any) => s.projectConfig?.data?.name ?? null);
+  const description = useStore((s: any) => s.projectConfig?.data?.description ?? null);
+  const status = useStore((s: any) => s.projectConfig?.status ?? 'idle');
+  const hasEnvelope = useStore((s: any) => s.projectConfig != null);
+  return useMemo(() => {
+    if (!hasEnvelope) return null;
+    return {
+      githubRepo,
+      name,
+      description,
+      loaded: status === 'ready',
+    };
+  }, [githubRepo, name, description, status, hasEnvelope]);
+}
+
 /**
- * Returns a snapshot bundled for selector consumption. Useful to forward
- * into pure selectors in pages / tests without replicating access paths.
+ * Returns a snapshot bundled for selector consumption. All fields derive from
+ * primitive store reads — safe to pass into pure selectors / tests.
  */
 export function useProjectSnapshot(): ProjectSnapshot {
   const selectedProject = useSelectedProject();
   const selectedFeature = useSelectedFeature();
   const projects = useProjects();
   const features = useFeatures();
-
-  // projectConfig lives on projectConfigSlice today — we read it shallowly
-  // and normalize into `ProjectConfigSnapshot` so callers don't need to
-  // understand the legacy shape.
-  const cfg = useStore((s: any): ProjectConfigSnapshot | null => {
-    const raw = s.projectConfig;
-    if (!raw) return null;
-    return {
-      githubRepo: raw.githubRepo ?? null,
-      name: raw.name ?? null,
-      description: raw.description ?? null,
-      loaded: Boolean(s.projectConfigLoaded ?? raw),
-    };
-  });
+  const projectConfig = useProjectConfigSnapshot();
 
   return useMemo(
     () => ({
@@ -95,20 +114,25 @@ export function useProjectSnapshot(): ProjectSnapshot {
       selectedFeature,
       projects: projects as ReadonlyArray<string>,
       features: features as ReadonlyArray<Feature>,
-      projectConfig: cfg,
+      projectConfig,
     }),
-    [selectedProject, selectedFeature, projects, features, cfg],
+    [selectedProject, selectedFeature, projects, features, projectConfig],
   );
 }
 
 export function useGithubRepo(): string | null {
-  const snapshot = useProjectSnapshot();
-  return useMemo(() => selectGithubRepo(snapshot), [snapshot]);
+  // Reads through the same primitive path as `useProjectConfigSnapshot` to
+  // avoid constructing an intermediate object just for this one field.
+  return useStore((s: any) => s.projectConfig?.data?.githubRepo ?? null);
 }
 
+// Silence unused-export warning for the diagnostic helper above.
+void useProjectConfigRaw;
+
 // ============================================================================
-// Dispatch (pure setters during migration — will be the canonical writers
-// after cutover when lifecycle orchestration moves into `useProjectLifecycle`)
+// Dispatch — sanctioned writers. The underlying slice setters remain the
+// mutation entry points; `useProjectLifecycle` orchestrates side-effects on
+// `(selectedProject, selectedFeature)` transitions.
 // ============================================================================
 
 export function useProjectDispatch() {

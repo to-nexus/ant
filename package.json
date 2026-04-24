@@ -57,7 +57,8 @@
     "git:sweep": "node scripts/git-sweep.mjs",
     "typecheck:cli": "pnpm --filter @ant/cli exec tsc --noEmit",
     "typecheck:ui": "pnpm --filter @ant/ui exec tsc --noEmit",
-    "typecheck": "pnpm typecheck:cli && pnpm typecheck:ui"
+    "typecheck": "pnpm typecheck:cli && pnpm typecheck:ui",
+    "test:git": "pnpm --filter @ant/ui test:git"
   },
   "keywords": [],
   "author": "",

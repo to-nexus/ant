@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { useStore } from '@/domain/store';
-import { useGitSnapshot, useGitPatDispatch, dispatchGitOpOneShot } from '@/domain/git-world';
+import { useGitSnapshot, useGitPat, useGitPatDispatch, dispatchGitOpOneShot } from '@/domain/git-world';
 import {
   createProject, createFeature, createProjectConfig, updateProjectConfig,
   deleteProject, uploadFiles, type UploadFileEntry,
@@ -57,7 +57,9 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   const [gitUrlFromConfig, setGitUrlFromConfig] = useState(false);
   const [gitUrlManuallyEdited, setGitUrlManuallyEdited] = useState(false);
   const [gitAction, setGitAction] = useState<'none' | 'clone' | 'init'>('none');
-  const [patStatus, setPatStatus] = useState<{ configured: boolean; username?: string } | null>(null);
+  // PAT state is the git-world slice — `patStatus` is a derived value from
+  // `worldPat`, not a mirror. Only the input buffer and save-in-flight flag
+  // are local.
   const [patInput, setPatInput] = useState('');
   const [patSaving, setPatSaving] = useState(false);
   const [patError, setPatError] = useState<string | null>(null);
@@ -82,8 +84,11 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   const projects = useStore((s) => s.projects);
   const features = useStore((s) => s.features);
   const snapshot = useGitSnapshot();
-  // PAT is read via `useStore.getState().pat.data` at dispatch time. The
-  // git-world slice is primed on open via `fetchGitPat` below.
+  // PAT state flows through the git-world hook — no direct slice peeking.
+  // The slice is primed on open via `fetchGitPat` in the effect below.
+  const worldPat = useGitPat();
+  const patStatus: { configured: boolean; username?: string } | null =
+    worldPat ? { configured: worldPat.configured, username: worldPat.username } : null;
   const { fetchGitPat, savePat: savePatToWorld } = useGitPatDispatch();
   const setSelectedProject = useStore((s) => s.setSelectedProject);
   const setSelectedFeature = useStore((s) => s.setSelectedFeature);
@@ -123,38 +128,46 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     });
   }, [repositoryName, ownerInfo, gitUrlFromConfig, gitUrlManuallyEdited]);
 
+  // Prime the PAT slice + org/user config on open. `worldPat` updates
+  // flow through the next effect so the derived URL stays in sync even
+  // if the PAT arrives after this effect's microtask completes.
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
     (async () => {
-      // Prime PAT via git-world; org/user configs use direct REST (unrelated to git state).
       await fetchGitPat();
       const [orgCfg, userCfg] = await Promise.all([
         fetchOrgConfig().catch(() => ({} as any)),
         fetchUserConfig().catch(() => ({} as any)),
       ]);
       if (cancelled) return;
-      const pat = useStore.getState().pat.data ?? { configured: false };
-      setPatStatus({ configured: pat.configured, username: pat.username });
       const orgOwner = userCfg?.github?.ownerOverride || orgCfg?.github?.owner;
-      const personalOwner = pat.username;
-      setOwnerInfo({ orgOwner, personalOwner });
-
-      // Auto-compose git URL with default owner (matches ConfigEditor behavior)
-      if (pat.configured && !gitUrlFromConfig) {
-        const defaultOwner = orgOwner || personalOwner;
-        if (defaultOwner) {
-          setGitUrl((prev) => {
-            if (prev) return prev;
-            const repo = repositoryName || sanitizeRepoName(projectName) || '';
-            if (!repo) return prev;
-            return `https://github.com/${defaultOwner}/${repo}`;
-          });
-        }
-      }
+      setOwnerInfo((prev) => ({ orgOwner, personalOwner: prev.personalOwner }));
     })();
     return () => { cancelled = true; };
-  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, fetchGitPat]);
+
+  // Sync personalOwner + default git URL whenever the git-world PAT state
+  // changes (initial prime, handleSavePat success, DELETE, external SSE).
+  useEffect(() => {
+    if (!isOpen || !worldPat) return;
+    setOwnerInfo((prev) => ({ ...prev, personalOwner: worldPat.username }));
+    if (worldPat.configured && !gitUrlFromConfig) {
+      const defaultOwner = ownerInfo.orgOwner || worldPat.username;
+      if (defaultOwner) {
+        setGitUrl((prev) => {
+          if (prev) return prev;
+          const repo = repositoryName || sanitizeRepoName(projectName) || '';
+          if (!repo) return prev;
+          return `https://github.com/${defaultOwner}/${repo}`;
+        });
+      }
+    }
+    // ownerInfo.orgOwner/repositoryName/projectName are intentionally
+    // omitted — we want this effect to fire on PAT changes only; the
+    // separate effect above re-runs this block when they change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, worldPat, gitUrlFromConfig]);
 
   useEffect(() => {
     if (!existingProjectId || !isOpen) return;
@@ -248,10 +261,9 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     const result = await savePatToWorld(patInput.trim());
     setPatSaving(false);
     if (result.success) {
-      const latest = useStore.getState().pat.data;
-      setPatStatus({ configured: true, username: latest?.username });
       setPatInput(''); setShowPatInput(false);
-      if (latest?.username) setOwnerInfo((prev) => ({ ...prev, personalOwner: latest.username }));
+      // `patStatus` / `ownerInfo.personalOwner` are driven by `worldPat`
+      // via the sync effect above — no manual mirror write needed.
     } else {
       setPatError(result.error || 'Unknown error');
     }
