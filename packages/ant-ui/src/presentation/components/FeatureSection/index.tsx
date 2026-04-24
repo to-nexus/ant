@@ -173,6 +173,7 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
             hint={t('onboarding:quickstart.fleshOutIdeaHint')}
             onClick={() => setQuickStartProjectId(selectedProject)}
           />
+          {/* TEMP(action-system-compat): hide design/code CTAs until ProjectWizardModal is compatible.
           <QuickStartCTA
             variant="design"
             title={t('onboarding:quickstart.designSystem')}
@@ -185,6 +186,7 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
             hint={t('onboarding:quickstart.codeFromDesignHint')}
             onClick={() => useStore.getState().setProjectSetupConfig({ mode: 'code', existingProjectId: selectedProject })}
           />
+          */}
         </div>
       )}
       

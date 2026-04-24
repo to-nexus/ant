@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Compass, Code2, FolderPlus } from 'lucide-react';
+// TEMP(action-system-compat): Compass/Code2 icons used only by hidden design/code entries; re-add when restoring.
+import { Sparkles, FolderPlus } from 'lucide-react';
 import { Modal } from './common/Modal';
 import { useStore } from '@/domain/store';
 import { cn } from '@/shared/utils/design-system';
@@ -21,24 +22,25 @@ const PATHS = [
     iconColor: 'text-emerald-600 dark:text-emerald-400',
     hintColor: 'text-emerald-600/70 dark:text-emerald-400/70',
   },
-  {
-    id: 'design' as const,
-    icon: Compass,
-    gradient: 'from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30',
-    border: 'border-indigo-200/60 dark:border-indigo-800/40 hover:border-indigo-300 dark:hover:border-indigo-700',
-    iconBg: 'bg-indigo-100 dark:bg-indigo-900/40',
-    iconColor: 'text-indigo-500 dark:text-indigo-400',
-    hintColor: 'text-indigo-500/70 dark:text-indigo-400/60',
-  },
-  {
-    id: 'code' as const,
-    icon: Code2,
-    gradient: 'from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30',
-    border: 'border-amber-200/60 dark:border-amber-800/40 hover:border-amber-300 dark:hover:border-amber-700',
-    iconBg: 'bg-amber-100 dark:bg-amber-900/40',
-    iconColor: 'text-amber-500 dark:text-amber-400',
-    hintColor: 'text-amber-500/70 dark:text-amber-400/60',
-  },
+  // TEMP(action-system-compat): hide design/code entries until ProjectWizardModal is compatible with the new action system.
+  // {
+  //   id: 'design' as const,
+  //   icon: Compass,
+  //   gradient: 'from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30',
+  //   border: 'border-indigo-200/60 dark:border-indigo-800/40 hover:border-indigo-300 dark:hover:border-indigo-700',
+  //   iconBg: 'bg-indigo-100 dark:bg-indigo-900/40',
+  //   iconColor: 'text-indigo-500 dark:text-indigo-400',
+  //   hintColor: 'text-indigo-500/70 dark:text-indigo-400/60',
+  // },
+  // {
+  //   id: 'code' as const,
+  //   icon: Code2,
+  //   gradient: 'from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30',
+  //   border: 'border-amber-200/60 dark:border-amber-800/40 hover:border-amber-300 dark:hover:border-amber-700',
+  //   iconBg: 'bg-amber-100 dark:bg-amber-900/40',
+  //   iconColor: 'text-amber-500 dark:text-amber-400',
+  //   hintColor: 'text-amber-500/70 dark:text-amber-400/60',
+  // },
 ] as const;
 
 export function CreationWizardModal({
