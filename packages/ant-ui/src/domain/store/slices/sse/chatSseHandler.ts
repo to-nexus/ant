@@ -166,11 +166,23 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
         if (appendMessage) {
           const appendContents = [...appendMessage.contents];
           if (appendContents[event.contentIndex]) {
-            const oldContent = appendContents[event.contentIndex].content;
+            const target = appendContents[event.contentIndex];
+            const oldContent = target.content;
             const newContent = oldContent + event.delta;
 
+            // Command card type promotion: the backend transitions
+            // `command_running → command_streaming` internally when the
+            // first stdout chunk arrives, but the broadcast carries only
+            // a `delta` (no type). Promote locally so TerminalCard's
+            // auto-scroll effect — gated on `command_streaming` — starts
+            // tracking the new lines as they flow in.
+            const promotedType = target.type === 'command_running'
+              ? 'command_streaming' as const
+              : target.type;
+
             appendContents[event.contentIndex] = {
-              ...appendContents[event.contentIndex],
+              ...target,
+              type: promotedType,
               content: newContent
             };
             get().updateChatMessage(event.messageId, {

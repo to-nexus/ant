@@ -68,6 +68,8 @@
     "deleting": "Deleting...",
     "completed": "Completed",
     "running": "Running...",
+    "rejected": "Blocked",
+    "skipped": "Skipped",
     "collapseCommand": "Collapse command",
     "expandCommand": "Expand command",
     "error": "Error:",
