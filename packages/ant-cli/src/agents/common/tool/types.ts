@@ -160,6 +160,17 @@ export interface ToolExecutionContext {
    */
   currentTaskSelfVerifyOnDone?: boolean;
   /**
+   * True when the active task was spawned from a parent's batch-split
+   * (i.e. `CodeTask.prePlanText` was populated before the worker picked
+   * it up). Sub-tasks carry a pre-planned slice / fix list and MUST NOT
+   * mutate shared state that the parent already owned — specifically,
+   * test-code sub-tasks must not install dependencies (their parent did)
+   * or edit shared manifest / config files. Task-type command guards read
+   * this flag to differentiate parent vs sub behaviour without pulling
+   * `currentTask` wholesale into the common tool layer.
+   */
+  currentTaskHasPrePlanText?: boolean;
+  /**
    * Read-only handle onto the active task's `VerificationSession` (when
    * the current task is verification-typed). Command-policy hooks consult
    * the session for gate state and dependency observation status instead

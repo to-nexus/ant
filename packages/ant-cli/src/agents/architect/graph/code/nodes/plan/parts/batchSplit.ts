@@ -24,7 +24,102 @@ import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { appendTrace } from '../../../../../../../utils/verificationTrace';
 import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
 import { isVerificationTask } from '../../../tasks/verification';
-import { isErrorTask } from '../../../tasks/error';
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// BATCH_SPLIT_POLICY — per-task-type split policy map
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// Encodes the four behaviours that vary between task types so the orchestrator
+// body stays task-type-blind (R1). Each entry declares:
+//
+//   kind       — Path A (`requeue-parent`) for verification, whose identity and
+//                `_failedAttempts` budget must survive the split; Path B
+//                (`drop-and-replace`) for error / Tier 2 escalate / test-code,
+//                whose parents hand off and disappear.
+//   subType    — task type assigned to each spawned sub-task. Verification
+//                splits into 'error' fix-apply sub-tasks; error and test-code
+//                split into their own type so variant templates and task-type
+//                hooks keep matching.
+//   shape      — JSON payload written to `sub.prePlanText`. Verification /
+//                error emit the diagnostic-centric `{task, diagnostics,
+//                implementation, rootCauseSelfCheck}` form that their execute
+//                variants parse. test-code's execute variant only reads
+//                `implementation.{modify,create}`, so its shape omits diagnostic
+//                fields that would otherwise be noise.
+//   populateRemediationMode — verification/error sub-tasks carry the planMode
+//                on the task field for the error execute variant's scope-mode
+//                branches. test-code sub-tasks never consult it and the field
+//                is suppressed to avoid dead data on the task.
+//   appendFinalVerification — Path B enqueues a Final Verification when none
+//                is already queued. Verification (Path A) never enqueues a
+//                second FV because the original task re-runs.
+//
+// `isBatchSplitCandidate` below uses `!!BATCH_SPLIT_POLICY[task.type]` (plus
+// the Tier 2 escalate flag) as the gate — adding a new task-type participant
+// is a one-line policy-map addition.
+
+interface BatchPlanShapeCtx {
+  parsed: any;
+  batch: any;
+  batchIndex: number;
+  planMode: 'patch' | 'upstream' | 'refactor';
+}
+
+function diagnosticBatchShape(ctx: BatchPlanShapeCtx): string {
+  return JSON.stringify({
+    task: { id: `batch-${ctx.batchIndex}`, goal: ctx.batch.name },
+    diagnostics: ctx.parsed.diagnostics,
+    implementation: {
+      modify: ctx.batch.modify || [],
+      create: ctx.batch.create || [],
+      delete: ctx.batch.delete || [],
+    },
+    rootCauseSelfCheck: ctx.parsed.rootCauseSelfCheck ?? { mode: ctx.planMode },
+  });
+}
+
+function testCodeBatchShape(ctx: BatchPlanShapeCtx): string {
+  return JSON.stringify({
+    task: { id: `batch-${ctx.batchIndex}`, goal: ctx.batch.name },
+    slice: ctx.batch.rationale || ctx.batch.name,
+    implementation: {
+      modify: ctx.batch.modify || [],
+      create: ctx.batch.create || [],
+    },
+  });
+}
+
+type BatchSplitPolicyEntry = {
+  kind: 'requeue-parent' | 'drop-and-replace';
+  subType: CodeTask['type'];
+  shape: (ctx: BatchPlanShapeCtx) => string;
+  populateRemediationMode: boolean;
+  appendFinalVerification: boolean;
+};
+
+const BATCH_SPLIT_POLICY: Partial<Record<CodeTask['type'], BatchSplitPolicyEntry>> = {
+  verification: {
+    kind: 'requeue-parent',
+    subType: 'error',
+    shape: diagnosticBatchShape,
+    populateRemediationMode: true,
+    appendFinalVerification: false,
+  },
+  error: {
+    kind: 'drop-and-replace',
+    subType: 'error',
+    shape: diagnosticBatchShape,
+    populateRemediationMode: true,
+    appendFinalVerification: true,
+  },
+  'test-code': {
+    kind: 'drop-and-replace',
+    subType: 'test-code',
+    shape: testCodeBatchShape,
+    populateRemediationMode: false,
+    appendFinalVerification: true,
+  },
+};
 
 /**
  * Final Verification presence check. Mirrors the helper in
@@ -85,15 +180,40 @@ export function hasEmptyImplementation(planText: string | undefined): boolean {
 
 /**
  * Check whether any two batches share files in their modify/create/delete lists.
- * When overlap exists, error sub-tasks must run exclusively (sequential).
+ * When overlap exists, sub-tasks must run exclusively (sequential).
  * When no overlap, they can safely run in parallel.
+ *
+ * Accepts every entry shape the plan prompts emit:
+ *   - a bare string path,
+ *   - `{target: 'path'}`  — the error / test-code variant format,
+ *   - `{file: 'path'}`    — legacy shape retained for back-compat.
+ *
+ * Reading only `.file` would silently collapse `{target}` entries to the
+ * shared sentinel `undefined`, flagging every multi-batch `{target}`-shape
+ * plan as overlapping and forcing `exclusive: true` even on independent
+ * slices. Both keys are checked so the overlap predicate reflects actual
+ * path conflicts.
  */
 function computeBatchFileOverlap(batches: any[]): boolean {
+  const pathOf = (entry: any): string | undefined => {
+    if (typeof entry === 'string') return entry;
+    if (entry && typeof entry === 'object') return entry.target ?? entry.file;
+    return undefined;
+  };
   const extractFiles = (b: any): Set<string> => {
     const files = new Set<string>();
-    for (const m of (b.modify || [])) files.add(typeof m === 'string' ? m : m.file);
-    for (const c of (b.create || [])) files.add(typeof c === 'string' ? c : c.file);
-    for (const d of (b.delete || [])) files.add(typeof d === 'string' ? d : d);
+    for (const m of (b.modify || [])) {
+      const p = pathOf(m);
+      if (p) files.add(p);
+    }
+    for (const c of (b.create || [])) {
+      const p = pathOf(c);
+      if (p) files.add(p);
+    }
+    for (const d of (b.delete || [])) {
+      const p = pathOf(d);
+      if (p) files.add(p);
+    }
     return files;
   };
   const allFiles = batches.map(extractFiles);
@@ -150,10 +270,10 @@ export function processDiagnosticBatchSplit(
   planText: string,
   nextTask: CodeTask,
 ): string {
-  // Gate covers three populations:
-  //   1. Verification tasks (Tier 3/4 final gate) — existing path.
-  //   2. Error tasks emitted by decompose (Tier 3/4) — existing path. Error
-  //      sub-tasks produced by a previous split carry `prePlanText` and
+  // Gate covers four populations:
+  //   1. Verification tasks (Tier 3/4 final gate) — Path A (requeue-parent).
+  //   2. Error tasks emitted by decompose (Tier 3/4) — Path B (drop-and-replace).
+  //      Sub-tasks produced by a previous split carry `prePlanText` and
   //      fast-path past this function (see `plan/index.ts
   //      maybePrePlannedFastPath`); decompose-emitted error tasks fall
   //      through normal planning and may produce a multi-batch plan.
@@ -165,11 +285,15 @@ export function processDiagnosticBatchSplit(
   //      `executionTier` channel stays at 2 — this is queue-structure
   //      escalation, not a tier-channel promotion. See `.cursorrules`
   //      "Tier-Verification Alignment SSOT → Tier 2 runtime escalate".
+  //   4. Test-code parent tasks (Path B). The parent's plan tool-loop installs
+  //      test-runner deps and emits feature-slice `batches[]`. batchSplit
+  //      drops the parent and spawns N test-code sub-tasks (one per slice),
+  //      each fast-pathing through the plan phase via `prePlanText`.
   // Cascading splits are bounded by `MAX_BATCH_SPLIT_CYCLES` on the Session.
   const isTier2EscalateCandidate =
     state.executionTier === 2 && (nextTask as CodeTask).selfVerifyOnDone === true;
-  const isBatchSplitCandidate =
-    isVerificationTask(nextTask) || isErrorTask(nextTask) || isTier2EscalateCandidate;
+  const taskPolicy = BATCH_SPLIT_POLICY[nextTask.type];
+  const isBatchSplitCandidate = !!taskPolicy || isTier2EscalateCandidate;
 
   const logBatchSplit = (data: Record<string, any>) => {
     if (state.context?.featurePath && state._httpJobId) {
@@ -195,6 +319,10 @@ export function processDiagnosticBatchSplit(
     // another execute call. Without the extra fields below, an operator
     // reading `batch_split: skipped` followed immediately by
     // `task_complete` could easily mistake it for a "gave up" signal.
+    //
+    // Test-code parents that decide "no slice split necessary" legitimately
+    // fall through without emitting a short plan (they emit the full
+    // single-task plan directly), so this branch rarely fires for them.
     const isVerification = isVerificationTask(nextTask);
     const verificationComplete = state.verification?.isComplete() ?? false;
     const willPassViaShortcut = isVerification && verificationComplete;
@@ -203,6 +331,7 @@ export function processDiagnosticBatchSplit(
       reason: 'plan_too_short',
       planTextLen: planText?.length ?? 0,
       taskName: nextTask.name,
+      parentType: nextTask.type,
       isVerification,
       verificationComplete,
       nextOutcome: willPassViaShortcut
@@ -303,7 +432,9 @@ export function processDiagnosticBatchSplit(
     const hasFileOverlap = computeBatchFileOverlap(parsed.batches);
     // Each batch gets a unique parallelGroup so TaskOrchestrator can run them concurrently.
     // Batches with file overlap use exclusive:true (sequential) instead.
-    const batchGroupBase = hasFileOverlap ? null : `error-batch-${Date.now()}`;
+    // Prefix encodes the parent type for log/trace readability; sub-type may
+    // differ (e.g. verification parent → 'error' sub).
+    const batchGroupBase = hasFileOverlap ? null : `${nextTask.type}-batch-${Date.now()}`;
 
     // Phase 3-11 — carry the plan-level `rootCauseSelfCheck.mode` onto each
     // batch so the error execute variant can branch its scope rules.
@@ -326,49 +457,39 @@ export function processDiagnosticBatchSplit(
     const subTaskIds: string[] = [];
     for (let i = 0; i < parsed.batches.length; i++) {
       const batch = parsed.batches[i];
-      const batchPlanText = JSON.stringify({
-        task: { id: `batch-${i}`, goal: batch.name },
-        diagnostics: parsed.diagnostics,
-        implementation: {
-          modify: batch.modify || [],
-          create: batch.create || [],
-          delete: batch.delete || [],
-        },
-        rootCauseSelfCheck: selfCheck ?? { mode: planMode },
-      });
 
-      // Sub-task type policy:
-      //   - parent = verification (Tier 3/4 Final Verification) → sub = 'error'.
-      //     The verification plan narrows into file-level fix batches; each
-      //     batch APPLIES a diagnostic fix (that is error-task semantic).
-      //     The subsequent Final Verification re-runs gates. Keeping sub-
-      //     tasks as 'error' matches the existing Tier 3/4 contract and
-      //     avoids loading a verification execute variant that would try
-      //     to run gates instead of applying fixes.
-      //   - parent = error (Tier 3/4) → sub = 'error' (same as parent).
-      //   - parent = Tier 2 runtime escalate (feature/ui/setup/error) →
-      //     sub inherits parent.type. The execute variant / hooks must
-      //     match the work's semantic (e.g. a feature batch applies
-      //     component skeletons, not diagnostic fixes).
+      // Sub-task policy dispatch. Verification parents always split into
+      // 'error' fix-apply sub-tasks; error parents produce more 'error';
+      // test-code parents produce 'test-code' sub-tasks; Tier 2 escalate
+      // (no policy entry) inherits parent.type so the variant template
+      // and task-type hooks keep matching the work semantic.
       //
       // `selfVerifyOnDone` is intentionally NOT set on sub-tasks — gate
-      // responsibility is handed off to the verification task enqueued
-      // below (Tier 2 escalate / Tier 3/4 error drop-and-replace) or to
-      // the pre-existing Final Verification in the queue (Tier 3/4 verification).
-      const subType: CodeTask['type'] = isVerificationTask(nextTask)
-        ? 'error'
-        : nextTask.type;
+      // responsibility is handed off to the Final Verification enqueued
+      // below (Tier 2 escalate / Tier 3+ Path B) or to the pre-existing
+      // Final Verification in the queue (Tier 3/4 verification).
+      const subType: CodeTask['type'] = taskPolicy?.subType ?? nextTask.type;
+      const shape = taskPolicy?.shape ?? diagnosticBatchShape;
+      const batchPlanText = shape({ parsed, batch, batchIndex: i, planMode });
+
+      const namePrefix = subType === 'test-code' ? 'Tests' : 'Fix';
       const subTask: CodeTask = {
-        id: `${subType}-fix-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        name: `Fix: ${batch.name}`,
+        id: `${subType}-batch-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        name: `${namePrefix}: ${batch.name}`,
         description: batch.rationale || batch.name,
         type: subType,
         priority: (nextTask.priority || 500) - 1,
         prePlanText: batchPlanText,
         exclusive: hasFileOverlap,
         parallelGroup: batchGroupBase ? `${batchGroupBase}-${i}` : undefined,
-        remediationMode: planMode,
       };
+      // `remediationMode` is only meaningful to the error execute variant's
+      // scope-mode branches. test-code sub-tasks never consult it; gating on
+      // the policy flag avoids stamping the field onto tasks that would
+      // ignore it.
+      if (taskPolicy?.populateRemediationMode !== false) {
+        subTask.remediationMode = planMode;
+      }
       state.taskQueue.push(subTask);
       subTaskIds.push(subTask.id);
     }
@@ -387,35 +508,36 @@ export function processDiagnosticBatchSplit(
 
     // Branch on parent role — the two paths have different invariants:
     //
-    //   A. parent = verification (Tier 3/4 Final Verification that split
-    //      into fix batches). Historical behaviour preserved: re-enqueue
-    //      the original so its orchestrator retry budget (`_failedAttempts`)
-    //      stays attached to the same task identity. Resetting that budget
-    //      by spawning a fresh verification task is the legacy
-    //      `still-lacing-north` regression — the snapshot ships via
-    //      resumeState.verification but `_failedAttempts` must not reset.
+    //   A. requeue-parent (verification only). Historical behaviour:
+    //      re-enqueue the original so its orchestrator retry budget
+    //      (`_failedAttempts`) stays attached to the same task identity.
+    //      Resetting that budget by spawning a fresh verification task is
+    //      the legacy `still-lacing-north` regression — the snapshot ships
+    //      via `resumeState.verification` but `_failedAttempts` must not
+    //      reset.
     //
-    //   B. parent = error (Tier 3/4) or Tier 2 runtime escalate (any type
-    //      with selfVerifyOnDone). Drop the original and enqueue a
-    //      dedicated Final Verification (priority 1000). The original's
-    //      role was "apply fixes then (for Tier 2) own inline gates";
-    //      after splitting, sub-tasks apply the fixes and the Final
-    //      Verification (existing or newly-enqueued) owns gates. Keeping
-    //      the original around as an `error` task led to the
-    //      `firm-jolting-horse` regression: type=error + role=gate
-    //      produced an execute prompt that told the LLM to emit a fresh
-    //      remediation plan (having no memory of the sub-tasks' edits),
-    //      burning minutes on re-discovery before failing on plan format.
+    //   B. drop-and-replace (error / test-code / Tier 2 escalate). Drop the
+    //      original and enqueue a dedicated Final Verification (priority
+    //      1000) when `appendFinalVerification` allows. The original's role
+    //      was "apply fixes (or install+plan for test-code) then hand off";
+    //      after splitting, sub-tasks own the work and the Final Verification
+    //      (existing or newly-enqueued) owns gates. Keeping an error parent
+    //      around led to the `firm-jolting-horse` regression (type=error +
+    //      role=gate produced an execute prompt asking for a fresh
+    //      remediation plan with no memory of the sub-tasks' edits).
     //
     // Both paths capture the same Session snapshot so verification cycle
     // state (batchSplitCount / planHistory / prevDiagnostics) carries to
-    // the follow-up verification entry.
+    // the follow-up verification entry. For Path B parents without a
+    // session (e.g. test-code), `snapshotFromState` returns `undefined` and
+    // the requeue / resumeState channel is a no-op.
     const snapshot = snapshotFromState(state);
-    if (isVerificationTask(nextTask)) {
-      // Path A — preserve the original verification task's identity &
-      // retry budget. `timing` / `_failed*` are cleared because the next
-      // run starts fresh, but `_failedAttempts` is deliberately NOT reset
-      // (see still-lacing-north comment above).
+    // Tier 2 escalate candidates (no policy entry) always take Path B — their
+    // inline verification role is replaced by the enqueued Final Verification.
+    const effectiveKind: 'requeue-parent' | 'drop-and-replace' =
+      taskPolicy?.kind ?? 'drop-and-replace';
+    if (effectiveKind === 'requeue-parent') {
+      // Path A — preserve the original task's identity & retry budget.
       const requeuedTask: CodeTask = {
         ...nextTask,
         timing: undefined,
@@ -431,26 +553,29 @@ export function processDiagnosticBatchSplit(
       // completed (Tier 3/4 decompose emits one; nested splits may have
       // already enqueued), skip to avoid double-gating. `onTaskComplete`
       // on error tasks has the symmetric fallback.
-      const alreadyHasFinalVerification = hasFinalVerification(
-        state.taskQueue.getAll(),
-        [],
-        state.completedTasksDetails ?? [],
-      );
-      if (!alreadyHasFinalVerification) {
-        const techTiers: TechTier[] = [
-          state.resolvedAction?.basis?.techTier?.frontend,
-          state.resolvedAction?.basis?.techTier?.backend,
-        ].filter((t): t is TechTier => !!t);
-        const verificationTask: CodeTask = {
-          id: `final-verification-batch-split-${Date.now()}`,
-          name: `Final Verification (batch-split of "${nextTask.name}")`,
-          type: 'verification',
-          priority: TASK_PRIORITIES.FINAL_VERIFICATION,
-          description: `Verify that the batch-split sub-tasks of "${nextTask.name}" resolved the diagnosed issues.`,
-          techTiers,
-          resumeState: snapshot ?? undefined,
-        };
-        state.taskQueue.push(verificationTask);
+      const shouldAppendFV = taskPolicy?.appendFinalVerification ?? true;
+      if (shouldAppendFV) {
+        const alreadyHasFinalVerification = hasFinalVerification(
+          state.taskQueue.getAll(),
+          [],
+          state.completedTasksDetails ?? [],
+        );
+        if (!alreadyHasFinalVerification) {
+          const techTiers: TechTier[] = [
+            state.resolvedAction?.basis?.techTier?.frontend,
+            state.resolvedAction?.basis?.techTier?.backend,
+          ].filter((t): t is TechTier => !!t);
+          const verificationTask: CodeTask = {
+            id: `final-verification-batch-split-${Date.now()}`,
+            name: `Final Verification (batch-split of "${nextTask.name}")`,
+            type: 'verification',
+            priority: TASK_PRIORITIES.FINAL_VERIFICATION,
+            description: `Verify that the batch-split sub-tasks of "${nextTask.name}" resolved the diagnosed issues.`,
+            techTiers,
+            resumeState: snapshot ?? undefined,
+          };
+          state.taskQueue.push(verificationTask);
+        }
       }
     }
     // `_batchSplitRequeued` semantics: "this plan cycle is handed off to
@@ -478,6 +603,9 @@ export function processDiagnosticBatchSplit(
       subTaskIds,
       taskQueueSize: state.taskQueue.size(),
       taskName: nextTask.name,
+      parentType: nextTask.type,
+      subType: taskPolicy?.subType ?? nextTask.type,
+      kind: effectiveKind,
       hasFileOverlap,
       splitCount,
     });

@@ -17,6 +17,7 @@
 
 import { createHash } from "crypto";
 import { ArchitectGraphState } from "../../state";
+import type { CodeTask } from "../../../../types/task";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { formatViolations } from "../../utils/violationFormatter";
@@ -347,6 +348,13 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // `observeMissingDepsForTask`).
       hasMissingDependency: await observeMissingDepsForTask(state),
       antrulesContent: loadAntrules(state.context?.featurePath),
+      // `prePlanText` flags batch-split sub-tasks so per-type execute
+      // variants can branch on "spawned from a parent's `batches[]`".
+      // Currently consumed by `variants/test-code/base.md` to enforce
+      // the slice-scope constraints (no install, no manifest edits, no
+      // shared config). Non-sub-tasks leave this falsy and templates
+      // fall back to their regular scope block.
+      prePlanText: (state.currentTask as CodeTask)?.prePlanText ?? '',
       // Task-specific vars (e.g. error's remediationMode{Upstream,Refactor}).
       // Placed last so the hook's keys override generic defaults if ever
       // required; today error is the sole publisher and it only adds keys.

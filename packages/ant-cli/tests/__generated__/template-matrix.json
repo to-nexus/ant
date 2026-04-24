@@ -727,6 +727,11 @@
       "render-call"
     ]
   },
+  "jobs/code/nodes/plan/variants/test-code/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "jobs/code/nodes/plan/variants/verification/base": {
     "sources": [
       "render-call"
