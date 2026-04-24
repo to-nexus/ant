@@ -26,8 +26,9 @@ import type { Mode } from './detection';
  * Emitted by each job's Tier Entry Node (code/design: Decompose,
  * plan/visual: Detect, learn/ask: fixed 0). The LLM directly outputs
  * this value after observing mode and refs (artifacts with
- * `role='ref'`). `selectExecutionTier(...)` acts as a safety fallback
- * when the LLM output is missing or invalid.
+ * `role='ref'`). For the code job, `validateExecutionTier(...)` rejects
+ * missing or mode-forbidden values and triggers an inline retry with
+ * explicit framing — there is no silent fallback.
  *
  * Numeric values are stable and safe to serialize into feature.jsonl /
  * user_turn_meta lines; consumers should prefer the enum keys in code

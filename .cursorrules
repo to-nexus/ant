@@ -237,7 +237,9 @@ state.parsedUiDocs = value;
 
 ### Derived Channels — `state.executionTier`
 
-`state.executionTier?: ExecutionTierId` is a **derived** channel. Decompose writes it once via `selectExecutionTier(mode, complexity)` (see `core/executionTier/selectExecutionTier.ts`); downstream phase nodes access the execution tier through `getExecutionTier(state)` only.
+`state.executionTier?: ExecutionTierId` is a **derived** channel. Decompose writes it once after the LLM emits `<executionTier>N</executionTier>`; the tag is parsed by `parseExecutionTierTag` and validated by `validateExecutionTier` (see `core/executionTier/parseExecutionTierTag.ts`). Downstream phase nodes access the execution tier through `getExecutionTier(state)` only.
+
+Violations of the LLM contract (missing tag OR Tier 0 for `generate`/`refactor`) throw `ExecutionTierViolation` inside decompose's inline retry loop (max 2 retries, framing appended on each retry). This replaces the earlier silent-default-to-Reflex behavior that masked prompt drift as successful 0-task completion.
 
 ```typescript
 // ✅ Phase nodes use the facade:

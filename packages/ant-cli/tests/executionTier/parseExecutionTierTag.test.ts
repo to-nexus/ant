@@ -8,6 +8,9 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import {
   parseExecutionTierTag,
   coerceExecutionTier,
+  validateExecutionTier,
+  ExecutionTierViolation,
+  buildExecutionTierViolationFraming,
 } from '../../src/core/executionTier';
 import { ExecutionTierId } from '@ant/shared';
 
@@ -64,5 +67,101 @@ describe('coerceExecutionTier', () => {
 
   it('degrades undefined to Tier 0 Reflex (hard default)', () => {
     expect(coerceExecutionTier(undefined, 'Test')).toBe(ExecutionTierId.Reflex);
+  });
+});
+
+describe('validateExecutionTier', () => {
+  it('passes through a valid tier for any mode', () => {
+    for (const mode of ['explain', 'generate', 'refactor'] as const) {
+      expect(
+        validateExecutionTier(ExecutionTierId.OneShot, { mode, nodeLabel: 'Test' }),
+      ).toBe(ExecutionTierId.OneShot);
+      expect(
+        validateExecutionTier(ExecutionTierId.Task, { mode, nodeLabel: 'Test' }),
+      ).toBe(ExecutionTierId.Task);
+    }
+  });
+
+  it('allows Tier 0 for explain mode', () => {
+    expect(
+      validateExecutionTier(ExecutionTierId.Reflex, { mode: 'explain', nodeLabel: 'Test' }),
+    ).toBe(ExecutionTierId.Reflex);
+  });
+
+  it('throws MISSING_TAG when tier is undefined', () => {
+    const ex = () =>
+      validateExecutionTier(undefined, { mode: 'generate', nodeLabel: 'Decompose' });
+    expect(ex).toThrow(ExecutionTierViolation);
+    try {
+      ex();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ExecutionTierViolation);
+      expect((e as ExecutionTierViolation).code).toBe('MISSING_TAG');
+      expect((e as ExecutionTierViolation).nodeLabel).toBe('Decompose');
+      expect((e as ExecutionTierViolation).mode).toBe('generate');
+    }
+  });
+
+  it('throws FORBIDDEN_TIER_FOR_MODE when tier=0 for generate mode', () => {
+    try {
+      validateExecutionTier(ExecutionTierId.Reflex, {
+        mode: 'generate',
+        nodeLabel: 'Decompose',
+      });
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ExecutionTierViolation);
+      expect((e as ExecutionTierViolation).code).toBe('FORBIDDEN_TIER_FOR_MODE');
+      expect((e as ExecutionTierViolation).mode).toBe('generate');
+      expect((e as ExecutionTierViolation).observedTier).toBe(ExecutionTierId.Reflex);
+    }
+  });
+
+  it('throws FORBIDDEN_TIER_FOR_MODE when tier=0 for refactor mode', () => {
+    try {
+      validateExecutionTier(ExecutionTierId.Reflex, {
+        mode: 'refactor',
+        nodeLabel: 'Decompose',
+      });
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect((e as ExecutionTierViolation).code).toBe('FORBIDDEN_TIER_FOR_MODE');
+      expect((e as ExecutionTierViolation).mode).toBe('refactor');
+    }
+  });
+
+  it('MISSING_TAG precedence wins over mode — undefined throws MISSING_TAG even for forbidden mode', () => {
+    try {
+      validateExecutionTier(undefined, { mode: 'refactor', nodeLabel: 'Decompose' });
+      expect.fail('should have thrown');
+    } catch (e) {
+      expect((e as ExecutionTierViolation).code).toBe('MISSING_TAG');
+    }
+  });
+});
+
+describe('buildExecutionTierViolationFraming', () => {
+  it('produces a MISSING_TAG-specific retry message', () => {
+    const v = new ExecutionTierViolation('MISSING_TAG', {
+      nodeLabel: 'Decompose',
+      mode: 'refactor',
+    });
+    const framing = buildExecutionTierViolationFraming(v);
+    expect(framing).toContain('omitted');
+    expect(framing).toContain('<executionTier>');
+    expect(framing).toContain('EXACTLY ONE');
+  });
+
+  it('produces a FORBIDDEN_TIER-specific retry message with mode', () => {
+    const v = new ExecutionTierViolation('FORBIDDEN_TIER_FOR_MODE', {
+      nodeLabel: 'Decompose',
+      mode: 'refactor',
+      observedTier: ExecutionTierId.Reflex,
+    });
+    const framing = buildExecutionTierViolationFraming(v);
+    expect(framing).toContain('FORBIDDEN');
+    expect(framing).toContain('refactor');
+    expect(framing).toContain('explain');
+    expect(framing).toMatch(/\bTier\s*1\b|<executionTier>1<\/executionTier>/);
   });
 });

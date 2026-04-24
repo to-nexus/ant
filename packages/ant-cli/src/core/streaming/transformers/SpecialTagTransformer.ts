@@ -384,7 +384,15 @@ export class SpecialTagTransformer {
 
       const phase: RACFormatPhase = parsed.phase === 'decompose-final' ? 'decompose-final' : 'detect';
       const formatted = formatRACForChat(rac, reasoning, language, phase);
-      return { text: formatted, consumed: true };
+
+      // Append execution-tier line (decompose-final carries the final
+      // classification that steers direct-vs-task routing). Surfacing it
+      // in the chat UI — not just server logs — makes it obvious which
+      // path the job took; operators investigating a "no changes made"
+      // outcome can now see Tier 0/1 at a glance. See plan §H.
+      const tierLine = buildExecutionTierLine(parsed.executionTier, language);
+
+      return { text: formatted + tierLine, consumed: true };
 
     } catch (error) {
       console.warn('[SpecialTagTransformer] Failed to parse detect tag:', error);
@@ -407,18 +415,44 @@ export class SpecialTagTransformer {
     const tierId = Number.isInteger(n) && n >= 0 && n <= 4
       ? (n as 0 | 1 | 2 | 3 | 4)
       : coerceExecutionTier(undefined, 'SpecialTagTransformer');
-
-    const label = EXECUTION_TIER_LABELS[tierId];
-    const isKorean = language === 'ko';
-    const header = isKorean
-      ? `\n🎯 **실행 전략**: Tier ${tierId} · ${label.short[language] || label.short.en}\n`
-      : `\n🎯 **Execution Strategy**: Tier ${tierId} · ${label.short[language] || label.short.en}\n`;
-    const desc = label.description[language] || label.description.en;
     return {
-      text: `${header}   └ ${desc}\n\n`,
+      text: renderExecutionTier(tierId, language),
       consumed: true,
     };
   }
 
+}
+
+/**
+ * Build the execution-tier line appended to `<detect>` output.
+ * Returns an empty string when the payload carries no tier (detect phase
+ * without decompose-final classification).
+ */
+function buildExecutionTierLine(
+  raw: unknown,
+  language: UserLanguage,
+): string {
+  if (raw === undefined || raw === null) return '';
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 4) return '';
+  return renderExecutionTier(n as 0 | 1 | 2 | 3 | 4, language);
+}
+
+/**
+ * Canonical rendering for a tier id — shared between the standalone
+ * `<executionTier>` transformer and the `<detect>` payload appendage so
+ * both surfaces use identical wording.
+ */
+function renderExecutionTier(
+  tierId: 0 | 1 | 2 | 3 | 4,
+  language: UserLanguage,
+): string {
+  const label = EXECUTION_TIER_LABELS[tierId];
+  const isKorean = language === 'ko';
+  const header = isKorean
+    ? `\n🎯 **실행 전략**: Tier ${tierId} · ${label.short[language] || label.short.en}\n`
+    : `\n🎯 **Execution Strategy**: Tier ${tierId} · ${label.short[language] || label.short.en}\n`;
+  const desc = label.description[language] || label.description.en;
+  return `${header}   └ ${desc}\n\n`;
 }
 

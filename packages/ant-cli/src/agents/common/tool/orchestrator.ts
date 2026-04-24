@@ -157,7 +157,18 @@ export class ToolOrchestrator {
         }
       }
 
-      console.log(`✅ [Tool] ${name} executed successfully`);
+      // Log success/failure based on the actual result.error field. Handlers
+      // convert runtime errors (e.g. ENOENT on a missing native binary) into
+      // ToolResult with `error` set and a user-facing message in `content`;
+      // logging "successfully" for these cases hid critical failures such as
+      // ripgrep postinstall skip (see `searchCode` ENOENT handling).
+      if (truncatedResult.error) {
+        console.warn(
+          `⚠️  [Tool] ${name} returned error: ${truncatedResult.error.substring(0, 200)}`,
+        );
+      } else {
+        console.log(`✅ [Tool] ${name} executed successfully`);
+      }
 
       events.push({
         toolCallId: id,

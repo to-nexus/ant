@@ -260,9 +260,11 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       console.log(`📋 [Decompose] Boundary classification: ${boundary}`);
     }
 
-    // ExecutionTier classification (LLM-judged, 5-tier SSOT). Caller
-    // runs coerceExecutionTier which logs + degrades on missing tag, so
-    // we stay silent here.
+    // ExecutionTier classification (LLM-judged, 5-tier SSOT). The caller
+    // (`decompose/index.ts`) runs `validateExecutionTier` inside a retry
+    // loop; missing tag OR Tier 0 for generate/refactor throws
+    // `ExecutionTierViolation` and is retried with framing. We stay
+    // silent here on undefined — the retry loop emits its own diagnostic.
     const executionTier = parseExecutionTierTag(rawResponse);
     if (executionTier !== undefined) {
       console.log(`🧭 [Decompose] ExecutionTier: ${executionTier}`);
@@ -343,9 +345,12 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
  *     before this function is invoked; receiving a non-empty task list at these
  *     tiers is a contract violation from the caller, not this function's concern.
  *
- * `executionTier` is REQUIRED. `decompose/index.ts` always passes the value from
- * `coerceExecutionTier`, which defaults the Tier 0 Reflex on a missing LLM tag.
- * There is no pre-alignment legacy caller that omits the argument.
+ * `executionTier` is REQUIRED. `decompose/index.ts` always passes the value
+ * returned by `validateExecutionTier`, which throws `ExecutionTierViolation`
+ * on a missing LLM tag OR on Tier 0 for generate/refactor modes (retry loop
+ * re-issues the call with violation-specific framing). There is no silent
+ * fallback to Tier 0 Reflex — that legacy path was removed because it
+ * masked prompt drift as a no-op "success".
  *
  * `error/hooks/orchestrator.ts::onTaskComplete` still auto-enqueues a Final
  * Verification (downgraded to defense-in-depth) when decompose failed to emit
