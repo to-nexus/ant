@@ -16,7 +16,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, X } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { useGitOperation, useGitDispatch } from '../../domain/git-world';
 import type {
   GitSuggestedAction,
@@ -81,7 +82,7 @@ export function OperationProgress({
     const label = OP_LABELS[op.op.kind] ?? op.op.kind;
     return (
       <div className="flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/40 dark:text-blue-200">
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Spinner size="md" tone="accent" />
         <span>{label}…</span>
         {elapsed > 10_000 && (
           <span className="ml-auto text-xs text-blue-700 dark:text-blue-300">
