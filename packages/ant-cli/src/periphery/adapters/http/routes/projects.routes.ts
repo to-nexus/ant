@@ -11,7 +11,7 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { validateBody, createProjectSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 import { GitOperationError } from '../services/GitService/errors';
-import type { GitChangeBroadcaster } from '../../../../core/realtime/GitChangeBroadcaster';
+import type { GitStateBroadcaster } from '../../../../core/realtime/GitStateBroadcaster';
 
 function handleGitError(res: Response, error: any, context: string, projectId: string) {
   const message = error instanceof Error ? error.message : String(error);
@@ -76,7 +76,7 @@ function isGitUserOpKind(kind: string): kind is GitUserOperationKind {
 export function createProjectsRoutes(deps: {
   projectService: ProjectService;
   gitWatcherService?: { retryDeferredWatchers(projectId: string): void };
-  gitStateBroadcaster?: GitChangeBroadcaster;
+  gitStateBroadcaster?: GitStateBroadcaster;
 }): Router {
   const router = Router();
   
@@ -225,197 +225,17 @@ export function createProjectsRoutes(deps: {
     }
   });
   
-  // Clone GitHub repository
-  // Uses chunked streaming with keep-alive heartbeat to survive proxy idle timeouts (e.g. AWS ALB 60s).
-  router.post('/projects/:id/clone', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    let userContext;
-    try {
-      userContext = extractUserContext(req);
-    } catch (error: any) {
-      return handleGitError(res, error, 'Clone', projectId);
-    }
-
-    logger.info(`Clone request`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-
-    res.setHeader('Content-Type', 'application/json');
-    const heartbeat = setInterval(() => res.write(' '), 15000);
-    try {
-      const result = await deps.projectService.cloneGitHubRepo(projectId, userContext);
-      clearInterval(heartbeat);
-      res.end(JSON.stringify({ success: true, message: 'Repository cloned successfully', warnings: result.warnings }));
-      try { deps.gitWatcherService?.retryDeferredWatchers(projectId); } catch { /* best-effort */ }
-    } catch (error: any) {
-      clearInterval(heartbeat);
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn(`Clone failed: ${message}`, { component: 'Projects', projectId }, error);
-      res.end(JSON.stringify({ success: false, error: message }));
-    }
-  });
-  
-  // Check clone status
+  // Clone status polling — bridges the gap for callers that kick off a
+  // clone and need to confirm the working tree has materialized. The
+  // actual clone dispatch lives at `POST /projects/:id/git/ops/clone`.
   router.get('/projects/:id/clone/status', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
-      
       const cloned = await deps.projectService.checkCloneStatus(projectId, userContext);
       res.json({ cloned });
     } catch (error: any) {
       handleGitError(res, error, 'Clone status check', projectId);
-    }
-  });
-  
-  // Initialize GitHub repository (create new repo and push)
-  // Uses chunked streaming with keep-alive heartbeat to survive proxy idle timeouts (e.g. AWS ALB 60s).
-  router.post('/projects/:id/initialize', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    let userContext;
-    try {
-      userContext = extractUserContext(req);
-    } catch (error: any) {
-      return handleGitError(res, error, 'Initialize', projectId);
-    }
-
-    logger.info(`Initializing GitHub repo`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-
-    res.setHeader('Content-Type', 'application/json');
-    const heartbeat = setInterval(() => res.write(' '), 15000);
-    try {
-      const { activeFeature } = req.body || {};
-      const result = await deps.projectService.initializeGitHubRepo(projectId, userContext, activeFeature);
-      clearInterval(heartbeat);
-      res.end(JSON.stringify({ success: true, message: 'Repository initialized and pushed successfully', warnings: result.warnings }));
-      try { deps.gitWatcherService?.retryDeferredWatchers(projectId); } catch { /* best-effort */ }
-    } catch (error: any) {
-      clearInterval(heartbeat);
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn(`Initialize failed: ${message}`, { component: 'Projects', projectId }, error);
-      res.end(JSON.stringify({ success: false, error: message }));
-    }
-  });
-
-  // Push to GitHub
-  router.post('/projects/:id/push', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
-      const featureName = typeof req.body?.feature === 'string' ? req.body.feature : undefined;
-      
-      logger.info(`Pushing to GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
-      await deps.projectService.pushToGitHub(projectId, userContext, featureName);
-      res.json({ success: true, message: 'Changes pushed successfully' });
-    } catch (error: any) {
-      handleGitError(res, error, 'Push', projectId);
-    }
-  });
-
-  // Pull from GitHub
-  router.post('/projects/:id/pull', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
-      const featureName = typeof req.body?.feature === 'string' ? req.body.feature : undefined;
-      
-      logger.info(`Pulling from GitHub`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
-      await deps.projectService.pullFromGitHub(projectId, userContext, featureName);
-      res.json({ success: true, message: 'Changes pulled successfully' });
-    } catch (error: any) {
-      handleGitError(res, error, 'Pull', projectId);
-    }
-  });
-
-  // Fetch from GitHub
-  router.post('/projects/:id/fetch', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
-      const featureName = typeof req.body?.feature === 'string' ? req.body.feature : undefined;
-      
-      logger.info(`Fetching from GitHub (feature: ${featureName || 'all'})`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
-      await deps.projectService.fetchFromGitHub(projectId, userContext, featureName);
-      res.json({ success: true, message: 'Remote refs updated successfully' });
-    } catch (error: any) {
-      handleGitError(res, error, 'Fetch', projectId);
-    }
-  });
-
-  // Get Git status
-  router.get('/projects/:id/git/status', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
-      const featureName = req.query.feature as string | undefined;
-      
-      const status = await deps.projectService.getGitStatus(projectId, userContext, featureName);
-      res.json(status);
-    } catch (error: any) {
-      handleGitError(res, error, 'Git status', projectId);
-    }
-  });
-
-  // Get Git changes
-  router.get('/projects/:id/git/changes', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
-      const featureName = req.query.feature as string | undefined;
-      
-      const changes = await deps.projectService.getGitChanges(projectId, userContext, featureName);
-      res.json(changes);
-    } catch (error: any) {
-      handleGitError(res, error, 'Git changes', projectId);
-    }
-  });
-
-  // Commit changes
-  router.post('/projects/:id/git/commit', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
-      const { message, feature: featureName, files } = req.body;
-      
-      logger.info(`Committing changes`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
-      const result = await deps.projectService.commitChanges(projectId, userContext, message, featureName, files);
-      res.json(result);
-    } catch (error: any) {
-      handleGitError(res, error, 'Commit', projectId);
-    }
-  });
-
-  // Discard changes
-  router.post('/projects/:id/git/discard', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
-      const { feature: featureName, files } = req.body || {};
-      
-      logger.info(`Discarding changes`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
-      const result = await deps.projectService.discardChanges(projectId, userContext, featureName, files);
-      res.json(result);
-    } catch (error: any) {
-      handleGitError(res, error, 'Discard', projectId);
-    }
-  });
-
-  // Sync with remote (pull then push)
-  router.post('/projects/:id/git/sync', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    try {
-      const userContext = extractUserContext(req);
-      const featureName = typeof req.body?.feature === 'string' ? req.body.feature : undefined;
-      
-      logger.info(`Syncing with remote`, { component: 'Projects', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
-      const result = await deps.projectService.syncWithRemote(projectId, userContext, featureName);
-      res.json(result);
-    } catch (error: any) {
-      handleGitError(res, error, 'Sync', projectId);
     }
   });
 

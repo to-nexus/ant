@@ -1,5 +1,5 @@
 /**
- * GitChangeBroadcaster (→ GitStateBroadcaster at cutover)
+ * GitStateBroadcaster (→ GitStateBroadcaster at cutover)
  *
  * Single publish path for `gitState` SSE events. Replaces the raw
  * `stateStore.publish` call previously issued from GitWatcherService, so
@@ -8,20 +8,20 @@
  * Three publish methods (all emit the same `gitState` SSE event type with
  * distinct discriminated-union payloads keyed by `cause`):
  *
- *   1. {@link GitChangeBroadcaster.notifyWorkingTreeChange}
+ *   1. {@link GitStateBroadcaster.notifyWorkingTreeChange}
  *        `cause='workingTreeChange'` — lightweight hint (project/feature/
  *        timestamp only). Fired by {@link FileTreeBroadcaster} co-emit and
  *        by `GitWatcherService` `.git/index` polling. FE reacts with a
  *        debounced light-weight refresh. Cost is identical to the legacy
  *        gitChange event (no snapshot computed).
  *
- *   2. {@link GitChangeBroadcaster.notifyOperationComplete}
+ *   2. {@link GitStateBroadcaster.notifyOperationComplete}
  *        `cause='operationComplete'` — full snapshot + operation FSM + PAT
  *        state. Fired by {@link GitOperation.onSuccess} for every
  *        user-initiated operation. Drives snapshot replacement and the
  *        success transition of the operation FSM.
  *
- *   3. {@link GitChangeBroadcaster.notifyReconnectRefill}
+ *   3. {@link GitStateBroadcaster.notifyReconnectRefill}
  *        `cause='reconnectRefill'` — full snapshot + PAT state. Fired when
  *        a user SSE subscription (re)opens so a reloaded browser tab never
  *        sees a stale UI even before the first user action.
@@ -59,7 +59,7 @@ export type GitChangePublisher = (
   payload: unknown
 ) => Promise<unknown>;
 
-export interface GitChangeBroadcasterOptions {
+export interface GitStateBroadcasterOptions {
   publisher: GitChangePublisher;
   /** Captured userContext. Optional — can be overridden per-call. */
   userContext?: UserContext;
@@ -70,12 +70,12 @@ export interface GitChangeBroadcasterOptions {
   ownedRedis?: Redis;
 }
 
-export class GitChangeBroadcaster {
+export class GitStateBroadcaster {
   private readonly publisher: GitChangePublisher;
   private readonly userContext?: UserContext;
   private readonly ownedRedis?: Redis;
 
-  constructor(options: GitChangeBroadcasterOptions | BroadcasterOptions) {
+  constructor(options: GitStateBroadcasterOptions | BroadcasterOptions) {
     if ('publisher' in options) {
       this.publisher = options.publisher;
       this.userContext = options.userContext;
@@ -93,10 +93,10 @@ export class GitChangeBroadcaster {
       retryStrategy: (times: number) => Math.min(times * 100, 3000),
     });
     redis.on('error', (err) =>
-      console.error(`❌ [GitChangeBroadcaster] pubRedis error:`, err.message)
+      console.error(`❌ [GitStateBroadcaster] pubRedis error:`, err.message)
     );
     redis.on('ready', () =>
-      console.log(`🟢 [GitChangeBroadcaster] pubRedis ready`)
+      console.log(`🟢 [GitStateBroadcaster] pubRedis ready`)
     );
 
     this.publisher = async (channel, payload) =>
@@ -176,19 +176,6 @@ export class GitChangeBroadcaster {
     await this.publishGitState(projectId, featureName ?? '', payload, userContext);
   }
 
-  /**
-   * @deprecated Use {@link GitChangeBroadcaster.notifyWorkingTreeChange}.
-   * Retained during the greenfield migration window so callers
-   * unaffected by the upgrade keep compiling.
-   */
-  async notifyGitChange(
-    projectId: string,
-    featureName: string,
-    userContext?: UserContext
-  ): Promise<void> {
-    return this.notifyWorkingTreeChange(projectId, featureName, userContext);
-  }
-
   private async publishGitState(
     projectId: string,
     featureName: string,
@@ -214,7 +201,7 @@ export class GitChangeBroadcaster {
       await this.publisher(channel, message);
     } catch (error: any) {
       console.warn(
-        `[GitChangeBroadcaster] Failed to publish gitState (${data.cause}):`,
+        `[GitStateBroadcaster] Failed to publish gitState (${data.cause}):`,
         error?.message ?? error
       );
     }

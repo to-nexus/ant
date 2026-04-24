@@ -3,30 +3,30 @@ import * as path from 'path';
 import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../core/types/user';
 import { logger } from '../../../../utils/logger';
-import { GitChangeBroadcaster } from '../../../../core/realtime/GitChangeBroadcaster';
+import { GitStateBroadcaster } from '../../../../core/realtime/GitStateBroadcaster';
 
 /**
  * GitWatcherService
  * 
  * Watches .git/index file for changes to detect Git operations.
  * Supports both regular repos (.git directory) and worktrees (.git file with gitdir pointer).
- * Emits git change events through GitChangeBroadcaster (the single publish
+ * Emits git change events through GitStateBroadcaster (the single publish
  * path — FileTreeBroadcaster co-emits through the same class for non-index
  * working-tree mutations during jobs).
  */
 export class GitWatcherService {
   private readonly workspaceResolver?: WorkspaceResolver;
-  private readonly gitChangeBroadcaster?: GitChangeBroadcaster;
+  private readonly gitStateBroadcaster?: GitStateBroadcaster;
 
   private gitWatchers: Map<string, NodeJS.Timeout> = new Map();
   private deferredWatchers: Map<string, { projectId: string; featureName: string; userContext: UserContext }> = new Map();
 
   constructor(
     workspaceResolver?: WorkspaceResolver,
-    gitChangeBroadcaster?: GitChangeBroadcaster
+    gitStateBroadcaster?: GitStateBroadcaster
   ) {
     this.workspaceResolver = workspaceResolver;
-    this.gitChangeBroadcaster = gitChangeBroadcaster;
+    this.gitStateBroadcaster = gitStateBroadcaster;
   }
   
   private makeKey(userContext: UserContext, projectId: string, featureName: string): string {
@@ -108,11 +108,12 @@ export class GitWatcherService {
 
           logger.debug(`Git changes detected for ${key}`, { component: 'GitWatcher', projectId, featureName });
 
-          // Delegate all gitChange publishing to the broadcaster so the
-          // transport (Redis Pub/Sub / StateStorePort) is decoupled from
-          // this service. userContext is per-watcher, so we pass it
-          // explicitly instead of relying on the broadcaster's default.
-          await this.gitChangeBroadcaster?.notifyGitChange(
+          // Delegate publishing to the broadcaster so the transport
+          // (Redis Pub/Sub / StateStorePort) is decoupled from this service.
+          // `notifyWorkingTreeChange` emits the unified `gitState` event
+          // with `cause='workingTreeChange'`. userContext is per-watcher,
+          // passed explicitly instead of relying on the broadcaster default.
+          await this.gitStateBroadcaster?.notifyWorkingTreeChange(
             projectId,
             featureName,
             userContext

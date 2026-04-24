@@ -1,6 +1,4 @@
 import type {
-  GitStatusResponse,
-  GitChangesResponse,
   GitSnapshot,
   GitPatState,
   GitUserOperation,
@@ -9,7 +7,7 @@ import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResol
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
-import { GitChangeBroadcaster } from '../../../../../core/realtime/GitChangeBroadcaster';
+import { GitStateBroadcaster } from '../../../../../core/realtime/GitStateBroadcaster';
 import { StatusService } from './status';
 import { RemoteService } from './remote';
 import { IndexService } from './indexing';
@@ -105,7 +103,7 @@ export class GitService {
   resolveOperation(
     kind: GitUserOperation['kind'],
     opts: {
-      broadcaster?: GitChangeBroadcaster;
+      broadcaster?: GitStateBroadcaster;
       watcher?: GitWatcherRetryPort;
     } = {},
   ): GitOperation<any, any> | null {
@@ -129,78 +127,12 @@ export class GitService {
   }
 
   // =====================================
-  // Legacy Status Operations
+  // Clone status probe — retained for the Wizard's "clone has materialized"
+  // polling helper at `GET /projects/:id/clone/status`.
   // =====================================
-
-  async getGitStatus(
-    projectId: string,
-    userContext: UserContext,
-    featureName?: string,
-  ): Promise<GitStatusResponse> {
-    return this.status.getGitStatus(projectId, userContext, featureName);
-  }
-
-  async getGitChanges(
-    projectId: string,
-    userContext: UserContext,
-    featureName?: string,
-  ): Promise<GitChangesResponse> {
-    return this.status.getGitChanges(projectId, userContext, featureName);
-  }
 
   async checkCloneStatus(projectId: string, userContext: UserContext): Promise<boolean> {
     return this.status.checkCloneStatus(projectId, userContext);
-  }
-
-  // =====================================
-  // Legacy Remote Operations
-  // =====================================
-
-  async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
-    return this.remote.cloneGitHubRepo(projectId, userContext);
-  }
-
-  async initializeGitHubRepo(projectId: string, userContext: UserContext, activeFeature?: string): Promise<{ warnings?: string[] }> {
-    return this.remote.initializeGitHubRepo(projectId, userContext, activeFeature);
-  }
-
-  async pushToGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
-    return this.remote.pushToGitHub(projectId, userContext, featureName);
-  }
-
-  async pullFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
-    return this.remote.pullFromGitHub(projectId, userContext, featureName);
-  }
-
-  async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
-    return this.remote.fetchFromGitHub(projectId, userContext, featureName);
-  }
-
-  async syncWithRemote(projectId: string, userContext: UserContext, featureName?: string): Promise<{
-    success: boolean;
-    pulledChanges?: boolean;
-    pushedChanges?: boolean;
-  }> {
-    return this.remote.syncWithRemote(projectId, userContext, featureName);
-  }
-
-  async commitChanges(
-    projectId: string,
-    userContext: UserContext,
-    message?: string,
-    featureName?: string,
-    files?: string[]
-  ): Promise<{ success: boolean; commitHash?: string }> {
-    return this.remote.commitChanges(projectId, userContext, message, featureName, files);
-  }
-
-  async discardChanges(
-    projectId: string,
-    userContext: UserContext,
-    featureName?: string,
-    files?: string[]
-  ): Promise<{ success: boolean; discardedFiles: number }> {
-    return this.remote.discardChanges(projectId, userContext, featureName, files);
   }
 
   // =====================================

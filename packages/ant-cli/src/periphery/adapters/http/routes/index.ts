@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { GitHubAuthService } from '../../auth/GitHubAuthService';
 import { ChoiceService } from '../../../../infrastructure/choice';
+import { ensureCanonicalFeatureMiddleware } from '../middleware/ensureCanonicalFeature';
 import { createHealthRoutes } from './health.routes';
 import { createProjectsRoutes } from './projects.routes';
 import { createFeaturesRoutes } from './features.routes';
@@ -40,7 +41,7 @@ export interface RoutesDeps {
   transferService?: any;  // ArtifactTransferService for transfer operations
   stateStore?: any;  // RedisStateStore for transfer state management
   gitWatcherService?: any;  // GitWatcherService for retrying deferred watchers after init/clone
-  gitStateBroadcaster?: any;  // GitChangeBroadcaster for publishing `gitState` SSE events (will be renamed GitStateBroadcaster at cutover)
+  gitStateBroadcaster?: any;  // GitStateBroadcaster for publishing `gitState` SSE events (will be renamed GitStateBroadcaster at cutover)
 }
 
 /**
@@ -49,7 +50,15 @@ export interface RoutesDeps {
  */
 export function createApiRoutes(deps: RoutesDeps): Router {
   const router = Router();
-  
+
+  // SSOT access-boundary self-heal: any request targeting a feature-scoped URL
+  // (/projects/:id/features/:feature/* or /figma/config/:projectId/:featureName/*)
+  // reconciles canonical directory + file structure before the handler runs.
+  // See middleware/ensureCanonicalFeature.ts for the URL pattern set.
+  if (deps.workspaceResolver) {
+    router.use(ensureCanonicalFeatureMiddleware(deps.workspaceResolver));
+  }
+
   // Health & system endpoints
   router.use(createHealthRoutes());
   

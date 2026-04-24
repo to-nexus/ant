@@ -102,27 +102,16 @@ export const createProjectSlice: StateCreator<
       if (state.setFileTree) state.setFileTree([]);
       if (state.resetCurrentFile) state.resetCurrentFile();
       if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
-      // Scrub Git / project config SSOT so the old project's data can't
-      // flash into the next project's UI. Re-fetch is driven by useGitRefresh.
-      if (state.clearGitState) state.clearGitState();
+      // Scrub project config. git-world reset is driven by `useProjectLifecycle`
+      // which observes `(selectedProject, selectedFeature)` transitions.
       if (state.clearProjectConfig) state.clearProjectConfig();
-      
+
       removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
       removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
     } else {
       sseManager.disconnectAll();
-      
-      // ✅ Check if we need to restore last feature
-      const projectFeatures = loadFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES) || {};
-      const lastFeature = projectFeatures[projectId];
-      const needsRestore = lastFeature !== undefined;
-      
-      if (needsRestore) {
-        console.log(`[Store] 🚀 Starting restore for ${projectId}, expected feature: ${lastFeature || 'undefined (base)'}`);
-        get().startSessionRestore(lastFeature);
-      }
-      
-      set({ 
+
+      set({
         selectedProject: projectId,
         selectedFeature: undefined,
         features: [],
@@ -143,74 +132,18 @@ export const createProjectSlice: StateCreator<
       if (state.setFileTree) state.setFileTree([]);
       if (state.resetCurrentFile) state.resetCurrentFile();
       if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
-      // Scrub previous project's Git state so `deriveGitMenuState` sees
-      // `{kind: 'loading'}` until the new project's data arrives. Re-fetch
-      // is driven by the useGitRefresh application hook.
-      if (state.clearGitState) state.clearGitState();
+      // Drop the cached project config; `useProjectLifecycle` (mounted at
+      // the app root) resets git-world state, reconnects SSE, and primes
+      // the new project's config/snapshot.
       if (state.clearProjectConfig) state.clearProjectConfig();
-      // Kick off project config fetch (was previously a local effect inside
-      // ProjectSection). This populates `githubRepo` which deriveGitMenuState
-      // uses as a gate.
-      if (state.fetchProjectConfig) state.fetchProjectConfig(projectId);
 
       saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
-      
-      // Fetch features list (async, non-blocking)
+
+      // Fetch features list (async, non-blocking). Feature restoration
+      // lives in `useSessionLoader` — the only sanctioned place that polls
+      // for features and calls `completeSessionRestore`. See
+      // `src/application/hooks/ui/useSessionLoader.ts`.
       get().fetchFeatures(projectId);
-      
-      // ✅ Restore last selected feature for this project (if exists)
-      if (needsRestore) {
-        console.log(`[Store] 🔄 Will restore last feature for ${projectId}: ${lastFeature || 'undefined (base)'}`);
-        
-        // Wait for features to load, then set the feature
-        const maxAttempts = 50;
-        let attempts = 0;
-        
-        const pollForFeatures = setInterval(() => {
-          const currentState = get() as any;
-          const currentFeatures = currentState.features;
-          
-          if (attempts >= maxAttempts) {
-            console.warn('[Store] ⚠️ Feature restore timeout');
-            clearInterval(pollForFeatures);
-            currentState.setSelectedFeature(undefined);
-            currentState.completeSessionRestore();
-            return;
-          }
-          
-          // Check if features loaded
-          const featuresLoaded = currentFeatures.length > 0 || lastFeature === undefined;
-          
-          if (featuresLoaded) {
-            clearInterval(pollForFeatures);
-            
-            if (lastFeature === undefined) {
-              // Restore to base branch
-              console.log('[Store] ✅ Restoring to base branch (undefined)');
-              currentState.setSelectedFeature(undefined);
-              currentState.completeSessionRestore();
-            } else {
-              // Check if feature exists
-              const featureExists = currentFeatures.some((f: any) => f.name === lastFeature);
-              if (featureExists) {
-                console.log(`[Store] ✅ Restoring feature: ${lastFeature}`);
-                currentState.setSelectedFeature(lastFeature);
-                currentState.completeSessionRestore();
-              } else {
-                console.warn(`[Store] ⚠️ Last feature "${lastFeature}" not found, staying on undefined`);
-                currentState.setSelectedFeature(undefined);
-                currentState.completeSessionRestore();
-              }
-            }
-          }
-          
-          attempts++;
-        }, 100);
-      } else {
-        console.log(`[Store] ℹ️ No last feature found for ${projectId}, selectedFeature cleared`);
-        // ✅ Feature already cleared above via set({ selectedFeature: undefined })
-        // No additional action needed
-      }
     }
   },
 
@@ -243,11 +176,8 @@ export const createProjectSlice: StateCreator<
     if (state.setFileTree) state.setFileTree([]);
     if (state.resetCurrentFile) state.resetCurrentFile();
     if (state.setUnseenArtifacts) state.setUnseenArtifacts([]);
-    // Drop the outgoing feature's git state so the next feature enters
-    // `{kind: 'loading'}` instead of showing stale commit/push counts. The
-    // useGitRefresh application hook sees the new selectedFeature and
-    // triggers `fetchGitAll` + `fetchFromRemote`.
-    if (state.clearGitState) state.clearGitState();
+    // git-world reset is driven by `useProjectLifecycle` which observes
+    // `selectedFeature` transitions (this setter is just the identity flip).
     if (state.setRunning) {
       // Only update isRunning flag, don't call full setRunning
       set({ isRunning: newFeatureIsRunning } as any);

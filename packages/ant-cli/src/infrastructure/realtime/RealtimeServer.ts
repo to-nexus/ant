@@ -28,7 +28,7 @@ import {
   WorkflowStateService,
   GitWatcherService
 } from '../../periphery/adapters/http/services';
-import { GitChangeBroadcaster } from '../../core/realtime/GitChangeBroadcaster';
+import { GitStateBroadcaster } from '../../core/realtime/GitStateBroadcaster';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { UnifiedWorkspaceResolver } from '../../core/config/WorkspacePathResolver';
 import { BridgeWebSocketHandler } from './BridgeWebSocketHandler';
@@ -170,7 +170,7 @@ export class RealtimeServer {
     projectService: ProjectService;
     workflowStateService: WorkflowStateService;
     gitWatcherService: GitWatcherService;
-    gitChangeBroadcaster: GitChangeBroadcaster;
+    gitStateBroadcaster: GitStateBroadcaster;
   }> {
     const stateStore = getInfrastructureFactory().getStateStore();
     const workspaceResolver = new UnifiedWorkspaceResolver(this.config.workspacesPath);
@@ -180,15 +180,15 @@ export class RealtimeServer {
     const chatService = new ChatService(this.config.workspacesPath, stateStore, workspaceResolver);
     const projectService = new ProjectService(workspaceResolver, undefined, chatService);
     const workflowStateService = new WorkflowStateService(stateStore);
-    // GitChangeBroadcaster publishes the unified `gitState` SSE event (with
+    // GitStateBroadcaster publishes the unified `gitState` SSE event (with
     // `workingTreeChange` / `operationComplete` / `reconnectRefill` causes).
     // We piggyback on the shared stateStore.publish instead of opening a
     // new Redis connection. Exposed here so the SSE route can fire
     // reconnectRefill when a client connects.
-    const gitChangeBroadcaster = new GitChangeBroadcaster({
+    const gitStateBroadcaster = new GitStateBroadcaster({
       publisher: (channel, payload) => stateStore.publish(channel, payload),
     });
-    const gitWatcherService = new GitWatcherService(workspaceResolver, gitChangeBroadcaster);
+    const gitWatcherService = new GitWatcherService(workspaceResolver, gitStateBroadcaster);
     
     logger.debug('Services initialized', { component: 'RealtimeServer' });
     
@@ -198,7 +198,7 @@ export class RealtimeServer {
       projectService,
       workflowStateService,
       gitWatcherService,
-      gitChangeBroadcaster,
+      gitStateBroadcaster,
     };
   }
   
@@ -211,7 +211,7 @@ export class RealtimeServer {
     projectService: ProjectService;
     workflowStateService: WorkflowStateService;
     gitWatcherService: GitWatcherService;
-    gitChangeBroadcaster: GitChangeBroadcaster;
+    gitStateBroadcaster: GitStateBroadcaster;
   }, stateStore?: any): void {
     const sseRoutes = createSSERoutes({
       sseService: this.sseService,
@@ -221,7 +221,7 @@ export class RealtimeServer {
       workflowStateService: services.workflowStateService,
       stateStore,
       gitWatcherService: services.gitWatcherService,
-      gitStateBroadcaster: services.gitChangeBroadcaster,
+      gitStateBroadcaster: services.gitStateBroadcaster,
       // Note: These are empty Maps - in cloud mode, job state is in Redis
       // The SSE routes will still work because initial state comes from services
       jobToProject: new Map(),

@@ -2,17 +2,19 @@
 /**
  * git-sweep.mjs — structural re-fragmentation gate.
  *
- * Runs after the normal legacy-sweep in the prebuild hook. Fails the build
- * if any of 18 canonical patterns reappear outside their declared
- * whitelists. These patterns encode the structural invariants of the
- * git-world greenfield rewrite (see docs/architecture/24-git-operations.md).
+ * Enforces the invariants of the git-world greenfield rewrite (see
+ * `docs/architecture/24-git-operations.md`). Fails the build if any of
+ * the canonical patterns reappear outside their declared whitelists.
  *
  * Usage:
  *   node scripts/git-sweep.mjs
  *
  * Configuration:
- *   GIT_SWEEP_ALLOW_LEGACY=1  — skips patterns marked `skipUntilCutover`.
- *                                 Removed at cutover merge (Phase 7).
+ *   GIT_SWEEP_ALLOW_LEGACY=1  — legacy escape hatch. After cutover this
+ *                                 flag is a no-op because all patterns
+ *                                 apply uniformly. Kept for forward-compat
+ *                                 if a new "migration window" pattern is
+ *                                 added in the future.
  *
  * Exit codes:
  *   0 — all patterns pass
@@ -62,21 +64,24 @@ const PATTERNS = [
     desc: 'removed legacy fields (gitStatusPhase, *FetchState)',
     regex: String.raw`\b(gitStatusPhase|statusFetchState|changesFetchState)\b`,
     paths: ['packages/ant-ui/src'],
-    skipUntilCutover: true,
   },
   {
     id: 'P3',
     desc: 'fragmented fetch entry points (fetchGitAll/Status/Changes/FromRemote)',
     regex: String.raw`\bfetch(GitAll|GitStatus|GitChanges|FromRemote)\b`,
     paths: ['packages/ant-ui/src'],
-    skipUntilCutover: true,
   },
   {
     id: 'P4',
     desc: 'deprecated shared types (GitStatusResponse / GitChangesResponse)',
     regex: String.raw`\bGit(Status|Changes)Response\b`,
     paths: ['packages'],
-    skipUntilCutover: true,
+    // Internal implementation detail comments in StatusService and the
+    // shared package retirement note. No live references.
+    whitelist: [
+      'packages/ant-cli/src/periphery/adapters/http/services/GitService/status/index.ts',
+      'packages/ant-shared/src/git.ts',
+    ],
   },
   {
     id: 'P5',
@@ -84,15 +89,16 @@ const PATTERNS = [
     regex: String.raw`\b(checkGitHubPATStatus|saveGitHubPAT|deleteGitHubPAT)\b`,
     paths: ['packages/ant-ui/src'],
     whitelist: ['packages/ant-ui/src/domain/git-world/infrastructure'],
-    skipUntilCutover: true,
   },
   {
     id: 'P6',
-    desc: 'selector bypass (raw field access in presentation/)',
-    regex: String.raw`\.(hasGit|remoteUrl|hasFeatures|codebaseHasFiles|hasCodebase|hasUpstream)\b`,
+    desc: 'raw GitSnapshot field access in non-git-panel presentation (use selectors)',
+    // Matches ONLY when the accessor is a legacy slice name. Greenfield
+    // access via `gitSnapshot.*` / `snapshot.*` is permitted; legacy
+    // `gitStatus.hasGit` / `gitChanges.hasUpstream` is not.
+    regex: String.raw`\bgit(Status|Changes)\.(hasGit|remoteUrl|hasFeatures|codebaseHasFiles|hasCodebase|hasUpstream)\b`,
     paths: ['packages/ant-ui/src/presentation'],
     whitelist: ['packages/ant-ui/src/presentation/git-panel'],
-    skipUntilCutover: true,
   },
   {
     id: 'P7',
@@ -100,7 +106,6 @@ const PATTERNS = [
     regex: String.raw`projectConfig[^;{}]{0,60}githubRepo`,
     paths: ['packages/ant-ui/src/presentation'],
     whitelist: ['packages/ant-ui/src/presentation/git-panel'],
-    skipUntilCutover: true,
   },
   {
     id: 'P8',
@@ -108,22 +113,24 @@ const PATTERNS = [
     regex: String.raw`\bpollForFeatures\b`,
     paths: ['packages/ant-ui/src'],
     whitelist: ['packages/ant-ui/src/application/hooks/ui/useSessionLoader.ts'],
-    skipUntilCutover: true,
   },
   {
     id: 'P9',
-    desc: 'BE asymmetric retryDeferredWatchers (must live on GitOperation)',
+    desc: 'BE retryDeferredWatchers leaked outside GitOperation hook + watcher service',
     regex: String.raw`\bretryDeferredWatchers\b`,
     paths: ['packages/ant-cli/src'],
-    whitelist: ['packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/GitOperation.ts'],
-    skipUntilCutover: true,
+    whitelist: [
+      'packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/GitOperation.ts',
+      'packages/ant-cli/src/periphery/adapters/http/services/GitWatcherService.ts',
+      'packages/ant-cli/src/periphery/adapters/http/services/GitService/index.ts',
+      'packages/ant-cli/src/periphery/adapters/http/routes/projects.routes.ts',
+    ],
   },
   {
     id: 'P10',
-    desc: 'AlertModal.isProcessing (must be removed at cutover)',
+    desc: 'AlertModal.isProcessing (modal lifecycle ≠ operation lifecycle)',
     regex: String.raw`\bisProcessing\b`,
     paths: ['packages/ant-ui/src/presentation/components/common/AlertModal.tsx'],
-    skipUntilCutover: true,
   },
   {
     id: 'P11',
@@ -136,29 +143,31 @@ const PATTERNS = [
     desc: 'removed writers (setGitStatusPhase/clearGitState)',
     regex: String.raw`\b(setGitStatusPhase|clearGitState)\b`,
     paths: ['packages/ant-ui/src'],
-    skipUntilCutover: true,
   },
   {
     id: 'P13',
     desc: 'legacy REST path (api/github) direct import',
     regex: String.raw`from\s+['"][^'"]*api/github['"]`,
     paths: ['packages/ant-ui/src'],
-    whitelist: ['packages/ant-ui/src/domain/git-world/infrastructure'],
-    skipUntilCutover: true,
+    whitelist: [
+      'packages/ant-ui/src/domain/git-world/infrastructure',
+      // The thin `checkCloneStatus` poller retained under
+      // infrastructure/http/api/github.ts has no re-export consumers
+      // outside ProjectWizardModal — which imports it directly.
+      'packages/ant-ui/src/presentation/components/ProjectWizardModal',
+    ],
   },
   {
     id: 'P14',
     desc: 'legacy slice import (slices/gitSlice or domain/git)',
     regex: String.raw`from\s+['"][^'"]*(slices/gitSlice|domain/git['"])`,
     paths: ['packages/ant-ui/src'],
-    skipUntilCutover: true,
   },
   {
     id: 'P15',
     desc: 'legacy broadcaster / event name (GitChangeBroadcaster / notifyGitChange / gitChange event)',
     regex: String.raw`GitChangeBroadcaster|notifyGitChange\b|['"]gitChange['"]`,
     paths: ['packages'],
-    skipUntilCutover: true,
   },
   {
     id: 'P16',
@@ -172,21 +181,12 @@ const PATTERNS = [
     regex: String.raw`\b(initializeGitHubRepo|cloneGitHubRepo|pushToGitHub|pullFromGitHub|fetchFromGitHub|syncWithRemote|commitGitChanges|discardGitChanges)\b`,
     paths: ['packages/ant-ui/src'],
     whitelist: ['packages/ant-ui/src/domain/git-world/infrastructure'],
-    skipUntilCutover: true,
   },
   {
     id: 'P18',
     desc: 'canonical git vocabulary leaked into FE (initializeOperation / publishBranch)',
     regex: String.raw`\b(initializeOperation|publishBranch)\b`,
     paths: ['packages/ant-ui/src'],
-    // Legacy domain/git/selectors.ts (and the i18n keys that reference it)
-    // still carry the old vocabulary; P18 becomes strict at cutover.
-    whitelist: [
-      'packages/ant-ui/src/domain/git',
-      'packages/ant-ui/src/presentation/components/ProjectSection.tsx',
-      'packages/ant-ui/src/presentation/components/GitStatusButton',
-    ],
-    skipUntilCutover: true,
   },
 ];
 

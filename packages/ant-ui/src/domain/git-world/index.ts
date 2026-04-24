@@ -22,6 +22,18 @@
 export { createGitWorldSlice } from './state';
 export type { GitWorldSlice, GitWorldState, GitWorldActions, AsyncFields } from './state';
 export { registerGitStateHandler } from './sse-handler';
+
+/**
+ * One-shot REST dispatch for callers that manage their own UI state
+ * (ProjectWizardModal is the only sanctioned caller today). It does NOT
+ * touch the git-world slice — use `useGitDispatch().runGitOperation` when
+ * you want FSM integration + automatic error banner.
+ *
+ * The private infrastructure module stays sealed; re-exporting just this
+ * thin wrapper keeps the wizard's ephemeral project-creation flow working
+ * without carving another ESLint exception.
+ */
+export { dispatchGitOp as dispatchGitOpOneShot } from './infrastructure/api';
 export {
   deriveGitCta,
   deriveGitMenu,

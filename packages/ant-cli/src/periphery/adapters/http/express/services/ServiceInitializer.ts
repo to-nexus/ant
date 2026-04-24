@@ -7,7 +7,7 @@ import {
   ChatService,
   GitWatcherService
 } from '../../services';
-import { GitChangeBroadcaster } from '../../../../../core/realtime/GitChangeBroadcaster';
+import { GitStateBroadcaster } from '../../../../../core/realtime/GitStateBroadcaster';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { FileJobPrerequisitesAdapter } from '../../../prerequisites/FileJobPrerequisitesAdapter';
 import { WorkspaceServiceAdapter } from '../../../../../infrastructure/workspace/WorkspaceServiceAdapter';
@@ -90,12 +90,12 @@ export function initializeServices(
   const stateStore = factory.getStateStore();
 
   // GitWatcherService publishes `gitChange` events only through
-  // GitChangeBroadcaster — piggybacking on the shared stateStore.publish so
+  // GitStateBroadcaster — piggybacking on the shared stateStore.publish so
   // no extra Redis connection is opened here.
-  const gitChangeBroadcaster = new GitChangeBroadcaster({
+  const gitStateBroadcaster = new GitStateBroadcaster({
     publisher: (channel, payload) => stateStore.publish(channel, payload),
   });
-  const gitWatcherService = new GitWatcherService(workspaceResolver, gitChangeBroadcaster);
+  const gitWatcherService = new GitWatcherService(workspaceResolver, gitStateBroadcaster);
   
   const chatService = new ChatService(
     config.workspacesPath, 
@@ -148,7 +148,7 @@ export function initializeServices(
     kanbanService,
     sessionService,
     gitWatcherService,
-    gitChangeBroadcaster,
+    gitStateBroadcaster,
     projectService,
     chatService,
     graphMetadataService,
