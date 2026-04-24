@@ -148,6 +148,7 @@ export function initializeServices(
     kanbanService,
     sessionService,
     gitWatcherService,
+    gitChangeBroadcaster,
     projectService,
     chatService,
     graphMetadataService,

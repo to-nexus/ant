@@ -105,7 +105,7 @@ export function ActionButton({
     // Dispatch split by selector-derived variant — no re-inspection of
     // gitStatus.remoteUrl downstream:
     //   noRemoteWithFeatures → create GitHub repo then push (onPublishRepo)
-    //   noUpstream           → plain push; BE's PushOperation auto-sets -u
+    //   noUpstream           → plain push; BE auto-sets -u upstream
     const handler = cta.variant === 'noRemoteWithFeatures' ? onPublishRepo : onPush;
     return (
       <div className="flex items-center flex-1 min-w-0" style={CONTAINER_STYLE}>

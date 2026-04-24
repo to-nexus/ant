@@ -1,17 +1,33 @@
 /**
- * GitChangeBroadcaster
+ * GitChangeBroadcaster (→ GitStateBroadcaster at cutover)
  *
- * Single publish path for `gitChange` SSE events. Symmetric counterpart
- * to FileTreeBroadcaster — replaces the raw `stateStore.publish` call
- * previously issued from GitWatcherService, so every `gitChange` emission
- * now flows through this one class.
+ * Single publish path for `gitState` SSE events. Replaces the raw
+ * `stateStore.publish` call previously issued from GitWatcherService, so
+ * every git realtime emission flows through this one class.
  *
- * Two emission paths (both reach this class):
- *   1. FileTreeBroadcaster co-emit — fires whenever the file tree changes
- *      during a job (covers "job creates files without `git add`" case that
- *      `.git/index` polling misses).
- *   2. GitWatcherService — `.git/index` mtime polling, covers external
- *      terminal operations (git add, commit, checkout, ...).
+ * Three publish methods (all emit the same `gitState` SSE event type with
+ * distinct discriminated-union payloads keyed by `cause`):
+ *
+ *   1. {@link GitChangeBroadcaster.notifyWorkingTreeChange}
+ *        `cause='workingTreeChange'` — lightweight hint (project/feature/
+ *        timestamp only). Fired by {@link FileTreeBroadcaster} co-emit and
+ *        by `GitWatcherService` `.git/index` polling. FE reacts with a
+ *        debounced light-weight refresh. Cost is identical to the legacy
+ *        gitChange event (no snapshot computed).
+ *
+ *   2. {@link GitChangeBroadcaster.notifyOperationComplete}
+ *        `cause='operationComplete'` — full snapshot + operation FSM + PAT
+ *        state. Fired by {@link GitOperation.onSuccess} for every
+ *        user-initiated operation. Drives snapshot replacement and the
+ *        success transition of the operation FSM.
+ *
+ *   3. {@link GitChangeBroadcaster.notifyReconnectRefill}
+ *        `cause='reconnectRefill'` — full snapshot + PAT state. Fired when
+ *        a user SSE subscription (re)opens so a reloaded browser tab never
+ *        sees a stale UI even before the first user action.
+ *
+ * The SSE event type count is unchanged (10) — the legacy `gitChange` type
+ * was renamed to `gitState`.
  *
  * The broadcaster is transport-agnostic: it receives a `publish` callback
  * at construction time. Job-worker children pass a Redis-backed function;
@@ -22,6 +38,12 @@
  */
 
 import { Redis } from 'ioredis';
+import type {
+  GitSnapshot,
+  GitOperationState,
+  GitPatState,
+  GitStateEventData,
+} from '@ant/shared';
 import type { UserContext } from '../types/user';
 import {
   getRealtimeBroadcastChannel,
@@ -54,8 +76,6 @@ export class GitChangeBroadcaster {
   private readonly ownedRedis?: Redis;
 
   constructor(options: GitChangeBroadcasterOptions | BroadcasterOptions) {
-    // Overload dispatch: BroadcasterOptions has `redisUrl`, the explicit
-    // options variant has `publisher`.
     if ('publisher' in options) {
       this.publisher = options.publisher;
       this.userContext = options.userContext;
@@ -63,8 +83,6 @@ export class GitChangeBroadcaster {
       return;
     }
 
-    // BroadcasterOptions path — create our own ioredis connection for
-    // job-worker child processes. Mirrors KanbanBroadcaster/FileTreeBroadcaster.
     const isTLS = options.redisUrl.startsWith('rediss://');
     const tlsOptions = isTLS
       ? { tls: { checkServerIdentity: () => undefined as undefined } }
@@ -88,18 +106,93 @@ export class GitChangeBroadcaster {
   }
 
   /**
-   * Publish a `gitChange` event for the given project/feature.
+   * Publish a lightweight `gitState` event with cause='workingTreeChange'.
    *
-   * `userContext` can override the one captured at construction time
-   * (required for request-scoped callers like GitWatcherService which
-   * serves many users with one shared broadcaster instance).
+   * Fired for working-tree/index mutations detected by file tree co-emit
+   * or `.git/index` polling. No snapshot computed — payload is three
+   * fields only. Cost matches the legacy `gitChange` event.
+   */
+  async notifyWorkingTreeChange(
+    projectId: string,
+    featureName: string,
+    userContext?: UserContext
+  ): Promise<void> {
+    const payload: GitStateEventData = {
+      cause: 'workingTreeChange',
+      project: projectId,
+      feature: featureName,
+      timestamp: new Date().toISOString(),
+    };
+    await this.publishGitState(projectId, featureName, payload, userContext);
+  }
+
+  /**
+   * Publish a full-snapshot `gitState` event with cause='operationComplete'.
    *
-   * Silently no-ops when userContext is missing — the caller has no
-   * recourse and the event simply can't be routed to a user channel.
+   * Called by {@link GitOperation.onSuccess} (template-method hook) for all
+   * user-initiated operations symmetrically — no subclass overload required.
+   */
+  async notifyOperationComplete(
+    projectId: string,
+    featureName: string | undefined,
+    snapshot: GitSnapshot,
+    operation: GitOperationState,
+    pat: GitPatState,
+    userContext?: UserContext
+  ): Promise<void> {
+    const payload: GitStateEventData = {
+      cause: 'operationComplete',
+      project: projectId,
+      feature: featureName,
+      timestamp: new Date().toISOString(),
+      snapshot,
+      operation,
+      pat,
+    };
+    await this.publishGitState(projectId, featureName ?? '', payload, userContext);
+  }
+
+  /**
+   * Publish a full-snapshot `gitState` event with cause='reconnectRefill'.
+   *
+   * Called by the realtime server when a user channel subscription (re)opens,
+   * guaranteeing the browser never shows stale UI on reload/network blip.
+   */
+  async notifyReconnectRefill(
+    projectId: string,
+    featureName: string | undefined,
+    snapshot: GitSnapshot,
+    pat: GitPatState,
+    userContext?: UserContext
+  ): Promise<void> {
+    const payload: GitStateEventData = {
+      cause: 'reconnectRefill',
+      project: projectId,
+      feature: featureName,
+      timestamp: new Date().toISOString(),
+      snapshot,
+      pat,
+    };
+    await this.publishGitState(projectId, featureName ?? '', payload, userContext);
+  }
+
+  /**
+   * @deprecated Use {@link GitChangeBroadcaster.notifyWorkingTreeChange}.
+   * Retained during the greenfield migration window so callers
+   * unaffected by the upgrade keep compiling.
    */
   async notifyGitChange(
     projectId: string,
     featureName: string,
+    userContext?: UserContext
+  ): Promise<void> {
+    return this.notifyWorkingTreeChange(projectId, featureName, userContext);
+  }
+
+  private async publishGitState(
+    projectId: string,
+    featureName: string,
+    data: GitStateEventData,
     userContext?: UserContext
   ): Promise<void> {
     const ctx = userContext || this.userContext;
@@ -107,28 +200,21 @@ export class GitChangeBroadcaster {
       return;
     }
 
-    const channel = getRealtimeBroadcastChannel(
-      ctx.organizationId,
-      ctx.userId
-    );
+    const channel = getRealtimeBroadcastChannel(ctx.organizationId, ctx.userId);
 
     const message = {
       projectId,
       featureName,
       userContext: ctx,
-      type: 'gitChange' as const,
-      data: {
-        timestamp: new Date().toISOString(),
-        project: projectId,
-        feature: featureName,
-      },
+      type: 'gitState' as const,
+      data,
     };
 
     try {
       await this.publisher(channel, message);
     } catch (error: any) {
       console.warn(
-        `[GitChangeBroadcaster] Failed to publish gitChange:`,
+        `[GitChangeBroadcaster] Failed to publish gitState (${data.cause}):`,
         error?.message ?? error
       );
     }

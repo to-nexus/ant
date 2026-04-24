@@ -1,21 +1,62 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { GitStatusResponse, GitChangesResponse, FileChange } from '@ant/shared';
+import type {
+  GitStatusResponse,
+  GitChangesResponse,
+  FileChange,
+  GitSnapshot,
+  GitPatState,
+} from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHelper } from '../helper/GitHelper';
+import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
+import { RemoteChecker } from '../remote/helpers/RemoteChecker';
+
+/**
+ * TTL for the GitHub "repo exists" probe cache (milliseconds). Keeps the
+ * Setup menu snappy without hammering GitHub's 5000 req/hour PAT quota.
+ */
+const REMOTE_EXISTS_TTL_MS = 60_000;
+
+interface RemoteExistsCacheEntry {
+  value: boolean;
+  expiresAt: number;
+}
 
 /**
  * StatusService
  *
- * Handles Git status queries and change detection.
- * Response shapes are defined in `@ant/shared/git` (contract SSOT).
+ * Owner of every Git *read* path: {@link StatusService.getGitStatus},
+ * {@link StatusService.getGitChanges}, and the unified
+ * {@link StatusService.getSnapshot}. All three share the same `simple-git`
+ * bootstrap and safe-directory guard.
+ *
+ * ## Greenfield surface
+ *
+ * - {@link StatusService.getSnapshot} returns the canonical
+ *   {@link GitSnapshot} (readonly) that the whole FE/ BE contract revolves
+ *   around. Result objects are deep-frozen so downstream consumers cannot
+ *   mutate shared state.
+ * - {@link StatusService.getPat} exposes a minimal PAT read surface for the
+ *   SSE reconnect refill path without dragging the FE into direct PAT API
+ *   usage.
+ *
+ * The legacy `getGitStatus` / `getGitChanges` / `checkCloneStatus` methods
+ * remain for the migration window; they are the building blocks
+ * `getSnapshot` composes over and will be removed at cutover.
  */
 export class StatusService {
   private readonly workspaceResolver: WorkspaceResolver;
+  private readonly githubAuthService?: GitHubAuthService;
+  private readonly remoteExistsCache = new Map<string, RemoteExistsCacheEntry>();
 
-  constructor(workspaceResolver: WorkspaceResolver) {
+  constructor(
+    workspaceResolver: WorkspaceResolver,
+    githubAuthService?: GitHubAuthService,
+  ) {
     this.workspaceResolver = workspaceResolver;
+    this.githubAuthService = githubAuthService;
   }
 
   async getGitStatus(
@@ -172,4 +213,147 @@ export class StatusService {
       return false;
     }
   }
+
+  /**
+   * Unified canonical Git snapshot.
+   *
+   * Composes status + changes + (Setup-only) GitHub repo existence probe
+   * into the single readonly {@link GitSnapshot}. The result is deep-frozen
+   * so downstream code cannot mutate shared state — any would-be mutation
+   * fails at runtime, complementing the `Readonly<...>` type-level guard.
+   *
+   * `remoteExists` is populated only in Setup states (`!hasGit || !hasRemote`)
+   * and cached for {@link REMOTE_EXISTS_TTL_MS} ms to shield GitHub rate
+   * limits. `opts.fresh === true` bypasses the cache (used by `?fresh=true`
+   * on the `/git/state` endpoint).
+   */
+  async getSnapshot(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    opts: { fresh?: boolean } = {},
+  ): Promise<GitSnapshot> {
+    const [status, changes] = await Promise.all([
+      this.getGitStatus(projectId, userContext, featureName),
+      this.getGitChanges(projectId, userContext, featureName),
+    ]);
+
+    const hasRemote = Boolean(status.remoteUrl);
+    const coreBase: Omit<GitSnapshot, 'remoteExists'> = {
+      hasGit: status.hasGit,
+      hasRemote,
+      hasCodebase: status.hasCodebase,
+      codebaseHasFiles: status.codebaseHasFiles,
+      hasFeatures: status.hasFeatures,
+      currentBranch: status.currentBranch,
+      remoteUrl: status.remoteUrl,
+      hasUpstream: changes.hasUpstream,
+      ahead: changes.ahead,
+      behind: changes.behind,
+      staged: changes.staged,
+      unstaged: changes.unstaged,
+      untracked: changes.untracked,
+    };
+
+    let remoteExists: boolean | undefined;
+    if (!coreBase.hasGit || !coreBase.hasRemote) {
+      remoteExists = await this.probeRemoteExists(projectId, userContext, opts.fresh === true);
+    }
+
+    return deepFreezeSnapshot({ ...coreBase, remoteExists });
+  }
+
+  /**
+   * Minimal PAT read surface used by the SSE reconnect refill path and the
+   * {@link StatusService.getSnapshot} consumers that need to report PAT
+   * state alongside the snapshot. Returns `{ configured: false }` when the
+   * auth service is absent or the probe fails.
+   */
+  async getPat(userContext: UserContext): Promise<GitPatState> {
+    if (!this.githubAuthService) {
+      return { configured: false };
+    }
+    try {
+      const cred = {
+        org: userContext.organizationId,
+        user: userContext.userId,
+      };
+      const pat = await this.githubAuthService.getPAT(cred);
+      if (!pat) {
+        return { configured: false };
+      }
+      // `getUsername` transparently backfills legacy credentials missing the
+      // username. Tolerate failures so a transient GitHub outage doesn't
+      // degrade the snapshot to `configured: false`.
+      let username: string | undefined;
+      try {
+        const got = await this.githubAuthService.getUsername(cred);
+        if (got) username = got;
+      } catch { /* best-effort */ }
+      return { configured: true, username };
+    } catch (error: any) {
+      console.warn('[StatusService] getPat probe failed:', error?.message ?? error);
+      return { configured: false };
+    }
+  }
+
+  private async probeRemoteExists(
+    projectId: string,
+    userContext: UserContext,
+    fresh: boolean,
+  ): Promise<boolean | undefined> {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const configPath = path.join(projectPath, 'config.json');
+    if (!fs.existsSync(configPath)) return undefined;
+
+    let githubRepo: string | undefined;
+    try {
+      const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
+      githubRepo = typeof config.githubRepo === 'string' ? config.githubRepo : undefined;
+    } catch {
+      return undefined;
+    }
+    if (!githubRepo) return undefined;
+
+    const cacheKey = `${userContext.organizationId}:${userContext.userId}:${githubRepo}`;
+    const now = Date.now();
+
+    if (!fresh) {
+      const cached = this.remoteExistsCache.get(cacheKey);
+      if (cached && cached.expiresAt > now) {
+        return cached.value;
+      }
+    }
+
+    try {
+      const exists = await RemoteChecker.exists(githubRepo, userContext, this.githubAuthService);
+      this.remoteExistsCache.set(cacheKey, {
+        value: exists,
+        expiresAt: now + REMOTE_EXISTS_TTL_MS,
+      });
+      return exists;
+    } catch (error: any) {
+      // Auth/transport errors are not fatal — the UI falls back to the
+      // `[Clone] [Publish]` two-button state when `remoteExists` is
+      // undefined.
+      console.warn('[StatusService] remoteExists probe failed:', error?.message ?? error);
+      return undefined;
+    }
+  }
+}
+
+/**
+ * Recursively freeze the snapshot object so mutation attempts throw in
+ * strict mode. Matches the `Readonly<...>` type-level guard on
+ * {@link GitSnapshot}.
+ */
+function deepFreezeSnapshot(snapshot: GitSnapshot): GitSnapshot {
+  Object.freeze(snapshot);
+  Object.freeze(snapshot.staged);
+  Object.freeze(snapshot.unstaged);
+  Object.freeze(snapshot.untracked);
+  snapshot.staged.forEach((file) => Object.freeze(file));
+  snapshot.unstaged.forEach((file) => Object.freeze(file));
+  snapshot.untracked.forEach((file) => Object.freeze(file));
+  return snapshot;
 }

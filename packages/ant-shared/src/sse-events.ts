@@ -4,16 +4,30 @@
  * Both Backend (ant-cli) and Frontend (ant-ui) import these types.
  * Single source of truth for SSE message discrimination and payload shapes.
  *
- * Legacy duplicates in `ant-cli/src/core/realtime/types.ts` and
- * `ant-ui/src/infrastructure/sse/SSEManager.ts` now re-export from here.
+ * ## Git event unification
+ *
+ * The legacy `gitChange` event has been renamed to `gitState` and its payload
+ * upgraded to a discriminated union on `cause`. This preserves the total SSE
+ * event-type count (10) while covering three scenarios with one symbol:
+ *
+ * - `workingTreeChange` — lightweight hint on working-tree/index change.
+ *   Payload carries only project/feature/timestamp; FE does a debounced
+ *   light-weight refresh. Cost is identical to the legacy `gitChange` event.
+ * - `operationComplete`  — full snapshot pushed from a user-initiated
+ *   operation's onSuccess hook. Includes snapshot, operation state, and PAT.
+ * - `reconnectRefill`   — full snapshot pushed when an SSE subscription
+ *   (re)opens so a reloaded client never sees a stale UI.
+ *
+ * The `GitChangeEventData` alias is retained only during the single-PR
+ * migration window and removed at cutover.
  */
+
+import type { GitSnapshot, GitOperationState, GitPatState } from './git';
 
 /**
  * Discriminator for SSE messages routed through the unified stream.
  *
- * Union is intentionally the superset of what either side currently uses —
- * BE emits {kanban, chat, fileTree, workflow, preview, deploy, gitChange, unseenArtifacts, bridge}
- * FE additionally declares `transfer` for local-only routing.
+ * Union stays at 10 entries after the `gitChange` → `gitState` rename.
  */
 export type SSEMessageType =
   | 'kanban'
@@ -22,29 +36,55 @@ export type SSEMessageType =
   | 'workflow'
   | 'preview'
   | 'deploy'
-  | 'gitChange'
+  | 'gitState'
   | 'transfer'
   | 'unseenArtifacts'
   | 'bridge';
 
 /**
- * Payload shape for `gitChange` events.
- *
- * Emitted whenever the working tree or index of a feature's codebase changes —
- * by file tree co-emit (FileTreeBroadcaster) or by `.git/index` polling
- * (GitWatcherService).
+ * Payload for `gitState` events. Discriminated on `cause` so each scenario
+ * gets its required fields enforced at the type level.
  */
-export interface GitChangeEventData {
-  project: string;
-  feature: string;
-  timestamp: string;
-}
+export type GitStateEventData =
+  | {
+      cause: 'workingTreeChange';
+      project: string;
+      feature?: string;
+      timestamp: string;
+    }
+  | {
+      cause: 'operationComplete';
+      project: string;
+      feature?: string;
+      timestamp: string;
+      snapshot: GitSnapshot;
+      operation: GitOperationState;
+      pat: GitPatState;
+    }
+  | {
+      cause: 'reconnectRefill';
+      project: string;
+      feature?: string;
+      timestamp: string;
+      snapshot: GitSnapshot;
+      pat: GitPatState;
+    };
 
 /**
  * Map of event type → payload shape. Only events with a stable, shared
- * contract are listed here. Other events remain `any`-typed pending their
- * own payload migration.
+ * contract are listed here.
  */
 export interface SSEMessageMap {
-  gitChange: GitChangeEventData;
+  gitState: GitStateEventData;
 }
+
+// ---------------------------------------------------------------------------
+// Legacy aliases — retained only during the greenfield migration window
+// inside a single PR. Removed at cutover.
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use {@link GitStateEventData}. Removed at greenfield cutover. */
+export type GitChangeEventData = Extract<
+  GitStateEventData,
+  { cause: 'workingTreeChange' }
+>;
