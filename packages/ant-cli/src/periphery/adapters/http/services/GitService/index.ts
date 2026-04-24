@@ -1,41 +1,63 @@
-import type { GitStatusResponse, GitChangesResponse } from '@ant/shared';
+import type {
+  GitStatusResponse,
+  GitChangesResponse,
+  GitSnapshot,
+  GitPatState,
+  GitUserOperation,
+} from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
+import { GitChangeBroadcaster } from '../../../../../core/realtime/GitChangeBroadcaster';
 import { StatusService } from './status';
 import { RemoteService } from './remote';
 import { IndexService } from './indexing';
+import {
+  GitOperation,
+  GitWatcherRetryPort,
+} from './remote/GitOperation';
+import { resolveGitOperation } from './remote/operations/userOps';
 
 /**
  * GitService (Facade)
- * 
- * Main facade for all Git-related operations.
- * Provides a unified interface for status, remote, and indexing operations.
- * 
- * 📦 Architecture:
- * - StatusService: Git status queries
- * - RemoteService: Remote operations (clone, init, push, pull, fetch, sync)
- * - IndexService: AI/LLM indexing operations
- * 
- * Note: Branch switching is no longer needed. Each feature uses its own
- * Git worktree (managed by WorktreeService), so the correct branch is
- * always checked out in the worktree directory.
+ *
+ * Main facade for all Git-related operations. Owns two layered APIs:
+ *
+ * ## Greenfield surface (target)
+ *
+ * - {@link GitService.getSnapshot} / {@link GitService.getPat} — read paths
+ *   used by the `GET /projects/:id/git/state` endpoint and the SSE
+ *   reconnect refill.
+ * - {@link GitService.resolveOperation} — factory that returns a
+ *   {@link GitOperation} instance for a given `GitUserOperation['kind']`.
+ *   Routes dispatch into this single entry point instead of calling
+ *   nine distinct operation endpoints.
+ *
+ * ## Legacy surface (retained during the migration window)
+ *
+ * The `getGitStatus` / `getGitChanges` / `cloneGitHubRepo` / etc. methods
+ * are still reachable so existing routes keep compiling. Cutover removes
+ * these together with the old `/projects/:id/{clone,initialize,push,...}`
+ * endpoints.
  */
 export class GitService {
   private readonly status: StatusService;
   private readonly remote: RemoteService;
   private readonly index: IndexService;
+  private readonly workspaceResolver: WorkspaceResolver;
+  private readonly githubAuthService?: GitHubAuthService;
 
   constructor(
     workspaceResolver: WorkspaceResolver,
     githubAuthService?: GitHubAuthService,
     chatService?: ChatService
   ) {
-    this.status = new StatusService(workspaceResolver);
+    this.workspaceResolver = workspaceResolver;
+    this.githubAuthService = githubAuthService;
+    this.status = new StatusService(workspaceResolver, githubAuthService);
     this.index = new IndexService(workspaceResolver, chatService);
-    
-    // Remote service needs indexing callback
+
     this.remote = new RemoteService(
       workspaceResolver,
       githubAuthService,
@@ -49,7 +71,65 @@ export class GitService {
   }
 
   // =====================================
-  // Status Operations
+  // Greenfield Read API
+  // =====================================
+
+  async getSnapshot(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    opts: { fresh?: boolean } = {},
+  ): Promise<GitSnapshot> {
+    return this.status.getSnapshot(projectId, userContext, featureName, opts);
+  }
+
+  async getPat(userContext: UserContext): Promise<GitPatState> {
+    return this.status.getPat(userContext);
+  }
+
+  // =====================================
+  // Greenfield Operation Dispatch
+  // =====================================
+
+  /**
+   * Resolve a user-op kind to its {@link GitOperation} subclass instance.
+   *
+   * The returned operation's `execute(projectId, userContext, input)`
+   * performs the work *and* fires the symmetric `onSuccess` hook
+   * (snapshot publish + `retryDeferredWatchers` + optional indexing).
+   *
+   * Callers pass:
+   * - `broadcaster` (optional) to enable `gitState` SSE publishes.
+   * - `watcher`     (optional) to hook `retryDeferredWatchers` uniformly.
+   */
+  resolveOperation(
+    kind: GitUserOperation['kind'],
+    opts: {
+      broadcaster?: GitChangeBroadcaster;
+      watcher?: GitWatcherRetryPort;
+    } = {},
+  ): GitOperation<any, any> | null {
+    return resolveGitOperation(
+      {
+        statusService: this.status,
+        broadcaster: opts.broadcaster,
+        watcher: opts.watcher,
+        getCodebasePath: (userContext, projectId, featureName) =>
+          this.workspaceResolver.getCodebasePath(userContext, projectId, featureName),
+        indexer: (projectId, codebasePath, userContext, feedbackFeature) => {
+          this.index.autoIndexCodebase(projectId, codebasePath, userContext, feedbackFeature)
+            .catch((err: any) => {
+              console.error('⚠️  [GitService] Background indexing failed:', err);
+            });
+        },
+        remote: this.remote,
+      },
+      kind,
+    );
+  }
+
+  // =====================================
+  // Legacy Status Operations
   // =====================================
 
   async getGitStatus(
@@ -73,7 +153,7 @@ export class GitService {
   }
 
   // =====================================
-  // Remote Operations
+  // Legacy Remote Operations
   // =====================================
 
   async cloneGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
@@ -135,5 +215,10 @@ export class GitService {
   ): Promise<void> {
     return this.index.autoIndexCodebase(projectId, codebasePath, userContext, featureName);
   }
-}
 
+  // Hint for callers wishing to silence unused-field checks in composition.
+  // Kept private-by-TS-convention via leading underscore.
+  _authProbe(): boolean {
+    return Boolean(this.githubAuthService);
+  }
+}

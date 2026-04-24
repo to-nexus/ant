@@ -1,10 +1,17 @@
 import { Router, Request, Response } from 'express';
+import type {
+  GitUserOperation,
+  GitUserOperationKind,
+  GitStateResponse,
+  GitOperationError as GitOperationErrorShape,
+} from '@ant/shared';
 import { ProjectService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { validateBody, createProjectSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 import { GitOperationError } from '../services/GitService/errors';
+import type { GitChangeBroadcaster } from '../../../../core/realtime/GitChangeBroadcaster';
 
 function handleGitError(res: Response, error: any, context: string, projectId: string) {
   const message = error instanceof Error ? error.message : String(error);
@@ -19,12 +26,57 @@ function handleGitError(res: Response, error: any, context: string, projectId: s
   }
 }
 
+function handleStructuredGitError(
+  res: Response,
+  error: any,
+  context: string,
+  projectId: string,
+): void {
+  if (error instanceof GitOperationError) {
+    logger.warn(`${context} failed: ${error.message}`, { component: 'Projects', projectId });
+    const payload: { success: false; error: GitOperationErrorShape } = {
+      success: false,
+      error: error.toShape(),
+    };
+    res.status(error.statusCode).json(payload);
+    return;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  logger.warn(`${context} failed: ${message}`, { component: 'Projects', projectId }, error);
+  res.status(500).json({
+    success: false,
+    error: {
+      kind: 'unknown',
+      message,
+      retryable: true,
+      suggestedAction: null,
+    } as GitOperationErrorShape,
+  });
+}
+
+const GIT_USER_OP_KINDS: ReadonlySet<GitUserOperationKind> = new Set([
+  'publish',
+  'push',
+  'pull',
+  'fetch',
+  'sync',
+  'commit',
+  'discard',
+  'clone',
+]);
+
+function isGitUserOpKind(kind: string): kind is GitUserOperationKind {
+  return GIT_USER_OP_KINDS.has(kind as GitUserOperationKind);
+}
+
 /**
  * Project CRUD operations
  */
 export function createProjectsRoutes(deps: {
   projectService: ProjectService;
   gitWatcherService?: { retryDeferredWatchers(projectId: string): void };
+  gitStateBroadcaster?: GitChangeBroadcaster;
 }): Router {
   const router = Router();
   
@@ -371,7 +423,130 @@ export function createProjectsRoutes(deps: {
   // With Git worktrees, each feature has its own working directory with the correct
   // branch already checked out. Branch switching is handled at worktree creation time
   // by WorktreeService.createWorktree().
-  
+
+  // =====================================
+  // Greenfield Git API (target surface)
+  //
+  // Unified endpoints replacing the ten-endpoint surface above. Once the
+  // FE migration completes, the legacy endpoints are removed and these
+  // two are the sole git REST surface.
+  // =====================================
+
+  // Canonical snapshot + PAT probe for a (project, feature). `?fresh=true`
+  // bypasses the remoteExists cache so the Setup menu sees an authoritative
+  // probe result at open time.
+  router.get('/projects/:id/git/state', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    try {
+      const userContext = extractUserContext(req);
+      const featureName = req.query.feature as string | undefined;
+      const fresh = req.query.fresh === 'true';
+
+      const [snapshot, pat] = await Promise.all([
+        deps.projectService.getGitSnapshot(projectId, userContext, featureName, { fresh }),
+        deps.projectService.getGitPat(userContext),
+      ]);
+
+      const payload: GitStateResponse = { snapshot, pat };
+      res.json(payload);
+    } catch (error: any) {
+      handleStructuredGitError(res, error, 'Git state', projectId);
+    }
+  });
+
+  // Single entry point for user-initiated Git operations. Path carries the
+  // user-op kind; body carries the discriminant-specific fields (message/
+  // files/feature). The dispatched GitOperation's `onSuccess` hook
+  // uniformly publishes the `gitState` SSE event, retries deferred
+  // watchers, and triggers indexing when applicable.
+  router.post('/projects/:id/git/ops/:userOp', async (req: Request, res: Response) => {
+    const projectId = req.params.id;
+    const userOpRaw = req.params.userOp;
+
+    if (!isGitUserOpKind(userOpRaw)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          kind: 'unknown',
+          message: `Unknown git user op: ${userOpRaw}`,
+          retryable: false,
+          suggestedAction: null,
+        } as GitOperationErrorShape,
+      });
+    }
+    const userOp: GitUserOperation['kind'] = userOpRaw;
+
+    let userContext;
+    try {
+      userContext = extractUserContext(req);
+    } catch (error: any) {
+      return handleStructuredGitError(res, error, `Git op ${userOp}`, projectId);
+    }
+
+    const operation = deps.projectService.resolveGitOperation(userOp, {
+      broadcaster: deps.gitStateBroadcaster,
+      watcher: deps.gitWatcherService,
+    });
+    if (!operation) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          kind: 'unknown',
+          message: `Unsupported git user op: ${userOp}`,
+          retryable: false,
+          suggestedAction: null,
+        } as GitOperationErrorShape,
+      });
+    }
+
+    // Slow operations (publish/clone) can exceed proxy idle timeouts — emit
+    // a keep-alive heartbeat while the operation runs to keep the connection
+    // warm.
+    const isSlowOp = userOp === 'publish' || userOp === 'clone' || userOp === 'sync';
+    let heartbeat: NodeJS.Timeout | null = null;
+    if (isSlowOp) {
+      res.setHeader('Content-Type', 'application/json');
+      heartbeat = setInterval(() => res.write(' '), 15000);
+    }
+
+    logger.info(`Git op ${userOp}`, {
+      component: 'Projects',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId,
+      projectId,
+    });
+
+    try {
+      const input = (req.body ?? {}) as Record<string, unknown>;
+      const result = await operation.execute(projectId, userContext, input);
+      if (heartbeat) clearInterval(heartbeat);
+      if (isSlowOp) {
+        res.end(JSON.stringify({ success: true, result }));
+      } else {
+        res.json({ success: true, result });
+      }
+    } catch (error: any) {
+      if (heartbeat) clearInterval(heartbeat);
+      if (isSlowOp) {
+        const errorPayload = error instanceof GitOperationError
+          ? error.toShape()
+          : {
+              kind: 'unknown' as const,
+              message: error instanceof Error ? error.message : String(error),
+              retryable: true,
+              suggestedAction: null,
+            };
+        logger.warn(`Git op ${userOp} failed: ${errorPayload.message}`, {
+          component: 'Projects',
+          projectId,
+        });
+        res.end(JSON.stringify({ success: false, error: errorPayload }));
+        return;
+      }
+      handleStructuredGitError(res, error, `Git op ${userOp}`, projectId);
+    }
+  });
+
   return router;
 }
 

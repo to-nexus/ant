@@ -14,6 +14,7 @@ import { getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
 import { getSessionKey } from '../../../../core/chat/schema';
 import { getChatSyncChannel } from '../../../../infrastructure/state/redisConstants';
 import type { ActiveJobInfo } from '@ant/shared';
+import type { GitChangeBroadcaster } from '../../../../core/realtime/GitChangeBroadcaster';
 
 /**
  * Unified SSE Routes
@@ -27,6 +28,7 @@ export function createSSERoutes(deps: {
   workflowStateService: WorkflowStateService;
   stateStore?: StateStorePort;
   gitWatcherService?: any;  // ✅ Git watcher service
+  gitStateBroadcaster?: GitChangeBroadcaster;  // For publishing reconnectRefill on SSE connect
   // workspaceRoot: string;  // ❌ 제거 - 사용하지 않음
   jobToProject?: Map<string, { projectId: string; featureName: string }>;
   jobs?: Map<string, any>;
@@ -188,6 +190,38 @@ export function createSSERoutes(deps: {
     // ✅ Start watching Git changes
     if (deps.gitWatcherService && userContext) {
       deps.gitWatcherService.watchGitChanges(projectId, featureName, userContext);
+    }
+
+    // SSE reconnect snapshot refill — the `git-world` slice on the FE treats
+    // a fresh connection as an implicit "I might have missed events while
+    // disconnected" signal. Publish `gitState` (cause='reconnectRefill') with
+    // the current snapshot so the UI's `Checking…` / stale-after-refresh
+    // states resolve without waiting for the next Git op or watcher tick.
+    //
+    // We never await this — SSE initial state must not block on Git I/O.
+    if (deps.gitStateBroadcaster && userContext) {
+      (async () => {
+        try {
+          const [snapshot, pat] = await Promise.all([
+            deps.projectService.getGitSnapshot(projectId, userContext, featureName, { fresh: false }),
+            deps.projectService.getGitPat(userContext),
+          ]);
+          await deps.gitStateBroadcaster!.notifyReconnectRefill(
+            projectId,
+            featureName,
+            snapshot,
+            pat,
+            userContext,
+          );
+        } catch (err) {
+          // Reconnect refill is an optimization — if it fails, the FE falls
+          // back to the next `workingTreeChange` event. Log quietly.
+          logger.debug(
+            `SSE reconnect refill skipped (${err instanceof Error ? err.message : String(err)})`,
+            { component: 'SSE', projectId, featureName },
+          );
+        }
+      })();
     }
     
     // Heartbeat: real SSE data event (not comment) so ALB counts it as traffic.

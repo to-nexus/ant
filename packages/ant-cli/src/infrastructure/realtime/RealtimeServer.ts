@@ -170,6 +170,7 @@ export class RealtimeServer {
     projectService: ProjectService;
     workflowStateService: WorkflowStateService;
     gitWatcherService: GitWatcherService;
+    gitChangeBroadcaster: GitChangeBroadcaster;
   }> {
     const stateStore = getInfrastructureFactory().getStateStore();
     const workspaceResolver = new UnifiedWorkspaceResolver(this.config.workspacesPath);
@@ -179,9 +180,11 @@ export class RealtimeServer {
     const chatService = new ChatService(this.config.workspacesPath, stateStore, workspaceResolver);
     const projectService = new ProjectService(workspaceResolver, undefined, chatService);
     const workflowStateService = new WorkflowStateService(stateStore);
-    // GitWatcherService now emits `gitChange` exclusively through
-    // GitChangeBroadcaster. We piggyback on the shared stateStore.publish
-    // instead of opening a new Redis connection.
+    // GitChangeBroadcaster publishes the unified `gitState` SSE event (with
+    // `workingTreeChange` / `operationComplete` / `reconnectRefill` causes).
+    // We piggyback on the shared stateStore.publish instead of opening a
+    // new Redis connection. Exposed here so the SSE route can fire
+    // reconnectRefill when a client connects.
     const gitChangeBroadcaster = new GitChangeBroadcaster({
       publisher: (channel, payload) => stateStore.publish(channel, payload),
     });
@@ -194,7 +197,8 @@ export class RealtimeServer {
       chatService,
       projectService,
       workflowStateService,
-      gitWatcherService
+      gitWatcherService,
+      gitChangeBroadcaster,
     };
   }
   
@@ -207,6 +211,7 @@ export class RealtimeServer {
     projectService: ProjectService;
     workflowStateService: WorkflowStateService;
     gitWatcherService: GitWatcherService;
+    gitChangeBroadcaster: GitChangeBroadcaster;
   }, stateStore?: any): void {
     const sseRoutes = createSSERoutes({
       sseService: this.sseService,
@@ -216,6 +221,7 @@ export class RealtimeServer {
       workflowStateService: services.workflowStateService,
       stateStore,
       gitWatcherService: services.gitWatcherService,
+      gitStateBroadcaster: services.gitChangeBroadcaster,
       // Note: These are empty Maps - in cloud mode, job state is in Redis
       // The SSE routes will still work because initial state comes from services
       jobToProject: new Map(),
