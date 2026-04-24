@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Terminal, ChevronDown, ChevronRight } from 'lucide-react';
+import { Terminal, ChevronDown, ChevronRight, ShieldAlert } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import Convert from 'ansi-to-html';
 import type { MessageContent } from '@/domain/models/chat';
@@ -56,26 +56,57 @@ export function TerminalCard({ content }: TerminalCardProps) {
     }
   }, [output, isStreamingOutput]);
   
-  const isSuccess = exitCode === 0;
-  const statusConfig = isSuccess
-    ? {
-        bgColor: 'bg-white dark:bg-gray-800/50',
-        borderColor: 'border-gray-200 dark:border-gray-700',
-        textColor: 'text-gray-700 dark:text-gray-300',
-        iconColor: 'text-green-500 dark:text-green-400',
-        headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-        hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-        label: t('card.completed')
-      }
-    : {
-        bgColor: 'bg-white dark:bg-gray-800/50',
-        borderColor: 'border-gray-200 dark:border-gray-700',
-        textColor: 'text-gray-700 dark:text-gray-300',
-        iconColor: 'text-red-500 dark:text-red-400',
-        headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
-        hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
-        label: t('card.failed')
-      };
+  // `exitCode === -1` is a sentinel set by every Policy-rejection path
+  // (`runCommand.ts::makeRejection`, verification/error task-hook reject,
+  // `codeCommandPolicy.ts::makeRejection`). These aren't command execution
+  // failures — they're internal guards ("SKIPPED: deps already installed",
+  // "COMMAND NOT ALLOWED", "COMMAND MAY HANG", write-path violations, …).
+  // Render them with a distinct amber tone so the user does not read a
+  // skip-guard as "npm install ran and failed silently".
+  const isPolicyRejection = isCompleted && exitCode === -1;
+  const isSuccess = !isPolicyRejection && exitCode === 0;
+  const isSkipped = isPolicyRejection && typeof output === 'string' && output.includes('SKIPPED:');
+
+  let statusConfig: {
+    bgColor: string;
+    borderColor: string;
+    textColor: string;
+    iconColor: string;
+    headerBg: string;
+    hoverBg: string;
+    label: string;
+  };
+  if (isPolicyRejection) {
+    statusConfig = {
+      bgColor: 'bg-white dark:bg-gray-800/50',
+      borderColor: 'border-gray-200 dark:border-gray-700',
+      textColor: 'text-gray-700 dark:text-gray-300',
+      iconColor: 'text-amber-500 dark:text-amber-400',
+      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
+      label: isSkipped ? t('card.skipped') : t('card.rejected')
+    };
+  } else if (isSuccess) {
+    statusConfig = {
+      bgColor: 'bg-white dark:bg-gray-800/50',
+      borderColor: 'border-gray-200 dark:border-gray-700',
+      textColor: 'text-gray-700 dark:text-gray-300',
+      iconColor: 'text-green-500 dark:text-green-400',
+      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
+      label: t('card.completed')
+    };
+  } else {
+    statusConfig = {
+      bgColor: 'bg-white dark:bg-gray-800/50',
+      borderColor: 'border-gray-200 dark:border-gray-700',
+      textColor: 'text-gray-700 dark:text-gray-300',
+      iconColor: 'text-red-500 dark:text-red-400',
+      headerBg: 'bg-gray-50/50 dark:bg-gray-800/30',
+      hoverBg: 'hover:bg-gray-100/50 dark:hover:bg-gray-800/50',
+      label: t('card.failed')
+    };
+  }
   
   const activeConfig = {
     bgColor: 'bg-white dark:bg-gray-800/50',
@@ -109,6 +140,8 @@ export function TerminalCard({ content }: TerminalCardProps) {
           {/* Status Icon */}
           {isActive ? (
             <Spinner size="md" tone="inherit" className={`flex-shrink-0 ${config.iconColor}`} />
+          ) : isPolicyRejection ? (
+            <ShieldAlert className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
           ) : (
             <Terminal className={`w-4 h-4 ${config.iconColor} flex-shrink-0`} />
           )}
@@ -121,11 +154,18 @@ export function TerminalCard({ content }: TerminalCardProps) {
             buttonClassName={`${config.textColor} opacity-60`}
           />
           
-          {/* Exit Code (Compact) */}
+          {/* Status indicator — numeric exit code for real executions,
+              label for Policy rejections (where "-1" would mislead users). */}
           {isCompleted && exitCode !== undefined && (
-            <span className={`text-[10px] font-mono ${isSuccess ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} flex-shrink-0 font-medium`}>
-              {isSuccess ? '✓' : `✗ ${exitCode}`}
-            </span>
+            isPolicyRejection ? (
+              <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 flex-shrink-0 font-medium">
+                {config.label}
+              </span>
+            ) : (
+              <span className={`text-[10px] font-mono ${isSuccess ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} flex-shrink-0 font-medium`}>
+                {isSuccess ? '✓' : `✗ ${exitCode}`}
+              </span>
+            )
           )}
           
           {/* Output expand/collapse icon */}

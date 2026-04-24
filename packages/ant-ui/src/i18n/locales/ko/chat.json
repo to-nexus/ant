@@ -68,6 +68,8 @@
     "deleting": "삭제 중...",
     "completed": "완료",
     "running": "실행 중...",
+    "rejected": "차단됨",
+    "skipped": "건너뜀",
     "collapseCommand": "명령어 접기",
     "expandCommand": "명령어 펼치기",
     "error": "오류:",

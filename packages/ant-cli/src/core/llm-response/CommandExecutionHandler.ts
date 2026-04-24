@@ -102,16 +102,33 @@ export class CommandExecutionHandler {
           }
         };
         
-        // Broadcast incremental update for streaming phase
+        // Streaming phase: prefer incremental `content_append` (delta) so the
+        // UI can render the new bytes without re-painting the whole card.
+        // The append path is only valid when the new snapshot is a strict
+        // extension of the old one — otherwise the UI would do
+        // `oldContent + delta` and duplicate the prior output. Non-prefix
+        // snapshots (stdout/stderr interleave that reordered bytes, ANSI
+        // clear-screen rewrites, …) fall back to a full `content_update`,
+        // which replaces the content in place.
         if (phase === 'streaming' && options.output !== undefined && oldOutput !== newOutput) {
-          const delta = newOutput.startsWith(oldOutput) ? newOutput.substring(oldOutput.length) : newOutput;
-          
-          this.broadcaster.broadcast(ctx.projectId, ctx.featureName, {
-            type: 'content_append',
-            messageId: session.currentMessage.id,
-            contentIndex: existingIndex,
-            delta: delta
-          }, ctx.userContext);
+          if (newOutput.startsWith(oldOutput)) {
+            const delta = newOutput.substring(oldOutput.length);
+            this.broadcaster.broadcast(ctx.projectId, ctx.featureName, {
+              type: 'content_append',
+              messageId: session.currentMessage.id,
+              contentIndex: existingIndex,
+              delta,
+            }, ctx.userContext);
+          } else {
+            this.broadcaster.broadcastContentUpdate(
+              ctx.projectId,
+              ctx.featureName,
+              session.currentMessage.id,
+              existingIndex,
+              session.currentMessage.contents[existingIndex],
+              ctx.userContext
+            );
+          }
         } else {
           // Full content update
           this.broadcaster.broadcastContentUpdate(
