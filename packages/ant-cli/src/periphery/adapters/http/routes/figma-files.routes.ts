@@ -42,35 +42,38 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
 
   /**
    * GET /api/figma/config/:projectId/:featureName
-   * Read the canonical figma workfile reference — auto-creates if missing, auto-migrates legacy format.
+   *
+   * Read the canonical figma workfile reference. Canonical structure
+   * (including `outputs/design/ui/{ant,figma,handoff}/` + the figma.json file
+   * itself) is guaranteed to exist by `ensureCanonicalFeatureMiddleware` that
+   * runs before this handler — no partial self-heal here. Legacy on-disk
+   * shapes are migrated in-place.
    */
   router.get('/config/:projectId/:featureName', async (req: Request, res: Response) => {
     try {
       const figmaPath = getFigmaJsonPath(req);
       let config: FigmaDataConfig;
 
-      let fileExists = true;
       let content: string | undefined;
       try {
         content = await fs.readFile(figmaPath, 'utf-8');
       } catch {
-        fileExists = false;
+        // Middleware guarantees the file exists for valid features. If read
+        // still fails (feature genuinely missing, permission error, etc.),
+        // surface an empty config — callers can persist via PUT.
+        config = createEmptyFigmaData();
+        res.json({ success: true, config });
+        return;
       }
 
-      if (!fileExists) {
-        config = createEmptyFigmaData();
-        await fs.mkdir(path.dirname(figmaPath), { recursive: true });
-        await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
-      } else {
-        try {
-          const raw = JSON.parse(content!);
-          config = migrateFigmaConfig(raw);
-          if (JSON.stringify(config) !== JSON.stringify(raw)) {
-            await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
-          }
-        } catch {
-          config = createEmptyFigmaData();
+      try {
+        const raw = JSON.parse(content);
+        config = migrateFigmaConfig(raw);
+        if (JSON.stringify(config) !== JSON.stringify(raw)) {
+          await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
         }
+      } catch {
+        config = createEmptyFigmaData();
       }
 
       res.json({ success: true, config });
@@ -81,14 +84,15 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
 
   /**
    * PUT /api/figma/config/:projectId/:featureName
-   * Write the canonical figma workfile reference.
+   *
+   * Write the canonical figma workfile reference. Canonical parent directory
+   * is guaranteed to exist by `ensureCanonicalFeatureMiddleware`.
    */
   router.put('/config/:projectId/:featureName', async (req: Request, res: Response) => {
     try {
       const figmaPath = getFigmaJsonPath(req);
       const config: FigmaDataConfig = req.body;
 
-      await fs.mkdir(path.dirname(figmaPath), { recursive: true });
       await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
 
       res.json({ success: true });
