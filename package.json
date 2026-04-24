@@ -74,6 +74,9 @@
     "typescript": "^5.9.3"
   },
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "@vscode/ripgrep"
+    ],
     "ignoredBuiltDependencies": [
       "argon2",
       "code-server",

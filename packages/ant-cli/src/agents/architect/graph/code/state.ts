@@ -525,13 +525,22 @@ export interface ArchitectGraphState extends TriageableState {
    * (`<executionTier>` tag from Decompose). SSOT for routing, loop limits,
    * breadcrumb / boundary / compact strategy selection.
    *
-   *   Tier 0 Reflex       → direct path, read-only (explain × oneshot)
-   *   Tier 1 OneShot      → direct path, 1-2 step ReAct
-   *   Tier 2 Exploratory  → direct path, multi-step ReAct
-   *   Tier 3 Task         → plan / execute pipeline (directive-only task)
-   *   Tier 4 RefsGrounded → plan / execute pipeline (refs-grounded task)
+   *   Tier 0 Reflex       → direct path, read-only textual answer (explain only)
+   *   Tier 1 OneShot      → direct path, verification-unneeded single write (up to 2 steps)
+   *   Tier 2 Exploratory  → task path, exactly 1 task with selfVerifyOnDone
+   *   Tier 3 Task         → task path, >= 2 tasks with mandatory verification task
+   *   Tier 4 RefsGrounded → task path, >= 2 tasks anchored in a reference document
    *
-   * - Writer: decompose node (LLM output) or `selectExecutionTier` fallback.
+   * Mode-specific minimum (enforced by `validateExecutionTier`):
+   *   - explain: Tier 0 allowed
+   *   - generate / refactor: Tier 1 minimum (Tier 0 forbidden — see the
+   *     decompose rules.md matrix). Violations raise `ExecutionTierViolation`
+   *     inside decompose's inline retry loop.
+   *
+   * - Writer: decompose node parses `<executionTier>` from the LLM response
+   *   via `parseExecutionTierTag` and validates via `validateExecutionTier`.
+   *   There is no silent fallback — a missing/forbidden value triggers retry
+   *   and, on exhaustion, fails the job loudly.
    * - Readers: `routeAfterDecompose`, `direct` node, learn / breadcrumb policy,
    *   all phase nodes via `getExecutionTier(state)`.
    * - Reset rule: never reset within a job; re-decompose overwrites.

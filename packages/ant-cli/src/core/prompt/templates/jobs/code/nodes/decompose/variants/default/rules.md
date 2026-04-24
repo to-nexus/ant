@@ -23,7 +23,7 @@ OUTPUT FORMAT:
 
 **Constraint**: Classify using the directive, the mode, and the provided context/refs ONLY. Do NOT invent scope beyond what the directive states.
 
-**Constraint**: When classification is ambiguous between two tiers, prefer the LOWER tier. The executor can always escalate; over-decomposing a simple directive wastes tokens and serializes work unnecessarily.
+**Constraint**: When classification is ambiguous between two tiers, prefer the LOWER tier **among tiers valid for the current mode** (see Output shape by mode × tier below: Tier `0` is valid only for `explain`; `generate` / `refactor` start at Tier `1`). The executor can always escalate; over-decomposing a simple directive wastes tokens and serializes work unnecessarily. Dropping below the mode's minimum tier is NOT a valid "lower" classification.
 
 **Constraint**: The presence of refs alone does NOT imply Tier 4. Only when the directive's requested work is directly grounded in those refs (the refs are the source of truth for the breakdown) does the tier become 4. If refs exist but the directive asks for something unrelated, prefer `3` over `4`.
 
@@ -39,10 +39,11 @@ OUTPUT FORMAT:
 | `explain`               | `1`                        | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
 | `explain`               | `2`                        | Exactly one task, `type: "explain"`, `priority: 200`, `selfVerifyOnDone: false` | `{}` |
 | `explain`               | `3` / `4`                  | Exactly one task, `type: "explain"`, `priority: 200`  | `{}` |
-| `generate` / `refactor` | `0`                        | `[]`                                                  | `{}` (no files planned — rare; treat as "nothing to do") |
 | `generate` / `refactor` | `1`                        | `[]`                                                  | `{ "targetFiles": [...] }` listing the files the single action touches |
 | `generate` / `refactor` | `2`                        | Exactly one task (type is one of `error`/`feature`/`ui`/`setup`) with `selfVerifyOnDone: true` | `{}` |
 | `generate` / `refactor` | `3` / `4`                  | Full task breakdown per the rules below, `>= 2` tasks INCLUDING a verification task (priority 1000) | `{}` |
+
+**Constraint**: For `generate` / `refactor` modes, the minimum executionTier is `1`. Do NOT emit `<executionTier>0</executionTier>` for these modes. A "no change required" outcome is NEVER a classification-time decision — it can only be the conclusion of a Tier 1+ execution that observes the code and produces no file edits. Tier `0` remains valid ONLY for `explain` mode (read-only textual answer from the directive alone).
 
 **Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply whenever `<tasks>` is non-empty (tiers `2`, `3`, and `4`). When `<tasks>` is `[]` (tiers `0`, `1`), skip the reasoning steps those rules describe.
 
@@ -95,14 +96,12 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
   - `2` Exploratory   — one explain task covers the full answer (observation → written artefact).
   - `3` Task          — answer must be structured as multiple chapter-scale artefacts.
   - `4` RefsGrounded  — answer systematically maps a supplied reference document.
-- `refactor` mode: the action is a code change.
-  - `0` Reflex        — (rare) answer is "no change required"; no edits planned.
+- `refactor` mode: the action is a code change. Minimum tier is `1` (Tier `0` is explain-only).
   - `1` OneShot       — verification genuinely unneeded (comment/typo/safe).
   - `2` Exploratory   — one refactor unit that needs verification (task owns install/typecheck/build/test).
   - `3` Task          — change spans multiple independent persistence boundaries; verification task governs gates.
   - `4` RefsGrounded  — the refactor plan comes from a supplied reference document.
-- `generate` mode: the action is producing new code.
-  - `0` Reflex        — (rare) directive is a question disguised as generation; no files planned.
+- `generate` mode: the action is producing new code. Minimum tier is `1` (Tier `0` is explain-only).
   - `1` OneShot       — trivial addition where verification is genuinely unneeded.
   - `2` Exploratory   — one generated unit that needs verification (task owns install/typecheck/build/test).
   - `3` Task          — multi-boundary or multi-concern implementation; verification task governs gates.

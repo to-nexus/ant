@@ -27,13 +27,32 @@ const DEFAULT_EXCLUDES = ['node_modules', '.git', 'dist', 'build'];
 const MAX_RESULT_LINES = 500;
 const PER_FILE_MAX_COUNT = 200;
 
+/**
+ * Hint appended to ripgrep ENOENT messages so the operator sees a clear
+ * recovery path. `@vscode/ripgrep` downloads its binary via a postinstall
+ * script; pnpm 10+ blocks those by default unless the package is listed
+ * under `pnpm.onlyBuiltDependencies`. When the bin/ directory is empty,
+ * `spawn(rgPath, ...)` emits ENOENT at runtime. See `CLAUDE.md` →
+ * "Native-Binary Dependencies" for the full recovery procedure.
+ */
+const RIPGREP_ENOENT_HINT =
+  '\n\nHint: the ripgrep binary is missing. Run ' +
+  '`env -u GITHUB_TOKEN -u GH_TOKEN node node_modules/.pnpm/@vscode+ripgrep@*/node_modules/@vscode/ripgrep/lib/postinstall.js --force` ' +
+  'and verify that `@vscode/ripgrep` is listed in `pnpm.onlyBuiltDependencies` of the root `package.json` ' +
+  '(pnpm 10 blocks postinstall scripts by default).';
+
+function decorateRgError(message: string): string {
+  if (message.includes('ENOENT')) return message + RIPGREP_ENOENT_HINT;
+  return message;
+}
+
 async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
     let proc: ReturnType<typeof spawn>;
     try {
       proc = spawn(rgPath, args, { cwd });
     } catch (err) {
-      resolve({ stdout: '', stderr: (err as Error).message, code: 2 });
+      resolve({ stdout: '', stderr: decorateRgError((err as Error).message), code: 2 });
       return;
     }
     let stdout = '';
@@ -41,7 +60,7 @@ async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string
     proc.stdout?.on('data', (c: Buffer) => { stdout += c.toString(); });
     proc.stderr?.on('data', (c: Buffer) => { stderr += c.toString(); });
     proc.on('close', (code) => resolve({ stdout, stderr, code: code ?? 0 }));
-    proc.on('error', (err) => resolve({ stdout: '', stderr: err.message, code: 2 }));
+    proc.on('error', (err) => resolve({ stdout: '', stderr: decorateRgError(err.message), code: 2 }));
   });
 }
 

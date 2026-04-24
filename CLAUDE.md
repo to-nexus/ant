@@ -47,6 +47,19 @@ pnpm init:workspace     # Initialize a new workspace
 pnpm init:feature       # Initialize a new feature
 ```
 
+### Native-Binary Dependencies (pnpm build-deps whitelisting)
+
+pnpm 10+ blocks `postinstall` scripts by default. Packages that download native binaries during `postinstall` (e.g. `@vscode/ripgrep`, `sharp`) must be whitelisted in `package.json` → `pnpm.onlyBuiltDependencies`. A missing entry produces silent `ENOENT` at runtime when the binary is invoked.
+
+If `search_code` / ripgrep-dependent tools fail with `ENOENT` (spawn rg), inspect `node_modules/.pnpm/@vscode+ripgrep@*/node_modules/@vscode/ripgrep/bin/` — an empty `bin/` means postinstall was skipped. Recovery:
+
+```bash
+cd node_modules/.pnpm/@vscode+ripgrep@*/node_modules/@vscode/ripgrep \
+  && env -u GITHUB_TOKEN -u GH_TOKEN node ./lib/postinstall.js --force
+```
+
+An invalid `GITHUB_TOKEN` / `GH_TOKEN` in the shell env causes the download to fail with `401`; unset them for the postinstall run (the script falls back to anonymous public release downloads).
+
 ## Architecture
 
 ### Monorepo Structure

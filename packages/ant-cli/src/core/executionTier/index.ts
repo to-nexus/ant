@@ -65,7 +65,11 @@ export {
 export {
   parseExecutionTierTag,
   coerceExecutionTier,
+  validateExecutionTier,
+  ExecutionTierViolation,
+  buildExecutionTierViolationFraming,
 } from './parseExecutionTierTag';
+export type { ExecutionTierViolationCode, ValidateExecutionTierOpts } from './parseExecutionTierTag';
 export {
   recordUserTurnMeta,
   type RecordUserTurnMetaInput,

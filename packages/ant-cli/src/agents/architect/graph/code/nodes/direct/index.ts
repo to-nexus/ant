@@ -359,6 +359,33 @@ export async function direct(
     );
   }
 
+  // Silent-failure guard (E from plan): direct was entered under a write
+  // intent (generate/refactor), consumed its step budget, and produced
+  // zero file modifications. Historically this completed the job as
+  // "success" with no changes — e.g. metal-issuing-honor, where Tier 1
+  // routing picked direct for what should have been a Tier 2+ fix and
+  // the single assistant turn never wrote anything. Escalating to
+  // decompose on this signal lets the 1-shot escalation cap in
+  // routeAfterDirect kick in: decompose re-runs with a "previous
+  // direct-path attempt touched zero files" framing (see
+  // decompose/index.ts) and the LLM is nudged toward Tier 2+. A second
+  // escalation collapses to learn, which is still strictly better than
+  // silently logging "job complete" with an empty diff.
+  const isWriteIntent = mode === 'generate' || mode === 'refactor';
+  if (
+    !needsEscalation &&
+    isWriteIntent &&
+    touchedFiles.size === 0 &&
+    !effectivePromoted
+  ) {
+    needsEscalation = true;
+    console.warn(
+      `⚡ [Direct] No files touched at write-intent tier (mode=${mode}, ` +
+      `executionTier=${state.executionTier}, steps=${stepsExecuted}/${maxSteps}) — ` +
+      `escalating to decompose (re-classification expected to pick Tier 2+)`,
+    );
+  }
+
   const updatedConversations = { [CONV_KEYS.NODE_DIRECT]: history };
 
   try {

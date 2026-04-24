@@ -443,7 +443,9 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     // job's trace into feature.jsonl for future resolve/plan/direct use.
     //
     // `getExecutionTier(state)` reads `state.executionTier` (written by
-    // decompose) or falls back to `selectExecutionTier(mode, hasRefs)`.
+    // decompose after `validateExecutionTier` confirms the LLM's
+    // `<executionTier>` tag); when absent (legacy session / pre-decompose
+    // node), it defaults to Tier 0 Reflex (Noop facade).
     // Tier 3 Task is the ONLY tier that emits breadcrumb + boundary;
     // lower tiers Noop transparently so this block stays uniform across
     // execution paths.

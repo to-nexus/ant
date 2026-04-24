@@ -33,9 +33,11 @@ Static errors → static tools. Behavioral errors → runtime observation.
 
 {{else}}
 {{#if (eq mode "explain")}}
-**EXPLAIN MODE - Minimal Bug Fix**
+**EXPLAIN MODE - Chat-Only Explanation**
 
-🚨 **CRITICAL: This is a BUG FIX, not a feature implementation!**
+🚨 **CRITICAL: This is an EXPLANATION, NOT a code change!**
+
+The deliverable is prose in chat — NO files are created, modified, or deleted. Read-only observation grounds the answer; feature / fix tasks are not emitted. Tier selection and task shape follow the matrix in the rules.
 
 {{else}}
 {{#if (eq mode "generate")}}

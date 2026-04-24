@@ -290,7 +290,7 @@ direct 노드 ReAct 루프 내부에서 `shouldEscalate(state, touchedFiles)` �
 | `packages/ant-cli/src/composition/recordUserTurn.ts` | orchestrator → 2-file user_turn atomic append |
 | `packages/ant-cli/src/core/context/featureContextBuilder.ts` | `buildFeatureContext` / `mergeFeatureContext` / `compactFeatureContext` / `hydrateFeatureContext` |
 | `packages/ant-cli/src/core/context/breadcrumb.ts` | `buildBreadcrumb` / `buildBreadcrumbSummary` / `collectTouchedFilesFromTrace` |
-| `packages/ant-cli/src/core/executionTier/` | 5-Tier Execution Strategy. `selectExecutionTier(mode, complexity)` 매트릭스 + `Tier0Reflex` / `Tier1OneShot` / `Tier2Exploratory` / `Tier3Task` / `Tier4Plan` facade. Phase 노드는 `getExecutionTier(state)` 로만 접근 (§5.1.1) |
+| `packages/ant-cli/src/core/executionTier/` | 5-Tier Execution Strategy. Decompose LLM 이 `<executionTier>N</executionTier>` 를 emit → `parseExecutionTierTag` 파싱 → `validateExecutionTier(parsed, { mode })` 로 계약 검증 (MISSING_TAG / FORBIDDEN_TIER_FOR_MODE 시 `ExecutionTierViolation` throw, decompose retry loop 가 소비). `Tier0Reflex` / `Tier1OneShot` / `Tier2Exploratory` / `Tier3Task` / `Tier4Plan` facade. Phase 노드는 `getExecutionTier(state)` 로만 접근 (§5.1.1) |
 | `packages/ant-cli/src/core/utils/featureBiases.ts` | `recordClassification` / `readClassifications` (misclassify 계측 §19) |
 | `packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/` | 3-way complexity 판정 + `<specClarify>` emit |
 | `packages/ant-cli/src/agents/architect/graph/code/nodes/direct/` | ReAct 루프 + `shouldEscalate` |
