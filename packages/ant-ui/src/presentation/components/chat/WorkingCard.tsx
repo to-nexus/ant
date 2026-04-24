@@ -278,12 +278,16 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
       value: `~${tokensK}K` 
     });
   }
-  
-  const hasStats = stats.length > 0;
-  const hasExpandable = !isProgress && (hasFiles || hasStats);
 
-  // Progress state: simple inline display
-  if (isProgress) {
+  const hasStats = stats.length > 0;
+  // Progress cards become expandable when an aggregator (see
+  // aggregateChatStatuses) has merged multiple slots and attached a
+  // `filesList`. Non-aggregated single progress cards render as the
+  // compact inline strip below.
+  const hasExpandable = hasFiles || (!isProgress && hasStats);
+
+  // Progress state without a file list → keep the compact inline strip.
+  if (isProgress && !hasFiles) {
     return (
       <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${containerClass}`}>
         <WorkingIcon icon={Icon} iconClass={iconClass} colorClass={iconColorClass} />
@@ -325,7 +329,7 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
     }
   };
 
-  // Complete state: expandable card with results
+  // Complete state — or aggregated progress state — expandable card.
   return (
     <div className="border border-gray-200/50 dark:border-gray-700/50 rounded-lg overflow-hidden bg-transparent">
       <button 
@@ -335,13 +339,20 @@ export function WorkingCard({ content, variant }: WorkingCardProps) {
         onClick={handleCardClick}
         disabled={!hasExpandable && !isDownloadedAsset}
       >
-        <WorkingIcon icon={Icon} iconClass="" colorClass={iconColorClass} />
-        <TruncatableText
-          text={content.content || ''}
-          maxLength={60}
-          className="text-xs font-medium text-gray-700 dark:text-gray-300"
-          buttonClassName="text-gray-600 dark:text-gray-400 opacity-60"
-        />
+        <WorkingIcon icon={Icon} iconClass={isProgress ? iconClass : ''} colorClass={iconColorClass} />
+        <div className="flex-1 min-w-0 flex flex-col items-start">
+          <TruncatableText
+            text={content.content || ''}
+            maxLength={60}
+            className={`text-xs font-medium ${isProgress ? textClass : 'text-gray-700 dark:text-gray-300'}`}
+            buttonClassName={isProgress ? `${textClass} opacity-60` : 'text-gray-600 dark:text-gray-400 opacity-60'}
+          />
+          {isProgress && content.metadata?.detail && (
+            <div className={`text-xs mt-0.5 ${detailClass}`}>
+              {content.metadata.detail}
+            </div>
+          )}
+        </div>
         {hasExpandable && (
           <div className="flex-shrink-0">
             {isExpanded ? 
