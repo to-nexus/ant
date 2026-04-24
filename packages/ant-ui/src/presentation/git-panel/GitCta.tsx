@@ -6,7 +6,7 @@
  * disabled while an operation is running (exclusive FSM).
  */
 
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '@/presentation/components/common/async';
 import { useGitCta, useGitDispatch, useGitOperation } from '../../domain/git-world';
 
 export interface GitCtaProps {
@@ -90,7 +90,12 @@ export function GitCta({ feature, disabled }: GitCtaProps) {
       disabled={isDisabled || !onClick}
       className={`${base} ${variantCls}`}
     >
-      {isRunning && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+      {isRunning && (
+        <Spinner
+          size="sm"
+          tone={variant === 'primary' ? 'inverse' : 'muted'}
+        />
+      )}
       {label}
     </button>
   );
