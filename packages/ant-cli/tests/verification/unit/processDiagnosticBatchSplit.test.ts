@@ -202,6 +202,156 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       }
       expect(finalVerifications[0].type).toBe('verification');
     });
+
+    it('test-code parent: drops original, spawns test-code sub-tasks with minimal shape, enqueues Final Verification', () => {
+      // test-code parents take path B (drop-and-replace). The policy map
+      // says sub-tasks inherit 'test-code' type (NOT 'error'), the
+      // batchPlanText uses the minimal shape without diagnostics/
+      // rootCauseSelfCheck, and `remediationMode` is NOT stamped.
+      const state = makeState({ verification: undefined as any });
+      state.verification = undefined; // test-code parent owns no session
+      const task = makeTask({
+        type: 'test-code',
+        priority: 700,
+        name: 'generate unit tests',
+      });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'generate tests' },
+        batches: [
+          {
+            name: 'domain tests',
+            rationale: 'independent of API layer',
+            create: [{ target: 'src/domain/__tests__/order.test.ts', purpose: 'verify order logic' }],
+            modify: [],
+          },
+          {
+            name: 'api tests',
+            rationale: 'independent of domain',
+            create: [{ target: 'src/api/__tests__/routes.test.ts', purpose: 'verify routes' }],
+            modify: [],
+          },
+        ],
+      });
+
+      const out = processDiagnosticBatchSplit(state, plan, task);
+
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+
+      const all = state.taskQueue.getAll();
+      // Parent must be dropped.
+      expect(all.some((t: any) => t.id === task.id)).toBe(false);
+
+      const subTasks = all.filter((t: any) => t.priority === (task.priority! - 1));
+      const finalVerifications = all.filter((t: any) => t.priority === 1000);
+
+      expect(subTasks.length).toBe(2);
+      expect(finalVerifications.length).toBe(1);
+
+      for (const s of subTasks) {
+        const sub = s as any;
+        // Sub type must be 'test-code', not 'error'.
+        expect(sub.type).toBe('test-code');
+        // prePlanText must be a minimal shape with create/modify only.
+        expect(sub.prePlanText).toBeTruthy();
+        const parsed = JSON.parse(sub.prePlanText);
+        expect(parsed.implementation).toBeTruthy();
+        expect(Array.isArray(parsed.implementation.create)).toBe(true);
+        expect(Array.isArray(parsed.implementation.modify)).toBe(true);
+        // Minimal shape: no diagnostics / rootCauseSelfCheck leakage.
+        expect(parsed.diagnostics).toBeUndefined();
+        expect(parsed.rootCauseSelfCheck).toBeUndefined();
+        // Slice hint carries the batch rationale.
+        expect(parsed.slice).toBeTruthy();
+        // remediationMode MUST NOT be stamped on test-code sub-tasks.
+        expect(sub.remediationMode).toBeUndefined();
+        // Distinct parallelGroup (no file overlap between batches).
+        expect(sub.parallelGroup).toBeTruthy();
+        expect(sub.exclusive).toBe(false);
+        // Sub name uses 'Tests:' prefix (not 'Fix:').
+        expect(sub.name.startsWith('Tests:')).toBe(true);
+      }
+
+      // Distinct parallelGroups across the two sub-tasks.
+      const groups = subTasks.map((t: any) => t.parallelGroup);
+      expect(new Set(groups).size).toBe(2);
+    });
+
+    it('test-code parent: single batch → noop (parent writes tests itself)', () => {
+      const state = makeState({ verification: undefined as any });
+      state.verification = undefined;
+      const task = makeTask({ type: 'test-code', priority: 700, name: 'tests' });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'tests' },
+        batches: [
+          { name: 'one slice only', create: [{ target: 'a.test.ts' }], modify: [] },
+        ],
+      });
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe(plan);
+      expect(state._batchSplitRequeued).toBe(false);
+    });
+
+    it('test-code parent: Final Verification already queued → dedup skips adding another', () => {
+      const state = makeState({ verification: undefined as any });
+      state.verification = undefined;
+      // Pre-seed the queue with a Final Verification.
+      state.taskQueue.push({
+        id: 'pre-existing-fv',
+        name: 'Pre-existing FV',
+        type: 'verification',
+        priority: 1000,
+      } as CodeTask);
+
+      const task = makeTask({ type: 'test-code', priority: 700, name: 'tests' });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'tests' },
+        batches: [
+          { name: 'slice a', create: [{ target: 'a.test.ts' }], modify: [] },
+          { name: 'slice b', create: [{ target: 'b.test.ts' }], modify: [] },
+        ],
+      });
+
+      processDiagnosticBatchSplit(state, plan, task);
+
+      const finalVerifications = state.taskQueue
+        .getAll()
+        .filter((t: any) => t.priority === 1000);
+      // Dedup: only the pre-existing FV remains; no second one was added.
+      expect(finalVerifications.length).toBe(1);
+      expect(finalVerifications[0].id).toBe('pre-existing-fv');
+    });
+
+    it('test-code parent: file overlap between batches forces exclusive:true on subs', () => {
+      const state = makeState({ verification: undefined as any });
+      state.verification = undefined;
+      const task = makeTask({ type: 'test-code', priority: 700, name: 'tests' });
+      const plan = JSON.stringify({
+        task: { id: 'parent', goal: 'tests' },
+        batches: [
+          {
+            name: 'slice a',
+            create: [{ target: 'shared.test.ts' }, { target: 'a.test.ts' }],
+            modify: [],
+          },
+          {
+            name: 'slice b',
+            create: [{ target: 'shared.test.ts' }, { target: 'b.test.ts' }],
+            modify: [],
+          },
+        ],
+      });
+      processDiagnosticBatchSplit(state, plan, task);
+      const subs = state.taskQueue
+        .getAll()
+        .filter((t: any) => t.type === 'test-code');
+      expect(subs.length).toBe(2);
+      for (const s of subs) {
+        expect((s as any).exclusive).toBe(true);
+        // When overlap forces exclusive, no parallelGroup is assigned.
+        expect((s as any).parallelGroup).toBeUndefined();
+      }
+    });
   });
 
   describe('C7: forceByRepeat (Session.isPlanRepeated)', () => {

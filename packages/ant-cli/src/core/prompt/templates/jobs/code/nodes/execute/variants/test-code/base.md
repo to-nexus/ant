@@ -6,6 +6,29 @@ You are generating the minimum set of tests that verify the integrated codebase 
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{#if prePlanText}}
+## Slice Scope (batch-split sub-task)
+
+This task was spawned from a parent test-code task's `batches[]`. The parent has **already**:
+
+- Installed the test-runner and its type packages (`vitest` / `jest` / `pytest` / ...).
+- Verified the runner is invocable.
+- Set up any shared test config the project needs.
+
+Your job is narrow: **write the test files listed in the slice plan below, and nothing else.**
+
+**Strict constraints for this slice**:
+
+- Do NOT run `npm/pnpm/yarn install`, `pip install`, `poetry add`, `go get`, or any dependency-install command. The command guard rejects install verbs in sub-tasks to prevent lockfile races with sibling slices.
+- Do NOT modify `package.json`, `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `pyproject.toml`, `poetry.lock`, `go.mod`, `go.sum`, or any other dependency manifest.
+- Do NOT modify shared test config (`vitest.config.*`, `jest.config.*`, `pytest.ini`, `tsconfig.json`). Those belong to the parent plan phase.
+- Do NOT touch application source files. Tests observe source; they do not change it.
+- Do NOT import files outside the slice boundary declared in the plan — a slice's tests must be self-contained to keep the parallel split meaningful.
+- Write ONLY the files listed in the slice plan's `create` / `modify`. Do not add extra helper / fixture files beyond what the plan names.
+
+After writing every file listed in the slice plan, output `<done>true</done>`. The Final Verification task runs the test suite; do not run it here.
+
+{{else}}
 ## Scope
 
 **In scope**:
@@ -15,6 +38,7 @@ You are generating the minimum set of tests that verify the integrated codebase 
 **Not in scope**:
 - Executing tests — the verification phase runs them.
 - Modifying application source code — test files observe the source, they do not change it.
+{{/if}}
 
 ## Codebase Awareness
 

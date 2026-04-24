@@ -19,6 +19,21 @@
  *                                    via `detectTestFilesFromDisk`.
  *   - execute                      — test-code-specific execute template
  *                                    variant and skipExamples flag.
+ *   - plan.buildPrompt             — test-code-variant plan prompt that
+ *                                    owns the two decisions unique to
+ *                                    test-code parents (install test
+ *                                    runner deps, decide feature-slice
+ *                                    batch-split). Sub-tasks (with
+ *                                    `prePlanText` set) fast-path past
+ *                                    the plan phase via
+ *                                    `maybePrePlannedFastPath`.
+ *   - command.guard                — lockfile-race defence: reject install
+ *                                    commands issued by batch-split sub-
+ *                                    tasks. Parent test-code tasks (no
+ *                                    `prePlanText`) are untouched because
+ *                                    their plan tool-loop legitimately
+ *                                    installs the runner before emitting
+ *                                    `batches[]`.
  *
  * Test-code flows through the standard `jobs/code/nodes/plan` path
  * (keyword / RAG / planGen) like feature / ui / design-system tasks —
@@ -28,8 +43,6 @@
  * surfaces retry violations back through `composeViolationsText`.
  *
  * Intentionally absent:
- *   - plan.buildPrompt / extraTemplateVars — no variant template needed;
- *     the generic plan prompt is sufficient.
  *   - check.budgetExhaustedHint — the generic "Break down the task scope"
  *     hint is correct for test-code; only verification overrides.
  *   - scheduling consumer flags `preUiBarrier / preDocBarrier /
@@ -37,6 +50,8 @@
  *     barrier.
  *   - scheduling producer flags `blocksUi / blocksTestgen /
  *     blocksIntegration` — test-code only activates the doc barrier.
+ *     In particular `blocksTestgen=false` lets sub-tasks from a batch-split
+ *     run in parallel without self-blocking.
  */
 
 import type { TaskHooks } from '../_shared/types';
@@ -45,12 +60,19 @@ import { preTestgenBarrier, blocksDoc } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
 import { evaluate } from './hooks/check';
 import { executeHook } from './hooks/execute';
+import { buildPrompt as planBuildPrompt } from './hooks/plan';
+import { guard as commandGuard } from './hooks/command';
 
 export const hooks: TaskHooks = {
   scheduling: { preTestgenBarrier, blocksDoc },
   conversations: { convKey },
   check: { evaluate },
   execute: executeHook,
+  plan: {
+    buildPrompt: planBuildPrompt,
+    toolLoopLogTemplate: 'jobs/code/nodes/plan/variants/test-code/base',
+  },
+  command: { guard: commandGuard },
 };
 
 export { isTestCodeTask } from './model/is';

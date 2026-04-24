@@ -20,6 +20,8 @@ import {
 } from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/scheduling';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/conversations';
 import { evaluate as checkEvaluate } from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/check';
+import * as planHook from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/plan';
+import * as commandHook from '../../../src/agents/architect/graph/code/tasks/test-code/hooks/command';
 import { hooks as testCodeBundle, isTestCodeTask } from '../../../src/agents/architect/graph/code/tasks/test-code';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
 
@@ -80,20 +82,28 @@ describe('tasks/_shared/registry — test-code entry', () => {
     expect(hooks?.scheduling?.blocksDoc).toBe(true);
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
     expect(hooks?.check?.evaluate).toBe(checkEvaluate);
+    // test-code batch-split promotion publishes `plan.buildPrompt` and
+    // `command.guard`. The plan variant owns test-runner install + feature-
+    // slice decision; the command guard rejects install verbs issued by
+    // batch-split sub-tasks to prevent lockfile races.
+    expect(hooks?.plan?.buildPrompt).toBe(planHook.buildPrompt);
+    expect(hooks?.plan?.toolLoopLogTemplate).toBe('jobs/code/nodes/plan/variants/test-code/base');
+    expect(hooks?.command?.guard).toBe(commandHook.guard);
   });
 
-  it('bundle publishes only scheduling + conversations + check slots', () => {
+  it('bundle publishes scheduling + conversations + check + plan + command slots', () => {
     // Slot-level absence — lock parity with ui/design-system precedents
     // so a future drive-by hook addition forces an explicit test update.
-    expect(testCodeBundle.plan).toBeUndefined();
     expect(testCodeBundle.decompose).toBeUndefined();
     expect(testCodeBundle.tool).toBeUndefined();
-    expect(testCodeBundle.command).toBeUndefined();
     expect(testCodeBundle.router).toBeUndefined();
     expect(testCodeBundle.orchestrator).toBeUndefined();
     // check.evaluate is published; but budgetExhaustedHint is NOT —
     // generic "Break down the task scope" is correct for test-code.
     expect(testCodeBundle.check?.budgetExhaustedHint).toBeUndefined();
+    // plan.buildPrompt is published (test-code variant); extraTemplateVars
+    // is not — the variant template has a self-contained var set.
+    expect(testCodeBundle.plan?.extraTemplateVars).toBeUndefined();
   });
 
   it('scheduling exposes only testgen-consumer + doc-producer — no other flags', () => {
@@ -161,6 +171,105 @@ describe('tasks/test-code/hooks/check', () => {
   it('evaluate — returns violation when featurePath is undefined', async () => {
     const v = await checkEvaluate(stateWithFeaturePath(undefined));
     expect(v?.type).toBe('incomplete_implementation');
+  });
+});
+
+describe('tasks/test-code/hooks/command.guard', () => {
+  // The guard fires only on batch-split sub-tasks (prePlanText present).
+  // Parent test-code tasks legitimately install the test runner during
+  // their plan phase, so passing `currentTaskHasPrePlanText=false`
+  // (equivalent to no prePlanText) must let every command through.
+  function subCtx(overrides: Record<string, unknown> = {}): any {
+    return {
+      activePhase: 'execute',
+      currentTaskType: 'test-code',
+      currentTaskHasPrePlanText: true,
+      fileSystem: undefined,
+      chatStatus: undefined,
+      workingDir: '/tmp',
+      ...overrides,
+    };
+  }
+
+  function parentCtx(overrides: Record<string, unknown> = {}): any {
+    return subCtx({ currentTaskHasPrePlanText: undefined, ...overrides });
+  }
+
+  it('blocks npm install on sub-tasks', () => {
+    const result = commandHook.guard(subCtx(), { command: 'npm install vitest' });
+    expect(result?.content).toMatch(/\[Policy\]/);
+    expect(result?.content).toMatch(/BLOCKED/);
+    expect(result?.content).toMatch(/parent test-code/i);
+    expect(result?.error).toBeUndefined();
+  });
+
+  it('blocks every package-manager install verb on sub-tasks', () => {
+    const verbs = [
+      'npm install',
+      'npm i',
+      'npm ci',
+      'npm add lodash',
+      'pnpm install',
+      'pnpm add vitest',
+      'pnpm i',
+      'yarn install',
+      'yarn add vitest',
+      'pip install pytest',
+      'pip3 install pytest',
+      'poetry add pytest',
+      'poetry install',
+      'bundle install',
+      'cargo add serde',
+      'cargo install cargo-edit',
+      'go get github.com/stretchr/testify',
+    ];
+    for (const cmd of verbs) {
+      const result = commandHook.guard(subCtx(), { command: cmd });
+      expect(result?.content, `should block: ${cmd}`).toMatch(/\[Policy\]/);
+      expect(result?.content, `should block: ${cmd}`).toMatch(/BLOCKED/);
+    }
+  });
+
+  it('rejection carries a commandExecuted side-effect with exitCode -1', () => {
+    const result = commandHook.guard(subCtx(), { command: 'pnpm add vitest' });
+    expect(result?.sideEffects).toEqual([
+      expect.objectContaining({ type: 'commandExecuted', exitCode: -1, success: false }),
+    ]);
+  });
+
+  it('allows read-only / test-writing commands on sub-tasks', () => {
+    // The guard is scoped narrowly to install-class verbs; file-write,
+    // inspection, and test-running commands are either handled by other
+    // layers (file tools) or by the cross-task Go build policy in
+    // codeCommandPolicy.
+    expect(commandHook.guard(subCtx(), { command: 'ls src/' })).toBeNull();
+    expect(commandHook.guard(subCtx(), { command: 'cat tsconfig.json' })).toBeNull();
+    expect(commandHook.guard(subCtx(), { command: 'pnpm why vitest' })).toBeNull();
+    expect(commandHook.guard(subCtx(), { command: 'mkdir -p src/__tests__' })).toBeNull();
+  });
+
+  it('parent test-code tasks (no prePlanText) may install — guard returns null', () => {
+    // Parents are allowed to install; they own this responsibility
+    // exclusively (see plan variant). Running install at the parent
+    // level serializes naturally because the parent holds the
+    // preTestgenBarrier slot before any sub-task exists.
+    expect(commandHook.guard(parentCtx(), { command: 'pnpm add -D vitest @types/node' })).toBeNull();
+    expect(commandHook.guard(parentCtx(), { command: 'npm install jest' })).toBeNull();
+    expect(commandHook.guard(parentCtx(), { command: 'pip install pytest' })).toBeNull();
+  });
+
+  it('parent test-code tasks also pass through non-install commands', () => {
+    expect(commandHook.guard(parentCtx(), { command: 'cat package.json' })).toBeNull();
+    expect(commandHook.guard(parentCtx(), { command: 'ls src/' })).toBeNull();
+    expect(commandHook.guard(parentCtx(), { command: 'npx vitest --version' })).toBeNull();
+  });
+
+  it('install-like substrings in unrelated commands are not blocked', () => {
+    // The guard uses word-boundary anchored patterns, so paths or script
+    // names that contain "install" as a substring (e.g. `./scripts/install-deps.sh`
+    // has `install` but no subcommand) do not accidentally trigger the block.
+    expect(commandHook.guard(subCtx(), { command: 'ls install' })).toBeNull();
+    expect(commandHook.guard(subCtx(), { command: 'echo "install me"' })).toBeNull();
   });
 });
 

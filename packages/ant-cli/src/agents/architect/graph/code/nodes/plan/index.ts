@@ -52,6 +52,7 @@ import { normalizePlanForHash } from '../../tasks/verification/model/planHash';
 import { isVerificationTask } from '../../tasks/verification';
 import { isErrorTask } from '../../tasks/error';
 import { isSetupTask } from '../../tasks/setup';
+import { isTestCodeTask } from '../../tasks/test-code';
 
 // Re-exports for backward-compat with existing imports.
 export type { PlanEntryContext } from './parts/entry';
@@ -130,8 +131,18 @@ async function maybeResumeInterrupted(
 }
 
 /**
- * STEP 0.6 — pre-planned error task (batch-split output). Skip planning
- * entirely and go straight into execute with the carried prePlanText.
+ * STEP 0.6 — pre-planned batch-split sub-task. Skip planning entirely and
+ * go straight into execute with the carried `prePlanText`.
+ *
+ * Originally error-only; extended to test-code sub-tasks in the test-code
+ * batch-split change. Both task types participate in
+ * `BATCH_SPLIT_POLICY['drop-and-replace']`, which means the parent is gone
+ * and the sub-task owns a fixed scope (fix batch / test slice). Forcing the
+ * sub-task through plan-phase tool-loop on retry would either (a) re-run
+ * diagnostics the parent already distilled (error case; the legacy
+ * `cascade` regression), or (b) lose the slice boundary the parent
+ * committed to (test-code case). The retry condition keeps the fast-path
+ * active for both.
  */
 async function maybePrePlannedFastPath(
   state: ArchitectGraphState,
@@ -139,16 +150,15 @@ async function maybePrePlannedFastPath(
 ): Promise<ArchitectGraphState | null> {
   const { nextTask, isRetry } = entry;
   const prePlanText = (nextTask as CodeTask).prePlanText;
-  // budget_exhausted retry should re-attempt the same fix, not re-run tsc diagnostics.
-  // Re-running diagnostics on retry causes cascade: sibling domain errors → duplicate subtasks.
+  const isBatchSplitSub = isErrorTask(nextTask) || isTestCodeTask(nextTask);
   const hasPrePlanText =
     prePlanText != null &&
     prePlanText.length > 50 &&
-    (!isRetry || isErrorTask(nextTask));
+    (!isRetry || isBatchSplitSub);
 
   if (!hasPrePlanText) return null;
 
-  console.log(`\n⚡ [Plan] Pre-planned error task "${nextTask.name}" — using prePlanText (${prePlanText!.length} chars)`);
+  console.log(`\n⚡ [Plan] Pre-planned ${nextTask.type} task "${nextTask.name}" — using prePlanText (${prePlanText!.length} chars)`);
   console.log(`   Skipping: keywords, RAG, diagnostic tool loop, planText generation`);
 
   await workflowExit(state);
@@ -164,8 +174,9 @@ async function maybePrePlannedFastPath(
     workspaceConfig: state.workspaceConfig,
     conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
     _activePhase: 'execute' as const,
-    // prePlanText path only fires for error tasks, so the preceding
-    // verification session should not leak into the error-task execution.
+    // prePlanText path now fires for error AND test-code sub-tasks; a
+    // preceding verification session (if any) should not leak into the
+    // sub-task execution, and test-code never owns a session anyway.
     verification: undefined,
   };
 }

@@ -149,9 +149,14 @@ export async function execute(
     // separate "final" vs "non-final" verification distinction.
     const isVerificationType = isVerificationTask(state.currentTask);
     const isPrePlanned = !!(state.currentTask as CodeTask)?.prePlanText;
-    // Pre-planned error tasks get a bounded budget (25) since their scope is limited by batch split.
+    // Pre-planned batch-split sub-tasks (error + test-code) get a bounded
+    // budget (25): each sub-task's scope is limited to a single fix batch
+    // or test slice (typically 2-8 files), and 25 is the measured safe
+    // ceiling that accommodates read + edit + retry margin per file
+    // without leaving room for unbounded exploration.
     // Regular error/verification tasks have no budget (0) — they rely on recursion limit.
-    // Feature tasks use plan-computed budget when available (create×1 + modify×3), otherwise default 20.
+    // Feature / test-code parent / other tasks use plan-computed budget when available
+    // (create×1 + modify×3), otherwise default 20.
     const maxCalls = isPrePlanned ? 25 : (isVerificationType || isErrorType) ? 0 : (state._executeBudget ?? 20);
     
     if (maxCalls > 0 && currentCall >= 3) {
