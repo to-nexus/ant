@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { GitHubAuthService } from '../../auth/GitHubAuthService';
 import { ChoiceService } from '../../../../infrastructure/choice';
-import { ensureCanonicalFeatureMiddleware } from '../middleware/ensureCanonicalFeature';
 import { createHealthRoutes } from './health.routes';
 import { createProjectsRoutes } from './projects.routes';
 import { createFeaturesRoutes } from './features.routes';
@@ -51,13 +50,9 @@ export interface RoutesDeps {
 export function createApiRoutes(deps: RoutesDeps): Router {
   const router = Router();
 
-  // SSOT access-boundary self-heal: any request targeting a feature-scoped URL
-  // (/projects/:id/features/:feature/* or /figma/config/:projectId/:featureName/*)
-  // reconciles canonical directory + file structure before the handler runs.
-  // See middleware/ensureCanonicalFeature.ts for the URL pattern set.
-  if (deps.workspaceResolver) {
-    router.use(ensureCanonicalFeatureMiddleware(deps.workspaceResolver));
-  }
+  // NOTE: access-time canonical backfill middleware is attached once at the
+  // RouteConfigurator level (app.use('/api', ...)) so it covers ALL /api sub-
+  // routers (kanban/job/workflow/apiRoutes alike). Do NOT re-attach here.
 
   // Health & system endpoints
   router.use(createHealthRoutes());

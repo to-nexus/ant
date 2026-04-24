@@ -108,9 +108,36 @@ export class FileSessionAdapter implements SessionPort {
   }
   
   /**
-   * Ensure the sessions directory exists
+   * Check whether the feature directory itself exists on disk.
+   *
+   * Session writes must NEVER materialize a feature path that was not created
+   * through the canonical feature-creation flow (FeatureCrudService.createFeature
+   * → ensureCanonicalStructure). Without this guard, a stray chat append for a
+   * deleted / never-created feature silently produces a partial "ghost" feature
+   * directory containing only `sessions/...`, missing every canonical input /
+   * output subdirectory.
    */
-  private async ensureDirectory(project: string, feature: string): Promise<void> {
+  private async featureDirExists(): Promise<boolean> {
+    try {
+      await fs.access(this.featurePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ensure the sessions directory exists. Bails out silently if the enclosing
+   * feature directory is missing (prevents ghost features — see
+   * `featureDirExists`).
+   */
+  private async ensureDirectory(_project: string, _feature: string): Promise<void> {
+    if (!(await this.featureDirExists())) {
+      console.warn(
+        `[FileSessionAdapter] feature path missing; skipping sessions dir creation: ${this.featurePath}`,
+      );
+      return;
+    }
     const agentDir = getSessionsDir(this.featurePath, this.agent);
     await fs.mkdir(agentDir, { recursive: true });
   }
@@ -309,8 +336,16 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Append a line to feature.jsonl or chat.jsonl.
    * Append-only. JSON.stringify(line) + '\n'.
+   *
+   * Bails silently if the enclosing feature directory is missing (ghost guard).
    */
   async appendLine(file: 'feature' | 'chat', line: FeatureLine | ChatLine): Promise<void> {
+    if (!(await this.featureDirExists())) {
+      console.warn(
+        `[FileSessionAdapter] feature path missing; skipping ${file}.jsonl append: ${this.featurePath}`,
+      );
+      return;
+    }
     const filePath = file === 'feature'
       ? getFeatureJsonlPath(this.featurePath)
       : getChatJsonlPath(this.featurePath);
@@ -412,6 +447,12 @@ export class FileSessionAdapter implements SessionPort {
    * This is the main Collapse mechanism (§4.2 primary compression).
    */
   async appendBoundary(line: FeatureBoundaryLine): Promise<void> {
+    if (!(await this.featureDirExists())) {
+      console.warn(
+        `[FileSessionAdapter] feature path missing; skipping boundary append: ${this.featurePath}`,
+      );
+      return;
+    }
     const filePath = getFeatureJsonlPath(this.featurePath);
     const lock = this.getJsonlLock(filePath);
     await lock.runExclusive(async () => {
