@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder } from 'lucide-react';
 import { useStore } from '@/domain/store';
@@ -7,8 +7,9 @@ import { ItemDropdown } from './ItemDropdown';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { CreationWizardModal } from './CreationWizardModal';
-import { GitPanel } from '@/presentation/git-panel';
-import { useGithubRepo } from '@/domain/project-world';
+import { GitStatusButton } from './GitStatusButton';
+import { GitMenuButton } from './GitMenuButton';
+import { useGitSnapshot } from '@/domain/git-world';
 import {
   selectProjectConfigMissing,
   selectProjectConfigExists,
@@ -19,7 +20,6 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
   const {
     projects,
     selectedProject,
-    selectedFeature,
     setSelectedProject,
     fetchProjects,
     openMainPanelTab,
@@ -27,11 +27,10 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     fetchProjectConfig,
     createProjectConfig,
   } = useStore();
-
   const projectConfigData = useStore((s) => s.projectConfig.data);
   const projectConfigMissing = useStore(selectProjectConfigMissing);
   const projectConfigReady = useStore(selectProjectConfigExists);
-  const githubRepo = useGithubRepo();
+  const snapshot = useGitSnapshot();
 
   const [showWizard, setShowWizard] = useState(false);
   const [forceInlineCreate, setForceInlineCreate] = useState(false);
@@ -42,10 +41,12 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     setForceInlineCreate(true);
   }, []);
   const handleForceInlineCreateHandled = useCallback(() => setForceInlineCreate(false), []);
-  const gitMenuRef = useRef<HTMLDivElement>(null);
   const policy = useUIActionPolicy();
   const { showError } = useAlertModalContext();
 
+  // Initial project config fetch. Git state refresh on (project, feature)
+  // changes is owned by `useProjectLifecycle` — this effect only pulls
+  // projectConfig because it's project-scoped (feature-independent).
   useEffect(() => {
     if (selectedProject) {
       fetchProjectConfig(selectedProject);
@@ -70,15 +71,6 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
     }
     openMainPanelTab('projectConfig');
   };
-
-  const handleOpenPatConfig = useCallback(
-    () => openMainPanelTab('accountConfig'),
-    [openMainPanelTab],
-  );
-  const handleOpenProjectConfig = useCallback(
-    () => openMainPanelTab('projectConfig'),
-    [openMainPanelTab],
-  );
 
   const projectItems = projects.map((p: string) => ({ name: p }));
 
@@ -109,17 +101,29 @@ export function ProjectSection({ explorerWidth }: { explorerWidth: number }) {
         onCreateEmpty={handleCreateEmpty}
       />
 
-      {/* Git panel — single entry point into the `git-world` slice. Replaces
-          the former bespoke section (GitStatusButton + menu + handlers). */}
+      {/* Git Status Section — the two Git buttons sit side-by-side and
+          read through the same `git-world` selectors:
+            <GitStatusButton /> → primary action (Commit/Push/Pull/Sync/Publish)
+            <GitMenuButton />   → secondary dropdown (Clone/Init/Publish/Push/Pull/Fetch)
+          Their consistency is guaranteed by shared selectors + FSM. */}
       {selectedProject && (
-        <div className="mt-2" ref={gitMenuRef}>
-          <GitPanel
-            feature={selectedFeature || undefined}
-            githubRepo={githubRepo}
-            onOpenPatConfig={handleOpenPatConfig}
-            onOpenProjectConfig={handleOpenProjectConfig}
-          />
+        <div className="mt-2">
+          <div className="flex flex-wrap gap-1.5 items-center">
+            <GitStatusButton />
+            <GitMenuButton />
+          </div>
 
+          {/* Current Branch Display.
+              Branch name comes from the git-world snapshot. Rendered only
+              once the snapshot is loaded and a `.git` directory exists. */}
+          {snapshot?.currentBranch && (
+            <div className="px-2 text-[11px] text-gray-500 dark:text-gray-400 truncate">
+              {explorerWidth >= 260 && <>{t('config:git.currentBranch')}{' '}</>}
+              <span className="font-mono font-medium text-gray-700 dark:text-gray-300">{snapshot.currentBranch}</span>
+            </div>
+          )}
+
+          {/* Warning Messages */}
           {projectConfigMissing && (
             <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-md">
               <div className="flex items-start gap-1.5">
