@@ -26,9 +26,9 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
   const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
   const { showError } = useAlertModalContext();
   
-  // Per-feature git refresh (fetch-from-remote + /changes re-pull) is owned
-  // by the application-layer `useGitRefresh` hook mounted at the app root
-  // — no feature-scoped manager needed here anymore.
+  // Per-feature git refresh is owned by `useProjectLifecycle` at the app
+  // root, which drives git-world reset + SSE reconnect + snapshot refill
+  // on `(project, feature)` transitions. No feature-scoped manager here.
 
   // Read all preview render state through the single VM selector. SSE/fetch
   // writers live in `usePreviewSync` at the app root.

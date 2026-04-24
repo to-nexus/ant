@@ -29,6 +29,7 @@ export {
   useProjects,
   useFeatures,
   useProjectSnapshot,
+  useProjectConfigSnapshot,
   useGithubRepo,
   useProjectDispatch,
 } from './hooks';

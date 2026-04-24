@@ -13,7 +13,11 @@ export * from './config';
 export * from './kanban';
 export * from './agents';
 export * from './llm';
-export * from './github';
+// `github.ts` is restricted at the import-boundary (ESLint / git-sweep).
+// Only the clone-status polling helper used by the Project Wizard is
+// re-exported — named explicitly so a future re-broad `export *` cannot
+// accidentally reopen the retired Git/PAT REST surface.
+export { checkCloneStatus } from './github';
 export * from './figma';
 export * from './desktop';
 export * from './ide';

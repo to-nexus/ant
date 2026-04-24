@@ -27,17 +27,17 @@ Presentation -> Application -> Domain <- Infrastructure
 
 ## 상태 관리 (Zustand)
 
-14개 슬라이스로 구성된 단일 스토어:
+단일 Zustand 스토어는 아래 슬라이스로 구성된다 (Phase 7 cutover 이후 정식 목록).
 
 | 슬라이스 | 역할 |
 |----------|------|
-| projectSlice | 프로젝트/피처 선택, 목록. 전환 시 git/config SSOT 스크러브 |
+| projectSlice | 프로젝트/피처 선택, 목록, 세션 restore 플래그. 전환 시 project-config 스크러브만 수행 (git-world 리셋은 `useProjectLifecycle` 소유) |
 | fileSlice | 파일 트리, 파일 편집 |
 | jobSlice | Job 실행 상태, currentJobId |
-| sseSlice | SSE 연결, Kanban/Chat/FileTree/GitChange 등 핸들러 단일 등록 지점 |
+| sseSlice | 단일 EventSource 연결 관리자. `gitState` 포함 10개 SSE type에 대해 핸들러를 등록 |
 | uiSlice | UI 상태 (탭, 레이아웃, pendingClarifyAnswers) |
-| gitSlice | Git 상태 SSOT. `gitStatus: GitStatusResponse \| null`, `gitChanges: GitChangesResponse \| null`, phase/fetchState 플래그. fetch 액션은 키 단위 in-flight dedup + stale guard. 자세한 내용은 [24-git-operations.md](24-git-operations.md#frontend-git-state) |
-| projectConfigSlice | `.ant/config.json` 내용 (githubRepo 등) SSOT, 프로젝트별 tri-state exists |
+| git-world (`domain/git-world`) | Git SSOT — `snapshot: AsyncFields<GitSnapshot>`, `operation: GitOperationState` (FSM), `pat: AsyncFields<GitPatState>`. writer 3개 (`fetchGitWorldState`, `runGitOperation`, `savePat/deletePat`). 세부는 [24-git-operations.md §0](24-git-operations.md#0-git-world-계약-greenfield-ssot) |
+| projectConfigSlice | `.ant/config.json` 내용 (`AsyncFields<ProjectConfig>`) |
 | previewSlice | Preview 상태 |
 | authSlice | 인증 상태 |
 | configSlice | 시스템 설정 (backendMode, localBackendPort, recursionLimit) |
@@ -48,7 +48,17 @@ Presentation -> Application -> Domain <- Infrastructure
 
 ### Git / ProjectConfig SSOT
 
-`gitSlice`와 `projectConfigSlice`는 sessionStorage 캐시나 훅·컴포넌트 로컬 state를 두지 않는다. `gitStatus`/`gitChanges`는 `@ant/shared`의 `GitStatusResponse`/`GitChangesResponse`를 그대로 보관하는 필드별 SSOT이며, 파생 플래그를 한쪽 객체에 머지하지 않는다. UI 분기는 `src/domain/git/selectors.ts`의 순수 함수(`deriveGitMenuState` · `deriveGitActionCta`)에서만 이루어진다. 프리젠테이션은 직접 스토어를 읽지 않고 `application/hooks/git/`의 `useGitState`/`useGitActions`/`useGitRefresh`만 사용한다. 상세는 [24-git-operations.md](24-git-operations.md#frontend-git-state).
+Git 상태는 `domain/git-world/` 슬라이스가 유일한 SSOT이다. 프리젠테이션은 절대 `useStore` 로 git-world 슬라이스 필드에 직접 접근하지 않고 공용 훅만 사용한다:
+
+- 읽기: `useGitSnapshot` · `useGitOperation` · `useGitPat` · `useGitCta` · `useGitMenu` · `useGitBadge` · `useGitSetupCta`
+- 쓰기: `useGitDispatch().runGitOperation` / `fetchGitWorldState` / `clearGitOperation`, `useGitPatDispatch().savePat / deletePat / fetchGitPat`
+- SSE 진입: `registerGitStateHandler()` (통상 `sseSlice.initializeSSE` 가 자동 등록)
+
+`projectConfigSlice` 는 AsyncFields envelope (`{status, data, error, refreshing}`) 를 담는다. `githubRepo` 는 이 envelope 안의 `data.githubRepo` 위치에만 존재한다. `domain/project-world/useProjectConfigSnapshot` · `useGithubRepo` 훅이 envelope unwrap + primitive 단위 read 를 담당해 non-primitive 객체를 `useStore` 안에서 생성하지 않는다 (Zustand 참조 동등성 위반 방지). 상세는 [24-git-operations.md §0](24-git-operations.md#0-git-world-계약-greenfield-ssot).
+
+### 프로젝트 라이프사이클 오케스트레이션
+
+`(selectedProject, selectedFeature)` 전환 시 일어나야 할 모든 부수효과는 **app 루트 한 곳**에서 `useProjectLifecycle` 훅이 담당한다 — `clearGitWorld()` → `clearProjectConfig()` → `initializeSSE()` (`reconnectRefill` SSE 유도) → `fetchProjectConfig()` → `fetchGitWorldState()`. 슬라이스의 setter 는 순수 setter 에 가깝고, 세션 복원 polling 은 `useSessionLoader` 만이 소유한다.
 
 ### 영속화
 

@@ -20,24 +20,20 @@ import { resolveGitOperation } from './remote/operations/userOps';
 /**
  * GitService (Facade)
  *
- * Main facade for all Git-related operations. Owns two layered APIs:
+ * The sanctioned read/dispatch entry point for all Git work, composed of
+ * three internal services (`StatusService`, `RemoteService`, `IndexService`).
  *
- * ## Greenfield surface (target)
- *
+ * Public surface:
  * - {@link GitService.getSnapshot} / {@link GitService.getPat} — read paths
- *   used by the `GET /projects/:id/git/state` endpoint and the SSE
+ *   backing the `GET /projects/:id/git/state` endpoint and the SSE
  *   reconnect refill.
- * - {@link GitService.resolveOperation} — factory that returns a
+ * - {@link GitService.resolveOperation} — factory returning a
  *   {@link GitOperation} instance for a given `GitUserOperation['kind']`.
- *   Routes dispatch into this single entry point instead of calling
- *   nine distinct operation endpoints.
- *
- * ## Legacy surface (retained during the migration window)
- *
- * The `getGitStatus` / `getGitChanges` / `cloneGitHubRepo` / etc. methods
- * are still reachable so existing routes keep compiling. Cutover removes
- * these together with the old `/projects/:id/{clone,initialize,push,...}`
- * endpoints.
+ *   Routes dispatch through this single entry point; per-op methods on
+ *   this facade (push/pull/clone/…) were retired at greenfield cutover.
+ * - {@link GitService.checkCloneStatus} — small helper kept for the Project
+ *   Wizard's post-clone polling; all other clone orchestration flows via
+ *   `resolveOperation('clone')`.
  */
 export class GitService {
   private readonly status: StatusService;

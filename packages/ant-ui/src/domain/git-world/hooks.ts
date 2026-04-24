@@ -38,8 +38,8 @@ interface GitWorldStoreSurface {
     opts?: { feature?: string; fresh?: boolean },
   ) => Promise<void>;
   fetchGitPat: () => Promise<void>;
-  savePat: (pat: string) => Promise<{ success: boolean; error?: string }>;
-  deletePat: () => Promise<{ success: boolean; error?: string }>;
+  savePat: (pat: string) => Promise<{ success: boolean; error?: string; pat?: GitPatState }>;
+  deletePat: () => Promise<{ success: boolean; error?: string; pat?: GitPatState }>;
   clearGitOperation: () => void;
   clearGitWorld: () => void;
   selectedProject?: string | null;

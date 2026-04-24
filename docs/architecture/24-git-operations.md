@@ -281,111 +281,107 @@ LLM 코드 생성 시 `.git` 파일/디렉터리 손상 방지:
 
 ## Backend 상태 응답
 
-두 개의 REST가 프론트엔드 상태를 채운다. 둘 다 `git fetch`를 수행하지 않는다.
+모든 Git 상태 읽기는 **단일 REST 엔드포인트**가 담당한다.
 
-| 엔드포인트 | 반환 필드 | 용도 |
-|------------|-----------|------|
-| `GET /projects/:id/git/status` | `hasGit, hasCodebase, codebaseHasFiles, hasFeatures, currentBranch, remoteUrl` | 디스크/연결 상태 |
-| `GET /projects/:id/git/changes` | 위에 더해 `staged, unstaged, untracked, ahead, behind, isGitInitialized, hasUpstream` | 워킹트리·upstream 상태 |
+| 엔드포인트 | 반환 | 특징 |
+|------------|------|------|
+| `GET /projects/:id/git/state?feature=...&fresh=true` | `{ snapshot: GitSnapshot, pat: GitPatState }` | `snapshot` 은 deep-frozen 읽기 전용. `fresh=true` 는 `remoteExists` 캐시(60s TTL) 를 우회 |
 
-`ahead/behind`는 로컬이 알고 있는 원격 ref 기준. 최신화는 명시적인 Fetch operation 또는 클라이언트의 `fetchFromRemote` 경로(피처 전환 시 `useGitRefresh`가 드라이브)로 수행한다.
+레거시 `/git/status` · `/git/changes` · `/push` · `/pull` · `/fetch` · `/initialize` · `/clone` · `/git/sync` · `/git/commit` · `/git/discard` 는 Phase 7 컷오버에서 전부 제거됐다. 유일하게 남은 helper 는 Wizard 의 clone 후 폴링용 `GET /projects/:id/clone/status` 뿐이다. Operation 디스패치는 모두 `POST /projects/:id/git/ops/:userOp` 로 수렴.
 
-## Realtime: gitChange 이벤트
+`ahead` / `behind` 는 로컬이 아는 원격 ref 기준이며, 최신화가 필요하면 사용자가 명시적으로 `fetch` 혹은 `sync` operation 을 디스패치한다.
 
-`gitChange` SSE 이벤트는 프론트엔드의 `getGitChanges` 재조회를 트리거한다. 발행 경로는 두 개이며, 둘 다 `GitChangeBroadcaster`를 통한다.
+## Realtime: gitState 이벤트
 
-| 경로 | 트리거 | 커버리지 |
-|------|--------|----------|
-| `FileTreeBroadcaster` co-emit | `notifyFileTreeUpdate` 호출 시 동반 발행 | Job 중 워킹트리 파일 생성/수정 (`.git/index` 미변경 케이스) |
+**SSE 타입은 `gitState` 하나**. `cause` 디스크리미넌트로 3 가지 경로를 실어 나른다:
+
+| cause | 발행자 | 페이로드 | FE 리액션 |
+|-------|--------|----------|-----------|
+| `workingTreeChange` | `FileTreeBroadcaster` co-emit 및 `GitWatcherService` 폴링 | `{project, feature?, timestamp}` | `_refreshWorkingTreeDebounced` → 300ms 디바운스 후 `fetchGitWorldState` |
+| `operationComplete` | `GitOperation.onSuccess` | `{project, feature?, snapshot, operation, pat, timestamp}` | `_applyGitStateEvent` — snapshot + pat 즉시 교체, operation FSM `succeeded` 반영 |
+| `reconnectRefill` | 서버 SSE onOpen | `{project, feature?, snapshot, pat, timestamp}` | `_applyGitStateEvent` — 새로고침·리로드 직후 정합 상태 진입 |
+
+발행 경로가 두 가지로 분리되는 이유 (`workingTreeChange`):
+
+| 경로 | 트리거 | 커버 |
+|------|--------|------|
+| `FileTreeBroadcaster` co-emit | `notifyFileTreeUpdate` 시 함께 발행 | Job 중 워킹트리 파일 생성/수정 (`.git/index` 미변경) |
 | `GitWatcherService` 폴링 | `.git/index` mtime 변화 (1s interval) | 외부 터미널 `git add/commit/checkout`, 사용자 직접 조작 |
 
-두 경로를 함께 사용하는 이유: `.git/index`는 워킹트리 파일이 `git add` 되기 전에는 변하지 않으므로 Watcher 단독으론 Job 중 파일 생성을 감지하지 못한다. Co-emit 경로가 이 맹점을 채운다.
-
-`GitChangeBroadcaster`는 transport-agnostic으로, 생성 시점에 `publisher: (channel, payload) => Promise<unknown>` 콜백을 받는다:
-
-- Job Worker 자식 프로세스: `BroadcasterOptions`를 넘겨 자체 ioredis 연결 생성
-- Realtime Server / HTTP Server: `stateStore.publish.bind(stateStore)`를 넘겨 기존 연결 재사용
-
-페이로드는 `@ant/shared`의 `SSEMessageMap['gitChange']`로 고정된다 (`{project, feature, timestamp}`).
+`GitStateBroadcaster` 는 transport-agnostic (`publisher: (channel, payload) => Promise<unknown>`). Job Worker 자식 프로세스는 자체 ioredis 연결을 사용하고, HTTP/Realtime Server 는 `stateStore.publish` 를 재사용한다. 페이로드 타입은 `@ant/shared` 의 `SSEMessageMap['gitState']` (= `GitStateEventData` discriminated union).
 
 ## Frontend Git State
 
-### 필드별 SSOT
+### SSOT — `domain/git-world/` 슬라이스
 
-Git 관련 필드는 백엔드 응답 단위로 소스가 쪼개져 저장된다. 공유 계약 타입(`@ant/shared`)을 그대로 Zustand에 담고, 파생 필드 병합이나 플래그 주입은 하지 않는다.
-
-| 필드 집합 | 계약 타입 | 소스 엔드포인트 | 저장 위치 |
-|-----------|-----------|-----------------|-----------|
-| `hasGit, hasCodebase, codebaseHasFiles, hasFeatures, currentBranch, remoteUrl` | `GitStatusResponse` | `GET /projects/:id/git/status` | `gitSlice.gitStatus` |
-| `staged, unstaged, untracked, ahead, behind, hasUpstream, isGitInitialized, hasUncommittedChanges, hasChanges` + 위의 status 필드 | `GitChangesResponse` (status 포함) | `GET /projects/:id/git/changes` | `gitSlice.gitChanges` |
-| `githubRepo, branchBase, …` | `ProjectConfig` | `GET /projects/:id/config` | `projectConfigSlice` |
-
-동일 필드가 `gitStatus`와 `gitChanges` 양쪽에 나타나도 두 객체는 독립적으로 교체된다 — status-only 호출은 `gitStatus`만, changes 호출은 `gitChanges`만 쓰고, `GitStatusResponse` 타입 소비자는 `gitStatus`를, `GitChangesResponse` 타입 소비자는 `gitChanges`를 읽는다. selector가 두 소스를 머지해서 쓰는 경우 `gitChanges`가 있으면 그쪽을, 없으면 `gitStatus`를 사용한다.
-
-### Fetch / phase 액션
-
-| 액션 | 역할 | 중복 제거 |
-|------|------|----------|
-| `fetchGitStatus(projectId, feature?)` | `GET /git/status` 호출 → `gitStatus` 교체. `statusFetchState`(`idle/loading/success/error`) 업데이트 | `${projectId}:${feature\|\|'base'}` 키 in-flight Map |
-| `fetchGitChanges(projectId, feature?)` | `GET /git/changes` 호출 → `gitChanges` 교체. `changesFetchState` 업데이트 | 동일 키 in-flight Map |
-| `fetchGitAll(projectId, feature?)` | status + changes를 병렬 호출 후 두 객체를 한 번에 교체 | 키 단위 in-flight 재사용 |
-| `fetchFromRemote(projectId, feature?)` | `fetchFromGitHub` REST 호출 후 `fetchGitAll` 연쇄. `gitStatusPhase='fetching'`을 자동 세팅 | — |
-| `setGitStatusPhase(phase)` | Git operation 진행 상태(`'fetching'\|'pushing'\|…\|null`). null 전이 자체는 별도 fetch를 트리거하지 않는다 | — |
-| `clearGitState()` | 프로젝트/피처 전환 시 `gitStatus/gitChanges/gitStatusPhase/*FetchState` 전체 초기화 | — |
-
-모든 fetch 액션은 호출 당시 selected project·feature 스냅샷을 찍고, 완료 시점에 `isStillActive(snapshot)`로 선택이 바뀌지 않았는지 확인한 뒤에야 스토어에 반영한다(stale guard). 빠른 feature 전환이 생겨도 이전 fetch 결과가 덮어쓰지 않는다.
-
-### 애플리케이션 레이어 훅
-
-프리젠테이션은 `domain/store`에 직접 접근하지 않고 `application/hooks/git/`의 세 훅만 사용한다.
-
-| 훅 | 반환 | 쓰임 |
-|----|------|------|
-| `useGitState()` | `{gitStatus, gitChanges, gitStatusPhase, statusFetchState, changesFetchState, isFetchBlockingCta}` | 읽기 전용. 모든 컴포넌트/훅이 git 상태를 볼 때 사용 |
-| `useGitActions()` | `{fetchGitStatus, fetchGitChanges, fetchGitAll, fetchFromRemote, setGitStatusPhase, clearGitState}` | Git operation 디스패치 |
-| `useGitRefresh()` | void | `App.tsx`에서 한 번 호출. 프로젝트·피처 변화, SSE `gitChange`, 초기 마운트, 주기적 remote fetch를 단일 훅에서 오케스트레이션 |
-
-`useGitRefresh`는 이전 아키텍처에서 `ProjectSection`/`GitStatusButton`/`useFeatureBranchManager`에 흩어져 있던 fetch 트리거를 단일 지점으로 집약한다.
-
-### Fetch 트리거 경로
-
-1. **프로젝트/피처 변화** — `useGitRefresh`가 변화를 감지하고 `clearGitState()` → `fetchGitAll()`. 피처 전환이면 추가로 `fetchFromRemote()`로 원격 refs 동기화.
-2. **SSE gitChange 이벤트** — `sseSlice.initializeSSE`가 `fetchGitChanges`를 등록. 핸들러는 `get()`으로 현재 project/feature를 동적 참조해 stale closure를 피한다.
-3. **Git operation 완료** — `useGitActions` 훅(GitStatusButton용)이 push/pull/commit/discard 성공 후 `fetchGitAll()`을 명시 호출.
-4. **Job 완료 / 계정 설정 변경** — `useJobExecution`, `AccountConfigEditor` 등에서 필요 시 `fetchGitAll()` 직접 호출.
-
-### Feature 전환 시퀀스
+모든 Git UI 상태는 단일 Zustand 슬라이스가 소유한다:
 
 ```
-setSelectedFeature(name)
-  └─ projectSlice에서 clearGitState() 호출          ; 이전 피처 데이터 제거
-        ↓
-useGitRefresh (effect)
-  ├─ fetchGitAll(projectId, feature)                 ; 즉시 상태 채움 (Setup 버튼 표시용)
-  └─ fetchFromRemote(projectId, feature)             ; origin/* 동기화 후 재차 fetchGitAll
+git-world/
+├── state.ts              # { snapshot: AsyncFields<GitSnapshot>, operation: GitOperationState, pat: AsyncFields<GitPatState> }
+├── selectors.ts          # deriveGitCta / deriveGitMenu / deriveGitBadge / deriveGitSetupCta (순수 함수)
+├── hooks.ts              # useGitSnapshot / useGitOperation / useGitPat / useGitCta / useGitMenu / useGitBadge / useGitSetupCta / useGitDispatch / useGitPatDispatch
+├── sse-handler.ts        # registerGitStateHandler — 단일 gitState 진입
+├── infrastructure/
+│   └── api.ts            # git-world 내부 전용 REST 클라이언트 (ESLint 로 봉인)
+└── index.ts              # 공개 API — hooks, selectors, createSlice, registerGitStateHandler, dispatchGitOpOneShot
 ```
 
-`gitStatusPhase`는 `fetchFromRemote` 진입 시 `'fetching'`으로 설정되고 완료 시 `null`로 돌아온다. phase 전이 자체가 fetch를 일으키지는 않는다.
+`AsyncFields<T> = { data: T | null; refreshing: boolean; error: string | null; lastFetchedAt: number | null }` 는 `snapshot` / `pat` 두 곳에 공통 적용된다. `operation` 은 `GitOperationState` FSM 그대로.
 
-### UI 분기 selector
+### Writer 3 개 외에 mutation 없음
 
-selector 바깥에서 `hasGit/hasUpstream/remoteUrl`로 분기하는 코드는 없다. 두 selector 모두 `gitStatus`(Status 계약)와 `gitChanges`(Changes 계약)를 분리해 받는다.
+`domain/git-world/**` 외부에서 허용되는 쓰기는 정확히 세 가지:
 
-| Selector | 입력 | 소비자 | 결과 union |
-|----------|------|--------|-----------|
-| `deriveGitMenuState({gitStatus, gitChanges, githubRepo, isFetching})` | Status + Changes + Config | ProjectSection 드롭다운 | `loading \| disabled \| setup \| publishBranch \| synced` |
-| `deriveGitActionCta({gitChanges, gitStatus, isLoading})` | Changes(주) + Status(폴백) | GitStatusButton/ActionButton | `loading \| noChanges \| commit \| publish(variant) \| sync \| push \| pull` |
+- `useGitDispatch().runGitOperation(projectId, op)` — `POST /git/ops/:userOp` 디스패치. FSM 을 `running → succeeded|failed` 로 전이
+- `useGitDispatch().fetchGitWorldState(projectId, opts?)` — `GET /git/state` 로 authoritative snapshot + pat 재동기화
+- `useGitPatDispatch()` 의 `savePat` / `deletePat` / `fetchGitPat` — PAT 저장/삭제 후 슬라이스를 자동으로 재프라임하고 최신 PAT 상태를 반환
 
-Changes가 아직 없으면 두 selector 모두 `loading`으로 취급해 새로고침 직후 오분류를 방지한다.
+그 외 Git/PAT mutation 은 ESLint `no-restricted-imports` + `scripts/git-sweep.mjs` 의 P5/P13/P14/P15 패턴에서 차단된다. `infrastructure/api.ts` 는 `git-world/**` 밖에서 import 불가.
 
-### Publish variant 처리
+### `dispatchGitOpOneShot` (예외)
 
-`ActionButton`은 CTA가 `publish`일 때 `cta.variant`에 따라 서로 다른 핸들러를 호출한다. dispatch 단계에서는 원본 필드를 다시 읽지 않는다.
+Wizard 처럼 **프로젝트가 선택되지 않은 상태에서 프로젝트를 생성하는 중**에 clone/publish 를 호출해야 하는 경우에만 사용하는 fire-and-forget 헬퍼. 슬라이스 FSM 에 영향을 주지 않고 REST 만 호출한다. 일반 소비자는 `useGitDispatch().runGitOperation` 을 사용한다.
 
-| variant | 핸들러 | 동작 |
-|---------|--------|------|
-| `noRemoteWithFeatures` | `handlePublishRepo` | confirm → `initializeGitHubRepo` (remote 생성 + push) → `fetchGitAll` |
-| `noUpstream` | `handlePush` | `pushToGitHub` (BE `PushOperation`이 `-u` 자동 설정) → `fetchGitAll` |
+### UI 분기는 selector 로만
+
+프리젠테이션은 `snapshot.hasGit` 같은 필드 분기를 직접 쓰지 않고 selector hook 을 소비한다:
+
+| Hook | 반환 union |
+|------|------------|
+| `useGitCta` | `loading \| noChanges \| commit(count) \| publish(variant) \| sync \| push \| pull` |
+| `useGitMenu(githubRepo)` | `loading \| disabled(reason) \| setup(actions) \| publish(source) \| synced(canPush,canPull,canFetch,pullBlockedByChanges)` |
+| `useGitBadge(githubRepo)` | `none \| notConfigured \| configured(branch)` |
+| `useGitSetupCta` | `clone \| publish \| ambiguous` (remoteExists 프로브 결과) |
+
+### 프로젝트/피처 전환 오케스트레이션
+
+`(selectedProject, selectedFeature)` 전환 시 부수효과는 **app 루트의 `useProjectLifecycle` 훅 하나**가 담당한다. 슬라이스 setter 는 pure setter 에 가깝다.
+
+```
+(selectedProject, selectedFeature) 변경
+  └─ useProjectLifecycle (app root, 단일 effect)
+        ├─ clearGitWorld()           ; snapshot / pat 리셋 (operation 은 보존)
+        ├─ clearProjectConfig()      ; projectConfigSlice 초기화
+        ├─ initializeSSE()           ; 새 (project, feature) 로 재구독 → 서버가 reconnectRefill 발행
+        ├─ fetchProjectConfig()      ; githubRepo 프라임
+        └─ fetchGitWorldState()      ; authoritative snapshot + pat (refill 누락 대비 safety net)
+```
+
+세션 복원 루프는 `useSessionLoader` 하나만 소유한다 (`pollForFeatures` 중복 제거).
+
+### Operation 상태 UI
+
+`useGitOperation()` 이 `idle → running → succeeded|failed` FSM 을 반환한다. `running` / `failed` 는 `OperationProgress` 배너 컴포넌트가 인라인으로 표시하고, modal 수명과 operation 수명은 분리된다 (`AlertModal.isProcessing` 제거, `ConfirmAndDispatch` 패턴).
+
+`failed.error.suggestedAction` 이 있으면 배너가 컨텍스트 버튼을 함께 렌더한다:
+
+| suggestedAction | 컨텍스트 버튼 |
+|-----------------|---------------|
+| `configurePat` | PAT 설정 페이지 열기 |
+| `resolveConflict` | IDE 에서 충돌 해결 |
+| `reconfigureRepo` | 프로젝트 Config 편집 |
+| `runClone` | Clone 다시 실행 |
 
 ## 관련 코드
 
@@ -393,45 +389,53 @@ Changes가 아직 없으면 두 selector 모두 `loading`으로 취급해 새로
 
 | 역할 | 파일 |
 |------|------|
-| Clone | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/CloneOperation.ts` |
-| Init | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/InitOperation.ts` |
-| Push | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/PushOperation.ts` |
-| Commit | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/CommitOperation.ts` |
-| Discard | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/DiscardOperation.ts` |
-| Sync | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/SyncOperation.ts` |
-| Worktree | `packages/ant-cli/src/periphery/adapters/http/services/GitService/worktree/index.ts` |
-| Backup/Restore | `packages/ant-cli/src/periphery/adapters/http/services/GitService/worktree/FeatureCodebaseBackup.ts` |
+| `GitOperation<TIn,TOut>` 추상 템플릿 | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/GitOperation.ts` |
+| 8 op 구체 클래스 (Publish/Push/Pull/Fetch/Sync/Commit/Discard/Clone) + `resolveGitOperation` 팩토리 | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/operations/userOps.ts` |
+| `StatusService` (`getSnapshot`, `getPat`, `checkCloneStatus`) | `packages/ant-cli/src/periphery/adapters/http/services/GitService/status/index.ts` |
+| `RemoteService` (clone/init/push/pull/fetch/sync/commit/discard 구현, GitOperation 서브클래스가 내부 소비) | `packages/ant-cli/src/periphery/adapters/http/services/GitService/remote/index.ts` |
+| `GitService` Facade — `getSnapshot`/`getPat`/`resolveOperation`/`checkCloneStatus` | `packages/ant-cli/src/periphery/adapters/http/services/GitService/index.ts` |
+| `.git/index` 폴링 → `notifyWorkingTreeChange` | `packages/ant-cli/src/periphery/adapters/http/services/GitWatcherService.ts` |
+| `GitStateBroadcaster` (3 cause 발행) | `packages/ant-cli/src/core/realtime/GitStateBroadcaster.ts` |
+| FileTree co-emit (`notifyWorkingTreeChange`) | `packages/ant-cli/src/core/realtime/FileTreeBroadcaster.ts` |
+| REST 라우트 (`/git/state`, `/git/ops/:userOp`, `/clone/status`, PAT) | `packages/ant-cli/src/periphery/adapters/http/routes/projects.routes.ts`, `github.routes.ts` |
+| SSE reconnectRefill 발행 | `packages/ant-cli/src/periphery/adapters/http/routes/sse.routes.ts`, `infrastructure/realtime/RealtimeServer.ts` |
 | Feature CRUD | `packages/ant-cli/src/periphery/adapters/http/services/ProjectService/FeatureCrudService.ts` |
-| Git 상태 조회 | `packages/ant-cli/src/periphery/adapters/http/services/GitService/status/index.ts` |
-| `.git/index` 폴링 | `packages/ant-cli/src/periphery/adapters/http/services/GitWatcherService.ts` |
-| gitChange 브로드캐스터 | `packages/ant-cli/src/core/realtime/GitChangeBroadcaster.ts` |
-| FileTree co-emit | `packages/ant-cli/src/core/realtime/FileTreeBroadcaster.ts` |
-| 라우트 | `packages/ant-cli/src/periphery/adapters/http/routes/projects.routes.ts` |
+| Worktree | `packages/ant-cli/src/periphery/adapters/http/services/GitService/worktree/index.ts` |
 
 ### Frontend
 
 | 역할 | 파일 |
 |------|------|
-| gitSlice (status + changes 분리 SSOT, stale guard) | `packages/ant-ui/src/domain/store/slices/gitSlice.ts` |
-| projectConfigSlice | `packages/ant-ui/src/domain/store/slices/projectConfigSlice.ts` |
-| 메뉴/CTA selector | `packages/ant-ui/src/domain/git/selectors.ts` |
-| SSE gitChange 핸들러 등록 | `packages/ant-ui/src/domain/store/slices/sseSlice.ts` |
-| 프로젝트/피처 전환 훅 (clearGitState 호출) | `packages/ant-ui/src/domain/store/slices/projectSlice.ts` |
-| Git 상태 읽기 훅 | `packages/ant-ui/src/application/hooks/git/useGitState.ts` |
-| Git 액션 디스패치 훅 | `packages/ant-ui/src/application/hooks/git/useGitActions.ts` |
-| Git refresh 오케스트레이션 훅 | `packages/ant-ui/src/application/hooks/git/useGitRefresh.ts` |
-| 드롭다운 | `packages/ant-ui/src/presentation/components/ProjectSection.tsx` |
-| Git 버튼 컨테이너 | `packages/ant-ui/src/presentation/components/GitStatusButton/index.tsx` |
-| Git operation dispatch | `packages/ant-ui/src/presentation/components/GitStatusButton/hooks/useGitActions.ts` |
-| 변경 패널 | `packages/ant-ui/src/presentation/components/GitStatusButton/components/GitChangesPanel.tsx` |
-| REST API 클라이언트 (공유 계약 타입 사용) | `packages/ant-ui/src/infrastructure/http/api/github.ts` |
+| git-world 슬라이스 (`snapshot`/`operation`/`pat` SSOT) | `packages/ant-ui/src/domain/git-world/state.ts` |
+| 순수 selectors (`deriveGitCta`/`Menu`/`Badge`/`SetupCta`) | `packages/ant-ui/src/domain/git-world/selectors.ts` |
+| 공용 hooks (`useGitSnapshot`/`useGitOperation`/`useGitPat`/…) | `packages/ant-ui/src/domain/git-world/hooks.ts` |
+| 단일 SSE 핸들러 등록 | `packages/ant-ui/src/domain/git-world/sse-handler.ts` |
+| 내부 REST 클라이언트 (lint 봉인) | `packages/ant-ui/src/domain/git-world/infrastructure/api.ts` |
+| 공개 API 배럴 | `packages/ant-ui/src/domain/git-world/index.ts` |
+| project-world 라이프사이클 훅 | `packages/ant-ui/src/domain/project-world/lifecycle.ts` |
+| project-world 훅/셀렉터 (`useGithubRepo`/`useProjectConfigSnapshot` 등) | `packages/ant-ui/src/domain/project-world/hooks.ts`, `selectors.ts` |
+| Operation FSM primitive | `packages/ant-ui/src/common/operation/OperationDispatcher.ts`, `useOperation.ts`, `ConfirmAndDispatch.tsx` |
+| 통합 Git UI 패널 (GitPanel / GitCta / GitBadge / GitSetupMenu / GitSyncedMenu / OperationProgress) | `packages/ant-ui/src/presentation/git-panel/**` |
+| ProjectSection (GitPanel 소비) | `packages/ant-ui/src/presentation/components/ProjectSection.tsx` |
+| Wizard clone/init → `dispatchGitOpOneShot` | `packages/ant-ui/src/presentation/components/ProjectWizardModal/ProjectWizardModal.tsx` |
+| Clone 폴링 헬퍼만 남긴 레거시 파일 | `packages/ant-ui/src/infrastructure/http/api/github.ts` |
+| SSE bridge (slice → handler) | `packages/ant-ui/src/domain/store/slices/sseSlice.ts` |
 
 ### Shared
 
 | 역할 | 파일 |
 |------|------|
-| SSE 이벤트 타입 (SSEMessageType, SSEMessageMap) | `packages/ant-shared/src/sse-events.ts` |
-| Git 응답 계약 타입 (GitStatusResponse, GitChangesResponse, FileChange) | `packages/ant-shared/src/git.ts` |
+| SSE 이벤트 타입 (`SSEMessageType`, `SSEMessageMap`, `GitStateEventData`) | `packages/ant-shared/src/sse-events.ts` |
+| Git 도메인 계약 (`GitSnapshot`, `GitUserOperation`, `GitOperationState`, `GitOperationError`, `GitSuggestedAction`, `GitPatState`, `FileChange`) | `packages/ant-shared/src/git.ts` |
+
+### Enforcement
+
+| 역할 | 파일 |
+|------|------|
+| 18 구조적 패턴 CI 게이트 | `scripts/git-sweep.mjs` (`pnpm git:sweep`) |
+| 경계 ESLint (`no-restricted-imports` error) | `packages/ant-ui/.eslintrc.cjs` |
+| 에이전트 스킬 (Git 작업 전 필독) | `.claude/skills/update-git-world/SKILL.md` |
+| 셀렉터/디스패처 스펙 | `packages/ant-ui/tests/git-world/**`, `tests/common/**`, `tests/project-world/**` |
 
 ## 경계
 

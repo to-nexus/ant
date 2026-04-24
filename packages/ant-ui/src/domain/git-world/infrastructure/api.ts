@@ -2,11 +2,11 @@
  * git-world private REST client.
  *
  * **ESLint enforced**: No file outside `src/domain/git-world/**` may import
- * from this module. The sole public writer surface is
- * `git-world/actions.ts` (which re-exports `runGitOperation` / `savePat` /
- * `deletePat`). All other consumers must use the `git-world` public index.
+ * from this module. The public writer surface is the slice's hooks
+ * (`useGitDispatch` / `useGitPatDispatch`) plus the `dispatchGitOpOneShot`
+ * helper re-exported from `domain/git-world/index.ts`.
  *
- * Greenfield REST surface (replaces the 10-endpoint legacy surface):
+ * REST surface:
  * - `GET  /projects/:id/git/state?feature=…&fresh=…` → `GitStateResponse`
  * - `POST /projects/:id/git/ops/:userOp`             → `{ success, result? | error }`
  * - `GET  /github/pat/status`                         → `GitPatState`

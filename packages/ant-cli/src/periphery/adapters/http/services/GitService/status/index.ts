@@ -49,24 +49,19 @@ interface RemoteExistsCacheEntry {
 /**
  * StatusService
  *
- * Owner of every Git *read* path: {@link StatusService.getGitStatus},
- * {@link StatusService.getGitChanges}, and the unified
- * {@link StatusService.getSnapshot}. All three share the same `simple-git`
+ * Owner of every Git *read* path. All reads share a single `simple-git`
  * bootstrap and safe-directory guard.
  *
- * ## Greenfield surface
+ * Public surface:
+ * - {@link StatusService.getSnapshot} — the canonical {@link GitSnapshot}
+ *   (readonly, deep-frozen) that the whole FE/BE contract revolves around.
+ * - {@link StatusService.getPat} — minimal PAT read path used by the SSE
+ *   reconnect refill.
+ * - {@link StatusService.checkCloneStatus} — thin probe retained for the
+ *   Project Wizard's post-clone polling helper.
  *
- * - {@link StatusService.getSnapshot} returns the canonical
- *   {@link GitSnapshot} (readonly) that the whole FE/ BE contract revolves
- *   around. Result objects are deep-frozen so downstream consumers cannot
- *   mutate shared state.
- * - {@link StatusService.getPat} exposes a minimal PAT read surface for the
- *   SSE reconnect refill path without dragging the FE into direct PAT API
- *   usage.
- *
- * The legacy `getGitStatus` / `getGitChanges` / `checkCloneStatus` methods
- * remain for the migration window; they are the building blocks
- * `getSnapshot` composes over and will be removed at cutover.
+ * Internal helpers (`getGitStatus`, `getGitChanges`) compose `getSnapshot`
+ * and are not exported from the service boundary.
  */
 export class StatusService {
   private readonly workspaceResolver: WorkspaceResolver;
