@@ -38,17 +38,18 @@ Job Worker는 API Server를 거치지 않고 직접 Redis에 접근한다.
 | `WorkflowBroadcaster` | `core/realtime/WorkflowBroadcaster.ts` | `workflow` | Job Worker 자식 |
 | `FileTreeBroadcaster` | `core/realtime/FileTreeBroadcaster.ts` | `fileTree`, `unseenArtifacts` | Job Worker 자식 |
 | `PreviewBroadcaster` | `core/realtime/PreviewBroadcaster.ts` | `preview` | Job Worker 자식 / Preview Server |
-| `GitChangeBroadcaster` | `core/realtime/GitChangeBroadcaster.ts` | `gitChange` | Job Worker 자식 · HTTP Server · Realtime Server |
+| `GitStateBroadcaster` | `core/realtime/GitStateBroadcaster.ts` | `gitState` | Job Worker 자식 · HTTP Server · Realtime Server |
 | `MessageBroadcaster` | `core/chat/MessageBroadcaster.ts` | `chat` | Job Worker 자식 |
 
-`GitChangeBroadcaster`는 `publisher: (channel, payload) => Promise<unknown>` 콜백을 생성자에서 받는 transport-agnostic 설계이다. Job Worker는 자체 ioredis 연결을 생성하고, HTTP/Realtime Server는 기존 `stateStore.publish`를 재사용한다.
+`GitStateBroadcaster`는 `publisher: (channel, payload) => Promise<unknown>` 콜백을 생성자에서 받는 transport-agnostic 설계이다. Job Worker는 자체 ioredis 연결을 생성하고, HTTP/Realtime Server는 기존 `stateStore.publish`를 재사용한다. 단일 `gitState` SSE type 아래 `cause` discriminant (`workingTreeChange` | `operationComplete` | `reconnectRefill`) 로 세 가지 의미를 실어 나른다.
 
-### gitChange 이중 발행 경로
+### gitState 3-cause 발행 경로
 
-- `FileTreeBroadcaster.notifyFileTreeUpdate`가 항상 `GitChangeBroadcaster.notifyGitChange`를 co-emit. Job 중 워킹트리 파일 생성·수정 커버.
-- `GitWatcherService`가 `.git/index` mtime을 1초 간격으로 폴링하여 `notifyGitChange` 호출. 외부 터미널 Git 조작 커버.
+- **`workingTreeChange`** — 가벼운 힌트. `FileTreeBroadcaster.notifyFileTreeUpdate`가 co-emit (Job 중 워킹트리 파일 변경), `GitWatcherService`가 `.git/index` mtime 폴링으로 co-emit (외부 터미널 Git 조작). FE는 디바운스 후 `fetchGitWorldState` 재실행.
+- **`operationComplete`** — 사용자-초기화 Git op 성공 후 `GitOperation.onSuccess` 에서 발행. full `GitSnapshot` + `GitOperationState` + `GitPatState` 를 탑재해 FE가 스냅샷을 즉시 교체.
+- **`reconnectRefill`** — SSE 구독(재)오픈 시 서버가 1회 자동 발행. 리로드 직후에도 stale UI 없이 정합 상태 진입.
 
-두 경로 모두 동일한 `GitChangeBroadcaster` 인스턴스 또는 동등한 publisher를 사용해 단일 의미의 이벤트를 발행한다. 상세는 [24-git-operations.md](24-git-operations.md#realtime-gitchange-이벤트).
+세 경로 모두 동일한 `GitStateBroadcaster` 인스턴스를 통해 **단일 `gitState` 이벤트 타입**으로 발행된다. 상세는 [24-git-operations.md §0](24-git-operations.md#0-git-world-계약-greenfield-ssot).
 
 ## Job Worker 환경변수 검증
 

@@ -1,8 +1,9 @@
 /**
  * git-world slice — single Zustand slice owning snapshot/operation/pat.
  *
- * The slice replaces the legacy `gitSlice` (gitStatus + gitChanges + phase +
- * 5 writers) with a unified, shape-stable state.
+ * Sole source of truth for Git UI state. Replaces the pre-greenfield
+ * combination of `gitSlice.gitStatus` + `gitSlice.gitChanges` + phase
+ * flag + scattered writers with a unified, shape-stable state.
  *
  * State invariants:
  * - `snapshot.data` is a frozen {@link GitSnapshot} (never mutated in place).
@@ -103,8 +104,17 @@ export interface GitWorldActions {
     op: GitUserOperation,
   ) => Promise<{ success: boolean; error?: GitOperationErrorShape }>;
   fetchGitPat: () => Promise<void>;
-  savePat: (pat: string) => Promise<{ success: boolean; error?: string }>;
-  deletePat: () => Promise<{ success: boolean; error?: string }>;
+  /**
+   * Save a GitHub PAT. On success the slice's `pat` field is refreshed and
+   * the new state (including username) is included in the return value so
+   * callers don't need to peek into the store.
+   */
+  savePat: (pat: string) => Promise<{ success: boolean; error?: string; pat?: GitPatState }>;
+  /**
+   * Delete the stored PAT. On success the slice's `pat` field is reset to
+   * `{ configured: false }` and returned for convenience.
+   */
+  deletePat: () => Promise<{ success: boolean; error?: string; pat?: GitPatState }>;
   clearGitOperation: () => void;
   clearGitWorld: () => void;
 
@@ -234,18 +244,16 @@ export const createGitWorldSlice: StateCreator<any, [], [], GitWorldSlice> = (se
 
   savePat: async (pat: string) => {
     const result = await savePatApi(pat);
-    if (result.success) {
-      await get().fetchGitPat();
-    }
-    return result;
+    if (!result.success) return result;
+    await get().fetchGitPat();
+    return { ...result, pat: get().pat.data ?? undefined };
   },
 
   deletePat: async () => {
     const result = await deletePatApi();
-    if (result.success) {
-      await get().fetchGitPat();
-    }
-    return result;
+    if (!result.success) return result;
+    await get().fetchGitPat();
+    return { ...result, pat: get().pat.data ?? undefined };
   },
 
   clearGitOperation: () => {

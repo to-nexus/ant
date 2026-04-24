@@ -133,9 +133,8 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
         return;
       }
       setGithubPAT('');
-      const latest = useStore.getState().pat.data;
-      showSuccess(latest?.username
-        ? t('account.patSavedWithUser', { username: latest.username })
+      showSuccess(result.pat?.username
+        ? t('account.patSavedWithUser', { username: result.pat.username })
         : t('account.patSaved'));
       // PAT changed — authoritative snapshot refresh for the current
       // (project, feature). Gated CTAs pick up the new auth from git-world.

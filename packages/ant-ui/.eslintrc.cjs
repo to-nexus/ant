@@ -58,29 +58,18 @@ module.exports = {
             'useConfigLoader was removed as part of the Async UI Policy. '
             + 'Read projectConfig directly from the slice with useAsyncResource.',
         },
-        // ── git-world API surface lockdown ──────────────────────────────
-        // See docs/architecture/24-git-operations.md §0 and
-        // .claude/skills/update-git-world/SKILL.md.
-        //
-        // These rules are active at WARN level during the greenfield
-        // migration window and become ERROR at cutover (Phase 7) once the
-        // legacy gitSlice / api/github imports have been removed. A `warn`
-        // level surfaces the contract to new code without breaking the
-        // existing pre-cutover tree.
+        // git-world API surface lockdown — see
+        //   docs/architecture/24-git-operations.md §0
+        //   .claude/skills/update-git-world/SKILL.md
+        // Boundary rules are expressed in the `files:` override below so
+        // they apply to every file except git-world's own implementation.
       ],
     }],
 
-    // git-world enforcement — surface violations early. The plan doc calls
-    // these "error" at cutover; we keep them "warn" while the legacy slice
-    // is still present in the tree. Flip to "error" in Phase 7.
+    // The per-file overrides block at the bottom carries the git-world
+    // boundary rules (error level). This placeholder disables the unused
+    // legacy rule so it can't be reinstated by accident.
     'no-restricted-modules': 'off',
-
-    // Enforce: no external imports from git-world/infrastructure or the
-    // deprecated api/github path.
-    //
-    // NOTE: The default 'no-restricted-imports' above owns the lucide rule,
-    // so we express the git-world boundary via a second rule activated on
-    // files outside git-world/** (via overrides below).
 
     // `animate-spin` / `animate-pulse` are treated as private CSS hooks of
     // the Spinner / Skeleton primitives. Domain indicators use the dedicated
@@ -109,10 +98,12 @@ module.exports = {
       },
     },
     {
-      // git-world surface lockdown — files OUTSIDE the git-world slice must
-      // not reach for private infrastructure paths. See
-      // docs/architecture/24-git-operations.md §0 and
-      // .claude/skills/update-git-world/SKILL.md.
+      // git-world surface lockdown — files OUTSIDE the git-world slice
+      // must not reach for private infrastructure paths. See
+      //   docs/architecture/24-git-operations.md §0
+      //   .claude/skills/update-git-world/SKILL.md
+      // Level: `error`. `warn` was used during greenfield migration and
+      // promoted at Phase 7 cutover.
       files: ['src/**/*.{ts,tsx}'],
       excludedFiles: [
         'src/domain/git-world/**',
