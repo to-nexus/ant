@@ -138,13 +138,10 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sliceHandlerIds.push(sseManager.registerHandlerWithId('bridge', createBridgeHandler(get)));
     sliceHandlerIds.push(sseManager.registerHandlerWithId('transfer', createTransferHandler(get)));
 
-    // gitState handler — single SSE entry point for the whole git domain.
-    // Two handlers run side-by-side during the greenfield migration:
-    //   1. Legacy bridge: refreshes `gitSlice.gitStatus` / `gitChanges` so
-    //      pre-migration consumers (ProjectSection etc.) keep working.
-    //   2. git-world bridge: drives the new `git-world` slice via its
-    //      internal `_applyGitStateEvent` / `_refreshWorkingTreeDebounced`.
-    // Cutover (Phase 7) removes the legacy handler and keeps only git-world.
+    // gitState handler — sole SSE entry point for the git domain. Drives the
+    // git-world slice via its internal `_applyGitStateEvent` /
+    // `_refreshWorkingTreeDebounced` writers. Selector guards (project/feature
+    // equality) live inside those writers so this bridge stays thin.
     sliceHandlerIds.push(
       sseManager.registerHandlerWithId('gitState', (data: SSEMessageMap['gitState']) => {
         const s = get();
@@ -158,16 +155,6 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
         ) {
           return;
         }
-
-        // (1) Legacy bridge — drive old slice fetchers.
-        if (data.cause === 'workingTreeChange') {
-          s.fetchGitChanges?.(activeProject, activeFeature);
-        } else if (data.cause === 'operationComplete' || data.cause === 'reconnectRefill') {
-          s.fetchGitChanges?.(activeProject, activeFeature);
-          s.fetchGitStatus?.(activeProject, activeFeature);
-        }
-
-        // (2) git-world bridge — drive new slice.
         if (data.cause === 'workingTreeChange') {
           s._refreshWorkingTreeDebounced?.(activeProject, activeFeature);
         } else {

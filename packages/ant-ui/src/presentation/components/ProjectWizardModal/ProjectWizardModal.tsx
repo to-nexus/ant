@@ -2,13 +2,13 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { useStore } from '@/domain/store';
-import { useGitState } from '@/application/hooks/git';
+import { useGitSnapshot, useGitPatDispatch, dispatchGitOpOneShot } from '@/domain/git-world';
 import {
   createProject, createFeature, createProjectConfig, updateProjectConfig,
   deleteProject, uploadFiles, type UploadFileEntry,
-  cloneGitHubRepo, checkCloneStatus, initializeGitHubRepo,
+  checkCloneStatus,
   addChatUserMessage, fetchProjectConfig,
-  checkGitHubPATStatus, saveGitHubPAT, fetchOrgConfig, fetchUserConfig,
+  fetchOrgConfig, fetchUserConfig,
 } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { cn } from '@/shared/utils/design-system';
@@ -81,7 +81,10 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   // ── Store ──
   const projects = useStore((s) => s.projects);
   const features = useStore((s) => s.features);
-  const { gitStatus } = useGitState();
+  const snapshot = useGitSnapshot();
+  // PAT is read via `useStore.getState().pat.data` at dispatch time. The
+  // git-world slice is primed on open via `fetchGitPat` below.
+  const { fetchGitPat, savePat: savePatToWorld } = useGitPatDispatch();
   const setSelectedProject = useStore((s) => s.setSelectedProject);
   const setSelectedFeature = useStore((s) => s.setSelectedFeature);
   const setSelectedAgent = useStore((s) => s.setSelectedAgent);
@@ -124,12 +127,14 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     if (!isOpen) return;
     let cancelled = false;
     (async () => {
-      const [pat, orgCfg, userCfg] = await Promise.all([
-        checkGitHubPATStatus(),
+      // Prime PAT via git-world; org/user configs use direct REST (unrelated to git state).
+      await fetchGitPat();
+      const [orgCfg, userCfg] = await Promise.all([
         fetchOrgConfig().catch(() => ({} as any)),
         fetchUserConfig().catch(() => ({} as any)),
       ]);
       if (cancelled) return;
+      const pat = useStore.getState().pat.data ?? { configured: false };
       setPatStatus({ configured: pat.configured, username: pat.username });
       const orgOwner = userCfg?.github?.ownerOverride || orgCfg?.github?.owner;
       const personalOwner = pat.username;
@@ -240,12 +245,13 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     if (!patInput.trim()) return;
     setPatSaving(true);
     setPatError(null);
-    const result = await saveGitHubPAT(patInput.trim());
+    const result = await savePatToWorld(patInput.trim());
     setPatSaving(false);
     if (result.success) {
-      setPatStatus({ configured: true, username: result.username });
+      const latest = useStore.getState().pat.data;
+      setPatStatus({ configured: true, username: latest?.username });
       setPatInput(''); setShowPatInput(false);
-      if (result.username) setOwnerInfo((prev) => ({ ...prev, personalOwner: result.username }));
+      if (latest?.username) setOwnerInfo((prev) => ({ ...prev, personalOwner: latest.username }));
     } else {
       setPatError(result.error || 'Unknown error');
     }
@@ -338,8 +344,13 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
           try {
             updateExecStep(gitStepId, 'active');
             if (gitAction === 'clone') {
-              const cloneResult = await cloneGitHubRepo(projectId);
-              if (!cloneResult.success) throw new Error(cloneResult.error || 'Git clone failed');
+              const cloneResult = await dispatchGitOpOneShot(projectId, { kind: 'clone' });
+              if (!cloneResult.success) {
+                throw new Error(cloneResult.error?.message || 'Git clone failed');
+              }
+              // Back-compat: some server builds still complete clone
+              // asynchronously after returning success. Poll briefly to
+              // confirm the working tree materialized before proceeding.
               let cloned = false;
               for (let i = 0; i < 60; i++) {
                 await delay(2000);
@@ -349,8 +360,10 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
               }
               if (!cloned) throw new Error('Git clone timed out');
             } else {
-              const initResult = await initializeGitHubRepo(projectId);
-              if (!initResult.success) throw new Error(initResult.error || 'Git init failed');
+              const initResult = await dispatchGitOpOneShot(projectId, { kind: 'publish' });
+              if (!initResult.success) {
+                throw new Error(initResult.error?.message || 'Git init failed');
+              }
             }
             updateExecStep(gitStepId, 'done');
             gitDone = true;
@@ -498,7 +511,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 gitEnabled={gitEnabled}
                 onGitEnabledChange={setGitEnabled}
                 readOnly={gitReadOnly}
-                gitStatus={gitStatus}
+                gitSnapshot={snapshot}
                 patStatus={patStatus}
                 showPatInput={showPatInput}
                 onShowPatInput={() => setShowPatInput(true)}

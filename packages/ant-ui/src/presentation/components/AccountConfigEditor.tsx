@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useGitPat, useGitPatDispatch } from '@/domain/git-world';
 import { 
-  checkGitHubPATStatus, 
-  saveGitHubPAT, 
-  deleteGitHubPAT,
   fetchOrgConfig,
   fetchUserConfig,
   updateUserConfig,
@@ -37,12 +35,15 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const [portInput, setPortInput] = useState(String(localBackendPort));
   const [isPortChanged, setIsPortChanged] = useState(false);
   
-  // GitHub PAT state
+  // GitHub PAT — SSOT is the git-world slice. Only the input buffer and
+  // the in-flight save/delete guard live locally.
+  const patState = useGitPat();
+  const { fetchGitPat, savePat, deletePat } = useGitPatDispatch();
   const [githubPAT, setGithubPAT] = useState('');
-  const [githubPATConfigured, setGithubPATConfigured] = useState(false);
-  const [githubUsername, setGithubUsername] = useState<string | undefined>();
-  const [isCheckingPAT, setIsCheckingPAT] = useState(true);
   const [isSavingPAT, setIsSavingPAT] = useState(false);
+  const githubPATConfigured = patState?.configured ?? false;
+  const githubUsername = patState?.username;
+  const isCheckingPAT = patState === null;
   
   // GitHub Owner state
   const [orgGithubOwner, setOrgGithubOwner] = useState('');       // org-level (read-only)
@@ -78,22 +79,10 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     setIsPortChanged(false);
   }, [localBackendPort]);
 
-  // Load GitHub PAT status on mount
+  // Prime the PAT slice on mount. Subsequent reads come from `patState`.
   useEffect(() => {
-    async function loadGitHubPATStatus() {
-      setIsCheckingPAT(true);
-      try {
-        const status = await checkGitHubPATStatus();
-        setGithubPATConfigured(status.configured);
-        setGithubUsername(status.username);
-      } catch (error) {
-        console.error('Failed to check GitHub PAT status:', error);
-      } finally {
-        setIsCheckingPAT(false);
-      }
-    }
-    loadGitHubPATStatus();
-  }, []);
+    void fetchGitPat();
+  }, [fetchGitPat]);
   
   // Load org config (read-only) + user config (editable override) on mount
   useEffect(() => {
@@ -135,20 +124,25 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       showError(t('github.enterPat'));
       return;
     }
-    
+
     setIsSavingPAT(true);
     try {
-      const result = await saveGitHubPAT(githubPAT.trim());
-      setGithubPATConfigured(true);
-      setGithubUsername(result.username);
+      const result = await savePat(githubPAT.trim());
+      if (!result.success) {
+        showError(result.error || t('github.saveFailed'));
+        return;
+      }
       setGithubPAT('');
-      showSuccess(result.username
-        ? t('account.patSavedWithUser', { username: result.username })
+      const latest = useStore.getState().pat.data;
+      showSuccess(latest?.username
+        ? t('account.patSavedWithUser', { username: latest.username })
         : t('account.patSaved'));
-      // PAT changed — re-pull /status + /changes so gated CTAs (push/pull,
-      // publish) refresh their decision based on the new auth.
-      const { selectedProject, selectedFeature, fetchGitAll } = useStore.getState();
-      if (selectedProject) fetchGitAll(selectedProject, selectedFeature || undefined);
+      // PAT changed — authoritative snapshot refresh for the current
+      // (project, feature). Gated CTAs pick up the new auth from git-world.
+      const { selectedProject, selectedFeature, fetchGitWorldState } = useStore.getState() as any;
+      if (selectedProject) {
+        void fetchGitWorldState(selectedProject, { feature: selectedFeature || undefined, fresh: true });
+      }
     } catch (error: any) {
       console.error('Failed to save GitHub PAT:', error);
       showError(error.message || t('github.saveFailed'));
@@ -185,13 +179,17 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
       onConfirm: async () => {
         setIsSavingPAT(true);
         try {
-          await deleteGitHubPAT();
-          setGithubPATConfigured(false);
-          setGithubUsername(undefined);
+          const result = await deletePat();
+          if (!result.success) {
+            showError(result.error || t('github.deleteFailed'));
+            return;
+          }
           setGithubPAT('');
           showSuccess(t('github.deleteSuccess'));
-          const { selectedProject, selectedFeature, fetchGitAll } = useStore.getState();
-          if (selectedProject) fetchGitAll(selectedProject, selectedFeature || undefined);
+          const { selectedProject, selectedFeature, fetchGitWorldState } = useStore.getState() as any;
+          if (selectedProject) {
+            void fetchGitWorldState(selectedProject, { feature: selectedFeature || undefined, fresh: true });
+          }
         } catch (error: any) {
           console.error('Failed to delete GitHub PAT:', error);
           showError(error.message || t('github.deleteFailed'));

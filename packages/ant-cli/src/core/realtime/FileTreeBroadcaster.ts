@@ -27,7 +27,7 @@ import {
 import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
 import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
 import { ensureCanonicalStructure } from '../utils/sessionPaths';
-import { GitChangeBroadcaster } from './GitChangeBroadcaster';
+import { GitStateBroadcaster } from './GitStateBroadcaster';
 
 // File patterns to exclude from tree
 const EXCLUDE_PATTERNS = [
@@ -50,11 +50,11 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   private pubRedis: Redis;
   private readonly projectPath: string;
   private readonly userContext?: UserContext;
-  private readonly gitChangeBroadcaster?: GitChangeBroadcaster;
+  private readonly gitStateBroadcaster?: GitStateBroadcaster;
   
   constructor(
     options: BroadcasterOptions & { projectPath: string },
-    gitChangeBroadcaster?: GitChangeBroadcaster
+    gitStateBroadcaster?: GitStateBroadcaster
   ) {
     const isTLS = options.redisUrl.startsWith('rediss://');
     const tlsOptions = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
@@ -65,7 +65,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
     });
     this.projectPath = options.projectPath;
     this.userContext = options.userContext;
-    this.gitChangeBroadcaster = gitChangeBroadcaster;
+    this.gitStateBroadcaster = gitStateBroadcaster;
 
     // Error & connection event handlers for diagnostics
     this.pubRedis.on('error', (err) => console.error(`❌ [FileTreeBroadcaster] pubRedis error:`, err.message));
@@ -86,15 +86,15 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
         console.warn(`[FileTreeBroadcaster] Failed to notify file tree update:`, err.message);
       });
 
-    // Co-emit gitChange so the frontend refetches `getGitChanges` whenever
-    // the working tree is mutated — including plain file writes that don't
-    // touch `.git/index` (GitWatcherService can't detect those).
-    // Covered non-git paths (session JSON writes etc.) simply produce an
-    // inexpensive "no changes" REST response on the frontend.
-    this.gitChangeBroadcaster
-      ?.notifyGitChange(projectId, featureName, ctx)
+    // Co-emit the unified `gitState` (cause='workingTreeChange') so the
+    // frontend refreshes its git snapshot whenever the working tree is
+    // mutated — including plain file writes that don't touch `.git/index`
+    // (GitWatcherService can't detect those). Covered non-git paths
+    // (session JSON writes etc.) produce an inexpensive debounced refetch.
+    this.gitStateBroadcaster
+      ?.notifyWorkingTreeChange(projectId, featureName, ctx)
       .catch(err => {
-        console.warn(`[FileTreeBroadcaster] Failed to co-emit gitChange:`, err?.message ?? err);
+        console.warn(`[FileTreeBroadcaster] Failed to co-emit gitState:`, err?.message ?? err);
       });
   }
 

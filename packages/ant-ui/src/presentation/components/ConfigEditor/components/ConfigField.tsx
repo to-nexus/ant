@@ -3,7 +3,7 @@ import { ProjectConfig } from '@/infrastructure/http/api';
 import { ConfigField as ConfigFieldType } from '../configSchema';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { normalizeRepoUrl } from '@/shared/utils/git-utils';
-import type { GitStatusResponse } from '@ant/shared';
+import type { GitSnapshot } from '@ant/shared';
 
 export interface GitHubOwnerInfo {
   orgOwner?: string;      // Organization-level GitHub owner
@@ -22,8 +22,8 @@ interface ConfigFieldProps {
   githubOwnerInfo?: GitHubOwnerInfo;
   /** Project name for building default URL */
   projectName?: string;
-  /** Git status for connection badge */
-  gitStatus?: GitStatusResponse | null;
+  /** git-world snapshot for the connection badge. `null` means loading. */
+  gitSnapshot?: GitSnapshot | null;
 }
 
 export function ConfigField({
@@ -36,7 +36,7 @@ export function ConfigField({
   onChange,
   githubOwnerInfo,
   projectName,
-  gitStatus,
+  gitSnapshot,
 }: ConfigFieldProps) {
   const { t } = useTranslation('config');
   // Cloud 모드에서 localPath, repoType 필드 숨김
@@ -51,19 +51,19 @@ export function ConfigField({
   const hasOwners = isGithubRepoField && (orgOwner || personalOwner);
 
   // Git connection status for githubRepo field (3-state: not-connected / connected / error)
-  // gitStatus === null means still loading; skip badge to avoid flicker
+  // gitSnapshot === null means still loading; skip badge to avoid flicker.
   const configUrl = typeof value === 'string' ? value : '';
   const hasGitRepo = isGithubRepoField && !!configUrl;
-  const gitLoaded = hasGitRepo && gitStatus != null;
-  const hasGit = gitLoaded && gitStatus.hasGit;
-  const hasRemote = hasGit && !!gitStatus.remoteUrl;
+  const gitLoaded = hasGitRepo && gitSnapshot != null;
+  const hasGit = gitLoaded && gitSnapshot.hasGit;
+  const hasRemote = hasGit && !!gitSnapshot.remoteUrl;
   const isUrlMatch = hasRemote
-    ? normalizeRepoUrl(configUrl) === normalizeRepoUrl(gitStatus.remoteUrl!)
+    ? normalizeRepoUrl(configUrl) === normalizeRepoUrl(gitSnapshot.remoteUrl!)
     : false;
 
-  const isNotConnected = gitLoaded && !gitStatus.hasGit;
+  const isNotConnected = gitLoaded && !gitSnapshot.hasGit;
   const isConnected = hasRemote && isUrlMatch;
-  const isError = hasGit && (!gitStatus.remoteUrl || !isUrlMatch);
+  const isError = hasGit && (!gitSnapshot.remoteUrl || !isUrlMatch);
 
   const applyOwner = (owner: string) => {
     const repoName = projectName || 'my-project';

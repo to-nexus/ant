@@ -14,7 +14,7 @@ import { getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
 import { getSessionKey } from '../../../../core/chat/schema';
 import { getChatSyncChannel } from '../../../../infrastructure/state/redisConstants';
 import type { ActiveJobInfo } from '@ant/shared';
-import type { GitChangeBroadcaster } from '../../../../core/realtime/GitChangeBroadcaster';
+import type { GitStateBroadcaster } from '../../../../core/realtime/GitStateBroadcaster';
 
 /**
  * Unified SSE Routes
@@ -28,7 +28,7 @@ export function createSSERoutes(deps: {
   workflowStateService: WorkflowStateService;
   stateStore?: StateStorePort;
   gitWatcherService?: any;  // ✅ Git watcher service
-  gitStateBroadcaster?: GitChangeBroadcaster;  // For publishing reconnectRefill on SSE connect
+  gitStateBroadcaster?: GitStateBroadcaster;  // For publishing reconnectRefill on SSE connect
   // workspaceRoot: string;  // ❌ 제거 - 사용하지 않음
   jobToProject?: Map<string, { projectId: string; featureName: string }>;
   jobs?: Map<string, any>;

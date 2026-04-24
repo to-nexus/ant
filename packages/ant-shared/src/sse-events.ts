@@ -12,14 +12,11 @@
  *
  * - `workingTreeChange` — lightweight hint on working-tree/index change.
  *   Payload carries only project/feature/timestamp; FE does a debounced
- *   light-weight refresh. Cost is identical to the legacy `gitChange` event.
+ *   light-weight refresh.
  * - `operationComplete`  — full snapshot pushed from a user-initiated
  *   operation's onSuccess hook. Includes snapshot, operation state, and PAT.
  * - `reconnectRefill`   — full snapshot pushed when an SSE subscription
  *   (re)opens so a reloaded client never sees a stale UI.
- *
- * The `GitChangeEventData` alias is retained only during the single-PR
- * migration window and removed at cutover.
  */
 
 import type { GitSnapshot, GitOperationState, GitPatState } from './git';
@@ -78,13 +75,5 @@ export interface SSEMessageMap {
   gitState: GitStateEventData;
 }
 
-// ---------------------------------------------------------------------------
-// Legacy aliases — retained only during the greenfield migration window
-// inside a single PR. Removed at cutover.
-// ---------------------------------------------------------------------------
-
-/** @deprecated Use {@link GitStateEventData}. Removed at greenfield cutover. */
-export type GitChangeEventData = Extract<
-  GitStateEventData,
-  { cause: 'workingTreeChange' }
->;
+// Legacy `GitChangeEventData` / `gitChange` event were retired at cutover.
+// Use `GitStateEventData` and the unified `gitState` SSE event.

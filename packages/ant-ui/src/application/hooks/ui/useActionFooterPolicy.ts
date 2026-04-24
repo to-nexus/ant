@@ -7,7 +7,7 @@
  */
 
 import { useStore } from '@/domain/store';
-import { useGitState } from '@/application/hooks/git';
+import { useGitSnapshot } from '@/domain/git-world';
 import { getConfigSlots, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasMixedCodebaseRefs, hasRealRefSlots } from '@ant/shared';
 
 export interface ActionFooterPolicy {
@@ -23,7 +23,7 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   const selectedFeature = useStore(s => s.selectedFeature);
   const isRunning = useStore(s => s.isRunning);
   const actionMetadata = useStore(s => s.actionMetadata);
-  const { gitStatus } = useGitState();
+  const snapshot = useGitSnapshot();
 
   const hasWorkspace = !!selectedProject && !!selectedFeature;
 
@@ -53,7 +53,7 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   }
 
   const hasLockedCodebaseRef = slots.refs.some(r => r.codebase && r.locked);
-  const codebaseAvailable = !hasLockedCodebaseRef || !!gitStatus?.codebaseHasFiles;
+  const codebaseAvailable = !hasLockedCodebaseRef || !!snapshot?.codebaseHasFiles;
 
   if (hasLockedCodebaseRef && !codebaseAvailable) {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'codebase-empty', buildDisabledReason: 'codebase-empty' };

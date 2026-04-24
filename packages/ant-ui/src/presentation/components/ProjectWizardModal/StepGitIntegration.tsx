@@ -1,14 +1,14 @@
 import { KeyRound } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
 import { normalizeRepoUrl } from '@/shared/utils/git-utils';
-import type { GitStatusResponse } from '@ant/shared';
+import type { GitSnapshot } from '@ant/shared';
 
 interface StepGitIntegrationProps {
   t: (key: string, opts?: Record<string, unknown>) => string;
   gitEnabled: boolean;
   onGitEnabledChange: (v: boolean) => void;
   readOnly?: boolean;
-  gitStatus?: GitStatusResponse | null;
+  gitSnapshot?: GitSnapshot | null;
   patStatus: { configured: boolean; username?: string } | null;
   showPatInput: boolean;
   onShowPatInput: () => void;
@@ -31,7 +31,7 @@ interface StepGitIntegrationProps {
 }
 
 export function StepGitIntegration({
-  t, gitEnabled, onGitEnabledChange, readOnly, gitStatus,
+  t, gitEnabled, onGitEnabledChange, readOnly, gitSnapshot,
   patStatus, showPatInput, onShowPatInput,
   patInput, onPatInputChange, patSaving, patError, onSavePat,
   repositoryName, onRepositoryNameChange, onRepoManualEdit,
@@ -41,17 +41,17 @@ export function StepGitIntegration({
 }: StepGitIntegrationProps) {
   const fieldDisabled = readOnly || !patStatus?.configured;
 
-  // Only derive badge from gitStatus when readOnly (existing project with
-  // config URL). For new projects, gitStatus in the store belongs to a
-  // different project, so we suppress the badge entirely.
+  // Only derive badge from the snapshot in readOnly (existing project with
+  // config URL). For a new project in the wizard, the snapshot in the slice
+  // belongs to the previously selected project — suppress the badge.
   const badgeState: 'none' | 'not-connected' | 'connected' | 'error' = (() => {
     if (!gitEnabled || !gitUrl) return 'none';
     if (!readOnly) return 'none';
-    if (!gitStatus) return 'none';
-    if (!gitStatus.hasGit) return 'not-connected';
-    const hasRemote = !!gitStatus.remoteUrl;
+    if (!gitSnapshot) return 'none';
+    if (!gitSnapshot.hasGit) return 'not-connected';
+    const hasRemote = !!gitSnapshot.remoteUrl;
     if (hasRemote) {
-      const match = normalizeRepoUrl(gitUrl) === normalizeRepoUrl(gitStatus.remoteUrl!);
+      const match = normalizeRepoUrl(gitUrl) === normalizeRepoUrl(gitSnapshot.remoteUrl!);
       return match ? 'connected' : 'error';
     }
     return 'error';

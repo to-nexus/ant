@@ -53,7 +53,6 @@ export const WORKFLOW_STATE_TTL = REDIS_TTL.JOB.WORKFLOW;
 // Canonical union lives in @ant/shared; re-exported here to avoid drift.
 export type {
   SSEMessageType,
-  GitChangeEventData,
   GitStateEventData,
   SSEMessageMap,
 } from '@ant/shared';

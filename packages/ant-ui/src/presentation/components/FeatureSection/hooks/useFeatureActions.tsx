@@ -27,10 +27,9 @@ export function useFeatureActions(
     await refreshFileTree();
 
     console.log(`[useFeatureActions] ✅ Feature created, auto-selecting: ${featureName}`);
-    // Selecting the feature causes `useGitRefresh` (mounted in App.tsx) to
-    // clear prior git state and run fetchGitAll + fetchFromRemote against the
-    // new worktree. No bypass flag needed — the hook's dedup key (`project:
-    // feature`) changes, which is itself the trigger.
+    // Selecting the feature causes `useProjectLifecycle` (mounted in App.tsx)
+    // to reset git-world state and refetch authoritative snapshot+PAT for the
+    // new worktree. SSE `reconnectRefill` arrives shortly after.
     setSelectedFeature(featureName);
   };
 

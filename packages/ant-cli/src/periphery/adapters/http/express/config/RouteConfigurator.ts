@@ -120,7 +120,7 @@ export class RouteConfigurator {
       transferService: this.deps.transferService,
       stateStore: getInfrastructureFactory().getStateStore(),
       gitWatcherService: this.deps.gitWatcherService,
-      gitStateBroadcaster: this.deps.gitChangeBroadcaster,
+      gitStateBroadcaster: this.deps.gitStateBroadcaster,
     });
     app.use('/api', apiRoutes);
   }
