@@ -28,7 +28,13 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
-import { ExecutionTierId, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
+import {
+  ExecutionTierId,
+  validateExecutionTier,
+  ExecutionTierViolation,
+  buildExecutionTierViolationFraming,
+  recordUserTurnMeta,
+} from "../../../../../../core/executionTier";
 import { isIntentCommitted, buildIntentClarifyTemplateVars } from "../../../../../common/clarify";
 
 
@@ -331,7 +337,31 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   try { envContract = await state.deps.promptBuilder.render('jobs/code/base/injections/preview-env-contract', {}); } catch { /* skip */ }
   const fullSystem = envContract ? `${decomposeSystem}\n\n---\n\n${envContract}` : decomposeSystem;
   const decomposeUser = await state.deps.promptBuilder.render('jobs/code/nodes/decompose/variants/default/base', enrichedVars);
-  const prompts = { system: fullSystem, user: decomposeUser };
+  // Direct-path re-entry framing (E from plan): `direct` sets
+  // needsEscalation=true when a write-intent Tier 1 attempt touched no
+  // files. The router (routeAfterDirect, 1-shot cap) sends us back here
+  // with state.needsEscalation=true and state._promotedThisJob=false.
+  // Append an assertive note to the user prompt so the LLM understands
+  // the previous attempt failed and should re-classify at Tier 2+.
+  //
+  // Without this, the LLM's prior response is cached in the session and
+  // it would likely re-emit the same Tier 1 classification, defeating
+  // the escalation. The framing is orthogonal to the Tier-violation
+  // retry loop below — both can stack if the re-entry attempt also
+  // violates the contract.
+  const isDirectEscalationReentry =
+    state.needsEscalation === true && state._promotedThisJob !== true;
+  const escalationFraming = isDirectEscalationReentry
+    ? '\n\n---\n\n## Retry: previous direct-path attempt failed\n' +
+      'Your previous classification at `<executionTier>1</executionTier>` entered the ' +
+      'direct ReAct loop but touched ZERO files before its step budget expired. ' +
+      'This signals the directive actually requires more than a single verification-' +
+      'unneeded write — either (a) the planned write was skipped because additional ' +
+      'context was needed, or (b) the work requires multiple related edits that must ' +
+      'own their verification. Re-classify at `<executionTier>2</executionTier>` ' +
+      '(Exploratory: exactly one task with `selfVerifyOnDone: true`) or higher.'
+    : '';
+  const prompts = { system: fullSystem, user: decomposeUser + escalationFraming };
 
   // T1 pre-call estimate. `beginNodePhase` ran at node entry so the snapshot
   // exists; seed an approximate input count now so the chat-input gauge
@@ -390,45 +420,111 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const { createClarifyContext } = await import('./discoveryTools');
   const clarifyCtx = createClarifyContext();
 
-  let rawResponse: string;
+  // Tier Entry Node retry contract (C-2 from plan):
+  //
+  //   When the LLM emits a response that violates the executionTier prompt
+  //   contract (missing <executionTier> tag, or tier 0 for generate/refactor
+  //   which forbids Tier 0), append a violation-specific framing to the
+  //   user prompt and re-issue the call. Cap at 3 total attempts — 1
+  //   initial + 2 retries. Any other parse error bypasses the retry loop
+  //   and throws immediately.
+  //
+  // Token/gauge accounting is idempotent across retries:
+  //   - `beginNodePhase` (seeded at node entry) no-ops on re-entry for the
+  //     same phase; `applyEstimatingUsage` re-seeds only when absent.
+  //   - `accumulateTokenUsage(jobLevel:true)` is cumulative, so retry
+  //     cost is billed correctly.
+  //   - `currentPhaseTokenUsage` is overwritten each call, so the chat
+  //     gauge settles on the final attempt's numbers.
+  //
+  //   See `packages/ant-cli/src/agents/common/graph/llmHelpers.ts` for the
+  //   invariants.
+  const MAX_ATTEMPTS = 3;
+  const originalUserPrompt = prompts.user;
+  let rawResponse: string = '';
   let decomposeTokenUsage: any;
-  try {
-    const { READ_DESIGN_DOC_TOOL, handleReadDesignDoc } = await import('./designSelector');
-    const { DISCOVERY_TOOLS, createDiscoveryToolHandler } = await import('./discoveryTools');
+  let parsed: ReturnType<typeof parseLLMResponse> | undefined;
+  let executionTier: ExecutionTierId | undefined;
+  let attempt = 0;
 
-    const discoveryCtx = {
-      featurePath: state.context.featurePath || '',
-      codebasePath: (state as any).codebasePath || undefined,
-      clarify: clarifyCtx,
-    };
-    const discoveryHandler = createDiscoveryToolHandler(discoveryCtx);
+  while (true) {
+    attempt++;
 
-    const allTools = [...DISCOVERY_TOOLS, ...(useToolMode ? [READ_DESIGN_DOC_TOOL] : [])];
-    const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, {
-      tools: allTools,
-      toolHandler: async (name, args) => {
-        if (name === 'read_design_doc') return handleReadDesignDoc(args.name, state);
-        const discoveryResult = await discoveryHandler(name, args);
-        if (!discoveryResult.startsWith('Error: Unknown tool')) return discoveryResult;
-        return `Error: Unknown tool "${name}"`;
-      },
-      state,
-    });
-    rawResponse = result.response;
-    decomposeTokenUsage = result.tokenUsage;
+    try {
+      const { READ_DESIGN_DOC_TOOL, handleReadDesignDoc } = await import('./designSelector');
+      const { DISCOVERY_TOOLS, createDiscoveryToolHandler } = await import('./discoveryTools');
 
-    if (decomposeTokenUsage) {
-      const { applyEstimatingUsage } = await import('../../../../../common/graph/llmHelpers');
-      applyEstimatingUsage(state, 'decompose', decomposeTokenUsage, {
-        promptChars: prompts.system.length + prompts.user.length,
+      const discoveryCtx = {
+        featurePath: state.context.featurePath || '',
+        codebasePath: (state as any).codebasePath || undefined,
+        clarify: clarifyCtx,
+      };
+      const discoveryHandler = createDiscoveryToolHandler(discoveryCtx);
+
+      const allTools = [...DISCOVERY_TOOLS, ...(useToolMode ? [READ_DESIGN_DOC_TOOL] : [])];
+      const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, {
+        tools: allTools,
+        toolHandler: async (name, args) => {
+          if (name === 'read_design_doc') return handleReadDesignDoc(args.name, state);
+          const discoveryResult = await discoveryHandler(name, args);
+          if (!discoveryResult.startsWith('Error: Unknown tool')) return discoveryResult;
+          return `Error: Unknown tool "${name}"`;
+        },
+        state,
       });
+      rawResponse = result.response;
+      decomposeTokenUsage = result.tokenUsage;
+
+      if (decomposeTokenUsage) {
+        const { applyEstimatingUsage } = await import('../../../../../common/graph/llmHelpers');
+        applyEstimatingUsage(state, 'decompose', decomposeTokenUsage, {
+          promptChars: prompts.system.length + prompts.user.length,
+        });
+      }
+    } catch (error) {
+      logErrorHeader('Decompose');
+      console.error(error);
+      throw error;
     }
-  } catch (error) {
-    logErrorHeader('Decompose');
-    console.error(error);
-    throw error;
+
+    // If clarify was triggered at any attempt, pause — do NOT retry. A
+    // clarify emission at a retry attempt still represents an
+    // intent-level decision the user must make.
+    if (clarifyCtx.clarifySent) break;
+
+    try {
+      parsed = parseLLMResponse(rawResponse);
+    } catch (error) {
+      logErrorHeader('Decompose');
+      console.error(error);
+      throw error;
+    }
+
+    try {
+      executionTier = validateExecutionTier(parsed.executionTier, {
+        mode: state.resolvedAction?.mode,
+        nodeLabel: 'Decompose',
+      });
+      break; // contract satisfied
+    } catch (e) {
+      if (!(e instanceof ExecutionTierViolation)) throw e;
+
+      if (attempt >= MAX_ATTEMPTS) {
+        logErrorHeader('Decompose');
+        console.error(
+          `❌ [Decompose] Tier contract violation exhausted ${MAX_ATTEMPTS} attempts: ${e.message}`,
+        );
+        throw e;
+      }
+
+      console.warn(
+        `⚠️  [Decompose] Tier contract violation attempt ${attempt}/${MAX_ATTEMPTS}: ` +
+        `${e.code} (mode=${e.mode ?? 'unknown'}, observed=${e.observedTier ?? 'none'}) — retrying with framing`,
+      );
+      prompts.user = originalUserPrompt + buildExecutionTierViolationFraming(e);
+    }
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4.5: Check if clarify was triggered during tool loop
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -472,23 +568,22 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 5: Parse response and create task queue
+  // STEP 5: Consume parsed response (already parsed + validated above)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  let parsed;
-  try {
-    parsed = parseLLMResponse(rawResponse);
-  } catch (error) {
-    logErrorHeader('Decompose');
-    console.error(error);
-    throw error;
+  // The retry loop at STEP 4 has already produced a parsed response whose
+  // <executionTier> tag satisfies the mode-specific contract (see
+  // validateExecutionTier). clarifySent exits via the STEP 4.5 early
+  // return above, so both `parsed` and `executionTier` are defined here.
+  if (!parsed || executionTier === undefined) {
+    // Defensive — should be unreachable because the retry loop only
+    // breaks on a validated tier OR on clarifySent (handled above).
+    throw new Error('[Decompose] Internal invariant violated: parsed/executionTier missing after retry loop');
   }
-  
   const {
     tasks,
     referenceRequests,
     techTier: parsedTechTier,
     boundary: parsedBoundary,
-    executionTier: parsedExecutionTier,
     directHints,
     specClarify: rawSpecClarify,
   } = parsed;
@@ -508,11 +603,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       `"${state.actionMetadata?.intent ?? state.resolvedAction?.intent}" — discarded (prompt violation).`
     );
   }
-
-  // LLM's <executionTier> is the SSOT. If the tag is missing (prompt
-  // violation), coerceExecutionTier degrades to Tier 0 Reflex (safe
-  // read-only) — same policy applied at every Tier Entry Node.
-  const executionTier = coerceExecutionTier(parsedExecutionTier, 'Decompose');
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 4.6: SpecClarify short-circuit
@@ -720,7 +810,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       },
     };
     const effectiveTier = mergedConfig.frontend ?? mergedConfig.backend;
-    console.log(`✅ TechTier: stack=${stack}, language=${effectiveTier?.language}, framework=${effectiveTier?.framework || 'none'}`);
+    console.log(`✅ TechTier: stack=${stack}, language=${effectiveTier?.language}, framework=${effectiveTier?.framework || 'none'}, executionTier=${executionTier}`);
     if (parsedTechTier.stackReasoning) {
       console.log(`   Reasoning: ${parsedTechTier.stackReasoning}`);
     }
@@ -854,6 +944,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     void emitDetectOutcome(state.resolvedAction, {
       locale: state._uiLocale,
       phase: 'decompose-final',
+      executionTier,
     });
   }
 

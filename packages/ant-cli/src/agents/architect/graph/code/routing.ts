@@ -59,6 +59,26 @@ export function routeAfterDecompose(state: ArchitectGraphState): string {
     return '__end__';
   }
   const tier = state.executionTier;
+  const mode = state.resolvedAction?.mode;
+
+  // Defense-in-depth guard (D from plan): Tier 0 is forbidden for
+  // generate/refactor modes — validateExecutionTier + the rules.md
+  // matrix should have already blocked this combination at decompose
+  // time. If we still reach here with tier=0 + generate/refactor, it
+  // means either (a) validateExecutionTier was bypassed, or (b) state
+  // was reconstructed from a legacy session predating the contract.
+  // Throwing is strictly better than silently routing to the direct
+  // read-only path and completing the job with zero file changes.
+  if (tier === 0 && (mode === 'generate' || mode === 'refactor')) {
+    throw new Error(
+      `[Decompose→Router] Invalid state: executionTier=0 with mode=${mode}. ` +
+      `Tier 0 is reserved for explain mode only; generate/refactor start at Tier 1. ` +
+      `This indicates a missing validateExecutionTier check upstream or a stale session — ` +
+      `refusing to route to the direct read-only path as it would silently complete the job ` +
+      `with no code changes.`,
+    );
+  }
+
   if (tier !== undefined && isDirectTier(tier)) {
     console.log(`[Decompose→Router] executionTier=${tier} → direct`);
     return 'direct';

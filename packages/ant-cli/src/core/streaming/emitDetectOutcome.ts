@@ -16,7 +16,7 @@
  * output remains non-blocking.
  */
 
-import type { ResolvedActionContext, InferredAction } from '@ant/shared';
+import type { ResolvedActionContext, InferredAction, ExecutionTierId } from '@ant/shared';
 import { SpecialTagTransformer } from './transformers/SpecialTagTransformer';
 import { getChatAPIClient } from '../adapters/ChatAPIClient';
 import type { UserLanguage } from '../utils/languageDetector';
@@ -30,16 +30,23 @@ export interface EmitDetectOutcomeOptions {
   locale?: string;
   /** Which pipeline phase this emission represents (controls title). */
   phase?: DetectPhase;
+  /**
+   * Final executionTier chosen for this turn (decompose-final only).
+   * Surfacing this to the UI helps operators see at a glance which
+   * execution path the job took (Tier 0/1 direct vs Tier 2+ task
+   * pipeline) — previously the tier was visible only in server logs.
+   */
+  executionTier?: ExecutionTierId;
 }
 
 export async function emitDetectOutcome(
   rac: ResolvedActionContext,
   opts: EmitDetectOutcomeOptions = {},
 ): Promise<void> {
-  const { reasoning, locale, phase = 'detect' } = opts;
+  const { reasoning, locale, phase = 'detect', executionTier } = opts;
 
   try {
-    const payload = buildCanonicalDetectPayload(rac, reasoning, phase);
+    const payload = buildCanonicalDetectPayload(rac, reasoning, phase, executionTier);
     const transformer = new SpecialTagTransformer(normalizeLocale(locale));
     const raw = `<detect>${JSON.stringify(payload)}</detect>`;
     const result = transformer.transform(raw);
@@ -65,6 +72,7 @@ function buildCanonicalDetectPayload(
   rac: ResolvedActionContext,
   reasoning: InferredAction['reasoning'] | undefined,
   phase: DetectPhase,
+  executionTier: ExecutionTierId | undefined,
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     phase,
@@ -78,6 +86,7 @@ function buildCanonicalDetectPayload(
   if (rac.target?.length) payload.target = rac.target;
   if (rac.basis?.techTier) payload.techTier = rac.basis.techTier;
   if (rac.basis?.visualTier) payload.visualTier = rac.basis.visualTier;
+  if (executionTier !== undefined) payload.executionTier = executionTier;
 
   if (reasoning && (reasoning.intent || reasoning.domain)) {
     payload.reasoning = {
