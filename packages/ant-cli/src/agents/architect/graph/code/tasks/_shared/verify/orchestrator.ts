@@ -1,8 +1,15 @@
 /**
- * verification/hooks/orchestrator.ts — TaskOrchestratorHook
+ * `_shared/verify/orchestrator` — TaskOrchestratorHook fields shared by
+ * every verification responsibility holder.
  *
- * Owns verification-specific orchestrator behaviour:
+ * SSOT: previously `tasks/verification/hooks/orchestrator.ts`. Moved
+ * here because the attempt counter is `Session.attempts()`-based — a
+ * shared fact, not a verification-task-type-specific one. Self-verify
+ * Tier 2 tasks must use the same counter once they enter verify-mode so
+ * `_failedAttempts` shared-fallback logic does not fire spuriously
+ * against a session that already tracks its own attempts.
  *
+ * Owns:
  *   - Unified attempt counter (`hasOwnAttemptCounter` + `attemptCount`) —
  *     reads from `resumeState.verification.attempts` instead of the
  *     shared `retries` counter.
@@ -19,20 +26,17 @@
  * it has to revive the session *instance* from its plain-object snapshot
  * projection.
  *
- * `TaskOrchestrator` / `TaskWorker` dispatch via
- * `hooksForTaskType(task.type)?.orchestrator?.*` and never know this
- * module exists — the code-graph layer stays blind to `task.type` (R1).
- *
- * `VerificationSnapshot` (see `model/snapshot.ts`) is the only shape ever
- * stored on `task.resumeState.verification`; the `resume` argument is
- * typed `unknown` at the interface boundary and narrowed here.
+ * `TaskOrchestrator` / `TaskWorker` dispatch via the per-bundle hook
+ * (which `composeBundle` populates only when `requiresVerification(task)`
+ * is true) and never know this module exists — the code-graph layer
+ * stays blind to `task.type` (R1).
  */
 
-import type { CodeTask } from '../../../../../types/task';
-import { VerificationSession } from '../model/Session';
-import type { VerificationSnapshot } from '../model/snapshot';
+import type { CodeTask } from '../../../../types/task';
+import { VerificationSession } from './Session';
+import type { VerificationSnapshot } from './snapshot';
 
-/** True — verification owns a unified attempt counter on the session. */
+/** True — verification responsibility holders own a unified attempt counter. */
 export const hasOwnAttemptCounter = true;
 
 function readSnapshot(task: CodeTask): VerificationSnapshot | undefined {

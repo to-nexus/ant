@@ -6,11 +6,18 @@
  *   [Variant].tsx           — one file per card variant (thin wrappers)
  *   index.ts (this file)    — public entry point + variant switch
  *
- * Multi-pod safe: all actions persist to backend via dismiss-choice endpoint.
+ * Phase 11 props: `(presented, resolved?)` from the chat-SSOT projector.
+ * The variant is derived from `presented.cardType`. `cardType` discriminates
+ * the choice family beyond the card-line-vs-status-line split.
+ *
+ * Multi-pod safe: every action persists via the unified
+ * `/chat/choice-resolved` endpoint with the cardId from `presented`.
  */
 
-import type { MessageContent } from '@/domain/models/chat';
-import type { ChoiceVariant } from './shared';
+import type {
+  ChatChoicePresentedLine,
+  ChatChoiceResolvedLine,
+} from '@ant/shared';
 import { TriageChoiceVariant } from './TriageChoiceVariant';
 import { CancelledVariant } from './CancelledVariant';
 import { EvalSaveVariant } from './EvalSaveVariant';
@@ -18,23 +25,22 @@ import { SpecCompleteVariant } from './SpecCompleteVariant';
 import { ClarifyingVariant } from './ClarifyingVariant';
 
 interface ChoiceCardProps {
-  content: MessageContent;
-  variant: ChoiceVariant;
-  messageId: string;
+  presented: ChatChoicePresentedLine;
+  resolved?: ChatChoiceResolvedLine;
 }
 
-export function ChoiceCard({ content, variant, messageId }: ChoiceCardProps) {
-  switch (variant) {
+export function ChoiceCard({ presented, resolved }: ChoiceCardProps) {
+  switch (presented.cardType) {
     case 'triage_choice':
-      return <TriageChoiceVariant content={content} messageId={messageId} />;
+      return <TriageChoiceVariant presented={presented} resolved={resolved} />;
     case 'cancelled':
-      return <CancelledVariant content={content} messageId={messageId} />;
+      return <CancelledVariant presented={presented} resolved={resolved} />;
     case 'eval_save':
-      return <EvalSaveVariant content={content} messageId={messageId} />;
+      return <EvalSaveVariant presented={presented} resolved={resolved} />;
     case 'clarifying':
-      return <ClarifyingVariant content={content} messageId={messageId} />;
+      return <ClarifyingVariant presented={presented} resolved={resolved} />;
     case 'spec_complete':
-      return <SpecCompleteVariant content={content} messageId={messageId} />;
+      return <SpecCompleteVariant presented={presented} resolved={resolved} />;
     default:
       return null;
   }

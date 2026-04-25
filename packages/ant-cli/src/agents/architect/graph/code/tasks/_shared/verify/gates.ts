@@ -1,16 +1,17 @@
 /**
  * Verification gates — the atomic "what has to pass" vocabulary.
  *
- * A verification task is complete iff every required gate has passed in the
- * current diagnostic cycle. Gates replace the former flat boolean pairs
+ * A verification responsibility is complete iff every required gate has passed
+ * in the current diagnostic cycle. Gates replace the former flat boolean pairs
  * (`buildPassed`/`buildAttempted`, `testPassed`/`testAttempted`, etc.) with
  * a structural Set so "passed ⊆ required" is a constructor-enforced invariant.
  *
- * This module is phase-blind (R2): it never imports from `nodes/`,
- * `routers/`, or `parallel/`. Consumers are:
- *   - `tasks/verification/model/Session.ts` (primary)
- *   - `tasks/verification/model/snapshot.ts` (persisted form)
- *   - `tasks/verification/hooks/*.ts` (adapter layer, added in T5)
+ * SSOT location: previously `tasks/verification/model/gates.ts`. Moved to
+ * `tasks/_shared/verify/` because the gate vocabulary is shared by every
+ * verification responsibility holder (verification task type AND any
+ * `selfVerifyOnDone:true` task), not by verification task type alone.
+ *
+ * R2 — phase-blind. Never imports from `nodes/`, `routers/`, or `parallel/`.
  */
 
 export type Gate = 'typecheck' | 'build' | 'test';

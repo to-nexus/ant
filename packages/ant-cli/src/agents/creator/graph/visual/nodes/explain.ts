@@ -139,7 +139,7 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
 
     const chatAPI = getChatAPIClient();
     try {
-      if (!chatAPI.hasActiveMessage()) await chatAPI.startMessage();
+      // chat-SSOT §5: no per-message lifecycle — emit + finalize directly.
       await chatAPI.sendLLMEvent({ type: 'text', text: `I encountered an error while processing your question. Please try again.` });
       await chatAPI.finalizeMessage();
     } catch { /* cleanup */ }

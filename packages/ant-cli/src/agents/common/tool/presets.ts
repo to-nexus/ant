@@ -15,7 +15,7 @@ import {
   SHADOW_ALIASES,
 } from './toolCatalog';
 import { applyCodeCommandPolicy } from './handlers/codeCommandPolicy';
-import type { Gate } from '../../architect/graph/code/tasks/verification/model/gates';
+import type { Gate } from '../../architect/graph/code/tasks/_shared/verify/gates';
 
 /**
  * Build a registry from the catalog matrix for a given job.

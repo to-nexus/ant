@@ -7,9 +7,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { checkRetryTermination } from '../../../src/agents/architect/graph/code/tasks/verification/hooks/plan';
-import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
-import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/verification/model/errors';
+import { checkRetryTermination } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/checkRetryTermination';
+import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
+import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/errors';
 import type { ArchitectGraphState } from '../../../src/agents/architect/graph/code/state';
 
 function makeState(overrides: Partial<ArchitectGraphState> = {}): ArchitectGraphState {

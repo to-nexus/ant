@@ -337,9 +337,18 @@ describe('applyCodeCommandPolicy', () => {
     expect(result!.content).toContain('BLOCKED');
   });
 
-  it('should allow Go build in verification tasks', async () => {
+  it('should allow Go build during a verification cycle (verificationSession set)', async () => {
+    // Post verify-shared refactor: Go build is allowed only when an
+    // active verification cycle is in progress. The signal is
+    // `ctx.verificationSession` (composeBundle copies state.verification
+    // → ctx.verificationSession when verify-mode is active). Setting the
+    // taskType alone is no longer sufficient — verification tasks ALWAYS
+    // have a Session before they reach the execute phase, so this is
+    // semantically equivalent to the old check.
     const { applyCodeCommandPolicy } = await import('../src/agents/common/tool/handlers/codeCommandPolicy');
+    const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/_shared/verify/Session');
     ctx.currentTaskType = 'verification';
+    ctx.verificationSession = VerificationSession.createFresh({ isTs: false, hasTests: false });
     const result = applyCodeCommandPolicy(ctx, { command: 'go build ./...' });
     expect(result).toBeNull();
   });
@@ -353,7 +362,7 @@ describe('applyCodeCommandPolicy', () => {
     // Gate identity is the LLM's `verifies` declaration (see
     // `docs/tmp/gate-classification-postmortem.md`).
     const { applyCodeCommandPolicy } = await import('../src/agents/common/tool/handlers/codeCommandPolicy');
-    const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/verification/model/Session');
+    const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/_shared/verify/Session');
     ctx.currentTaskType = 'verification';
     ctx.activePhase = 'execute';
     ctx.verificationSession = VerificationSession.createFresh({ isTs: false, hasTests: false });
@@ -363,7 +372,7 @@ describe('applyCodeCommandPolicy', () => {
 
   it('should block build before typecheck passes in plan phase (gate ordering)', async () => {
     const { applyCodeCommandPolicy } = await import('../src/agents/common/tool/handlers/codeCommandPolicy');
-    const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/verification/model/Session');
+    const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/_shared/verify/Session');
     // Plan-phase loop guard is verification-specific per R1 (lives in
     // tasks/verification/hooks/command.ts); callers without a task type
     // get the generic `null` pass-through.

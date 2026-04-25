@@ -4,8 +4,14 @@
  * Goal: reduce the verbosity of long runs of the same tool-family status
  * card (Read, Listed, Grepped, ...) by merging adjacent slots into a
  * single expandable card. This is a presentation-only transform — the
- * underlying `MessageContent[]` (and `chat.jsonl`) is untouched, so live
- * stream and replay produce the identical collapsed view.
+ * underlying chat.jsonl SSOT is untouched, so live stream and replay
+ * produce the identical collapsed view.
+ *
+ * Phase 11 chat-SSOT — operates directly on `ChatStatusLine[]` (the
+ * SSOT type) instead of the legacy `MessageContent[]` envelope. The
+ * input is one section's status lines; non-status items (thinking,
+ * assistant_message, choice) are filtered out before this function
+ * is called by the TurnItem renderer.
  *
  * Behaviour summary
  *   [read A, read B, read C]              -> Read: 3 files  (expand: A,B,C)
@@ -14,15 +20,15 @@
  *   [read A, read B(error), read C]       -> 3 separate cards (error = boundary)
  *   [listed(pat=src), listed(pat=tests)]  -> 2 separate cards (scope mismatch)
  *
- * Non-aggregatable content types pass through unchanged.
- *
- * See the parent plan for the rationale of the FE-only merge strategy.
+ * Non-aggregatable status types pass through unchanged (the merged
+ * status type stays the same as the seed slot).
  */
 
-import type { MessageContent, MessageContentType } from '@/domain/models/chat';
+import type { ChatStatusLine, ChatStatusType } from '@ant/shared';
 
 export interface AggregatedEntry {
-  content: MessageContent;
+  /** Synthesised line — the merged metadata is attached here. */
+  line: ChatStatusLine;
   originalIndex: number;
   /**
    * Number of source slots rolled into this entry. `1` for pass-through
@@ -48,8 +54,8 @@ type FamilyKey =
   | 'explore';
 
 interface FamilyConfig {
-  inFlight: MessageContentType;
-  completed: MessageContentType;
+  inFlight: ChatStatusType;
+  completed: ChatStatusType;
   /**
    * Scope identifiers that must match for two adjacent slots to be
    * considered mergeable. `undefined` values are treated as equal to
@@ -57,13 +63,7 @@ interface FamilyConfig {
    * values compare by equality.
    */
   scopeKeys: readonly string[];
-  /** Label for completed aggregate card. */
-  formatCompleted: (merged: MergedMetadata, scope: Scope) => string;
-  /** Label for in-flight aggregate card (trailing-progress). */
-  formatInFlight: (merged: MergedMetadata, scope: Scope) => string;
 }
-
-type Scope = Record<string, unknown>;
 
 interface MergedMetadata {
   filesList: string[];       // dedup'd file paths collected so far
@@ -79,83 +79,51 @@ const FAMILIES: Record<FamilyKey, FamilyConfig> = {
     inFlight: 'reading',
     completed: 'read',
     scopeKeys: [],
-    formatCompleted: (m) => `Read: ${m.filesList.length || m.mergedCount} files`,
-    formatInFlight: (m) => `Reading: ${m.filesList.length + 1} files`,
   },
   read_source: {
     inFlight: 'reading_source',
     completed: 'read_source',
     scopeKeys: [],
-    formatCompleted: (m) => `Read source: ${m.filesList.length || m.mergedCount} files`,
-    formatInFlight: (m) => `Reading source: ${m.filesList.length + 1} files`,
   },
   list: {
     inFlight: 'listing_files',
     completed: 'listed_files',
     scopeKeys: ['pattern'],
-    formatCompleted: (m, s) => {
-      const base = `Listed: ${m.filesCount}/${m.totalFiles} files`;
-      return s.pattern ? `${base} (${s.pattern})` : base;
-    },
-    formatInFlight: (m, s) => {
-      const suffix = s.pattern ? ` (${s.pattern})` : '';
-      if (m.filesCount > 0) {
-        return `📂 Listing files${suffix}: ${m.filesCount}/${m.totalFiles} so far...`;
-      }
-      return `📂 Listing files${suffix}...`;
-    },
   },
   grep: {
     inFlight: 'grepping',
     completed: 'grepped',
     scopeKeys: [],
-    formatCompleted: (m) => `Grepped: ${m.filesCount} files`,
-    formatInFlight: (m) =>
-      m.filesCount > 0
-        ? `Searching local files: ${m.filesCount} files so far...`
-        : 'Searching local files...',
   },
   search_code: {
     inFlight: 'searching_code',
     completed: 'searched_code',
     scopeKeys: [],
-    formatCompleted: (m) =>
-      m.totalMatches > 0
-        ? `Found: ${m.totalMatches} matches in ${m.filesCount} files`
-        : `Found: ${m.filesCount} files`,
-    formatInFlight: () => '🔍 Searching code...',
   },
   retrieve: {
     inFlight: 'retrieving',
     completed: 'retrieved',
     scopeKeys: [],
-    formatCompleted: (m) => `Retrieved: ${m.filesCount} files from Vector DB`,
-    formatInFlight: () => 'Retrieving from Vector DB...',
   },
   explore: {
     inFlight: 'exploring',
     completed: 'explored',
     scopeKeys: [],
-    formatCompleted: (m) => `Explored: ${m.filesCount} files with uncommitted changes`,
-    formatInFlight: (m) =>
-      m.filesCount > 0
-        ? `Exploring: ${m.filesCount}/${m.totalFiles} files`
-        : 'Exploring: codebase...',
   },
 };
 
-// Reverse lookup: MessageContentType -> FamilyKey (null if non-aggregatable)
-const TYPE_TO_FAMILY: Partial<Record<MessageContentType, FamilyKey>> = {};
+// Reverse lookup: ChatStatusType -> FamilyKey (undefined if non-aggregatable)
+const TYPE_TO_FAMILY: Partial<Record<ChatStatusType, FamilyKey>> = {};
 for (const [key, cfg] of Object.entries(FAMILIES) as Array<[FamilyKey, FamilyConfig]>) {
   TYPE_TO_FAMILY[cfg.inFlight] = key;
   TYPE_TO_FAMILY[cfg.completed] = key;
 }
 
-function familyOf(type: MessageContentType): FamilyKey | undefined {
+function familyOf(type: ChatStatusType): FamilyKey | undefined {
   return TYPE_TO_FAMILY[type];
 }
 
-function isCompleted(family: FamilyKey, type: MessageContentType): boolean {
+function isCompleted(family: FamilyKey, type: ChatStatusType): boolean {
   return FAMILIES[family].completed === type;
 }
 
@@ -167,6 +135,7 @@ interface BucketState {
   family: FamilyKey;
   outIndex: number;          // position in the output array
   originalIndex: number;     // first source slot's index (for React key stability)
+  seedLine: ChatStatusLine;  // captured to preserve identity fields (cardId / ts / turnId)
   merged: MergedMetadata;
   // Scope lock — captured from the first slot and enforced on subsequent
   // merges. Scope value of `undefined` is a valid lock (match only other
@@ -190,11 +159,11 @@ function makeEmptyMerged(): MergedMetadata {
 }
 
 function captureScope(
-  content: MessageContent,
+  line: ChatStatusLine,
   scopeKeys: readonly string[],
 ): Record<string, unknown> {
   const scope: Record<string, unknown> = {};
-  const meta = content.metadata as Record<string, unknown> | undefined;
+  const meta = line.metadata as Record<string, unknown> | undefined;
   for (const key of scopeKeys) {
     scope[key] = meta?.[key];
   }
@@ -203,18 +172,18 @@ function captureScope(
 
 function scopeMatches(
   bucket: BucketState,
-  content: MessageContent,
+  line: ChatStatusLine,
 ): boolean {
   const cfg = FAMILIES[bucket.family];
-  const meta = content.metadata as Record<string, unknown> | undefined;
+  const meta = line.metadata as Record<string, unknown> | undefined;
   for (const key of cfg.scopeKeys) {
     if (bucket.scope[key] !== meta?.[key]) return false;
   }
   return true;
 }
 
-function hasError(content: MessageContent): boolean {
-  return !!(content.metadata && (content.metadata as { error?: unknown }).error);
+function hasError(line: ChatStatusLine): boolean {
+  return !!(line.metadata && (line.metadata as { error?: unknown }).error);
 }
 
 function pushUniqueFilePath(list: string[], path: string | undefined): void {
@@ -229,22 +198,17 @@ function pushUniqueFilePaths(list: string[], add: string[] | undefined): void {
 }
 
 /**
- * Build the rendered MessageContent for a bucket given its current state.
+ * Build the rendered ChatStatusLine for a bucket given its current state.
  *
- * Aggregate cards override `content`/`type`/`metadata` — the underlying
- * source slot's original values are intentionally replaced by the merged
- * summary view. Single-slot buckets (pass-through) are never rebuilt and
- * keep the BE-authored `content` verbatim, preserving SSOT for the common
- * case.
+ * Aggregate cards override `statusType` and rebuild `metadata` — the
+ * underlying source slot's original values are intentionally replaced by
+ * the merged summary view. Single-slot buckets (pass-through) are never
+ * rebuilt and keep the BE-authored line verbatim, preserving SSOT for
+ * the common case.
  */
-function renderBucketContent(bucket: BucketState): MessageContent {
+function renderBucketLine(bucket: BucketState): ChatStatusLine {
   const cfg = FAMILIES[bucket.family];
-  const type = bucket.lastWasCompleted ? cfg.completed : cfg.inFlight;
-  const format = bucket.lastWasCompleted
-    ? cfg.formatCompleted
-    : cfg.formatInFlight;
-
-  const text = format(bucket.merged, bucket.scope);
+  const statusType = bucket.lastWasCompleted ? cfg.completed : cfg.inFlight;
 
   const metadata: Record<string, unknown> = {
     ...bucket.scope,
@@ -259,26 +223,26 @@ function renderBucketContent(bucket: BucketState): MessageContent {
     metadata.currentFilePath = bucket.merged.currentFilePath;
     metadata.detail = `In flight: ${bucket.merged.currentFilePath}`;
   }
-  // Mark this content as an aggregated summary — downstream renderers
+  // Mark this line as an aggregated summary — downstream renderers
   // (e.g. WorkingCard) can read this if they need to differentiate.
   metadata.aggregated = true;
   metadata.aggregatedCount = bucket.merged.mergedCount;
 
   return {
-    type: type as MessageContent['type'],
-    content: text,
-    metadata: metadata as MessageContent['metadata'],
+    ...bucket.seedLine,
+    statusType,
+    metadata,
   };
 }
 
 /**
- * Absorb a MessageContent slot into an existing bucket. The bucket's
+ * Absorb a ChatStatusLine into an existing bucket. The bucket's
  * scope and family have already been verified to match.
  */
-function mergeInto(bucket: BucketState, content: MessageContent): void {
-  const meta = content.metadata as Record<string, unknown> | undefined;
+function mergeInto(bucket: BucketState, line: ChatStatusLine): void {
+  const meta = line.metadata as Record<string, unknown> | undefined;
   const family = bucket.family;
-  const completedNow = isCompleted(family, content.type);
+  const completedNow = isCompleted(family, line.statusType);
 
   bucket.merged.mergedCount += 1;
 
@@ -294,7 +258,7 @@ function mergeInto(bucket: BucketState, content: MessageContent): void {
 
     // Count/stat summation for list-like families. For read/read_source,
     // BE does not populate filesCount per call, so filesList.length is
-    // the authoritative count (see renderBucketContent).
+    // the authoritative count (see renderBucketLine).
     const incomingFilesCount = (meta?.filesCount as number | undefined) ?? 0;
     const incomingTotalFiles = (meta?.totalFiles as number | undefined) ?? 0;
     const incomingMatches = (meta?.totalMatches as number | undefined) ?? 0;
@@ -337,18 +301,18 @@ function mergeInto(bucket: BucketState, content: MessageContent): void {
 // -----------------------------------------------------------------------------
 
 /**
- * Collapse adjacent same-family chat status slots into aggregated cards.
+ * Collapse adjacent same-family chat status lines into aggregated entries.
  *
  * Guarantees:
- * - Pure: no mutation of input `MessageContent[]` or their `metadata` objects.
+ * - Pure: no mutation of input lines or their `metadata` objects.
  * - Order-preserving: non-mergeable slots retain their original position.
  * - Stable React keys: each output entry exposes the `originalIndex` of
  *   the first source slot it represents.
- * - Error-safe: any slot carrying `metadata.error` is a boundary and
+ * - Error-safe: any line carrying `metadata.error` is a boundary and
  *   passes through unchanged.
  */
 export function aggregateChatStatuses(
-  contents: MessageContent[],
+  lines: ChatStatusLine[],
 ): AggregatedEntry[] {
   const out: AggregatedEntry[] = [];
   let bucket: BucketState | null = null;
@@ -359,30 +323,30 @@ export function aggregateChatStatuses(
     bucket = null;
   };
 
-  for (let i = 0; i < contents.length; i++) {
-    const content = contents[i];
-    if (!content) continue;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
 
-    // Error / cancelled slot: boundary + pass-through.
-    if (content.type === 'cancelled' || hasError(content)) {
+    // Error slot: boundary + pass-through.
+    if (hasError(line)) {
       closeBucket();
-      out.push({ content, originalIndex: i, mergedCount: 1 });
+      out.push({ line, originalIndex: i, mergedCount: 1 });
       continue;
     }
 
-    const family = familyOf(content.type);
+    const family = familyOf(line.statusType);
     if (!family) {
       closeBucket();
-      out.push({ content, originalIndex: i, mergedCount: 1 });
+      out.push({ line, originalIndex: i, mergedCount: 1 });
       continue;
     }
 
     // Same family as open bucket AND scope matches -> merge.
-    if (bucket && bucket.family === family && scopeMatches(bucket, content)) {
-      mergeInto(bucket, content);
+    if (bucket && bucket.family === family && scopeMatches(bucket, line)) {
+      mergeInto(bucket, line);
       // Re-render the aggregate entry at its position.
       out[bucket.outIndex] = {
-        content: renderBucketContent(bucket),
+        line: renderBucketLine(bucket),
         originalIndex: bucket.originalIndex,
         mergedCount: bucket.merged.mergedCount,
       };
@@ -390,8 +354,8 @@ export function aggregateChatStatuses(
     }
 
     // Different family or no open bucket -> start a new bucket for this
-    // family, seeded by the current slot. Push the original content as-is;
-    // it is only replaced by `renderBucketContent` once a second slot
+    // family, seeded by the current line. Push the original line as-is;
+    // it is only replaced by `renderBucketLine` once a second slot
     // actually merges in (see the merge branch above).
     closeBucket();
 
@@ -400,14 +364,15 @@ export function aggregateChatStatuses(
       family,
       outIndex: out.length,
       originalIndex: i,
+      seedLine: line,
       merged: makeEmptyMerged(),
-      scope: captureScope(content, cfg.scopeKeys),
-      lastWasCompleted: isCompleted(family, content.type),
+      scope: captureScope(line, cfg.scopeKeys),
+      lastWasCompleted: isCompleted(family, line.statusType),
     };
-    mergeInto(newBucket, content); // seeds filesList / counts from slot 0
+    mergeInto(newBucket, line); // seeds filesList / counts from slot 0
     bucket = newBucket;
 
-    out.push({ content, originalIndex: i, mergedCount: 1 });
+    out.push({ line, originalIndex: i, mergedCount: 1 });
   }
 
   return out;

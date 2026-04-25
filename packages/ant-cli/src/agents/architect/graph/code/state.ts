@@ -9,7 +9,7 @@ import { TriageableState } from '../../../common/graph/nodes/triage/types';
 import type { ResolvedActionContext, ResolvedArtifact, Boundary, SpecClarify } from '@ant/shared';
 import type { ExecutionTierId } from "../../../../core/executionTier";
 import type { FeatureContext } from "../../../../core/context/featureContextBuilder";
-import type { VerificationSession } from "./tasks/verification/model/Session";
+import type { VerificationSession } from "./tasks/_shared/verify/Session";
 // `PlanEntry` is phase-blind (consumed by router/plan/enforce regardless of
 // task type). Source it from the `_shared/` layer so `state.ts` does not
 // inherit a structural dependency on the verification-specific model.
@@ -422,16 +422,41 @@ export interface ArchitectGraphState extends TriageableState {
   /**
    * SSOT for verification domain state (attempts, gate config, pass cache,
    * plan history, dep hash, batch-split counter). Populated by
-   * `tasks/verification/hooks/plan.ts::initSession` on fresh plan entry,
+   * `tasks/_shared/verify/initSession` on fresh plan entry (verification
+   * task) or on the first reverify entry (Tier 2 self-verify task),
    * rehydrated on resume via `VerificationSession.rehydrate(snap)`, and
    * carried across worker boundaries as `VerificationSnapshot` in
    * `WorkerSnapshot.verification` / `CodeTaskResumeState.verification`.
    *
-   * `undefined` for non-verification tasks — queries go through the
-   * Session API (`state.verification?.method()`) and short-circuit
-   * naturally.
+   * `undefined` for tasks that have not yet entered verify-mode —
+   * queries go through the Session API (`state.verification?.method()`)
+   * and short-circuit naturally.
    */
   verification?: VerificationSession;
+
+  /**
+   * Phase mode signal — `true` when the active task has entered its
+   * verify phase. Drives apply-vs-verify hook dispatch in
+   * `composeBundle` and the task-type-blind predicate generalisations
+   * (e.g. `executeRouter.isFinalTask`).
+   *
+   * SSOT writer: `tasks/_shared/verify/markVerifyEntered.ts` —
+   * `markVerifyEntered(state)` is the only function that flips this
+   * channel to `true`. Two call paths:
+   *
+   *   - Verification task: `_shared/verify/initSession` calls
+   *     `markVerifyEntered` on first session creation/hydration.
+   *     Verification tasks enter verify-mode immediately.
+   *   - Self-verify task (Tier 2 with `selfVerifyOnDone:true`):
+   *     `executeRouter` calls `markVerifyEntered` in the `<done>`
+   *     branch when `routeAfterDone === 'plan'` (apply→reverify
+   *     transition).
+   *
+   * Reset to `false` at task boundary in `nodes/checkTaskStatus`.
+   * External mutation outside the helper is forbidden (regression
+   * test enforces). `undefined` is treated as `false`.
+   */
+  _verifyEntered?: boolean;
 
   /**
    * Reason emitted by the plan node when it short-circuits before execute

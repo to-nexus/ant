@@ -1,20 +1,22 @@
 /**
- * ChatHistory - Virtual scrolling message history
- * Uses react-virtuoso for efficient rendering of large message lists
- * 
- * Pin Logic (Cursor-style):
- * - Find the topmost visible message (firstVisibleIndex)
- * - If it's an assistant message → pin the user message right above it
- * - If it's a user message → no pin (the question is already visible)
+ * ChatHistory — virtual-scrolling turn history.
+ *
+ * Phase 11 chat-SSOT — consumes `Turn[]` directly (no `ChatMessage`
+ * envelope) and renders each turn via `TurnItem`. Pin behaviour matches
+ * Cursor's: when the topmost visible row is an assistant section, pin
+ * the user prompt above it so the user can always see what they asked.
+ *
+ * Each `Turn` carries the user prompt + every assistant section in a
+ * single row, so pin lookup is just "previous turn's user line" — no
+ * separate user-vs-assistant message scan.
  */
 
 import { useEffect, useRef, useCallback, forwardRef } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
-import type { ChatMessage } from '@/domain/models/chat';
 import type { PinnedQueryData } from './PinnedQuery';
-import { MessageItem } from './MessageItem';
-import { TypingIndicator } from './TypingIndicator';
+import { TurnItem, TypingIndicator } from './TurnItem';
 import { useStore } from '@/domain/store';
+import type { Turn } from '@/domain/store/selectors/chat';
 
 /**
  * Custom Scroller for Virtuoso that ensures text selection works.
@@ -33,40 +35,36 @@ const ScrollerWithTextSelect = forwardRef<HTMLDivElement, React.ComponentPropsWi
 );
 
 interface ChatHistoryProps {
-  messages: ChatMessage[];
-  isStreaming: boolean;
+  turns: Turn[];
   onPinnedUserMessageChange?: (pinnedQuery: PinnedQueryData | null) => void;
 }
 
-export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistoryProps) {
+export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryProps) {
   const isRunning = useStore((state) => state.isRunning);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
-  
-  // Track visibility of each message using ref (not state to avoid re-renders)
-  const visibleMessagesRef = useRef<Set<number>>(new Set());
-  
-  // Store refs for message elements
-  const messageRefs = useRef<Map<number, HTMLElement>>(new Map());
+
+  // Track visibility of each turn using ref (not state to avoid re-renders).
+  const visibleTurnsRef = useRef<Set<number>>(new Set());
+
+  const turnRefs = useRef<Map<number, HTMLElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
-  
+
   // Latest data ref for stable callbacks
-  const latestRef = useRef({ messages, onPinnedUserMessageChange });
-  latestRef.current.messages = messages;
+  const latestRef = useRef({ turns, onPinnedUserMessageChange });
+  latestRef.current.turns = turns;
   latestRef.current.onPinnedUserMessageChange = onPinnedUserMessageChange;
-  
-  // Use a ref to track the last pinned value to avoid unnecessary updates
+
   const lastPinnedRef = useRef<string | null>(null);
   const initialScrollDone = useRef(false);
-  
-  // ✅ Auto-scroll: ON by default, OFF only when user explicitly scrolls up,
+
+  // Auto-scroll: ON by default, OFF only when user explicitly scrolls up,
   // re-enabled when user scrolls back to bottom.
   const isAtBottomRef = useRef(true);
   const autoScrollRef = useRef(true);
-  // Track previous state to detect content changes within existing messages
-  const prevScrollStateRef = useRef({ msgLen: 0, contentsLen: 0 });
+  // Track previous state to detect content changes within existing turns.
+  const prevScrollStateRef = useRef({ turnLen: 0, lastSectionsLen: 0 });
 
-  // Stable wheel handler ref — created once, never changes
   const wheelHandlerRef = useRef<EventListener | null>(null);
   if (!wheelHandlerRef.current) {
     wheelHandlerRef.current = (e: Event) => {
@@ -76,18 +74,24 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     };
   }
 
-  // ✅ Calculate pinned message (stable function, no dependencies)
+  /**
+   * Pin the user prompt above the topmost visible assistant section.
+   *
+   * Each Turn already carries its own user prompt, so the "pin" target is
+   * simply the user line of the topmost visible Turn (or the previous Turn's
+   * user line, when the visible row has no user prompt — e.g. continuations).
+   */
   const calculatePinnedMessage = useCallback(() => {
-    const { messages: msgs, onPinnedUserMessageChange: callback } = latestRef.current;
-    const visibleMessages = visibleMessagesRef.current;
+    const { turns: ts, onPinnedUserMessageChange: callback } = latestRef.current;
+    const visible = visibleTurnsRef.current;
 
-    const buildPinData = (msg: ChatMessage): PinnedQueryData | null => {
-      const content = msg.contents[0]?.content;
-      if (!content) return null;
-      return { content, actionMetadata: msg.actionMetadata };
+    const buildPin = (turn: Turn | undefined): PinnedQueryData | null => {
+      const userLine = turn?.user;
+      if (!userLine?.text) return null;
+      return { content: userLine.text, actionMetadata: userLine.actionMetadata };
     };
-    
-    if (!callback || msgs.length === 0) {
+
+    if (!callback || ts.length === 0) {
       if (lastPinnedRef.current !== null) {
         lastPinnedRef.current = null;
         callback?.(null);
@@ -95,23 +99,29 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       return;
     }
 
-    // Wait for initial scroll to complete before calculating pin
     if (!initialScrollDone.current) {
-      // Default: if last message is assistant, pin the last user message
-      const lastMsg = msgs[msgs.length - 1];
-      if (lastMsg?.role === 'assistant') {
-        for (let i = msgs.length - 2; i >= 0; i--) {
-          if (msgs[i].role === 'user') {
-            const pinData = buildPinData(msgs[i]);
-            const pinKey = pinData?.content || null;
-            if (lastPinnedRef.current !== pinKey) {
-              lastPinnedRef.current = pinKey;
-              callback(pinData);
-            }
-            return;
-          }
-        }
+      // Default before initial scroll: pin the most recent user prompt.
+      const lastTurn = ts[ts.length - 1];
+      const pinData = buildPin(lastTurn);
+      const pinKey = pinData?.content || null;
+      if (lastPinnedRef.current !== pinKey) {
+        lastPinnedRef.current = pinKey;
+        callback(pinData);
       }
+      return;
+    }
+
+    if (visible.size === 0) return; // Wait for IntersectionObserver
+
+    const firstVisibleIndex = Math.min(...Array.from(visible));
+    const visibleTurn = ts[firstVisibleIndex];
+
+    // The visible turn carries its user prompt as part of the same row,
+    // so once it scrolls into view the pin can be cleared. We pin only
+    // when the visible row is "below" the user prompt — i.e. user prompt
+    // is offscreen above. Detection: the visible turn does not own a
+    // user line, so we walk back to find one.
+    if (visibleTurn?.user) {
       if (lastPinnedRef.current !== null) {
         lastPinnedRef.current = null;
         callback(null);
@@ -119,28 +129,9 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       return;
     }
 
-    // No messages visible yet
-    if (visibleMessages.size === 0) {
-      return; // Wait for IntersectionObserver
-    }
-
-    // Find the topmost visible message index
-    const firstVisibleIndex = Math.min(...Array.from(visibleMessages));
-    const firstVisibleMsg = msgs[firstVisibleIndex];
-
-    // If the topmost visible is a user message → no pin needed
-    if (firstVisibleMsg?.role === 'user') {
-      if (lastPinnedRef.current !== null) {
-        lastPinnedRef.current = null;
-        callback(null);
-      }
-      return;
-    }
-
-    // If the topmost visible is an assistant message → find the user message above it
     for (let i = firstVisibleIndex - 1; i >= 0; i--) {
-      if (msgs[i].role === 'user') {
-        const pinData = buildPinData(msgs[i]);
+      if (ts[i].user) {
+        const pinData = buildPin(ts[i]);
         const pinKey = pinData?.content || null;
         if (lastPinnedRef.current !== pinKey) {
           lastPinnedRef.current = pinKey;
@@ -150,14 +141,12 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       }
     }
 
-    // No user message found above
     if (lastPinnedRef.current !== null) {
       lastPinnedRef.current = null;
       callback(null);
     }
-  }, []); // No dependencies - uses refs
+  }, []);
 
-  // ✅ Setup IntersectionObserver
   useEffect(() => {
     if (!scrollerRef.current) return;
 
@@ -166,25 +155,24 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     observerRef.current = new IntersectionObserver(
       (entries) => {
         let changed = false;
-        
+
         entries.forEach(entry => {
-          const index = parseInt(entry.target.getAttribute('data-msg-index') || '-1', 10);
+          const index = parseInt(entry.target.getAttribute('data-turn-index') || '-1', 10);
           if (index === -1) return;
-          
+
           if (entry.isIntersecting) {
-            if (!visibleMessagesRef.current.has(index)) {
-              visibleMessagesRef.current.add(index);
+            if (!visibleTurnsRef.current.has(index)) {
+              visibleTurnsRef.current.add(index);
               changed = true;
             }
           } else {
-            if (visibleMessagesRef.current.has(index)) {
-              visibleMessagesRef.current.delete(index);
+            if (visibleTurnsRef.current.has(index)) {
+              visibleTurnsRef.current.delete(index);
               changed = true;
             }
           }
         });
-        
-        // Only recalculate if visibility actually changed
+
         if (changed) {
           calculatePinnedMessage();
         }
@@ -196,8 +184,7 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       }
     );
 
-    // Observe all registered elements
-    messageRefs.current.forEach((element) => {
+    turnRefs.current.forEach((element) => {
       observerRef.current?.observe(element);
     });
 
@@ -206,31 +193,24 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     };
   }, [calculatePinnedMessage]);
 
-  // ✅ Register message element for observation
-  const registerMessageRef = useCallback((index: number, element: HTMLElement | null) => {
+  const registerTurnRef = useCallback((index: number, element: HTMLElement | null) => {
     if (element) {
-      messageRefs.current.set(index, element);
+      turnRefs.current.set(index, element);
       observerRef.current?.observe(element);
     } else {
-      const existing = messageRefs.current.get(index);
+      const existing = turnRefs.current.get(index);
       if (existing) {
         observerRef.current?.unobserve(existing);
-        messageRefs.current.delete(index);
-        visibleMessagesRef.current.delete(index);
+        turnRefs.current.delete(index);
+        visibleTurnsRef.current.delete(index);
       }
     }
   }, []);
-  
-  // Run calculation when messages count changes (new messages loaded)
+
   useEffect(() => {
     calculatePinnedMessage();
-  }, [messages.length, calculatePinnedMessage]);
+  }, [turns.length, calculatePinnedMessage]);
 
-  // ✅ Initial scroll to bottom (instant, no animation)
-  // Virtuoso's followOutput handles subsequent scrolling automatically
-  // (only scrolls when user is already at bottom)
-  
-  // Scroll to bottom when scrollerRef becomes available (initial load)
   const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
     if (scrollerRef.current instanceof HTMLElement && wheelHandlerRef.current) {
       scrollerRef.current.removeEventListener('wheel', wheelHandlerRef.current);
@@ -240,23 +220,19 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       ref.addEventListener('wheel', wheelHandlerRef.current, { passive: true });
     }
   }, []);
-  
-  // ✅ Force scroll to bottom on initial mount
-  // This runs after Virtuoso has fully rendered
+
+  // Force scroll to bottom on initial mount.
   useEffect(() => {
-    if (messages.length > 0 && !initialScrollDone.current) {
-      // Try multiple times to ensure scroll works after Virtuoso renders
+    if (turns.length > 0 && !initialScrollDone.current) {
       const scrollToBottom = () => {
         virtuosoRef.current?.scrollToIndex({
-          index: messages.length - 1,
+          index: turns.length - 1,
           align: 'end',
         });
       };
-      
-      // Immediate attempt
+
       scrollToBottom();
-      
-      // Retry after short delays to handle async rendering
+
       const timers = [
         setTimeout(scrollToBottom, 50),
         setTimeout(scrollToBottom, 150),
@@ -265,18 +241,15 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
           initialScrollDone.current = true;
         }, 300),
       ];
-      
+
       return () => timers.forEach(clearTimeout);
     }
-  }, [messages.length]);
+  }, [turns.length]);
 
-  // ✅ followOutput callback: auto-scroll based on user intent, not position.
-  // autoScrollRef is true by default and only disabled by explicit user scroll-up.
   const handleFollowOutput = useCallback((_isAtBottom: boolean) => {
     return autoScrollRef.current ? 'auto' : false;
   }, []);
 
-  // ✅ Track at-bottom state — re-enable auto-scroll when user reaches bottom
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     isAtBottomRef.current = atBottom;
     if (atBottom) {
@@ -284,32 +257,28 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     }
   }, []);
 
-  // ✅ Detect new content blocks within the last message (e.g., choice cards appearing
-  // during streaming). followOutput only triggers on data-length changes (new messages),
-  // not on item-height changes within existing messages.
-  const lastMsg = messages[messages.length - 1];
-  const lastMsgContentsLen = lastMsg?.contents?.length ?? 0;
+  // Detect new content within the last turn (e.g. choice cards appearing
+  // during streaming, sections growing). followOutput only triggers on
+  // data-length changes (new turns), not on item-height changes.
+  const lastTurn = turns[turns.length - 1];
+  const lastTurnSectionsLen = lastTurn?.sections.length ?? 0;
+  const lastTurnItemsLen = useTurnContentSignature(lastTurn);
 
   useEffect(() => {
     const prev = prevScrollStateRef.current;
-    const isNewMessage = messages.length !== prev.msgLen;
-    // Content grew within the same last message (not a new message)
-    const isNewContentInLastMsg = !isNewMessage && lastMsgContentsLen > prev.contentsLen;
+    const isNewTurn = turns.length !== prev.turnLen;
+    const isNewContentInLastTurn = !isNewTurn && lastTurnSectionsLen > prev.lastSectionsLen;
 
-    // Always update tracking state
-    prevScrollStateRef.current = { msgLen: messages.length, contentsLen: lastMsgContentsLen };
+    prevScrollStateRef.current = { turnLen: turns.length, lastSectionsLen: lastTurnSectionsLen };
 
-    if (isNewContentInLastMsg && initialScrollDone.current && autoScrollRef.current) {
+    if (isNewContentInLastTurn && initialScrollDone.current && autoScrollRef.current) {
       const scrollToEnd = () => {
         virtuosoRef.current?.scrollToIndex({
-          index: messages.length - 1,
+          index: turns.length - 1,
           align: 'end',
           behavior: 'auto',
         });
       };
-
-      // Multiple attempts: RAF for immediate layout, then retries for async rendering
-      // (e.g., choice cards, images, or complex components that render in stages)
       const rafId = requestAnimationFrame(scrollToEnd);
       const t1 = setTimeout(scrollToEnd, 50);
       const t2 = setTimeout(scrollToEnd, 200);
@@ -320,35 +289,34 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
         clearTimeout(t2);
       };
     }
-  }, [lastMsgContentsLen, messages.length]);
+  }, [lastTurnSectionsLen, lastTurnItemsLen, turns.length]);
 
-  // ✅ Item content with ref registration
-  const itemContent = useCallback((index: number, message: ChatMessage) => {
+  const itemContent = useCallback((index: number, turn: Turn) => {
     return (
-      <div 
+      <div
         className="px-8 py-2"
-        data-msg-index={index}
-        ref={(el) => registerMessageRef(index, el)}
+        data-turn-index={index}
+        ref={(el) => registerTurnRef(index, el)}
       >
-        <MessageItem message={message} />
+        <TurnItem turn={turn} />
       </div>
     );
-  }, [registerMessageRef]);
+  }, [registerTurnRef]);
 
-  // Typing indicator
-  const lastMessage = messages[messages.length - 1];
-  const hasActiveStreamingAssistant = lastMessage?.role === 'assistant' && lastMessage?.isStreaming;
-  const showTypingInFooter = isRunning && !hasActiveStreamingAssistant;
+  // Typing indicator is shown when:
+  //   - a job is running, AND
+  //   - the last turn does not already have an active streaming section
+  const lastTurnHasStreaming = lastTurn?.sections.some(
+    (s) => s.activeText || s.activeThinking || (s.pendingCards && Object.keys(s.pendingCards).length > 0),
+  ) ?? false;
+  const showTypingInFooter = isRunning && !lastTurnHasStreaming;
 
-  // Scroll to bottom when typing indicator appears.
-  // Virtuoso's followOutput only triggers on data-length changes, not Footer slot changes.
-  // Without this, the indicator renders below the viewport and stays invisible.
   const prevShowTypingRef = useRef(false);
   useEffect(() => {
     if (showTypingInFooter && !prevShowTypingRef.current && initialScrollDone.current && autoScrollRef.current) {
       const scrollToEnd = () => {
         virtuosoRef.current?.scrollToIndex({
-          index: messages.length - 1,
+          index: turns.length - 1,
           align: 'end',
           behavior: 'auto',
         });
@@ -362,7 +330,7 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       };
     }
     prevShowTypingRef.current = showTypingInFooter;
-  }, [showTypingInFooter, messages.length]);
+  }, [showTypingInFooter, turns.length]);
 
   const Footer = useCallback(() => {
     if (!showTypingInFooter) return null;
@@ -373,7 +341,7 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     );
   }, [showTypingInFooter]);
 
-  if (messages.length === 0) {
+  if (turns.length === 0) {
     return (
       <div className="flex items-center justify-center h-full p-8 text-center">
         <div className="max-w-md">
@@ -392,9 +360,9 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
     <Virtuoso
       ref={virtuosoRef}
       scrollerRef={handleScrollerRef}
-      data={messages}
+      data={turns}
       style={{ height: '100%' }}
-      initialTopMostItemIndex={messages.length - 1}
+      initialTopMostItemIndex={turns.length - 1}
       followOutput={handleFollowOutput}
       alignToBottom={true}
       atBottomThreshold={100}
@@ -404,4 +372,22 @@ export function ChatHistory({ messages, onPinnedUserMessageChange }: ChatHistory
       components={{ Footer, Scroller: ScrollerWithTextSelect }}
     />
   );
+}
+
+/**
+ * Reduce the last turn into a string signature that changes when the
+ * displayed content meaningfully grows. Used as a useEffect dep so the
+ * auto-scroll reacts when individual sections gain new items / pending
+ * cards mid-stream.
+ */
+function useTurnContentSignature(turn: Turn | undefined): string {
+  if (!turn) return '';
+  const parts: string[] = [];
+  for (const s of turn.sections) {
+    parts.push(`${s.workerScope}:${s.items.length}`);
+    if (s.activeText) parts.push(`t${s.activeText.length}`);
+    if (s.activeThinking) parts.push(`th${s.activeThinking.length}`);
+    if (s.pendingCards) parts.push(`p${Object.keys(s.pendingCards).length}`);
+  }
+  return parts.join('|');
 }

@@ -57,106 +57,44 @@ export class IndexService {
     userContext: UserContext,
     featureName?: string
   ): Promise<void> {
-    // ✅ Prepare chat message for UI feedback
-    let messageId: string | undefined;
-    
     try {
       logger.info(`Starting codebase indexing`, { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
-      
-      // ✅ Send indexing status to chat UI (if chat service and feature available)
-      if (this.chatService && featureName) {
-        // Create assistant message for indexing feedback
-        messageId = this.chatService.startAssistantMessage(projectId, featureName, 'push-index-' + Date.now(), userContext);
-      }
-      
-      // Import dependencies
+
+      // chat-SSOT §5: chat feedback for git push indexing has been
+      // removed. The legacy `addContentToCurrentMessage` path required
+      // a job-bound currentMessage scratchpad that no longer exists,
+      // and indexing runs outside any user_turn so we cannot anchor a
+      // chat_status line in chat.jsonl. Surfacing index progress to
+      // the UI is being redesigned alongside the Phase 11 git-status
+      // notification work; until then, indexing happens silently.
+      void featureName;
+
       const { CodebaseIndexer } = await import('../../../../../../core/codebase/CodebaseIndexer');
       const { AdapterFactory } = await import('../../../../../../infrastructure/adapters/AdapterFactory');
-      
-      // Initialize adapters using factory
+
       const git = AdapterFactory.createGitAdapter(codebasePath, projectId);
       const vectorDB = AdapterFactory.createMemoryAdapter();
       const chunk = AdapterFactory.createChunkAdapter();
-      
-      // Get branch and commit info for status message
-      const branch = await git.getCurrentBranch();
-      const commitHash = await git.getCurrentCommit();
-      const commit = commitHash.substring(0, 8);
-      
-      // ✅ Send "indexing" status to UI (only via ChatService)
-      if (this.chatService && featureName) {
-        this.chatService.addContentToCurrentMessage(projectId, featureName, {
-          type: 'indexing',
-          content: '',
-          metadata: {
-            message: `${projectId} • ${branch}`,
-            repoName: projectId,
-            branch,
-            commit
-          }
-        });
-      }
-      
-      // Run indexer
+
       const indexer = new CodebaseIndexer();
       const stats = await indexer.index(
         { git, vectorDB, chunk },
         {
           project: projectId,
-          workingDir: codebasePath
+          workingDir: codebasePath,
         }
       );
-      
+
       logger.info(
         `Codebase indexed successfully (files=${stats.filesIndexed}, chunks=${stats.chunksCreated}, tokens~=${stats.estimatedTokens}, durationSec=${(stats.duration / 1000).toFixed(1)})`,
         { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }
       );
-      
-      // ✅ Send "indexed" success status to UI (only via ChatService)
-      if (this.chatService && featureName) {
-        this.chatService.addContentToCurrentMessage(projectId, featureName, {
-          type: 'indexed',
-          content: `Codebase indexed`, // ✅ Add content for ResultCard header
-          metadata: {
-            filesIndexed: stats.filesIndexed,
-            chunks: stats.chunksCreated,
-            tokens: stats.estimatedTokens,
-            duration: stats.duration,
-            repoName: projectId,
-            branch,
-            commit
-          }
-        });
-        
-        // ✅ Complete the message
-        this.chatService.finalizeCurrentMessage(projectId, featureName);
-      }
-      
     } catch (error) {
-      // ⚠️  Non-blocking: Operation was successful, but indexing failed
       logger.warn(
         `Failed to index codebase (non-blocking): ${error instanceof Error ? error.message : String(error)}`,
         { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId },
         error
       );
-      
-      // ✅ Send "indexed" failure status to UI (only via ChatService)
-      if (this.chatService && featureName) {
-        this.chatService.addContentToCurrentMessage(projectId, featureName, {
-          type: 'indexed',
-          content: '',
-          metadata: {
-            filesIndexed: 0,
-            chunks: 0,
-            tokens: 0,
-            duration: 0,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }
-        });
-        
-        // ✅ Complete the message
-        this.chatService.finalizeCurrentMessage(projectId, featureName);
-      }
     }
   }
   

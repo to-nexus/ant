@@ -14,8 +14,11 @@ import remarkGfm from 'remark-gfm';
 import { Play, XCircle } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
-import { submitChoiceDismiss } from '@/infrastructure/http/api';
-import type { MessageContent } from '@/domain/models/chat';
+import { resolveChoice } from '@/infrastructure/http/api';
+import type {
+  ChatChoicePresentedLine,
+  ChatChoiceResolvedLine,
+} from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Types
@@ -26,14 +29,14 @@ export type ChoiceVariant =
   | 'clarifying' | 'spec_complete';
 
 export interface ChoiceCardProps {
-  content: MessageContent;
+  presented: ChatChoicePresentedLine;
+  resolved?: ChatChoiceResolvedLine;
   variant: ChoiceVariant;
-  messageId: string;
 }
 
 export interface VariantProps {
-  content: MessageContent;
-  messageId: string;
+  presented: ChatChoicePresentedLine;
+  resolved?: ChatChoiceResolvedLine;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -41,62 +44,55 @@ export interface VariantProps {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface UseChoiceCardStateParams {
-  content: MessageContent;
-  messageId: string;
-  contentType: string;
-  contentFilter?: (c: MessageContent) => boolean;
-  metadataFilter?: Record<string, string>;
+  presented: ChatChoicePresentedLine;
+  resolved?: ChatChoiceResolvedLine;
 }
 
-export function useChoiceCardState({ content, messageId, contentType, contentFilter, metadataFilter }: UseChoiceCardStateParams) {
+/**
+ * Common state plumbing for every choice-card variant.
+ *
+ * Phase 11 chat-SSOT — choice cards now consume the SSOT pair
+ * `(ChatChoicePresentedLine, ChatChoiceResolvedLine?)`. The durable
+ * resolution arrives via the BE `/chat/choice-resolved` route and
+ * flows back as a `choice_resolved` SSE line; the projector folds it
+ * onto the same card. Optimistic UI lives in component-local state
+ * `localSelectedChoice` / `localResolvedLabel` so clicks stay snappy.
+ */
+export function useChoiceCardState({ presented, resolved }: UseChoiceCardStateParams) {
   const selectedProject = useStore(state => state.selectedProject);
   const selectedFeature = useStore(state => state.selectedFeature);
-  const updateChatMessage = useStore(state => state.updateChatMessage);
-  const chatMessages = useStore(state => state.chatMessages);
 
   const [isLoading, setIsLoading] = useState(false);
   const [localSelectedChoice, setLocalSelectedChoice] = useState<string | null>(null);
   const [localResolvedLabel, setLocalResolvedLabel] = useState<string | null>(null);
 
-  const selectedChoice = content.metadata?.choiceSelected || localSelectedChoice;
-  const resolvedLabel = content.metadata?.resolvedLabel || localResolvedLabel;
+  const selectedChoice = resolved?.choiceSelected || localSelectedChoice;
+  const resolvedLabel = resolved?.resolvedLabel || localResolvedLabel;
   const isSelected = !!selectedChoice;
 
-  const persistChoice = useCallback((choiceAction: string, label: string) => {
-    const message = chatMessages.find(m => m.id === messageId);
-    if (!message) return;
-
-    const matchFn = contentFilter
-      || ((c: MessageContent) => c && c.type === contentType);
-
-    const contentIndex = message.contents.findIndex(matchFn);
-    if (contentIndex === -1) return;
-
-    const updatedContents = [...message.contents];
-    updatedContents[contentIndex] = {
-      ...updatedContents[contentIndex],
-      metadata: {
-        ...updatedContents[contentIndex].metadata,
+  /**
+   * Resolve the choice via the unified `/chat/choice-resolved`
+   * endpoint. The card's `presented.cardId` targets the original
+   * presentation event. SSE delivers the durable `choice_resolved`
+   * line back, which the projector folds onto this card.
+   */
+  const persistToBackend = useCallback(async (
+    choiceAction: string,
+    label: string,
+    extraMetadata?: Record<string, any>,
+  ) => {
+    if (!selectedProject || !selectedFeature || !presented.cardId) return;
+    try {
+      await resolveChoice(selectedProject, selectedFeature, {
+        cardId: presented.cardId,
         choiceSelected: choiceAction,
         resolvedLabel: label,
-      },
-    };
-    updateChatMessage(messageId, { contents: updatedContents });
-  }, [chatMessages, messageId, contentType, contentFilter, updateChatMessage]);
-
-  const persistToBackend = useCallback(async (choiceAction: string, label: string, extraMetadata?: Record<string, any>) => {
-    if (!selectedProject || !selectedFeature) return;
-    try {
-      await submitChoiceDismiss(
-        selectedProject, selectedFeature,
-        contentType, choiceAction, label,
-        metadataFilter,
-        extraMetadata
-      );
+        answer: extraMetadata,
+      });
     } catch (error) {
-      console.warn('[ChoiceCard] dismiss-choice API failed (non-blocking):', error);
+      console.warn('[ChoiceCard] resolveChoice API failed (non-blocking):', error);
     }
-  }, [selectedProject, selectedFeature, contentType, metadataFilter]);
+  }, [selectedProject, selectedFeature, presented.cardId]);
 
   return {
     selectedProject,
@@ -110,7 +106,6 @@ export function useChoiceCardState({ content, messageId, contentType, contentFil
     setLocalSelectedChoice,
     localResolvedLabel,
     setLocalResolvedLabel,
-    persistChoice,
     persistToBackend,
   };
 }

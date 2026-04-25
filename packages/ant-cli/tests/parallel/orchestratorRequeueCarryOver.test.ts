@@ -31,13 +31,13 @@
 import { describe, it, expect } from 'vitest';
 
 import { snapshotFromState } from '../../src/agents/architect/graph/code/parallel/TaskWorker';
-import { VerificationSession } from '../../src/agents/architect/graph/code/tasks/verification/model/Session';
-import { VerificationTerminalError } from '../../src/agents/architect/graph/code/tasks/verification/model/errors';
+import { VerificationSession } from '../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
+import { VerificationTerminalError } from '../../src/agents/architect/graph/code/tasks/_shared/verify/errors';
 import { hooksForTaskType } from '../../src/agents/architect/graph/code/tasks/_shared/registry';
-import { classifyTerminalError } from '../../src/agents/architect/graph/code/tasks/verification/model/errors';
+import { classifyTerminalError } from '../../src/agents/architect/graph/code/tasks/_shared/verify/errors';
 
 import type { CodeTask } from '../../src/agents/architect/types/task';
-import type { VerificationSnapshot } from '../../src/agents/architect/graph/code/tasks/verification/model/snapshot';
+import type { VerificationSnapshot } from '../../src/agents/architect/graph/code/tasks/_shared/verify/snapshot';
 
 function verificationTask(id: string): CodeTask {
   return {

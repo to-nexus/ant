@@ -8,8 +8,9 @@ import { useTranslation } from 'react-i18next';
 import { Terminal, ChevronDown, ChevronRight, ShieldAlert } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import Convert from 'ansi-to-html';
-import type { MessageContent } from '@/domain/models/chat';
+import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { TruncatableText } from '@/presentation/components/common/TruncatableText';
+import { lineToContent } from './cards/lineToContent';
 
 const ansiConverter = new Convert({
   fg: '#d4d4d4',
@@ -19,11 +20,13 @@ const ansiConverter = new Convert({
 });
 
 interface TerminalCardProps {
-  content: MessageContent;
+  line: ChatStatusLine;
+  pending?: PendingCardSnapshot;
   isStreaming?: boolean;
 }
 
-export function TerminalCard({ content }: TerminalCardProps) {
+export function TerminalCard({ line, pending }: TerminalCardProps) {
+  const content = lineToContent(line, pending);
   const { t } = useTranslation('chat');
   const outputRef = useRef<HTMLDivElement>(null);
   const command = content.metadata?.command || content.content;

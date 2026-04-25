@@ -36,6 +36,7 @@
 
 import type {
   LogJobType,
+  ChatLine,
   ChatStatusType,
   ChatStatusLine,
   ChatThinkingLine,
@@ -161,6 +162,21 @@ export class ChatLogAppender {
     this.safeAppend(line);
   }
 
+  /**
+   * Append a fully-constructed ChatLine. Used by `LLMResponseService` after
+   * §5 chat-SSOT rewrite — the service builds the line shape locally so
+   * the same payload can be both persisted (via this method) AND emitted
+   * via `MessageBroadcaster.broadcastChatLine` without duplicating the
+   * construction logic.
+   *
+   * Skips silently when `turnId` is unset to mirror the existing typed
+   * method semantics.
+   */
+  appendChatLine(line: ChatLine): void {
+    if (!this.turnId) return;
+    this.safeAppend(line as Parameters<ChatLogAppender['safeAppend']>[0]);
+  }
+
   private base() {
     return {
       ts: new Date().toISOString(),
@@ -170,14 +186,7 @@ export class ChatLogAppender {
     } as const;
   }
 
-  private safeAppend(
-    line:
-      | ChatStatusLine
-      | ChatThinkingLine
-      | ChatAssistantMessageLine
-      | ChatChoicePresentedLine
-      | ChatChoiceResolvedLine,
-  ): void {
+  private safeAppend(line: ChatLine): void {
     this.session.appendLine('chat', line).catch((err) => {
       logger.warn(
         `[ChatLog] appendLine(${line.type}) failed: ${(err as Error)?.message ?? err}`,

@@ -8,14 +8,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, ClipboardList, Check } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
-import type { MessageContent } from '@/domain/models/chat';
+import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
+import { lineToContent } from './cards/lineToContent';
 
 interface PlanCardProps {
-  content: MessageContent;
+  line: ChatStatusLine;
+  pending?: PendingCardSnapshot;
   isStreaming?: boolean;
 }
 
-export function PlanCard({ content }: PlanCardProps) {
+export function PlanCard({ line, pending }: PlanCardProps) {
+  const content = lineToContent(line, pending);
   const contentRef = useRef<HTMLDivElement>(null);
   const planContent = content.content || '';
   const taskName = content.metadata?.taskName;

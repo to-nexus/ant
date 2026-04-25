@@ -38,9 +38,12 @@ export function isRecursionLimitError(error: any): boolean {
 export async function cleanupChat(cancelled = true): Promise<void> {
   try {
     const chatAPI = getChatAPIClient();
-    if (chatAPI.hasActiveMessage()) {
-      await chatAPI.finalizeMessage(cancelled);
-    }
+    // chat-SSOT §5: `finalizeMessage` is idempotent (drains the
+    // turn buffer or no-ops when empty). The pre-§5 `hasActiveMessage`
+    // gate is removed because the API now always returns false and
+    // would skip the buffer drain on error paths, leaving partial
+    // text/thinking in Redis until the 1h TTL expires.
+    await chatAPI.finalizeMessage(cancelled);
   } catch { /* non-critical */ }
 }
 

@@ -107,16 +107,16 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
   resetFeatureContext: async (projectId, featureName, reason) => {
     await resetFeatureContextApi(projectId, featureName, reason);
     // Eagerly wipe both SSOT caches the Chat / Timeline tabs read from:
-    //   - `chatMessages` (chat slice, SSE-populated) → cleared locally so
-    //     the Chat tab does not flash stale messages between the HTTP
-    //     response and the `messages_cleared` SSE broadcast that the
-    //     backend fires as part of the shared §16.2 Clear·Reset pipeline.
-    //     Clearing here is idempotent — the SSE handler will also clear it
-    //     if this runs first.
+    //   - `chatEvents` / `streamingBuffers` (chat slice, SSE-populated) →
+    //     cleared locally so the Chat tab does not flash stale messages
+    //     between the HTTP response and the `events_cleared` SSE
+    //     broadcast that the backend fires as part of the shared §16.2
+    //     Clear·Reset pipeline. Clearing here is idempotent — the SSE
+    //     handler will also clear it if this runs first.
     //   - feature-log breadcrumbs (this slice) → cleared + cache key
     //     dropped so the subsequent re-fetch is treated as a fresh feature
     //     switch.
-    get().clearChatMessages?.();
+    get().clearChatEvents?.('full');
     set({
       breadcrumbs: [],
       breadcrumbsStatus: 'idle',

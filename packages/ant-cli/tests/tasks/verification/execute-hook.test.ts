@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { executeHook } from '../../../src/agents/architect/graph/code/tasks/verification/hooks/execute';
+import { executeHook } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/executeHook';
 import { hooks as verificationBundle } from '../../../src/agents/architect/graph/code/tasks/verification';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
 

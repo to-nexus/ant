@@ -8,7 +8,7 @@
  *   - @ant/shared   : BaseTask, KanbanData, TaskType, JobType, etc. (canonical)
  *   - session.ts    : Session, SessionState, Task (FE view models)
  *   - task.ts       : UnifiedTask, normalizeTask (FE normalization)
- *   - chat.ts       : ChatMessage, MessageContent, MessageContentType
+ *   - chat.ts       : FileStats (Phase 11 chat-SSOT — see chat.ts header)
  *   - detection.ts  : Mode, IntentGroup, DesignDomain + FE helpers
  *   - workflow.ts   : WorkflowRealtimeState + FE graph types
  */

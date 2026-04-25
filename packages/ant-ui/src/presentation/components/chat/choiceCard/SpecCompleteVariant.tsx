@@ -1,21 +1,16 @@
 import { Play } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
-import type { MessageContent } from '@/domain/models/chat';
 import type { VariantProps } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout } from './shared';
 
-export function SpecCompleteVariant({ content, messageId }: VariantProps) {
+export function SpecCompleteVariant({ presented, resolved }: VariantProps) {
   const setSelectedJobType = useStore(state => state.setSelectedJobType);
   const { runJob } = useJobExecution();
-  const state = useChoiceCardState({
-    content, messageId,
-    contentType: 'choice_card',
-    contentFilter: (c: MessageContent) => c.type === 'choice_card' && c.metadata?.cardType === 'spec_complete',
-    metadataFilter: { cardType: 'spec_complete' },
-  });
+  const state = useChoiceCardState({ presented, resolved });
 
-  const specFile = content.metadata?.specFile || 'spec.md';
+  const payload = (presented.payload ?? {}) as Record<string, any>;
+  const specFile = (payload.specFile as string | undefined) || 'spec.md';
 
   const handleDevelop = async () => {
     if (!state.selectedProject || !state.selectedFeature || state.isSelected) return;
@@ -23,7 +18,6 @@ export function SpecCompleteVariant({ content, messageId }: VariantProps) {
     state.setLocalSelectedChoice('develop');
     const label = `Starting development with ${specFile}`;
     state.setLocalResolvedLabel(label);
-    state.persistChoice('develop', label);
     await state.persistToBackend('develop', label);
 
     try {
@@ -42,7 +36,6 @@ export function SpecCompleteVariant({ content, messageId }: VariantProps) {
     if (state.isSelected) return;
     state.setLocalSelectedChoice('later');
     state.setLocalResolvedLabel('Dismissed');
-    state.persistChoice('later', 'Dismissed');
     await state.persistToBackend('later', 'Dismissed');
   };
 
@@ -50,7 +43,7 @@ export function SpecCompleteVariant({ content, messageId }: VariantProps) {
     <ChoiceCardShell
       theme="emerald"
       icon={<Play className="w-4 h-4" />}
-      title={content.content || 'Spec Complete'}
+      title={presented.prompt || 'Spec Complete'}
       subtitle={`outputs/design/spec/${specFile}`}
       isSelected={state.isSelected}
       resolvedLabel={state.resolvedLabel}

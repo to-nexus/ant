@@ -77,26 +77,15 @@ export class JobCleanupManager {
     // Move in-progress task back to queue in session file
     if (mapping) {
       try {
-        // ✅ FIX: Resolve userContext BEFORE calling finalizeCurrentMessage
-        // Without userContext, Redis lookup uses wrong key (local:local:... instead of org:user:...)
-        // causing stale currentMessage to persist and appear on SSE reconnect
+        // chat-SSOT §5 retired the in-memory currentMessage scratchpad,
+        // so there is no longer a "finalize" step to call here. The
+        // worker's `LLMResponseService.finalizeMessage` already drained
+        // its TURN_BUFFER before exiting; if the worker died mid-turn,
+        // the per-turn buffer expires via TTL.
         const effectiveUserContext = userContext || mapping.userContext || {
           userId: 'local',
           organizationId: 'local',
         };
-        
-        // Finalize any active chat message (gracefully close streaming, don't convert to cancelled)
-        // ✅ FIX: Use cancelled=false to avoid creating a duplicate cancelled choice card.
-        // The actual "Task cancelled" choice card is created by addCancelledMessageAsync below.
-        // ✅ FIX: Pass userContext so Redis lookup uses the correct tenant-scoped key
-        if (this.deps.chatService) {
-          await this.deps.chatService.finalizeCurrentMessage(
-            mapping.projectId, 
-            mapping.featureName || 'skeleton', 
-            false,  // Don't convert to cancelled - just finalize cleanly
-            effectiveUserContext
-          );
-        }
         
         const featurePath = this.deps.workspaceResolver.getFeaturePath(
           effectiveUserContext,
@@ -403,17 +392,22 @@ export class JobCleanupManager {
           this.stateTracker.cleanup(jobId);
         }
         
-        // Add cancelled message to chat if interruption occurred
-        // ✅ CRITICAL: Use async version to ensure existing messages are loaded first
+        // Emit a cancelled choice card so the UI can offer Resume /
+        // Dismiss. NX-guarded inside ChatService so duplicate pause
+        // sources (StaleJobRecovery, BullMQ stalled handler, etc.)
+        // can't double-emit.
         if (interruptionReason && mapping.projectId && mapping.featureName) {
-          await this.deps.chatService.addCancelledMessageAsync(
+          await this.deps.chatService.appendChoicePresentedCancelled(
             mapping.projectId,
             mapping.featureName,
             jobId,
-            interruptionReason.reason,
-            interruptionReason.message,
-            effectiveUserContext,
-            interruptionReason.metadata
+            {
+              reason: interruptionReason.reason,
+              message: interruptionReason.message,
+              jobType: jobType as any,
+              designErrorType: (interruptionReason.metadata as any)?.designErrorType,
+              userContext: effectiveUserContext,
+            },
           );
         }
       } catch (error) {

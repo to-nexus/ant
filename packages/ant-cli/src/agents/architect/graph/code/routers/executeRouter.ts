@@ -21,6 +21,11 @@ import type { CodeTask } from '../../../types/task';
 import { isVerificationTask } from '../tasks/verification';
 import { hooksIfActive } from '../tasks/_shared/registry';
 import { isErrorTask } from '../tasks/error';
+import {
+  isVerifyModeActive,
+  markVerifyEntered,
+  requiresVerification,
+} from '../tasks/_shared/verify';
 
 /**
  * Detect recent tool failures from command history
@@ -48,9 +53,19 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   }
   
   const currentTask = state.currentTask;
-  // Verification tasks are always the final-verification pass (system
-  // invariant — see tasks/verification/model/is.ts).
-  const isFinalTask = currentTask ? isVerificationTask(currentTask) : false;
+  // "Final task" semantics for Safety Nets A/B/E — applies to any task
+  // that has entered verify-mode (Tier 3/4 dedicated verification, OR
+  // Tier 2 self-verify task once `executeRouter`'s `<done>` arm flipped
+  // `_verifyEntered = true`). The recursion-limit, repeat-failure, and
+  // budget guards below all defer to checkTaskStatus only when the
+  // task is in its verification phase, so the predicate is intentionally
+  // task-type-blind.
+  //
+  // We also keep the verification-task-only flag separate (`isVerificationTaskType`)
+  // for log readability — it matches the previous behaviour of distinguishing
+  // "Tier 3/4 dedicated final task" from a self-verify task in verify-mode.
+  const isVerificationTaskType = currentTask ? isVerificationTask(currentTask) : false;
+  const isFinalTask = isVerifyModeActive(state) || isVerificationTaskType;
   const isCurrentErrorTask = currentTask ? isErrorTask(currentTask) : false;
 
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -176,18 +191,30 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
     return 'tool';
   }
   
-  // 2. Done이면 → task 훅에 위임 (verification 은 plan 재검증, 그 외는 checkTaskStatus)
+  // 2. Done이면 → task 훅에 위임 (verification responsibility holders → plan 재검증, 그 외는 checkTaskStatus)
   // R1 — the router is blind to task.type. `hooksIfActive?.router.routeAfterDone`
-  // returns the next node name; verification's hook chooses 'plan' for reverify.
-  // The only mutation the router performs is the `_nextPlanEntry='reverify'`
-  // signal the plan node reads in `resolvePlanEntry`. All downstream resets
-  // (`violations`, `_executeModifiedFiles`, conversations, tracker) now live
-  // in `handleReverifyEntry` where they belong per R1. See handoff §7.6.
+  // returns the next node name; the shared verify-mode router (used by both
+  // verification task type AND self-verify Tier 2 tasks via composeBundle)
+  // chooses 'plan' for reverify when fixes were applied + gates not complete.
+  // The router mutates two channels on the apply→reverify transition:
+  //   - `_nextPlanEntry = 'reverify'` for the plan node entry path
+  //   - `markVerifyEntered(state)` for self-verify tasks crossing the
+  //     phase boundary (verification tasks are already in verify-mode
+  //     from initSession; the helper is idempotent).
+  // All downstream resets (`violations`, `_executeModifiedFiles`,
+  // conversations, tracker) live in `handleReverifyEntry` per R1.
   if (response.done) {
     const hookNext = hooksIfActive(state)?.router?.routeAfterDone?.(state);
     if (hookNext === 'plan') {
       console.log(`\n🎯 [Router] ✅ FIXES APPLIED → plan (reverify, via task hook)\n`);
       state._nextPlanEntry = 'reverify';
+      // Phase mode signal — first transition flips the channel; subsequent
+      // reverify cycles re-call the helper which is a no-op. Self-verify
+      // task's apply phase ends here on the first done; verification task
+      // already had _verifyEntered=true from initSession.
+      if (requiresVerification(currentTask)) {
+        markVerifyEntered(state);
+      }
       return 'plan';
     }
     if (hookNext) {

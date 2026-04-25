@@ -252,12 +252,22 @@ export interface TaskCompleteCtx {
 
 export interface TaskOrchestratorHook {
   /**
-   * True when this task type owns a unified attempt counter on its
-   * session (verification only, at the moment). False / undefined means
-   * the orchestrator should consult its shared `retries` counter.
+   * True when this task owns a unified attempt counter on its session.
+   * False / undefined means the orchestrator should consult its shared
+   * `_failedAttempts` counter.
+   *
+   * Function-shaped to support task-instance dispatch: a bundle may
+   * report `true` only for tasks that actually own a verification cycle
+   * (`requiresVerification(task)` — Tier 3/4 verification + Tier 2
+   * self-verify). Non-self-verify tasks of the same type fall through
+   * to the shared counter.
+   *
+   * Boolean shape is also accepted for legacy bundles where the answer
+   * is type-static (returns the same value for every task of that
+   * type). The orchestrator normalises both forms.
    */
-  hasOwnAttemptCounter?: boolean;
-  /** Only read when `hasOwnAttemptCounter === true`. */
+  hasOwnAttemptCounter?: boolean | ((task: CodeTask) => boolean);
+  /** Only read when `hasOwnAttemptCounter` resolves to true for the task. */
   attemptCount?(task: CodeTask): number;
   /**
    * Re-seed the worker subgraph's initial state with a task-type-specific

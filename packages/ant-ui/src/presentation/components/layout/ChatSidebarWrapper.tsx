@@ -30,7 +30,7 @@ export function ChatSidebarWrapper({
   onCollapse,
   onResizeStart,
 }: ChatSidebarWrapperProps) {
-  const chatMessages = useStore((state) => state.chatMessages);
+  const chatEvents = useStore((state) => state.chatEvents);
   const isRunning = useStore((state) => state.isRunning);
   const runningJobsByFeature = useStore((state) => state.runningJobsByFeature);
   const kanbanData = useStore((state) => state.kanban);
@@ -53,36 +53,57 @@ export function ChatSidebarWrapper({
     kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;
 
   // Sweep = chat.jsonl collapse only. Chat view gets cleaned up but the
-  // LLM retains conversation context (feature.jsonl intact). Gated only by
-  // "job not currently streaming" to avoid clearing mid-response.
+  // LLM retains conversation context (feature.jsonl intact).
+  //
+  // Phase 11 chat-SSOT — when an active job is running, the confirm
+  // dialog asks the user whether to *also* cancel the active job
+  // (cancelActive=true) so the F5 Hard-Reset flow can clear the chat
+  // mid-run. When idle, the dialog stays as a single-button "clear"
+  // confirm (cancelActive=false).
   const handleSweepChat = async () => {
     if (!selectedProject || !selectedFeature) return;
 
-    showConfirm(
+    const cancelActive = isRunning || hasRunningJobForFeature;
+    const message = cancelActive ? (
+      <>
+        <p>{t('sidebar.sweepConfirm')}</p>
+        <p className="mt-2 font-medium text-amber-600 dark:text-amber-400">
+          {t('sidebar.sweepConfirmRunning', {
+            defaultValue:
+              'A job is currently running. Confirming will stop the job and clear the chat.',
+          })}
+        </p>
+      </>
+    ) : (
       <>
         <p>{t('sidebar.sweepConfirm')}</p>
         <p className="mt-2 font-medium">{t('sidebar.sweepConfirmSub')}</p>
-      </>,
-      {
-        type: 'info',
-        title: t('sidebar.sweepTitle'),
-        confirmText: t('sidebar.sweepConfirmAction'),
-        cancelText: t('common:button.cancel'),
-        onConfirm: async () => {
-          try {
-            setIsSweeping(true);
-            const { clearChatHistory } = await import('@/infrastructure/http/api');
-            await clearChatHistory(selectedProject, selectedFeature);
-            console.log('[ChatSidebar] Chat view swept');
-          } catch (error) {
-            console.error('[ChatSidebar] Failed to sweep chat:', error);
-            showError(t('sidebar.sweepFailed'), { title: t('common:error.title') });
-          } finally {
-            setIsSweeping(false);
-          }
-        }
-      }
+      </>
     );
+
+    showConfirm(message, {
+      type: cancelActive ? 'warning' : 'info',
+      title: t('sidebar.sweepTitle'),
+      confirmText: cancelActive
+        ? t('sidebar.sweepConfirmRunningAction', {
+            defaultValue: 'Stop job & clear',
+          })
+        : t('sidebar.sweepConfirmAction'),
+      cancelText: t('common:button.cancel'),
+      onConfirm: async () => {
+        try {
+          setIsSweeping(true);
+          const { clearChatHistory } = await import('@/infrastructure/http/api');
+          await clearChatHistory(selectedProject, selectedFeature, { cancelActive });
+          console.log('[ChatSidebar] Chat view swept', { cancelActive });
+        } catch (error) {
+          console.error('[ChatSidebar] Failed to sweep chat:', error);
+          showError(t('sidebar.sweepFailed'), { title: t('common:error.title') });
+        } finally {
+          setIsSweeping(false);
+        }
+      },
+    });
   };
 
   // Reset = hard reset (feature.jsonl + chat.jsonl both collapse + boundary).
@@ -137,7 +158,10 @@ export function ChatSidebarWrapper({
     );
   }
 
-  const canSweep = chatMessages.length > 0 && !isRunning;
+  // Phase 11 chat-SSOT — sweep is enabled mid-run; the confirm dialog
+  // routes to the cancelActive=true branch so the user can terminate
+  // and clear in a single step.
+  const canSweep = chatEvents.length > 0;
   const resetDisabled = isResetting || hasRunningJobForFeature || hasInterruption;
   const resetTooltip = hasRunningJobForFeature
     ? t('context.resetBlockedByJob')

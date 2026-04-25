@@ -82,10 +82,6 @@ export const REDIS_KEYS = {
      * `ant:chat:chatlogLock:{projectId}:{featureName}:{file}` (SET NX, 5s)
      */
     CHATLOG_LOCK: `${REDIS_DOMAINS.CHAT}:chatlogLock:`,
-    /** @deprecated Retired by chat SSOT refactor §5. Remove after rewrite lands. */
-    SESSION: `${REDIS_DOMAINS.CHAT}:session:`,
-    /** @deprecated Retired by chat SSOT refactor §5. Remove after rewrite lands. */
-    CURRENT_MESSAGE: `${REDIS_DOMAINS.CHAT}:currentMessage:`,
   },
 
   /** Choice card resolution keys (ant:choice:*) */
@@ -179,10 +175,6 @@ export const REDIS_TTL = {
     CANCELLED_PAUSE_SEQ: 24 * 60 * 60, // 24 hours
     /** Cross-pod chat.jsonl append lock. */
     CHATLOG_LOCK: 5,                  // 5 seconds
-    /** @deprecated Retired by §5 */
-    SESSION: 24 * 60 * 60,           // 24 hours (transitional)
-    /** @deprecated Retired by §5 */
-    CURRENT_MESSAGE: 60 * 60,        // 1 hour (transitional)
   },
 
   /** Choice TTLs */
