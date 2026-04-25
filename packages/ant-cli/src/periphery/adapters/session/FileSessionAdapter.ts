@@ -53,6 +53,50 @@ class FileMutex {
 }
 
 /**
+ * Cross-pod chat.jsonl lock provider.
+ *
+ * O_APPEND provides POSIX atomicity only for writes ≤ PIPE_BUF (usually
+ * 4KB). Chat lines carrying large `actionMetadata`, long `assistant_message`
+ * text, or big file diffs can exceed that and interleave across pods
+ * writing to the same EFS mount. Every caller of `appendLine('chat', ...)`
+ * acquires this cross-pod lock before writing.
+ *
+ * In single-process mode (tests, local dev without Redis), no provider is
+ * registered and the in-process `FileMutex` alone is sufficient.
+ *
+ * The provider is injected once at bootstrap by the API server composition
+ * root (see periphery/adapters/http/express/ChatLogLockProvider.ts) via
+ * `setChatLogLockProvider`. Worker processes register the same provider
+ * from their own composition root.
+ */
+export interface ChatLogLockProvider {
+  acquireLock(key: string, ttlSeconds: number): Promise<boolean>;
+  releaseLock(key: string): Promise<void>;
+}
+
+let _chatLogLockProvider: ChatLogLockProvider | null = null;
+
+export function setChatLogLockProvider(provider: ChatLogLockProvider | null): void {
+  _chatLogLockProvider = provider;
+}
+
+export function getChatLogLockProvider(): ChatLogLockProvider | null {
+  return _chatLogLockProvider;
+}
+
+const CHATLOG_LOCK_TTL_SECONDS = 5;
+const CHATLOG_LOCK_RETRY_MS = 20;
+const CHATLOG_LOCK_MAX_RETRIES = 250; // ≈ 5s worst case
+
+async function acquireChatLogLockBlocking(provider: ChatLogLockProvider, lockKey: string): Promise<void> {
+  for (let i = 0; i < CHATLOG_LOCK_MAX_RETRIES; i++) {
+    if (await provider.acquireLock(lockKey, CHATLOG_LOCK_TTL_SECONDS)) return;
+    await new Promise((resolve) => setTimeout(resolve, CHATLOG_LOCK_RETRY_MS));
+  }
+  throw new Error(`chatlog lock timeout: ${lockKey}`);
+}
+
+/**
  * File-based Session Adapter
  * 
  * Implements SessionPort using JSON files in the workspace directory.
@@ -351,10 +395,26 @@ export class FileSessionAdapter implements SessionPort {
       : getChatJsonlPath(this.featurePath);
 
     const lock = this.getJsonlLock(filePath);
+    // Cross-pod lock (only when a ChatLogLockProvider is registered).
+    // Protects against line interleaving when multiple pods append to the
+    // same chat.jsonl / feature.jsonl on a shared filesystem (EFS). Uses
+    // a per-file key so unrelated features do not contend. The in-process
+    // FileMutex is ALSO held to protect same-process writers.
+    const provider = _chatLogLockProvider;
+    const crossPodLockKey = provider ? `ant:chatlog:${this.projectId}:${this.featureName}:${file}` : null;
     await lock.runExclusive(async () => {
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      const content = JSON.stringify(line) + '\n';
-      await fs.appendFile(filePath, content, 'utf-8');
+      if (provider && crossPodLockKey) {
+        await acquireChatLogLockBlocking(provider, crossPodLockKey);
+      }
+      try {
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        const content = JSON.stringify(line) + '\n';
+        await fs.appendFile(filePath, content, 'utf-8');
+      } finally {
+        if (provider && crossPodLockKey) {
+          await provider.releaseLock(crossPodLockKey).catch(() => { /* best-effort */ });
+        }
+      }
     });
   }
 

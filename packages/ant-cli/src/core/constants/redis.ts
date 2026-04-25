@@ -55,16 +55,51 @@ export const REDIS_KEYS = {
   
   /** Chat-related keys (ant:chat:*) */
   CHAT: {
-    /** Chat session data - ant:chat:session:{sessionKey} */
+    /**
+     * In-flight streaming buffer per turn/worker.
+     * `ant:chat:turnBuffer:{sessionKey}:{turnId}:{workerScope}`
+     * Value: JSON `{ text?, thinking?, pendingCards? }`. Cleared on
+     * finalize. TTL 1h, refreshed on every write.
+     */
+    TURN_BUFFER: `${REDIS_DOMAINS.CHAT}:turnBuffer:`,
+    /**
+     * Active turn-buffer index (SET) per session for sync/hard-reset.
+     * `ant:chat:turnBufferIdx:{sessionKey}` (SET of `{turnId}:{workerScope}`)
+     */
+    TURN_BUFFER_INDEX: `${REDIS_DOMAINS.CHAT}:turnBufferIdx:`,
+    /**
+     * One-shot idempotency for cancelled-card emission.
+     * `ant:chat:cancelled-emitted:{turnId}:{pauseSeq}` (SET NX, 24h)
+     */
+    CANCELLED_EMITTED: `${REDIS_DOMAINS.CHAT}:cancelled-emitted:`,
+    /**
+     * Monotonic pause sequence per turn for cancelled cardId generation.
+     * `ant:chat:pauseSeq:{turnId}` (INCR, 24h)
+     */
+    CANCELLED_PAUSE_SEQ: `${REDIS_DOMAINS.CHAT}:pauseSeq:`,
+    /**
+     * Cross-pod chat.jsonl append lock.
+     * `ant:chat:chatlogLock:{projectId}:{featureName}:{file}` (SET NX, 5s)
+     */
+    CHATLOG_LOCK: `${REDIS_DOMAINS.CHAT}:chatlogLock:`,
+    /** @deprecated Retired by chat SSOT refactor §5. Remove after rewrite lands. */
     SESSION: `${REDIS_DOMAINS.CHAT}:session:`,
-    /** Currently streaming message - ant:chat:currentMessage:{sessionKey} */
+    /** @deprecated Retired by chat SSOT refactor §5. Remove after rewrite lands. */
     CURRENT_MESSAGE: `${REDIS_DOMAINS.CHAT}:currentMessage:`,
   },
-  
-  /** Choice/Triage keys (ant:choice:*) */
+
+  /** Choice card resolution keys (ant:choice:*) */
   CHOICE: {
-    /** Pending triage choice - ant:choice:pending:{choiceKey} */
+    /**
+     * Pending triage choice (legacy slot used by triage node resume flow).
+     * `ant:choice:pending:{choiceKey}`
+     */
     PENDING: `${REDIS_DOMAINS.CHOICE}:pending:`,
+    /**
+     * Idempotency flag ensuring choice_resolved is written at most once per cardId.
+     * `ant:choice:resolved:{cardId}` (SET NX, 24h)
+     */
+    RESOLVED_NX: `${REDIS_DOMAINS.CHOICE}:resolved:`,
   },
   
   /** Infrastructure keys (ant:infra:*) */
@@ -136,13 +171,25 @@ export const REDIS_TTL = {
   
   /** Chat-related TTLs */
   CHAT: {
-    SESSION: 24 * 60 * 60,       // 24 hours
-    CURRENT_MESSAGE: 60 * 60,    // 1 hour (streaming)
+    /** Turn buffer — in-flight streaming snapshots. Refreshed on every write. */
+    TURN_BUFFER: 60 * 60,            // 1 hour
+    /** Cancelled emission idempotency flag. */
+    CANCELLED_EMITTED: 24 * 60 * 60, // 24 hours
+    /** Pause sequence (auto-INCR, kept for session lifetime). */
+    CANCELLED_PAUSE_SEQ: 24 * 60 * 60, // 24 hours
+    /** Cross-pod chat.jsonl append lock. */
+    CHATLOG_LOCK: 5,                  // 5 seconds
+    /** @deprecated Retired by §5 */
+    SESSION: 24 * 60 * 60,           // 24 hours (transitional)
+    /** @deprecated Retired by §5 */
+    CURRENT_MESSAGE: 60 * 60,        // 1 hour (transitional)
   },
-  
+
   /** Choice TTLs */
   CHOICE: {
     PENDING: 30 * 60,            // 30 minutes
+    /** Choice resolution idempotency NX flag. */
+    RESOLVED_NX: 24 * 60 * 60,  // 24 hours
   },
   
   /** Infrastructure TTLs */
@@ -198,6 +245,12 @@ export const REDIS_CHANNELS = {
   /** Chat sync: SSE API Pod → Worker Pod snapshot request */
   CHAT: {
     SYNC_PREFIX: `${REDIS_DOMAINS.CHAT}:sync:`,
+    /**
+     * Choice-resolution fanout: API server publishes when user answers a
+     * choice card so the waiting worker resolves its promise.
+     * Format: `ant:chat:choice-resolved:{sessionKey}`
+     */
+    CHOICE_RESOLVED_PREFIX: `${REDIS_DOMAINS.CHAT}:choice-resolved:`,
   },
 } as const;
 
@@ -243,4 +296,60 @@ export function parseChannelUserContext(channel: string): { orgId: string; userI
  */
 export function getChatSyncChannel(sessionKey: string): string {
   return `${REDIS_CHANNELS.CHAT.SYNC_PREFIX}${sessionKey}`;
+}
+
+/**
+ * Generate choice-resolved fanout channel for a session.
+ * API Server publishes `{ cardId, choiceSelected, resolvedLabel, answer? }`
+ * when the user answers a choice card; the worker subscribes and resolves
+ * the matching `sendTriageChoice` / `sendChoiceCard` / `sendClarifyCards`
+ * promise.
+ */
+export function getChoiceResolvedChannel(sessionKey: string): string {
+  return `${REDIS_CHANNELS.CHAT.CHOICE_RESOLVED_PREFIX}${sessionKey}`;
+}
+
+// ============================================
+// Chat Turn Buffer Helpers
+// ============================================
+
+/**
+ * Build a per-(turn, workerScope) turn-buffer key.
+ * Format: `ant:chat:turnBuffer:{sessionKey}:{turnId}:{workerScope}`
+ * `workerScope` defaults to `_main_` for the main graph.
+ */
+export function getTurnBufferKey(sessionKey: string, turnId: string, workerScope?: string): string {
+  const scope = workerScope && workerScope.length > 0 ? workerScope : '_main_';
+  return `${REDIS_KEYS.CHAT.TURN_BUFFER}${sessionKey}:${turnId}:${scope}`;
+}
+
+export function getTurnBufferIndexKey(sessionKey: string): string {
+  return `${REDIS_KEYS.CHAT.TURN_BUFFER_INDEX}${sessionKey}`;
+}
+
+export function getTurnBufferIndexMember(turnId: string, workerScope?: string): string {
+  const scope = workerScope && workerScope.length > 0 ? workerScope : '_main_';
+  return `${turnId}:${scope}`;
+}
+
+export function parseTurnBufferIndexMember(member: string): { turnId: string; workerScope: string } {
+  const idx = member.lastIndexOf(':');
+  if (idx < 0) return { turnId: member, workerScope: '_main_' };
+  return { turnId: member.slice(0, idx), workerScope: member.slice(idx + 1) };
+}
+
+export function getCancelledEmittedKey(turnId: string, pauseSeq: number): string {
+  return `${REDIS_KEYS.CHAT.CANCELLED_EMITTED}${turnId}:${pauseSeq}`;
+}
+
+export function getCancelledPauseSeqKey(turnId: string): string {
+  return `${REDIS_KEYS.CHAT.CANCELLED_PAUSE_SEQ}${turnId}`;
+}
+
+export function getChatLogLockKey(projectId: string, featureName: string, file: 'feature' | 'chat'): string {
+  return `${REDIS_KEYS.CHAT.CHATLOG_LOCK}${projectId}:${featureName}:${file}`;
+}
+
+export function getChoiceResolvedNXKey(cardId: string): string {
+  return `${REDIS_KEYS.CHOICE.RESOLVED_NX}${cardId}`;
 }

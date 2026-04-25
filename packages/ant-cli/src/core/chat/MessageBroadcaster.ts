@@ -1,198 +1,274 @@
 /**
- * MessageBroadcaster - Handles chat message broadcasting via Redis Pub/Sub
- * 
- * Cloud-safe: All chat messages are published to user-scoped Redis channels,
- * ensuring multi-tenant isolation and efficient routing to the correct clients.
+ * MessageBroadcaster - Publishes chat SSE events via Redis Pub/Sub.
+ *
+ * The chat SSOT is `chat.jsonl` (finalized events) + Redis TURN_BUFFER
+ * (in-flight streaming). Every chat event broadcast happens through this
+ * class, using the unified event union declared in
+ * `@ant/shared/chat-events`.
+ *
+ * Cloud-safe: publishes to user-scoped channels; the Realtime server
+ * relays to the client's SSE connection.
  */
 
+import type {
+  ChatLine,
+  ChatSseEvent,
+  PendingCardSnapshot,
+  TurnBufferSnapshotMap,
+} from '@ant/shared';
 import type { StateStorePort } from '../ports/stateStore';
 import type { UserContext } from '../types/user';
 import { logger } from '../../utils/logger';
 import { getRealtimeBroadcastChannel } from '../constants/redis';
 
 /**
- * Broadcast message structure for Redis Pub/Sub
+ * Envelope placed on the Redis Pub/Sub realtime channel. The Realtime
+ * server decodes the envelope and forwards `data` to any SSE connection
+ * whose `(projectId, featureName)` matches.
  */
-export interface ChatBroadcastMessage {
+export interface ChatBroadcastEnvelope {
   projectId: string;
   featureName: string;
   type: 'chat';
-  data: any;
-  userContext: UserContext;  // Required for user-scoped channels
+  data: ChatSseEvent;
+  userContext: UserContext;
 }
 
-/**
- * MessageBroadcaster - Broadcasts chat events via user-scoped Redis Pub/Sub channels
- */
 export class MessageBroadcaster {
   private pendingPublishes = new Set<Promise<void>>();
 
   constructor(private stateStore?: StateStorePort) {}
 
-  /**
-   * Broadcast chat event via user-scoped Redis Pub/Sub channel (fire-and-forget)
-   * Only the Server instances with the specific user's SSE connections will receive this.
-   * 
-   * Note: This is intentionally fire-and-forget to avoid blocking chat operations.
-   * Errors are logged but don't affect the calling code.
-   */
-  broadcast(projectId: string, featureName: string, data: any, userContext?: UserContext): void {
-    if (!this.stateStore) {
-      logger.warn('MessageBroadcaster: No stateStore configured, cannot broadcast', { 
-        component: 'MessageBroadcaster', 
-        projectId, 
-        featureName 
-      });
-      return;
-    }
+  // ═══════════════════════════════════════════════════════════════════════
+  // Chat event publishers — ONE per SSE event type.
+  // ═══════════════════════════════════════════════════════════════════════
 
-    // Require userContext for user-scoped channel
-    if (!userContext?.organizationId || !userContext?.userId) {
-      logger.warn('MessageBroadcaster: Cannot broadcast without userContext', { 
-        component: 'MessageBroadcaster', 
-        projectId, 
-        featureName 
-      });
-      return;
-    }
-
-    // Enrich data with projectId and featureName for frontend filtering
-    const enrichedData = {
-      ...data,
-      projectId,
-      featureName
-    };
-
-    const message: ChatBroadcastMessage = {
+  /** Append a finalized ChatLine to the client stream. */
+  broadcastChatLine(
+    projectId: string,
+    featureName: string,
+    event: ChatLine,
+    userContext: UserContext | undefined,
+    producedAt: string = new Date().toISOString(),
+  ): void {
+    this.publish(projectId, featureName, {
+      type: 'chat_event_appended',
+      event,
+      producedAt,
       projectId,
       featureName,
-      type: 'chat',
-      data: enrichedData,
-      userContext
-    };
+    }, userContext);
+  }
 
-    // ✅ Debug: Log broadcast (only for non-streaming events to reduce noise)
-    if (data.type !== 'content_update' || !data.content?.type?.includes('thinking')) {
-      logger.debug(`Broadcasting: ${data.type} (msgId: ${data.messageId || 'N/A'})`, { 
-        component: 'MessageBroadcaster', 
-        projectId, 
-        featureName
+  /** Forward an in-flight streaming chunk (text / thinking / card_output). */
+  broadcastStreamingDelta(
+    projectId: string,
+    featureName: string,
+    payload: {
+      turnId: string;
+      workerScope?: string;
+      kind: 'text' | 'thinking' | 'card_output';
+      cardId?: string;
+      chunk: string;
+    },
+    userContext: UserContext | undefined,
+    producedAt: string = new Date().toISOString(),
+  ): void {
+    this.publish(projectId, featureName, {
+      type: 'streaming_delta',
+      ...payload,
+      producedAt,
+      projectId,
+      featureName,
+    }, userContext);
+  }
+
+  /**
+   * Emit a single `(turnId, workerScope)` buffer snapshot. Used by the
+   * worker in response to a sync_request so a reconnecting client can
+   * recover the in-flight partial state.
+   */
+  broadcastStreamingBufferSnapshot(
+    projectId: string,
+    featureName: string,
+    payload: {
+      turnId: string;
+      workerScope?: string;
+      text?: string;
+      thinking?: string;
+      pendingCards?: Record<string, PendingCardSnapshot>;
+    },
+    userContext: UserContext | undefined,
+    producedAt: string = new Date().toISOString(),
+  ): void {
+    this.publish(projectId, featureName, {
+      type: 'streaming_buffer_snapshot',
+      ...payload,
+      producedAt,
+      projectId,
+      featureName,
+    }, userContext);
+  }
+
+  /** Signal that a Chat Clear / Hard Reset just happened. */
+  broadcastEventsCleared(
+    projectId: string,
+    featureName: string,
+    scope: 'chat' | 'full',
+    userContext: UserContext | undefined,
+    serverTs: string = new Date().toISOString(),
+  ): void {
+    this.publish(projectId, featureName, {
+      type: 'events_cleared',
+      scope,
+      serverTs,
+      projectId,
+      featureName,
+    }, userContext);
+  }
+
+  /**
+   * Emit the full `chat_initial_state` payload. Used by
+   * `sse.routes.ts` on SSE open/reconnect so the client hydrates its
+   * chatEvents + streamingBuffers in one hop.
+   */
+  broadcastInitialState(
+    projectId: string,
+    featureName: string,
+    events: ChatLine[],
+    turnBuffers: TurnBufferSnapshotMap,
+    userContext: UserContext | undefined,
+    serverTs: string = new Date().toISOString(),
+  ): void {
+    this.publish(projectId, featureName, {
+      type: 'chat_initial_state',
+      events,
+      turnBuffers,
+      serverTs,
+      projectId,
+      featureName,
+    }, userContext);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Lifecycle
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** Wait for all pending publishes to complete (or timeout). */
+  async drain(timeoutMs = 2000): Promise<void> {
+    if (this.pendingPublishes.size === 0) return;
+    await Promise.race([
+      Promise.all(this.pendingPublishes),
+      new Promise<void>(r => setTimeout(r, timeoutMs)),
+    ]);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // @deprecated — Legacy broadcast shims. Retired by chat SSOT §5.
+  // All new code MUST use the typed `broadcast*` methods above.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /** @deprecated */
+  broadcast(projectId: string, featureName: string, data: any, userContext?: UserContext): void {
+    this.publishRaw(projectId, featureName, { ...data, projectId, featureName }, userContext);
+  }
+
+  /** @deprecated */
+  broadcastMessageFinalized(
+    projectId: string, featureName: string, messageId: string, userContext?: UserContext,
+  ): void {
+    this.broadcast(projectId, featureName, { type: 'message_complete', messageId }, userContext);
+  }
+
+  /** @deprecated */
+  broadcastContentAdd(
+    projectId: string, featureName: string, messageId: string, content: any, userContext?: UserContext,
+  ): void {
+    this.broadcast(projectId, featureName, { type: 'content_add', messageId, content }, userContext);
+  }
+
+  /** @deprecated */
+  broadcastContentUpdate(
+    projectId: string, featureName: string, messageId: string, contentIndex: number, content: any, userContext?: UserContext,
+  ): void {
+    this.broadcast(projectId, featureName, { type: 'content_update', messageId, contentIndex, content }, userContext);
+  }
+
+  /** @deprecated */
+  broadcastContentRemove(
+    projectId: string, featureName: string, messageId: string, contentIndex: number, userContext?: UserContext,
+  ): void {
+    this.broadcast(projectId, featureName, { type: 'content_remove', messageId, contentIndex }, userContext);
+  }
+
+  /** @deprecated */
+  broadcastThinkingCollapse(
+    projectId: string, featureName: string, messageId: string, contentIndex: number, durationMs: number, userContext?: UserContext,
+  ): void {
+    this.broadcast(projectId, featureName, { type: 'thinking_collapse', messageId, contentIndex, durationMs }, userContext);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Internal
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private publish(
+    projectId: string,
+    featureName: string,
+    data: ChatSseEvent,
+    userContext: UserContext | undefined,
+  ): void {
+    this.publishRaw(projectId, featureName, data, userContext);
+  }
+
+  private publishRaw(
+    projectId: string,
+    featureName: string,
+    data: any,
+    userContext: UserContext | undefined,
+  ): void {
+    if (!this.stateStore) {
+      logger.warn('MessageBroadcaster: no stateStore configured — dropping broadcast', {
+        component: 'MessageBroadcaster',
+        projectId,
+        featureName,
       });
+      return;
     }
-
-    // Publish to user-scoped channel
+    if (!userContext?.organizationId || !userContext?.userId) {
+      logger.warn('MessageBroadcaster: missing userContext — dropping broadcast', {
+        component: 'MessageBroadcaster',
+        projectId,
+        featureName,
+      });
+      return;
+    }
     const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
-    
-    // Fire-and-forget: publish asynchronously without blocking
-    const p = this.stateStore.publish(channel, message)
+    const envelope = {
+      projectId,
+      featureName,
+      type: 'chat' as const,
+      data,
+      userContext,
+    };
+    const p = this.stateStore.publish(channel, envelope)
       .catch((error) => {
-        logger.error(`Failed to publish chat message to Redis channel ${channel}`, {
+        logger.error(`Failed to publish chat event to ${channel}`, {
           component: 'MessageBroadcaster',
           projectId,
-          featureName
+          featureName,
         }, error);
       })
       .finally(() => { this.pendingPublishes.delete(p); });
     this.pendingPublishes.add(p);
   }
+}
 
-  /**
-   * Broadcast message finalized event
-   * NOTE: Uses 'message_complete' type to match UI expectations
-   */
-  broadcastMessageFinalized(
-    projectId: string, 
-    featureName: string, 
-    messageId: string, 
-    userContext?: UserContext
-  ): void {
-    this.broadcast(projectId, featureName, {
-      type: 'message_complete',  // UI expects 'message_complete', not 'message_finalized'
-      messageId
-    }, userContext);
-  }
-
-  /**
-   * Broadcast content add event
-   */
-  broadcastContentAdd(
-    projectId: string,
-    featureName: string,
-    messageId: string,
-    content: any,
-    userContext?: UserContext
-  ): void {
-    this.broadcast(projectId, featureName, {
-      type: 'content_add',
-      messageId,
-      content
-    }, userContext);
-  }
-
-  /**
-   * Broadcast content update event
-   */
-  broadcastContentUpdate(
-    projectId: string,
-    featureName: string,
-    messageId: string,
-    contentIndex: number,
-    content: any,
-    userContext?: UserContext
-  ): void {
-    this.broadcast(projectId, featureName, {
-      type: 'content_update',
-      messageId,
-      contentIndex,
-      content
-    }, userContext);
-  }
-
-  /**
-   * Broadcast content remove event
-   */
-  broadcastContentRemove(
-    projectId: string,
-    featureName: string,
-    messageId: string,
-    contentIndex: number,
-    userContext?: UserContext
-  ): void {
-    this.broadcast(projectId, featureName, {
-      type: 'content_remove',
-      messageId,
-      contentIndex
-    }, userContext);
-  }
-
-  /**
-   * Broadcast thinking collapse event
-   */
-  broadcastThinkingCollapse(
-    projectId: string,
-    featureName: string,
-    messageId: string,
-    contentIndex: number,
-    durationMs: number,
-    userContext?: UserContext
-  ): void {
-    this.broadcast(projectId, featureName, {
-      type: 'thinking_collapse',
-      messageId,
-      contentIndex,
-      durationMs
-    }, userContext);
-  }
-
-  /**
-   * Wait for all pending publishes to complete (or timeout).
-   * Call before process exit to prevent losing the last few broadcasts.
-   */
-  async drain(timeoutMs = 2000): Promise<void> {
-    if (this.pendingPublishes.size === 0) return;
-    await Promise.race([
-      Promise.all(this.pendingPublishes),
-      new Promise<void>(r => setTimeout(r, timeoutMs))
-    ]);
-  }
+/** @deprecated Legacy envelope — kept only for `core/chat/index.ts` re-export. */
+export interface ChatBroadcastMessage {
+  projectId: string;
+  featureName: string;
+  type: 'chat';
+  data: any;
+  userContext: UserContext;
 }

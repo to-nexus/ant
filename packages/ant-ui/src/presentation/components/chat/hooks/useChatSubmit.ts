@@ -118,7 +118,7 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     const hasMetadata = storeActionMetadata && Object.keys(storeActionMetadata).length > 0;
 
     try {
-      await addChatUserMessage(
+      const { turnId } = await addChatUserMessage(
         selectedProject,
         selectedFeature,
         userMessage,
@@ -141,6 +141,11 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         overrideDirective: userMessage,
         chatSource: true,
         actionMetadata: hasMetadata ? storeActionMetadata : undefined,
+        // chat SSOT §6 — forward the API-allocated turnId so the worker
+        // reuses it for the durable user_turn line; eliminates the
+        // optimistic-vs-durable id mismatch that produced two user
+        // messages on tab-switch / reconnect.
+        seedTurnId: turnId,
       });
 
       if (hasMetadata) {

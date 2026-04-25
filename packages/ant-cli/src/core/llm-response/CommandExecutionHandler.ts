@@ -11,6 +11,7 @@ import type { MessageContent, ChatSession } from '../chat/types';
 import type { CommandExecutionPhase } from './types';
 import { logger } from '../../utils/logger';
 import { getChatLogAppender } from './chatLogAppenderRegistry';
+import * as crypto from 'crypto';
 
 export class CommandExecutionHandler {
   private activeCommands: Map<string, number> = new Map();  // command -> contentIndex
@@ -49,7 +50,8 @@ export class CommandExecutionHandler {
 
     const appender = getChatLogAppender();
     if (appender) {
-      appender.appendChatStatus('command', {
+      const cardId = `cmd-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+      appender.appendChatStatus(cardId, 'command', {
         command,
         exitCode,
         output: truncateOutput(output),

@@ -35,6 +35,7 @@ import { logger } from '../../../../../utils/logger';
 import type { JobCleanupManager } from '../managers/JobCleanupManager';
 
 const COMPONENT = 'PauseJob';
+const LOCK_TTL_SECONDS = 120;
 
 export interface PauseJobArgs {
   jobId: string;
@@ -49,8 +50,30 @@ export interface PauseJobDeps {
   cleanupJobState: JobCleanupManager['cleanupJobState'];
 }
 
+/**
+ * Entry-level idempotency: chat SSOT §8 mandates a `ant:job-pause:{id}`
+ * SET-NX lock so that concurrent pause sources (StaleJobRecovery,
+ * BullMQ stalled handler, ServerLifecycleManager, RouteConfigurator
+ * JOB_STATUS_UPDATES, …) cannot all run `cleanupJobState` and emit
+ * duplicate cancelled cards.
+ *
+ * The lock is held for 120s and released by the resume paths
+ * (`/jobs/:id/resume`, `/continue`, `/decompose-choice proceed`) so a
+ * resumed job can pause again later.
+ */
 export async function pauseJob(deps: PauseJobDeps, args: PauseJobArgs): Promise<void> {
   const { jobId, projectId, featureName, jobType, userContext, interruption } = args;
+
+  const stateStore = getInfrastructureFactory().getStateStore();
+  const lockKey = `ant:job-pause:${jobId}`;
+  const acquired = await stateStore.acquireLock(lockKey, LOCK_TTL_SECONDS);
+  if (!acquired) {
+    logger.debug(
+      `pauseJob skipped — another pause in progress (jobId=${jobId})`,
+      { component: COMPONENT, jobId },
+    );
+    return;
+  }
 
   logger.info(`pauseJob: ${jobId} (reason=${interruption.reason})`, {
     component: COMPONENT,
@@ -61,7 +84,6 @@ export async function pauseJob(deps: PauseJobDeps, args: PauseJobArgs): Promise<
 
   await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType, userContext);
 
-  const stateStore = getInfrastructureFactory().getStateStore();
   // updateJobStatus is null-safe: if the status key was already evicted
   // (e.g. via a concurrent seal on another pod) this becomes a no-op
   // rather than resurrecting a sealed record.

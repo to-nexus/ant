@@ -4,26 +4,33 @@ import type { ActionMetadata } from '@ant/shared';
 /**
  * Add a user message to the chat history.
  *
- * Posts to the optimistic-write endpoint so the user's message shows up
- * immediately via the SSE `user_message` broadcast, ahead of the worker's
- * durable `user_turn` record in chat.jsonl (session redesign §16.2).
- * Must be called BEFORE executeCodeJob().
+ * Returns the **turnId** the backend pre-allocated for this user turn.
+ * The caller MUST forward the same turnId to `executeJob({ seedTurnId })`
+ * so the worker reuses it when writing the durable `user_turn` line in
+ * chat.jsonl. The optimistic SSE broadcast and the durable line both
+ * carry id = `user-{turnId}`, so the UI never sees a duplicated user
+ * message after a tab-switch / reconnect (chat SSOT refactor §6).
  */
+export interface AddChatUserMessageResult {
+  turnId: string;
+  messageId: string;
+}
+
 export async function addChatUserMessage(
   projectId: string,
   featureName: string,
   content: string,
   actionMetadata?: ActionMetadata,
-): Promise<string> {
+): Promise<AddChatUserMessageResult> {
   const body: Record<string, unknown> = { content };
   if (actionMetadata && Object.keys(actionMetadata).length > 0) {
     body.actionMetadata = actionMetadata;
   }
-  const data = await apiPost<{ messageId: string }>(
+  const data = await apiPost<{ turnId: string; messageId: string }>(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/user-message`,
     body,
   );
-  return data.messageId;
+  return { turnId: data.turnId, messageId: data.messageId };
 }
 
 /**

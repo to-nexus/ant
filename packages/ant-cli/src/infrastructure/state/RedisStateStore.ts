@@ -23,6 +23,9 @@ import {
   JobStatusData,
   LogEntry,
   PortMapping,
+  TurnBufferData,
+  PendingCardSnapshot,
+  TurnBufferSnapshot,
   ChatSessionData,
   ChatMessageData,
   WorkflowRealtimeState,
@@ -42,7 +45,17 @@ import {
 import type { PreviewStructureType } from '../../core/ports/preview';
 import { createIDEKey, createPreviewKey, createDeployKey } from './redisKeyUtils';
 import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
-import { APP_PREFIX, REDIS_KEYS, REDIS_TTL, getRealtimeWorkflowChannel } from './redisConstants';
+import {
+  APP_PREFIX,
+  REDIS_KEYS,
+  REDIS_TTL,
+  getRealtimeWorkflowChannel,
+  getTurnBufferKey,
+  getTurnBufferIndexKey,
+  getTurnBufferIndexMember,
+  parseTurnBufferIndexMember,
+  getCancelledPauseSeqKey,
+} from './redisConstants';
 import { logger } from '../../utils/logger';
 
 export interface RedisStateStoreOptions {
@@ -1038,14 +1051,179 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
-  // Chat Session Management
+  // Chat Turn Buffer (in-flight streaming)
   // ============================================
+
+  async getTurnBuffer(
+    sessionKey: string,
+    turnId: string,
+    workerScope?: string,
+  ): Promise<TurnBufferData | null> {
+    const key = getTurnBufferKey(sessionKey, turnId, workerScope);
+    const data = await this.redis.get(key);
+    if (!data) return null;
+    try {
+      return JSON.parse(data) as TurnBufferData;
+    } catch (e) {
+      logger.error(`Failed to parse turn buffer: ${key}`, { component: 'RedisStateStore' }, e);
+      return null;
+    }
+  }
+
+  private async writeTurnBuffer(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    buffer: TurnBufferData,
+  ): Promise<void> {
+    const key = getTurnBufferKey(sessionKey, turnId, workerScope);
+    await this.redis.setex(key, REDIS_TTL.CHAT.TURN_BUFFER, JSON.stringify(buffer));
+    const indexKey = getTurnBufferIndexKey(sessionKey);
+    const member = getTurnBufferIndexMember(turnId, workerScope);
+    await this.redis.sadd(indexKey, member);
+    await this.redis.expire(indexKey, REDIS_TTL.CHAT.TURN_BUFFER);
+  }
+
+  async appendToTurnBuffer(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    kind: 'text' | 'thinking' | 'card_output',
+    chunk: string,
+    cardId?: string,
+  ): Promise<void> {
+    if (!chunk) return;
+    if (kind === 'card_output' && !cardId) {
+      throw new Error('appendToTurnBuffer: cardId required when kind=card_output');
+    }
+    const current = (await this.getTurnBuffer(sessionKey, turnId, workerScope)) ?? {};
+    if (kind === 'text') {
+      current.text = (current.text ?? '') + chunk;
+    } else if (kind === 'thinking') {
+      current.thinking = (current.thinking ?? '') + chunk;
+    } else {
+      const pendingCards = current.pendingCards ?? {};
+      const card = pendingCards[cardId!];
+      if (!card) {
+        // Caller should have invoked setTurnBufferPendingCard first; still
+        // accept the chunk to avoid lost output if the worker missed it.
+        pendingCards[cardId!] = {
+          cardId: cardId!,
+          statusType: 'tool_action',
+          metadata: {},
+          streamedOutput: chunk,
+        };
+      } else {
+        card.streamedOutput = (card.streamedOutput ?? '') + chunk;
+      }
+      current.pendingCards = pendingCards;
+    }
+    await this.writeTurnBuffer(sessionKey, turnId, workerScope, current);
+  }
+
+  async setTurnBufferPendingCard(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    card: PendingCardSnapshot,
+  ): Promise<void> {
+    const current = (await this.getTurnBuffer(sessionKey, turnId, workerScope)) ?? {};
+    const pendingCards = current.pendingCards ?? {};
+    const existing = pendingCards[card.cardId];
+    pendingCards[card.cardId] = existing
+      ? { ...existing, ...card, streamedOutput: existing.streamedOutput }
+      : card;
+    current.pendingCards = pendingCards;
+    await this.writeTurnBuffer(sessionKey, turnId, workerScope, current);
+  }
+
+  async clearTurnBufferPendingCard(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    cardId: string,
+  ): Promise<void> {
+    const current = await this.getTurnBuffer(sessionKey, turnId, workerScope);
+    if (!current?.pendingCards) return;
+    if (!(cardId in current.pendingCards)) return;
+    delete current.pendingCards[cardId];
+    if (Object.keys(current.pendingCards).length === 0) {
+      delete current.pendingCards;
+    }
+    // If nothing meaningful remains, remove the key entirely.
+    if (!current.text && !current.thinking && !current.pendingCards) {
+      await this.clearTurnBuffer(sessionKey, turnId, workerScope);
+      return;
+    }
+    await this.writeTurnBuffer(sessionKey, turnId, workerScope, current);
+  }
+
+  async clearTurnBuffer(
+    sessionKey: string,
+    turnId: string,
+    workerScope?: string,
+  ): Promise<void> {
+    const key = getTurnBufferKey(sessionKey, turnId, workerScope);
+    await this.redis.del(key);
+    const indexKey = getTurnBufferIndexKey(sessionKey);
+    const member = getTurnBufferIndexMember(turnId, workerScope);
+    await this.redis.srem(indexKey, member);
+  }
+
+  async clearAllTurnBuffersForFeature(sessionKey: string): Promise<void> {
+    const indexKey = getTurnBufferIndexKey(sessionKey);
+    const members = await this.redis.smembers(indexKey);
+    if (members.length === 0) {
+      await this.redis.del(indexKey);
+      return;
+    }
+    const pipeline = this.redis.pipeline();
+    for (const member of members) {
+      const { turnId, workerScope } = parseTurnBufferIndexMember(member);
+      pipeline.del(getTurnBufferKey(sessionKey, turnId, workerScope));
+    }
+    pipeline.del(indexKey);
+    await pipeline.exec();
+  }
+
+  async listActiveTurnBuffers(sessionKey: string): Promise<TurnBufferSnapshot[]> {
+    const indexKey = getTurnBufferIndexKey(sessionKey);
+    const members = await this.redis.smembers(indexKey);
+    if (members.length === 0) return [];
+    const snapshots: TurnBufferSnapshot[] = [];
+    for (const member of members) {
+      const { turnId, workerScope } = parseTurnBufferIndexMember(member);
+      const buf = await this.getTurnBuffer(sessionKey, turnId, workerScope);
+      if (!buf) {
+        // Index stale — drop it.
+        await this.redis.srem(indexKey, member);
+        continue;
+      }
+      snapshots.push({
+        turnId,
+        workerScope,
+        text: buf.text,
+        thinking: buf.thinking,
+        pendingCards: buf.pendingCards,
+      });
+    }
+    return snapshots;
+  }
+
+  async nextPauseSeq(turnId: string): Promise<number> {
+    const key = getCancelledPauseSeqKey(turnId);
+    const seq = await this.redis.incr(key);
+    await this.redis.expire(key, REDIS_TTL.CHAT.CANCELLED_PAUSE_SEQ);
+    return seq;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // @deprecated — Legacy chat session shims. Retired by chat SSOT §5.
+  // ═════════════════════════════════════════════════════════════════════
 
   async getChatSession(sessionKey: string): Promise<ChatSessionData | null> {
     const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.SESSION, sessionKey));
-    
     if (!data) return null;
-    
     try {
       return JSON.parse(data) as ChatSessionData;
     } catch (e) {
@@ -1058,23 +1236,18 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     await this.redis.setex(
       this.key(REDIS_KEYS.CHAT.SESSION, sessionKey),
       REDIS_TTL.CHAT.SESSION,
-      JSON.stringify(session)
+      JSON.stringify(session),
     );
-    
-    logger.debug(`Chat session stored: ${sessionKey} (${session.messages?.length || 0} messages)`, { component: 'RedisStateStore' });
   }
 
   async deleteChatSession(sessionKey: string): Promise<void> {
     await this.redis.del(this.key(REDIS_KEYS.CHAT.SESSION, sessionKey));
-    // Also delete current message if exists
     await this.redis.del(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey));
   }
 
   async getCurrentMessage(sessionKey: string): Promise<ChatMessageData | null> {
     const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey));
-    
     if (!data) return null;
-    
     try {
       return JSON.parse(data) as ChatMessageData;
     } catch (e) {
@@ -1085,13 +1258,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
   async setCurrentMessage(sessionKey: string, message: ChatMessageData | null): Promise<void> {
     const key = this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey);
-    
     if (message === null) {
       await this.redis.del(key);
-      logger.debug(`Current message cleared: ${sessionKey}`, { component: 'RedisStateStore' });
     } else {
       await this.redis.setex(key, REDIS_TTL.CHAT.CURRENT_MESSAGE, JSON.stringify(message));
-      logger.debug(`Current message stored: ${sessionKey} (${message.id})`, { component: 'RedisStateStore' });
     }
   }
 

@@ -67,6 +67,12 @@ interface LineBase {
   jobType: LogJobType;
   /** collapsed 마킹 시 프롬프트/UI 렌더에서 제외 (디스크는 보존) */
   collapsed?: true;
+  /**
+   * 병렬 워커 구분자. 단일(main) 경로에서 emit한 라인은 생략되며,
+   * parallel task/worker 경로에서 emit한 라인은 `worker-<N>` 등의
+   * 식별자를 박아 UI가 sub-section으로 그룹핑할 수 있게 한다.
+   */
+  workerScope?: string;
 }
 
 /**
@@ -177,10 +183,10 @@ export type FeatureLine =
 /**
  * Chat status card type — SSOT for every progress/result indicator the
  * chat UI renders. `generateChatStatusContent(type, metadata)` in
- * `core/llm-response/generateStatusContent.ts` is the single function
- * that turns a `(ChatStatusType, metadata)` pair into a
- * `MessageContent.content` string; both the live broadcast path and the
- * replay path call that same function so rendering is always identical.
+ * [`./chat-status.ts`](./chat-status.ts) is the single shared function
+ * (FE+BE) that turns a `(ChatStatusType, metadata)` pair into a body
+ * string; both the live broadcast path and the replay path call that
+ * same function so rendering is always identical.
  *
  * When this union grows, `generateChatStatusContent` must gain a matching
  * case and the identifier here becomes part of the on-disk schema.
@@ -236,15 +242,19 @@ export interface ChatUserTurnLine extends LineBase {
 export interface ChatThinkingLine extends LineBase {
   type: 'assistant_thinking';
   text: string;
+  /**
+   * cardId for cross-line linkage (rare — allows UI to merge consecutive
+   * thinking lines produced by a single thinking stream). Optional.
+   */
+  cardId?: string;
 }
 
 /**
  * Durable record of a single chat-UI status card emission.
  *
- * Emitted by `ChatLogAppender.appendChatStatus(statusType, metadata)`
- * immediately after `ChatStatusHandler.showChatStatus` creates the
- * corresponding `MessageContent`. On replay, readers feed the pair back
- * into `generateChatStatusContent` to rebuild the identical content
+ * Emitted by `ChatService.appendChatStatus(cardId, statusType, metadata)`
+ * directly via the chat-log appender. On replay, readers feed the pair
+ * back into `generateChatStatusContent` to rebuild the identical body
  * string.
  *
  * This is the SSOT for every non-structural chat card — file card,
@@ -253,9 +263,17 @@ export interface ChatThinkingLine extends LineBase {
  * `ChatChoiceResolvedLine` because their rendering is stateful
  * (the card's buttons flip to a resolved label when the user answers).
  * Everything else flows through `chat_status`.
+ *
+ * `cardId` is required so that the same card's progressive states
+ * (e.g. `command_running` → `command_complete`) fold to a single card
+ * in the projector via last-write-wins. It also pairs with the
+ * Redis `TURN_BUFFER.pendingCards[cardId].streamedOutput` channel that
+ * carries in-flight chunks (stdout / diff growth) prior to finalize.
  */
 export interface ChatStatusLine extends LineBase {
   type: 'chat_status';
+  /** Required: identifier used for cardId-based last-write-wins folding. */
+  cardId: string;
   statusType: ChatStatusType;
   metadata?: Record<string, unknown>;
 }

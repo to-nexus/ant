@@ -63,8 +63,30 @@ export interface WorkflowRealtimeState extends SharedWorkflowRealtimeState {
 }
 
 // ============================================
-// Chat Session Types (for Cloud Mode)
+// Chat Turn Buffer (in-flight streaming scratchpad)
 // ============================================
+
+import type { PendingCardSnapshot, TurnBufferSnapshot } from '@ant/shared';
+
+/** Payload stored in Redis CHAT.TURN_BUFFER — finalize/clear removes it. */
+export interface TurnBufferData {
+  text?: string;
+  thinking?: string;
+  pendingCards?: Record<string, PendingCardSnapshot>;
+}
+
+// Re-export for downstream consumers.
+export type { PendingCardSnapshot, TurnBufferSnapshot };
+
+// ============================================
+// Legacy Chat Session Types — TRANSITIONAL SHIMS
+// ============================================
+//
+// The chat SSOT refactor (§5+) retires the ChatSession/ChatMessage
+// scratchpad entirely. These types remain in the interface surface only
+// so that the scheduled-for-deletion consumers (SessionStore / HTTP
+// SessionManager / chat/schema.ts / etc.) still compile while the
+// rewrite is in flight. No new code should reference these.
 
 export interface ChatMessageContent {
   type: string;
@@ -88,7 +110,6 @@ export interface ChatSessionData {
   jobId?: string;
   messages: ChatMessageData[];
   userContext?: UserContext;
-  // Streaming state
   thinkingStartTime?: number;
   lastThinkingContentIndex?: number;
   activeFileOperations?: Array<{ filePath: string; contentIndex: number }>;
@@ -499,38 +520,97 @@ export interface StateStorePort {
   listIDEs(): Promise<IDEState[]>;
   
   // ============================================
-  // Chat Session Management (for Cloud Mode)
+  // Chat Turn Buffer (in-flight streaming)
   // ============================================
-  
+  //
+  // The chat.jsonl log owns every finalized chat event. The TURN_BUFFER
+  // owns the in-flight streaming state (text / thinking / per-card
+  // streamedOutput). Both never hold the same data simultaneously —
+  // the worker clears the buffer the moment it appends the finalized
+  // ChatLine.
+
+  /** Full buffer snapshot for `(sessionKey, turnId, workerScope?)`. */
+  getTurnBuffer(
+    sessionKey: string,
+    turnId: string,
+    workerScope?: string,
+  ): Promise<TurnBufferData | null>;
+
   /**
-   * Get chat session
-   * @param sessionKey - Format: "org:user:projectId/featureName"
+   * Append streaming chunk to the turn buffer. `kind='card_output'`
+   * requires `cardId` and appends to `pendingCards[cardId].streamedOutput`;
+   * `text` / `thinking` append to the root scalar fields.
+   * The key TTL is refreshed on every write.
    */
+  appendToTurnBuffer(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    kind: 'text' | 'thinking' | 'card_output',
+    chunk: string,
+    cardId?: string,
+  ): Promise<void>;
+
+  /**
+   * Register an in-flight card (typically called when a command / file /
+   * long-running card starts, before the first stdout chunk arrives).
+   */
+  setTurnBufferPendingCard(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    card: PendingCardSnapshot,
+  ): Promise<void>;
+
+  /** Remove a single pendingCards entry (called on card finalize). */
+  clearTurnBufferPendingCard(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    cardId: string,
+  ): Promise<void>;
+
+  /**
+   * Clear a single turn buffer entry. Called when the matching
+   * ChatLine (assistant_message / assistant_thinking / chat_status
+   * finalize) is appended to chat.jsonl.
+   */
+  clearTurnBuffer(
+    sessionKey: string,
+    turnId: string,
+    workerScope?: string,
+  ): Promise<void>;
+
+  /**
+   * Remove every turn-buffer entry for a session. Called by hard reset
+   * / chat clear paths.
+   */
+  clearAllTurnBuffersForFeature(sessionKey: string): Promise<void>;
+
+  /** List every active `(turnId, workerScope)` buffer for a session. */
+  listActiveTurnBuffers(sessionKey: string): Promise<TurnBufferSnapshot[]>;
+
+  /**
+   * Return a monotonically increasing pause sequence for a turn.
+   * Used to mint deterministic `cancelled-{turnId}-{seq}` cardIds so
+   * repeated pause/resume cycles cannot collide.
+   */
+  nextPauseSeq(turnId: string): Promise<number>;
+
+  // ============================================
+  // Legacy Chat Session API — DELETE AFTER §5 REWRITE
+  // ============================================
+  /** @deprecated Retired by the chat SSOT refactor (§5). */
   getChatSession(sessionKey: string): Promise<ChatSessionData | null>;
-  
-  /**
-   * Set chat session
-   */
+  /** @deprecated */
   setChatSession(sessionKey: string, session: ChatSessionData): Promise<void>;
-  
-  /**
-   * Delete chat session
-   */
+  /** @deprecated */
   deleteChatSession(sessionKey: string): Promise<void>;
-  
-  /**
-   * Get current streaming message for a session
-   */
+  /** @deprecated */
   getCurrentMessage(sessionKey: string): Promise<ChatMessageData | null>;
-  
-  /**
-   * Set current streaming message for a session
-   */
+  /** @deprecated */
   setCurrentMessage(sessionKey: string, message: ChatMessageData | null): Promise<void>;
-  
-  /**
-   * Check if session has active (streaming) message
-   */
+  /** @deprecated */
   hasActiveMessage(sessionKey: string): Promise<boolean>;
   
   // ============================================

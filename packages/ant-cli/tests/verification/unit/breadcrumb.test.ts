@@ -152,11 +152,11 @@ describe('collectTouchedFilesFromChatLog', () => {
     const ts1 = '2026-04-19T00:00:01.000Z';
     const ts2 = '2026-04-19T00:00:02.000Z';
     const session = makeSession([
-      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', statusType: 'file_create', metadata: { filePath: 'a.ts' } },
-      { type: 'chat_status', ts: ts1, jobId: 'j', turnId: 't-1', jobType: 'code', statusType: 'file_edit', metadata: { filePath: 'b.ts' } },
-      { type: 'chat_status', ts: ts2, jobId: 'j', turnId: 't-1', jobType: 'code', statusType: 'file_delete', metadata: { filePath: 'c.ts' } },
+      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', cardId: 'c-1', statusType: 'file_create', metadata: { filePath: 'a.ts' } },
+      { type: 'chat_status', ts: ts1, jobId: 'j', turnId: 't-1', jobType: 'code', cardId: 'c-2', statusType: 'file_edit', metadata: { filePath: 'b.ts' } },
+      { type: 'chat_status', ts: ts2, jobId: 'j', turnId: 't-1', jobType: 'code', cardId: 'c-3', statusType: 'file_delete', metadata: { filePath: 'c.ts' } },
       { type: 'assistant_message', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', text: 'ignore me' },
-      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-other', jobType: 'code', statusType: 'file_create', metadata: { filePath: 'x.ts' } },
+      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-other', jobType: 'code', cardId: 'c-4', statusType: 'file_create', metadata: { filePath: 'x.ts' } },
     ]);
     const res = await collectTouchedFilesFromChatLog(session, 't-1');
     expect(Array.from(res.all).sort()).toEqual(['a.ts', 'b.ts', 'c.ts']);
@@ -169,7 +169,7 @@ describe('collectTouchedFilesFromChatLog', () => {
   it('counts _failed file-op statusTypes as attempted writes on the same operation', async () => {
     const ts0 = '2026-04-19T00:00:00.000Z';
     const session = makeSession([
-      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', statusType: 'file_edit_failed', metadata: { filePath: 'bad.ts', reason: 'boom' } },
+      { type: 'chat_status', ts: ts0, jobId: 'j', turnId: 't-1', jobType: 'code', cardId: 'c-fail', statusType: 'file_edit_failed', metadata: { filePath: 'bad.ts', reason: 'boom' } },
     ]);
     const res = await collectTouchedFilesFromChatLog(session, 't-1');
     expect(Array.from(res.all)).toEqual(['bad.ts']);

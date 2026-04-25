@@ -32,6 +32,11 @@ export interface ExecuteJobParams {
   chatSource?: boolean;
   skipTriage?: boolean;
   actionMetadata?: import('@ant/shared').ActionMetadata;
+  /**
+   * Pre-allocated turnId from `/chat/user-message` so the worker reuses
+   * it for the durable user_turn line (chat SSOT §6).
+   */
+  seedTurnId?: string;
 }
 
 // `JobStatus` interface was removed along with `fetchJobStatus` — the
@@ -54,13 +59,14 @@ export async function executeJob(
     chatSource,
     skipTriage,
     actionMetadata,
+    seedTurnId,
   } = params;
 
   if (!featureName) {
     throw new Error('Feature name is required for job execution');
   }
 
-  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata };
+  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId };
   const endpoint = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/execute`;
 
   const response = await authFetch(endpoint, {

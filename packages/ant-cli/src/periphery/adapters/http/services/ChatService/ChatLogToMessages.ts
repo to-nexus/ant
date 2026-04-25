@@ -28,7 +28,7 @@ import type {
   ChatChoiceResolvedLine,
 } from '@ant/shared';
 import type { ChatMessage, MessageContent } from './types';
-import { generateChatStatusContent } from '../../../../../core/llm-response/generateStatusContent';
+import { generateChatStatusContent } from '@ant/shared';
 
 export interface ChatLogInput {
   chatLines: ChatLine[];
@@ -98,8 +98,31 @@ export function buildChatMessagesFromChatLog(input: ChatLogInput): ChatMessage[]
   for (const bucket of ordered) {
     const userMsg = toUserMessage(bucket);
     if (userMsg) out.push(userMsg);
-    const assistantMsg = toAssistantMessage(bucket, resolvedById);
+
+    // chat SSOT §8 fix — cancelled cards are emitted by the live SSE
+    // path as STANDALONE assistant ChatMessages with id=cardId. The
+    // durable replay must produce the same shape so optimistic +
+    // rebuilt views collapse on the frontend (id-based dedup). All
+    // other events stay folded into the regular `assistant-{turnId}`
+    // bucket.
+    const cancelledCardLines = bucket.events.filter(
+      (ev): ev is ChatChoicePresentedLine =>
+        ev.type === 'choice_presented' && ev.cardType === 'cancelled',
+    );
+    const otherEvents = bucket.events.filter(
+      (ev) => !(ev.type === 'choice_presented' && ev.cardType === 'cancelled'),
+    );
+    const assistantMsg = toAssistantMessage({ ...bucket, events: otherEvents }, resolvedById);
     if (assistantMsg) out.push(assistantMsg);
+    for (const cancelledLine of cancelledCardLines) {
+      out.push({
+        id: cancelledLine.cardId,
+        role: 'assistant',
+        timestamp: cancelledLine.ts,
+        jobId: bucket.jobId,
+        contents: [renderChoiceCard(cancelledLine, resolvedById.get(cancelledLine.cardId))],
+      });
+    }
   }
   return out;
 }

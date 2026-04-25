@@ -25,17 +25,35 @@ export class MessageManager {
    * Add user message to chat history
    * CLOUD MODE: Waits for Redis save to ensure message order consistency
    */
+  /**
+   * Append a user message to the live SSE stream with a STABLE id derived
+   * from the supplied `turnId`. The id `user-{turnId}` matches the durable
+   * id assigned by `ChatLogToMessages.toUserMessage` when chat.jsonl is
+   * later rebuilt — so optimistic + durable views collapse to a single
+   * entry on reconnect (eliminates the "two user messages on tab switch"
+   * defect).
+   *
+   * The caller (typically `chat.routes.ts` `/chat/user-message`) is
+   * responsible for generating the turnId and forwarding it to the worker
+   * via `executeJob({ seedTurnId })`. The worker reuses the id when
+   * recording the durable user_turn line.
+   *
+   * `jobId` is intentionally accepted but rarely populated at the API
+   * tier — it becomes known only after enqueue, and the durable
+   * `chat.jsonl` user_turn line carries the authoritative jobId.
+   */
   async addUserMessage(
-    projectId: string, 
-    featureName: string, 
-    content: string, 
-    jobId?: string, 
+    projectId: string,
+    featureName: string,
+    content: string,
+    turnId: string,
+    jobId?: string,
     userContext?: UserContext,
     actionMetadata?: import('@ant/shared').ActionMetadata,
   ): Promise<string> {
     const session = this.sessionManager.getOrCreateSession(projectId, featureName, jobId, userContext);
-    
-    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const messageId = `user-${turnId}`;
     const userMessage: ChatMessage = {
       id: messageId,
       role: 'user',
@@ -47,8 +65,14 @@ export class MessageManager {
       jobId,
       ...(actionMetadata && Object.keys(actionMetadata).length > 0 && { actionMetadata }),
     };
-    
-    session.messages.push(userMessage);
+
+    // De-dup at the scratchpad level: if the same turnId was already
+    // pushed (e.g. /chat/user-message retried by network layer), skip the
+    // second push so SSE consumers don't render twice.
+    const alreadyPresent = session.messages.some((m) => m.id === messageId);
+    if (!alreadyPresent) {
+      session.messages.push(userMessage);
+    }
 
     // ✅ CRITICAL: Wait for Redis save to ensure message order in Cloud mode
     // Without this, Job Worker may start before user message is in Redis,
@@ -61,7 +85,7 @@ export class MessageManager {
       logger.warn('Failed to save session to Redis', { component: 'MessageManager' }, err);
     }
 
-    // Broadcast new user message
+    // Broadcast new user message (idempotent — frontend dedups by id).
     this.broadcaster.broadcast(projectId, featureName, {
       type: 'user_message',
       message: userMessage
@@ -505,10 +529,37 @@ export class MessageManager {
   ): Promise<string> {
     // ✅ Use async version to ensure file/Redis is fully loaded
     const session = await this.sessionManager.getOrCreateSessionAsync(projectId, featureName, jobId, userContext);
-    
-    // ✅ Idempotency: skip if an UNRESOLVED cancelled message for this jobId already exists.
-    // Caller guards (Redis lock in cloud, single exit event in local) normally prevent
-    // duplicate calls, but this check provides defense-in-depth.
+
+    // chat SSOT §8 — server-restart-proof idempotency.
+    //
+    // The legacy scratchpad-based dedup (`session.messages.find`) only
+    // works when the same process emitted the prior cancelled message.
+    // After a server restart the in-memory + Redis scratchpad are empty,
+    // so a second pause source (StaleJobRecovery, BullMQ stalled handler,
+    // …) would write a duplicate `choice_presented` line.
+    //
+    // The Redis NX flag below survives restarts and the multi-pod fan-out;
+    // it is paired with `pauseJob`'s entry-level lock to provide
+    // belt-and-suspenders coverage against the "two cancelled cards in
+    // a row" defect.
+    const { getInfrastructureFactory } = await import('../../../../../infrastructure/adapters/InfrastructureFactory');
+    const stateStore = getInfrastructureFactory().getStateStore();
+    const cancelledNxKey = `ant:chat:cancelled-emitted:job:${jobId}`;
+    const nxAcquired = await stateStore.acquireLock(cancelledNxKey, 24 * 60 * 60).catch(() => true);
+    if (!nxAcquired) {
+      logger.info(`Idempotency NX miss for job ${jobId} — cancelled card already emitted; skipping`, { component: 'MessageManager' });
+      // Try to return the existing scratchpad message id so callers that
+      // expect a string still get something useful.
+      const stalePresent = session.messages.find(
+        (m: ChatMessage) => m.jobId === jobId && m.contents?.some(
+          (c: any) => c.type === 'cancelled'
+        )
+      );
+      return stalePresent?.id ?? '';
+    }
+
+    // ✅ In-process scratchpad dedup remains as a fast-path: callers that
+    //   loop in the same process never hit Redis twice in a row.
     const existing = session.messages.find(
       (m: ChatMessage) => m.jobId === jobId && m.contents?.some(
         (c: any) => c.type === 'cancelled' && !c.metadata?.resolved && !c.metadata?.choiceSelected
@@ -669,6 +720,18 @@ export class MessageManager {
         `[MessageManager] Resolved ${newlyResolvedCardIds.length} cancelled message(s) for job: ${jobId}`,
         { component: 'MessageManager' },
       );
+
+      // chat SSOT §8 — release the per-job NX flag so a future pause of
+      // this same job (after the user resumed) can emit a fresh cancelled
+      // card. The flag's natural 24h TTL would otherwise block a legitimate
+      // re-pause within the same session.
+      try {
+        const { getInfrastructureFactory } = await import('../../../../../infrastructure/adapters/InfrastructureFactory');
+        const stateStore = getInfrastructureFactory().getStateStore();
+        await stateStore.releaseLock(`ant:chat:cancelled-emitted:job:${jobId}`);
+      } catch (err) {
+        logger.warn('Failed to release cancelled-emitted NX flag', { component: 'MessageManager' }, err as Error);
+      }
     }
 
     return newlyResolvedCardIds.length;

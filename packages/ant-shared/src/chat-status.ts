@@ -1,16 +1,15 @@
 /**
  * generateChatStatusContent — SSOT for chat card body text.
  *
- * This is the single function both the live `ChatStatusHandler.showChatStatus`
- * path and the `chat.jsonl` replay path call to turn a
- * `(ChatStatusType, metadata)` pair into a `MessageContent.content` string.
+ * Single function both the backend emission path and the frontend rendering
+ * path call to turn a `(ChatStatusType, metadata)` pair into a body string.
  *
- * Because both paths share this function, the replayed chat history is
- * byte-identical to the live broadcast — there is no separate "replay
- * builder" whose wording can drift from the live copy.
+ * Moved from `packages/ant-cli/src/core/llm-response/generateStatusContent.ts`
+ * to `@ant/shared` so FE and BE share exactly one implementation — no drift
+ * between live broadcast wording and replay/re-render wording is possible.
  */
 
-import type { ChatStatusType } from '@ant/shared';
+import type { ChatStatusType } from './session-log';
 
 const PROCESSING_LABELS: Record<string, { progress: string; complete: string }> = {
   bg_removal: { progress: 'Removing background', complete: 'Background removed' },
@@ -306,7 +305,6 @@ export function generateChatStatusContent(
       return `Loaded: ${filesCount} required files`;
     }
 
-    // File card status — live path and replay share the same wording.
     case 'file_creating':
     case 'file_writing':
     case 'file_editing':
@@ -317,8 +315,6 @@ export function generateChatStatusContent(
     case 'file_create':
     case 'file_edit':
     case 'file_delete':
-      // FileCard renders from metadata (filePath + diff / content);
-      // content string is intentionally empty — the card body is a diff.
       return typeof metadata?.content === 'string' ? metadata.content : '';
 
     case 'file_create_failed':
@@ -342,7 +338,6 @@ export function generateChatStatusContent(
       return `🔄 Retrying file write: ${filePath} (attempt ${attempt}/${maxRetries})`;
     }
 
-    // Command card status — TerminalCard reads from metadata.
     case 'command_running':
     case 'command_streaming':
     case 'command':

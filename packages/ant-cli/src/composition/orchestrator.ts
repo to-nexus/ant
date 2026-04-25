@@ -50,8 +50,16 @@ export async function orchestrator(params: {
    * turnId to LLMResponseService so subsequent trace lines keep the same grouping.
    */
   isResume?: boolean;
+  /**
+   * Pre-allocated turn id from `/chat/user-message` (chat SSOT §6).
+   * When present, the orchestrator passes it as `recordUserTurn`'s
+   * `turnId` so the durable user_turn line shares the same id as the
+   * optimistic SSE broadcast. Eliminates the user-message duplication
+   * defect.
+   */
+  seedTurnId?: string;
 }) {
-  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume, seedTurnId } = params;
 
   switch (agent) {
     case "architect": {
@@ -157,7 +165,10 @@ export async function orchestrator(params: {
           configData
         );
 
-        // ✅ Record user_turn to chat.jsonl (skipFeature=true — ask는 feature.jsonl 미기록)
+        // ✅ Record user_turn to chat.jsonl (skipFeature=true — ask는 feature.jsonl 미기록).
+        //   `seedTurnId` (chat SSOT §6) reuses the id pre-allocated by
+        //   /chat/user-message so the durable record matches the optimistic
+        //   SSE broadcast — the user-message duplication defect is gone.
         await recordUserTurn({
           featurePath,
           jobType: 'inline-ask',
@@ -165,6 +176,7 @@ export async function orchestrator(params: {
           directive: overrideDirective || input,
           projectId: project,
           isResume,
+          turnId: seedTurnId,
           actionMetadata,
         }).catch(err => {
           console.warn('[Orchestrator:InlineAsk] Failed to record user_turn:', err);
@@ -267,12 +279,16 @@ export async function orchestrator(params: {
         // mode is not yet known for design (Detect runs inside the graph) → undefined.
         // When isResume=true the helper skips the append and only re-propagates the
         // existing turnId into LLMResponseService — see recordUserTurn JSDoc.
+        // `seedTurnId` reuses the id pre-allocated by /chat/user-message
+        // (chat SSOT §6) so the durable user_turn matches the optimistic
+        // SSE broadcast id.
         await recordUserTurn({
           featurePath,
           jobType: 'design',
           jobId: jobId || 'unknown',
           directive: overrideDirective || input,
           isResume,
+          turnId: seedTurnId,
           session,
           actionMetadata,
         }).catch(err => {
@@ -355,6 +371,8 @@ export async function orchestrator(params: {
         // ✅ Record user_turn (feature.jsonl + chat.jsonl). Mode may be known via --mode/env.
         // When isResume=true the helper skips the append and only re-propagates the
         // existing turnId into LLMResponseService — see recordUserTurn JSDoc.
+        // `seedTurnId` reuses the id pre-allocated by /chat/user-message
+        // (chat SSOT §6).
         await recordUserTurn({
           featurePath,
           jobType: 'code',
@@ -362,6 +380,7 @@ export async function orchestrator(params: {
           directive: overrideDirective || input,
           mode,
           isResume,
+          turnId: seedTurnId,
           session,
           actionMetadata,
         }).catch(err => {
@@ -431,12 +450,15 @@ export async function orchestrator(params: {
       // false-positive trap — a normal continue endpoint with both fields set looks
       // identical to a real resume, producing duplicate user_turn lines.
       if (featurePath) {
+        // `seedTurnId` reuses the id pre-allocated by /chat/user-message
+        // (chat SSOT §6).
         await recordUserTurn({
           featurePath,
           jobType: 'plan',
           jobId: jobId || 'unknown',
           directive: overrideDirective || input,
           isResume,
+          turnId: seedTurnId,
           session,
           actionMetadata,
         }).catch(err => {
