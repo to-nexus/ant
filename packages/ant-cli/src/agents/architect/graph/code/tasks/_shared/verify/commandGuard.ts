@@ -26,7 +26,7 @@
  * state._verifyEntered === true`.
  */
 
-import type { ToolExecutionContext, ToolResult } from '../../../../../common/tool/types';
+import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
 import type { Gate } from './gates';
 import { isDiagnosticInspectCommand } from './gates';
 

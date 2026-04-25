@@ -14,6 +14,6 @@ export interface FileTreeUpdatePort {
    * @param featureName - Feature name
    * @param userContext - Optional user context for Cloud mode
    */
-  notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): void;
+  notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): Promise<void>;
 }
 

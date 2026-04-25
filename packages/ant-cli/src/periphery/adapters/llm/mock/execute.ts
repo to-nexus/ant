@@ -14,7 +14,7 @@ export function* executeStreamEvents(): Generator<LLMStreamEvent> {
   yield {
     type: 'done',
     done: true,
-    usage: { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 },
   };
 }
 

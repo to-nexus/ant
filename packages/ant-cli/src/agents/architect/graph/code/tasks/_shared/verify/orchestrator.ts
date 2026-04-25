@@ -32,7 +32,7 @@
  * stays blind to `task.type` (R1).
  */
 
-import type { CodeTask } from '../../../../types/task';
+import type { CodeTask } from '../../../../../types/task';
 import type { ArchitectGraphState } from '../../../state';
 import { VerificationSession } from './Session';
 import type { VerificationSnapshot } from './snapshot';
@@ -83,5 +83,5 @@ export function restoreIntoWorkerState(
   // Use the canonical writer helper so the single-writer regression
   // guard (`tests/verification/unit/selfVerifyShared.test.ts`) stays
   // green without listing this file as an exception.
-  markVerifyEntered(workerState as ArchitectGraphState);
+  markVerifyEntered(workerState as unknown as ArchitectGraphState);
 }

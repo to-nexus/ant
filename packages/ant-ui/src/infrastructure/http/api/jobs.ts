@@ -141,7 +141,7 @@ export function resumeJob(
   projectId: string,
   featureName: string,
   chatSource: boolean = true,
-): Promise<{ jobId: string; originalJobId: string; jobType: string }> {
+): Promise<{ jobId: string; originalJobId: string; jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' }> {
   return apiPost(
     `${API_BASE()}/jobs/${encodeURIComponent(jobId)}/resume`,
     { projectId, featureName, chatSource },

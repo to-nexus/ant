@@ -598,6 +598,7 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 | **Cross-cutting utilities** | Will 2+ parallel tasks define helper functions that serve the same purpose in the same namespace scope? |
 | **Shared schema types** | Are there domain types (models, entities, response DTOs, input structs) referenced by 2+ feature tasks? |
 | **Cross-boundary coordination** | Will 2+ feature tasks need atomic operations spanning multiple persistence boundaries? |
+| **Cross-cutting integration boundary** | Will 2+ feature tasks consume the same external SDK, wallet/payment provider, third-party API client, auth library, or message-queue/event adapter? |
 
 **Constraint**: If 2+ parallel feature tasks would define symbols in the same namespace scope, create dedicated foundation tasks (`type: "feature"`, priority 200-299, after setup, before regular features) following the Shared Foundation Splitting rules below. Foundation tasks complete before any feature task begins (enforced by a runtime barrier).
 
@@ -610,6 +611,8 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 **Constraint**: Feature tasks that depend on shared foundation symbols MUST NOT redefine them. They import and use what the shared foundation task established.
 
 ⚠️ **Blind spot**: Domain types are easily identified as shared, but response DTOs (enriched types that combine entity data with joined fields) and infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing feature tasks to MODIFY shared files or create duplicate types. Cross-boundary coordination contracts (how atomic operations compose multiple persistence interfaces) are ESPECIALLY EASY TO OMIT — the foundation defines individual persistence interfaces but not how they compose atomically, forcing feature tasks to bypass those interfaces entirely. Additionally, if `packages` is set to `["shared"]` alone, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always combine tier tags with `"shared"`.
+
+⚠️ **Blind spot — external integration boundaries**: Cross-cutting integration boundaries (SDK clients, wallet/payment providers, auth libraries, third-party API clients) are EASILY LEFT to individual feature tasks because each feature's description tends to phrase the integration as a feature concern (e.g. "navbar shows wallet connect button" and "checkout uses wallet for payment" both implicitly require a wallet adapter). Each feature then independently constructs its own copy of the adapter in a different directory, producing dead code and a split source of truth for the same integration. When the design document names an external SDK / provider / API client that 2+ features touch, the adapter for that integration MUST be a shared foundation Implementations sub-task — even if no feature task description mentions the adapter explicitly.
 
 ### Shared Foundation Splitting
 
@@ -749,10 +752,20 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 |-----------|----------------|
 | **Shared infrastructure module** | Will two tasks both need to create the same helper file, adapter implementation, or utility module? |
 | **Shared data-access implementation** | Will two tasks both need to create the same repository implementation file (not just interface)? |
+| **Cross-cutting integration boundary** | Will two tasks both wrap the same external SDK, wallet/payment provider, third-party API client, auth library, or any other service-integration surface? |
 
 **Constraint**: Tasks that will CREATE the same source file MUST share the same parallelGroup. A cross-worker file conflict occurs when two parallel tasks attempt to create an identical file path — the second task's write is rejected, triggering an unresolvable retry loop.
 
-⚠️ **Blind spot**: Shared infrastructure files are EASILY MISSED during decomposition. When a design specifies common patterns (event deduplication, caching, message queue adapters, response formatters), multiple feature tasks may independently need to create the same implementation file. If two feature tasks reference the same internal module that does not yet exist, they MUST be in the same parallelGroup OR a shared foundation task must create the module first.
+**Constraint — Cross-cutting integration boundary extraction (mandatory)**: A cross-cutting boundary is any external integration consumed by 2+ features (SDK clients, wallet/payment providers, auth libraries, third-party API clients, event/message-queue adapters, observability instrumentation). Such boundaries MUST be extracted into a shared foundation task (priority 200-299, Implementations group, `parallelGroup: "sf-impl-<boundary>"`). Feature tasks consume the boundary — they do NOT each construct their own wrapper. The foundation barrier guarantees the boundary exists before any feature task imports it.
+
+**Decision protocol — when 2+ feature tasks reference the same external integration**:
+1. Is the integration a cross-cutting boundary per the table above? → Extract to a shared foundation task. Feature tasks `import` from it.
+2. Is the integration a one-off helper used by exactly ONE feature task? → Keep inline within that single feature.
+3. Are 2+ feature tasks each likely to construct the same client/adapter/wrapper, AND extraction to a foundation is genuinely impossible? → Place those features in the SAME `parallelGroup` so they serialize and the second observes the first's adapter. Different `parallelGroup` values plus the same module = guaranteed duplicate implementations.
+
+⚠️ **Blind spot — duplicate SDK / wallet / payment adapters**: When two feature tasks both depend on the same external SDK, each task is likely to independently create its own adapter file in a different directory (e.g. `src/lib/<sdk>-adapter/` from one task and `src/adapters/<sdk>/` from another). The result is two non-overlapping but semantically equivalent adapters — one becomes dead code, the project loses a single source of truth for the integration, and downstream features import inconsistent surfaces. ALWAYS hoist external-integration adapters to a shared foundation task BEFORE any feature task references them. Naming the destination directory differently does NOT prevent this — the boundary is the same regardless of where each task chose to put its copy.
+
+⚠️ **Blind spot**: Shared infrastructure files (event deduplication, caching, message queue adapters, response formatters) are EASILY MISSED during decomposition. If two feature tasks reference the same internal module that does not yet exist, they MUST be in the same parallelGroup OR a shared foundation task must create the module first.
 
 **Naming convention**: `"<package>-<scope>"` where scope is the functional area within the package.
 

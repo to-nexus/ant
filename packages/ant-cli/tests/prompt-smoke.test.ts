@@ -270,6 +270,28 @@ describe('Template Smoke Tests', () => {
     expect(partials).toContain('jobs/code/nodes/decompose/variants/default/output-unit-splitting');
   });
 
+  it('decompose/rules.md carries cross-cutting integration boundary guard (Defect 2 fix)', async () => {
+    await initPartials(TEMPLATES_DIR);
+    const output = await adapter.render(
+      'jobs/code/nodes/decompose/variants/default/rules',
+      { ...SAMPLE_VARS, techTier: { language: 'typescript', stack: 'frontend' } },
+    );
+    // Boundary observation row in the parallelism checklist
+    expect(output).toMatch(/Cross-cutting integration boundary/);
+    // Mandatory extraction constraint
+    expect(output).toMatch(/Cross-cutting integration boundary extraction \(mandatory\)/);
+    // Decision protocol prevents independent feature tasks from each
+    // constructing their own copy of the adapter
+    expect(output).toMatch(/Decision protocol .* same external integration/);
+    // Concrete blind-spot warning citing the prime-jetting-grate failure
+    // mode (two adapters in different directories for the same SDK)
+    expect(output).toMatch(/duplicate SDK \/ wallet \/ payment adapters/);
+    // Foundation-side observation row mirrors the parallelism row
+    expect(output).toMatch(/Will 2\+ feature tasks consume the same external SDK/);
+    // External integration boundary blind spot at foundation level
+    expect(output).toMatch(/external integration boundaries/);
+  });
+
   it('decompose/rules.md encodes UI pairing rule with renderable-only predicate', async () => {
     await initPartials(TEMPLATES_DIR);
 
@@ -400,6 +422,74 @@ describe('Template Smoke Tests', () => {
       expect(output).not.toContain(DEP_PARTIAL_HEADER);
     });
   }
+
+  // Plan-side preview-* partial inclusion (Defect 1 fix — basePath omission).
+  //
+  // The plan node must surface the same `preview-setup` (frontend basePath)
+  // and `preview-env-contract` (platform-injected env vars) contracts that
+  // execute already gets via AutoInjectionResolver. Without this, the plan
+  // never instructs the LLM to wire `NEXT_PUBLIC_BASE_PATH` /
+  // `VITE_BASE_PATH` into the framework config, and execute follows the
+  // plan's minimal config — silently producing apps that break under the
+  // platform's `/{urlKey}/` proxy.
+  //
+  // The matrix below mirrors AutoInjectionResolver's execute-side gates so
+  // plan and execute stay in lock-step:
+  //
+  //   - default / error variant + hasFrontend  → both partials
+  //   - default / error variant + backend-only → only preview-env-contract
+  //   - verification variant                   → only preview-env-contract
+  //                                              (skipEnvRules excludes preview-setup)
+  const PREVIEW_SETUP_HEADER = 'Development Server: Path Prefix Configuration';
+  const PREVIEW_ENV_HEADER = 'Dev Server Runtime Contract';
+
+  const PREVIEW_PLAN_VARIANTS_BOTH = [
+    'jobs/code/nodes/plan/base',
+    'jobs/code/nodes/plan/variants/error/base',
+  ];
+
+  for (const template of PREVIEW_PLAN_VARIANTS_BOTH) {
+    it(`preview-setup + preview-env-contract appear in ${template} when hasFrontend`, async () => {
+      await initPartials(TEMPLATES_DIR);
+      const output = await adapter.render(template, {
+        ...SAMPLE_VARS,
+        antrulesContent: undefined,
+        hasFrontend: true,
+        hasBackend: false,
+        currentTask: { id: 't', name: 't', type: 'feature', description: 'x', priority: 300 },
+      });
+      expect(output).toContain(PREVIEW_SETUP_HEADER);
+      expect(output).toContain(PREVIEW_ENV_HEADER);
+      expect(output).toMatch(/NEXT_PUBLIC_BASE_PATH/);
+    });
+
+    it(`preview-setup is gated out of ${template} when hasFrontend is false`, async () => {
+      await initPartials(TEMPLATES_DIR);
+      const output = await adapter.render(template, {
+        ...SAMPLE_VARS,
+        antrulesContent: undefined,
+        hasFrontend: false,
+        hasBackend: true,
+        currentTask: { id: 't', name: 't', type: 'feature', description: 'x', priority: 300 },
+      });
+      expect(output).not.toContain(PREVIEW_SETUP_HEADER);
+      // preview-env-contract still applies to backend-only (PORT binding etc.).
+      expect(output).toContain(PREVIEW_ENV_HEADER);
+    });
+  }
+
+  it('preview-env-contract appears in plan/variants/verification/base (skipEnvRules excludes preview-setup)', async () => {
+    await initPartials(TEMPLATES_DIR);
+    const output = await adapter.render('jobs/code/nodes/plan/variants/verification/base', {
+      ...SAMPLE_VARS,
+      antrulesContent: undefined,
+      hasFrontend: true,
+      hasBackend: false,
+      currentTask: { id: 't', name: 't', type: 'verification', description: 'x', priority: 700 },
+    });
+    expect(output).toContain(PREVIEW_ENV_HEADER);
+    expect(output).not.toContain(PREVIEW_SETUP_HEADER);
+  });
 
   it('verification execute rules carry the ANTRULES write-back checkpoint with the 3-condition filter', async () => {
     await initPartials(TEMPLATES_DIR);

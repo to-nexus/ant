@@ -15,6 +15,7 @@ import { formatViolations } from "../../utils/violationFormatter";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
+import { AutoInjectionResolver } from "../../../../../../core/prompt/builder/AutoInjectionResolver";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokens, applyEstimatedInputTokensFromMessages } from "../../../../../common/graph/llmHelpers";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
@@ -155,6 +156,7 @@ async function buildPlanPrompt(
   }
 
   const taskTechTiers = task.techTiers?.length ? task.techTiers : (getTechTier(state) ? [getTechTier(state)!] : []);
+  const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(taskTechTiers);
   const fmtCtx = formatCodeContext(codeContext);
 
   const _planBasis = state.resolvedAction?.basis;
@@ -208,6 +210,7 @@ async function buildPlanPrompt(
     resolvedAction: resolvedActionWithDocs, hasSystemDesign, hasUi, uiSource,
     featureContext: state.featureContext,
     antrulesContent,
+    hasFrontend, hasBackend,
     ...typeVars,
   });
 
