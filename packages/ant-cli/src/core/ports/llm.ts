@@ -195,6 +195,15 @@ export interface ToolDefinition {
     properties: Record<string, {
       type: string;
       description?: string;
+      /**
+       * JSON-schema `enum` constraint. Used by tools whose argument is a
+       * closed vocabulary — e.g. `run_command.verifies` (gate vocabulary
+       * derived from `tasks/verification/model/gates.GATE_ORDER`),
+       * `discovery_tool.scope`, etc. Optional; non-enum properties omit it.
+       */
+      enum?: readonly string[];
+      /** JSON-schema `items` for array properties (e.g. clarify options). */
+      items?: { type: string; description?: string };
     }>;
     required?: string[];
   };
