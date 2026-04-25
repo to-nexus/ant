@@ -20,8 +20,14 @@ import {
   pathsContainUiDoc,
   type VisualLanguageVariant,
 } from '@ant/shared';
-import { TECH_STEPS, FULLSTACK_STEPS, VISUAL_STEPS } from './constants';
-import type { BasisWizardState, WizardStepDef } from './types';
+import {
+  TECH_STEPS,
+  FULLSTACK_STEPS,
+  VISUAL_STEPS,
+  TIER_REGISTRY,
+  pickInitialTier,
+} from './constants';
+import type { BasisWizardState, TierKey, WizardStepDef } from './types';
 
 const AUTO = '__auto__';
 
@@ -65,16 +71,45 @@ function buildBasisFromSelections(selections: BasisWizardState['selections']): B
   return (basis.techTier || basis.visualTier) ? basis : undefined;
 }
 
-function autoSelectLanguage(stack: string | undefined, sel: BasisWizardState['selections']['techTier']): void {
-  if (stack === 'fullstack') {
-    const feLangs = VALID_LANGUAGES_BY_STACK['frontend'];
-    if (feLangs.length === 1) sel.feLanguage = feLangs[0];
-    const beLangs = VALID_LANGUAGES_BY_STACK['backend'];
-    if (beLangs.length === 1) sel.beLanguage = beLangs[0];
-  } else if (stack) {
-    const langs = VALID_LANGUAGES_BY_STACK[stack as SupportedStack];
-    if (langs && langs.length === 1) sel.language = langs[0];
+// Pure step-set computation. Hoisted to module scope so `selectVariant` can
+// compute the post-pick step set inline (and avoid the closure-staleness bug
+// where `isLastStep` was judged against a pre-prune snapshot, blocking the
+// natural advance after the user picks a real upstream value).
+function computeTechSteps(
+  selections: BasisWizardState['selections'],
+  hasTechTier: boolean,
+  hasDefaultStack: boolean,
+): WizardStepDef[] {
+  if (!hasTechTier) return [];
+  const sel = selections.techTier;
+  const isFullstack = sel.stack === 'fullstack';
+  const steps: WizardStepDef[] = [];
+  if (!hasDefaultStack) {
+    steps.push(TECH_STEPS[0]);
+    if (!isReal(sel.stack)) return steps;
   }
+  if (isFullstack) {
+    steps.push(FULLSTACK_STEPS[0]);
+    if (isReal(sel.feLanguage)) steps.push(FULLSTACK_STEPS[1]);
+    steps.push(FULLSTACK_STEPS[2]);
+    if (isReal(sel.beLanguage)) steps.push(FULLSTACK_STEPS[3]);
+  } else {
+    steps.push(TECH_STEPS[1]);
+    if (isReal(sel.language)) steps.push(TECH_STEPS[2]);
+  }
+  return steps;
+}
+
+function computeVisualSteps(
+  selections: BasisWizardState['selections'],
+  hasVisualTier: boolean,
+): WizardStepDef[] {
+  if (!hasVisualTier) return [];
+  const sel = selections.visualTier;
+  const steps: WizardStepDef[] = [];
+  steps.push(VISUAL_STEPS[0]);
+  if (isReal(sel.visualLanguage)) steps.push(VISUAL_STEPS[1]);
+  return steps;
 }
 
 function getSelectionValue(sel: BasisWizardState['selections'], step: WizardStepDef): string | undefined {
@@ -93,7 +128,10 @@ function findNextGroupStart(steps: WizardStepDef[], currentIdx: number): number 
   return null;
 }
 
-export function useBasisWizard(basisSlot: BasisSlotConfig) {
+export function useBasisWizard(
+  basisSlot: BasisSlotConfig,
+  initialTier?: TierKey,
+) {
   const actionMetadata = useStore(s => s.actionMetadata);
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const currentBasis = actionMetadata.basis;
@@ -101,63 +139,24 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
   const savedBasisRef = useRef<Basis | undefined>(currentBasis);
 
   const [state, setState] = useState<BasisWizardState>(() => {
-    const initStack = currentBasis?.techTier?.stack ?? basisSlot.defaults?.stack;
-    const initLang = currentBasis?.techTier?.frontend?.language ?? currentBasis?.techTier?.backend?.language;
-    const initFw = currentBasis?.techTier?.frontend?.framework ?? currentBasis?.techTier?.backend?.framework;
-    const initFeLang = currentBasis?.techTier?.frontend?.language;
-    const initFeFw = currentBasis?.techTier?.frontend?.framework;
-    const initBeLang = currentBasis?.techTier?.backend?.language;
-    const initBeFw = currentBasis?.techTier?.backend?.framework;
-
-    const initActiveTier: 'techTier' | 'visualTier' = basisSlot.techTier ? 'techTier' : 'visualTier';
-
-    let initStepIndex = 0;
-    if (initActiveTier === 'techTier') {
-      if (initStack === 'fullstack') {
-        const layerValues: (string | undefined | null)[] = [];
-        if (!basisSlot.defaults?.stack) layerValues.push(initStack);
-        layerValues.push(initFeLang);
-        layerValues.push(initFeFw);
-        layerValues.push(initBeLang);
-        layerValues.push(initBeFw);
-        const firstEmpty = layerValues.findIndex(v => v === undefined);
-        initStepIndex = firstEmpty === -1 ? layerValues.length - 1 : firstEmpty;
-      } else {
-        const layerValues: (string | undefined | null)[] = [];
-        if (!basisSlot.defaults?.stack) layerValues.push(initStack);
-        if (initStack) layerValues.push(initLang);
-        layerValues.push(initFw);
-        const firstEmpty = layerValues.findIndex(v => v === undefined);
-        initStepIndex = firstEmpty === -1 ? layerValues.length - 1 : firstEmpty;
-      }
-    } else {
-      const visValues = [
-        currentBasis?.visualTier?.visualLanguage,
-        currentBasis?.visualTier?.surfaceSystem,
-      ];
-      const firstEmpty = visValues.findIndex(v => v === undefined);
-      initStepIndex = firstEmpty === -1 ? visValues.length - 1 : firstEmpty;
-    }
-
-    const techSel: BasisWizardState['selections']['techTier'] = {
-      stack: initStack,
-      language: initLang,
-      framework: initFw,
-      feLanguage: initFeLang,
-      feFramework: initFeFw,
-      beLanguage: initBeLang,
-      beFramework: initBeFw,
-    };
-
-    if (initStack && !initLang && !initFeLang) {
-      autoSelectLanguage(initStack, techSel);
-    }
-
+    // Always start at the first step of the active tier, even when the saved
+    // basis already has every field. Jumping straight to the last layer hides
+    // upstream context the user might want to revisit; the cascade-prune /
+    // auto-advance flow keeps it cheap to skim through. `switchTier` enforces
+    // the same rule when crossing tiers.
     return {
-      activeTier: initActiveTier,
-      stepIndex: initStepIndex,
+      activeTier: pickInitialTier(basisSlot, initialTier),
+      stepIndex: 0,
       selections: {
-        techTier: techSel,
+        techTier: {
+          stack: currentBasis?.techTier?.stack ?? basisSlot.defaults?.stack,
+          language: currentBasis?.techTier?.frontend?.language ?? currentBasis?.techTier?.backend?.language,
+          framework: currentBasis?.techTier?.frontend?.framework ?? currentBasis?.techTier?.backend?.framework,
+          feLanguage: currentBasis?.techTier?.frontend?.language,
+          feFramework: currentBasis?.techTier?.frontend?.framework,
+          beLanguage: currentBasis?.techTier?.backend?.language,
+          beFramework: currentBasis?.techTier?.backend?.framework,
+        },
         visualTier: {
           designSystem: currentBasis?.visualTier?.designSystem,
           visualLanguage: currentBasis?.visualTier?.visualLanguage,
@@ -191,31 +190,55 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
     [actionMetadata.refs, actionMetadata.context],
   );
 
-  const hasVisualTier = useMemo(
-    () => isVisualTierActive(basisSlot, currentTechTierForGate, hasUiDoc),
-    [basisSlot, currentTechTierForGate, hasUiDoc],
+  // Per-tier runtime gate. Static `isConfigured` is necessary but not
+  // sufficient — Visual Tier additionally collapses for backend-only stacks
+  // and when a UI design doc already authoritatively defines the visual
+  // policy (SSOT'd with BE via `isVisualTierActive`). New tiers add their
+  // own case here; the default is "configured ⇒ available".
+  const isTierAvailable = useCallback((tier: TierKey): boolean => {
+    const def = TIER_REGISTRY.find((t) => t.id === tier);
+    if (!def?.isConfigured(basisSlot)) return false;
+    switch (tier) {
+      case 'techTier':
+        return true;
+      case 'visualTier':
+        return isVisualTierActive(basisSlot, currentTechTierForGate, hasUiDoc);
+    }
+  }, [basisSlot, currentTechTierForGate, hasUiDoc]);
+
+  const availableTiers = useMemo<TierKey[]>(
+    () => TIER_REGISTRY.map((t) => t.id).filter(isTierAvailable),
+    [isTierAvailable],
   );
 
-  const techSteps = useMemo((): WizardStepDef[] => {
-    if (!hasTechTier) return [];
-    const steps: WizardStepDef[] = [];
-    if (!hasDefaultStack) steps.push(TECH_STEPS[0]);
-    if (isFullstack) {
-      steps.push(...FULLSTACK_STEPS);
-    } else {
-      steps.push(TECH_STEPS[1]);
-      steps.push(TECH_STEPS[2]);
-    }
-    return steps;
-  }, [hasTechTier, hasDefaultStack, isFullstack]);
+  const hasVisualTier = isTierAvailable('visualTier');
 
-  const visualSteps = useMemo((): WizardStepDef[] => {
-    if (!hasVisualTier) return [];
-    return [...VISUAL_STEPS];
-  }, [hasVisualTier]);
+  // Cascade prune: when an upstream layer resolves to AUTO/undefined, downstream
+  // steps are dropped from the wizard entirely. "Not set = auto-detect" is the
+  // SSOT for UI — we never force the user through a step whose context already
+  // says "let the system decide". `getOptionsForStep`'s `isReal()` gating is
+  // kept as defense-in-depth against a future regression here.
+  const techSteps = useMemo(
+    () => computeTechSteps(state.selections, hasTechTier, hasDefaultStack),
+    [state.selections, hasTechTier, hasDefaultStack],
+  );
+
+  const visualSteps = useMemo(
+    () => computeVisualSteps(state.selections, hasVisualTier),
+    [state.selections, hasVisualTier],
+  );
 
   const activeSteps = state.activeTier === 'techTier' ? techSteps : visualSteps;
   const currentStep = activeSteps[state.stepIndex];
+
+  // Cascade prune (techSteps/visualSteps useMemo) can shrink activeSteps below
+  // the current stepIndex (e.g. user picks AUTO on language → framework step
+  // disappears). Clamp so we never index past the end.
+  useEffect(() => {
+    if (state.stepIndex >= activeSteps.length) {
+      setState(prev => ({ ...prev, stepIndex: Math.max(0, activeSteps.length - 1) }));
+    }
+  }, [activeSteps.length, state.stepIndex]);
 
   const getOptionsForStep = useCallback((step: WizardStepDef): BasisOption[] => {
     const { layerKey } = step;
@@ -226,16 +249,16 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
         case 'stack':
           return STACK_OPTIONS;
         case 'language': {
-          const stack = sel.techTier.stack as SupportedStack | undefined;
+          const stack = isReal(sel.techTier.stack) ? (sel.techTier.stack as SupportedStack) : undefined;
           if (!stack) return [];
           return TECH_TIER_LANGUAGES.filter(opt =>
             (VALID_LANGUAGES_BY_STACK[stack] as readonly string[])?.includes(opt.id),
           );
         }
         case 'framework': {
-          const stack = sel.techTier.stack as SupportedStack | undefined;
-          const lang = sel.techTier.language as SupportedLanguage | undefined;
-          if (!stack || !lang) return [];
+          const stack = isReal(sel.techTier.stack) ? (sel.techTier.stack as SupportedStack) : undefined;
+          const lang = isReal(sel.techTier.language) ? (sel.techTier.language as SupportedLanguage) : undefined;
+          if (!stack || !lang || stack === 'fullstack') return [];
           return getFrameworkOptions(stack as 'frontend' | 'backend', lang);
         }
         case 'feLanguage':
@@ -243,7 +266,7 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
             (VALID_LANGUAGES_BY_STACK['frontend'] as readonly string[])?.includes(opt.id),
           );
         case 'feFramework': {
-          const lang = sel.techTier.feLanguage as SupportedLanguage | undefined;
+          const lang = isReal(sel.techTier.feLanguage) ? (sel.techTier.feLanguage as SupportedLanguage) : undefined;
           if (!lang) return [];
           return getFrameworkOptions('frontend', lang);
         }
@@ -252,7 +275,7 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
             (VALID_LANGUAGES_BY_STACK['backend'] as readonly string[])?.includes(opt.id),
           );
         case 'beFramework': {
-          const lang = sel.techTier.beLanguage as SupportedLanguage | undefined;
+          const lang = isReal(sel.techTier.beLanguage) ? (sel.techTier.beLanguage as SupportedLanguage) : undefined;
           if (!lang) return [];
           return getFrameworkOptions('backend', lang);
         }
@@ -292,7 +315,6 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
               techSel.feFramework = undefined;
               techSel.beLanguage = undefined;
               techSel.beFramework = undefined;
-              autoSelectLanguage(value, techSel);
             }
             break;
           case 'language':
@@ -322,14 +344,28 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
         next.selections.visualTier = visSel;
       }
 
-      const isLastStep = prev.stepIndex >= activeSteps.length - 1;
-      const nextStep = activeSteps[prev.stepIndex + 1];
+      // AUTO selection prunes downstream steps. Don't advance — the user's
+      // intent ("let it auto-detect") is fully expressed without further input.
+      const valueIsAuto = value === AUTO;
+      if (valueIsAuto) return next;
+
+      // Compute the *post-pick* step set. Critical: judging `isLastStep` from
+      // the closure-captured `activeSteps` is wrong, because picking a real
+      // upstream value (e.g. stack=frontend on initial render where activeSteps
+      // was [stack]) un-prunes downstream steps. Recompute from the new
+      // selections so the natural advance happens on the first click.
+      const newActiveSteps = step.tierKey === 'techTier'
+        ? computeTechSteps(next.selections, hasTechTier, hasDefaultStack)
+        : computeVisualSteps(next.selections, hasVisualTier);
+
+      const isLastStep = prev.stepIndex >= newActiveSteps.length - 1;
+      const nextStep = newActiveSteps[prev.stepIndex + 1];
       const isGroupBoundary = !!step.group && !!nextStep?.group && step.group !== nextStep.group;
 
       if (isLastStep || isGroupBoundary) return next;
       return { ...next, stepIndex: prev.stepIndex + 1 };
     });
-  }, [activeSteps, state.stepIndex]);
+  }, [activeSteps, state.stepIndex, hasTechTier, hasDefaultStack, hasVisualTier]);
 
   const goToStep = useCallback((index: number) => {
     setState(prev => {
@@ -366,7 +402,7 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
     });
   }, [techSteps, visualSteps]);
 
-  const switchTier = useCallback((tier: 'techTier' | 'visualTier') => {
+  const switchTier = useCallback((tier: TierKey) => {
     setState(prev => ({
       ...prev,
       activeTier: tier,
@@ -393,18 +429,13 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
     [state.selections],
   );
 
-  const isTierSaved = useCallback((tier: 'techTier' | 'visualTier') => {
-    const saved = savedBasisRef.current;
-    if (tier === 'techTier') return !!saved?.techTier;
-    return !!saved?.visualTier;
+  const isTierSaved = useCallback((tier: TierKey): boolean => {
+    return !!savedBasisRef.current?.[tier];
   }, []);
 
   const allTiersSaved = useMemo(() => {
-    const saved = savedBasisRef.current;
-    const techOk = !hasTechTier || !!saved?.techTier;
-    const visOk = !hasVisualTier || !!saved?.visualTier;
-    return techOk && visOk;
-  }, [hasTechTier, hasVisualTier, savedBasisRef.current]);
+    return availableTiers.every((tier) => isTierSaved(tier));
+  }, [availableTiers, isTierSaved]);
 
   const hasPendingChanges = useMemo(() => {
     return JSON.stringify(draftBasis) !== JSON.stringify(savedBasisRef.current);
@@ -465,8 +496,11 @@ export function useBasisWizard(basisSlot: BasisSlotConfig) {
     activeSteps,
     currentStep,
     isFullstack,
-    hasTechTier,
-    hasVisualTier,
+    /** Tiers currently available (configured + runtime-gated), in registry order. */
+    availableTiers,
+    /** Per-tier availability check; pairs with `availableTiers` for callers
+     *  that just want a boolean for a specific tier. */
+    isTierAvailable,
     derivedLayers,
     draftBasis,
     savedBasis: savedBasisRef.current,

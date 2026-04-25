@@ -22,6 +22,7 @@ export function ActionsPanel() {
   const setActionsStep = useStore(s => s.setActionsStep);
   const selectAction = useStore(s => s.selectAction);
   const selectIntent = useStore(s => s.selectIntent);
+  const basisEditInitialTier = useStore(s => s.basisEditInitialTier);
 
   const stepDirRef = useRef<1 | -1>(1);
   const prevStepRef = useRef(step);
@@ -172,6 +173,7 @@ export function ActionsPanel() {
               basisSlot={slots.basis}
               onBack={() => setActionsStep('config')}
               lang={lang}
+              initialTier={basisEditInitialTier}
             />
           </div>
         );
