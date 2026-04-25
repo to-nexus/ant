@@ -951,6 +951,14 @@ export class LLMResponseService {
    * clear + re-append since the StateStorePort lacks a single-shot
    * "set whole buffer" primitive; the operation is idempotent and the
    * key TTL is refreshed on every write.
+   *
+   * After the Redis write succeeds, broadcasts a
+   * `streaming_buffer_snapshot` SSE so the FE projector clears its
+   * in-memory `streamingBuffers[key]` mirror. Without this signal the
+   * FE keeps the previously streamed `activeText`/`activeThinking` and
+   * renders it as an overlay alongside the durable `assistant_message`
+   * / `assistant_thinking` ChatLine, producing duplicate text in the
+   * UI (chat-SSOT regression seen in detect/decompose phases).
    */
   private async replaceTurnBuffer(
     turnId: string,
@@ -977,6 +985,18 @@ export class LLMResponseService {
           await this.stateStore.setTurnBufferPendingCard(sessionKey, turnId, scope, card);
         }
       }
+      this.broadcaster.broadcastStreamingBufferSnapshot(
+        this.turnContext.context.projectId,
+        this.turnContext.context.featureName,
+        {
+          turnId,
+          workerScope: this.workerScopeForLine(),
+          text: next.text,
+          thinking: next.thinking,
+          pendingCards: next.pendingCards,
+        },
+        this.turnContext.context.userContext,
+      );
     } catch (err) {
       logger.warn(`replaceTurnBuffer failed`, { component: 'LLMResponseService' }, err);
     }
