@@ -319,7 +319,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         type: state.currentTask.type,
         priority: state.currentTask.priority,
         description: state.currentTask.description,
-        selfVerifyOnDone: state.currentTask.selfVerifyOnDone === true,
       } : null,
       directive: execHook?.sanitizeDirective
         ? execHook.sanitizeDirective(state.directive || '')

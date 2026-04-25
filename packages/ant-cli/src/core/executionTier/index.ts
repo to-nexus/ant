@@ -12,7 +12,10 @@
  *   Tier 0 Reflex       → direct path, read-only textual answer.
  *   Tier 1 OneShot      → direct path, verification-unneeded write only.
  *   Tier 2 Exploratory  → task path, exactly 1 task with `selfVerifyOnDone`
- *                         (single unit of work, task owns inline verification).
+ *                         (single unit of work, two-cycle apply→reverify
+ *                         within the same task — verify-mode dispatched via
+ *                         `tasks/_shared/verify/` once `executeRouter`'s
+ *                         `<done>` arm flips `_verifyEntered=true`).
  *   Tier 3 Task         → task path, >= 2 tasks with mandatory verification.
  *   Tier 4 RefsGrounded → task path, >= 2 tasks, refs-grounded breakdown.
  *

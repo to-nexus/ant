@@ -208,7 +208,7 @@ export interface SessionState {
    *
    * Typed as `unknown` to keep `core/types/session.ts` free of
    * code-job-specific imports; the concrete shape is `VerificationSnapshot`
-   * (see `agents/architect/graph/code/tasks/verification/model/snapshot.ts`).
+   * (see `agents/architect/graph/code/tasks/_shared/verify/snapshot.ts`).
    */
   verification?: unknown;
 

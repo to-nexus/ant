@@ -43,12 +43,12 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       figmaFileKey: state.figmaFileKey,
       activePhase: state._activePhase as 'plan' | 'execute' | undefined,
       currentTaskType: (state.currentTask as any)?.type,
-      // Tier-Verification Alignment: Tier 2 Exploratory self-verify flag flows from the
-      // task into the command-policy layer. When true, task-type guards lift
-      // the default build/test/typecheck block so the task can run its own
-      // verification gate chain before emitting <done>true</done>.
-      currentTaskSelfVerifyOnDone:
-        (state.currentTask as any)?.selfVerifyOnDone === true ? true : undefined,
+      // Note: `currentTaskSelfVerifyOnDone` was retired with the verify-shared
+      // refactor. Verify-mode dispatch is now signalled exclusively by
+      // `state.verification` (Session presence) → `ctx.verificationSession`
+      // populated below. Apply-phase command guards no longer need the
+      // selfVerifyOnDone flag because gate commands are uniformly blocked in
+      // apply phase (the verify cycle re-runs them in reverify).
       // Batch-split sub-tasks carry a non-empty `prePlanText` injected by
       // `processDiagnosticBatchSplit`. Surface this as a flat flag so
       // task-type command guards (test-code install block) can reject

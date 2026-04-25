@@ -8,6 +8,7 @@ import {
 } from "../../../common/graph/runnerHelpers";
 import { VerificationSession } from "./tasks/_shared/verify/Session";
 import type { VerificationSnapshot } from "./tasks/_shared/verify/snapshot";
+import { markVerifyEntered } from "./tasks/_shared/verify/markVerifyEntered";
 
 /**
  * Code Graph Runner
@@ -117,10 +118,20 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
         // Wiring the session onto `initial.verification` here ensures the
         // plan/tool/check hooks observe the persisted cycle from the first
         // node entry rather than constructing a fresh zero-attempt one.
+        //
+        // Also restores `_verifyEntered=true` because the persisted snapshot
+        // is the runtime witness that the resumed task already crossed into
+        // verify-mode (mirroring the worker-level restoration in
+        // `_shared/verify/orchestrator.ts::restoreIntoWorkerState`). Without
+        // this, a Tier 2 self-verify task interrupted mid-reverify would
+        // resume with `_verifyEntered=false`, routing the next plan/execute
+        // through the apply-phase hooks (composeBundle wrappers gate on
+        // `isVerifyEntered(state)`).
         if (session.state.verification !== undefined) {
           initial.verification = VerificationSession.rehydrate(
             session.state.verification as VerificationSnapshot | null,
           );
+          markVerifyEntered(initial as ArchitectGraphState);
         }
       } else if (session?.state && process.env.ANT_IS_RESUME === 'true') {
         // Restore partial state from early-interrupted session (triage/detectEnv stage)

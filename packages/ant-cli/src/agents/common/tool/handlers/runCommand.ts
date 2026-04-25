@@ -307,7 +307,7 @@ async function makeRejection(
  * the `verifies` propagation so every `runCommand` exit path (early
  * rejection, long-run, stub, stall, server-detected, completion, error)
  * carries the LLM's gate-intent declaration into the verification session
- * via `tasks/verification/hooks/tool.ts::onEvent`.
+ * via `tasks/_shared/verify/toolHook.ts::onEvent`.
  *
  * `verifies` is optional — non-gate commands (install, ls, cat, edits)
  * legitimately omit it.

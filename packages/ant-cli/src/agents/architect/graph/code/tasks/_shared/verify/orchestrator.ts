@@ -33,8 +33,10 @@
  */
 
 import type { CodeTask } from '../../../../types/task';
+import type { ArchitectGraphState } from '../../../state';
 import { VerificationSession } from './Session';
 import type { VerificationSnapshot } from './snapshot';
+import { markVerifyEntered } from './markVerifyEntered';
 
 /** True — verification responsibility holders own a unified attempt counter. */
 export const hasOwnAttemptCounter = true;
@@ -60,6 +62,16 @@ export function attemptCount(task: CodeTask): number {
  * Populate worker graph state from a resumed snapshot. Runs at worker
  * startup so downstream phases see a rehydrated `VerificationSession` on
  * `state.verification` from the very first node entry.
+ *
+ * Also restores `_verifyEntered=true` because the snapshot itself is the
+ * runtime witness that the task crossed into verify-mode at least once
+ * before the interruption. Without this restoration, a Tier 2 self-verify
+ * task interrupted mid-reverify would resume with `_verifyEntered=false`,
+ * which would route the next plan/execute through the apply-phase hooks
+ * (the dispatch wrappers in `composeBundle` gate on `isVerifyEntered(state)`).
+ * The verification task's behaviour is unaffected because its plan node's
+ * `initSession` flips the flag at the first fresh-entry anyway, but the
+ * restoration is symmetric across both task identities.
  */
 export function restoreIntoWorkerState(
   workerState: Record<string, unknown>,
@@ -68,4 +80,8 @@ export function restoreIntoWorkerState(
   if (!resume || typeof resume !== 'object') return;
   const snap = resume as VerificationSnapshot;
   workerState.verification = VerificationSession.rehydrate(snap);
+  // Use the canonical writer helper so the single-writer regression
+  // guard (`tests/verification/unit/selfVerifyShared.test.ts`) stays
+  // green without listing this file as an exception.
+  markVerifyEntered(workerState as ArchitectGraphState);
 }

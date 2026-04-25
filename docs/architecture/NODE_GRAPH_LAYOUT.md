@@ -153,7 +153,8 @@ Phase layer (phase `nodes/`, `routers/`, `parallel/`, common/tool handlers) 가 
 state에 새 필드 추가 충동이 생기면 먼저 "이것은 `tasks/{taskType}/model/` 안에 속하는가?"를 물어라.
 
 - state에는 **cross-task 공통 필드만** 남긴다.
-- task type별 state는 `state.{type}` 한 필드(Session 인스턴스)에 응집. 예: `state.verification?: VerificationSession`.
+- task type별 state는 `state.{type}` 한 필드(Session 인스턴스)에 응집. 예: `state.verification?: VerificationSession` (verification 책임 단위, `tasks/_shared/verify/Session.ts`).
+- 검증 책임은 task type 단위가 아니라 행동 단위로 응집. `tasks/_shared/verify/` 가 SSOT 이며 verification task type 과 Tier 2 self-verify task (`selfVerifyOnDone:true`) 가 공유. 분기 predicate: `requiresVerification(task)`. phase mode 채널: `state._verifyEntered` (single writer: `markVerifyEntered.ts`).
 - 새 필드 1개 추가 ⇒ 기존 필드 1개 이상 제거를 목표("Axis N+1 금지").
 
 ### R5 (cross-job promotion)
@@ -170,7 +171,7 @@ cross-job 공유 task 도메인이 생기면 `common/graph/tasks/{taskType}/` �
 |---|---|---|
 | phase 노드에 `if (task.type === 'x')` | R1 | `tasks/x/hooks/{phase}.ts` |
 | router가 `state.llmResponse = ...` 같은 mutation | R1 | plan 노드가 `Partial<State>` 반환, router는 읽기만 |
-| `utils/verificationFoo.ts` 같은 도메인명 utils | R3 | `tasks/verification/model/foo.ts` 또는 `hooks/` |
+| `utils/verificationFoo.ts` 같은 도메인명 utils | R3 | `tasks/_shared/verify/foo.ts` (verification 책임자 공통) 또는 `tasks/{type}/hooks/` (task type 고유) |
 | state에 `_fooTracker`, `_fooAttempts` 등 type-local 필드 누적 | R4 | `state.foo?: FooSession` SSOT + `tasks/foo/model/` |
 | tool handler가 `{ currentTask: { type } } as any` fake cast | R1 | `hooksForTaskType(ctx.currentTaskType)` |
 | `TaskResumeState` 하나에 모든 job 필드가 섞임 | R5 | `BaseTaskResumeState` + `{Job}TaskResumeState` |

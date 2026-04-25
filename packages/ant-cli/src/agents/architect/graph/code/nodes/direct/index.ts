@@ -10,8 +10,10 @@
  *
  * Tier 2+ cases route to the task pipeline (plan → execute →
  * checkTaskStatus) — single-unit work at Tier 2 runs as 1 task with
- * `selfVerifyOnDone` so verification is owned by the task itself; Tier 3/4
- * decompose into >= 2 tasks with a mandatory verification task.
+ * `selfVerifyOnDone:true` and follows a two-cycle apply→reverify
+ * lifecycle within the same task (verify-mode dispatched through
+ * `tasks/_shared/verify/`); Tier 3/4 decompose into >= 2 tasks with a
+ * mandatory verification task.
  *
  * Tool policy: explain mode → read-only set; generate/refactor → full code set.
  * Loop budget derived from tier via `tierToDirectMode`:

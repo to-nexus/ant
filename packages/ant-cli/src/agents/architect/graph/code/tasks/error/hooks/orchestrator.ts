@@ -4,11 +4,14 @@
  * Defense-in-depth fallback under the Tier-Verification Alignment SSOT.
  *
  * Primary paths (decompose / batchSplit SSOT):
- *   - Tier 2 error task, completes without split: ships with
- *     `selfVerifyOnDone: true` — the single task owns its own
- *     install/typecheck/build/test gates inline. No subsequent Final
- *     Verification is needed, and this hook is a NOOP for Tier 2 tasks
- *     (gated by the `selfVerifyOnDone` check below).
+ *   - Tier 2 error task (decompose-time `selfVerifyOnDone:true`): runs
+ *     a two-cycle apply→reverify lifecycle within the same task. The
+ *     reverify cycle uses the shared `_shared/verify/` infrastructure
+ *     (Session, plan/execute/command/check/router) to enforce gates.
+ *     By the time `onTaskComplete` fires, all gates have already passed
+ *     (the task only completes after `Session.isComplete()`). No
+ *     subsequent Final Verification is needed, and this hook is a NOOP
+ *     for Tier 2 tasks (gated by the `selfVerifyOnDone` check below).
  *   - Tier 2 escalate / Tier 3+ error batch-split (batchSplit Path B):
  *     `batchSplit.ts` drops the original task and enqueues N sub-tasks
  *     (type inherits parent for Tier 2 escalate, 'error' for Tier 3+
@@ -64,10 +67,14 @@ export function onTaskComplete(ctx: TaskCompleteCtx): void {
   if (!taskQueue) return;
   if (task.type !== 'error') return;
 
-  // Tier-Verification Alignment: Tier 2 error tasks own inline self-verify.
-  // Auto-enqueueing a Final Verification here would double-verify the same
-  // single-unit work and violate the "tasks.length === 1" invariant of
-  // Tier 2. NEVER fire for Tier 2 (detected via selfVerifyOnDone).
+  // Tier-Verification Alignment: Tier 2 error tasks own a two-cycle
+  // apply→reverify lifecycle within the same task (verify-mode dispatched
+  // through `_shared/verify/` after `executeRouter.routeAfterDone` flips
+  // `_verifyEntered=true`). By the time onTaskComplete fires the task has
+  // already passed every gate via `Session.isComplete()` — auto-enqueueing
+  // a Final Verification would double-verify the same single-unit work
+  // and violate the "tasks.length === 1" invariant of Tier 2. NEVER fire
+  // for Tier 2 (detected via selfVerifyOnDone — the decompose-time marker).
   if ((task as any).selfVerifyOnDone === true) return;
 
   if (hasFinalVerification(queueSnapshot, runningSnapshot, completedSnapshot)) return;
