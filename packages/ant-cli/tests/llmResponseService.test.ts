@@ -206,6 +206,37 @@ function emittedDeltas(store: FakeStateStore): any[] {
     .filter((d: any) => d.type === 'streaming_delta');
 }
 
+function emittedSnapshots(store: FakeStateStore): any[] {
+  return store.publishedEnvelopes
+    .map((env) => env.data)
+    .filter((d: any) => d.type === 'streaming_buffer_snapshot');
+}
+
+/**
+ * Flatten the publish stream into ordered tuples of `[type, summary]` so
+ * tests can assert on relative order between `chat_event_appended` and
+ * `streaming_buffer_snapshot` events.
+ */
+function emittedSequence(store: FakeStateStore): Array<{ type: string; summary: any }> {
+  return store.publishedEnvelopes
+    .map((env) => env.data)
+    .filter((d: any) =>
+      d.type === 'chat_event_appended' || d.type === 'streaming_buffer_snapshot',
+    )
+    .map((d: any) =>
+      d.type === 'chat_event_appended'
+        ? { type: d.type, summary: { lineType: d.event.type, text: (d.event as any).text } }
+        : {
+            type: d.type,
+            summary: {
+              text: d.text,
+              thinking: d.thinking,
+              hasPendingCards: !!(d.pendingCards && Object.keys(d.pendingCards).length > 0),
+            },
+          },
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────
@@ -518,6 +549,100 @@ describe('LLMResponseService — lifecycle compat', () => {
     const cardId = await service.showChatStatus('retrieving', { query: 'q' });
     await service.removeChatStatus(cardId!);
     expect(store.clearPendingCardCalls.map((c) => c.cardId)).toContain(cardId);
+  });
+});
+
+describe('LLMResponseService — flush broadcasts streaming_buffer_snapshot', () => {
+  it('flushTextBuffer emits assistant_message THEN streaming_buffer_snapshot(text=undefined)', async () => {
+    const { service, store } = makeService();
+    await service.streamTextChunk('detect summary');
+    await service.flushTextBuffer();
+
+    const seq = emittedSequence(store);
+    // Filter out the streaming_delta events; sequence already excludes them.
+    expect(seq).toEqual([
+      {
+        type: 'chat_event_appended',
+        summary: { lineType: 'assistant_message', text: 'detect summary' },
+      },
+      {
+        type: 'streaming_buffer_snapshot',
+        summary: { text: undefined, thinking: undefined, hasPendingCards: false },
+      },
+    ]);
+  });
+
+  it('flushThinkingBuffer emits assistant_thinking THEN streaming_buffer_snapshot(thinking=undefined)', async () => {
+    const { service, store } = makeService();
+    await service.streamThinkingChunk('reasoning');
+    await service.flushThinkingBuffer();
+
+    const seq = emittedSequence(store);
+    expect(seq).toEqual([
+      {
+        type: 'chat_event_appended',
+        summary: { lineType: 'assistant_thinking', text: 'reasoning' },
+      },
+      {
+        type: 'streaming_buffer_snapshot',
+        summary: { text: undefined, thinking: undefined, hasPendingCards: false },
+      },
+    ]);
+  });
+
+  it('two consecutive flush cycles each clear the buffer (detect → decompose regression)', async () => {
+    // Repro of the chat-SSOT regression: detect + decompose-final each
+    // run streamTextChunk → flushTextBuffer; without the snapshot
+    // broadcast the FE mirror never resets and accumulates stale text.
+    const { service, store } = makeService();
+
+    await service.streamTextChunk('detect output');
+    await service.flushTextBuffer();
+    await service.streamTextChunk('decompose-final output');
+    await service.flushTextBuffer();
+
+    const seq = emittedSequence(store);
+    expect(seq).toEqual([
+      {
+        type: 'chat_event_appended',
+        summary: { lineType: 'assistant_message', text: 'detect output' },
+      },
+      {
+        type: 'streaming_buffer_snapshot',
+        summary: { text: undefined, thinking: undefined, hasPendingCards: false },
+      },
+      {
+        type: 'chat_event_appended',
+        summary: { lineType: 'assistant_message', text: 'decompose-final output' },
+      },
+      {
+        type: 'streaming_buffer_snapshot',
+        summary: { text: undefined, thinking: undefined, hasPendingCards: false },
+      },
+    ]);
+
+    // Each snapshot also targets the same (turnId, workerScope) pair so
+    // the FE replaces the matching buffer key.
+    const snapshots = emittedSnapshots(store);
+    for (const snap of snapshots) {
+      expect(snap.turnId).toBe('turn-1');
+      expect(snap.workerScope).toBeUndefined();
+    }
+  });
+
+  it('flushTextBuffer preserves pendingCards in the snapshot', async () => {
+    const { service, store } = makeService();
+    await service.registerPendingCard('card-keep', 'reading', { filePath: 'a.ts' });
+    await service.streamTextChunk('text-to-flush');
+    await service.flushTextBuffer();
+
+    const snapshots = emittedSnapshots(store);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0].text).toBeUndefined();
+    expect(snapshots[0].pendingCards?.['card-keep']).toMatchObject({
+      cardId: 'card-keep',
+      statusType: 'reading',
+    });
   });
 });
 
