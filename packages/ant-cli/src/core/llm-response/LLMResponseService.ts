@@ -400,33 +400,43 @@ export class LLMResponseService {
     if (!this.enabled || !cardId) return;
     const turnId = this.getTurnId();
     if (!turnId) return;
+    const sessionKey = this.turnContext.context.sessionKey;
+    const scope = this.turnContext.getWorkerScopeKey();
     const card: PendingCardSnapshot = {
       cardId,
       statusType,
       metadata: { ...(metadata ?? {}) },
     };
     await this.stateStore
-      .setTurnBufferPendingCard(
-        this.turnContext.context.sessionKey,
-        turnId,
-        this.turnContext.getWorkerScopeKey(),
-        card,
-      )
+      .setTurnBufferPendingCard(sessionKey, turnId, scope, card)
       .catch((err) =>
         logger.warn(`setTurnBufferPendingCard failed`, { component: 'LLMResponseService' }, err),
       );
-    // Emit a zero-length card_output delta so the FE renders the loading
-    // shell even before the first chunk arrives. Chunk='' is an explicit
-    // "card just registered" hint — the FE applies it as an upsert.
-    this.broadcaster.broadcastStreamingDelta(
+    // Broadcast the FULL buffer snapshot so the FE projector has the
+    // correct `statusType` for the new pendingCard before any non-empty
+    // `card_output` chunk arrives. The `streaming_delta` schema only
+    // carries `cardId + chunk` — no `statusType` — so a zero-length
+    // delta cannot communicate "this is a plan_generating /
+    // file_creating / … shell". The FE's `applyStreamingDelta` correctly
+    // drops empty chunks and would otherwise default-fallback to
+    // `statusType: 'tool_action'` on the first real chunk, producing a
+    // wrongly-typed loading shell visible during live streaming.
+    // Reading the buffer back after our `setTurnBufferPendingCard`
+    // write keeps the snapshot atomically consistent with any other
+    // in-flight `text` / `thinking` / `pendingCards` in the same
+    // (turnId, workerScope).
+    const buffer = await this.stateStore
+      .getTurnBuffer(sessionKey, turnId, scope)
+      .catch(() => null);
+    this.broadcaster.broadcastStreamingBufferSnapshot(
       this.turnContext.context.projectId,
       this.turnContext.context.featureName,
       {
         turnId,
         workerScope: this.workerScopeForLine(),
-        kind: 'card_output',
-        cardId,
-        chunk: '',
+        text: buffer?.text,
+        thinking: buffer?.thinking,
+        pendingCards: buffer?.pendingCards,
       },
       this.turnContext.context.userContext,
     );

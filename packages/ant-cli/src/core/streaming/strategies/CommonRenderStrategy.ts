@@ -119,9 +119,20 @@ export class CommonRenderStrategy implements IRenderStrategy {
         
       case 'plan_content': {
         const planChunk = action.data.content || '';
-        if (planChunk) {
-          this.planContentBuffer += planChunk;
-          await this.chatAPI.showChatStatus('plan_generating', { content: planChunk });
+        if (!planChunk) break;
+        this.planContentBuffer += planChunk;
+        // Defensive lazy-mint: in normal flow `plan_start` lands first
+        // and seeds `planContentIndex`. If a parser variant or partial
+        // retry stream skips it we still anchor a single cardId here so
+        // every subsequent chunk lands on the same pendingCard rather
+        // than fragmenting the TURN_BUFFER.
+        if (this.planContentIndex === undefined) {
+          this.planContentIndex = await this.chatAPI.showChatStatus('plan_generating', {
+            ...(this.planTaskTitle ? { taskName: this.planTaskTitle } : {})
+          });
+        }
+        if (this.planContentIndex) {
+          await this.chatAPI.streamPlanChunk(this.planContentIndex, planChunk);
         }
         break;
       }

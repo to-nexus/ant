@@ -374,6 +374,29 @@ export class ChatAPIClient {
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  // Plan streaming
+  // ─────────────────────────────────────────────────────────────────────
+
+  /**
+   * Append a plan_content chunk to the pendingCard locked at plan_start.
+   *
+   * Mirrors the file/command streaming pattern: a single cardId is minted
+   * once (via `showChatStatus('plan_generating', …)`) and every subsequent
+   * chunk is appended to that card's `streamedOutput` in the TURN_BUFFER.
+   *
+   * Without this primitive, callers were routing each chunk through
+   * `showChatStatus('plan_generating', …)` which fell into
+   * `LLMResponseService.showChatStatus`'s mint-new-cardId branch on every
+   * call, producing N pendingCard entries that re-surfaced as N separate
+   * cards on SSE reconnect / refresh.
+   */
+  async streamPlanChunk(cardId: string, chunk: string): Promise<void> {
+    if (!this.enabled || !cardId || !chunk) return;
+    const service = await getLLMResponseService();
+    await service?.streamCardOutput(cardId, chunk);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
   // Legacy helpers
   // ─────────────────────────────────────────────────────────────────────
 
