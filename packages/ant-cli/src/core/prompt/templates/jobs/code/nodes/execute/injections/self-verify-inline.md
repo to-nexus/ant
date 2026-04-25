@@ -11,9 +11,9 @@
 **Constraint**: Run the gates in this order, advancing only after the prior gate passes:
 
 1. **Install (conditional)** — run the project's install command (`npm install` / `pnpm install` / `yarn` / `pip install -r` / `go mod tidy`, etc.) ONLY IF dependencies were added/changed during this task. Skip when no dependency edits occurred.
-2. **Typecheck** — run the project's typecheck command (`tsc --noEmit` / `pnpm typecheck` / `mypy .` / `go vet`, etc.) when the language/framework supports it. Skip only when the stack has no typecheck phase (plain JS, shell scripts).
-3. **Build** — run the project's build command (`next build` / `pnpm build` / `go build ./...` / `cargo build`, etc.). Always applicable.
-4. **Test** — run the project's test command (`pnpm test` / `pytest -q` / `go test ./...`, etc.) when the stack has tests. Skip only when the project explicitly has no test suite.
+2. **Typecheck** — run the project's typecheck command (`tsc --noEmit` / `pnpm typecheck` / `mypy .` / `go vet`, etc.) when the language/framework supports it. Set `verifies: 'typecheck'` on the `run_command` call. Skip only when the stack has no typecheck phase (plain JS, shell scripts).
+3. **Build** — run the project's build command (`next build` / `pnpm build` / `go build ./...` / `cargo build`, etc.). Set `verifies: 'build'`. Always applicable.
+4. **Test** — run the project's test command (`pnpm test` / `pytest -q` / `go test ./...`, etc.) when the stack has tests. Set `verifies: 'test'`. Skip only when the project explicitly has no test suite.
 
 **Constraint**: Use `run_command` with the EXACT command observable from the codebase's `package.json`/`Makefile`/`go.mod` context. Do NOT invent commands.
 

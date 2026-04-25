@@ -102,21 +102,13 @@ export function isDiagnosticInspectCommand(command: string): boolean {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Gate inference helpers
+// Gate inference — retired in favour of the LLM's `verifies` declaration on
+// `run_command`. The `gateForCommand` regex inferred gate identity from the
+// command string after the sequencer had already produced that information,
+// which split the SSOT across the executor (regex) and the sequencer
+// (intent). The hyphenated `npm run type-check` mismatch documented in
+// `docs/tmp/gate-classification-postmortem.md` was the canonical symptom.
+//
+// New SSOT: `run_command` tool call → `args.verifies` → `commandExecuted`
+// sideEffect.verifies → Session.onCommand. No regex inference anywhere.
 // ────────────────────────────────────────────────────────────────────────────
-
-/**
- * Infer which gate a command exercises. Returns `undefined` when the command
- * is not a recognised verification gate command — callers should treat that
- * as "command is unrelated to gate completion" (neither pass nor fail flips
- * a gate).
- */
-export function gateForCommand(command: string): Gate | undefined {
-  if (!command) return undefined;
-  const c = command.trim();
-  if (/\btsc\b/.test(c) && /(--noEmit|-p\s|\s-p\b)/.test(c)) return 'typecheck';
-  if (/\btypecheck\b/.test(c)) return 'typecheck';
-  if (/\btest\b/.test(c) && !/\btsc\b/.test(c)) return 'test';
-  if (/\bbuild\b/.test(c)) return 'build';
-  return undefined;
-}

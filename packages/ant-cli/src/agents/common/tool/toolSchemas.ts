@@ -11,6 +11,10 @@
 import type { ToolDefinition } from '../../../core/ports/llm';
 import type { PromptPort } from '../../../core/ports/prompt';
 import { ToolName, TOOL_SETS } from './toolCatalog';
+// Gate vocabulary SSOT lives in `tasks/verification/model/gates.ts`. We
+// derive the `run_command.verifies` enum from `GATE_ORDER` so the schema
+// cannot drift from the Session / sideEffect / hook surface.
+import { GATE_ORDER } from '../../architect/graph/code/tasks/verification/model/gates';
 
 export { ToolName, TOOL_SETS };
 
@@ -153,6 +157,11 @@ export const ARCHITECT_TOOLS = {
         keep_running: {
           type: 'boolean',
           description: 'For long-running servers: set to true to keep server running beyond task completion (very rare). Default: false (auto-cleanup)',
+        },
+        verifies: {
+          type: 'string',
+          enum: [...GATE_ORDER] as string[],
+          description: 'Verification gate this command exercises; omit when not a gate command.',
         },
       },
       required: ['command'],

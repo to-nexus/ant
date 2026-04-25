@@ -24,11 +24,7 @@
  */
 
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
-import {
-  isBuildCommand,
-  isTestCommand,
-  isTypecheckCommand,
-} from '../../../../../../common/tool/constants';
+import type { Gate } from '../../verification/model/gates';
 import { isDiagnosticInspectCommand } from '../../verification/model/gates';
 
 /**
@@ -47,9 +43,9 @@ function reject(command: string, reason: string): ToolResult {
 
 export function guard(
   ctx: ToolExecutionContext,
-  args: { command: string },
+  args: { command: string; verifies?: Gate },
 ): ToolResult | null {
-  const { command } = args;
+  const { command, verifies } = args;
 
   // Read-only inspection commands (cat/ls/pnpm why/tsc --version/etc.) are
   // always allowed — they don't mutate state and may be needed to confirm a
@@ -62,10 +58,12 @@ export function guard(
 
   // Execute-phase block (Tier 3/4 default): build/test/typecheck are the
   // diagnostic surface and belong to the dedicated verification task, not
-  // to fix-application. The verification task re-verifies automatically
-  // after the error task completes.
+  // to fix-application. Gate identity is the LLM's `verifies` declaration
+  // on the `run_command` call — the previous regex-based command-string
+  // inference was retired (see
+  // `docs/tmp/gate-classification-postmortem.md`).
   if (ctx.activePhase !== 'plan') {
-    if (isBuildCommand(command) || isTestCommand(command) || isTypecheckCommand(command)) {
+    if (verifies) {
       return reject(
         command,
         'BLOCKED: Error tasks apply fixes from the remediation plan and must not run build/test/typecheck. ' +

@@ -29,6 +29,7 @@
  */
 
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
+import type { Gate } from '../../verification/model/gates';
 
 /**
  * Match install / add commands across the Node / Python / Ruby / Rust
@@ -70,15 +71,29 @@ function reject(command: string, reason: string): ToolResult {
 
 /**
  * Block install-class commands when the current test-code task is a
- * batch-split sub-task. Returns `null` for every other command (and for
- * parent test-code tasks) so the common handler's default execution
- * path proceeds.
+ * batch-split sub-task, and reject any verification gate command (the
+ * `verifies` declaration is the SSOT — see
+ * `docs/tmp/gate-classification-postmortem.md`). Returns `null` for every
+ * other command (and for parent test-code tasks issuing non-install
+ * commands) so the common handler's default execution path proceeds.
  */
 export function guard(
   ctx: ToolExecutionContext,
-  args: { command: string },
+  args: { command: string; verifies?: Gate },
 ): ToolResult | null {
-  const { command } = args;
+  const { command, verifies } = args;
+
+  // Verification gates belong to the dedicated verification task — a
+  // test-code task (parent or sub) declaring `verifies` is a contract
+  // violation, regardless of phase.
+  if (verifies) {
+    return reject(
+      command,
+      'BLOCKED: Test-code tasks generate test files only and must not run verification gates. ' +
+        'Drop the `verifies` argument and write the test files for your assigned slice; ' +
+        'the next verification task runs typecheck/build/test once your tests are in place.',
+    );
+  }
 
   // Parent test-code tasks handle install in their plan tool-loop; guard
   // only fires on sub-tasks (`prePlanText` present). See the header for

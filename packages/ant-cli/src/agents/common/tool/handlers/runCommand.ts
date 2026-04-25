@@ -23,6 +23,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
+import type { Gate } from '../../../architect/graph/code/tasks/verification/model/gates';
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
 import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment } from '../../../../core/utils/shellParser';
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
@@ -291,13 +292,37 @@ async function makeRejection(
   command: string,
   displayText: string,
   mergeIndex: number | undefined,
+  verifies?: Gate,
 ): Promise<ToolResult> {
   const content = `[Policy] ${displayText}`;
   await ctx.chatStatus.commandComplete(command, false, -1, content);
   return {
     content,
-    sideEffects: [{ type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false }],
+    sideEffects: [makeCommandExecuted({ exitCode: -1, command, success: false, hasWarnings: false, verifies })],
   };
+}
+
+/**
+ * Single-call constructor for the `commandExecuted` side effect. Centralises
+ * the `verifies` propagation so every `runCommand` exit path (early
+ * rejection, long-run, stub, stall, server-detected, completion, error)
+ * carries the LLM's gate-intent declaration into the verification session
+ * via `tasks/verification/hooks/tool.ts::onEvent`.
+ *
+ * `verifies` is optional — non-gate commands (install, ls, cat, edits)
+ * legitimately omit it.
+ */
+function makeCommandExecuted(input: {
+  exitCode: number;
+  command: string;
+  success: boolean;
+  hasWarnings: boolean;
+  verifies?: Gate;
+}): ToolSideEffect {
+  const { exitCode, command, success, hasWarnings, verifies } = input;
+  const effect: ToolSideEffect = { type: 'commandExecuted', exitCode, command, success, hasWarnings };
+  if (verifies) (effect as { verifies?: Gate }).verifies = verifies;
+  return effect;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -384,7 +409,7 @@ export function createOutputStreamer(
 
 export async function handleRunCommand(
   ctx: ToolExecutionContext,
-  args: { command: string; working_directory?: string; keep_running?: boolean },
+  args: { command: string; working_directory?: string; keep_running?: boolean; verifies?: Gate },
 ): Promise<ToolResult> {
   const isInstall = PACKAGE_MANAGER_INSTALL_PATTERNS.some(p => p.test(args.command));
   if (isInstall) {
@@ -396,9 +421,9 @@ export async function handleRunCommand(
 
 async function executeCommandLogic(
   ctx: ToolExecutionContext,
-  args: { command: string; working_directory?: string; keep_running?: boolean },
+  args: { command: string; working_directory?: string; keep_running?: boolean; verifies?: Gate },
 ): Promise<ToolResult> {
-  const { command, working_directory, keep_running } = args;
+  const { command, working_directory, keep_running, verifies } = args;
   const commandPort = ctx.command;
   const fileSystem = ctx.fileSystem;
 
@@ -427,6 +452,7 @@ async function executeCommandLogic(
       command,
       `⚠️ COMMAND MAY HANG: ${command}\n\nThis command typically requires interactive input.\n\n✅ Add -y or --yes flag to skip prompts.`,
       undefined,
+      verifies,
     );
   }
 
@@ -440,7 +466,7 @@ async function executeCommandLogic(
     const skipReason = await shouldSkipInstall(featureRootPath);
     if (skipReason) {
       console.log(`📦 [RunCommand] Bare install skipped — all declared dependencies already installed`);
-      return makeRejection(ctx, command, `SKIPPED: ${skipReason}`, undefined);
+      return makeRejection(ctx, command, `SKIPPED: ${skipReason}`, undefined, verifies);
     }
   }
 
@@ -484,6 +510,7 @@ async function executeCommandLogic(
       command,
       `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\nViolations:\n${msg}\n\nAll file writes must target paths under codebase/.`,
       mergeIndex,
+      verifies,
     );
   }
 
@@ -510,6 +537,7 @@ async function executeCommandLogic(
           command,
           `❌ COMMAND NOT ALLOWED: ${command}\n\nOnly whitelisted commands are permitted.`,
           mergeIndex,
+          verifies,
         );
       }
       try {
@@ -517,13 +545,13 @@ async function executeCommandLogic(
           ctx, command, workingDir, mergeIndex || 0, Boolean(keep_running),
         );
         const longRunSuccess = longRunResult.displayText.startsWith('✅');
-        sideEffects.push({ type: 'commandExecuted', exitCode: longRunSuccess ? 0 : 1, command, success: longRunSuccess, hasWarnings: false });
+        sideEffects.push(makeCommandExecuted({ exitCode: longRunSuccess ? 0 : 1, command, success: longRunSuccess, hasWarnings: false, verifies }));
         if (longRunResult.serverPid) {
           sideEffects.push({ type: 'serverStarted', pid: longRunResult.serverPid, command, workingDir });
         }
         return { content: longRunResult.displayText, sideEffects };
       } catch (err) {
-        sideEffects.push({ type: 'commandExecuted', exitCode: 1, command, success: false, hasWarnings: false });
+        sideEffects.push(makeCommandExecuted({ exitCode: 1, command, success: false, hasWarnings: false, verifies }));
         return { content: (err as Error).message, error: (err as Error).message, sideEffects };
       }
     }
@@ -548,7 +576,7 @@ async function executeCommandLogic(
         invalidateBufferedFiles();
         const r = raceResult.result;
         const output = r.stdout + r.stderr;
-        sideEffects.push({ type: 'commandExecuted', exitCode: r.exitCode, command, success: r.success, hasWarnings: false });
+        sideEffects.push(makeCommandExecuted({ exitCode: r.exitCode, command, success: r.success, hasWarnings: false, verifies }));
         await ctx.chatStatus.commandComplete(command, r.success, r.exitCode, output);
         return {
           content: r.success
@@ -621,7 +649,7 @@ async function executeCommandLogic(
       commandPromise.catch(() => {});
       streamer!.flush();
       await ctx.chatStatus.commandComplete(command, false, 124, `Stall watchdog terminated command\n\nOutput:\n${allOutput}`);
-      sideEffects.push({ type: 'commandExecuted', exitCode: 124, command, success: false, hasWarnings: false });
+      sideEffects.push(makeCommandExecuted({ exitCode: 124, command, success: false, hasWarnings: false, verifies }));
       const tailChars = 5000;
       const tail = allOutput.length > tailChars ? allOutput.slice(-tailChars) : allOutput;
       return {
@@ -637,7 +665,7 @@ async function executeCommandLogic(
       commandPromise.catch(() => {});
       streamer!.flush();
       await ctx.chatStatus.commandComplete(command, true, 0, `Server detected (auto-terminated)\n\nOutput:\n${allOutput}`);
-      sideEffects.push({ type: 'commandExecuted', exitCode: 0, command, success: true, hasWarnings: true });
+      sideEffects.push(makeCommandExecuted({ exitCode: 0, command, success: true, hasWarnings: true, verifies }));
 
       return {
         content: `⚠️ LONG-RUNNING SERVER DETECTED: ${command}\n\nThe command appears to be a long-running server process.\nIt was auto-terminated to prevent blocking.\n\nOutput captured:\n${allOutput.slice(0, 3000)}${allOutput.length > 3000 ? '\n...(truncated)' : ''}\n\n✅ The server started successfully.`,
@@ -679,7 +707,7 @@ async function executeCommandLogic(
     await ctx.chatStatus.commandComplete(command, success, exitCode, output);
 
     if (!success) {
-      sideEffects.push({ type: 'commandExecuted', exitCode: exitCode ?? 1, command, success: false, hasWarnings: false });
+      sideEffects.push(makeCommandExecuted({ exitCode: exitCode ?? 1, command, success: false, hasWarnings: false, verifies }));
       return {
         content: `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT:\n${output}\n\n⚠️  You MUST read the error above and fix the specific issue mentioned.\nDO NOT guess - the error tells you exactly what's wrong.`,
         error: output,
@@ -703,7 +731,7 @@ async function executeCommandLogic(
       .map(({ label }) => label);
 
     const hasWarnings = detectedIssues.length > 0;
-    sideEffects.push({ type: 'commandExecuted', exitCode: 0, command, success: true, hasWarnings });
+    sideEffects.push(makeCommandExecuted({ exitCode: 0, command, success: true, hasWarnings, verifies }));
 
     if (hasWarnings) {
       console.warn(`\n   ⚠️  Command exit code 0 but output contains errors: ${detectedIssues.join(', ')}\n`);
@@ -727,7 +755,7 @@ async function executeCommandLogic(
     console.error(`\n   ❌ Command execution error: ${errorMessage}\n`);
     await ctx.chatStatus.commandComplete(command, false, -1, errorMessage);
 
-    sideEffects.push({ type: 'commandExecuted', exitCode: -1, command, success: false, hasWarnings: false });
+    sideEffects.push(makeCommandExecuted({ exitCode: -1, command, success: false, hasWarnings: false, verifies }));
     return {
       content: `❌ COMMAND EXECUTION ERROR: ${command}\nError: ${errorMessage}\n\nCaptured output:\n${streamedStdout}\n${streamedStderr}`,
       error: errorMessage,

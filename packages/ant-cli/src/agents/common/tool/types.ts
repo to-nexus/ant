@@ -10,6 +10,13 @@
  */
 
 import type { FileSystemPort } from '../../../core/ports/filesystem';
+// Gate vocabulary SSOT — declared once in
+// `tasks/verification/model/gates.ts` and imported here so the side-effect
+// channel and the `VerificationSessionSurface` cannot drift from the
+// Session's required/passed sets. The path crosses the common→code-graph
+// boundary, but `Gate` is a 3-element string union with no structural
+// dependencies, so the import stays inert.
+import type { Gate } from '../../architect/graph/code/tasks/verification/model/gates';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ChatStatusReporter — UI coupling isolation
@@ -99,9 +106,9 @@ export interface FileTreeUpdatePort {
  * `agents/architect/graph/code/tasks/verification/model/Session.ts`.
  */
 export interface VerificationSessionSurface {
-  required(): Array<'typecheck' | 'build' | 'test'>;
-  missing(): Array<'typecheck' | 'build' | 'test'>;
-  passed(): Array<'typecheck' | 'build' | 'test'>;
+  required(): Gate[];
+  missing(): Gate[];
+  passed(): Gate[];
   isComplete(): boolean;
   dependencyStatus(): 'current' | 'changed' | 'unknown';
   inDeepMode(): boolean;
@@ -230,7 +237,7 @@ export type ToolSideEffect =
   | { type: 'fileCreated'; path: string }
   | { type: 'fileDeleted'; path: string }
   | { type: 'fileNotChanged'; path: string }
-  | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean }
+  | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean; verifies?: Gate }
   | { type: 'serverStarted'; pid: number; command: string; workingDir: string }
   | { type: 'figmaError'; category: 'connection' | 'environment' | 'data' | 'rate_limit' | 'other' }
   | { type: 'figmaSuccess' }

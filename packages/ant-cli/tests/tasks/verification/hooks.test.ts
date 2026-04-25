@@ -314,20 +314,49 @@ describe('hooks/tool', () => {
     cached: false,
   });
 
-  it('onEvent — commandExecuted flips gate on success', () => {
+  it('onEvent — commandExecuted with verifies flips gate on success', () => {
+    // Gate identity comes from the LLM's `verifies` declaration on the
+    // run_command call (carried on the sideEffect). Command-string regex
+    // inference was retired — see `docs/tmp/gate-classification-postmortem.md`.
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
     toolHook.onEvent(stateWith(session), event([
-      { type: 'commandExecuted', command: 'pnpm build', exitCode: 0, success: true, hasWarnings: false },
+      { type: 'commandExecuted', command: 'npm run type-check', exitCode: 0, success: true, hasWarnings: false, verifies: 'typecheck' },
+      { type: 'commandExecuted', command: 'npm run build', exitCode: 0, success: true, hasWarnings: false, verifies: 'build' },
     ]));
+    expect(session.passed()).toContain('typecheck');
     expect(session.passed()).toContain('build');
+  });
+
+  it('onEvent — commandExecuted with verifies clears gate on failure', () => {
+    // Failure on a previously-passed gate must clear it so the next plan
+    // entry knows the gate has to be re-run. Policy-reject (exit -1) does
+    // NOT clear; only an actual failed run does.
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    session.onCommand('build', true);
+    toolHook.onEvent(stateWith(session), event([
+      { type: 'commandExecuted', command: 'npm run build', exitCode: 1, success: false, hasWarnings: false, verifies: 'build' },
+    ]));
+    expect(session.passed()).not.toContain('build');
+  });
+
+  it('onEvent — commandExecuted without verifies is a no-op (non-gate command)', () => {
+    // Install / inspection / edit-supporting commands legitimately omit
+    // `verifies`; the hook must not synthesise a gate flip from the
+    // command string.
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    toolHook.onEvent(stateWith(session), event([
+      { type: 'commandExecuted', command: 'npm run build', exitCode: 0, success: true, hasWarnings: false },
+    ]));
+    expect(session.passed()).not.toContain('build');
   });
 
   it('onEvent — policy-rejected command (exitCode -1) does not flip gate', () => {
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    session.onCommand('build', true);
     toolHook.onEvent(stateWith(session), event([
-      { type: 'commandExecuted', command: 'pnpm build', exitCode: -1, success: false, hasWarnings: false },
+      { type: 'commandExecuted', command: 'pnpm build', exitCode: -1, success: false, hasWarnings: false, verifies: 'build' },
     ]));
-    expect(session.passed()).not.toContain('build');
+    expect(session.passed()).toContain('build');
   });
 
   it('onEvent — verificationInvalidated clears gate', () => {
@@ -341,7 +370,7 @@ describe('hooks/tool', () => {
 
   it('onEvent — no session is a no-op', () => {
     expect(() => toolHook.onEvent(stateWith(undefined), event([
-      { type: 'commandExecuted', command: 'pnpm build', exitCode: 0, success: true, hasWarnings: false },
+      { type: 'commandExecuted', command: 'pnpm build', exitCode: 0, success: true, hasWarnings: false, verifies: 'build' },
     ]))).not.toThrow();
   });
 });
@@ -356,7 +385,18 @@ describe('hooks/command', () => {
     expect(res).toBeNull();
   });
 
-  it('guard — execute-phase is allowed to run tsc/build/test (post verification-loop postmortem)', () => {
+  it('guard — verifies omitted falls through (non-gate command)', () => {
+    // Without a `verifies` declaration the guard treats the command as
+    // non-gate-bearing — install / inspection / edit-supporting calls
+    // legitimately reach the command port unchanged.
+    const res = commandHook.guard(
+      mkCtx({ verificationSession: mkSession({ required: ['typecheck', 'build'], passed: ['typecheck'] }) }),
+      { command: 'tsc --noEmit' },
+    );
+    expect(res).toBeNull();
+  });
+
+  it('guard — execute-phase is allowed to run a gate that has not passed yet', () => {
     // The legacy blanket blocker "BLOCKED: do not run build/test/typecheck
     // during execute" was removed. execute now self-validates under the
     // same already-passed + ordering rules as plan (the rules fire
@@ -367,7 +407,7 @@ describe('hooks/command', () => {
         activePhase: 'execute',
         verificationSession: mkSession({ required: ['typecheck', 'build'] }),
       }),
-      { command: 'tsc --noEmit' },
+      { command: 'tsc --noEmit', verifies: 'typecheck' },
     );
     expect(res).toBeNull();
   });
@@ -381,7 +421,7 @@ describe('hooks/command', () => {
           passed: ['typecheck'],
         }),
       }),
-      { command: 'tsc --noEmit' },
+      { command: 'tsc --noEmit', verifies: 'typecheck' },
     );
     expect(res?.content).toContain('[Policy]');
     expect(res?.content).toContain('ALREADY PASSED');
@@ -394,7 +434,7 @@ describe('hooks/command', () => {
         activePhase: 'execute',
         verificationSession: mkSession({ required: ['typecheck', 'build'] }),
       }),
-      { command: 'pnpm build' },
+      { command: 'pnpm build', verifies: 'build' },
     );
     expect(res?.content).toContain('Run tsc --noEmit first');
   });
@@ -407,7 +447,7 @@ describe('hooks/command', () => {
           passed: ['typecheck'],
         }),
       }),
-      { command: 'tsc --noEmit' },
+      { command: 'tsc --noEmit', verifies: 'typecheck' },
     );
     expect(res?.content).toContain('[Policy]');
     expect(res?.content).toContain('ALREADY PASSED');
@@ -419,7 +459,7 @@ describe('hooks/command', () => {
       mkCtx({
         verificationSession: mkSession({ required: ['typecheck', 'build'] }),
       }),
-      { command: 'pnpm build' },
+      { command: 'pnpm build', verifies: 'build' },
     );
     expect(res?.content).toContain('Run tsc --noEmit first');
   });
@@ -432,7 +472,7 @@ describe('hooks/command', () => {
         deep: true,
       }),
     });
-    const res = commandHook.guard(ctx, { command: 'pnpm build' });
+    const res = commandHook.guard(ctx, { command: 'pnpm build', verifies: 'build' });
     expect(res).toBeNull();
   });
 
@@ -442,16 +482,53 @@ describe('hooks/command', () => {
     const ctx = mkCtx({
       verificationSession: mkSession({ required: ['typecheck', 'build'] }),
     });
-    const res = commandHook.guard(ctx, { command: 'tsc --noEmit' });
+    const res = commandHook.guard(ctx, { command: 'tsc --noEmit', verifies: 'typecheck' });
     expect(res).toBeNull();
   });
 
   it('guard — test requires buildPassed', () => {
     const res = commandHook.guard(
       mkCtx({ verificationSession: mkSession({ required: ['build', 'test'] }) }),
-      { command: 'pnpm test' },
+      { command: 'pnpm test', verifies: 'test' },
     );
     expect(res?.content).toContain('run the build command');
+  });
+
+  it('guard — `npm run type-check` (hyphenated) flips gate when verifies is declared', () => {
+    // Regression — `marine-brushing-panel` (gate-classification-postmortem):
+    // the legacy regex split `type-check` on the hyphen and silently
+    // dropped the gate flip. With `verifies` as the SSOT, the hyphenated
+    // form behaves identically to `tsc --noEmit` / `pnpm typecheck`.
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    toolHook.onEvent(stateWith(session), {
+      toolCallId: 'tc-typecheck',
+      toolName: 'run_command',
+      args: { command: 'npm run type-check', verifies: 'typecheck' },
+      result: {
+        content: '',
+        sideEffects: [
+          { type: 'commandExecuted', command: 'npm run type-check', exitCode: 0, success: true, hasWarnings: false, verifies: 'typecheck' },
+        ],
+      },
+      cached: false,
+    });
+    expect(session.passed()).toContain('typecheck');
+
+    // And the next gate (build) is no longer ordering-blocked.
+    const guardRes = commandHook.guard(
+      mkCtx({
+        verificationSession: {
+          required: () => ['typecheck', 'build'],
+          missing: () => ['build'],
+          passed: () => ['typecheck'],
+          isComplete: () => false,
+          dependencyStatus: () => 'unknown' as const,
+          inDeepMode: () => false,
+        },
+      }),
+      { command: 'npm run build', verifies: 'build' },
+    );
+    expect(guardRes).toBeNull();
   });
 
 });
