@@ -17,6 +17,7 @@
 import type { LLMStreamEvent } from '../ports/llm';
 import type { LLMResponseService } from '../llm-response';
 import type { ChatStatusType } from '../llm-response/types';
+import type { ClarifyBlock } from '../../agents/common/clarify/types';
 import { logger } from '../../utils/logger';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -278,14 +279,7 @@ export class ChatAPIClient {
    *
    * Supports both text-only (`string`) and image-thumbnail option flavors.
    */
-  async sendClarifyCards(
-    blocks: Array<{
-      question: string;
-      options: Array<string | { label: string; imagePath: string; thumbnailPath: string; value: string }>;
-      allowFreeText?: boolean;
-      allowRegenerate?: boolean;
-    }>,
-  ): Promise<void> {
+  async sendClarifyCards(blocks: ClarifyBlock[]): Promise<void> {
     if (!this.enabled || blocks.length === 0) return;
     const metadata: Record<string, any> = {
       cardType: 'clarifying',

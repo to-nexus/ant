@@ -167,6 +167,6 @@ export function restoreFromSession(
     taskQueue,
     featureTasks,
     totalSubtasks: totalTasks
-  };
+  } as ArchitectGraphState;
 }
 

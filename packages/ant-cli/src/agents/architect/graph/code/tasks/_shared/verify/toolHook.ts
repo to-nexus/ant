@@ -20,7 +20,7 @@
  */
 
 import type { ArchitectGraphState } from '../../../state';
-import type { ToolExecutionEvent, ToolSideEffect } from '../../../../../common/tool/types';
+import type { ToolExecutionEvent, ToolSideEffect } from '../../../../../../common/tool/types';
 
 /**
  * Translate a single side effect into a Session mutation. Extracted so the

@@ -29,7 +29,7 @@
  */
 
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
-import type { Gate } from '../../verification/model/gates';
+import type { Gate } from '../../_shared/verify/gates';
 
 /**
  * Match install / add commands across the Node / Python / Ruby / Rust

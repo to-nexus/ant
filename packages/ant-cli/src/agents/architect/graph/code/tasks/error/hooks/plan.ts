@@ -14,6 +14,7 @@
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
+import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
 
 /**
  * Compose the error-variant plan prompt. Mirrors the legacy `task.type ===
@@ -48,6 +49,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   const taskTechTiers = task.techTiers?.length
     ? task.techTiers
     : (getTechTier(state) ? [getTechTier(state)!] : []);
+  const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(taskTechTiers);
 
   const basisSection = await promptBuilder.renderBasis(
     state.resolvedAction?.basis,
@@ -71,6 +73,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     hasPackageManager: !!packageManager,
     antrulesContent,
     resolvedAction: state.resolvedAction,
+    hasFrontend,
+    hasBackend,
   });
 
   const text = basisSection ? `${basisSection}\n\n---\n\n${body}` : body;

@@ -6,6 +6,8 @@
 
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+
+type TFunction = ReturnType<typeof useTranslation>['t'];
 import { File, Folder, FolderOpen, X, ChevronRight, ChevronDown, Undo2 } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
 import type { FileNode } from '@/infrastructure/http/api';
@@ -119,7 +121,7 @@ export function TransferFileList({
             {childNodes && childNodes.length > 0 && (
               <div className="bg-gray-50/50 dark:bg-gray-800/30">
                 {renderTreeNodes(
-                  childNodes, 1, expandedPaths, toggleExpand,
+                  t, childNodes, 1, expandedPaths, toggleExpand,
                   onExcludeFile, onRestoreFile, excludedPaths,
                 )}
               </div>
@@ -135,6 +137,7 @@ export function TransferFileList({
  * Recursively render file tree nodes with indentation.
  */
 function renderTreeNodes(
+  t: TFunction,
   nodes: FileNode[],
   depth: number,
   expandedPaths: Set<string>,
@@ -211,7 +214,7 @@ function renderTreeNodes(
         {/* Recursively render sub-children if expanded */}
         {isDir && isExpanded && node.children && node.children.length > 0 && (
           renderTreeNodes(
-            node.children, depth + 1, expandedPaths, toggleExpand,
+            t, node.children, depth + 1, expandedPaths, toggleExpand,
             onExcludeFile, onRestoreFile, excludedPaths,
           )
         )}

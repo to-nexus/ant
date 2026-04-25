@@ -39,7 +39,7 @@ export function createFeatureLogRoutes(deps: {
   kanbanService?: KanbanService;
   /** StateStorePort for Redis job cleanup + kanban pub/sub. */
   stateStore?: StateStorePort;
-  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };
+  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
   /** Wired by RouteConfigurator — required for Hard Reset to finalize jobs via SSOT helpers. */
   cleanupJobState?: (
     jobId: string,

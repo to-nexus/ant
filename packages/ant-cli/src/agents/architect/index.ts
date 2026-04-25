@@ -97,7 +97,9 @@ export async function architectAgent(
   // 4. Detect user locale: actionMetadata.locale (explicit from UI) > input text inference
   const { detectUserLanguage } = await import('../../core/utils/languageDetector');
   const explicitLanguage = deps?.actionMetadata?.locale ?? deps?.actionMetadata?.language;
-  const userLanguage = explicitLanguage || detectUserLanguage(input || '');
+  const rawLanguage = explicitLanguage || detectUserLanguage(input || '');
+  const userLanguage: 'en' | 'ko' | 'ja' | 'zh' =
+    rawLanguage === 'ko' || rawLanguage === 'ja' || rawLanguage === 'zh' ? rawLanguage : 'en';
   
   // 5. Extract UserContext for path resolution
   // ✅ Get from deps (passed by orchestrator)

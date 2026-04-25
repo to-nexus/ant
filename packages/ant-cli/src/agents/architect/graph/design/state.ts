@@ -183,10 +183,11 @@ export interface DesignGraphState extends TriageableState {
   failedTasks?: Array<{
     taskId: string;
     taskName: string;
-    taskType: string;
-    priority: number;
-    violations?: any[];
     timestamp: string;
+    error?: string;
+    taskType?: string;
+    priority?: number;
+    violations?: any[];
   }>;
   
   // ✅ Worker runtime injection

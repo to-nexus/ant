@@ -338,7 +338,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   selectIntent: (intentId: string) => {
-    const derived = deriveFromIntent(intentId);
+    const derived = deriveFromIntent(intentId as Parameters<typeof deriveFromIntent>[0]);
     set((s: any) => ({
       selectedIntentId: intentId,
       actionMetadata: {

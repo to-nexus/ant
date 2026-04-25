@@ -50,7 +50,6 @@ export function CreationWizardModal({
   onCreateEmpty,
 }: CreationWizardModalProps) {
   const { t } = useTranslation('onboarding');
-  const setOnboardingSkipped = useStore((s) => s.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((s) => s.setQuickStartProjectId);
   const setProjectSetupConfig = useStore((s) => s.setProjectSetupConfig);
 

@@ -91,7 +91,9 @@ export const SessionStateSchema = z.object({
   previousAttempts: z.array(z.any()).optional(),
   enforcementHistory: z.array(z.any()).optional(),
   previousFileCount: z.number().optional(),
-  resolvedCategories: z.array(z.string()).optional(),
+  resolvedCategories: z.array(
+    z.enum(['missing_files', 'missing_deps', 'type_errors', 'config_errors', 'import_errors', 'syntax_errors', 'other']),
+  ).optional(),
 }).passthrough();
 
 /**

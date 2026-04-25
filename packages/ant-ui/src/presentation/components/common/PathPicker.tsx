@@ -12,7 +12,7 @@
  * - sessions/ exclusion
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Folder, FolderOpen, Check, FolderCheck } from 'lucide-react';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { cn } from '@/shared/utils/design-system';
@@ -95,7 +95,7 @@ export function PathPicker({
     setExpandedDirs(next);
   };
 
-  const renderNode = (node: FileNode, level: number): JSX.Element | null => {
+  const renderNode = (node: FileNode, level: number): React.ReactElement | null => {
     const isExpanded = expandedDirs.has(node.path);
     const isSelected = selectedPath === node.path;
     const isDir = node.type === 'directory';

@@ -20,6 +20,7 @@ import type { PlanPromptCtx, PlanPromptResult } from '../types';
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import { collectConfigSnapshot, renderConfigBlock } from './configSnapshot';
 import { formatCodeContext, mapLang } from '../helpers/planPrompt';
+import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
 
 // ────────────────────────────────────────────────────────────────────────────
 // buildPrompt — verification-variant plan prompt
@@ -164,6 +165,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   const taskTechTiers = task.techTiers?.length
     ? task.techTiers
     : (getTechTier(state) ? [getTechTier(state)!] : []);
+  const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(taskTechTiers);
 
   const basisSection = await promptBuilder.renderBasis(
     state.resolvedAction?.basis,
@@ -195,6 +197,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     hasSessionSummary: !!sessionSummary,
     antrulesContent,
     resolvedAction: state.resolvedAction,
+    hasFrontend,
+    hasBackend,
   });
 
   const text = basisSection ? `${basisSection}\n\n---\n\n${body}` : body;

@@ -44,6 +44,27 @@ export interface AutoInjectionInput {
 
 export class AutoInjectionResolver {
   /**
+   * Compute frontend/backend presence flags from a tier set.
+   *
+   * SSOT for `hasFrontend` / `hasBackend` semantics — used by the resolver
+   * itself for execute-side gating AND by plan-node call sites that pass
+   * the same flags down to Handlebars templates as `{{#if hasFrontend}}`
+   * guards on partial inclusions (see `plan/base.md`'s `preview-setup`
+   * include). Keeping the predicate here prevents drift between the
+   * resolver's gate and the template's gate.
+   */
+  static computeStackFlags(
+    techTiers?: TechTier[],
+    techTier?: TechTier,
+  ): { hasFrontend: boolean; hasBackend: boolean } {
+    const tiers = techTiers?.length ? techTiers : (techTier ? [techTier] : []);
+    const stacks = new Set(tiers.map(t => t.stack).filter(Boolean));
+    const hasFrontend = stacks.size === 0 || stacks.has('frontend') || stacks.has('fullstack');
+    const hasBackend = stacks.has('backend') || stacks.has('fullstack');
+    return { hasFrontend, hasBackend };
+  }
+
+  /**
    * Resolve all Tier A + Tier D injections.
    * Returns an ordered, deduplicated list of injection template paths.
    */
@@ -52,9 +73,10 @@ export class AutoInjectionResolver {
     const { job, node, taskType, mode, resolvedAction, data } = input;
 
     const tiers = input.techTiers ?? (input.techTier ? [input.techTier] : []);
-    const stacks = new Set(tiers.map(t => t.stack).filter(Boolean));
-    const hasFrontend = stacks.size === 0 || stacks.has('frontend') || stacks.has('fullstack');
-    const hasBackend = stacks.has('backend') || stacks.has('fullstack');
+    const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(
+      input.techTiers,
+      input.techTier,
+    );
 
     const isVerification = taskType === 'verification';
     const isError = taskType === 'error';

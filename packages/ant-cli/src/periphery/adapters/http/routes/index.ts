@@ -36,7 +36,7 @@ export interface RoutesDeps {
   githubAuthService?: GitHubAuthService;
   workspaceRoot?: string;  // For Figma Files
   workspaceResolver?: any;  // For Figma Files (WorkspaceResolver)
-  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };  // ✅ For file tree updates after file writes
+  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };  // ✅ For file tree updates after file writes
   transferService?: any;  // ArtifactTransferService for transfer operations
   stateStore?: any;  // RedisStateStore for transfer state management
   gitWatcherService?: any;  // GitWatcherService for retrying deferred watchers after init/clone

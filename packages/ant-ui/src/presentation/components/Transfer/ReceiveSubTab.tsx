@@ -21,7 +21,7 @@ import {
   type FileNode,
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { Package, CheckCircle, XCircle, Ban, Timer, MessageCircle, ChevronRight, ChevronDown, Folder, File } from 'lucide-react';
+import { Package, CheckCircle, XCircle, Ban, Timer, MessageCircle, ChevronRight, ChevronDown } from 'lucide-react';
 import { TransferFileList, guessPathType, countFilesInTree } from './TransferFileList';
 import { Button } from '../common/button';
 import { cn } from '@/shared/utils/design-system';

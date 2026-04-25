@@ -78,7 +78,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
    * Notify file tree update
    * Implements FileTreeUpdatePort interface
    */
-  notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): void {
+  async notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): Promise<void> {
     const ctx = userContext || this.userContext;
     // Fire-and-forget with error logging
     this.broadcastFileTree(projectId, featureName, ctx)

@@ -45,7 +45,7 @@
  */
 
 import type { ArchitectGraphState } from '../../../state';
-import type { CodeTask } from '../../../../types/task';
+import type { CodeTask } from '../../../../../types/task';
 import type {
   TaskHooks,
   TaskPlanHook,

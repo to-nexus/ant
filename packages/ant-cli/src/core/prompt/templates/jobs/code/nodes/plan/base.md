@@ -62,6 +62,12 @@ asks.
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/preview-env-contract}}
+
+{{#if hasFrontend}}
+{{> jobs/code/base/injections/preview-setup}}
+{{/if}}
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 🚨 YOUR ROLE: Plan provides GUIDANCE, CodeGen determines PATHS
 ────────────────────────────────────────────────────────────────────────────────

@@ -119,7 +119,23 @@ function computeReadiness(actionId: IntentGroup, ctx: TreeContext): ActionReadin
     case 'code': return computeCode(ctx);
     case 'visual': return computeVisual(ctx);
     case 'learn-codebase': return computeLearn(ctx);
+    case 'ask': return computeAsk(ctx);
+    default: {
+      const _exhaustive: never = actionId;
+      throw new Error(`Unhandled IntentGroup: ${_exhaustive as string}`);
+    }
   }
+}
+
+function computeAsk(ctx: TreeContext): ActionReadiness {
+  return {
+    buildReady: true,
+    hasOutput: false,
+    hasCodebase: ctx.hasCodebase,
+    detectedMode: { id: 'unknown', label: { en: '', ko: '' } },
+    outputDir: '',
+    namingIssues: [],
+  };
 }
 
 function computePlan(ctx: TreeContext): ActionReadiness {
