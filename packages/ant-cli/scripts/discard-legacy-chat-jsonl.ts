@@ -167,7 +167,15 @@ export async function discardLegacyChatJsonl(workspacesRoot?: string): Promise<{
 }
 
 // CLI: `tsx scripts/discard-legacy-chat-jsonl.ts`
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+// IMPORTANT:
+// - Do NOT use `import.meta.url === file://${process.argv[1]}` here.
+//   In esbuild bundle mode, modules may share the entry file's import.meta.url,
+//   which can incorrectly evaluate true when imported by server.ts and trigger
+//   process.exit().
+const invokedScript = path.basename(process.argv[1] || '');
+const isMain =
+  invokedScript === 'discard-legacy-chat-jsonl.ts' ||
+  invokedScript === 'discard-legacy-chat-jsonl.js';
 if (isMain) {
   discardLegacyChatJsonl()
     .then((r) => {
