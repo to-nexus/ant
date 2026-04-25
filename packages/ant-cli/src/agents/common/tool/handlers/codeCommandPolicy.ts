@@ -12,6 +12,7 @@
 
 import type { ToolExecutionContext, ToolResult } from '../types';
 import type { TaskType } from '@ant/shared';
+import type { Gate } from '../../../architect/graph/code/tasks/verification/model/gates';
 import { isDiagnosticInspectCommand } from '../../../architect/graph/code/tasks/verification/model/gates';
 import { hooksForTaskType } from '../../../architect/graph/code/tasks/_shared/registry';
 import { isVerificationTask } from '../../../architect/graph/code/tasks/verification';
@@ -42,7 +43,7 @@ function makeRejection(command: string, reason: string): ToolResult {
  */
 export function applyCodeCommandPolicy(
   ctx: ToolExecutionContext,
-  args: { command: string },
+  args: { command: string; verifies?: Gate },
 ): ToolResult | null {
   const { command } = args;
   const taskType = ctx.currentTaskType;

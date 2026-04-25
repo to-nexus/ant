@@ -11,11 +11,7 @@
  */
 
 import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
-import {
-  isBuildCommand,
-  isTestCommand,
-  isTypecheckCommand,
-} from '../../../../../../common/tool/constants';
+import type { Gate } from '../model/gates';
 import { isDiagnosticInspectCommand } from '../model/gates';
 
 /**
@@ -56,9 +52,9 @@ function reject(command: string, reason: string): ToolResult {
  */
 export function guard(
   ctx: ToolExecutionContext,
-  args: { command: string },
+  args: { command: string; verifies?: Gate },
 ): ToolResult | null {
-  const { command } = args;
+  const { command, verifies } = args;
 
   // Read-only inspection commands bypass every loop guard — already-passed
   // gates or exhausted attempts should not block a `cat`/`ls`/`pnpm why`.
@@ -66,6 +62,12 @@ export function guard(
 
   const session = ctx.verificationSession;
   if (!session) return null;
+
+  // Non-gate commands (`verifies` omitted) carry no gate semantics — let
+  // them through. Gate identity is the LLM's declared `verifies` value;
+  // the previous regex-based command-string inference was retired (see
+  // `docs/tmp/gate-classification-postmortem.md`).
+  if (!verifies) return null;
 
   const deep = ctx.isDeepDiagnostic === true;
   const passed = new Set(session.passed());
@@ -76,22 +78,11 @@ export function guard(
   // actual source-file change via `onFileChanged`. Applies to both plan
   // and execute phases (an execute-phase self-validation should not
   // re-run a gate that just passed).
-  if (isTypecheckCommand(command) && passed.has('typecheck')) {
+  if (passed.has(verifies)) {
+    const noun = verifies === 'typecheck' ? 'tsc --noEmit' : verifies === 'build' ? 'build' : 'tests';
     return reject(
       command,
-      'ALREADY PASSED: tsc --noEmit succeeded earlier in this task and the affected scope has not been invalidated. Proceed to the next verification step.',
-    );
-  }
-  if (isBuildCommand(command) && passed.has('build')) {
-    return reject(
-      command,
-      'ALREADY PASSED: build succeeded earlier in this task and the affected scope has not been invalidated. Proceed to the next verification step.',
-    );
-  }
-  if (isTestCommand(command) && passed.has('test')) {
-    return reject(
-      command,
-      'ALREADY PASSED: tests succeeded earlier in this task and the affected scope has not been invalidated. Proceed to the next verification step.',
+      `ALREADY PASSED: ${noun} succeeded earlier in this task and the affected scope has not been invalidated. Proceed to the next verification step.`,
     );
   }
 
@@ -99,14 +90,14 @@ export function guard(
   // the LLM can probe config / dependency variants. Within normal mode
   // the project's declared-gate order (typecheck → build → test) is
   // enforced via `passed` alone. Applies to both plan and execute phases.
-  if (isBuildCommand(command) && required.has('typecheck') && !passed.has('typecheck') && !deep) {
+  if (verifies === 'build' && required.has('typecheck') && !passed.has('typecheck') && !deep) {
     return reject(
       command,
       'BLOCKED: Run tsc --noEmit first and confirm it passes. Build embeds type checking, so running it before typecheck passes produces duplicate noise.',
     );
   }
 
-  if (isTestCommand(command) && !passed.has('build') && !deep) {
+  if (verifies === 'test' && !passed.has('build') && !deep) {
     return reject(
       command,
       'BLOCKED: run the build command and confirm it passes before running tests. Tests against an unbuilt project waste a diagnostic cycle.',
