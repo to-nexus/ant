@@ -40,6 +40,24 @@
 | **Already-passed** | A gate already green in this session is auto-rejected — do not re-run it. |
 | **Deep-diagnostic mode** | Ordering is relaxed; you may probe out of order when the Session has entered deep mode. |
 
+### Verification Gate Declaration
+
+**Principle**: Each gate command declares its intent via the `verifies`
+argument on `run_command` so the diagnostic cycle records gate
+completion by exit code rather than by command-string heuristics.
+
+**Observation target**: Which gate this command exercises — independent of
+which form the command takes (`tsc --noEmit`, `npm run type-check`,
+`pnpm typecheck`, `next build`, `go test ./...`).
+
+**Constraint**: Set `verifies` on `run_command` whenever the command
+exercises a gate. Omit the field for non-gate commands (install, ls, cat,
+edits, log inspections).
+
+⚠️ **Blind spot**: A gate command run without `verifies` succeeds in the
+shell but does NOT flip the cycle's gate. The next gate then blocks with
+"prior gate not passed" and the cycle wastes a retry round.
+
 ### Verification-Specific Constraints
 
 | Constraint | Rule |

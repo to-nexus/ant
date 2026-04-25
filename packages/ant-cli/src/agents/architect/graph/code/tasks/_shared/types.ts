@@ -188,7 +188,18 @@ export interface TaskToolHook {
 }
 
 export interface TaskCommandHook {
-  guard(ctx: ToolExecutionContext, args: { command: string }): ToolResult | null;
+  /**
+   * Inspect a `run_command` invocation and either reject it (returning a
+   * policy-tagged `ToolResult`) or let it proceed (returning `null`). The
+   * `verifies` argument is the LLM's gate-intent declaration on the
+   * `run_command` tool call; it is the sole SSOT for "which gate this
+   * command exercises" — the previous regex-based command-string
+   * inference was retired (see
+   * `docs/tmp/gate-classification-postmortem.md`). `Gate` is left as a
+   * `string` here to keep `_shared/types.ts` free of model imports;
+   * publishers narrow it via their own `Gate` import.
+   */
+  guard(ctx: ToolExecutionContext, args: { command: string; verifies?: string }): ToolResult | null;
 }
 
 export interface TaskCheckHook {

@@ -350,12 +350,14 @@ describe('applyCodeCommandPolicy', () => {
     // build/test during execute" policy was removed. The same
     // already-passed / ordering guards that police plan-phase apply to
     // execute too — when no gate has passed yet, build is permitted.
+    // Gate identity is the LLM's `verifies` declaration (see
+    // `docs/tmp/gate-classification-postmortem.md`).
     const { applyCodeCommandPolicy } = await import('../src/agents/common/tool/handlers/codeCommandPolicy');
     const { VerificationSession } = await import('../src/agents/architect/graph/code/tasks/verification/model/Session');
     ctx.currentTaskType = 'verification';
     ctx.activePhase = 'execute';
     ctx.verificationSession = VerificationSession.createFresh({ isTs: false, hasTests: false });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result).toBeNull();
   });
 
@@ -373,7 +375,7 @@ describe('applyCodeCommandPolicy', () => {
     ctx.activePhase = 'plan';
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
     ctx.verificationSession = session;
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result).not.toBeNull();
     expect(result!.content).toContain('BLOCKED');
   });

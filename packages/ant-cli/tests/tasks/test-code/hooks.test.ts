@@ -271,6 +271,21 @@ describe('tasks/test-code/hooks/command.guard', () => {
     expect(commandHook.guard(subCtx(), { command: 'ls install' })).toBeNull();
     expect(commandHook.guard(subCtx(), { command: 'echo "install me"' })).toBeNull();
   });
+
+  it('blocks any verification gate command (verifies declared) on parent and sub-tasks', () => {
+    // Test-code tasks generate test files only — running typecheck /
+    // build / test belongs to the dedicated verification task. The
+    // gate-classification SSOT is the LLM's `verifies` declaration; if
+    // it is set, the guard rejects regardless of phase or sub/parent
+    // distinction. See `docs/tmp/gate-classification-postmortem.md`.
+    for (const verifies of ['typecheck', 'build', 'test'] as const) {
+      const sub = commandHook.guard(subCtx(), { command: 'whatever', verifies });
+      expect(sub?.content).toMatch(/\[Policy\]/);
+      expect(sub?.content).toMatch(/test-code tasks/i);
+      const parent = commandHook.guard(parentCtx(), { command: 'whatever', verifies });
+      expect(parent?.content).toMatch(/\[Policy\]/);
+    }
+  });
 });
 
 describe('tasks/test-code/model/is — isTestCodeTask', () => {

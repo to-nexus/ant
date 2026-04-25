@@ -89,28 +89,30 @@ describe('tasks/error/hooks/command.guard', () => {
   // Policy rejections carry their reason in `content` (prefixed with
   // `[Policy] ` so tool_result formatting does not mis-label them as
   // command execution failures) and omit `error` — see reject() in
-  // error/hooks/command.ts.
-  it('blocks build commands in execute phase', () => {
-    const result = commandHook.guard(guardCtx(), { command: 'npm run build' });
+  // error/hooks/command.ts. Gate identity is the LLM's `verifies`
+  // declaration on the run_command call (see
+  // `docs/tmp/gate-classification-postmortem.md`).
+  it('blocks gate commands in execute phase (verifies declared)', () => {
+    const result = commandHook.guard(guardCtx(), { command: 'npm run build', verifies: 'build' });
     expect(result?.content).toMatch(/\[Policy\]/);
     expect(result?.content).toMatch(/BLOCKED/);
     expect(result?.content).toMatch(/remediation plan/);
     expect(result?.error).toBeUndefined();
   });
 
-  it('blocks test commands in execute phase', () => {
-    const result = commandHook.guard(guardCtx(), { command: 'pnpm test' });
-    expect(result?.content).toMatch(/BLOCKED/);
+  it('blocks every gate kind in execute phase when verifies is set', () => {
+    expect(commandHook.guard(guardCtx(), { command: 'pnpm test', verifies: 'test' })?.content).toMatch(/BLOCKED/);
+    expect(commandHook.guard(guardCtx(), { command: 'tsc --noEmit', verifies: 'typecheck' })?.content).toMatch(/BLOCKED/);
   });
 
-  it('blocks typecheck commands in execute phase', () => {
-    const result = commandHook.guard(guardCtx(), { command: 'tsc --noEmit' });
-    expect(result?.content).toMatch(/BLOCKED/);
-  });
-
-  it('allows install commands (error tasks may install deps to apply a fix)', () => {
+  it('allows commands without verifies (non-gate work — installs, edits, inspections)', () => {
+    // Error tasks routinely install deps to apply a remediation; they
+    // also run inspection commands. Without `verifies`, the guard must
+    // not block.
     expect(commandHook.guard(guardCtx(), { command: 'pnpm add lodash' })).toBeNull();
     expect(commandHook.guard(guardCtx(), { command: 'npm install react' })).toBeNull();
+    expect(commandHook.guard(guardCtx(), { command: 'npm run build' })).toBeNull();
+    expect(commandHook.guard(guardCtx(), { command: 'tsc --noEmit' })).toBeNull();
   });
 
   it('allows read-only inspection commands', () => {
@@ -121,12 +123,12 @@ describe('tasks/error/hooks/command.guard', () => {
 
   it('does not block in plan phase (rare no-prePlanText path needs exploration)', () => {
     const ctx = guardCtx({ activePhase: 'plan' });
-    expect(commandHook.guard(ctx, { command: 'npm run build' })).toBeNull();
-    expect(commandHook.guard(ctx, { command: 'tsc --noEmit' })).toBeNull();
+    expect(commandHook.guard(ctx, { command: 'npm run build', verifies: 'build' })).toBeNull();
+    expect(commandHook.guard(ctx, { command: 'tsc --noEmit', verifies: 'typecheck' })).toBeNull();
   });
 
   it('rejection carries a commandExecuted side-effect with exitCode -1', () => {
-    const result = commandHook.guard(guardCtx(), { command: 'npm run build' });
+    const result = commandHook.guard(guardCtx(), { command: 'npm run build', verifies: 'build' });
     expect(result?.sideEffects).toEqual([
       expect.objectContaining({ type: 'commandExecuted', exitCode: -1, success: false }),
     ]);

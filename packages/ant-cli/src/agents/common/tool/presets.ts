@@ -15,6 +15,7 @@ import {
   SHADOW_ALIASES,
 } from './toolCatalog';
 import { applyCodeCommandPolicy } from './handlers/codeCommandPolicy';
+import type { Gate } from '../../architect/graph/code/tasks/verification/model/gates';
 
 /**
  * Build a registry from the catalog matrix for a given job.
@@ -46,7 +47,7 @@ export function createCodeToolRegistry(): ToolRegistry {
   const registry = buildRegistryFromMatrix(JobType.CODE);
 
   registry.wrap(ToolName.RUN_COMMAND, (original) => async (ctx, args) => {
-    const rejection = applyCodeCommandPolicy(ctx, args as { command: string });
+    const rejection = applyCodeCommandPolicy(ctx, args as { command: string; verifies?: Gate });
     if (rejection) return rejection;
     return original(ctx, args);
   });

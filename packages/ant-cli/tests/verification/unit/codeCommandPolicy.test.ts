@@ -47,11 +47,11 @@ function makeCtx(
   } as unknown as ToolExecutionContext;
 }
 
-describe('F1 — *Passed independent guard', () => {
+describe('F1 — *Passed independent guard (gate identity = `verifies`)', () => {
   it('F1a: typecheck passed → ALREADY PASSED', () => {
     const session = makeSession({ passed: ['typecheck'] });
     const ctx = makeCtx(session);
-    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit', verifies: 'typecheck' });
     // Policy rejections carry the reason in `content` (prefixed with
     // `[Policy] ` so the tool_result formatter doesn't mis-label the
     // internal guard as a command execution failure). `error` is unset.
@@ -62,38 +62,49 @@ describe('F1 — *Passed independent guard', () => {
 
   it('F1b: typecheck not passed → pass-through', () => {
     const ctx = makeCtx(makeSession());
-    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit', verifies: 'typecheck' });
     expect(result).toBeNull();
   });
 
   it('F1c: build passed → ALREADY PASSED (build)', () => {
     const session = makeSession({ passed: ['typecheck', 'build'] });
     const ctx = makeCtx(session);
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result?.content).toMatch(/ALREADY PASSED/);
   });
 
   it('F1d: test passed → ALREADY PASSED (test)', () => {
     const session = makeSession({ passed: ['typecheck', 'build', 'test'] });
     const ctx = makeCtx(session);
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test', verifies: 'test' });
     expect(result?.content).toMatch(/ALREADY PASSED/);
   });
 
   it('F1e: *Passed ALREADY PASSED applies even in deep diagnostic mode', () => {
     const session = makeSession({ passed: ['typecheck'] });
     const ctx = makeCtx(session, { isDeepDiagnostic: true });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit', verifies: 'typecheck' });
     expect(result?.content).toMatch(/ALREADY PASSED/);
+  });
+
+  it('F1f: command without verifies is treated as non-gate (no Already-Passed enforcement)', () => {
+    // The LLM's `verifies` declaration is the SSOT; an omitted field
+    // means "not a gate command" and the guard must not auto-classify
+    // by command-string regex. See
+    // `docs/tmp/gate-classification-postmortem.md`.
+    const session = makeSession({ passed: ['typecheck'] });
+    const ctx = makeCtx(session);
+    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
+    expect(result).toBeNull();
   });
 });
 
-describe('F2 — gate-ordering guards (passed-based, post-attempted-retirement)', () => {
+describe('F2 — gate-ordering guards (verifies-driven, post-attempted-retirement)', () => {
   it('F2a: build before typecheck-passed → BLOCKED (tsc first)', () => {
     // Empty session: typecheck required but not yet passed.
     const session = makeSession();
     const ctx = makeCtx(session);
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result?.content).toMatch(/\[Policy\]/);
     expect(result?.content).toMatch(/tsc --noEmit first/);
   });
@@ -101,14 +112,14 @@ describe('F2 — gate-ordering guards (passed-based, post-attempted-retirement)'
   it('F2b: build after typecheck passed → pass-through', () => {
     const session = makeSession({ passed: ['typecheck'] });
     const ctx = makeCtx(session);
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result).toBeNull();
   });
 
   it('F2c: deep-diagnostic bypasses tsc-first ordering', () => {
     const session = makeSession();
     const ctx = makeCtx(session, { isDeepDiagnostic: true });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result).toBeNull();
   });
 
@@ -124,7 +135,7 @@ describe('F2 — gate-ordering guards (passed-based, post-attempted-retirement)'
     // exists anymore).
     session.onCommand('typecheck', false);
     const ctx = makeCtx(session);
-    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit', verifies: 'typecheck' });
     expect(result).toBeNull();
   });
 });
@@ -133,7 +144,7 @@ describe('F4 — 3-gate ordering guard (test requires build)', () => {
   it('F4a: buildPassed=false + test command → BLOCKED (build first)', () => {
     const session = makeSession({ passed: ['typecheck'] });
     const ctx = makeCtx(session);
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test', verifies: 'test' });
     expect(result?.content).toMatch(/BLOCKED/);
     expect(result?.content).toMatch(/build/i);
   });
@@ -141,14 +152,14 @@ describe('F4 — 3-gate ordering guard (test requires build)', () => {
   it('F4b: buildPassed=true + test command → pass-through', () => {
     const session = makeSession({ passed: ['typecheck', 'build'] });
     const ctx = makeCtx(session);
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test', verifies: 'test' });
     expect(result).toBeNull();
   });
 
   it('F4c: deep diagnostic mode bypasses build-first', () => {
     const session = makeSession({ passed: ['typecheck'] });
     const ctx = makeCtx(session, { isDeepDiagnostic: true });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test', verifies: 'test' });
     expect(result).toBeNull();
   });
 });
@@ -164,23 +175,44 @@ describe('F1/F4 — execute phase shares the same guards as plan phase', () => {
       passed: ['typecheck', 'build', 'test'],
     });
     const ctx = makeCtx(session, { activePhase: 'execute' });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit', verifies: 'typecheck' });
     expect(result?.content).toMatch(/ALREADY PASSED/);
   });
 
   it('execute phase allows the next unsatisfied gate (self-validation)', () => {
     const session = makeSession({ passed: ['typecheck'] });
     const ctx = makeCtx(session, { activePhase: 'execute' });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result).toBeNull();
   });
 
   it('execute phase enforces ordering (build before typecheck passes → BLOCKED)', () => {
     const session = makeSession({ passed: [] });
     const ctx = makeCtx(session, { activePhase: 'execute' });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result?.content).toMatch(/BLOCKED/);
     expect(result?.content).toMatch(/tsc --noEmit first/);
+  });
+});
+
+describe('Regression — `marine-brushing-panel` (gate-classification-postmortem)', () => {
+  it('npm run type-check (hyphenated) flips typecheck and unblocks build', () => {
+    // The original incident: regex `\btypecheck\b` failed on the
+    // hyphenated `type-check`, so the gate flip was dropped and the
+    // following `npm run build` was wrongfully blocked. With `verifies`
+    // as the SSOT, command-string spelling is irrelevant.
+    const session = makeSession();
+    const ctx = makeCtx(session);
+
+    // 1) typecheck command with `verifies: 'typecheck'` is allowed.
+    expect(applyCodeCommandPolicy(ctx, { command: 'npm run type-check', verifies: 'typecheck' })).toBeNull();
+
+    // 2) Mark typecheck passed (simulating successful execution).
+    session.onCommand('typecheck', true);
+
+    // 3) `npm run build` with `verifies: 'build'` is no longer
+    //    ordering-blocked.
+    expect(applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' })).toBeNull();
   });
 });
 
@@ -248,30 +280,24 @@ describe('codeCommandPolicy — Go build allow-list (verification-only)', () => 
   });
 });
 
-describe('codeCommandPolicy — error command.guard (execute-phase build/test/typecheck block)', () => {
-  it('blocks `npm run build` in error task execute phase', () => {
+describe('codeCommandPolicy — error command.guard (execute-phase verification gate block)', () => {
+  it('blocks any verifies-declared gate in error task execute phase', () => {
     const ctx = makeErrorCtx({ activePhase: 'execute' });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result?.content).toMatch(/BLOCKED/);
     expect(result?.content).toMatch(/remediation plan/);
+
+    expect(applyCodeCommandPolicy(ctx, { command: 'npm run test', verifies: 'test' })?.content).toMatch(/BLOCKED/);
+    expect(applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit', verifies: 'typecheck' })?.content).toMatch(/BLOCKED/);
   });
 
-  it('blocks `npm run test` in error task execute phase', () => {
+  it('allows commands without verifies (installs, edits, inspections)', () => {
     const ctx = makeErrorCtx({ activePhase: 'execute' });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run test' });
-    expect(result?.content).toMatch(/BLOCKED/);
-  });
-
-  it('blocks `npx tsc --noEmit` in error task execute phase', () => {
-    const ctx = makeErrorCtx({ activePhase: 'execute' });
-    const result = applyCodeCommandPolicy(ctx, { command: 'npx tsc --noEmit' });
-    expect(result?.content).toMatch(/BLOCKED/);
-  });
-
-  it('allows `pnpm install foo` in error task execute phase (dependency install is part of fix)', () => {
-    const ctx = makeErrorCtx({ activePhase: 'execute' });
-    const result = applyCodeCommandPolicy(ctx, { command: 'pnpm install foo' });
-    expect(result).toBeNull();
+    expect(applyCodeCommandPolicy(ctx, { command: 'pnpm install foo' })).toBeNull();
+    // A bare gate-form command without verifies passes the error task
+    // guard (it would still be blocked downstream if the verification
+    // session were present, but error tasks carry no session).
+    expect(applyCodeCommandPolicy(ctx, { command: 'npm run build' })).toBeNull();
   });
 
   it('allows read-only inspection commands (cat/ls) in error task execute phase', () => {
@@ -285,7 +311,7 @@ describe('codeCommandPolicy — error command.guard (execute-phase build/test/ty
     // build/test/typecheck in plan phase would still be blocked by the
     // cross-cutting Go allow-list only; npm build in plan phase with no
     // verification session falls through (verification hook is absent).
-    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build' });
+    const result = applyCodeCommandPolicy(ctx, { command: 'npm run build', verifies: 'build' });
     expect(result).toBeNull();
   });
 });

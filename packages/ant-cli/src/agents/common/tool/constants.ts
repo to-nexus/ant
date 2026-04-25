@@ -80,47 +80,17 @@ export const SERVER_OUTPUT_PATTERNS = /listening\s+on|started\s+.*(?:server|port
 export const ORCHESTRATOR_PORT = process.env.PORT || '8080';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// TYPECHECK / BUILD / TEST command classification
-// Used by VerificationTracker to track objective completion.
-// Conservative: false-negative → extra build cycle (safe);
-//               false-positive → unverified code passes (dangerous).
+// Verification gate classification — retired
+//
+// `TYPECHECK / BUILD / TEST` regex patterns and the `is*Command` helpers
+// were the executor-side inverse of the LLM's `verifies` declaration. They
+// silently mismatched script-name spellings such as `npm run type-check`
+// (hyphen breaks the `\btypecheck\b` boundary), causing gate flips to be
+// dropped and the diagnostic cycle to waste a retry round.
+//
+// The new SSOT for "which gate is this command exercising" is the LLM's
+// `verifies` argument on the `run_command` tool call, propagated through
+// the `commandExecuted` sideEffect into `VerificationSession.onCommand`.
+// See `docs/tmp/gate-classification-postmortem.md` for the postmortem and
+// the constraint set this retirement preserves.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-export const TYPECHECK_COMMAND_PATTERNS: RegExp[] = [
-  /\b(npx\s+)?tsc\b[^|;&]*--noEmit\b/,
-];
-
-export const BUILD_COMMAND_PATTERNS: RegExp[] = [
-  /\b(npm|yarn)\s+(run\s+)?build\b/,
-  /\bpnpm\b[^;&|]*\b(run\s+)?build\b/,
-  /\bbun\s+(run\s+)?build\b/,
-  /\b(npx\s+)?(next|vite|nuxt|gatsby|remix|astro|react-scripts)\s+build\b/,
-  /\b(npx\s+)?turbo\s+(run\s+)?build\b/,
-  /\b(npx\s+)?tsc\b/,
-  /\bgo\s+build\b/,
-  /\bmake\s+build\b/,
-];
-
-export const TEST_COMMAND_PATTERNS: RegExp[] = [
-  /\b(npm|yarn)\s+(run\s+)?test\b/,
-  /\bpnpm\b[^;&|]*\b(run\s+)?test\b/,
-  /\bbun\s+(run\s+)?test\b/,
-  /\b(npx\s+)?(jest|vitest|mocha)\b/,
-  /\b(npx\s+)?playwright\s+test\b/,
-  /\b(npx\s+)?cypress\s+run\b/,
-  /\bgo\s+test\b/,
-  /\bmake\s+test\b/,
-];
-
-export function isTypecheckCommand(command: string): boolean {
-  return TYPECHECK_COMMAND_PATTERNS.some(p => p.test(command));
-}
-
-export function isBuildCommand(command: string): boolean {
-  if (isTypecheckCommand(command)) return false;
-  return BUILD_COMMAND_PATTERNS.some(p => p.test(command));
-}
-
-export function isTestCommand(command: string): boolean {
-  return TEST_COMMAND_PATTERNS.some(p => p.test(command));
-}
