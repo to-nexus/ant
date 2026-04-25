@@ -29,7 +29,7 @@ import type {
 } from './types';
 import { getTaskConcurrency } from './types';
 import { isFigmaRateLimitError, isFigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
-import { classifyTerminalError } from '../tasks/verification/model/errors';
+import { classifyTerminalError } from '../tasks/_shared/verify/errors';
 import { hooksForTaskType } from '../tasks/_shared/registry';
 import type { TaskType } from '@ant/shared';
 
@@ -517,14 +517,22 @@ export class TaskOrchestrator<T extends BaseTask> {
         return;
       }
 
-      // Attempt counter: tasks that own their own counter (currently
-      // verification via the Session) read through the hook so the legacy
-      // `_verificationAttempts` field carries across retries. All other task
-      // types fall back to the orchestrator-level `_failedAttempts`.
+      // Attempt counter: tasks that own their own counter (verification
+      // via the Session, plus Tier 2 self-verify tasks once they enter
+      // verify-mode) read through the hook so the Session-tracked
+      // attempts carry across retries. All other tasks fall back to the
+      // orchestrator-level `_failedAttempts`.
       // R1 — the orchestrator does not compare `task.type`; it asks the
-      // registered hook bundle whether it has its own counter.
+      // registered hook bundle whether THIS task has its own counter.
+      // The hook field is `boolean | (task) => boolean` — verification
+      // bundle returns true statically; composeBundle bundles return
+      // a predicate-driven function so non-self-verify tasks of the
+      // same type fall through to `_failedAttempts`.
       const orchestratorHook = hooksForTaskType(task.type as TaskType)?.orchestrator;
-      const ownCounter = orchestratorHook?.hasOwnAttemptCounter === true;
+      const ownCounterFlag = orchestratorHook?.hasOwnAttemptCounter;
+      const ownCounter = typeof ownCounterFlag === 'function'
+        ? ownCounterFlag(task as any) === true
+        : ownCounterFlag === true;
       const attempts = ownCounter
         ? (orchestratorHook?.attemptCount?.(task as any) ?? 0)
         : ((task as any)._failedAttempts || 0) + 1;
@@ -561,13 +569,17 @@ export class TaskOrchestrator<T extends BaseTask> {
 
         // Skip remaining verification/final tasks — running them after failure is pointless.
         // A "final" task is one whose orchestrator hook owns its attempt counter
-        // (verification) or one tagged with the FINAL_VERIFICATION priority. R1 —
+        // (verification + Tier 2 self-verify) or one tagged with the FINAL_VERIFICATION priority. R1 —
         // polymorphic discrimination via `hasOwnAttemptCounter`; no literal
-        // type-equality branches here.
+        // type-equality branches here. The hook field is `boolean | (task) => boolean`
+        // — function shape is task-instance-aware (composeBundle returns a function
+        // that gates on `requiresVerification(task)`).
         const remaining = this.taskQueue.getAll();
         const isFinalTask = (t: T): boolean => {
           if (t.priority >= TASK_PRIORITIES.FINAL_VERIFICATION) return true;
-          return hooksForTaskType(t.type as TaskType)?.orchestrator?.hasOwnAttemptCounter === true;
+          const flag = hooksForTaskType(t.type as TaskType)?.orchestrator?.hasOwnAttemptCounter;
+          if (typeof flag === 'function') return flag(t as any) === true;
+          return flag === true;
         };
         const allRemainingAreFinal = remaining.length > 0 && remaining.every(isFinalTask);
         if (allRemainingAreFinal && this.runningTasks.size === 0) {

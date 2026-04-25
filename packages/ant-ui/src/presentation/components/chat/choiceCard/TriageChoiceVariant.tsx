@@ -5,24 +5,28 @@ import { submitTriageChoice, TriageChoiceAction } from '@/infrastructure/http/ap
 import type { VariantProps } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout, VerticalChoiceLayout } from './shared';
 
-export function TriageChoiceVariant({ content, messageId }: VariantProps) {
+interface TriageChoiceOptions {
+  positive: { label: string; action: string };
+  negative: { label: string; action: string };
+  neutral?: { label: string; action: string };
+}
+
+export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
   const setSelectedJobType = useStore(state => state.setSelectedJobType);
   const { runJob } = useJobExecution();
   const [loadingAction, setLoadingAction] = useState<'positive' | 'neutral' | null>(null);
 
-  const state = useChoiceCardState({
-    content, messageId,
-    contentType: 'triage_choice',
-  });
+  const state = useChoiceCardState({ presented, resolved });
 
-  const jobId = content.metadata?.jobId;
-  const options = content.metadata?.choiceOptions;
+  const cardId = presented.cardId;
+  const payload = (presented.payload ?? {}) as Record<string, any>;
+  const options = payload.choiceOptions as TriageChoiceOptions | undefined;
   if (!options) return null;
 
   const hasNeutral = !!options.neutral;
 
   const handlePositive = async () => {
-    if (!state.selectedProject || !state.selectedFeature || !jobId || state.isSelected) return;
+    if (!state.selectedProject || !state.selectedFeature || !cardId || state.isSelected) return;
 
     state.setIsLoading(true);
     setLoadingAction('positive');
@@ -30,7 +34,7 @@ export function TriageChoiceVariant({ content, messageId }: VariantProps) {
 
     try {
       const response = await submitTriageChoice(
-        state.selectedProject, state.selectedFeature, jobId,
+        state.selectedProject, state.selectedFeature, cardId,
         options.positive.action as TriageChoiceAction
       );
 
@@ -40,7 +44,6 @@ export function TriageChoiceVariant({ content, messageId }: VariantProps) {
           ? `→ ${response.suggestedAgent} / ${response.suggestedJob}`
           : `→ ${response.suggestedJob} job`;
         state.setLocalResolvedLabel(label);
-        state.persistChoice(options.positive.action, label);
         if (response.suggestedAgent) {
           useStore.getState().setSelectedAgent(response.suggestedAgent);
         }
@@ -53,14 +56,12 @@ export function TriageChoiceVariant({ content, messageId }: VariantProps) {
         const currentJob = useStore.getState().selectedJobType;
         const label = '진행됨';
         state.setLocalResolvedLabel(label);
-        state.persistChoice(options.positive.action, label);
         await runJob(currentAgent, currentJob, response.directive, { skipTriage: true });
       }
 
       if (response.type === 'guide') {
         const label = '가이드 제공됨';
         state.setLocalResolvedLabel(label);
-        state.persistChoice(options.positive.action, label);
       }
     } catch (error) {
       console.error('[ChoiceCard:Triage] Failed:', error);
@@ -74,7 +75,7 @@ export function TriageChoiceVariant({ content, messageId }: VariantProps) {
 
   const handleNeutral = async () => {
     if (!options.neutral) return;
-    if (!state.selectedProject || !state.selectedFeature || !jobId || state.isSelected) return;
+    if (!state.selectedProject || !state.selectedFeature || !cardId || state.isSelected) return;
 
     state.setIsLoading(true);
     setLoadingAction('neutral');
@@ -82,7 +83,7 @@ export function TriageChoiceVariant({ content, messageId }: VariantProps) {
 
     try {
       const response = await submitTriageChoice(
-        state.selectedProject, state.selectedFeature, jobId,
+        state.selectedProject, state.selectedFeature, cardId,
         options.neutral.action as TriageChoiceAction
       );
 
@@ -91,7 +92,6 @@ export function TriageChoiceVariant({ content, messageId }: VariantProps) {
         const currentJob = useStore.getState().selectedJobType;
         const label = '현재 모드로 진행';
         state.setLocalResolvedLabel(label);
-        state.persistChoice(options.neutral.action, label);
         await runJob(currentAgent, currentJob, response.directive, { skipTriage: true });
       }
     } catch (error) {
@@ -105,26 +105,23 @@ export function TriageChoiceVariant({ content, messageId }: VariantProps) {
   };
 
   const handleNegative = async () => {
-    if (!state.selectedProject || !state.selectedFeature || !jobId || state.isSelected) return;
+    if (!state.selectedProject || !state.selectedFeature || !cardId || state.isSelected) return;
 
     state.setIsLoading(true);
     state.setLocalSelectedChoice(options.negative.action);
 
     try {
       const response = await submitTriageChoice(
-        state.selectedProject, state.selectedFeature, jobId,
+        state.selectedProject, state.selectedFeature, cardId,
         options.negative.action as TriageChoiceAction
       );
 
       if (response.type === 'dismiss') {
         state.setLocalResolvedLabel('Dismissed');
-        state.persistChoice(options.negative.action, 'Dismissed');
-        useStore.getState().addChatMessage({
-          id: `msg-dismiss-${Date.now()}`,
-          role: 'assistant',
-          contents: [{ type: 'text', content: response.message || '작업이 취소되었습니다. 새 작업을 요청해주세요.' }],
-          timestamp: new Date().toISOString(),
-        });
+        // Phase 12 chat-SSOT — the BE emits the guide / dismiss
+        // assistant_message line through ChatService.appendAssistantMessage
+        // when ChoiceService routes the choice. SSE delivers it; the FE
+        // no longer mints the message client-side.
       }
     } catch (error) {
       console.error('[ChoiceCard:Triage] Failed:', error);
@@ -135,13 +132,13 @@ export function TriageChoiceVariant({ content, messageId }: VariantProps) {
     }
   };
 
-  const displayResolvedLabel = state.resolvedLabel || content.metadata?.resolvedLabel;
+  const displayResolvedLabel = state.resolvedLabel || resolved?.resolvedLabel;
 
   return (
     <ChoiceCardShell
       theme="blue"
       icon={<span className="text-sm">🔀</span>}
-      title={content.content || 'Choice required'}
+      title={presented.prompt || 'Choice required'}
       isSelected={state.isSelected}
       resolvedLabel={displayResolvedLabel || null}
       resolvedIcon={state.selectedChoice === options.negative.action ? 'dismiss' : null}

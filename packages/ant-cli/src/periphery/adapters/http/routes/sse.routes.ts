@@ -129,15 +129,23 @@ export function createSSERoutes(deps: {
           logger.warn(`Failed to send initial kanban`, { component: 'SSE', projectId, featureName }, err);
         }),
 
-        // 2. Chat (Redis/EFS — can be slow)
-        deps.chatService.getMessagesAsync(projectId, featureName, userContext).then(chatMessages => {
+        // 2. Chat — chat-SSOT §5: hydrate FE store with the durable
+        //    chat.jsonl event list + the active TURN_BUFFER snapshots
+        //    in a single `chat_initial_state` event. The FE projector
+        //    rebuilds messages from `(events, turnBuffers)`.
+        Promise.all([
+          deps.chatService.loadEventsAsync(projectId, featureName, userContext),
+          deps.chatService.loadTurnBuffersAsync(projectId, featureName, userContext),
+        ]).then(([events, turnBuffers]: [any[], Record<string, any>]) => {
           deps.sseService.sendInitialState(res, 'chat', {
-            type: 'initial_state',
-            messages: chatMessages,
+            type: 'chat_initial_state',
+            events,
+            turnBuffers,
+            serverTs: new Date().toISOString(),
             projectId,
-            featureName
+            featureName,
           });
-        }).catch(err => {
+        }).catch((err: any) => {
           logger.warn(`Failed to send initial chat`, { component: 'SSE', projectId, featureName }, err);
         }),
 

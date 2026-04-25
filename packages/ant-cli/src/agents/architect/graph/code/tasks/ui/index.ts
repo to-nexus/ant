@@ -33,14 +33,19 @@
  * presence, not task-type literals).
  */
 
-import type { TaskHooks } from '../_shared/types';
-
 import { preUiBarrier } from './hooks/scheduling';
 import { convKey } from './hooks/conversations';
+import { composeBundle } from '../_shared/verify';
 
-export const hooks: TaskHooks = {
-  scheduling: { preUiBarrier },
-  conversations: { convKey },
-};
+// Wired through `composeBundle({...})` so Tier 2 self-verify UI tasks
+// (decompose-time `selfVerifyOnDone:true`) automatically pick up the
+// `_shared/verify/` hook surface once they transition into verify-mode.
+// Tier 3+ UI tasks pass through unchanged.
+export const hooks = composeBundle({
+  taskTypeSpecific: {
+    scheduling: { preUiBarrier },
+    conversations: { convKey },
+  },
+});
 
 export { isUiTask } from './model/is';

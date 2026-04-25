@@ -1,7 +1,11 @@
 import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import type { HandlerId } from '@/infrastructure/sse/SSEManager';
-import type { ChatMessage } from '@/domain/models/chat';
+import type { ChatLine } from '@ant/shared';
+import type {
+  BufferKey,
+  StreamingBuffer,
+} from '@/domain/store/selectors/chat';
 import type { KanbanData } from '@/infrastructure/http/api';
 import type { SSEMessageMap } from '@ant/shared';
 
@@ -16,17 +20,55 @@ let sliceHandlerIds: HandlerId[] = [];
 
 export interface SSEState {
   kanban: KanbanData;
-  chatMessages: ChatMessage[];
+  /** Finalized chat.jsonl events. Phase 10 chat-SSOT substrate. */
+  chatEvents: ChatLine[];
+  /** In-flight streaming buffers keyed by `${turnId}:${workerScope}`. */
+  streamingBuffers: Record<BufferKey, StreamingBuffer>;
+  /** Last `chat_initial_state.serverTs` for streaming-delta gating. */
+  lastChatSnapshotTs?: string;
   connectionStatus: 'connected' | 'disconnected' | 'error';
 }
 
+/**
+ * Phase 10 chat-SSOT actions.
+ *
+ * Replaces the legacy `addChatMessage` / `updateChatMessage` /
+ * `removeCancelledMessage` / `clearChatMessages` quartet with a
+ * substrate that mirrors the BE emission contract:
+ *  - `appendChatEvent` — append a single finalized ChatLine.
+ *  - `replaceChatEvents` — replace the whole list (initial-state hydrate).
+ *  - `applyStreamingDelta` — append a streaming chunk to a buffer.
+ *  - `replaceStreamingBuffer` — overwrite a single buffer (snapshot reply).
+ *  - `clearStreamingBuffer` — drop one buffer.
+ *  - `clearChatEvents` — wipe events + every buffer (Hard Reset / Chat Clear).
+ */
 export interface SSEActions {
   updateKanban: (data: KanbanData) => void;
   updateKanbanRecursion: (recursionCount: number, recursionLimit?: number, recursionTaskName?: string) => void;
-  addChatMessage: (message: ChatMessage) => void;
-  updateChatMessage: (messageId: string, updates: Partial<ChatMessage>) => void;
-  removeCancelledMessage: (jobId: string) => void;
-  clearChatMessages: () => void;
+  appendChatEvent: (event: ChatLine) => void;
+  replaceChatEvents: (events: ChatLine[], buffers: Record<BufferKey, StreamingBuffer>, serverTs: string) => void;
+  applyStreamingDelta: (
+    args: {
+      turnId: string;
+      workerScope?: string;
+      kind: 'text' | 'thinking' | 'card_output';
+      cardId?: string;
+      chunk: string;
+      producedAt: string;
+    },
+  ) => void;
+  replaceStreamingBuffer: (
+    args: {
+      turnId: string;
+      workerScope?: string;
+      text?: string;
+      thinking?: string;
+      pendingCards?: Record<string, import('@ant/shared').PendingCardSnapshot>;
+      producedAt: string;
+    },
+  ) => void;
+  clearStreamingBuffer: (turnId: string, workerScope?: string) => void;
+  clearChatEvents: (scope?: 'chat' | 'full') => void;
   initializeSSE: () => void;
   reconnectSSE: (key: string) => void;
   setConnectionStatus: (status: 'connected' | 'disconnected' | 'error') => void;
@@ -35,13 +77,19 @@ export interface SSEActions {
 
 export type SSESlice = SSEState & SSEActions;
 
+const MAIN_WORKER_SCOPE = '_main_';
+
+function bufferKey(turnId: string, workerScope?: string | null): BufferKey {
+  return `${turnId}:${workerScope || MAIN_WORKER_SCOPE}`;
+}
+
 export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) => ({
-  // State
   kanban: { jobId: undefined, todo: [], inProgress: [], completed: [], isEstimating: false, dataSource: 'session' as const },
-  chatMessages: [],
+  chatEvents: [],
+  streamingBuffers: {},
+  lastChatSnapshotTs: undefined,
   connectionStatus: 'disconnected',
 
-  // Actions
   updateKanbanRecursion: (recursionCount: number, recursionLimit?: number, recursionTaskName?: string) => {
     set((state: any) => ({
       kanban: {
@@ -55,33 +103,90 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
 
   updateKanban: (data) => handleKanbanUpdate(data, set, get),
 
-  addChatMessage: (message) => {
+  appendChatEvent: (event) => {
     set((state: any) => ({
-      chatMessages: [...state.chatMessages, message]
+      chatEvents: [...state.chatEvents, event],
     }));
   },
 
-  removeCancelledMessage: (jobId: string) => {
-    set((state: any) => ({
-      chatMessages: state.chatMessages.filter((msg: ChatMessage) => {
-        const isCancelledForJob = msg.contents.some(
-          (c: any) => c && c.type === 'cancelled' && c.metadata?.jobId === jobId
-        );
-        return !isCancelledForJob;
-      })
-    }));
+  replaceChatEvents: (events, buffers, serverTs) => {
+    set({
+      chatEvents: events,
+      streamingBuffers: buffers,
+      lastChatSnapshotTs: serverTs,
+    });
   },
 
-  updateChatMessage: (messageId, updates) => {
-    set((state: any) => ({
-      chatMessages: state.chatMessages.map((msg: ChatMessage) =>
-        msg.id === messageId ? { ...msg, ...updates } : msg
-      )
-    }));
+  applyStreamingDelta: ({ turnId, workerScope, kind, cardId, chunk, producedAt }) => {
+    if (!turnId || !chunk) return;
+    set((state: any) => {
+      const last = state.lastChatSnapshotTs;
+      if (last && producedAt < last) {
+        return state;
+      }
+      const key = bufferKey(turnId, workerScope);
+      const prev: StreamingBuffer = state.streamingBuffers[key] ?? {
+        turnId,
+        workerScope: workerScope || MAIN_WORKER_SCOPE,
+      };
+      let next: StreamingBuffer;
+      if (kind === 'thinking') {
+        next = { ...prev, thinking: (prev.thinking ?? '') + chunk };
+      } else if (kind === 'text') {
+        next = { ...prev, text: (prev.text ?? '') + chunk };
+      } else {
+        if (!cardId) return state;
+        const prevCards = prev.pendingCards ?? {};
+        const prevCard = prevCards[cardId];
+        const nextCard = prevCard
+          ? { ...prevCard, streamedOutput: (prevCard.streamedOutput ?? '') + chunk }
+          : {
+              cardId,
+              statusType: 'tool_action' as const,
+              metadata: {} as Record<string, unknown>,
+              streamedOutput: chunk,
+            };
+        next = {
+          ...prev,
+          pendingCards: { ...prevCards, [cardId]: nextCard },
+        };
+      }
+      return {
+        streamingBuffers: { ...state.streamingBuffers, [key]: next },
+      };
+    });
   },
 
-  clearChatMessages: () => {
-    set({ chatMessages: [] });
+  replaceStreamingBuffer: ({ turnId, workerScope, text, thinking, pendingCards, producedAt }) => {
+    if (!turnId) return;
+    set((state: any) => {
+      const last = state.lastChatSnapshotTs;
+      if (last && producedAt < last) return state;
+      const key = bufferKey(turnId, workerScope);
+      const next: StreamingBuffer = {
+        turnId,
+        workerScope: workerScope || MAIN_WORKER_SCOPE,
+        text,
+        thinking,
+        pendingCards,
+      };
+      return { streamingBuffers: { ...state.streamingBuffers, [key]: next } };
+    });
+  },
+
+  clearStreamingBuffer: (turnId, workerScope) => {
+    if (!turnId) return;
+    set((state: any) => {
+      const key = bufferKey(turnId, workerScope);
+      if (!(key in state.streamingBuffers)) return state;
+      const next = { ...state.streamingBuffers };
+      delete next[key];
+      return { streamingBuffers: next };
+    });
+  },
+
+  clearChatEvents: (_scope = 'chat') => {
+    set({ chatEvents: [], streamingBuffers: {} });
   },
 
   initializeSSE: () => {
@@ -108,7 +213,6 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     }
     sliceHandlerIds = [];
 
-    // Kanban handler: 3-stage pipeline (activeJobs bootstrap → per-jobType tracking → jobType filter)
     sliceHandlerIds.push(sseManager.registerHandlerWithId('kanban', (data: KanbanData) => {
       const currentState = get();
       if (currentState.selectedProject !== connectedProject ||
@@ -138,10 +242,6 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     sliceHandlerIds.push(sseManager.registerHandlerWithId('bridge', createBridgeHandler(get)));
     sliceHandlerIds.push(sseManager.registerHandlerWithId('transfer', createTransferHandler(get)));
 
-    // gitState handler — sole SSE entry point for the git domain. Drives the
-    // git-world slice via its internal `_applyGitStateEvent` /
-    // `_refreshWorkingTreeDebounced` writers. Selector guards (project/feature
-    // equality) live inside those writers so this bridge stays thin.
     sliceHandlerIds.push(
       sseManager.registerHandlerWithId('gitState', (data: SSEMessageMap['gitState']) => {
         const s = get();
@@ -174,8 +274,6 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
     console.log('[Store] ✅ Unified SSE connection initializing (waiting for onopen...)');
   },
 
-  // Currently unused: job switching uses REST fetchKanbanData instead of SSE reconnect.
-  // Kept for potential future use (e.g. chat/fileTree full resync).
   reconnectSSE: (key) => {
     const state = get();
     console.log(`[Store] 🔄 Reconnecting unified SSE (key: ${key})`);

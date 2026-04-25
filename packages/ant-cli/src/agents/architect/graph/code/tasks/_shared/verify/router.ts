@@ -1,35 +1,28 @@
 /**
- * verification/hooks/router.ts — TaskRouterHook.routeAfterDone
+ * `_shared/verify/router` — TaskRouterHook.routeAfterDone shared by every
+ * verification responsibility holder.
  *
- * Factors the verification-specific branch out of `executeRouter`. The
- * router itself stays a pure predicate (no state mutation beyond the
- * `_nextPlanEntry='reverify'` signal it flips when this hook returns
- * `'plan'`): it asks the hook whether to reverify and translates the
- * answer into a node name.
+ * SSOT: previously `tasks/verification/hooks/router.ts`. Moved here so
+ * self-verify Tier 2 tasks share the same `<done>` routing semantics as
+ * Tier 3/4 verification tasks once they enter verify-mode.
  *
- * Summary of what this hook replaces:
- *   - `executeRouter.routeAfterExecute` L173~209 (verification-done branching)
- *
- * An earlier draft also published `shortCircuitAfterPlan` for
- * `planRouter` to consult, but the plan node already flips
- * `llmResponse.done = true` on its own short-circuit paths (batch split,
- * diagnostic pass, empty implementation) so `routeAfterPlan` stays blind
- * to task type and reads the flag directly. The slot was retired in the
- * T11 post-review as dead surface; the hook now owns a single
- * responsibility.
- */
-
-import type { ArchitectGraphState } from '../../../state';
-
-/**
- * Execute-router decision for verification tasks when the LLM signals
- * `<done>`. Returns:
+ * Returns:
  *   - `'checkTaskStatus'`  — verify completion and either finish or
  *                            surface a `verification_incomplete` violation
  *   - `'plan'`             — re-enter the plan phase for reverify so the
  *                            diagnostic loop can re-confirm gate state
  *   - `null`               — hook declines to decide; router continues
  *                            with its default logic
+ *
+ * R2 — depends only on the graph state shape.
+ */
+
+import type { ArchitectGraphState } from '../../../state';
+
+/**
+ * Verify-mode `routeAfterDone`. Used by every task that owns a
+ * verification cycle (verification task type AND self-verify Tier 2
+ * tasks) once `state._verifyEntered === true`.
  */
 export function routeAfterDone(state: ArchitectGraphState): string | null {
   const hasPlan = !!state.planText?.trim();

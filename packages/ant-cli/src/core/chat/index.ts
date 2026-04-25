@@ -1,18 +1,12 @@
 /**
  * Core Chat Module
- * 
- * Shared components for chat functionality used by both:
- * - LLMResponseService (job worker)
- * - ChatService (api server)
+ *
+ * Shared components for chat broadcasting + session-key derivation.
+ * Used by both `LLMResponseService` (job worker) and `ChatService`
+ * (api server). The pre-§5 `ChatSession` / `ChatMessage` types and
+ * the ContentMerger have been removed in Phase 9.
  */
 
-// Types
-export * from './types';
-
-// Schema utilities
 export * from './schema';
-
-// Core components
-export { ContentMerger } from './ContentMerger';
 export { MessageBroadcaster } from './MessageBroadcaster';
-export type { ChatBroadcastMessage } from './MessageBroadcaster';
+export type { ChatBroadcastEnvelope } from './MessageBroadcaster';

@@ -164,51 +164,6 @@ export class MessageBroadcaster {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // @deprecated — Legacy broadcast shims. Retired by chat SSOT §5.
-  // All new code MUST use the typed `broadcast*` methods above.
-  // ═══════════════════════════════════════════════════════════════════════
-
-  /** @deprecated */
-  broadcast(projectId: string, featureName: string, data: any, userContext?: UserContext): void {
-    this.publishRaw(projectId, featureName, { ...data, projectId, featureName }, userContext);
-  }
-
-  /** @deprecated */
-  broadcastMessageFinalized(
-    projectId: string, featureName: string, messageId: string, userContext?: UserContext,
-  ): void {
-    this.broadcast(projectId, featureName, { type: 'message_complete', messageId }, userContext);
-  }
-
-  /** @deprecated */
-  broadcastContentAdd(
-    projectId: string, featureName: string, messageId: string, content: any, userContext?: UserContext,
-  ): void {
-    this.broadcast(projectId, featureName, { type: 'content_add', messageId, content }, userContext);
-  }
-
-  /** @deprecated */
-  broadcastContentUpdate(
-    projectId: string, featureName: string, messageId: string, contentIndex: number, content: any, userContext?: UserContext,
-  ): void {
-    this.broadcast(projectId, featureName, { type: 'content_update', messageId, contentIndex, content }, userContext);
-  }
-
-  /** @deprecated */
-  broadcastContentRemove(
-    projectId: string, featureName: string, messageId: string, contentIndex: number, userContext?: UserContext,
-  ): void {
-    this.broadcast(projectId, featureName, { type: 'content_remove', messageId, contentIndex }, userContext);
-  }
-
-  /** @deprecated */
-  broadcastThinkingCollapse(
-    projectId: string, featureName: string, messageId: string, contentIndex: number, durationMs: number, userContext?: UserContext,
-  ): void {
-    this.broadcast(projectId, featureName, { type: 'thinking_collapse', messageId, contentIndex, durationMs }, userContext);
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
   // Internal
   // ═══════════════════════════════════════════════════════════════════════
 
@@ -216,15 +171,6 @@ export class MessageBroadcaster {
     projectId: string,
     featureName: string,
     data: ChatSseEvent,
-    userContext: UserContext | undefined,
-  ): void {
-    this.publishRaw(projectId, featureName, data, userContext);
-  }
-
-  private publishRaw(
-    projectId: string,
-    featureName: string,
-    data: any,
     userContext: UserContext | undefined,
   ): void {
     if (!this.stateStore) {
@@ -264,11 +210,3 @@ export class MessageBroadcaster {
   }
 }
 
-/** @deprecated Legacy envelope — kept only for `core/chat/index.ts` re-export. */
-export interface ChatBroadcastMessage {
-  projectId: string;
-  featureName: string;
-  type: 'chat';
-  data: any;
-  userContext: UserContext;
-}

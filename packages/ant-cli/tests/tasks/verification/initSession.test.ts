@@ -20,8 +20,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
-import * as planHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/plan';
+import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
+import * as planHook from '../../../src/agents/architect/graph/code/tasks/_shared/verify/initSession';
 import { hooks as verificationBundle } from '../../../src/agents/architect/graph/code/tasks/verification';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';
 

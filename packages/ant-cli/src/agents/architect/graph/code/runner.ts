@@ -6,8 +6,8 @@ import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
   isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
 } from "../../../common/graph/runnerHelpers";
-import { VerificationSession } from "./tasks/verification/model/Session";
-import type { VerificationSnapshot } from "./tasks/verification/model/snapshot";
+import { VerificationSession } from "./tasks/_shared/verify/Session";
+import type { VerificationSnapshot } from "./tasks/_shared/verify/snapshot";
 
 /**
  * Code Graph Runner

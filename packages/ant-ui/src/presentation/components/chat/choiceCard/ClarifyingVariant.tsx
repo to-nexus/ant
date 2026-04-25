@@ -5,7 +5,6 @@ import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
-import type { MessageContent } from '@/domain/models/chat';
 import { useImagePreview } from '../useImagePreview';
 import { DraftLightbox } from '../ImageLightbox';
 import type { VariantProps } from './shared';
@@ -461,7 +460,7 @@ function LightboxLoader({
 // ClarifyingVariant — unified text + image clarify card
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export function ClarifyingVariant({ content, messageId }: VariantProps) {
+export function ClarifyingVariant({ presented, resolved }: VariantProps) {
   const { t } = useTranslation('chat');
   const { toast } = useToastContext();
   const selectedAgent = useStore(state => state.selectedAgent);
@@ -470,23 +469,19 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
   const setPendingClarifyAnswer = useStore(state => state.setPendingClarifyAnswer);
   const setPendingClarifyContext = useStore(state => state.setPendingClarifyContext);
   const clearPendingClarify = useStore(state => state.clearPendingClarify);
-  const chatMessages = useStore(state => state.chatMessages);
-  const updateChatMessage = useStore(state => state.updateChatMessage);
   const { runJob } = useJobExecution();
 
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxStartValue, setLightboxStartValue] = useState('');
 
-  const cardState = useChoiceCardState({
-    content, messageId,
-    contentType: 'choice_card',
-    contentFilter: (c: MessageContent) => c.type === 'choice_card' && c.metadata?.cardType === 'clarifying',
-    metadataFilter: { cardType: 'clarifying' },
-  });
+  const cardState = useChoiceCardState({ presented, resolved });
+
+  const payload = (presented.payload ?? {}) as Record<string, any>;
+  const answer = (resolved?.answer ?? {}) as Record<string, any>;
 
   const blocks = useMemo(() => {
-    return content.metadata?.clarifyBlocks || [];
-  }, [content.metadata?.clarifyBlocks]);
+    return (payload.clarifyBlocks as any[]) || [];
+  }, [payload.clarifyBlocks]);
 
   const hasImageBlocks = blocks.some((b: any) => blockHasImageOptions(b.options));
   const textBlocks = blocks.filter((b: any) => !blockHasImageOptions(b.options));
@@ -533,24 +528,9 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
     cardState.setLocalSelectedChoice('submitted');
     cardState.setLocalResolvedLabel(label);
 
-    const message = chatMessages.find(m => m.id === messageId);
-    if (message) {
-      const matchFn = (c: MessageContent) => c.type === 'choice_card' && c.metadata?.cardType === 'clarifying';
-      const contentIndex = message.contents.findIndex(matchFn);
-      if (contentIndex !== -1) {
-        const updatedContents = [...message.contents];
-        updatedContents[contentIndex] = {
-          ...updatedContents[contentIndex],
-          metadata: {
-            ...updatedContents[contentIndex].metadata,
-            choiceSelected: 'submitted',
-            resolvedLabel: label,
-            resolvedAnswers,
-          },
-        };
-        updateChatMessage(messageId, { contents: updatedContents });
-      }
-    }
+    // Phase 11 chat-SSOT — the durable resolution flows through BE
+    // `/chat/choice-resolved` → SSE → `chatEvents` → projector. The
+    // optimistic local state above keeps the click instantaneous.
     await cardState.persistToBackend('submitted', label, { resolvedAnswers });
 
     try {
@@ -572,7 +552,6 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
     const label = t('draftSelection.draftSelected', { number: sketchIndex + 1 });
     cardState.setLocalSelectedChoice(value);
     cardState.setLocalResolvedLabel(label);
-    cardState.persistChoice(value, label);
     await cardState.persistToBackend(value, label, { selectedSketchIndex: sketchIndex });
 
     setLightboxOpen(false);
@@ -596,24 +575,7 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
     cardState.setLocalSelectedChoice('custom');
     cardState.setLocalResolvedLabel(label);
 
-    const message = chatMessages.find(m => m.id === messageId);
-    if (message) {
-      const matchFn = (c: MessageContent) => c.type === 'choice_card' && c.metadata?.cardType === 'clarifying';
-      const contentIndex = message.contents.findIndex(matchFn);
-      if (contentIndex !== -1) {
-        const updatedContents = [...message.contents];
-        updatedContents[contentIndex] = {
-          ...updatedContents[contentIndex],
-          metadata: {
-            ...updatedContents[contentIndex].metadata,
-            choiceSelected: 'custom',
-            resolvedLabel: label,
-            customText: text,
-          },
-        };
-        updateChatMessage(messageId, { contents: updatedContents });
-      }
-    }
+    // Phase 11 chat-SSOT — durable resolution arrives via SSE.
     await cardState.persistToBackend('custom', label, { customText: text });
 
     try {
@@ -633,7 +595,6 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
     const label = t('draftSelection.regenerateLabel');
     cardState.setLocalSelectedChoice('regenerate');
     cardState.setLocalResolvedLabel(label);
-    cardState.persistChoice('regenerate', label);
     await cardState.persistToBackend('regenerate', label, {});
 
     try {
@@ -664,13 +625,15 @@ export function ClarifyingVariant({ content, messageId }: VariantProps) {
       ? textBlocks[0]?.question
       : t('clarify.title', { count: totalTextQuestions });
 
-  const resolvedAnswers: Record<number, string> | undefined = content.metadata?.resolvedAnswers;
+  const resolvedAnswers: Record<number, string> | undefined = answer.resolvedAnswers as
+    | Record<number, string>
+    | undefined;
   const isResolved = cardState.isSelected && !!resolvedAnswers;
 
-  const selectedValue = content.metadata?.selectedSketchIndex != null
-    ? `sketch_${content.metadata.selectedSketchIndex}`
+  const selectedValue = answer.selectedSketchIndex != null
+    ? `sketch_${answer.selectedSketchIndex}`
     : cardState.selectedChoice || undefined;
-  const customText: string | undefined = content.metadata?.customText;
+  const customText: string | undefined = answer.customText as string | undefined;
 
   // All image options flattened (for lightbox)
   const allImageOptions = useMemo(() => {

@@ -1,34 +1,46 @@
 /**
- * tasks/verification/index.ts — verification task bundle.
+ * tasks/verification/index.ts — verification task bundle (thin shim).
  *
- * Collects every verification hook into a single `hooks: TaskHooks` export.
- * `tasks/_shared/registry.ts` imports this bundle statically so the phase
- * layer's `hooksIfActive(state)` / `hooksForTaskType('verification')`
- * lookups return the real implementation.
+ * Tier 3/4 dedicated verification task. The bundle now delegates the
+ * verification-mode hook surface to `tasks/_shared/verify/` so the same
+ * Session, plan/execute/command/check/router/orchestrator behaviour
+ * powers self-verify Tier 2 tasks (error/feature/ui/setup with
+ * `selfVerifyOnDone:true`) through `composeBundle`.
  *
- * At T5 only the hook bodies are wired; phase-layer callers keep their
- * inline logic until T6 flips each call site to delegate here.
+ * What stays here:
+ *   - `model/is.ts` (`isVerificationTask`) — verification task type's
+ *     decompose-time identifier; the predicate is read across the
+ *     codebase to distinguish "this is the dedicated final-verification
+ *     task" from "this is a Tier 2 self-verify task that owns
+ *     verification responsibility transiently".
+ *   - `hooks/decompose.ts` (`isExclusive`) — verification tasks always
+ *     act as a queue-wide barrier.
+ *   - `hooks/conversations.ts` (`convKey`) — verification-task-id-scoped
+ *     conversation key (per-task thread).
+ *
+ * Everything else is `_shared/verify/`. Adding new shared verify-mode
+ * behaviour: extend `_shared/verify/`. Adding new verification-task-only
+ * behaviour: keep it in this directory.
  */
 
 import type { TaskHooks } from '../_shared/types';
 
-import { onEvent } from './hooks/tool';
-import { guard } from './hooks/command';
-import { evaluate, budgetExhaustedHint } from './hooks/check';
-import { routeAfterDone } from './hooks/router';
-import {
-  initSession,
-  buildPrompt as planBuildPrompt,
-  checkRetryTermination,
-} from './hooks/plan';
-import { executeHook } from './hooks/execute';
+// Verification-task-type-only hooks
+import { isExclusive } from './hooks/decompose';
+import { convKey } from './hooks/conversations';
+
+// Shared verify-mode hooks (also used by composeBundle for self-verify tasks)
+import { initSession, buildPrompt as planBuildPrompt, checkRetryTermination } from '../_shared/verify';
+import { executeHook } from '../_shared/verify/executeHook';
+import { onEvent } from '../_shared/verify/toolHook';
+import { guard } from '../_shared/verify/commandGuard';
+import { evaluate, budgetExhaustedHint } from '../_shared/verify/checkEvaluate';
+import { routeAfterDone } from '../_shared/verify/router';
 import {
   hasOwnAttemptCounter,
   attemptCount,
   restoreIntoWorkerState,
-} from './hooks/orchestrator';
-import { isExclusive } from './hooks/decompose';
-import { convKey } from './hooks/conversations';
+} from '../_shared/verify/orchestrator';
 
 export const hooks: TaskHooks = {
   plan: {

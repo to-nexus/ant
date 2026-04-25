@@ -31,7 +31,7 @@ import { CodeTask } from '../../../../../types/task';
 import { formatViolations } from '../../../utils/violationFormatter';
 import { detectTestFilesFromDisk } from '../testFileDetector';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
-import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
+import { VerificationTerminalError } from '../../../tasks/_shared/verify/errors';
 import { isVerificationTask } from '../../../tasks/verification';
 import { hooksForTaskType } from '../../../tasks/_shared/registry';
 
@@ -237,9 +237,17 @@ async function handleRetryEntry(
 ): Promise<PlanEntryContext> {
   const nextTask = state.currentTask!;
 
-  // Termination dispatch (R1). Hook-owning task types (verification) decide
-  // termination themselves; task types without a hook fall through to the
-  // generic `state.retries / state.maxRetries` counter.
+  // Termination dispatch (R1). Verification responsibility holders' plan
+  // hook decides termination via Session attempts (no_progress detection);
+  // non-verification tasks fall through to the generic
+  // `state.retries / state.maxRetries` counter.
+  //
+  // Note: composeBundle wraps every bundle's `checkRetryTermination` with
+  // a phase-mode dispatcher, so the function's mere presence is no longer
+  // a reliable signal of "owns its own retry counter". The discriminator
+  // is the verification task type itself (the only type whose retry path
+  // ever runs while a Session exists — self-verify tasks enter retry only
+  // during apply phase, when no Session exists yet).
   const planHook = hooksForTaskType(nextTask.type)?.plan;
   const hookTerminal = planHook?.checkRetryTermination?.(state);
   if (hookTerminal) {
@@ -247,7 +255,7 @@ async function handleRetryEntry(
     throw hookTerminal;
   }
 
-  if (!planHook?.checkRetryTermination) {
+  if (!isVerificationTask(nextTask)) {
     state.retries = (state.retries || 0) + 1;
     if (state.retries >= state.maxRetries) {
       throw new VerificationTerminalError(
@@ -339,6 +347,16 @@ async function handleReverifyEntry(
   const nextTask = state.currentTask!;
   console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
   console.log(`   Resetting per-cycle attempted gates via Session.onPlanEntry('reverify')\n`);
+
+  // Self-verify Tier 2 task: this is the FIRST verify-mode entry (apply
+  // phase ran without a Session). Dispatch initSession so the Session is
+  // created and `_verifyEntered` flips. Verification tasks already
+  // initialized at fresh entry — `_shared/verify/initSession` is
+  // idempotent (its hydrateEnv/createFresh check leaves a populated
+  // session untouched).
+  const tsProject = isTypeScriptProject(state);
+  const hasTests = detectTestFilesFromDisk(state.context?.featurePath);
+  hooksForTaskType(nextTask.type)?.plan?.initSession?.(state, { isTs: tsProject, hasTests });
 
   // Session bumps the attempt counter and clears per-cycle attempted gates.
   // Plan-history push lives at `nodes/plan/index.ts` (single-writer).

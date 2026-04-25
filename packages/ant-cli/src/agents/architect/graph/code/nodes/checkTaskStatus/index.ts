@@ -295,10 +295,16 @@ export async function checkTaskStatus(
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       planText: '',
-      // Task boundary clears. Next verification task pops with a clean
-      // Session via `initSession`; a resumed task bypasses this path
-      // (TaskWorker restores via resumeState.verification).
+      // Task boundary clears. Next verification responsibility holder
+      // (verification task or self-verify task) pops with a clean Session
+      // via `initSession`; a resumed task bypasses this path (TaskWorker
+      // restores via resumeState.verification).
       verification: undefined,
+      // Phase mode reset — next task starts in apply-mode regardless of
+      // whether the previous task entered verify. Self-verify and
+      // verification tasks re-flip via `markVerifyEntered` in their
+      // respective entry paths.
+      _verifyEntered: false,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     };

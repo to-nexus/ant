@@ -1,116 +1,25 @@
 /**
- * verification/hooks/plan.ts — TaskPlanHook implementation.
+ * `_shared/verify/buildPlanPrompt` — verify-mode plan prompt builder shared
+ * by every verification responsibility holder.
  *
- * Translates the plan-node's verification-specific branches into Session API
- * calls. Hooks supplied:
+ * SSOT: previously `tasks/verification/hooks/plan.ts::buildPrompt`. Moved
+ * here so self-verify Tier 2 tasks render the same diagnostic plan
+ * prompt as Tier 3/4 verification tasks once they enter verify-mode.
  *
- *   - `initSession(state, env)`    — idempotent merge-aware Session creation
- *                                    at plan-node entry (fresh / seed-only
- *                                    metadata / fully rehydrated).
- *   - `buildPrompt(ctx)`           — renders the verification-variant plan
- *                                    prompt (`jobs/code/nodes/plan/variants/
- *                                    verification/base`) with tech-tier-aware
- *                                    dependency / deep-diagnostic / cached-pass
- *                                    injections. Ported from
- *                                    `nodes/plan/planGeneration.ts` L95~148
- *                                    as part of T6b-β.
+ * Renders against `jobs/code/nodes/plan/variants/verification/base` with
+ * tech-tier-aware language hints, dependency-status injection, deep-
+ * diagnostic config snapshot, and cached-passed-step block. The
+ * verification-specific `isErrorTask: false` template var is preserved
+ * (the template branches on it for header copy).
  *
- * Attempt-counter bookkeeping (`session.onPlanEntry(reason)`) and plan-entry
- * classification (`state._nextPlanEntry`) are called directly by the phase
- * layer in `nodes/plan/parts/entry.ts` (`handleRetryEntry`, `handleReverifyEntry`,
- * `resolvePlanEntry`). Earlier drafts routed both through extra `onEntry` /
- * `classifyEntry` hook slots, but the phase layer already holds the Session
- * reference and the router-set `_nextPlanEntry` signal, so the indirection
- * produced dead surface. Those slots were retired in the T11 post-review
- * consistent with the T7/T8 follow-ups that removed `attachSnapshot` /
- * `captureOnFailure` and `decideOutcome` / `maybeSplit` / `makeTerminalError`.
- *
- * Termination decisions (`VerificationTerminalError` throws for
- * `max_retries_exceeded` / `batch_cycle_limit` / `unresolved_violations`)
- * remain at the phase layer (`nodes/plan/parts/entry.ts`,
- * `nodes/plan/parts/batchSplit.ts`, `parallel/TaskWorker.ts`) where the
- * surrounding control flow lives.
- *
- * R2 compliance — the hook's verdicts come from its own `model/` (Session,
- * errors). Prompt-rendering helpers (`collectConfigSnapshot`,
- * `renderConfigBlock`) also live under `model/configSnapshot` as of T9.
- * No imports from `nodes/`, `routers/`, or `parallel/`.
+ * R2 — depends only on `_shared/verify/Session`, `configSnapshot`, and the
+ * shared plan prompt helpers.
  */
 
-import type { ArchitectGraphState } from '../../../state';
-import { VerificationSession } from '../model/Session';
-import type { PlanPromptCtx, InitSessionEnv, PlanPromptResult } from '../../_shared/types';
+import type { PlanPromptCtx, PlanPromptResult } from '../types';
 import { effectiveTechTier, getTechTier } from '@ant/shared';
-import {
-  collectConfigSnapshot,
-  renderConfigBlock,
-} from '../model/configSnapshot';
-import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
-import { VerificationTerminalError } from '../model/errors';
-
-// ────────────────────────────────────────────────────────────────────────────
-// Hook implementations
-// ────────────────────────────────────────────────────────────────────────────
-
-/**
- * Merge-aware VerificationSession population at plan-node entry.
- *
- *   - Missing session → constructs a fresh one via `createFresh(env)`.
- *   - Session present with an empty required-gate set (scenario seed that
- *     carried only attempts / history metadata, or an early-rehydrated
- *     pre-plan snapshot) → populates required/passed from `env` via
- *     `hydrateEnv` while preserving attempts, history, installNeeded, etc.
- *   - Session present with a populated required set → no-op (carry-over
- *     from resume/rehydrate is authoritative).
- *
- * This is the single writer of `state.verification` in the fresh-entry
- * path. Carry-over boundaries populate the session via
- * `hooks/orchestrator.ts::restoreIntoWorkerState` and `runner.ts` resume
- * hydration; both run before the plan node fires, so `initSession` never
- * stomps a rehydrated cycle.
- */
-export function initSession(state: ArchitectGraphState, env: InitSessionEnv): void {
-  if (!state.verification) {
-    state.verification = VerificationSession.createFresh(env);
-    return;
-  }
-  state.verification.hydrateEnv(env);
-}
-
-/** Trailing identical-plan count that marks the LLM as stuck. */
-const NO_PROGRESS_STREAK = 2;
-
-/**
- * Verification's retry terminator. Returns `no_progress` when the just-failed
- * plan matches the trailing plan-history streak; `null` continues the loop.
- * Runaway is bounded by `state.recursionLimit` at the routing layer.
- *
- * Empty-plan coverage: `state.planText === ''` is a legitimate input here.
- * The plan-phase LLM sometimes emits `<done>true</done>` with no `<plan>`
- * block mid-retry — a protocol-violation "silent give-up" that used to
- * evade termination because the old `!state.planText` early-return bailed
- * out before the hash comparison. Empty strings now flow through
- * `isPlanRepeated` and hash to a stable value, so two consecutive empties
- * register as a repeated-plan streak and throw `no_progress` through the
- * same channel that catches verbatim repeated plans.
- */
-export function checkRetryTermination(
-  state: ArchitectGraphState,
-): VerificationTerminalError | null {
-  const session = state.verification;
-  if (!session) return null;
-
-  const repeat = session.isPlanRepeated(state.planText ?? '');
-  if (repeat.count >= NO_PROGRESS_STREAK) {
-    const planDesc = state.planText ? `the same plan` : `an empty plan`;
-    return new VerificationTerminalError(
-      'no_progress',
-      `Task "${state.currentTask?.name ?? 'verification'}" stuck: the LLM produced ${planDesc} ${repeat.count} times in a row.`,
-      session.snapshot(),
-    );
-  }
-  return null;
-}
+import { collectConfigSnapshot, renderConfigBlock } from './configSnapshot';
+import { formatCodeContext, mapLang } from '../helpers/planPrompt';
 
 // ────────────────────────────────────────────────────────────────────────────
 // buildPrompt — verification-variant plan prompt
@@ -174,9 +83,10 @@ function renderSessionSummary(
 
 
 /**
- * Compose the verification-variant plan prompt. Mirrors the behaviour of the
- * `task.type === 'verification'` block previously inlined at
- * `nodes/plan/planGeneration.ts` L95~148, including:
+ * Compose the verification-variant plan prompt. Used for both Tier 3/4
+ * verification tasks AND Tier 2 self-verify tasks once they enter
+ * verify-mode (`composeBundle` dispatches to this when
+ * `state._verifyEntered === true`).
  *
  *   - tech-tier resolution + language-hint lookup (silent fallback when the
  *     hint partial does not exist for the detected language);
@@ -194,9 +104,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
 
   const techTier = task.techTiers?.length ? effectiveTechTier(task.techTiers) : getTechTier(state);
   if (!techTier) {
-    console.warn(`⚠️ [Plan] Verification task "${task.name}": techTier is null`);
+    console.warn(`⚠️ [Plan] Verify-mode task "${task.name}": techTier is null`);
   } else {
-    console.log(`🔧 [Plan] Verification techTier: language=${techTier.language}, framework=${techTier.framework || 'none'}`);
+    console.log(`🔧 [Plan] Verify-mode techTier: language=${techTier.language}, framework=${techTier.framework || 'none'}`);
   }
 
   // `state.verification` is the sole SSOT for every verification-owned

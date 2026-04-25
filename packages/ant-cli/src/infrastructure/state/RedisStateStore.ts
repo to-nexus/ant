@@ -26,8 +26,6 @@ import {
   TurnBufferData,
   PendingCardSnapshot,
   TurnBufferSnapshot,
-  ChatSessionData,
-  ChatMessageData,
   WorkflowRealtimeState,
   PendingChoiceData
 } from '../../core/ports/stateStore';
@@ -1215,59 +1213,6 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     const seq = await this.redis.incr(key);
     await this.redis.expire(key, REDIS_TTL.CHAT.CANCELLED_PAUSE_SEQ);
     return seq;
-  }
-
-  // ═════════════════════════════════════════════════════════════════════
-  // @deprecated — Legacy chat session shims. Retired by chat SSOT §5.
-  // ═════════════════════════════════════════════════════════════════════
-
-  async getChatSession(sessionKey: string): Promise<ChatSessionData | null> {
-    const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.SESSION, sessionKey));
-    if (!data) return null;
-    try {
-      return JSON.parse(data) as ChatSessionData;
-    } catch (e) {
-      logger.error(`Failed to parse chat session: ${sessionKey}`, { component: 'RedisStateStore' }, e);
-      return null;
-    }
-  }
-
-  async setChatSession(sessionKey: string, session: ChatSessionData): Promise<void> {
-    await this.redis.setex(
-      this.key(REDIS_KEYS.CHAT.SESSION, sessionKey),
-      REDIS_TTL.CHAT.SESSION,
-      JSON.stringify(session),
-    );
-  }
-
-  async deleteChatSession(sessionKey: string): Promise<void> {
-    await this.redis.del(this.key(REDIS_KEYS.CHAT.SESSION, sessionKey));
-    await this.redis.del(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey));
-  }
-
-  async getCurrentMessage(sessionKey: string): Promise<ChatMessageData | null> {
-    const data = await this.redis.get(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey));
-    if (!data) return null;
-    try {
-      return JSON.parse(data) as ChatMessageData;
-    } catch (e) {
-      logger.error(`Failed to parse current message: ${sessionKey}`, { component: 'RedisStateStore' }, e);
-      return null;
-    }
-  }
-
-  async setCurrentMessage(sessionKey: string, message: ChatMessageData | null): Promise<void> {
-    const key = this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey);
-    if (message === null) {
-      await this.redis.del(key);
-    } else {
-      await this.redis.setex(key, REDIS_TTL.CHAT.CURRENT_MESSAGE, JSON.stringify(message));
-    }
-  }
-
-  async hasActiveMessage(sessionKey: string): Promise<boolean> {
-    const exists = await this.redis.exists(this.key(REDIS_KEYS.CHAT.CURRENT_MESSAGE, sessionKey));
-    return exists === 1;
   }
 
   // ============================================

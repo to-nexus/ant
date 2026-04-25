@@ -1,13 +1,68 @@
-import type { ChatMessage, MessageContent } from '@/domain/models/chat';
-
 /**
- * Creates the unified chat SSE event handler. Routes event.type to the
- * appropriate message mutation: initial_state merge, streaming, tool_call,
- * job_status, inline_ask completion, etc.
+ * Chat SSE handler — Phase 10 chat-SSOT model.
+ *
+ * Five event types only (mirror of `@ant/shared` ChatSseEvent):
+ *
+ *   chat_initial_state          — full snapshot on SSE open / reconnect.
+ *   chat_event_appended         — single ChatLine appended to chat.jsonl.
+ *   streaming_delta             — in-flight chunk for text/thinking/card_output.
+ *   streaming_buffer_snapshot   — per-(turnId,workerScope) buffer reset.
+ *   events_cleared              — Hard Reset / Chat Clear.
+ *
+ * Other events that share the same SSE channel today (`job_status`,
+ * `inline_ask_complete`) keep their existing routing because they are
+ * NOT chat-events under the chat-SSOT (they live on the kanban /
+ * inline-ask contracts but are bridged through the chat handler for
+ * historical reasons — see `useJobExecution`).
  */
+
+import type {
+  BufferKey,
+  StreamingBuffer,
+} from '@/domain/store/selectors/chat';
+import type { ChatSseEvent, ChatLine, TurnBufferSnapshotMap } from '@ant/shared';
+
+const MAIN_WORKER_SCOPE = '_main_';
+
+function bufferKey(turnId: string, workerScope?: string | null): BufferKey {
+  return `${turnId}:${workerScope || MAIN_WORKER_SCOPE}`;
+}
+
+function snapshotsToMap(turnBuffers: TurnBufferSnapshotMap): Record<BufferKey, StreamingBuffer> {
+  const out: Record<BufferKey, StreamingBuffer> = {};
+  for (const snap of Object.values(turnBuffers)) {
+    const key = bufferKey(snap.turnId, snap.workerScope);
+    out[key] = {
+      turnId: snap.turnId,
+      workerScope: snap.workerScope || MAIN_WORKER_SCOPE,
+      text: snap.text,
+      thinking: snap.thinking,
+      pendingCards: snap.pendingCards,
+    };
+  }
+  return out;
+}
+
 export function createChatSseHandler(set: any, get: any): (event: any) => void {
   return (event: any) => {
     const currentState = get();
+    const isChatEvent =
+      event &&
+      typeof event.type === 'string' &&
+      (event.type === 'chat_initial_state' ||
+        event.type === 'chat_event_appended' ||
+        event.type === 'streaming_delta' ||
+        event.type === 'streaming_buffer_snapshot' ||
+        event.type === 'events_cleared');
+
+    // Non-chat events (job_status, inline_ask_complete) still arrive on
+    // this channel for legacy reasons. Forward to the dedicated
+    // handlers and skip projector logic.
+    if (!isChatEvent) {
+      handleNonChatEvent(event, set, get);
+      return;
+    }
+
     const isCorrectContext =
       event.projectId === currentState.selectedProject &&
       event.featureName === currentState.selectedFeature;
@@ -17,419 +72,238 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
       return;
     }
 
-    switch (event.type) {
-      case 'initial_state': {
-        const current = get().chatMessages;
-        if (current.length === 0) {
-          console.log('[Store] 💬 Loading initial chat messages:', event.messages.length);
-          set({ chatMessages: event.messages });
-          break;
-        }
-        const currentById = new Map<string, ChatMessage>(current.map((m: ChatMessage) => [m.id, m] as [string, ChatMessage]));
-        const merged: ChatMessage[] = [];
-        const seen = new Set<string>();
+    const chatEvent = event as ChatSseEvent;
 
-        for (const incoming of event.messages as ChatMessage[]) {
-          const existing = currentById.get(incoming.id);
-          if (existing && existing.contents.length > incoming.contents.length) {
-            merged.push(existing);
-          } else {
-            merged.push(incoming);
-          }
-          seen.add(incoming.id);
-        }
-
-        for (const msg of current) {
-          if (!seen.has(msg.id)) {
-            merged.push(msg);
-          }
-        }
-
-        console.log(`[Store] 💬 initial_state merge: ${event.messages.length} incoming, ${current.length} existing → ${merged.length} merged`);
-        set({ chatMessages: merged });
-        break;
-      }
-
-      case 'user_message':
-        if (!get().chatMessages.some((m: ChatMessage) => m.id === event.message.id)) {
-          get().addChatMessage(event.message);
-        } else {
-          console.log('[Store] 💬 Ignoring duplicate user_message event:', event.message.id);
-        }
-        break;
-
-      case 'message_start':
-        if (!get().chatMessages.some((m: ChatMessage) => m.id === event.message.id)) {
-          get().addChatMessage(event.message);
-        } else {
-          console.log('[Store] 💬 Ignoring duplicate message_start event:', event.message.id);
-        }
-        break;
-
-      case 'content_add': {
-        if (!event.content) {
-          console.warn('[Store] 💬 content_add: event.content is undefined, skipping');
-          break;
-        }
-        const existingMsg = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
-        if (existingMsg) {
-          const isDuplicate = existingMsg.contents.some((c: MessageContent) =>
-            c && c.type === event.content.type &&
-            c.content === event.content.content &&
-            c.metadata?.filePath === event.content.metadata?.filePath &&
-            c.metadata?.timestamp === event.content.metadata?.timestamp
-          );
-          if (isDuplicate) {
-            console.log('[Store] 💬 Ignoring duplicate content_add event');
-            break;
-          }
-          get().updateChatMessage(event.messageId, {
-            contents: [...existingMsg.contents, event.content]
-          });
-        } else {
-          console.warn('[Store] 💬 content_add: message not found, creating placeholder:', event.messageId);
-          get().addChatMessage({
-            id: event.messageId,
-            role: 'assistant',
-            contents: [event.content],
-            timestamp: new Date().toISOString(),
-            isStreaming: true
-          } as ChatMessage);
-        }
-        if (event.content?.type === 'downloaded') {
-          setTimeout(() => get().refreshFileTree(), 1000);
-        }
-        break;
-      }
-
-      case 'message_snapshot': {
-        const existing = get().chatMessages.find(
-          (m: ChatMessage) => m.id === event.messageId
+    switch (chatEvent.type) {
+      case 'chat_initial_state': {
+        const buffers = snapshotsToMap(chatEvent.turnBuffers);
+        get().replaceChatEvents(chatEvent.events, buffers, chatEvent.serverTs);
+        console.log(
+          `[Store] 💬 chat_initial_state: ${chatEvent.events.length} events, ${Object.keys(buffers).length} buffers`,
         );
-        if (existing) {
-          if (event.contentsCount >= existing.contents.length) {
-            get().updateChatMessage(event.messageId, {
-              contents: event.contents,
-              isStreaming: true,
-            });
-            console.debug(`[Store] 💬 message_snapshot applied: ${event.contentsCount} contents (was ${existing.contents.length})`);
-          }
-        } else {
-          get().addChatMessage({
-            id: event.messageId,
-            role: 'assistant',
-            contents: event.contents,
-            timestamp: new Date().toISOString(),
-            isStreaming: true,
-          } as ChatMessage);
-          console.debug(`[Store] 💬 message_snapshot: created new message ${event.messageId}`);
-        }
         break;
       }
 
-      case 'content_update': {
-        const message = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
-        if (message) {
-          if (event.contentIndex >= message.contents.length) {
-            console.debug(`[Store] 💬 content_update: index ${event.contentIndex} out of bounds (length ${message.contents.length}), awaiting snapshot`);
-            break;
-          }
-          const updatedContents = [...message.contents];
-          const existing = updatedContents[event.contentIndex];
-          updatedContents[event.contentIndex] = {
-            ...existing,
-            ...event.content,
-            metadata: {
-              ...existing?.metadata,
-              ...event.content?.metadata,
-            },
-          };
-          get().updateChatMessage(event.messageId, {
-            contents: updatedContents,
-            isStreaming: true
-          });
-        } else if (event.content) {
-          console.warn('[Store] 💬 content_update: message not found, creating placeholder:', event.messageId);
-          get().addChatMessage({
-            id: event.messageId,
-            role: 'assistant',
-            contents: [event.content],
-            timestamp: new Date().toISOString(),
-            isStreaming: true
-          } as ChatMessage);
+      case 'chat_event_appended': {
+        const line: ChatLine = chatEvent.event;
+        // Drop snapshot-stale events (producedAt < lastChatSnapshotTs).
+        const last = get().lastChatSnapshotTs as string | undefined;
+        if (last && chatEvent.producedAt < last) {
+          console.debug(`[Store] 💬 dropping stale chat_event_appended (${chatEvent.producedAt} < ${last})`);
+          break;
         }
-        break;
-      }
-
-      case 'content_append': {
-        const appendMessage = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
-        if (appendMessage) {
-          const appendContents = [...appendMessage.contents];
-          if (appendContents[event.contentIndex]) {
-            const target = appendContents[event.contentIndex];
-            const oldContent = target.content;
-            const newContent = oldContent + event.delta;
-
-            // Command card type promotion: the backend transitions
-            // `command_running → command_streaming` internally when the
-            // first stdout chunk arrives, but the broadcast carries only
-            // a `delta` (no type). Promote locally so TerminalCard's
-            // auto-scroll effect — gated on `command_streaming` — starts
-            // tracking the new lines as they flow in.
-            const promotedType = target.type === 'command_running'
-              ? 'command_streaming' as const
-              : target.type;
-
-            appendContents[event.contentIndex] = {
-              ...target,
-              type: promotedType,
-              content: newContent
-            };
-            get().updateChatMessage(event.messageId, {
-              contents: appendContents,
-              isStreaming: true
-            });
+        get().appendChatEvent(line);
+        // file_create / file_edit / downloaded refresh the file tree.
+        if (line.type === 'chat_status') {
+          if (
+            line.statusType === 'file_create' ||
+            line.statusType === 'file_edit' ||
+            line.statusType === 'file_delete' ||
+            line.statusType === 'downloaded'
+          ) {
+            setTimeout(() => get().refreshFileTree?.(), 1000);
           }
         }
         break;
       }
 
-      case 'content_remove': {
-        const deleteMessage = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
-        if (deleteMessage) {
-          const deletedContents = [...deleteMessage.contents];
-          deletedContents.splice(event.contentIndex, 1);
-          get().updateChatMessage(event.messageId, {
-            contents: deletedContents,
-            isStreaming: true
-          });
-        }
+      case 'streaming_delta': {
+        get().applyStreamingDelta({
+          turnId: chatEvent.turnId,
+          workerScope: chatEvent.workerScope,
+          kind: chatEvent.kind,
+          cardId: chatEvent.cardId,
+          chunk: chatEvent.chunk,
+          producedAt: chatEvent.producedAt,
+        });
         break;
       }
 
-      case 'thinking_collapse': {
-        const collapseMessage = get().chatMessages.find((m: ChatMessage) => m.id === event.messageId);
-        if (collapseMessage) {
-          const collapseContents = [...collapseMessage.contents];
-          if (collapseContents[event.contentIndex] && collapseContents[event.contentIndex].type === 'thinking') {
-            collapseContents[event.contentIndex] = {
-              ...collapseContents[event.contentIndex],
-              metadata: {
-                ...collapseContents[event.contentIndex].metadata,
-                collapsed: true,
-                durationMs: event.durationMs
-              }
-            };
-            get().updateChatMessage(event.messageId, {
-              contents: collapseContents,
-              isStreaming: true
-            });
-          }
-        }
+      case 'streaming_buffer_snapshot': {
+        get().replaceStreamingBuffer({
+          turnId: chatEvent.turnId,
+          workerScope: chatEvent.workerScope,
+          text: chatEvent.text,
+          thinking: chatEvent.thinking,
+          pendingCards: chatEvent.pendingCards,
+          producedAt: chatEvent.producedAt,
+        });
         break;
       }
 
-      case 'message_complete':
-        get().updateChatMessage(event.messageId, { isStreaming: false });
-        break;
-
-      case 'messages_cleared': {
-        set({ chatMessages: [] });
-        // `scope` tells us how aggressive the backend collapse was:
-        // - 'full' (Hard Reset / §17 hard_reset): BOTH chat.jsonl and
-        //   feature.jsonl were collapsed + a user_reset boundary was
-        //   appended. Wipe the feature-log breadcrumb cache so the Timeline
-        //   tab does not keep stale rows until a feature switch.
-        // - 'chat' (DELETE /chat/messages, default): only chat.jsonl was
-        //   collapsed. feature.jsonl (breadcrumbs, user_turn, user_turn_meta)
-        //   is preserved so the LLM still remembers the conversation for the
-        //   next turn — keep breadcrumbs intact in the UI as well.
-        // Falls back to 'chat' when older servers omit the field — the
-        //   conservative, less destructive choice.
-        const scope: 'chat' | 'full' = event.scope === 'full' ? 'full' : 'chat';
-        if (scope === 'full') {
+      case 'events_cleared': {
+        get().clearChatEvents(chatEvent.scope);
+        // `scope='full'` means the BE collapsed feature.jsonl too;
+        // wipe FE breadcrumb cache so the Timeline tab drops stale rows.
+        if (chatEvent.scope === 'full') {
           get().clearFeatureLog?.();
         }
-        get().refreshFileTree();
+        get().refreshFileTree?.();
         break;
       }
+    }
+  };
+}
 
-      case 'cancelled_message': {
-        if (get().chatMessages.some((m: ChatMessage) => m.id === event.message.id)) {
-          console.log('[Store] 💬 Ignoring duplicate cancelled_message (same ID):', event.message.id);
+// ═══════════════════════════════════════════════════════════════════════
+// Non-chat events sharing the channel (job_status, inline_ask_complete).
+// Phase 14 will move these onto their own SSE topic; for now we keep
+// the historical routing intact.
+// ═══════════════════════════════════════════════════════════════════════
+
+function handleNonChatEvent(event: any, set: any, get: any) {
+  if (!event) return;
+  const currentState = get();
+  if (
+    event.projectId !== undefined &&
+    event.projectId !== currentState.selectedProject
+  ) {
+    return;
+  }
+  if (
+    event.featureName !== undefined &&
+    event.featureName !== currentState.selectedFeature
+  ) {
+    return;
+  }
+
+  switch (event.type) {
+    case 'job_status': {
+      console.log('[Store] 📡 Received job_status event:', event.status, event.jobId);
+      if (event.status === 'completed' || event.status === 'failed') {
+        const cs = get();
+        if (cs.jobStartPending && cs.isRunning) {
+          console.log('[Store] 🛡️ Ignoring job_status completion - new job start pending');
+          get().refreshFileTree?.();
           break;
         }
-        const incomingJobId = event.message.contents?.[0]?.metadata?.jobId;
-        if (incomingJobId) {
-          const unresolvedMsgs = get().chatMessages.filter((m: ChatMessage) =>
-            m.contents.some((c: MessageContent) =>
-              c && c.type === 'cancelled' &&
-              c.metadata?.jobId === incomingJobId &&
-              !c.metadata?.choiceSelected &&
-              !c.metadata?.resolved
-            )
-          );
-          for (const oldMsg of unresolvedMsgs) {
-            const contentIndex = oldMsg.contents.findIndex((c: MessageContent) =>
-              c && c.type === 'cancelled' && c.metadata?.jobId === incomingJobId
+        if (event.jobId && cs.currentJobId && event.jobId !== cs.currentJobId) {
+          console.log(`[Store] 🛡️ Ignoring job_status for stale job ${event.jobId} (current: ${cs.currentJobId})`);
+          get().refreshFileTree?.();
+          break;
+        }
+        cs.setRunning?.(false);
+        get().refreshFileTree?.();
+        const project = cs.selectedProject;
+        const feature = cs.selectedFeature;
+        if (project && feature) {
+          void get().loadFeatureBreadcrumbs?.(project, feature);
+        }
+      } else if (event.status === 'running' || event.status === 'started') {
+        if (get().jobStartPending) {
+          set({ jobStartPending: false });
+        }
+      }
+      break;
+    }
+
+    case 'inline_ask_complete': {
+      const intent = event.intent as 'ask' | 'work';
+      const action = event.action as 'continue' | 'newJob' | 'redirect' | undefined;
+      const inlineAskContext = get().inlineAskContext;
+      console.log(`[Store] 💬 Inline ask complete: intent=${intent}, action=${action}, jobId=${event.jobId}`);
+
+      if (intent === 'work' && inlineAskContext) {
+        const noSession = event.noSession === true;
+
+        const dismissInterruption = () => {
+          const kanbanData = get().kanban;
+          if (kanbanData?.interruption?.timestamp) {
+            get().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
+          }
+        };
+
+        // chat-SSOT — when the user pivots to a fresh job, the
+        // interrupted job's cancelled card must flip to "Dismissed".
+        // BE `/job/dismiss` runs `resolveAllCancelledForJob` so the
+        // server emits a `choice_resolved` SSE that folds the card.
+        const dismissInterruptedJobIfAny = async () => {
+          if (!inlineAskContext.interruptedJobId) return;
+          try {
+            const { dismissInterruptedJob } = await import('@/infrastructure/http/api');
+            await dismissInterruptedJob(
+              inlineAskContext.projectId,
+              inlineAskContext.featureName,
+              inlineAskContext.interruptedJobId,
             );
-            if (contentIndex !== -1) {
-              const updatedContents = [...oldMsg.contents];
-              updatedContents[contentIndex] = {
-                ...updatedContents[contentIndex],
-                metadata: {
-                  ...updatedContents[contentIndex].metadata,
-                  choiceSelected: 'resume',
-                  resolvedLabel: 'Resumed',
-                },
-              };
-              get().updateChatMessage(oldMsg.id, { contents: updatedContents });
-              console.log('[Store] 💬 Auto-resolved stale cancelled_message for jobId:', incomingJobId, 'msgId:', oldMsg.id);
-            }
+          } catch (err) {
+            console.warn('[Store] dismissInterruptedJob failed (non-blocking):', err);
           }
-        }
-        get().addChatMessage(event.message);
-        break;
-      }
+        };
 
-      case 'job_status': {
-        console.log('[Store] 📡 Received job_status event:', event.status, event.jobId);
-        if (event.status === 'completed' || event.status === 'failed') {
-          const currentState = get();
-          if (currentState.jobStartPending && currentState.isRunning) {
-            console.log('[Store] 🛡️ Ignoring job_status completion - new job start pending');
-            get().refreshFileTree();
-            break;
-          }
-          if (event.jobId && currentState.currentJobId && event.jobId !== currentState.currentJobId) {
-            console.log(`[Store] 🛡️ Ignoring job_status for stale job ${event.jobId} (current: ${currentState.currentJobId})`);
-            get().refreshFileTree();
-            break;
-          }
-          const setRunning = currentState.setRunning;
-          if (setRunning) {
-            console.log('[Store] ✅ Job completed/failed, setting isRunning=false');
-            setRunning(false);
-          }
-          get().refreshFileTree();
-          // Session redesign §2.4: feature.jsonl breadcrumbs are appended at
-          // the end of the learn node (disk-only, no SSE push). Re-fetch
-          // here so the Timeline tab reflects the just-finished job without
-          // requiring a feature switch or manual reload.
-          const project = currentState.selectedProject;
-          const feature = currentState.selectedFeature;
-          if (project && feature) {
-            console.log('[Store] 📚 Reloading feature breadcrumbs after job_status completion');
-            void get().loadFeatureBreadcrumbs?.(project, feature);
-          }
-        } else if (event.status === 'running' || event.status === 'started') {
-          if (get().jobStartPending) {
-            console.log('[Store] ✅ Job started on worker, clearing jobStartPending via job_status');
-            set({ jobStartPending: false });
-          }
-        }
-        break;
-      }
+        const startFreshJob = (jobType?: string, agent?: string) => {
+          dismissInterruption();
+          get().setInlineAskContext(null);
 
-      case 'inline_ask_complete': {
-        const intent = event.intent as 'ask' | 'work';
-        const action = event.action as 'continue' | 'newJob' | 'redirect' | undefined;
-        const inlineAskContext = get().inlineAskContext;
-        console.log(`[Store] 💬 Inline ask complete: intent=${intent}, action=${action}, jobId=${event.jobId}`);
+          const state = get() as any;
+          const effectiveJobType = jobType || state.selectedJobType || 'design';
+          const effectiveAgent = agent || state.selectedAgent || 'architect';
 
-        if (intent === 'work' && inlineAskContext) {
-          const noSession = event.noSession === true;
-
-          const dismissInterruption = () => {
-            const kanbanData = get().kanban;
-            if (kanbanData?.interruption?.timestamp) {
-              get().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
-            }
-          };
-
-          const cleanupCancelledCard = () => {
-            if (inlineAskContext.interruptedJobId) {
-              get().removeCancelledMessage(inlineAskContext.interruptedJobId);
-            }
-          };
-
-          const startFreshJob = (jobType?: string, agent?: string) => {
-            dismissInterruption();
-            cleanupCancelledCard();
-            get().setInlineAskContext(null);
-
-            const state = get() as any;
-            const effectiveJobType = jobType || state.selectedJobType || 'design';
-            const effectiveAgent = agent || state.selectedAgent || 'architect';
-
-            // jobType-scoped session reset is gone (replaced by per-jobId
-            // delete from the Job-tab dropdown). Inline-ask "newJob" /
-            // "noSession" branches now just dismiss the prior interruption
-            // (above) and execute a fresh job; the worker will assign a new
-            // jobId so the previous session entry stays distinct in history.
-            import('@/infrastructure/http/api').then(({ executeJob }) => {
-              executeJob({
+          (async () => {
+            await dismissInterruptedJobIfAny();
+            try {
+              const { executeJob } = await import('@/infrastructure/http/api');
+              const result = await executeJob({
                 projectId: inlineAskContext.projectId,
                 featureName: inlineAskContext.featureName,
                 jobType: effectiveJobType,
                 agent: effectiveAgent,
                 overrideDirective: inlineAskContext.message,
                 chatSource: true,
-              }).then((result) => {
-                console.log('[Store] ✅ Fresh job started:', result.jobId);
-                get().setRunning(true, result.jobId);
-                get().setLastJobFailed(false);
-              }).catch((error) => {
-                console.error('[Store] ❌ Fresh job start failed:', error);
-                get().setRunning(false);
               });
-            });
-          };
+              console.log('[Store] ✅ Fresh job started:', result.jobId);
+              get().setRunning(true, result.jobId);
+              get().setLastJobFailed(false);
+            } catch (error) {
+              console.error('[Store] ❌ Fresh job start failed:', error);
+              get().setRunning(false);
+            }
+          })();
+        };
 
-          if (noSession) {
-            console.log('[Store] ⚠️ Work intent + noSession → starting fresh job');
-            startFreshJob();
-          } else if (action === 'redirect') {
-            console.log('[Store] 🔀 Work + redirect → dismissing interruption, awaiting choice card');
-            dismissInterruption();
-            cleanupCancelledCard();
-            get().setRunning(false);
-            get().setInlineAskContext(null);
-          } else if (action === 'newJob') {
-            console.log('[Store] 🆕 Work + newJob → clear session, start fresh');
-            startFreshJob();
-          } else {
-            console.log('[Store] 🔧 Work + continue → auto-continuing interrupted job:', inlineAskContext.interruptedJobId);
-
-            dismissInterruption();
-            cleanupCancelledCard();
-            get().setRunning(true, inlineAskContext.interruptedJobId);
-            get().setInlineAskContext(null);
-
-            import('@/infrastructure/http/api').then(({ continueJob }) => {
-              continueJob(
-                inlineAskContext.interruptedJobId,
-                inlineAskContext.projectId,
-                inlineAskContext.featureName,
-                inlineAskContext.message,
-                true
-              ).then((result) => {
-                console.log('[Store] ✅ Auto-continue succeeded:', result.jobId);
-                get().setRunning(true, result.jobId);
-                get().setLastJobFailed(false);
-              }).catch((error) => {
-                console.error('[Store] ❌ Auto-continue failed:', error);
-                get().setRunning(false);
-              });
-            });
-          }
-        } else {
-          console.log('[Store] 💬 Ask intent → keeping interruption state, isRunning=false');
+        if (noSession) {
+          console.log('[Store] ⚠️ Work intent + noSession → starting fresh job');
+          startFreshJob();
+        } else if (action === 'redirect') {
+          console.log('[Store] 🔀 Work + redirect → dismissing interruption, awaiting choice card');
+          dismissInterruption();
+          // Cancelled card cleanup arrives via SSE choice_resolved once
+          // BE finishes the dismiss → see dismissInterruptedJobIfAny.
+          void dismissInterruptedJobIfAny();
           get().setRunning(false);
           get().setInlineAskContext(null);
+        } else if (action === 'newJob') {
+          console.log('[Store] 🆕 Work + newJob → clear session, start fresh');
+          startFreshJob();
+        } else {
+          console.log('[Store] 🔧 Work + continue → auto-continuing interrupted job:', inlineAskContext.interruptedJobId);
+          dismissInterruption();
+          get().setRunning(true, inlineAskContext.interruptedJobId);
+          get().setInlineAskContext(null);
+
+          import('@/infrastructure/http/api').then(({ continueJob }) => {
+            continueJob(
+              inlineAskContext.interruptedJobId,
+              inlineAskContext.projectId,
+              inlineAskContext.featureName,
+              inlineAskContext.message,
+              true,
+            ).then((result) => {
+              console.log('[Store] ✅ Auto-continue succeeded:', result.jobId);
+              get().setRunning(true, result.jobId);
+              get().setLastJobFailed(false);
+            }).catch((error) => {
+              console.error('[Store] ❌ Auto-continue failed:', error);
+              get().setRunning(false);
+            });
+          });
         }
-        break;
+      } else {
+        console.log('[Store] 💬 Ask intent → keeping interruption state, isRunning=false');
+        get().setRunning(false);
+        get().setInlineAskContext(null);
       }
+      break;
     }
-  };
+  }
 }

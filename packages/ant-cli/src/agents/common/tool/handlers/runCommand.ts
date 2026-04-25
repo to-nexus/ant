@@ -23,7 +23,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
-import type { Gate } from '../../../architect/graph/code/tasks/verification/model/gates';
+import type { Gate } from '../../../architect/graph/code/tasks/_shared/verify/gates';
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
 import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment } from '../../../../core/utils/shellParser';
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
@@ -291,7 +291,7 @@ async function makeRejection(
   ctx: ToolExecutionContext,
   command: string,
   displayText: string,
-  mergeIndex: number | undefined,
+  _cardId: string | undefined,
   verifies?: Gate,
 ): Promise<ToolResult> {
   const content = `[Policy] ${displayText}`;
@@ -470,7 +470,7 @@ async function executeCommandLogic(
     }
   }
 
-  const mergeIndex = await ctx.chatStatus.commandStart(command);
+  const cardId = await ctx.chatStatus.commandStart(command);
 
   const isLongRunning = LONG_RUNNING_PATTERNS.some(p => p.test(command));
   const isInstallCommand = /\b(npm|pnpm|yarn)\s+(ci|install)\b/.test(command) || /\bgo\s+mod\s+(tidy|download)\b/.test(command);
@@ -509,7 +509,7 @@ async function executeCommandLogic(
       ctx,
       command,
       `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\nViolations:\n${msg}\n\nAll file writes must target paths under codebase/.`,
-      mergeIndex,
+      cardId,
       verifies,
     );
   }
@@ -536,13 +536,13 @@ async function executeCommandLogic(
           ctx,
           command,
           `❌ COMMAND NOT ALLOWED: ${command}\n\nOnly whitelisted commands are permitted.`,
-          mergeIndex,
+          cardId,
           verifies,
         );
       }
       try {
         const longRunResult = await handleLongRunningCommand(
-          ctx, command, workingDir, mergeIndex || 0, Boolean(keep_running),
+          ctx, command, workingDir, cardId, Boolean(keep_running),
         );
         const longRunSuccess = longRunResult.displayText.startsWith('✅');
         sideEffects.push(makeCommandExecuted({ exitCode: longRunSuccess ? 0 : 1, command, success: longRunSuccess, hasWarnings: false, verifies }));
@@ -774,7 +774,7 @@ async function handleLongRunningCommand(
   ctx: ToolExecutionContext,
   command: string,
   workingDir: string,
-  mergeIndex: number,
+  _cardId: string | undefined,
   keepRunning: boolean,
 ): Promise<{ displayText: string; serverPid?: number }> {
   const { spawn } = await import('child_process');

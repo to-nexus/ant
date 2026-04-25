@@ -1,10 +1,12 @@
 /**
  * ChatPanel - Chat content area (history + input)
- * 
- * Note: Header is managed by parent (App.tsx) using Bar component
+ *
+ * Phase 11 chat-SSOT — consumes `turns: Turn[]` from `useChat()` directly
+ * and reads file-operation stats from the projector via `selectFileStats`
+ * (single pass over chat.jsonl status lines, no per-message walk).
  */
 
-import { useMemo, useState, useCallback, useEffect, type CSSProperties } from 'react';
+import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
@@ -17,9 +19,9 @@ import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { ActionChipGrid } from '../Actions';
 import { useStore } from '@/domain/store';
+import { selectFileStats } from '@/domain/store/selectors/chat';
 import type { IntentGroup } from '@ant/shared';
 import { Zap, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { FileStats } from '@/domain/models/chat';
 
 type ChatPanelTab = 'chat' | 'timeline';
 
@@ -101,124 +103,42 @@ export function ChatPanel({
   selectedAgent = null,
 }: ChatPanelProps) {
   const { t } = useTranslation('chat');
-  
-  // ✅ Get chat data from Domain Store (via Application Hook)
-  // SSE subscription is managed automatically in Store
-  const { messages, isStreaming } = useChat();
-  
-  const chatPolicy = useChatPolicy(messages.length);
+
+  const { turns } = useChat();
+  const turnCount = turns.length;
+
+  // FileStats now derived directly from chat.jsonl SSOT — one selector
+  // pass over the chatEvents slice. Survives reconnect / refresh because
+  // it operates on the durable substrate, not on the message envelope.
+  const fileStats = useStore(selectFileStats);
+
+  const chatPolicy = useChatPolicy(turnCount);
   const mainPanelActiveTab = useStore(s => s.mainPanelActiveTab);
 
   // Session-redesign SSOT: load feature.jsonl breadcrumbs on feature switch.
-  // Live updates to the Timeline tab arrive via the `job_status=completed|failed`
-  // SSE event handler in chatSseHandler.ts which re-issues this load.
   useFeatureLogSync(_projectId, _featureName);
 
   const [activeTab, setActiveTab] = useState<ChatPanelTab>('chat');
 
-  // ✅ Track which user message to pin (Cursor-style dynamic pinning)
-  // null = no pin needed (user message visible or none above viewport)
+  // Track which user message to pin (Cursor-style dynamic pinning)
   const [pinnedQuery, setPinnedQuery] = useState<PinnedQueryData | null>(null);
-  
+
   const handlePinnedUserMessageChange = useCallback((query: PinnedQueryData | null) => {
     setPinnedQuery(query);
   }, []);
-  
-  // ✅ Clear pin when chat is cleared (ChatHistory unmounts when messages.length === 0)
+
+  // Clear pin when chat is cleared.
   useEffect(() => {
-    if (messages.length === 0) {
+    if (turnCount === 0) {
       setPinnedQuery(null);
     }
-  }, [messages.length]);
+  }, [turnCount]);
 
-  // ✅ CRITICAL: Extract stable values for dependency tracking
-  // messages 배열 자체는 매번 새 참조이므로, 실제 변경사항만 추적
-  const lastAssistantMessage = useMemo(() => {
-    return messages.filter(m => m.role === 'assistant').pop();
-  }, [
-    messages.length, 
-    messages[messages.length - 1]?.id,
-    // ✅ CRITICAL: Track last assistant message's contents changes
-    // This ensures fileStats updates when file operations complete (file_creating → file_create)
-    messages.filter(m => m.role === 'assistant').pop()?.contents.length,
-    messages.filter(m => m.role === 'assistant').pop()?.contents.filter(Boolean).map(c => c.type).join(',')
-  ]);
-  
-  // ✅ CRITICAL: 파일 관련 content만 카운트 (thinking/text는 제외)
-  // thinking content가 스트리밍되어도 fileStats는 변하지 않음!
-  const fileOperationCount = useMemo(() => {
-    if (!lastAssistantMessage) return 0;
-    return lastAssistantMessage.contents.filter(c => 
-      c && (c.type === 'file_create' || 
-      c.type === 'file_edit' || 
-      c.type === 'file_delete')
-    ).length;
-  }, [lastAssistantMessage?.id, lastAssistantMessage?.contents.length, 
-      lastAssistantMessage?.contents.filter(Boolean).map(c => c.type).join(',')]);
-  
-  // ✅ CRITICAL: Memoize fileStats with stable dependencies
-  // 파일 operation 개수가 변경될 때만 재계산 (thinking/text 스트리밍은 무시)
-  const fileStats = useMemo((): FileStats => {
-    if (!lastAssistantMessage) return { filesEdited: 0, filesCreated: 0, filesDeleted: 0 };
-    
-    // ✅ Dedup by file path:
-    // Even if the same file emits multiple final operations in one message,
-    // the UI should show it once (latest operation wins).
-    const operationByPath = new Map<string, 'create' | 'edit' | 'delete'>();
-    const orderedPaths: string[] = []; // preserve first-seen order for display
-    
-    lastAssistantMessage.contents.forEach(content => {
-      if (!content) return;
-      const filePath = content.metadata?.filePath;
-      if (!filePath) return;
-      
-      // Count by operation type (final state only)
-      if (content.type === 'file_create') {
-        if (!operationByPath.has(filePath)) orderedPaths.push(filePath);
-        operationByPath.set(filePath, 'create');
-      } else if (content.type === 'file_edit') {
-        if (!operationByPath.has(filePath)) orderedPaths.push(filePath);
-        operationByPath.set(filePath, 'edit');
-      } else if (content.type === 'file_delete') {
-        if (!operationByPath.has(filePath)) orderedPaths.push(filePath);
-        operationByPath.set(filePath, 'delete');
-      }
-    });
-    
-    const filesList: Array<{ path: string; operation: 'create' | 'edit' | 'delete' }> = orderedPaths
-      .map((p) => {
-        const op = operationByPath.get(p);
-        return op ? { path: p, operation: op } : null;
-      })
-      .filter((v): v is { path: string; operation: 'create' | 'edit' | 'delete' } => v !== null);
-    
-    let createCount = 0;
-    let editCount = 0;
-    let deleteCount = 0;
-    for (const op of operationByPath.values()) {
-      if (op === 'create') createCount++;
-      else if (op === 'edit') editCount++;
-      else deleteCount++;
-    }
-    
-    return {
-      filesEdited: editCount,
-      filesCreated: createCount,
-      filesDeleted: deleteCount,
-      totalFiles: operationByPath.size,
-      files: filesList  // ✅ Include file list for collapsible view
-    };
-  }, [lastAssistantMessage?.id, fileOperationCount]);  // ✅ 파일 operation 개수만 추적
-
-  const hasMessages = messages.length > 0;
-  const emptyStateWatermarkSrc = useMemo(
-    () => getWatermarkSrc(selectedAgent, 'color'),
-    [selectedAgent]
-  );
-  const historyWatermarkStyle = useMemo(
-    () => (hasMessages ? getWatermarkStyle(selectedAgent, 'mono') : null),
-    [hasMessages, selectedAgent]
-  );
+  const hasMessages = turnCount > 0;
+  const emptyStateWatermarkSrc = getWatermarkSrc(selectedAgent, 'color');
+  const historyWatermarkStyle = hasMessages
+    ? getWatermarkStyle(selectedAgent, 'mono')
+    : null;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -249,7 +169,7 @@ export function ChatPanel({
         <PinnedQuery query={pinnedQuery} />
 
         {/* Empty State Message - Not Ready */}
-        {messages.length === 0 && chatPolicy.emptyStateMessage && (
+        {turnCount === 0 && chatPolicy.emptyStateMessage && (
           <div className="flex-1 min-h-0 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
               <WatermarkIcon
@@ -266,7 +186,7 @@ export function ChatPanel({
         )}
 
         {/* Empty State - Ready: Action Chip Grid (hidden when actions tab is open) */}
-        {messages.length === 0 && !chatPolicy.emptyStateMessage && chatPolicy.readyEmptyStateMessage && (
+        {turnCount === 0 && !chatPolicy.emptyStateMessage && chatPolicy.readyEmptyStateMessage && (
           <div className="flex-1 min-h-0 flex items-center justify-center p-6 overflow-y-auto">
             {mainPanelActiveTab === 'actions' ? (
               <div className="text-center max-w-sm">
@@ -290,7 +210,7 @@ export function ChatPanel({
         )}
 
         {/* Empty State Fallback - job-running / job-interrupted with no messages yet */}
-        {messages.length === 0 && !chatPolicy.emptyStateMessage && !chatPolicy.readyEmptyStateMessage && (
+        {turnCount === 0 && !chatPolicy.emptyStateMessage && !chatPolicy.readyEmptyStateMessage && (
           <div className="flex-1 min-h-0 flex items-center justify-center p-8">
             <div className="text-center max-w-sm">
               <WatermarkIcon
@@ -306,12 +226,11 @@ export function ChatPanel({
           </div>
         )}
 
-        {/* Chat Messages */}
-        {messages.length > 0 && (
+        {/* Chat Turns */}
+        {turnCount > 0 && (
           <div className="flex-1 min-h-0">
             <ChatHistory
-              messages={messages}
-              isStreaming={isStreaming}
+              turns={turns}
               onPinnedUserMessageChange={handlePinnedUserMessageChange}
             />
           </div>
@@ -321,15 +240,15 @@ export function ChatPanel({
 
       {/* Input Area - Fixed at bottom */}
       <div className="border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
-        {/* Actions CTA - show when messages exist + no active job */}
-        {messages.length > 0 && chatPolicy.reason === 'ready' && (
+        {/* Actions CTA - show when turns exist + no active job */}
+        {turnCount > 0 && chatPolicy.reason === 'ready' && (
           <ActionsCTA />
         )}
         {/* Queue Status Banner */}
         <QueueStatusBanner />
-        
-        <ChatInput 
-          messageCount={messages.length}
+
+        <ChatInput
+          messageCount={turnCount}
           fileStats={fileStats}
         />
       </div>
@@ -417,7 +336,6 @@ function ActionsCTA() {
 
 // Export hook for parent to use (delegates to Application Hook)
 export function useChatData(_projectId: string | null, _featureName: string | null, _enabled: boolean) {
-  // ✅ Delegate to Application Hook (parameters ignored, Store manages subscription)
   return useChat();
 }
 
@@ -461,4 +379,3 @@ function ChatPanelTabBar({
     </div>
   );
 }
-

@@ -55,6 +55,7 @@
     "init:feature": "pnpm --filter @ant/cli init:feature",
 
     "git:sweep": "node scripts/git-sweep.mjs",
+    "chat:sweep": "node scripts/check-no-legacy-chat.mjs",
     "typecheck:cli": "pnpm --filter @ant/cli exec tsc --noEmit",
     "typecheck:ui": "pnpm --filter @ant/ui exec tsc --noEmit",
     "typecheck": "pnpm typecheck:cli && pnpm typecheck:ui",

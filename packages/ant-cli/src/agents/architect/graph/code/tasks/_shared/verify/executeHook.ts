@@ -1,5 +1,9 @@
 /**
- * verification/hooks/execute.ts — TaskExecuteHook for verification.
+ * `_shared/verify/executeHook` — TaskExecuteHook for verify-mode.
+ *
+ * SSOT: previously `tasks/verification/hooks/execute.ts`. Moved here so
+ * self-verify Tier 2 tasks render the same execute-phase template as
+ * Tier 3/4 verification tasks once they enter verify-mode.
  *
  * Owns the execute-node's verification-specific knobs that used to live
  * inline in `nodes/execute/buildMessages.ts`:
@@ -12,11 +16,11 @@
  *   - remediation plan framing in runtime context
  *   - "build/test passed" fallback when the plan is empty
  *
- * R2 compliance: depends on `_shared/types` only; no imports from `nodes/`,
+ * R2 — depends on `_shared/types` only; no imports from `nodes/`,
  * `routers/`, or `parallel/`.
  */
 
-import type { TaskExecuteHook } from '../../_shared/types';
+import type { TaskExecuteHook } from '../types';
 
 const templatePaths = {
   base: 'jobs/code/nodes/execute/variants/verification/base',

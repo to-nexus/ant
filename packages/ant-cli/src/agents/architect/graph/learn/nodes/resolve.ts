@@ -63,7 +63,7 @@ async function executeIndexing(
     throw new Error(errorMsg);
   }
 
-  let indexingIndex: number | undefined;
+  let indexingIndex: string | undefined;
   try {
     // ✅ Get repo and branch info for better UI display
     const repoName = await git.getRepoName();
@@ -256,7 +256,7 @@ async function executeFileLearn(
             continue;
           }
 
-          let readingIdx: number | undefined;
+          let readingIdx: string | undefined;
           try {
             readingIdx = await chatAPI.addReadingFile(relativePath);
             const content = await fileSystem.readFile(relativePath);
@@ -281,7 +281,7 @@ async function executeFileLearn(
               for (const entry of entries) {
                 if (!entry.isDirectory) {
                   const filePath = path.join(relativePath, entry.name);
-                  let fileReadingIdx: number | undefined;
+                  let fileReadingIdx: string | undefined;
                   try {
                     fileReadingIdx = await chatAPI.addReadingFile(filePath);
                     const fileContent = await fileSystem.readFile(filePath);

@@ -292,10 +292,18 @@ describe('execute/variants/error/rules.md — prompt/guard contradiction removed
     expect(content).not.toMatch(/Run build command from `diagnostics\.command` to verify/i);
   });
 
-  it('still references the Tier-Verification Alignment contract (Tier 2 inline vs Tier 3+ follows)', () => {
+  it('still references the Tier-Verification Alignment contract (apply-phase + verify cycle)', () => {
+    // Post verify-shared refactor: error/rules.md is uniform across tiers
+    // (apply phase only — verify-mode is dispatched at the phase layer
+    // through `_shared/verify/`). The prompt instructs the LLM to apply
+    // fixes and emit <done>; the verification cycle (Tier 3/4 dedicated
+    // task OR Tier 2 self-verify reverify) runs the gates separately.
+    // The handlebars `{{#if currentTask.selfVerifyOnDone}}` branch was
+    // retired alongside the two-cycle refactor.
     const content = fs.readFileSync(rulesPath, 'utf8');
-    expect(content).toMatch(/selfVerifyOnDone/i);
-    expect(content).toMatch(/verification task/i);
+    expect(content).toMatch(/verification cycle/i);
+    expect(content).toMatch(/Apply ALL remediation/i);
+    expect(content).toMatch(/Do NOT run `build` \/ `test` \/ `typecheck`/);
   });
 });
 

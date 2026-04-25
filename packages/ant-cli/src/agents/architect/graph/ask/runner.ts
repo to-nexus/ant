@@ -95,19 +95,20 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
   } catch (error: any) {
     console.error(`❌ [Ask] Graph execution failed: ${error.message}`);
 
-    if (chatAPI.hasActiveMessage()) {
-      console.log('🧹 [Ask] Cleaning up active message after error...');
-      try {
-        if (isRecursionLimitError(error)) {
-          const limitMessage = params.language === 'ko'
-            ? '\n\n⚠️ 질문에 답하기 위해 더 많은 정보를 확인하던 중 처리 한도에 도달했습니다. 더 구체적인 질문을 해주시거나, 필요한 정보를 직접 알려주세요.'
-            : '\n\n⚠️ Reached processing limit while gathering information to answer your question. Please try asking a more specific question or provide the needed information directly.';
-          await chatAPI.sendLLMEvent({ type: 'text', text: limitMessage });
-        }
-        await chatAPI.finalizeMessage(true);
-      } catch (cleanupError) {
-        console.warn('⚠️ [Ask] Failed to cleanup message:', cleanupError);
+    // chat-SSOT §5: drop the legacy `hasActiveMessage` gate — the API
+    // always returns false post-rewrite, which would have suppressed
+    // the recursion-limit notice and the buffer drain on every error.
+    console.log('🧹 [Ask] Cleaning up after error...');
+    try {
+      if (isRecursionLimitError(error)) {
+        const limitMessage = params.language === 'ko'
+          ? '\n\n⚠️ 질문에 답하기 위해 더 많은 정보를 확인하던 중 처리 한도에 도달했습니다. 더 구체적인 질문을 해주시거나, 필요한 정보를 직접 알려주세요.'
+          : '\n\n⚠️ Reached processing limit while gathering information to answer your question. Please try asking a more specific question or provide the needed information directly.';
+        await chatAPI.sendLLMEvent({ type: 'text', text: limitMessage });
       }
+      await chatAPI.finalizeMessage(true);
+    } catch (cleanupError) {
+      console.warn('⚠️ [Ask] Failed to cleanup:', cleanupError);
     }
 
     throw error;

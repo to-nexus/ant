@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { __testing__ } from '../src/agents/architect/graph/code/nodes/plan';
-import { VerificationSession } from '../src/agents/architect/graph/code/tasks/verification/model/Session';
+import { VerificationSession } from '../src/agents/architect/graph/code/tasks/_shared/verify/Session';
 import { CONV_KEYS } from '../src/agents/common/graph/conversations';
 
 const { resolvePlanEntry } = __testing__;

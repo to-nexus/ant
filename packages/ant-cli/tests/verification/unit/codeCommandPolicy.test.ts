@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyCodeCommandPolicy } from '../../../src/agents/common/tool/handlers/codeCommandPolicy';
 import type { ToolExecutionContext, VerificationSessionSurface } from '../../../src/agents/common/tool/types';
-import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
+import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
 
 /**
  * Build a VerificationSession initialised with the env flags and mutated
@@ -238,13 +238,16 @@ function makeErrorCtx(opts: { activePhase?: 'plan' | 'execute' } = {}): ToolExec
   } as unknown as ToolExecutionContext;
 }
 
-describe('codeCommandPolicy — Go build allow-list (verification-only)', () => {
+describe('codeCommandPolicy — Go build allow-list (verification-cycle-only)', () => {
   it('blocks `go build` in an error task', () => {
     const ctx = makeErrorCtx();
     const result = applyCodeCommandPolicy(ctx, { command: 'go build ./...' });
     expect(result?.content).toMatch(/\[Policy\]/);
     expect(result?.content).toMatch(/BLOCKED/);
-    expect(result?.content).toMatch(/verification tasks/);
+    // Go build is allowed only during a verification cycle (verification
+    // task or self-verify task in reverify phase) — apply-phase callers
+    // are blocked uniformly.
+    expect(result?.content).toMatch(/verification cycle/);
     expect(result?.error).toBeUndefined();
   });
 

@@ -23,17 +23,29 @@ import { describe, it, expect } from 'vitest';
 
 import {
   VerificationSession,
-} from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
-import type { VerificationSnapshot } from '../../../src/agents/architect/graph/code/tasks/verification/model/snapshot';
+} from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
+import type { VerificationSnapshot } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/snapshot';
 
-import * as planHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/plan';
-import * as toolHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/tool';
-import * as commandHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/command';
-import * as checkHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/check';
-import * as routerHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/router';
-import * as orchHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/orchestrator';
+// Hook surface lives in tasks/_shared/verify/. Bundle aliases exported through
+// individual sibling modules so each test focuses on the hook it asserts.
+import * as planInitSession from '../../../src/agents/architect/graph/code/tasks/_shared/verify/initSession';
+import * as planBuildPrompt from '../../../src/agents/architect/graph/code/tasks/_shared/verify/buildPlanPrompt';
+import * as planCheckRetry from '../../../src/agents/architect/graph/code/tasks/_shared/verify/checkRetryTermination';
+import * as toolHook from '../../../src/agents/architect/graph/code/tasks/_shared/verify/toolHook';
+import * as commandHook from '../../../src/agents/architect/graph/code/tasks/_shared/verify/commandGuard';
+import * as checkHook from '../../../src/agents/architect/graph/code/tasks/_shared/verify/checkEvaluate';
+import * as routerHook from '../../../src/agents/architect/graph/code/tasks/_shared/verify/router';
+import * as orchHook from '../../../src/agents/architect/graph/code/tasks/_shared/verify/orchestrator';
 import * as decompHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/decompose';
 import * as convHook from '../../../src/agents/architect/graph/code/tasks/verification/hooks/conversations';
+
+// Combined plan-hook surface for tests asserting the verification bundle's
+// plan slot (initSession + buildPrompt + checkRetryTermination).
+const planHook = {
+  ...planInitSession,
+  ...planBuildPrompt,
+  ...planCheckRetry,
+};
 
 import { hooks as verificationBundle } from '../../../src/agents/architect/graph/code/tasks/verification';
 import { hooksForTaskType } from '../../../src/agents/architect/graph/code/tasks/_shared/registry';

@@ -12,8 +12,8 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { __testing__ } from '../../../src/agents/architect/graph/code/nodes/plan/index';
-import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
-import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/verification/model/errors';
+import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
+import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/errors';
 import { TaskQueue } from '../../../src/agents/architect/types/task';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 

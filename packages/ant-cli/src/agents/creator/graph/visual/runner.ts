@@ -115,9 +115,8 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
     throw error;
   }
 
-  if (chatAPI.hasActiveMessage()) {
-    await chatAPI.finalizeMessage();
-  }
+  // chat-SSOT §5: idempotent finalize — drains buffer or no-ops if empty.
+  await chatAPI.finalizeMessage();
 
   if (finalState.visualError) {
     try {

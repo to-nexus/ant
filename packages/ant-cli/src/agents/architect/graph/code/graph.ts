@@ -618,6 +618,10 @@ export const CodeGraphChannels = {
       _batchSplitRequeued: Annotation<any>,
       verifiedTasks: Annotation<any>,
       verification: Annotation<any>,
+      _verifyEntered: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => false,
+      }),
       _shortCircuitReason: Annotation<any>,
 } as const;
 

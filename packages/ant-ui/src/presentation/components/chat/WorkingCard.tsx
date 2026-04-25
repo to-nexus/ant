@@ -8,12 +8,13 @@
 
 import { useState } from 'react';
 import { Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight, Download, Palette, Eraser } from 'lucide-react';
-import type { MessageContent } from '@/domain/models/chat';
+import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { TruncatableText } from '@/presentation/components/common/TruncatableText';
 import { Spinner } from '@/presentation/components/common/async';
 import { useImagePreview } from './useImagePreview';
 import { ImageLightbox } from './ImageLightbox';
+import { lineToContent } from './cards/lineToContent';
 
 // Sentinel marker returned by getVariantConfig when the progress state
 // should render a <Spinner> (instead of a specific lucide icon). Used to
@@ -25,7 +26,8 @@ const PREVIEW_MAX_H_SCREENSHOT = 160; // figma_called: full screenshot (px)
 const PREVIEW_MAX_H_ASSET = 40;       // downloaded: compact asset thumbnail (px)
 
 interface WorkingCardProps {
-  content: MessageContent;
+  line: ChatStatusLine;
+  pending?: PendingCardSnapshot;
   variant: 'exploring' | 'explored' | 'retrieving' | 'retrieved' | 'grepping' | 'grepped' | 'listing_files' | 'listed_files' | 'searching_code' | 'searched_code' | 'reading' | 'read' | 'reading_source' | 'read_source' | 'indexing' | 'indexed' | 'analyzing' | 'analyzed' | 'loading' | 'loaded' | 'storing' | 'stored' | 'learning' | 'learned' | 'processing' | 'processed' | 'downloading' | 'downloaded' | 'figma_calling' | 'figma_called';
 }
 
@@ -304,7 +306,8 @@ function WorkingCardHeader({
   );
 }
 
-export function WorkingCard({ content, variant }: WorkingCardProps) {
+export function WorkingCard({ line, pending, variant }: WorkingCardProps) {
+  const content = lineToContent(line, pending);
   const [isExpanded, setIsExpanded] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const isProgress = isProgressState(variant);

@@ -40,32 +40,49 @@ describe('tasks/_shared/registry — error entry', () => {
     expect(hooks).toBe(errorBundle);
     expect(hooks?.decompose?.isExclusive).toBe(decompHook.isExclusive);
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
-    // plan.buildPrompt landed at T6b-β — error tasks render a dedicated
-    // variant template (`jobs/code/nodes/plan/variants/error/base`).
+    // plan.buildPrompt landed at T6b-β. Post verify-shared refactor the
+    // bundle is wired through `composeBundle` which forwards apply-phase
+    // buildPrompt unchanged (verify-mode buildPrompt is dispatched by the
+    // phase layer in planGeneration.ts directly via _shared/verify).
     expect(hooks?.plan?.buildPrompt).toBe(planHook.buildPrompt);
     expect(hooks?.plan?.toolLoopLogTemplate).toBe('jobs/code/nodes/plan/variants/error/base');
-    // T6b-η — error bundle publishes `command.guard` so the execute-phase
-    // build/test/typecheck block lives in tasks/, matching the
-    // "error applies fixes only" contract.
-    expect(hooks?.command?.guard).toBe(commandHook.guard);
+    // T6b-η — error bundle publishes `command.guard`. Post composeBundle
+    // refactor the guard is wrapped with apply-vs-verify dispatch (the
+    // wrapper delegates to apply's guard when `ctx.verificationSession` is
+    // undefined, to `_shared/verify/commandGuard` otherwise).
+    expect(typeof hooks?.command?.guard).toBe('function');
     // T6b-γ — error bundle publishes `orchestrator.onTaskComplete` so the
     // Final-Verification auto-add lives in tasks/, not graph.ts.
     expect(hooks?.orchestrator?.onTaskComplete).toBe(orchestratorHook.onTaskComplete);
   });
 
-  it('bundle does not publish still-deferred hooks', () => {
-    // `check` and `scheduling` stay unimplemented — error tasks are code-
-    // fix only; build verification is deferred to the auto-enqueued Final
-    // Verification task.
-    expect(errorBundle.check).toBeUndefined();
+  it('bundle publishes verify-shared slots (composeBundle dispatch)', () => {
+    // Post verify-shared refactor: composeBundle wires verify-mode
+    // dispatch onto every error bundle. Tier 3/4 error tasks (no
+    // selfVerifyOnDone) fall through the dispatch untouched —
+    // `requiresVerification` returns false → apply hooks remain active.
+    // Tier 2 self-verify error tasks pick up the verify-mode hook surface
+    // once `_verifyEntered === true`.
+    expect(typeof errorBundle.check?.evaluate).toBe('function');
+    expect(typeof errorBundle.router?.routeAfterDone).toBe('function');
+    expect(typeof errorBundle.tool?.onEvent).toBe('function');
+    // Orchestrator attempt-counter fields are now task-instance-aware:
+    // hasOwnAttemptCounter is a function that gates on requiresVerification.
+    // Tier 3/4 error tasks return false (uses `_failedAttempts`); Tier 2
+    // self-verify error tasks return true (uses Session.attempts()).
+    expect(typeof errorBundle.orchestrator?.hasOwnAttemptCounter).toBe('function');
+    const tier3ErrorTask = task('e1') as any;
+    expect((errorBundle.orchestrator?.hasOwnAttemptCounter as any)(tier3ErrorTask)).toBe(false);
+    const tier2SelfVerifyErrorTask = task('e2', { selfVerifyOnDone: true } as any) as any;
+    expect((errorBundle.orchestrator?.hasOwnAttemptCounter as any)(tier2SelfVerifyErrorTask)).toBe(true);
+    // Scheduling stays unimplemented — error tasks have no
+    // type-specific cross-task barriers.
     expect(errorBundle.scheduling).toBeUndefined();
-    // Error tasks only override `buildPrompt` + logTemplate, not the
-    // generic-path `extraTemplateVars`.
-    expect(errorBundle.plan?.extraTemplateVars).toBeUndefined();
-    // Orchestrator attempt-counter fields stay undefined — error tasks
-    // share the orchestrator's shared `_failedAttempts` counter.
-    expect(errorBundle.orchestrator?.hasOwnAttemptCounter).toBeUndefined();
-    expect(errorBundle.orchestrator?.attemptCount).toBeUndefined();
+    // budgetExhaustedHint NOT defaulted to verify hint by composeBundle —
+    // checkTaskStatus reads it as a static string and the verify hint is
+    // wrong for apply-phase budget exhaustion. Verification task type
+    // wires the verify hint statically through its bundle shim.
+    expect(errorBundle.check?.budgetExhaustedHint).toBeUndefined();
   });
 });
 

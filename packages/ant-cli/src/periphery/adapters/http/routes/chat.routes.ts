@@ -4,32 +4,28 @@ import * as path from 'path';
 import { ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { ChoiceService } from '../../../../infrastructure/choice';
-import { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
+import type { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
 import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
 import { chatRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, chatUserMessageSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 
 /**
- * Chat operations (messages, user interactions)
+ * Chat routes — HTTP-side façade for chat.jsonl writes + SSE.
  *
- * NOTE: LLM streaming endpoints have been removed.
- * Job workers now use direct Redis via LLMResponseService instead of HTTP.
+ * Phase 9 chat-SSOT collapse:
+ *  - `/chat/triage-choice`, `/chat/eval-save`, `/chat/dismiss-choice`
+ *    are retired. Every choice resolution now flows through the
+ *    unified `POST /chat/choice-resolved` route.
+ *  - `DELETE /chat/messages?cancelActive=true|false` controls whether
+ *    a still-running job is also cancelled before clearing the log.
+ *  - `POST /chat/job-error` emits a single `assistant_message` line via
+ *    `chatService.appendAssistantMessage`.
+ *  - `POST /chat/user-message` emits an optimistic `chat_event_appended`
+ *    SSE only — the durable user_turn line is written by the worker's
+ *    `recordUserTurn` (chat-SSOT §6).
  *
- * Removed endpoints (now handled by LLMResponseService):
- * - POST /chat/start-message
- * - POST /chat/llm-event
- * - POST /chat/finalize-message
- * - POST /chat/add-content
- * - POST /chat/file-operation
- * - POST /chat/command-execution
- * - GET  /chat/has-active-message
- * - POST /chat/triage-choice-message
- *
- * Session redesign §16.2 retirement:
- * - GET /chat/messages — replaced by SSE `initial_state.chat` (no UI caller).
- *
- * @see LLMResponseService for the job worker implementation
+ * @see docs/architecture/31-chat-system.md
  */
 export function createChatRoutes(deps: {
   chatService?: ChatService;
@@ -41,22 +37,35 @@ export function createChatRoutes(deps: {
     getUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<string[]>;
     publish(channel: string, message: any): Promise<void>;
   };
+  /**
+   * Optional terminator for a still-running job. Wired by the http
+   * composition root; on `DELETE /chat/messages?cancelActive=true`
+   * we route through this so the job seal pipeline runs in one
+   * transaction with the chat clear.
+   */
+  finalizeActiveJob?: (
+    projectId: string,
+    featureName: string,
+    userContext: { userId: string; organizationId: string },
+  ) => Promise<void>;
 }): Router {
   const router = Router();
 
   /**
    * DELETE /projects/:id/features/:feature/chat/messages
-   * Clear all chat messages for a feature.
    *
-   * Session redesign §16.2: this route now collapses chat.jsonl +
-   * feature.jsonl (durable SSOT) via `ChatService.clearMessages`. The
-   * legacy GET /chat/messages companion was retired — chat history is
-   * now delivered exclusively through the SSE `initial_state.chat`
-   * event (backed by the same chat.jsonl rebuild).
+   * Clear the chat log for a feature. Behaviour:
+   *  - default (`?cancelActive=false`): collapses `chat.jsonl`, drops
+   *    every active turn buffer, and broadcasts `events_cleared`
+   *    (scope='chat'). `feature.jsonl` (LLM context) is preserved.
+   *  - `?cancelActive=true`: additionally seals any still-running job
+   *    via `finalizeActiveJob` (user-stopped) before clearing — used
+   *    by the F5 Hard Reset flow.
    */
-  router.delete('/projects/:id/features/:feature/chat/messages', (req: Request, res: Response) => {
+  router.delete('/projects/:id/features/:feature/chat/messages', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
+    const cancelActive = req.query.cancelActive === 'true';
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -64,11 +73,18 @@ export function createChatRoutes(deps: {
     }
 
     const userContext = extractUserContext(req);
-    deps.chatService.clearMessages(projectId, featureName, userContext);
 
-    // Chat clearing may delete draft images from disk.
-    // The file tree system is push-based (no file watcher), so we must
-    // explicitly notify after any file-system mutation.
+    if (cancelActive && deps.finalizeActiveJob) {
+      try {
+        await deps.finalizeActiveJob(projectId, featureName, userContext);
+      } catch (err) {
+        logger.warn(`finalizeActiveJob failed during chat clear`, { component: 'Chat' }, err);
+      }
+    }
+
+    await deps.chatService.clearEventsAsync(projectId, featureName, 'chat', userContext);
+
+    // Chat clearing may delete draft images; the file tree is push-based.
     if (deps.fileTreeNotifier) {
       deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
     }
@@ -79,18 +95,11 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/user-message
    *
-   * Records a user message and returns a stable `turnId` the caller must
-   * forward to subsequent `executeJob({ seedTurnId })` invocations.
-   *
-   * Identity contract (chat SSOT refactor §6):
-   *   - The optimistic SSE broadcast carries id = `user-{turnId}`.
-   *   - The durable user_turn line written by the worker (recordUserTurn
-   *     with `providedTurnId=seedTurnId`) carries the same turnId.
-   *   - On SSE reconnect, both views collapse to a single message — the
-   *     "two user messages on tab switch" defect is eliminated.
-   *
-   * The legacy random `msg-*` id was the root cause of that duplication;
-   * it is intentionally retired.
+   * Mints a stable `turnId` and emits the optimistic SSE echo so the
+   * user's bubble appears immediately. The durable `user_turn` line is
+   * written by the worker's `recordUserTurn` once the job spawns
+   * (chat-SSOT §6) — both views share the same `user-{turnId}` id so
+   * SSE reconnect dedupes via the FE projector.
    */
   router.post('/projects/:id/features/:feature/chat/user-message', chatRateLimiter, validateBody(chatUserMessageSchema), async (req: Request, res: Response) => {
     const projectId = req.params.id;
@@ -108,11 +117,10 @@ export function createChatRoutes(deps: {
     }
 
     const userContext = extractUserContext(req);
-    // Mint turnId here so the SSE broadcast id and the future durable
-    // user_turn line share the same identifier.
     const { generateTurnId } = await import('../../../../composition/recordUserTurn');
     const turnId = generateTurnId();
-    await deps.chatService.addUserMessage(
+
+    await deps.chatService.appendUserTurn(
       projectId,
       featureName,
       content,
@@ -121,15 +129,17 @@ export function createChatRoutes(deps: {
       userContext,
       actionMetadata,
     );
+
     res.json({ turnId, messageId: `user-${turnId}` });
   });
 
   /**
    * POST /projects/:id/features/:feature/chat/job-error
-   * Add job error message
-   * Called by API server when job fails
+   *
+   * Single `assistant_message` line carrying the failure summary.
+   * Replaces the legacy `MessageManager.addJobError` path.
    */
-  router.post('/projects/:id/features/:feature/chat/job-error', (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/job-error', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const { jobId, errorMessage, errorDetails } = req.body;
@@ -144,106 +154,24 @@ export function createChatRoutes(deps: {
       return;
     }
 
-    const messageId = deps.chatService.addJobError(projectId, featureName, jobId, errorMessage, errorDetails);
-    res.json({ messageId });
-  });
-
-  /**
-   * POST /projects/:id/features/:feature/chat/triage-choice
-   * Handle user choice from triage result
-   * Called by UI when user clicks a choice button
-   * 
-   * Request body:
-   * - jobId: string
-   * - choice: 'proceed' | 'proceedAnyway' | 'redirect' | 'guide' | 'dismiss'
-   * 
-   * Response:
-   * - type: 'guide' | 'continue' | 'dismiss'
-   * - message?: string (for guide/dismiss)
-   * - action?: string (for continue)
-   */
-  router.post('/projects/:id/features/:feature/chat/triage-choice', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-    const { jobId, choice } = req.body;
-
-    if (!deps.choiceService) {
-      res.status(503).json({ error: 'Choice service not available' });
-      return;
-    }
-
-    if (!jobId || !choice) {
-      res.status(400).json({ error: 'jobId and choice are required' });
-      return;
-    }
-
-    // Validate choice value
-    const validChoices: ChoiceAction[] = ['proceed', 'proceedAnyway', 'redirect', 'guide', 'dismiss'];
-    if (!validChoices.includes(choice)) {
-      res.status(400).json({ error: `Invalid choice. Must be one of: ${validChoices.join(', ')}` });
-      return;
-    }
-
     const userContext = extractUserContext(req);
+    const text =
+      `❌ **Job Failed**\n\n${errorMessage}` +
+      (errorDetails ? `\n\nDetails:\n${JSON.stringify(errorDetails, null, 2)}` : '');
 
-    try {
-      const response = await deps.choiceService.handleChoice({
-        jobId,
-        projectId,
-        featureName,
-        choice
-      });
+    await deps.chatService.appendAssistantMessage(projectId, featureName, text, {
+      jobId,
+      userContext,
+    });
 
-      // Update triage_choice message metadata to mark as resolved
-      if (deps.chatService) {
-        let resolvedLabel = '';
-        if (choice === 'dismiss') {
-          resolvedLabel = 'Dismissed';
-        } else if (choice === 'redirect' && response.suggestedJob) {
-          resolvedLabel = `→ ${response.suggestedJob} job으로 전환됨`;
-        } else if (choice === 'guide') {
-          resolvedLabel = '가이드 제공됨';
-        } else if (choice === 'proceed' || choice === 'proceedAnyway') {
-          resolvedLabel = '진행됨';
-        }
-        
-        await deps.chatService.updateLastContentMetadata(
-          projectId,
-          featureName,
-          'triage_choice',
-          {
-            choiceSelected: choice,
-            resolvedLabel
-          },
-          userContext
-        );
-      }
-
-      // If guide, send guide message to chat
-      if (response.type === 'guide' && response.message && deps.chatService) {
-        deps.chatService.addContentToCurrentMessage(projectId, featureName, {
-          type: 'text',
-          content: response.message
-        });
-      }
-
-      // Finalize message for terminal choices (dismiss, guide)
-      if (deps.chatService && (choice === 'dismiss' || choice === 'guide')) {
-        const cancelled = choice === 'dismiss';
-        await deps.chatService.finalizeCurrentMessage(projectId, featureName, cancelled, userContext);
-      }
-
-      res.json(response);
-    } catch (error) {
-      logger.error('Triage choice error', { component: 'Chat' }, error);
-      res.status(500).json({ error: 'Failed to process choice' });
-    }
+    res.json({ success: true });
   });
 
   /**
    * GET /projects/:id/features/:feature/chat/pending-choice
-   * Check if there's a pending triage choice
-   * Called by UI to show pending choice UI
+   *
+   * Surface the pending triage choice so the UI can re-render it on
+   * navigation away/back. Untouched by Phase 9.
    */
   router.get('/projects/:id/features/:feature/chat/pending-choice', (req: Request, res: Response) => {
     const projectId = req.params.id;
@@ -255,13 +183,13 @@ export function createChatRoutes(deps: {
     }
 
     const pending = deps.choiceService.getPendingChoice(projectId, featureName);
-    
+
     if (pending) {
       res.json({
         hasPending: true,
         triageResult: pending.triageResult,
         createdAt: pending.createdAt,
-        expiresAt: pending.expiresAt
+        expiresAt: pending.expiresAt,
       });
     } else {
       res.json({ hasPending: false });
@@ -269,147 +197,174 @@ export function createChatRoutes(deps: {
   });
 
   /**
-   * POST /projects/:id/features/:feature/chat/eval-save
-   * Save evaluation report to outputs/evals/{evalType}/
-   * 
-   * Request body:
-   * - evalType: 'prd' | 'design-system' | 'design-ui' | 'code' | 'all'
-   * - content: string (markdown content of evaluation)
+   * POST /projects/:id/features/:feature/chat/choice-resolved
+   *
+   * Unified choice resolution endpoint. Body:
+   *   {
+   *     cardId: string,
+   *     choiceSelected: string,         // 'proceed' | 'dismiss' | 'save' | …
+   *     resolvedLabel: string,          // user-visible label after resolve
+   *     answer?: Record<string, unknown> // free-form payload (eval content,
+   *                                     // clarifying answers, redirected job, …)
+   *   }
+   *
+   * Pipeline:
+   *  1. Resolve `(turnId, jobId)` from the originating `choice_presented`
+   *     line via `findTurnIdByCardId`.
+   *  2. cardType-specific side-effects (eval_save → file write +
+   *     unseenArtifacts notification; triage_choice → ChoiceService
+   *     routing decision + optional guide message).
+   *  3. `appendChoiceResolved` writes `chat.jsonl choice_resolved`,
+   *     broadcasts `chat_event_appended` SSE, and publishes the
+   *     `ant:chat:choice-resolved:{sessionKey}` Pub/Sub envelope so a
+   *     waiting worker promise resolves cross-pod.
+   *
+   * Idempotency lives in ChatService.appendChoiceResolved — the per-cardId
+   * NX flag ensures a duplicate click no-ops at the BE layer.
    */
-  router.post('/projects/:id/features/:feature/chat/eval-save', async (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/choice-resolved', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { evalType, content } = req.body;
+    const { cardId, choiceSelected, resolvedLabel, answer } = req.body || {};
 
-    if (!evalType || !content) {
-      res.status(400).json({ error: 'evalType and content are required' });
+    if (!cardId || !choiceSelected || !resolvedLabel) {
+      res.status(400).json({ error: 'cardId, choiceSelected, and resolvedLabel are required' });
       return;
     }
 
-    const validTypes = ['prd', 'design-system', 'design-ui', 'code', 'all'];
-    if (!validTypes.includes(evalType)) {
-      res.status(400).json({ error: `Invalid evalType. Must be one of: ${validTypes.join(', ')}` });
+    if (!deps.chatService) {
+      res.status(503).json({ error: 'Chat service not available' });
       return;
     }
 
     const userContext = extractUserContext(req);
 
     try {
-      // Resolve feature path
-      let featurePath: string;
-      if (deps.workspaceResolver) {
-        featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      } else {
-        // Fallback for local mode
-        const workspaceRoot = process.env.ANT_WORKSPACE_ROOT || process.cwd();
-        featurePath = path.join(workspaceRoot, 'ant-workspaces', projectId, featureName);
+      // 1. Resolve the turn that originally presented the card. Without
+      //    a matching choice_presented line we cannot append a paired
+      //    choice_resolved line — surface 404 so the FE can redo the
+      //    state-rebuild step instead of silently swallowing the click.
+      const ctx = await deps.chatService.findTurnIdByCardId(projectId, featureName, cardId, userContext);
+      if (!ctx) {
+        res.status(404).json({ error: 'choice card not found', cardId });
+        return;
       }
 
-      // Build save path: outputs/evals/{evalType}/eval-{timestamp}.md
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-      const evalDir = path.join(featurePath, 'outputs', 'evals', evalType);
-      const evalFilePath = path.join(evalDir, `eval-${timestamp}.md`);
-      const relativePath = `outputs/evals/${evalType}/eval-${timestamp}.md`;
+      // 2. cardType-specific side-effects. We re-read the chat.jsonl
+      //    line to inspect cardType because the FE only carries cardId
+      //    + choiceSelected (the legacy contract).
+      const events = await deps.chatService.loadEventsAsync(projectId, featureName, userContext);
+      const presented = events.find(
+        (l) => l.type === 'choice_presented' && (l as any).cardId === cardId,
+      ) as
+        | { type: 'choice_presented'; cardType: string; payload?: Record<string, any> }
+        | undefined;
+      const cardType = presented?.cardType ?? '';
 
-      // Ensure directory exists
-      await fs.mkdir(evalDir, { recursive: true });
+      let routingResponse: any = null;
 
-      // Write evaluation report
-      await fs.writeFile(evalFilePath, content, 'utf-8');
+      // 2a. eval_save card — persist evaluation content to disk and
+      //     announce the unseen artifact. The FE's Save click sets
+      //     choiceSelected='save'; other choices (dismiss / cancel)
+      //     fall through to plain choice_resolved.
+      if (cardType === 'eval_save' && choiceSelected === 'save' && answer) {
+        const { evalType, content: evalContent } = answer as { evalType?: string; content?: string };
+        if (evalType && evalContent && deps.workspaceResolver) {
+          try {
+            const featurePath: string = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+            const evalDir = path.join(featurePath, 'outputs', 'evals', evalType);
+            const evalFilePath = path.join(evalDir, `eval-${timestamp}.md`);
+            const relativePath = `outputs/evals/${evalType}/eval-${timestamp}.md`;
 
-      logger.debug(`📋 [chat.routes] Eval report saved: ${relativePath}`);
+            await fs.mkdir(evalDir, { recursive: true });
+            await fs.writeFile(evalFilePath, evalContent, 'utf-8');
 
-      // ✅ Notify file tree update after eval report write
-      if (deps.fileTreeNotifier) {
-        deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
-      }
+            if (deps.fileTreeNotifier) {
+              deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);
+            }
 
-      // ✅ Add unseen artifact notification for eval report
-      if (deps.stateStore) {
-        try {
-          await deps.stateStore.addUnseenArtifacts(userContext.userId, projectId, featureName, [relativePath]);
-          // Broadcast updated unseen list via Redis Pub/Sub → Realtime Server → SSE
-          const allUnseen = await deps.stateStore.getUnseenArtifacts(userContext.userId, projectId, featureName);
-          const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
-          await deps.stateStore.publish(channel, {
-            projectId, featureName, type: 'unseenArtifacts',
-            data: { type: 'update', paths: allUnseen },
-            userContext,
-          });
-        } catch (e) {
-          logger.warn(`[chat.routes] Failed to add unseen artifact: ${(e as Error).message}`);
+            if (deps.stateStore) {
+              try {
+                await deps.stateStore.addUnseenArtifacts(userContext.userId, projectId, featureName, [relativePath]);
+                const allUnseen = await deps.stateStore.getUnseenArtifacts(userContext.userId, projectId, featureName);
+                const channel = getRealtimeBroadcastChannel(userContext.organizationId, userContext.userId);
+                await deps.stateStore.publish(channel, {
+                  projectId,
+                  featureName,
+                  type: 'unseenArtifacts',
+                  data: { type: 'update', paths: allUnseen },
+                  userContext,
+                });
+              } catch (e) {
+                logger.warn(`Failed to add unseen artifact: ${(e as Error).message}`, { component: 'Chat' });
+              }
+            }
+
+            // Inject the saved path into `answer` so the persisted
+            // choice_resolved line carries the artifact reference.
+            (answer as any).savedPath = relativePath;
+          } catch (err) {
+            logger.error('Eval save error', { component: 'Chat' }, err);
+            res.status(500).json({ error: 'Failed to save evaluation report' });
+            return;
+          }
         }
       }
 
-      // Update choice card metadata to mark as saved
-      // ✅ metadataFilter ensures we update the correct choice_card (eval_save)
-      if (deps.chatService) {
-        await deps.chatService.updateLastContentMetadata(
-          projectId,
-          featureName,
-          'choice_card',
-          { choiceSelected: 'save', resolvedLabel: `Saved: ${relativePath}` },
-          userContext,
-          { cardType: 'eval_save' }
-        );
+      // 2b. triage_choice card — invoke ChoiceService for routing
+      //     (proceed / proceedAnyway / redirect / guide / dismiss).
+      //     The response carries the BE-side decision and is forwarded
+      //     to the FE so the existing UI flow keeps working until the
+      //     Phase 12 FE migration.
+      if (cardType === 'triage_choice' && deps.choiceService) {
+        const validChoices: ChoiceAction[] = ['proceed', 'proceedAnyway', 'redirect', 'guide', 'dismiss'];
+        if (!validChoices.includes(choiceSelected as ChoiceAction)) {
+          res.status(400).json({ error: `Invalid choice for triage card: ${choiceSelected}` });
+          return;
+        }
+        try {
+          routingResponse = await deps.choiceService.handleChoice({
+            jobId: ctx.jobId,
+            projectId,
+            featureName,
+            choice: choiceSelected as ChoiceAction,
+          });
+
+          // Surface the guide message as an assistant_message so it
+          // persists in chat.jsonl and survives reload.
+          if (routingResponse?.type === 'guide' && routingResponse.message) {
+            await deps.chatService.appendAssistantMessage(
+              projectId,
+              featureName,
+              routingResponse.message,
+              { jobId: ctx.jobId, turnId: ctx.turnId, userContext },
+            );
+          }
+        } catch (err) {
+          logger.error('Triage choice routing failed', { component: 'Chat' }, err);
+          res.status(500).json({ error: 'Failed to process triage choice' });
+          return;
+        }
       }
 
-      res.json({
-        success: true,
-        path: relativePath,
-        resolvedLabel: `Saved: ${relativePath}`
+      // 3. Single-shot choice_resolved emission (NX-guarded inside
+      //    ChatService).
+      const result = await deps.chatService.appendChoiceResolved(projectId, featureName, {
+        jobId: ctx.jobId,
+        cardId,
+        choiceSelected,
+        resolvedLabel,
+        answer,
+        userContext,
       });
+
+      res.json({ success: true, resolved: result.resolved, ...(routingResponse ? { routing: routingResponse } : {}) });
     } catch (error: any) {
-      logger.error('Eval save error', { component: 'Chat' }, error);
-      res.status(500).json({ error: 'Failed to save evaluation report' });
+      logger.error('Choice resolution error', { component: 'Chat' }, error);
+      res.status(500).json({ error: 'Failed to resolve choice' });
     }
   });
 
-  /**
-   * POST /projects/:id/features/:feature/chat/dismiss-choice
-   * Unified choice persistence endpoint for ALL choice card types.
-   * Persists the choice state via ChatService + Redis so it survives page refresh in multi-pod.
-   * 
-   * ✅ Replaces the old cancelled-choice endpoint — all choice persistence goes through here.
-   * 
-   * Body: { contentType: string, choiceAction: string, resolvedLabel: string, metadataFilter?: Record<string, string> }
-   *   - contentType: the content.type to find (e.g. 'choice_card', 'triage_choice', 'cancelled')
-   *   - choiceAction: the action to record (e.g. 'resume', 'dismiss', 'keep_draft', 'skip')
-   *   - resolvedLabel: display label (e.g. 'Resumed', 'Dismissed', 'Kept as draft', 'Skipped')
-   *   - metadataFilter: optional metadata fields to match for precise content targeting
-   *     e.g. { cardType: 'eval_save' } for choice_card subtypes
-   *     e.g. { jobId: 'xxx' } for specific cancelled message
-   */
-  router.post('/projects/:id/features/:feature/chat/dismiss-choice', async (req: Request, res: Response) => {
-    const projectId = req.params.id;
-    const featureName = req.params.feature;
-    const userContext = extractUserContext(req);
-    const { contentType, choiceAction, resolvedLabel, metadataFilter, extraMetadata } = req.body || {};
-
-    if (!contentType || !choiceAction || !resolvedLabel) {
-      return res.status(400).json({ error: 'contentType, choiceAction, and resolvedLabel are required' });
-    }
-
-    try {
-      if (deps.chatService) {
-        await deps.chatService.updateLastContentMetadata(
-          projectId,
-          featureName,
-          contentType,
-          { choiceSelected: choiceAction, resolvedLabel, ...(extraMetadata || {}) },
-          userContext,
-          metadataFilter || undefined
-        );
-      }
-
-      logger.debug(`📋 [chat.routes] Choice persisted: ${contentType}${metadataFilter ? `(${JSON.stringify(metadataFilter)})` : ''} → ${choiceAction} (${resolvedLabel})`);
-
-      res.json({ success: true, choiceAction, resolvedLabel });
-    } catch (error: any) {
-      logger.error('Dismiss choice error', { component: 'Chat' }, error);
-      res.status(500).json({ error: 'Failed to persist choice' });
-    }
-  });
-  
   return router;
 }

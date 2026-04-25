@@ -8,22 +8,25 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Ban } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
-import type { MessageContent } from '@/domain/models/chat';
+import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { FileIcon } from '@/shared/utils/file-icons';
+import { lineToContent } from './cards/lineToContent';
 
 interface FileCardProps {
-  content: MessageContent;
+  line: ChatStatusLine;
+  pending?: PendingCardSnapshot;
   operation: 'create' | 'edit' | 'delete';
   isStreaming?: boolean;
 }
 
-export function FileCard({ content, operation }: FileCardProps) {
+export function FileCard({ line, pending, operation }: FileCardProps) {
+  const content = lineToContent(line, pending);
   const { t } = useTranslation('chat');
   const contentRef = useRef<HTMLDivElement>(null);
-  const filePath = content.metadata?.filePath || t('card.unknownFile');
+  const filePath = (content.metadata?.filePath as string | undefined) || t('card.unknownFile');
   const fileContent = content.content || '';  // ✅ Ensure string, never undefined
-  const diffBefore = content.metadata?.diffBefore;
-  const diffAfter = content.metadata?.diffAfter;
+  const diffBefore = content.metadata?.diffBefore as string | undefined;
+  const diffAfter = content.metadata?.diffAfter as string | undefined;
   
   // Determine streaming state based on content type
   const isCreating = content.type === 'file_creating';

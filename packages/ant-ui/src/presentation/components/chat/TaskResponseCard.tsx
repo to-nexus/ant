@@ -14,14 +14,17 @@ import { ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { MessageContent } from '@/domain/models/chat';
+import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
+import { lineToContent } from './cards/lineToContent';
 
 interface TaskResponseCardProps {
-  content: MessageContent;
+  line: ChatStatusLine;
+  pending?: PendingCardSnapshot;
   isStreaming?: boolean;
 }
 
-export function TaskResponseCard({ content, isStreaming }: TaskResponseCardProps) {
+export function TaskResponseCard({ line, pending, isStreaming }: TaskResponseCardProps) {
+  const content = lineToContent(line, pending);
   const contentRef = useRef<HTMLDivElement>(null);
   const textContent = content.content || '';
   const taskName = content.metadata?.taskName;

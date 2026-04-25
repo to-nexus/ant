@@ -18,10 +18,9 @@ import { clearCanonicalDirectory } from '../../../../core/utils/sessionPaths';
  * - `feature.jsonl` breadcrumbs — navigation timeline
  * - `feature.jsonl` user_turn / user_turn_meta — tier badge data
  *
- * Chat history (chat.jsonl) is NOT served here — the UI fetches chat
- * messages via `/chat/messages`, which routes through
- * `ChatService.getMessagesAsync` so the streaming scratchpad overlay is
- * applied on top of the durable log.
+ * Chat history (chat.jsonl) is NOT served here — the UI hydrates from
+ * the SSE `chat_initial_state` event, backed by
+ * `ChatService.loadEventsAsync` + `loadTurnBuffersAsync` (chat-SSOT §5).
  *
  * Live updates flow through the SSE workflow/chat streams.
  */
@@ -29,9 +28,9 @@ export function createFeatureLogRoutes(deps: {
   workspaceResolver?: any;
   /**
    * Optional ChatService — when present, `/context/reset` reuses
-   * `chatService.clearMessagesAsync(..., 'full')` for the Redis chat
-   * session purge + draft image cleanup + `messages_cleared` SSE
-   * broadcast. Disk wipe (feature.jsonl / chat.jsonl / architect json /
+   * `chatService.clearEventsAsync(scope='full')` for the Redis chat
+   * turn-buffer purge + `events_cleared` SSE broadcast. Disk wipe
+   * (feature.jsonl / chat.jsonl / architect json /
    * planner json) is handled separately via `clearCanonicalDirectory`
    * in this handler and does NOT depend on ChatService.
    */
@@ -122,10 +121,11 @@ export function createFeatureLogRoutes(deps: {
    *        seals Redis, and broadcasts the terminal kanban snapshot.
    *      - Any already-terminal remnant → still run a defensive seal via
    *        the same helper (its seal phase is idempotent).
-   *   2. chatService.clearMessagesAsync(scope='full') — delete the Redis
-   *      chat session, purge inputs/assets/gen/drafts, broadcast
-   *      `messages_cleared` SSE. (No disk collapse here; the SessionManager
-   *      full-scope path performs Redis/drafts/SSE only.)
+   *   2. chatService.clearEventsAsync(scope='full') — drop every active
+   *      Redis TURN_BUFFER for the feature and broadcast an
+   *      `events_cleared` SSE. (No disk collapse here; the full-scope
+   *      path performs Redis turn-buffer purge + SSE only — disk wipe
+   *      happens in stage 3.)
    *   3. clearCanonicalDirectory(sessions/, 'sessions') — actually delete
    *      feature.jsonl, chat.jsonl, sessions/architect/*.json,
    *      sessions/planner/*.json. Canonical subdirectory structure is
@@ -223,7 +223,7 @@ export function createFeatureLogRoutes(deps: {
       //    physical unlink of every session file.)
       if (deps.chatService) {
         try {
-          await deps.chatService.clearMessagesAsync(projectId, featureName, userContext, 'full');
+          await deps.chatService.clearEventsAsync(projectId, featureName, 'full', userContext);
         } catch (err) {
           logger.warn('Hard reset: chat scratchpad cleanup failed', { component: 'FeatureLog' }, err);
         }

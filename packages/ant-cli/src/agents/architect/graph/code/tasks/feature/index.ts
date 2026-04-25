@@ -113,8 +113,6 @@
  *     used for schema validation only.
  */
 
-import type { TaskHooks } from '../_shared/types';
-
 import {
   preIntegrationBarrier,
   blocksUi,
@@ -124,17 +122,32 @@ import {
 } from './hooks/scheduling';
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
+import { composeBundle } from '../_shared/verify';
 
-export const hooks: TaskHooks = {
-  scheduling: {
-    preIntegrationBarrier,
-    blocksUi,
-    blocksTestgen,
-    blocksDoc,
-    blocksIntegration,
+// Wired through `composeBundle({...})` so Tier 2 self-verify feature tasks
+// (decompose-time `selfVerifyOnDone:true`) automatically pick up the
+// `_shared/verify/` hook surface (Session, plan/execute/command/check/
+// router/orchestrator/tool/budgetExhaustedHint) once they transition into
+// verify-mode via `executeRouter.routeAfterDone`. Tier 3+ feature tasks
+// (no `selfVerifyOnDone`) fall through composeBundle untouched —
+// `requiresVerification` returns false and apply-phase has no
+// task-type-specific guard, so build/test stays the verification task's
+// responsibility.
+export const hooks = composeBundle({
+  // Feature tasks have no apply-phase hooks today; the generic plan/execute
+  // base templates and the orchestrator's shared `_failedAttempts` counter
+  // serve every Tier 3/4 feature task.
+  taskTypeSpecific: {
+    scheduling: {
+      preIntegrationBarrier,
+      blocksUi,
+      blocksTestgen,
+      blocksDoc,
+      blocksIntegration,
+    },
+    decompose: { isExclusive },
+    conversations: { convKey },
   },
-  decompose: { isExclusive },
-  conversations: { convKey },
-};
+});
 
 export { isFeatureTask } from './model/is';

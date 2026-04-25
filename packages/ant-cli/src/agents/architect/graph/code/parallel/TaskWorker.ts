@@ -19,7 +19,7 @@ import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
 import { runInWorkerScope } from '../../../../../core/parallel/workerScope';
-import { VerificationTerminalError } from '../tasks/verification/model/errors';
+import { VerificationTerminalError } from '../tasks/_shared/verify/errors';
 import { hooksForTaskType } from '../tasks/_shared/registry';
 import type { TaskType } from '@ant/shared';
 
