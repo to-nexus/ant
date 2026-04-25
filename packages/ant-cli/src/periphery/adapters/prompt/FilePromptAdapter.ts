@@ -168,11 +168,6 @@ export class FilePromptAdapter implements PromptPort {
     this._lastViolations = [];
   }
 
-  async renderRaw(templatePath: string): Promise<string> {
-    const file = join(this.baseDir, `${templatePath}.md`);
-    return await fs.readFile(file, 'utf8');
-  }
-
   async render(templateName: string, vars: Record<string, any>): Promise<string> {
     const file = join(this.baseDir, `${templateName}.md`);
     const templateSource = await fs.readFile(file, "utf8");
