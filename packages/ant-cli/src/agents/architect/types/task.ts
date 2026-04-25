@@ -62,7 +62,7 @@ export interface CodeTaskResumeState extends BaseTaskResumeState {
    * `graph/code/tasks/...` into `types/task.ts` (the module would then
    * participate in a cycle with the graph state).
    * Concrete shape: `VerificationSnapshot` (see
-   * `agents/architect/graph/code/tasks/verification/model/snapshot.ts`).
+   * `agents/architect/graph/code/tasks/_shared/verify/snapshot.ts`).
    */
   verification?: any;
 }

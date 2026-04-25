@@ -7,8 +7,13 @@ import { ExecutionTierId } from '../types';
 
 /**
  * Tier 2 Exploratory — single unit of work executed through the task
- * pipeline (n=1 task with `selfVerifyOnDone`). The sole task owns inline
- * install/typecheck/build/test gates before declaring `<done>`.
+ * pipeline (n=1 task with `selfVerifyOnDone`). The sole task runs a
+ * two-cycle lifecycle: apply phase (task-type plan/execute applies fixes)
+ * → reverify phase (`tasks/_shared/verify/` runs install/typecheck/
+ * build/test gates) → done. Phase mode dispatch is task-type-blind: any
+ * task whose `requiresVerification(task)` predicate returns true (Tier
+ * 3/4 verification task OR Tier 2 self-verify) shares the verify-mode
+ * hook surface.
  *
  * Mini-breadcrumb fires when >= 3 files were touched; no boundary (the
  * user_turn stays in T2 so follow-up questions keep their context).

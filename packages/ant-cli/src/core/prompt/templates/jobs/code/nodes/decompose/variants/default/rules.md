@@ -68,7 +68,7 @@ OUTPUT FORMAT:
 - `priority`: per the Task Schema priority band for the chosen type
 - `packages`: relevant package tag(s)
 - `exclusive`: `true` (single-task breakdown is trivially exclusive)
-- `selfVerifyOnDone`: `true` (REQUIRED — the task owns install/typecheck/build/test verification before `<done>`)
+- `selfVerifyOnDone`: `true` (REQUIRED — signals that the task runs an automatic two-cycle apply→verify lifecycle; after the apply phase emits `<done>`, the runtime transitions the same task into verify-mode and runs install/typecheck/build/test gates against the verification template)
 - `description`: full scope of the unit of work
 
 **Constraint**: When tier is `3` or `4` AND mode is `explain`, emit exactly one task:
@@ -98,12 +98,12 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
   - `4` RefsGrounded  — answer systematically maps a supplied reference document.
 - `refactor` mode: the action is a code change. Minimum tier is `1` (Tier `0` is explain-only).
   - `1` OneShot       — verification genuinely unneeded (comment/typo/safe).
-  - `2` Exploratory   — one refactor unit that needs verification (task owns install/typecheck/build/test).
+  - `2` Exploratory   — one refactor unit that needs verification (the task automatically runs install/typecheck/build/test in a verify cycle after apply).
   - `3` Task          — change spans multiple independent persistence boundaries; verification task governs gates.
   - `4` RefsGrounded  — the refactor plan comes from a supplied reference document.
 - `generate` mode: the action is producing new code. Minimum tier is `1` (Tier `0` is explain-only).
   - `1` OneShot       — trivial addition where verification is genuinely unneeded.
-  - `2` Exploratory   — one generated unit that needs verification (task owns install/typecheck/build/test).
+  - `2` Exploratory   — one generated unit that needs verification (the task automatically runs install/typecheck/build/test in a verify cycle after apply).
   - `3` Task          — multi-boundary or multi-concern implementation; verification task governs gates.
   - `4` RefsGrounded  — the implementation scope is enumerated by a supplied reference document.
 
@@ -164,7 +164,7 @@ The tag content MUST be a single JSON object with these fields (no others):
 First, analyze step by step (think through):
 - **Classify executionTier first**: `0` Reflex, `1` OneShot, `2` Exploratory, `3` Task, or `4` RefsGrounded? (see ExecutionTier Classification above)
 - If tier is `0` or `1`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`.
-- If tier is `2`: emit exactly ONE task with `selfVerifyOnDone: true` (or `false` for explain). Skip the multi-task breakdown rules (Shared Foundation / Parallel Execution / Final Verification task — the lone task owns inline self-verify instead).
+- If tier is `2`: emit exactly ONE task with `selfVerifyOnDone: true` (or `false` for explain). Skip the multi-task breakdown rules (Shared Foundation / Parallel Execution / Final Verification task — the lone task automatically runs a verify cycle after apply, no separate verification task is needed).
 {{#unless intentClarifyDisabled}}
 - If tier is `3` or `4` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all four checkpoints indicate no source, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown.
 {{/unless}}
@@ -224,7 +224,7 @@ Each task object MUST follow this schema:
 | `exclusive` | Conditional | `true` if task must run alone. Determined by `type` and structural role — never by task name or description |
 | `parallelGroup` | Conditional | Group ID for serialization. Tasks with different IDs can run in parallel. Mutually exclusive with `exclusive` |
 | `uiSections` | When type is 'ui' or 'design-system' | Array of UI doc section IDs to inject (see specification for available sections) |
-| `selfVerifyOnDone` | Tier 2 only | `true` when the task must run install/typecheck/build/test gates before `<done>` (Tier 2 Exploratory, single unit of work). Omit or `false` at Tier 3/4 (the dedicated verification task governs gates). |
+| `selfVerifyOnDone` | Tier 2 only | `true` when the task should run install/typecheck/build/test gates as part of its lifecycle (Tier 2 Exploratory, single unit of work). The runtime transitions the task into a verify cycle automatically after the apply phase emits `<done>`. Omit or `false` at Tier 3/4 (the dedicated verification task governs gates). |
 | `description` | Yes | Scope boundary + design doc section reference |
 
 CRITICAL:
@@ -297,7 +297,7 @@ Do NOT embed token setup in setup or ui tasks.
 
 **Constraint (Tier 3/4)**: Tier 3 and Tier 4 breakdowns MUST include a dedicated verification task. The breakdown total is always `>= 2` tasks — any non-verification work plus the verification task.
 
-**Constraint (Tier 2)**: Tier 2 (Exploratory, single unit of work) does NOT emit a separate verification task. The sole task runs gates inline via `selfVerifyOnDone: true`.
+**Constraint (Tier 2)**: Tier 2 (Exploratory, single unit of work) does NOT emit a separate verification task. The sole task is marked with `selfVerifyOnDone: true` and the runtime transitions the same task into a verify cycle automatically after the apply phase emits `<done>`.
 
 ---
 

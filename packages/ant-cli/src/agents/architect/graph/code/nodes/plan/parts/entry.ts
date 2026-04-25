@@ -348,6 +348,13 @@ async function handleReverifyEntry(
   console.log(`\n🔄 [Plan] Post-execute final verification: ${nextTask.name}`);
   console.log(`   Resetting per-cycle attempted gates via Session.onPlanEntry('reverify')\n`);
 
+  // Self-verify Tier 2 task: detect "first reverify entry" by absence of
+  // Session — apply phase never created one. We use the flag to decide
+  // whether NODE_PLAN history needs a phase-boundary reset (apply phase's
+  // remediation plan tool-loop messages are stale once verify-mode takes
+  // over with the verification variant prompt).
+  const isFirstVerifyEntry = !state.verification;
+
   // Self-verify Tier 2 task: this is the FIRST verify-mode entry (apply
   // phase ran without a Session). Dispatch initSession so the Session is
   // created and `_verifyEntered` flips. Verification tasks already
@@ -363,7 +370,21 @@ async function handleReverifyEntry(
   state.verification?.onPlanEntry('reverify');
 
   state._executeCallIndex = 0;
-  state.conversations = { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [] };
+  // NODE_EXECUTE is always reset at reverify entry — the apply / prior-
+  // reverify execute-phase tool-loop messages are stale once we re-enter
+  // plan with a (potentially) new diagnostic surface.
+  //
+  // NODE_PLAN is reset on the FIRST verify-mode entry (apply→verify
+  // transition for self-verify Tier 2 task). The apply phase's plan-
+  // tool-loop history was framed as a remediation/feature plan; carrying
+  // it into the verification variant prompt would mix two prompt formats
+  // in the same conversation. Subsequent reverify entries (verification
+  // task post-execute, or self-verify task's second+ reverify) keep
+  // NODE_PLAN intact — the LLM benefits from seeing the prior diagnostic
+  // tool-loop within the same verify-mode framing.
+  state.conversations = isFirstVerifyEntry
+    ? { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] }
+    : { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [] };
   state._executeModifiedFiles = false;
   state.violations = [];
 

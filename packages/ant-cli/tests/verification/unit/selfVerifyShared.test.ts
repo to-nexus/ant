@@ -232,6 +232,11 @@ describe('check.evaluate — Tier 2 self-verify silent-bug guard', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('routeAfterDone — apply→reverify transition for Tier 2 self-verify', () => {
+  // Silent-bug guard (onyx-building-fence): self-verify task's FIRST verify
+  // entry MUST always route to plan even when the apply phase claimed "no
+  // fix needed". The runtime then runs gates against the Session before
+  // letting the task complete.
+
   it('returns "plan" when files were modified + no Session yet (first reverify entry)', () => {
     const state = {
       planText: 'remediation plan body',
@@ -242,24 +247,27 @@ describe('routeAfterDone — apply→reverify transition for Tier 2 self-verify'
     expect(verifyRouteAfterDone(state)).toBe('plan');
   });
 
-  it('returns "checkTaskStatus" when no plan (apply phase had nothing to do)', () => {
+  it('returns "plan" when apply phase emits empty plan (silent-bug guard — self-verify must verify gates)', () => {
     const state = {
       planText: '',
       _executeModifiedFiles: false,
       verification: undefined,
       currentTask: { id: 't', type: 'error', selfVerifyOnDone: true } as any,
     } as ArchitectGraphState;
-    expect(verifyRouteAfterDone(state)).toBe('checkTaskStatus');
+    // Even though apply phase had no plan + no file changes, the self-verify
+    // task must still enter verify-mode at least once. Otherwise the LLM's
+    // "no fix needed" claim ships unverified.
+    expect(verifyRouteAfterDone(state)).toBe('plan');
   });
 
-  it('returns "checkTaskStatus" when no files modified', () => {
+  it('returns "plan" when apply phase planned but did not modify files (still must verify)', () => {
     const state = {
       planText: 'remediation plan',
       _executeModifiedFiles: false,
       verification: undefined,
       currentTask: { id: 't', type: 'error', selfVerifyOnDone: true } as any,
     } as ArchitectGraphState;
-    expect(verifyRouteAfterDone(state)).toBe('checkTaskStatus');
+    expect(verifyRouteAfterDone(state)).toBe('plan');
   });
 
   it('returns "checkTaskStatus" when session already complete (verify-mode finished)', () => {
@@ -272,6 +280,32 @@ describe('routeAfterDone — apply→reverify transition for Tier 2 self-verify'
       _executeModifiedFiles: true,
       verification: session,
       currentTask: { id: 't', type: 'error', selfVerifyOnDone: true } as any,
+    } as ArchitectGraphState;
+    expect(verifyRouteAfterDone(state)).toBe('checkTaskStatus');
+  });
+
+  it('returns "checkTaskStatus" when subsequent verify cycle has empty plan (verification task pattern)', () => {
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    session.onCommand('typecheck', true);
+    session.onCommand('build', true);
+    const state = {
+      planText: '',
+      _executeModifiedFiles: false,
+      verification: session,
+      currentTask: { id: 'v1', type: 'verification', priority: 1000 } as any,
+    } as ArchitectGraphState;
+    // Verification task with active Session whose verify-mode plan came
+    // back empty — gates already complete, route to checkTaskStatus.
+    expect(verifyRouteAfterDone(state)).toBe('checkTaskStatus');
+  });
+
+  it('returns "checkTaskStatus" when subsequent verify cycle plan exists but no files changed', () => {
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    const state = {
+      planText: 'reverify plan',
+      _executeModifiedFiles: false,
+      verification: session,
+      currentTask: { id: 'v1', type: 'verification', priority: 1000 } as any,
     } as ArchitectGraphState;
     expect(verifyRouteAfterDone(state)).toBe('checkTaskStatus');
   });
@@ -294,22 +328,22 @@ function* walkFiles(dir: string): Generator<string> {
 
 describe('jurisdiction guard — `_verifyEntered` channel single writer', () => {
   it('only `markVerifyEntered.ts` and `checkTaskStatus/index.ts` mutate `_verifyEntered`', () => {
-    // Acceptable mutators:
-    //   - markVerifyEntered.ts (the helper itself)
-    //   - checkTaskStatus/index.ts (task-boundary reset)
-    //   - graph.ts (channel default declaration via Annotation)
-    //   - state.ts (interface declaration)
+    // Acceptable mutators (written via direct assignment or return-object literal):
+    //   - markVerifyEntered.ts (the helper itself — uses `state._verifyEntered = true|false`)
+    //   - checkTaskStatus/index.ts (task-boundary reset — emits `_verifyEntered: false` in return)
     const ALLOWED = new Set([
       resolve(SRC_ROOT, 'agents/architect/graph/code/tasks/_shared/verify/markVerifyEntered.ts'),
       resolve(SRC_ROOT, 'agents/architect/graph/code/nodes/checkTaskStatus/index.ts'),
-      resolve(SRC_ROOT, 'agents/architect/graph/code/graph.ts'),
-      resolve(SRC_ROOT, 'agents/architect/graph/code/state.ts'),
     ]);
     const offenders: string[] = [];
-    const writePattern = /\bstate\._verifyEntered\s*=|_verifyEntered\s*:\s*(true|false)\b/;
+    // Direct assignment form: `state._verifyEntered = ...` (single `=`, NOT `===`/`!==`)
+    const assignPattern = /\bstate\._verifyEntered\s*=\s*[^=]/;
     for (const file of walkFiles(SRC_ROOT)) {
       const content = readFileSync(file, 'utf8');
-      if (writePattern.test(content) && !ALLOWED.has(file)) {
+      // Strip JSDoc-style block comments so doc references to `state._verifyEntered`
+      // don't false-trigger as mutations.
+      const stripped = content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      if (assignPattern.test(stripped) && !ALLOWED.has(file)) {
         offenders.push(file.replace(SRC_ROOT, '<src>'));
       }
     }

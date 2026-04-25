@@ -243,7 +243,7 @@ async function maybeSetupFastPath(
  * R1 — this function stays blind to `task.type`. Prior-attempt reasoning
  * continuity is carried exclusively via the Session-driven summary lines
  * rendered inside the verification-variant template (see
- * `tasks/verification/hooks/plan.ts::buildPrompt`) and the
+ * `tasks/_shared/verify/buildPlanPrompt.ts::buildPrompt`) and the
  * rules-level pointer to `sessions/architect/code.json` for LLM-self-
  * service lookup. Previously this phase embedded a verification-only
  * "diagnosticRetryContext" narrative — completed error sub-tasks'

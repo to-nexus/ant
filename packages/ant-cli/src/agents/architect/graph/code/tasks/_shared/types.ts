@@ -24,7 +24,7 @@
  * `tasks/error/model/ErrorTaskData` (`readErrorData` / `hasPrePlanText`
  * / `ErrorTaskData` / `RemediationMode` — every phase consumer read
  * the four fields directly off `CodeTask` instead) and
- * `tasks/verification/model/gates.GateConfig` (no importer since the
+ * `tasks/_shared/verify/gates.GateConfig` (no importer since the
  * interface was introduced; `Session` holds the three sets as private
  * fields rather than a combined value).
  *
