@@ -25,6 +25,7 @@ import type { ChatStatusType } from '../src/core/llm-response/types';
 
 interface PersistedCall {
   kind: 'chat_status' | 'choice_presented';
+  cardId?: string;
   statusType?: string;
   cardType?: string;
   metadata?: Record<string, unknown>;
@@ -32,8 +33,8 @@ interface PersistedCall {
 
 function makeFakeAppender(persisted: PersistedCall[]) {
   return {
-    appendChatStatus(statusType: string, metadata?: Record<string, unknown>) {
-      persisted.push({ kind: 'chat_status', statusType, metadata });
+    appendChatStatus(cardId: string, statusType: string, metadata?: Record<string, unknown>) {
+      persisted.push({ kind: 'chat_status', cardId, statusType, metadata });
     },
     appendChoicePresented(
       cardId: string,
@@ -42,6 +43,7 @@ function makeFakeAppender(persisted: PersistedCall[]) {
     ) {
       persisted.push({
         kind: 'choice_presented',
+        cardId,
         cardType,
         metadata: { cardId, ...(options.payload ?? {}) },
       });

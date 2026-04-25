@@ -78,13 +78,24 @@ export function createChatRoutes(deps: {
 
   /**
    * POST /projects/:id/features/:feature/chat/user-message
-   * Add a user message to chat history
-   * Called by UI when user sends a message
+   *
+   * Records a user message and returns a stable `turnId` the caller must
+   * forward to subsequent `executeJob({ seedTurnId })` invocations.
+   *
+   * Identity contract (chat SSOT refactor §6):
+   *   - The optimistic SSE broadcast carries id = `user-{turnId}`.
+   *   - The durable user_turn line written by the worker (recordUserTurn
+   *     with `providedTurnId=seedTurnId`) carries the same turnId.
+   *   - On SSE reconnect, both views collapse to a single message — the
+   *     "two user messages on tab switch" defect is eliminated.
+   *
+   * The legacy random `msg-*` id was the root cause of that duplication;
+   * it is intentionally retired.
    */
   router.post('/projects/:id/features/:feature/chat/user-message', chatRateLimiter, validateBody(chatUserMessageSchema), async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { content, jobId, actionMetadata } = req.body;
+    const { content, actionMetadata } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -97,8 +108,20 @@ export function createChatRoutes(deps: {
     }
 
     const userContext = extractUserContext(req);
-    const messageId = await deps.chatService.addUserMessage(projectId, featureName, content, jobId, userContext, actionMetadata);
-    res.json({ messageId });
+    // Mint turnId here so the SSE broadcast id and the future durable
+    // user_turn line share the same identifier.
+    const { generateTurnId } = await import('../../../../composition/recordUserTurn');
+    const turnId = generateTurnId();
+    await deps.chatService.addUserMessage(
+      projectId,
+      featureName,
+      content,
+      turnId,
+      undefined,
+      userContext,
+      actionMetadata,
+    );
+    res.json({ turnId, messageId: `user-${turnId}` });
   });
 
   /**

@@ -13,6 +13,12 @@ export interface ExecuteCodeJobOptions {
   chatSource?: boolean;        // ✅ Flag for Chat SSE
   skipTriage?: boolean;        // ✅ Skip triage node (after proceed choice)
   actionMetadata?: import('@ant/shared').ActionMetadata;  // ✅ Structured context from Actions panel
+  /**
+   * Pre-allocated turnId from `/chat/user-message`. Forwarded to the
+   * worker so the durable user_turn line reuses the same id as the
+   * optimistic SSE broadcast (chat SSOT §6).
+   */
+  seedTurnId?: string;
 }
 
 export interface JobExecution {
@@ -33,7 +39,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     overrideDirective,  // ✅ Chat input as directive
     chatSource,         // ✅ Flag for Chat SSE
     skipTriage,         // ✅ Skip triage (after proceed choice)
-    actionMetadata      // ✅ Structured context from Actions panel
+    actionMetadata,     // ✅ Structured context from Actions panel
+    seedTurnId,         // ✅ chat SSOT §6 — pre-allocated turn id
   } = options;
   
   // ✅ Feature name is required
@@ -99,7 +106,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     overrideDirective,  // ✅ Pass to API
     chatSource,          // ✅ Pass to API
     skipTriage,          // ✅ Pass to API
-    actionMetadata       // ✅ Pass to API
+    actionMetadata,      // ✅ Pass to API
+    seedTurnId,          // ✅ chat SSOT §6 — pre-allocated turn id
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);

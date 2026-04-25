@@ -31,9 +31,10 @@
  *   - Global Redis lock ensures only ONE pod runs recovery at a time.
  *   - Per-job Redis locks prevent duplicate cleanup when recovery overlaps
  *     with stalled-event handlers on other pods.
- *   - `finalizeTerminalJob` and `pauseJob` each own their own idempotency
- *     locks internally, so concurrent recovery + live events cannot produce
- *     duplicate cleanup.
+ *   - `finalizeTerminalJob` and `pauseJob` each own their own entry-level
+ *     idempotency locks (`ant:job-finalize:{id}` / `ant:job-pause:{id}`),
+ *     so concurrent recovery + live events cannot both run cleanupJobState
+ *     and emit duplicate cancelled cards.
  */
 
 import { logger } from '../../../../../utils/logger';

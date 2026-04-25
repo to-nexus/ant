@@ -40,6 +40,13 @@ export interface ExecuteJobParams {
   userContext?: UserContext;   // ✅ User context for Cloud mode
   jobId?: string;              // ✅ Existing jobId for resume (don't generate new one)
   isResume?: boolean;          // ✅ True if this is a resume/continue of a previous job
+  /**
+   * Pre-allocated turn id from `/chat/user-message`. When present, the
+   * worker MUST reuse this id and skip writing a second user_turn line
+   * (the API already wrote it). Forwarded to BullMQ payload.seedTurnId
+   * so cloud workers receive the same hint.
+   */
+  seedTurnId?: string;
 }
 
 export interface JobResult {

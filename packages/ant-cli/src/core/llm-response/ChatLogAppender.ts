@@ -82,12 +82,13 @@ export class ChatLogAppender {
     return Boolean(this.turnId && this.cfg.jobId && this.cfg.featurePath);
   }
 
-  appendThinking(text: string): void {
+  appendThinking(text: string, cardId?: string): void {
     if (!text || !this.turnId) return;
     const line: ChatThinkingLine = {
       ...this.base(),
       type: 'assistant_thinking',
       text,
+      ...(cardId ? { cardId } : {}),
     };
     this.safeAppend(line);
   }
@@ -95,20 +96,20 @@ export class ChatLogAppender {
   /**
    * Persist a chat status card — the canonical on-disk shape for every
    * non-structural chat card (read / list / search / file_* / command_*
-   * / mkdir / generic tool / …). Called by
-   * {@link ChatStatusHandler#showChatStatus} immediately after the matching
-   * `MessageContent` is built, so that replay can feed `(statusType,
-   * metadata)` back through `generateChatStatusContent` to reproduce the
-   * same card content byte-for-byte.
+   * / mkdir / generic tool / …). `cardId` is required so that the
+   * projector can fold progressive state transitions for the same card
+   * (e.g. `command_running` → `command` with exitCode) via last-write-wins.
    */
   appendChatStatus(
+    cardId: string,
     statusType: ChatStatusType,
     metadata?: Record<string, unknown>,
   ): void {
-    if (!statusType || !this.turnId) return;
+    if (!statusType || !cardId || !this.turnId) return;
     const line: ChatStatusLine = {
       ...this.base(),
       type: 'chat_status',
+      cardId,
       statusType,
       metadata,
     };

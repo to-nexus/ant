@@ -43,6 +43,21 @@ export interface JobPayload {
   // Resume support
   isResume?: boolean;
   originalJobId?: string;
+
+  /**
+   * Pre-allocated turn id from the API server.
+   *
+   * `/chat/user-message` (or any caller that pre-records the user_turn)
+   * generates the turnId, broadcasts the user-facing event with the
+   * stable `user-{turnId}` id, and forwards the same id here so the
+   * worker reuses it instead of minting a duplicate. When present, the
+   * orchestrator MUST treat the user_turn as already recorded — no
+   * second feature.jsonl/chat.jsonl write.
+   *
+   * Resume jobs (where `isResume === true`) leave this undefined; the
+   * worker resolves the turnId from feature.jsonl as before.
+   */
+  seedTurnId?: string;
 }
 
 // ============================================

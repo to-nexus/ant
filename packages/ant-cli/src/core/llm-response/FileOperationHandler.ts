@@ -12,6 +12,7 @@ import type { MessageContent, ChatSession } from '../chat/types';
 import type { FileOperationPhase } from './types';
 import { logger } from '../../utils/logger';
 import { getChatLogAppender } from './chatLogAppenderRegistry';
+import * as crypto from 'crypto';
 
 export class FileOperationHandler {
   constructor(
@@ -201,7 +202,8 @@ export class FileOperationHandler {
       metadata.diffBefore = options?.diffBefore;
       metadata.diffAfter = options?.diffAfter;
     }
-    appender.appendChatStatus(statusType, metadata);
+    const cardId = `file-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    appender.appendChatStatus(cardId, statusType, metadata);
   }
 
   /**

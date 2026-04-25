@@ -119,7 +119,7 @@ export function createJobRoutes(deps: {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
-      const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata } = req.body;
+      const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId } = req.body;
       
       const userContext = extractUserContext(req);
 
@@ -204,9 +204,13 @@ export function createJobRoutes(deps: {
         chatSource,
         skipTriage,
         actionMetadata,
-        userContext
+        userContext,
+        // chat SSOT §6 — pre-allocated turnId from /chat/user-message,
+        // forwarded to the worker so the durable user_turn line shares
+        // the same id as the optimistic SSE broadcast.
+        seedTurnId,
       };
-      
+
       const enqueuedAt = new Date().toISOString();
       const result = await deps.executeJob(params);
       logger.info(`Job enqueued: ${projectId}/${featureName} jobId=${result.jobId}`, { component: 'JobRoute' });
@@ -525,14 +529,15 @@ export function createJobRoutes(deps: {
       // ✅ Clear idempotency locks AFTER executeJob so old BullMQ job is
       // removed first (inside enqueue). This closes the stale-event window
       // and ensures locks stay intact if executeJob throws.
-      // Four lock layers: BullMQJobQueue completed, RouteConfigurator
-      // completed, RouteConfigurator failed, and finalizeTerminalJob
-      // primary — all TTL 120s.
+      // Five lock layers: BullMQJobQueue completed, RouteConfigurator
+      // completed, RouteConfigurator failed, finalizeTerminalJob primary,
+      // and pauseJob entry-level (chat SSOT §8) — all TTL 120s.
       await deps.stateStore.releaseLock(`ant:job-completed:${sessionJobId}`);
       await deps.stateStore.releaseLock(`ant:job-event:${sessionJobId}:completed`);
       await deps.stateStore.releaseLock(`ant:job-event:${sessionJobId}:failed`);
       await deps.stateStore.releaseLock(`ant:job-finalize:${sessionJobId}`);
-      logger.debug(`   ✅ Cleared completion/failure idempotency locks for ${sessionJobId}`);
+      await deps.stateStore.releaseLock(`ant:job-pause:${sessionJobId}`);
+      logger.debug(`   ✅ Cleared completion/failure/pause idempotency locks for ${sessionJobId}`);
       
       logger.debug(`   ✅ Resume job continued with existing jobId: ${sessionJobId}`);
       logger.debug(`   ✅ Resume request completed\n`);
@@ -828,11 +833,13 @@ export function createJobRoutes(deps: {
         // Rationale (see /resume route): the enqueue path removes the old
         // BullMQ job first; releasing locks afterwards closes the stale-event
         // window and keeps the locks intact if executeJob throws.
+        // Five lock layers (chat SSOT §8 adds pauseJob):
         const resumeLockJobId = sessionJobId || jobId;
         await deps.stateStore.releaseLock(`ant:job-completed:${resumeLockJobId}`);
         await deps.stateStore.releaseLock(`ant:job-event:${resumeLockJobId}:completed`);
         await deps.stateStore.releaseLock(`ant:job-event:${resumeLockJobId}:failed`);
         await deps.stateStore.releaseLock(`ant:job-finalize:${resumeLockJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-pause:${resumeLockJobId}`);
 
         logger.info(`Decompose proceed_without_spec: resumed code job ${result.jobId}`, { component: 'JobRoute' });
         return res.json({

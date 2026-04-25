@@ -25,7 +25,7 @@ import type { MessageContent } from '../chat/types';
 import type { ChatStatusType } from './types';
 import { logger } from '../../utils/logger';
 import { getChatLogAppender } from './chatLogAppenderRegistry';
-import { generateChatStatusContent } from './generateStatusContent';
+import { generateChatStatusContent } from '@ant/shared';
 import * as crypto from 'crypto';
 
 /**
@@ -139,10 +139,15 @@ export class ChatStatusHandler {
 
     const content = this.generateStatusContent(type, metadata);
 
-    // Durable mirror preparation: for interactive card types, mint a
-    // stable cardId BEFORE we build the message content so that
-    //   (a) the SSE broadcast carries it,
-    //   (b) the later choice_resolved chat log line can reference the same id.
+    // Durable mirror preparation: mint a stable cardId BEFORE we build the
+    // message content so every downstream consumer (SSE broadcast, chat.jsonl
+    // line, choice_resolved pairing, selectTurns cardId fold) shares the
+    // same identifier.
+    //  - Interactive cards (triage_choice / choice_card / cancelled) require
+    //    a stable cardId anyway — caller may pre-supply via `metadata.cardId`.
+    //  - Every other chat_status card also gets a cardId so that a future
+    //    progressive emission (e.g. running → complete state) folds to a
+    //    single card in the projector.
     const isChoiceCard = type === 'triage_choice' || type === 'choice_card';
     const appender = getChatLogAppender();
     const mergedMetadata: Record<string, any> = {
@@ -150,11 +155,10 @@ export class ChatStatusHandler {
       timestamp: new Date().toISOString(),
       ...metadata,
     };
-    if (isChoiceCard && appender) {
-      mergedMetadata.cardId =
-        (metadata && typeof metadata.cardId === 'string' && metadata.cardId) ||
-        `card-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-    }
+    const cardId: string =
+      (metadata && typeof metadata.cardId === 'string' && metadata.cardId) ||
+      `card-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    mergedMetadata.cardId = cardId;
 
     const messageContent: MessageContent = {
       // `ChatStatusType` is the canonical on-disk identifier and is a
@@ -196,12 +200,12 @@ export class ChatStatusHandler {
     if (!appender || LIVE_ONLY_STATUS_TYPES.has(type)) {
       return contentIndex;
     }
-    if (isChoiceCard && mergedMetadata.cardId) {
+    if (isChoiceCard) {
       const cardType = type === 'triage_choice'
         ? 'triage_choice'
         : (mergedMetadata.cardType as string | undefined) ?? 'choice_card';
       const { message: promptText, cardId: _cardId, provider: _provider, timestamp: _timestamp, ...restPayload } = mergedMetadata;
-      appender.appendChoicePresented(mergedMetadata.cardId, cardType, {
+      appender.appendChoicePresented(cardId, cardType, {
         prompt: content,
         payload: { ...restPayload, message: promptText },
       });
@@ -209,7 +213,7 @@ export class ChatStatusHandler {
       // Strip purely-presentational fields that the replay reader
       // re-derives or never consumes.
       const { provider: _provider, timestamp: _timestamp, ...persistedMetadata } = mergedMetadata;
-      appender.appendChatStatus(type, persistedMetadata);
+      appender.appendChatStatus(cardId, type, persistedMetadata);
     }
 
     return contentIndex;
