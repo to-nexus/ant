@@ -359,12 +359,16 @@ export class PromptBuilder implements PromptPort {
     return sections.join('\n\n');
   }
 
-  /** Returns true if template was found and pushed. */
+  /**
+   * Returns true if template was found and pushed.
+   *
+   * Uses `render(path, {})` so Handlebars partial references inside basis
+   * templates expand. Basis files are static markdown with no
+   * `{{variable}}` bindings, so passing an empty var map is safe.
+   */
   private async tryPushBasisTemplate(sections: string[], path: string, outPaths?: Set<string>): Promise<boolean> {
     try {
-      const content = this.promptPort.renderRaw
-        ? await this.promptPort.renderRaw(path)
-        : await this.promptPort.render(path, {});
+      const content = await this.promptPort.render(path, {});
       if (content) {
         sections.push(`<basis axis="${path}">\n${content}\n</basis>`);
         outPaths?.add(path);
@@ -376,9 +380,7 @@ export class PromptBuilder implements PromptPort {
 
   private async pushBasisTemplate(sections: string[], path: string, outPaths?: Set<string>): Promise<void> {
     try {
-      const content = this.promptPort.renderRaw
-        ? await this.promptPort.renderRaw(path)
-        : await this.promptPort.render(path, {});
+      const content = await this.promptPort.render(path, {});
       if (content) {
         sections.push(`<basis axis="${path}">\n${content}\n</basis>`);
         outPaths?.add(path);

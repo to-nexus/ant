@@ -1,3 +1,5 @@
+{{> jobs/code/basis/techTier/framework/_react-core}}
+
 # Next.js Framework Hints
 
 Blind-spot reminders. Pre-training gap only. Verify current library behaviour with `search_code` / `read_file` on `node_modules/next/**` when the error references Next.js internals.

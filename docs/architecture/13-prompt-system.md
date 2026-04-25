@@ -314,6 +314,29 @@ templates/basis/
 | `code` | `typescript-node`, `typescript-browser`, `go` | `nextjs`, `react`, `react-native`, `nestjs`, `gin` |
 | `design` | (미정 — 구조만 준비) | `nextjs`, `go` |
 
+### Partial 컨벤션 (`_` prefix = partial-only)
+
+동일 룰을 여러 framework에 재사용해야 할 때는 **Handlebars partial**로 분해한다. `_<name>.md` 접두어가 붙은 파일은 **partial-only** — 절대 직접 주입 대상이 되지 않으며, 다른 framework/language 파일이 `{{> ...}}` 로 포함한다.
+
+`framework/` 디렉토리 현황:
+
+| 파일 | 역할 | 포함 관계 |
+|------|------|-----------|
+| `_react-core.md` | React 코어 (hooks, 타입, 생명주기, React 19 관련) | `react.md`, `nextjs.md`가 partial로 포함 |
+| `_react-csr.md` | CSR 전용 (Vite SVGR, Vite SWC/Babel) | `react.md`만 partial로 포함 |
+| `react.md` | framework='react' 직접 주입 target | `{{> _react-core}} + {{> _react-csr}}` |
+| `nextjs.md` | framework='nextjs' 직접 주입 target, Next.js 전용(SSR/RSC/Image/Next 빌드) 본문 | `{{> _react-core}}` + 본문 (CSR 미포함) |
+
+Next.js는 React를 반드시 쓰지만 SSR 컨텍스트라 CSR 전용 룰(번들러·JSX runtime)을 받아서는 안 된다. 이 때문에 React 코어와 CSR을 별도 partial로 쪼개고, `nextjs.md`는 코어 partial만 품는다.
+
+`basis/techTier/language/_typescript-common.md` 가 동일 컨벤션의 선례(TS의 언어 공통 서문 + Go는 자체 파일). 언어 축에서는 stack(frontend/backend) 분기가 파일 이름 기반이므로 partial이 필요 없지만, framework 축은 `react`가 여러 런타임(브라우저 CSR·Next.js SSR·RN)에서 재사용되므로 partial 분해가 유효.
+
+### Partial 렌더링 메커니즘
+
+basis 섹션은 `PromptBuilder.buildBasisSection` → `pushBasisTemplate` → `promptPort.render(path, {})` 경로로 조립된다. `render` 는 Handlebars 컴파일러를 거치므로 `{{> name}}` 파싱/확장이 동작한다. 빈 변수 맵(`{}`)을 넘겨도 basis 파일은 `{{variable}}` 바인딩이 없는 정적 markdown이라 missing-var 경고가 나지 않는다.
+
+토큰 예산 측정도 partial 확장 후 합쳐진 텍스트 기준 — `tests/techtier-hint-budget.test.ts` 가 `expandPartials()`로 재귀 치환한 뒤 ≤ 600 토큰을 검증한다.
+
 ### Code Job 허용 섹션 (순서·헤더 고정)
 
 | # | 섹션 | 의미 |
@@ -364,6 +387,8 @@ Hints 계층 파일(`jobs/code/basis/techTier/**.md`, `jobs/design/basis/techTie
 - [ ] 파일당 토큰 예산(≤ 400)을 충족하는가? (`tests/techtier-hint-budget.test.ts` 통과)
 - [ ] 허용 섹션 4개 (`Forbidden Patterns` / `Symptom → Upstream Cues` / `Version Notes` / `Toolchain Compatibility`)만 사용했는가?
 - [ ] 파일명이 허용 집합에 속하는가? (집합 외 이름은 주입 skip됨 — fallback 없음)
+- [ ] partial-only 파일은 `_` prefix를 따랐는가? 직접 주입 framework 이름과 충돌하지 않는가?
+- [ ] partial 포함 관계가 MECE한가? — 같은 룰이 두 파일에 중복 등장하지 않고(M), framework별 합쳐진 결과에 누락이 없는가(E)
 - [ ] AutoInjectionResolver 외 경로에서 같은 파일을 중복 주입하고 있지 않은가?
 
 ## 템플릿 렌더링
