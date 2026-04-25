@@ -169,150 +169,145 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
       {open && (
         <div
           role="menu"
-          // Fixed panel width — keeps rows visually stable as users scroll
-          // through jobs with wildly different elapsed-time / token-usage
-          // badge widths. Chosen to fit: dot + jobId(truncate) + time badge
-          // + token badge (worst-case "NNN.Nk in · NNN.Nk out") + copy + trash
-          // without horizontal overflow.
+          // Rows: job + time + token share one flex with uniform `gap-2` (no
+          // fixed-width badge columns). Copy/delete sit in a shrink-0 sibling so
+          // they stay on the right edge of the panel while the left group grows.
           className={cn(
-            'absolute top-full left-0 mt-1 w-[540px]',
+            'absolute top-full left-0 mt-1 w-[min(480px,calc(100vw-1.5rem))]',
             'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700',
             'rounded-md shadow-lg z-[9999] py-1',
           )}
           onClick={(e) => e.stopPropagation()}
         >
-          <ul className="max-h-80 overflow-y-auto">
-            {rows.map(({ entry, isCurrent }) => {
-              // Preferred source per row:
-              //  - current jobId → live store kanban (most up-to-date)
-              //  - everything else → persisted snapshot from the BE history
-              //                     payload (falls back to no-badge when missing)
-              const snapshot: KanbanData | undefined = isCurrent
-                ? (currentKanban as KanbanData | undefined)
-                : entry.kanbanSnapshot;
-              const hasTiming = !!snapshot?.jobTiming;
-              const hasTokens = !!(
-                snapshot?.tokenUsage ||
-                snapshot?.estimatingTokenUsage ||
-                (snapshot?.phaseTokenUsages && snapshot.phaseTokenUsages.length > 0) ||
-                (snapshot?.completed && snapshot.completed.length > 0) ||
-                (snapshot?.inProgress && snapshot.inProgress.length > 0)
-              );
+          <div className="max-h-80 overflow-auto px-2">
+            <ul className="w-full">
+              {rows.map(({ entry, isCurrent }) => {
+                // Preferred source per row:
+                //  - current jobId → live store kanban (most up-to-date)
+                //  - everything else → persisted snapshot from the BE history
+                //                     payload (falls back to no-badge when missing)
+                const snapshot: KanbanData | undefined = isCurrent
+                  ? (currentKanban as KanbanData | undefined)
+                  : entry.kanbanSnapshot;
+                const hasTiming = !!snapshot?.jobTiming;
+                const hasTokens = !!(
+                  snapshot?.tokenUsage ||
+                  snapshot?.estimatingTokenUsage ||
+                  (snapshot?.phaseTokenUsages && snapshot.phaseTokenUsages.length > 0) ||
+                  (snapshot?.completed && snapshot.completed.length > 0) ||
+                  (snapshot?.inProgress && snapshot.inProgress.length > 0)
+                );
 
-              return (
-              <li
-                key={entry.jobId}
-                className={cn(
-                  'group flex items-center gap-1.5 px-2 py-1.5',
-                  isCurrent
-                    ? 'bg-gray-50 dark:bg-gray-900/40'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-700/60',
-                )}
-              >
-                {/* jobId body — the only flex-grow element; everything to
-                    its right is flex-shrink-0 so badge / icon widths never
-                    push each other around as values change. */}
-                <button
-                  type="button"
-                  onClick={() => handleSelect(entry.jobId, entry.live, isCurrent)}
-                  className={cn(
-                    'flex-1 min-w-0 flex items-center gap-2 px-1 text-left',
-                    'text-xs font-mono',
-                    isCurrent
-                      ? 'text-gray-900 dark:text-gray-100 cursor-default'
-                      : 'text-gray-800 dark:text-gray-200 cursor-pointer',
-                  )}
-                  title={entry.jobId}
-                >
-                  {isCurrent ? (
-                    <span
-                      className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"
-                      aria-hidden
-                    />
-                  ) : entry.live ? (
-                    <span
-                      className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"
-                      aria-label={t('tabs.liveJob')}
-                      title={t('tabs.liveJob')}
-                    />
-                  ) : (
-                    <span className="w-1.5 h-1.5 flex-shrink-0" aria-hidden />
-                  )}
-                  <span className="truncate">{entry.jobId}</span>
-                </button>
-
-                {/* Time badge slot — fixed width so compact "0s" and "1h 23m"
-                    both render at the same horizontal position across rows. */}
-                <div className="w-[68px] flex-shrink-0 flex justify-end">
-                  {hasTiming && (
-                    <ElapsedTimeBadge
-                      jobTiming={snapshot!.jobTiming}
-                      completedTasks={snapshot!.completed}
-                      inProgressTasks={snapshot!.inProgress}
-                      compact
-                      tickFromStore={isCurrent}
-                    />
-                  )}
-                </div>
-
-                {/* Token badge slot — fixed width wide enough for
-                    "NNN.Nk in · NNN.Nk out" without wrapping. */}
-                <div className="w-[150px] flex-shrink-0 flex justify-end">
-                  {hasTokens && (
-                    <TokenUsageBadge
-                      jobId={entry.jobId}
-                      tokenUsage={snapshot!.tokenUsage}
-                      estimatingTokenUsage={snapshot!.estimatingTokenUsage}
-                      phaseTokenUsages={snapshot!.phaseTokenUsages}
-                      completedTasks={snapshot!.completed}
-                      inProgressTasks={snapshot!.inProgress}
-                      compact
-                    />
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    copyToClipboard(entry.jobId);
-                  }}
-                  className={cn(
-                    'flex-shrink-0 p-1 rounded text-gray-400 dark:text-gray-500',
-                    'hover:bg-gray-200 dark:hover:bg-gray-600',
-                    'hover:text-gray-700 dark:hover:text-gray-200',
-                  )}
-                  title={t('tabs.copyJobId')}
-                  aria-label={t('tabs.copyJobId')}
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(entry.jobId, entry.live, isCurrent);
-                  }}
-                  disabled={entry.live}
-                  className={cn(
-                    'flex-shrink-0 p-1 rounded text-gray-400 dark:text-gray-500',
-                    'hover:bg-red-100 dark:hover:bg-red-900/40',
-                    'hover:text-red-600 dark:hover:text-red-400',
-                    'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400',
-                  )}
-                  title={
-                    entry.live
-                      ? t('tabs.deleteJobIdBlocked')
-                      : t('tabs.deleteJobId')
-                  }
-                  aria-label={t('tabs.deleteJobId')}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </li>
-              );
-            })}
-          </ul>
+                return (
+                  <li
+                    key={entry.jobId}
+                    className={cn(
+                      'group flex w-full min-w-0 items-center',
+                      isCurrent
+                        ? 'bg-gray-50 dark:bg-gray-900/40'
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-700/60',
+                    )}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSelect(entry.jobId, entry.live, isCurrent)}
+                        className={cn(
+                          'flex shrink-0 items-center gap-2 text-left whitespace-nowrap',
+                          'text-xs font-mono',
+                          isCurrent
+                            ? 'text-gray-900 dark:text-gray-100 cursor-default'
+                            : 'text-gray-800 dark:text-gray-200 cursor-pointer',
+                        )}
+                        title={entry.jobId}
+                      >
+                        {isCurrent ? (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"
+                            aria-hidden
+                          />
+                        ) : entry.live ? (
+                          <span
+                            className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0"
+                            aria-label={t('tabs.liveJob')}
+                            title={t('tabs.liveJob')}
+                          />
+                        ) : (
+                          <span className="w-1.5 h-1.5 flex-shrink-0" aria-hidden />
+                        )}
+                        <span>{entry.jobId}</span>
+                      </button>
+                      {/* Always two flex slots after id so gap-2 is even whether a badge is missing */}
+                      <span className="inline-flex shrink-0">
+                        {hasTiming && (
+                          <ElapsedTimeBadge
+                            jobTiming={snapshot!.jobTiming}
+                            completedTasks={snapshot!.completed}
+                            inProgressTasks={snapshot!.inProgress}
+                            compact
+                            tickFromStore={isCurrent}
+                          />
+                        )}
+                      </span>
+                      <span className="inline-flex shrink-0">
+                        {hasTokens && (
+                          <TokenUsageBadge
+                            jobId={entry.jobId}
+                            tokenUsage={snapshot!.tokenUsage}
+                            estimatingTokenUsage={snapshot!.estimatingTokenUsage}
+                            phaseTokenUsages={snapshot!.phaseTokenUsages}
+                            completedTasks={snapshot!.completed}
+                            inProgressTasks={snapshot!.inProgress}
+                            compact
+                          />
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-0.5 py-1.5 pl-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyToClipboard(entry.jobId);
+                        }}
+                        className={cn(
+                          'flex-shrink-0 p-1 rounded text-gray-400 dark:text-gray-500',
+                          'hover:bg-gray-200 dark:hover:bg-gray-600',
+                          'hover:text-gray-700 dark:hover:text-gray-200',
+                        )}
+                        title={t('tabs.copyJobId')}
+                        aria-label={t('tabs.copyJobId')}
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(entry.jobId, entry.live, isCurrent);
+                        }}
+                        disabled={entry.live}
+                        className={cn(
+                          'flex-shrink-0 p-1 rounded text-gray-400 dark:text-gray-500',
+                          'hover:bg-red-100 dark:hover:bg-red-900/40',
+                          'hover:text-red-600 dark:hover:text-red-400',
+                          'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400',
+                        )}
+                        title={
+                          entry.live
+                            ? t('tabs.deleteJobIdBlocked')
+                            : t('tabs.deleteJobId')
+                        }
+                        aria-label={t('tabs.deleteJobId')}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </div>
       )}
     </div>
