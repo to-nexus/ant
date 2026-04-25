@@ -43,18 +43,12 @@ export function MainContentArea({
   const { t: tAsync } = useTranslation('async');
   const activeTab = useStore((s) => s.mainPanelActiveTab);
   const openTabs = useStore((s) => s.mainPanelOpenTabs);
-  const isJobTabCleared = useStore((s) => s.isJobTabCleared);
   const selectedFile = useStore((s) => s.selectedFile);
   const showWorkflow = useStore((s) => s.showWorkflow);
   const selectedProject = useStore((s) => s.selectedProject);
   const fetchProjectConfig = useStore((s) => s.fetchProjectConfig);
   const updateProjectConfig = useStore((s) => s.updateProjectConfig);
   const projectConfigResource = useAsyncResource<ProjectConfig>((s) => s.projectConfig);
-
-  const effectiveKanbanData = isJobTabCleared
-    ? { ...kanbanData, jobId: undefined, todo: [], inProgress: [], completed: [] }
-    : kanbanData;
-  const effectiveWorkflowState = isJobTabCleared ? null : workflowState;
 
   const handleSaveProjectConfig = async (config: ProjectConfig) => {
     if (!selectedProject) return { success: false, error: 'No project selected' };
@@ -130,12 +124,12 @@ export function MainContentArea({
           {showWorkflow ? (
             <SplitLayout
               direction={splitLayout}
-              first={<KanbanBoard kanbanData={effectiveKanbanData} workflowState={effectiveWorkflowState} />}
-              second={<AgentWorkflowBoard workflowState={effectiveWorkflowState} />}
+              first={<KanbanBoard kanbanData={kanbanData} workflowState={workflowState} />}
+              second={<AgentWorkflowBoard workflowState={workflowState} />}
             />
           ) : (
             <div className="h-full overflow-y-auto">
-              <KanbanBoard kanbanData={effectiveKanbanData} workflowState={effectiveWorkflowState} />
+              <KanbanBoard kanbanData={kanbanData} workflowState={workflowState} />
             </div>
           )}
         </div>

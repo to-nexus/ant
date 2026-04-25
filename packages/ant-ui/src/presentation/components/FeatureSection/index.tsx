@@ -142,7 +142,7 @@ export function FeatureSection({ explorerWidth }: { explorerWidth: number }) {
         canDelete={(name) => {
           const featureKey = `${selectedProject}/${name}`;
           if (runningJobsByFeature[featureKey]) {
-            return t('nav:tabs.removeJobBlocked');
+            return t('nav:tabs.featureDeleteBlocked');
           }
           return null;
         }}

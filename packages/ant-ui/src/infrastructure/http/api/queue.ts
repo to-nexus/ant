@@ -1,22 +1,8 @@
-import type { TaskTiming } from '@ant/shared';
 import { API_BASE, apiGet } from './client';
 
-export interface QueueStatus {
-  currentTask: {
-    name: string;
-    type: string;
-    status: string;
-    timing?: TaskTiming;
-  } | null;
-  queue: Array<{
-    name: string;
-    type: string;
-    status: string;
-    timing?: TaskTiming;
-  }>;
-  totalRemaining: number;
-  estimatingMessage?: string | null;
-}
+// `QueueStatus` / `fetchQueueStatus` were removed — they targeted a legacy
+// `/tasks/:id/queue` endpoint that doesn't exist on the BE and had zero
+// call sites in ant-ui.
 
 export interface QueuePositionInfo {
   status: string;
@@ -25,10 +11,6 @@ export interface QueuePositionInfo {
   estimatedWaitMs?: number;
   /** Redis job status — set when the job exists in Redis (survives BullMQ cleanup) */
   redisStatus?: string;
-}
-
-export function fetchQueueStatus(jobId: string): Promise<QueueStatus> {
-  return apiGet(`${API_BASE()}/tasks/${encodeURIComponent(jobId)}/queue`);
 }
 
 export function fetchQueuePosition(jobId: string): Promise<QueuePositionInfo> {

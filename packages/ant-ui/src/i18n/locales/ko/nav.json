@@ -34,8 +34,8 @@
     "accountConfig": "계정 설정"
   },
   "tabs": {
-    "removeJobId": "작업 ID 제거",
     "copiedJobId": "Job ID가 클립보드에 복사되었습니다",
+    "copyJobId": "이 Job ID 복사",
     "closeTab": "{{label}} 탭 닫기",
     "job": "작업",
     "projectConfig": "프로젝트 설정",
@@ -44,14 +44,13 @@
     "transfer": "전송",
     "previewConfig": "프리뷰 설정",
     "actions": "액션",
-    "removeJob": "작업 제거",
-    "removeJobDesc": "현재 작업을 제거하고 모든 세션 데이터를 삭제합니다:",
-    "removeJobItem1": "작업 ID와 진행 상황이 제거됩니다",
-    "removeJobItem2": "태스크 보드가 초기화됩니다",
-    "removeJobItem3": "채팅 기록은 유지됩니다",
-    "removeJobItem4": "세션 파일이 리셋되고 디버그 로그 파일이 삭제됩니다",
-    "removeJobConfirm": "계속하시겠습니까?",
-    "removeJobBlocked": "작업이 진행 중이므로 제거할 수 없습니다. 먼저 작업을 중지해주세요."
+    "liveJob": "실행 중",
+    "deleteJobId": "Job 삭제",
+    "deleteJobIdDesc": "Job ID '{{jobId}}' 와 관련된 모든 세션·로그·아티팩트를 영구 삭제합니다. 계속하시겠습니까?",
+    "deleteJobIdBlocked": "실행 중이거나 일시중단된 Job 은 먼저 정지해야 삭제할 수 있습니다.",
+    "deletedJobId": "Job 을 삭제했습니다",
+    "deleteJobIdFailed": "Job 삭제에 실패했습니다",
+    "featureDeleteBlocked": "이 Feature 에서 진행 중인 Job 이 있어 삭제할 수 없습니다. 먼저 Job 을 중지하세요."
   },
   "splitLayout": {
     "horizontal": "수평 분할 (좌/우)",

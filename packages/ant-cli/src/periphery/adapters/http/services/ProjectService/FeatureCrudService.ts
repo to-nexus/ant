@@ -75,44 +75,6 @@ export class FeatureCrudService {
   }
   
   /**
-   * Reset job state (remove jobId, timing, and all task data from session)
-   */
-  async resetJobState(
-    projectId: string,
-    featureName: string,
-    jobType: 'design' | 'code' | 'learn',
-    userContext: UserContext
-  ): Promise<void> {
-    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const sessionPath = getSessionFilePathByJob(featurePath, jobType);
-    
-    try {
-      // Read existing session
-      const sessionData = JSON.parse(await fs.promises.readFile(sessionPath, 'utf-8'));
-      
-      // Reset state
-      const resetSession = {
-        ...sessionData,
-        state: {
-          taskQueue: [],
-          completedTasks: [],
-          completedTasksDetails: [],
-          currentTask: null,
-          jobTiming: null,
-          interruption: null
-        }
-      };
-      
-      // Write back
-      await fs.promises.writeFile(sessionPath, JSON.stringify(resetSession, null, 2), 'utf-8');
-      console.log(`✅ [FeatureCrudService] Reset ${jobType} job state for ${projectId}/${featureName}`);
-    } catch (error) {
-      console.error(`❌ [FeatureCrudService] Failed to reset ${jobType} job state:`, error);
-      throw error;
-    }
-  }
-  
-  /**
    * List all features for a project
    */
   async listFeatures(projectId: string, userContext: UserContext): Promise<string[]> {

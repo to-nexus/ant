@@ -1,7 +1,6 @@
 import { StateCreator } from 'zustand';
 import { UIState } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
-import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { type ActionMetadata, deriveFromIntent, getConfigSlots } from '@ant/shared';
 import i18n from '@/i18n';
 
@@ -21,8 +20,6 @@ export interface UIActions {
   selectMainPanelTab: (tab: 'job' | 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
   openMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
   closeMainPanelTab: (tab: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => void;
-  clearJobTab: () => Promise<void>;
-  restoreJobTab: () => void;
   // ✅ Pending clarify answers (compound ChoiceCard ↔ ChatInput shared state)
   setPendingClarifyAnswer: (index: number, answer: string) => void;
   removePendingClarifyAnswer: (index: number) => void;
@@ -115,7 +112,6 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   mainPanelActiveTab: 'job',
   mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false, actions: false },
   mainPanelTabOrder: [],
-  isJobTabCleared: false,
   actionsStep: 'pick-action' as const,
   selectedActionId: null,
   selectedIntentId: null,
@@ -249,70 +245,6 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         mainPanelTabOrder: nextOrder
       };
     });
-  },
-
-  clearJobTab: async () => {
-    const state = get();
-    const prevJobId = state.currentJobId;
-    const { selectedProject, selectedFeature, selectedJobType } = state;
-    
-    set({ 
-      mainPanelActiveTab: 'job', 
-      isJobTabCleared: false,
-      currentJobId: undefined,
-      isRunning: false,
-      currentJob: null,
-      taskStartTime: undefined,
-      elapsedTime: 0,
-      currentMode: undefined,
-      chatMessages: [],
-      kanban: {
-        jobId: undefined,
-        todo: [],
-        inProgress: [],
-        completed: [],
-        isEstimating: false,
-        dataSource: 'session',
-        interruption: undefined,
-        recursionCount: undefined,
-        recursionLimit: undefined,
-        jobTiming: undefined
-      }
-    });
-    
-    // Remove from storage
-    const { removeFromStorage } = await import('../storage');
-    removeFromStorage(STORAGE_KEYS.RUNNING_TASK);
-    removeFromStorage(STORAGE_KEYS.TASK_START_TIME);
-    removeFromStorage(STORAGE_KEYS.TASK_MODE);
-    
-    // Disconnect SSE
-    if (prevJobId) {
-      sseManager.disconnectWorkflow(prevJobId);
-    }
-    
-    // Clear session data
-    if (selectedProject && selectedFeature) {
-      try {
-        const { clearSessionData } = await import('@/infrastructure/http/api');
-        await clearSessionData(selectedProject, selectedFeature, selectedJobType);
-        console.log(`[Store] ✅ Cleared session data for ${selectedProject}/${selectedFeature} (${selectedJobType})`);
-        
-        sseManager.disconnect();
-        setTimeout(() => {
-          if (selectedProject && selectedFeature) {
-            sseManager.connect(selectedProject, selectedFeature, selectedJobType);
-            console.log(`[Store] 🔄 Reconnected SSE to get fresh state`);
-          }
-        }, 100);
-      } catch (error) {
-        console.error('[Store] ❌ Failed to clear session data:', error);
-      }
-    }
-  },
-
-  restoreJobTab: () => {
-    set({ isJobTabCleared: false });
   },
 
   // ✅ Pending clarify answers

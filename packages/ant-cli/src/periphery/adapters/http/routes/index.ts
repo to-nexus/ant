@@ -41,6 +41,16 @@ export interface RoutesDeps {
   stateStore?: any;  // RedisStateStore for transfer state management
   gitWatcherService?: any;  // GitWatcherService for retrying deferred watchers after init/clone
   gitStateBroadcaster?: any;  // GitStateBroadcaster for publishing `gitState` SSE events (will be renamed GitStateBroadcaster at cutover)
+  /** ✅ Feature DELETE + Hard Reset use these to finalize/pause jobs via the SSOT lifecycle helpers. */
+  cleanupJobState?: (
+    jobId: string,
+    projectId?: string,
+    featureName?: string,
+    interruptionReason?: any,
+    explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
+    userContext?: any,
+  ) => Promise<void>;
+  stateTracker?: any;  // JobStateTracker — finalizeTerminalJob requires this
 }
 
 /**
@@ -64,12 +74,15 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     gitStateBroadcaster: deps.gitStateBroadcaster,
   }));
   
-  // Feature CRUD
+  // Feature CRUD + per-jobId history/restore/delete
   router.use(createFeaturesRoutes({
     projectService: deps.projectService,
     chatService: deps.chatService,
     kanbanService: deps.kanbanService,
     stateStore: deps.stateStore,
+    workspaceResolver: deps.workspaceResolver,
+    cleanupJobState: deps.cleanupJobState,
+    stateTracker: deps.stateTracker,
   }));
   
   // File operations
@@ -99,6 +112,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
       kanbanService: deps.kanbanService,
       stateStore: deps.stateStore,
       fileTreeNotifier: deps.fileTreeNotifier,
+      cleanupJobState: deps.cleanupJobState,
+      stateTracker: deps.stateTracker,
     }));
   }
   

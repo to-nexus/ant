@@ -6,6 +6,7 @@ import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages }
 import { JobTiming, TaskTokenUsage, PhaseTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 import { useStore } from '@/domain/store';
+import { cn } from '@/shared/utils/design-system';
 
 /**
  * useRealtimeTick - Forces a re-render every second while `enabled` is true.
@@ -117,6 +118,18 @@ interface ElapsedTimeBadgeProps {
     label: string;
     startedAt: string;
   } | null;
+  /**
+   * Compact mode (h-5, text-[10px]) for dense inline contexts such as the
+   * Job-tab dropdown rows. Tooltip content is unchanged.
+   */
+  compact?: boolean;
+  /**
+   * When true, tracks real-time only when this specific job is the one the
+   * store considers running. Defaults to `true` to preserve the original
+   * header behaviour; the dropdown passes `false` for non-current rows so
+   * historical snapshots render as static.
+   */
+  tickFromStore?: boolean;
 }
 
 /**
@@ -131,6 +144,8 @@ export function ElapsedTimeBadge({
   completedTasks,
   inProgressTasks,
   estimatingActivity,
+  compact = false,
+  tickFromStore = true,
 }: ElapsedTimeBadgeProps) {
   const { t } = useTranslation('kanban');
   // ✅ FIX: Also check store.isRunning as a safety net.
@@ -138,7 +153,7 @@ export function ElapsedTimeBadge({
   // the workflow end event still sets store.isRunning=false, which stops the timer.
   const storeIsRunning = useStore((s) => s.isRunning);
   const timingIsRunning = !!jobTiming?.startedAt && !jobTiming?.completedAt && !jobTiming?.pausedAt;
-  const isRunning = storeIsRunning && timingIsRunning;
+  const isRunning = (tickFromStore ? storeIsRunning : true) && timingIsRunning;
   useRealtimeTick(isRunning);
   
   // ✅ Show badge if job has timing data
@@ -292,12 +307,22 @@ export function ElapsedTimeBadge({
     </div>
   );
   
+  const sizeClass = compact
+    ? 'h-5 min-h-5 max-h-5 px-1.5 gap-1'
+    : 'h-7 min-h-7 max-h-7 px-2.5';
+  const innerSize = compact ? 'h-5 gap-1' : 'h-7 gap-1.5';
+  const iconSize = compact ? 'w-3 h-3' : 'w-3.5 h-3.5';
+  const textSize = compact ? 'text-[10px]' : 'text-xs';
+
   return (
     <Tooltip content={tooltipContent} placement="bottom">
-      <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800 cursor-pointer">
-        <div className="flex items-center justify-center gap-1.5 h-7">
-          <Timer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-          <span className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-none">
+      <div className={cn(
+        sizeClass,
+        'rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-300 dark:border-blue-800 cursor-pointer',
+      )}>
+        <div className={cn('flex items-center justify-center', innerSize)}>
+          <Timer className={cn(iconSize, 'text-blue-600 dark:text-blue-400')} />
+          <span className={cn(textSize, 'text-blue-700 dark:text-blue-300 font-medium leading-none')}>
             {formattedTime}
           </span>
         </div>
@@ -321,6 +346,11 @@ interface TokenUsageBadgeProps {
     name: string;
     tokenUsage?: TaskTokenUsage;
   }>;
+  /**
+   * Compact mode (h-5, text-[10px]) for dense inline contexts such as the
+   * Job-tab dropdown rows. Tooltip content is unchanged.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -338,7 +368,7 @@ interface TokenUsageBadgeProps {
  *   2. Cache Efficiency — volume, hit rate, savings (when cache active)
  *   3. Phase Breakdown — planning + individual tasks
  */
-export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phaseTokenUsages, completedTasks, inProgressTasks }: TokenUsageBadgeProps) {
+export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phaseTokenUsages, completedTasks, inProgressTasks, compact = false }: TokenUsageBadgeProps) {
   const { t } = useTranslation('kanban');
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
@@ -558,12 +588,22 @@ export function TokenUsageBadge({ jobId, tokenUsage, estimatingTokenUsage, phase
     </div>
   );
 
+  const sizeClass = compact
+    ? 'h-5 min-h-5 max-h-5 px-1.5 gap-1'
+    : 'h-7 min-h-7 max-h-7 px-2.5';
+  const innerSize = compact ? 'h-5 gap-1' : 'h-7 gap-1.5';
+  const iconSize = compact ? 'w-3 h-3' : 'w-3.5 h-3.5';
+  const textSize = compact ? 'text-[10px]' : 'text-xs';
+
   return (
     <Tooltip content={tooltipContent} placement="bottom">
-      <div className="h-7 min-h-7 max-h-7 px-2.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 cursor-pointer">
-        <div className="flex items-center justify-center gap-1.5 h-7">
-          <Coins className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-          <span className="text-xs text-amber-700 dark:text-amber-300 font-medium leading-none whitespace-nowrap">
+      <div className={cn(
+        sizeClass,
+        'rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 cursor-pointer',
+      )}>
+        <div className={cn('flex items-center justify-center', innerSize)}>
+          <Coins className={cn(iconSize, 'text-amber-600 dark:text-amber-400')} />
+          <span className={cn(textSize, 'text-amber-700 dark:text-amber-300 font-medium leading-none whitespace-nowrap')}>
             {hasTokenData
               ? `${formatTokenCount(effective.billableInputTokens)} in · ${formatTokenCount(effective.outputTokens)} out`
               : '0'}
