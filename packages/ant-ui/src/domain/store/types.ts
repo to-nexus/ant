@@ -114,6 +114,10 @@ export interface UIState {
   mainPanelTabOrder: Array<'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions'>;
   // Actions panel state
   actionsStep: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit';
+  // Ephemeral: which tier the basis wizard should land on when entering
+  // 'basis-edit'. Set by tier-specific edit buttons (BasisSummaryBar). Cleared
+  // by the wizard itself or by global edit triggers that don't target a tier.
+  basisEditInitialTier: 'techTier' | 'visualTier' | undefined;
   selectedActionId: string | null;
   selectedIntentId: string | null;
   actionMetadata: import('@ant/shared').ActionMetadata;

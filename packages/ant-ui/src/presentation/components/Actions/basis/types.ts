@@ -1,7 +1,14 @@
 import type { BasisSlotConfig } from '@ant/shared';
 
+/**
+ * Wizard-internal tier identifier. The registry in `constants.ts` is the
+ * single source of truth for which tiers exist; adding a new tier should be
+ * a one-line registry entry plus extending this union.
+ */
+export type TierKey = 'techTier' | 'visualTier';
+
 export interface BasisWizardState {
-  activeTier: 'techTier' | 'visualTier';
+  activeTier: TierKey;
   stepIndex: number;
   selections: {
     techTier: {
@@ -23,7 +30,7 @@ export interface BasisWizardState {
 
 export interface WizardStepDef {
   id: string;
-  tierKey: 'techTier' | 'visualTier';
+  tierKey: TierKey;
   layerKey: string;
   title: { en: string; ko: string };
   description: { en: string; ko: string };
@@ -32,7 +39,7 @@ export interface WizardStepDef {
 }
 
 export interface WizardTierTabItem {
-  id: 'techTier' | 'visualTier';
+  id: TierKey;
   label: { en: string; ko: string };
   description: { en: string; ko: string };
 }
@@ -41,4 +48,7 @@ export interface BasisWizardProps {
   basisSlot: BasisSlotConfig;
   onBack: () => void;
   lang: 'en' | 'ko';
+  /** Tier the wizard should land on. Falls back to the first configured tier
+   * when omitted or when the requested tier isn't configured for this slot. */
+  initialTier?: TierKey;
 }

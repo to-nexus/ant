@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { deriveFromIntent, INTENT_DEFINITIONS, type IntentGroup } from '@ant/shared';
-import { MessageSquare, Zap, Check, X, Save, ArrowRight, CheckCircle } from 'lucide-react';
+import { MessageSquare, Zap, Check, X, ArrowRight, CheckCircle } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { addChatUserMessage } from '@/infrastructure/http/api';
@@ -27,7 +27,6 @@ interface WizardFooterProps {
   lang: 'en' | 'ko';
   getSelectedForStep: (step: WizardStepDef) => string | undefined;
   hasPendingChanges: boolean;
-  onSave: () => void;
   onDiscard: () => void;
   onNext: () => void;
   nextLabel: string;
@@ -186,7 +185,6 @@ function WizardVariant({
   lang,
   getSelectedForStep,
   hasPendingChanges,
-  onSave,
   onDiscard,
   onNext,
   nextLabel,
@@ -252,17 +250,6 @@ function WizardVariant({
           >
             <X className={ICON} />
             <span>{lang === 'ko' ? '취소' : 'Discard'}</span>
-          </button>
-        )}
-
-        {hasPendingChanges && (
-          <button
-            type="button"
-            onClick={onSave}
-            className={`${BTN} text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/40`}
-          >
-            <Save className={ICON} />
-            <span>{lang === 'ko' ? '저장' : 'Save'}</span>
           </button>
         )}
 

@@ -1,17 +1,91 @@
-import type { WizardStepDef, WizardTierTabItem } from './types';
+import type { ComponentType } from 'react';
+import { Settings2, Palette, type LucideProps } from 'lucide-react';
+import type { BasisSlotConfig } from '@ant/shared';
+import type { TierKey, WizardStepDef, WizardTierTabItem } from './types';
 
-export const TIER_TAB_ITEMS: WizardTierTabItem[] = [
+/**
+ * Single source of truth for wizard tiers.
+ *
+ * Adding a new tier means:
+ *   1. extend `TierKey` in `types.ts`,
+ *   2. append one entry here,
+ *   3. (if the tier carries runtime gating beyond `isConfigured`, e.g.
+ *      Visual Tier's stack/uiDoc gate) extend the runtime gate inside
+ *      `useBasisWizard`.
+ *
+ * Everything that previously lived as a hardcoded `'techTier'`/`'visualTier'`
+ * literal — labels, ordering, slot predicate, tab icon/colors, even the
+ * "what should the wizard land on?" decision — is derived from this registry.
+ */
+export interface TierDescriptor {
+  id: TierKey;
+  label: { en: string; ko: string };
+  description: { en: string; ko: string };
+  /** Static predicate: is this tier even declared on the slot? Runtime
+   * gating that depends on live wizard state (e.g. Visual Tier's
+   * `isVisualTierActive`) is layered on top inside `useBasisWizard`. */
+  isConfigured: (slot: BasisSlotConfig) => boolean;
+  icon: ComponentType<LucideProps>;
+  iconBg: string;
+  iconColor: string;
+}
+
+export const TIER_REGISTRY: readonly TierDescriptor[] = [
   {
     id: 'techTier',
     label: { en: 'Tech Tier', ko: '기술 티어' },
     description: { en: 'Stack, language, and framework', ko: '스택, 언어, 프레임워크' },
+    isConfigured: (slot) => Boolean(slot.techTier),
+    icon: Settings2,
+    iconBg: 'bg-violet-50 dark:bg-violet-950/30',
+    iconColor: 'text-violet-500 dark:text-violet-400',
   },
   {
     id: 'visualTier',
     label: { en: 'Visual Tier', ko: '비주얼 티어' },
     description: { en: 'Design language and surface style', ko: '디자인 언어와 서피스 스타일' },
+    isConfigured: (slot) => Boolean(slot.visualTier),
+    icon: Palette,
+    iconBg: 'bg-pink-50 dark:bg-pink-950/30',
+    iconColor: 'text-pink-500 dark:text-pink-400',
   },
 ];
+
+const TIER_INDEX: ReadonlyMap<TierKey, TierDescriptor> = new Map(
+  TIER_REGISTRY.map((t) => [t.id, t]),
+);
+
+export function getTierDescriptor(tier: TierKey): TierDescriptor {
+  const found = TIER_INDEX.get(tier);
+  if (!found) throw new Error(`Unknown tier key: ${tier}`);
+  return found;
+}
+
+/** Tiers statically configured for this slot, in registry order. */
+export function listConfiguredTiers(slot: BasisSlotConfig): TierKey[] {
+  return TIER_REGISTRY.filter((t) => t.isConfigured(slot)).map((t) => t.id);
+}
+
+/**
+ * Where should the wizard land on mount? Honors `requested` when it points
+ * at a tier that's actually configured for the slot; otherwise falls back to
+ * the first configured tier (registry order). The final fallback to
+ * `TIER_REGISTRY[0].id` only fires when the slot has no configured tier at
+ * all — which the caller (BasisWizard) prevents by not mounting in that case.
+ */
+export function pickInitialTier(
+  slot: BasisSlotConfig,
+  requested?: TierKey,
+): TierKey {
+  const configured = listConfiguredTiers(slot);
+  if (requested && configured.includes(requested)) return requested;
+  return configured[0] ?? TIER_REGISTRY[0].id;
+}
+
+/** Backwards-compatible derived export. Prefer `TIER_REGISTRY` for new code. */
+export const TIER_TAB_ITEMS: WizardTierTabItem[] = TIER_REGISTRY.map(
+  ({ id, label, description }) => ({ id, label, description }),
+);
 
 export const TECH_STEPS: WizardStepDef[] = [
   {

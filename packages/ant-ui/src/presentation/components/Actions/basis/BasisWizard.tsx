@@ -1,5 +1,5 @@
 import { useRef, useMemo, useCallback, useEffect } from 'react';
-import { Settings2, Palette, AlertCircle } from 'lucide-react';
+import { useStore } from '@/domain/store';
 import { ScrollableTabNav, type TabItem } from '../ScrollableTabNav';
 import { PageTransition } from '../PageTransition';
 import { ActionFooter } from '../ActionFooter';
@@ -7,66 +7,72 @@ import { useBasisWizard } from './useBasisWizard';
 import { StepHeader } from './StepHeader';
 import { VariantCardGrid } from './VariantCardGrid';
 import { BasisSummaryBar } from './BasisSummaryBar';
-import { TIER_TAB_ITEMS } from './constants';
-import type { BasisWizardProps } from './types';
+import { getTierDescriptor } from './constants';
+import type { BasisWizardProps, TierKey } from './types';
 
-export function BasisWizard({ basisSlot, onBack, lang }: BasisWizardProps) {
-  const wizard = useBasisWizard(basisSlot);
+export function BasisWizard({ basisSlot, onBack, lang, initialTier }: BasisWizardProps) {
+  const wizard = useBasisWizard(basisSlot, initialTier);
   const dirRef = useRef<1 | -1>(1);
   const prevStepRef = useRef(wizard.state.stepIndex);
+  const setBasisEditInitialTier = useStore(s => s.setBasisEditInitialTier);
 
-  // Defensive: if the user switches stack to 'backend' while the visualTier
-  // tab is active, the tab disappears (hasVisualTier becomes false). Route
-  // focus back to techTier so the wizard never renders an empty active tier.
+  // The store's `basisEditInitialTier` is one-shot: it seeds the wizard's
+  // activeTier on mount, then must be cleared so a subsequent global "Edit"
+  // (which doesn't target a tier) doesn't inherit the previous tier choice.
   useEffect(() => {
-    if (wizard.state.activeTier === 'visualTier' && !wizard.hasVisualTier && wizard.hasTechTier) {
-      wizard.switchTier('techTier');
-    }
-  }, [wizard.state.activeTier, wizard.hasVisualTier, wizard.hasTechTier, wizard.switchTier]);
+    setBasisEditInitialTier(undefined);
+  }, [setBasisEditInitialTier]);
+
+  // Defensive routing: if live state turns the active tier unavailable
+  // (e.g. user picks stack=backend → Visual Tier collapses), hop to the
+  // first tier that is still available so we never render an empty active
+  // tier. Generic over `availableTiers` — no per-tier branching.
+  useEffect(() => {
+    if (wizard.availableTiers.includes(wizard.state.activeTier)) return;
+    const fallback = wizard.availableTiers[0];
+    if (fallback) wizard.switchTier(fallback);
+  }, [wizard.availableTiers, wizard.state.activeTier, wizard.switchTier]);
 
   if (wizard.state.stepIndex !== prevStepRef.current) {
     dirRef.current = wizard.state.stepIndex > prevStepRef.current ? 1 : -1;
     prevStepRef.current = wizard.state.stepIndex;
   }
 
-  const tierTabItems: TabItem[] = useMemo(() => {
-    const items: TabItem[] = [];
-    if (wizard.hasTechTier) {
-      const def = TIER_TAB_ITEMS[0];
-      const configured = wizard.isTierSaved('techTier');
-      const label = configured
-        ? (def.label[lang] ?? def.label.en)
-        : `${def.label[lang] ?? def.label.en} ${lang === 'ko' ? '(설정필요)' : '(needs setup)'}`;
-      items.push({
+  // "Unset = auto-detect" is the SSOT — pressuring users with "(needs setup)"
+  // contradicts that. Always render the canonical label/icon regardless of
+  // saved state. Tier identity (label, icon, colors) lives in TIER_REGISTRY,
+  // so this is a one-line projection.
+  const tierTabItems: TabItem[] = useMemo(
+    () => wizard.availableTiers.map((tier) => {
+      const def = getTierDescriptor(tier);
+      return {
         id: def.id,
-        label,
+        label: def.label[lang] ?? def.label.en,
         description: def.description[lang] ?? def.description.en,
-        icon: configured ? Settings2 : AlertCircle,
-        iconBg: configured ? 'bg-violet-50 dark:bg-violet-950/30' : 'bg-amber-50 dark:bg-amber-950/30',
-        iconColor: configured ? 'text-violet-500 dark:text-violet-400' : 'text-amber-500 dark:text-amber-400',
-      });
-    }
-    if (wizard.hasVisualTier) {
-      const def = TIER_TAB_ITEMS[1];
-      const configured = wizard.isTierSaved('visualTier');
-      const label = configured
-        ? (def.label[lang] ?? def.label.en)
-        : `${def.label[lang] ?? def.label.en} ${lang === 'ko' ? '(설정필요)' : '(needs setup)'}`;
-      items.push({
-        id: def.id,
-        label,
-        description: def.description[lang] ?? def.description.en,
-        icon: configured ? Palette : AlertCircle,
-        iconBg: configured ? 'bg-pink-50 dark:bg-pink-950/30' : 'bg-amber-50 dark:bg-amber-950/30',
-        iconColor: configured ? 'text-pink-500 dark:text-pink-400' : 'text-amber-500 dark:text-amber-400',
-      });
-    }
-    return items;
-  }, [wizard.hasTechTier, wizard.hasVisualTier, wizard.isTierSaved, wizard.savedBasis, lang]);
+        icon: def.icon,
+        iconBg: def.iconBg,
+        iconColor: def.iconColor,
+      };
+    }),
+    [wizard.availableTiers, lang],
+  );
+
+  // SSOT: every path that leaves the wizard or switches tier must auto-save
+  // pending changes first. All exit/switch sites route through these two
+  // wrappers so we can never regress to a "leaked staging" bug.
+  const exitWithSave = useCallback(() => {
+    if (wizard.hasPendingChanges) wizard.saveDraft();
+    onBack();
+  }, [wizard, onBack]);
+
+  const switchTierWithSave = useCallback((tier: TierKey) => {
+    if (wizard.hasPendingChanges) wizard.saveDraft();
+    wizard.switchTier(tier);
+  }, [wizard]);
 
   const handleTierSelect = useCallback((tierId: string) => {
-    wizard.switchTier(tierId as 'techTier' | 'visualTier');
-  }, [wizard]);
+    switchTierWithSave(tierId as TierKey);
+  }, [switchTierWithSave]);
 
   const handleStepGoTo = useCallback((index: number) => {
     dirRef.current = index > wizard.state.stepIndex ? 1 : -1;
@@ -84,29 +90,38 @@ export function BasisWizard({ basisSlot, onBack, lang }: BasisWizardProps) {
       return;
     }
 
-    const { activeTier } = wizard.state;
-    const otherTier = activeTier === 'techTier' ? 'visualTier' : 'techTier';
-    const hasOther = activeTier === 'techTier' ? wizard.hasVisualTier : wizard.hasTechTier;
-    const otherSaved = hasOther ? wizard.isTierSaved(otherTier) : true;
-
-    if (wizard.allTiersSaved) {
-      onBack();
-      return;
-    }
-
-    if (hasOther && !otherSaved) {
-      wizard.switchTier(otherTier);
+    // After finishing the active tier, jump to the first *other* tier that's
+    // available but not yet saved. If every other tier is already saved
+    // (or there are none), exit. Generic over `availableTiers` — adding a
+    // third tier doesn't touch this code.
+    const nextTier = wizard.availableTiers.find(
+      (tier) => tier !== wizard.state.activeTier && !wizard.isTierSaved(tier),
+    );
+    if (nextTier) {
+      switchTierWithSave(nextTier);
     } else {
-      onBack();
+      exitWithSave();
     }
-  }, [wizard, onBack]);
+  }, [wizard, exitWithSave, switchTierWithSave]);
 
+  // Auto-save policy: footer no longer requires explicit Save before Next.
+  // - Multi-group (fullstack): Next-group enables once current group has all
+  //   selections (real or AUTO).
+  // - Last group / single-tier: Next enables only after the user has reached
+  //   the genuinely-last step of the (cascade-pruned) activeSteps AND that
+  //   step has a value. AUTO selections short-circuit the cascade so the last
+  //   step is reached immediately — no busywork required.
+  const currentStepValue = wizard.currentStep
+    ? wizard.getSelectedForStep(wizard.currentStep)
+    : undefined;
+  const isAtLastStep = wizard.activeSteps.length > 0
+    && wizard.state.stepIndex === wizard.activeSteps.length - 1;
   const nextEnabled = wizard.hasNextGroup
     ? wizard.currentGroupComplete
-    : (!!wizard.savedBasis && (wizard.isTierSaved(wizard.state.activeTier) || !wizard.hasPendingChanges));
+    : (isAtLastStep && currentStepValue !== undefined);
 
-  const hasSingleTier = Number(wizard.hasTechTier) + Number(wizard.hasVisualTier) === 1;
-  const nextLabel = (wizard.allTiersSaved || (hasSingleTier && wizard.isTierSaved(wizard.state.activeTier)))
+  const isSingleTier = wizard.availableTiers.length === 1;
+  const nextLabel = (wizard.allTiersSaved || (isSingleTier && wizard.isTierSaved(wizard.state.activeTier)))
     ? (lang === 'ko' ? '완료' : 'Done')
     : (lang === 'ko' ? '다음' : 'Next');
 
@@ -123,7 +138,7 @@ export function BasisWizard({ basisSlot, onBack, lang }: BasisWizardProps) {
           items={tierTabItems}
           selectedId={wizard.state.activeTier}
           onSelect={handleTierSelect}
-          onBack={onBack}
+          onBack={exitWithSave}
         />
       </div>
 
@@ -163,7 +178,6 @@ export function BasisWizard({ basisSlot, onBack, lang }: BasisWizardProps) {
           lang={lang}
           getSelectedForStep={wizard.getSelectedForStep}
           hasPendingChanges={wizard.hasPendingChanges}
-          onSave={wizard.saveDraft}
           onDiscard={wizard.discardDraft}
           onNext={handleNext}
           nextLabel={nextLabel}
