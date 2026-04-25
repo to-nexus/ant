@@ -27,6 +27,7 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set) => 
       mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false, actions: false },
       mainPanelTabOrder: [],
       actionsStep: 'pick-action',
+      basisEditInitialTier: undefined,
       selectedActionId: null,
       selectedIntentId: null,
       actionMetadata: {},

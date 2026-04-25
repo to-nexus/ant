@@ -15,7 +15,11 @@ export interface TierBadgeRow {
   subLabel?: string;
 }
 
-const NOT_SET_LABEL = { en: 'Not set', ko: '미설정' };
+// Domain SSOT: an unset (undefined) field on basis.techTier / basis.visualTier
+// means "let decompose auto-detect from the codebase". The wizard, BE
+// PromptBuilder, and AutoInjectionResolver already treat undefined as the
+// auto-detect signal — so the UI label must read "Auto", not "Not set".
+const AUTO_LABEL = { en: 'Auto', ko: '자동' };
 
 const LAYER_KEY_LABELS: Record<string, { en: string; ko: string }> = {
   stack: { en: 'Stack', ko: '스택' },
@@ -54,13 +58,13 @@ export function getTierBadgeRows(
           const opt = TECH_TIER_LANGUAGES.find(o => o.id === tier.language);
           badges.push({ keyLabel: keyLabel('language', lang), label: opt?.label[lang] ?? tier.language, isChanged: draftBasis ? tier.language !== savedTier?.language : false });
         } else {
-          badges.push({ keyLabel: keyLabel('language', lang), label: NOT_SET_LABEL[lang], isAuto: true });
+          badges.push({ keyLabel: keyLabel('language', lang), label: AUTO_LABEL[lang], isAuto: true });
         }
         if (tier?.framework) {
           const lbl = FRAMEWORK_LABELS[tier.framework];
           badges.push({ keyLabel: keyLabel('framework', lang), label: lbl?.[lang] ?? tier.framework, isChanged: draftBasis ? tier.framework !== savedTier?.framework : false });
         } else {
-          badges.push({ keyLabel: keyLabel('framework', lang), label: NOT_SET_LABEL[lang], isAuto: true });
+          badges.push({ keyLabel: keyLabel('framework', lang), label: AUTO_LABEL[lang], isAuto: true });
         }
         return badges;
       };
@@ -73,7 +77,7 @@ export function getTierBadgeRows(
         const opt = STACK_OPTIONS.find(o => o.id === tc.stack);
         badges.push({ keyLabel: keyLabel('stack', lang), label: opt?.label[lang] ?? tc.stack, isChanged: draftBasis ? tc.stack !== saved?.techTier?.stack : false });
       } else {
-        badges.push({ keyLabel: keyLabel('stack', lang), label: NOT_SET_LABEL[lang], isAuto: true });
+        badges.push({ keyLabel: keyLabel('stack', lang), label: AUTO_LABEL[lang], isAuto: true });
       }
 
       const tier = tc?.frontend ?? tc?.backend;
@@ -82,13 +86,13 @@ export function getTierBadgeRows(
         const opt = TECH_TIER_LANGUAGES.find(o => o.id === tier.language);
         badges.push({ keyLabel: keyLabel('language', lang), label: opt?.label[lang] ?? tier.language, isChanged: draftBasis ? tier.language !== savedTier?.language : false });
       } else if (tc) {
-        badges.push({ keyLabel: keyLabel('language', lang), label: NOT_SET_LABEL[lang], isAuto: true });
+        badges.push({ keyLabel: keyLabel('language', lang), label: AUTO_LABEL[lang], isAuto: true });
       }
       if (tier?.framework) {
         const lbl = FRAMEWORK_LABELS[tier.framework];
         badges.push({ keyLabel: keyLabel('framework', lang), label: lbl?.[lang] ?? tier.framework, isChanged: draftBasis ? tier.framework !== savedTier?.framework : false });
       } else if (tc) {
-        badges.push({ keyLabel: keyLabel('framework', lang), label: NOT_SET_LABEL[lang], isAuto: true });
+        badges.push({ keyLabel: keyLabel('framework', lang), label: AUTO_LABEL[lang], isAuto: true });
       }
 
       rows.push({ tierKey: 'techTier', badges });
@@ -112,7 +116,7 @@ export function getTierBadgeRows(
         const savedVal = saved?.visualTier?.[key] as string | undefined;
         badges.push({ keyLabel: keyLabel(key, lang), label, isChanged: draftBasis ? val !== savedVal : false });
       } else {
-        badges.push({ keyLabel: keyLabel(key, lang), label: NOT_SET_LABEL[lang], isAuto: true });
+        badges.push({ keyLabel: keyLabel(key, lang), label: AUTO_LABEL[lang], isAuto: true });
       }
     }
 

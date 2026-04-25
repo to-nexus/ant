@@ -43,6 +43,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const openActionsPanel = useStore(s => s.openActionsPanel);
   const selectIntent = useStore(s => s.selectIntent);
   const setActionsStep = useStore(s => s.setActionsStep);
+  const setBasisEditInitialTier = useStore(s => s.setBasisEditInitialTier);
   const figmaPopulated = useStore(s => s.figmaPopulated);
   const bridgeConnected = useStore(s => s.bridgeConnected);
   const figmaDesktopReachable = useStore(s => s.figmaDesktopReachable);
@@ -246,8 +247,14 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
               >
                 <BasisSummaryBar
                   basisSlot={slots.basis}
-                  onEdit={() => setActionsStep('basis-edit')}
-                  onEditTier={() => setActionsStep('basis-edit')}
+                  onEdit={() => {
+                    setBasisEditInitialTier(undefined);
+                    setActionsStep('basis-edit');
+                  }}
+                  onEditTier={(tierKey) => {
+                    setBasisEditInitialTier(tierKey);
+                    setActionsStep('basis-edit');
+                  }}
                   onResetTier={(tierKey) => {
                     const current = actionMetadata.basis;
                     if (!current) return;
