@@ -9,6 +9,21 @@
     "stopping": "Stopping...",
     "filesEdited": "{{count}} File(s) Edited"
   },
+  "mention": {
+    "intent": { "label": "intent", "description": "Specify the work intent" },
+    "target": { "label": "target", "description": "Specify the target file" },
+    "ref": { "label": "ref", "description": "Add a reference document" },
+    "ctx": { "label": "ctx", "description": "Add a context document" },
+    "domain": {
+      "label": "domain",
+      "description": "Specify the project domain (game / service)",
+      "option": {
+        "game": { "description": "Game domain (fun / simulation / core loop)" },
+        "service": { "description": "Service domain (SaaS / CRUD / stability)" }
+      }
+    },
+    "explicit": { "label": "explicit", "description": "Skip inference and use metadata as-is" }
+  },
   "panelTabs": {
     "chat": "Chat",
     "timeline": "Timeline"

@@ -86,6 +86,14 @@ function buildCanonicalDetectPayload(
   if (rac.target?.length) payload.target = rac.target;
   if (rac.basis?.techTier) payload.techTier = rac.basis.techTier;
   if (rac.basis?.visualTier) payload.visualTier = rac.basis.visualTier;
+  // Phase 1 — surface artTier and gameContentTier so the chat summary
+  // emits matrix-active tier values (not just techTier+visualTier).
+  if (rac.basis?.artTier && Object.values(rac.basis.artTier).some(Boolean)) {
+    payload.artTier = rac.basis.artTier;
+  }
+  if (rac.basis?.gameContentTier && Object.values(rac.basis.gameContentTier).some(Boolean)) {
+    payload.gameContentTier = rac.basis.gameContentTier;
+  }
   if (executionTier !== undefined) payload.executionTier = executionTier;
 
   if (reasoning && (reasoning.intent || reasoning.domain)) {

@@ -8,7 +8,7 @@
  *   - job.ts                : JobType, DecomposableJobType, SessionableJobType, JobTiming
  *   - task.ts               : TaskType, BaseTask, KanbanData, TaskTiming, TaskTokenUsage
  *   - interruption.ts       : InterruptionReason, InterruptionDetails
- *   - detection.ts          : Mode, IntentGroup, DesignDomain, InferredAction
+ *   - detection.ts          : Mode, IntentGroup, Domain, InferredAction
  *   - rac.ts                : ResolvedActionContext, TechTier, ResolvedArtifact, resolveToRAC, mergeWithMetadata, buildTechTier
  *   - actions.ts            : IntentId, ActionMetadata, deriveFromIntent, INTENT_DEFINITIONS
  *   - action-config-matrix.ts : ConfigSlots, getConfigSlots
@@ -37,6 +37,9 @@ export * from './action-config-matrix';
 export * from './file-descriptions';
 export * from './tech-tier-registry';
 export * from './visual-tier-registry';
+export * from './art-tier-registry';
+export * from './game-content-tier-registry';
+export * from './tier-matrix';
 export * from './rac';
 export * from './prompt-policy-matrix';
 export * from './deploy';

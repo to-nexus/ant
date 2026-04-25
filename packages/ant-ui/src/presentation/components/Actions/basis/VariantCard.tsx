@@ -6,11 +6,13 @@ import { TECH_ICON_COMPONENTS, AutoDetectIcon } from './icons/TechIcons';
 import { VisualPreview } from './icons/VisualPreviews';
 import { ACCENT_COLORS, AUTO_DETECT_OPTION } from './constants';
 
+import type { TierKey } from './types';
+
 interface VariantCardProps {
   option: BasisOption;
   isSelected: boolean;
   onClick: () => void;
-  tierKey: 'techTier' | 'visualTier';
+  tierKey: TierKey;
   layerKey: string;
   index: number;
   lang: 'en' | 'ko';

@@ -6,7 +6,7 @@
  */
 
 import type { DesignSubdir } from './canonical';
-import type { IntentGroup } from './detection';
+import type { Domain, IntentGroup } from './detection';
 import type { Basis } from './rac';
 
 // ============================================
@@ -194,6 +194,12 @@ export interface ActionMetadata {
   language?: string;
   /** Preset basis from UI action panel (explicit pipeline). */
   basis?: Basis;
+  /**
+   * Explicit domain selection from UI DomainToggle or `@domain:` mention.
+   * When set, `inferDomain` is skipped (10.2 invariant — explicit > infer).
+   * Universal across artifact-producing jobs (plan / design / code / spec).
+   */
+  domain?: Domain;
 }
 
 /**

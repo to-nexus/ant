@@ -71,7 +71,8 @@ function prepareTagJson(body: string): string {
   return sanitizeJsonControlChars(stripCodeFence(body));
 }
 
-import type { PackageTierEntry, TaskType } from '@ant/shared';
+import type { PackageTierEntry, TaskType, GameEngine } from '@ant/shared';
+import { SUPPORTED_GAME_ENGINES } from '@ant/shared';
 import { flattenPolicyToInclude } from '../../../../../../core/artifact/ArtifactPipeline';
 
 type ArtifactPolicy = { refs?: string[]; context?: string[] };
@@ -156,6 +157,12 @@ export interface ParsedTechTier {
   language: string;
   framework?: string | null;
   packageTiers?: Record<string, PackageTierEntry>;
+  /**
+   * Phase 1 — game-domain 5th slot. When the LLM emits `"gameEngine": "phaser"`
+   * inside the `<techTier>` JSON, the parser surfaces it here so the
+   * decompose node can apply it to `state.resolvedAction.basis.techTier.frontend.gameEngine`.
+   */
+  gameEngine?: GameEngine;
 }
 
 export interface ParsedDecomposeResponse {
@@ -206,12 +213,17 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
     if (techTierMatch) {
       try {
         const parsed = JSON.parse(prepareTagJson(techTierMatch[1]));
+        const rawEngine = typeof parsed.gameEngine === 'string' ? parsed.gameEngine.toLowerCase() : undefined;
+        const gameEngine = rawEngine && (SUPPORTED_GAME_ENGINES as readonly string[]).includes(rawEngine)
+          ? (rawEngine as GameEngine)
+          : undefined;
         techTier = {
           stack: parsed.stack || 'unknown',
           stackReasoning: parsed.stackReasoning || '',
           language: normalizeLanguage(parsed.language || 'typescript'),
           framework: normalizeFramework(parsed.framework || null),
           packageTiers: parsed.packageTiers || undefined,
+          gameEngine,
         };
       } catch (error) {
         console.warn('⚠️  [Decompose] Failed to parse <techTier> tag content:', error);

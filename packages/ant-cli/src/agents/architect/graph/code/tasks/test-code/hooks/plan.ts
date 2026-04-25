@@ -61,10 +61,15 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     ? task.techTiers
     : (getTechTier(state) ? [getTechTier(state)!] : []);
 
+  const _testCodeSlot = state.resolvedAction?.intent
+    ? (await import('@ant/shared')).getConfigSlots(state.resolvedAction.intent)?.basis
+    : undefined;
   const basisSection = await promptBuilder.renderBasis(
     state.resolvedAction?.basis,
     'code',
     taskTechTiers,
+    state.resolvedAction?.domain,
+    _testCodeSlot,
   );
 
   const body = await promptBuilder.render('jobs/code/nodes/plan/variants/test-code/base', {

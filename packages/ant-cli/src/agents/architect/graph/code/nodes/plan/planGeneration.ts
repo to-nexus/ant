@@ -165,8 +165,19 @@ async function buildPlanPrompt(
   } else {
     console.log(`📐 [Plan] basis present: stack=${_planBasis.techTier?.stack || 'none'}, visualTier=${_planBasis.visualTier ? Object.keys(_planBasis.visualTier).join(',') : 'none'}`);
   }
+  // Phase 1: thread domain + slot so the matrix gate (`isTierActive`) is
+  // honoured. Without these the legacy permissive path renders every tier
+  // with data — fine for the existing service flow but bypasses the
+  // domain × tier policy for game/* and any future-domain extensions.
+  const _slot = state.resolvedAction?.intent
+    ? (await import('@ant/shared')).getConfigSlots(state.resolvedAction.intent)?.basis
+    : undefined;
   const basisSection = await promptBuilder.renderBasis(
-    state.resolvedAction?.basis, 'code', taskTechTiers,
+    state.resolvedAction?.basis,
+    'code',
+    taskTechTiers,
+    state.resolvedAction?.domain,
+    _slot,
   );
 
   // Post-RAC template flags — see `.cursorrules`

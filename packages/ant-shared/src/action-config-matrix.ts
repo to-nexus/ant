@@ -49,42 +49,38 @@
 // Types
 // ============================================
 
-export interface BasisSlotConfig {
-  techTier?: boolean;
-  visualTier?: boolean;
-  defaults?: { stack?: 'frontend' | 'backend' | 'fullstack' };
-}
-
 /**
- * Runtime gate for Visual Tier availability.
+ * Per-intent basis slot configuration (Phase 1 — handoff §4.1 SSOT).
  *
- * Visual Tier is conceptually a policy for UI-producing artifacts.
- * BasisSlotConfig.visualTier = true declares "possible", not "always required".
+ * `tiers` is the static gate (D7 / D9): a tier appears in `tiers` ⇔ this
+ * intent opts into that tier. Domain compatibility is handled separately
+ * by `TIER_DOMAIN_MATRIX`; runtime suppression (e.g. backend-only stacks,
+ * UI-doc-present) layers on top via `RUNTIME_SUPPRESSORS`. The single
+ * public predicate is `isTierActive(tier, slot, domain, runtime)` — no
+ * per-tier helpers exist.
  *
- * Three axes suppress Visual Tier across every surface (FE wizard tab, FE
- * summary row, BE decompose merge, BE prompt injection):
- *
- * 1. `basisSlot.visualTier === false` (or missing) — intent does not opt in.
- * 2. `techTier.stack === 'backend'` — visual policy meaningless for backend-only.
- * 3. `hasUiDoc === true` — a UI design document (ant / figma / handoff) is
- *    already present as ref or context in the RAC. The UI doc IS the design
- *    system authority; a parallel visualTier would be redundant and
- *    potentially conflicting. "Present" means the user selected the doc into
- *    a RAC slot, NOT that it merely exists in the workspace.
- *
- * All four surfaces read this single predicate. BE surfaces source `hasUiDoc`
- * from `ArtifactPoolView.hasUi()` over the post-RAC pool; FE surfaces source
- * it from `pathsContainUiDoc(actionMetadata.refs + context)`.
+ * `defaults` is per-domain only (no global single-shape fallback). When
+ * domain-specific seeds are needed, populate the matching `Domain` key.
+ * The detect node funnels through `applyDomainDefaultsToBasis` to fill
+ * unset fields; user-supplied basis fields always win.
  */
-export function isVisualTierActive(
-  basisSlot: BasisSlotConfig | undefined,
-  techTier: import('./rac').TechTierConfig | undefined,
-  hasUiDoc?: boolean,
-): boolean {
-  if (!basisSlot?.visualTier) return false;
-  if (techTier?.stack === 'backend') return false;
-  if (hasUiDoc) return false;
-  return true;
+export interface BasisSlotConfig {
+  /**
+   * Active tier keys for this intent. Order-insensitive; the matrix
+   * iterates in the canonical `TIER_KEYS` order. Phase 1: no entry ⇔
+   * this slot does not opt into any basis tier.
+   */
+  tiers?: ReadonlyArray<import('./tier-matrix').TierKey>;
+  /**
+   * Per-domain seed values. Phase 1: game projects seed
+   * `stack='frontend'` + `gameEngine='phaser'`; service projects use the
+   * `service` key (or fall through to FE detection if absent). The
+   * shape mirrors the handoff doc §4.1 exactly.
+   */
+  defaults?: Partial<Record<import('./detection').Domain, {
+    stack?: 'frontend' | 'backend' | 'fullstack';
+    gameEngine?: import('./rac').GameEngine;
+  }>>;
 }
 
 export interface ConfigSlots {
@@ -350,6 +346,22 @@ const SPEC_OUTPUTS: OutputSpec[] = [output('spec-', '.md', L.spec)];
 
 import type { IntentId } from './actions';
 
+// Tier presets per intent group (matches §4.1 SSOT-2 in the handoff doc):
+// plan / spec → domain + gameContentTier
+// gen-sys-* → domain + techTier + gameContentTier
+// gen-ui-* / rev-ui → domain + visualTier + artTier + gameContentTier
+// gen-code-* / rev-code → domain + techTier + visualTier + artTier + gameContentTier
+const PLAN_TIERS = ['domain', 'gameContentTier'] as const;
+const SYS_TIERS = ['domain', 'techTier', 'gameContentTier'] as const;
+const UI_TIERS = ['domain', 'visualTier', 'artTier', 'gameContentTier'] as const;
+const CODE_TIERS = ['domain', 'techTier', 'visualTier', 'artTier', 'gameContentTier'] as const;
+
+// Per-domain seed presets (Phase 1).
+const GAME_FE_PHASER = { stack: 'frontend' as const, gameEngine: 'phaser' as const };
+const SERVICE_FE = { stack: 'frontend' as const };
+const SERVICE_BE = { stack: 'backend' as const };
+const SERVICE_FULL = { stack: 'fullstack' as const };
+
 const MATRIX: Record<IntentId, ConfigSlots> = {
   // ── Plan ──────────────────────────────────
   'gen-plan': {
@@ -357,6 +369,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     context: [],
     target: { kind: 'generate', dir: SOURCES_DIR, outputs: [output('prd', '.md', L.prd, false)] },
     chatRequiresRefs: false,
+    basis: { tiers: PLAN_TIERS },
   },
   'rev-plan': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
@@ -364,6 +377,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
+    basis: { tiers: PLAN_TIERS },
   },
 
   // ── System Design: Gen ─────────────────────
@@ -371,19 +385,28 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: FE_OUTPUTS },
-    basis: { techTier: true, defaults: { stack: 'frontend' } },
+    basis: {
+      tiers: SYS_TIERS,
+      defaults: { service: SERVICE_FE, game: GAME_FE_PHASER },
+    },
   },
   'gen-sys-be': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: BE_OUTPUTS },
-    basis: { techTier: true, defaults: { stack: 'backend' } },
+    // game domain has no backend-only template (the matrix gates artTier
+    // and gameContentTier active for game; the engine still sits on
+    // frontend). Service-only seed.
+    basis: { tiers: SYS_TIERS, defaults: { service: SERVICE_BE } },
   },
   'gen-sys-full': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: FULLSTACK_OUTPUTS },
-    basis: { techTier: true, defaults: { stack: 'fullstack' } },
+    basis: {
+      tiers: SYS_TIERS,
+      defaults: { service: SERVICE_FULL, game: GAME_FE_PHASER },
+    },
   },
 
   // ── System Design: Rev ─────────────────────
@@ -393,6 +416,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
+    basis: { tiers: SYS_TIERS },
   },
 
   // ── UI Design: Gen ─────────────────────────
@@ -400,19 +424,20 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
+    basis: { tiers: UI_TIERS },
   },
   'gen-ui-ref': {
     refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
-    basis: { visualTier: true },
+    basis: { tiers: UI_TIERS },
   },
   'gen-ui-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
     chatRequiresRefs: false,
-    basis: { visualTier: true },
+    basis: { tiers: UI_TIERS },
   },
 
   // ── UI Design: Rev ─────────────────────────
@@ -422,7 +447,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
-    basis: { visualTier: true },
+    basis: { tiers: UI_TIERS },
   },
 
   // ── Spec ──────────────────────────────────
@@ -434,6 +459,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     ],
     target: { kind: 'generate', dir: SPEC_DIR, outputs: SPEC_OUTPUTS },
     chatRequiresRefs: false,
+    basis: { tiers: PLAN_TIERS },
   },
   'rev-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
@@ -444,6 +470,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
+    basis: { tiers: PLAN_TIERS },
   },
 
   // ── Code: Gen (3 pipeline-specific intents) ──
@@ -451,21 +478,21 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceRef({ createIntent: 'gen-ui-desc' })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
-    basis: { techTier: true, visualTier: true },
+    basis: { tiers: CODE_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
   'gen-code-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceCtx({ createIntent: 'gen-ui-desc' }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     refsSingleSelect: true,
-    basis: { techTier: true, visualTier: true },
+    basis: { tiers: CODE_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
   'gen-code-directive': {
     refs: [emptyRef()],
     context: [uiSourceCtx({ createIntent: 'gen-ui-desc' }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     buildDisabled: true,
-    basis: { techTier: true, visualTier: true },
+    basis: { tiers: CODE_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
 
   // ── Code: Rev (codebase required; spec docs as opt-in ref, design docs as context) ──
@@ -473,6 +500,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [codebaseRef(), refDir(SPEC_DIR, L.specDocs, { required: false, createIntent: 'gen-spec', humanLabel: HL.specDocs })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceCtx({ createIntent: 'gen-ui-desc' })],
     target: { kind: 'codebase' },
+    basis: { tiers: CODE_TIERS },
   },
 
   // ── Visual ────────────────────────────────

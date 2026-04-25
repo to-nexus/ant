@@ -9,6 +9,21 @@
     "stopping": "중지 중...",
     "filesEdited": "{{count}}개 파일 편집됨"
   },
+  "mention": {
+    "intent": { "label": "intent", "description": "작업 의도를 지정" },
+    "target": { "label": "target", "description": "대상 파일을 지정" },
+    "ref": { "label": "ref", "description": "참조 문서를 추가" },
+    "ctx": { "label": "ctx", "description": "컨텍스트 문서를 추가" },
+    "domain": {
+      "label": "domain",
+      "description": "프로젝트 도메인을 지정 (game / service)",
+      "option": {
+        "game": { "description": "게임 도메인 (재미 / 시뮬레이션 / 코어루프)" },
+        "service": { "description": "서비스 도메인 (SaaS / CRUD / 안정성)" }
+      }
+    },
+    "explicit": { "label": "explicit", "description": "추론 생략, 직접 지정" }
+  },
   "panelTabs": {
     "chat": "대화",
     "timeline": "타임라인"

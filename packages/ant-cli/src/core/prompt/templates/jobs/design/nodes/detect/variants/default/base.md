@@ -1,11 +1,28 @@
-## Design Intent Group + Mode + Domain + Environment Detection
+## Design Intent Group + Mode + {{#unless explicitDomain}}Domain + {{/unless}}Environment Detection
 
 You are analyzing a design directive to determine:
 
 1. **intentGroup**: spec | ui-design | system-design | clarify | error
 2. **jobMode**: generate | refactor | explain
-3. **domain** (system-design only): game | service
+{{#unless explicitDomain}}
+3. **domain** (universal — all artifact-producing intents): game | service
 4. **environment** (system-design only): frontend | backend | fullstack
+
+### Domain Classification (universal, Phase 1)
+
+Domain applies to every artifact-producing intent (spec / ui-design / system-design). Pick exactly one:
+
+| Domain | Strong signals |
+|---|---|
+| `game` | 점수, 레벨, 스테이지, 플레이어, 매치, 콤보, NPC, 적, SFX, 게임플레이, 코어루프, 보스, 인벤토리, 캐릭터, 시뮬레이션, 카드, 보드, 퍼즐, 시점(2D/3D), scene, sprite, 게임잼 |
+| `service` | 사용자, 인증, 계정, 결제, API, endpoint, dashboard, CRM, SaaS, 이메일, 권한, role, 통합, 워크플로 |
+
+Default to `service` when signals are weak or overlap.
+{{else}}
+3. **environment** (system-design only): frontend | backend | fullstack
+
+> Domain is already committed (`{{explicitDomain}}`) via `actionMetadata.domain` — do NOT emit a `domain` field; do NOT re-infer.
+{{/unless}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -270,15 +287,27 @@ Respond with ONLY JSON wrapped in `<detect>` tags. No markdown fences.
 
 ### spec
 
+{{#unless explicitDomain}}
+{ "intentGroup": "spec", "intentGroupReasoning": "1-2 sentences: what specific feature/task scope was identified", "intentId": "gen-spec" | "rev-spec" | "explain-spec", "jobMode": "generate" | "refactor", "jobModeReasoning": "1-2 sentences", "domain": "game" | "service", "domainReasoning": "1-2 sentences" }
+{{else}}
 { "intentGroup": "spec", "intentGroupReasoning": "1-2 sentences: what specific feature/task scope was identified", "intentId": "gen-spec" | "rev-spec" | "explain-spec", "jobMode": "generate" | "refactor", "jobModeReasoning": "1-2 sentences" }
+{{/unless}}
 
 ### ui-design
 
+{{#unless explicitDomain}}
+{ "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-ui-figma" | "gen-ui-ref" | "gen-ui-desc" | "rev-ui" | "explain-ui", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "domain": "game" | "service", "domainReasoning": "1-2 sentences" }
+{{else}}
 { "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-ui-figma" | "gen-ui-ref" | "gen-ui-desc" | "rev-ui" | "explain-ui", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences" }
+{{/unless}}
 
 ### system-design
 
+{{#unless explicitDomain}}
+{ "intentGroup": "system-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-sys-fe" | "gen-sys-be" | "gen-sys-full" | "rev-sys" | "explain-sys", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "domain": "game" | "service", "domainReasoning": "1-2 sentences", "environment": "frontend" | "backend" | "fullstack", "environmentReasoning": "1-2 sentences" }
+{{else}}
 { "intentGroup": "system-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-sys-fe" | "gen-sys-be" | "gen-sys-full" | "rev-sys" | "explain-sys", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "environment": "frontend" | "backend" | "fullstack", "environmentReasoning": "1-2 sentences" }
+{{/unless}}
 
 ### clarify (ambiguous between spec and system-design)
 

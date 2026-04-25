@@ -27,8 +27,16 @@ export type IntentGroup =
   | 'learn-codebase'
   | 'ask';
 
-/** Domain (System Design only) */
-export type DesignDomain = 'game' | 'service';
+/**
+ * Domain — top-level project domain classification.
+ *
+ * Used by all artifact-producing jobs (plan / design / code / spec) to gate
+ * domain-specific basis injection. Phase 1 introduces game vs. service.
+ * Phase 4+ may extend with `'3d'`, `'data-viz'`, `'interactive-art'` etc. —
+ * adding a new domain is a single union edit + a row update in
+ * `TIER_DOMAIN_MATRIX` ([packages/ant-shared/src/tier-matrix.ts]).
+ */
+export type Domain = 'game' | 'service';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // InferredAction — strategy.run() output type (infer path)
@@ -45,8 +53,8 @@ export interface InferredAction {
   /** Context file paths identified by LLM */
   context?: string[];
 
-  /** Domain classification — design-system only (game | service) */
-  domain?: DesignDomain;
+  /** Domain classification — universal across artifact-producing jobs (game | service). */
+  domain?: Domain;
 
   /** Transient reasoning for chat display. Never persisted in RAC. */
   reasoning?: {

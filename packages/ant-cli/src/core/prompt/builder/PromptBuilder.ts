@@ -10,7 +10,7 @@
  */
 
 import type { PromptPort } from '../../ports';
-import type { PolicyKey, Basis } from '@ant/shared';
+import type { PolicyKey, Basis, BasisSlotConfig, Domain, TierKey, ArtTier } from '@ant/shared';
 import { getPromptPolicies, POLICY_TEMPLATE_MAP } from '@ant/shared';
 import {
   resolveLanguageVariants,
@@ -18,6 +18,13 @@ import {
   FRAMEWORK_NONE,
   VISUAL_TIER_TEMPLATE_PATHS,
   VISUAL_TIER_LAYER_KEYS,
+  ART_TIER_TEMPLATE_PATHS,
+  ART_TIER_AXIS_KEYS,
+  GAME_CONTENT_TIER_TEMPLATE_PATHS,
+  TIER_KEYS,
+  isTierActive,
+  getEffectiveDomain,
+  getConfigSlots,
   type SupportedLanguage,
   type SupportedStack,
 } from '@ant/shared';
@@ -47,16 +54,24 @@ export class PromptBuilder implements PromptPort {
   }
 
   /**
-   * Render only the basis section (stack + language + framework + visualTier).
-   * For nodes that use render() but still need basis context (e.g., plan).
+   * Render only the basis section (stack + language + framework + visualTier
+   * + artTier + gameContentTier + domain). For nodes that use render() but
+   * still need basis context (e.g., plan / verify / error / test-code hooks).
+   *
+   * Phase 1 (BC4) — `slot` is REQUIRED. Callers MUST pass
+   * `getConfigSlots(intent)?.basis` so the matrix gate (`isTierActive`)
+   * runs. Skipping the slot would silently inject every tier with data
+   * regardless of the matrix; we removed the legacy permissive fallback
+   * to keep the SSOT honoured at every callsite.
    */
   async renderBasis(
     basis: Basis | undefined,
     job: string,
-    taskTechTiers?: import('@ant/shared').TechTier[],
-    domain?: string,
+    taskTechTiers: import('@ant/shared').TechTier[] | undefined,
+    domain: Domain | string | undefined,
+    slot: BasisSlotConfig | undefined,
   ): Promise<string> {
-    return this.buildBasisSection(basis, job, taskTechTiers, domain);
+    return this.buildBasisSection(basis, job, taskTechTiers, domain, undefined, slot);
   }
 
   /**
@@ -120,14 +135,17 @@ export class PromptBuilder implements PromptPort {
       systemBase = await this.getSystemPrompt(config.templates.system);
     }
 
-    // 3b. Basis section: root(stack) + task-scoped(lang+variant+fw)
+    // 3b. Basis section: tier-iterating (matrix-driven, Phase 1)
     let basisSection = '';
     const basisPaths = new Set<string>();
     if (config.pipeline?.includeBasis && config.basis) {
       const job = this.inferJob(config);
-      const domain = config.techContext?.resolvedAction?.domain;
+      const rac = config.techContext?.resolvedAction;
+      const domain = rac?.domain;
       const taskTechTiers = config.techContext?.techTiers;
-      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain, basisPaths);
+      const intent = rac?.intent;
+      const slot = intent ? getConfigSlots(intent)?.basis : undefined;
+      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain, basisPaths, slot);
     } else if (config.pipeline?.includeBasis && !config.basis) {
       console.warn(`⚠️  [PromptBuilder] includeBasis=true but config.basis is ${config.basis === undefined ? 'undefined' : 'falsy'} — skipping basis section`);
     }
@@ -261,27 +279,115 @@ export class PromptBuilder implements PromptPort {
     return this.systemPromptCache[templatePath];
   }
 
+  /**
+   * Tier-iterating basis assembly (Phase 1, D7 / BC4).
+   *
+   * Iterates through `TIER_KEYS` in canonical order. For each tier the
+   * matrix gate (`isTierActive(tier, slot, domain, runtime)`) decides
+   * whether to inject it; a per-tier dispatch then builds the section.
+   *
+   * BC4 — `slot` is required at every callsite. The legacy permissive
+   * fallback (`!slot` ⇒ every tier active) is removed so the matrix is
+   * the single authority. When `slot` is undefined we treat the call as
+   * "no basis to inject" and return empty (with a loud warn), rather
+   * than silently injecting every tier with data.
+   */
   private async buildBasisSection(
     basis: Basis | undefined,
     job: string,
-    taskTechTiers?: import('@ant/shared').TechTier[],
-    domain?: string,
-    outPaths?: Set<string>,
+    taskTechTiers: import('@ant/shared').TechTier[] | undefined,
+    domain: Domain | string | undefined,
+    outPaths: Set<string> | undefined,
+    slot: BasisSlotConfig | undefined,
   ): Promise<string> {
     if (!basis) {
       console.warn(`⚠️  [PromptBuilder.buildBasisSection] basis is undefined — returning empty`);
       return '';
     }
+    if (!slot) {
+      console.warn(
+        `⚠️  [PromptBuilder.buildBasisSection] slot is undefined (job=${job}) — basis injection skipped. ` +
+        `Callers MUST pass getConfigSlots(intent)?.basis so the matrix gate runs.`,
+      );
+      return '';
+    }
     const sections: string[] = [];
-    console.log(`📐 [PromptBuilder.buildBasisSection] job=${job}, stack=${basis.techTier?.stack || 'none'}, fe=${basis.techTier?.frontend?.language || 'none'}/${basis.techTier?.frontend?.framework || 'none'}, visualTier=${basis.visualTier ? Object.keys(basis.visualTier).join(',') : 'none'}, taskTechTiers=${taskTechTiers?.length || 0}`);
+    const effectiveDomain = getEffectiveDomain(domain as Domain | undefined);
+    const runtime = { techTier: basis.techTier, hasUiDoc: false };
 
-    // Root: stack template (shared across all tasks)
+    console.log(
+      `📐 [PromptBuilder.buildBasisSection] job=${job}, domain=${effectiveDomain}, ` +
+      `stack=${basis.techTier?.stack || 'none'}, ` +
+      `fe=${basis.techTier?.frontend?.language || 'none'}/${basis.techTier?.frontend?.framework || 'none'}, ` +
+      `gameEngine=${basis.techTier?.frontend?.gameEngine ?? basis.techTier?.backend?.gameEngine ?? 'none'}, ` +
+      `visualTier=${basis.visualTier ? Object.keys(basis.visualTier).join(',') : 'none'}, ` +
+      `artTier=${basis.artTier ? Object.keys(basis.artTier).join(',') : 'none'}, ` +
+      `gameContentTier=${basis.gameContentTier ? Object.keys(basis.gameContentTier).join(',') : 'none'}, ` +
+      `taskTechTiers=${taskTechTiers?.length || 0}`
+    );
+
+    for (const tier of TIER_KEYS) {
+      if (!isTierActive(tier as TierKey, slot, effectiveDomain, runtime)) continue;
+
+      switch (tier) {
+        case 'domain':
+          await this.renderDomainTier(sections, basis, job, effectiveDomain, outPaths);
+          break;
+        case 'techTier':
+          await this.renderTechTier(sections, basis, job, taskTechTiers, effectiveDomain, outPaths);
+          break;
+        case 'visualTier':
+          await this.renderVisualTier(sections, basis, job, outPaths);
+          break;
+        case 'artTier':
+          await this.renderArtTier(sections, basis, job, outPaths);
+          break;
+        case 'gameContentTier':
+          await this.renderGameContentTier(sections, basis, job, outPaths);
+          break;
+      }
+    }
+
+    if (sections.length === 0) {
+      console.warn(`⚠️  [PromptBuilder.buildBasisSection] All template renders resulted in 0 sections`);
+    } else {
+      console.log(`📐 [PromptBuilder.buildBasisSection] Loaded ${sections.length} basis section(s)`);
+    }
+    return sections.join('\n\n');
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Per-tier render dispatchers (Phase 1)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  private async renderDomainTier(
+    sections: string[],
+    _basis: Basis,
+    job: string,
+    domain: Domain,
+    outPaths?: Set<string>,
+  ): Promise<void> {
+    // Phase 1: prefer the job-scoped overlay (jobs/{job}/basis/domain/{d}.md);
+    // fall back to the global identity partial (basis/domain/{d}.md). When
+    // both exist, both are injected — the global identity sets up shared
+    // language and the job overlay layers job-specific meta-pattern guidance.
+    await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.basisDomain(domain), outPaths);
+    await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.jobDomain(job, domain), outPaths);
+  }
+
+  private async renderTechTier(
+    sections: string[],
+    basis: Basis,
+    job: string,
+    taskTechTiers: import('@ant/shared').TechTier[] | undefined,
+    domain: Domain,
+    outPaths?: Set<string>,
+  ): Promise<void> {
     const basisStack = basis.techTier?.stack as SupportedStack | undefined;
     if (basisStack) {
       await this.pushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.stack(basisStack), outPaths);
     }
 
-    // Task-scoped: language base + variant + framework (from taskTechTiers or config tiers)
     const tiers = taskTechTiers?.length
       ? taskTechTiers
       : [basis.techTier?.frontend, basis.techTier?.backend].filter(
@@ -291,6 +397,8 @@ export class PromptBuilder implements PromptPort {
     const injectedLangs = new Set<string>();
     const injectedVariants = new Set<string>();
     const injectedFrameworks = new Set<string>();
+    const injectedEngines = new Set<string>();
+    let preambleEmitted = false;
 
     for (const tier of tiers) {
       if (!tier.language) continue;
@@ -324,39 +432,85 @@ export class PromptBuilder implements PromptPort {
           outPaths,
         );
       }
-    }
 
-    if (domain) {
-      const jobDomainPath = TECH_TIER_TEMPLATE_PATHS.jobDomain(job, domain);
-      const loaded = await this.tryPushBasisTemplate(sections, jobDomainPath, outPaths);
-      if (!loaded) {
-        await this.pushBasisTemplate(sections, `basis/domain/${domain}`, outPaths);
+      // Phase 1: gameEngine 5th slot. Only inject for game domain (the
+      // matrix already gated us in here, but we double-check the slot is
+      // populated). `react+phaser` ⇒ both framework=react AND gameEngine
+      // partials are emitted, by design.
+      if (domain === 'game' && tier.gameEngine && !injectedEngines.has(tier.gameEngine)) {
+        injectedEngines.add(tier.gameEngine);
+        if (!preambleEmitted) {
+          preambleEmitted = true;
+          await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.gameEnginePreamble(), outPaths);
+        }
+        await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.gameEngine(tier.gameEngine), outPaths);
+        await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.jobGameEngine(job, tier.gameEngine), outPaths);
       }
     }
+  }
 
+  private async renderVisualTier(
+    sections: string[],
+    basis: Basis,
+    job: string,
+    outPaths?: Set<string>,
+  ): Promise<void> {
     if (basis.visualTier?.designSystem) {
       await this.pushBasisTemplate(sections, `basis/visualTier/design-system/${basis.visualTier.designSystem}`, outPaths);
     }
-
     const hasVisualTierLayers = VISUAL_TIER_LAYER_KEYS.some(k => basis.visualTier?.[k]);
-    if (hasVisualTierLayers) {
-      const vt = basis.visualTier!;
-      await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.preamble(), outPaths);
-      for (const layer of VISUAL_TIER_LAYER_KEYS) {
-        const variant = vt[layer];
-        if (variant) {
-          await this.pushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS[layer](variant), outPaths);
-        }
+    if (!hasVisualTierLayers) return;
+    const vt = basis.visualTier!;
+    await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.preamble(), outPaths);
+    for (const layer of VISUAL_TIER_LAYER_KEYS) {
+      const variant = vt[layer];
+      if (variant) {
+        await this.pushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS[layer](variant), outPaths);
       }
-      await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
     }
+    await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
+  }
 
-    if (sections.length === 0) {
-      console.warn(`⚠️  [PromptBuilder.buildBasisSection] All template renders resulted in 0 sections`);
-    } else {
-      console.log(`📐 [PromptBuilder.buildBasisSection] Loaded ${sections.length} basis section(s)`);
+  private async renderArtTier(
+    sections: string[],
+    basis: Basis,
+    job: string,
+    outPaths?: Set<string>,
+  ): Promise<void> {
+    const at = basis.artTier;
+    if (!at) return;
+    const hasAnyAxis = ART_TIER_AXIS_KEYS.some(k => at[k as keyof ArtTier]);
+    if (!hasAnyAxis) return;
+    await this.tryPushBasisTemplate(sections, ART_TIER_TEMPLATE_PATHS.preamble(), outPaths);
+    for (const axis of ART_TIER_AXIS_KEYS) {
+      const value = at[axis as keyof ArtTier];
+      if (!value) continue;
+      const pathFn = ART_TIER_TEMPLATE_PATHS[axis as keyof typeof ART_TIER_TEMPLATE_PATHS];
+      if (typeof pathFn === 'function') {
+        await this.tryPushBasisTemplate(sections, (pathFn as (v: string) => string)(value as string), outPaths);
+      }
     }
-    return sections.join('\n\n');
+    await this.tryPushBasisTemplate(sections, ART_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
+  }
+
+  private async renderGameContentTier(
+    sections: string[],
+    basis: Basis,
+    job: string,
+    outPaths?: Set<string>,
+  ): Promise<void> {
+    const gct = basis.gameContentTier;
+    if (!gct) return;
+    const hasAnyAxis = !!(gct.genre || gct.coreLoop);
+    if (!hasAnyAxis) return;
+    await this.tryPushBasisTemplate(sections, GAME_CONTENT_TIER_TEMPLATE_PATHS.preamble(), outPaths);
+    if (gct.genre) {
+      await this.tryPushBasisTemplate(sections, GAME_CONTENT_TIER_TEMPLATE_PATHS.genre(gct.genre), outPaths);
+    }
+    if (gct.coreLoop) {
+      await this.tryPushBasisTemplate(sections, GAME_CONTENT_TIER_TEMPLATE_PATHS.coreLoop(gct.coreLoop), outPaths);
+    }
+    await this.tryPushBasisTemplate(sections, GAME_CONTENT_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
   }
 
   /**

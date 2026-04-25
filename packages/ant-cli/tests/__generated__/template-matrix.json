@@ -19,6 +19,221 @@
       "partial-ref"
     ]
   },
+  "basis/artTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/audioProfile/fileBased": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/audioProfile/hybrid": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/audioProfile/procedural": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/concept/darkFantasy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/concept/martialArts": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/concept/modernCasual": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/concept/pixelRetro": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/concept/sfFantasy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/concept/threeKingdoms": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/entityCatalog/minimal": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/entityCatalog/rich": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/entityCatalog/standard": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/motionPattern/expressive": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/motionPattern/static": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/motionPattern/subtle": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/particleProfile/heavy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/particleProfile/light": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/particleProfile/none": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/perspective/2d": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/perspective/3d": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/projectilePolicy/complex": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/projectilePolicy/none": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/artTier/projectilePolicy/simple": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/domain/game": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/domain/service": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/coreLoop/build": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/coreLoop/collect": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/coreLoop/explore": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/coreLoop/fight": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/coreLoop/solve": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/genre/action": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/genre/casual": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/genre/platformer": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/genre/puzzle": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/genre/rpg": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/genre/shooter": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameContentTier/genre/strategy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/techTier/gameEngine/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/techTier/gameEngine/cocos-creator": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/techTier/gameEngine/godot": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/techTier/gameEngine/phaser": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "basis/techTier/language/_typescript-common": {
     "sources": [
       "basis-registry"
@@ -413,6 +628,26 @@
       "render-call"
     ]
   },
+  "jobs/code/basis/artTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/domain/game": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/domain/service": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/gameContentTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "jobs/code/basis/techTier/framework/_react-core": {
     "sources": [
       "partial-ref"
@@ -444,6 +679,11 @@
     ]
   },
   "jobs/code/basis/techTier/framework/react": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/techTier/gameEngine/phaser": {
     "sources": [
       "basis-registry"
     ]
@@ -840,6 +1080,11 @@
       "render-call"
     ]
   },
+  "jobs/design/basis/artTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "jobs/design/basis/domain/game": {
     "sources": [
       "render-call",
@@ -849,6 +1094,11 @@
   "jobs/design/basis/domain/service": {
     "sources": [
       "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/gameContentTier/_preamble": {
+    "sources": [
       "basis-registry"
     ]
   },
@@ -1020,6 +1270,21 @@
   "jobs/learn/base/system": {
     "sources": [
       "render-call"
+    ]
+  },
+  "jobs/plan/basis/domain/game": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/plan/basis/domain/service": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/plan/basis/gameContentTier/_preamble": {
+    "sources": [
+      "basis-registry"
     ]
   },
   "jobs/plan/nodes/detect/variants/default/base": {

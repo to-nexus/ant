@@ -234,10 +234,11 @@ export function uiSourceOfPath(path: string): UiSource | null {
  * Whether any path in the list is a UI design document (ant / figma / handoff).
  *
  * Used by FE surfaces (BasisWizard, BasisSummaryBar) to compute the `hasUiDoc`
- * axis of `isVisualTierActive` from `actionMetadata.refs` / `actionMetadata.context`
- * — i.e. the user-selected RAC slots, NOT the raw workspace filesystem. BE
- * surfaces compute the same signal through `ArtifactPoolView.hasUi()` over the
- * post-RAC pool; both paths observe "did the user decide to include a UI doc".
+ * axis of `isTierActive('visualTier', ...)` from `actionMetadata.refs` /
+ * `actionMetadata.context` — i.e. the user-selected RAC slots, NOT the raw
+ * workspace filesystem. BE surfaces compute the same signal through
+ * `ArtifactPoolView.hasUi()` over the post-RAC pool; both paths observe
+ * "did the user decide to include a UI doc".
  */
 export function pathsContainUiDoc(paths: readonly string[] | undefined): boolean {
   if (!paths?.length) return false;

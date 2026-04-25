@@ -1,36 +1,27 @@
 import { useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   INTENT_DEFINITIONS,
   getConfigSlots,
   type IntentId,
+  type Domain,
 } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 
 export interface MentionSuggestion {
-  type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'command';
+  type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'command' | 'domain';
   id: string;
   label: string;
   description?: string;
   group?: 'suggested' | 'all';
 }
 
-const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@explicit'] as const;
+const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@domain:', '@explicit'] as const;
 type MentionPrefix = (typeof MENTION_PREFIXES)[number];
 
 type FileMentionPrefix = '@target:' | '@ref:' | '@ctx:';
-
-const COMMAND_MENU_BASE: MentionSuggestion[] = [
-  { type: 'command', id: '@intent:', label: 'intent', description: '작업 의도를 지정' },
-  { type: 'command', id: '@target:', label: 'target', description: '대상 파일을 지정' },
-  { type: 'command', id: '@ref:',    label: 'ref',    description: '참조 문서를 추가' },
-  { type: 'command', id: '@ctx:',    label: 'ctx',    description: '컨텍스트 문서를 추가' },
-];
-
-const EXPLICIT_COMMAND: MentionSuggestion = {
-  type: 'command', id: '@explicit', label: 'explicit', description: '추론 생략, 직접 지정',
-};
 
 function flattenFilePaths(nodes: FileNode[], prefix = ''): string[] {
   const paths: string[] = [];
@@ -106,6 +97,29 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const actionMetadata = useStore(s => s.actionMetadata);
   const { canStartChat } = useActionFooterPolicy();
+  const { t } = useTranslation('chat');
+
+  const COMMAND_MENU_BASE = useMemo<MentionSuggestion[]>(() => [
+    { type: 'command', id: '@intent:', label: t('mention.intent.label'), description: t('mention.intent.description') },
+    { type: 'command', id: '@target:', label: t('mention.target.label'), description: t('mention.target.description') },
+    { type: 'command', id: '@ref:',    label: t('mention.ref.label'),    description: t('mention.ref.description') },
+    { type: 'command', id: '@ctx:',    label: t('mention.ctx.label'),    description: t('mention.ctx.description') },
+    { type: 'command', id: '@domain:', label: t('mention.domain.label'), description: t('mention.domain.description') },
+  ], [t]);
+
+  const EXPLICIT_COMMAND = useMemo<MentionSuggestion>(() => ({
+    type: 'command',
+    id: '@explicit',
+    label: t('mention.explicit.label'),
+    description: t('mention.explicit.description'),
+  }), [t]);
+
+  // Phase 1 domain options for `@domain:` mention. The Domain union is
+  // static so we hardcode the value list and only translate the description.
+  const DOMAIN_OPTIONS = useMemo<ReadonlyArray<{ id: Domain; label: string; description: string }>>(() => [
+    { id: 'game',    label: 'game',    description: t('mention.domain.option.game.description') },
+    { id: 'service', label: 'service', description: t('mention.domain.option.service.description') },
+  ], [t]);
 
   const allFilePaths = useMemo(() => flattenFilePaths(fileTree), [fileTree]);
 
@@ -159,6 +173,11 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
 
       case '@ctx:':
         return buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent);
+
+      case '@domain:':
+        return DOMAIN_OPTIONS
+          .filter(d => d.id.toLowerCase().includes(q) || d.label.toLowerCase().includes(q))
+          .map(d => ({ type: 'domain', id: d.id, label: d.label, description: d.description }));
 
       case '@explicit':
         if (!explicitSettable) return [];
@@ -223,6 +242,12 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         if (!next || canStartChat) {
           updateActionMetadata({ explicit: next ? true : undefined });
         }
+        break;
+      }
+      case 'domain': {
+        // Phase 1 invariant — explicit > infer (10.2). Setting domain via
+        // mention takes precedence over LLM inference downstream.
+        updateActionMetadata({ domain: suggestion.id as Domain });
         break;
       }
     }
