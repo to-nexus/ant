@@ -90,12 +90,18 @@ export interface CodeTask extends BaseTask {
   /**
    * Tier-Verification Alignment: Tier 2 (Exploratory, single unit of work) flag.
    *
-   * When `true`, this task takes ownership of its own verification gates
-   * (install → typecheck → build → test) before emitting `<done>true</done>`.
-   * The executor's task-type-specific command guard allows build/test/typecheck
-   * during the execute phase for any task carrying this flag; the execute
-   * prompt surfaces a self-verify-inline partial so the LLM knows to run the
-   * gates before declaring completion.
+   * When `true`, this task owns a verification cycle that runs after the
+   * apply phase emits `<done>`. The runtime detects the flag via
+   * `tasks/_shared/verify/predicate.requiresVerification(task)` and:
+   *
+   *   1. Apply phase — task-type-specific plan/execute applies fixes.
+   *      `command.guard` blocks build/test/typecheck (verification is
+   *      handled in the next phase).
+   *   2. Reverify phase — `executeRouter.routeAfterDone` routes to the
+   *      plan node with `_nextPlanEntry='reverify'`, which fires
+   *      `_shared/verify/initSession`. From here, the task uses the
+   *      shared verify-mode plan/execute/command/check/router surface
+   *      identical to a Tier 3/4 dedicated verification task.
    *
    * Set ONLY by decompose for Tier 2 (exactly one task) breakdowns. Tier 3/4
    * breakdowns never set this flag — their dedicated verification task (priority

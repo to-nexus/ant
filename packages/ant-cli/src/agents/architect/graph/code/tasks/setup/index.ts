@@ -17,20 +17,28 @@
  *     flows through the generic artifact-resolution / RAC pipeline.
  */
 
-import type { TaskHooks } from '../_shared/types';
-
 import { blocksUi, blocksTestgen, blocksDoc } from './hooks/scheduling';
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
 import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
 import { executeHook } from './hooks/execute';
+import { composeBundle } from '../_shared/verify';
 
-export const hooks: TaskHooks = {
-  scheduling: { blocksUi, blocksTestgen, blocksDoc },
-  decompose: { isExclusive },
-  conversations: { convKey },
-  plan: { extraTemplateVars: planExtraTemplateVars },
-  execute: executeHook,
-};
+// Wired through `composeBundle({...})` so Tier 2 self-verify setup tasks
+// (decompose-time `selfVerifyOnDone:true`) automatically pick up the
+// `_shared/verify/` hook surface once they transition into verify-mode.
+// Tier 3+ setup tasks pass through unchanged with their apply-phase
+// extraTemplateVars + executeHook.
+export const hooks = composeBundle({
+  apply: {
+    plan: { extraTemplateVars: planExtraTemplateVars },
+    execute: executeHook,
+  },
+  taskTypeSpecific: {
+    scheduling: { blocksUi, blocksTestgen, blocksDoc },
+    decompose: { isExclusive },
+    conversations: { convKey },
+  },
+});
 
 export { isSetupTask } from './model/is';

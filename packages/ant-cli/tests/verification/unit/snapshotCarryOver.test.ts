@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { snapshotFromState } from '../../../src/agents/architect/graph/code/parallel/TaskWorker';
-import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
+import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
 
 describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
   it('captures the VerificationSession snapshot alongside per-worker fields', () => {

@@ -4,7 +4,8 @@
  * Covers `loadAllChat` (with sinceTs + jobTypes filters) and
  * `loadAllBreadcrumbs` (skipping collapsed lines). The `/breadcrumbs`
  * HTTP endpoint reads the latter; chat history flows through
- * `ChatService.getMessagesAsync`, which calls `loadAllChat` internally.
+ * `ChatService.loadEventsAsync`, which calls `loadAllChat` internally
+ * (chat-SSOT §5).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

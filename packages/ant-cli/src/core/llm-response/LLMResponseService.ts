@@ -1,66 +1,159 @@
 /**
- * LLMResponseService - Main service for handling LLM responses in job workers
- * 
- * This service replaces the HTTP-based ChatAPIClient with direct Redis operations.
- * It handles:
- * - LLM stream events (text, thinking, tool_use, etc.)
- * - File operations (create, edit, delete with streaming)
- * - Command execution (start, stream, complete)
- * - Chat status messages (exploring, reading, etc.)
- * 
- * Architecture:
- * - Job Worker directly updates Redis session state
- * - Broadcasts updates via Redis Pub/Sub
- * - No HTTP roundtrip to API server needed
+ * LLMResponseService — single facade for chat emission in worker processes.
+ *
+ * Substrate (chat-SSOT §5):
+ *  - `chat.jsonl` (durable SSOT for finalized lines) via `ChatLogAppender`.
+ *  - Redis TURN_BUFFER (in-flight `text` / `thinking` / `pendingCards`)
+ *    via `StateStorePort`.
+ *  - SSE pub/sub (`chat_event_appended` / `streaming_delta` / …) via
+ *    `MessageBroadcaster`.
+ *
+ * Replaces the legacy chat scratchpad — `SessionStore.messages /
+ * currentMessage`, `ContentMerger`, `ChatStatusHandler`, `LLMEventHandler`,
+ * `FileOperationHandler`, `CommandExecutionHandler` — with a stateless,
+ * append-only emission path. Every public method preserves the historical
+ * caller contract; the underlying mechanism is the only thing that changed.
  */
 
-import type { StateStorePort } from '../ports/stateStore';
+import * as crypto from 'crypto';
+import {
+  generateChatStatusContent,
+  type ChatLine,
+  type ChatStatusLine,
+  type ChatStatusType,
+  type ChatThinkingLine,
+  type ChatAssistantMessageLine,
+  type ChatChoicePresentedLine,
+  type ChatChoiceResolvedLine,
+  type LogJobType,
+  type PendingCardSnapshot,
+} from '@ant/shared';
 import type { LLMStreamEvent } from '../ports/llm';
-import type { LLMResponseEnv, ChatStatusType } from './types';
-
-import { SessionStore } from './SessionStore';
-import { LLMEventHandler } from './LLMEventHandler';
-import { FileOperationHandler } from './FileOperationHandler';
-import { CommandExecutionHandler } from './CommandExecutionHandler';
-import { ChatStatusHandler } from './ChatStatusHandler';
+import type { StateStorePort } from '../ports/stateStore';
+import type { LLMResponseEnv } from './types';
+import { TurnContext } from './TurnContext';
+import { ChatLogAppender } from './ChatLogAppender';
 import { MessageBroadcaster } from '../chat/MessageBroadcaster';
-import { ContentMerger } from '../chat/ContentMerger';
+import { setChatLogAppender, clearChatLogAppender } from './chatLogAppenderRegistry';
 import { getChatSyncChannel } from '../constants/redis';
 import { logger } from '../../utils/logger';
-import { ChatLogAppender } from './ChatLogAppender';
-import { setChatLogAppender, clearChatLogAppender } from './chatLogAppenderRegistry';
+
+// ═══════════════════════════════════════════════════════════════════════
+// Status-type taxonomy
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Progress half of every "~ing → ~ed" pair. Emission registers a
+ * pending card on the TURN_BUFFER and broadcasts a `streaming_delta`
+ * heartbeat for the client to render the loading state. No chat.jsonl
+ * line is written — replay reproduces the card from the paired terminal
+ * line.
+ */
+const PROGRESS_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
+  'exploring',
+  'retrieving',
+  'grepping',
+  'reading',
+  'reading_source',
+  'listing_files',
+  'searching_code',
+  'searching_reference',
+  'indexing',
+  'analyzing',
+  'storing',
+  'learning',
+  'loading',
+  'processing',
+  'downloading',
+  'figma_calling',
+  'plan_generating',
+  'command_running',
+  'command_streaming',
+  'file_creating',
+  'file_writing',
+  'file_editing',
+  'file_updating',
+  'file_deleting',
+]);
+
+/**
+ * Tools whose dedicated handler emits its own `chat_status` pair —
+ * generic `tool_use` events for these names are no-ops in `sendLLMEvent`.
+ * Mirrors the legacy `LLMEventHandler.TOOLS_WITH_DEDICATED_STATUS` set.
+ */
+const TOOLS_WITH_DEDICATED_STATUS: ReadonlySet<string> = new Set([
+  'read_file',
+  'list_files',
+  'search_code',
+  'run_command',
+  'search_reference_code',
+]);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Worker-local trackers
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Per-worker trackers for cardId pairing. The legacy substrate carried
+ * these on the per-message scratchpad; they now live on the service so
+ * the new TURN_BUFFER channel can be addressed without re-hydrating a
+ * `ChatMessage`.
+ */
+interface WorkerLocalState {
+  /** filePath → cardId for `reading` / `reading_source` / file-* progress. */
+  fileCardByPath: Map<string, string>;
+  /** command → cardId for `command_running` → `command` pairing. */
+  commandCardByCommand: Map<string, string>;
+  /** Active thinking block tracker (start time + cardId). */
+  thinking: { cardId: string; startTime: number } | null;
+}
+
+function makeWorkerState(): WorkerLocalState {
+  return {
+    fileCardByPath: new Map(),
+    commandCardByCommand: new Map(),
+    thinking: null,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// LLMResponseService
+// ═══════════════════════════════════════════════════════════════════════
 
 export class LLMResponseService {
-  private enabled: boolean;
-  
-  // Core components
-  private stateStore: StateStorePort;
-  private sessionStore: SessionStore;
-  private broadcaster: MessageBroadcaster;
-  private contentMerger: ContentMerger;
-  
-  // Handlers
-  private llmEventHandler: LLMEventHandler;
-  private fileOperationHandler: FileOperationHandler;
-  private commandExecutionHandler: CommandExecutionHandler;
-  private chatStatusHandler: ChatStatusHandler;
+  private readonly enabled: boolean;
+  private readonly stateStore: StateStorePort;
+  private readonly turnContext: TurnContext;
+  private readonly broadcaster: MessageBroadcaster;
+  private chatLogAppender: ChatLogAppender | null = null;
 
-  // Sync channel subscription (for reconnect snapshot)
+  /** Cached jobType for `lineBase` — separate from the appender so the
+   * service can still build lines when the appender is missing (best-
+   * effort broadcast-only path). Defaults to `'code'` to match the
+   * pre-rewrite default. */
+  private readonly jobType: LogJobType;
+
+  /** Authoritative turnId for this service. Mirrored into the appender
+   * (when present) so chat.jsonl writes attach the same id. Tracking it
+   * locally keeps emissions working even in test environments / paths
+   * where no appender was constructed (no `featurePath`). */
+  private turnId: string | null = null;
+
+  /** Sync channel subscription handle (cleanup on dispose). */
   private syncUnsubscribe: (() => Promise<void>) | null = null;
 
-  // chat.jsonl writer (session redesign §16.2 SSOT)
-  private chatLogAppender: ChatLogAppender | null = null;
+  /** Per-worker-scope trackers (`_main_` / `worker-N`). */
+  private readonly workerStates = new Map<string, WorkerLocalState>();
 
   constructor(stateStore: StateStorePort, env: LLMResponseEnv) {
     this.stateStore = stateStore;
-    // Initialize core components
-    this.sessionStore = new SessionStore(stateStore, env);
+    this.turnContext = new TurnContext(env);
     this.broadcaster = new MessageBroadcaster(stateStore);
-    this.contentMerger = new ContentMerger(this.broadcaster);
+    this.jobType = (env.jobType ?? 'code') as LogJobType;
 
-    // Register a ChatLogAppender whenever we have the minimum env to write
-    // chat.jsonl (featurePath + jobId + jobType). Initial turnId is unset —
-    // the orchestrator calls setTurnId() after recordUserTurn returns.
+    // Wire chat.jsonl appender whenever we have the minimum env. Initial
+    // turnId is unset — the orchestrator calls `setTurnId` after
+    // `recordUserTurn` returns.
     if (env.featurePath && env.jobId && env.jobType) {
       this.chatLogAppender = new ChatLogAppender({
         featurePath: env.featurePath,
@@ -72,486 +165,51 @@ export class LLMResponseService {
       });
       setChatLogAppender(this.chatLogAppender);
     }
-    
-    // Initialize handlers
-    this.llmEventHandler = new LLMEventHandler(
-      this.sessionStore,
-      this.contentMerger,
-      this.broadcaster
-    );
-    this.fileOperationHandler = new FileOperationHandler(
-      this.sessionStore,
-      this.broadcaster,
-      this.contentMerger
-    );
-    this.commandExecutionHandler = new CommandExecutionHandler(
-      this.sessionStore,
-      this.broadcaster,
-      this.contentMerger
-    );
-    this.chatStatusHandler = new ChatStatusHandler(
-      this.sessionStore,
-      this.contentMerger,
-    );
-    
-    // Enabled if all required env vars are present
+
     this.enabled = !!(env.projectId && env.featureName && env.jobId);
-    
     if (this.enabled) {
-      logger.info(`LLMResponseService initialized: ${env.projectId}/${env.featureName} (Job: ${env.jobId})`, {
-        component: 'LLMResponseService'
-      });
+      logger.info(
+        `LLMResponseService initialized: ${env.projectId}/${env.featureName} (Job: ${env.jobId})`,
+        { component: 'LLMResponseService' },
+      );
     }
   }
 
-  // ============================================================================
-  // Message Lifecycle
-  // ============================================================================
+  // ═══════════════════════════════════════════════════════════════════
+  // Lifecycle
+  // ═══════════════════════════════════════════════════════════════════
 
-  /**
-   * Check if service is enabled
-   */
   isEnabled(): boolean {
     return this.enabled;
   }
 
   /**
-   * Check if there's an active message
-   */
-  async hasActiveMessage(): Promise<boolean> {
-    if (!this.enabled) return false;
-    return this.sessionStore.hasActiveMessage();
-  }
-
-  /**
-   * Start a new assistant message
-   * Returns the message ID
-   */
-  async startMessage(): Promise<string | null> {
-    if (!this.enabled) return null;
-
-    try {
-      // Ensure session is loaded
-      const session = await this.sessionStore.getOrCreateSession();
-      
-      const messageId = await this.sessionStore.startMessage();
-      const ctx = this.sessionStore.getContext();
-      
-      // ✅ CRITICAL: Broadcast message_start for UI to begin streaming display
-      // This was missing and caused UI to not show any streaming content
-      const currentMessage = this.sessionStore.getCurrentMessage();
-      if (currentMessage) {
-        this.broadcaster.broadcast(ctx.projectId, ctx.featureName, {
-          type: 'message_start',
-          message: currentMessage
-        }, ctx.userContext);
-      }
-      
-      // ✅ Auto-inject placeholder on message creation (Universal Placeholder System)
-      this.chatStatusHandler.showChatStatus('placeholder');
-      
-      // Subscribe to sync channel so SSE API Pod can request a fresh snapshot on reconnect
-      await this.subscribeSyncChannel();
-      
-      logger.debug(`Started message: ${messageId}`, { component: 'LLMResponseService' });
-      return messageId;
-    } catch (error) {
-      logger.error(`Failed to start message`, { component: 'LLMResponseService' }, error);
-      return null;
-    }
-  }
-
-  /**
    * Update the active turnId for chat.jsonl appends. Called by the
    * orchestrator after `recordUserTurn` resolves — before that point
-   * there is no turnId to attach to trace lines.
+   * there is no turnId to attach to trace lines, so emissions silently
+   * no-op.
    */
   setTurnId(turnId: string | null): void {
+    this.turnId = turnId;
     if (this.chatLogAppender) {
       this.chatLogAppender.setTurnId(turnId);
     }
-  }
-
-  /**
-   * Finalize current message
-   */
-  async finalizeMessage(cancelled: boolean = false): Promise<void> {
-    if (!this.enabled) return;
-
-    try {
-      const session = this.sessionStore.getSession();
-      const ctx = this.sessionStore.getContext();
-
-      // Emit assistant_message to chat.jsonl before finalization so the UI
-      // has a durable record of the reply text (cancelled / non-cancelled).
-      if (this.chatLogAppender && session?.currentMessage && !cancelled) {
-        const text = collectAssistantText(session.currentMessage.contents);
-        if (text.trim().length > 0) {
-          this.chatLogAppender.appendAssistantMessage(text);
-        }
-      }
-
-      if (session) {
-        this.contentMerger.finalizeContent(
-          ctx.projectId,
-          ctx.featureName,
-          session,
-          cancelled
-        );
-        
-        if (session.currentMessage) {
-          this.broadcaster.broadcastMessageFinalized(
-            ctx.projectId,
-            ctx.featureName,
-            session.currentMessage.id,
-            ctx.userContext
-          );
-        }
-      }
-      
-      await this.sessionStore.finalizeMessage(cancelled);
-      
-      // Only unsubscribe when no active messages remain (main + all workers)
-      if (!this.sessionStore.hasAnyActiveMessage()) {
-        await this.unsubscribeSyncChannel();
-      }
-      
-      logger.debug(`Finalized message (cancelled=${cancelled})`, { component: 'LLMResponseService' });
-    } catch (error) {
-      logger.error(`Failed to finalize message`, { component: 'LLMResponseService' }, error);
+    if (turnId) {
+      // Subscribe to sync channel exactly once per turn so SSE API Pod
+      // reconnects can ask the worker for an in-flight buffer snapshot.
+      void this.subscribeSyncChannel();
     }
   }
 
-  // ============================================================================
-  // LLM Stream Events
-  // ============================================================================
-
-  /**
-   * Send LLM stream event
-   */
-  async sendLLMEvent(event: LLMStreamEvent): Promise<void> {
-    if (!this.enabled) {
-      logger.warn(`LLMResponseService disabled, skipping event type '${event.type}'`, { 
-        component: 'LLMResponseService' 
-      });
-      return;
-    }
-
-    try {
-      // ✅ Ensure local session is loaded (critical for resume: new process has empty localSession)
-      let session = this.sessionStore.getSession();
-      if (!session) {
-        // Local cache is empty - load from Redis (happens on resume when child process is new)
-        session = await this.sessionStore.getOrCreateSession();
-      }
-      
-      // Ensure message is active
-      const hasActive = session?.currentMessage !== undefined;
-      if (!hasActive) {
-        // Auto-start message if needed
-        const messageId = await this.startMessage();
-        if (!messageId) {
-          logger.error(`Failed to auto-start message for LLM event`, { 
-            component: 'LLMResponseService' 
-          });
-          return;
-        }
-        // Refresh session after startMessage
-        session = this.sessionStore.getSession();
-      }
-      
-      if (!session) {
-        logger.error(`No session in sessionStore before handleEvent`, { 
-          component: 'LLMResponseService' 
-        });
-        return;
-      }
-      if (!session.currentMessage) {
-        logger.error(`No currentMessage in session before handleEvent (messages: ${session.messages.length})`, { 
-          component: 'LLMResponseService' 
-        });
-        return;
-      }
-      
-      this.llmEventHandler.handleEvent(event);
-    } catch (error) {
-      logger.error(`Failed to send LLM event`, { component: 'LLMResponseService' }, error);
-    }
-  }
-
-  // ============================================================================
-  // Chat Status
-  // ============================================================================
-
-  /**
-   * Show chat status message
-   * Returns the content index
-   */
-  async showChatStatus(type: ChatStatusType, metadata?: Record<string, any>): Promise<number | undefined> {
-    if (!this.enabled) return undefined;
-
-    try {
-      // ✅ Ensure local session is loaded (critical for resume)
-      let session = this.sessionStore.getSession();
-      if (!session) {
-        session = await this.sessionStore.getOrCreateSession();
-      }
-      
-      // Ensure message is active
-      const hasActive = session?.currentMessage !== undefined;
-      if (!hasActive) {
-        const messageId = await this.startMessage();
-        if (!messageId) {
-          logger.error(`Failed to start message for chat status`, { 
-            component: 'LLMResponseService' 
-          });
-          return undefined;
-        }
-      }
-      
-      const contentIndex = this.chatStatusHandler.showChatStatus(type, metadata);
-      return contentIndex !== -1 ? contentIndex : undefined;
-    } catch (error) {
-      logger.error(`Failed to show chat status`, { component: 'LLMResponseService' }, error);
-      return undefined;
-    }
-  }
-
-  /**
-   * Remove a chat status UI element by its content index
-   */
-  removeChatStatus(contentIndex: number, expectedType?: string): void {
-    if (!this.enabled) return;
-    this.chatStatusHandler.removeChatStatus(contentIndex, expectedType);
-  }
-
-  // ============================================================================
-  // File Operations
-  // ============================================================================
-
-  async startFileCreation(filePath: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.startFileCreation(filePath);
-  }
-
-  async streamFileContent(filePath: string, content: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.streamFileContent(filePath, content);
-  }
-
-  async completeFileCreation(
-    filePath: string,
-    content: string,
-    stats?: { diffBeforeLines?: number },
-  ): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.completeFileCreation(filePath, content, stats);
-  }
-
-  async startFileEdit(filePath: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.startFileEdit(filePath);
-  }
-
-  async streamFileDiff(filePath: string, diffBefore: string, diffAfter: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.streamFileDiff(filePath, diffBefore, diffAfter);
-  }
-
-  async completeFileEdit(filePath: string, diffBefore: string, diffAfter: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.completeFileEdit(filePath, diffBefore, diffAfter);
-  }
-
-  async startFileDeletion(filePath: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.startFileDeletion(filePath);
-  }
-
-  async completeFileDeletion(filePath: string, content?: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.completeFileDeletion(filePath, content);
-  }
-
-  async failFileEdit(filePath: string, errorMessage: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.failFileEdit(filePath, errorMessage);
-  }
-
-  async failFileCreation(filePath: string, errorMessage: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.fileOperationHandler.failFileCreation(filePath, errorMessage);
-  }
-
-  // ============================================================================
-  // Command Execution
-  // ============================================================================
-
-  async startCommand(command: string): Promise<number | undefined> {
-    if (!this.enabled) return undefined;
-    if (!await this.ensureActiveMessage()) return undefined;
-    const index = await this.commandExecutionHandler.startCommand(command);
-    return index !== -1 ? index : undefined;
-  }
-
-  async streamCommandOutput(command: string, output: string): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.commandExecutionHandler.streamCommandOutput(command, output);
-  }
-
-  async completeCommand(command: string, output: string, exitCode: number): Promise<void> {
-    if (!this.enabled) return;
-    if (!await this.ensureActiveMessage()) return;
-    await this.commandExecutionHandler.completeCommand(command, output, exitCode);
-  }
-
-  // ============================================================================
-  // Legacy API Compatibility
-  // ============================================================================
-
-  /**
-   * Legacy: Add command execution notification
-   */
-  async addCommandExecution(command: string, output?: string, exitCode?: number): Promise<void> {
-    if (!this.enabled) return;
-    await this.completeCommand(command, output || '', exitCode ?? 0);
-  }
-
-  /**
-   * Legacy: Add exploring status
-   */
-  async addExploringStatus(current: number, total: number): Promise<void> {
-    await this.showChatStatus('exploring', { filesCount: current, totalFiles: total });
-  }
-
-  /**
-   * Legacy: Add explored result
-   */
-  async addExploredResult(filesCount: number, filesList?: string[]): Promise<void> {
-    await this.showChatStatus('explored', { filesCount, filesList });
-  }
-
-  /**
-   * Legacy: Add reading file status
-   */
-  async addReadingFile(filePath: string): Promise<number | undefined> {
-    return this.showChatStatus('reading', { filePath });
-  }
-
-  /**
-   * Legacy: Add read complete
-   */
-  async addReadComplete(filePath: string, readingIndex?: number, error?: string): Promise<void> {
-    await this.showChatStatus('read', { filePath, error, _mergeIndex: readingIndex });
-  }
-
-  /**
-   * Drain all pending broadcast publishes before process exit.
-   */
+  /** Drain pending broadcaster publishes before the worker process exits. */
   async drainBroadcaster(): Promise<void> {
     await this.broadcaster.drain();
   }
 
-  // ============================================================================
-  // Private Helpers
-  // ============================================================================
-
   /**
-   * Ensure there's an active message, starting one if needed
-   */
-  private async ensureActiveMessage(): Promise<boolean> {
-    let session = this.sessionStore.getSession();
-    if (!session) {
-      session = await this.sessionStore.getOrCreateSession();
-    }
-    
-    if (session?.currentMessage) return true;
-
-    logger.warn(`No active message, attempting to start`, { component: 'LLMResponseService' });
-    const messageId = await this.startMessage();
-    return messageId !== null;
-  }
-
-  // ============================================================================
-  // Chat Sync (reconnect snapshot)
-  // ============================================================================
-
-  private async subscribeSyncChannel(): Promise<void> {
-    if (this.syncUnsubscribe) return;
-    try {
-      const channel = getChatSyncChannel(this.sessionStore.getContext().sessionKey);
-      this.syncUnsubscribe = await this.stateStore.subscribe(channel, () => {
-        this.handleSyncRequest();
-      }) as () => Promise<void>;
-      logger.debug(`Subscribed to sync channel: ${channel}`, { component: 'LLMResponseService' });
-    } catch (error) {
-      logger.warn(`Failed to subscribe to sync channel`, { component: 'LLMResponseService' }, error);
-    }
-  }
-
-  private async unsubscribeSyncChannel(): Promise<void> {
-    if (!this.syncUnsubscribe) return;
-    try {
-      await this.syncUnsubscribe();
-    } catch (error) {
-      logger.warn(`Failed to unsubscribe sync channel`, { component: 'LLMResponseService' }, error);
-    } finally {
-      this.syncUnsubscribe = null;
-    }
-  }
-
-  /**
-   * Respond to a sync_request from SSE API Pod by broadcasting
-   * a full snapshot of all active messages (main + workers).
-   */
-  private handleSyncRequest(): void {
-    try {
-      const ctx = this.sessionStore.getContext();
-
-      // Main graph currentMessage
-      const mainMessage = this.sessionStore.getCurrentMessage();
-      if (mainMessage) {
-        this.broadcaster.broadcast(ctx.projectId, ctx.featureName, {
-          type: 'message_snapshot',
-          messageId: mainMessage.id,
-          contents: mainMessage.contents,
-          contentsCount: mainMessage.contents.length,
-        }, ctx.userContext);
-      }
-
-      // All parallel workers' currentMessages
-      for (const [, ws] of this.sessionStore.getWorkerMessages()) {
-        if (ws.currentMessage) {
-          this.broadcaster.broadcast(ctx.projectId, ctx.featureName, {
-            type: 'message_snapshot',
-            messageId: ws.currentMessage.id,
-            contents: ws.currentMessage.contents,
-            contentsCount: ws.currentMessage.contents.length,
-          }, ctx.userContext);
-        }
-      }
-
-      logger.debug(`Handled sync request: sent snapshot`, { component: 'LLMResponseService' });
-    } catch (error) {
-      logger.error(`Failed to handle sync request`, { component: 'LLMResponseService' }, error);
-    }
-  }
-
-  /**
-   * Tear down process-scoped trace writer registration. Intended for tests
-   * that create multiple LLMResponseService instances in the same process.
-   * Production workers exit immediately after the job finishes.
+   * Tear down the process-scoped chat-log appender registration. Tests
+   * that construct multiple service instances in one process call this
+   * between cases; production workers exit immediately after the job.
    */
   disposeChatLogAppender(): void {
     if (this.chatLogAppender) {
@@ -559,27 +217,878 @@ export class LLMResponseService {
       this.chatLogAppender = null;
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Compat — message lifecycle (legacy callers)
+  //
+  // The chat-SSOT §5 rewrite removes the `ChatMessage` scratchpad. These
+  // methods are retained so existing callers compile unchanged; they are
+  // best-effort no-ops or buffer flushes. Phase 9 retires the surface.
+  // ═══════════════════════════════════════════════════════════════════
+
+  /** @deprecated chat-SSOT §5: no per-message state. Always returns false. */
+  async hasActiveMessage(): Promise<boolean> {
+    return false;
+  }
+
+  /**
+   * @deprecated chat-SSOT §5: no per-message state. Returns null so legacy
+   * callers that gate on a non-null id keep working as a no-op.
+   */
+  async startMessage(): Promise<string | null> {
+    return null;
+  }
+
+  /**
+   * Finalize the in-flight turn buffer: drain text/thinking into chat.jsonl
+   * and clear the per-worker streaming buffer. `cancelled=true` skips the
+   * assistant_message persist and clears any partial thinking block.
+   */
+  async finalizeMessage(cancelled: boolean = false): Promise<void> {
+    if (!this.enabled) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+
+    try {
+      if (!cancelled) {
+        await this.flushThinkingBuffer();
+        await this.flushTextBuffer();
+      } else {
+        await this.clearTurnBuffer();
+        // Reset thinking tracker so the next turn starts fresh.
+        const ws = this.getWorkerState();
+        ws.thinking = null;
+      }
+    } catch (error) {
+      logger.warn(`finalizeMessage failed`, { component: 'LLMResponseService' }, error);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Finalized lines (chat.jsonl + chat_event_appended SSE)
+  // ═══════════════════════════════════════════════════════════════════
+
+  async appendThinking(text: string, cardId?: string): Promise<void> {
+    if (!this.enabled || !text || !this.getTurnId()) return;
+    const line: ChatThinkingLine = {
+      ...this.lineBase('assistant_thinking'),
+      type: 'assistant_thinking',
+      text,
+      ...(cardId ? { cardId } : {}),
+    };
+    await this.persistAndBroadcast(line);
+  }
+
+  async appendChatStatus(
+    cardId: string,
+    statusType: ChatStatusType,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.enabled || !cardId || !this.getTurnId()) return;
+    const line: ChatStatusLine = {
+      ...this.lineBase('chat_status'),
+      type: 'chat_status',
+      cardId,
+      statusType,
+      metadata,
+    };
+    // Clearing any pending card with the same id keeps TURN_BUFFER clean
+    // when a progress→terminal transition finalizes here.
+    await this.clearPendingCardSafe(cardId);
+    await this.persistAndBroadcast(line);
+  }
+
+  async appendAssistantMessage(text: string): Promise<void> {
+    if (!this.enabled || !text || !this.getTurnId()) return;
+    const line: ChatAssistantMessageLine = {
+      ...this.lineBase('assistant_message'),
+      type: 'assistant_message',
+      text,
+    };
+    await this.persistAndBroadcast(line);
+  }
+
+  async appendChoicePresented(args: {
+    cardId: string;
+    cardType: string;
+    prompt?: string;
+    payload?: Record<string, unknown>;
+  }): Promise<void> {
+    if (!this.enabled || !args.cardId || !this.getTurnId()) return;
+    const line: ChatChoicePresentedLine = {
+      ...this.lineBase('choice_presented'),
+      type: 'choice_presented',
+      cardId: args.cardId,
+      cardType: args.cardType,
+      prompt: args.prompt,
+      payload: args.payload,
+    };
+    await this.persistAndBroadcast(line);
+  }
+
+  async appendChoiceResolved(args: {
+    cardId: string;
+    choiceSelected: string;
+    resolvedLabel: string;
+    answer?: Record<string, unknown>;
+  }): Promise<void> {
+    if (!this.enabled || !args.cardId || !this.getTurnId()) return;
+    const line: ChatChoiceResolvedLine = {
+      ...this.lineBase('choice_resolved'),
+      type: 'choice_resolved',
+      cardId: args.cardId,
+      choiceSelected: args.choiceSelected,
+      resolvedLabel: args.resolvedLabel,
+      answer: args.answer,
+    };
+    await this.persistAndBroadcast(line);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // In-flight streaming (TURN_BUFFER + streaming_delta SSE)
+  // ═══════════════════════════════════════════════════════════════════
+
+  async streamThinkingChunk(chunk: string, cardId?: string): Promise<void> {
+    if (!this.enabled || !chunk) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    const ws = this.getWorkerState();
+    if (!ws.thinking) {
+      ws.thinking = {
+        cardId: cardId ?? this.mintCardId('think'),
+        startTime: Date.now(),
+      };
+    }
+    await this.appendBufferKind(turnId, 'thinking', chunk, undefined);
+    this.broadcaster.broadcastStreamingDelta(
+      this.turnContext.context.projectId,
+      this.turnContext.context.featureName,
+      {
+        turnId,
+        workerScope: this.workerScopeForLine(),
+        kind: 'thinking',
+        cardId: ws.thinking.cardId,
+        chunk,
+      },
+      this.turnContext.context.userContext,
+    );
+  }
+
+  async streamTextChunk(chunk: string): Promise<void> {
+    if (!this.enabled || !chunk) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    await this.appendBufferKind(turnId, 'text', chunk, undefined);
+    this.broadcaster.broadcastStreamingDelta(
+      this.turnContext.context.projectId,
+      this.turnContext.context.featureName,
+      {
+        turnId,
+        workerScope: this.workerScopeForLine(),
+        kind: 'text',
+        chunk,
+      },
+      this.turnContext.context.userContext,
+    );
+  }
+
+  async registerPendingCard(
+    cardId: string,
+    statusType: ChatStatusType,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.enabled || !cardId) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    const card: PendingCardSnapshot = {
+      cardId,
+      statusType,
+      metadata: { ...(metadata ?? {}) },
+    };
+    await this.stateStore
+      .setTurnBufferPendingCard(
+        this.turnContext.context.sessionKey,
+        turnId,
+        this.turnContext.getWorkerScopeKey(),
+        card,
+      )
+      .catch((err) =>
+        logger.warn(`setTurnBufferPendingCard failed`, { component: 'LLMResponseService' }, err),
+      );
+    // Emit a zero-length card_output delta so the FE renders the loading
+    // shell even before the first chunk arrives. Chunk='' is an explicit
+    // "card just registered" hint — the FE applies it as an upsert.
+    this.broadcaster.broadcastStreamingDelta(
+      this.turnContext.context.projectId,
+      this.turnContext.context.featureName,
+      {
+        turnId,
+        workerScope: this.workerScopeForLine(),
+        kind: 'card_output',
+        cardId,
+        chunk: '',
+      },
+      this.turnContext.context.userContext,
+    );
+  }
+
+  async streamCardOutput(cardId: string, chunk: string): Promise<void> {
+    if (!this.enabled || !cardId || !chunk) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    await this.appendBufferKind(turnId, 'card_output', chunk, cardId);
+    this.broadcaster.broadcastStreamingDelta(
+      this.turnContext.context.projectId,
+      this.turnContext.context.featureName,
+      {
+        turnId,
+        workerScope: this.workerScopeForLine(),
+        kind: 'card_output',
+        cardId,
+        chunk,
+      },
+      this.turnContext.context.userContext,
+    );
+  }
+
+  async finalizePendingCard(
+    cardId: string,
+    statusType: ChatStatusType,
+    metadata?: Record<string, unknown>,
+  ): Promise<void> {
+    await this.appendChatStatus(cardId, statusType, metadata);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Buffer flush helpers
+  // ═══════════════════════════════════════════════════════════════════
+
+  async flushThinkingBuffer(cardId?: string): Promise<void> {
+    if (!this.enabled) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    const buffer = await this.stateStore
+      .getTurnBuffer(
+        this.turnContext.context.sessionKey,
+        turnId,
+        this.turnContext.getWorkerScopeKey(),
+      )
+      .catch(() => null);
+    const ws = this.getWorkerState();
+    const text = buffer?.thinking?.trim();
+    const finalCardId = cardId ?? ws.thinking?.cardId;
+    if (text && text.length > 0) {
+      await this.appendThinking(text, finalCardId);
+    }
+    // Clear ONLY the thinking field — text and pendingCards live on.
+    if (buffer) {
+      const next = { ...buffer, thinking: undefined };
+      await this.replaceTurnBuffer(turnId, next);
+    }
+    ws.thinking = null;
+  }
+
+  async flushTextBuffer(): Promise<void> {
+    if (!this.enabled) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    const buffer = await this.stateStore
+      .getTurnBuffer(
+        this.turnContext.context.sessionKey,
+        turnId,
+        this.turnContext.getWorkerScopeKey(),
+      )
+      .catch(() => null);
+    const text = buffer?.text?.trim();
+    if (text && text.length > 0) {
+      await this.appendAssistantMessage(text);
+    }
+    if (buffer) {
+      const next = { ...buffer, text: undefined };
+      await this.replaceTurnBuffer(turnId, next);
+    }
+  }
+
+  async clearTurnBuffer(): Promise<void> {
+    if (!this.enabled) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    await this.stateStore
+      .clearTurnBuffer(
+        this.turnContext.context.sessionKey,
+        turnId,
+        this.turnContext.getWorkerScopeKey(),
+      )
+      .catch((err) =>
+        logger.warn(`clearTurnBuffer failed`, { component: 'LLMResponseService' }, err),
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Compat — `showChatStatus` / `removeChatStatus`
+  //
+  // Returns a `cardId` (string) so callers can chain progress → terminal
+  // emissions via `metadata._mergeIndex`. Pre-§5 callers passed a numeric
+  // contents-array index; the field name stays for type-loose backwards
+  // compatibility (Record<string, any>), only the value type changed.
+  // ═══════════════════════════════════════════════════════════════════
+
+  async showChatStatus(
+    type: ChatStatusType,
+    metadata?: Record<string, any>,
+  ): Promise<string | undefined> {
+    if (!this.enabled) return undefined;
+    if (!this.getTurnId()) return undefined;
+
+    if (type === 'placeholder' || type === 'thinking') {
+      // Live-only signals — no chat.jsonl persistence and no buffer
+      // entry. Placeholder is rendered by the FE as a transient shimmer
+      // when no other in-flight content exists; the thinking stream is
+      // driven by `streamThinkingChunk` from `sendLLMEvent`.
+      return undefined;
+    }
+
+    if (type === 'triage_choice' || type === 'choice_card') {
+      const cardId = (metadata?.cardId as string | undefined) ?? this.mintCardId('choice');
+      const cardType =
+        type === 'triage_choice'
+          ? 'triage_choice'
+          : (metadata?.cardType as string | undefined) ?? 'choice_card';
+      const prompt = generateChatStatusContent(type, metadata);
+      const {
+        cardId: _ci,
+        cardType: _ct,
+        provider: _p,
+        timestamp: _ts,
+        message: _m,
+        ...restPayload
+      } = metadata ?? {};
+      const payload = {
+        ...restPayload,
+        ...(metadata?.message !== undefined ? { message: metadata.message } : {}),
+      } as Record<string, unknown>;
+      await this.appendChoicePresented({ cardId, cardType, prompt, payload });
+      return cardId;
+    }
+
+    const carry =
+      (metadata?.cardId as string | undefined) ?? (metadata?._mergeIndex as string | undefined);
+    const cardId = carry ?? this.mintCardId();
+
+    const persistedMetadata = stripInternalKeys({ ...(metadata ?? {}) });
+    persistedMetadata.cardId = cardId;
+
+    if (PROGRESS_STATUS_TYPES.has(type)) {
+      // Track common chaining keys so the paired terminal emission can
+      // resolve the cardId without the caller passing it back.
+      const ws = this.getWorkerState();
+      const filePath = metadata?.filePath as string | undefined;
+      const command = metadata?.command as string | undefined;
+      if (filePath) ws.fileCardByPath.set(filePath, cardId);
+      if (command) ws.commandCardByCommand.set(command, cardId);
+      await this.registerPendingCard(cardId, type, persistedMetadata);
+      return cardId;
+    }
+
+    // Terminal / unknown — persist a chat_status line. Cleanup the
+    // matching tracker entry on file/command terminals so the next
+    // emission for the same key starts fresh.
+    if (type === 'read' || type === 'read_source') {
+      const filePath = metadata?.filePath as string | undefined;
+      if (filePath) this.getWorkerState().fileCardByPath.delete(filePath);
+    } else if (type === 'command') {
+      const command = metadata?.command as string | undefined;
+      if (command) this.getWorkerState().commandCardByCommand.delete(command);
+    }
+    await this.appendChatStatus(cardId, type, persistedMetadata);
+    return cardId;
+  }
+
+  /**
+   * Remove the in-flight pending card identified by `cardId`. Used by
+   * legacy "progress with 0 results → drop the spinner" flows
+   * (`semanticSearch.removeChatStatus(retrievingIndex)` etc.). chat.jsonl
+   * is unaffected because progress cards never persist.
+   */
+  async removeChatStatus(cardId: string, _expectedType?: string): Promise<void> {
+    if (!this.enabled || !cardId) return;
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    await this.stateStore
+      .clearTurnBufferPendingCard(
+        this.turnContext.context.sessionKey,
+        turnId,
+        this.turnContext.getWorkerScopeKey(),
+        cardId,
+      )
+      .catch((err) =>
+        logger.warn(`removeChatStatus failed`, { component: 'LLMResponseService' }, err),
+      );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Compat — LLM event dispatch
+  // ═══════════════════════════════════════════════════════════════════
+
+  async sendLLMEvent(event: LLMStreamEvent): Promise<void> {
+    if (!this.enabled || !this.getTurnId()) return;
+
+    try {
+      switch (event.type) {
+        case 'thinking': {
+          const blockEnd = event.metadata?.blockEnd === true;
+          if (event.thinking) await this.streamThinkingChunk(event.thinking);
+          if (blockEnd) await this.flushThinkingBuffer();
+          break;
+        }
+        case 'text': {
+          if (event.text && event.text.trim()) {
+            await this.streamTextChunk(event.text);
+          }
+          break;
+        }
+        case 'tool_use': {
+          if (!event.toolUse) break;
+          const { name, input } = event.toolUse as { name: string; input: any };
+          if (TOOLS_WITH_DEDICATED_STATUS.has(name)) break;
+          if (
+            name === 'edit_file' ||
+            name === 'delete_file' ||
+            name === 'file' ||
+            name === 'write_file' ||
+            name === 'create_file'
+          ) {
+            // File mutators are emitted via the dedicated FileRenderer
+            // path (start*/complete*). The legacy substrate also injected
+            // a placeholder MessageContent here to nest the loading
+            // shell — that role moves to the file-progress card now.
+            break;
+          }
+          if (name === 'mkdir') {
+            const dirPath = input?.path as string | undefined;
+            await this.appendChatStatus(this.mintCardId('tool'), 'tool_action', {
+              toolName: 'mkdir',
+              actionIcon: '📁',
+              content: `Created directory: ${dirPath ?? ''}`,
+              filePath: dirPath,
+            });
+            break;
+          }
+          // Generic fallback — match the legacy summary truncation so the
+          // tool_action card body stays readable.
+          const summary: Record<string, unknown> = { ...(input ?? {}) };
+          for (const key of Object.keys(summary)) {
+            if (typeof summary[key] === 'string' && (summary[key] as string).length > 100) {
+              summary[key] = `(${(summary[key] as string).length} chars)`;
+            }
+          }
+          const json = JSON.stringify(summary);
+          const display = json.length > 200 ? `${name}: ${json.slice(0, 200)}...` : `${name}: ${json}`;
+          await this.appendChatStatus(this.mintCardId('tool'), 'tool_action', {
+            toolName: name,
+            actionIcon: '🔧',
+            content: display,
+          });
+          break;
+        }
+        case 'error': {
+          const message = event.error?.message ?? 'Unknown error';
+          await this.streamTextChunk(`❌ Error: ${message}`);
+          break;
+        }
+        case 'done':
+          // Caller controls finalize via `finalizeMessage`. No-op here.
+          break;
+      }
+    } catch (error) {
+      logger.error(`sendLLMEvent failed`, { component: 'LLMResponseService' }, error);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Compat — File operations
+  //
+  // Each progress emission registers a pending card and remembers the
+  // cardId by filePath; the terminal emission finalizes that card via
+  // `appendChatStatus` so chat.jsonl carries one line per file event.
+  // The legacy `_mergeIndex` chaining is replaced by the per-worker
+  // `fileCardByPath` tracker so callers stay churn-free.
+  // ═══════════════════════════════════════════════════════════════════
+
+  async startFileCreation(filePath: string): Promise<string> {
+    return this.startFileOp(filePath, 'file_creating');
+  }
+
+  async streamFileContent(filePath: string, content: string): Promise<void> {
+    if (!this.enabled || !filePath || !content) return;
+    const cardId = this.getWorkerState().fileCardByPath.get(filePath);
+    if (!cardId) return;
+    await this.streamCardOutput(cardId, content);
+  }
+
+  async completeFileCreation(
+    filePath: string,
+    content: string,
+    stats?: { diffBeforeLines?: number },
+  ): Promise<void> {
+    await this.completeFileOp(filePath, 'file_create', {
+      filePath,
+      content,
+      ...(stats?.diffBeforeLines !== undefined ? { diffBeforeLines: stats.diffBeforeLines } : {}),
+    });
+  }
+
+  async startFileEdit(filePath: string): Promise<string> {
+    return this.startFileOp(filePath, 'file_editing');
+  }
+
+  async streamFileDiff(filePath: string, diffBefore: string, diffAfter: string): Promise<void> {
+    if (!this.enabled || !filePath) return;
+    const cardId = this.getWorkerState().fileCardByPath.get(filePath);
+    if (!cardId) return;
+    // Stream the after-diff snapshot — the FE keeps the latest snapshot
+    // per cardId. Passing the snapshot (not delta) matches the legacy
+    // `streaming` phase which broadcast the full content_update payload.
+    await this.streamCardOutput(cardId, diffAfter);
+    // diffBefore is captured implicitly via the terminal `file_edit` line
+    // metadata; no separate channel is needed here.
+    void diffBefore;
+  }
+
+  async completeFileEdit(filePath: string, diffBefore: string, diffAfter: string): Promise<void> {
+    await this.completeFileOp(filePath, 'file_edit', {
+      filePath,
+      diffBefore,
+      diffAfter,
+    });
+  }
+
+  async startFileDeletion(filePath: string): Promise<string> {
+    return this.startFileOp(filePath, 'file_deleting');
+  }
+
+  async completeFileDeletion(filePath: string, content?: string): Promise<void> {
+    await this.completeFileOp(filePath, 'file_delete', { filePath, content });
+  }
+
+  async failFileEdit(filePath: string, errorMessage: string): Promise<void> {
+    await this.completeFileOp(filePath, 'file_edit_failed', {
+      filePath,
+      reason: errorMessage,
+    });
+  }
+
+  async failFileCreation(filePath: string, errorMessage: string): Promise<void> {
+    await this.completeFileOp(filePath, 'file_create_failed', {
+      filePath,
+      reason: errorMessage,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Compat — Command execution
+  // ═══════════════════════════════════════════════════════════════════
+
+  async startCommand(command: string): Promise<string | undefined> {
+    if (!this.enabled || !command || !this.getTurnId()) return undefined;
+    const cardId = this.mintCardId('cmd');
+    this.getWorkerState().commandCardByCommand.set(command, cardId);
+    await this.registerPendingCard(cardId, 'command_running', { command });
+    return cardId;
+  }
+
+  async streamCommandOutput(command: string, output: string): Promise<void> {
+    if (!this.enabled || !command || !output) return;
+    const cardId = this.getWorkerState().commandCardByCommand.get(command);
+    if (!cardId) return;
+    // Callers send accumulated snapshots; downstream consumers (FE)
+    // keep the latest snapshot per cardId so passing the full string is
+    // semantically correct without delta calculation here.
+    await this.streamCardOutput(cardId, output);
+  }
+
+  async completeCommand(command: string, output: string, exitCode: number): Promise<void> {
+    if (!this.enabled || !this.getTurnId()) return;
+    const ws = this.getWorkerState();
+    const cardId = ws.commandCardByCommand.get(command) ?? this.mintCardId('cmd');
+    ws.commandCardByCommand.delete(command);
+    await this.appendChatStatus(cardId, 'command', {
+      command,
+      exitCode,
+      output: truncateOutput(output),
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Compat — Legacy helper aliases
+  // ═══════════════════════════════════════════════════════════════════
+
+  async addCommandExecution(command: string, output?: string, exitCode?: number): Promise<void> {
+    if (!this.enabled) return;
+    await this.completeCommand(command, output ?? '', exitCode ?? 0);
+  }
+
+  async addExploringStatus(current: number, total: number): Promise<void> {
+    await this.showChatStatus('exploring', { filesCount: current, totalFiles: total });
+  }
+
+  async addExploredResult(filesCount: number, filesList?: string[]): Promise<void> {
+    await this.showChatStatus('explored', { filesCount, filesList });
+  }
+
+  async addReadingFile(filePath: string): Promise<string | undefined> {
+    return this.showChatStatus('reading', { filePath });
+  }
+
+  async addReadComplete(
+    filePath: string,
+    readingCardId?: string,
+    error?: string,
+  ): Promise<void> {
+    await this.showChatStatus('read', {
+      filePath,
+      ...(error ? { error } : {}),
+      ...(readingCardId ? { _mergeIndex: readingCardId } : {}),
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Internals — line construction + persist+broadcast
+  // ═══════════════════════════════════════════════════════════════════
+
+  private getTurnId(): string | null {
+    return this.turnId;
+  }
+
+  private workerScopeForLine(): string | undefined {
+    const key = this.turnContext.getWorkerScopeKey();
+    return key === '_main_' ? undefined : key;
+  }
+
+  private getWorkerState(): WorkerLocalState {
+    const key = this.turnContext.getWorkerScopeKey();
+    let ws = this.workerStates.get(key);
+    if (!ws) {
+      ws = makeWorkerState();
+      this.workerStates.set(key, ws);
+    }
+    return ws;
+  }
+
+  private mintCardId(prefix: string = 'card'): string {
+    return `${prefix}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  }
+
+  /**
+   * Common metadata header used by every line emitted from this service.
+   * `workerScope` is omitted on the main graph and set to `worker-N` for
+   * parallel workers (matches the LineBase contract documented in
+   * `@ant/shared/session-log.ts`).
+   */
+  private lineBase(_kind: ChatLine['type']) {
+    const turnId = this.getTurnId();
+    const ws = this.workerScopeForLine();
+    return {
+      ts: new Date().toISOString(),
+      jobId: this.turnContext.context.jobId,
+      turnId: (turnId ?? '') as string,
+      jobType: this.jobType,
+      ...(ws ? { workerScope: ws } : {}),
+    };
+  }
+
+  private async persistAndBroadcast(line: ChatLine): Promise<void> {
+    if (this.chatLogAppender) {
+      this.chatLogAppender.appendChatLine(line);
+    }
+    this.broadcaster.broadcastChatLine(
+      this.turnContext.context.projectId,
+      this.turnContext.context.featureName,
+      line,
+      this.turnContext.context.userContext,
+    );
+  }
+
+  private async appendBufferKind(
+    turnId: string,
+    kind: 'text' | 'thinking' | 'card_output',
+    chunk: string,
+    cardId?: string,
+  ): Promise<void> {
+    await this.stateStore
+      .appendToTurnBuffer(
+        this.turnContext.context.sessionKey,
+        turnId,
+        this.turnContext.getWorkerScopeKey(),
+        kind,
+        chunk,
+        cardId,
+      )
+      .catch((err) =>
+        logger.warn(`appendToTurnBuffer(${kind}) failed`, { component: 'LLMResponseService' }, err),
+      );
+  }
+
+  private async clearPendingCardSafe(cardId: string): Promise<void> {
+    const turnId = this.getTurnId();
+    if (!turnId) return;
+    await this.stateStore
+      .clearTurnBufferPendingCard(
+        this.turnContext.context.sessionKey,
+        turnId,
+        this.turnContext.getWorkerScopeKey(),
+        cardId,
+      )
+      .catch(() => {
+        // best-effort; missing card or transient redis error is ignored.
+      });
+  }
+
+  /**
+   * Replace the buffer contents for the active `(turnId, workerScope)`
+   * pair. Used by the flush helpers to drop just the `text` or
+   * `thinking` field while preserving `pendingCards`. Implemented as
+   * clear + re-append since the StateStorePort lacks a single-shot
+   * "set whole buffer" primitive; the operation is idempotent and the
+   * key TTL is refreshed on every write.
+   */
+  private async replaceTurnBuffer(
+    turnId: string,
+    next: { text?: string; thinking?: string; pendingCards?: Record<string, PendingCardSnapshot> },
+  ): Promise<void> {
+    const sessionKey = this.turnContext.context.sessionKey;
+    const scope = this.turnContext.getWorkerScopeKey();
+    try {
+      await this.stateStore.clearTurnBuffer(sessionKey, turnId, scope);
+      if (next.text) {
+        await this.stateStore.appendToTurnBuffer(sessionKey, turnId, scope, 'text', next.text);
+      }
+      if (next.thinking) {
+        await this.stateStore.appendToTurnBuffer(
+          sessionKey,
+          turnId,
+          scope,
+          'thinking',
+          next.thinking,
+        );
+      }
+      if (next.pendingCards) {
+        for (const card of Object.values(next.pendingCards)) {
+          await this.stateStore.setTurnBufferPendingCard(sessionKey, turnId, scope, card);
+        }
+      }
+    } catch (err) {
+      logger.warn(`replaceTurnBuffer failed`, { component: 'LLMResponseService' }, err);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Internals — file op helpers
+  // ═══════════════════════════════════════════════════════════════════
+
+  private async startFileOp(
+    filePath: string,
+    progressType: 'file_creating' | 'file_editing' | 'file_deleting',
+  ): Promise<string> {
+    if (!this.enabled || !filePath || !this.getTurnId()) return '';
+    const cardId = this.mintCardId('file');
+    this.getWorkerState().fileCardByPath.set(filePath, cardId);
+    await this.registerPendingCard(cardId, progressType, { filePath });
+    return cardId;
+  }
+
+  private async completeFileOp(
+    filePath: string,
+    terminalType: ChatStatusType,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.enabled || !filePath || !this.getTurnId()) return;
+    const ws = this.getWorkerState();
+    const cardId = ws.fileCardByPath.get(filePath) ?? this.mintCardId('file');
+    ws.fileCardByPath.delete(filePath);
+    await this.appendChatStatus(cardId, terminalType, metadata);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Sync channel — reconnect snapshot
+  // ═══════════════════════════════════════════════════════════════════
+
+  private async subscribeSyncChannel(): Promise<void> {
+    if (this.syncUnsubscribe) return;
+    try {
+      const channel = getChatSyncChannel(this.turnContext.context.sessionKey);
+      const unsubscribe = await this.stateStore.subscribe(channel, () => {
+        void this.handleSyncRequest();
+      });
+      this.syncUnsubscribe = unsubscribe as () => Promise<void>;
+      logger.debug(`Subscribed to sync channel: ${channel}`, {
+        component: 'LLMResponseService',
+      });
+    } catch (error) {
+      logger.warn(`Failed to subscribe to sync channel`, { component: 'LLMResponseService' }, error);
+    }
+  }
+
+  private async handleSyncRequest(): Promise<void> {
+    if (!this.enabled) return;
+    try {
+      const snapshots = await this.stateStore.listActiveTurnBuffers(
+        this.turnContext.context.sessionKey,
+      );
+      for (const snap of snapshots) {
+        this.broadcaster.broadcastStreamingBufferSnapshot(
+          this.turnContext.context.projectId,
+          this.turnContext.context.featureName,
+          {
+            turnId: snap.turnId,
+            workerScope: snap.workerScope === '_main_' ? undefined : snap.workerScope,
+            text: snap.text,
+            thinking: snap.thinking,
+            pendingCards: snap.pendingCards,
+          },
+          this.turnContext.context.userContext,
+        );
+      }
+      logger.debug(`Handled sync request: emitted ${snapshots.length} buffer snapshot(s)`, {
+        component: 'LLMResponseService',
+      });
+    } catch (error) {
+      logger.error(`Failed to handle sync request`, { component: 'LLMResponseService' }, error);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Strip ContentMerger-era internal metadata keys before persisting. The
+ * pre-§5 substrate used `_mergeIndex` and friends to drive the contents
+ * array merge; in the chat-SSOT model the cardId itself carries that
+ * identity so these keys would only pollute chat.jsonl.
+ */
+function stripInternalKeys(metadata: Record<string, any>): Record<string, any> {
+  const {
+    _mergeIndex: _mi,
+    _preserveContent: _pc,
+    provider: _p,
+    timestamp: _ts,
+    cardId: _ci,
+    ...rest
+  } = metadata;
+  return rest;
 }
 
 /**
- * Collapse assistant-visible text content into a single chat.jsonl
- * `assistant_message` line.
- *
- * Intentionally conservative: we collect only `type === 'text'` blocks
- * in order. Tool status, file, and command cards are persisted as
- * separate `chat_status` lines by `ChatStatusHandler` /
- * `FileOperationHandler` / `CommandExecutionHandler`; rolling them into
- * the assistant_message would double-render on replay.
+ * Cap stdout captured in chat.jsonl so a noisy command does not inflate
+ * the UI log. UI tail rendering only shows first/last few KB; anything
+ * longer is not actionable context.
  */
-function collectAssistantText(
-  contents: Array<{ type: string; content: string }>,
-): string {
-  const parts: string[] = [];
-  for (const c of contents) {
-    if (!c || typeof c.content !== 'string') continue;
-    if (c.type === 'text') {
-      parts.push(c.content);
-    }
-  }
-  return parts.join('\n').trim();
+function truncateOutput(output: string | undefined, max = 4000): string | undefined {
+  if (!output) return output;
+  if (output.length <= max) return output;
+  const head = output.slice(0, Math.floor(max * 0.75));
+  const tail = output.slice(-Math.floor(max * 0.2));
+  return `${head}\n…(${output.length - max} chars truncated)…\n${tail}`;
 }

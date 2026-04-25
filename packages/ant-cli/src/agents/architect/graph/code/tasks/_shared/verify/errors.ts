@@ -4,7 +4,7 @@
  * Throw sites:
  *   - `max_retries_exceeded`  → `nodes/plan/parts/entry.ts` default branch
  *                               (non-verification task types only).
- *   - `no_progress`           → `tasks/verification/hooks/plan.ts`
+ *   - `no_progress`           → `_shared/verify/checkRetryTermination`
  *                               (LLM repeated the same plan hash).
  *   - `batch_cycle_limit`     → `nodes/plan/parts/batchSplit.ts`.
  *   - `unresolved_violations` → `parallel/TaskWorker.ts`.

@@ -1,7 +1,8 @@
 import { useStore } from '@/domain/store';
-import { API_BASE, addChatUserMessage } from '@/infrastructure/http/api';
+import { API_BASE, addChatUserMessage, resolveChoice } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
 import { deriveFromIntent } from '@ant/shared';
+import type { ChatLine, ChatChoicePresentedLine, ChatChoiceResolvedLine } from '@ant/shared';
 
 interface UseChatSubmitOptions {
   message: string;
@@ -51,25 +52,38 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
       userMessage = message;
 
       if (pendingQuestions.length > 0) {
-        const messages = useStore.getState().chatMessages;
-        for (const msg of messages) {
-          const clarifyIdx = msg.contents.findIndex(
-            (c: any) => c && c.type === 'choice_card' && c.metadata?.cardType === 'clarifying' && !c.metadata?.choiceSelected
-          );
-          if (clarifyIdx !== -1) {
-            const updatedContents = [...msg.contents];
-            const resolvedAnswers: Record<number, string> = {};
-            updatedContents[clarifyIdx] = {
-              ...updatedContents[clarifyIdx],
-              metadata: {
-                ...updatedContents[clarifyIdx].metadata,
-                choiceSelected: 'skipped',
-                resolvedLabel: t('clarify.allSkipped'),
-                resolvedAnswers,
-              },
-            };
-            useStore.getState().updateChatMessage(msg.id, { contents: updatedContents });
-            break;
+        // Phase 12 chat-SSOT — find the unresolved clarifying card from
+        // the durable event stream (chat.jsonl mirror) and resolve it
+        // through the unified `/chat/choice-resolved` endpoint. The SSE
+        // `choice_resolved` line that follows folds the card into its
+        // resolved state via the FE projector.
+        //
+        // `collapsed` lines are excluded — the chat-log collapse path
+        // (chat sweep / hard reset) marks them as disk-only and the
+        // projector hides them; resolving a collapsed card by mistake
+        // would mint an orphan choice_resolved.
+        const events = (useStore.getState().chatEvents ?? []) as ChatLine[];
+        const live = events.filter((e) => !e.collapsed);
+        const resolvedIds = new Set<string>();
+        for (const e of live) {
+          if (e.type === 'choice_resolved') resolvedIds.add((e as ChatChoiceResolvedLine).cardId);
+        }
+        const unresolvedClarifying = [...live].reverse().find(
+          (e): e is ChatChoicePresentedLine =>
+            e.type === 'choice_presented' &&
+            (e as ChatChoicePresentedLine).cardType === 'clarifying' &&
+            !resolvedIds.has((e as ChatChoicePresentedLine).cardId),
+        );
+        if (unresolvedClarifying) {
+          try {
+            await resolveChoice(selectedProject, selectedFeature, {
+              cardId: unresolvedClarifying.cardId,
+              choiceSelected: 'skipped',
+              resolvedLabel: t('clarify.allSkipped'),
+              answer: { resolvedAnswers: {} },
+            });
+          } catch (error) {
+            console.warn('[ChatInput] Failed to skip clarifying card:', error);
           }
         }
         useStore.getState().clearPendingClarify();
@@ -192,6 +206,14 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
       console.error('[ChatInput] Failed to start job:', error);
       useStore.getState().setRunning(false);
       setMessage(userMessage);
+      // Phase 12 chat-SSOT — addChatUserMessage / executeCodeJob client
+      // failures never reach the BE chat stream, so a toast keeps the
+      // user informed instead of letting the failure go silent. BE-side
+      // /execute failures emit `assistant_message` lines via chatService.
+      const detail = error instanceof Error ? error.message : t('common:error.unknown');
+      showError(`${t('inlineAsk.failed', { defaultValue: 'Job failed to start' })}: ${detail}`, {
+        title: t('common:error.title'),
+      });
     }
   };
 

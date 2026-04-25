@@ -22,7 +22,7 @@ import { CodeTask } from '../../../../../types/task';
 import type { TechTier } from '@ant/shared';
 import { snapshotFromState } from '../../../parallel/TaskWorker';
 import { appendTrace } from '../../../../../../../utils/verificationTrace';
-import { VerificationTerminalError } from '../../../tasks/verification/model/errors';
+import { VerificationTerminalError } from '../../../tasks/_shared/verify/errors';
 import { isVerificationTask } from '../../../tasks/verification';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

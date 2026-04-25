@@ -1,33 +1,34 @@
 /**
  * LLM Response Module
- * 
- * Direct Redis-based LLM response handling for job workers.
- * Replaces HTTP-based ChatAPIClient for improved performance.
- * 
+ *
+ * Direct Redis-based LLM response handling for job workers. Replaces the
+ * pre-§5 ChatMessage scratchpad (`SessionStore` + `ContentMerger` +
+ * 4 handler classes) with a single `LLMResponseService` facade that
+ * emits chat events via `chat.jsonl` (durable SSOT) + Redis TURN_BUFFER
+ * (in-flight) + `MessageBroadcaster` (SSE pub/sub).
+ *
  * Usage:
  * ```typescript
  * import { createLLMResponseService } from '../core/llm-response';
- * 
+ *
  * const service = createLLMResponseService(stateStore);
- * await service.startMessage();
- * await service.sendLLMEvent(event);
- * await service.finalizeMessage();
+ * service.setTurnId(turnId);
+ * await service.streamTextChunk('hello');
+ * await service.appendAssistantMessage('hello');
  * ```
  */
 
 export { LLMResponseService } from './LLMResponseService';
-export { SessionStore } from './SessionStore';
-export { LLMEventHandler } from './LLMEventHandler';
-export { FileOperationHandler } from './FileOperationHandler';
-export { CommandExecutionHandler } from './CommandExecutionHandler';
-export { ChatStatusHandler } from './ChatStatusHandler';
+export { TurnContext } from './TurnContext';
+export { ChatLogAppender } from './ChatLogAppender';
+export type { ChatLogAppenderConfig } from './ChatLogAppender';
 
-export type { 
-  LLMResponseEnv, 
+export type {
+  LLMResponseEnv,
   SessionContext,
   FileOperationPhase,
   CommandExecutionPhase,
-  ChatStatusType 
+  ChatStatusType,
 } from './types';
 
 import type { StateStorePort } from '../ports/stateStore';
@@ -36,7 +37,7 @@ import { LLMResponseService } from './LLMResponseService';
 
 /**
  * Create LLMResponseService from environment variables
- * 
+ *
  * Reads from:
  * - ANT_PROJECT_ID
  * - ANT_FEATURE_NAME
@@ -56,9 +57,9 @@ export function createLLMResponseService(stateStore: StateStorePort): LLMRespons
     userEmail: process.env.ANT_USER_EMAIL,
     userId: process.env.ANT_USER_ID,
     organizationId: process.env.ANT_ORG_ID,
-    featurePath: process.env.ANT_FEATURE_PATH
+    featurePath: process.env.ANT_FEATURE_PATH,
   };
-  
+
   return new LLMResponseService(stateStore, env);
 }
 
@@ -66,8 +67,8 @@ export function createLLMResponseService(stateStore: StateStorePort): LLMRespons
  * Create LLMResponseService with explicit environment
  */
 export function createLLMResponseServiceWithEnv(
-  stateStore: StateStorePort, 
-  env: LLMResponseEnv
+  stateStore: StateStorePort,
+  env: LLMResponseEnv,
 ): LLMResponseService {
   return new LLMResponseService(stateStore, env);
 }

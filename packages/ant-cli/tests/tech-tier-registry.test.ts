@@ -302,6 +302,11 @@ describe('getValidFrameworks', () => {
   it('invalid combo returns empty', () => {
     expect(getValidFrameworks('frontend', 'go')).toEqual([]);
   });
+
+  it('unknown tierKey returns empty (defense-in-depth)', () => {
+    expect(getValidFrameworks('fullstack' as unknown as TechTierKey, 'typescript')).toEqual([]);
+    expect(getValidFrameworks('__auto__' as unknown as TechTierKey, 'typescript')).toEqual([]);
+  });
 });
 
 describe('getFrameworkOptions', () => {

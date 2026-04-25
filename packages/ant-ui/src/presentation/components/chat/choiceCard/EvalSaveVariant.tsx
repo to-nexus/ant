@@ -1,19 +1,14 @@
 import { Save } from 'lucide-react';
 import { submitEvalSave } from '@/infrastructure/http/api';
-import type { MessageContent } from '@/domain/models/chat';
 import type { VariantProps } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout } from './shared';
 
-export function EvalSaveVariant({ content, messageId }: VariantProps) {
-  const evalType = content.metadata?.evalType;
-  const evalContent = content.metadata?.evalContent;
+export function EvalSaveVariant({ presented, resolved }: VariantProps) {
+  const payload = (presented.payload ?? {}) as Record<string, any>;
+  const evalType = payload.evalType as string | undefined;
+  const evalContent = payload.evalContent as string | undefined;
 
-  const state = useChoiceCardState({
-    content, messageId,
-    contentType: 'choice_card',
-    contentFilter: (c: MessageContent) => c.type === 'choice_card' && c.metadata?.cardType === 'eval_save',
-    metadataFilter: { cardType: 'eval_save' },
-  });
+  const state = useChoiceCardState({ presented, resolved });
 
   const handleSave = async () => {
     if (!state.selectedProject || !state.selectedFeature || !evalType || !evalContent || state.isSelected) return;
@@ -21,11 +16,22 @@ export function EvalSaveVariant({ content, messageId }: VariantProps) {
     state.setIsLoading(true);
     state.setLocalSelectedChoice('save');
 
+    const cardId = presented.cardId;
+    if (!cardId) {
+      state.setIsLoading(false);
+      return;
+    }
+
     try {
-      const response = await submitEvalSave(state.selectedProject, state.selectedFeature, evalType, evalContent);
+      const response = await submitEvalSave(
+        state.selectedProject,
+        state.selectedFeature,
+        cardId,
+        evalType,
+        evalContent,
+      );
       const label = response.resolvedLabel || 'Saved';
       state.setLocalResolvedLabel(label);
-      state.persistChoice('save', label);
     } catch (error) {
       console.error('[ChoiceCard:EvalSave] Failed:', error);
       state.setLocalSelectedChoice(null);
@@ -39,7 +45,6 @@ export function EvalSaveVariant({ content, messageId }: VariantProps) {
     if (state.isSelected) return;
     state.setLocalSelectedChoice('skip');
     state.setLocalResolvedLabel('Skipped');
-    state.persistChoice('skip', 'Skipped');
     await state.persistToBackend('skip', 'Skipped');
   };
 
@@ -47,7 +52,7 @@ export function EvalSaveVariant({ content, messageId }: VariantProps) {
     <ChoiceCardShell
       theme="emerald"
       icon={<Save className="w-4 h-4" />}
-      title={content.content || 'Save evaluation report?'}
+      title={presented.prompt || 'Save evaluation report?'}
       subtitle={`outputs/evals/${evalType}/`}
       isSelected={state.isSelected}
       resolvedLabel={state.resolvedLabel}

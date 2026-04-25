@@ -38,17 +38,23 @@ export async function addChatUserMessage(
  *
  * Session redesign §16.2: the backend collapses `chat.jsonl` only (the UI
  * chat SSOT). `feature.jsonl` (LLM prompt context) is intentionally
- * preserved so conversation continuity is maintained. A `messages_cleared`
- * SSE event with `scope: 'chat'` is broadcast so the UI drops chat messages
+ * preserved so conversation continuity is maintained. An `events_cleared`
+ * SSE event with `scope: 'chat'` is broadcast so the UI drops chat events
  * and the local trace cache, while keeping breadcrumbs / tier badges intact.
  * Use Hard Reset (`POST .../context/reset`) when full context wipe is
  * required.
+ *
+ * Phase 11 chat-SSOT — when `cancelActive: true` the BE additionally
+ * seals any still-running job (user_stopped) before clearing — wired to
+ * the F5 / chat-sweep flow that lets the user clear mid-run.
  */
 export async function clearChatHistory(
   projectId: string,
   featureName: string,
+  options?: { cancelActive?: boolean },
 ): Promise<void> {
+  const qs = options?.cancelActive ? '?cancelActive=true' : '';
   await apiDelete(
-    `${API_BASE()}/projects/${projectId}/features/${featureName}/chat/messages`,
+    `${API_BASE()}/projects/${projectId}/features/${featureName}/chat/messages${qs}`,
   );
 }

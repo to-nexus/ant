@@ -79,43 +79,6 @@ export interface TurnBufferData {
 export type { PendingCardSnapshot, TurnBufferSnapshot };
 
 // ============================================
-// Legacy Chat Session Types — TRANSITIONAL SHIMS
-// ============================================
-//
-// The chat SSOT refactor (§5+) retires the ChatSession/ChatMessage
-// scratchpad entirely. These types remain in the interface surface only
-// so that the scheduled-for-deletion consumers (SessionStore / HTTP
-// SessionManager / chat/schema.ts / etc.) still compile while the
-// rewrite is in flight. No new code should reference these.
-
-export interface ChatMessageContent {
-  type: string;
-  content: string;
-  metadata?: Record<string, any>;
-}
-
-export interface ChatMessageData {
-  id: string;
-  role: 'user' | 'assistant';
-  contents: ChatMessageContent[];
-  timestamp: string;
-  jobId?: string;
-  isStreaming?: boolean;
-  actionMetadata?: import('@ant/shared').ActionMetadata;
-}
-
-export interface ChatSessionData {
-  projectId: string;
-  featureName: string;
-  jobId?: string;
-  messages: ChatMessageData[];
-  userContext?: UserContext;
-  thinkingStartTime?: number;
-  lastThinkingContentIndex?: number;
-  activeFileOperations?: Array<{ filePath: string; contentIndex: number }>;
-}
-
-// ============================================
 // Pending Choice Types (for Cloud Mode)
 // ============================================
 
@@ -597,22 +560,6 @@ export interface StateStorePort {
    */
   nextPauseSeq(turnId: string): Promise<number>;
 
-  // ============================================
-  // Legacy Chat Session API — DELETE AFTER §5 REWRITE
-  // ============================================
-  /** @deprecated Retired by the chat SSOT refactor (§5). */
-  getChatSession(sessionKey: string): Promise<ChatSessionData | null>;
-  /** @deprecated */
-  setChatSession(sessionKey: string, session: ChatSessionData): Promise<void>;
-  /** @deprecated */
-  deleteChatSession(sessionKey: string): Promise<void>;
-  /** @deprecated */
-  getCurrentMessage(sessionKey: string): Promise<ChatMessageData | null>;
-  /** @deprecated */
-  setCurrentMessage(sessionKey: string, message: ChatMessageData | null): Promise<void>;
-  /** @deprecated */
-  hasActiveMessage(sessionKey: string): Promise<boolean>;
-  
   // ============================================
   // Pending Choice Management (for Cloud Mode)
   // ============================================

@@ -1,7 +1,8 @@
 import { Session } from '@/domain/models/session';
 import { Feature, FileNode, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
-import type { ChatMessage } from '@/domain/models/chat';
+import type { ChatLine } from '@ant/shared';
+import type { BufferKey, StreamingBuffer } from '@/domain/store/selectors/chat';
 import type { CurrentFileState } from './slices/fileSlice';
 
 // ==================
@@ -86,7 +87,23 @@ export interface JobState {
 
 export interface SSEState {
   kanban: KanbanData;
-  chatMessages: ChatMessage[];
+  /**
+   * Finalized chat.jsonl events received over SSE. Phase 10 substrate.
+   * Folded into `Turn[]` via `selectTurns(state)`.
+   */
+  chatEvents: ChatLine[];
+  /**
+   * In-flight streaming buffers keyed by `${turnId}:${workerScope}`.
+   * Mirrors the BE Redis TURN_BUFFER. Cleared on `events_cleared` and
+   * on per-buffer `clearStreamingBuffer`.
+   */
+  streamingBuffers: Record<BufferKey, StreamingBuffer>;
+  /**
+   * Server-issued monotonic timestamp from the last `chat_initial_state`
+   * snapshot. Streaming deltas with `producedAt < lastChatSnapshotTs`
+   * are dropped (would predate the snapshot).
+   */
+  lastChatSnapshotTs?: string;
   connectionStatus: 'connected' | 'disconnected' | 'error';
 }
 

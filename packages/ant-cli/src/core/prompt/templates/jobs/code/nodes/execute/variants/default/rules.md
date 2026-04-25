@@ -429,10 +429,6 @@ const speed = PADDLE_SPEED;
 | Code placeholders (`// ... logic ...`) | Complete implementation |
 | Placeholder paths (`path/to/file.ext`) | Actual paths (`codebase/src/utils.ts`) |
 
-{{#if currentTask.selfVerifyOnDone}}
-{{> jobs/code/nodes/execute/injections/self-verify-inline}}
-{{/if}}
-
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚨 TASK COMPLETION SIGNAL (CRITICAL)
 ════════════════════════════════════════════════════════════════════════════════

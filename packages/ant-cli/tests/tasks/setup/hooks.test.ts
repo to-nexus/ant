@@ -41,8 +41,9 @@ describe('tasks/_shared/registry — setup entry', () => {
     expect(hooks?.decompose?.isExclusive).toBe(decompHook.isExclusive);
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
     // plan.extraTemplateVars landed at T6b-β — setup contributes
-    // `setupConstraints` into the generic plan base render without
-    // overriding the full prompt pipeline.
+    // `setupConstraints` into the generic plan base render. Post
+    // verify-shared refactor the bundle is wired through composeBundle
+    // which forwards apply-phase extraTemplateVars unchanged.
     expect(hooks?.plan?.extraTemplateVars).toBe(planHook.extraTemplateVars);
     // Producer flags (T6b-ε): setup work activates ui / testgen / doc
     // barriers for downstream tasks. Setup does NOT block integration
@@ -53,17 +54,30 @@ describe('tasks/_shared/registry — setup entry', () => {
     expect(hooks?.scheduling?.blocksIntegration).toBeUndefined();
     // T6b-ι — setup keeps the generic template but opts out of examples
     // (foundation work should not be steered by feature-style snippets).
+    // composeBundle forwards `apply.execute` unchanged.
     expect(hooks?.execute).toBe(setupExecuteHook);
     expect(hooks?.execute?.skipExamples).toBe(true);
     expect(hooks?.execute?.templatePaths).toBeUndefined();
     expect(hooks?.execute?.skipCrossTaskContext).toBeUndefined();
   });
 
-  it('bundle does not publish still-deferred hooks', () => {
-    expect(setupBundle.check).toBeUndefined();
-    // Setup follows the generic plan path; no full `buildPrompt` override.
+  it('bundle publishes verify-shared dispatch slots (composeBundle wired)', () => {
+    // Post verify-shared refactor: setup bundles include verify-mode
+    // dispatch wrappers for function-shaped slots. Tier 3+ setup tasks
+    // fall through unchanged. Tier 2 self-verify setup tasks pick up
+    // verify-mode behaviour after `_verifyEntered` flips. Static slots
+    // stay apply-only.
+    expect(typeof setupBundle.plan?.initSession).toBe('function');
+    // Setup has no apply-phase buildPrompt override (it follows the
+    // generic plan base path); composeBundle forwards undefined.
     expect(setupBundle.plan?.buildPrompt).toBeUndefined();
-    expect(setupBundle.plan?.toolLoopLogTemplate).toBeUndefined();
+    // Setup has plan.extraTemplateVars from apply phase forwarded.
+    expect(typeof setupBundle.plan?.extraTemplateVars).toBe('function');
+    expect(typeof setupBundle.check?.evaluate).toBe('function');
+    expect(typeof setupBundle.tool?.onEvent).toBe('function');
+    expect(typeof setupBundle.command?.guard).toBe('function');
+    expect(typeof setupBundle.router?.routeAfterDone).toBe('function');
+    expect(typeof setupBundle.orchestrator?.hasOwnAttemptCounter).toBe('function');
     // Setup has no CONSUMER scheduling flags (it's foundation work and
     // gated only by the priority-based `hasPreFeatureWork` check).
     expect(setupBundle.scheduling?.preIntegrationBarrier).toBeUndefined();

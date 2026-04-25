@@ -29,6 +29,8 @@ import { isDocTask } from '../../tasks/doc/model/is';
 import { isExplainTask } from '../../tasks/explain/model/is';
 import { toPlanPromptResult, type PlanPromptCtx } from '../../tasks/_shared/types';
 import { formatCodeContext } from '../../tasks/_shared/helpers/planPrompt';
+import { isVerifyEntered } from '../../tasks/_shared/verify';
+import { buildPrompt as sharedVerifyBuildPrompt } from '../../tasks/_shared/verify/buildPlanPrompt';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -107,7 +109,21 @@ async function buildPlanPrompt(
     antrulesContent,
   };
 
-  // Type-specific full override (verification / error variants).
+  // Phase-mode dispatch (verify-mode SSOT): every task that owns a
+  // verification cycle (verification task type AND Tier 2 self-verify
+  // tasks once `_verifyEntered === true`) renders against the
+  // `_shared/verify/buildPrompt` template surface. The dispatch happens
+  // here at the phase layer so the bundle's apply-phase `buildPrompt`
+  // stays untouched — the wrapper-vs-fallthrough split would otherwise
+  // force every composeBundle bundle to always return a present-but-
+  // empty buildPrompt, breaking the "no buildPrompt → generic plan base"
+  // fallback.
+  if (isVerifyEntered(state)) {
+    const verifyResult = toPlanPromptResult(await sharedVerifyBuildPrompt(promptCtx));
+    return { prompt: verifyResult.text, vars: verifyResult.vars ?? {} };
+  }
+
+  // Type-specific full override (apply phase — currently error variant only).
   if (planHook?.buildPrompt) {
     const hookResult = toPlanPromptResult(await planHook.buildPrompt(promptCtx));
     return { prompt: hookResult.text, vars: hookResult.vars ?? {} };

@@ -1,10 +1,16 @@
 /**
  * VerificationSession — the single authority for "where is this verification
- * task in its diagnostic cycle?".
+ * cycle currently sitting?".
  *
  * Every query and mutation goes through this class so invariants
  * ("passed ⊆ required", "attempts ≥ 0", "repeated-plan derived from
  * history") cannot drift.
+ *
+ * SSOT location: previously `tasks/verification/model/Session.ts`. Moved to
+ * `tasks/_shared/verify/` because the Session represents the state of a
+ * verification responsibility, not the state of one specific task type.
+ * Verification task type and any `selfVerifyOnDone:true` task share this
+ * identical state machine.
  *
  * R2 — model-only. Does not import from `nodes/`, `routers/`, or `parallel/`.
  *
@@ -41,7 +47,7 @@ const PLAN_HISTORY_BODY_LIMIT = 3;
  * layer while guaranteeing the union cannot drift between the two
  * declarations (a previous local copy was deleted in the T4 review).
  */
-import type { PlanEntry } from '../../_shared/types';
+import type { PlanEntry } from '../types';
 export type { PlanEntry };
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -263,7 +269,7 @@ export class VerificationSession {
    * Per-cycle "attempted" tracking was removed when the
    * `attemptedThisCycle` field retired — `passed` is the single source for
    * every command-policy guard now (see
-   * `tasks/verification/hooks/command.ts`). A batch-split or error-fix
+   * `tasks/_shared/verify/commandGuard.ts`). A batch-split or error-fix
    * cycle that lands here no longer carries stale "typecheck already
    * attempted" state.
    */
@@ -373,4 +379,3 @@ export class VerificationSession {
     };
   }
 }
-

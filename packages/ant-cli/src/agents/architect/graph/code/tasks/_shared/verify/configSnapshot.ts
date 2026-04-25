@@ -7,9 +7,8 @@
  * lockfiles, framework configs, etc.) so the LLM can rule out
  * config/dependency-version root causes before touching source code.
  *
- * Migrated from `utils/deepDiagnosticMode.ts` in T9. Pure I/O helper with no
- * Session coupling — the only verification-specific thing about it is that
- * it is gated by `Session.inDeepMode()`.
+ * Pure I/O helper with no Session coupling — the only verification-specific
+ * thing about it is that it is gated by `Session.inDeepMode()`.
  */
 
 import * as fs from 'node:fs/promises';

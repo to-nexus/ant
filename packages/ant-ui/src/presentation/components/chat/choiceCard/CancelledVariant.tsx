@@ -5,23 +5,19 @@ import { dismissInterruptedJob, resumeJob } from '@/infrastructure/http/api';
 import type { VariantProps, ResolvedIcon } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout } from './shared';
 
-export function CancelledVariant({ content, messageId }: VariantProps) {
+export function CancelledVariant({ presented, resolved }: VariantProps) {
   const { t } = useTranslation('chat');
   const isRunning = useStore(state => state.isRunning);
   const kanbanData = useStore(state => state.kanban);
   const setDismissedInterruptTimestamp = useStore(state => state.setDismissedInterruptTimestamp);
 
-  const jobId = content.metadata?.jobId;
+  const payload = (presented.payload ?? {}) as Record<string, any>;
+  const jobId = payload.jobId as string | undefined;
+  const originalType = payload.originalType as string | undefined;
+  const reason = payload.reason as string | undefined;
+  const designErrorType = payload.designErrorType as string | undefined;
 
-  const state = useChoiceCardState({
-    content, messageId,
-    contentType: 'cancelled',
-    metadataFilter: jobId ? { jobId } : undefined,
-  });
-
-  const originalType = content.metadata?.originalType;
-  const reason = content.metadata?.reason;
-  const designErrorType = content.metadata?.designErrorType;
+  const state = useChoiceCardState({ presented, resolved });
 
   const workLabel = (() => {
     if (!originalType) return null;
@@ -62,7 +58,6 @@ export function CancelledVariant({ content, messageId }: VariantProps) {
       const result = await resumeJob(jobId, state.selectedProject, state.selectedFeature, true);
 
       await state.persistToBackend('resume', t('cancelled.resumed'));
-      state.persistChoice('resume', t('cancelled.resumed'));
 
       if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
         useStore.setState({ jobStartPending: true });
@@ -93,7 +88,6 @@ export function CancelledVariant({ content, messageId }: VariantProps) {
     try {
       await dismissInterruptedJob(state.selectedProject, state.selectedFeature, jobId);
       await state.persistToBackend('dismiss', t('cancelled.dismissed'));
-      state.persistChoice('dismiss', t('cancelled.dismissed'));
     } catch (error) {
       console.error('[ChoiceCard:Cancelled] Failed:', error);
       state.setLocalSelectedChoice(null);
@@ -106,7 +100,7 @@ export function CancelledVariant({ content, messageId }: VariantProps) {
       const reasonSubtitle = t(`cancelled.subtitles.${reason}`, { defaultValue: '' });
       if (reasonSubtitle) return reasonSubtitle;
     }
-    return content.content || t('cancelled.defaultSubtitle');
+    return presented.prompt || t('cancelled.defaultSubtitle');
   })();
 
   const resolvedIcon: ResolvedIcon =

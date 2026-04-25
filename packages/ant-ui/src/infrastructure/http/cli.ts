@@ -29,46 +29,42 @@ export interface JobExecution {
 }
 
 export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecution {
-  const { 
-    projectId = '', 
+  const {
+    projectId = '',
     featureName,
     jobType,
     agent,
     mode = 'generate',
     language = 'en',
-    overrideDirective,  // ✅ Chat input as directive
-    chatSource,         // ✅ Flag for Chat SSE
-    skipTriage,         // ✅ Skip triage (after proceed choice)
-    actionMetadata,     // ✅ Structured context from Actions panel
-    seedTurnId,         // ✅ chat SSOT §6 — pre-allocated turn id
+    overrideDirective,
+    chatSource,
+    skipTriage,
+    actionMetadata,
+    seedTurnId,
   } = options;
-  
-  // ✅ Feature name is required
+
   if (!featureName) {
     throw new Error('Feature name is required for job execution');
   }
-  
+
   const store = useStore.getState();
-  
+
   let jobId = '';
   let exitListener: ((code: number | null, signal: string | null) => void) | null = null;
   let jobIdReadyCallback: ((jobId: string) => void) | null = null;
-  
+
   const jobExecution: JobExecution = {
     jobId: '',
     kill: async (_signal?: string) => {
       try {
-        // Stop the job on the server
         if (jobId) {
-          // ✅ Get actual projectId/featureName/jobType from store (critical for cleanup!)
           const currentState = useStore.getState();
           const actualProjectId = currentState.selectedProject || projectId;
           const actualFeatureName = currentState.selectedFeature || featureName;
           const actualJobType = currentState.selectedJobType;
-          
+
           await stopJob(jobId, actualProjectId || undefined, actualFeatureName || undefined, actualJobType);
-          
-          // Notify exit listener (though no longer used since Kanban SSE detects completion)
+
           if (exitListener) {
             exitListener(0, 'SIGTERM');
           }
@@ -84,18 +80,16 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       }
       return jobExecution;
     },
-    // Add method to set callback for when jobId is ready
     onJobIdReady: (callback: (jobId: string) => void) => {
       jobIdReadyCallback = callback;
       if (jobId) {
-        // If jobId is already available, call immediately
         callback(jobId);
       }
     }
   };
-  
+
   console.log('[cli.ts] executeCodeJob called with:', { projectId, featureName, jobType, agent, mode, language, overrideDirective: overrideDirective ? '(provided)' : undefined, chatSource });
-  
+
   executeJob({
     projectId,
     featureName,
@@ -103,119 +97,62 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     agent,
     mode,
     language,
-    overrideDirective,  // ✅ Pass to API
-    chatSource,          // ✅ Pass to API
-    skipTriage,          // ✅ Pass to API
-    actionMetadata,      // ✅ Pass to API
-    seedTurnId,          // ✅ chat SSOT §6 — pre-allocated turn id
+    overrideDirective,
+    chatSource,
+    skipTriage,
+    actionMetadata,
+    seedTurnId,
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);
-      
-      // ✅ Check for prerequisites validation failure
+
+      // Phase 9 chat-SSOT — prereq / conflict / start-error messages
+      // now flow through the chat stream as `assistant_message` lines
+      // emitted by the BE `/execute` route via
+      // `chatService.appendAssistantMessage`. The FE no longer mints
+      // optimistic chat bubbles here; SSE delivers them.
+
       if (response.error && response.missingMaterials) {
         console.error('[cli.ts] Prerequisites validation failed:', response.error);
-        
-        // Format error message for display
-        const materialsList = response.missingMaterials
-          .map((m: any) => `  • ${m.name}: ${m.description}`)
-          .join('\n');
-        
-        const errorMessage = `Cannot start ${jobType} job. The following required materials are missing:\n\n${materialsList}\n\nAll of these materials must be provided before starting the job.`;
-        // ✅ Surface this in the chat stream instead of window.alert().
-        try {
-          store.addChatMessage({
-            id: `msg-prereq-${Date.now()}`,
-            role: 'assistant',
-            contents: [{ type: 'text', content: `❌ ${errorMessage}` }],
-            timestamp: new Date().toISOString()
-          });
-        } catch (e) {
-          console.warn('[cli.ts] Failed to add chat message for prerequisites error:', e);
-        }
-        
-        // Notify exit listener
-        if (exitListener) {
-          exitListener(1, null);
-        }
-        
-        // Reset running state
+        if (exitListener) exitListener(1, null);
         store.setRunning(false);
         store.setLastJobFailed(true);
         return;
       }
 
-      // 409 Conflict: another job is running or interrupted
       if (response.existingJobId) {
         if (response.isInterrupted) {
           console.log('[cli.ts] Interrupted job blocking new start:', response.existingJobId);
           store.setRunning(false);
-          try {
-            store.addChatMessage({
-              id: `msg-conflict-${Date.now()}`,
-              role: 'assistant',
-              contents: [{ type: 'text', content: '이전 작업이 중단되어 있습니다. 재개하거나 닫아주세요.' }],
-              timestamp: new Date().toISOString()
-            });
-          } catch (e) {
-            console.warn('[cli.ts] Failed to add chat message for interrupted conflict:', e);
-          }
         } else {
-          // Actively running job: restore running state
           console.log('[cli.ts] Job already running, recovering state:', response.existingJobId);
-          try {
-            store.addChatMessage({
-              id: `msg-conflict-${Date.now()}`,
-              role: 'assistant',
-              contents: [{ type: 'text', content: `이미 진행 중인 작업이 있습니다. (Job ID: ${response.existingJobId})` }],
-              timestamp: new Date().toISOString()
-            });
-          } catch (e) {
-            console.warn('[cli.ts] Failed to add chat message for conflict:', e);
-          }
           store.setRunning(true, response.existingJobId);
         }
         return;
       }
-      
+
       jobId = response.jobId;
       jobExecution.jobId = jobId;
-      
-      // Notify that jobId is ready
+
       if (jobIdReadyCallback) {
         console.log('[cli.ts] Calling jobIdReadyCallback with jobId:', jobId);
         jobIdReadyCallback(jobId);
       } else {
         console.warn('[cli.ts] jobIdReadyCallback is not set!');
       }
-      
-      // ✅ No logs SSE needed - job completion is detected by:
-      // 1. Kanban SSE (activeJobId becomes undefined)
-      // 2. Workflow SSE (isCompleted: true)
-      // Exit listener will be called when Kanban detects completion
+
       console.log('[cli.ts] Job started, completion will be detected by Kanban SSE');
     })
     .catch((error) => {
       console.error('[cli.ts] Failed to start job:', error);
-      
+      // Job-start failures are surfaced through the BE chat stream as
+      // assistant_message lines (job.routes /execute emitConflictAssistantMessage).
       store.setRunning(false);
       store.setLastJobFailed(true);
-      
-      try {
-        store.addChatMessage({
-          id: `msg-error-${Date.now()}`,
-          role: 'assistant',
-          contents: [{ type: 'text', content: `❌ Job 실행 실패: ${error instanceof Error ? error.message : String(error)}` }],
-          timestamp: new Date().toISOString()
-        });
-      } catch (e) {
-        console.warn('[cli.ts] Failed to add chat error message:', e);
-      }
-      
       if (exitListener) {
         exitListener(1, null);
       }
     });
-  
+
   return jobExecution;
 }

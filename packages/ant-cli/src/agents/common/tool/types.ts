@@ -11,26 +11,37 @@
 
 import type { FileSystemPort } from '../../../core/ports/filesystem';
 // Gate vocabulary SSOT — declared once in
-// `tasks/verification/model/gates.ts` and imported here so the side-effect
+// `tasks/_shared/verify/gates.ts` and imported here so the side-effect
 // channel and the `VerificationSessionSurface` cannot drift from the
 // Session's required/passed sets. The path crosses the common→code-graph
 // boundary, but `Gate` is a 3-element string union with no structural
 // dependencies, so the import stays inert.
-import type { Gate } from '../../architect/graph/code/tasks/verification/model/gates';
+import type { Gate } from '../../architect/graph/code/tasks/_shared/verify/gates';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ChatStatusReporter — UI coupling isolation
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export interface ChatStatusReporter {
-  showStatus(key: string, data?: Record<string, any>): Promise<number | undefined>;
-  removeStatus(index: number, key: string): Promise<void>;
+  /**
+   * Emit a chat status card. Returns the `cardId` (string) of the
+   * resulting card so progress→terminal pairs can chain via
+   * `metadata._mergeIndex` (legacy field name; the value is now the
+   * cardId, not a contents-array index).
+   *
+   * Pre-§5 signature returned `number | undefined` (an in-message
+   * contents index). The chat-SSOT rewrite replaces that index with a
+   * stable cardId so cross-pod / replay flows can address the same
+   * card without rebuilding the in-memory `ChatMessage` scratchpad.
+   */
+  showStatus(key: string, data?: Record<string, any>): Promise<string | undefined>;
+  removeStatus(cardId: string, key: string): Promise<void>;
 
-  addReadingFile(path: string): Promise<number | undefined>;
-  addReadComplete(path: string, mergeIndex: number | undefined, error?: string): Promise<void>;
+  addReadingFile(path: string): Promise<string | undefined>;
+  addReadComplete(path: string, cardId: string | undefined, error?: string): Promise<void>;
 
-  addReadingSource(filename: string, startLine?: number, endLine?: number): Promise<number | undefined>;
-  addReadSourceComplete(filename: string, mergeIndex: number | undefined, opts?: {
+  addReadingSource(filename: string, startLine?: number, endLine?: number): Promise<string | undefined>;
+  addReadSourceComplete(filename: string, cardId: string | undefined, opts?: {
     error?: string;
     startLine?: number;
     endLine?: number;
@@ -44,7 +55,7 @@ export interface ChatStatusReporter {
   completeFileCreation(path: string, content: string, stats?: { diffBeforeLines?: number }): Promise<void>;
   failFileCreation(path: string, error: string): Promise<void>;
 
-  commandStart(command: string): Promise<number | undefined>;
+  commandStart(command: string): Promise<string | undefined>;
   /**
    * Push an incremental (accumulated) output snapshot to the chat UI.
    * Callers should throttle / coalesce upstream so this runs at most a

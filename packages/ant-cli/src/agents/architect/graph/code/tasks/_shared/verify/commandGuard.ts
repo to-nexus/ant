@@ -1,25 +1,40 @@
 /**
- * verification/hooks/command.ts — TaskCommandHook.guard
+ * `_shared/verify/commandGuard` — TaskCommandHook.guard for verify-mode.
  *
- * Verification-specific loop guard for `run_command`. Delegated from
- * `common/tool/handlers/codeCommandPolicy.ts`: the common handler stays
- * blind to `task.type` and forwards the call to this hook via
- * `hooksForTaskType('verification')?.command?.guard(ctx, args)`.
+ * SSOT: previously `tasks/verification/hooks/command.ts::guard`. Moved
+ * here so self-verify Tier 2 tasks share the same gate-ordering and
+ * already-passed semantics as Tier 3/4 verification tasks once they
+ * enter verify-mode.
  *
- * R1 — the body of this hook is where task-type-specific command logic is
- * allowed to live; the common handler stays blind to `task.type`.
+ * Phase-agnostic invariants enforced here:
+ *   - `already-passed` — a gate already green in the current Session is
+ *     never re-run.
+ *   - `ordering`       — typecheck must pass before build; build must
+ *     pass before test (bypassed in deep-diagnostic mode only).
+ *
+ * Execute-phase is allowed to run `tsc / build / test` directly. The
+ * blanket "Do not run build/test/typecheck during execute" rejection was
+ * removed alongside the verification-loop postmortem: the LLM can and
+ * should validate its own fix in one execute pass when the plan phase
+ * already ran the diagnostic cycle. `routeAfterDone` picks
+ * `checkTaskStatus` (instead of `plan`/reverify) the moment
+ * `session.isComplete()` flips true, so a self-validated execute ends
+ * the task in a single cycle.
+ *
+ * R1 — phase-blind dispatch. The common handler delegates to this guard
+ * via `composeBundle` when `requiresVerification(task) &&
+ * state._verifyEntered === true`.
  */
 
-import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
-import type { Gate } from '../model/gates';
-import { isDiagnosticInspectCommand } from '../model/gates';
+import type { ToolExecutionContext, ToolResult } from '../../../../../common/tool/types';
+import type { Gate } from './gates';
+import { isDiagnosticInspectCommand } from './gates';
 
 /**
  * Policy-rejection `ToolResult`. The `[Policy]` prefix signals to the LLM
  * that this is an internal guard (not a command execution failure), so the
  * `messageBuilder` tool_result formatter leaves it untouched instead of
  * prepending `Error:` (which would happen if the `error` field were set).
- * Dropping `error` is the SSOT fix: policy rejection ≠ execution failure.
  */
 function reject(command: string, reason: string): ToolResult {
   return {
@@ -31,24 +46,10 @@ function reject(command: string, reason: string): ToolResult {
 }
 
 /**
- * Verification guard. Returns a rejection `ToolResult` when the command
- * should be blocked, or `null` to let the command proceed. The `null` path
- * lets `applyCodeCommandPolicy` fall through to its default execution path.
- *
- * Phase-agnostic invariants:
- *   - `already-passed`  — a gate already green in the current Session is
- *     never re-run (applies to both plan-phase and execute-phase callers).
- *   - `ordering`        — typecheck must pass before build; build must
- *     pass before test (bypassed in deep-diagnostic mode only).
- *
- * Execute-phase is now allowed to run `tsc / build / test` directly. The
- * previous blanket rejection ("Do not run build/test/typecheck during
- * execute") was removed alongside the verification-loop postmortem: the
- * LLM can and should validate its own fix in one execute pass when the
- * plan phase already ran the diagnostic cycle. `routeAfterDone` picks
- * `checkTaskStatus` (instead of `plan`/reverify) the moment
- * `session.isComplete()` flips true, so a self-validated execute ends
- * the task in a single cycle.
+ * Verify-mode guard. Returns a rejection `ToolResult` when the command
+ * should be blocked, or `null` to let the command proceed. The `null`
+ * path lets `applyCodeCommandPolicy` fall through to its default
+ * execution path.
  */
 export function guard(
   ctx: ToolExecutionContext,
@@ -104,8 +105,5 @@ export function guard(
     );
   }
 
-  // Re-run discipline lives in the prompt (`Gate Re-run Principle` in
-  // `plan/variants/verification/rules.md`), bounded by
-  // `PLAN_TOOL_LOOP_MAX`. No per-cycle attempt counter here.
   return null;
 }

@@ -1,20 +1,23 @@
 /**
  * ContextLoadedCard - Unified notification for loaded context
- * 
+ *
  * Shows what context the system loaded before processing (eval reports, PRD, design docs, etc.)
  * Compact, non-blocking, informational - not a progress indicator or choice card.
- * 
+ *
  * Usage: showChatStatus('context_loaded', { items: [{ label: 'Eval report', detail: 'eval-2026-02-10.md' }] })
  */
 
 import { BookOpen } from 'lucide-react';
-import type { MessageContent } from '@/domain/models/chat';
+import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
+import { lineToContent } from './cards/lineToContent';
 
 interface ContextLoadedCardProps {
-  content: MessageContent;
+  line: ChatStatusLine;
+  pending?: PendingCardSnapshot;
 }
 
-export function ContextLoadedCard({ content }: ContextLoadedCardProps) {
+export function ContextLoadedCard({ line, pending }: ContextLoadedCardProps) {
+  const content = lineToContent(line, pending);
   const items = content.metadata?.items as Array<{ label: string; detail?: string }> | undefined;
 
   // Fallback to content string if no structured items

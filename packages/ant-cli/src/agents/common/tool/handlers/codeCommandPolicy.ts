@@ -12,10 +12,9 @@
 
 import type { ToolExecutionContext, ToolResult } from '../types';
 import type { TaskType } from '@ant/shared';
-import type { Gate } from '../../../architect/graph/code/tasks/verification/model/gates';
-import { isDiagnosticInspectCommand } from '../../../architect/graph/code/tasks/verification/model/gates';
+import type { Gate } from '../../../architect/graph/code/tasks/_shared/verify/gates';
+import { isDiagnosticInspectCommand } from '../../../architect/graph/code/tasks/_shared/verify/gates';
 import { hooksForTaskType } from '../../../architect/graph/code/tasks/_shared/registry';
-import { isVerificationTask } from '../../../architect/graph/code/tasks/verification';
 
 export interface CodeCommandPolicyResult {
   rejected: boolean;
@@ -51,28 +50,33 @@ export function applyCodeCommandPolicy(
   // Diagnostic inspect commands (cat/ls/pnpm why/tsc --version/etc.) are
   // always allowed and bypass every loop-guard below. They do not mutate
   // tracker state and are essential for config/dep-version root-cause discovery.
-  // Allow-list lives in tasks/verification/model/gates.ts.
+  // Allow-list lives in tasks/_shared/verify/gates.ts.
   if (isDiagnosticInspectCommand(command)) {
     return null;
   }
 
-  // Go build/test/run/vet block. Verification tasks run these in the plan
-  // phase (where the tool-loop diagnoses build errors), AND Tier 2 tasks
-  // flagged `selfVerifyOnDone: true` run these in the execute phase as their
-  // inline verification gates. Every other task type has no legitimate
-  // reason to invoke the Go toolchain — error tasks defer to the following
-  // verification task (Tier 3/4) or to their own self-verify loop (Tier 2),
-  // and feature / setup / ui / doc / test-code tasks never run build gates
-  // directly. The per-task `command.guard` hook further narrows behaviour
-  // for each task type.
+  // Go build/test/run/vet block. Verification responsibility holders run
+  // these as part of their verify cycle: Tier 3/4 dedicated verification
+  // tasks (verify-mode plan/execute), or Tier 2 self-verify tasks once
+  // they enter verify-mode (`ctx.verificationSession` non-null indicates
+  // an active Session — composeBundle dispatches command guard to
+  // `_shared/verify/commandGuard` in that case). Apply-phase callers
+  // (Tier 2 self-verify before reverify, Tier 3/4 error/feature/ui/setup)
+  // never run Go build gates directly — they apply fixes and defer
+  // verification to the dedicated cycle.
+  //
+  // The previous `selfVerifyOnDone` exception was retired alongside the
+  // two-cycle (apply→reverify) refactor. Self-verify Tier 2 tasks now
+  // transition into verify-mode through `executeRouter.routeAfterDone`
+  // and run gates against the Session-tracked `_shared/verify/commandGuard`,
+  // so apply-phase build commands are uniformly blocked.
   const GO_BUILD_PATTERNS = /\bgo\s+(build|test|run|vet)\b/;
-  const allowedByVerificationTask = isVerificationTask({ type: taskType });
-  const allowedBySelfVerifyFlag = ctx.currentTaskSelfVerifyOnDone === true;
-  if (GO_BUILD_PATTERNS.test(command) && !allowedByVerificationTask && !allowedBySelfVerifyFlag) {
+  const allowedByVerifyMode = !!ctx.verificationSession;
+  if (GO_BUILD_PATTERNS.test(command) && !allowedByVerifyMode) {
     console.warn(`   ⛔ [RunCommand] Blocked Go build command in ${taskType} task: ${command}`);
     return makeRejection(
       command,
-      `⛔ BLOCKED: ${command}\n\nGo build/test/run/vet commands are allowed only in verification tasks or Tier 2 single-tasks flagged with selfVerifyOnDone. For Tier 3+ error/feature tasks, the following verification task owns build/test — the diagnostic cycle re-verifies automatically after your fix lands.\nContinue writing code files and output <done>true</done> when complete.`,
+      `⛔ BLOCKED: ${command}\n\nGo build/test/run/vet commands are allowed only during a verification cycle (verification task, or self-verify task in reverify phase). For apply-phase fixes, the following verification cycle owns build/test — it re-verifies automatically after your fix lands.\nContinue writing code files and output <done>true</done> when complete.`,
     );
   }
 

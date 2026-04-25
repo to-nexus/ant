@@ -91,34 +91,16 @@ export function useJobExecution() {
         if (kanbanData?.interruption?.timestamp) {
           useStore.getState().setDismissedInterruptTimestamp(kanbanData.interruption.timestamp);
         }
-        
-        // ✅ FIX: Update cancelled message metadata to show "Resumed" badge
-        // instead of removing the choice card and adding plain text.
-        // This keeps the ChoiceCard visible with "▷ Resumed" badge,
-        // matching the persisted state in chat.jsonl (visible on page refresh).
-        const chatMessages = useStore.getState().chatMessages;
-        const cancelledMsg = chatMessages.find((m: { contents: Array<{ type: string; metadata?: { jobId?: string } }> }) =>
-          m.contents.some(c => c && c.type === 'cancelled' && c.metadata?.jobId === currentJobId)
-        );
-        if (cancelledMsg) {
-          const contentIndex = cancelledMsg.contents.findIndex((c: { type: string }) => c && c.type === 'cancelled');
-          if (contentIndex !== -1) {
-            const updatedContents = [...cancelledMsg.contents];
-            updatedContents[contentIndex] = {
-              ...updatedContents[contentIndex],
-              metadata: {
-                ...updatedContents[contentIndex].metadata,
-                choiceSelected: 'resume',
-                resolvedLabel: 'Resumed'
-              }
-            };
-            useStore.getState().updateChatMessage(cancelledMsg.id, { contents: updatedContents });
-          }
-        }
-        
+
+        // Phase 10 chat-SSOT — the cancelled card's "Resumed" badge
+        // arrives as a `choice_resolved` SSE line emitted by the BE
+        // `/jobs/:id/resume` route (chatService.resolveAllCancelledForJob).
+        // The FE projector folds it into the card automatically — no
+        // direct chat-message mutation needed here.
+
         // ✅ Set running state immediately
         setRunning(true, currentJobId);
-        
+
         const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true);
         
         // ✅ Restore correct jobType from server (interrupted job may differ from current UI mode)

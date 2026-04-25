@@ -48,6 +48,38 @@ export function createJobRoutes(deps: {
   const router = Router();
 
   /**
+   * Mirror prereq / conflict / job-start error responses into the chat
+   * stream as an `assistant_message` line so the FE renders them in the
+   * conversation log without relying on legacy `addChatMessage` calls
+   * from `cli.ts`. Fire-and-forget — never block the HTTP response.
+   *
+   * Skips when seedTurnId is missing (e.g. /resume / /continue paths
+   * which do not flow through `/chat/user-message`).
+   */
+  async function emitConflictAssistantMessage(
+    projectId: string,
+    featureName: string,
+    seedTurnId: string | undefined,
+    jobId: string,
+    userContext: { userId: string; organizationId: string },
+    text: string,
+  ): Promise<void> {
+    if (!seedTurnId || !deps.chatService) return;
+    try {
+      await deps.chatService.appendAssistantMessage(projectId, featureName, text, {
+        jobId,
+        turnId: seedTurnId,
+        userContext,
+      });
+    } catch (err) {
+      logger.warn(
+        `Failed to emit conflict assistant_message: ${(err as Error)?.message ?? err}`,
+        { component: 'JobRoute' },
+      );
+    }
+  }
+
+  /**
    * Thin closure over `finalizeTerminalJob` so individual route handlers
    * don't repeat the `{ cleanupJobState, stateTracker, kanbanService }`
    * dep tuple. Single entry point for terminal transitions (SSOT).
@@ -116,12 +148,15 @@ export function createJobRoutes(deps: {
   // Execute task for a specific feature
   router.post('/projects/:id/features/:feature/execute', jobExecuteRateLimiter, validateBody(executeJobSchema), async (req: Request, res: Response) => {
     const requestReceivedAt = new Date().toISOString();
+    // chat-SSOT — declared before the try block so the catch handler
+    // can surface a server-side `assistant_message` line for the same
+    // turn when the execute pipeline throws (queue / spawn / …).
+    const projectId = req.params.id;
+    const featureName = req.params.feature;
+    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId } = req.body;
+    let userContext: { userId: string; organizationId: string } | null = null;
     try {
-      const projectId = req.params.id;
-      const featureName = req.params.feature;
-      const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId } = req.body;
-      
-      const userContext = extractUserContext(req);
+      userContext = extractUserContext(req);
 
       // Check if this feature already has a running or interrupted job of the same type
       const duplicate = await checkDuplicateJob(projectId, featureName, jobType);
@@ -159,6 +194,14 @@ export function createJobRoutes(deps: {
             });
             // Fall through to normal job execution below
           } else {
+            await emitConflictAssistantMessage(
+              projectId,
+              featureName,
+              seedTurnId,
+              existingJobId,
+              userContext,
+              '이전 작업이 중단되어 있습니다. 재개하거나 닫아주세요.',
+            );
             return res.status(409).json({
               error: 'A previous job was interrupted. Please resume or dismiss it first.',
               existingJobId,
@@ -167,6 +210,14 @@ export function createJobRoutes(deps: {
             });
           }
         } else {
+          await emitConflictAssistantMessage(
+            projectId,
+            featureName,
+            seedTurnId,
+            existingJobId,
+            userContext,
+            `이미 진행 중인 작업이 있습니다. (Job ID: ${existingJobId})`,
+          );
           return res.status(409).json({
             error: 'A job is already running for this feature. Please wait for it to complete or stop it first.',
             existingJobId,
@@ -175,11 +226,19 @@ export function createJobRoutes(deps: {
           });
         }
       }
-      
+
       // Matrix-driven build precondition: reject if required context is missing
       if (actionMetadata?.intent) {
         const slots = getConfigSlots(actionMetadata.intent);
         if (slots?.buildRequiresContext && (!actionMetadata.context || actionMetadata.context.length === 0)) {
+          await emitConflictAssistantMessage(
+            projectId,
+            featureName,
+            seedTurnId,
+            `prereq-${seedTurnId ?? Date.now()}`,
+            userContext,
+            `❌ Context files must be selected for action: ${actionMetadata.intent}`,
+          );
           return res.status(400).json({
             error: 'Context files must be selected for this action.',
             code: 'context-not-selected',
@@ -214,9 +273,48 @@ export function createJobRoutes(deps: {
       const enqueuedAt = new Date().toISOString();
       const result = await deps.executeJob(params);
       logger.info(`Job enqueued: ${projectId}/${featureName} jobId=${result.jobId}`, { component: 'JobRoute' });
-      
+
+      // chat-SSOT — surface prereq validation failure into the chat
+      // stream so the user sees the "missing materials" rejection
+      // alongside their request bubble. Prior to Phase 9, this lived
+      // in `cli.ts` as an optimistic FE-side `addChatMessage`; with
+      // chat events now driven by SSE only, the BE owns the emission.
+      if (!result.success && result.missingMaterials && result.missingMaterials.length > 0) {
+        const materialsList = result.missingMaterials
+          .map((m: any) => `  • ${m.name}: ${m.description}`)
+          .join('\n');
+        const text =
+          `❌ Cannot start ${jobType} job. The following required materials are missing:\n\n${materialsList}\n\nAll of these materials must be provided before starting the job.`;
+        await emitConflictAssistantMessage(
+          projectId,
+          featureName,
+          seedTurnId,
+          result.jobId ?? `prereq-${seedTurnId ?? Date.now()}`,
+          userContext,
+          text,
+        );
+      }
+
       res.json(result);
     } catch (error: any) {
+      // chat-SSOT — server-side execute failures (queue / spawn / …)
+      // also flow into the chat stream so the user is not stranded
+      // with a silent 5xx. Best-effort; never block the error response.
+      try {
+        if (deps.chatService && seedTurnId && userContext) {
+          const message = (error?.message as string) ?? 'Unknown error';
+          await deps.chatService.appendAssistantMessage(
+            projectId,
+            featureName,
+            `❌ Job 실행 실패: ${message}`,
+            {
+              jobId: `start-error-${seedTurnId}`,
+              turnId: seedTurnId,
+              userContext,
+            },
+          );
+        }
+      } catch {/* never block error response */}
       sendErrorResponse(res, 500, error, 'JobExecute');
     }
   });
@@ -486,14 +584,20 @@ export function createJobRoutes(deps: {
       logger.debug(`   Job type: ${jobType}`);
       logger.debug(`   Starting resume job execution...`);
       
-      // ✅ Resolve old cancelled messages: user chose to continue, old choice cards are no longer actionable
+      // ✅ Resolve all unresolved cancelled cards for this jobId. The
+      //   user chose to resume, so any open "Task cancelled" card the
+      //   chat is showing is no longer actionable. Each pause cycle
+      //   has a unique cardId (chat-SSOT §7 — pauseSeq), so we scan
+      //   chat.jsonl for cardType='cancelled' lines matching jobId
+      //   and emit choice_resolved for each.
       if (deps.chatService && sessionJobId) {
-        const resolved = await deps.chatService.resolveCancelledMessages(projectId, featureName, sessionJobId, userContext);
-        if (resolved > 0) {
-          logger.debug(`   ✅ Resolved ${resolved} old cancelled message(s)`);
-        }
+        await deps.chatService.resolveAllCancelledForJob(projectId, featureName, sessionJobId, {
+          choiceSelected: 'resume',
+          resolvedLabel: 'Resumed',
+          userContext,
+        });
       }
-      
+
       // ✅ Resume always sets isResume=true. Graph router uses this + hasTaskQueue + hasResolvedAction
       // to determine correct entry point (plan, decompose, or triage)
       const hasTaskQueue = (sessionData.state?.taskQueue?.length || 0) > 0;
@@ -612,13 +716,15 @@ export function createJobRoutes(deps: {
       fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
       logger.debug(`   ✅ Session updated with new directive`);
       
-      // ✅ Resolve old cancelled messages: user chose to continue, old choice cards are no longer actionable
+      // ✅ Resolve all unresolved cancelled cards for this jobId. See
+      //   /resume route for the rationale (per-pauseSeq unique cardIds).
       const sessionJobId = sessionData.state?.jobId || jobId;
       if (deps.chatService) {
-        const resolved = await deps.chatService.resolveCancelledMessages(projectId, featureName, sessionJobId, userContext);
-        if (resolved > 0) {
-          logger.debug(`   ✅ Resolved ${resolved} old cancelled message(s)`);
-        }
+        await deps.chatService.resolveAllCancelledForJob(projectId, featureName, sessionJobId, {
+          choiceSelected: 'resume',
+          resolvedLabel: 'Resumed',
+          userContext,
+        });
       }
       
       const inputFile = undefined;
@@ -934,6 +1040,19 @@ export function createJobRoutes(deps: {
           },
           featurePath,
         });
+
+        // chat-SSOT — every cancelled card carrying this jobId is now
+        // stale; flip them to "Dismissed" via choice_resolved so the
+        // chat view does not keep dangling unresolved cards across
+        // dismiss / inline-ask 'newJob' / redirect flows. Mirrors the
+        // resume path's `resolveAllCancelledForJob` invocation.
+        if (deps.chatService) {
+          await deps.chatService.resolveAllCancelledForJob(projectId, featureName, jobId, {
+            choiceSelected: 'dismiss',
+            resolvedLabel: 'Dismissed',
+            userContext,
+          });
+        }
       } else if (terminalStatuses.includes(jobStatus.status)) {
         // Pre-refactor legacy path — Redis still holds a terminal record.
         // After this PR lands fully, seal makes this branch effectively

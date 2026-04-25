@@ -33,6 +33,8 @@ import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/Pr
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
 import { hooksIfActive } from "../../tasks/_shared/registry";
+import { isVerifyEntered } from "../../tasks/_shared/verify";
+import { executeHook as sharedVerifyExecuteHook } from "../../tasks/_shared/verify/executeHook";
 import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormalizer";
 import { resolveCodebaseRel } from "./codebaseRel";
@@ -158,8 +160,17 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // inlined here (template variant, directive sanitisation, heavy-context
   // gating, runtime-context framing, empty-plan fallback, directoryTree).
   // `execHook === undefined` is the generic fallback path used by feature
-  // / explain / ui / design-system tasks.
-  const execHook = hooksIfActive(state)?.execute;
+  // / explain / ui / design-system tasks (apply phase only).
+  //
+  // Phase-mode dispatch: TaskExecuteHook is a static configuration object
+  // (not a function) so composeBundle cannot wrap it the way it wraps
+  // function-shaped hooks. Instead the phase layer reads the verify-mode
+  // execute hook from `_shared/verify` whenever the active task has
+  // entered verify-mode (`state._verifyEntered === true`). This single
+  // dispatch covers verification task (always in verify-mode) AND Tier 2
+  // self-verify tasks once they cross the apply→reverify boundary.
+  const verifyExecHook = isVerifyEntered(state) ? sharedVerifyExecuteHook : undefined;
+  const execHook = verifyExecHook ?? hooksIfActive(state)?.execute;
 
   if (!state.planText && !execHook && state.currentTask.priority !== 1000) {
     console.warn(`⚠️  [Execute] planText is empty (task: ${state.currentTask.type}, priority: ${state.currentTask.priority})`);
@@ -720,7 +731,13 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
 export async function buildTaskInvariantContext(state: ArchitectGraphState): Promise<string> {
   const lines: string[] = [];
 
-  const execHook = hooksIfActive(state)?.execute;
+  // Phase-mode-aware execHook lookup — mirrors the dispatch in
+  // `buildExecuteSystemPrompt`. Verify-mode reads `_shared/verify/executeHook`
+  // for verification + Tier 2 self-verify tasks; apply phase reads the
+  // bundle's apply-phase execute hook.
+  const execHook = isVerifyEntered(state)
+    ? sharedVerifyExecuteHook
+    : hooksIfActive(state)?.execute;
 
   if (state.currentTask) {
     lines.push(`# Current Task`);

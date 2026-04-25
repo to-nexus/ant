@@ -22,16 +22,17 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private responseRenderer: ResponseRenderer;
   private fileRenderer: FileRenderer;
   private tagTransformer: SpecialTagTransformer;  // ✅ Store for explicitDone access
-  private planContentIndex: number | undefined;
+  private planContentIndex: string | undefined;
   private planTaskTitle: string | undefined;
   // Accumulates every `plan_content` chunk so the terminal `plan` emit
   // can carry the full text in `metadata.content`. Intermediate
-  // `plan_generating` emits are LIVE_ONLY (see ChatStatusHandler), so
-  // the only line persisted to chat.jsonl is the final `plan` one —
-  // replay reproduces the card from that single line.
+  // `plan_generating` emits are LIVE_ONLY (see LLMResponseService
+  // PROGRESS_STATUS_TYPES), so the only line persisted to chat.jsonl is
+  // the final `plan` one — replay reproduces the card from that single
+  // line.
   private planContentBuffer: string = '';
   private parallelTaskName: string | undefined;
-  private taskResponseIndex: number | undefined;
+  private taskResponseIndex: string | undefined;
   private taskResponseBuffer: string = '';
   
   constructor(
@@ -128,7 +129,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
       case 'plan_end':
         if (this.planContentIndex !== undefined) {
           // Persist the full accumulated plan text on the terminal `plan`
-          // line so `ChatLogToMessages` replay can reproduce the final
+          // line so the FE projector can reproduce the final
           // card from a single jsonl entry. The live path keeps
           // `_preserveContent` so the already-appended UI content is
           // untouched.

@@ -12,9 +12,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   VerificationSession,
   DEEP_DIAGNOSTIC_THRESHOLD,
-} from '../../../src/agents/architect/graph/code/tasks/verification/model/Session';
-import { EMPTY_SNAPSHOT } from '../../../src/agents/architect/graph/code/tasks/verification/model/snapshot';
-import type { VerificationSnapshot } from '../../../src/agents/architect/graph/code/tasks/verification/model/snapshot';
+} from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
+import { EMPTY_SNAPSHOT } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/snapshot';
+import type { VerificationSnapshot } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/snapshot';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Fixtures

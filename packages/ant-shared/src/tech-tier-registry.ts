@@ -95,7 +95,9 @@ export function getValidLanguages(tierKey: TechTierKey): SupportedLanguage[] {
 }
 
 export function getValidFrameworks(tierKey: TechTierKey, lang: SupportedLanguage): string[] {
-  const fws = TECH_TIER_CONSTRAINTS[tierKey].frameworks;
+  const constraints = TECH_TIER_CONSTRAINTS[tierKey];
+  if (!constraints) return [];
+  const fws = constraints.frameworks;
   return [...(fws[lang as keyof typeof fws] ?? [])];
 }
 
