@@ -239,9 +239,11 @@ export class ExpressServerAdapter implements
     // Run stale job recovery BEFORE accepting connections so that Redis
     // state is clean by the time the Realtime server (or any client) reads it.
     try {
-      await recoverStaleJobs(
-        this.cleanupManager.cleanupJobState.bind(this.cleanupManager),
-      );
+      await recoverStaleJobs({
+        cleanupJobState: this.cleanupManager.cleanupJobState.bind(this.cleanupManager),
+        stateTracker: this.stateTracker,
+        kanbanService: this.deps.kanbanService,
+      });
     } catch (err) {
       logger.warn('Stale job recovery error (non-fatal)', { component: 'ExpressServerAdapter' }, err);
     }

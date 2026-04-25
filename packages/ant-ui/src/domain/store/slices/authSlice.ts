@@ -41,13 +41,20 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
 
       (async () => {
         try {
-          const [{ fetchFeatureSession }, { fetchKanbanData }] = await Promise.all([
+          // Fetch session + jobType-scoped kanban + jobId history in parallel.
+          // The history is what guarantees the Job tab never shows an empty
+          // board when the jobType has prior runs: if the session-scoped
+          // kanban lacks a jobId (e.g. session.state is stale or not yet
+          // written for this jobType), we fall back to the most-recent
+          // history entry and switch the board there.
+          const [{ fetchFeatureSession, fetchJobHistory }, { fetchKanbanData }] = await Promise.all([
             import('@/infrastructure/http/api'),
             import('@/infrastructure/http/api/kanban'),
           ]);
-          const [session, kanbanData] = await Promise.all([
+          const [session, kanbanData, history] = await Promise.all([
             fetchFeatureSession(state.selectedProject!, state.selectedFeature!, jobType),
             fetchKanbanData(state.selectedProject!, state.selectedFeature!, jobType),
+            fetchJobHistory(state.selectedProject!, state.selectedFeature!, jobType),
           ]);
 
           if (get().selectedJobType !== jobType) {
@@ -58,6 +65,19 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
           set({ session: session || undefined });
           get().updateKanban(kanbanData);
           console.log(`[Store] ✅ Session + kanban loaded for ${jobType}`);
+
+          // Auto-select the most-recent jobId when the jobType-scoped kanban
+          // has no jobId but the history does. Without this, switching job
+          // types in chat and coming back could leave the Job tab empty
+          // even though completed runs exist for that jobType.
+          const hasBoardJobId = !!kanbanData?.jobId;
+          if (!hasBoardJobId && history.jobs.length > 0) {
+            const latest = history.jobs[0];
+            console.log(
+              `[Store] ↩️ No current jobId for '${jobType}', auto-selecting latest: ${latest.jobId}`,
+            );
+            await get().selectJobId(latest.jobId, { live: latest.live });
+          }
         } catch (error) {
           console.error('[Store] Failed to switch job type:', error);
           if (get().selectedJobType === jobType) {

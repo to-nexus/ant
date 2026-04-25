@@ -134,15 +134,10 @@ export class ProjectService {
     return this.featureCrud.getSession(projectId, featureName, job, userContext);
   }
   
-  async resetJobState(
-    projectId: string,
-    featureName: string,
-    jobType: 'design' | 'code' | 'learn',
-    userContext: UserContext
-  ): Promise<void> {
-    return this.featureCrud.resetJobState(projectId, featureName, jobType, userContext);
-  }
-  
+  // `resetJobState` was removed — session.state wipe without Redis/runs[]
+  // coordination violated the SSOT invariant. Use `finalizeTerminalJob`
+  // (per-job) or the Hard Reset pipeline (per-feature) instead.
+
   // =====================================
   // File Operations (delegated)
   // =====================================

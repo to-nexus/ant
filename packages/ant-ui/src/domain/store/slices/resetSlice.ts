@@ -26,7 +26,6 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set) => 
       mainPanelActiveTab: 'job',
       mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false, actions: false },
       mainPanelTabOrder: [],
-      isJobTabCleared: false,
       actionsStep: 'pick-action',
       selectedActionId: null,
       selectedIntentId: null,

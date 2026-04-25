@@ -1,5 +1,26 @@
 import { API_BASE, authFetch, apiGet, apiPost, apiDelete } from './client';
 
+/**
+ * One row in the Job-tab dropdown — a previously executed (or currently
+ * running) job for the same feature × jobType.
+ *
+ * `kanbanSnapshot` is the final sealed kanban captured when the job
+ * finished. Present for completed runs; absent for live jobs (their data
+ * lives in the store's kanban slice) and for historical runs that predate
+ * snapshot persistence. The FE renders time / token badges only when it
+ * can derive them from this snapshot or from live store state.
+ */
+export interface JobHistoryEntry {
+  jobId: string;
+  type: string;
+  status: string;
+  startedAt?: string;
+  completedAt?: string;
+  /** True when Redis still holds live state (running / paused). */
+  live: boolean;
+  kanbanSnapshot?: import('@ant/shared').KanbanData;
+}
+
 export interface ExecuteJobParams {
   projectId: string;
   featureName?: string;
@@ -13,13 +34,8 @@ export interface ExecuteJobParams {
   actionMetadata?: import('@ant/shared').ActionMetadata;
 }
 
-export interface JobStatus {
-  jobId: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  startedAt?: string;
-  completedAt?: string;
-  error?: string;
-}
+// `JobStatus` interface was removed along with `fetchJobStatus` — the
+// endpoint it described is not reachable from ant-ui.
 
 /**
  * Execute a job. Has custom logic for prerequisites validation.
@@ -71,13 +87,34 @@ export async function executeJob(
   return data;
 }
 
-export async function clearSessionData(
+/**
+ * List past job ids for a feature × jobType, most-recent first. Source-merged
+ * from Redis (live + recent) and the session file's `runs[]` array.
+ */
+export function fetchJobHistory(
   projectId: string,
   featureName: string,
   jobType: string,
+): Promise<{ jobs: JobHistoryEntry[] }> {
+  return apiGet<{ jobs: JobHistoryEntry[] }>(
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/jobs?type=${encodeURIComponent(jobType)}`,
+  ).catch(() => ({ jobs: [] }));
+}
+
+/**
+ * Per-jobId "full wipe" — deletes every artifact (Redis + BullMQ + disk +
+ * session runs entry + feature.jsonl collapse) tied to this jobId. The BE
+ * refuses (409) when the job is currently running or paused.
+ */
+export async function deleteJobById(
+  projectId: string,
+  featureName: string,
+  jobId: string,
+  jobType?: string,
 ): Promise<void> {
+  const query = jobType ? `?type=${encodeURIComponent(jobType)}` : '';
   await apiDelete(
-    `${API_BASE()}/projects/${projectId}/features/${featureName}/session?job=${jobType}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/jobs/${encodeURIComponent(jobId)}${query}`,
   );
 }
 
@@ -134,9 +171,10 @@ export function inlineAsk(
   );
 }
 
-export function fetchJobStatus(jobId: string): Promise<JobStatus> {
-  return apiGet(`${API_BASE()}/tasks/${encodeURIComponent(jobId)}/status`);
-}
+// `fetchJobStatus` was removed — it targeted a legacy `/tasks/:id/status`
+// endpoint that never existed on the BE, and had zero call sites in ant-ui.
+// The canonical BE endpoint is `GET /api/jobs/:id/status`, used by e2e
+// helpers and ops runbooks only.
 
 /**
  * Dismiss an interrupted (paused) job, clearing the server-side 'paused' state

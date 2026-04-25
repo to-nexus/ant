@@ -362,31 +362,26 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
             const effectiveJobType = jobType || state.selectedJobType || 'design';
             const effectiveAgent = agent || state.selectedAgent || 'architect';
 
-            import('@/infrastructure/http/api').then(({ clearSessionData, executeJob }) => {
-              clearSessionData(
-                inlineAskContext.projectId,
-                inlineAskContext.featureName,
-                state.selectedJobType || 'code'
-              ).then(() => {
-                console.log('[Store] ✅ Session cleared for fresh start');
-              }).catch(() => {
-                console.warn('[Store] ⚠️ Session clear failed, proceeding anyway');
-              }).finally(() => {
-                executeJob({
-                  projectId: inlineAskContext.projectId,
-                  featureName: inlineAskContext.featureName,
-                  jobType: effectiveJobType,
-                  agent: effectiveAgent,
-                  overrideDirective: inlineAskContext.message,
-                  chatSource: true,
-                }).then((result) => {
-                  console.log('[Store] ✅ Fresh job started:', result.jobId);
-                  get().setRunning(true, result.jobId);
-                  get().setLastJobFailed(false);
-                }).catch((error) => {
-                  console.error('[Store] ❌ Fresh job start failed:', error);
-                  get().setRunning(false);
-                });
+            // jobType-scoped session reset is gone (replaced by per-jobId
+            // delete from the Job-tab dropdown). Inline-ask "newJob" /
+            // "noSession" branches now just dismiss the prior interruption
+            // (above) and execute a fresh job; the worker will assign a new
+            // jobId so the previous session entry stays distinct in history.
+            import('@/infrastructure/http/api').then(({ executeJob }) => {
+              executeJob({
+                projectId: inlineAskContext.projectId,
+                featureName: inlineAskContext.featureName,
+                jobType: effectiveJobType,
+                agent: effectiveAgent,
+                overrideDirective: inlineAskContext.message,
+                chatSource: true,
+              }).then((result) => {
+                console.log('[Store] ✅ Fresh job started:', result.jobId);
+                get().setRunning(true, result.jobId);
+                get().setLastJobFailed(false);
+              }).catch((error) => {
+                console.error('[Store] ❌ Fresh job start failed:', error);
+                get().setRunning(false);
               });
             });
           };

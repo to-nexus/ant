@@ -288,7 +288,19 @@ export interface StateStorePort {
    * Clear user-stopped flag
    */
   clearUserStopped(jobId: string): Promise<void>;
-  
+
+  // ============================================
+  // Kill Reason (pre-SIGTERM hint)
+  // ============================================
+
+  /**
+   * Delete the pre-SIGTERM kill reason key (`ant:job:killReason:{jobId}`).
+   * Called by the terminal-seal pipeline to guarantee no residual keys remain
+   * after a job finalizes. Kill reason has a 60s TTL so this is primarily a
+   * belt-and-suspenders guarantee.
+   */
+  deleteKillReason(jobId: string): Promise<void>;
+
   // ============================================
   // Port Registry - Preview (Full State Management)
   // ============================================
@@ -594,6 +606,30 @@ export interface StateStorePort {
    * Used on startup to detect orphaned jobs from a previous crash.
    */
   findJobsByStatus(status: JobStatusValue): Promise<JobStatusData[]>;
+
+  /**
+   * Scan every `ant:index:jobsByFeature:*` index key and return each
+   * (projectId, featureName, jobIds[]) tuple. Used by StaleJobRecovery
+   * Phase 3 to sweep orphan terminal-state job records whose seal was
+   * missed (e.g. server crash between status update and key DEL).
+   */
+  scanJobsByFeatureIndex(): Promise<Array<{
+    projectId: string;
+    featureName: string;
+    jobIds: string[];
+  }>>;
+
+  /**
+   * Remove a job id from its `ant:index:jobsByFeature:{projectId}:{featureName}`
+   * SET entry without touching the associated status record. Used when the
+   * status key has already expired (TTL) but the index SET still remembers
+   * the stale jobId.
+   */
+  removeJobFromFeatureIndex(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+  ): Promise<void>;
 
   // ============================================
   // Pub/Sub (for Cloud Mode real-time updates)

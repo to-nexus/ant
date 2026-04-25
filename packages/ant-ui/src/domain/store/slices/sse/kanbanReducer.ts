@@ -208,10 +208,6 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
       ...(isJobRunning ? { jobStartPending: false } : {})
     };
 
-    if (kanbanJobId && state.isJobTabCleared) {
-      newState.isJobTabCleared = false;
-    }
-
     if (kanbanJobId !== state.currentJobId) {
       if (state.currentJobId === undefined && !kanbanJobId) {
         // Skip update

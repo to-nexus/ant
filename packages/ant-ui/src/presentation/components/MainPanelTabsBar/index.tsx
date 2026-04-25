@@ -1,77 +1,33 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
 import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap } from 'lucide-react';
-import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
-import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { TabButton } from './components/TabButton';
+import { JobIdDropdown } from './components/JobIdDropdown';
 import { JobControls } from './components/JobControls';
 import { useTranslation } from 'react-i18next';
 
 /**
  * MainPanelTabsBar - Tab navigation for Main Panel
- * 
+ *
  * Displays tabs for switching between:
- * - Job tab (always visible, shows job ID)
+ * - Job tab (always visible; jobId chip is now a dropdown trigger)
  * - Config tab (appears when project config is opened)
  * - FileEdit tab (appears when a file is selected)
- * 
- * Each tab has a close button. Job tab cannot be removed, but can be "cleared"
- * (shows empty job state without removing the tab itself).
+ *
+ * The job tab no longer carries an X button or a single-jobId reset path.
+ * Job-id navigation, copy, and per-jobId delete all live inside the
+ * JobIdDropdown attached to the chip.
  */
 export function MainPanelTabsBar() {
   const { t } = useTranslation('nav');
   const activeTab = useStore((state) => state.mainPanelActiveTab);
   const openTabs = useStore((state) => state.mainPanelOpenTabs);
   const tabOrder = useStore((state) => state.mainPanelTabOrder);
-  const isJobTabCleared = useStore((state) => state.isJobTabCleared);
   const currentJobId = useStore((state) => state.currentJobId);
   const selectMainPanelTab = useStore((state) => state.selectMainPanelTab);
   const closeMainPanelTab = useStore((state) => state.closeMainPanelTab);
-  const clearJobTab = useStore((state) => state.clearJobTab);
-  const isRunning = useStore((state) => state.isRunning);
-  const { showConfirm, showInfo } = useAlertModalContext();
-  const { toast } = useToastContext();
 
   const getJobTabLabel = () => t('tabs.job');
-
-  const handleCopyJobId = () => {
-    if (currentJobId) {
-      navigator.clipboard.writeText(currentJobId);
-      toast.success(t('tabs.copiedJobId'));
-    }
-  };
-
-  const handleJobTabClose = () => {
-    if (isRunning) {
-      showInfo(t('tabs.removeJobBlocked'), {
-        type: 'warning',
-        title: t('tabs.removeJob'),
-      });
-      return;
-    }
-
-    showConfirm(
-      <>
-        <p>{t('tabs.removeJobDesc')}</p>
-        <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
-          <li>{t('tabs.removeJobItem1')}</li>
-          <li>{t('tabs.removeJobItem2')}</li>
-          <li>{t('tabs.removeJobItem3')}</li>
-          <li>{t('tabs.removeJobItem4')}</li>
-        </ul>
-        <p className="mt-3 font-medium">{t('tabs.removeJobConfirm')}</p>
-      </>,
-      {
-        type: 'warning',
-        title: t('tabs.removeJob'),
-        confirmText: t('common:button.remove'),
-        cancelText: t('common:button.cancel'),
-        onConfirm: async () => {
-          await clearJobTab();
-        }
-      }
-    );
-  };
 
   // Render dynamic tabs
   const renderTab = (tabKey: 'projectConfig' | 'accountConfig' | 'fileEdit' | 'transfer' | 'previewConfig' | 'actions') => {
@@ -105,19 +61,16 @@ export function MainPanelTabsBar() {
   const controls = Bar.render({
     left: (
       <div className="flex items-center gap-1">
-        {/* Job Tab - Always visible */}
+        {/* Job Tab — always visible. The jobId chip + dropdown lives in `trailing`. */}
         <TabButton
           icon={Briefcase}
           label={getJobTabLabel()}
           isActive={activeTab === 'job'}
           isJobTab={true}
-          jobId={!isJobTabCleared ? currentJobId : undefined}
           showText={activeTab === 'job'}
-          showCloseButton={!!currentJobId}
-          title={currentJobId && !isJobTabCleared ? `Job ID: ${currentJobId}` : t('tabs.job')}
+          title={currentJobId ? `Job ID: ${currentJobId}` : t('tabs.job')}
+          trailing={currentJobId ? <JobIdDropdown jobId={currentJobId} /> : undefined}
           onClick={() => selectMainPanelTab('job')}
-          onClose={handleJobTabClose}
-          onCopyJobId={handleCopyJobId}
         />
 
         {/* Dynamic tabs */}
