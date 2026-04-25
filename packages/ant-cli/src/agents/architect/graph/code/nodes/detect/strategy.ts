@@ -5,12 +5,11 @@
  * Profile/environment determination is NOT done here — that's decompose's responsibility (tech tier).
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { ArchitectGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
-import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
+import type { WorkspaceState } from '../../../../../common/graph/nodes/triage/types.js';
+import { DESIGN_DIR } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
 import { runEstimatingLLMStream } from '../../../../../common/graph/llmHelpers.js';
 import { logPrompt } from '../../../../../../core/utils/promptLogger.js';
@@ -25,18 +24,15 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
     const llm = state.deps?.llm;
     if (!llm) throw new Error('[Code:Detect] LLM not available');
 
-    const artifactAvailability = scanArtifacts(state);
-
     const promptBuilder = state.deps?.promptBuilder;
     if (!promptBuilder) throw new Error('[Code:Detect] PromptBuilder not available');
 
-    const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
-    const pool = new ArtifactPoolView(state.artifacts || []);
+    const ws = state.workspaceState;
     const prompt = await promptBuilder.render('jobs/code/nodes/detect/variants/default/base', {
       directive: state.directive || '',
-      artifactAvailability: artifactAvailability || '',
-      hasDesignDoc: pool.hasSystemDesign(),
-      hasSpecDocs: pool.hasSpec(),
+      artifactAvailability: formatArtifactAvailability(ws),
+      hasDesignDoc: ws?.hasSystemDesignDoc ?? false,
+      hasSpecDocs: ws?.hasSpecDocs ?? false,
     });
 
     const jobId = state._httpJobId || 'unknown';
@@ -97,34 +93,31 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
 // Internal helpers
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function scanArtifacts(state: ArchitectGraphState): string {
-  const featurePath = state.context.featurePath;
-  if (!featurePath) return '';
-
+/**
+ * Render `artifactAvailability` block from `state.workspaceState`. Pre-RAC
+ * SSOT — the Code detect LLM only needs path-based presence (filename lists)
+ * to decide between `gen-code-sys` / `gen-code-spec` / `gen-code-directive` /
+ * `rev-code` / `explain-code`. Content of those files is NOT injected here.
+ *
+ * Triage's `analyzeWorkspace` is the single disk-scan SSOT; `state.artifacts`
+ * is intentionally NOT consulted (post-RAC pool — see `.cursorrules`
+ * "state.artifacts Post-RAC SSOT").
+ */
+function formatArtifactAvailability(ws?: WorkspaceState): string {
+  if (!ws) return '';
   const lines: string[] = [];
-  const listDir = (dirPath: string): string[] => {
-    try {
-      if (!fs.existsSync(dirPath)) return [];
-      return fs.readdirSync(dirPath).filter((f: string) => !f.startsWith('.'));
-    } catch { return []; }
-  };
-
-  for (const sub of DESIGN_SUBDIRS) {
-    const dir = path.join(featurePath, DESIGN_DIR, sub);
-    const files = listDir(dir);
-    if (files.length > 0) lines.push(`- \`${DESIGN_DIR}/${sub}/\`: ${files.join(', ')}`);
+  if (ws.systemDesignFileNames?.length) {
+    lines.push(`- \`${DESIGN_DIR}/system/\`: ${ws.systemDesignFileNames.join(', ')}`);
   }
-  const flatFiles = listDir(path.join(featurePath, DESIGN_DIR))
-    .filter((f: string) => f.endsWith('.md') || f.endsWith('.json'));
-  if (flatFiles.length > 0) lines.push(`- \`${DESIGN_DIR}/\` (flat): ${flatFiles.join(', ')}`);
-
-  const sourcesDir = path.join(featurePath, 'inputs/sources');
-  const sourceFiles = listDir(sourcesDir).filter((f: string) => !f.startsWith('.'));
-  if (sourceFiles.length > 0) lines.push(`- \`inputs/sources/\`: ${sourceFiles.join(', ')}`);
-
+  if (ws.specDocNames?.length) {
+    lines.push(`- \`${DESIGN_DIR}/spec/\`: ${ws.specDocNames.join(', ')}`);
+  }
+  if (ws.sourceFileNames?.length) {
+    lines.push(`- \`inputs/sources/\`: ${ws.sourceFileNames.join(', ')}`);
+  }
   if (lines.length > 0) {
     const result = lines.join('\n');
-    console.log(`📂 [Code:Detect] Artifact scan:\n${result}`);
+    console.log(`📂 [Code:Detect] Artifact availability:\n${result}`);
     return result;
   }
   return '';

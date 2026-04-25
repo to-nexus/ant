@@ -329,46 +329,74 @@ The transformer registry is the self-documenting inventory. If it isn't there, i
 
 ---
 
-## Visual Tier Activation SSOT — `isVisualTierActive(basisSlot, techTier, hasUiDoc)`
+## Tier Matrix SSOT — `isTierActive(tier, slot, domain, runtime)` (Phase 1)
 
-**Visual Tier 가 활성화되는지 판정하는 predicate 는 [`@ant/shared/action-config-matrix.ts`](packages/ant-shared/src/action-config-matrix.ts) 의 `isVisualTierActive` 하나가 SSOT다. 세 축 중 하나라도 닫히면 비활성이며, FE wizard / FE summary / BE code decompose / BE design decompose 네 지점 모두 이 predicate 만 호출한다.**
+**모든 tier (`domain` / `techTier` / `visualTier` / `artTier` / `gameContentTier`) 의 활성 여부 는 [`@ant/shared/tier-matrix.ts`](packages/ant-shared/src/tier-matrix.ts) 의 `isTierActive` 하나가 SSOT다. 산발 predicate (`isVisualTierActive`, `isArtTierActive` 등) 는 만들지 않는다. FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 5 지점 모두 이 predicate 만 호출한다.**
 
 ```
-active ⇔ basisSlot.visualTier === true
-       AND techTier.stack !== 'backend'
-       AND !hasUiDoc
+active(tier) ⇔ slot.tiers?.includes(tier)
+            AND TIER_DOMAIN_MATRIX[tier].includes(domain)
+            AND !RUNTIME_SUPPRESSORS[tier]?.(runtime)
 ```
 
 | 축 | 닫히는 조건 | 출처 |
 |---|---|---|
-| slot | `basisSlot.visualTier !== true` | 인텐트별 정적 config |
-| stack | `techTier.stack === 'backend'` | 런타임 RAC basis |
-| uiDoc | `hasUiDoc === true` | FE: `pathsContainUiDoc(actionMetadata.refs + context)` / BE: `ArtifactPoolView.hasUi()` |
+| slot | `slot.tiers` 에 tier 미포함 | 인텐트별 정적 config (`getConfigSlots(intent).basis.tiers`) |
+| domain | `TIER_DOMAIN_MATRIX[tier]` 에 domain 미포함 | 매트릭스 (Phase 1: artTier/gameContentTier 는 `['game']`) |
+| runtime | `visualTier`: `techTier.stack === 'backend'` 또는 `hasUiDoc === true` | 런타임 RAC basis / post-RAC pool |
 
 `hasUiDoc` 은 **사용자가 RAC 에 포함시킨 UI 디자인 문서**(ant / figma / handoff)의 존재 여부다. 파일시스템에 존재하는 것만으로는 부족하고, `refs` 또는 `context` 슬롯으로 사용자가 결정해 넣어야 true. UI 디자인 문서 자체가 디자인 시스템 권위이므로 병렬 visual tier 주입은 중복이다.
 
 ### ❌ ABSOLUTELY FORBIDDEN
 
-- visual tier 활성 여부를 판단하는 자체 헬퍼 / 인라인 조건식을 새로 만들기. 네 지점 모두 `isVisualTierActive` 만 호출한다.
-- `{{#if visualTierActive}}` 이외의 템플릿 이름으로 같은 게이트를 이중화하기 (`{{#if hasVisualTier}}`, `{{#if hasUiDoc}}` 등 alias 금지). 템플릿 변수는 node-level 에서 `isVisualTierActive(...)` 결과를 `visualTierActive` 로 넘긴다.
+- tier 활성 여부를 판단하는 자체 헬퍼 / 인라인 조건식을 새로 만들기. 모든 지점에서 `isTierActive(tier, slot, domain, runtime)` 만 호출한다.
+- `{{#if visualTierActive}}` 이외의 템플릿 이름으로 같은 게이트를 이중화하기 (`{{#if hasVisualTier}}`, `{{#if hasUiDoc}}` 등 alias 금지). 템플릿 변수는 node-level 에서 `isTierActive('visualTier', ...)` 결과를 `visualTierActive` 로 넘긴다. 동일 패턴 — `artTierActive`, `gameContentTierActive`, `domainTierActive`.
 - `hasUiDoc` 을 "파일시스템에 UI artifact 가 있는가" 로 해석하기. 항상 post-RAC pool (BE) 또는 `actionMetadata.refs`/`context` (FE) 기준.
 - `hasUi` 가 true 인데 `resolvedAction.basis.visualTier` 를 계속 downstream 으로 흘려보내기. `decompose` 는 UI doc 감지 시 preset 을 `undefined` 로 비워 downstream 프롬프트가 스테일 값을 읽지 못하게 한다.
 
 ### ✅ CORRECT
 
-- BE 노드에서 `isVisualTierActive(basisSlot, techTier, pool.hasUi())` 호출 → 결과를 `visualTierActive` 템플릿 변수로 주입.
-- FE 에서 `pathsContainUiDoc([...refs, ...context])` 로 `hasUiDoc` 계산 후 동일 predicate 호출 (`useBasisWizard`, `BasisSummaryBar`).
+- BE 노드에서 `isTierActive('visualTier', slot, getEffectiveDomain(domain), { techTier, hasUiDoc: pool.hasUi() })` 호출 → 결과를 `visualTierActive` 템플릿 변수로 주입.
+- FE 에서 `pathsContainUiDoc([...refs, ...context])` 로 `hasUiDoc` 계산 후 `isTierActive('visualTier', slot, domain, ...)` 호출 (`useBasisWizard`, `BasisSummaryBar`).
 - UI doc 이 RAC 에 들어오면 visual tier 관련 모든 프롬프트 (`visual-tier-detection` 주입, basis 의 visualTier 블록) 를 스킵.
+- 새 도메인 추가 (Phase 4+) 는 `Domain` union 확장 + `TIER_DOMAIN_MATRIX[tier]` row 한 줄 변경으로 끝나야 한다 — predicate / wizard / decompose 어디에도 if 분기 추가 금지.
 
 ### Enforcement
 
 ```bash
-# predicate 호출 지점이 헬퍼 하나에만 의존하는지 확인
-rg -n "isVisualTierActive\(" --type ts
-# Expected: FE 두 지점(useBasisWizard, BasisSummaryBar) + BE 두 지점(code decompose, design decompose)
+# 산발 predicate 가 부활하지 않았는지 확인
+rg -n "(isVisualTierActive|isArtTierActive|isGameContentTierActive)\(" --type ts
+# Expected: 0 matches (모두 isTierActive 로 통합됨)
+
+rg -n "isTierActive\(" --type ts
+# Expected: FE wizard/summary + BE code decompose / design decompose / PromptBuilder.buildBasisSection
 ```
 
-전체 설계는 [docs/architecture/33-visual-tier.md](docs/architecture/33-visual-tier.md) 참고.
+전체 설계는 [docs/tmp/domain-and-game-tier-system-handoff.md](docs/tmp/domain-and-game-tier-system-handoff.md) 의 §4.1 / §4.3 참고.
+
+---
+
+## Domain-Branching Locality SSOT — basis/** 안에서만 (Phase 1, I1)
+
+**도메인 콘텐츠 분기 (`{{#if (eq domain 'game')}}` 등) 는 `templates/basis/**` 디렉토리 안에서만 합법이다.** 노드 본체 / variants / rules / system / injections / examples 어디에도 도메인 이름 비교를 넣지 않는다. 결정 슬롯 분기 (`{{#if gameEngineCandidates}}`) 는 메타-프로세스이므로 허용된다.
+
+회귀 가드: `tests/domain-branching-locality.test.ts` 가 `basis/**` 외 디렉토리에서 도메인 이름 비교 0 hit 강제.
+
+---
+
+## Basis Partial Invariant — `templates/basis/**` 안에서 `{{> }}` 금지 (Phase 1, I4)
+
+`templates/basis/**` 의 `.md` 파일들은 [`FilePromptAdapter.ts`](packages/ant-cli/src/periphery/adapters/prompt/FilePromptAdapter.ts) 의 `initPartials` 에서 **의도적으로 등록 제외** 된다. 이 디렉토리 안에서 `{{> }}` partial include 를 시도하면 partial 이름이 등록되지 않아 런타임에 깨진다. private partial 이 필요하면 `templates/jobs/.../basis/.../_*-private.md` 명명 규약으로 `jobs/...` 트리에 둔다 (이 트리는 등록됨).
+
+회귀 가드: `tests/basis-partial-invariant.test.ts`.
+
+---
+
+## Motion Locality SSOT — UI motion ≠ engine art motion (Phase 1, I5)
+
+`interactionGrammar` (visualTier layer 4) 는 **UI/HUD 표면의 페이지 전환 / 호버 / 포커스** motion 만 다룬다. `artTier.{motionPattern, particleProfile, projectilePolicy}` 는 **엔진 내부 sprite tween / 파티클 / 투사체** motion 만 다룬다. 두 motion 의 cross-pollution (sprite/projectile 키워드를 interactionGrammar 에, page-transition/hover 키워드를 artTier 에) 은 금지.
+
+회귀 가드: `tests/motion-locality.test.ts`.
 
 ---
 
@@ -467,6 +495,61 @@ rg -i "Background Context|Do NOT treat as implementation source|for understandin
 ```
 
 The intent-matrix integration test ([packages/ant-cli/tests/role-flag-intent-matrix.test.ts](packages/ant-cli/tests/role-flag-intent-matrix.test.ts)) is the runtime guard: it asserts `hasUi=true` for every intent that surfaces UI as either ref or context, catching any regression that would re-introduce `hasUiRef` as a Gate.
+
+---
+
+## state.artifacts Post-RAC SSOT
+
+**`state.artifacts` 는 항상 `resolvedAction.refs ∪ context` 의 부분집합이다.** 풀에 데이터를 넣는 SSOT 함수는 두 개뿐:
+
+1. `loadResolvedArtifacts(resolvedAction, featurePath)` — RAC 기반 적재. 호출되는 지점은 (a) `detect` 노드의 정상 경로 + resume fast path, (b) `resolve` 노드의 `onResume` (resume 흐름이 `routeAfterResolve` 의 "Plain resume" / "no tasks" 분기로 detect 를 우회하는 경우의 보완 — 호출하는 함수는 동일).
+2. `appendOrUpdatePool(pool, task.files)` — design 잡의 intra-job self-output (직렬 task-completion edge + 병렬 후 `result.completedTasks.flatMap(t => t.files)`).
+
+resolve 노드는 새 wholesale 디스크 스캔을 추가할 수 없다. 폐기된 함수 / 호출: `ArtifactService.loadDesignDocuments` / `loadSpecDocuments` / `loadParsedUiContext` (resolve 에서의 호출), `scanDesignOutputs`, `buildArtifactPool`, `buildDesignArtifactPool`. resolve 는 인프라 헬퍼 (figma MCP detect, runtime assets, directive, session context, featureContext) + 위 SSOT 함수 호출만 담당.
+
+`code resolve.loadArtifacts` 는 새 진입 시 `artifacts: []` 를 명시 시드 — 이 빈 배열이 *channel-presence sentinel* 로 detect 의 truthy 검사를 통과시켜 RAC 결과를 채우게 한다. `planner` 처럼 `artifacts` 채널이 없는 잡은 sentinel 을 안 넣으므로 detect 가 spread 자체를 생략 — 잡별 schema 일관성 보존.
+
+pre-RAC presence 신호는 [`state.workspaceState`](packages/ant-cli/src/agents/common/graph/nodes/triage/types.ts) 가 SSOT — triage 의 `analyzeWorkspace` 가 채운다. detect strategy 는 `state.artifacts` 본문을 *읽지 않으며*, `state.workspaceState.{hasSystemDesignDoc, systemDesignFileNames, hasSpecDocs, specDocNames, sourceFileNames, ...}` 만 참조한다.
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- resolve 에서 `outputs/design/**` 또는 `inputs/sources/**` 를 RAC 와 무관하게 읽어 `state.artifacts` 에 적재
+- `scanDesignOutputs(featurePath)` 같은 전체 디렉토리 walk 결과를 풀에 합산 — 정당한 self-output 은 `task.files` 만
+- `state.workspaceState` 와 의미 중복인 새 path-presence 채널 / availability 헬퍼 신설
+- detect strategy 가 `state.artifacts[].content` 본문을 LLM 프롬프트에 주입 (path-only flag / 파일명 list 만 허용)
+- execute / plan UI 셀프힐이 RAC UI 슬롯 없이 풀을 augment
+
+### ✅ CORRECT
+
+- `state.artifacts` writer 는 `loadResolvedArtifacts` 와 `appendOrUpdatePool(pool, task.files)` 두 곳뿐 — 새 writer 신설 금지
+- pre-RAC presence 가 필요하면 `state.workspaceState` 또는 (필요 시) `WorkspaceState` 타입에 path-only 필드 추가
+- execute UI 셀프힐 같은 본문 추가 동작은 `resolvedAction.refs ∪ context` 가 해당 슬롯을 가질 때만 허용
+- `existingDesignDocs` 같은 잡 내부 본문 cache 는 RAC SSOT 와 별개 채널로 keep — `state.artifacts` 에는 합치지 않음
+
+### Why This Matters
+
+`prime-jetting-grate` 회귀 (`gen-code-directive` 인텐트가 RAC 에 system-design 슬롯을 갖지 않음에도 `outputs/design/system/fe-system-main.md` 본문이 decompose 프롬프트에 주입되고 task.artifactPolicy.refs 에 박혀 워커가 Cross SDK 레지스트리 코드를 그대로 옮긴 사건) 에서 입증된 것처럼, RAC 검증을 하지 않는 단일 wholesale-load 는 4 개 이상의 누수 채널 (resolve 풀 적재 → decompose tierRefs → decompose `documents` → deriveArtifactPolicy packages 매핑) 에 동시에 영향을 준다. 풀 자체를 RAC 부분집합으로 강제하면 모든 누수 채널이 *셀렉터 패턴* 으로 격하되어 RAC 외부 데이터를 끌어올 수 없게 된다.
+
+### Enforcement
+
+```bash
+# 풀 wholesale-load helper 호출 잔존 0 건 (주석 언급은 허용 — 호출 형태만 검사)
+rg "scanDesignOutputs\(|buildDesignArtifactPool\(|buildArtifactPool\(" packages/ant-cli/src
+# Expected: 0 matches
+
+# resolve 노드가 design/spec/UI artifact 를 직접 읽는 호출 0 건
+rg "loadDesignDocuments\(|loadSpecDocuments\(|loadParsedUiContext\(" \
+  packages/ant-cli/src/agents/architect/graph/code/nodes/resolve \
+  packages/ant-cli/src/agents/architect/graph/design/nodes/resolve.ts
+# Expected: 0 matches (execute UI 셀프힐의 loadParsedUiContext 는 RAC UI 슬롯 가드 안에서만 호출됨 — 별도 위치)
+
+# detect strategy 가 풀 본문에 의존하지 않는지 확인 (path-presence 만 허용)
+rg "state\.artifacts\[" packages/ant-cli/src/agents/architect/graph/code/nodes/detect \
+  packages/ant-cli/src/agents/architect/graph/design/nodes/detect
+# Expected: 0 matches
+```
+
+회귀 테스트: [`packages/ant-cli/tests/rac-scope-invariant.test.ts`](packages/ant-cli/tests/rac-scope-invariant.test.ts) 가 `gen-code-directive` + PRD-only RAC 시나리오에서 풀이 RAC 부분집합인지, 모든 task.artifactPolicy.{refs,context} 가 RAC subset 인지 검증한다.
 
 ---
 

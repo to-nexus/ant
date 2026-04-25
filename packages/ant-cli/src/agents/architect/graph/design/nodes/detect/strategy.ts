@@ -8,7 +8,7 @@
 
 import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { DesignGraphState } from '../../state.js';
-import type { InferredAction, Mode, DesignDomain } from '@ant/shared';
+import type { InferredAction, Mode } from '@ant/shared';
 import { isFigmaDataPopulated, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
 import { runEstimatingLLMStream } from '../../../../../common/graph/llmHelpers.js';
@@ -21,13 +21,15 @@ import * as fsp from 'fs/promises';
 // Parsed LLM response shape
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+type ParsedDomain = import('@ant/shared').Domain;
+
 interface ParsedDesignResponse {
   intentGroup: 'design-ui' | 'design-system' | 'design-spec' | 'clarify' | 'error';
   intentGroupReasoning: string;
   intentId?: string;
   jobMode: Mode;
   jobModeReasoning: string;
-  domain?: DesignDomain;
+  domain?: ParsedDomain;
   domainReasoning?: string;
   environment?: 'frontend' | 'backend' | 'fullstack';
   environmentReasoning?: string;
@@ -53,8 +55,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       return {
         inferred: {
           intentId: 'gen-sys-full',
-          domain: 'service',
-          reasoning: { intent: 'promptBuilder or llm not available; defaulting.', domain: 'Defaulting to service.' },
+          reasoning: { intent: 'promptBuilder or llm not available; defaulting.' },
           sourceJob: 'design',
         },
       };
@@ -68,11 +69,21 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     const featurePath = state.context.featurePath || '';
     const figmaPopulated = isFigmaDataPopulated(state.figmaConfig);
 
+    // Phase 1 (10.2) — explicit > infer. When `actionMetadata.domain` is
+    // set the LLM does NOT need to re-infer it; the prompt template gates
+    // the domain instructions on `{{#unless explicitDomain}}` and the
+    // strategy short-circuits the parsed domain to `actionMetadata.domain`.
+    const explicitDomain = state.actionMetadata?.domain;
+
     // Scan references, assets, existing docs
     const { hasReferences, referencesList, hasAssets, assetsList, uiAssetsList, uiReferences } =
       await scanInputs(featurePath);
 
-    const existingDocNames = state.existingDesignDocs ? Object.keys(state.existingDesignDocs) : [];
+    // Pre-RAC SSOT — `state.workspaceState.systemDesignFileNames` is filled by triage's
+    // `analyzeWorkspace`. Reading `state.existingDesignDocs` here would couple
+    // detect to design resolve's body cache (post-RAC pool); we only need
+    // filenames at this stage. See `.cursorrules` "state.artifacts Post-RAC SSOT".
+    const existingDocNames = state.workspaceState?.systemDesignFileNames ?? [];
     const hasSystemDocs = existingDocNames.length > 0;
 
     // Build prompt
@@ -93,6 +104,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       hasFeSystemDesign: existingDocNames.some(f => f.startsWith('fe-system-')),
       hasBeSystemDesign: existingDocNames.some(f => f.startsWith('be-system-')),
       systemDesignFiles: existingDocNames || [],
+      explicitDomain,
     });
 
     // Log prompt
@@ -123,6 +135,14 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     );
 
     const parsed = parseDesignDetectResponse(response);
+
+    // Phase 1 (10.2): explicit > infer — when actionMetadata.domain was
+    // supplied, override any LLM-emitted domain (the prompt asked the LLM
+    // to suppress it, but defense-in-depth wins over prompt compliance).
+    if (explicitDomain) {
+      parsed.domain = explicitDomain;
+      parsed.domainReasoning = `Explicit actionMetadata.domain=${explicitDomain} — LLM domain inference skipped.`;
+    }
 
     // skipTriage override: explain→generate when redirect context
     if (state.skipTriage && parsed.jobMode === 'explain' && parsed.intentGroup !== 'error' && parsed.intentGroup !== 'clarify') {
@@ -231,7 +251,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
 
 async function handleClarifyResume(state: DesignGraphState): Promise<DetectResult<DesignGraphState>> {
   console.log(`🔄 [Design:Detect] Clarify resume — parsing user choice`);
-  const hasSystemDocs = state.existingDesignDocs ? Object.keys(state.existingDesignDocs).length > 0 : false;
+  const hasSystemDocs = (state.workspaceState?.systemDesignFileNames?.length ?? 0) > 0;
   const choice = parseDetectClarifyChoice(state.overrideDirective!, hasSystemDocs);
   console.log(`✅ User chose: intentGroup=${choice.intentGroup}, mode=${choice.jobMode}`);
 
@@ -239,12 +259,13 @@ async function handleClarifyResume(state: DesignGraphState): Promise<DetectResul
     environment: choice.intentGroup === 'design-system' ? 'fullstack' : undefined,
   });
 
+  // Phase 1: clarify-resume defers domain to the RAC fallback (service)
+  // unless `actionMetadata.domain` was set explicitly. The clarify card
+  // does not ask about domain — it only disambiguates intentGroup.
   const inferred: InferredAction = {
     intentId,
-    domain: choice.intentGroup === 'design-system' ? 'service' : undefined,
     reasoning: {
       intent: `User explicitly chose ${choice.intentGroup} (${choice.jobMode}).`,
-      domain: choice.intentGroup === 'design-system' ? 'Defaulting to service.' : undefined,
     },
     sourceJob: 'design',
   };
@@ -347,12 +368,21 @@ function parseDesignDetectResponse(raw: string): ParsedDesignResponse {
         : jobMode === 'explain' ? 'Analysis or explanation of existing documents requested.'
         : 'New document creation or full regeneration requested.');
 
+    // Domain is now universal across artifact-producing design intents
+    // (design-system / design-ui / design-spec). The strategy emits
+    // `<domain>` if signals are present; otherwise undefined leaves the
+    // RAC default to `service` via `getEffectiveDomain`. Phase 1 D11.
+    const rawDomain = (parsed.domain ?? '').toString().toLowerCase();
+    const domain: ParsedDomain | undefined =
+      rawDomain === 'game' || rawDomain === 'service' ? rawDomain as ParsedDomain : undefined;
+    const domainReasoning = typeof parsed.domainReasoning === 'string' ? parsed.domainReasoning : undefined;
+
     if (intentGroup === 'design-system') {
       return {
         intentGroup, intentGroupReasoning: parsed.intentGroupReasoning ?? 'System design work detected.',
         intentId: parsed.intentId, jobMode, jobModeReasoning,
-        domain: 'service',
-        domainReasoning: 'Defaulted — only service domain is currently supported.',
+        domain,
+        domainReasoning,
         environment: parsed.environment === 'frontend' ? 'frontend' : parsed.environment === 'backend' ? 'backend' : 'fullstack',
         environmentReasoning: parsed.environmentReasoning || "Defaulted to 'fullstack'.",
       };
@@ -363,6 +393,8 @@ function parseDesignDetectResponse(raw: string): ParsedDesignResponse {
       intentGroupReasoning: parsed.intentGroupReasoning
         ?? (intentGroup === 'design-ui' ? 'UI design work detected.' : 'Spec document work detected.'),
       intentId: parsed.intentId, jobMode, jobModeReasoning,
+      domain,
+      domainReasoning,
     };
   } catch (error) {
     console.error('❌ [Design:Detect] Failed to parse LLM response:', error);
