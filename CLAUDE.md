@@ -142,6 +142,8 @@ All prompt templates are auto-registered as Handlebars partials at server startu
 
 **FPOP principle** for writing prompts: Principles over Examples, What over How, Observable over Assumed, Universal over Specific, Constraints over Instructions.
 
+**SBS principle** (complement to FPOP): specificity is bounded by activation scope. Gated templates (techTier / intent / taskType / mode / role / artifact-presence) MUST be specific along the gate's axis; always-on templates MUST stay universal. Citing FPOP's "Universal over Specific" against a gated file to demand its discriminator name be removed is itself an SBS violation. See `.cursorrules` §5 and [docs/architecture/13-prompt-system.md](docs/architecture/13-prompt-system.md) "SBS 원칙".
+
 ### Frontend Architecture (ant-ui)
 
 Clean Architecture layers:
