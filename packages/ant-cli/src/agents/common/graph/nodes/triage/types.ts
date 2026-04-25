@@ -136,6 +136,7 @@ export interface WorkspaceState {
   
   // Design job - system-design mode
   hasSystemDesignDoc: boolean;   // outputs/design/system/*-system-*.md or api-contract-*.md
+  systemDesignFileNames?: string[]; // e.g. ['fe-system-main.md', 'be-system-order.md', 'api-contract-public.md']
   hasUiDocs: boolean;            // outputs/design/ui/ant/ui-*.json (ant UiSource present)
   
   // Evaluations

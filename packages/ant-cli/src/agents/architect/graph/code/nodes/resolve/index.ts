@@ -1,14 +1,10 @@
 import { ArtifactService } from "../../../../../../infrastructure/workspace/ArtifactService";
 import { ArchitectGraphState } from "../../state";
 import { ReferenceContext } from "../../../../../../core/codebase/types";
-import * as path from "path";
 import { hydrateFeatureContext } from "../../../../../../core/context/featureContextBuilder";
 import { getExecutionTier } from "../../../../../../core/executionTier";
 import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
-import type { ResolvedArtifact } from '@ant/shared';
-import { ARTIFACT_PREFIX } from '@ant/shared';
-import type { ParsedUiDocs } from '../../../../../../core/types/uiDoc';
 
 /**
  * Code Resolve Strategy
@@ -78,28 +74,18 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       );
     }
 
-    let artifacts: ResolvedArtifact[] = state.artifacts || [];
-    const gitPort = state.deps?.git;
-    const fileSystem = state.deps?.fileSystem;
-    if (gitPort && fileSystem) {
-      try {
-        const designDocs = await ArtifactService.loadDesignDocuments(state.context, gitPort, fileSystem, 'unknown');
-        const resumeSpecDocs = await ArtifactService.loadSpecDocuments(state.context, gitPort, fileSystem);
-        const specDocs = Object.keys(resumeSpecDocs).length > 0 ? resumeSpecDocs : undefined;
-        const designResult = await ArtifactService.findLatestDesign(state.context, gitPort, fileSystem);
-        const design = designResult?.content || undefined;
-        const source = await ArtifactService.getSource(state.context, gitPort, fileSystem);
-        const prd = source?.prd || undefined;
-        const sourceDocuments = source?.sourceDocuments || undefined;
-        const parsedUiDocs = await ArtifactService.loadParsedUiContext(state.context, gitPort, fileSystem) || undefined;
-
-        console.log(`📄 [Resolve/Resume] design=${!!design}, designDocs=${!!designDocs}, prd=${!!prd}, ui=${!!parsedUiDocs}`);
-
-        artifacts = buildArtifactPool({ designDocs, specDocs, parsedUiDocs, sourceDocuments, prd, design });
-        console.log(`📦 [Resolve/Resume] Artifact pool: ${artifacts.length} artifacts (${artifacts.reduce((s, a) => s + (a.content?.length || 0), 0).toLocaleString()} chars)`);
-      } catch (error) {
-        console.warn(`⚠️  [Resolve/Resume] Failed to reload design artifacts:`, error);
-      }
+    // Pool SSOT — checkpoint persists `resolvedAction` but NOT
+    // `state.artifacts`. Resume routes can bypass detect entirely
+    // (`routeAfterResolve` "Plain resume" → plan / parallelOrchestrator;
+    // design's "no tasks" → decompose), so resolve must hydrate the pool
+    // from the same single SSOT helper (`loadResolvedArtifacts`) that
+    // detect uses on the non-resume path. Wholesale disk scans are still
+    // forbidden — the helper only reads RAC.refs ∪ RAC.context.
+    // See `.cursorrules` "state.artifacts Post-RAC SSOT".
+    let resumeArtifacts = state.resolvedArtifacts;
+    if ((!resumeArtifacts || resumeArtifacts.length === 0) && state.resolvedAction && state.context.featurePath) {
+      const { loadResolvedArtifacts } = await import('../../../../../common/graph/loadDocumentsForRAC');
+      resumeArtifacts = loadResolvedArtifacts(state.resolvedAction, state.context.featurePath);
     }
 
     // Figma MCP re-detection on resume — SSOT is `detectFigmaSource`; the
@@ -141,10 +127,19 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     );
     if (turnId) state.turnId = turnId;
 
+    // Merge any in-memory pool with RAC-resolved artifacts (in-memory
+    // wins on path conflict via `appendOrUpdatePool`'s upsert semantic).
+    let resumeUpdatedArtifacts = state.artifacts || [];
+    if (resumeArtifacts && resumeArtifacts.length > 0) {
+      const { appendOrUpdatePool } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
+      resumeUpdatedArtifacts = appendOrUpdatePool(resumeUpdatedArtifacts, resumeArtifacts);
+    }
+
     return {
       workspaceConfig: state.workspaceConfig,
       context: state.context,
-      artifacts,
+      artifacts: resumeUpdatedArtifacts,
+      resolvedArtifacts: resumeArtifacts,
       profile: state.profile,
       figmaFileKey: state.figmaFileKey,
       figmaStartNodeId: state.figmaStartNodeId,
@@ -173,35 +168,16 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     // Index runtime assets
     const runtimeAssetsIndex = await indexRuntimeAssets(featurePath);
 
-    // Load design document (optional)
-    const actionRefs = state.actionMetadata?.refs;
-    const actionContext = state.actionMetadata?.context;
-    const hasExplicitRefs = actionRefs && actionRefs.length > 0;
-
+    // Pool SSOT — `state.artifacts` is filled by detect via
+    // `loadResolvedArtifacts` (the single writer keyed off
+    // `resolvedAction.refs ∪ context`). Resolve only fetches infra
+    // signals (figma MCP, runtime assets, directive, session context)
+    // and a lightweight design-presence boolean used by the
+    // "no design + no directive" guard below. Wholesale loading of
+    // `outputs/design/system|spec|ui` or `inputs/sources` here is
+    // forbidden — see `.cursorrules` "state.artifacts Post-RAC SSOT".
     const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
     const design = designResult?.content || undefined;
-    const designDocPath = designResult?.filePath || undefined;
-
-    const source = await ArtifactService.getSource(context, gitPort, fileSystem);
-    const prd = source?.prd || undefined;
-    let sourceDocuments = source?.sourceDocuments;
-
-    if (hasExplicitRefs && sourceDocuments) {
-      const allowedPaths = new Set([...(actionRefs || []), ...(actionContext || [])]);
-      const filtered: Record<string, string> = {};
-      for (const [name, content] of Object.entries(sourceDocuments)) {
-        if (allowedPaths.has(`inputs/sources/${name}`) || allowedPaths.has(name)) {
-          filtered[name] = content;
-        }
-      }
-      if (Object.keys(filtered).length > 0) {
-        sourceDocuments = filtered;
-        console.log(`📋 [Resolve] ActionMetadata refs filter: ${Object.keys(filtered).length} source docs selected`);
-      }
-    }
-
-    const parsedUiDocs = await ArtifactService.loadParsedUiContext(context, gitPort, fileSystem);
-    console.log(`📄 [Resolve] Design: ${design ? 'loaded' : 'none'}, PRD: ${prd ? 'loaded' : 'none'}, UI: ${parsedUiDocs ? 'loaded' : 'none'}`);
 
     // Figma MCP availability — unified via `detectFigmaSource`
     const { detectFigmaSource } = await import('./detectFigmaSource');
@@ -214,21 +190,6 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     const figmaStartNodeId = figmaDetected.available ? figmaDetected.startNodeId : undefined;
     const figmaFileUrl = figmaDetected.available ? figmaDetected.fileUrl : undefined;
     console.log(`🎨 [Resolve] Figma MCP: ${figmaDetected.available ? `available (fileKey=${figmaFileKey})` : 'unavailable'}`);
-
-    const designDocs = await ArtifactService.loadDesignDocuments(context, gitPort, fileSystem, 'unknown');
-    const specDocs = await ArtifactService.loadSpecDocuments(context, gitPort, fileSystem);
-    const specDocsOrUndefined = Object.keys(specDocs).length > 0 ? specDocs : undefined;
-
-    // Build unified artifact pool
-    const artifacts = buildArtifactPool({
-      designDocs,
-      specDocs: specDocsOrUndefined,
-      parsedUiDocs: parsedUiDocs || undefined,
-      sourceDocuments,
-      prd,
-      design,
-    });
-    console.log(`📦 [Resolve] Artifact pool: ${artifacts.length} artifacts (${artifacts.reduce((s, a) => s + (a.content?.length || 0), 0).toLocaleString()} chars)`);
 
     // Load directive (overrideDirective > file)
     let directive: string | undefined;
@@ -309,7 +270,11 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       context,
       featurePath: context.featurePath,
       directive,
-      artifacts,
+      // Pool seeded empty — detect is the single writer that fills it
+      // via `loadResolvedArtifacts` (post-RAC SSOT). The empty array is
+      // the channel-presence sentinel that detect's truthy-check uses to
+      // distinguish "this job owns the pool" from planner-style jobs.
+      artifacts: [],
       sessionContext,
       profile: undefined,
       referenceContexts,
@@ -323,82 +288,6 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     } as Partial<ArchitectGraphState>;
   },
 };
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Helper: Build ResolvedArtifact[] pool from loaded materials
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-interface DesignDocsShape {
-  apiContracts: Record<string, string>;
-  feDesigns: Record<string, string>;
-  beDesigns: Record<string, string>;
-}
-
-function buildArtifactPool(opts: {
-  designDocs?: DesignDocsShape;
-  specDocs?: Record<string, string>;
-  parsedUiDocs?: ParsedUiDocs;
-  sourceDocuments?: Record<string, string>;
-  prd?: string;
-  design?: string;
-}): ResolvedArtifact[] {
-  const pool: ResolvedArtifact[] = [];
-
-  if (opts.designDocs) {
-    const { feDesigns, beDesigns, apiContracts } = opts.designDocs;
-    for (const [name, content] of Object.entries(feDesigns)) {
-      if (content) pool.push({ path: `${ARTIFACT_PREFIX.FE_SYSTEM}${name}.md`, content, role: 'ref' });
-    }
-    for (const [name, content] of Object.entries(beDesigns)) {
-      if (content) pool.push({ path: `${ARTIFACT_PREFIX.BE_SYSTEM}${name}.md`, content, role: 'ref' });
-    }
-    for (const [name, content] of Object.entries(apiContracts)) {
-      if (content) pool.push({ path: `${ARTIFACT_PREFIX.API_CONTRACT}${name}.md`, content, role: 'ref' });
-    }
-  }
-
-  if (opts.specDocs) {
-    for (const [name, content] of Object.entries(opts.specDocs)) {
-      if (content) pool.push({ path: `${ARTIFACT_PREFIX.SPEC}${name}`, content, role: 'ref' });
-    }
-  }
-
-  if (opts.parsedUiDocs) {
-    if (opts.parsedUiDocs.tokens) {
-      pool.push({ path: `${ARTIFACT_PREFIX.UI_ANT}tokens`, content: opts.parsedUiDocs.tokens, role: 'context' });
-    }
-    if (opts.parsedUiDocs.assets) {
-      pool.push({ path: `${ARTIFACT_PREFIX.UI_ANT}assets`, content: opts.parsedUiDocs.assets, role: 'context' });
-    }
-    if (opts.parsedUiDocs.specSections) {
-      for (const [id, section] of opts.parsedUiDocs.specSections) {
-        if (section.content) {
-          pool.push({ path: `${ARTIFACT_PREFIX.UI_ANT_SPEC}${id}`, content: section.content, role: 'context' });
-        }
-      }
-    }
-  }
-
-  if (opts.sourceDocuments && Object.keys(opts.sourceDocuments).length > 0) {
-    const combined = Object.entries(opts.sourceDocuments)
-      .map(([name, content]) => `# ${name}\n\n${content}`)
-      .join('\n\n────────────────────────────────────────\n\n');
-    pool.push({ path: ARTIFACT_PREFIX.SOURCES, content: combined, role: 'context' });
-  } else if (opts.prd) {
-    pool.push({ path: ARTIFACT_PREFIX.SOURCES, content: opts.prd, role: 'context' });
-  }
-
-  const hasDesignContent = opts.designDocs && (
-    Object.values(opts.designDocs.feDesigns).some(v => !!v) ||
-    Object.values(opts.designDocs.beDesigns).some(v => !!v) ||
-    Object.values(opts.designDocs.apiContracts).some(v => !!v)
-  );
-  if (opts.design && !hasDesignContent) {
-    pool.push({ path: `${ARTIFACT_PREFIX.SYSTEM_DESIGN}full`, content: opts.design, role: 'ref' });
-  }
-
-  return pool;
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Helper: index runtime assets under inputs/assets/

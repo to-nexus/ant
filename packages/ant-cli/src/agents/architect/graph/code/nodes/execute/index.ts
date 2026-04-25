@@ -73,41 +73,47 @@ export async function execute(
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Guardrail: UI task requires UI-doc injection contract
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Principle:
-  // - UI-doc presence is a role-based signal via ArtifactPoolView.hasUi()
-  //   (category match on the three UiSource prefixes: ant/figma/handoff).
-  // - If the pool lacks UI artifacts, best-effort self-heal by reading the
-  //   canonical ant-ui location via ArtifactService.loadParsedUiContext() and
-  //   appending as role:'context' artifacts.
-  // - If docs truly do not exist for this feature, proceed silently with
-  //   defaults derived from PRD/design (no fail-fast).
+  // UI self-heal — gated by RAC UI slot.
+  //
+  // Pool SSOT (`.cursorrules` "state.artifacts Post-RAC SSOT"): the pool is
+  // the RAC subset. If `resolvedAction.refs ∪ context` does NOT carry a
+  // `outputs/design/ui/...` slot, the user did not opt into UI doc
+  // injection — silently augmenting the pool here would re-introduce
+  // exactly the leak the SSOT closes. When a UI slot IS present but the
+  // ant subgroup is materially incomplete (file present on disk but not
+  // yet in the pool — e.g. resume race), best-effort self-heal recovers
+  // the missing entries.
   if (isUiTask(state.currentTask)) {
-    const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
-    const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
+    const racPaths = [...(state.resolvedAction?.refs ?? []), ...(state.resolvedAction?.context ?? [])];
+    const racHasUiAntSlot = racPaths.some(p => p.startsWith('outputs/design/ui/ant'));
+    if (racHasUiAntSlot) {
+      const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
+      const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
 
-    const poolView = new ArtifactPoolView(state.artifacts || []);
-    if (!poolView.hasUi() && state.deps?.git && state.deps?.fileSystem) {
-      try {
-        const parsed = await ArtifactService.loadParsedUiContext(
-          state.context,
-          state.deps.git,
-          state.deps.fileSystem,
-        );
-        if (parsed) {
-          const uiPool: import('@ant/shared').ResolvedArtifact[] = [];
-          if (parsed.tokens) uiPool.push({ path: `${AP.UI_ANT}tokens`, content: parsed.tokens, role: 'context' });
-          if (parsed.assets) uiPool.push({ path: `${AP.UI_ANT}assets`, content: parsed.assets, role: 'context' });
-          if (parsed.specSections) {
-            for (const [id, section] of parsed.specSections) {
-              if (section.content) uiPool.push({ path: `${AP.UI_ANT_SPEC}${id}`, content: section.content, role: 'context' });
+      const poolView = new ArtifactPoolView(state.artifacts || []);
+      if (!poolView.hasUi() && state.deps?.git && state.deps?.fileSystem) {
+        try {
+          const parsed = await ArtifactService.loadParsedUiContext(
+            state.context,
+            state.deps.git,
+            state.deps.fileSystem,
+          );
+          if (parsed) {
+            const uiPool: import('@ant/shared').ResolvedArtifact[] = [];
+            if (parsed.tokens) uiPool.push({ path: `${AP.UI_ANT}tokens`, content: parsed.tokens, role: 'context' });
+            if (parsed.assets) uiPool.push({ path: `${AP.UI_ANT}assets`, content: parsed.assets, role: 'context' });
+            if (parsed.specSections) {
+              for (const [id, section] of parsed.specSections) {
+                if (section.content) uiPool.push({ path: `${AP.UI_ANT_SPEC}${id}`, content: section.content, role: 'context' });
+              }
+            }
+            if (uiPool.length > 0) {
+              state.artifacts = [...(state.artifacts || []), ...uiPool];
             }
           }
-          if (uiPool.length > 0) {
-            state.artifacts = [...(state.artifacts || []), ...uiPool];
-          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
       }
     }
   }

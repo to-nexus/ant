@@ -7,7 +7,6 @@ import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigm
 import { hydrateFeatureContext } from "../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
-import { scanDesignOutputs, buildDesignArtifactPool } from '../../../../../core/prompt/builder/ArtifactPipeline';
 
 const DESIGN_FILE_PATTERNS = [
   /^api-contract-.+\.md$/,
@@ -84,31 +83,27 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       } catch { /* Non-critical */ }
     }
 
-    // Reload sourceDocuments/PRD from disk
-    let prd: string | undefined;
-    let sourceDocuments: Record<string, string> | undefined;
-    if (featurePath) {
-      const gitPort = state.deps?.git;
-      const fileSystem = state.deps?.fileSystem;
-      if (gitPort && fileSystem) {
-        try {
-          const source = await ArtifactService.getSource(context, gitPort, fileSystem);
-          if (source?.prd) prd = source.prd;
-          if (source?.sourceDocuments) sourceDocuments = source.sourceDocuments;
-          console.log(`📄 [Design Resolve] Reloaded sourceDocuments on resume (prd: ${!!source?.prd}, docs: ${Object.keys(source?.sourceDocuments || {}).length})`);
-        } catch (err: any) {
-          console.warn(`⚠️ [Design Resolve] Failed to reload sourceDocuments on resume: ${err.message}`);
-        }
-      }
+    // Pool SSOT — checkpoint persists `resolvedAction` but NOT
+    // `state.artifacts`. Resume routes can bypass detect entirely
+    // (`routeAfterResolve`'s task-queue and "no tasks" branches), so
+    // resolve must hydrate the pool from the same single SSOT helper
+    // (`loadResolvedArtifacts`) that detect uses on the non-resume path.
+    // Wholesale disk scans are still forbidden — the helper only reads
+    // RAC.refs ∪ RAC.context. The `existingDesignDocs` body cache above
+    // stays — it is a design-job internal channel consumed by
+    // `docGen/intent/system.ts` for refactor mode and is orthogonal to
+    // the post-RAC pool SSOT. See `.cursorrules` "state.artifacts
+    // Post-RAC SSOT".
+    let resumeArtifacts: import('@ant/shared').ResolvedArtifact[] | undefined = state.resolvedArtifacts;
+    if ((!resumeArtifacts || resumeArtifacts.length === 0) && state.resolvedAction && featurePath) {
+      const { loadResolvedArtifacts } = await import('../../../../common/graph/loadDocumentsForRAC');
+      resumeArtifacts = loadResolvedArtifacts(state.resolvedAction, featurePath);
     }
-
-    // Build artifact pool from disk (restores previous task outputs including UI docs)
-    const designOutputs = featurePath ? scanDesignOutputs(featurePath) : [];
-    const artifacts = buildDesignArtifactPool({
-      sourceDocuments,
-      designOutputs,
-    });
-    console.log(`📄 [Design Resolve] Resume pool: ${artifacts.length} artifacts (${designOutputs.length} from disk)`);
+    let resumeUpdatedArtifacts = state.artifacts || [];
+    if (resumeArtifacts && resumeArtifacts.length > 0) {
+      const { appendOrUpdatePool } = await import('../../../../../core/prompt/builder/ArtifactPipeline');
+      resumeUpdatedArtifacts = appendOrUpdatePool(resumeUpdatedArtifacts, resumeArtifacts);
+    }
 
     // Rehydrate featureContext + turnId from feature.jsonl (§12 resume path).
     // Checkpoints do not persist turnId — without this, learn cannot attribute
@@ -127,7 +122,8 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
 
     return {
       existingDesignDocs,
-      artifacts,
+      artifacts: resumeUpdatedArtifacts,
+      resolvedArtifacts: resumeArtifacts,
       featureContext,
       turnId,
     } as Partial<DesignGraphState>;
@@ -149,33 +145,14 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     });
     context.featurePath = featurePath;
 
-    // Load source documents
-    const actionRefs = state.actionMetadata?.refs;
-    const actionCtx = state.actionMetadata?.context;
-    const hasExplicitRefs = actionRefs && actionRefs.length > 0;
-
+    // Lightweight PRD presence check — only used by the template-content
+    // guard immediately below. The pool itself is filled by detect's
+    // `loadResolvedArtifacts` (post-RAC SSOT), so we no longer keep
+    // `sourceDocuments` here.
     let prd: string | undefined;
-    let sourceDocuments: Record<string, string> | undefined;
     try {
       const source = await ArtifactService.getSource(context, gitPort, fileSystem);
       prd = source?.prd || undefined;
-      sourceDocuments = source?.sourceDocuments;
-      if (hasExplicitRefs && sourceDocuments) {
-        const allowedPaths = new Set([...(actionRefs || []), ...(actionCtx || [])]);
-        const filtered: Record<string, string> = {};
-        for (const [name, content] of Object.entries(sourceDocuments)) {
-          if (allowedPaths.has(`inputs/sources/${name}`) || allowedPaths.has(name)) {
-            filtered[name] = content;
-          }
-        }
-        if (sourceDocuments['prd.md'] && !filtered['prd.md']) {
-          filtered['prd.md'] = sourceDocuments['prd.md'];
-        }
-        if (Object.keys(filtered).length > 0) {
-          sourceDocuments = filtered;
-          console.log(`📋 [Design Resolve] ActionMetadata refs filter: ${Object.keys(filtered).length} source docs selected`);
-        }
-      }
     } catch {
       prd = undefined;
     }
@@ -207,10 +184,6 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     } else {
       directive = await ArtifactService.getDirective(context, 'design', gitPort, fileSystem) || undefined;
     }
-
-    // Load previous design
-    const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
-    const design = designResult?.content || undefined;
 
     // Scan existing system design documents (canonical outputs/design/system/ only)
     let existingDesignDocs: Record<string, string> | undefined;
@@ -267,27 +240,23 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       { jobId: state.jobId, logPrefix: 'Design Resolve' },
     );
 
-    // Validation based on mode
-    const hasAnySource = sourceDocuments && Object.keys(sourceDocuments).length > 0;
-    if (jobMode === 'generate' && !prd && !hasAnySource) {
+    // Generate-mode validation: require at least PRD on disk. The pool is
+    // filled by detect via `loadResolvedArtifacts(resolvedAction, ...)`,
+    // so here we only check whether *some* source-document signal exists
+    // for the early-fail path.
+    if (jobMode === 'generate' && !prd) {
       throw new Error("Generate mode requires source documents in inputs/sources/");
     }
-
-    // Build artifact pool from sources + existing design outputs
-    const designOutputs = context.featurePath ? scanDesignOutputs(context.featurePath) : [];
-    const artifacts = buildDesignArtifactPool({
-      sourceDocuments,
-      designOutputs,
-      design,
-    });
-    console.log(`📄 [Design Resolve] Initial pool: ${artifacts.length} artifacts (${designOutputs.length} outputs, ${Object.keys(sourceDocuments || {}).length} sources)`);
 
     return {
       context,
       featurePath: context.featurePath,
       directive,
       existingDesignDocs,
-      artifacts,
+      // Pool seeded empty — detect fills it via `loadResolvedArtifacts`
+      // (post-RAC SSOT). The empty array is the channel-presence
+      // sentinel for detect's truthy-check.
+      artifacts: [],
       figmaConfig,
       resolvedAction: state.resolvedAction,
       overrideDirective: state.overrideDirective,

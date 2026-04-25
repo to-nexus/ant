@@ -29,7 +29,7 @@ import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager"
 import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import { designDirOf } from "@ant/shared";
 import path from "node:path";
-import { toFeatureRelative, appendOrUpdatePool, scanDesignOutputs } from '../../../../core/prompt/builder/ArtifactPipeline';
+import { toFeatureRelative, appendOrUpdatePool } from '../../../../core/prompt/builder/ArtifactPipeline';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -638,13 +638,26 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     });
   }
 
-  // Refresh artifact pool from disk after parallel execution (workers operate on separate copies)
+  // Inter-task self-output — workers operate on separate state copies, so
+  // their `task.files` outputs are not yet in `state.artifacts`. Splice
+  // them in here using the same role-preserving pattern as the serial
+  // task-completion edge above; this keeps the pool aligned with the
+  // post-RAC SSOT (RAC-resolved artifacts + this job's own outputs).
+  // The legacy whole-tree scan helper is intentionally NOT used — it
+  // would pull in arbitrary `outputs/design/**` files that the user did
+  // not put in the RAC. See `.cursorrules` "state.artifacts Post-RAC
+  // SSOT".
   const parallelFeaturePath = state.context.featurePath || '';
-  const refreshedOutputs = parallelFeaturePath ? scanDesignOutputs(parallelFeaturePath) : [];
-  const refreshedPool = appendOrUpdatePool(
-    (state.artifacts || []).filter(a => !a.path.startsWith('outputs/design/')),
-    refreshedOutputs,
+  const completedFileOutputs = result.completedTasks.flatMap(t =>
+    (t.files || [])
+      .filter(f => f.content && f.path && f.actionType !== 'delete')
+      .map(f => ({
+        path: toFeatureRelative(f.path, parallelFeaturePath),
+        content: f.content,
+        role: 'ref' as const,
+      }))
   );
+  const refreshedPool = appendOrUpdatePool(state.artifacts || [], completedFileOutputs);
 
   return {
     completedTasks: result.completedTasks.map(t => t.id),
