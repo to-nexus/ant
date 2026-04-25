@@ -6,7 +6,7 @@
  */
 
 import type { AgentJob, CodebaseProfile } from './agent';
-import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, InferredAction, Boundary, ExecutionTierId, SpecClarify } from '@ant/shared';
+import type { TaskTokenUsage, JobTiming, InterruptionDetails, ResolvedActionContext, InferredAction, Boundary, ExecutionTierId, SpecClarify, KanbanData } from '@ant/shared';
 import type { MessageContentBlock } from '../ports/llm';
 
 // Re-export shared types
@@ -45,6 +45,9 @@ export interface SessionRunOutput {
   [key: string]: any;
 }
 
+/** Final lifecycle status of a job run, recorded when the run is finalized. */
+export type SessionRunStatus = 'completed' | 'failed' | 'canceled' | 'paused';
+
 /** A single run in the session (one BullMQ job execution = one process) */
 export interface SessionRun {
   runId: number;
@@ -55,6 +58,31 @@ export interface SessionRun {
   reference?: {
     runId: number;
   };
+
+  /**
+   * BullMQ jobId of this run. Optional for backward compatibility — historic
+   * runs may not carry it. Used by the Job-tab dropdown to (a) filter the
+   * job-history list by jobType and (b) restore a per-jobId kanban snapshot
+   * via `kanbanSnapshot` below.
+   */
+  jobId?: string;
+
+  /**
+   * Final kanban snapshot captured when the job is finalized. Restored by
+   * `GET /projects/:id/features/:feature/kanban?jobId=...` when the Redis
+   * live state has expired but the run is still listed in `runs[]`.
+   *
+   * Typed as KanbanData so the file format is the SSOT for completed runs.
+   * Live (running/paused) snapshots remain in Redis (`taskQueue` /
+   * `taskQueueCheckpoint`) — this field is for historical replay only.
+   */
+  kanbanSnapshot?: KanbanData;
+
+  /** Lifecycle status when the run was sealed (informational, drives the dropdown badge). */
+  status?: SessionRunStatus;
+
+  /** ISO timestamp when the run was sealed (history sort key). */
+  completedAt?: string;
 }
 
 // ============================================

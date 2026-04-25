@@ -413,6 +413,53 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     return this.redis.get(key);
   }
 
+  async deleteKillReason(jobId: string): Promise<void> {
+    const key = this.key(REDIS_KEYS.JOB.KILL_REASON, jobId);
+    await this.redis.del(key);
+  }
+
+  // ============================================
+  // Jobs-By-Feature Index (seal sweep)
+  // ============================================
+
+  async scanJobsByFeatureIndex(): Promise<Array<{
+    projectId: string;
+    featureName: string;
+    jobIds: string[];
+  }>> {
+    const prefix = REDIS_KEYS.INDEX.JOBS_BY_FEATURE;
+    const pattern = `${prefix}*`;
+    const results: Array<{ projectId: string; featureName: string; jobIds: string[] }> = [];
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await this.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = nextCursor;
+
+      for (const key of keys) {
+        const tail = key.substring(prefix.length);
+        const sep = tail.indexOf(':');
+        if (sep <= 0) continue;
+        const projectId = tail.substring(0, sep);
+        const featureName = tail.substring(sep + 1);
+        const jobIds = await this.redis.smembers(key);
+        if (jobIds.length === 0) continue;
+        results.push({ projectId, featureName, jobIds });
+      }
+    } while (cursor !== '0');
+
+    return results;
+  }
+
+  async removeJobFromFeatureIndex(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+  ): Promise<void> {
+    const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${projectId}:${featureName}`);
+    await this.redis.srem(featureKey, jobId);
+  }
+
   // ============================================
   // Port Registry - Preview (Full State Management)
   // ============================================

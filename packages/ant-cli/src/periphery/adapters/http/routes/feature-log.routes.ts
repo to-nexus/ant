@@ -2,10 +2,12 @@ import { Router, Request, Response } from 'express';
 import * as path from 'path';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { cleanupStaleRedisJobs, broadcastKanbanReset } from './helpers/sessionCleanup';
+import { broadcastKanbanReset } from './helpers/sessionCleanup';
+import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
 import { logger } from '../../../../utils/logger';
 import type { ChatService, KanbanService } from '../services';
+import type { InterruptionDetails } from '../../../../core/types';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { clearCanonicalDirectory } from '../../../../core/utils/sessionPaths';
 
@@ -39,6 +41,16 @@ export function createFeatureLogRoutes(deps: {
   /** StateStorePort for Redis job cleanup + kanban pub/sub. */
   stateStore?: StateStorePort;
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };
+  /** Wired by RouteConfigurator — required for Hard Reset to finalize jobs via SSOT helpers. */
+  cleanupJobState?: (
+    jobId: string,
+    projectId?: string,
+    featureName?: string,
+    interruptionReason?: InterruptionDetails,
+    explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
+    userContext?: any,
+  ) => Promise<void>;
+  stateTracker?: any;
 }): Router {
   const router = Router();
 
@@ -104,9 +116,12 @@ export function createFeatureLogRoutes(deps: {
    * Hard Reset — wipes this feature's sessions from disk and Redis so the
    * next job starts from a blank state. Five-stage pipeline:
    *
-   *   1. cleanupStaleRedisJobs × ['code','design','learn','plan'] — mark
-   *      paused/running Redis jobs for every job type as failed and evict
-   *      their kanban memory. Mirrors the Job tab X cleanup.
+   *   1. Per-job SSOT finalize via `listJobsByFeature`:
+   *      - Live jobs (running/paused) → `finalizeTerminalJob(failed,
+   *        interruption=user_stopped)` which acquires idempotency locks,
+   *        seals Redis, and broadcasts the terminal kanban snapshot.
+   *      - Any already-terminal remnant → still run a defensive seal via
+   *        the same helper (its seal phase is idempotent).
    *   2. chatService.clearMessagesAsync(scope='full') — delete the Redis
    *      chat session, purge inputs/assets/gen/drafts, broadcast
    *      `messages_cleared` SSE. (No disk collapse here; the SessionManager
@@ -143,12 +158,63 @@ export function createFeatureLogRoutes(deps: {
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       const jobTypes: Array<'code' | 'design' | 'learn' | 'plan'> = ['code', 'design', 'learn', 'plan'];
 
-      // 1. Redis job cleanup (paused/running → failed, kanban memory evicted)
-      for (const jt of jobTypes) {
+      // 1. SSOT cascade seal for every job tied to this feature. We finalize
+      //    (not pause) because the feature's sessions are about to be wiped
+      //    — no resumable artifact would survive anyway. finalize's snapshot
+      //    append + broadcast runs BEFORE the disk wipe (stage 3), so the
+      //    transient runs[] entry is created and then removed in one flow.
+      //    skipSessionPatch is NOT set here because `broadcastFinalUpdate`
+      //    emits the final kanban for any open SSE tabs.
+      if (deps.stateStore) {
         try {
-          await cleanupStaleRedisJobs(deps.stateStore, deps.kanbanService, projectId, featureName, jt);
+          const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+          for (const job of jobs) {
+            const interruption: InterruptionDetails = {
+              reason: 'user_stopped',
+              message: 'Feature context reset',
+              canResume: false,
+              timestamp: new Date().toISOString(),
+              metadata: { stoppedBy: 'hard_reset' },
+            };
+            const jt = (job.type || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual';
+            try {
+              if (deps.cleanupJobState && deps.stateTracker) {
+                await finalizeTerminalJob(
+                  {
+                    cleanupJobState: deps.cleanupJobState,
+                    stateTracker: deps.stateTracker,
+                    kanbanService: deps.kanbanService,
+                  },
+                  {
+                    jobId: job.jobId,
+                    finalStatus: 'failed',
+                    projectId,
+                    featureName,
+                    jobType: jt,
+                    userContext: job.userContext as { userId: string; organizationId: string } | undefined ?? userContext,
+                    interruption,
+                    featurePath,
+                    skipSessionPatch: true,
+                  },
+                );
+              } else {
+                // Fallback: lifecycle deps not wired — bare seal via the
+                // helper is still reachable through the legacy path below.
+                logger.warn(
+                  `Hard reset: cleanupJobState/stateTracker missing — skipping SSOT finalize for ${job.jobId}`,
+                  { component: 'FeatureLog' },
+                );
+              }
+            } catch (err) {
+              logger.warn(
+                `Hard reset: finalize failed for ${job.jobId}`,
+                { component: 'FeatureLog' },
+                err,
+              );
+            }
+          }
         } catch (err) {
-          logger.warn(`Hard reset: cleanupStaleRedisJobs failed for ${jt}`, { component: 'FeatureLog' }, err);
+          logger.warn('Hard reset: listJobsByFeature failed', { component: 'FeatureLog' }, err);
         }
       }
 

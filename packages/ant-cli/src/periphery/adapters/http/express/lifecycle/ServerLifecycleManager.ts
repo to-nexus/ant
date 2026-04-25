@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
+import { pauseJob } from './pauseJob';
 
 /**
  * ServerLifecycleManager
@@ -105,25 +106,33 @@ export class ServerLifecycleManager {
         featureName: mapping.featureName 
       });
       
-      // Save job state
-      const savePromise = this.cleanupJobState(
-        jobId,
-        mapping.projectId,
-        mapping.featureName,
+      // Pause (resumable) — graceful shutdown keeps Redis state intact so
+      // the job can be resumed on next startup. Use the SSOT pauseJob helper
+      // instead of calling cleanupJobState directly; pauseJob additionally
+      // sets status='paused' in Redis which is what StaleJobRecovery Phase 1
+      // will match on next boot.
+      const savePromise = pauseJob(
+        { cleanupJobState: this.cleanupJobState },
         {
-          reason: 'server_shutdown',
-          message: 'Server is shutting down',
-          canResume: true,
-          timestamp: new Date().toISOString()
+          jobId,
+          projectId: mapping.projectId,
+          featureName: mapping.featureName,
+          jobType: mapping.jobType as 'code' | 'design' | 'learn' | 'plan' | 'visual',
+          userContext: mapping.userContext as { userId: string; organizationId: string } | undefined,
+          interruption: {
+            reason: 'server_shutdown',
+            message: 'Server is shutting down',
+            canResume: true,
+            timestamp: new Date().toISOString(),
+          },
         },
-        mapping.jobType
       ).catch((error) => {
-        logger.warn(`Failed to save job: ${error.message}`, { 
-          component: 'ServerLifecycle', 
-          jobId 
+        logger.warn(`Failed to save job: ${error.message}`, {
+          component: 'ServerLifecycle',
+          jobId,
         }, error);
       });
-      
+
       savePromises.push(savePromise);
     }
     

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, LucideIcon } from 'lucide-react';
 import { cn } from '@/shared/utils/design-system';
@@ -7,29 +8,43 @@ interface TabButtonProps {
   label: string;
   isActive: boolean;
   isJobTab?: boolean;
-  jobId?: string;
+  /**
+   * Optional inline trailing element (e.g. the JobIdDropdown trigger on the
+   * job tab). Replaces the legacy `jobId` + `onCopyJobId` props — copy /
+   * delete are now per-row actions inside the dropdown, not on the tab.
+   */
+  trailing?: ReactNode;
   showText?: boolean;
   showCloseButton?: boolean;
   title?: string;
   onClick: () => void;
   onClose?: () => void;
-  onCopyJobId?: () => void;
 }
 
+/**
+ * Tab button used by the main panel tabs bar.
+ *
+ * The job tab no longer renders an X button or a copy-on-click chip.
+ * Job-tab actions (switch jobId, copy jobId, delete jobId) live inside
+ * the `JobIdDropdown` injected via the `trailing` slot.
+ */
 export function TabButton({
   icon: Icon,
   label,
   isActive,
   isJobTab = false,
-  jobId,
+  trailing,
   showText = true,
   showCloseButton = false,
   title,
   onClick,
   onClose,
-  onCopyJobId,
 }: TabButtonProps) {
   const { t } = useTranslation('nav');
+  // The job tab's "remove" surface moved into the dropdown's per-row trash
+  // icon. Force-suppress the X button here regardless of the prop value so
+  // no caller can re-introduce a tab-level reset.
+  const showCloseButtonEffective = showCloseButton && !isJobTab;
   return (
     <div
       className={cn(
@@ -45,22 +60,9 @@ export function TabButton({
       <div className="flex items-center gap-2 flex-1">
         <Icon className="w-4 h-4 flex-shrink-0" />
         {showText && <span className={isJobTab ? "whitespace-nowrap" : ""}>{label}</span>}
-        {showText && jobId && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCopyJobId?.();
-            }}
-            className="ml-0.5 px-1.5 py-0.5 text-[10px] font-mono whitespace-nowrap rounded
-              bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400
-              hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
-            title={jobId}
-          >
-            {jobId}
-          </button>
-        )}
+        {showText && trailing}
       </div>
-      {showCloseButton && (
+      {showCloseButtonEffective && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -70,7 +72,7 @@ export function TabButton({
             'p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
             !showText && 'hidden'
           )}
-          title={isJobTab ? t('tabs.removeJobId') : t('tabs.closeTab', { label: label.toLowerCase() })}
+          title={t('tabs.closeTab', { label: label.toLowerCase() })}
         >
           <X className="w-3.5 h-3.5" />
         </button>

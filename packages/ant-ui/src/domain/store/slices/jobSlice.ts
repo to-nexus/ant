@@ -17,6 +17,17 @@ export interface JobActions {
   setActiveJob: (jobType: string, entry: ActiveJobEntry) => void;
   clearActiveJob: (jobType: string) => void;
   syncViewToJobType: (jobType: string) => void;
+  /**
+   * Switch the kanban view to a different jobId in the same feature × jobType.
+   * Restores the kanban from BE (live → snapshot fallback) and reconnects the
+   * workflow SSE only when the target job is still live.
+   */
+  selectJobId: (jobId: string, opts?: { live?: boolean }) => Promise<void>;
+  /**
+   * Delete every artifact tied to a jobId. If it is the currently selected
+   * jobId, the kanban is cleared and `currentJobId` is unset afterwards.
+   */
+  deleteJobId: (jobId: string) => Promise<void>;
 }
 
 export type JobSlice = JobState & JobActions;
@@ -184,6 +195,86 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     const activeJobs = { ...get().activeJobs };
     delete activeJobs[jobType];
     set({ activeJobs });
+  },
+
+  selectJobId: async (jobId, opts) => {
+    const state = get();
+    const prevJobId = state.currentJobId;
+    const { selectedProject, selectedFeature, selectedJobType } = state;
+
+    if (!selectedProject || !selectedFeature) return;
+    if (prevJobId === jobId) return;
+
+    const jobType = selectedJobType || 'code';
+
+    // Disconnect previous workflow stream so events from the old jobId
+    // can no longer mutate the new view.
+    if (prevJobId) {
+      sseManager.disconnectWorkflow(prevJobId);
+    }
+
+    set({
+      currentJobId: jobId,
+      // Switching to a past jobId is a passive view change — leave isRunning
+      // alone unless we know the target is live (caller passes opts.live or
+      // we infer from the BE response below).
+      sseReconnectGrace: false,
+      jobStartPending: false,
+    });
+
+    try {
+      const { fetchKanbanByJobId } = await import('@/infrastructure/http/api');
+      const kanbanData = await fetchKanbanByJobId(
+        selectedProject,
+        selectedFeature,
+        jobId,
+        jobType,
+      );
+      get().updateKanban(kanbanData);
+
+      const isLive = opts?.live === true || kanbanData.dataSource === 'live' || kanbanData.dataSource === 'estimating';
+      if (isLive) {
+        sseManager.connectWorkflow(jobId);
+      }
+    } catch (err) {
+      console.warn('[Store] Failed to switch jobId:', err);
+    }
+  },
+
+  deleteJobId: async (jobId) => {
+    const state = get();
+    const { selectedProject, selectedFeature, selectedJobType, currentJobId } = state;
+    if (!selectedProject || !selectedFeature) return;
+
+    const jobType = selectedJobType || 'code';
+    const wasCurrent = currentJobId === jobId;
+
+    try {
+      const { deleteJobById } = await import('@/infrastructure/http/api');
+      await deleteJobById(selectedProject, selectedFeature, jobId, jobType);
+    } catch (err) {
+      console.error('[Store] Failed to delete jobId:', err);
+      throw err;
+    }
+
+    if (wasCurrent) {
+      sseManager.disconnectWorkflow(jobId);
+      set({
+        currentJobId: undefined,
+        kanban: {
+          jobId: undefined,
+          todo: [],
+          inProgress: [],
+          completed: [],
+          isEstimating: false,
+          dataSource: 'session',
+          interruption: undefined,
+          recursionCount: undefined,
+          recursionLimit: undefined,
+          jobTiming: undefined,
+        },
+      });
+    }
   },
 
   syncViewToJobType: (jobType) => {

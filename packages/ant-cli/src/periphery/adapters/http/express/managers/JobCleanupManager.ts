@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import type { InterruptionDetails } from '../../../../../core/types';
+import type { SessionRunStatus } from '../../../../../core/types/session';
 import { UserContext } from '../../../../../core/types/user';
 import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
@@ -9,23 +10,8 @@ import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
-
-/**
- * Atomic file write: write to temp file + rename.
- * Prevents partial/corrupt JSON when process crashes or is killed mid-write.
- * The rename operation is atomic on POSIX systems when src and dest are on the same filesystem.
- */
-async function atomicWriteFile(filePath: string, content: string): Promise<void> {
-  const dir = path.dirname(filePath);
-  const tmpPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.tmp`);
-  try {
-    await fs.promises.writeFile(tmpPath, content, 'utf-8');
-    await fs.promises.rename(tmpPath, filePath);
-  } catch (err) {
-    try { await fs.promises.unlink(tmpPath); } catch { /* ignore */ }
-    throw err;
-  }
-}
+import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
+import { appendJobSnapshotToSession } from '../../routes/helpers/sessionCleanup';
 
 /**
  * JobCleanupManager
@@ -406,7 +392,13 @@ export class JobCleanupManager {
         // Broadcast final update (only for decomposable jobs that have Kanban)
         const isDecomposable = jobType !== 'plan';
         if (shouldBroadcast && isDecomposable) {
-          await this.broadcastFinalUpdate(mapping, jobType as 'design' | 'code' | 'learn', effectiveUserContext, jobId);
+          await this.broadcastFinalUpdate(
+            mapping,
+            jobType as 'design' | 'code' | 'learn',
+            effectiveUserContext,
+            jobId,
+            interruptionReason,
+          );
         } else {
           this.stateTracker.cleanup(jobId);
         }
@@ -444,13 +436,19 @@ export class JobCleanupManager {
   }
 
   /**
-   * Broadcast final Kanban update and cleanup state
+   * Broadcast final Kanban update and cleanup state.
+   *
+   * Also persists the just-built kanbanData into the session file's
+   * `runs[]` array (keyed by `jobId`), so the Job-tab dropdown can later
+   * restore this exact view via `GET /features/:feature/kanban?jobId=...`
+   * even after Redis state has expired.
    */
   private async broadcastFinalUpdate(
     mapping: { projectId: string; featureName: string; jobType: string; userContext?: UserContext },
     jobType: 'design' | 'code' | 'learn',
     userContext: UserContext,
-    jobId: string
+    jobId: string,
+    interruptionReason?: InterruptionDetails,
   ): Promise<void> {
     try {
       const state = this.stateTracker.getState();
@@ -464,6 +462,26 @@ export class JobCleanupManager {
         userContext
       );
       
+      // Persist per-jobId kanban snapshot into session.runs[] for dropdown replay.
+      // Best-effort: failures here must not block the broadcast.
+      try {
+        const featurePath = this.deps.workspaceResolver.getFeaturePath(
+          userContext,
+          mapping.projectId,
+          mapping.featureName,
+        );
+        const status: SessionRunStatus = interruptionReason
+          ? (interruptionReason.reason === 'user_stopped' ? 'canceled' : 'paused')
+          : 'completed';
+        await appendJobSnapshotToSession(featurePath, jobType, jobId, kanbanData, status);
+      } catch (snapErr) {
+        logger.warn(
+          `Failed to persist kanban snapshot to session`,
+          { component: 'JobCleanupManager', jobId },
+          snapErr,
+        );
+      }
+
       // Broadcast via user-scoped Redis Pub/Sub → Realtime Server → SSE
       if (!userContext?.organizationId || !userContext?.userId) {
         logger.warn(`Cannot broadcast final update without userContext`, { 

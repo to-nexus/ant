@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ExecuteJobParams, LogEntry } from '../../../../core/ports/http';
+import { ExecuteJobParams } from '../../../../core/ports/http';
 import type { InterruptionDetails } from '../../../../core/types';
 import type { StateStorePort, JobStatusData } from '../../../../core/ports/stateStore';
 import type { JobProjectMapping } from '../../../../core/types/task';
@@ -15,6 +15,9 @@ import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
 import { getConfigSlots } from '@ant/shared';
+import type { JobStateTracker } from '../express/managers/JobStateTracker';
+import type { KanbanService } from '../services';
+import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 
 /**
  * Auto-resolve agent from job type when not explicitly provided.
@@ -39,8 +42,35 @@ export function createJobRoutes(deps: {
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;
   chatService: import('../services/ChatService').ChatService;
   stateStore: StateStorePort;
+  stateTracker: JobStateTracker;
+  kanbanService?: KanbanService;
 }): Router {
   const router = Router();
+
+  /**
+   * Thin closure over `finalizeTerminalJob` so individual route handlers
+   * don't repeat the `{ cleanupJobState, stateTracker, kanbanService }`
+   * dep tuple. Single entry point for terminal transitions (SSOT).
+   */
+  async function finalize(args: {
+    jobId: string;
+    finalStatus: 'completed' | 'failed';
+    projectId: string;
+    featureName: string;
+    jobType: 'code' | 'design' | 'learn' | 'plan' | 'visual';
+    userContext?: { userId: string; organizationId: string };
+    interruption?: InterruptionDetails;
+    featurePath?: string;
+  }): Promise<void> {
+    await finalizeTerminalJob(
+      {
+        cleanupJobState: deps.cleanupJobState,
+        stateTracker: deps.stateTracker,
+        kanbanService: deps.kanbanService,
+      },
+      args,
+    );
+  }
   
   /**
    * Get job status from Redis StateStore
@@ -49,12 +79,6 @@ export function createJobRoutes(deps: {
     return deps.stateStore.getJobStatus(jobId);
   }
   
-  /**
-   * Get job logs from Redis StateStore
-   */
-  async function getJobLogsAsync(jobId: string): Promise<LogEntry[]> {
-    return deps.stateStore.getJobLogs(jobId);
-  }
   
   /**
    * Check if feature already has a running or interrupted (paused) job
@@ -113,10 +137,25 @@ export function createJobRoutes(deps: {
 
           if (!resumable) {
             logger.info(`Auto-dismissing zombie paused job: ${existingJobId} (session cleared)`, { component: 'JobRoute' });
-            await deps.stateStore.updateJobStatus(existingJobId, {
-              status: 'failed',
-              completedAt: new Date().toISOString(),
-              error: 'Auto-dismissed: session data was cleared',
+            // Seal the zombie paused record (status, taskQueue, workflow, etc.)
+            // so it can't reappear in `listJobsByFeature` or block future jobs.
+            // jobType here is the incoming request's type — matches the zombie
+            // because checkDuplicateJob filtered by jobType.
+            await finalize({
+              jobId: existingJobId,
+              finalStatus: 'failed',
+              projectId,
+              featureName,
+              jobType: jobType as 'code' | 'design' | 'learn' | 'plan' | 'visual',
+              userContext,
+              interruption: {
+                reason: 'user_stopped',
+                message: 'Auto-dismissed: session data was cleared',
+                canResume: false,
+                timestamp: new Date().toISOString(),
+                metadata: { stoppedBy: 'zombie_auto_dismiss' },
+              },
+              featurePath,
             });
             // Fall through to normal job execution below
           } else {
@@ -223,24 +262,78 @@ export function createJobRoutes(deps: {
     }
   });
   
-  // Get task status
+  // Get task status.
+  //
+  // Resolution order:
+  //   1. Live Redis record (`ant:job:status:{id}`) — returned as-is when present.
+  //   2. Session `runs[]` fallback — terminal jobs whose Redis record was
+  //      sealed by the SSOT lifecycle. We scan the three kanban session
+  //      files (code/design/learn) and synthesize a `JobStatusData`-ish
+  //      shape from the matching run.
+  //   3. 404 when neither source knows the jobId.
+  //
+  // Used by e2e test helpers and ops runbooks. The ant-ui FE does not call
+  // this endpoint in the normal flow — see docs/testing/e2e-runbook.md.
   router.get('/jobs/:jobId/status', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
     const status = await getJobStatusAsync(jobId);
-    
-    if (!status) {
+
+    if (status) {
+      res.json(status);
+      return;
+    }
+
+    // Session runs[] fallback. Note: we don't have (projectId, featureName)
+    // in the request path, so we rely on the client passing them as query
+    // params for the fallback to work. Without them the fallback is skipped
+    // and the endpoint returns 404 — matching pre-refactor behaviour when
+    // Redis is empty.
+    const projectId = req.query.projectId as string | undefined;
+    const featureName = req.query.featureName as string | undefined;
+    if (!projectId || !featureName) {
       res.status(404).json({ error: 'Task not found' });
       return;
     }
-    
-    res.json(status);
-  });
-  
-  // Get task logs (all at once)
-  router.get('/jobs/:jobId/logs', async (req: Request, res: Response) => {
-    const jobId = req.params.jobId;
-    const logs = await getJobLogsAsync(jobId);
-    res.json(logs);
+
+    try {
+      const userContext = extractUserContext(req);
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      for (const entry of getAllSessionPaths(featurePath)) {
+        if (!fs.existsSync(entry.path)) continue;
+        let parsed: any;
+        try {
+          parsed = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+        } catch {
+          continue;
+        }
+        const runs = Array.isArray(parsed?.runs) ? parsed.runs : [];
+        const match = runs.find((r: any) => r?.jobId === jobId);
+        if (match) {
+          const synthesized: JobStatusData = {
+            jobId,
+            status: (match.status === 'canceled' || match.status === 'paused' || match.status === 'failed')
+              ? 'failed'
+              : 'completed',
+            projectId,
+            featureName,
+            type: entry.job as JobStatusData['type'],
+            startedAt: match.timestamp,
+            completedAt: match.completedAt ?? match.timestamp,
+            error: match.output?.error,
+          };
+          res.json(synthesized);
+          return;
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        `Session runs[] fallback failed for jobId=${jobId}`,
+        { component: 'JobRoute' },
+        err,
+      );
+    }
+
+    res.status(404).json({ error: 'Task not found' });
   });
   
   // Get queue position for a job (enriched with Redis job status for crash recovery)
@@ -269,58 +362,64 @@ export function createJobRoutes(deps: {
     }
   });
   
-  // Stop task
+  // Stop task — terminal transition. Sequence:
+  //   1. markUserStopped + publish(STOP) → signal the worker child to exit.
+  //   2. finalize(failed, user_stopped) — acquires idempotency locks BEFORE
+  //      sealing so the subsequent BullMQ `completed` event (fired when the
+  //      worker's child exits) can't trigger a duplicate cleanup via the
+  //      RouteConfigurator subscriber.
   router.post('/jobs/:jobId/stop', async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
     const { projectId, featureName, jobType } = req.body;
-    
+
     logger.info(`Stop request: job=${jobId}`, { component: 'JobRoute' });
     logger.debug(`Stop: project=${projectId}, feature=${featureName}`, { component: 'JobRoute' });
     const userContext = extractUserContext(req);
     logger.debug(`Stop: user=${userContext.userId}`, { component: 'JobRoute' });
-    
-    // Mark as user-stopped in Redis
+
+    // Mark as user-stopped in Redis (read by JobWorker's polling backup).
+    // The seal inside finalize() will DEL this shortly after the worker
+    // has consumed the pub/sub STOP signal — that's OK: the polling read
+    // is best-effort and the pub/sub path is primary.
     await deps.stateStore.markUserStopped(jobId);
-    logger.debug(`   ✅ Marked job ${jobId} as user-stopped (Redis)`);
-    
-    // Publish stop signal to Job Workers via Redis Pub/Sub
-    await deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, { 
-      jobId, 
-      projectId, 
+
+    // Publish STOP signal — primary mechanism for the worker to kill its child.
+    await deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, {
+      jobId,
+      projectId,
       featureName,
-      timestamp: new Date().toISOString() 
+      timestamp: new Date().toISOString(),
     });
-    logger.debug(`   ✅ Published stop signal to ${REDIS_CHANNELS.JOB_WORKER.STOP} channel`);
-    
-    // Update job status in Redis
-    await deps.stateStore.updateJobStatus(jobId, {
-      status: 'failed',
-      completedAt: new Date().toISOString(),
-      error: 'Task stopped by user'
-    });
-    
-    // Clean up task state
+
     const interruption: InterruptionDetails = {
       reason: 'user_stopped',
       message: 'Task stopped by user',
       timestamp: new Date().toISOString(),
       canResume: true,
-      metadata: {
-        stoppedBy: 'user_action'
-      }
+      metadata: { stoppedBy: 'user_action' },
     };
-    
-    logger.debug(`   Calling cleanupJobState with jobType: ${jobType || 'auto-detect'}...`);
-    await deps.cleanupJobState(jobId, projectId, featureName, interruption, jobType, userContext);
-    logger.debug(`   ✅ cleanupJobState completed`);
-    
-    res.json({ 
-      success: true, 
-      message: 'Task stopped successfully',
-      jobId 
+
+    const resolvedJobType = (jobType || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual';
+    const featurePath = projectId && featureName
+      ? deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName)
+      : undefined;
+
+    await finalize({
+      jobId,
+      finalStatus: 'failed',
+      projectId,
+      featureName,
+      jobType: resolvedJobType,
+      userContext,
+      interruption,
+      featurePath,
     });
-    
-    logger.debug(`   ✅ Stop request completed\n`);
+
+    res.json({
+      success: true,
+      message: 'Task stopped successfully',
+      jobId,
+    });
   });
   
   // Resume existing job
@@ -426,11 +525,13 @@ export function createJobRoutes(deps: {
       // ✅ Clear idempotency locks AFTER executeJob so old BullMQ job is
       // removed first (inside enqueue). This closes the stale-event window
       // and ensures locks stay intact if executeJob throws.
-      // Three lock layers: BullMQJobQueue completed, RouteConfigurator
-      // completed, and RouteConfigurator failed — all TTL 120s.
+      // Four lock layers: BullMQJobQueue completed, RouteConfigurator
+      // completed, RouteConfigurator failed, and finalizeTerminalJob
+      // primary — all TTL 120s.
       await deps.stateStore.releaseLock(`ant:job-completed:${sessionJobId}`);
       await deps.stateStore.releaseLock(`ant:job-event:${sessionJobId}:completed`);
       await deps.stateStore.releaseLock(`ant:job-event:${sessionJobId}:failed`);
+      await deps.stateStore.releaseLock(`ant:job-finalize:${sessionJobId}`);
       logger.debug(`   ✅ Cleared completion/failure idempotency locks for ${sessionJobId}`);
       
       logger.debug(`   ✅ Resume job continued with existing jobId: ${sessionJobId}`);
@@ -655,13 +756,25 @@ export function createJobRoutes(deps: {
 
       // Dispatch by choice
       if (choice === 'redirect_to_design') {
-        // 1) Dismiss the paused code job
+        // 1) Seal the paused code job as terminal (same SSOT as /dismiss).
+        //    finalize handles idempotency, snapshot append, broadcast, and seal.
         const codeStatus = await deps.stateStore.getJobStatus(jobId);
         if (codeStatus?.status === 'paused') {
-          await deps.stateStore.updateJobStatus(jobId, {
-            status: 'failed',
-            completedAt: new Date().toISOString(),
-            error: 'Redirected to design via spec-clarify choice',
+          await finalize({
+            jobId,
+            finalStatus: 'failed',
+            projectId,
+            featureName,
+            jobType: 'code',
+            userContext,
+            interruption: {
+              reason: 'user_stopped',
+              message: 'Redirected to design via spec-clarify choice',
+              canResume: false,
+              timestamp: new Date().toISOString(),
+              metadata: { stoppedBy: 'decompose_redirect_to_design' },
+            },
+            featurePath,
           });
         }
 
@@ -712,13 +825,14 @@ export function createJobRoutes(deps: {
         const result = await deps.executeJob(resumeParams);
 
         // Mirror /jobs/:jobId/resume: release idempotency locks AFTER executeJob.
-        // Rationale (see L426-430): the enqueue path removes the old BullMQ job
-        // first; releasing locks afterwards closes the stale-event window and
-        // keeps the locks intact if executeJob throws.
+        // Rationale (see /resume route): the enqueue path removes the old
+        // BullMQ job first; releasing locks afterwards closes the stale-event
+        // window and keeps the locks intact if executeJob throws.
         const resumeLockJobId = sessionJobId || jobId;
         await deps.stateStore.releaseLock(`ant:job-completed:${resumeLockJobId}`);
         await deps.stateStore.releaseLock(`ant:job-event:${resumeLockJobId}:completed`);
         await deps.stateStore.releaseLock(`ant:job-event:${resumeLockJobId}:failed`);
+        await deps.stateStore.releaseLock(`ant:job-finalize:${resumeLockJobId}`);
 
         logger.info(`Decompose proceed_without_spec: resumed code job ${result.jobId}`, { component: 'JobRoute' });
         return res.json({
@@ -729,7 +843,12 @@ export function createJobRoutes(deps: {
         });
       }
 
-      // cancel
+      // cancel — terminal transition via the single SSOT entry point.
+      // Note: we don't markUserStopped here because there's no running
+      // worker child to signal — the job is already paused. finalize's
+      // idempotency lock (ant:job-event:{id}:*) supplants the old manual
+      // `ant:job-completed` / `ant:job-event:{id}:completed|failed` release
+      // dance; there's no running worker that would re-publish completion.
       const interruption: InterruptionDetails = {
         reason: 'user_stopped',
         message: 'Spec-clarify cancelled by user',
@@ -737,18 +856,16 @@ export function createJobRoutes(deps: {
         canResume: false,
         metadata: { stoppedBy: 'decompose_choice_cancel' },
       };
-      await deps.stateStore.markUserStopped(jobId);
-      await deps.stateStore.updateJobStatus(jobId, {
-        status: 'failed',
-        completedAt: new Date().toISOString(),
-        error: 'Spec-clarify cancelled by user',
+      await finalize({
+        jobId,
+        finalStatus: 'failed',
+        projectId,
+        featureName,
+        jobType: 'code',
+        userContext,
+        interruption,
+        featurePath,
       });
-      // Symmetry with proceed_without_spec: clear the same idempotency locks so
-      // a subsequent job spawn under the same jobId cannot hit stale guards.
-      await deps.stateStore.releaseLock(`ant:job-completed:${jobId}`);
-      await deps.stateStore.releaseLock(`ant:job-event:${jobId}:completed`);
-      await deps.stateStore.releaseLock(`ant:job-event:${jobId}:failed`);
-      await deps.cleanupJobState(jobId, projectId, featureName, interruption, 'code', userContext);
       logger.info(`Decompose cancel: code job ${jobId} dismissed`, { component: 'JobRoute' });
       return res.json({ success: true, choice, action: 'code_cancelled' });
     } catch (error: any) {
@@ -758,7 +875,14 @@ export function createJobRoutes(deps: {
 
   // Dismiss an interrupted/cancelled job — clears the server-side state
   // so the user can acknowledge the interruption and start a new job.
-  // For 'paused' jobs: transitions to 'failed'. For already-terminal jobs: no-op (just ack).
+  //
+  // For 'paused' jobs: transitions to sealed-failed via finalize.
+  // For already-terminal / Redis-null jobs: idempotent 200 (seal already done).
+  //
+  // Post-seal semantics: Redis returns null for completed/failed jobs. A
+  // second dismiss call therefore sees `jobStatus == null` — treated as
+  // "already dismissed" rather than 404, so the UI's dismiss button stays
+  // safe to click after seal has happened.
   router.post('/projects/:id/features/:feature/job/dismiss', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
@@ -769,30 +893,69 @@ export function createJobRoutes(deps: {
     }
 
     try {
+      const userContext = extractUserContext(req);
       const jobStatus = await deps.stateStore.getJobStatus(jobId);
 
-      // If job doesn't exist or is actively running/queued, reject
+      // No Redis record → already sealed (terminal) or never existed — both
+      // surface as idempotent success for the dismiss UX.
       if (!jobStatus) {
-        return res.status(404).json({ error: 'Job not found' });
+        logger.debug(
+          `Job dismiss: no Redis record (already sealed or never existed) jobId=${jobId}`,
+          { component: 'JobRoute' },
+        );
+        return res.json({ success: true, alreadyDismissed: true });
       }
 
       const terminalStatuses = ['failed', 'completed', 'cancelled', 'stopped'];
       if (jobStatus.status === 'paused') {
-        // Paused (interrupted) → transition to failed
-        await deps.stateStore.updateJobStatus(jobId, {
-          status: 'failed',
-          completedAt: new Date().toISOString(),
-          error: 'Dismissed by user',
+        // Paused → terminal. Go through finalize for seal + broadcast + idempotency lock.
+        const jobType = (jobStatus.type || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual';
+        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+        await finalize({
+          jobId,
+          finalStatus: 'failed',
+          projectId,
+          featureName,
+          jobType,
+          userContext,
+          interruption: {
+            reason: 'user_stopped',
+            message: 'Dismissed by user',
+            canResume: false,
+            timestamp: new Date().toISOString(),
+            metadata: { stoppedBy: 'dismiss' },
+          },
+          featurePath,
         });
       } else if (terminalStatuses.includes(jobStatus.status)) {
-        // Already terminal — no state transition needed, just acknowledge
-        logger.debug(`Job already in terminal state (${jobStatus.status}), dismiss is a no-op`, { component: 'JobRoute' });
+        // Pre-refactor legacy path — Redis still holds a terminal record.
+        // After this PR lands fully, seal makes this branch effectively
+        // unreachable, but keep it as idempotent defense for any orphan
+        // rows created before the seal path was wired.
+        logger.debug(
+          `Job dismiss: already terminal (${jobStatus.status}) — performing defensive seal`,
+          { component: 'JobRoute' },
+        );
+        const jobType = (jobStatus.type || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual';
+        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+        await finalize({
+          jobId,
+          finalStatus: 'failed',
+          projectId,
+          featureName,
+          jobType,
+          userContext,
+          featurePath,
+        });
       } else {
         // Running or queued — cannot dismiss
         return res.status(400).json({ error: `Cannot dismiss job in '${jobStatus.status}' state` });
       }
 
-      logger.info(`Job dismissed: ${projectId}/${featureName} jobId=${jobId} (was: ${jobStatus.status})`, { component: 'JobRoute' });
+      logger.info(
+        `Job dismissed: ${projectId}/${featureName} jobId=${jobId} (was: ${jobStatus.status})`,
+        { component: 'JobRoute' },
+      );
       res.json({ success: true });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'JobDismiss');

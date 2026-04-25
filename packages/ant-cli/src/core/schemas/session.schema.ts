@@ -44,6 +44,15 @@ export const SessionRunOutputSchema = z.object({
 
 /**
  * SessionRun Schema
+ *
+ * `jobId`, `kanbanSnapshot`, `status`, `completedAt` were added so that the
+ * Job-tab dropdown can (a) list every past jobId for the same jobType and
+ * (b) restore a per-jobId kanban snapshot when Redis live state has expired.
+ *
+ * `kanbanSnapshot` is intentionally typed as `z.any().optional().nullable()`:
+ * KanbanData is a large structural type and we'd rather not duplicate its
+ * Zod definition here. Validation lives at the TypeScript boundary
+ * (`SessionRun.kanbanSnapshot?: KanbanData`).
  */
 export const SessionRunSchema = z.object({
   runId: z.number().int().positive(),
@@ -53,7 +62,11 @@ export const SessionRunSchema = z.object({
   output: SessionRunOutputSchema,
   reference: z.object({
     runId: z.number().int().positive()
-  }).optional()
+  }).optional(),
+  jobId: z.string().optional(),
+  kanbanSnapshot: z.any().optional().nullable(),
+  status: z.enum(['completed', 'failed', 'canceled', 'paused']).optional(),
+  completedAt: z.string().datetime().optional(),
 });
 
 /**

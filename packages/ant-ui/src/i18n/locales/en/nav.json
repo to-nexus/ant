@@ -34,8 +34,8 @@
     "accountConfig": "Account Configuration"
   },
   "tabs": {
-    "removeJobId": "Remove job ID",
     "copiedJobId": "Job ID copied to clipboard",
+    "copyJobId": "Copy this Job ID",
     "closeTab": "Close {{label}} tab",
     "job": "Job",
     "projectConfig": "Project Config",
@@ -44,14 +44,13 @@
     "transfer": "Transfer",
     "previewConfig": "Preview Config",
     "actions": "Actions",
-    "removeJob": "Remove Job?",
-    "removeJobDesc": "This will remove the current job and clear all session data:",
-    "removeJobItem1": "Job ID and progress will be removed",
-    "removeJobItem2": "Task board will be cleared",
-    "removeJobItem3": "Chat history will be preserved",
-    "removeJobItem4": "Session files will be reset and debug log files will be deleted",
-    "removeJobConfirm": "Are you sure you want to continue?",
-    "removeJobBlocked": "Cannot remove job while it is running. Please stop the job first."
+    "liveJob": "Live",
+    "deleteJobId": "Delete Job",
+    "deleteJobIdDesc": "Permanently delete all session data, logs, and artifacts for Job ID '{{jobId}}'. Continue?",
+    "deleteJobIdBlocked": "Cannot delete a running or paused job. Stop it first.",
+    "deletedJobId": "Job deleted",
+    "deleteJobIdFailed": "Failed to delete job",
+    "featureDeleteBlocked": "Cannot delete this feature while a job is running. Stop the job first."
   },
   "splitLayout": {
     "horizontal": "Horizontal Split (Left/Right)",

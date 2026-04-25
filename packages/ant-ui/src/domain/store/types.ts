@@ -119,7 +119,6 @@ export interface UIState {
   actionMetadata: import('@ant/shared').ActionMetadata;
   highlightedArtifactDirs: string[];
   spotlightTarget: { type: 'file' | 'dir'; path: string } | null;
-  isJobTabCleared: boolean;
   // ✅ Pending clarify answers (shared between compound ChoiceCard and ChatInput)
   pendingClarifyAnswers: Record<number, string>;  // questionIndex → selected answer
   pendingClarifyQuestions: string[];  // original question texts (for combining with free input)

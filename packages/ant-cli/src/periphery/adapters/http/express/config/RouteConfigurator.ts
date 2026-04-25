@@ -135,6 +135,8 @@ export class RouteConfigurator {
       stateStore: getInfrastructureFactory().getStateStore(),
       gitWatcherService: this.deps.gitWatcherService,
       gitStateBroadcaster: this.deps.gitStateBroadcaster,
+      cleanupJobState: this.cleanupJobState,
+      stateTracker: this.stateTracker,
     });
     app.use('/api', apiRoutes);
   }
@@ -230,9 +232,9 @@ export class RouteConfigurator {
     // This allows new jobs to start after previous job completes and
     // broadcasts Kanban update to frontend SSE
     stateStore.subscribe(REDIS_CHANNELS.API_SERVER.JOB_STATUS_UPDATES, async (message: unknown) => {
-        const data = message as { 
-          type: string; 
-          jobId: string; 
+        const data = message as {
+          type: string;
+          jobId: string;
           status: string;
           projectId?: string;
           featureName?: string;
@@ -240,166 +242,201 @@ export class RouteConfigurator {
           result?: any;
           interruption?: any;  // ✅ Top-level interruption (promoted by BullMQJobQueue)
         };
-        if (data.type === 'completed' || data.type === 'failed') {
-          const { jobId, projectId, featureName, userEmail } = data;
-          
-          // ✅ Redis-based idempotency: in-memory Set doesn't work (multiple instances confirmed by logs)
-          const acquired = await stateStore.acquireLock(`ant:job-event:${jobId}:${data.type}`, 120);
-          if (!acquired) {
-            logger.debug(`Duplicate job event blocked: ${jobId}:${data.type}`, { component: 'RouteConfigurator' });
-            return;
-          }
-          
-          // Update local stateTracker to mark job as completed
-          const jobStatus = state.jobs.get(jobId);
-          if (jobStatus) {
-            jobStatus.status = data.status as any;
-            logger.debug(`Updated stateTracker job status: ${jobId} → ${data.status}`, { 
-              component: 'RouteConfigurator' 
-            });
-          }
-          
-          // ✅ Extract interruption from job result (flows from JobWorker → BullMQ → Redis)
-          // Check multiple locations: top-level (promoted by BullMQJobQueue), nested in result.output, or direct in result
-          const interruption = data.interruption 
-            || data.result?.output?.interruption 
-            || data.result?.interruption;
-          if (interruption) {
-            logger.info(`Job ${jobId} has interruption: ${interruption.reason}`, {
-              component: 'RouteConfigurator'
-            });
-          } else {
-            // ✅ Log for debugging when interruption is missing despite status suggesting pause
-            const resultStatus = data.result?.output?.status || data.status;
-            if (resultStatus === 'paused' || data.status === 'paused') {
-              console.warn(`⚠️ [RouteConfigurator] Job ${jobId} status=${resultStatus} but no interruption found in result | resultKeys=${data.result ? Object.keys(data.result).join(',') : 'null'} | outputKeys=${data.result?.output ? Object.keys(data.result.output).join(',') : 'null'}`);
-            }
-          }
-          
-          // ✅ Extract jobType from result
-          const jobType = data.result?.output?.job as 'design' | 'code' | 'learn' | undefined;
-          
-          // ✅ Skip cleanup for inline-ask jobs (stateless, no session/kanban to clean up)
-          // Instead, broadcast a lightweight completion event to the frontend
-          const isInlineAsk = data.result?.output?.intent !== undefined;
-          if (isInlineAsk) {
-            const intent = data.result?.output?.intent;
-            const noSession = data.result?.output?.noSession === true;
-            const action = data.result?.output?.action;
-            const suggestedJob = data.result?.output?.suggestedJob;
-            const suggestedAgent = data.result?.output?.suggestedAgent;
-            const redirectReason = data.result?.output?.redirectReason;
-            logger.info(`Skipping cleanupJobState for inline-ask job: ${jobId} (intent=${intent}, action=${action}, noSession=${noSession})`, {
-              component: 'RouteConfigurator'
-            });
-            
-            // ✅ Broadcast inline-ask completion to frontend via user-scoped SSE channel
-            try {
-              if (userEmail) {
-                const [userId, organizationId] = userEmail.split('@');
-                if (userId && organizationId) {
-                  const { getRealtimeBroadcastChannel } = await import('../../../../../infrastructure/state/redisConstants');
-                  const channel = getRealtimeBroadcastChannel(organizationId, userId);
-                  const userContext = {
-                    userId,
-                    organizationId,
-                  };
-                  await stateStore.publish(channel, {
-                    projectId,
-                    featureName,
-                    type: 'chat',
-                    data: {
-                      type: 'inline_ask_complete',
-                      projectId,
-                      featureName,
-                      jobId,
-                      intent,
-                      action,
-                      suggestedJob,
-                      suggestedAgent,
-                      redirectReason,
-                      noSession,
-                      timestamp: new Date().toISOString(),
-                    },
-                    userContext,
-                  });
-                  logger.info(`Broadcast inline-ask completion: ${jobId} (intent=${intent}, action=${action}, noSession=${noSession})`, {
-                    component: 'RouteConfigurator'
-                  });
-                }
-              }
-            } catch (broadcastError) {
-              logger.warn(`Failed to broadcast inline-ask completion: ${jobId}`, {
-                component: 'RouteConfigurator'
-              }, broadcastError);
-            }
-            return;
-          }
-          
-          // Skip if user-stopped: Stop route already called cleanupJobState
-          // Without this guard, cleanupJobState runs twice → duplicate choice cards
-          const wasUserStopped = await stateStore.isUserStopped(jobId);
-          if (wasUserStopped) {
-            // ✅ FIX: Clear the flag here (after checking) to prevent stale flag on resume.
-            // Previously cleared in JobWorker.checkCancellation BEFORE this check,
-            // causing this guard to fail → duplicate cleanupJobState → race condition.
-            await stateStore.clearUserStopped(jobId);
-            logger.info(`Skipping cleanupJobState for user-stopped job: ${jobId} (already handled by stop route)`, {
-              component: 'RouteConfigurator'
-            });
-          } else if (projectId && featureName) {
-            try {
-              // Parse userEmail to extract userId and organizationId
-              let userContext: { userId: string; organizationId: string } | undefined;
-              if (userEmail) {
-                const [userId, organizationId] = userEmail.split('@');
-                if (userId && organizationId) {
-                  userContext = { 
-                    userId, 
-                    organizationId,
-                  };
-                }
-              }
-              
-              logger.info(`Calling cleanupJobState for completed job: ${jobId} (hasInterruption=${!!interruption})`, {
-                component: 'RouteConfigurator',
-                projectId,
-                featureName
-              });
-              
-              await this.cleanupJobState(jobId, projectId, featureName, interruption, jobType, userContext);
-              
-              logger.debug(`cleanupJobState completed for job: ${jobId}`, {
-                component: 'RouteConfigurator'
-              });
-            } catch (cleanupError) {
-              logger.error(`Failed to cleanup job state for ${jobId}`, {
-                component: 'RouteConfigurator'
-              }, cleanupError);
-            }
-          } else {
-            // projectId/featureName 누락 시 stateStore에서 직접 조회 (stalled 핸들러 best-effort 실패 보완)
-            try {
-              const mapping = await stateStore.getJobMapping(jobId);
-              if (mapping?.projectId && mapping?.featureName) {
-                logger.info(`Resolved missing projectId/featureName from stateStore for job: ${jobId}`, { component: 'RouteConfigurator' });
-                const userCtx = mapping.userContext;
-                await this.cleanupJobState(jobId, mapping.projectId, mapping.featureName, interruption, jobType, userCtx);
-              } else {
-                logger.warn(`Missing projectId/featureName and stateStore lookup failed: ${jobId}`, {
-                  component: 'RouteConfigurator',
-                  projectId,
-                  featureName
-                });
-              }
-            } catch (err) {
-              logger.error(`Failed to resolve mapping for job ${jobId}`, { component: 'RouteConfigurator' }, err);
-            }
+        if (data.type !== 'completed' && data.type !== 'failed') return;
+
+        const { jobId, projectId, featureName, userEmail } = data;
+
+        // NOTE on idempotency: the old `acquireLock('ant:job-event:{id}:{type}')`
+        // guard that used to live here has migrated INTO `finalizeTerminalJob`
+        // and `pauseJob` (as part of the SSOT refactor). Multi-pod races and
+        // the /stop-vs-worker-completed race are now both serialized by the
+        // helper's internal acquire. Keeping the guard here would create a
+        // deadlock: this handler would hold the lock, then finalize would try
+        // to acquire the same key and bail. So we let the helper own it.
+
+        // Update local stateTracker to mark job as completed (in-memory only).
+        const jobStatus = state.jobs.get(jobId);
+        if (jobStatus) {
+          jobStatus.status = data.status as any;
+        }
+
+        // ✅ Extract interruption from job result (flows from JobWorker → BullMQ → Redis)
+        // Check multiple locations: top-level (promoted by BullMQJobQueue), nested in result.output, or direct in result
+        const interruption = data.interruption
+          || data.result?.output?.interruption
+          || data.result?.interruption;
+        if (interruption) {
+          logger.info(`Job ${jobId} has interruption: ${interruption.reason}`, {
+            component: 'RouteConfigurator'
+          });
+        } else {
+          // ✅ Log for debugging when interruption is missing despite status suggesting pause
+          const resultStatus = data.result?.output?.status || data.status;
+          if (resultStatus === 'paused' || data.status === 'paused') {
+            console.warn(`⚠️ [RouteConfigurator] Job ${jobId} status=${resultStatus} but no interruption found in result | resultKeys=${data.result ? Object.keys(data.result).join(',') : 'null'} | outputKeys=${data.result?.output ? Object.keys(data.result.output).join(',') : 'null'}`);
           }
         }
+
+        // ✅ Extract jobType from result
+        const jobType = data.result?.output?.job as 'design' | 'code' | 'learn' | undefined;
+
+        // ✅ Skip cleanup for inline-ask jobs (stateless, no session/kanban to clean up)
+        // Instead, broadcast a lightweight completion event to the frontend
+        const isInlineAsk = data.result?.output?.intent !== undefined;
+        if (isInlineAsk) {
+          const intent = data.result?.output?.intent;
+          const noSession = data.result?.output?.noSession === true;
+          const action = data.result?.output?.action;
+          const suggestedJob = data.result?.output?.suggestedJob;
+          const suggestedAgent = data.result?.output?.suggestedAgent;
+          const redirectReason = data.result?.output?.redirectReason;
+          logger.info(`Skipping cleanupJobState for inline-ask job: ${jobId} (intent=${intent}, action=${action}, noSession=${noSession})`, {
+            component: 'RouteConfigurator'
+          });
+
+          // ✅ Broadcast inline-ask completion to frontend via user-scoped SSE channel
+          try {
+            if (userEmail) {
+              const [userId, organizationId] = userEmail.split('@');
+              if (userId && organizationId) {
+                const { getRealtimeBroadcastChannel } = await import('../../../../../infrastructure/state/redisConstants');
+                const channel = getRealtimeBroadcastChannel(organizationId, userId);
+                const userContext = {
+                  userId,
+                  organizationId,
+                };
+                await stateStore.publish(channel, {
+                  projectId,
+                  featureName,
+                  type: 'chat',
+                  data: {
+                    type: 'inline_ask_complete',
+                    projectId,
+                    featureName,
+                    jobId,
+                    intent,
+                    action,
+                    suggestedJob,
+                    suggestedAgent,
+                    redirectReason,
+                    noSession,
+                    timestamp: new Date().toISOString(),
+                  },
+                  userContext,
+                });
+              }
+            }
+          } catch (broadcastError) {
+            logger.warn(`Failed to broadcast inline-ask completion: ${jobId}`, {
+              component: 'RouteConfigurator'
+            }, broadcastError);
+          }
+          return;
+        }
+
+        // Resolve project/feature/user context — fall back to Redis mapping
+        // when the payload didn't include them (stalled-handler best-effort).
+        let resolvedProjectId = projectId;
+        let resolvedFeatureName = featureName;
+        let userContext: { userId: string; organizationId: string } | undefined;
+        if (userEmail) {
+          const [userId, organizationId] = userEmail.split('@');
+          if (userId && organizationId) {
+            userContext = { userId, organizationId };
+          }
+        }
+        if (!resolvedProjectId || !resolvedFeatureName) {
+          try {
+            const mapping = await stateStore.getJobMapping(jobId);
+            if (mapping?.projectId && mapping?.featureName) {
+              resolvedProjectId = mapping.projectId;
+              resolvedFeatureName = mapping.featureName;
+              if (!userContext && mapping.userContext) {
+                userContext = mapping.userContext as { userId: string; organizationId: string };
+              }
+            }
+          } catch (err) {
+            logger.error(`Failed to resolve mapping for job ${jobId}`, { component: 'RouteConfigurator' }, err);
+          }
+        }
+        if (!resolvedProjectId || !resolvedFeatureName) {
+          logger.warn(
+            `Missing projectId/featureName — cannot dispatch finalize/pause for ${jobId}`,
+            { component: 'RouteConfigurator' },
+          );
+          return;
+        }
+
+        // Resolve the seal-surface jobType. Prefer worker-reported (`result.output.job`)
+        // then Redis mapping's jobType as a fallback.
+        let sealJobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' = jobType ?? 'code';
+        if (!jobType) {
+          try {
+            const mapping = await stateStore.getJobMapping(jobId);
+            if (mapping?.jobType) sealJobType = mapping.jobType as typeof sealJobType;
+          } catch { /* ignore */ }
+        }
+
+        const featurePath = userContext
+          ? this.deps.workspaceResolver.getFeaturePath(userContext, resolvedProjectId, resolvedFeatureName)
+          : undefined;
+
+        // Dispatch: interruption present ⇒ paused (resumable). Otherwise
+        // the worker's outcome drives the terminal status.
+        try {
+          const { finalizeTerminalJob } = await import('../lifecycle/finalizeTerminalJob');
+          const { pauseJob } = await import('../lifecycle/pauseJob');
+
+          if (interruption && interruption.reason !== 'user_stopped') {
+            // Auto-paused (recursion_limit, api_error, verification_failed,
+            // server_crash from worker, etc.). Keep Redis state alive for resume.
+            await pauseJob(
+              { cleanupJobState: this.cleanupJobState },
+              {
+                jobId,
+                projectId: resolvedProjectId,
+                featureName: resolvedFeatureName,
+                jobType: sealJobType,
+                userContext,
+                interruption,
+              },
+            );
+          } else {
+            // Terminal: normal completion, worker-reported failure, or a
+            // user_stopped interruption that somehow reached us without the
+            // /stop route having sealed already (e.g. multi-pod with /stop
+            // on pod A, worker completion on pod B). finalize's idempotency
+            // lock deduplicates.
+            const finalStatus: 'completed' | 'failed' =
+              data.status === 'failed' ? 'failed' : 'completed';
+            await finalizeTerminalJob(
+              {
+                cleanupJobState: this.cleanupJobState,
+                stateTracker: this.stateTracker,
+                kanbanService: this.deps.kanbanService,
+              },
+              {
+                jobId,
+                finalStatus,
+                projectId: resolvedProjectId,
+                featureName: resolvedFeatureName,
+                jobType: sealJobType,
+                userContext,
+                interruption,
+                featurePath,
+              },
+            );
+          }
+        } catch (dispatchError) {
+          logger.error(
+            `Failed to dispatch lifecycle transition for ${jobId}`,
+            { component: 'RouteConfigurator' },
+            dispatchError,
+          );
+        }
       }).catch((err: Error) => {
-        logger.warn(`Failed to subscribe to job status updates: ${err.message}`, { 
-          component: 'RouteConfigurator' 
+        logger.warn(`Failed to subscribe to job status updates: ${err.message}`, {
+          component: 'RouteConfigurator'
         });
       });
     
@@ -409,7 +446,9 @@ export class RouteConfigurator {
       cleanupJobState: this.cleanupJobState,
       workflowStateService: this.deps.workflowStateService,
       chatService: this.deps.chatService,
-      stateStore
+      stateStore,
+      stateTracker: this.stateTracker,
+      kanbanService: this.deps.kanbanService,
     });
     app.use('/api', jobRoutes);
   }
