@@ -9,6 +9,16 @@ import {
 import { VerificationSession } from "./tasks/_shared/verify/Session";
 import type { VerificationSnapshot } from "./tasks/_shared/verify/snapshot";
 import { markVerifyEntered } from "./tasks/_shared/verify/markVerifyEntered";
+import type { InterruptionDetails } from "@ant/shared";
+import type { TriageResult } from "../../../common/graph/nodes/triage/types";
+
+export interface CodeGraphResult {
+  branch: string;
+  reportFile: string;
+  filesChanged: number;
+  interruption?: InterruptionDetails;
+  triageResult?: TriageResult;
+}
 
 /**
  * Code Graph Runner
@@ -19,7 +29,7 @@ import { markVerifyEntered } from "./tasks/_shared/verify/markVerifyEntered";
  * ✅ RecursionLimit: Read from RECURSION_LIMIT env var (minimum: 5)
  * ✅ Learn node is ALWAYS executed on exit (success/error/recursion limit)
  */
-export async function runCodeGraph(initial: ArchitectGraphState) {
+export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGraphResult> {
   resetKeywordDedup();
 
   const app = buildCodeGraph();
@@ -250,7 +260,13 @@ export async function runCodeGraph(initial: ArchitectGraphState) {
       console.log('✅ Recursion limit reached but all tasks completed - treating as success\n');
       // Continue to learn node execution below (don't set isRecursionLimit)
       // LangGraph will have already executed learn node, so state should be final
-      return state;
+      return {
+        branch: state.branch || '',
+        reportFile: state.reportFile || '',
+        filesChanged: state.filesWritten || 0,
+        interruption: state.interruption,
+        triageResult: state.triageResult,
+      };
     }
     
     isRecursionLimit = true;

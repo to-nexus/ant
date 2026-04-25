@@ -31,7 +31,7 @@ export function createChatRoutes(deps: {
   chatService?: ChatService;
   choiceService?: ChoiceService;
   workspaceResolver?: any;
-  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): void };
+  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
   stateStore?: {
     addUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void>;
     getUnseenArtifacts(userId: string, projectId: string, feature: string): Promise<string[]>;

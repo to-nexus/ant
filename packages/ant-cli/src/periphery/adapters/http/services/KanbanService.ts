@@ -57,7 +57,7 @@ export class KanbanService {
     userContext: UserContext | undefined,
     projectId: string,
     featureName: string,
-    jobType: 'design' | 'code' | 'learn'
+    jobType: 'design' | 'code' | 'learn' | 'plan'
   ): void {
     if (!this.workspaceResolver || !userContext) {
       console.warn('[KanbanService] Cannot invalidate cache: missing workspaceResolver or userContext');
@@ -345,8 +345,8 @@ export class KanbanService {
         dataSource: 'live',
         recursionCount: liveSnapshot.recursionCount,
         recursionLimit: liveSnapshot.recursionLimit || finalLimit,
-        pausedDueToLimit: sessionState.pausedDueToLimit || false,
-        tasksRemaining: sessionState.tasksRemaining || 0,
+        pausedDueToLimit: sessionState.interruption?.reason === 'recursion_limit',
+        tasksRemaining: sessionState.interruption?.metadata?.tasksRemaining || 0,
         jobTiming: liveSnapshot.jobTiming ?? sessionState.jobTiming,
         tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
         estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? sessionState.estimatingTokenUsage,

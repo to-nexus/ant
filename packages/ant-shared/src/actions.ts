@@ -5,7 +5,6 @@
  * Single source of truth for action definitions, material rules, and file naming validation.
  */
 
-import type { JobType } from './job';
 import type { DesignSubdir } from './canonical';
 import type { IntentGroup } from './detection';
 import type { Basis } from './rac';

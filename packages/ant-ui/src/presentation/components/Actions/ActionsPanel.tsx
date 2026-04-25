@@ -2,7 +2,7 @@ import { useRef, useMemo, useCallback } from 'react';
 import { useStore } from '@/domain/store';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, getConfigSlots, type IntentGroup } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, getConfigSlots, type IntentGroup, type IntentId } from '@ant/shared';
 import { ActionChipGrid, IntentChipGrid, type ChipItem } from './ActionChipGrid';
 import { ActionConfigView } from './ActionConfigView';
 import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
@@ -156,8 +156,8 @@ export function ActionsPanel() {
       return (
         <div className="h-full">
           <ActionConfigView
-            actionId={selectedActionId}
-            intentId={selectedIntentId}
+            actionId={selectedActionId as IntentGroup}
+            intentId={selectedIntentId as IntentId}
             onBack={handleBack}
           />
         </div>

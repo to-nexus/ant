@@ -8,6 +8,12 @@ You are analyzing a user-reported error and creating a structured remediation pl
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/preview-env-contract}}
+
+{{#if hasFrontend}}
+{{> jobs/code/base/injections/preview-setup}}
+{{/if}}
+
 ## Role
 
 Your responsibility is to **investigate the user-reported error by reading code, and produce a structured fix plan**.

@@ -14,6 +14,20 @@ export type { InterruptionReason, InterruptionDetails } from '@ant/shared';
 export type { JobTiming } from '@ant/shared';
 
 // ============================================
+// Error Categories
+// ============================================
+
+/** Error categories produced by code-job verification / decompose layers. */
+export type ErrorCategory =
+  | 'missing_files'
+  | 'missing_deps'
+  | 'type_errors'
+  | 'config_errors'
+  | 'import_errors'
+  | 'syntax_errors'
+  | 'other';
+
+// ============================================
 // Session Run Types
 // ============================================
 
@@ -155,7 +169,15 @@ export interface SessionState {
   currentTask?: any;
   completedTasks?: string[];
   completedTasksDetails?: any[];
-  failedTasks?: Array<{ taskId: string; taskName: string; error: string; timestamp: string }>;
+  failedTasks?: Array<{
+    taskId: string;
+    taskName: string;
+    timestamp: string;
+    error?: string;
+    taskType?: 'ui' | 'setup' | 'feature' | 'design-system' | 'test-code' | 'verification' | 'doc';
+    priority?: number;
+    violations?: any[];
+  }>;
 
   // Parallel Execution
   parallelMode?: boolean;
@@ -170,7 +192,7 @@ export interface SessionState {
 
   // Progress Tracking
   previousFileCount?: number;
-  resolvedCategories?: string[];
+  resolvedCategories?: ErrorCategory[];
   
   // Execution Context
   planText?: string;

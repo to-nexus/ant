@@ -109,14 +109,8 @@ export const TASK_PRIORITIES = {
   FINAL_VERIFICATION: 1000,
 } as const;
 
-export type ErrorCategory = 
-  | 'missing_files'       // Missing required files (index.html, etc)
-  | 'missing_deps'        // Missing npm packages
-  | 'type_errors'         // TypeScript type errors
-  | 'config_errors'       // Configuration issues
-  | 'import_errors'       // Import path errors
-  | 'syntax_errors'       // Syntax errors
-  | 'other';              // Uncategorized
+export type { ErrorCategory } from '../../../../core/types/session';
+import type { ErrorCategory } from '../../../../core/types/session';
 
 /**
  * Enforcement Feedback - 실패 시 학습 가능한 피드백
@@ -371,10 +365,11 @@ export interface ArchitectGraphState extends TriageableState {
   failedTasks?: Array<{
     taskId: string;
     taskName: string;
-    taskType: 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'verification' | 'doc';
-    priority: number;
-    violations: Violation[];
     timestamp: string;
+    error?: string;
+    taskType?: 'setup' | 'feature' | 'design-system' | 'ui' | 'test-code' | 'verification' | 'doc';
+    priority?: number;
+    violations?: Violation[];
   }>;
   
   // ✅ Unresolved Errors (Error Tasks that failed after max retries)

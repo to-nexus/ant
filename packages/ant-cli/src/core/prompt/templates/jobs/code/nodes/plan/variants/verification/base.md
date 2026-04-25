@@ -8,6 +8,8 @@ You are diagnosing build and test failures and creating a structured remediation
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/preview-env-contract}}
+
 ## Role
 
 Your responsibility is to **run build/test commands, analyze all errors, and produce a structured fix plan**.

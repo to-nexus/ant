@@ -42,7 +42,7 @@ import type { ArchitectGraphState, Violation } from '../../state';
 import type { CodeTask } from '../../../../types/task';
 import type { TaskType } from '@ant/shared';
 import type { ToolExecutionContext, ToolExecutionEvent, ToolResult } from '../../../../../common/tool/types';
-import type { VerificationTerminalError } from '../verification/model/errors';
+import type { VerificationTerminalError } from './verify/errors';
 
 /**
  * Fallback task-type used when the decompose LLM omits the `type` field

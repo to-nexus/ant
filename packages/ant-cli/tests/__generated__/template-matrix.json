@@ -343,12 +343,14 @@
     "sources": [
       "auto-injection",
       "render-call",
+      "partial-ref",
       "manifest"
     ]
   },
   "jobs/code/base/injections/preview-setup": {
     "sources": [
       "auto-injection",
+      "partial-ref",
       "manifest"
     ]
   },

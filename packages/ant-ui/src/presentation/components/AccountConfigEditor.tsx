@@ -9,7 +9,7 @@ import {
 } from '@/infrastructure/http/api';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useStore } from '@/domain/store';
-import { DEFAULT_LOCAL_BACKEND_PORT, STORAGE_KEYS, removeFromStorage } from '@/domain/store/storage';
+import { STORAGE_KEYS, removeFromStorage } from '@/domain/store/storage';
 import { ConfigSection, ConfigIcons, ConfigStyles } from './ConfigSection';
 import { Spinner } from './common/async';
 import { DangerZoneSection } from './common/DangerZoneSection';
@@ -26,14 +26,8 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const { t } = useTranslation('config');
   const { showSuccess, showError, showConfirm } = useAlertModalContext();
   
-  // Local backend port state from store
-  const localBackendPort = useStore((state) => state.localBackendPort);
-  const setLocalBackendPort = useStore((state) => state.setLocalBackendPort);
   const reset = useStore((state) => state.reset);
   
-  // Local backend port input state
-  const [portInput, setPortInput] = useState(String(localBackendPort));
-  const [isPortChanged, setIsPortChanged] = useState(false);
   
   // GitHub PAT — SSOT is the git-world slice. Only the input buffer and
   // the in-flight save/delete guard live locally.
@@ -73,12 +67,6 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   const [isResettingAccount, setIsResettingAccount] = useState(false);
   const [resetPhase, setResetPhase] = useState<'idle' | 'deleting' | 'clearing' | 'done'>('idle');
   
-  // Sync port input with store value
-  useEffect(() => {
-    setPortInput(String(localBackendPort));
-    setIsPortChanged(false);
-  }, [localBackendPort]);
-
   // Prime the PAT slice on mount. Subsequent reads come from `patState`.
   useEffect(() => {
     void fetchGitPat();
@@ -203,30 +191,6 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
     await launchDesktop();
   };
 
-  const handlePortInputChange = (value: string) => {
-    setPortInput(value);
-    const numValue = parseInt(value, 10);
-    setIsPortChanged(!isNaN(numValue) && numValue !== localBackendPort);
-  };
-
-  const handleSavePort = () => {
-    const port = parseInt(portInput, 10);
-    if (isNaN(port) || port < 1 || port > 65535) {
-      showError(t('localBackend.invalidPort'));
-      return;
-    }
-    setLocalBackendPort(port);
-    setIsPortChanged(false);
-    showSuccess(t('localBackend.portSaved', { port }));
-  };
-
-  const handleResetPort = () => {
-    setPortInput(String(DEFAULT_LOCAL_BACKEND_PORT));
-    setLocalBackendPort(DEFAULT_LOCAL_BACKEND_PORT);
-    setIsPortChanged(false);
-    showSuccess(t('localBackend.portReset'));
-  };
-
   const handleResetAccount = async () => {
     showConfirm(t('account.resetAccountConfirmMsg'), {
       type: 'error',
@@ -282,54 +246,6 @@ export function AccountConfigEditor({ onClose: _onClose }: AccountConfigEditorPr
   // ============================================
   // Render Sections
   // ============================================
-
-  const renderLocalBackendSection = () => (
-    <ConfigSection
-      icon={<ConfigIcons.LocalBackend />}
-      title={t('localBackend.title')}
-      description={t('localBackend.description')}
-      hint={t('localBackend.hint', { port: DEFAULT_LOCAL_BACKEND_PORT })}
-    >
-      <div>
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-          {t('localBackend.portLabel')}
-        </label>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center">
-            <span className="px-3 py-2 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-md bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-sm">
-              localhost:
-            </span>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={portInput}
-              onChange={(e) => {
-                const value = e.target.value.replace(/[^0-9]/g, '');
-                handlePortInputChange(value);
-              }}
-              onFocus={(e) => e.target.select()}
-              className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-r-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 text-sm text-center"
-            />
-          </div>
-          <button
-            onClick={handleSavePort}
-            disabled={!isPortChanged}
-            className={ConfigStyles.buttonPrimary}
-          >
-            {t('common:button.save')}
-          </button>
-          <button
-            onClick={handleResetPort}
-            disabled={localBackendPort === DEFAULT_LOCAL_BACKEND_PORT}
-            className={ConfigStyles.buttonSecondary}
-          >
-            {t('common:button.reset')}
-          </button>
-        </div>
-      </div>
-    </ConfigSection>
-  );
 
   const isOverrideChanged = userOwnerOverride.trim() !== savedUserOverride;
 
