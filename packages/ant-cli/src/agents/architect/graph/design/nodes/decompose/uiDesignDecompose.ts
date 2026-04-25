@@ -17,7 +17,7 @@ import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isVisualTierActive, getConfigSlots } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
@@ -107,10 +107,11 @@ export async function decomposeUiDesign(
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
-    visualTierActive: isVisualTierActive(
+    visualTierActive: isTierActive(
+      'visualTier',
       state.resolvedAction?.intent ? getConfigSlots(state.resolvedAction.intent)?.basis : undefined,
-      state.resolvedAction?.basis?.techTier,
-      pool.hasUi(),
+      getEffectiveDomain(state.resolvedAction?.domain),
+      { techTier: state.resolvedAction?.basis?.techTier, hasUiDoc: pool.hasUi() },
     ),
   });
 
@@ -276,10 +277,11 @@ export async function decomposeUiDesign(
     const uiDocPresent = pool.hasUi();
     if (
       state.resolvedAction?.intent === 'gen-ui-desc' &&
-      isVisualTierActive(
+      isTierActive(
+        'visualTier',
         getConfigSlots(state.resolvedAction.intent)?.basis,
-        state.resolvedAction?.basis?.techTier,
-        uiDocPresent,
+        getEffectiveDomain(state.resolvedAction?.domain),
+        { techTier: state.resolvedAction?.basis?.techTier, hasUiDoc: uiDocPresent },
       )
     ) {
       const { resolveVisualTierFromDecompose } = await import('../../../../../common/visualTierResolver');

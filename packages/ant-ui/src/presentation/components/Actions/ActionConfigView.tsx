@@ -23,6 +23,7 @@ import {
   listDir,
 } from './config';
 import { BasisSummaryBar } from './basis';
+import { DomainToggle } from './DomainToggle';
 import type { FileWarningContext } from './config';
 
 interface ActionConfigViewProps {
@@ -238,6 +239,13 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
         {slots && (
           <>
+            {/* Phase 1 — Domain toggle (D11). Renders only when the slot
+                opts into the `domain` tier; sits above basis so domain
+                changes propagate to the wizard step set on next render. */}
+            {slots.basis?.tiers?.includes('domain') && (
+              <DomainToggle basisSlot={slots.basis} />
+            )}
+
             {/* Basis preset (conditional) */}
             {slots.basis && (
               <Section
@@ -259,7 +267,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                     const current = actionMetadata.basis;
                     if (!current) return;
                     const updated = { ...current, [tierKey]: undefined };
-                    const hasAnything = updated.techTier || updated.visualTier;
+                    const hasAnything =
+                      updated.techTier || updated.visualTier || updated.artTier || updated.gameContentTier;
                     updateActionMetadata({ basis: hasAnything ? updated : undefined });
                   }}
                   lang={lang}

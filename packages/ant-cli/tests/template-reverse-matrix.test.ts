@@ -34,6 +34,19 @@ import {
   LANGUAGE_VARIANT_MAP,
   resolveLanguageVariants,
   FRAMEWORK_NONE,
+  ART_TIER_TEMPLATE_PATHS,
+  ART_TIER_AXIS_KEYS,
+  ART_CONCEPT_VARIANTS,
+  ART_PERSPECTIVE_VARIANTS,
+  ART_ENTITY_CATALOG_VARIANTS,
+  ART_MOTION_PATTERN_VARIANTS,
+  ART_PARTICLE_PROFILE_VARIANTS,
+  ART_PROJECTILE_POLICY_VARIANTS,
+  ART_AUDIO_PROFILE_VARIANTS,
+  GAME_CONTENT_TIER_TEMPLATE_PATHS,
+  GAME_GENRE_VARIANTS,
+  GAME_CORE_LOOP_VARIANTS,
+  SUPPORTED_GAME_ENGINES,
 } from '@ant/shared';
 import type { SupportedLanguage, SupportedStack, LanguageVariant } from '@ant/shared';
 import { AutoInjectionResolver } from '../src/core/prompt/builder/AutoInjectionResolver';
@@ -434,6 +447,57 @@ function collectBasisPaths(): Set<string> {
   // Job-specific visualTier preambles
   for (const job of JOBS) {
     paths.add(VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job));
+  }
+
+  // ── ArtTier paths (Phase 1) ──
+  paths.add(ART_TIER_TEMPLATE_PATHS.preamble());
+  const ART_VARIANT_MAP: Record<string, readonly string[]> = {
+    concept: ART_CONCEPT_VARIANTS,
+    perspective: ART_PERSPECTIVE_VARIANTS,
+    entityCatalog: ART_ENTITY_CATALOG_VARIANTS,
+    motionPattern: ART_MOTION_PATTERN_VARIANTS,
+    particleProfile: ART_PARTICLE_PROFILE_VARIANTS,
+    projectilePolicy: ART_PROJECTILE_POLICY_VARIANTS,
+    audioProfile: ART_AUDIO_PROFILE_VARIANTS,
+  };
+  for (const axis of ART_TIER_AXIS_KEYS) {
+    const pathFn = ART_TIER_TEMPLATE_PATHS[axis as keyof typeof ART_TIER_TEMPLATE_PATHS];
+    if (typeof pathFn === 'function') {
+      for (const v of ART_VARIANT_MAP[axis]) {
+        paths.add((pathFn as (v: string) => string)(v));
+      }
+    }
+  }
+  // Job-specific artTier preambles (code + design, matching the renderer dispatch).
+  for (const job of ['code', 'design']) {
+    paths.add(ART_TIER_TEMPLATE_PATHS.jobPreamble(job));
+  }
+
+  // ── GameContentTier paths (Phase 1) ──
+  paths.add(GAME_CONTENT_TIER_TEMPLATE_PATHS.preamble());
+  for (const g of GAME_GENRE_VARIANTS) {
+    paths.add(GAME_CONTENT_TIER_TEMPLATE_PATHS.genre(g));
+  }
+  for (const c of GAME_CORE_LOOP_VARIANTS) {
+    paths.add(GAME_CONTENT_TIER_TEMPLATE_PATHS.coreLoop(c));
+  }
+  for (const job of ['plan', 'code', 'design']) {
+    paths.add(GAME_CONTENT_TIER_TEMPLATE_PATHS.jobPreamble(job));
+  }
+
+  // ── GameEngine paths (Phase 1, game domain only) ──
+  paths.add(TECH_TIER_TEMPLATE_PATHS.gameEnginePreamble());
+  for (const engine of SUPPORTED_GAME_ENGINES) {
+    paths.add(TECH_TIER_TEMPLATE_PATHS.gameEngine(engine));
+    // Job-overlay only for code in Phase 1; phaser is the only Phase 2 body.
+    paths.add(TECH_TIER_TEMPLATE_PATHS.jobGameEngine('code', engine));
+  }
+
+  // ── Plan job basis overlay (Phase 1, F-1) ──
+  // jobs/plan/basis/domain/{game,service}.md is reachable via buildBasisSection's
+  // domain dispatch; explicitly enumerate so the matrix knows about it.
+  for (const domain of ['game', 'service']) {
+    paths.add(TECH_TIER_TEMPLATE_PATHS.jobDomain('plan', domain));
   }
 
   // ── Shared paths ──

@@ -103,7 +103,8 @@ Output the tech tier in `<techTier>` tags before `<tasks>`:
   "stack": "frontend" | "backend" | "fullstack" | "unknown",
   "stackReasoning": "Why this stack? (1 sentence)",
   "language": "typescript" | "javascript" | "python" | "go" | "rust" | "java",
-  "framework": "react" | "vue" | "nextjs" | "express" | "fastapi" | "gin" | ... (or null),
+  "framework": "react" | "vue" | "nextjs" | "express" | "fastapi" | "gin" | ... (or null){{#if gameEngineCandidates}},
+  "gameEngine": {{{gameEngineCandidates}}}{{/if}},
   "packageTiers": {
     "fe-main": { "language": "typescript", "framework": "nextjs", "stack": "frontend" },
     "be-api": { "language": "go", "framework": "gin", "stack": "backend" }
@@ -114,11 +115,45 @@ Output the tech tier in `<techTier>` tags before `<tasks>`:
 - `packageTiers` is REQUIRED when `stack` is `"fullstack"` and packages use different languages/frameworks.
 - `packageTiers` is OPTIONAL otherwise (omit when all packages share the same stack).
 - Each key is a package tag (e.g. `fe-main`, `be-auth`, `be-order`).
+{{#if gameEngineCandidates}}
+- `gameEngine` is the game-domain 5th slot. Pick exactly one of the candidates above. The engine layers on top of the framework — `react+phaser` is the canonical Phase 2 combination (React hosts the page, Phaser owns the canvas).
+{{/if}}
 
 {{> jobs/code/nodes/decompose/variants/default/techTier-rules}}
 
 {{#if visualTierActive}}
 A `"design-system"` task at priority 200 is REQUIRED to implement the visual policy as token infrastructure. The visual tier layers are resolved via the `<visualTier>` tag (see visual-tier-detection section) — explicit values from `resolvedAction.basis.visualTier` are authoritative, missing layers are inferred from the work content.
+{{/if}}
+
+{{#if artTierActive}}
+**Step 1.5: Determine ArtTier (game-domain art policy)**
+
+Phase 1 ships two ArtTier axes:
+- `concept` — overall art tone / silhouette palette. Candidates: {{{artConceptCandidates}}}.
+- `perspective` — camera / depth model. Candidates: `2d`, `3d`.
+
+Explicit values from `resolvedAction.basis.artTier` are authoritative — preserve them as-is. Infer missing axes from the directive and any provided refs (e.g. "match-3 puzzle" → `concept=modernCasual`, `perspective=2d`).
+
+Output the art tier in `<artTier>` tags after `<techTier>` (before `<tasks>`):
+
+<artTier>concept=modernCasual,perspective=2d</artTier>
+
+- The body is a comma-separated `axis=value` list. Phase 1 uses concept + perspective only; Phase 3 extends to entityCatalog / motionPattern / particleProfile / projectilePolicy / audioProfile.
+- Unknown axes are silently dropped — emit only the two Phase 1 axes for now.
+{{/if}}
+
+{{#if gameContentTierActive}}
+**Step 1.6: Determine GameContentTier (game-domain content policy)**
+
+Two axes:
+- `genre` — game genre identity. Candidates: {{{gameGenreCandidates}}}.
+- `coreLoop` — player loop pattern. Candidates: {{{gameCoreLoopCandidates}}}.
+
+Explicit values from `resolvedAction.basis.gameContentTier` are authoritative — preserve them as-is. Infer missing axes from the directive (e.g. "match-3" → `genre=puzzle`, `coreLoop=solve`).
+
+Output the game content tier in `<gameContentTier>` tags after `<artTier>` (before `<tasks>`):
+
+<gameContentTier>genre=puzzle,coreLoop=solve</gameContentTier>
 {{/if}}
 
 **Step 2: Break into Tasks**

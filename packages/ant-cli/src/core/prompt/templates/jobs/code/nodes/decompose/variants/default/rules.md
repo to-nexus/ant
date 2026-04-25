@@ -863,9 +863,23 @@ Output in this exact order:
 }
 </techTier>
 
-**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<tasks>` tag** (task array -- see Task Schema and ExecutionTier Classification above. `[]` when tier is `0` or `1`; exactly one task when tier is `2`; `>= 2` tasks including a verification task when tier is `3` or `4`.)
+{{#if artTierActive}}
+**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<artTier>` tag** (game-domain art policy — see Step 1.5 above):
 
-**{{#if needsBoundaryClassification}}4{{else}}3{{/if}}. `<references>` tag** (REQUIRED, even if empty):
+<artTier>concept=modernCasual,perspective=2d</artTier>
+
+The body is a comma-separated `axis=value` list. Phase 1 emits `concept` + `perspective`; Phase 3 extends to the remaining 5 axes.
+{{/if}}
+
+{{#if gameContentTierActive}}
+**{{#if needsBoundaryClassification}}{{#if artTierActive}}4{{else}}3{{/if}}{{else}}{{#if artTierActive}}3{{else}}2{{/if}}{{/if}}. `<gameContentTier>` tag** (game-domain content policy — see Step 1.6 above):
+
+<gameContentTier>genre=puzzle,coreLoop=solve</gameContentTier>
+{{/if}}
+
+**(N+1). `<tasks>` tag** (task array -- see Task Schema and ExecutionTier Classification above. `[]` when tier is `0` or `1`; exactly one task when tier is `2`; `>= 2` tasks including a verification task when tier is `3` or `4`.)
+
+**(N+2). `<references>` tag** (REQUIRED, even if empty):
 
 <references>
 []
@@ -876,7 +890,7 @@ Output in this exact order:
 **Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. Feature names become `feature/{name}` branches.
 
 {{#if visualTierActive}}
-**{{#if needsBoundaryClassification}}5{{else}}4{{/if}}. `<visualTier>` tag** (visual design policy detection):
+**(N+3). `<visualTier>` tag** (visual design policy detection):
 
 {{> jobs/shared/injections/visual-tier-detection}}
 {{/if}}

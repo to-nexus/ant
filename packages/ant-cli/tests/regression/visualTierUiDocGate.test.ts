@@ -1,26 +1,19 @@
 /**
  * Visual Tier × UI doc gate — integration.
  *
- * When the user includes a UI design document (ant / figma / handoff) in
- * the post-RAC pool, the design document becomes the authoritative design
- * system and Visual Tier must be suppressed across every surface:
+ * After Phase 1 D9 the gate funnels through `isTierActive('visualTier', ...)`.
+ * Adding a UI design doc (ant / figma / handoff) into either source of truth
+ * (FE selected RAC paths or BE ArtifactPoolView) closes the gate so the
+ * downstream surfaces (FE wizard tab, FE summary row, BE decompose template
+ * flag, BE prompt injection) skip visual tier emission.
  *
- *   FE wizard tab visibility   ← `isVisualTierActive(..., hasUiDoc)`
- *   FE summary row visibility  ← `isVisualTierActive(..., hasUiDoc)`
- *   BE decompose template flag ← `isVisualTierActive(..., pool.hasUi())`
- *   BE prompt injection         ← same as decompose flag
- *
- * This regression links the two SSOT sources end-to-end:
+ * SSOT sources:
  *   - FE: `pathsContainUiDoc(refs + context)` over user-selected RAC paths
  *   - BE: `ArtifactPoolView.hasUi()` over the post-RAC resolved pool
- *
- * Both feed the same `isVisualTierActive(basisSlot, techTier, hasUiDoc)`
- * predicate in `@ant/shared`. The test verifies that adding any one of
- * the three UiSource kinds into either source of truth closes the gate.
  */
 import { describe, it, expect } from 'vitest';
 import {
-  isVisualTierActive,
+  isTierActive,
   pathsContainUiDoc,
   type BasisSlotConfig,
   type TechTierConfig,
@@ -28,7 +21,7 @@ import {
 } from '@ant/shared';
 import { ArtifactPoolView } from '../../src/core/artifact/ArtifactPipeline';
 
-const slot: BasisSlotConfig = { visualTier: true };
+const slot: BasisSlotConfig = { tiers: ['domain', 'visualTier'] };
 const fe: TechTierConfig = { stack: 'frontend' } as TechTierConfig;
 
 const mk = (path: string, role: 'ref' | 'context' = 'ref'): ResolvedArtifact => ({
@@ -42,7 +35,7 @@ describe('Visual Tier × UI doc gate — FE surfaces', () => {
     const refs = ['outputs/design/system/fe-system-app.md'];
     const ctx  = ['inputs/sources/prd.md'];
     expect(pathsContainUiDoc([...refs, ...ctx])).toBe(false);
-    expect(isVisualTierActive(slot, fe, pathsContainUiDoc([...refs, ...ctx]))).toBe(true);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pathsContainUiDoc([...refs, ...ctx]) })).toBe(true);
   });
 
   it.each([
@@ -52,20 +45,20 @@ describe('Visual Tier × UI doc gate — FE surfaces', () => {
   ])('gate CLOSES when a %s UI doc lives in refs', (_kind, path) => {
     const refs = [path];
     expect(pathsContainUiDoc(refs)).toBe(true);
-    expect(isVisualTierActive(slot, fe, pathsContainUiDoc(refs))).toBe(false);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pathsContainUiDoc(refs) })).toBe(false);
   });
 
   it('gate CLOSES when the UI doc is supplied via context (not refs)', () => {
     const ctx = ['outputs/design/ui/handoff/spec.md'];
     expect(pathsContainUiDoc(ctx)).toBe(true);
-    expect(isVisualTierActive(slot, fe, pathsContainUiDoc(ctx))).toBe(false);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pathsContainUiDoc(ctx) })).toBe(false);
   });
 
   it('gate CLOSES even when refs+context mix non-UI paths alongside one UI doc', () => {
     const refs = ['outputs/design/system/fe-system-app.md'];
     const ctx  = ['inputs/sources/prd.md', 'outputs/design/ui/ant/ui-spec.json'];
     expect(pathsContainUiDoc([...refs, ...ctx])).toBe(true);
-    expect(isVisualTierActive(slot, fe, pathsContainUiDoc([...refs, ...ctx]))).toBe(false);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pathsContainUiDoc([...refs, ...ctx]) })).toBe(false);
   });
 });
 
@@ -76,7 +69,7 @@ describe('Visual Tier × UI doc gate — BE ArtifactPoolView', () => {
       mk('inputs/sources/prd.md', 'context'),
     ]);
     expect(pool.hasUi()).toBe(false);
-    expect(isVisualTierActive(slot, fe, pool.hasUi())).toBe(true);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pool.hasUi() })).toBe(true);
   });
 
   it.each([
@@ -86,7 +79,7 @@ describe('Visual Tier × UI doc gate — BE ArtifactPoolView', () => {
   ])('pool.hasUi() = true via %s → gate CLOSED', (_kind, path) => {
     const pool = new ArtifactPoolView([mk(path)]);
     expect(pool.hasUi()).toBe(true);
-    expect(isVisualTierActive(slot, fe, pool.hasUi())).toBe(false);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pool.hasUi() })).toBe(false);
   });
 
   it('UI doc with role=context still closes the gate (role-agnostic)', () => {
@@ -94,22 +87,17 @@ describe('Visual Tier × UI doc gate — BE ArtifactPoolView', () => {
       mk('outputs/design/ui/ant/ui-spec.json', 'context'),
     ]);
     expect(pool.hasUi()).toBe(true);
-    expect(isVisualTierActive(slot, fe, pool.hasUi())).toBe(false);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pool.hasUi() })).toBe(false);
   });
 });
 
 describe('Visual Tier × UI doc gate — explicit-preset precedence', () => {
-  // Even when the user has pre-seeded a visualTier preset, UI doc wins:
-  // the gate predicate does not look at preset layer values — it only
-  // decides whether the surface participates at all. BE decompose takes
-  // the extra step of clearing `resolvedAction.basis.visualTier` so
-  // downstream nodes don't observe a stale preset.
   it('hasUiDoc wins even when the slot is eligible and stack is frontend', () => {
-    expect(isVisualTierActive(slot, fe, true)).toBe(false);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: true })).toBe(false);
   });
 
   it('hasUiDoc wins for fullstack too', () => {
     const fs: TechTierConfig = { stack: 'fullstack' } as TechTierConfig;
-    expect(isVisualTierActive(slot, fs, true)).toBe(false);
+    expect(isTierActive('visualTier', slot, 'service', { techTier: fs, hasUiDoc: true })).toBe(false);
   });
 });

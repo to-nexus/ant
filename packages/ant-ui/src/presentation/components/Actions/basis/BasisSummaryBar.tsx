@@ -1,16 +1,21 @@
-import { Pencil, Settings2, Palette, RotateCcw } from 'lucide-react';
+import { Pencil, Settings2, Palette, Brush, Gamepad2, RotateCcw } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import type { BasisSlotConfig, Basis } from '@ant/shared';
+import type { BasisSlotConfig, Basis, Domain } from '@ant/shared';
 import {
   STACK_OPTIONS, TECH_TIER_LANGUAGES, FRAMEWORK_LABELS,
   VISUAL_LANGUAGE_OPTIONS, SURFACE_SYSTEM_OPTIONS,
-  isVisualTierActive,
+  GAME_ENGINE_OPTIONS,
+  ART_CONCEPT_OPTIONS, ART_PERSPECTIVE_OPTIONS,
+  GAME_GENRE_OPTIONS, GAME_CORE_LOOP_OPTIONS,
+  isTierActive,
+  getEffectiveDomain,
   pathsContainUiDoc,
 } from '@ant/shared';
 import { TierBadge as TierBadgeComponent, type TierBadgeData } from './TierBadge';
+import type { TierKey } from './types';
 
 export interface TierBadgeRow {
-  tierKey: 'techTier' | 'visualTier';
+  tierKey: TierKey;
   badges: TierBadgeData[];
   subLabel?: string;
 }
@@ -25,8 +30,13 @@ const LAYER_KEY_LABELS: Record<string, { en: string; ko: string }> = {
   stack: { en: 'Stack', ko: '스택' },
   language: { en: 'Language', ko: '언어' },
   framework: { en: 'Framework', ko: '프레임워크' },
+  gameEngine: { en: 'Engine', ko: '엔진' },
   visualLanguage: { en: 'Visual', ko: '비주얼' },
   surfaceSystem: { en: 'Surface', ko: '서피스' },
+  concept: { en: 'Concept', ko: '컨셉' },
+  perspective: { en: 'Perspective', ko: '시점' },
+  genre: { en: 'Genre', ko: '장르' },
+  coreLoop: { en: 'Loop', ko: '루프' },
 };
 
 function keyLabel(key: string, lang: 'en' | 'ko') {
@@ -39,19 +49,24 @@ export function getTierBadgeRows(
   lang: 'en' | 'ko',
   draftBasis?: Basis,
   hasUiDoc: boolean = false,
+  domain?: Domain,
 ): TierBadgeRow[] {
   const rows: TierBadgeRow[] = [];
   const display = draftBasis ?? basis;
   const saved = basis;
+  const effectiveDomain = getEffectiveDomain(domain);
+  const runtime = { techTier: display?.techTier, hasUiDoc };
 
-  if (basisSlot.techTier) {
+  if (isTierActive('techTier', basisSlot, effectiveDomain, runtime)) {
     const tc = display?.techTier;
     const isFullstack = tc?.stack === 'fullstack';
+    const showGameEngine = effectiveDomain === 'game';
 
     if (isFullstack) {
       const buildSideBadges = (
         tier: typeof tc extends undefined ? undefined : NonNullable<typeof tc>['frontend'],
         savedTier: typeof saved extends undefined ? undefined : NonNullable<NonNullable<typeof saved>['techTier']>['frontend'],
+        side: 'frontend' | 'backend',
       ): TierBadgeData[] => {
         const badges: TierBadgeData[] = [];
         if (tier?.language) {
@@ -66,11 +81,21 @@ export function getTierBadgeRows(
         } else {
           badges.push({ keyLabel: keyLabel('framework', lang), label: AUTO_LABEL[lang], isAuto: true });
         }
+        // Game engine 5th slot — only meaningful on the frontend tier in
+        // fullstack projects (Phaser sub-engine runs in the browser).
+        if (showGameEngine && side === 'frontend') {
+          if (tier?.gameEngine) {
+            const opt = GAME_ENGINE_OPTIONS.find(o => o.id === tier.gameEngine);
+            badges.push({ keyLabel: keyLabel('gameEngine', lang), label: opt?.label[lang] ?? tier.gameEngine, isChanged: draftBasis ? tier.gameEngine !== savedTier?.gameEngine : false });
+          } else {
+            badges.push({ keyLabel: keyLabel('gameEngine', lang), label: AUTO_LABEL[lang], isAuto: true });
+          }
+        }
         return badges;
       };
 
-      rows.push({ tierKey: 'techTier', subLabel: 'FE', badges: buildSideBadges(tc?.frontend, saved?.techTier?.frontend) });
-      rows.push({ tierKey: 'techTier', subLabel: 'BE', badges: buildSideBadges(tc?.backend, saved?.techTier?.backend) });
+      rows.push({ tierKey: 'techTier', subLabel: 'FE', badges: buildSideBadges(tc?.frontend, saved?.techTier?.frontend, 'frontend') });
+      rows.push({ tierKey: 'techTier', subLabel: 'BE', badges: buildSideBadges(tc?.backend, saved?.techTier?.backend, 'backend') });
     } else {
       const badges: TierBadgeData[] = [];
       if (tc?.stack) {
@@ -94,12 +119,21 @@ export function getTierBadgeRows(
       } else if (tc) {
         badges.push({ keyLabel: keyLabel('framework', lang), label: AUTO_LABEL[lang], isAuto: true });
       }
+      // game-domain only — gameEngine 5th slot, frontend stack only.
+      if (showGameEngine && tc?.stack === 'frontend') {
+        if (tier?.gameEngine) {
+          const opt = GAME_ENGINE_OPTIONS.find(o => o.id === tier.gameEngine);
+          badges.push({ keyLabel: keyLabel('gameEngine', lang), label: opt?.label[lang] ?? tier.gameEngine, isChanged: draftBasis ? tier.gameEngine !== savedTier?.gameEngine : false });
+        } else if (tc) {
+          badges.push({ keyLabel: keyLabel('gameEngine', lang), label: AUTO_LABEL[lang], isAuto: true });
+        }
+      }
 
       rows.push({ tierKey: 'techTier', badges });
     }
   }
 
-  if (isVisualTierActive(basisSlot, display?.techTier, hasUiDoc)) {
+  if (isTierActive('visualTier', basisSlot, effectiveDomain, runtime)) {
     const badges: TierBadgeData[] = [];
     const vt = display?.visualTier;
 
@@ -123,24 +157,70 @@ export function getTierBadgeRows(
     rows.push({ tierKey: 'visualTier', badges });
   }
 
+  if (isTierActive('artTier', basisSlot, effectiveDomain, runtime)) {
+    const badges: TierBadgeData[] = [];
+    const at = display?.artTier;
+    const artLayers = [
+      { key: 'concept' as const, options: ART_CONCEPT_OPTIONS },
+      { key: 'perspective' as const, options: ART_PERSPECTIVE_OPTIONS },
+    ];
+    for (const { key, options } of artLayers) {
+      const val = at?.[key] as string | undefined;
+      if (val) {
+        const opt = options.find(o => o.id === val);
+        const label = opt?.label[lang] ?? val;
+        const savedVal = saved?.artTier?.[key] as string | undefined;
+        badges.push({ keyLabel: keyLabel(key, lang), label, isChanged: draftBasis ? val !== savedVal : false });
+      } else {
+        badges.push({ keyLabel: keyLabel(key, lang), label: AUTO_LABEL[lang], isAuto: true });
+      }
+    }
+    rows.push({ tierKey: 'artTier', badges });
+  }
+
+  if (isTierActive('gameContentTier', basisSlot, effectiveDomain, runtime)) {
+    const badges: TierBadgeData[] = [];
+    const gct = display?.gameContentTier;
+    const gctLayers = [
+      { key: 'genre' as const, options: GAME_GENRE_OPTIONS },
+      { key: 'coreLoop' as const, options: GAME_CORE_LOOP_OPTIONS },
+    ];
+    for (const { key, options } of gctLayers) {
+      const val = gct?.[key] as string | undefined;
+      if (val) {
+        const opt = options.find(o => o.id === val);
+        const label = opt?.label[lang] ?? val;
+        const savedVal = saved?.gameContentTier?.[key] as string | undefined;
+        badges.push({ keyLabel: keyLabel(key, lang), label, isChanged: draftBasis ? val !== savedVal : false });
+      } else {
+        badges.push({ keyLabel: keyLabel(key, lang), label: AUTO_LABEL[lang], isAuto: true });
+      }
+    }
+    rows.push({ tierKey: 'gameContentTier', badges });
+  }
+
   return rows;
 }
 
-const TIER_ICON = {
+const TIER_ICON: Record<TierKey, typeof Settings2> = {
   techTier: Settings2,
   visualTier: Palette,
-} as const;
+  artTier: Brush,
+  gameContentTier: Gamepad2,
+};
 
-const TIER_ICON_COLOR = {
+const TIER_ICON_COLOR: Record<TierKey, string> = {
   techTier: 'text-violet-500 dark:text-violet-400',
   visualTier: 'text-pink-500 dark:text-pink-400',
-} as const;
+  artTier: 'text-amber-500 dark:text-amber-400',
+  gameContentTier: 'text-emerald-500 dark:text-emerald-400',
+};
 
 interface BasisSummaryBarProps {
   basisSlot: BasisSlotConfig;
   onEdit?: () => void;
-  onEditTier?: (tierKey: 'techTier' | 'visualTier') => void;
-  onResetTier?: (tierKey: 'techTier' | 'visualTier') => void;
+  onEditTier?: (tierKey: TierKey) => void;
+  onResetTier?: (tierKey: TierKey) => void;
   lang: 'en' | 'ko';
   draftBasis?: Basis;
   savedBasis?: Basis;
@@ -171,7 +251,14 @@ function TierRow({ row, onReset, onEdit, hasValues }: { row: TierBadgeRow; onRes
             onClick={onReset}
             className="p-1 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
             aria-label="Reset tier"
-            title={row.tierKey === 'techTier' ? 'Reset Tech Tier' : 'Reset Visual Tier'}
+            title={(() => {
+              switch (row.tierKey) {
+                case 'techTier': return 'Reset Tech Tier';
+                case 'visualTier': return 'Reset Visual Tier';
+                case 'artTier': return 'Reset Art Tier';
+                case 'gameContentTier': return 'Reset Game Content';
+              }
+            })()}
           >
             <RotateCcw className="w-3 h-3" />
           </button>
@@ -195,13 +282,13 @@ export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, la
   const actionMetadata = useStore(s => s.actionMetadata);
   const basis = mode === 'inline' ? (savedBasis ?? actionMetadata.basis) : actionMetadata.basis;
   // User-included UI design doc in RAC (refs or context) closes the Visual
-  // Tier row: the doc IS the design-system authority. SSOT'd with BE via
-  // `isVisualTierActive(..., hasUiDoc)` in @ant/shared.
+  // Tier row: the doc IS the design-system authority. Tier matrix gate
+  // (`isTierActive`) consults `hasUiDoc` via runtime suppressors.
   const hasUiDoc = pathsContainUiDoc([
     ...(actionMetadata.refs ?? []),
     ...(actionMetadata.context ?? []),
   ]);
-  const rows = getTierBadgeRows(basis, basisSlot, lang, draftBasis, hasUiDoc);
+  const rows = getTierBadgeRows(basis, basisSlot, lang, draftBasis, hasUiDoc, actionMetadata.domain);
   const hasAnyBadge = rows.some(r => r.badges.some(b => !b.isAuto));
 
   if (mode === 'default' && !hasAnyBadge && !draftBasis) {
@@ -219,12 +306,16 @@ export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, la
     );
   }
 
-  const tierHasValues = (tierKey: 'techTier' | 'visualTier') => {
-    if (tierKey === 'techTier') return !!basis?.techTier;
-    return !!basis?.visualTier;
+  const tierHasValues = (tierKey: TierKey) => {
+    switch (tierKey) {
+      case 'techTier': return !!basis?.techTier;
+      case 'visualTier': return !!basis?.visualTier;
+      case 'artTier': return !!basis?.artTier;
+      case 'gameContentTier': return !!basis?.gameContentTier;
+    }
   };
 
-  const resolveEditHandler = (tierKey: 'techTier' | 'visualTier') => {
+  const resolveEditHandler = (tierKey: TierKey) => {
     if (mode !== 'default') return undefined;
     if (onEditTier) return () => onEditTier(tierKey);
     if (onEdit) return onEdit;

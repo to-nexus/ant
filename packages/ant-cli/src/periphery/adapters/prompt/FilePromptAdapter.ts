@@ -67,6 +67,15 @@ async function discoverMdFiles(root: string, prefix = ''): Promise<string[]> {
  * Auto-discover and register ALL .md files under templates/ as Handlebars partials.
  * Partial name = relative path minus .md extension (e.g. "jobs/code/base/injections/git-diff").
  * No manual list needed — file existence IS the registry.
+ *
+ * I4 — Basis Partial Invariant (Phase 1, F-2):
+ *   `templates/basis/**` is intentionally EXCLUDED from partial registration.
+ *   Files inside `basis/**` are leaf-only Markdown — they MUST NOT use
+ *   `{{> }}` includes because the partial names cannot resolve. The
+ *   `tests/basis-partial-invariant.test.ts` regression locks this in;
+ *   private partials needed by basis content live under
+ *   `templates/jobs/.../basis/.../_*-private.md` instead and are
+ *   registered via the `jobs/...` namespace.
  */
 export async function initPartials(basePath?: string): Promise<{ total: number; failed: PartialFailure[] }> {
   const templatesPath = basePath || WorkspacePathResolver.getPromptTemplatesPath();
@@ -74,6 +83,9 @@ export async function initPartials(basePath?: string): Promise<{ total: number; 
   let mdFiles: string[];
   try {
     const allMdFiles = await discoverMdFiles(templatesPath);
+    // I4: basis/** files are leaf-only — they cannot host partial includes
+    // (and they themselves are loaded through render(path) directly, not
+    // through Handlebars partial resolution).
     mdFiles = allMdFiles.filter(f => !f.startsWith('basis/'));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

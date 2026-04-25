@@ -8,6 +8,10 @@ import {
   type SupportedStack,
   type TechTierConfig,
   type VisualTier,
+  type ArtTier,
+  type GameContentTier,
+  type Domain,
+  type GameEngine,
   STACK_OPTIONS,
   TECH_TIER_LANGUAGES,
   VALID_LANGUAGES_BY_STACK,
@@ -15,8 +19,14 @@ import {
   buildBasisPreset,
   VISUAL_LANGUAGE_OPTIONS,
   SURFACE_SYSTEM_OPTIONS,
+  GAME_ENGINE_OPTIONS,
+  ART_CONCEPT_OPTIONS,
+  ART_PERSPECTIVE_OPTIONS,
+  GAME_GENRE_OPTIONS,
+  GAME_CORE_LOOP_OPTIONS,
   deriveInteractionGrammar,
-  isVisualTierActive,
+  isTierActive,
+  getEffectiveDomain,
   pathsContainUiDoc,
   type VisualLanguageVariant,
 } from '@ant/shared';
@@ -27,6 +37,11 @@ import {
   TIER_REGISTRY,
   pickInitialTier,
 } from './constants';
+import {
+  GAME_ENGINE_STEP,
+  ART_STEPS,
+  GAME_CONTENT_STEPS,
+} from './TierStepDef';
 import type { BasisWizardState, TierKey, WizardStepDef } from './types';
 
 const AUTO = '__auto__';
@@ -35,22 +50,52 @@ function isReal(val: string | undefined): val is string {
   return !!val && val !== AUTO;
 }
 
-function buildBasisFromSelections(selections: BasisWizardState['selections']): Basis | undefined {
+/**
+ * Build a `Basis` from wizard selections (Phase 1 — 4 tiers).
+ *
+ * Uses `buildBasisPreset` for techTier+visualTier. artTier+gameContentTier
+ * are passed through directly because their shape matches the runtime
+ * Basis fields 1:1 (no derivation needed). The `gameEngine` 5th slot is
+ * stored on the active TechTier entry (frontend or single stack).
+ */
+function buildBasisFromSelections(
+  selections: BasisWizardState['selections'],
+  domain: Domain,
+): Basis | undefined {
   const stack = isReal(selections.techTier.stack) ? selections.techTier.stack : undefined;
 
-  const tiers: Record<string, { language?: string; framework?: string }> = {};
+  const tiers: Record<string, { language?: string; framework?: string; gameEngine?: GameEngine }> = {};
+  const wantsGameEngine = domain === 'game' && isReal(selections.techTier.gameEngine);
+  const gameEngineValue = wantsGameEngine ? (selections.techTier.gameEngine as GameEngine) : undefined;
   if (stack === 'fullstack') {
     const feLang = isReal(selections.techTier.feLanguage) ? selections.techTier.feLanguage : undefined;
     const beLang = isReal(selections.techTier.beLanguage) ? selections.techTier.beLanguage : undefined;
     const feFw = isReal(selections.techTier.feFramework) ? selections.techTier.feFramework : undefined;
     const beFw = isReal(selections.techTier.beFramework) ? selections.techTier.beFramework : undefined;
-    if (feLang) tiers.frontend = { language: feLang, framework: feFw };
+    if (feLang) {
+      tiers.frontend = { language: feLang, framework: feFw, gameEngine: gameEngineValue };
+    } else if (wantsGameEngine) {
+      // D3 — gameEngine alone (no FE language picked yet) still gets a
+      // frontend tier so downstream LLM sees the engine hint. Without
+      // this, fullstack + game projects with gameEngine=phaser but
+      // no feLanguage would silently drop the engine value.
+      tiers.frontend = { gameEngine: gameEngineValue };
+    }
     if (beLang) tiers.backend = { language: beLang, framework: beFw };
   } else {
     const lang = isReal(selections.techTier.language) ? selections.techTier.language : undefined;
     const fw = isReal(selections.techTier.framework) ? selections.techTier.framework : undefined;
     if (stack && lang) {
-      tiers[stack] = { language: lang, framework: fw };
+      tiers[stack] = {
+        language: lang,
+        framework: fw,
+        // Game engine attaches to frontend tier in single-frontend stacks.
+        gameEngine: stack === 'frontend' ? gameEngineValue : undefined,
+      };
+    } else if (wantsGameEngine && stack === 'frontend') {
+      // gameEngine alone (no language picked yet) — still expose so
+      // downstream LLM gets at least the engine hint.
+      tiers.frontend = { gameEngine: gameEngineValue };
     }
   }
 
@@ -60,15 +105,25 @@ function buildBasisFromSelections(selections: BasisWizardState['selections']): B
   if (isReal(vl)) vt.visualLanguage = vl as any;
   if (isReal(ss)) vt.surfaceSystem = ss as any;
 
+  const at: Partial<ArtTier> = {};
+  if (isReal(selections.artTier.concept)) at.concept = selections.artTier.concept as any;
+  if (isReal(selections.artTier.perspective)) at.perspective = selections.artTier.perspective as any;
+
+  const gct: Partial<GameContentTier> = {};
+  if (isReal(selections.gameContentTier.genre)) gct.genre = selections.gameContentTier.genre as any;
+  if (isReal(selections.gameContentTier.coreLoop)) gct.coreLoop = selections.gameContentTier.coreLoop as any;
+
   const ds = selections.visualTier.designSystem;
   const basis = buildBasisPreset({
     stack: stack || undefined,
     tiers: Object.keys(tiers).length > 0 ? tiers : undefined,
     designSystem: isReal(ds) ? ds : undefined,
     visualTier: Object.keys(vt).length > 0 ? (vt as any) : undefined,
+    artTier: Object.keys(at).length > 0 ? at : undefined,
+    gameContentTier: Object.keys(gct).length > 0 ? gct : undefined,
   });
 
-  return (basis.techTier || basis.visualTier) ? basis : undefined;
+  return (basis.techTier || basis.visualTier || basis.artTier || basis.gameContentTier) ? basis : undefined;
 }
 
 // Pure step-set computation. Hoisted to module scope so `selectVariant` can
@@ -79,6 +134,7 @@ function computeTechSteps(
   selections: BasisWizardState['selections'],
   hasTechTier: boolean,
   hasDefaultStack: boolean,
+  domain: Domain,
 ): WizardStepDef[] {
   if (!hasTechTier) return [];
   const sel = selections.techTier;
@@ -97,6 +153,10 @@ function computeTechSteps(
     steps.push(TECH_STEPS[1]);
     if (isReal(sel.language)) steps.push(TECH_STEPS[2]);
   }
+  // Game-engine 5th slot (game domain only, frontend or fullstack).
+  if (domain === 'game' && (sel.stack === 'frontend' || sel.stack === 'fullstack')) {
+    steps.push(GAME_ENGINE_STEP);
+  }
   return steps;
 }
 
@@ -112,11 +172,25 @@ function computeVisualSteps(
   return steps;
 }
 
+function computeArtSteps(hasArtTier: boolean): WizardStepDef[] {
+  return hasArtTier ? [...ART_STEPS] : [];
+}
+
+function computeGameContentSteps(hasGameContentTier: boolean): WizardStepDef[] {
+  return hasGameContentTier ? [...GAME_CONTENT_STEPS] : [];
+}
+
 function getSelectionValue(sel: BasisWizardState['selections'], step: WizardStepDef): string | undefined {
-  if (step.tierKey === 'techTier') {
-    return (sel.techTier as Record<string, string | undefined>)[step.layerKey];
+  switch (step.tierKey) {
+    case 'techTier':
+      return (sel.techTier as Record<string, string | undefined>)[step.layerKey];
+    case 'visualTier':
+      return (sel.visualTier as Record<string, string | undefined>)[step.layerKey];
+    case 'artTier':
+      return (sel.artTier as Record<string, string | undefined>)[step.layerKey];
+    case 'gameContentTier':
+      return (sel.gameContentTier as Record<string, string | undefined>)[step.layerKey];
   }
-  return (sel.visualTier as Record<string, string | undefined>)[step.layerKey];
 }
 
 function findNextGroupStart(steps: WizardStepDef[], currentIdx: number): number | null {
@@ -135,39 +209,54 @@ export function useBasisWizard(
   const actionMetadata = useStore(s => s.actionMetadata);
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const currentBasis = actionMetadata.basis;
+  const effectiveDomain = getEffectiveDomain(actionMetadata.domain);
 
   const savedBasisRef = useRef<Basis | undefined>(currentBasis);
 
   const [state, setState] = useState<BasisWizardState>(() => {
-    // Always start at the first step of the active tier, even when the saved
-    // basis already has every field. Jumping straight to the last layer hides
-    // upstream context the user might want to revisit; the cascade-prune /
-    // auto-advance flow keeps it cheap to skim through. `switchTier` enforces
-    // the same rule when crossing tiers.
+    // Phase 1 — `defaults[domain]` is the per-domain seed. The seed only
+    // fills slots the user has not already populated, so a saved basis
+    // from a previous turn is never overwritten here.
+    const domainDefaults = basisSlot.defaults?.[effectiveDomain];
+    const seedStack = currentBasis?.techTier?.stack
+      ?? domainDefaults?.stack;
+    const seedGameEngine = currentBasis?.techTier?.frontend?.gameEngine
+      ?? currentBasis?.techTier?.backend?.gameEngine
+      ?? domainDefaults?.gameEngine;
+
     return {
       activeTier: pickInitialTier(basisSlot, initialTier),
       stepIndex: 0,
       selections: {
         techTier: {
-          stack: currentBasis?.techTier?.stack ?? basisSlot.defaults?.stack,
+          stack: seedStack,
           language: currentBasis?.techTier?.frontend?.language ?? currentBasis?.techTier?.backend?.language,
           framework: currentBasis?.techTier?.frontend?.framework ?? currentBasis?.techTier?.backend?.framework,
           feLanguage: currentBasis?.techTier?.frontend?.language,
           feFramework: currentBasis?.techTier?.frontend?.framework,
           beLanguage: currentBasis?.techTier?.backend?.language,
           beFramework: currentBasis?.techTier?.backend?.framework,
+          gameEngine: seedGameEngine,
         },
         visualTier: {
           designSystem: currentBasis?.visualTier?.designSystem,
           visualLanguage: currentBasis?.visualTier?.visualLanguage,
           surfaceSystem: currentBasis?.visualTier?.surfaceSystem,
         },
+        artTier: {
+          concept: currentBasis?.artTier?.concept,
+          perspective: currentBasis?.artTier?.perspective,
+        },
+        gameContentTier: {
+          genre: currentBasis?.gameContentTier?.genre,
+          coreLoop: currentBasis?.gameContentTier?.coreLoop,
+        },
       },
     };
   });
 
-  const hasTechTier = !!basisSlot.techTier;
-  const hasDefaultStack = !!basisSlot.defaults?.stack;
+  const hasTechTier = !!basisSlot.tiers?.includes('techTier');
+  const hasDefaultStack = !!basisSlot.defaults?.[effectiveDomain]?.stack;
   const isFullstack = state.selections.techTier.stack === 'fullstack';
 
   // Runtime Visual Tier gate: backend-only stacks have no visual policy.
@@ -181,7 +270,7 @@ export function useBasisWizard(
   // UI design docs (ant / figma / handoff) that the user included in RAC
   // (refs or context) act as the design-system authority — when present,
   // the Visual Tier gate must close regardless of other inputs. SSOT'd
-  // with BE via `isVisualTierActive(..., hasUiDoc)` in @ant/shared.
+  // with BE via the matrix gate (`isTierActive('visualTier', ...)`).
   const hasUiDoc = useMemo(
     () => pathsContainUiDoc([
       ...(actionMetadata.refs ?? []),
@@ -191,20 +280,15 @@ export function useBasisWizard(
   );
 
   // Per-tier runtime gate. Static `isConfigured` is necessary but not
-  // sufficient — Visual Tier additionally collapses for backend-only stacks
-  // and when a UI design doc already authoritatively defines the visual
-  // policy (SSOT'd with BE via `isVisualTierActive`). New tiers add their
-  // own case here; the default is "configured ⇒ available".
+  // sufficient — `isTierActive` in @ant/shared is the SSOT that combines:
+  //   1. slot opt-in (`tiers` array)
+  //   2. domain × tier matrix (Phase 1: artTier / gameContentTier require game)
+  //   3. runtime suppressors (visualTier: backend stack / hasUiDoc)
   const isTierAvailable = useCallback((tier: TierKey): boolean => {
     const def = TIER_REGISTRY.find((t) => t.id === tier);
     if (!def?.isConfigured(basisSlot)) return false;
-    switch (tier) {
-      case 'techTier':
-        return true;
-      case 'visualTier':
-        return isVisualTierActive(basisSlot, currentTechTierForGate, hasUiDoc);
-    }
-  }, [basisSlot, currentTechTierForGate, hasUiDoc]);
+    return isTierActive(tier, basisSlot, effectiveDomain, { techTier: currentTechTierForGate, hasUiDoc });
+  }, [basisSlot, effectiveDomain, currentTechTierForGate, hasUiDoc]);
 
   const availableTiers = useMemo<TierKey[]>(
     () => TIER_REGISTRY.map((t) => t.id).filter(isTierAvailable),
@@ -212,6 +296,8 @@ export function useBasisWizard(
   );
 
   const hasVisualTier = isTierAvailable('visualTier');
+  const hasArtTier = isTierAvailable('artTier');
+  const hasGameContentTier = isTierAvailable('gameContentTier');
 
   // Cascade prune: when an upstream layer resolves to AUTO/undefined, downstream
   // steps are dropped from the wizard entirely. "Not set = auto-detect" is the
@@ -219,8 +305,8 @@ export function useBasisWizard(
   // says "let the system decide". `getOptionsForStep`'s `isReal()` gating is
   // kept as defense-in-depth against a future regression here.
   const techSteps = useMemo(
-    () => computeTechSteps(state.selections, hasTechTier, hasDefaultStack),
-    [state.selections, hasTechTier, hasDefaultStack],
+    () => computeTechSteps(state.selections, hasTechTier, hasDefaultStack, effectiveDomain),
+    [state.selections, hasTechTier, hasDefaultStack, effectiveDomain],
   );
 
   const visualSteps = useMemo(
@@ -228,7 +314,25 @@ export function useBasisWizard(
     [state.selections, hasVisualTier],
   );
 
-  const activeSteps = state.activeTier === 'techTier' ? techSteps : visualSteps;
+  const artSteps = useMemo(
+    () => computeArtSteps(hasArtTier),
+    [hasArtTier],
+  );
+
+  const gameContentSteps = useMemo(
+    () => computeGameContentSteps(hasGameContentTier),
+    [hasGameContentTier],
+  );
+
+  const activeSteps = useMemo<WizardStepDef[]>(() => {
+    switch (state.activeTier) {
+      case 'techTier': return techSteps;
+      case 'visualTier': return visualSteps;
+      case 'artTier': return artSteps;
+      case 'gameContentTier': return gameContentSteps;
+    }
+  }, [state.activeTier, techSteps, visualSteps, artSteps, gameContentSteps]);
+
   const currentStep = activeSteps[state.stepIndex];
 
   // Cascade prune (techSteps/visualSteps useMemo) can shrink activeSteps below
@@ -279,6 +383,8 @@ export function useBasisWizard(
           if (!lang) return [];
           return getFrameworkOptions('backend', lang);
         }
+        case 'gameEngine':
+          return GAME_ENGINE_OPTIONS;
       }
     }
 
@@ -286,6 +392,20 @@ export function useBasisWizard(
       switch (layerKey) {
         case 'visualLanguage': return VISUAL_LANGUAGE_OPTIONS;
         case 'surfaceSystem': return SURFACE_SYSTEM_OPTIONS;
+      }
+    }
+
+    if (step.tierKey === 'artTier') {
+      switch (layerKey) {
+        case 'concept': return ART_CONCEPT_OPTIONS;
+        case 'perspective': return ART_PERSPECTIVE_OPTIONS;
+      }
+    }
+
+    if (step.tierKey === 'gameContentTier') {
+      switch (layerKey) {
+        case 'genre': return GAME_GENRE_OPTIONS;
+        case 'coreLoop': return GAME_CORE_LOOP_OPTIONS;
       }
     }
 
@@ -303,7 +423,7 @@ export function useBasisWizard(
 
       if (step.tierKey === 'techTier') {
         const techSel = { ...next.selections.techTier };
-        const changed = techSel[step.layerKey as keyof typeof techSel] !== value;
+        const changed = (techSel as Record<string, string | undefined>)[step.layerKey] !== value;
 
         switch (step.layerKey) {
           case 'stack':
@@ -315,6 +435,8 @@ export function useBasisWizard(
               techSel.feFramework = undefined;
               techSel.beLanguage = undefined;
               techSel.beFramework = undefined;
+              // gameEngine is stack-aware; backend-only stack invalidates it.
+              if (value === 'backend') techSel.gameEngine = undefined;
             }
             break;
           case 'language':
@@ -335,13 +457,24 @@ export function useBasisWizard(
           case 'beFramework':
             techSel.beFramework = value;
             break;
+          case 'gameEngine':
+            techSel.gameEngine = value;
+            break;
         }
 
         next.selections.techTier = techSel;
-      } else {
+      } else if (step.tierKey === 'visualTier') {
         const visSel = { ...next.selections.visualTier };
-        (visSel as any)[step.layerKey] = value;
+        (visSel as Record<string, string | undefined>)[step.layerKey] = value;
         next.selections.visualTier = visSel;
+      } else if (step.tierKey === 'artTier') {
+        const artSel = { ...next.selections.artTier };
+        (artSel as Record<string, string | undefined>)[step.layerKey] = value;
+        next.selections.artTier = artSel;
+      } else if (step.tierKey === 'gameContentTier') {
+        const gctSel = { ...next.selections.gameContentTier };
+        (gctSel as Record<string, string | undefined>)[step.layerKey] = value;
+        next.selections.gameContentTier = gctSel;
       }
 
       // AUTO selection prunes downstream steps. Don't advance — the user's
@@ -354,9 +487,21 @@ export function useBasisWizard(
       // upstream value (e.g. stack=frontend on initial render where activeSteps
       // was [stack]) un-prunes downstream steps. Recompute from the new
       // selections so the natural advance happens on the first click.
-      const newActiveSteps = step.tierKey === 'techTier'
-        ? computeTechSteps(next.selections, hasTechTier, hasDefaultStack)
-        : computeVisualSteps(next.selections, hasVisualTier);
+      let newActiveSteps: WizardStepDef[];
+      switch (step.tierKey) {
+        case 'techTier':
+          newActiveSteps = computeTechSteps(next.selections, hasTechTier, hasDefaultStack, effectiveDomain);
+          break;
+        case 'visualTier':
+          newActiveSteps = computeVisualSteps(next.selections, hasVisualTier);
+          break;
+        case 'artTier':
+          newActiveSteps = computeArtSteps(hasArtTier);
+          break;
+        case 'gameContentTier':
+          newActiveSteps = computeGameContentSteps(hasGameContentTier);
+          break;
+      }
 
       const isLastStep = prev.stepIndex >= newActiveSteps.length - 1;
       const nextStep = newActiveSteps[prev.stepIndex + 1];
@@ -365,7 +510,7 @@ export function useBasisWizard(
       if (isLastStep || isGroupBoundary) return next;
       return { ...next, stepIndex: prev.stepIndex + 1 };
     });
-  }, [activeSteps, state.stepIndex, hasTechTier, hasDefaultStack, hasVisualTier]);
+  }, [activeSteps, state.stepIndex, hasTechTier, hasDefaultStack, hasVisualTier, hasArtTier, hasGameContentTier, effectiveDomain]);
 
   const goToStep = useCallback((index: number) => {
     setState(prev => {
@@ -386,21 +531,34 @@ export function useBasisWizard(
               case 'feFramework': techSel.feFramework = undefined; break;
               case 'beLanguage': techSel.beLanguage = undefined; techSel.beFramework = undefined; break;
               case 'beFramework': techSel.beFramework = undefined; break;
+              case 'gameEngine': techSel.gameEngine = undefined; break;
             }
           }
           next.selections.techTier = techSel;
-        } else {
+        } else if (prev.activeTier === 'visualTier') {
           const visSel = { ...next.selections.visualTier };
           for (let i = index + 1; i < visualSteps.length; i++) {
-            (visSel as any)[visualSteps[i].layerKey] = undefined;
+            (visSel as Record<string, string | undefined>)[visualSteps[i].layerKey] = undefined;
           }
           next.selections.visualTier = visSel;
+        } else if (prev.activeTier === 'artTier') {
+          const artSel = { ...next.selections.artTier };
+          for (let i = index + 1; i < artSteps.length; i++) {
+            (artSel as Record<string, string | undefined>)[artSteps[i].layerKey] = undefined;
+          }
+          next.selections.artTier = artSel;
+        } else if (prev.activeTier === 'gameContentTier') {
+          const gctSel = { ...next.selections.gameContentTier };
+          for (let i = index + 1; i < gameContentSteps.length; i++) {
+            (gctSel as Record<string, string | undefined>)[gameContentSteps[i].layerKey] = undefined;
+          }
+          next.selections.gameContentTier = gctSel;
         }
       }
 
       return next;
     });
-  }, [techSteps, visualSteps]);
+  }, [techSteps, visualSteps, artSteps, gameContentSteps]);
 
   const switchTier = useCallback((tier: TierKey) => {
     setState(prev => ({
@@ -425,8 +583,8 @@ export function useBasisWizard(
   }, [state.selections.visualTier.visualLanguage]);
 
   const draftBasis = useMemo(
-    () => buildBasisFromSelections(state.selections),
-    [state.selections],
+    () => buildBasisFromSelections(state.selections, effectiveDomain),
+    [state.selections, effectiveDomain],
   );
 
   const isTierSaved = useCallback((tier: TierKey): boolean => {
@@ -442,33 +600,43 @@ export function useBasisWizard(
   }, [draftBasis]);
 
   const saveDraft = useCallback(() => {
-    const basis = buildBasisFromSelections(state.selections);
+    const basis = buildBasisFromSelections(state.selections, effectiveDomain);
     savedBasisRef.current = basis;
     updateActionMetadata({ basis });
-  }, [state.selections, updateActionMetadata]);
+  }, [state.selections, effectiveDomain, updateActionMetadata]);
 
   const discardDraft = useCallback(() => {
     const saved = savedBasisRef.current;
+    const domainDefaults = basisSlot.defaults?.[effectiveDomain];
     setState(prev => ({
       ...prev,
       selections: {
         techTier: {
-          stack: saved?.techTier?.stack ?? basisSlot.defaults?.stack,
+          stack: saved?.techTier?.stack ?? domainDefaults?.stack,
           language: saved?.techTier?.frontend?.language ?? saved?.techTier?.backend?.language,
           framework: saved?.techTier?.frontend?.framework ?? saved?.techTier?.backend?.framework,
           feLanguage: saved?.techTier?.frontend?.language,
           feFramework: saved?.techTier?.frontend?.framework,
           beLanguage: saved?.techTier?.backend?.language,
           beFramework: saved?.techTier?.backend?.framework,
+          gameEngine: saved?.techTier?.frontend?.gameEngine ?? saved?.techTier?.backend?.gameEngine ?? domainDefaults?.gameEngine,
         },
         visualTier: {
           designSystem: saved?.visualTier?.designSystem,
           visualLanguage: saved?.visualTier?.visualLanguage,
           surfaceSystem: saved?.visualTier?.surfaceSystem,
         },
+        artTier: {
+          concept: saved?.artTier?.concept,
+          perspective: saved?.artTier?.perspective,
+        },
+        gameContentTier: {
+          genre: saved?.gameContentTier?.genre,
+          coreLoop: saved?.gameContentTier?.coreLoop,
+        },
       },
     }));
-  }, [basisSlot.defaults?.stack]);
+  }, [basisSlot.defaults, effectiveDomain]);
 
   // --- Group navigation ---
 

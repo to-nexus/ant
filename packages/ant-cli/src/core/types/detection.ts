@@ -13,11 +13,11 @@
 export type {
   Mode,
   IntentGroup,
-  DesignDomain,
+  Domain,
   InferredAction,
 } from '@ant/shared';
 
-import type { Mode, IntentGroup, DesignDomain, InferredAction, ResolvedActionContext } from '@ant/shared';
+import type { Mode, IntentGroup, Domain, InferredAction, ResolvedActionContext } from '@ant/shared';
 import { isValidIntentId } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -101,6 +101,8 @@ export function formatRACForChat(
 
   formatted += renderTechTierSection(rac, isKorean);
   formatted += renderVisualTierSection(rac, isKorean);
+  formatted += renderArtTierSection(rac, isKorean);
+  formatted += renderGameContentTierSection(rac, isKorean);
 
   return formatted;
 }
@@ -192,13 +194,56 @@ function renderTechTierSection(rac: ResolvedActionContext, isKorean: boolean): s
 }
 
 function renderTierTuple(
-  tier: { language?: string; framework?: string; packageManager?: string },
+  tier: { language?: string; framework?: string; packageManager?: string; gameEngine?: string },
   noneLabel: string,
 ): string {
   const lang = tier.language || noneLabel;
   const fw = tier.framework ? ` / ${tier.framework}` : '';
   const pm = tier.packageManager ? ` (${tier.packageManager})` : '';
-  return `${lang}${fw}${pm}`;
+  // Phase 1 — game-domain 5th slot. Surfaced inline for visibility.
+  const engine = tier.gameEngine ? ` + ${tier.gameEngine}` : '';
+  return `${lang}${fw}${pm}${engine}`;
+}
+
+/**
+ * Render the artTier (game-domain art policy) section of the chat RAC summary.
+ * Phase 1 surfaces 2 axes (concept / perspective); Phase 3 will add 5 more.
+ */
+function renderArtTierSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  const at = rac.basis?.artTier;
+  if (!at) return '';
+  const entries: Array<[string, string | undefined]> = [
+    [isKorean ? '컨셉' : 'Concept', at.concept],
+    [isKorean ? '시점' : 'Perspective', at.perspective],
+    [isKorean ? '엔티티' : 'Entities', at.entityCatalog],
+    [isKorean ? '모션' : 'Motion', at.motionPattern],
+    [isKorean ? '파티클' : 'Particles', at.particleProfile],
+    [isKorean ? '투사체' : 'Projectiles', at.projectilePolicy],
+    [isKorean ? '오디오' : 'Audio', at.audioProfile],
+  ];
+  const present = entries.filter(([, v]) => !!v);
+  if (present.length === 0) return '';
+
+  const header = isKorean ? `🖌️ **아트 기반**\n` : `🖌️ **Art Basis**\n`;
+  return header + present.map(([k, v]) => `   • ${k}: ${v}`).join('\n') + '\n\n';
+}
+
+/**
+ * Render the gameContentTier (game-domain content policy) section of the
+ * chat RAC summary. Phase 1 / Phase 2 axes: genre + coreLoop.
+ */
+function renderGameContentTierSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  const gct = rac.basis?.gameContentTier;
+  if (!gct) return '';
+  const entries: Array<[string, string | undefined]> = [
+    [isKorean ? '장르' : 'Genre', gct.genre],
+    [isKorean ? '코어 루프' : 'Core Loop', gct.coreLoop],
+  ];
+  const present = entries.filter(([, v]) => !!v);
+  if (present.length === 0) return '';
+
+  const header = isKorean ? `🎮 **게임 콘텐츠**\n` : `🎮 **Game Content**\n`;
+  return header + present.map(([k, v]) => `   • ${k}: ${v}`).join('\n') + '\n\n';
 }
 
 function renderVisualTierSection(rac: ResolvedActionContext, isKorean: boolean): string {

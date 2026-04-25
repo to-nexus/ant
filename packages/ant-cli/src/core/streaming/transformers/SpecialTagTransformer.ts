@@ -121,6 +121,26 @@ export class SpecialTagTransformer {
       pattern: /<specClarify>\s*[\s\S]*?\s*<\/specClarify>/i,
       transform: () => ({ consumed: true })
     });
+    // Phase 1 (D8) — DecisionTagRegistry tags. The decompose / detect nodes
+    // consume these via `parseDecisionTags`; they are surfaced to chat
+    // through the `<detect>` / `decompose-final` payload (RAC re-emission)
+    // so direct emission must be suppressed to avoid double-rendering.
+    //
+    // NOTE: `gameEngine` is NOT registered here. Phase 1 standardised on
+    // the techTier 5th-slot pattern (`<techTier>{ ..., gameEngine }</techTier>`)
+    // — there is no standalone `<gameEngine>` tag.
+    this.register({
+      pattern: /<domain>\s*[\s\S]*?\s*<\/domain>/i,
+      transform: () => ({ consumed: true })
+    });
+    this.register({
+      pattern: /<artTier>\s*[\s\S]*?\s*<\/artTier>/i,
+      transform: () => ({ consumed: true })
+    });
+    this.register({
+      pattern: /<gameContentTier>\s*[\s\S]*?\s*<\/gameContentTier>/i,
+      transform: () => ({ consumed: true })
+    });
   }
   
   /**
@@ -351,11 +371,21 @@ export class SpecialTagTransformer {
 
       const mode = parsed.mode || parsed.detectedMode || parsed.jobMode || parsed.designMode || 'generate';
 
-      const basis: Basis | undefined = (parsed.basis && (parsed.basis.techTier || parsed.basis.visualTier))
-        ? parsed.basis
-        : (parsed.techTier || parsed.visualTier)
-          ? { techTier: parsed.techTier, visualTier: parsed.visualTier }
-          : undefined;
+      // Phase 1 — basis carries 4 tier fields. `emitDetectOutcome` always
+      // emits flat shape (`parsed.techTier`, `parsed.artTier`, etc.); the
+      // nested `parsed.basis` shape is no longer produced anywhere, so we
+      // only support the flat unpack path. Future emitters MUST keep the
+      // flat contract — adding back nested shape requires a deliberate
+      // SSOT update, not silent compatibility.
+      const flatBasisHasAny = !!(parsed.techTier || parsed.visualTier || parsed.artTier || parsed.gameContentTier);
+      const basis: Basis | undefined = flatBasisHasAny
+        ? {
+            techTier: parsed.techTier,
+            visualTier: parsed.visualTier,
+            artTier: parsed.artTier,
+            gameContentTier: parsed.gameContentTier,
+          }
+        : undefined;
 
       const source: ResolvedActionContext['source'] = parsed.source === 'explicit' ? 'explicit' : 'infer';
 

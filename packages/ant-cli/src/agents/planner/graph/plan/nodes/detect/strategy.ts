@@ -12,21 +12,33 @@
 
 import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { PlanGraphState } from '../../state.js';
-import type { InferredAction } from '@ant/shared';
+import type { Domain, InferredAction } from '@ant/shared';
 import { runEstimatingLLMStream, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers.js';
 import { parseExecutionTierTag, coerceExecutionTier, ExecutionTierId } from '../../../../../../core/executionTier/index.js';
 
 export const planDetectStrategy: DetectStrategy<PlanGraphState> = {
   async run(state): Promise<DetectResult<PlanGraphState>> {
-    const { intentId, reasoning, executionTier } = await determinePlanIntent(state);
-    console.log(`📋 [Plan:Detect] Determined intentId: ${intentId} (executionTier=${executionTier})`);
+    // Phase 1 (10.2) — explicit > infer. When `actionMetadata.domain` is
+    // set the LLM does NOT need to re-infer it; we suppress the `<domain>`
+    // emission instruction in the prompt and short-circuit the parse.
+    const explicitDomain = state.actionMetadata?.domain;
+    const { intentId, reasoning, executionTier, domain: inferredDomain, domainReasoning: inferredDomainReasoning } =
+      await determinePlanIntent(state, explicitDomain);
+
+    const finalDomain = explicitDomain ?? inferredDomain;
+    const finalDomainReasoning = explicitDomain
+      ? `Explicit actionMetadata.domain=${explicitDomain} — LLM domain inference skipped.`
+      : inferredDomainReasoning;
+
+    console.log(`📋 [Plan:Detect] Determined intentId: ${intentId} (executionTier=${executionTier}, domain=${finalDomain ?? 'unset'}${explicitDomain ? ' [explicit]' : ''})`);
 
     const targets = resolveTargets(state);
 
     const inferred: InferredAction = {
       intentId,
       target: targets.length > 0 ? targets : ['inputs/sources/prd.md'],
-      reasoning: { intent: reasoning },
+      domain: finalDomain,
+      reasoning: { intent: reasoning, domain: finalDomainReasoning },
       sourceJob: 'plan',
     };
 
@@ -39,7 +51,8 @@ export const planDetectStrategy: DetectStrategy<PlanGraphState> = {
 
 async function determinePlanIntent(
   state: PlanGraphState,
-): Promise<{ intentId: string; reasoning: string; executionTier: ExecutionTierId }> {
+  explicitDomain: Domain | undefined,
+): Promise<{ intentId: string; reasoning: string; executionTier: ExecutionTierId; domain?: Domain; domainReasoning?: string }> {
   const fs = await import('fs');
   const path = await import('path');
   const { normalizeTemplateDoc } = await import('../../../../../../core/utils/templateDetector.js');
@@ -52,7 +65,7 @@ async function determinePlanIntent(
     } catch { return false; }
   });
 
-  return await detectPlanIntentViaLLM(state, hasExistingTarget);
+  return await detectPlanIntentViaLLM(state, hasExistingTarget, explicitDomain);
 }
 
 function resolveTargets(state: PlanGraphState): string[] {
@@ -66,7 +79,8 @@ function resolveTargets(state: PlanGraphState): string[] {
 async function detectPlanIntentViaLLM(
   state: PlanGraphState,
   hasExistingTarget: boolean,
-): Promise<{ intentId: string; reasoning: string; executionTier: ExecutionTierId }> {
+  explicitDomain: Domain | undefined,
+): Promise<{ intentId: string; reasoning: string; executionTier: ExecutionTierId; domain?: Domain; domainReasoning?: string }> {
   const directive = state.overrideDirective || state.directive || '';
 
   // Degenerate cases (no directive / no LLM / no promptBuilder) still need
@@ -89,7 +103,10 @@ async function detectPlanIntentViaLLM(
   }
 
   const refs = extractRefs(state);
-  const vars = { directive, hasExistingTarget, refs };
+  // `explicitDomain` flips the prompt's `<domain>` instruction off via
+  // Handlebars `{{#unless explicitDomain}}` — when the user has already
+  // committed a domain, the LLM should not re-infer it.
+  const vars = { directive, hasExistingTarget, refs, explicitDomain };
 
   let systemPrompt = '';
   let userPrompt = '';
@@ -125,22 +142,28 @@ async function detectPlanIntentViaLLM(
       'Plan:Detect',
     );
 
+    // Skip parsing `<domain>` when explicit metadata was supplied — the
+    // strategy returns the explicit value directly via the caller path.
+    const { domain, domainReasoning } = explicitDomain
+      ? { domain: undefined, domainReasoning: undefined }
+      : parseDomainTag(response);
+
     const match = response.match(/<detect>\s*([\s\S]*?)\s*<\/detect>/);
     if (match) {
       const parsed = JSON.parse(match[1]);
       const intentId = normalizePlanIntent(parsed.intentId, hasExistingTarget);
-      return { intentId, reasoning: parsed.reasoning || '', executionTier };
+      return { intentId, reasoning: parsed.reasoning || '', executionTier, domain, domainReasoning };
     }
 
     const jsonMatch = response.match(/\{[\s\S]*?"intentId"\s*:\s*"(explain-plan|rev-plan|gen-plan)"[\s\S]*?\}/);
     if (jsonMatch) {
       const intentId = normalizePlanIntent(jsonMatch[1], hasExistingTarget);
-      return { intentId, reasoning: '', executionTier };
+      return { intentId, reasoning: '', executionTier, domain, domainReasoning };
     }
 
     // LLM produced no parseable intent — fall back based on document state.
     const intentId = hasExistingTarget ? 'rev-plan' : 'gen-plan';
-    return { intentId, reasoning: 'LLM parse failed, defaulting based on target state', executionTier };
+    return { intentId, reasoning: 'LLM parse failed, defaulting based on target state', executionTier, domain, domainReasoning };
   } catch (err) {
     console.warn(`   ⚠️ DetectPlanIntent failed, defaulting to rev-plan:`, err);
   }
@@ -151,6 +174,22 @@ async function detectPlanIntentViaLLM(
     reasoning: 'LLM call failed',
     executionTier: ExecutionTierId.Reflex,
   };
+}
+
+/**
+ * Parse the `<domain>game|service</domain>` tag emitted by plan detect.
+ * Phase 1: malformed / missing tag silently leaves `domain` unset; the RAC
+ * fallback (`getEffectiveDomain` → `'service'`) keeps service projects as
+ * the default. The signal guide in `rules.md` aims to keep this rare.
+ */
+function parseDomainTag(raw: string): { domain?: Domain; domainReasoning?: string } {
+  const m = raw.match(/<domain>\s*([\s\S]*?)\s*<\/domain>/i);
+  if (!m) return {};
+  const value = m[1].trim().toLowerCase();
+  if (value === 'game' || value === 'service') {
+    return { domain: value, domainReasoning: 'Inferred by plan-detect LLM from directive signals.' };
+  }
+  return {};
 }
 
 function normalizePlanIntent(raw: string | undefined, hasExistingTarget: boolean): string {
