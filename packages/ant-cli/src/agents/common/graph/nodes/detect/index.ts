@@ -12,11 +12,12 @@
  */
 
 import type { DetectableState, DetectStrategy } from './types.js';
-import type { InferredAction, IntentId, ResolvedActionContext } from '@ant/shared';
+import type { Basis, InferredAction, IntentId, ResolvedActionContext, Domain } from '@ant/shared';
 import {
   resolveToRAC,
   mergeWithMetadata,
   isValidIntentId,
+  getConfigSlots,
 } from '@ant/shared';
 import { loadResolvedArtifacts } from '../../loadDocumentsForRAC.js';
 import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
@@ -67,10 +68,30 @@ export function createDetectNode<T extends DetectableState>(
 
         const strategyResumeUpdates = strategy.onResume?.(state) || {};
 
+        // Pool SSOT — checkpoint persists `resolvedAction` but NOT
+        // `state.artifacts`. On resume the pool would otherwise be empty,
+        // breaking decompose / plan / execute that read the pool. Rebuild
+        // it via the single writer (`loadResolvedArtifacts`) so the SSOT
+        // invariant (`state.artifacts ⊆ RAC`) is preserved across resume.
+        // Truthy-check on `state.artifacts` is the gate that distinguishes
+        // jobs with an `artifacts` channel (code/design seed it to `[]`
+        // in resolve) from those without one (planner), keeping the
+        // partial state emit RAC-bounded per job schema.
+        const resumeFeaturePath = resolveFeaturePath(state);
+        let resumeArtifacts = state.resolvedArtifacts;
+        if ((!resumeArtifacts || resumeArtifacts.length === 0) && resumeFeaturePath) {
+          resumeArtifacts = loadResolvedArtifacts(state.resolvedAction, resumeFeaturePath);
+        }
+        const resumeUpdatedArtifacts = (state as any).artifacts
+          ? appendOrUpdatePool((state as any).artifacts, resumeArtifacts || [])
+          : undefined;
+
         emitRACSummary(state.resolvedAction, undefined, state._uiLocale);
 
         return {
           resolvedAction: state.resolvedAction,
+          resolvedArtifacts: resumeArtifacts,
+          ...(resumeUpdatedArtifacts !== undefined ? { artifacts: resumeUpdatedArtifacts } : {}),
           ...strategyResumeUpdates,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
@@ -82,7 +103,7 @@ export function createDetectNode<T extends DetectableState>(
       // Phase 1: Branch on explicit
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       let intentId: string;
-      let slots: { target?: string[]; refs?: string[]; context?: string[]; domain?: import('@ant/shared').DesignDomain };
+      let slots: { target?: string[]; refs?: string[]; context?: string[]; domain?: import('@ant/shared').Domain };
       let source: 'explicit' | 'infer';
       let basis: import('@ant/shared').Basis | undefined;
       let reasoning: InferredAction['reasoning'] | undefined;
@@ -99,10 +120,13 @@ export function createDetectNode<T extends DetectableState>(
           target: metadata.target,
           refs: metadata.refs,
           context: metadata.context,
+          // Phase 1 (10.2): explicit > infer. ActionMetadata.domain set via
+          // DomainToggle / `@domain:` mention bypasses LLM inference.
+          domain: metadata.domain,
         };
         source = 'explicit';
         basis = metadata.basis;
-        console.log(`⚡ [detect] Explicit: intent=${intentId}`);
+        console.log(`⚡ [detect] Explicit: intent=${intentId}, domain=${metadata.domain ?? 'unset'}`);
 
       } else {
         // ── Infer path: strategy.run() → InferredAction ──
@@ -143,6 +167,16 @@ export function createDetectNode<T extends DetectableState>(
         console.log(`📋 [detect] Infer: intentId=${intentId}`);
       }
 
+      // Phase 1.5: per-domain defaults seed (H-3).
+      //
+      // When the slot defines `defaults[domain]`, Phase 1 seeds the
+      // techTier shape (`stack`, `gameEngine`) before the LLM ever sees
+      // the basis. This avoids the situation where game-domain detect
+      // produces a `stack: undefined` basis and the LLM has to guess the
+      // engine from scratch. User-supplied basis fields always win over
+      // the seed.
+      basis = applyDomainDefaultsToBasis(intentId, slots.domain, basis);
+
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // Phase 2: Unified funnel — resolveToRAC
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -165,7 +199,13 @@ export function createDetectNode<T extends DetectableState>(
       // (infer path); absence only omits the reasoning subsection.
       emitRACSummary(resolvedAction, reasoning, state._uiLocale);
 
-      // Merge RAC docs into design pool (no-op for jobs without state.artifacts)
+      // Pool writer — single SSOT for `state.artifacts` filling. RAC-resolved
+      // artifacts merge into any existing pool entries (intra-job self-output
+      // from prior tasks survives via append-or-upsert by path). The
+      // truthy-check on `state.artifacts` distinguishes jobs that own a
+      // pool channel (code/design seed it to `[]` in resolve) from those
+      // that do not (planner), so the partial state emit stays schema-safe
+      // per job. See `.cursorrules` "state.artifacts Post-RAC SSOT".
       const updatedArtifacts = (state as any).artifacts
         ? appendOrUpdatePool((state as any).artifacts, resolvedArtifacts || [])
         : undefined;
@@ -194,6 +234,55 @@ export function createDetectNode<T extends DetectableState>(
 
 function resolveFeaturePath<T extends DetectableState>(state: T): string | undefined {
   return state.featurePath || (state as any).context?.featurePath;
+}
+
+/**
+ * Phase 1 H-3 — apply per-domain seed values from `BasisSlotConfig.defaults[domain]`
+ * to the (possibly empty) `basis`. User-supplied fields always win; the seed
+ * only fills missing slots so wizard / explicit selections are preserved.
+ *
+ * The canonical use case is game domain ⇒ `stack='frontend'`, `gameEngine='phaser'`.
+ * Without this seed, decompose has to guess the engine from scratch and the
+ * Phase 2 phaser-host pattern relies on probabilistic LLM inference rather
+ * than declarative project metadata.
+ */
+function applyDomainDefaultsToBasis(
+  intentId: string,
+  domain: Domain | undefined,
+  basis: Basis | undefined,
+): Basis | undefined {
+  if (!domain) return basis;
+  const slot = getConfigSlots(intentId as IntentId)?.basis;
+  const defaults = slot?.defaults?.[domain];
+  if (!defaults) return basis;
+
+  // Don't seed if the slot doesn't even opt into techTier — defaults are a
+  // techTier-shape concept (stack + gameEngine).
+  if (!slot?.tiers?.includes('techTier')) return basis;
+
+  const next: Basis = basis ? { ...basis } : {};
+  const techTier = next.techTier ? { ...next.techTier } : {};
+  if (defaults.stack && !techTier.stack) {
+    techTier.stack = defaults.stack;
+  }
+  if (defaults.gameEngine) {
+    // gameEngine attaches to the frontend tier (or a single non-backend tier).
+    const targetKey = (techTier.stack === 'backend') ? undefined : 'frontend' as const;
+    if (targetKey) {
+      const existingTier = techTier[targetKey];
+      if (existingTier) {
+        if (!existingTier.gameEngine) {
+          techTier[targetKey] = { ...existingTier, gameEngine: defaults.gameEngine };
+        }
+      } else {
+        techTier[targetKey] = { stack: 'frontend', gameEngine: defaults.gameEngine };
+      }
+    }
+  }
+  // Only return new techTier if we actually changed something.
+  if (Object.keys(techTier).length === 0) return basis;
+  next.techTier = techTier;
+  return next;
 }
 
 /**

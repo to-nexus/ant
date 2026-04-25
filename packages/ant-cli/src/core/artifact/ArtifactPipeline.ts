@@ -48,11 +48,8 @@
  */
 
 import type { ResolvedArtifact, UiSource } from '@ant/shared';
-import { ARTIFACT_PREFIX, DESIGN_DIR, uiSourceOfPath } from '@ant/shared';
+import { ARTIFACT_PREFIX, uiSourceOfPath } from '@ant/shared';
 import { compactContent } from '../utils/contentCompactor';
-import { normalizeTemplateDoc } from '../utils/templateDetector';
-import * as fs from 'fs';
-import * as pathMod from 'path';
 
 // ────────────────────────────────────────────────────────────────
 // UI artifact recognition
@@ -485,67 +482,9 @@ export function appendOrUpdatePool(
   return Array.from(map.values());
 }
 
-/**
- * Recursively scan outputs/design/ and return all non-template documents as ResolvedArtifact[].
- * Replaces the narrow DESIGN_FILE_PATTERNS approach that only covered 3 system-design patterns.
- */
-export function scanDesignOutputs(featurePath: string): ResolvedArtifact[] {
-  const designDirAbs = pathMod.join(featurePath, DESIGN_DIR);
-  const artifacts: ResolvedArtifact[] = [];
-
-  function walk(dir: string): void {
-    let entries: import('fs').Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const full = pathMod.join(dir, e.name);
-      if (e.isDirectory()) {
-        walk(full);
-      } else if (e.isFile()) {
-        try {
-          const raw = fs.readFileSync(full, 'utf-8');
-          const content = normalizeTemplateDoc(raw);
-          if (content) {
-            const relPath = pathMod.relative(featurePath, full).replace(/\\/g, '/');
-            artifacts.push({ path: relPath, content, role: 'ref' });
-          }
-        } catch { /* skip unreadable */ }
-      }
-    }
-  }
-
-  walk(designDirAbs);
-  return artifacts;
-}
-
-/**
- * Build a unified design artifact pool from heterogeneous sources.
- */
-export function buildDesignArtifactPool(opts: {
-  sourceDocuments?: Record<string, string>;
-  designOutputs: ResolvedArtifact[];
-  design?: string;
-}): ResolvedArtifact[] {
-  const pool: ResolvedArtifact[] = [];
-
-  if (opts.sourceDocuments) {
-    for (const [name, content] of Object.entries(opts.sourceDocuments)) {
-      if (content?.trim()) {
-        pool.push({ path: `inputs/sources/${name}`, content, role: 'context' });
-      }
-    }
-  }
-
-  for (const a of opts.designOutputs) {
-    pool.push(a);
-  }
-
-  if (opts.design && !opts.designOutputs.some(a => a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN))) {
-    pool.push({ path: `${ARTIFACT_PREFIX.SYSTEM_DESIGN}full`, content: opts.design, role: 'ref' });
-  }
-
-  return pool;
-}
+// `scanDesignOutputs` and `buildDesignArtifactPool` were removed in the
+// state.artifacts post-RAC SSOT refactor. The pool is now exclusively
+// populated by `loadResolvedArtifacts(resolvedAction, featurePath)`
+// (single writer, RAC-bounded) plus `appendOrUpdatePool(pool, task.files)`
+// for design's intra-job self-output. See `.cursorrules`
+// "state.artifacts Post-RAC SSOT".

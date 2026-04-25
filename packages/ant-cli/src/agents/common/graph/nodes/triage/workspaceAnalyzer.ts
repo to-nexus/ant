@@ -186,9 +186,13 @@ export async function analyzeWorkspace(
   // System design — canonical outputs/design/system/ only
   {
     const systemFiles = listDesignSubdir('system');
-    state.hasSystemDesignDoc = systemFiles.some(f =>
+    const matchedSystemDocs = systemFiles.filter(f =>
       (f.startsWith('fe-system-') || f.startsWith('be-system-') || f.startsWith('api-contract-')) && f.endsWith('.md')
     );
+    state.hasSystemDesignDoc = matchedSystemDocs.length > 0;
+    if (matchedSystemDocs.length > 0) {
+      state.systemDesignFileNames = matchedSystemDocs;
+    }
   }
 
   // UI docs — canonical outputs/design/ui/ant/ only (SSOT for ant UiSource)
