@@ -455,6 +455,12 @@ export class JobWorker {
         env.ANT_ORIGINAL_JOB_ID = payload.originalJobId;
       }
     }
+    if (payload.seedTurnId) {
+      // chat SSOT §6 — pre-allocated turnId from /chat/user-message;
+      // the orchestrator will pass this to recordUserTurn so the durable
+      // user_turn shares the same id as the optimistic SSE broadcast.
+      env.ANT_SEED_TURN_ID = payload.seedTurnId;
+    }
 
     // Path to the job runner script
     const isDev = process.env.NODE_ENV === 'development';

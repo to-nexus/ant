@@ -12,6 +12,7 @@ import type { ContentMerger } from '../chat/ContentMerger';
 import type { MessageContent } from '../chat/types';
 import { logger } from '../../utils/logger';
 import { getChatLogAppender } from './chatLogAppenderRegistry';
+import * as crypto from 'crypto';
 
 /**
  * Tools whose handlers emit their own `chat_status` pair (progress +
@@ -349,7 +350,8 @@ export class LLMEventHandler {
     const appender = getChatLogAppender();
     if (appender) {
       const { timestamp: _ts, ...persistedMetadata } = metadata;
-      appender.appendChatStatus('tool_action', persistedMetadata);
+      const cardId = `tool-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+      appender.appendChatStatus(cardId, 'tool_action', persistedMetadata);
     }
   }
 

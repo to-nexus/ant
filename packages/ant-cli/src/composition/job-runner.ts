@@ -60,6 +60,8 @@ interface JobParams {
   skipTriage?: boolean;
   chatSource?: boolean;
   actionMetadata?: import('@ant/shared').ActionMetadata;
+  /** chat SSOT §6 — pre-allocated turnId from /chat/user-message. */
+  seedTurnId?: string;
 }
 
 function getJobParams(): JobParams {
@@ -89,6 +91,7 @@ function getJobParams(): JobParams {
     chatSource: process.env.ANT_CHAT_SOURCE === 'true',
     skipTriage: process.env.ANT_SKIP_TRIAGE === 'true',
     actionMetadata: process.env.ANT_ACTION_METADATA ? (() => { try { return JSON.parse(process.env.ANT_ACTION_METADATA); } catch { return undefined; } })() : undefined,
+    seedTurnId: process.env.ANT_SEED_TURN_ID,
   };
 }
 
@@ -173,6 +176,7 @@ async function runJob(params: JobParams): Promise<void> {
       skipTriage: params.skipTriage,
       actionMetadata: params.actionMetadata,
       isResume: params.isResume,
+      seedTurnId: params.seedTurnId,
     });
     
     reportProgress('completed', 'Job completed successfully', 100);

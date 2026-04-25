@@ -101,6 +101,16 @@ async function main() {
     console.error(`⛔ ${partialResult.failed.length} partial(s) failed to register — server may produce incomplete prompts`);
   }
 
+  // §5 chat SSOT migration — collapse legacy chat.jsonl files to a single
+  // placeholder line on first boot. feature.jsonl is preserved (LLM
+  // context survives). Idempotent via marker file.
+  try {
+    const { discardLegacyChatJsonl } = await import('../../scripts/discard-legacy-chat-jsonl');
+    await discardLegacyChatJsonl(workspacesPath);
+  } catch (err) {
+    console.warn('[Server] chat.jsonl migration failed (continuing):', err);
+  }
+
   // Create server with mode configuration and WorkspaceService
   const server = new ExpressServerAdapter(mode, workspacesPath, cloudUrl, workspaceService);
   

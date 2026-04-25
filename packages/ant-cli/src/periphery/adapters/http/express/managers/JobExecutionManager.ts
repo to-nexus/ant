@@ -217,7 +217,9 @@ export class JobExecutionManager {
       ...(params.userContext?.organizationId && { ANT_ORG_ID: params.userContext.organizationId }),
       ...(userEmail && { ANT_USER_EMAIL: userEmail }),
       ...(params.overrideDirective && { ANT_OVERRIDE_DIRECTIVE: params.overrideDirective }),
-      ...(params.chatSource && { ANT_CHAT_SOURCE: 'true' })
+      ...(params.chatSource && { ANT_CHAT_SOURCE: 'true' }),
+      // chat SSOT §6 — pre-allocated turnId from /chat/user-message
+      ...(params.seedTurnId && { ANT_SEED_TURN_ID: params.seedTurnId }),
     };
     
     return spawn('npx', ['tsx', ...args], {

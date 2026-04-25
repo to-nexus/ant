@@ -53,6 +53,8 @@ export const executeJobSchema = z.object({
   uiDocumentContext: z.any().optional(),
   designContext: z.any().optional(),
   actionMetadata: z.any().optional(),
+  /** chat SSOT §6 — pre-allocated turn id from /chat/user-message. */
+  seedTurnId: z.string().optional(),
 }).passthrough();
 
 /**
@@ -65,8 +67,19 @@ export const createProjectSchema = z.object({
 
 /**
  * POST /projects/:id/features/:feature/chat/user-message
+ *
+ * `jobType` drives whether the user_turn line is mirrored into
+ * feature.jsonl (LLM context) — `code|design|plan|learn` mirror, while
+ * `ask|inline-ask` are chat-only (`sourceRef='ask-only'`).
+ *
+ * Defaults to `ask` so legacy clients that omit jobType do not pollute
+ * feature.jsonl. New clients (Phase 6+) always pass jobType.
  */
 export const chatUserMessageSchema = z.object({
   content: z.string().min(1, 'Message content is required').max(100000),
-  jobId: z.string().optional(),
+  jobType: z
+    .enum(['code', 'design', 'plan', 'learn', 'ask', 'inline-ask', 'visual'])
+    .optional()
+    .default('ask'),
+  actionMetadata: z.any().optional(),
 }).passthrough();

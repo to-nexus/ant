@@ -14,12 +14,15 @@
 import { describe, it, expect } from 'vitest';
 import type { ChatLine, ChatStatusLine, ChatStatusType } from '@ant/shared';
 import { buildChatMessagesFromChatLog } from '../src/periphery/adapters/http/services/ChatService/ChatLogToMessages';
-import { generateChatStatusContent } from '../src/core/llm-response/generateStatusContent';
+import { generateChatStatusContent } from '@ant/shared';
+
+let cardIdCounter = 0;
 
 function mkChatStatus(
   statusType: ChatStatusType,
   metadata: Record<string, unknown>,
   turnId = 't-aaaa',
+  cardId?: string,
 ): ChatStatusLine {
   return {
     type: 'chat_status',
@@ -27,6 +30,7 @@ function mkChatStatus(
     jobId: 'job-1',
     turnId,
     jobType: 'code',
+    cardId: cardId ?? `card-${++cardIdCounter}`,
     statusType,
     metadata,
   };

@@ -39,8 +39,8 @@ describe('FileSessionAdapter — feature-log readers', () => {
     const chatLines: ChatLine[] = [
       { type: 'user_turn', ts: '2026-04-20T00:00:01Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hi', sourceRef: 'feature.jsonl#t-1' },
       { type: 'assistant_message', ts: '2026-04-20T00:00:02Z', jobId: 'j1', turnId: 't-1', jobType: 'code', text: 'hello' },
-      { type: 'chat_status', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', statusType: 'read', metadata: { filePath: 'src/a.ts' }, collapsed: true },
-      { type: 'chat_status', ts: '2026-04-20T00:00:04Z', jobId: 'j1', turnId: 't-1', jobType: 'code', statusType: 'file_create', metadata: { filePath: 'src/x.ts' } },
+      { type: 'chat_status', ts: '2026-04-20T00:00:03Z', jobId: 'j1', turnId: 't-1', jobType: 'code', cardId: 'c-1', statusType: 'read', metadata: { filePath: 'src/a.ts' }, collapsed: true },
+      { type: 'chat_status', ts: '2026-04-20T00:00:04Z', jobId: 'j1', turnId: 't-1', jobType: 'code', cardId: 'c-2', statusType: 'file_create', metadata: { filePath: 'src/x.ts' } },
     ];
     await writeJsonl(getChatJsonlPath(tmpDir), chatLines);
 

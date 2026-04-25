@@ -502,7 +502,11 @@ export class RouteConfigurator {
         actionMetadata: params.actionMetadata,
         inputFile: params.inputFile,
         isResume: params.isResume ?? !!params.jobId,
-        originalJobId: params.jobId
+        originalJobId: params.jobId,
+        // chat SSOT §6 — pre-allocated turnId from /chat/user-message,
+        // forwarded to the worker entry so the durable user_turn line
+        // shares the same id as the optimistic SSE broadcast.
+        seedTurnId: params.seedTurnId,
       });
       
       // Set initial job status in Redis

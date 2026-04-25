@@ -90,18 +90,25 @@ export class ChatService {
   }
 
   /**
-   * Add user message to chat history
-   * CLOUD MODE: Async to ensure Redis save completes before Job starts
+   * Add user message to chat history with a STABLE id derived from the
+   * supplied turnId — `user-{turnId}` — so the optimistic SSE broadcast
+   * collapses with the durable chat.jsonl user_turn line on reconnect
+   * (single source of truth for user_message identity).
+   *
+   * Callers are responsible for minting the turnId (typically
+   * `chat.routes.ts /chat/user-message`) and forwarding it to the worker
+   * via `executeJob({ seedTurnId })`.
    */
   async addUserMessage(
-    projectId: string, 
-    featureName: string, 
-    content: string, 
-    jobId?: string, 
+    projectId: string,
+    featureName: string,
+    content: string,
+    turnId: string,
+    jobId?: string,
     userContext?: UserContext,
     actionMetadata?: import('@ant/shared').ActionMetadata,
   ): Promise<string> {
-    return this.messageManager.addUserMessage(projectId, featureName, content, jobId, userContext, actionMetadata);
+    return this.messageManager.addUserMessage(projectId, featureName, content, turnId, jobId, userContext, actionMetadata);
   }
 
   /**
