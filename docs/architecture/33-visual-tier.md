@@ -123,7 +123,7 @@ Visual Tier의 모든 레이어 템플릿 작성 시 반드시 준수해야 하�
 - 모든 레이어 템플릿은 `## {Layer}: {Variant}` 헤딩으로 시작
 - Constraint 문은 `Constraint:` 접두사로 시작 (파싱 가능)
 - 템플릿당 최대 60줄 이내 (프롬프트 토큰 효율)
-- 영어 전용 (FPOP: Universal over Specific)
+- 영어 전용 (FPOP: Universal over Specific — visual tier 템플릿은 cross-DS 활성화로 always-on 축에 해당하므로 SBS 의 gated-specifics 의무는 발동하지 않는다)
 
 ---
 

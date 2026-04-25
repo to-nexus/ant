@@ -303,7 +303,7 @@ templates/basis/
 | 금지 | API 레퍼런스·튜토리얼·일반 best practice 등재 |
 | 파일명 | 허용 집합 고정. 집합 외 값은 주입 skip — fallback 금지 |
 | 토큰 예산 | 파일당 ≤ 400 토큰, 섹션당 항목 ≤ 4 |
-| 형식 | FPOP 원칙 — 관찰 원칙·금지사항, 구체 코드 나열 금지 |
+| 형식 | SBS + FPOP — gate(framework / language) 축의 specifics(버전·API·툴체인 이름)는 의무, gate 무관한 프로젝트 코드 나열은 금지. Hints 계층은 SBS의 canonical 적용 사례 — `framework=X` gate 가 닫혔을 때 `<X>.md` 의 모든 문장이 잉여여야 정상 |
 | 증거 의무 | 항목 추가/변경 PR은 실증 job의 chat/log JSON 경로를 커밋 메시지에 기재 |
 | 유지보수 | 메이저 릴리즈 시에만 업데이트 |
 
@@ -378,6 +378,14 @@ Design job은 이번 단계에서 **구조·배선만** 표준화되며, 섹션 
 - ❌ 스니펫 나열 (관찰 원칙은 설명문으로)
 - ❌ "You MUST..." 반복 훈계 — FPOP는 제약을 중립적으로 명시
 
+### 비 SBS 금지 목록
+
+- ❌ `basis/techTier/framework/<X>.md` 가 X의 이름·버전·툴체인을 한 번도 명시하지 않음 — gate 의 정보 payload 가 0이 되어 주입할 가치가 사라짐
+- ❌ `common/injections/refactor-guidance.md` 같은 mode-gated 파일이 mode 와 무관한 일반 best practice 만 늘어놓음
+- ❌ Intent/taskType 변종 파일이 같은 phase 의 default 파일과 구분되는 변종-specific 가이드를 안 담음 — 변종이 SBS-empty
+- ❌ Always-on 위치(agents/system, jobs/{job}/base/system)에 framework/library/version 이름이 등장 — SBS 가 FPOP를 약화시키지 않으므로 여전히 위반
+- ❌ 한 파일에 여러 gate 축의 specifics 가 섞임 (e.g. `nextjs.md` 안에 generic React 룰을 박아넣음 → `_react-core.md` partial 로 분리해야 함)
+
 ### PR 체크리스트
 
 Hints 계층 파일(`jobs/code/basis/techTier/**.md`, `jobs/design/basis/techTier/**.md`)을 추가·수정하는 PR은 아래 항목을 만족해야 한다:
@@ -417,6 +425,74 @@ Handlebars를 사용하며, 조건부 섹션(`{{#if}}`)과 반복(`{{#each}}`)�
 | Universal over Specific | 플랫폼/언어 중립 |
 | Constraints over Instructions | 금지 사항으로 범위 한정 |
 | Reminders for Blind Spots | 자주 누락되는 항목만 상기 |
+
+## SBS 원칙 (Scope-Bound Specificity)
+
+**프롬프트 조각의 요구되는 추상화 레벨은 그것의 활성화 범위(activation scope)에 의해 묶인다.** FPOP 의 "Universal over Specific" 은 무조건 주입되는(always-on) 콘텐츠에만 적용되며, gate 로 조건부 주입되는 콘텐츠는 그 gate 의 discriminator 축을 따라 구체적이어야 한다 — gate 보다 더 추상화하면 gate 의 정보 payload 가 0 이 된다.
+
+SBS 는 FPOP, MECE 와 더불어 프롬프트 작성의 세 번째 정책이다. FPOP 만으로는 `basis/techTier/framework/nextjs.md` 가 "Next.js" 를 명시하는 것이 위반인지 아닌지 판정할 수 없는 회색지대가 발생하는데, SBS 가 그 회색지대를 닫는다.
+
+### Specificity floor 공식
+
+```
+specificity_floor(template) = activation_scope(template)
+```
+
+| 결과 | 진단 |
+|------|------|
+| gate 보다 더 추상 | **SBS 위반** — gate 의 정보 payload 가 0 |
+| gate 와 무관한 다른 축에서 더 구체 | **FPOP 위반** — scope creep ("Universal over Specific" 가 작동) |
+| gate 와 같은 축에서만 구체 | **준수** |
+
+### Gate 축 6 종
+
+SBS 가 적용되는 gate 종류 (broad scope — 다음 중 하나라도 활성화 조건에 들어가면 SBS 가 의무화된다).
+
+| 축 | 예시 |
+|----|------|
+| **techTier** | `framework=nextjs`, `language=typescript-browser`, `version=react@19`, runtime |
+| **intent** | `gen-code-sys`, `rev-code`, `gen-code-spec`, `gen-ui-figma`, … |
+| **taskType** | `verification`, `error`, `ui`, `feature`, `setup`, `test-code`, `doc` |
+| **mode** | `generate` / `refactor` / `explain` |
+| **role** | `ref` / `context` / `target` (3-axis Authority) |
+| **artifact-presence** | `hasUi` / `hasSpec` / `hasSystemDesign` / `hasSources`, `uiSource` discriminator |
+
+### 활성화-범위 사다리
+
+| 활성화 위치 | gate | specificity floor |
+|-------------|------|-------------------|
+| `agents/{agent}/system.md` | always-on | Universal — FPOP 만 |
+| `jobs/{job}/base/system.md` | job axis | job 축만 구체 |
+| `basis/techTier/framework/<X>.md` | `framework=X` | X 의 versions / APIs / toolchain — 의무 |
+| `basis/techTier/language/<X>.md` | `language=X` (+ stack) | X+stack specifics — 의무 |
+| `nodes/{phase}/variants/<V>/*.md` | intent / taskType / mode 변종 | V specifics — 의무 |
+| `common/injections/refactor-guidance.md` | `mode=refactor` | refactor-mode specifics — 의무 |
+| `common/injections/ui-source-{ant,figma,handoff}.md` | `uiSource=X` | source-X 해석 규약 — 의무 |
+
+### FPOP 와의 관계
+
+```mermaid
+flowchart TD
+    Template["Prompt template"] --> Q1{"Activation gated?"}
+    Q1 -->|"No (always-on)"| FPOP["FPOP applies fully:<br/>Universal over Specific"]
+    Q1 -->|"Yes"| SBS["SBS applies:<br/>specificity_floor = gate axis"]
+    SBS --> Q2{"Concrete on gate axis?"}
+    Q2 -->|"No"| Violation1["SBS violation<br/>(gate wasted)"]
+    Q2 -->|"Yes"| Q3{"Concrete on non-gate axis?"}
+    Q3 -->|"Yes"| Violation2["FPOP violation<br/>(scope creep)"]
+    Q3 -->|"No"| OK["Compliant"]
+```
+
+모든 paragraph 는 두 검사를 통과해야 한다:
+
+1. **SBS 검사** — 이 문장이 파일의 활성화 gate 축을 따라 구체적인가? 아니면 덜 gated 된 위치로 올리거나, gate 의 discriminator 이름을 반영하도록 다시 쓴다.
+2. **FPOP 검사** — 이 문장이 파일의 gate 가 아닌 다른 축에서 구체적인가? 그렇다면 scope creep 이므로 들어내거나 옮긴다.
+
+준수 paragraph: gate 축 정확히 따라 구체, 다른 모든 축에선 일반.
+
+### Hints 계층은 SBS 의 canonical 사례
+
+`basis/techTier/{language,framework}/<X>.md` 자리는 정의상 `techTier=X` gate 로만 활성화된다. SBS 는 이 자리에 X의 versions / APIs / toolchain 을 **의무화**하며, FPOP "Universal over Specific" 인용으로 그 의무를 무력화하는 PR 코멘트는 SBS 위반이다. 자세한 형식·금지 목록은 [Hints 계층](#hints-계층-blind-spot-환기) 절 참고.
 
 ## 리소스 경로 해석
 

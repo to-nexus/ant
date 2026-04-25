@@ -605,3 +605,82 @@ Before writing or editing any prompt template, run this check silently:
 | **Edge Case Leakage** | Specific cases infiltrating a prompt |
 
 Example review shortcuts: *"Remove edge case leakage, keep principles only"*, *"Convert this to FPOP format"*, *"Validate against FPOP checklist"*.
+
+### 5. SBS — Scope-Bound Specificity
+
+**A prompt fragment's required abstraction level is bounded by its activation scope. FPOP's "Universal over Specific" applies to unconditionally-injected content; gate-injected content MUST be specific along the gate's discriminator axis. Going more abstract than the gate erases the very signal that justifies the conditional injection.**
+
+SBS sits beside FPOP and MECE as the third prompt-authoring policy. It exists because FPOP alone, read literally, would forbid `basis/techTier/framework/nextjs.md` from naming Next.js — yet that file's whole purpose is Next.js-specific blind-spot recall.
+
+#### Specificity floor rule
+
+```
+specificity_floor(template) = activation_scope(template)
+```
+
+| Outcome | Diagnosis |
+|---|---|
+| more abstract than gate | **SBS violation** — gate's information payload = 0 |
+| concrete on a non-gate axis | **FPOP violation** — scope creep ("Universal over Specific" bites) |
+| concrete on the gate's axis only | **Compliant** |
+
+#### Gate axes (broad scope — SBS applies whenever any of these gate the template)
+
+| Axis | Examples |
+|---|---|
+| **techTier** | `framework=nextjs`, `language=typescript-browser`, `version=react@19`, runtime |
+| **intent** | `gen-code-sys`, `rev-code`, `gen-code-spec`, `gen-ui-figma`, … |
+| **taskType** | `verification`, `error`, `ui`, `feature`, `setup`, `test-code`, `doc` |
+| **mode** | `generate` / `refactor` / `explain` |
+| **role** | `ref` / `context` / `target` (3-axis Authority) |
+| **artifact-presence** | `hasUi` / `hasSpec` / `hasSystemDesign` / `hasSources` / `uiSource` discriminator |
+
+#### Activation-scope ladder
+
+| Activation location | Gate | Specificity floor |
+|---|---|---|
+| `agents/{agent}/system.md` | always-on | Universal — FPOP only |
+| `jobs/{job}/base/system.md` | job axis | job-axis specifics only |
+| `basis/techTier/framework/<X>.md` | `framework=X` | X's versions / APIs / toolchain — REQUIRED |
+| `basis/techTier/language/<X>.md` | `language=X` (+ stack) | X+stack specifics — REQUIRED |
+| `nodes/{phase}/variants/<V>/*.md` | intent / taskType / mode variant | V-specifics — REQUIRED |
+| `common/injections/refactor-guidance.md` | `mode=refactor` | refactor-mode specifics — REQUIRED |
+| `common/injections/ui-source-{ant,figma,handoff}.md` | `uiSource=X` | source-X interpretation contract — REQUIRED |
+
+#### ❌ ABSOLUTELY FORBIDDEN
+
+- Citing FPOP's "Universal over Specific" against a gate-injected file to demand removal of the gate's discriminator name (e.g. asking `basis/techTier/framework/nextjs.md` to drop "Next.js" wording). The gate IS the justification.
+- Authoring a gated file whose body would survive verbatim if the gate were a different value — that's a wasted gate (SBS violation).
+- Mixing scopes inside one file: pulling generic React advice into `nextjs.md` instead of the shared `_react-core` partial; pulling refactor-only language into a default execute template.
+- Always-on templates (`agents/*/system.md`, `jobs/*/base/system.md`) naming a specific framework/library/runtime version — that's still an FPOP violation; SBS does not relax FPOP for non-gated content.
+- Hiding gate-specific content behind FPOP-style abstraction in the name of "generality" — e.g. an `intent=gen-ui-figma` variant that says only "read the design source" without the Figma MCP / live-fetch contract.
+
+#### ✅ CORRECT
+
+- `basis/techTier/framework/nextjs.md` MUST mention "Next.js" (and its versions, APIs, toolchain) by name. The framework gate makes this content SBS-required, not FPOP-prohibited.
+- `common/injections/refactor-guidance.md` MUST encode refactor-mode invariants ("public API surface immutable") that would not apply in `generate` mode.
+- Intent / taskType / mode variants must visibly differ from the default and from siblings — if you can't tell which variant a paragraph came from with the path hidden, the variant is SBS-empty.
+- Always-on agent/system templates stay platform-/library-/version-agnostic; framework specifics live ONLY behind a techTier gate.
+
+#### Reading SBS together with FPOP
+
+For every paragraph in a template, run two checks:
+
+1. **SBS check**: Is this paragraph specific along the file's activation gate? If no, it should be lifted to a less-gated location or rewritten to use the gate's discriminator name(s).
+2. **FPOP check**: Is this paragraph specific along an axis OTHER than the file's activation gate? If yes, it should be lifted out (or removed) — that's scope creep.
+
+A compliant paragraph passes both: specific exactly along the gate, generic everywhere else.
+
+#### Enforcement
+
+```bash
+# Sanity grep: every gated framework hint file must reference its framework name.
+for f in packages/ant-cli/src/core/prompt/templates/jobs/*/basis/techTier/framework/[a-z]*.md; do
+  name=$(basename "$f" .md)
+  rg -i -q -- "$name" "$f" || echo "SBS suspect (gate=$name not referenced): $f"
+done
+# Expected: no output. Files prefixed with `_` are partials and exempt — they
+# inherit specificity from the consumer file that includes them.
+```
+
+This is a soft sanity check, not a build gate — SBS is a semantic policy and most violations require human review of "is this gate's discriminator actually addressed?". Use it as a reviewer aid, not a CI lock.
