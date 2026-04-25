@@ -42,21 +42,24 @@
 
 ### Verification Gate Declaration
 
-**Principle**: Each gate command declares its intent via the `verifies`
-argument on `run_command` so the diagnostic cycle records gate
-completion by exit code rather than by command-string heuristics.
+**Principle**: Each verification gate command (typecheck / build / test)
+declares its intent via the `verifies` argument on `run_command` so the
+diagnostic cycle records gate completion by exit code rather than by
+command-string heuristics.
 
-**Observation target**: Which gate this command exercises — independent of
-which form the command takes (`tsc --noEmit`, `npm run type-check`,
-`pnpm typecheck`, `next build`, `go test ./...`).
+**Observation target**: Which verification gate this command exercises —
+independent of which form the command takes (`tsc --noEmit`,
+`npm run type-check`, `pnpm typecheck`, `next build`, `go test ./...`).
 
-**Constraint**: Set `verifies` on `run_command` whenever the command
-exercises a gate. Omit the field for non-gate commands (install, ls, cat,
-edits, log inspections).
+**Constraint**: Set `verifies: 'typecheck' | 'build' | 'test'` on
+`run_command` whenever the command exercises that verification gate.
+Omit the field for non-gate commands (install, ls, cat, edits, log
+inspections).
 
-⚠️ **Blind spot**: A gate command run without `verifies` succeeds in the
-shell but does NOT flip the cycle's gate. The next gate then blocks with
-"prior gate not passed" and the cycle wastes a retry round.
+⚠️ **Blind spot**: A verification gate command run without `verifies`
+succeeds in the shell but does NOT flip the verification cycle's gate.
+The next gate then blocks with "prior gate not passed" and the
+verification cycle wastes a retry round.
 
 ### Verification-Specific Constraints
 
