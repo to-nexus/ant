@@ -145,7 +145,11 @@ describe('Template files → Registry (no orphans)', () => {
 
   it('every code job framework template is in SUPPORTED_FRAMEWORKS', () => {
     const fwDir = path.join(TEMPLATES_ROOT, 'jobs/code/basis/techTier/framework');
-    const files = fs.readdirSync(fwDir).filter(f => f.endsWith('.md'));
+    // `_` prefix = partial-only (never directly injected as a framework).
+    // Mirror the language-directory filter so internal building blocks
+    // (e.g. `_react-core`, `_react-csr`) do not need to appear in the
+    // SUPPORTED_FRAMEWORKS allow-list.
+    const files = fs.readdirSync(fwDir).filter(f => f.endsWith('.md') && !f.startsWith('_'));
     const allFws = new Set(Object.values(SUPPORTED_FRAMEWORKS).flat());
 
     for (const file of files) {

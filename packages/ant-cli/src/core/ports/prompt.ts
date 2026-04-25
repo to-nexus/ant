@@ -11,8 +11,5 @@ export interface PromptPort {
    * @returns Rendered template string
    */
   render(templateName: string, vars: Record<string, any>): Promise<string>;
-
-  /** Raw read — Handlebars bypass. For basis profiles and other pure markdown. */
-  renderRaw?(templatePath: string): Promise<string>;
 }
 

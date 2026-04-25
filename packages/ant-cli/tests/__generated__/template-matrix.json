@@ -411,6 +411,16 @@
       "render-call"
     ]
   },
+  "jobs/code/basis/techTier/framework/_react-core": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/code/basis/techTier/framework/_react-csr": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/code/basis/techTier/framework/gin": {
     "sources": [
       "basis-registry"
