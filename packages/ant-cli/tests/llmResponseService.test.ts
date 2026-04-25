@@ -328,15 +328,31 @@ describe('LLMResponseService — in-flight streaming', () => {
     expect((lines[0] as any).text).toBe('part 1 part 2');
   });
 
-  it('registerPendingCard sets TURN_BUFFER and emits a card_output heartbeat', async () => {
+  it('registerPendingCard sets TURN_BUFFER and broadcasts a buffer snapshot with the new card', async () => {
     const { service, store } = makeService();
     await service.registerPendingCard('card-1', 'reading', { filePath: 'a.ts' });
     expect(store.setPendingCardCalls).toHaveLength(1);
     expect(store.setPendingCardCalls[0].card.cardId).toBe('card-1');
     expect(store.setPendingCardCalls[0].card.statusType).toBe('reading');
+
+    // The pre-§5 zero-length `card_output` heartbeat was replaced by a
+    // full `streaming_buffer_snapshot` so the FE projector can apply the
+    // correct `statusType` up-front (the `streaming_delta` schema does
+    // not carry `statusType`).
     const deltas = emittedDeltas(store);
-    expect(deltas).toHaveLength(1);
-    expect(deltas[0]).toMatchObject({ kind: 'card_output', cardId: 'card-1', chunk: '' });
+    expect(deltas).toHaveLength(0);
+    const snapshots = emittedSnapshots(store);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]).toMatchObject({
+      turnId: 'turn-1',
+      text: undefined,
+      thinking: undefined,
+    });
+    expect(snapshots[0].pendingCards?.['card-1']).toMatchObject({
+      cardId: 'card-1',
+      statusType: 'reading',
+      metadata: { filePath: 'a.ts' },
+    });
   });
 
   it('streamCardOutput appends to pendingCards and emits per-chunk delta', async () => {
@@ -636,10 +652,14 @@ describe('LLMResponseService — flush broadcasts streaming_buffer_snapshot', ()
     await service.streamTextChunk('text-to-flush');
     await service.flushTextBuffer();
 
+    // `registerPendingCard` now broadcasts a buffer snapshot up-front
+    // (so the FE knows the new card's statusType), so the flush snapshot
+    // is the LAST one in the publish stream.
     const snapshots = emittedSnapshots(store);
-    expect(snapshots).toHaveLength(1);
-    expect(snapshots[0].text).toBeUndefined();
-    expect(snapshots[0].pendingCards?.['card-keep']).toMatchObject({
+    expect(snapshots.length).toBeGreaterThanOrEqual(1);
+    const last = snapshots[snapshots.length - 1];
+    expect(last.text).toBeUndefined();
+    expect(last.pendingCards?.['card-keep']).toMatchObject({
       cardId: 'card-keep',
       statusType: 'reading',
     });
