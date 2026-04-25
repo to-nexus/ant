@@ -1,11 +1,22 @@
 import type { BasisSlotConfig } from '@ant/shared';
 
 /**
- * Wizard-internal tier identifier. The registry in `constants.ts` is the
- * single source of truth for which tiers exist; adding a new tier should be
- * a one-line registry entry plus extending this union.
+ * Wizard-internal tier identifier (Phase 1 — five tiers).
+ *
+ * Mirrors the BE `TierKey` union from `@ant/shared/tier-matrix.ts`.
+ * `domain` itself is not a wizard tier (it's a single-toggle decision
+ * handled by `DomainToggle`); only tiers that present multi-step
+ * selection appear here.
+ *
+ * Adding a new tier requires:
+ *   1. extending this union,
+ *   2. adding a TIER_REGISTRY entry,
+ *   3. adding a TIER_STEP_DEF entry (per-tier WizardStepDef[] from `TierStepDef.ts`),
+ *   4. extending the BasisWizardState.selections shape,
+ *   5. wiring options inside `useBasisWizard.getOptionsForStep`,
+ *   6. handling the new layerKeys inside `useBasisWizard.selectVariant`/`goToStep`.
  */
-export type TierKey = 'techTier' | 'visualTier';
+export type TierKey = 'techTier' | 'visualTier' | 'artTier' | 'gameContentTier';
 
 export interface BasisWizardState {
   activeTier: TierKey;
@@ -19,11 +30,20 @@ export interface BasisWizardState {
       feFramework?: string;
       beLanguage?: string;
       beFramework?: string;
+      gameEngine?: string;
     };
     visualTier: {
       designSystem?: string;
       visualLanguage?: string;
       surfaceSystem?: string;
+    };
+    artTier: {
+      concept?: string;
+      perspective?: string;
+    };
+    gameContentTier: {
+      genre?: string;
+      coreLoop?: string;
     };
   };
 }

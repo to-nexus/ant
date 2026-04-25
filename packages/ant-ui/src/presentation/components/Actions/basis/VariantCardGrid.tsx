@@ -1,12 +1,13 @@
 import type { BasisOption } from '@ant/shared';
 import { VariantCard } from './VariantCard';
 import { AUTO_DETECT_OPTION } from './constants';
+import type { TierKey } from './types';
 
 interface VariantCardGridProps {
   options: BasisOption[];
   selectedId?: string;
   onSelect: (id: string) => void;
-  tierKey: 'techTier' | 'visualTier';
+  tierKey: TierKey;
   layerKey: string;
   lang: 'en' | 'ko';
 }

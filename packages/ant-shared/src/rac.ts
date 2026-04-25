@@ -16,7 +16,7 @@
 
 import type { ActionMetadata, IntentId } from './actions';
 import { deriveFromIntent, INTENT_DEFINITIONS } from './actions';
-import type { Mode, IntentGroup, DesignDomain, InferredAction } from './detection';
+import type { Mode, IntentGroup, Domain, InferredAction } from './detection';
 
 // ============================================
 // Workspace State (minimal, for infer path)
@@ -45,13 +45,31 @@ export type Stack = 'frontend' | 'backend' | 'fullstack';
  * Individual technology tier — describes a single tier slot (frontend OR backend).
  * TechTier.stack is TechTierKey (frontend | backend), NOT fullstack.
  * fullstack only exists on TechTierConfig.stack as a project structure indicator.
+ *
+ * Game-domain extension (Phase 1, opt-in):
+ *   - `gameEngine` is the 5th slot. When set (e.g. `'phaser'`), the basis
+ *     section additionally injects the engine-specific partial. Independent
+ *     of `framework` because in `react+phaser` the host is React and the
+ *     sub-engine is Phaser; both must inject simultaneously.
  */
 export interface TechTier {
   language?: Language;
   framework?: string;
   stack?: Stack;
   packageManager?: 'npm' | 'yarn' | 'pnpm' | 'bun';
+  /** Phase 1: game-domain sub-engine slot ('phaser' | 'godot' | 'cocos-creator'). */
+  gameEngine?: GameEngine;
 }
+
+/**
+ * Game engine — the 5th slot inside `TechTier` (game domain only).
+ *
+ * Phase 2 ships `phaser` as the only fully implemented engine; `godot` and
+ * `cocos-creator` are stubs. The matrix gate (`TIER_DOMAIN_MATRIX.techTier`
+ * combined with `domain === 'game'`) decides when this slot is even
+ * consulted.
+ */
+export type GameEngine = 'phaser' | 'godot' | 'cocos-creator';
 
 /**
  * Aggregated tech tier configuration — stack + per-side tiers.
@@ -89,9 +107,75 @@ export interface VisualTier {
   visualHierarchyRules?: VisualHierarchyRulesVariant;
 }
 
+// ============================================
+// ArtTier — domain-agnostic art policy (7 axis)
+// ============================================
+//
+// Phase 1 declares the full 7-axis shape so future-domain (3D, data-viz,
+// interactive-art) extensions are non-breaking. Phase 2 fills `concept` /
+// `perspective` only; Phase 3 fills the remaining 5 axis. The matrix gate
+// (`TIER_DOMAIN_MATRIX.artTier`) currently allows only `'game'`; Phase 4+
+// extends the row.
+//
+// Naming intent (D3): `concept` (not `visualLanguage`) so semantic collision
+// with `VisualTier.visualLanguage` is impossible — the two tiers describe
+// different surfaces (React/HUD vs. engine-internal art).
+//
+// Motion locality (I5):
+//   - `interactionGrammar` (visualTier) = UI/HUD page transitions / hover
+//   - `motionPattern` (artTier) = sprite tween / sprite animation / camera shake
+//   - particle / projectile motion → `particleProfile` / `projectilePolicy`
+
+export type ArtConceptVariant =
+  | 'sfFantasy' | 'darkFantasy' | 'threeKingdoms' | 'martialArts'
+  | 'modernCasual' | 'pixelRetro';
+export type ArtPerspectiveVariant = '2d' | '3d';
+export type ArtEntityCatalogVariant = 'minimal' | 'standard' | 'rich';
+export type ArtMotionPatternVariant = 'static' | 'subtle' | 'expressive';
+export type ArtParticleProfileVariant = 'none' | 'light' | 'heavy';
+export type ArtProjectilePolicyVariant = 'none' | 'simple' | 'complex';
+export type ArtAudioProfileVariant = 'procedural' | 'fileBased' | 'hybrid';
+
+export interface ArtTier {
+  /** Phase 2 — tone / silhouette / lighting palette. */
+  concept?: ArtConceptVariant;
+  /** Phase 2 — camera / depth / input mapping. */
+  perspective?: ArtPerspectiveVariant;
+  /** Phase 3 — character / object catalog policy. */
+  entityCatalog?: ArtEntityCatalogVariant;
+  /** Phase 3 — sprite tween / animation policy. */
+  motionPattern?: ArtMotionPatternVariant;
+  /** Phase 3 — particle system guidance. */
+  particleProfile?: ArtParticleProfileVariant;
+  /** Phase 3 — projectile / bullet policy. */
+  projectilePolicy?: ArtProjectilePolicyVariant;
+  /** Phase 3 — audio policy (procedural / fileBased / hybrid). */
+  audioProfile?: ArtAudioProfileVariant;
+}
+
+// ============================================
+// GameContentTier — game-only content policy
+// ============================================
+
+export type GameGenreVariant =
+  | 'action' | 'puzzle' | 'platformer' | 'shooter'
+  | 'rpg' | 'strategy' | 'casual';
+export type GameCoreLoopVariant = 'collect' | 'fight' | 'build' | 'explore' | 'solve';
+
+export interface GameContentTier {
+  /** Phase 2 — genre identity (puzzle, action, ...). */
+  genre?: GameGenreVariant;
+  /** Phase 2 — core loop pattern (collect / fight / build / explore / solve). */
+  coreLoop?: GameCoreLoopVariant;
+}
+
 export interface Basis {
   techTier?: TechTierConfig;
   visualTier?: VisualTier;
+  /** Phase 1 — domain-agnostic art tier (gated by `TIER_DOMAIN_MATRIX.artTier`). */
+  artTier?: ArtTier;
+  /** Phase 1 — game-domain content tier (genre + coreLoop). */
+  gameContentTier?: GameContentTier;
 }
 
 // ============================================
@@ -111,29 +195,36 @@ export {
 
 export function buildBasisPreset(opts: {
   stack?: string;
-  tiers?: Partial<Record<string, { language?: string; framework?: string; packageManager?: string }>>;
+  tiers?: Partial<Record<string, { language?: string; framework?: string; packageManager?: string; gameEngine?: GameEngine }>>;
   designSystem?: string;
   visualTier?: {
     visualLanguage?: VisualLanguageVariant;
     surfaceSystem?: SurfaceSystemVariant;
     spatialSystem?: SpatialSystemVariant;
   };
+  /** Phase 1 — game-domain art tier (concept / perspective fillable from wizard). */
+  artTier?: ArtTier;
+  /** Phase 1 — game-domain content tier (genre / coreLoop fillable from wizard). */
+  gameContentTier?: GameContentTier;
 }): Basis {
   const tierEntries: Record<string, TechTier> = {};
   if (opts.tiers) {
     for (const [key, val] of Object.entries(opts.tiers)) {
-      if (val?.language) {
+      if (val?.language || val?.gameEngine) {
         tierEntries[key] = {
-          language: val.language as Language,
+          language: val.language as Language | undefined,
           framework: val.framework,
           stack: key as Stack,
           packageManager: val.packageManager as TechTier['packageManager'],
+          gameEngine: val.gameEngine,
         };
       }
     }
   }
   const hasTiers = Object.keys(tierEntries).length > 0;
   const hasVisualLayers = opts.visualTier && Object.values(opts.visualTier).some(Boolean);
+  const hasArtAxis = opts.artTier && Object.values(opts.artTier).some(Boolean);
+  const hasGameContentAxis = opts.gameContentTier && Object.values(opts.gameContentTier).some(Boolean);
 
   return {
     techTier: (opts.stack || hasTiers) ? {
@@ -144,6 +235,8 @@ export function buildBasisPreset(opts: {
       ...(opts.designSystem ? { designSystem: opts.designSystem } : {}),
       ...(hasVisualLayers ? opts.visualTier : {}),
     } : undefined,
+    artTier: hasArtAxis ? { ...opts.artTier } : undefined,
+    gameContentTier: hasGameContentAxis ? { ...opts.gameContentTier } : undefined,
   };
 }
 
@@ -333,7 +426,14 @@ export interface ResolvedActionContext {
   refs?: string[];
   context?: string[];
 
-  domain?: DesignDomain;
+  /**
+   * Project domain — universal across artifact-producing jobs.
+   * Phase 1: `'service' | 'game'`. Phase 4+ may extend (`'3d'`, ...).
+   * Populated either via:
+   *   - explicit ActionMetadata.domain (UI DomainToggle / `@domain:` mention)
+   *   - design / plan strategy LLM `<domain>` output (infer path)
+   */
+  domain?: Domain;
 
   intentDescription?: string;
 
@@ -392,7 +492,7 @@ export function resolveToRAC(
     target?: string[];
     refs?: string[];
     context?: string[];
-    domain?: DesignDomain;
+    domain?: Domain;
   },
   source?: 'explicit' | 'infer',
   basis?: Basis,
@@ -440,16 +540,19 @@ function dedup(arr: string[]): string[] {
 export function mergeWithMetadata(
   inferred: InferredAction,
   metadata?: ActionMetadata,
-): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: DesignDomain; basis?: Basis } {
+): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: Domain; basis?: Basis } {
   const mergedRefs = dedup([...(inferred.refs || []), ...(metadata?.refs || [])]);
   const mergedCtx = dedup([...(inferred.context || []), ...(metadata?.context || [])]);
+
+  // Explicit > infer (10.2 invariant): ActionMetadata.domain wins when present.
+  const domain = metadata?.domain ?? inferred.domain;
 
   return {
     intentId: metadata?.intent ?? inferred.intentId,
     target: metadata?.target?.length ? metadata.target : inferred.target,
     refs: mergedRefs.length > 0 ? mergedRefs : undefined,
     context: mergedCtx.length > 0 ? mergedCtx : undefined,
-    domain: inferred.domain,
+    domain,
     basis: metadata?.basis,
   };
 }
@@ -482,6 +585,9 @@ export function mergeTechTierConfigs(
         framework: p.framework ?? i.framework,
         stack: key as Stack,
         packageManager: p.packageManager ?? i.packageManager,
+        // Phase 1 — gameEngine 5th slot. Preset wins (user explicitly set
+        // it via wizard / mention), otherwise the inferred LLM choice.
+        gameEngine: p.gameEngine ?? i.gameEngine,
       };
     } else if (p) {
       result[key] = p;

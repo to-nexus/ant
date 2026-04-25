@@ -6,11 +6,11 @@
 export type {
   Mode,
   IntentGroup,
-  DesignDomain,
+  Domain,
   InferredAction,
 } from '@ant/shared';
 
-import type { Mode, IntentGroup, DesignDomain } from '@ant/shared';
+import type { Mode, IntentGroup, Domain } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FE-only Helper Functions
@@ -41,7 +41,7 @@ export function getIntentGroupEmoji(intentGroup: IntentGroup): string {
   }
 }
 
-export function getDomainEmoji(domain: DesignDomain): string {
+export function getDomainEmoji(domain: Domain): string {
   switch (domain) {
     case 'game': return '🎮';
     case 'service': return '🔧';

@@ -111,13 +111,50 @@
     "configurePreset": "기술/디자인 프리셋 설정",
     "wizardTechTier": "기술 티어",
     "wizardVisualTier": "비주얼 티어",
+    "wizardArtTier": "아트 티어",
+    "wizardGameContentTier": "게임 콘텐츠",
     "wizardDone": "완료",
     "wizardStepStack": "스택",
     "wizardStepLanguage": "언어",
     "wizardStepFramework": "프레임워크",
+    "wizardStepGameEngine": "게임 엔진",
     "wizardStepVisualLanguage": "비주얼 언어",
     "wizardStepSurfaceSystem": "서피스 시스템",
-    "wizardStepSpatialSystem": "공간 시스템"
+    "wizardStepSpatialSystem": "공간 시스템",
+    "wizardStepConcept": "컨셉",
+    "wizardStepPerspective": "시점",
+    "wizardStepGenre": "장르",
+    "wizardStepCoreLoop": "코어 루프",
+    "summary": {
+      "techTier": {
+        "gameEngine": "엔진"
+      },
+      "artTier": {
+        "concept": "컨셉",
+        "perspective": "시점",
+        "entityCatalog": "엔티티",
+        "motionPattern": "모션",
+        "particleProfile": "파티클",
+        "projectilePolicy": "투사체",
+        "audioProfile": "오디오"
+      },
+      "gameContentTier": {
+        "genre": "장르",
+        "coreLoop": "코어 루프"
+      }
+    }
+  },
+
+  "domain": {
+    "label": "도메인",
+    "description": "게임 / 서비스 도메인 선택",
+    "toggle": {
+      "label": "프로젝트 도메인",
+      "option": {
+        "game": "게임",
+        "service": "서비스"
+      }
+    }
   },
 
   "section": {

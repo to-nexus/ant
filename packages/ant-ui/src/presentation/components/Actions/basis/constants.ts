@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Settings2, Palette, type LucideProps } from 'lucide-react';
+import { Settings2, Palette, Brush, Gamepad2, type LucideProps } from 'lucide-react';
 import type { BasisSlotConfig } from '@ant/shared';
 import type { TierKey, WizardStepDef, WizardTierTabItem } from './types';
 
@@ -23,7 +23,8 @@ export interface TierDescriptor {
   description: { en: string; ko: string };
   /** Static predicate: is this tier even declared on the slot? Runtime
    * gating that depends on live wizard state (e.g. Visual Tier's
-   * `isVisualTierActive`) is layered on top inside `useBasisWizard`. */
+   * backend-stack / hasUiDoc suppressors) is layered on top inside
+   * `useBasisWizard` via the matrix predicate `isTierActive`. */
   isConfigured: (slot: BasisSlotConfig) => boolean;
   icon: ComponentType<LucideProps>;
   iconBg: string;
@@ -34,8 +35,8 @@ export const TIER_REGISTRY: readonly TierDescriptor[] = [
   {
     id: 'techTier',
     label: { en: 'Tech Tier', ko: '기술 티어' },
-    description: { en: 'Stack, language, and framework', ko: '스택, 언어, 프레임워크' },
-    isConfigured: (slot) => Boolean(slot.techTier),
+    description: { en: 'Stack, language, framework, and game engine', ko: '스택, 언어, 프레임워크, 게임 엔진' },
+    isConfigured: (slot) => Boolean(slot.tiers?.includes('techTier')),
     icon: Settings2,
     iconBg: 'bg-violet-50 dark:bg-violet-950/30',
     iconColor: 'text-violet-500 dark:text-violet-400',
@@ -44,10 +45,28 @@ export const TIER_REGISTRY: readonly TierDescriptor[] = [
     id: 'visualTier',
     label: { en: 'Visual Tier', ko: '비주얼 티어' },
     description: { en: 'Design language and surface style', ko: '디자인 언어와 서피스 스타일' },
-    isConfigured: (slot) => Boolean(slot.visualTier),
+    isConfigured: (slot) => Boolean(slot.tiers?.includes('visualTier')),
     icon: Palette,
     iconBg: 'bg-pink-50 dark:bg-pink-950/30',
     iconColor: 'text-pink-500 dark:text-pink-400',
+  },
+  {
+    id: 'artTier',
+    label: { en: 'Art Tier', ko: '아트 티어' },
+    description: { en: 'Engine-internal art (concept, perspective, motion, sfx)', ko: '엔진 내부 아트 (컨셉, 시점, 모션, SFX)' },
+    isConfigured: (slot) => Boolean(slot.tiers?.includes('artTier')),
+    icon: Brush,
+    iconBg: 'bg-amber-50 dark:bg-amber-950/30',
+    iconColor: 'text-amber-500 dark:text-amber-400',
+  },
+  {
+    id: 'gameContentTier',
+    label: { en: 'Game Content', ko: '게임 콘텐츠' },
+    description: { en: 'Genre and core loop pattern', ko: '장르와 코어 루프 패턴' },
+    isConfigured: (slot) => Boolean(slot.tiers?.includes('gameContentTier')),
+    icon: Gamepad2,
+    iconBg: 'bg-emerald-50 dark:bg-emerald-950/30',
+    iconColor: 'text-emerald-500 dark:text-emerald-400',
   },
 ];
 

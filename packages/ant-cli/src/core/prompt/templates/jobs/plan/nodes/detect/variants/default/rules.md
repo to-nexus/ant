@@ -1,9 +1,19 @@
 ## Output Contract
 
+{{#if explicitDomain}}
 Emit exactly two XML-tagged blocks, in this order:
 
 1. `<executionTier>N</executionTier>` — a single digit `0`–`4`.
 2. `<detect>{ ... }</detect>` — a JSON object describing intent detection.
+
+Domain is already committed (`{{explicitDomain}}`) — do NOT emit `<domain>`.
+{{else}}
+Emit exactly three XML-tagged blocks, in this order:
+
+1. `<executionTier>N</executionTier>` — a single digit `0`–`4`.
+2. `<domain>game|service</domain>` — universal project domain classification.
+3. `<detect>{ ... }</detect>` — a JSON object describing intent detection.
+{{/if}}
 
 Do NOT emit markdown fences, prose, or any other text.
 
@@ -39,10 +49,33 @@ Select exactly one `intentId`:
 | `rev-plan` | The directive asks to modify / improve / update / fix / expand the existing plan. |
 | `explain-plan` | The directive asks to understand / analyze / query / summarize the existing plan, with no modification. |
 
+{{#unless explicitDomain}}
+---
+
+## Domain Classification
+
+Phase 1 supports two domains: `game` and `service`. Pick exactly one based on directive signals (PRD content is unavailable at plan-detect time, so signals are weak — default to `service` when ambiguous).
+
+| Domain | Strong signals |
+|---|---|
+| `game` | 점수, 레벨, 스테이지, 플레이어, 매치, 콤보, NPC, 적, SFX, 게임플레이, 코어루프, 보스, 인벤토리, 캐릭터, 시뮬레이션, 카드, 보드, 퍼즐, 시점(2D/3D), scene, sprite, 게임잼 |
+| `service` | 사용자, 인증, 계정, 결제, API, endpoint, dashboard, CRM, SaaS, 이메일, 권한, role, 통합, 워크플로 |
+
+**Default rule**: when neither set of signals is dominant or signals overlap, emit `service`. Explicit user `@domain:` mention always wins via `actionMetadata.domain` and bypasses this inference entirely.
+{{/unless}}
+
 ---
 
 ## Output Example
 
+{{#if explicitDomain}}
 `<executionTier>3</executionTier>`
 
 `<detect>{ "intentId": "rev-plan", "reasoning": "Directive asks to expand the auth section with OIDC support, spanning multiple chapters." }</detect>`
+{{else}}
+`<executionTier>3</executionTier>`
+
+`<domain>service</domain>`
+
+`<detect>{ "intentId": "rev-plan", "reasoning": "Directive asks to expand the auth section with OIDC support, spanning multiple chapters." }</detect>`
+{{/if}}

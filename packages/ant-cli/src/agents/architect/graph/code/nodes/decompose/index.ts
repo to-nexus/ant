@@ -15,7 +15,7 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isVisualTierActive, getConfigSlots } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, ART_CONCEPT_VARIANTS, ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, GAME_CORE_LOOP_VARIANTS, SUPPORTED_GAME_ENGINES } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -304,6 +304,23 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // construction — `pool.uiSource()` throws on mixed sources.
   const uiSource = pool.uiSource();
 
+  // Phase 1: matrix-driven tier flags. Templates read these instead of
+  // domain-name comparisons (Domain-Branching Locality I1).
+  const _decomposeSlot = state.resolvedAction?.intent
+    ? getConfigSlots(state.resolvedAction.intent)?.basis
+    : undefined;
+  const _effectiveDomain = getEffectiveDomain(state.resolvedAction?.domain);
+  const _runtime = { techTier: state.resolvedAction?.basis?.techTier, hasUiDoc: hasUi };
+
+  // Phase 1 — decision-tag emit candidates. Templates use these via
+  // `{{{xCandidates}}}` so the LLM sees the matrix-allowed value list
+  // without us needing to name the domain inside the template (D6 / I1).
+  const _gameEngineEnabled =
+    _effectiveDomain === 'game' &&
+    isTierActive('techTier', _decomposeSlot, _effectiveDomain, _runtime);
+  const _artTierEnabled = isTierActive('artTier', _decomposeSlot, _effectiveDomain, _runtime);
+  const _gameContentTierEnabled = isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime);
+
   const enrichedVars = {
     ...decomposeVars,
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
@@ -314,14 +331,30 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     documents: decomposeVars.documents || [], hasDocuments: decomposeVars.hasDocuments || false,
     assetsHint,
     resolvedAction: state.resolvedAction,
-    visualTierActive: isVisualTierActive(
-      state.resolvedAction?.intent ? getConfigSlots(state.resolvedAction.intent)?.basis : undefined,
-      state.resolvedAction?.basis?.techTier,
-      hasUi,
-    ),
+    visualTierActive: isTierActive('visualTier', _decomposeSlot, _effectiveDomain, _runtime),
+    domainTierActive: isTierActive('domain', _decomposeSlot, _effectiveDomain, _runtime),
+    artTierActive: _artTierEnabled,
+    gameContentTierActive: _gameContentTierEnabled,
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
     availableSpatialSystems: SPATIAL_SYSTEM_VARIANTS.join(', '),
+    // Decision-tag candidate JSON literals. Empty (undefined) when the
+    // tier is matrix-gated off so `{{#if xCandidates}}` blocks vanish.
+    gameEngineCandidates: _gameEngineEnabled
+      ? JSON.stringify(SUPPORTED_GAME_ENGINES)
+      : undefined,
+    artConceptCandidates: _artTierEnabled
+      ? ART_CONCEPT_VARIANTS.map(v => `\`${v}\``).join(', ')
+      : undefined,
+    artPerspectiveCandidates: _artTierEnabled
+      ? ART_PERSPECTIVE_VARIANTS.map(v => `\`${v}\``).join(', ')
+      : undefined,
+    gameGenreCandidates: _gameContentTierEnabled
+      ? GAME_GENRE_VARIANTS.map(v => `\`${v}\``).join(', ')
+      : undefined,
+    gameCoreLoopCandidates: _gameContentTierEnabled
+      ? GAME_CORE_LOOP_VARIANTS.map(v => `\`${v}\``).join(', ')
+      : undefined,
     specClarifyBypassed: state._specClarifyBypassed === true,
     // Intent-level clarify gate. `<specClarify>` re-adjudicates the
     // active intent (redirect_to_design = job switch, proceed_without_spec
@@ -446,6 +479,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   let parsed: ReturnType<typeof parseLLMResponse> | undefined;
   let executionTier: ExecutionTierId | undefined;
   let attempt = 0;
+  // Phase 1 M-2 / D1 — share the retry-loop's decision-tag parse result
+  // with STEP 6.65 below so the response body is parsed exactly once.
+  type DecisionTagsResult = Awaited<ReturnType<
+    typeof import('../../../../../../core/llm-response/DecisionTagRegistry')['parseDecisionTags']
+  >>;
+  let decisionTagsAtFinal: DecisionTagsResult | undefined;
 
   while (true) {
     attempt++;
@@ -500,11 +539,48 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       throw error;
     }
 
+    // Phase 1 M-2 — DecisionTagRegistry violation retry. Validate the
+    // matrix-required decision tags BEFORE the executionTier validation
+    // so a single retry can address both contract failures together. The
+    // retry framing concatenates each violation source so the LLM sees
+    // both demands in one re-prompt. Result is stashed in
+    // `decisionTagsAtFinal` for reuse by STEP 6.65 (single parse / turn).
+    let decisionTagViolationFraming = '';
+    if (state.resolvedAction && _effectiveDomain) {
+      const { parseDecisionTags, decisionTagRetryFraming } =
+        await import('../../../../../../core/llm-response/DecisionTagRegistry');
+      decisionTagsAtFinal = parseDecisionTags(rawResponse);
+      const expectedTags: Array<'artTier' | 'gameContentTier'> = [];
+      if (isTierActive('artTier', _decomposeSlot, _effectiveDomain, _runtime)) {
+        expectedTags.push('artTier');
+      }
+      if (isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime)) {
+        expectedTags.push('gameContentTier');
+      }
+      const missingExpected = expectedTags.filter(t => decisionTagsAtFinal!.parsed[t] === undefined);
+      if (missingExpected.length > 0 || decisionTagsAtFinal.violations.length > 0) {
+        decisionTagViolationFraming = decisionTagRetryFraming(
+          missingExpected,
+          decisionTagsAtFinal.violations,
+        );
+      }
+    }
+
     try {
       executionTier = validateExecutionTier(parsed.executionTier, {
         mode: state.resolvedAction?.mode,
         nodeLabel: 'Decompose',
       });
+      // Even if executionTier passed, retry when decision tags are missing
+      // for matrix-active tiers (game projects need artTier/gameContentTier
+      // emission for the LLM SSOT to be honoured).
+      if (decisionTagViolationFraming && attempt < MAX_ATTEMPTS) {
+        console.warn(
+          `⚠️  [Decompose] Decision tag violation attempt ${attempt}/${MAX_ATTEMPTS} — retrying with framing.`,
+        );
+        prompts.user = originalUserPrompt + decisionTagViolationFraming;
+        continue;
+      }
       break; // contract satisfied
     } catch (e) {
       if (!(e instanceof ExecutionTierViolation)) throw e;
@@ -521,7 +597,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         `⚠️  [Decompose] Tier contract violation attempt ${attempt}/${MAX_ATTEMPTS}: ` +
         `${e.code} (mode=${e.mode ?? 'unknown'}, observed=${e.observedTier ?? 'none'}) — retrying with framing`,
       );
-      prompts.user = originalUserPrompt + buildExecutionTierViolationFraming(e);
+      // Pile both violation framings into the single retry so the LLM
+      // sees executionTier + decision-tag demands together.
+      prompts.user = originalUserPrompt
+        + buildExecutionTierViolationFraming(e)
+        + decisionTagViolationFraming;
     }
   }
 
@@ -755,6 +835,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     const inferredConfig: TechTierConfig = { stack };
     const pkgTiers = parsedTechTier.packageTiers as Record<string, { language?: string; framework?: string; stack: string }> | undefined;
 
+    // Phase 1 — gameEngine 5th slot. The LLM emits `"gameEngine"` inside the
+    // <techTier> JSON; the parser surfaces it as `parsedTechTier.gameEngine`
+    // and we attach it to the frontend tier (Phaser/Godot/Cocos all run
+    // in the browser, so engine is meaningful only on the frontend tier).
+    const parsedGameEngine = parsedTechTier.gameEngine;
+
     if (pkgTiers && stack === 'fullstack') {
       const feEntries = Object.values(pkgTiers).filter(e => e.stack === 'frontend');
       const beEntries = Object.values(pkgTiers).filter(e => e.stack === 'backend');
@@ -764,6 +850,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         language: ((feEntry?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
         framework: feEntry?.framework ?? defaultTier.framework,
         stack: 'frontend',
+        gameEngine: parsedGameEngine,
       };
       inferredConfig.backend = {
         language: ((beEntry?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
@@ -772,13 +859,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       };
     } else {
       if (stack === 'fullstack' || stack === 'frontend') {
-        inferredConfig.frontend = { ...defaultTier, stack: 'frontend' };
+        inferredConfig.frontend = { ...defaultTier, stack: 'frontend', gameEngine: parsedGameEngine };
       }
       if (stack === 'fullstack' || stack === 'backend') {
         inferredConfig.backend = { ...defaultTier, stack: 'backend' };
       }
       if (!stack) {
-        inferredConfig.frontend = defaultTier;
+        // No stack ⇒ engine still goes on the default frontend tier.
+        inferredConfig.frontend = { ...defaultTier, gameEngine: parsedGameEngine };
       }
     }
 
@@ -874,10 +962,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // clear any pre-existing preset so downstream prompts don't reference it.
   if (
     state.resolvedAction?.intent === 'gen-code-directive' &&
-    isVisualTierActive(
+    isTierActive(
+      'visualTier',
       getConfigSlots(state.resolvedAction.intent)?.basis,
-      state.resolvedAction?.basis?.techTier,
-      hasUi,
+      getEffectiveDomain(state.resolvedAction?.domain),
+      { techTier: state.resolvedAction?.basis?.techTier, hasUiDoc: hasUi },
     )
   ) {
     const { resolveVisualTierFromDecompose } = await import('../../../../../common/visualTierResolver');
@@ -914,6 +1003,49 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       },
     };
     console.log('🎨 VisualTier: suppressed (UI design doc present — doc is the design-system authority)');
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 6.65: Apply Phase 1 decision tags (artTier / gameContentTier)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // The decompose LLM emits `<artTier>` and `<gameContentTier>` only when
+  // those tiers are matrix-active. The 5th-slot `gameEngine` is parsed
+  // out of the existing `<techTier>` JSON in STEP 6.5 (responseParser
+  // surfaces `parsedTechTier.gameEngine`); it is NOT re-parsed here.
+  //
+  // We reuse the parse result the retry loop already produced (decisionTagsAtFinal)
+  // to avoid the cost of a second pass through the response body.
+  if (state.resolvedAction && _effectiveDomain && decisionTagsAtFinal) {
+    const { applyDecisionTagDefaults } = await import('../../../../../../core/llm-response/DecisionTagRegistry');
+    const expectedTags: Array<'artTier' | 'gameContentTier' | 'domain'> = [];
+    if (isTierActive('artTier', _decomposeSlot, _effectiveDomain, _runtime)) {
+      expectedTags.push('artTier');
+    }
+    if (isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime)) {
+      expectedTags.push('gameContentTier');
+    }
+    const applied = applyDecisionTagDefaults(decisionTagsAtFinal.parsed, expectedTags);
+
+    const artTier = applied.artTier as import('@ant/shared').ArtTier | undefined;
+    const gameContentTier = applied.gameContentTier as import('@ant/shared').GameContentTier | undefined;
+
+    if (artTier || gameContentTier) {
+      const newBasis: import('@ant/shared').Basis = { ...state.resolvedAction.basis };
+      if (artTier) newBasis.artTier = { ...(state.resolvedAction.basis?.artTier ?? {}), ...artTier };
+      if (gameContentTier) newBasis.gameContentTier = { ...(state.resolvedAction.basis?.gameContentTier ?? {}), ...gameContentTier };
+      state.resolvedAction = { ...state.resolvedAction, basis: newBasis };
+      console.log(
+        `🎮 [Decompose] Phase-1 decision tags applied: ` +
+        `artTier=${artTier ? Object.keys(artTier).join(',') : '-'}, ` +
+        `gameContentTier=${gameContentTier ? Object.keys(gameContentTier).join(',') : '-'}`,
+      );
+    }
+    if (decisionTagsAtFinal.violations.length > 0) {
+      console.warn(
+        `⚠️  [Decompose] decision tag violations:`,
+        decisionTagsAtFinal.violations.map(v => `${v.tag}:${v.reason}`).join(', '),
+      );
+    }
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

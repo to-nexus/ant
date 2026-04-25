@@ -44,23 +44,26 @@ resolveVisualTier(userSelection?, autoDetected?, screenContext?) → Partial<Vis
 
 우선순위: `userSelection > autoDetected > derive > undefined`
 
-### 런타임 비활성 Gate (SSOT)
+### 런타임 비활성 Gate (Phase 1 — Tier Matrix SSOT)
 
-`@ant/shared` 의 `isVisualTierActive(basisSlot, techTier, hasUiDoc)` 가 FE wizard / FE summary / BE decompose / prompt 주입 네 지점에서 동일 규칙을 적용한다. 세 개의 축 중 하나라도 닫히면 Visual Tier가 비활성된다:
+Phase 1 부터는 모든 tier (`domain` / `techTier` / `visualTier` / `artTier` / `gameContentTier`) 의 활성 여부를 [`@ant/shared/tier-matrix.ts`](../../packages/ant-shared/src/tier-matrix.ts) 의 단일 predicate `isTierActive(tier, slot, domain, runtime)` 가 결정한다. 옛 `isVisualTierActive` 헬퍼는 폐기 (D9). 동일 규칙이 FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 다섯 지점에 적용된다.
 
 ```
-visualTier is active  ⇔  basisSlot.visualTier === true
-                     AND  techTier.stack !== 'backend'
-                     AND  !hasUiDoc
+isTierActive('visualTier', slot, domain, runtime) ⇔
+   slot.tiers?.includes('visualTier')
+   AND TIER_DOMAIN_MATRIX.visualTier.includes(domain)   // ['service', 'game']
+   AND techTier.stack !== 'backend'
+   AND !hasUiDoc
 ```
 
 | 축 | 닫히는 조건 | 의미 |
 |---|---|---|
-| slot | `basisSlot.visualTier !== true` | 인텐트가 visual tier 자체를 opt-in 하지 않음 |
+| slot | `slot.tiers` 에 `'visualTier'` 미포함 | 인텐트가 visual tier 자체를 opt-in 하지 않음 |
+| matrix | (Phase 1 visualTier 는 항상 true) | 신규 도메인 추가 시 `TIER_DOMAIN_MATRIX.visualTier` row 갱신 |
 | stack | `techTier.stack === 'backend'` | 순수 백엔드 산출물 — 시각 정책 없음 |
 | uiDoc | `hasUiDoc === true` | **UI 디자인 문서가 RAC에 포함됨** — 문서가 곧 디자인 시스템 |
 
-`BasisSlotConfig.visualTier` 는 정적 boolean 그대로 유지하고, 런타임 값들과의 조합만 헬퍼에서 판정한다.
+`BasisSlotConfig.tiers: ReadonlyArray<TierKey>` 는 정적 게이트, 매트릭스 row 는 도메인 호환, runtime suppressors 는 backend stack / hasUiDoc 검사 — 세 단계 합성으로 활성 여부 결정.
 
 **`hasUiDoc` 의 정의 — "사용자가 선택한 RAC 에 UI 문서가 있는가"**
 

@@ -93,13 +93,50 @@
     "configurePreset": "Configure tech/design preset",
     "wizardTechTier": "Tech Tier",
     "wizardVisualTier": "Visual Tier",
+    "wizardArtTier": "Art Tier",
+    "wizardGameContentTier": "Game Content",
     "wizardDone": "Done",
     "wizardStepStack": "Stack",
     "wizardStepLanguage": "Language",
     "wizardStepFramework": "Framework",
+    "wizardStepGameEngine": "Game Engine",
     "wizardStepVisualLanguage": "Visual Language",
     "wizardStepSurfaceSystem": "Surface System",
-    "wizardStepSpatialSystem": "Spatial System"
+    "wizardStepSpatialSystem": "Spatial System",
+    "wizardStepConcept": "Concept",
+    "wizardStepPerspective": "Perspective",
+    "wizardStepGenre": "Genre",
+    "wizardStepCoreLoop": "Core Loop",
+    "summary": {
+      "techTier": {
+        "gameEngine": "Engine"
+      },
+      "artTier": {
+        "concept": "Concept",
+        "perspective": "Perspective",
+        "entityCatalog": "Entities",
+        "motionPattern": "Motion",
+        "particleProfile": "Particles",
+        "projectilePolicy": "Projectiles",
+        "audioProfile": "Audio"
+      },
+      "gameContentTier": {
+        "genre": "Genre",
+        "coreLoop": "Core Loop"
+      }
+    }
+  },
+
+  "domain": {
+    "label": "Domain",
+    "description": "Choose game vs. service domain",
+    "toggle": {
+      "label": "Project Domain",
+      "option": {
+        "game": "Game",
+        "service": "Service"
+      }
+    }
   },
 
   "section": {

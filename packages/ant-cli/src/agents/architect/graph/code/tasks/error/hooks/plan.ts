@@ -51,10 +51,15 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     : (getTechTier(state) ? [getTechTier(state)!] : []);
   const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(taskTechTiers);
 
+  const _errorPlanSlot = state.resolvedAction?.intent
+    ? (await import('@ant/shared')).getConfigSlots(state.resolvedAction.intent)?.basis
+    : undefined;
   const basisSection = await promptBuilder.renderBasis(
     state.resolvedAction?.basis,
     'code',
     taskTechTiers,
+    state.resolvedAction?.domain,
+    _errorPlanSlot,
   );
 
   const body = await promptBuilder.render('jobs/code/nodes/plan/variants/error/base', {

@@ -185,7 +185,31 @@ export const TECH_TIER_TEMPLATE_PATHS = {
     `jobs/${job}/basis/techTier/framework/${fw}`,
   jobDomain: (job: string, domain: string) =>
     `jobs/${job}/basis/domain/${domain}`,
+  gameEnginePreamble: () => 'basis/techTier/gameEngine/_preamble',
+  gameEngine: (engine: string) => `basis/techTier/gameEngine/${engine}`,
+  jobGameEngine: (job: string, engine: string) =>
+    `jobs/${job}/basis/techTier/gameEngine/${engine}`,
+  basisDomain: (domain: string) => `basis/domain/${domain}`,
 } as const;
+
+// ============================================
+// GameEngine — Phase 1 sub-engine slot (game domain only)
+// ============================================
+
+export const SUPPORTED_GAME_ENGINES = ['phaser', 'godot', 'cocos-creator'] as const;
+export type SupportedGameEngine = (typeof SUPPORTED_GAME_ENGINES)[number];
+
+export const GAME_ENGINE_LABELS: Record<SupportedGameEngine, { en: string; ko: string }> = {
+  phaser: { en: 'Phaser', ko: 'Phaser' },
+  godot: { en: 'Godot', ko: 'Godot' },
+  'cocos-creator': { en: 'Cocos Creator', ko: 'Cocos Creator' },
+};
+
+export const GAME_ENGINE_OPTIONS: BasisOption[] = [
+  { id: 'phaser', label: GAME_ENGINE_LABELS.phaser, description: { en: 'HTML5 2D engine, React-host friendly', ko: 'HTML5 2D 엔진, React 호스트 친화적' }, accentColor: 'orange' },
+  { id: 'godot', label: GAME_ENGINE_LABELS.godot, description: { en: 'Open-source 2D / 3D engine (stub)', ko: '오픈소스 2D / 3D 엔진 (stub)' }, accentColor: 'blue' },
+  { id: 'cocos-creator', label: GAME_ENGINE_LABELS['cocos-creator'], description: { en: 'Cross-platform 2D engine (stub)', ko: '크로스플랫폼 2D 엔진 (stub)' }, accentColor: 'green' },
+];
 
 // ============================================
 // UI Options (BasisOption arrays)
