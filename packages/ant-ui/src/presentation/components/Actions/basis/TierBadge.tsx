@@ -1,3 +1,5 @@
+import { Lock } from 'lucide-react';
+
 export type TierVariant = 'techTier' | 'visualTier' | 'gameArtTier' | 'gameContentTier';
 
 export interface TierBadgeData {
@@ -5,6 +7,12 @@ export interface TierBadgeData {
   label: string;
   isChanged?: boolean;
   isAuto?: boolean;
+  /**
+   * Locked badges represent values pinned by the intent matrix
+   * (`BasisSlotConfig.lockedStack`). Render a lock affordance and
+   * suppress edit / reset chrome that would suggest user mutation.
+   */
+  isLocked?: boolean;
 }
 
 interface TierBadgeProps {
@@ -59,7 +67,11 @@ export function TierBadge({ badge, variant }: TierBadgeProps) {
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] shrink-0 border ${cls}`}
+      title={badge.isLocked ? 'Locked by intent' : undefined}
     >
+      {badge.isLocked && (
+        <Lock className="w-2.5 h-2.5 mr-1 opacity-70" aria-hidden />
+      )}
       <span className={`font-normal ${keyCls}`}>{badge.keyLabel}:</span>
       <span className="ml-1 font-medium">{badge.label}</span>
       {badge.isChanged && <span className="ml-1 text-[9px] text-amber-500">*</span>}

@@ -2,13 +2,14 @@ import { useRef, useMemo, useCallback } from 'react';
 import { useStore } from '@/domain/store';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, getConfigSlots, type IntentGroup, type IntentId } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, getConfigSlots, isActionVisibleForDomain, type IntentGroup, type IntentId } from '@ant/shared';
 import { ActionChipGrid, IntentChipGrid, type ChipItem } from './ActionChipGrid';
 import { ActionConfigView } from './ActionConfigView';
 import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
 import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import { PageTransition } from './PageTransition';
 import { BasisWizard } from './basis';
+import { DomainToggle } from './DomainToggle';
 
 const STEP_ORDER = ['pick-action', 'pick-intent', 'config', 'basis-edit'] as const;
 
@@ -55,11 +56,17 @@ export function ActionsPanel() {
   }, [selectedActionId, selectAction]);
 
   const actionMetadata = useStore(s => s.actionMetadata);
+  // Phase 2 (D22): domain gate applies to pick-intent's ScrollableTabNav too.
+  // When workspace.domain === 'service', design-art tab disappears so the
+  // user cannot side-step the gate via tab switching.
+  const currentDomain = actionMetadata.domain;
 
   const handleIntentSelect = useCallback((intentId: string) => {
     selectIntent(intentId);
     const slots = getConfigSlots(intentId as Parameters<typeof getConfigSlots>[0]);
-    if (slots?.basis && !actionMetadata.basis) {
+    // rev-* intents carry `basis: { tiers: [] }` — treat as no wizard.
+    const basisHasTiers = (slots?.basis?.tiers?.length ?? 0) > 0;
+    if (basisHasTiers && !actionMetadata.basis) {
       setActionsStep('basis-edit');
     } else {
       setActionsStep('config');
@@ -82,18 +89,20 @@ export function ActionsPanel() {
   }, [step, selectedActionId, setActionsStep]);
 
   const actionTabItems: TabItem[] = useMemo(() =>
-    ACTION_DEFINITIONS.map(def => {
-      const visual = ACTION_VISUALS[def.id];
-      return {
-        id: def.id,
-        label: def.label[lang] || def.label.en,
-        description: def.description[lang] || def.description.en,
-        icon: visual?.icon,
-        iconBg: visual?.bg,
-        iconColor: visual?.text,
-      };
-    }),
-    [lang],
+    ACTION_DEFINITIONS
+      .filter(def => isActionVisibleForDomain(def, currentDomain))
+      .map(def => {
+        const visual = ACTION_VISUALS[def.id];
+        return {
+          id: def.id,
+          label: def.label[lang] || def.label.en,
+          description: def.description[lang] || def.description.en,
+          icon: visual?.icon,
+          iconBg: visual?.bg,
+          iconColor: visual?.text,
+        };
+      }),
+    [lang, currentDomain],
   );
 
   const intentChipItems = useCallback((): ChipItem[] => {
@@ -115,19 +124,31 @@ export function ActionsPanel() {
 
   const renderStep = () => {
     if (step === 'pick-action') {
+      // Phase 2 (D22) — workspace-level domain selector lives on the
+      // ActionsPanel top screen. Selecting a domain is a sticky workspace
+      // decision; descending into any wizard surfaces the same chip but
+      // disables editing (see `ActionConfigView` / `pick-intent` below).
       return (
-        <div className="h-full flex items-center justify-center p-8 overflow-y-auto">
-          <ActionChipGrid
-            readiness={readiness}
-            variant="large"
-            onSelect={handleActionSelect}
-            title={t('title')}
-          />
+        <div className="h-full flex flex-col overflow-y-auto">
+          <div className="shrink-0 px-5 pt-5 flex justify-end">
+            <DomainToggle topLevel />
+          </div>
+          <div className="flex-1 flex items-center justify-center p-8">
+            <ActionChipGrid
+              readiness={readiness}
+              variant="large"
+              onSelect={handleActionSelect}
+              title={t('title')}
+            />
+          </div>
         </div>
       );
     }
 
     if (step === 'pick-intent' && selectedActionId) {
+      // D22: workspace domain is set ONLY on the top `pick-action` screen.
+      // Lower depths (pick-intent / config / basis-edit) do NOT surface the
+      // chip — the user has already locked the domain in.
       return (
         <div className="h-full flex flex-col">
           <div className="shrink-0 px-5 pt-5">
@@ -166,7 +187,11 @@ export function ActionsPanel() {
 
     if (step === 'basis-edit' && selectedIntentId) {
       const slots = getConfigSlots(selectedIntentId as Parameters<typeof getConfigSlots>[0]);
-      if (slots?.basis) {
+      // BasisWizard requires at least one configurable tier — rev-* intents
+      // (`tiers: []`) fall through and the panel renders nothing here, but
+      // the navigation path that brings the user to `basis-edit` already
+      // routes around them via `handleIntentSelect`.
+      if (slots?.basis && (slots.basis.tiers?.length ?? 0) > 0) {
         return (
           <div className="h-full">
             <BasisWizard
