@@ -39,17 +39,17 @@
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/darkFantasy": {
+  "basis/gameArtTier/concept/cardClassic": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/martialArts": {
+  "basis/gameArtTier/concept/flatMinimal": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/modernCasual": {
+  "basis/gameArtTier/concept/neonArcade": {
     "sources": [
       "basis-registry"
     ]
@@ -59,12 +59,7 @@
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/sfFantasy": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/gameArtTier/concept/threeKingdoms": {
+  "basis/gameArtTier/concept/softPastel": {
     "sources": [
       "basis-registry"
     ]
@@ -119,11 +114,6 @@
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/perspective/3d": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
   "basis/gameArtTier/projectilePolicy/complex": {
     "sources": [
       "basis-registry"
@@ -144,22 +134,7 @@
       "basis-registry"
     ]
   },
-  "basis/gameContentTier/coreLoop/build": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
   "basis/gameContentTier/coreLoop/collect": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/gameContentTier/coreLoop/explore": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/gameContentTier/coreLoop/fight": {
     "sources": [
       "basis-registry"
     ]
@@ -169,52 +144,37 @@
       "basis-registry"
     ]
   },
-  "basis/gameContentTier/genre/action": {
+  "basis/gameContentTier/coreLoop/survive": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameContentTier/genre/casual": {
+  "basis/gameContentTier/genre/arcadePaddle": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameContentTier/genre/platformer": {
+  "basis/gameContentTier/genre/arcadeSnake": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameContentTier/genre/puzzle": {
+  "basis/gameContentTier/genre/cardSolitaire": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameContentTier/genre/rpg": {
+  "basis/gameContentTier/genre/match3": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameContentTier/genre/shooter": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/gameContentTier/genre/strategy": {
+  "basis/gameContentTier/genre/slidingPuzzle": {
     "sources": [
       "basis-registry"
     ]
   },
   "basis/techTier/gameEngine/_preamble": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/techTier/gameEngine/cocos-creator": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/techTier/gameEngine/godot": {
     "sources": [
       "basis-registry"
     ]

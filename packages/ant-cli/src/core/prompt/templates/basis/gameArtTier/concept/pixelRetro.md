@@ -61,3 +61,7 @@ When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / 
 - **Typography weight**: bitmap fonts (e.g. Press Start 2P / VT323 / monogram) — pixel-perfect at the chosen resolution. Anti-aliased fonts break the aesthetic; reject system sans-serif.
 - **Border radius**: 0px — sharp square corners. Rounded panels are anachronistic. (The single exception: tile-perfect 1-pixel chamfers if the era supports it, e.g. Game Boy.)
 - **Focus ring / interaction tone**: raw-instant — single-frame state swap on press (no transition), 2-frame blink on focus. Smooth tween is forbidden; everything is discrete.
+
+### Genre affinity (D32-revised v8 — guidance, not a hard gate)
+
+`pixelRetro` is the canonical era-faithful tone for `slidingPuzzle` (NES Sokoban / Game Boy Boxxle), `arcadeSnake` (NES / GB Snake), and a strong fit for `arcadePaddle` (Atari 2600 Breakout). It works for `match3` (16-bit gem ports) when the project commits the era. `cardSolitaire` is unusual — Game-Boy-era solitaire variants exist, but `cardClassic` is the more direct fit.

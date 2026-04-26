@@ -5,8 +5,8 @@ Author one category of asset entries in `game-art-assets.json`.
 Categories are LLM-decided dictionary keys (D25). Each Figma frame /
 component group maps to one category.
 
-### Surface scope (D24 — flat structure)
-- Output path: `outputs/design/game-art/game-art-assets.json`
+### Surface scope (D24-revised v8 — sub-sourced canonical)
+- Output path: `outputs/design/game-art/ant/game-art-assets.json` (mirrors `outputs/design/ui/ant/`).
 
 ### ⚠️ CRITICAL: Scope & Surface Boundary
 
@@ -57,12 +57,32 @@ Same shape as in the by-desc variant:
 **Inline scope (D21)**: viewBox ≤ 64; ≤ 5 paths; single-tone CSS;
 OscillatorNode `durationMs` ≤ 200.
 
+### Phase 4 external-asset hook (`_meta.phaseScope === 'p4-external-enabled'`)
+
+When the project marks `_meta.phaseScope` as `'p4-external-enabled'`, the
+following category-specific external mappings activate:
+
+| Category      | External activation                                                                 |
+|---------------|--------------------------------------------------------------------------------------|
+| `sfx`         | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `inputs/assets/game/sfx/`         |
+| `bgm`         | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `inputs/assets/game/bgm/`         |
+| `atlas`       | `kind: 'external'` atlas JSON + image pairs under `inputs/assets/game/atlas/`       |
+| `entities`    | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/entities/` (typical Figma export target) |
+| `particles`   | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/particles/`            |
+| `projectiles` | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/projectiles/`          |
+
+`phaseScope` derivation: when the project basis declares
+`gameArtTier.audioProfile === 'fileBased' | 'hybrid'`,
+`gameArtTier.entityCatalog === 'rich'`, or
+`gameArtTier.particleProfile === 'heavy'`, the scope is
+`'p4-external-enabled'`. Otherwise default to `'p2-css-only'`.
+
 ### JSON Structure
 
 ```json
 {
   "_meta": {
-    "phaseScope": "p2-css-only"
+    "phaseScope": "p2-css-only" | "p4-external-enabled"
   },
   "<your-category>": [
     /* entries */
@@ -76,7 +96,7 @@ OscillatorNode `durationMs` ≤ 200.
 **Parallel category task**: use `<append>` to merge your category.
 
 ```xml
-<append path="outputs/design/game-art/game-art-assets.json">
+<append path="outputs/design/game-art/ant/game-art-assets.json">
 {
   "<your-category>": [
     /* entries */
@@ -88,7 +108,7 @@ OscillatorNode `durationMs` ≤ 200.
 **First task**: use `<file>` with `_meta`.
 
 ```xml
-<file path="outputs/design/game-art/game-art-assets.json">
+<file path="outputs/design/game-art/ant/game-art-assets.json">
 {
   "_meta": { "phaseScope": "p2-css-only" },
   "<your-category>": [

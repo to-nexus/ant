@@ -31,15 +31,58 @@ Constraints:
 - ❌ Do NOT bake inline SVG into JSX as plain markup when the engine wants a texture — Phaser needs `addBase64`, not `<svg>` in the DOM.
 - ✅ DO cache materialized inline assets at module scope. Per-frame regeneration of the same SVG burns CPU and breaks frame budgets.
 
-### 3. External fallback (Phase 4 hook)
+### 3. External fallback (Phase 4 hook — activated)
 
-`kind: 'external'` entries point at files under `inputs/assets/game/{category}/...`. In Phase 3 the only external entries that load are images (entities, particles, projectiles); audio is gated by `phaseScope`. The loading boundary is engine-specific and lives in the engine partial (e.g. `BootScene.preload` for Phaser).
+`kind: 'external'` entries point at files under `inputs/assets/game/{category}/...`. The loading boundary is engine-specific and lives in the engine partial (e.g. `BootScene.preload` for Phaser).
 
-When Phase 4 lifts `phaseScope` to `'p4-external-enabled'`, the same code path activates for sfx/bgm. Code emitted today MUST already have the conditional in place — `if (phaseScope !== 'p2-css-only') { /* load audio */ }` — so Phase 4 is a flag flip rather than a rewrite.
+#### Per-category loading rules (Phase 4)
+
+| Category | Phase 3 (`p2-css-only`) | Phase 4 (`p4-external-enabled`) |
+|---|---|---|
+| `entities` | `kind: 'external'` `.png` / `.svg` loaded via `this.load.image(id, src)`. | Same. Atlas variants (`this.load.atlas(...)`) activate when `entityCatalog === 'rich'`. |
+| `particles` | `kind: 'external'` `.png` / `.svg` loaded via `this.load.image(id, src)`; emitter consumes the texture. | Same; multi-emitter + ambient continuous emitters activate when `particleProfile === 'heavy'`. |
+| `projectiles` | `kind: 'external'` `.png` / `.svg` loaded; group-pool consumes the texture. | Same. Multi-projectile-kind groups activate only when `projectilePolicy === 'complex'`. |
+| `sfx` | **Suppressed**. `kind: 'external'` SFX entries are ignored at load time; procedural OscillatorNode is the only audio path. | **Active**. `this.load.audio(id, src)` runs in `BootScene.preload`; `this.sound.play(id)` consumes the registered audio. |
+| `bgm` | **Suppressed**. `kind: 'external'` BGM entries are ignored; the scene runs without BGM. | **Active**. `this.load.audio(id, src)` + `this.sound.play(id, { loop: true })` from a chosen entry-point scene (typically `MainScene.create`). |
+| `atlas` | **Suppressed** (entity / particle external entries still resolve their image, but atlas manifests are not consumed). | **Active**. `this.load.atlas(id, image, json)` in `BootScene.preload`; `Phaser.AnimationManager` consumes the manifest. |
+| `tilemaps` | `kind: 'external'` `.json` loaded via `this.load.tilemapTiledJSON(...)`. | Same. |
+
+#### Conditional emit pattern
+
+Code emitted from Phase 3 onward MUST stage the audio loader behind the marker so the Phase 4 transition is a flag flip rather than a rewrite:
+
+```ts
+// BootScene.preload (illustrative)
+if (catalog._meta.phaseScope === 'p4-external-enabled') {
+  for (const entry of catalog.sfx ?? []) {
+    if (entry.kind === 'external') this.load.audio(entry.id, entry.src);
+  }
+  for (const entry of catalog.bgm ?? []) {
+    if (entry.kind === 'external') this.load.audio(entry.id, entry.src);
+  }
+}
+// Inline OscillatorNode SFX always remain available regardless of phaseScope.
+```
+
+The audio module wraps both subsystems behind a uniform `playSfx(id)` /
+`playBgm(id)` API so the gameplay code does not need a phase-scope
+branch — only the loader does.
+
+### 3b. Audio profile contract (Phase 4)
+
+The `audioProfile` axis (Phase 4) names how the audio module composes the procedural and file-based paths:
+
+| `audioProfile` | SFX path | BGM path |
+|---|---|---|
+| `procedural` | OscillatorNode (always) | None or stacked-oscillator looper |
+| `fileBased` | `this.sound.play(sfxId)` (Phaser audio) | `this.sound.play(bgmId, { loop: true })` |
+| `hybrid` | OscillatorNode (procedural) | `this.sound.play(bgmId, { loop: true })` |
+
+Under `phaseScope === 'p2-css-only'`, `fileBased` and `hybrid` BOTH degrade to procedural-SFX-only (the BGM half goes silent). The audio module logs the degrade once at boot so the user understands what they are hearing.
 
 ### 4. Domain-Surface Boundary (I7-revised — D28)
 
-A game-domain code job consumes **one** asset surface — the game-art catalog under `outputs/design/game-art/`. The service-domain UI catalog (`outputs/design/ui/ant/ui-*.json`) is NOT in scope (D28 vertical split).
+A game-domain code job consumes **one** asset surface — the game-art catalog under `outputs/design/game-art/ant/` (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`). The service-domain UI catalog (`outputs/design/ui/ant/ui-*.json`) is NOT in scope (D28 vertical split).
 
 Both render paths in a React + Phaser host pull from the same source:
 

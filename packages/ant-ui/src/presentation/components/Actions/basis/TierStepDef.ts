@@ -7,11 +7,18 @@
  *   1. listing active tiers via the matrix predicate,
  *   2. concatenating `TIER_STEP_DEF[tier]` for each.
  *
- * Phase 2 Step set:
+ * Step set:
  *   - techTier:        [stack, language, framework, gameEngine?]
  *                      (FULLSTACK_STEPS used when stack=fullstack)
  *   - visualTier:      [visualLanguage, surfaceSystem]
- *   - gameArtTier:     [concept, perspective]      (Phase 4 adds 5 axes)
+ *   - gameArtTier:     [concept, perspective]
+ *                      (D46 v9.2 — the 5 asset axes (entityCatalog /
+ *                      motionPattern / particleProfile / projectilePolicy
+ *                      / audioProfile) are NOT exposed as wizard steps;
+ *                      the LLM decides them at decompose time from the
+ *                      registry candidate set. Only `concept` and
+ *                      `perspective` are user-facing decisions; the rest
+ *                      are inferred from genre / coreLoop / directive.)
  *   - gameContentTier: [genre, coreLoop]
  *
  * Note: techTier is special — it has dynamic step ordering that depends
@@ -37,6 +44,12 @@ export const GAME_ENGINE_STEP: WizardStepDef = {
   description: { en: 'Select the sub-engine that runs inside the framework', ko: '프레임워크 내부에서 동작할 서브 엔진을 선택하세요' },
 };
 
+// D46 (v9.2) — Game-art wizard exposes only `concept` + `perspective`.
+// The 5 asset axes (entityCatalog / motionPattern / particleProfile /
+// projectilePolicy / audioProfile) are NOT user-facing decisions; the
+// LLM emits them at decompose time from the SSOT candidate set in
+// `@ant/shared/game-art-tier-registry.ts`. The decision-tag parser still
+// absorbs all 7 axes — only the wizard surface narrows.
 export const GAME_ART_STEPS: WizardStepDef[] = [
   {
     id: 'concept',
@@ -50,7 +63,7 @@ export const GAME_ART_STEPS: WizardStepDef[] = [
     tierKey: 'gameArtTier',
     layerKey: 'perspective',
     title: { en: 'Perspective', ko: '시점' },
-    description: { en: 'Choose the camera / depth model (2D vs 3D)', ko: '카메라/깊이 모델 (2D vs 3D) 을 선택하세요' },
+    description: { en: 'Choose the camera / depth model (D30 v7 — 2D only; 3D is a Phase 5+ hook)', ko: '카메라/깊이 모델 (D30 v7 — 2D 만; 3D 는 Phase 5+ 훅)' },
   },
 ];
 

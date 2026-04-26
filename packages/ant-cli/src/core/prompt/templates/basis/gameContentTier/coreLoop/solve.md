@@ -35,7 +35,7 @@ A `solve` loop without iteration delta is a quiz set, not a loop — every probl
 
 ### Affinity
 
-Strong fit: `puzzle`. Possible: `casual` for one-shot puzzles, `rpg` for puzzle-RPG sub-genres.
+Strong fit: `match3` (3-match prediction), `slidingPuzzle` (positional reasoning), `cardSolitaire` (legal-move planning). Possible: brief `solve` cycles inside an `arcadePaddle` aim or `arcadeSnake` route choice; primary loop there is `survive`.
 
 ### Blind-spot reminders
 

@@ -6,7 +6,7 @@
 - `game-art-assets.json` — category-keyed asset catalog (`entities` / `particles` / `projectiles` / `sfx` / `bgm` / `tilemaps` / ...). Each entry carries `kind: 'inline' | 'external'` (D20).
 - `game-art-spec.json` — category-keyed behaviour / motion / interaction specs (`effects` / `characters` / `projectiles` / `npcs` / `objectives` / `hud` / `menu` / `dialog` / ...). Categories are LLM-chosen but stable within the document (D25).
 
-Path: `outputs/design/game-art/`. **Flat structure** (D24) — no ant/figma/handoff sub-source. Sections of `game-art-spec.json` are addressable by category key; the pool exposes each as `outputs/design/game-art/spec/{category}`.
+Path: `outputs/design/game-art/ant/` (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`). The `figma/` and `handoff/` sub-sources are Phase 5+ hooks (parser-only today). Sections of `game-art-spec.json` are addressable by category key; the pool exposes each as `outputs/design/game-art/ant/spec/{category}`.
 
 ### Principle (Authority)
 

@@ -129,7 +129,16 @@ export class BullMQJobQueue implements JobQueuePort {
       // ✅ Extract interruption and status at the top level for reliable propagation
       // The result structure is: { success, output: { success, status, interruption, ... } }
       const interruption = parsedResult?.output?.interruption || parsedResult?.interruption;
-      const outputStatus = parsedResult?.output?.status || (interruption ? 'paused' : 'completed');
+      // Outer `success === false` (child exited non-zero without RESULT — SIGKILL,
+      // OOM, uncaught exit, etc.) maps to a terminal `failed`. Without this guard
+      // RouteConfigurator's else branch would seal the job as `completed` despite
+      // the failure, since `data.status === 'failed' ? 'failed' : 'completed'`
+      // can't see the inner success bit. SIGTERM-style kills go through Phase 1's
+      // RESULT contract and surface as `interruption` instead, so they're
+      // covered by the `paused` branch above this guard.
+      const outerFailed = parsedResult?.success === false;
+      const outputStatus = parsedResult?.output?.status
+        || (interruption ? 'paused' : (outerFailed ? 'failed' : 'completed'));
       
       // ✅ Log for debugging interruption propagation
       console.log(`📋 [BullMQJobQueue] Job completed | jobId=${jobId} | returnvalueType=${typeof returnvalue} | hasInterruption=${!!interruption} | outputStatus=${outputStatus}`);

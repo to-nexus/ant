@@ -366,6 +366,30 @@ export async function ensureCanonicalStructure(featurePath: string): Promise<Ens
     }, { featurePath, reason });
   }
 
+  // v8 (D24-revised) — game-art flat → ant/ sub-source migration.
+  // Lifts the legacy `outputs/design/game-art/{X}.json` flat layout into
+  // `outputs/design/game-art/ant/{X}.json` (mirrors `outputs/design/ui/ant`).
+  // Idempotent / silent noop when the workspace already has no flat files.
+  try {
+    const { migrateGameArtToAntSubdir } = await import('../../infrastructure/workspace/migrateGameArtToAntSubdir');
+    const migrated = await migrateGameArtToAntSubdir({ featurePathAbs: featurePath });
+    if (!migrated.alreadyMigrated) {
+      logger.info('[ensureCanonicalStructure] migrated game-art to ant sub-source', {
+        component: 'ensureCanonicalStructure',
+      }, {
+        featurePath,
+        moved: migrated.stats.moved,
+        collisions: migrated.stats.collision,
+        failed: migrated.stats.failed,
+      });
+    }
+  } catch (err: unknown) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn('[ensureCanonicalStructure] game-art ant migration skipped', {
+      component: 'ensureCanonicalStructure',
+    }, { featurePath, reason });
+  }
+
   return { createdDirs, createdFiles };
 }
 

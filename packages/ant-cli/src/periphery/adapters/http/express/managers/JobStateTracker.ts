@@ -22,7 +22,6 @@ export class JobStateTracker {
       currentJobId: null,
       taskQueueSnapshots: new Map(),
       jobToProject: new Map(),
-      userStoppedJobs: new Set()
     };
   }
 
@@ -186,26 +185,11 @@ export class JobStateTracker {
     }
   }
 
-  /**
-   * Mark job as user-stopped (to prevent duplicate cleanup)
-   */
-  markUserStopped(jobId: string): void {
-    this.state.userStoppedJobs.add(jobId);
-  }
-
-  /**
-   * Check if job was user-stopped
-   */
-  isUserStopped(jobId: string): boolean {
-    return this.state.userStoppedJobs.has(jobId);
-  }
-
-  /**
-   * Clear user-stopped flag
-   */
-  clearUserStopped(jobId: string): void {
-    this.state.userStoppedJobs.delete(jobId);
-  }
+  // user-stopped flag SSOT lives in `RedisStateStore`
+  // (`markUserStopped` / `isUserStopped` / `clearUserStopped`). The
+  // in-memory mirror that used to live here was redundant and never
+  // populated by the BullMQ-based hot path, so it has been removed in
+  // favour of the single Redis source.
 
   /**
    * Clean up job state (called when job is terminated)

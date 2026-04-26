@@ -33,13 +33,34 @@ import type { BasisOption } from './tech-tier-registry';
 // Variant Constants
 // ============================================
 
+/**
+ * v8 (D32-revised) — 5 concepts tuned for css-only production and the 5
+ * sub-genres registered by D31-revised. `pixelRetro` is the only concept
+ * carried over from Phase 3; the rest are post-v7 (`flatMinimal` /
+ * `neonArcade`) plus v8 additions (`softPastel` / `cardClassic`). Phase
+ * 5+ widens the union when production assets are authored.
+ */
 export const GAME_ART_CONCEPT_VARIANTS: readonly GameArtConceptVariant[] = [
-  'sfFantasy', 'darkFantasy', 'threeKingdoms', 'martialArts',
-  'modernCasual', 'pixelRetro',
+  'flatMinimal',
+  'pixelRetro',
+  'neonArcade',
+  'softPastel',
+  'cardClassic',
 ] as const;
 
+/**
+ * v7 (D30): `GAME_ART_PERSPECTIVE_VARIANTS` is a single-element registry
+ * today (`['2d']`). Phaser 3 is a 2D HTML5 engine; production 3D requires
+ * glTF models / lighting / scene graph that cannot be authored at the
+ * css-only inline scope. Three.js / `enable3d` / `Phaser3D` integrations are
+ * Phase 5+ hooks (visual job activates 3D production assets first). The
+ * decision pipeline is unchanged — `gameArtPerspectiveCandidates` still
+ * serializes the (cardinality-1) candidate list and the LLM still emits
+ * `<gameArtTier>...,perspective=2d,...</gameArtTier>` through the normal
+ * channel.
+ */
 export const GAME_ART_PERSPECTIVE_VARIANTS: readonly GameArtPerspectiveVariant[] = [
-  '2d', '3d',
+  '2d',
 ] as const;
 
 // Phase 4 axis — variants are typed but registry populates them with
@@ -98,22 +119,46 @@ export const GAME_ART_TIER_TEMPLATE_PATHS = {
 // ============================================
 
 export const GAME_ART_CONCEPT_OPTIONS: BasisOption[] = [
-  { id: 'sfFantasy', label: { en: 'SF Fantasy', ko: 'SF 판타지' }, description: { en: 'Sci-fi + fantasy hybrid (space opera, cyber-mage)', ko: 'SF + 판타지 혼합 (스페이스 오페라, 사이버 마법사)' }, accentColor: 'violet' },
-  { id: 'darkFantasy', label: { en: 'Dark Fantasy', ko: '다크 판타지' }, description: { en: 'Gothic, somber palette with high contrast', ko: '고딕한 침울한 팔레트와 높은 대비' }, accentColor: 'slate' },
-  { id: 'threeKingdoms', label: { en: 'Three Kingdoms', ko: '삼국지' }, description: { en: 'Classical Eastern epic, ink-and-wash silhouettes', ko: '동양 고전 서사, 수묵화 실루엣' }, accentColor: 'amber' },
-  { id: 'martialArts', label: { en: 'Martial Arts', ko: '무협' }, description: { en: 'Wuxia palette, fluid combat silhouettes', ko: '무협 팔레트, 유연한 전투 실루엣' }, accentColor: 'red' },
-  { id: 'modernCasual', label: { en: 'Modern Casual', ko: '모던 캐주얼' }, description: { en: 'Bright, playful, mobile-game-friendly', ko: '밝고 플레이풀, 모바일 게임 친화적' }, accentColor: 'sky' },
+  { id: 'flatMinimal', label: { en: 'Flat Minimal', ko: '플랫 미니멀' }, description: { en: 'Material/iOS rounded shapes, single-accent palette, no shadow', ko: 'Material/iOS 둥근 도형, 단색 + 강조 1~2 색, 무그림자' }, accentColor: 'sky' },
   { id: 'pixelRetro', label: { en: 'Pixel Retro', ko: '픽셀 레트로' }, description: { en: '8/16-bit pixel aesthetic with limited palette', ko: '8/16비트 픽셀 미학과 제한된 팔레트' }, accentColor: 'orange' },
+  { id: 'neonArcade', label: { en: 'Neon Arcade', ko: '네온 아케이드' }, description: { en: 'Tron / synthwave — dark background with neon glow lines', ko: 'Tron / 신스웨이브 — 어두운 배경 + 네온 보색 글로우' }, accentColor: 'violet' },
+  { id: 'softPastel', label: { en: 'Soft Pastel', ko: '소프트 파스텔' }, description: { en: 'Pastel hues, pillowy gradients (Two Dots / Threes tone)', ko: '파스텔 hue, 부드러운 그라디언트 (Two Dots / Threes 톤)' }, accentColor: 'pink' },
+  { id: 'cardClassic', label: { en: 'Card Classic', ko: '클래식 카드' }, description: { en: 'Green felt + white card face + suit pictograms (Solitaire tone)', ko: '녹색 펠트 + 흰 카드 면 + suit 픽토그램 (Solitaire 톤)' }, accentColor: 'green' },
 ];
 
 export const GAME_ART_PERSPECTIVE_OPTIONS: BasisOption[] = [
-  { id: '2d', label: { en: '2D', ko: '2D' }, description: { en: 'Flat 2D camera (top-down / side / iso)', ko: '평면 2D 카메라 (탑다운 / 사이드 / 아이소메트릭)' }, accentColor: 'blue' },
-  { id: '3d', label: { en: '3D', ko: '3D' }, description: { en: 'Perspective / orthographic 3D camera', ko: '투시 / 직교 3D 카메라' }, accentColor: 'indigo' },
+  { id: '2d', label: { en: '2D', ko: '2D' }, description: { en: 'Flat 2D camera (top-down / side / iso). Phaser 3 native; 3D deferred to Phase 5+.', ko: '평면 2D 카메라 (탑다운 / 사이드 / 아이소메트릭). Phaser 3 기본; 3D 는 Phase 5+ 로 연기.' }, accentColor: 'blue' },
 ];
 
-// Phase 4 axis options — empty arrays today; Phase 4 populates full lists.
-export const GAME_ART_ENTITY_CATALOG_OPTIONS: BasisOption[] = [];
-export const GAME_ART_MOTION_PATTERN_OPTIONS: BasisOption[] = [];
-export const GAME_ART_PARTICLE_PROFILE_OPTIONS: BasisOption[] = [];
-export const GAME_ART_PROJECTILE_POLICY_OPTIONS: BasisOption[] = [];
-export const GAME_ART_AUDIO_PROFILE_OPTIONS: BasisOption[] = [];
+// Phase 4 axis options — populated for the 7-step wizard. Each option's
+// description summarizes the axis variant in one sentence (the partial
+// `.md` carries the full body).
+export const GAME_ART_ENTITY_CATALOG_OPTIONS: BasisOption[] = [
+  { id: 'minimal', label: { en: 'Minimal', ko: '미니멀' }, description: { en: 'Single shape per role (≤3 entities) — match-3 gem, snake body cell, paddle/ball/brick', ko: '역할별 단일 도형 (≤3 엔티티) — 매치-3 젬, 스네이크 몸체, 패들/볼/브릭' }, accentColor: 'sky' },
+  { id: 'standard', label: { en: 'Standard', ko: '스탠다드' }, description: { en: 'Hero + 1–2 antagonists + 1–2 collectibles (2–4 distinct entities, inline composable)', ko: '히어로 + 적 1~2 + 수집품 1~2 (2~4 엔티티, 인라인 합성)' }, accentColor: 'green' },
+  { id: 'rich', label: { en: 'Rich', ko: '리치' }, description: { en: 'Multi-character roster + animation cycles (5+ entries, Phase 5+ recommended)', ko: '다중 캐릭터 + 애니메이션 사이클 (5+ 엔트리, Phase 5+ 권장)' }, accentColor: 'violet' },
+];
+
+export const GAME_ART_MOTION_PATTERN_OPTIONS: BasisOption[] = [
+  { id: 'static', label: { en: 'Static', ko: '스태틱' }, description: { en: 'Discrete position changes — snap-to-grid, no tween. Pixel/sliding/snake.', ko: '이산적 위치 변경 — 그리드 스냅, 트윈 없음. 픽셀/슬라이딩/스네이크.' }, accentColor: 'slate' },
+  { id: 'subtle', label: { en: 'Subtle', ko: '서틀' }, description: { en: 'Ease-in-out tweens, 150–400ms. Match-3 cascade, card flip + settle.', ko: 'ease-in-out 트윈, 150–400ms. 매치-3 캐스케이드, 카드 플립.' }, accentColor: 'sky' },
+  { id: 'expressive', label: { en: 'Expressive', ko: '익스프레시브' }, description: { en: 'Spring/bounce/squash, chained tweens, screen shake. Paddle/Breakout juicy feel.', ko: '스프링/바운스/스쿼시, 트윈 체인, 스크린 셰이크. 패들/브레이크아웃 쥬시 톤.' }, accentColor: 'red' },
+];
+
+export const GAME_ART_PARTICLE_PROFILE_OPTIONS: BasisOption[] = [
+  { id: 'none', label: { en: 'None', ko: '없음' }, description: { en: 'Zero particle emitters — sliding/card classic prefer this', ko: '파티클 없음 — 슬라이딩/카드 클래식 권장' }, accentColor: 'slate' },
+  { id: 'light', label: { en: 'Light', ko: '라이트' }, description: { en: '5–10 particles per event, single-texture bursts (match-clear spark, food eat)', ko: '이벤트당 5~10 파티클, 단일 텍스처 (매치 클리어, 음식 수집)' }, accentColor: 'amber' },
+  { id: 'heavy', label: { en: 'Heavy', ko: '헤비' }, description: { en: '50+ particles, ambient emitters, multi-texture mixes (paddle/breakout, juicy match-3)', ko: '50+ 파티클, 앰비언트 이미터, 멀티 텍스처 (패들/브레이크아웃)' }, accentColor: 'red' },
+];
+
+export const GAME_ART_PROJECTILE_POLICY_OPTIONS: BasisOption[] = [
+  { id: 'none', label: { en: 'None', ko: '없음' }, description: { en: 'Zero projectiles — canonical for all 5 v8 sub-genres', ko: '투사체 없음 — v8 5종 서브 장르 기본값' }, accentColor: 'slate' },
+  { id: 'simple', label: { en: 'Simple', ko: '심플' }, description: { en: 'One projectile kind, straight-line motion, single-hit (rare in v8 sub-genres)', ko: '단일 투사체, 직선 이동, 단발 충돌 (v8 sub-genre 에선 드묾)' }, accentColor: 'amber' },
+  { id: 'complex', label: { en: 'Complex', ko: '컴플렉스' }, description: { en: 'Multi-kind + homing/spread/piercing (Phase 5+ recommended — bullet-hell, RPG)', ko: '다종 + 호밍/확산/관통 (Phase 5+ 권장 — 불릿헬, RPG)' }, accentColor: 'violet' },
+];
+
+export const GAME_ART_AUDIO_PROFILE_OPTIONS: BasisOption[] = [
+  { id: 'procedural', label: { en: 'Procedural', ko: '프로시저럴' }, description: { en: 'Web Audio OscillatorNode SFX, no external files — Phase 3 default', ko: 'Web Audio 오실레이터 SFX, 외부 파일 없음 — Phase 3 기본값' }, accentColor: 'sky' },
+  { id: 'fileBased', label: { en: 'File-Based', ko: '파일 기반' }, description: { en: 'External .mp3/.ogg/.wav under inputs/assets/game/{sfx,bgm}/ (requires p4-external-enabled)', ko: '외부 .mp3/.ogg/.wav (p4-external-enabled 필요)' }, accentColor: 'green' },
+  { id: 'hybrid', label: { en: 'Hybrid', ko: '하이브리드' }, description: { en: 'Procedural SFX + external BGM — bridge mode', ko: '프로시저럴 SFX + 외부 BGM — 브릿지 모드' }, accentColor: 'amber' },
+];

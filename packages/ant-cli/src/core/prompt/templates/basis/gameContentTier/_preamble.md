@@ -4,12 +4,26 @@
 
 This preamble frames the two axes that make up `gameContentTier`:
 
-- **`genre`** — the kind of game (puzzle / action / shooter / platformer / rpg / strategy / casual). The genre commits the project's **systems shape** (board, combat, growth, ...).
-- **`coreLoop`** — the inner, shortest cycle the player repeats (collect / fight / build / explore / solve). The coreLoop commits the project's **moment-to-moment verbs**.
+- **`genre`** — the kind of game. v8 (D31-revised) registers 5 sub-genres tuned for css-only inline production: `match3`, `slidingPuzzle`, `cardSolitaire`, `arcadePaddle`, `arcadeSnake`. The genre commits the project's **systems shape** (board / sliding-rule / suit / paddle-physics / snake-grid).
+- **`coreLoop`** — the inner, shortest cycle the player repeats. v8 (D31-revised) registers 3 universal loops: `solve` (reflective / hypothesise-then-confirm), `collect` (chains, suits, points), `survive` (paddle / snake death-line ramp). The coreLoop commits the project's **moment-to-moment verbs**.
+
+### Matrix gate (D31-revised v8 — I9)
+
+The two axes are NOT independent. `GENRE_CORELOOP_MATRIX` (in `@ant/shared`) names which coreLoops are reachable for each genre:
+
+| Genre | CoreLoop candidate set |
+|---|---|
+| `match3` | `solve`, `collect` |
+| `slidingPuzzle` | `solve` |
+| `cardSolitaire` | `solve`, `collect` |
+| `arcadePaddle` | `survive`, `collect` |
+| `arcadeSnake` | `survive`, `collect` |
+
+The decompose pipeline narrows `gameCoreLoopCandidates` once the genre is decided. A LLM-emitted `(genre, coreLoop)` pair outside this matrix is filtered at parse time — the LLM never sees the mismatched pairing in its candidate enumeration. `solve` for `arcadePaddle` / `arcadeSnake`, or `survive` for `cardSolitaire` / `slidingPuzzle`, is intentionally excluded as a category mismatch.
 
 ### What every genre / coreLoop partial commits to
 
-The two axes are independent (a `puzzle + solve` and a `puzzle + fight` are both legal — sub-genres exist). Each partial answers a fixed-shape question set so consumers (plan / design / code) can layer signals predictably.
+The two axes are matrix-related (D31-revised v8 — `GENRE_CORELOOP_MATRIX`). A pair like `match3 + solve` and `match3 + collect` are both legal; `match3 + survive` is filtered out at parse time. Each partial answers a fixed-shape question set so consumers (plan / design / code) can layer signals predictably regardless of which legal pair the LLM emits.
 
 **Genre partial (per `genre`)**:
 
@@ -30,7 +44,7 @@ The two axes are independent (a `puzzle + solve` and a `puzzle + fight` are both
 
 - `gameContentTier` decides **what kind of game** and **what the player does each cycle**.
 - `gameArtTier` decides **how the game looks and sounds** (concept / perspective / 5 art axes — Phase 4).
-- `techTier` decides **which engine / language / framework** runs the build.
+- `techTier` decides **which engine / language / framework** runs the runtime.
 
 A genre or coreLoop partial MUST NOT specify palette / silhouette / engine / framework — those are other tiers' surfaces. Conversely, a `gameArtTier` partial MUST NOT enumerate genre-defining systems (board, ammo, party). The matrix gate keeps the surfaces orthogonal; the partials enforce it textually.
 
@@ -40,4 +54,4 @@ This file and every partial under `basis/gameContentTier/{genre,coreLoop}/` is `
 
 ### SBS gate payload reminder
 
-Each genre / coreLoop value is a **specific** gate. The partial MUST mention the genre's / loop's own name (`puzzle`, `solve`) and use the vocabulary that gate justifies (board / matching for puzzle; observe / hypothesize for solve). Genre-neutral text in a genre-gated partial defeats the SBS gate's information payload.
+Each genre / coreLoop value is a **specific** gate. The partial MUST mention the genre's / loop's own name (`match3`, `solve`) and use the vocabulary that gate justifies (board / matching / cascade for match3; observe / hypothesize for solve). Genre-neutral text in a genre-gated partial defeats the SBS gate's information payload.

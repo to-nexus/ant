@@ -65,9 +65,12 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'outputs/design/ui/ant',             visibility: 'internal' },
   { path: 'outputs/design/ui/figma',           visibility: 'internal' },
   { path: 'outputs/design/ui/handoff',         visibility: 'internal' },
-  // Phase 2 (D24): game-art is FLAT — no ant/figma/handoff sub-source containers.
-  // figma/handoff for game-art deferred to Phase 5+.
+  // v8 (D24-revised): game-art is sub-sourced (mirrors `outputs/design/ui/`).
+  // `ant/` is the LLM-generated canonical source; `figma/` / `handoff/` are
+  // parser hooks for Phase 5+ (visual job) — kept unregistered today so the
+  // canonical structure stays minimal until activation.
   { path: 'outputs/design/game-art',           visibility: 'internal' },
+  { path: 'outputs/design/game-art/ant',       visibility: 'internal' },
   { path: 'outputs/design/system',             visibility: 'internal' },
   { path: 'outputs/design/spec',               visibility: 'internal' },
   { path: 'outputs/evals',                     visibility: 'ui:outputs' },
@@ -159,11 +162,12 @@ export function isCanonicalDir(relativePath: string): boolean {
 // Design subdirectory helpers (Single Source of Truth)
 // ============================================
 
-export type DesignSubdir = 'ui' | 'art' | 'system' | 'spec';
+export type DesignSubdir = 'ui' | 'art' | 'gameArtAnt' | 'system' | 'spec';
 
 export const DESIGN_SUBDIR = {
   UI: 'ui',
   ART: 'art',
+  GAME_ART_ANT: 'gameArtAnt',
   SYSTEM: 'system',
   SPEC: 'spec',
 } as const satisfies Record<string, DesignSubdir>;
@@ -174,13 +178,18 @@ export const DESIGN_DIR = 'outputs/design' as const;
 
 /**
  * Determine which design subdirectory a file belongs to based on filename.
- *   ui-*.json         → 'ui'   (will be placed under ui/ant/)
- *   game-art-*.json   → 'art'  (will be placed under game-art/, FLAT — D24)
+ *   ui-*.json         → 'gameArtAnt' is reserved — see below for 'art' transition
+ *   ui-*.json         → 'ui'         (will be placed under ui/ant/)
+ *   game-art-*.json   → 'gameArtAnt' (will be placed under game-art/ant/ — D24-revised v8)
  *   spec-*.md         → 'spec'
- *   everything else   → 'system'  (be-system-*, fe-system-*, api-contract-*)
+ *   everything else   → 'system'     (be-system-*, fe-system-*, api-contract-*)
+ *
+ * D24-revised (v8): game-art-*.json now lands under `game-art/ant/` (mirrors
+ * the ui/ant canonical source). The `'art'` token stays in the union for
+ * historical compatibility but no filename resolves to it anymore.
  */
 export function designSubdirOf(filename: string): DesignSubdir {
-  if (filename.startsWith('game-art-') && filename.endsWith('.json')) return 'art';
+  if (filename.startsWith('game-art-') && filename.endsWith('.json')) return 'gameArtAnt';
   if (filename.startsWith('ui-') && filename.endsWith('.json')) return 'ui';
   if (filename.startsWith('spec-') && filename.endsWith('.md')) return 'spec';
   return 'system';
@@ -189,13 +198,15 @@ export function designSubdirOf(filename: string): DesignSubdir {
 /**
  * Build the design output directory path for a given filename.
  * Returns e.g. 'outputs/design/system' or 'outputs/design/ui/ant' (ui-*.json
- * files live under the ant canonical source) or 'outputs/design/game-art'
- * (game-art-*.json files live FLAT — no sub-source — D24).
+ * files live under the ant canonical source) or `outputs/design/game-art/ant`
+ * (game-art-*.json files live under the ant canonical source — D24-revised v8;
+ * mirrors the ui/ant pattern).
  */
 export function designDirOf(filename: string): string {
   const sub = designSubdirOf(filename);
   if (sub === 'ui') return `${DESIGN_DIR}/ui/ant`;
-  if (sub === 'art') return `${DESIGN_DIR}/game-art`;
+  if (sub === 'gameArtAnt') return `${DESIGN_DIR}/game-art/ant`;
+  if (sub === 'art') return `${DESIGN_DIR}/game-art/ant`; // BC alias — no current filename resolves here
   return `${DESIGN_DIR}/${sub}`;
 }
 
@@ -240,18 +251,28 @@ export const ARTIFACT_PREFIX = {
    */
   UI_ANT_SPEC: `${DESIGN_DIR}/ui/ant/spec/` as const,
   /**
-   * Phase 2 (D24): game-art surface — FLAT canonical, no sub-source.
-   * The path itself is the directory; figma/handoff sub-sources for game-art
-   * are deferred to Phase 5+ (visual job).
+   * v8 (D24-revised): game-art surface — sub-sourced (mirrors ui/).
+   *   - GAME_ART       — parent prefix (union of ant/figma/handoff).
+   *   - GAME_ART_ANT   — LLM-generated canonical sub-source (active today).
+   *   - GAME_ART_FIGMA — figma workfile reference (Phase 5+ hook, parser-only).
+   *   - GAME_ART_HANDOFF — free-form handoff bundle (Phase 5+ hook, parser-only).
+   *
+   * `pathsContainGameArtDoc` matches any of the three sub-source prefixes
+   * (mirrors the UI sub-source pattern). The flat `GAME_ART` prefix stays
+   * for parent-level operations (filetree, mount), but new game-art
+   * artifacts MUST land under `GAME_ART_ANT`.
    */
   GAME_ART: `${DESIGN_DIR}/game-art/` as const,
+  GAME_ART_ANT: `${DESIGN_DIR}/game-art/ant/` as const,
+  GAME_ART_FIGMA: `${DESIGN_DIR}/game-art/figma/` as const,
+  GAME_ART_HANDOFF: `${DESIGN_DIR}/game-art/handoff/` as const,
   /**
    * Virtual prefix for game-art-spec.json category-keyed sections (D25).
    * Categories (effects/characters/projectiles/npcs/objectives/...) are
    * dynamically chosen by the LLM based on the game context — schema does
    * NOT enforce a fixed enum.
    */
-  GAME_ART_SPEC: `${DESIGN_DIR}/game-art/spec/` as const,
+  GAME_ART_SPEC: `${DESIGN_DIR}/game-art/ant/spec/` as const,
   DESIGN: `${DESIGN_DIR}/` as const,
   SOURCES: 'inputs/sources' as const,
   API_CONTRACT: `${DESIGN_DIR}/system/api-contract-` as const,
@@ -289,12 +310,38 @@ export function pathsContainUiDoc(paths: readonly string[] | undefined): boolean
 }
 
 /**
- * Whether any path in the list is a game-art design document (Phase 2 — D24).
- * D24 — game-art is FLAT: any path under `outputs/design/game-art/` qualifies.
+ * Classify a path into its game-art sub-source. Returns null if the path is
+ * not under the game-art tree. Mirrors `uiSourceOfPath` shape (D24-revised).
+ *
+ * v8 (D24-revised): only `'ant'` is canonical today; `'figma'` / `'handoff'`
+ * remain hooks for Phase 5+ (visual job).
+ */
+export function gameArtSourceOfPath(path: string): UiSource | null {
+  if (path.startsWith(ARTIFACT_PREFIX.GAME_ART_ANT)) return 'ant';
+  if (path.startsWith(ARTIFACT_PREFIX.GAME_ART_FIGMA)) return 'figma';
+  if (path.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF)) return 'handoff';
+  return null;
+}
+
+/**
+ * Whether any path in the list is a game-art design document (D24-revised v8).
+ * Matches any of the three sub-source prefixes (`ant/` is active today;
+ * `figma/` / `handoff/` are Phase 5+ hooks). The flat `GAME_ART` prefix is
+ * still accepted for backward compatibility (workspaces created before the
+ * sub-source migration) — `migrateGameArtToAntSubdir` lifts those into
+ * `ant/` on next workspace boot.
  */
 export function pathsContainGameArtDoc(paths: readonly string[] | undefined): boolean {
   if (!paths?.length) return false;
-  return paths.some(p => p.startsWith(ARTIFACT_PREFIX.GAME_ART));
+  return paths.some(p =>
+    p.startsWith(ARTIFACT_PREFIX.GAME_ART_ANT) ||
+    p.startsWith(ARTIFACT_PREFIX.GAME_ART_FIGMA) ||
+    p.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF) ||
+    // BC: legacy flat paths (e.g. `outputs/design/game-art/game-art-tokens.json`)
+    // — the migration helper lifts them into ant/ but the predicate must
+    // tolerate them in transit.
+    /^outputs\/design\/game-art\/(?!ant\/|figma\/|handoff\/)[^/]+\.json$/.test(p)
+  );
 }
 
 /**

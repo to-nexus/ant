@@ -10,17 +10,17 @@
  *
  * Scenario A (single-shot directive, match-3 / Phaser):
  *   gen-code-directive + workspaceConfig.domain === 'game'
- *   + basis.gameContentTier = { genre: 'puzzle', coreLoop: 'solve' }
- *   + basis.gameArtTier     = { concept: 'modernCasual', perspective: '2d' }
+ *   + basis.gameContentTier = { genre: 'match3', coreLoop: 'solve' }       (D31-revised v8)
+ *   + basis.gameArtTier     = { concept: 'flatMinimal', perspective: '2d' } (D32-revised v8 + D30)
  *   + basis.techTier        = [{ stack: 'frontend', language: 'typescript',
- *                                framework: 'react', gameEngine: 'phaser' }]
+ *                                framework: 'react', gameEngine: 'phaser' }]  (D29 single)
  *
  *   PromptBuilder MUST be able to layer:
  *     1. domain/game.md                                  — workspace identity
  *     2. jobs/code/domain/game.md                        — code-overlay
- *     3. basis/gameContentTier/genre/puzzle.md           — Wave 2 ledger
+ *     3. basis/gameContentTier/genre/match3.md           — Wave 2 ledger (v8)
  *     4. basis/gameContentTier/coreLoop/solve.md         — Wave 2 ledger
- *     5. basis/gameArtTier/concept/modernCasual.md       — Wave 2 ledger
+ *     5. basis/gameArtTier/concept/flatMinimal.md        — Wave 2 ledger (v8)
  *     6. basis/gameArtTier/perspective/2d.md             — Wave 2 ledger
  *     7. basis/techTier/gameEngine/phaser.md             — Wave 1 engine
  *     8. jobs/code/basis/gameArtTier/_preamble.md        — Wave 1 css-only
@@ -72,15 +72,15 @@ describe('Phase 3 — Scenario A (single-shot directive, match-3 / Phaser)', () 
       markers: [/loop ownership/i, /scene/i, /asset import policy/i, /determinism/i],
     },
     {
-      rel: 'basis/gameContentTier/genre/puzzle',
-      markers: [/puzzle/i, /board/i, /matching|match/i],
+      rel: 'basis/gameContentTier/genre/match3',
+      markers: [/match-?3/i, /board/i, /matching|match/i, /cascade/i],
     },
     {
       rel: 'basis/gameContentTier/coreLoop/solve',
       markers: [/solve/i, /loop steps/i, /failure/i],
     },
     {
-      rel: 'basis/gameArtTier/concept/modernCasual',
+      rel: 'basis/gameArtTier/concept/flatMinimal',
       markers: [/palette/i, /silhouette/i],
     },
     {
@@ -132,11 +132,15 @@ describe('Phase 3 — Scenario A (single-shot directive, match-3 / Phaser)', () 
     expect(content).toMatch(/runtime/i);
   });
 
-  it('genre partial is non-stub (≥ 600 chars) and locality-clean vs sibling genres', () => {
-    const content = plainText(readTemplate('basis/gameContentTier/genre/puzzle'));
+  it('genre partial is non-stub (≥ 600 chars) and locality-clean vs sibling genres (D31-revised v8)', () => {
+    const content = plainText(readTemplate('basis/gameContentTier/genre/match3'));
     expect(content.length).toBeGreaterThan(600);
-    for (const sibling of ['shooter', 'rpg', 'platformer', 'strategy']) {
-      expect(content, `puzzle.md leaks sibling genre "${sibling}"`).not.toMatch(
+    // v8 sibling genres — match3 partial MUST NOT borrow vocabulary from
+    // its 4 siblings in plain prose. Backtick-wrapped citations are
+    // stripped by `plainText` so the cross-reference table at the bottom
+    // (which lists siblings as `match3 → flatMinimal/...`) is not flagged.
+    for (const sibling of ['slidingPuzzle', 'cardSolitaire', 'arcadePaddle', 'arcadeSnake']) {
+      expect(content, `match3.md leaks sibling genre "${sibling}" in plain text`).not.toMatch(
         new RegExp(`\\b${sibling}\\b`, 'i'),
       );
     }
@@ -224,18 +228,24 @@ describe('Phase 3 — Scenario B (3+1 chain: plan → sys-fe → ui+art design �
     expect(content).toMatch(/external/);
   });
 
-  // ----- Step 4: gen-code-sys → consumes BOTH ui-assets AND game-art-assets
-  it('Step 4 — code-overlay game references BOTH UI catalog and game-art catalog (I7 cross-surface boundary)', () => {
+  // ----- Step 4: gen-code-sys → consumes game-art catalog only (D28 vertical
+  // split — game-domain code does NOT consume UI catalog). The overlay
+  // mentions `ui-assets` only inside the negation / forbidden block to
+  // pin the cross-surface guard.
+  it('Step 4 — code-overlay game references game-art catalog (game-domain SSOT — D28)', () => {
     const content = readTemplate('jobs/code/domain/game');
-    expect(content).toMatch(/ui-assets/i);
     expect(content).toMatch(/game-art-assets/i);
+    // ui-assets MUST appear only in a "MUST NOT" / cross-pool guard
+    // context — verified by I6 asset-surface-boundary test, not here.
   });
 
-  it('Step 4 — code-overlay css-only preamble enforces the same I7 cross-surface boundary', () => {
+  it('Step 4 — code-overlay game-art preamble enforces I7-revised Domain-Surface Boundary (D28)', () => {
     const content = readTemplate('jobs/code/basis/gameArtTier/_preamble');
-    expect(content).toMatch(/I7|cross-surface/i);
-    expect(content).toMatch(/ui-assets/i);
+    // I7-revised in code overlay (D28) is named "Domain-Surface Boundary".
+    expect(content).toMatch(/I7-revised|Domain-Surface Boundary|cross-surface/i);
     expect(content).toMatch(/game-art-assets/i);
+    // ui catalog references appear only under "MUST NOT" guards.
+    expect(content).toMatch(/ui-(?:tokens|assets|spec)/i);
   });
 
   // ----- Domain-locality cross-cuts (Scenario B touches all four jobs)
@@ -259,5 +269,98 @@ describe('Phase 3 — Scenario B (3+1 chain: plan → sys-fe → ui+art design �
 
     // Also guard against bare "the GDD uses XYZ" outside its forbidden list.
     expect(planGame).toMatch(/coreloop|core[-\s]loop/i);
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Scenario C — Phase 4 external-asset enabled (match-3 with file-based audio)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// Scenario C upgrades Scenario A:
+//   gen-code-sys + workspaceConfig.domain === 'game'
+//   + basis.gameContentTier = { genre: 'match3', coreLoop: 'solve' }       (D31-revised v8)
+//   + basis.gameArtTier     = {
+//       concept: 'flatMinimal', perspective: '2d',
+//       entityCatalog: 'standard',                                          (Phase 4)
+//       motionPattern: 'subtle',                                            (Phase 4)
+//       particleProfile: 'light',                                           (Phase 4)
+//       projectilePolicy: 'none',                                           (Phase 4)
+//       audioProfile: 'fileBased',                                          (Phase 4)
+//     }
+//   + `inputs/assets/game/{entities/hero.svg, sfx/match-clear.mp3}` placed.
+//
+//   PromptBuilder MUST be able to layer ALL Scenario A partials PLUS:
+//     1. basis/gameArtTier/entityCatalog/standard.md       — Phase 4 axis
+//     2. basis/gameArtTier/motionPattern/subtle.md         — Phase 4 axis
+//     3. basis/gameArtTier/particleProfile/light.md        — Phase 4 axis
+//     4. basis/gameArtTier/projectilePolicy/none.md        — Phase 4 axis
+//     5. basis/gameArtTier/audioProfile/fileBased.md       — Phase 4 axis
+//   And the code-overlay preamble MUST commit the audio-loader conditional
+//   (`phaseScope === 'p4-external-enabled'` activates `this.load.audio`).
+
+describe('Phase 4 — Scenario C (external-asset enabled match-3 / fileBased audio)', () => {
+  const SCENARIO_C_AXIS_PARTIALS: ReadonlyArray<{ rel: string; markers: ReadonlyArray<RegExp> }> = [
+    {
+      rel: 'basis/gameArtTier/entityCatalog/standard',
+      markers: [/standard/i, /hero|antagonist|collectible/i, /entities/i],
+    },
+    {
+      rel: 'basis/gameArtTier/motionPattern/subtle',
+      markers: [/subtle/i, /ease/i, /tween/i],
+    },
+    {
+      rel: 'basis/gameArtTier/particleProfile/light',
+      markers: [/light/i, /particles/i, /5–10|5-10|emit/i],
+    },
+    {
+      rel: 'basis/gameArtTier/projectilePolicy/none',
+      markers: [/none/i, /no projectile|zero projectile/i],
+    },
+    {
+      rel: 'basis/gameArtTier/audioProfile/fileBased',
+      markers: [/fileBased|file-based/i, /external/i, /\.(mp3|ogg|wav)/i],
+    },
+  ];
+
+  it.each(SCENARIO_C_AXIS_PARTIALS)(
+    'Phase 4 axis partial $rel exists and carries its required SBS markers',
+    ({ rel, markers }) => {
+      const content = readTemplate(rel);
+      expect(content.length, `${rel} content too small (Phase 4 stub regression)`).toBeGreaterThan(600);
+      for (const marker of markers) {
+        expect(content, `${rel} missing marker ${marker}`).toMatch(marker);
+      }
+    },
+  );
+
+  it('code-overlay game-art preamble stages the Phase 4 audio loader conditional', () => {
+    const content = readTemplate('jobs/code/basis/gameArtTier/_preamble');
+    expect(content).toMatch(/p4-external-enabled/);
+    // BootScene.preload conditional shape — staged as illustrative code.
+    expect(content).toMatch(/this\.load\.audio|load\.audio/);
+  });
+
+  it('asset-extension policy admits .mp3 / .ogg / .wav under inputs/assets/game (D-P4)', async () => {
+    const { ARTIFACT_DIR_POLICIES } = await import('@ant/shared');
+    const gamePolicy = ARTIFACT_DIR_POLICIES['inputs/assets/game'];
+    expect(gamePolicy).toBeDefined();
+    expect(gamePolicy.acceptedExtensions).toEqual(
+      expect.arrayContaining(['.mp3', '.ogg', '.wav', '.atlas', '.glb', '.gltf']),
+    );
+  });
+
+  it('asset-extension policy admits .woff / .woff2 / .ttf / .otf under inputs/assets/service (D-P4)', async () => {
+    const { ARTIFACT_DIR_POLICIES } = await import('@ant/shared');
+    const servicePolicy = ARTIFACT_DIR_POLICIES['inputs/assets/service'];
+    expect(servicePolicy).toBeDefined();
+    expect(servicePolicy.acceptedExtensions).toEqual(
+      expect.arrayContaining(['.woff', '.woff2', '.ttf', '.otf']),
+    );
+  });
+
+  it('assets-guide-by-desc (game-art) commits to the Phase 4 external-asset hook', () => {
+    const content = readTemplate('jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc');
+    expect(content).toMatch(/p4-external-enabled/);
+    expect(content).toMatch(/sfx|bgm/);
   });
 });
