@@ -21,6 +21,7 @@ import type { IntentId } from './actions';
 
 export type PolicyKey =
   | 'ui-design-policy'
+  | 'game-art-design-policy'
   | 'visual-source-authority'
   | 'frontend-guide'
   | 'backend-guide'
@@ -32,6 +33,7 @@ export type PolicyKey =
  */
 export const POLICY_TEMPLATE_MAP: Record<PolicyKey, string> = {
   'ui-design-policy': 'jobs/shared/injections/ui-design-policy',
+  'game-art-design-policy': 'jobs/shared/injections/game-art-design-policy',
   'visual-source-authority': 'jobs/shared/injections/visual-source-authority',
   'frontend-guide': 'jobs/design/base/injections/frontend-guide',
   'backend-guide': 'jobs/design/base/injections/backend-guide',
@@ -92,15 +94,14 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
   'rev-ui': { policies: ['ui-design-policy'], refMediaHints: ['text'] },
   'explain-ui': { policies: [], refMediaHints: ['text'] },
 
-  // ── Game Art Design (Phase 2 — D17) ────────
-  // Phase 2 reuses `ui-design-policy` as the closest existing policy. The
-  // dedicated game-art-design-policy partial set is a Phase 2 follow-up
-  // (`p2-game-art-decompose-prompts`); for now this slot guarantees the
-  // intents are matrix-recognised and routable.
-  'gen-art-figma': { policies: ['ui-design-policy'], refMediaHints: [] },
-  'gen-art-desc': { policies: ['ui-design-policy'], refMediaHints: ['text'] },
-  'rev-art': { policies: ['ui-design-policy'], refMediaHints: ['text'] },
-  'explain-art': { policies: [], refMediaHints: ['text'] },
+  // ── Game Art Design (Phase 2 — D17/D28) ────────
+  // D28 — game-art-design-policy is now a dedicated PolicyKey (no longer
+  // reusing ui-design-policy as a placeholder). The partial lives at
+  // `jobs/shared/injections/game-art-design-policy.md`.
+  'gen-game-art-figma': { policies: ['game-art-design-policy'], refMediaHints: [] },
+  'gen-game-art-desc': { policies: ['game-art-design-policy'], refMediaHints: ['text'] },
+  'rev-game-art': { policies: ['game-art-design-policy'], refMediaHints: ['text'] },
+  'explain-game-art': { policies: [], refMediaHints: ['text'] },
 
   // ── Spec ───────────────────────────────────
   'gen-spec': { policies: [], refMediaHints: ['text'] },
@@ -108,10 +109,16 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
   'explain-spec': { policies: [], refMediaHints: ['text'] },
 
   // ── Code ───────────────────────────────────
+  // D28 — code jobs receive ui-design-policy on `outputs/design/ui` slots
+  // (service domain) and game-art-design-policy on `outputs/design/game-art`
+  // slots (game domain). Domain matrix gates determine which slot is even
+  // selectable per workspace, so the same code intent serves both domains
+  // through the conditional policy mechanism.
   'gen-code-sys': {
     policies: [],
     conditionalPolicies: [
       { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
+      { slotPath: 'outputs/design/game-art', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
@@ -119,17 +126,15 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
     policies: [],
     conditionalPolicies: [
       { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
+      { slotPath: 'outputs/design/game-art', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
   'gen-code-directive': {
     policies: [],
-    // UI source context is now selectable for directive-only code jobs too
-    // (matches action-config-matrix's `uiSourceCtx()` slot). Keep the
-    // conditional so the policy fires only when the user actually selects
-    // a UiSource — directive-only jobs without UI input must not receive it.
     conditionalPolicies: [
       { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
+      { slotPath: 'outputs/design/game-art', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
@@ -137,6 +142,7 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
     policies: [],
     conditionalPolicies: [
       { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
+      { slotPath: 'outputs/design/game-art', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },

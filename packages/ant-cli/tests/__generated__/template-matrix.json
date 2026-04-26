@@ -535,6 +535,11 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/game-art-source": {
+    "sources": [
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/mock-adapter-contract": {
     "sources": [
       "partial-ref",
@@ -1118,23 +1123,23 @@
       "basis-registry"
     ]
   },
-  "jobs/design/nodes/decompose/variants/art-design-by-desc/base": {
+  "jobs/design/nodes/decompose/variants/game-art-design-by-desc/base": {
     "sources": [
       "render-call"
     ]
   },
-  "jobs/design/nodes/decompose/variants/art-design-by-desc/rules": {
+  "jobs/design/nodes/decompose/variants/game-art-design-by-desc/rules": {
     "sources": [
       "render-call",
       "partial-ref"
     ]
   },
-  "jobs/design/nodes/decompose/variants/art-design-by-figma/base": {
+  "jobs/design/nodes/decompose/variants/game-art-design-by-figma/base": {
     "sources": [
       "render-call"
     ]
   },
-  "jobs/design/nodes/decompose/variants/art-design-by-figma/rules": {
+  "jobs/design/nodes/decompose/variants/game-art-design-by-figma/rules": {
     "sources": [
       "render-call",
       "partial-ref"
@@ -1178,37 +1183,37 @@
       "render-call"
     ]
   },
-  "jobs/design/nodes/execute/injections/art-assets-guide-by-desc": {
+  "jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc": {
     "sources": [
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/art-assets-guide-by-figma": {
+  "jobs/design/nodes/execute/injections/game-art-assets-guide-by-figma": {
     "sources": [
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/art-spec-guide-by-desc": {
+  "jobs/design/nodes/execute/injections/game-art-spec-guide-by-desc": {
     "sources": [
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/art-spec-guide-by-figma": {
+  "jobs/design/nodes/execute/injections/game-art-spec-guide-by-figma": {
     "sources": [
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/art-tokens-guide-by-desc": {
+  "jobs/design/nodes/execute/injections/game-art-tokens-guide-by-desc": {
     "sources": [
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/art-tokens-guide-by-figma": {
+  "jobs/design/nodes/execute/injections/game-art-tokens-guide-by-figma": {
     "sources": [
       "partial-ref",
       "manifest"
@@ -1380,6 +1385,12 @@
     "sources": [
       "auto-injection",
       "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/game-art-design-policy": {
+    "sources": [
+      "policy-map",
       "manifest"
     ]
   },

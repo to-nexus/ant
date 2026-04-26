@@ -196,7 +196,7 @@ function collectPolicyTemplatePaths(): Set<string> {
 // ============================================
 
 const TEMPLATE_VAR_EXPANSIONS: Record<string, string[]> = {
-  /** `artDesignDecompose`: `jobs/design/nodes/decompose/variants/art-design-${variant}/base` */
+  /** `gameArtDesignDecompose`: `jobs/design/nodes/decompose/variants/game-art-design-${variant}/base` */
   variant: ['by-figma', 'by-desc'],
   logSuffix: ['by-figma', 'by-desc'],
   templateSuffix: ['by-figma', 'by-desc'],

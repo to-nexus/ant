@@ -184,9 +184,9 @@ describe behavior (e.g. an "interactions" page → `effects` spec; a
 
 {{! Execute-phase injection guides: static partial refs for manifest/matrix audits; branch never renders. }}
 {{#if false}}
-{{> jobs/design/nodes/execute/injections/art-tokens-guide-by-figma}}
-{{> jobs/design/nodes/execute/injections/art-assets-guide-by-figma}}
-{{> jobs/design/nodes/execute/injections/art-spec-guide-by-figma}}
+{{> jobs/design/nodes/execute/injections/game-art-tokens-guide-by-figma}}
+{{> jobs/design/nodes/execute/injections/game-art-assets-guide-by-figma}}
+{{> jobs/design/nodes/execute/injections/game-art-spec-guide-by-figma}}
 {{/if}}
 
-{{> jobs/design/nodes/decompose/variants/art-design-by-figma/rules}}
+{{> jobs/design/nodes/decompose/variants/game-art-design-by-figma/rules}}

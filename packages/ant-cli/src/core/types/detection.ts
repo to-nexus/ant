@@ -132,12 +132,12 @@ function renderModeSection(
 
 function renderIntentGroupSection(rac: ResolvedActionContext, isKorean: boolean): string {
   const ig = rac.intentGroup;
-  if (!ig || (ig !== 'design-ui' && ig !== 'design-art' && ig !== 'design-spec' && ig !== 'design-system')) return '';
+  if (!ig || (ig !== 'design-ui' && ig !== 'design-game-art' && ig !== 'design-spec' && ig !== 'design-system')) return '';
 
-  const igEmoji = ig === 'design-ui' ? '🎨' : ig === 'design-art' ? '🖌️' : ig === 'design-spec' ? '📋' : '🏗️';
+  const igEmoji = ig === 'design-ui' ? '🎨' : ig === 'design-game-art' ? '🖌️' : ig === 'design-spec' ? '📋' : '🏗️';
   const igLabel = ig === 'design-ui'
     ? (isKorean ? 'UI 디자인' : 'UI Design')
-    : ig === 'design-art'
+    : ig === 'design-game-art'
       ? (isKorean ? '게임 아트 디자인' : 'Game Art Design')
       : ig === 'design-spec'
         ? (isKorean ? '기능 스펙' : 'Feature Spec')
@@ -177,7 +177,7 @@ function renderDesignUiOutputSection(rac: ResolvedActionContext, isKorean: boole
     out += `   • \`outputs/design/ui/ant/ui-spec.json\`\n\n`;
     return out;
   }
-  if (rac.intentGroup === 'design-art') {
+  if (rac.intentGroup === 'design-game-art') {
     let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
     out += `   • \`outputs/design/game-art/game-art-tokens.json\`\n`;
     out += `   • \`outputs/design/game-art/game-art-assets.json\`\n`;

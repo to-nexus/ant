@@ -10,7 +10,8 @@
     "refactor-guidance": ["resolvedAction"],
     "explain-guidance": ["resolvedAction"],
     "visual-tier-detection": ["availableVisualLanguagesWithModes", "availableSurfaceSystems", "availableSpatialSystems", "resolvedAction"],
-    "game-art-tier-detection": ["gameArtConceptCandidates", "resolvedAction"]
+    "game-art-tier-detection": ["gameArtConceptCandidates", "resolvedAction"],
+    "game-art-design-policy": []
   },
   "jobs/code/base/injections": {
     "text-format-compact": [],
@@ -20,6 +21,7 @@
     "ui-source-figma": ["figmaFileKey", "figmaStartNodeId"],
     "ui-source-handoff": [],
     "ui-source-dispatch": ["uiSource"],
+    "game-art-source": [],
     "antrules": ["antrulesContent"],
     "dep-self-contained": [],
     "batch-execution": [],
@@ -58,11 +60,11 @@
     "ui-spec-guide-by-desc": [],
     "ui-spec-guide-by-figma": [],
     "ui-continuation-by-figma": ["targetDoc"],
-    "art-tokens-guide-by-figma": [],
-    "art-tokens-guide-by-desc": [],
-    "art-assets-guide-by-figma": ["forceAppend"],
-    "art-assets-guide-by-desc": ["forceAppend"],
-    "art-spec-guide-by-figma": ["forceAppend"],
-    "art-spec-guide-by-desc": ["forceAppend"]
+    "game-art-tokens-guide-by-figma": [],
+    "game-art-tokens-guide-by-desc": [],
+    "game-art-assets-guide-by-figma": ["forceAppend"],
+    "game-art-assets-guide-by-desc": ["forceAppend"],
+    "game-art-spec-guide-by-figma": ["forceAppend"],
+    "game-art-spec-guide-by-desc": ["forceAppend"]
   }
 }

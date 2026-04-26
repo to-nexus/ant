@@ -42,8 +42,9 @@ export interface ActionDefinition {
    * When set, the ActionsPanel only renders this card if
    * `actionMetadata.domain` (= the workspace-level project domain)
    * is in the list. Undefined means domain-agnostic (visible on every
-   * domain). Aligned with `TIER_DOMAIN_MATRIX` — `design-art` is gated
-   * by `gameArtTier=['game']`, so this list mirrors that row.
+   * domain). Aligned with `TIER_DOMAIN_MATRIX` — `design-game-art` is gated
+   * by `gameArtTier=['game']`, so this list mirrors that row. `design-ui`
+   * is gated by `visualTier=['service']` (D28), mirroring the dual.
    */
   readonly domainGate?: ReadonlyArray<Domain>;
 }
@@ -64,11 +65,12 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
   {
     id: 'design-ui',
     label: { en: 'UI Design', ko: 'UI 설계' },
-    description: { en: 'Design tokens, assets, and UI specifications', ko: '디자인 토큰, 에셋, UI 스펙을 설계합니다' },
+    description: { en: 'Design tokens, assets, and UI specifications (service domain only)', ko: '디자인 토큰, 에셋, UI 스펙을 설계합니다 (서비스 도메인 전용)' },
     status: 'active',
+    domainGate: ['service'], // D28: hidden when workspace domain === 'game'
   },
   {
-    id: 'design-art',
+    id: 'design-game-art',
     label: { en: 'Game Art Design', ko: '게임 아트 설계' },
     description: { en: 'Design game-art tokens, asset catalog, and entity/effect specifications (game domain only)', ko: '게임 아트 토큰, 에셋 카탈로그, 엔티티/이펙트 스펙을 설계합니다 (게임 도메인 전용)' },
     status: 'active',
@@ -143,12 +145,12 @@ const INTENT_DEFINITIONS_INTERNAL = [
   { id: 'rev-ui', intentGroup: 'design-ui', label: { en: 'Update UI Design', ko: 'UI 설계 업데이트' }, description: { en: 'Revise existing UI design documents', ko: '기존 UI 설계 문서를 업데이트합니다' } },
   { id: 'explain-ui', intentGroup: 'design-ui', label: { en: 'Explain UI Design', ko: 'UI 설계 설명' }, description: { en: 'Explain UI design decisions and specs', ko: 'UI 설계 결정과 스펙을 설명합니다' } },
 
-  // Design — Game Art (Phase 2 — D17. domain=game only; the ActionsPanel
+  // Design — Game Art (Phase 2 — D17/D28. domain=game only; the ActionsPanel
   // gates the entire group via TIER_DOMAIN_MATRIX.gameArtTier=['game'])
-  { id: 'gen-art-figma', intentGroup: 'design-art', label: { en: 'Figma-based Art', ko: 'Figma 기반 아트' }, description: { en: 'Generate game-art catalog from Figma file', ko: 'Figma 파일에서 게임 아트 카탈로그를 생성합니다' } },
-  { id: 'gen-art-desc', intentGroup: 'design-art', label: { en: 'Description-based Art', ko: '설명 기반 아트' }, description: { en: 'Generate game-art catalog from text description', ko: '텍스트 설명으로 게임 아트 카탈로그를 생성합니다' } },
-  { id: 'rev-art', intentGroup: 'design-art', label: { en: 'Update Game Art', ko: '게임 아트 업데이트' }, description: { en: 'Revise existing game-art design documents', ko: '기존 게임 아트 설계 문서를 업데이트합니다' } },
-  { id: 'explain-art', intentGroup: 'design-art', label: { en: 'Explain Game Art', ko: '게임 아트 설명' }, description: { en: 'Explain game-art design decisions and assets', ko: '게임 아트 설계 결정과 에셋을 설명합니다' } },
+  { id: 'gen-game-art-figma', intentGroup: 'design-game-art', label: { en: 'Figma-based Art', ko: 'Figma 기반 아트' }, description: { en: 'Generate game-art catalog from Figma file', ko: 'Figma 파일에서 게임 아트 카탈로그를 생성합니다' } },
+  { id: 'gen-game-art-desc', intentGroup: 'design-game-art', label: { en: 'Description-based Art', ko: '설명 기반 아트' }, description: { en: 'Generate game-art catalog from text description', ko: '텍스트 설명으로 게임 아트 카탈로그를 생성합니다' } },
+  { id: 'rev-game-art', intentGroup: 'design-game-art', label: { en: 'Update Game Art', ko: '게임 아트 업데이트' }, description: { en: 'Revise existing game-art design documents', ko: '기존 게임 아트 설계 문서를 업데이트합니다' } },
+  { id: 'explain-game-art', intentGroup: 'design-game-art', label: { en: 'Explain Game Art', ko: '게임 아트 설명' }, description: { en: 'Explain game-art design decisions and assets', ko: '게임 아트 설계 결정과 에셋을 설명합니다' } },
 
   // Design — Spec
   { id: 'gen-spec', intentGroup: 'design-spec', label: { en: 'Create Spec', ko: '스펙 작성' }, description: { en: 'Write implementation spec for a feature', ko: '기능의 구현 스펙을 작성합니다' } },
@@ -291,13 +293,13 @@ export function deriveFromIntent(intent: IntentId): {
     case 'explain-ui':
       return { intentGroup: 'design-ui', mode: 'explain', agent: 'architect', jobType: 'design' };
 
-    case 'gen-art-figma':
-    case 'gen-art-desc':
-      return { intentGroup: 'design-art', mode: 'generate', agent: 'architect', jobType: 'design' };
-    case 'rev-art':
-      return { intentGroup: 'design-art', mode: 'refactor', agent: 'architect', jobType: 'design' };
-    case 'explain-art':
-      return { intentGroup: 'design-art', mode: 'explain', agent: 'architect', jobType: 'design' };
+    case 'gen-game-art-figma':
+    case 'gen-game-art-desc':
+      return { intentGroup: 'design-game-art', mode: 'generate', agent: 'architect', jobType: 'design' };
+    case 'rev-game-art':
+      return { intentGroup: 'design-game-art', mode: 'refactor', agent: 'architect', jobType: 'design' };
+    case 'explain-game-art':
+      return { intentGroup: 'design-game-art', mode: 'explain', agent: 'architect', jobType: 'design' };
 
     case 'gen-spec':
       return { intentGroup: 'design-spec', mode: 'generate', agent: 'architect', jobType: 'design' };

@@ -8,7 +8,7 @@
 
 import { useStore } from '@/domain/store';
 import { useGitSnapshot } from '@/domain/git-world';
-import { getConfigSlots, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasMixedCodebaseRefs, hasRealRefSlots } from '@ant/shared';
+import { getConfigSlots, filterSlotsByDomain, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasMixedCodebaseRefs, hasRealRefSlots } from '@ant/shared';
 
 export interface ActionFooterPolicy {
   canStartChat: boolean;
@@ -39,7 +39,13 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'metadata-incomplete', buildDisabledReason: 'metadata-incomplete' };
   }
 
-  const slots = getConfigSlots(actionMetadata.intent);
+  // D28 — apply the workspace domain filter so policy decisions
+  // (chat / build gates, ref / context requirements) reflect only the
+  // surface that the workspace actually owns. Without this filter a
+  // service workspace with `gen-code-sys` would carry a phantom
+  // game-art-source ref slot affecting `hasRealRefSlots` and friends.
+  const rawSlots = getConfigSlots(actionMetadata.intent);
+  const slots = rawSlots ? filterSlotsByDomain(rawSlots, actionMetadata.domain) : null;
   if (!slots) {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'invalid-config', buildDisabledReason: 'invalid-config' };
   }

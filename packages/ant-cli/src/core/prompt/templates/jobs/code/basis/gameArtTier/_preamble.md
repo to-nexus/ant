@@ -37,25 +37,25 @@ Constraints:
 
 When Phase 4 lifts `phaseScope` to `'p4-external-enabled'`, the same code path activates for sfx/bgm. Code emitted today MUST already have the conditional in place — `if (phaseScope !== 'p2-css-only') { /* load audio */ }` — so Phase 4 is a flag flip rather than a rewrite.
 
-### 4. Cross-Surface Boundary (I7 — UI ↔ game-art)
+### 4. Domain-Surface Boundary (I7-revised — D28)
 
-A code job consumes **two** asset catalogs:
+A game-domain code job consumes **one** asset surface — the game-art catalog under `outputs/design/game-art/`. The service-domain UI catalog (`outputs/design/ui/ant/ui-*.json`) is NOT in scope (D28 vertical split).
 
-- `outputs/design/ui/ant/ui-assets.json` (HUD icons, page chrome, toast glyphs)
-- `outputs/design/game-art/game-art-assets.json` (sprites, particles, projectiles, sfx)
+Both render paths in a React + Phaser host pull from the same source:
 
-The two MUST stay surface-separated:
-
-- ❌ A HUD icon MUST NOT come from `game-art-assets.json` (sprite catalog).
-- ❌ An in-canvas sprite MUST NOT come from `ui-assets.json` (UI catalog).
-- ❌ Engine textures (Phaser `texture.add*`) MUST NOT load from `inputs/assets/service/...`.
-
-Concretely, in Phaser:
-
-| Render surface | Catalog | Loader |
+| Render surface | Reads | Loader |
 |---|---|---|
-| `UIScene` (HUD overlay) text / glyph | `ui-assets.json` | React imports the SVG / glyph and renders into `UIScene` via `this.add.dom(...)` or by drawing the inline form |
-| `MainScene` (game canvas) sprite / particle | `game-art-assets.json` | `BootScene.preload` registers textures from inline base64 or external `src` |
+| `UIScene` / React HUD overlay (menus / score / dialog) | `game-art-tokens.json` HUD CSS tokens + `game-art-spec.json` `hud` / `menu` / `dialog` categories + `game-art-assets.json` glyph entries | React imports inline SVG / CSS or external icons from `inputs/assets/game/icons/` |
+| `MainScene` (game canvas) sprite / particle / projectile | `game-art-assets.json` `entities` / `particles` / `projectiles` categories | `BootScene.preload` registers textures from inline base64 or external `src` under `inputs/assets/game/{category}/` |
+
+Forbidden cross-pollution:
+
+- ❌ A HUD glyph MUST NOT be sourced from `outputs/design/ui/ant/ui-assets.json` (that catalog is service-domain-only — D28).
+- ❌ An in-canvas sprite MUST NOT come from a `ui-source` slot.
+- ❌ Engine textures (Phaser `texture.add*`) MUST NOT load from `inputs/assets/service/...` — the game pool is the only legal `external` `src` root for a game workspace.
+- ❌ A game-domain code job MUST NOT import or reference `ui-tokens.json` / `ui-spec.json`. HUD CSS values come from `game-art-tokens.json` (palette / silhouette / lighting / motion-tone + HUD spacing / typography / radius / shadow).
+
+The single-source guarantee is what keeps the in-canvas surface and the HUD surface tonally consistent — both render paths derive from the same `gameArtTier.concept` decision.
 
 ### 5. Phase scope precedence
 

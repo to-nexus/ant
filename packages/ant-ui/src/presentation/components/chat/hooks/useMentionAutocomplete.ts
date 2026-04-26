@@ -5,6 +5,7 @@ import {
   INTENT_DEFINITIONS,
   ACTION_DEFINITIONS,
   getConfigSlots,
+  filterSlotsByDomain,
   isActionVisibleForDomain,
   type IntentId,
   type Domain,
@@ -40,9 +41,18 @@ function flattenFilePaths(nodes: FileNode[], prefix = ''): string[] {
   return paths;
 }
 
-function getSuggestedDirs(intent: IntentId, prefix: FileMentionPrefix): string[] {
-  const slots = getConfigSlots(intent);
-  if (!slots) return [];
+function getSuggestedDirs(
+  intent: IntentId,
+  prefix: FileMentionPrefix,
+  domain: Domain | undefined,
+): string[] {
+  const rawSlots = getConfigSlots(intent);
+  if (!rawSlots) return [];
+  // D28 — drop slots whose `applicableDomains` does not include the
+  // workspace domain so a service workspace does not surface
+  // `outputs/design/game-art` and a game workspace does not surface
+  // `outputs/design/ui` in mention suggestions.
+  const slots = filterSlotsByDomain(rawSlots, domain);
   const dirs = new Set<string>();
   if (prefix === '@ref:') {
     slots.refs.forEach(s => { if (s.path && !s.codebase) dirs.add(s.path); });
@@ -64,6 +74,7 @@ function buildGroupedFileSuggestions(
   allFilePaths: string[],
   query: string,
   intent: IntentId | undefined,
+  domain: Domain | undefined,
 ): MentionSuggestion[] {
   const q = query.toLowerCase();
   const baseFilter = prefix === '@target:'
@@ -71,7 +82,7 @@ function buildGroupedFileSuggestions(
     : (p: string) => p.toLowerCase().includes(q);
   const filtered = allFilePaths.filter(baseFilter);
 
-  const suggestedDirs = intent ? getSuggestedDirs(intent, prefix) : [];
+  const suggestedDirs = intent ? getSuggestedDirs(intent, prefix, domain) : [];
   if (suggestedDirs.length === 0) {
     return filtered.slice(0, 10).map(p => ({
       type, id: p, label: basename(p), description: p,
@@ -164,8 +175,10 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     switch (prefix) {
       case '@intent:': {
         // Phase 2 (D22): mirror the ActionsPanel domain gate so users
-        // cannot side-step it via mention. `gen-art-*` / `rev-art` /
-        // `explain-art` (intentGroup `design-art`) disappear when the
+        // cannot side-step it via mention. `gen-game-art-*` / `rev-game-art` /
+        // `explain-game-art` (intentGroup `design-game-art`) disappear when
+        // domain==='service'; `gen-ui-*` / `rev-ui` / `explain-ui`
+        // (intentGroup `design-ui`) disappear when domain==='game'. The
         // current workspace domain is `service`.
         const hiddenGroups = new Set<IntentGroup>(
           ACTION_DEFINITIONS
@@ -180,13 +193,13 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       }
 
       case '@target:':
-        return buildGroupedFileSuggestions('target', '@target:', allFilePaths, query, actionMetadata.intent);
+        return buildGroupedFileSuggestions('target', '@target:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain);
 
       case '@ref:':
-        return buildGroupedFileSuggestions('ref', '@ref:', allFilePaths, query, actionMetadata.intent);
+        return buildGroupedFileSuggestions('ref', '@ref:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain);
 
       case '@ctx:':
-        return buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent);
+        return buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain);
 
       case '@domain:':
         return DOMAIN_OPTIONS

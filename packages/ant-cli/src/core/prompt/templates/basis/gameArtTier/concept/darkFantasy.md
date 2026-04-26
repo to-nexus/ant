@@ -47,3 +47,13 @@ Adjacent tones (cite in design notes, do NOT visually copy):
 - `game-art-tokens.json` carries this palette / silhouette / lighting / motion as token values.
 - `game-art-assets.json` inline payloads (css / svg) MUST stay within the desaturated palette ranges with rare accent splashes.
 - HUD chrome reads as parchment / iron / blood, never glossy plastic.
+
+### HUD layout defaults (D28 — concept-derived)
+
+When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / `menu` / `dialog` categories, default to:
+
+- **Spacing rhythm**: `compact8pt` — dense layout matching the heavy silhouette / weighty tone. Airy whitespace breaks the gothic mood.
+- **Surface treatment**: `borderedSoft` (engraved frames) or `solid` (parchment / iron) — visible edges, layered depth (drop-shadow inside + outside). Never glassy / translucent.
+- **Typography weight**: bold (700+) for headers, regular for body. Display serif (e.g. Cormorant / EB Garamond) for titles, monospace or geometric sans for HUD numerics. Avoid friendly rounded fonts.
+- **Border radius**: 0–4px panels, 0–2px buttons. Sharp / angular corners reinforce the silhouette identity.
+- **Focus ring / interaction tone**: restrained — opacity dim on hover, subtle pulse on focus, hard cut on press (no spring / bounce). State changes feel weighty / deliberate, not playful.

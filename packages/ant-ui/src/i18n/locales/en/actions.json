@@ -18,7 +18,7 @@
       "description": "Design tokens, assets, and UI specifications",
       "pickMode": "How would you like to design the UI?"
     },
-    "art-design": {
+    "game-art-design": {
       "label": "Game Art Design",
       "description": "Design game-art tokens, asset catalog, and entity/effect specifications (game domain only)",
       "pickMode": "How would you like to design the game art?",

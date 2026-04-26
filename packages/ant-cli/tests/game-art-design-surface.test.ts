@@ -1,8 +1,9 @@
 /**
- * I7 — Art Design Surface (Phase 2 — D18 + D21)
+ * I7-revised — Domain-Surface Boundary (Phase 2 — D18 / D21 / D28)
  *
- * UI design (gen-ui-* / rev-ui) and game-art design (gen-art-* / rev-art)
- * are orthogonal surfaces:
+ * UI design (gen-ui-* / rev-ui) is service-domain-only and game-art design
+ * (gen-game-art-* / rev-game-art) is game-domain-only — D28 vertical split.
+ * The two surfaces remain orthogonal at the prompt level:
  *
  *   - UI surface vocabulary: `visualLanguage`, `surfaceSystem`,
  *     `spatialSystem` (and their layer keywords).
@@ -47,7 +48,7 @@ function readMd(rel: string): string {
   return fs.readFileSync(path.join(TEMPLATES_ROOT, rel), 'utf-8');
 }
 
-describe('I7 — Art Design Surface boundary', () => {
+describe('I7-revised — Domain-Surface Boundary', () => {
   // UI design templates (decompose / execute) live under specific dirs.
   it('UI design decompose / execute templates avoid game-art keywords', () => {
     const dirs = [
@@ -69,8 +70,8 @@ describe('I7 — Art Design Surface boundary', () => {
   // Game-Art design templates avoid UI surface vocabulary.
   it('game-art design decompose / execute templates avoid UI surface keywords', () => {
     const dirs = [
-      'jobs/design/nodes/decompose/variants/art-design-by-figma',
-      'jobs/design/nodes/decompose/variants/art-design-by-desc',
+      'jobs/design/nodes/decompose/variants/game-art-design-by-figma',
+      'jobs/design/nodes/decompose/variants/game-art-design-by-desc',
     ];
     const offenders: Array<{ file: string; match: string }> = [];
     for (const dir of dirs) {
@@ -83,7 +84,7 @@ describe('I7 — Art Design Surface boundary', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('art-tier basis preamble (jobs/design) declares the css-only scope (D21)', () => {
+  it('game-art-tier basis preamble (jobs/design) declares the css-only scope (D21)', () => {
     const rel = 'jobs/design/basis/gameArtTier/_preamble.md';
     const body = readMd(rel);
     expect(body).toMatch(/css-only|css\s+only/i);

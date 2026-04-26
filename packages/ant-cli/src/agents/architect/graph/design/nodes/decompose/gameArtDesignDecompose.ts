@@ -39,21 +39,21 @@ interface DecomposeContext {
 /**
  * Pick the decompose template variant based on the chosen intent.
  *
- * - `gen-art-figma` → `by-figma` (Figma MCP-driven catalog generation)
- * - `gen-art-desc`, `rev-art` and any other entry point → `by-desc`
- *   (directive-driven generation; `rev-art` modifies an existing
+ * - `gen-game-art-figma` → `by-figma` (Figma MCP-driven catalog generation)
+ * - `gen-game-art-desc`, `rev-game-art` and any other entry point → `by-desc`
+ *   (directive-driven generation; `rev-game-art` modifies an existing
  *   game-art document and shares the directive contract)
  */
-function pickArtDesignVariant(state: DesignGraphState): 'by-figma' | 'by-desc' {
+function pickGameArtDesignVariant(state: DesignGraphState): 'by-figma' | 'by-desc' {
   const intent = state.resolvedAction?.intent;
-  if (intent === 'gen-art-figma') return 'by-figma';
+  if (intent === 'gen-game-art-figma') return 'by-figma';
   return 'by-desc';
 }
 
 /**
  * Handle game-art design decomposition via LLM.
  */
-export async function decomposeArtDesign(
+export async function decomposeGameArtDesign(
   state: DesignGraphState,
   ctx: DecomposeContext,
 ): Promise<DesignGraphState> {
@@ -74,7 +74,7 @@ export async function decomposeArtDesign(
 
   let directiveContext: string;
   if (useToolMode) {
-    console.log(`📊 [ArtDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
+    console.log(`📊 [GameArtDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
     const fileIndex = buildSourceFileIndex(sourceRecord);
     const parts = [
       `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to game-art decisions.`,
@@ -82,7 +82,7 @@ export async function decomposeArtDesign(
     ].filter(Boolean);
     directiveContext = parts.join('\n\n---\n\n');
   } else {
-    console.log(`📊 [ArtDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
+    console.log(`📊 [GameArtDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
     const allSourceDocs = buildAllSourceDocs(sourceRecord);
     const parts = [
       allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
@@ -92,7 +92,7 @@ export async function decomposeArtDesign(
   }
 
   const sourceFileNames = pool.sourceFileNames();
-  const variant = pickArtDesignVariant(state);
+  const variant = pickGameArtDesignVariant(state);
   const isFigmaMode = variant === 'by-figma'
     && isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   if (isFigmaMode && !sourceFileNames.includes('figma.json')) {
@@ -102,7 +102,7 @@ export async function decomposeArtDesign(
   // Render prompt
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
-  const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/art-design-${variant}/base`;
+  const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/game-art-design-${variant}/base`;
 
   // Asset count is sourced from `inputs/assets/game/` (D19-revised) when
   // workspace.domain is `game`. The pool view's `uiAssetsList` is reused
@@ -138,11 +138,11 @@ export async function decomposeArtDesign(
   await safeLogPrompt(
     state.context.featurePath,
     state.jobId || state._httpJobId || 'unknown',
-    'decompose-artDesign',
+    'decompose-gameArtDesign',
     artDecomposePrompt.length,
     {
       templatePath: decomposeTemplatePath,
-      usedTemplates: [`jobs/design/nodes/decompose/variants/art-design-${variant}/rules`],
+      usedTemplates: [`jobs/design/nodes/decompose/variants/game-art-design-${variant}/rules`],
     },
   );
 
@@ -173,23 +173,23 @@ export async function decomposeArtDesign(
         },
       );
       textResponse = response;
-      applyEstimatingUsage(state, 'decompose', usage, { subNode: 'art', promptChars: artDecomposePrompt.length });
+      applyEstimatingUsage(state, 'decompose', usage, { subNode: 'gameArt', promptChars: artDecomposePrompt.length });
     } else {
       const result = await llmToUse.invokeWithUsage?.(
         [{ role: 'user', content: artDecomposePrompt }],
         { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT },
       );
       textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: artDecomposePrompt }]);
-      applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'art', promptChars: artDecomposePrompt.length });
+      applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'gameArt', promptChars: artDecomposePrompt.length });
     }
 
     // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
     // BEFORE the JSON output. Missing tag degrades to Tier 0 Reflex.
     const executionTier = coerceExecutionTier(
       parseExecutionTierTag(textResponse),
-      'ArtDecompose',
+      'GameArtDecompose',
     );
-    console.log(`🧭 [ArtDecompose] executionTier=${executionTier}`);
+    console.log(`🧭 [GameArtDecompose] executionTier=${executionTier}`);
 
     // Parse and validate
     const parsedResponse = parseLLMJsonResponse(textResponse);
@@ -268,12 +268,12 @@ export async function decomposeArtDesign(
     if (sourceFileNames.length > 0) {
       for (const task of taskQueue.getAll()) {
         if (!task.sourceFiles || task.sourceFiles.length === 0) {
-          console.warn(`⚠️ [Art Decompose] task "${task.id}" missing sourceFiles`);
+          console.warn(`⚠️ [GameArtDecompose] task "${task.id}" missing sourceFiles`);
         }
       }
     }
 
-    console.log(`✅ Art decompose: ${taskQueue.size()} tasks (${response.strategy || 'category-based'} strategy)`);
+    console.log(`✅ GameArt decompose: ${taskQueue.size()} tasks (${response.strategy || 'category-based'} strategy)`);
 
     // Finalize estimating phase
     const phaseBreakdown = { ...(state._phaseTimings || {}), decompose: Date.now() - ctx.phaseStart };
@@ -284,12 +284,12 @@ export async function decomposeArtDesign(
 
     // Game-art design is always frontend (rendered through the React/canvas
     // host that owns the engine sub-host).
-    const artTechTier = buildTechTier(state.profile, 'frontend');
-    console.log(`✅ TechTier: stack=frontend, language=${artTechTier.language}, framework=${artTechTier.framework || 'none'}`);
+    const gameArtTechTier = buildTechTier(state.profile, 'frontend');
+    console.log(`✅ TechTier: stack=frontend, language=${gameArtTechTier.language}, framework=${gameArtTechTier.framework || 'none'}`);
 
     const basisTechTierConfig: TechTierConfig = {
       stack: 'frontend',
-      frontend: { ...artTechTier, stack: 'frontend' as const },
+      frontend: { ...gameArtTechTier, stack: 'frontend' as const },
     };
     state.resolvedAction = {
       ...state.resolvedAction!,
@@ -297,11 +297,11 @@ export async function decomposeArtDesign(
     };
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Apply <gameArtTier> decision tag (Phase 2 — D18 + p2-art-decision-mechanism)
+    // Apply <gameArtTier> decision tag (Phase 2 — D18/D28)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Art-design is the only design-job context that emits `<gameArtTier>`
+    // Game-art design is the only design-job context that emits `<gameArtTier>`
     // (UI design suppresses it — D18). The matrix gate is implicit:
-    // `intentGroup === 'design-art'` ⇒ workspace.domain === 'game'
+    // `intentGroup === 'design-game-art'` ⇒ workspace.domain === 'game'
     // (TIER_DOMAIN_MATRIX.gameArtTier=['game']), so reaching this code
     // path already guarantees the tier is active. We always parse + apply
     // (no extra gate needed) so existing explicit basis values are
@@ -327,18 +327,18 @@ export async function decomposeArtDesign(
           basis: { ...state.resolvedAction.basis, gameArtTier: merged },
         };
         console.log(
-          `🎨 [ArtDecompose] gameArtTier applied: ${Object.entries(merged)
+          `🎨 [GameArtDecompose] gameArtTier applied: ${Object.entries(merged)
             .map(([k, v]) => `${k}=${v}`)
             .join(', ')}`,
         );
       } else if (decisionTags.violations.length > 0) {
         console.warn(
-          `⚠️ [ArtDecompose] <gameArtTier> violations: ` +
+          `⚠️ [GameArtDecompose] <gameArtTier> violations: ` +
             decisionTags.violations.map(v => v.message).join('; '),
         );
       }
     } catch (e) {
-      console.warn(`⚠️ [ArtDecompose] decision-tag apply skipped:`, e);
+      console.warn(`⚠️ [GameArtDecompose] decision-tag apply skipped:`, e);
     }
 
     state.jobId = ctx.newJobId;
@@ -358,7 +358,7 @@ export async function decomposeArtDesign(
       jobId: ctx.newJobId,
       jobType: 'design',
       executionTier,
-      nodeLabel: 'ArtDecompose',
+      nodeLabel: 'GameArtDecompose',
     });
 
     return {

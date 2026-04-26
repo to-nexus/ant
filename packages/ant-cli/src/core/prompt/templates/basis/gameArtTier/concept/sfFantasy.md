@@ -45,3 +45,13 @@ Saturation budget is generous — SF Fantasy lets neon and starlight coexist wit
 - Token palette MUST allow at least one emissive accent slot — the concept depends on glow.
 - Inline svg payloads use gradient fills more often than flat fills.
 - Particle effects (Phase 4 axis) trend toward `light` or `heavy` profile, never `none`.
+
+### HUD layout defaults (D28 — concept-derived)
+
+When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / `menu` / `dialog` categories, default to:
+
+- **Spacing rhythm**: `balanced8pt` — moderate density. Cosmic interfaces benefit from breathing room without going airy (the SF tone wants information density to feel like a mission console).
+- **Surface treatment**: `tinted` (color-washed translucency) or `glassLight` (holographic overlay) — emissive borders, gradient fills. Avoid solid opaque panels; the cosmic tone needs depth.
+- **Typography weight**: medium (500–600), geometric sans-serif (e.g. Eurostile / Orbitron family) for HUD numerics; serif accent reserved for arcane / lore text. Mix is intentional — the SF Fantasy hybrid identity.
+- **Border radius**: 4–8px panels, 4px buttons. Mid-sharpness — between the airier defaults of friendly concepts and the stark angles of gothic concepts.
+- **Focus ring / interaction tone**: cinematic — slow pulse glow on focus, holographic warp on transition, particle trail on confirmation. State changes telegraph through emissive borders rather than scale.

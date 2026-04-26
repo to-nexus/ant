@@ -145,9 +145,9 @@ catalog of inline approximations.
 
 {{! Execute-phase injection guides: static partial refs for manifest/matrix audits; branch never renders. }}
 {{#if false}}
-{{> jobs/design/nodes/execute/injections/art-tokens-guide-by-desc}}
-{{> jobs/design/nodes/execute/injections/art-assets-guide-by-desc}}
-{{> jobs/design/nodes/execute/injections/art-spec-guide-by-desc}}
+{{> jobs/design/nodes/execute/injections/game-art-tokens-guide-by-desc}}
+{{> jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc}}
+{{> jobs/design/nodes/execute/injections/game-art-spec-guide-by-desc}}
 {{/if}}
 
-{{> jobs/design/nodes/decompose/variants/art-design-by-desc/rules}}
+{{> jobs/design/nodes/decompose/variants/game-art-design-by-desc/rules}}

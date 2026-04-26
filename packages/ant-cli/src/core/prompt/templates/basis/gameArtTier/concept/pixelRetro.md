@@ -51,3 +51,13 @@ Pick one sub-style and commit — switching mid-project breaks the aesthetic pro
 - Inline svg is unusual for pixel-retro; assets are typically `kind: 'external'` raster files (`.png`) at the chosen resolution.
 - Sub-pixel rendering settings (CSS `image-rendering: pixelated`) MUST be set on render targets.
 - Animations advance integer frames — no floating-point tween between sprite frames.
+
+### HUD layout defaults (D28 — concept-derived)
+
+When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / `menu` / `dialog` categories, default to:
+
+- **Spacing rhythm**: `compact8pt` (or even tighter — 4pt grid) — pixel-era HUDs were dense by hardware necessity. Airy whitespace breaks the era promise.
+- **Surface treatment**: `solid` (flat opaque backgrounds, hard borders, no shadows) — the era predates drop-shadow / blur. Dithered borders allowed.
+- **Typography weight**: bitmap fonts (e.g. Press Start 2P / VT323 / monogram) — pixel-perfect at the chosen resolution. Anti-aliased fonts break the aesthetic; reject system sans-serif.
+- **Border radius**: 0px — sharp square corners. Rounded panels are anachronistic. (The single exception: tile-perfect 1-pixel chamfers if the era supports it, e.g. Game Boy.)
+- **Focus ring / interaction tone**: raw-instant — single-frame state swap on press (no transition), 2-frame blink on focus. Smooth tween is forbidden; everything is discrete.

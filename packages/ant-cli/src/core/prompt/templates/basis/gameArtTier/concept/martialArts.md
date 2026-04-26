@@ -45,3 +45,13 @@ Saturation is moderate; the palette emphasizes graceful contrast over high punch
 - Token palette includes a chi / aura emissive slot — used for ability work.
 - Motion tokens favor extended after-image / trail effects (Phase 4 axis: `motionPattern = expressive`).
 - HUD chrome reads as scroll / lantern, with calligraphic glyphs.
+
+### HUD layout defaults (D28 — concept-derived)
+
+When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / `menu` / `dialog` categories, default to:
+
+- **Spacing rhythm**: `airy8pt` — vertical breathing room matches the layered mist / mountain atmosphere. Compact density breaks the graceful tone.
+- **Surface treatment**: `tinted` (translucent washes mimicking silk / cloth) or `glassLight` with chi-aura tint — soft inner glow on focus, no hard borders. Drop shadows are subtle.
+- **Typography weight**: light-regular body, medium for headers. Calligraphic display script (e.g. Ma Shan Zheng / Long Cang) for titles, modern serif for body — like ink on rice paper. HUD numerics in light geometric sans.
+- **Border radius**: 8–16px panels (rolled-scroll edges), 6–12px buttons (rounded but not pill).
+- **Focus ring / interaction tone**: cinematic-reveal — slow chi-glow expansion on focus, after-image trail on press, petals / ink-particles on confirmation. Tempo is held-then-released, not constant.

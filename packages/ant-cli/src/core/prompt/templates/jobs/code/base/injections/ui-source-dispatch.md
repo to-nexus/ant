@@ -4,6 +4,10 @@
   authored by `.cursorrules` "Post-RAC Template Condition SSOT" as a
   documented Contract-flavoured exception: each source has a distinct
   interpretation contract that Gate (`hasUi`) alone cannot express.
+
+  Service-domain only (D28). Game-domain code jobs are routed to
+  `game-art-source` directly by `AutoInjectionResolver`, so this partial
+  never receives a game-domain context.
 --}}
 {{#if uiSource}}
 {{#if (eq uiSource 'ant')}}

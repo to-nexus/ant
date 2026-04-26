@@ -26,7 +26,8 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
   const { i18n } = useTranslation('actions');
   const lang = i18n.language as 'en' | 'ko';
   // Phase 2 (D22): the workspace-level project domain gates which Action
-  // cards are visible (e.g. `design-art` is hidden when domain==='service').
+  // cards are visible (e.g. `design-game-art` is hidden when domain==='service',
+  // `design-ui` is hidden when domain==='game' — D28).
   // Cards without a `domainGate` field stay visible on every domain.
   const currentDomain = useStore(s => s.actionMetadata.domain);
 
