@@ -1,17 +1,19 @@
 /**
- * Phase 2 (D22) — domain transition contract for `updateActionMetadata`.
+ * Phase 2 (D22 / D28) — domain transition contract for `updateActionMetadata`.
  *
  * The store centralizes three guarantees so every entry point
  * (DomainToggle / `@domain:` mention / future SSE broadcast) shares
  * the same behaviour:
  *
- *   (a) game → service drops `gameArtTier` / `gameContentTier` and the
- *       `gameEngine` 5th slot from `basis.techTier`. `visualTier`
- *       survives (matrix-permitted on both domains).
+ *   (a) game → service drops `gameArtTier` / `gameContentTier` / `visualTier`
+ *       (D28 — visualTier is service-only) and the `gameEngine` 5th slot
+ *       from `basis.techTier`. service → game drops `visualTier` for the
+ *       same reason.
  *   (b) If the currently-selected action card no longer passes the
- *       matrix gate (e.g. `design-art` on service), the wizard unwinds
- *       to `pick-action`. This is what kills the "intent screen blank"
- *       regression where ScrollableTabNav held a hidden tab id.
+ *       matrix gate (e.g. `design-game-art` on service or `design-ui` on
+ *       game — D28), the wizard unwinds to `pick-action`. This is what
+ *       kills the "intent screen blank" regression where ScrollableTabNav
+ *       held a hidden tab id.
  *   (c) `actionMetadata.domain` itself is required (no `undefined`),
  *       seeded `'service'` at first paint and after `reset()`.
  */
@@ -94,16 +96,16 @@ describe('uiSlice — domain transition cleanup (game → service)', () => {
 });
 
 describe('uiSlice — domain gate unwind (D22)', () => {
-  it('game → service unwinds selectedActionId === "design-art" (intent-screen-blank fix)', () => {
+  it('game → service unwinds selectedActionId === "design-game-art" (intent-screen-blank fix)', () => {
     const store = makeStore();
     store.getState().updateActionMetadata({ domain: 'game' });
-    store.getState().selectAction('design-art');
-    store.getState().selectIntent('gen-art-figma');
+    store.getState().selectAction('design-game-art');
+    store.getState().selectIntent('gen-game-art-figma');
     // ActionsPanel's intent-pick handler sets the step explicitly. Mirror
     // that here so the unwind test starts from a real-user-equivalent
-    // state (`config` step holding `selectedActionId='design-art'`).
+    // state (`config` step holding `selectedActionId='design-game-art'`).
     store.getState().setActionsStep('config');
-    expect(store.getState().selectedActionId).toBe('design-art');
+    expect(store.getState().selectedActionId).toBe('design-game-art');
     expect(store.getState().actionsStep).toBe('config');
 
     store.getState().updateActionMetadata({ domain: 'service' });
@@ -248,7 +250,7 @@ describe('uiSlice — techTier IntentGroup scoping', () => {
   it('domain unwind to pick-action retires the live techTier into the cache', () => {
     const store = makeStore();
     store.getState().updateActionMetadata({ domain: 'game' });
-    store.getState().selectAction('design-art');
+    store.getState().selectAction('design-game-art');
     store.getState().updateActionMetadata({
       basis: {
         techTier: { stack: 'frontend', frontend: { language: 'typescript', stack: 'frontend', gameEngine: 'phaser' } },
@@ -259,7 +261,7 @@ describe('uiSlice — techTier IntentGroup scoping', () => {
     expect(store.getState().selectedActionId).toBeNull();
     // Cache survives so the user's prior choice is restored if they revisit.
     // gameEngine is scrubbed by the domain transition itself.
-    const cached = store.getState().actionMetadata.techTierByGroup?.['design-art'];
+    const cached = store.getState().actionMetadata.techTierByGroup?.['design-game-art'];
     expect(cached?.stack).toBe('frontend');
     expect(cached?.frontend?.gameEngine).toBeUndefined();
   });

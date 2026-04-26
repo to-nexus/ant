@@ -15,8 +15,7 @@
  *
  * Rename history (D12-revised, Phase 2): the previous `art-tier-registry.ts`
  * with `ART_*` constants was renamed to `game-art-tier-registry.ts` with
- * `GAME_ART_*` constants. Compat re-exports under the old `ART_*` names are
- * kept temporarily for callsites still referring to the Phase 1 names.
+ * `GAME_ART_*` constants. No BC re-exports — D28 hard rename.
  */
 
 import type {

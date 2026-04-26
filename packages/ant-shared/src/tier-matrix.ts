@@ -38,7 +38,7 @@ import type { TechTierConfig } from './rac';
 // ============================================
 
 /**
- * Phase 2 tier universe (D22 + D23). Adding a new tier:
+ * Phase 2 tier universe (D22 + D23 + D28). Adding a new tier:
  *   1. extend this union,
  *   2. add a row to `TIER_DOMAIN_MATRIX`,
  *   3. (optional) add a `RUNTIME_SUPPRESSORS` entry,
@@ -49,6 +49,9 @@ import type { TechTierConfig } from './rac';
  * Service-domain plan/spec basis wizards thus auto-collapse (no tier rows
  * for service in the gameContentTier-only PLAN_TIERS / SPEC_TIERS).
  *
+ * D28 — `visualTier` is service-domain-only (vertical split). The game
+ * domain has `gameArtTier` as its sole art SSOT and never sees visualTier
+ * / ui-* artifacts. service domain is unchanged.
  */
 export type TierKey =
   | 'techTier'
@@ -73,7 +76,7 @@ export const TIER_KEYS: ReadonlyArray<TierKey> = [
 
 export const TIER_DOMAIN_MATRIX: Readonly<Record<TierKey, ReadonlyArray<Domain>>> = {
   techTier:        ['service', 'game'],
-  visualTier:      ['service', 'game'],
+  visualTier:      ['service'],       // D28 — service-domain only (vertical split)
   gameArtTier:     ['game'],          // D12-revised — game-domain only
   gameContentTier: ['game'],
 } as const;
@@ -110,6 +113,11 @@ type RuntimeSuppressor = (ctx: TierRuntimeContext) => boolean;
  *   - slot opt-in (handled by `slot.tiers?.includes(tier)`)
  *   - backend-only stack
  *   - hasUiDoc=true
+ *
+ * D28 note — visualTier is gated to `['service']` at the matrix layer, so
+ * these suppressors only ever run on service-domain RACs. The hasUiDoc
+ * branch keeps its meaning (a service workspace with a finalized UI doc
+ * gets the tier suppressed because the artifact IS the visual authority).
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const RUNTIME_SUPPRESSORS: Partial<Record<TierKey, RuntimeSuppressor>> = {

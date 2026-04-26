@@ -14,7 +14,7 @@ import { createDefaultTask, createExplainTask } from "./defaults";
 import { updateKanban } from "./kanbanUpdate";
 import { enterDecomposeNode, exitDecomposeNode } from "./workflowInstrument";
 import { decomposeUiDesign } from "./uiDesignDecompose";
-import { decomposeArtDesign } from "./artDesignDecompose";
+import { decomposeGameArtDesign } from "./gameArtDesignDecompose";
 import { decomposeSystemDesign } from "./systemDesignDecompose";
 import { decomposeSpec } from "./specDecompose";
 import { BOUNDARY, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
@@ -42,18 +42,18 @@ function validateUiDesignPrerequisites(state: DesignGraphState): void {
 }
 
 /**
- * Validate prerequisites for game-art design intents (`gen-art-figma`,
- * `gen-art-desc`, `rev-art`).
+ * Validate prerequisites for game-art design intents (`gen-game-art-figma`,
+ * `gen-game-art-desc`, `rev-game-art`).
  *
- * - `gen-art-figma` requires a Figma config (same shape as ui-figma).
- * - `gen-art-desc` is directive-only — no references / assets required.
- * - `rev-art` requires existing `outputs/design/game-art/` documents
+ * - `gen-game-art-figma` requires a Figma config (same shape as ui-figma).
+ * - `gen-game-art-desc` is directive-only — no references / assets required.
+ * - `rev-game-art` requires existing `outputs/design/game-art/` documents
  *   (validated upstream by RAC; this fn is permissive here).
  */
-function validateArtDesignPrerequisites(state: DesignGraphState): void {
+function validateGameArtDesignPrerequisites(state: DesignGraphState): void {
   const intent = state.resolvedAction?.intent;
 
-  if (intent === 'gen-art-figma') {
+  if (intent === 'gen-game-art-figma') {
     if (!state.figmaConfig?.file) {
       throw new Error(
         "No Figma file configured for game-art document generation.\n\n" +
@@ -234,8 +234,8 @@ async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphS
   // Validate UI / Game-Art design prerequisites
   if (state.resolvedAction?.intentGroup === 'design-ui') {
     validateUiDesignPrerequisites(state);
-  } else if (state.resolvedAction?.intentGroup === 'design-art') {
-    validateArtDesignPrerequisites(state);
+  } else if (state.resolvedAction?.intentGroup === 'design-game-art') {
+    validateGameArtDesignPrerequisites(state);
   }
 
   // Workflow enter
@@ -268,10 +268,10 @@ async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphS
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Game-Art Design mode: LLM-driven decomposition (D17)
+    // Game-Art Design mode: LLM-driven decomposition (D17/D28)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (state.resolvedAction?.intentGroup === 'design-art') {
-      return decomposeArtDesign(state, {
+    if (state.resolvedAction?.intentGroup === 'design-game-art') {
+      return decomposeGameArtDesign(state, {
         phaseStart,
         newJobId: timing.newJobId,
         newJobTiming: timing.newJobTiming,

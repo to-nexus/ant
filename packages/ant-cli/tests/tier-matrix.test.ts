@@ -32,12 +32,15 @@ describe('TIER_DOMAIN_MATRIX', () => {
     expect(TIER_KEYS).toEqual(['techTier', 'visualTier', 'gameArtTier', 'gameContentTier']);
   });
 
-  it('techTier / visualTier are domain-universal', () => {
+  it('techTier is domain-universal', () => {
     expect(TIER_DOMAIN_MATRIX.techTier).toEqual(expect.arrayContaining(['service', 'game']));
-    expect(TIER_DOMAIN_MATRIX.visualTier).toEqual(expect.arrayContaining(['service', 'game']));
   });
 
-  it('gameArtTier and gameContentTier are game-only (D12-revised)', () => {
+  it('visualTier is service-only (D28 — vertical domain split)', () => {
+    expect(TIER_DOMAIN_MATRIX.visualTier).toEqual(['service']);
+  });
+
+  it('gameArtTier and gameContentTier are game-only (D12-revised + D28 mirror)', () => {
     expect(TIER_DOMAIN_MATRIX.gameArtTier).toEqual(['game']);
     expect(TIER_DOMAIN_MATRIX.gameContentTier).toEqual(['game']);
   });
@@ -103,10 +106,10 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     { intent: 'gen-ui-figma', tiers: ['visualTier', 'gameContentTier'] },
     { intent: 'gen-ui-desc', tiers: ['visualTier', 'gameContentTier'] },
     { intent: 'rev-ui', tiers: [] },
-    // Phase 2 (D17) — game-art design intents. tiers omits visualTier (D18).
-    { intent: 'gen-art-figma', tiers: ['gameArtTier', 'gameContentTier'] },
-    { intent: 'gen-art-desc', tiers: ['gameArtTier', 'gameContentTier'] },
-    { intent: 'rev-art', tiers: [] },
+    // Phase 2 (D17/D28) — game-art design intents. tiers omits visualTier (D18).
+    { intent: 'gen-game-art-figma', tiers: ['gameArtTier', 'gameContentTier'] },
+    { intent: 'gen-game-art-desc', tiers: ['gameArtTier', 'gameContentTier'] },
+    { intent: 'rev-game-art', tiers: [] },
     { intent: 'gen-code-sys', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
     { intent: 'gen-code-spec', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
     { intent: 'gen-code-directive', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
@@ -135,7 +138,7 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     const bypass: IntentId[] = [
       'ask-evaluate', 'ask-ant', 'ask-general',
       'explain-code', 'explain-ui', 'explain-sys', 'explain-spec', 'explain-plan', 'explain-visual',
-      'explain-art',
+      'explain-game-art',
       'gen-learn',
       'gen-visual-logo', 'gen-visual-icon', 'gen-visual-hero', 'gen-visual-illustration',
     ];
@@ -147,7 +150,7 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
   });
 
   it('all rev-* intents expose zero configurable tiers', () => {
-    const REV_INTENTS: IntentId[] = ['rev-plan', 'rev-sys', 'rev-ui', 'rev-art', 'rev-spec', 'rev-code'];
+    const REV_INTENTS: IntentId[] = ['rev-plan', 'rev-sys', 'rev-ui', 'rev-game-art', 'rev-spec', 'rev-code'];
     for (const intent of REV_INTENTS) {
       const slot = getConfigSlots(intent)?.basis;
       expect(slot).toBeDefined();
@@ -167,7 +170,7 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
       'gen-spec', 'rev-spec',
       'rev-sys',
       'gen-ui-figma', 'gen-ui-desc', 'rev-ui',
-      'gen-art-figma', 'gen-art-desc', 'rev-art',
+      'gen-game-art-figma', 'gen-game-art-desc', 'rev-game-art',
       'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
     ];
     for (const intent of NON_LOCKED) {
@@ -187,7 +190,7 @@ describe('full grid sweep (intent × domain × tier)', () => {
     'gen-plan', 'rev-plan', 'gen-spec', 'rev-spec',
     'gen-sys-fe', 'gen-sys-be', 'gen-sys-full', 'rev-sys',
     'gen-ui-figma', 'gen-ui-desc', 'rev-ui',
-    'gen-art-figma', 'gen-art-desc', 'rev-art',
+    'gen-game-art-figma', 'gen-game-art-desc', 'rev-game-art',
     'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
   ];
 
@@ -209,7 +212,7 @@ describe('full grid sweep (intent × domain × tier)', () => {
   const NON_ARTIFACT_INTENTS: IntentId[] = [
     'ask-evaluate', 'ask-ant', 'ask-general',
     'explain-code', 'explain-ui', 'explain-sys', 'explain-spec', 'explain-plan', 'explain-visual',
-    'explain-art',
+    'explain-game-art',
     'gen-learn',
     'gen-visual-logo', 'gen-visual-icon', 'gen-visual-hero', 'gen-visual-illustration',
   ];

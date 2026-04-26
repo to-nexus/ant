@@ -8,6 +8,7 @@ import {
   type IntentGroup,
   type IntentId,
   getConfigSlots,
+  filterSlotsByDomain,
   formatOutputSpec,
 } from '@ant/shared';
 import { IntentTabNav } from './IntentTabNav';
@@ -82,7 +83,12 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const intentDef = INTENT_DEFINITIONS.find(d => d.id === intentId);
   if (!intentDef) return null;
 
-  const slots = getConfigSlots(intentId);
+  const actionMetadata = useStore(s => s.actionMetadata);
+  // D28 — apply the workspace domain filter so a service workspace never
+  // surfaces game-art-source slots and a game workspace never surfaces
+  // ui-source slots, even though the matrix lists both for `gen-code-*`.
+  const rawSlots = getConfigSlots(intentId);
+  const slots = rawSlots ? filterSlotsByDomain(rawSlots, actionMetadata.domain) : rawSlots;
   // SSOT D27 — surface the BasisSummaryBar / Edit affordance only when at
   // least one tier is actually live for the current domain × runtime.
   // Static `slots.basis.tiers.length` would surface a Section whose Edit
@@ -90,7 +96,6 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   // IntentChipGrid → blank-screen path).
   const activeTiers = useActiveTiers(slots?.basis);
 
-  const actionMetadata = useStore(s => s.actionMetadata);
   const selectedRefs = useMemo(() => new Set(actionMetadata.refs ?? []), [actionMetadata.refs]);
   const selectedCtx = useMemo(() => new Set(actionMetadata.context ?? []), [actionMetadata.context]);
 

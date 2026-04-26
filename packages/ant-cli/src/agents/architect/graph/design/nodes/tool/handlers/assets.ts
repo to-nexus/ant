@@ -16,7 +16,7 @@ export interface AssetsRootInput {
   workspaceDomain?: Domain;
   /** Per-turn explicit/inferred RAC override. */
   racDomain?: Domain;
-  /** RAC intent group — `'design-art'` implies `game` by matrix gate. */
+  /** RAC intent group — `'design-game-art'` implies `game` by matrix gate. */
   intentGroup?: string;
 }
 
@@ -26,7 +26,7 @@ export interface AssetsRootInput {
  * Resolution order (most authoritative first):
  *   1. `workspaceDomain`  — workspace-level 1st-class slot.
  *   2. `racDomain`        — per-turn explicit/inferred override.
- *   3. `intentGroup === 'design-art'` heuristic — `game` (matrix gate).
+ *   3. `intentGroup === 'design-game-art'` heuristic — `game` (matrix gate).
  *   4. Default `'service'`.
  *
  * Returns relative path string starting with `inputs/assets/`.
@@ -36,7 +36,7 @@ export function pickAssetsRoot(input: AssetsRootInput): string {
   const effective: Domain =
     workspaceDomain
       ?? racDomain
-      ?? (intentGroup === 'design-art' ? 'game' : 'service');
+      ?? (intentGroup === 'design-game-art' ? 'game' : 'service');
   return `inputs/assets/${effective}`;
 }
 

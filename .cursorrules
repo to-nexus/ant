@@ -329,11 +329,13 @@ The transformer registry is the self-documenting inventory. If it isn't there, i
 
 ---
 
-## Tier Matrix SSOT — `isTierActive(tier, slot, domain, runtime)` (Phase 1 → D23 / D27)
+## Tier Matrix SSOT — `isTierActive(tier, slot, domain, runtime)` (Phase 1 → D23 / D27 / D28)
 
-**모든 tier (`techTier` / `visualTier` / `gameArtTier` / `gameContentTier`) 의 활성 여부 는 [`@ant/shared/tier-matrix.ts`](packages/ant-shared/src/tier-matrix.ts) 의 `isTierActive` 하나가 SSOT다. 산발 predicate (`isVisualTierActive`, `isArtTierActive` 등) 는 만들지 않는다. FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 5 지점 모두 이 predicate 만 호출한다.**
+**모든 tier (`techTier` / `visualTier` / `gameArtTier` / `gameContentTier`) 의 활성 여부 는 [`@ant/shared/tier-matrix.ts`](packages/ant-shared/src/tier-matrix.ts) 의 `isTierActive` 하나가 SSOT다. 산발 predicate (`isVisualTierActive`, `isGameArtTierActive` 등) 는 만들지 않는다. FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 5 지점 모두 이 predicate 만 호출한다.**
 
 **`domain` 은 TierKey 가 아니다 (D23 — Phase 2).** 워크스페이스 1급 selector (`WorkspaceConfig.domain` — D22) 로서 basis (= 활성 tier set) **위** 에 있으며, `isTierActive(tier, slot, domain, runtime)` 에 게이트 인자로만 전달된다. 도메인 정체성 본문은 `templates/domain/{d}.md` + `templates/jobs/<job>/domain/{d}.md` 에 산다 (D27 — v6). PromptBuilder 는 tier loop **밖** 에서 `renderDomainTier` 한 번 호출한다.
+
+**Domain-Tier 1:1 (D28 — vertical split)**: `visualTier` 는 service 전용, `gameArtTier` 는 game 전용. 두 surface 는 직교가 아니라 도메인별로 단일 활성된다 — 한 워크스페이스가 동시에 양쪽 tier 를 갖지 않는다. `techTier` 만 도메인-universal (모든 도메인 공통).
 
 ```
 active(tier) ⇔ slot.tiers?.includes(tier)
@@ -344,8 +346,8 @@ active(tier) ⇔ slot.tiers?.includes(tier)
 | 축 | 닫히는 조건 | 출처 |
 |---|---|---|
 | slot | `slot.tiers` 에 tier 미포함 | 인텐트별 정적 config (`getConfigSlots(intent).basis.tiers`) |
-| domain | `TIER_DOMAIN_MATRIX[tier]` 에 domain 미포함 | 매트릭스 (Phase 1: gameArtTier/gameContentTier 는 `['game']`) |
-| runtime | `visualTier`: `techTier.stack === 'backend'` 또는 `hasUiDoc === true` | 런타임 RAC basis / post-RAC pool |
+| domain | `TIER_DOMAIN_MATRIX[tier]` 에 domain 미포함 | 매트릭스 (D28: `visualTier=['service']`, `gameArtTier=['game']`, `gameContentTier=['game']`, `techTier=['service','game']`) |
+| runtime | `visualTier`: `techTier.stack === 'backend'` 또는 `hasUiDoc === true` (service 도메인 only — game 에선 visualTier 가 매트릭스에서 막힘) | 런타임 RAC basis / post-RAC pool |
 
 `hasUiDoc` 은 **사용자가 RAC 에 포함시킨 UI 디자인 문서**(ant / figma / handoff)의 존재 여부다. 파일시스템에 존재하는 것만으로는 부족하고, `refs` 또는 `context` 슬롯으로 사용자가 결정해 넣어야 true. UI 디자인 문서 자체가 디자인 시스템 권위이므로 병렬 visual tier 주입은 중복이다.
 
@@ -433,25 +435,35 @@ rg -n "isTierActive\(" --type ts
 
 ---
 
-## Art Design Surface SSOT — UI surface ≠ game-art surface (Phase 2, I7)
+## Domain-Surface Boundary SSOT — service ↔ game vertical split (Phase 2, I7-revised / D28)
 
-**UI design intent (`gen-ui-figma`/`gen-ui-desc`/`rev-ui`) 와 game-art design intent (`gen-art-figma`/`gen-art-desc`/`rev-art`) 는 직교 산출물이다 (D17/D18).** UI design 은 `outputs/design/ui/` 산출물 + `visualTier` 7 layer 의사결정만, game-art design 은 `outputs/design/game-art/` 산출물 + `gameArtTier` 7 axis 의사결정만 책임진다.
+**`visualTier` is service-domain-only and `gameArtTier` is game-domain-only — vertical split (D28).** The two surfaces never coexist in the same workspace:
 
-art design 의 책임 한계는 **css-only inline + external 매핑** (D21). LLM 은 단순 도형 / svg 5-primitive 이하 / OscillatorNode config 까지만 inline 으로 채우고, production 수준 sprite / mp3 / 3D 모델은 사용자가 `inputs/assets/game/` 에 직접 배치 (`kind: 'external'`) 하거나 향후 `visual` job (Phase 5+) 이 제작한다.
+- **service domain** → `visualTier` (6 layers) + `outputs/design/ui/` artifacts + `design-ui` intents (`gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui`).
+- **game domain** → `gameArtTier` (7 axes, including HUD CSS tokens) + `outputs/design/game-art/` artifacts + `design-game-art` intents (`gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art`).
+
+The matrix layer (`TIER_DOMAIN_MATRIX.visualTier=['service']` and `TIER_DOMAIN_MATRIX.gameArtTier=['game']`) and the `domainGate` on each action card mirror each other so a domain switch in `WorkspaceConfig.domain` is the single source of truth that decides which surface is active.
+
+For the game domain, `gameArtTier` is the **single visual SSOT** — both the in-canvas surface (sprites / particles / projectiles / audio) and the React HUD overlay (menus / score / dialog) pull from the same `game-art-tokens.json` palette / silhouette / lighting / motion-tone + HUD CSS tokens. There is no separate `visualTier` for a game project; HUD layout decisions (spacing rhythm / surface treatment / typography / radius / focus ring) come from concept-derived defaults in `basis/gameArtTier/concept/{name}.md`.
+
+game-art design's responsibility limit is **css-only inline + external mapping** (D21). LLM authors inline `kind: 'inline'` payloads (single-color shapes, ≤5 svg primitives, OscillatorNode configs); production-quality sprites / mp3 / 3D models go through user placement (`kind: 'external'`) under `inputs/assets/game/` or the future `visual` job (Phase 5+).
 
 ### ❌ 금지 (cross-pollination)
 
-- art design template 의 본문 (가이드 / 지시) 에 `visualLanguage` / `surfaceSystem` / `spatialSystem` / `interactionGrammar` 등 **UI surface 어휘** 가 등장 — 단, "NOT in scope" 같은 명시적 boundary disclaimer 는 backtick 으로 감싸 허용
-- UI design template 의 본문에 `sprite tween` / `OscillatorNode` / `particle system` / `projectile spawn` 등 **art surface 어휘** 가 등장
-- art design 의 LLM 응답이 `<visualTier>` 태그를, UI design 의 응답이 `<gameArtTier>` 태그를 emit — 매트릭스 게이트 (D18) 가 자동으로 닫는다
+- game-art design template body uses `visualLanguage` / `surfaceSystem` / `spatialSystem` / `interactionGrammar` / `componentSemantics` / `visualHierarchy` — those belong to service-domain `visualTier`. Backticked boundary disclaimers (`` `visualLanguage` is service-only ``) are allowed.
+- UI design template body uses `sprite tween` / `OscillatorNode` / `particle system` / `projectile spawn` — those belong to game-domain `gameArtTier`.
+- A code job in a game workspace consumes `outputs/design/ui/ant/ui-*.json` (or vice versa for service) — `filterSlotsByDomain` drops the wrong-domain slot before any prompt sees it.
+- Game-art design's LLM response emits `<visualTier>`, UI design emits `<gameArtTier>` — the matrix gate (D18) closes automatically.
 
 ### ✅ 정책
 
-- 두 surface 는 같은 RAC pool (PRD + system design) 을 공유하되 다른 산출물 디렉토리 / 다른 자산 풀을 쓴다
-- art design 은 `<gameArtTier>` 만 emit 하고, decompose 단계에서 `parseDecisionTags` 로 응답을 흡수해 `state.resolvedAction.basis.gameArtTier` 에 적용한다
-- inline payload 가 css-only 한계를 넘으면 (svg path 5+ primitives, css 100자+) 자동으로 `kind: 'external'` 후보로 escalate
+- The two surfaces share the same upstream RAC pool (PRD + system design) but live in different output directories with different asset pools (`inputs/assets/{service,game}/`).
+- HUD CSS tokens (spacing / typography / radius / shadow) for game projects are emitted into `game-art-tokens.json`, NOT into a parallel `ui-tokens.json`. game-art-spec.json carries `hud` / `menu` / `dialog` categories alongside the in-canvas categories.
+- game-art design emits `<gameArtTier>` only; decompose absorbs the response via `parseDecisionTags` and applies it to `state.resolvedAction.basis.gameArtTier`.
+- Inline payloads exceeding the css-only ceiling (svg path 5+ primitives, css 100 chars+) auto-escalate to `kind: 'external'` candidates.
+- Code-job dispatch (`AutoInjectionResolver`) routes `domain === 'game'` to the `game-art-source` partial and other domains to the per-`UiSource` `ui-source-dispatch` partial.
 
-회귀 가드: `tests/art-design-surface.test.ts` + `tests/domain-gate.test.ts`.
+회귀 가드: `tests/game-art-design-surface.test.ts` + `tests/domain-gate.test.ts` + `tests/domain-surface-boundary.test.ts`.
 
 ---
 

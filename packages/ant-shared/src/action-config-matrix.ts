@@ -161,6 +161,14 @@ export interface SlotDef {
   excludeFiles?: string[];
   /** Populated only for `type: 'ui-source'`: the three hard-exclusive UiSource subgroups. */
   uiSources?: UiSourceSubgroup[];
+  /**
+   * D28 — domain-restricted slots. When set, the slot is only included
+   * when `workspaceConfig.domain` is in this list. `undefined` = always
+   * included (domain-agnostic). Used by `gen-code-*` to dispatch
+   * `ui-source` (service) vs `game-art-source` (game) refs/context per
+   * workspace domain without exploding the intent count.
+   */
+  applicableDomains?: ReadonlyArray<import('./detection').Domain>;
 }
 
 export type TargetDef =
@@ -245,7 +253,11 @@ const UI_SOURCE_SUBGROUPS: UiSourceSubgroup[] = [
   },
 ];
 
-/** UI source slot as refs (primary authoritative input). */
+/**
+ * UI source slot as refs (primary authoritative input).
+ * D28 — gated to `service` domain. Game workspaces consume `game-art-source`
+ * via `gameArtSourceRef` / `gameArtSourceCtx` instead.
+ */
 function uiSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
   return {
     path: 'outputs/design/ui',
@@ -255,10 +267,14 @@ function uiSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; 
     uiSources: UI_SOURCE_SUBGROUPS,
     createIntent: opts?.createIntent,
     humanLabel: opts?.humanLabel ?? HL.uiDesign,
+    applicableDomains: ['service'],
   };
 }
 
-/** UI source slot as context (supplementary background input). */
+/**
+ * UI source slot as context (supplementary background input).
+ * D28 — service domain only.
+ */
 function uiSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
   return {
     path: 'outputs/design/ui',
@@ -268,6 +284,41 @@ function uiSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: string; 
     uiSources: UI_SOURCE_SUBGROUPS,
     createIntent: opts?.createIntent,
     humanLabel: opts?.humanLabel ?? HL.uiDesign,
+    applicableDomains: ['service'],
+  };
+}
+
+/**
+ * Game-art source slot as refs (primary authoritative input).
+ * D24 — flat structure, no sub-source dispatcher (single dir entry).
+ * D28 — gated to `game` domain.
+ */
+function gameArtSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
+  return {
+    path: GAME_ART_DIR,
+    label: L.gameArtDesign,
+    type: 'dir',
+    required: true,
+    createIntent: opts?.createIntent ?? 'gen-game-art-desc',
+    humanLabel: opts?.humanLabel ?? HL.gameArtDesign,
+    applicableDomains: ['game'],
+  };
+}
+
+/**
+ * Game-art source slot as context (supplementary background input).
+ * D24 — flat structure, single dir entry.
+ * D28 — gated to `game` domain.
+ */
+function gameArtSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
+  return {
+    path: GAME_ART_DIR,
+    label: L.gameArtDesign,
+    type: 'dir',
+    required: false,
+    createIntent: opts?.createIntent ?? 'gen-game-art-desc',
+    humanLabel: opts?.humanLabel ?? HL.gameArtDesign,
+    applicableDomains: ['game'],
   };
 }
 
@@ -346,8 +397,8 @@ const SYS_DIR = 'outputs/design/system';
 const UI_DIR = 'outputs/design/ui/ant';
 /**
  * Canonical game-art output directory (Phase 2 — D24, flat).
- * `gen-art-*` / `rev-art` design intents emit their tokens/assets/spec JSON
- * bundle here — sub-source containers (ant/figma/handoff) are deliberately
+ * `gen-game-art-*` / `rev-game-art` design intents emit their tokens/assets/spec
+ * JSON bundle here — sub-source containers (ant/figma/handoff) are deliberately
  * omitted (D24); figma/handoff for game-art is deferred to Phase 5+.
  */
 const GAME_ART_DIR = 'outputs/design/game-art';
@@ -384,11 +435,11 @@ import type { IntentId } from './actions';
 // tier. Service-domain plan/spec wizards thus auto-collapse (gameContentTier
 // is game-only → no active tier rows for service → wizard hidden).
 //
-// plan / spec  → [gameContentTier]
-// gen-sys-*    → [techTier, gameContentTier]
-// gen-ui-*     → [visualTier, gameContentTier]                         (D18)
-// gen-art-*    → [gameArtTier, gameContentTier]                        (D18 — Phase 2)
-// gen-code-*   → [techTier, visualTier, gameArtTier, gameContentTier]
+// plan / spec      → [gameContentTier]
+// gen-sys-*        → [techTier, gameContentTier]
+// gen-ui-*         → [visualTier, gameContentTier]                     (D18)
+// gen-game-art-*   → [gameArtTier, gameContentTier]                    (D18 / D28 — Phase 2)
+// gen-code-*       → [techTier, visualTier, gameArtTier, gameContentTier]
 const PLAN_TIERS = ['gameContentTier'] as const;
 const SYS_TIERS = ['techTier', 'gameContentTier'] as const;
 const UI_TIERS = ['visualTier', 'gameContentTier'] as const;
@@ -489,32 +540,32 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     basis: { tiers: [] },
   },
 
-  // ── Game Art Design (Phase 2 — D17. game domain only; ActionsPanel hides
+  // ── Game Art Design (Phase 2 — D17/D28. game domain only; ActionsPanel hides
   // the entire group when workspace.domain === 'service' via the matrix
   // gate TIER_DOMAIN_MATRIX.gameArtTier === ['game']) ────────────────
-  'gen-art-figma': {
+  'gen-game-art-figma': {
     refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
     basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
-  'gen-art-desc': {
+  'gen-game-art-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
     chatRequiresRefs: false,
     basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
-  'rev-art': {
-    refs: [refDir(GAME_ART_DIR, L.gameArtDesign, { createIntent: 'gen-art-desc', humanLabel: HL.gameArtDesign })],
+  'rev-game-art': {
+    refs: [gameArtSourceRef()],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
     basis: { tiers: [] },
   },
-  'explain-art': {
-    refs: [refDir(GAME_ART_DIR, L.gameArtDesign, { humanLabel: HL.gameArtDesign })],
+  'explain-game-art': {
+    refs: [gameArtSourceRef()],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
   },
@@ -543,22 +594,39 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   },
 
   // ── Code: Gen (3 pipeline-specific intents) ──
+  // D28 — both ui-source (service-only) and game-art-source (game-only)
+  // are listed; the SlotDef.applicableDomains gate filters which one is
+  // active per workspace domain so neither domain ever sees the other's
+  // surface.
   'gen-code-sys': {
-    refs: [refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceRef({ createIntent: 'gen-ui-desc' })],
+    refs: [
+      refDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
+      uiSourceRef({ createIntent: 'gen-ui-desc' }),
+      gameArtSourceRef(),
+    ],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'codebase' },
     basis: { tiers: CODE_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
   'gen-code-spec': {
     refs: [refDir(SPEC_DIR, L.specDocs, { createIntent: 'gen-spec', humanLabel: HL.specDocs })],
-    context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceCtx({ createIntent: 'gen-ui-desc' }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [
+      ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
+      uiSourceCtx({ createIntent: 'gen-ui-desc' }),
+      gameArtSourceCtx(),
+      ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
+    ],
     target: { kind: 'codebase' },
     refsSingleSelect: true,
     basis: { tiers: CODE_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
   'gen-code-directive': {
     refs: [emptyRef()],
-    context: [uiSourceCtx({ createIntent: 'gen-ui-desc' }), ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [
+      uiSourceCtx({ createIntent: 'gen-ui-desc' }),
+      gameArtSourceCtx(),
+      ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }),
+    ],
     target: { kind: 'codebase' },
     buildDisabled: true,
     basis: { tiers: CODE_TIERS, defaults: { game: GAME_FE_PHASER } },
@@ -567,7 +635,11 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   // ── Code: Rev (codebase required; spec docs as opt-in ref, design docs as context) ──
   'rev-code': {
     refs: [codebaseRef(), refDir(SPEC_DIR, L.specDocs, { required: false, createIntent: 'gen-spec', humanLabel: HL.specDocs })],
-    context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceCtx({ createIntent: 'gen-ui-desc' })],
+    context: [
+      ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
+      uiSourceCtx({ createIntent: 'gen-ui-desc' }),
+      gameArtSourceCtx(),
+    ],
     target: { kind: 'codebase' },
     basis: { tiers: [] },
   },
@@ -662,9 +734,36 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 /**
  * Get the refs/context/target configuration for a given intent.
  * Returns null if the intent is not defined in the matrix.
+ *
+ * Note — the returned `ConfigSlots` is the FULL definition (all slots).
+ * Use `filterSlotsByDomain` to drop slots whose `applicableDomains` does
+ * not include the active workspace domain (D28).
  */
 export function getConfigSlots(intent: IntentId): ConfigSlots | null {
   return MATRIX[intent] ?? null;
+}
+
+/**
+ * D28 — drop slots whose `applicableDomains` does not include `domain`.
+ * Slots without `applicableDomains` are always kept (domain-agnostic).
+ *
+ * Used by FE (`ActionConfigView`) and BE (RAC ref/ctx selection) to render
+ * only the surface that the workspace's domain actually owns. The matrix
+ * lists both `ui-source` and `game-art-source` slots on every code intent
+ * and this filter resolves the dispatch.
+ */
+export function filterSlotsByDomain(
+  slots: ConfigSlots,
+  domain: import('./detection').Domain | undefined,
+): ConfigSlots {
+  const allow = (slot: SlotDef): boolean =>
+    !slot.applicableDomains
+      || (!!domain && slot.applicableDomains.includes(domain));
+  return {
+    ...slots,
+    refs: slots.refs.filter(allow),
+    context: slots.context.filter(allow),
+  };
 }
 
 /**

@@ -57,7 +57,7 @@ defaults** — directive-only spec should be playable without polish:
   },
   "<your-category>": {
     "<entry-id>": {
-      /* see Common Patterns in art-spec-guide-by-figma */
+      /* see Common Patterns in game-art-spec-guide-by-figma */
     }
   }
 }

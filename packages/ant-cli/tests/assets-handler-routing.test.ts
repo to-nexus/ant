@@ -12,7 +12,7 @@
  * Resolution order (most authoritative first):
  *   1. workspaceDomain — workspace-level 1st-class slot
  *   2. racDomain        — per-turn explicit/inferred override
- *   3. intentGroup === 'design-art' — implies game (matrix gate)
+ *   3. intentGroup === 'design-game-art' — implies game (matrix gate)
  *   4. default 'service'
  */
 
@@ -43,9 +43,9 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
     ).toBe('inputs/assets/service');
   });
 
-  it('workspaceDomain wins over intentGroup === design-art', () => {
+  it('workspaceDomain wins over intentGroup === design-game-art', () => {
     expect(
-      pickAssetsRoot({ workspaceDomain: 'service', intentGroup: 'design-art' }),
+      pickAssetsRoot({ workspaceDomain: 'service', intentGroup: 'design-game-art' }),
     ).toBe('inputs/assets/service');
   });
 
@@ -62,16 +62,16 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
 
   it('racDomain wins over intentGroup heuristic', () => {
     expect(
-      pickAssetsRoot({ racDomain: 'service', intentGroup: 'design-art' }),
+      pickAssetsRoot({ racDomain: 'service', intentGroup: 'design-game-art' }),
     ).toBe('inputs/assets/service');
   });
 
-  it('falls back to game when intentGroup === design-art (matrix gate)', () => {
-    expect(pickAssetsRoot({ intentGroup: 'design-art' }))
+  it('falls back to game when intentGroup === design-game-art (matrix gate)', () => {
+    expect(pickAssetsRoot({ intentGroup: 'design-game-art' }))
       .toBe('inputs/assets/game');
   });
 
-  it('non-art intentGroups do NOT trigger the game heuristic', () => {
+  it('non-game-art intentGroups do NOT trigger the game heuristic', () => {
     expect(pickAssetsRoot({ intentGroup: 'design-ui' }))
       .toBe('inputs/assets/service');
     expect(pickAssetsRoot({ intentGroup: 'design-system' }))
@@ -89,8 +89,8 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
   it('a service workspace never resolves into the game pool, regardless of secondary signals', () => {
     const cases = [
       { workspaceDomain: 'service' as const, racDomain: 'game' as const },
-      { workspaceDomain: 'service' as const, intentGroup: 'design-art' },
-      { workspaceDomain: 'service' as const, racDomain: 'game' as const, intentGroup: 'design-art' },
+      { workspaceDomain: 'service' as const, intentGroup: 'design-game-art' },
+      { workspaceDomain: 'service' as const, racDomain: 'game' as const, intentGroup: 'design-game-art' },
     ];
     for (const c of cases) {
       const root = pickAssetsRoot(c);
@@ -120,7 +120,7 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
     for (const c of [
       { workspaceDomain: 'service' as const },
       { workspaceDomain: 'game' as const },
-      { intentGroup: 'design-art' },
+      { intentGroup: 'design-game-art' },
       {},
     ]) {
       const root = pickAssetsRoot(c);

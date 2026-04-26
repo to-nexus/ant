@@ -45,3 +45,13 @@ The palette ratio favors earth tones (~70%), with heraldic accents reserved for 
 - Token palette includes a faction-color slot — multiple accent values, not a single accent.
 - Inline svg payloads favor brush-stroke filters over flat fills.
 - Banner / flag entities are likely catalog members; HUD chrome reads as parchment scroll.
+
+### HUD layout defaults (D28 — concept-derived)
+
+When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / `menu` / `dialog` categories, default to:
+
+- **Spacing rhythm**: `balanced8pt` — moderate density. Strategy panels need information-dense readouts (army strength / supply / morale) but the ink-wash atmosphere wants breathing room.
+- **Surface treatment**: `borderedSoft` (parchment frame with brush-stroke inner edge) — paper / wood / banner textures. Glass / chrome surfaces are anachronistic.
+- **Typography weight**: regular-medium body, bold display for titles. Serif or brush-script display fonts for headers (e.g. Noto Serif CJK / Ma Shan Zheng). HUD numerics in clean serif — never pixel / monospace.
+- **Border radius**: 2–6px panels (parchment edge softness), 0–4px buttons. Avoid pill shapes — they read as modern.
+- **Focus ring / interaction tone**: calm-premium — slow ink-bloom on hover, brush-stroke underline on focus, banner-sway micro-animation on confirmation. Restrained tempo matches the strategic genre.

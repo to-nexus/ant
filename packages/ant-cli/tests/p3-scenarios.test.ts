@@ -27,15 +27,15 @@
  *     9. jobs/code/basis/gameContentTier/_preamble.md    — Wave 1 bridge
  *
  * Scenario B (3+1 job chain — gen-plan / gen-sys-fe / gen-ui-desc +
- * gen-art-desc / gen-code-sys), the per-step partial set:
- *   Step 1 (gen-plan):     jobs/plan/domain/game.md (12 GDD sections)
- *   Step 2 (gen-sys-fe):   jobs/design/domain/game.md
- *                          (state ownership / determinism / event flow / multiplayer / physics)
- *   Step 3a (gen-ui-desc): jobs/design/nodes/execute/injections/{ui-tokens,ui-assets,ui-spec}-guide-by-desc.md
- *   Step 3b (gen-art-desc): jobs/design/nodes/execute/injections/art-{tokens,assets,spec}-guide-by-desc.md
- *   Step 4 (gen-code-sys): code job consumes BOTH ui-assets AND
- *                          game-art-assets — guarded by I7 art-design-surface
- *                          locality + asset-surface-boundary I6.
+ * gen-game-art-desc / gen-code-sys), the per-step partial set:
+ *   Step 1 (gen-plan):          jobs/plan/domain/game.md (12 GDD sections)
+ *   Step 2 (gen-sys-fe):        jobs/design/domain/game.md
+ *                               (state ownership / determinism / event flow / multiplayer / physics)
+ *   Step 3a (gen-ui-desc):      jobs/design/nodes/execute/injections/{ui-tokens,ui-assets,ui-spec}-guide-by-desc.md
+ *   Step 3b (gen-game-art-desc): jobs/design/nodes/execute/injections/game-art-{tokens,assets,spec}-guide-by-desc.md
+ *   Step 4 (gen-code-sys):      code job consumes BOTH ui-assets AND
+ *                               game-art-assets — guarded by I7 game-art-design-surface
+ *                               locality + asset-surface-boundary I6.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -204,13 +204,13 @@ describe('Phase 3 — Scenario B (3+1 chain: plan → sys-fe → ui+art design �
     },
   );
 
-  // ----- Step 3b: gen-art-desc → game-art by-desc guide injections
-  const ART_BY_DESC_INJECTIONS = [
-    'jobs/design/nodes/execute/injections/art-tokens-guide-by-desc',
-    'jobs/design/nodes/execute/injections/art-assets-guide-by-desc',
-    'jobs/design/nodes/execute/injections/art-spec-guide-by-desc',
+  // ----- Step 3b: gen-game-art-desc → game-art by-desc guide injections
+  const GAME_ART_BY_DESC_INJECTIONS = [
+    'jobs/design/nodes/execute/injections/game-art-tokens-guide-by-desc',
+    'jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc',
+    'jobs/design/nodes/execute/injections/game-art-spec-guide-by-desc',
   ] as const;
-  it.each(ART_BY_DESC_INJECTIONS)(
+  it.each(GAME_ART_BY_DESC_INJECTIONS)(
     'Step 3b — game-art by-desc injection %s exists and is non-trivial',
     (rel) => {
       const content = readTemplate(rel);
@@ -218,8 +218,8 @@ describe('Phase 3 — Scenario B (3+1 chain: plan → sys-fe → ui+art design �
     },
   );
 
-  it('Step 3b — art-assets-guide commits to kind:inline | external taxonomy (D20)', () => {
-    const content = readTemplate('jobs/design/nodes/execute/injections/art-assets-guide-by-desc');
+  it('Step 3b — game-art-assets-guide commits to kind:inline | external taxonomy (D20)', () => {
+    const content = readTemplate('jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc');
     expect(content).toMatch(/inline/);
     expect(content).toMatch(/external/);
   });
