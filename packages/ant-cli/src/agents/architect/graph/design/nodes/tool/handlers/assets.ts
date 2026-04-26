@@ -4,28 +4,54 @@ import { isFigmaLocalAssetUrl, proxyAssetDownload } from '../../../../../../../p
 import type { Domain } from '@ant/shared';
 
 /**
- * Resolve the workspace asset pool root for the current job state (Phase 2 — D22).
+ * Pure routing input for `pickAssetsRoot` (Phase 2 — D22).
+ *
+ * Decoupled from `DesignGraphState` so the router is unit-testable without
+ * needing to fabricate a full graph state. Both `download_asset` and
+ * `list_assets` derive these three signals from the live state and delegate
+ * the actual decision to `pickAssetsRoot`.
+ */
+export interface AssetsRootInput {
+  /** Workspace-level domain (SSOT after `p2-ui-actions-art-group`). */
+  workspaceDomain?: Domain;
+  /** Per-turn explicit/inferred RAC override. */
+  racDomain?: Domain;
+  /** RAC intent group — `'design-art'` implies `game` by matrix gate. */
+  intentGroup?: string;
+}
+
+/**
+ * Pure resolver — picks the asset pool root from the three D22 signals.
  *
  * Resolution order (most authoritative first):
- *   1. `workspaceConfig.domain` — the workspace-level 1st-class slot, the
- *      SSOT once `p2-ui-actions-art-group` lands the top-level toggle.
- *   2. `resolvedAction.domain` — per-turn explicit/inferred override
- *      surfaced through the detect pipeline.
- *   3. `intentGroup === 'design-art'` heuristic — guaranteed by the
- *      matrix gate (TIER_DOMAIN_MATRIX.gameArtTier === ['game']).
+ *   1. `workspaceDomain`  — workspace-level 1st-class slot.
+ *   2. `racDomain`        — per-turn explicit/inferred override.
+ *   3. `intentGroup === 'design-art'` heuristic — `game` (matrix gate).
  *   4. Default `'service'`.
  *
  * Returns relative path string starting with `inputs/assets/`.
  */
-function resolveAssetsRoot(state: DesignGraphState): string {
-  const workspaceDomain = (state.workspaceConfig as { domain?: Domain } | undefined)?.domain;
-  const racDomain = state.resolvedAction?.domain;
-  const intentGroup = state.resolvedAction?.intentGroup;
+export function pickAssetsRoot(input: AssetsRootInput): string {
+  const { workspaceDomain, racDomain, intentGroup } = input;
   const effective: Domain =
     workspaceDomain
       ?? racDomain
       ?? (intentGroup === 'design-art' ? 'game' : 'service');
   return `inputs/assets/${effective}`;
+}
+
+/**
+ * Resolve the workspace asset pool root for the current job state (Phase 2 — D22).
+ * Thin adapter that pulls the three signals out of `DesignGraphState` and
+ * delegates to the pure `pickAssetsRoot`.
+ */
+export function resolveAssetsRoot(state: DesignGraphState): string {
+  const workspaceDomain = (state.workspaceConfig as { domain?: Domain } | undefined)?.domain;
+  return pickAssetsRoot({
+    workspaceDomain,
+    racDomain: state.resolvedAction?.domain,
+    intentGroup: state.resolvedAction?.intentGroup,
+  });
 }
 
 /**
