@@ -15,7 +15,7 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, GAME_CORE_LOOP_VARIANTS, SUPPORTED_GAME_ENGINES } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -244,6 +244,22 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // legacy `<selectedSpec>` behavior.
   const activeSpecRefFilename = pool.activeSpecRefFilename();
 
+  // Source-aware gate (RAC-leak Channel A/B closure). When the user pins
+  // `resolvedAction` via ActionsPanel / @-mention, the RAC is the SSOT for
+  // every artifact this turn — discovery tools must not side-load files
+  // outside refs/context, and decompose's `packages → fe-system-X.md`
+  // auto-mapping is suppressed (see `state.artifacts Post-RAC SSOT` in
+  // `.cursorrules` and the `mossy-nearing-gleam` regression). Empty RAC
+  // (`hasExplicitFields=false` OR refs+context both empty) falls through
+  // to the legacy infer behaviour because the LLM legitimately needs to
+  // discover anchors when the user hasn't pre-selected any.
+  const _racRefs = state.resolvedAction?.refs ?? [];
+  const _racContext = state.resolvedAction?.context ?? [];
+  const isExplicitPipeline =
+    state.resolvedAction?.source === 'explicit'
+    && (state.resolvedAction?.hasExplicitFields ?? false)
+    && (_racRefs.length + _racContext.length > 0);
+
   // Detect error indicators in directive for error-or-general template activation
   const hasErrorInDirective = (() => {
     const d = (state.directive || '').toLowerCase();
@@ -325,6 +341,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     ...decomposeVars,
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
     hasErrorInDirective: decomposeVars.hasErrorInDirective || false,
+    // RAC-source gate — templates suppress `packages → fe-system-X.md`
+    // mapping and design-doc cross-cutting guidance when the user has
+    // explicitly pinned the RAC. See `.cursorrules` "state.artifacts
+    // Post-RAC SSOT" (Channel B suppression).
+    isExplicitPipeline,
     hasUi,
     uiSource,
     uiArtifactPaths,
@@ -359,8 +380,16 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     gameGenreCandidates: _gameContentTierEnabled
       ? GAME_GENRE_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
       : undefined,
+    // v8 (D31-revised / I9) — coreLoop candidate set is matrix-gated by
+    // the resolved genre. When genre is decided up-front (basis wizard
+    // explicit or a previous LLM emit), the LLM only sees the loops the
+    // matrix admits for that genre; otherwise the universe is exposed
+    // and the matrix gate fires on the next retry. Pure lookup, no node
+    // branching (D6 / I1 — Domain-Branching Locality).
     gameCoreLoopCandidates: _gameContentTierEnabled
-      ? GAME_CORE_LOOP_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
+      ? coreLoopCandidatesFor(state.resolvedAction?.basis?.gameContentTier?.genre)
+          .map((v: string) => `\`${v}\``)
+          .join(', ')
       : undefined,
     specClarifyBypassed: state._specClarifyBypassed === true,
     // Intent-level clarify gate. `<specClarify>` re-adjudicates the
@@ -504,6 +533,14 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         featurePath: state.context.featurePath || '',
         codebasePath: (state as any).codebasePath || undefined,
         clarify: clarifyCtx,
+        // Channel A closure (RAC-leak SSOT) — explicit pipelines hard-gate
+        // `read_file`/`list_files` (artifact scope) to RAC paths. Without
+        // this, the prompt's `fe-main → fe-system-main.md` mapping table
+        // tempts the LLM to side-load design docs the user explicitly did
+        // not include (`mossy-nearing-gleam` regression).
+        racScope: isExplicitPipeline
+          ? { refs: _racRefs, context: _racContext }
+          : undefined,
       };
       const discoveryHandler = createDiscoveryToolHandler(discoveryCtx);
 
@@ -825,6 +862,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     activeSpecRefFilename,
     uiSource ?? undefined,
     executionTier,
+    isExplicitPipeline ? 'explicit' : 'infer',
   );
   logTaskSummary(tasks, referenceRequests);
   

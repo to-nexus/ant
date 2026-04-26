@@ -415,7 +415,7 @@ rg -n "isTierActive\(" --type ts
 
 ## Asset Surface Boundary SSOT — service vs game pool (Phase 2, I6)
 
-**`inputs/assets/` 는 도메인 1:1 로 분리된다 (D19-revised).** `inputs/assets/service/` 는 `outputs/design/ui/ant/ui-assets.json` 만 참조하고, `inputs/assets/game/` 은 `outputs/design/game-art/game-art-assets.json` 의 `kind: 'external'` 항목만 참조한다. `kind: 'inline'` 항목은 `src` 가 없으므로 lint 대상에서 제외된다 (D20).
+**`inputs/assets/` 는 도메인 1:1 로 분리된다 (D19-revised).** `inputs/assets/service/` 는 `outputs/design/ui/ant/ui-assets.json` 만 참조하고, `inputs/assets/game/` 은 `outputs/design/game-art/ant/game-art-assets.json` (D24-revised v8 — sub-sourced canonical) 의 `kind: 'external'` 항목만 참조한다. `kind: 'inline'` 항목은 `src` 가 없으므로 lint 대상에서 제외된다 (D20).
 
 워크스페이스의 도메인 (D22 — `WorkspaceConfig.domain`) 이 `service` 면 `inputs/assets/game/` 트리는 `download_asset` / `list_assets` 핸들러에서 라우팅되지 않으며, 도메인이 `game` 이면 그 반대다. 게임 프로젝트도 HUD 자산은 `inputs/assets/game/icons/`, sprite 자산은 `inputs/assets/game/entities/` 처럼 한 풀 안에서 카테고리만 다르게 잡는다 — 두 풀을 동시에 쓰지 않는다.
 
@@ -440,7 +440,7 @@ rg -n "isTierActive\(" --type ts
 **`visualTier` is service-domain-only and `gameArtTier` is game-domain-only — vertical split (D28).** The two surfaces never coexist in the same workspace:
 
 - **service domain** → `visualTier` (6 layers) + `outputs/design/ui/` artifacts + `design-ui` intents (`gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui`).
-- **game domain** → `gameArtTier` (7 axes, including HUD CSS tokens) + `outputs/design/game-art/` artifacts + `design-game-art` intents (`gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art`).
+- **game domain** → `gameArtTier` (7 axes, including HUD CSS tokens) + `outputs/design/game-art/ant/` artifacts (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`) + `design-game-art` intents (`gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art`).
 
 The matrix layer (`TIER_DOMAIN_MATRIX.visualTier=['service']` and `TIER_DOMAIN_MATRIX.gameArtTier=['game']`) and the `domainGate` on each action card mirror each other so a domain switch in `WorkspaceConfig.domain` is the single source of truth that decides which surface is active.
 
@@ -464,6 +464,123 @@ game-art design's responsibility limit is **css-only inline + external mapping**
 - Code-job dispatch (`AutoInjectionResolver`) routes `domain === 'game'` to the `game-art-source` partial and other domains to the per-`UiSource` `ui-source-dispatch` partial.
 
 회귀 가드: `tests/game-art-design-surface.test.ts` + `tests/domain-gate.test.ts` + `tests/domain-surface-boundary.test.ts`.
+
+---
+
+## Genre × CoreLoop Matrix Gate SSOT — I9 (D31-revised v8)
+
+**`gameContentTier` 의 `(genre, coreLoop)` 후보 set 은 `GENRE_CORELOOP_MATRIX` lookup 의 결과만 노출한다.** 모든 narrowing 은 `coreLoopCandidatesFor(genre)` SSOT 에 위임 — 노드 본체에 `if (genre === 'match3') ...` 같은 short-circuit 분기는 도입 금지 (D6 / I1 — Domain-Branching Locality 그대로).
+
+`packages/ant-shared/src/game-content-tier-registry.ts`:
+
+```ts
+export const GENRE_CORELOOP_MATRIX = {
+  match3:        ['solve', 'collect'],
+  slidingPuzzle: ['solve'],
+  cardSolitaire: ['solve', 'collect'],
+  arcadePaddle:  ['survive', 'collect'],
+  arcadeSnake:   ['survive', 'collect'],
+} as const;
+
+export function coreLoopCandidatesFor(genre): readonly GameCoreLoopVariant[];
+```
+
+### ❌ 금지
+
+- 노드 본체 / decompose / parser 어디에도 `if (genre === 'match3') coreLoop = 'solve'` 같은 short-circuit 코드 도입.
+- `GENRE_CORELOOP_MATRIX` 와 동일한 매핑을 다른 파일에서 hard-code 재현 (SSOT 분기).
+- `gameCoreLoopCandidates` enrichedVar 직렬화 시 `coreLoopCandidatesFor` 우회.
+
+### ✅ 정책
+
+- `decompose/index.ts` enrichedVars 가 `coreLoopCandidatesFor(state.resolvedAction?.basis?.gameContentTier?.genre)` 만 호출. 결정된 genre 가 없으면 union (`GAME_CORE_LOOP_VARIANTS`) 노출.
+- `DecisionTagRegistry` 의 `gameContentTier` 파서가 매트릭스 위반 페어 (`cardSolitaire × survive` 등) 의 `coreLoop` 필드를 drop — 다음 retry 에서 LLM 이 narrowed candidate set 으로 재emission.
+- 새 genre 추가 / 매트릭스 row 변경은 단일 파일 (`game-content-tier-registry.ts`) 한 줄 편집.
+
+회귀 가드: `tests/genre-coreloop-matrix.test.ts`.
+
+---
+
+## Design Sub-Source Symmetry SSOT — I10 (D24-revised v8)
+
+**`outputs/design/ui/` 와 `outputs/design/game-art/` 는 동형 sub-source 구조 (`ant/` + Phase 5+ hook `figma/` / `handoff/`) 를 갖는다.** 한쪽은 sub 분리, 다른 쪽은 flat 인 비대칭 도입 금지.
+
+`packages/ant-shared/src/canonical.ts`:
+
+- 두 surface 모두 `ant/` 가 LLM-generated canonical sub-source (필수 등록).
+- `figma/` / `handoff/` 는 parser-only Phase 5+ hook (canonical-dirs 등록은 ui/ 에만; game-art/ 는 prefix 만 `ARTIFACT_PREFIX.GAME_ART_FIGMA` / `GAME_ART_HANDOFF` 미리 등록).
+- `pathsContainGameArtDoc` / `gameArtSourceOfPath` 가 ui 의 `pathsContainUiDoc` / `uiSourceOfPath` 와 1:1 동형. 단, `pathsContainGameArtDoc` 는 `migrateGameArtToAntSubdir` 가 처리 중인 in-flight 워크스페이스를 위해 legacy flat path (`outputs/design/game-art/<file>.json` 직접) 도 허용.
+- `designSubdirOf('game-art-X.json') === 'gameArtAnt'`, `designDirOf` 가 `'outputs/design/game-art/ant'` 반환.
+
+### ❌ 금지
+
+- `game-art-*.json` 파일을 `outputs/design/game-art/` 에 직접 생성 (flat 회귀). LLM 산출물은 반드시 `ant/` 안.
+- `ARTIFACT_PREFIX.GAME_ART` 한 prefix 만으로 `pathsContainGameArtDoc` 체크 (sub-source 누적 매칭이 SSOT).
+- ui surface 만 sub-sourced 이고 game-art 는 flat (또는 그 역) 이 되는 비대칭 변경.
+
+### ✅ 정책
+
+- 새 game-art 파일은 `designDirOf` 헬퍼를 통해 자동으로 `outputs/design/game-art/ant/` 로 라우팅. 모든 prompt template (`game-art-*-guide-by-{figma,desc}.md`) 의 output path 도 동일.
+- `migrateGameArtToAntSubdir` 가 `ensureCanonicalStructure` 에서 호출 — 기존 flat 산출물은 워크스페이스 부팅 시 자동 이동 (idempotent).
+- Phase 5+ visual job 활성 시 `figma/` / `handoff/` 도 canonical-dirs 등록 한 줄 추가만으로 활성.
+
+회귀 가드: `tests/design-subsource-symmetry.test.ts` + `tests/assets-dir-canonical.test.ts`.
+
+---
+
+## Prompt Body Stale Variant Discipline — D39 (v9) + D45 (v9.1)
+
+**Prompt template 본문 (`templates/**/*.md`) 은 registry 에서 폐기된 variant 어휘를 인용하지 않는다.** v8 후보 set 으로 좁혀진 `concept` (5종) / `genre` (5종) / `coreLoop` (3종) / `perspective` (1종) / `gameEngine` (1종) 외 폐기된 어휘는 LLM 결정 시 parser 가 reject + retry 비용 증가 또는 default 로 silent fallback 시 token mood-table disconnect 를 일으키므로, prompt body 가 등록 가능 후보만 인용해야 한다.
+
+### ❌ 금지 (slot-keyed pattern — D39)
+
+- `concept=modernCasual` / `concept=sfFantasy` / `concept=darkFantasy` / `concept=threeKingdoms` / `concept=martialArts`
+- `genre=puzzle` / `genre=casual` / `genre=arcade` / `genre=action` / `genre=platformer` / `genre=shooter` / `genre=rpg` / `genre=strategy`
+- `coreLoop=fight` / `coreLoop=build` / `coreLoop=explore`
+- `perspective=3d`
+- `gameEngine=godot` / `gameEngine=cocos-creator`
+- bare-word `modernCasual` / `sfFantasy` / `darkFantasy` / `threeKingdoms` / `martialArts` (PascalCase concept ids — 일반 영어와 안 겹침)
+
+### ❌ 금지 (4-file strict bare-word — D45 v9.1)
+
+다음 4 preamble 파일은 genre / coreLoop 표를 직접 enumeration 하므로, plain-English 폐기 어휘 (`puzzle` / `casual` / `arcade` / `action` / `platformer` / `shooter` / `rpg` / `strategy` / `fight` / `build` / `explore`) 를 word-boundary 단위로 인용하면 거의 항상 stale registry citation 이다 (일반 prose 사용까지 lint 차단):
+
+- `templates/basis/gameContentTier/_preamble.md`
+- `templates/jobs/plan/basis/gameContentTier/_preamble.md`
+- `templates/jobs/code/basis/gameContentTier/_preamble.md`
+- `templates/jobs/design/basis/gameContentTier/_preamble.md`
+
+(다른 prompt 본문은 일반 영단어 자유 — D45 strict scan 대상 아님. camelCase 합성어 `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` 은 word-boundary 안 매칭되어 OK.)
+
+### ✅ Allowlist — 의도된 Phase 5+ hook 인용
+
+같은 줄 또는 인접 줄에 `Phase 5+` / `archive` / `deferred` / `hook` / `legacy` / `폐기` 마커가 있으면 OK (D39 + D45 공통). 예: `basis/techTier/gameEngine/_preamble.md` 의 "godot / cocos-creator (Phase 5+ hook) ... deferred ..." 인용 / `jobs/plan/basis/gameContentTier/_preamble.md` 의 "(action, platformer, shooter, rpg, strategy) are deferred to Phase 5+ ... legacy super-categories archived" 인용.
+
+회귀 가드: `tests/prompt-stale-variant-lint.test.ts` (D39 3 cases + D45 3 cases — 6 cases 묶음).
+
+---
+
+## Decision Default × Matrix Consistency — D40 (v9)
+
+**`DecisionTagRegistry` 의 `defaultOnRetryExhaustion` 값은 모든 시점에서 현행 registry / matrix 를 통과해야 한다.** retry 소진 시 fallback 으로 채워 넣는 default 가 parser 자신이 reject 하는 값이면 시스템이 무한 루프 또는 빈 결정으로 진행한다.
+
+`packages/ant-cli/src/core/llm-response/DecisionTagRegistry.ts`:
+
+- `domainTagDef.defaultOnRetryExhaustion ∈ {'service', 'game'}`
+- `gameContentTierTagDef.defaultOnRetryExhaustion = { genre, coreLoop }` 가 (a) `genre ∈ GAME_GENRE_VARIANTS` (b) `coreLoop ∈ GAME_CORE_LOOP_VARIANTS` (c) `(genre, coreLoop) ∈ GENRE_CORELOOP_MATRIX[genre]` — 즉 I9 매트릭스 통과
+- `gameArtTierTagDef.defaultOnRetryExhaustion` 의 7 axis 값이 각 `GAME_ART_*_VARIANTS` 통과 + 7 axis 모두 채움 (Phase 4 emit)
+
+### ❌ 금지
+
+- 매트릭스 변경 / variant set 좁힘 시 default 갱신 누락.
+- registry 에 없는 임의 default 값 도입.
+
+### ✅ 정책
+
+- 매트릭스 / variant set 변경은 default 와 한 commit 안에서 함께 갱신 (`tests/decision-tag-default-matrix-consistency.test.ts` 가 빌드 차단).
+- `SUPPORTED_GAME_ENGINES` 가 single-element 인 동안에는 implicit default = `'phaser'` 가 deterministic — Phase 5+ 에 widen 시 default 명시.
+
+회귀 가드: `tests/decision-tag-default-matrix-consistency.test.ts`.
 
 ---
 
@@ -572,6 +689,33 @@ The intent-matrix integration test ([packages/ant-cli/tests/role-flag-intent-mat
 1. `loadResolvedArtifacts(resolvedAction, featurePath)` — RAC 기반 적재. 호출되는 지점은 (a) `detect` 노드의 정상 경로 + resume fast path, (b) `resolve` 노드의 `onResume` (resume 흐름이 `routeAfterResolve` 의 "Plain resume" / "no tasks" 분기로 detect 를 우회하는 경우의 보완 — 호출하는 함수는 동일).
 2. `appendOrUpdatePool(pool, task.files)` — design 잡의 intra-job self-output (직렬 task-completion edge + 병렬 후 `result.completedTasks.flatMap(t => t.files)`).
 
+### Channel A — explicit 파이프라인의 discovery tool RAC 화이트리스트
+
+**`source === 'explicit'` AND `hasExplicitFields === true` AND `refs ∪ context` 비어있지 않을 때**, `code.decompose` 의 discovery tools (`list_files`, `read_file`, scope=`'artifact'`) 는 RAC 화이트리스트를 강제한다. 매칭 규칙:
+
+- 요청 path === RAC entry (exact match — file slot)
+- 요청 path 가 RAC entry 의 자식 (`entry/...`) — directory slot
+- RAC entry 가 요청 path 의 자식 (`requestedPath/...`) — RAC 디렉토리의 부모 listing 허용 (예: RAC 가 `outputs/design/spec/` 일 때 `list_files('outputs/design')` 은 OK)
+
+매칭 실패 시 tool 은 `Error: Path is outside the RAC selection (refs/context). ...` 반환. infer 파이프라인 (`source !== 'explicit'` 또는 RAC 비어있음) 은 racScope=undefined 로 전달되어 기존 동작 유지 (LLM 이 anchor 를 발견할 자유도가 필요).
+
+단일 writer: `decompose/index.ts` 가 `state.resolvedAction` 을 보고 `discoveryCtx.racScope` 를 채운다. 검사 로직 SSOT 는 `discoveryTools.ts::isWithinRacWhitelist`.
+
+### Channel B — explicit 파이프라인의 `deriveArtifactPolicy` mode 게이트
+
+**explicit 파이프라인에서 `deriveArtifactPolicy(taskType, packages, ..., mode='explicit')` 는 `packages` → `fe-system-X.md` / `be-system-X.md` / `api-contract-*` 합성을 스킵한다.** 이유: 사용자가 RAC 를 직접 결정한 turn 에서 자동 ref 합성은 RAC 외부 파일을 task 의 `artifactPolicy.refs` / `include` 에 박는다. 그 path 들은 그 자체로 plan/execute 의 `read_file` tool 에 미끼가 되어 같은 RAC 우회를 후속 phase 에서 재현한다 (Channel B).
+
+UI / design-system 의 `uiSections` 분기는 mode 무관하게 살아있다 — UI 슬롯은 명시적으로 RAC 에 들어왔을 때만 의미가 있고, RAC 부분집합인 pool 에서 그 path 가 실재할 때만 selector 가 fire 한다. spec ref (`activeSpecRefFilename`) 도 RAC pool 에서 derive 되므로 mode 무관 보존.
+
+`packages` 필드 자체는 explicit 파이프라인에서도 **유지** — `resolveTaskTechTiersFromMap` 이 task 별 techTier 매핑에 쓴다. 의미가 좁아질 뿐 (= "tech-tier hint" 만, "design-doc 자동 주입 hint" 아님). 이 분리를 prompt 에서도 강제: `decompose/variants/default/rules.md` 의 Package Tags 섹션과 cross-cutting 가이드는 `{{#if isExplicitPipeline}}` 로 게이트되어 explicit 모드에서는 매핑 표를 보여주지 않는다.
+
+### ❌ ABSOLUTELY FORBIDDEN (Channel A/B 추가)
+
+- discovery tool 의 `scope='artifact'` 처리에서 `racScope` 검사 우회 (path-traversal 검사만 두는 것)
+- explicit 파이프라인에서 `deriveArtifactPolicy(..., mode='infer')` 호출 (mode 인자를 createTaskQueue 에서 항상 넘긴다)
+- decompose `rules.md` 의 Package Tags 표를 always-on 으로 되돌리기 — `{{#if isExplicitPipeline}}` / `{{#unless isExplicitPipeline}}` 게이트 유지
+- `task.artifactPolicy.refs` 또는 `task.include` 에 RAC 외부 path 가 박히는 동작 부활 (현재 회귀 가드: `tests/rac-scope-invariant.test.ts > createTaskQueue mode gate`)
+
 resolve 노드는 새 wholesale 디스크 스캔을 추가할 수 없다. 폐기된 함수 / 호출: `ArtifactService.loadDesignDocuments` / `loadSpecDocuments` / `loadParsedUiContext` (resolve 에서의 호출), `scanDesignOutputs`, `buildArtifactPool`, `buildDesignArtifactPool`. resolve 는 인프라 헬퍼 (figma MCP detect, runtime assets, directive, session context, featureContext) + 위 SSOT 함수 호출만 담당.
 
 `code resolve.loadArtifacts` 는 새 진입 시 `artifacts: []` 를 명시 시드 — 이 빈 배열이 *channel-presence sentinel* 로 detect 의 truthy 검사를 통과시켜 RAC 결과를 채우게 한다. `planner` 처럼 `artifacts` 채널이 없는 잡은 sentinel 을 안 넣으므로 detect 가 spread 자체를 생략 — 잡별 schema 일관성 보존.
@@ -597,6 +741,8 @@ pre-RAC presence 신호는 [`state.workspaceState`](packages/ant-cli/src/agents/
 
 `prime-jetting-grate` 회귀 (`gen-code-directive` 인텐트가 RAC 에 system-design 슬롯을 갖지 않음에도 `outputs/design/system/fe-system-main.md` 본문이 decompose 프롬프트에 주입되고 task.artifactPolicy.refs 에 박혀 워커가 Cross SDK 레지스트리 코드를 그대로 옮긴 사건) 에서 입증된 것처럼, RAC 검증을 하지 않는 단일 wholesale-load 는 4 개 이상의 누수 채널 (resolve 풀 적재 → decompose tierRefs → decompose `documents` → deriveArtifactPolicy packages 매핑) 에 동시에 영향을 준다. 풀 자체를 RAC 부분집합으로 강제하면 모든 누수 채널이 *셀렉터 패턴* 으로 격하되어 RAC 외부 데이터를 끌어올 수 없게 된다.
 
+`mossy-nearing-gleam` 후속 회귀 (Apr 26 2026) 는 풀-바운드 만으로는 부족함을 보였다 — 두 가지 보완 채널이 살아있었다: (1) decompose discovery tool 이 `scope='artifact'` 일 때 path-traversal 만 검사하고 RAC 화이트리스트를 적용하지 않아 LLM 이 `read_file('outputs/design/system/fe-system-main.md')` 로 디스크 직접 우회 가능 (Channel A); (2) `deriveArtifactPolicy` 가 `packages` 만 보고 RAC 외부 path 를 task `refs` 로 합성 (Channel B). 두 채널을 동시에 닫지 않으면 prompt 자체의 `fe-main → fe-system-main.md` 매핑 표가 LLM 에게 "이 파일이 분명히 권위" 라고 가르쳐 우회를 유발한다.
+
 ### Enforcement
 
 ```bash
@@ -614,9 +760,21 @@ rg "loadDesignDocuments\(|loadSpecDocuments\(|loadParsedUiContext\(" \
 rg "state\.artifacts\[" packages/ant-cli/src/agents/architect/graph/code/nodes/detect \
   packages/ant-cli/src/agents/architect/graph/design/nodes/detect
 # Expected: 0 matches
+
+# Channel A — discovery tool 이 racScope 를 받아 검사하는지 확인
+rg "racScope" packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/discoveryTools.ts
+# Expected: positive matches (DiscoveryToolContext.racScope + isWithinRacWhitelist)
+
+# Channel B — deriveArtifactPolicy 가 mode 인자를 받고 explicit 분기가 있는지 확인
+rg "ArtifactPolicyMode|mode === 'infer'" packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/responseParser.ts
+# Expected: positive matches
+
+# decompose 가 isExplicitPipeline 을 prompt vars 에 주입하는지 확인
+rg "isExplicitPipeline" packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/index.ts
+# Expected: positive matches (computed from resolvedAction.source + hasExplicitFields + RAC non-empty)
 ```
 
-회귀 테스트: [`packages/ant-cli/tests/rac-scope-invariant.test.ts`](packages/ant-cli/tests/rac-scope-invariant.test.ts) 가 `gen-code-directive` + PRD-only RAC 시나리오에서 풀이 RAC 부분집합인지, 모든 task.artifactPolicy.{refs,context} 가 RAC subset 인지 검증한다.
+회귀 테스트: [`packages/ant-cli/tests/rac-scope-invariant.test.ts`](packages/ant-cli/tests/rac-scope-invariant.test.ts) 가 `gen-code-directive` + PRD-only RAC 시나리오에서 풀이 RAC 부분집합인지, discovery tool 이 RAC 외부 path 를 거부하는지, `createTaskQueue(..., 'explicit')` 결과의 `task.artifactPolicy` / `task.include` 가 RAC 외부 path 를 포함하지 않는지 모두 검증한다. 추가로 [`packages/ant-cli/tests/artifact-policy-decompose.test.ts`](packages/ant-cli/tests/artifact-policy-decompose.test.ts) 가 `deriveArtifactPolicy` 의 mode 별 동작을 잠근다.
 
 ---
 

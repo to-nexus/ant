@@ -76,6 +76,26 @@ export interface DiscoveryToolContext {
   featurePath: string;
   codebasePath?: string;
   clarify: ClarifyContext;
+  /**
+   * RAC whitelist for `scope='artifact'` lookups. Present iff
+   * `resolvedAction.source === 'explicit'` AND the RAC has at least one
+   * ref/context entry (see `state.artifacts Post-RAC SSOT` in
+   * `.cursorrules`). When set, `handleReadFile` / `handleListFiles` MUST
+   * reject any artifact-scope path that is not a member of (or descendant
+   * of) the union of `refs ∪ context`.
+   *
+   * `undefined` → infer pipeline (or empty RAC), tools fall through to
+   * the legacy "feature workspace root" behaviour. The codebase scope is
+   * unaffected by this whitelist — it is sourced from `codebasePath` and
+   * answers a different question (project source code, not feature
+   * artifacts).
+   *
+   * The previous `prime-jetting-grate` fix bounded `state.artifacts` to
+   * the RAC subset but left this tool surface open, so a decompose LLM
+   * could still side-load `outputs/design/system/fe-system-main.md` from
+   * disk via `read_file` even when the user excluded it from the RAC.
+   */
+  racScope?: { refs: string[]; context: string[] };
 }
 
 // ============================================
@@ -100,6 +120,46 @@ function resolveAndValidate(
   return { valid: true, resolved };
 }
 
+/**
+ * Decide whether `requestedPath` (feature-relative, slash-normalized) lies
+ * inside the RAC whitelist. A request matches an entry when:
+ *
+ *   - the entry equals the requested path (exact file slot), OR
+ *   - the requested path starts with `entry + '/'` (directory slot), OR
+ *   - the entry starts with `requestedPath + '/'` (listing a parent of a
+ *     RAC entry — needed so `list_files('outputs/design')` succeeds when
+ *     the RAC carries `outputs/design/spec/` as a directory slot).
+ *
+ * Returns `true` when no `racScope` is configured (= infer pipeline). The
+ * caller already gated on `scope === 'artifact'`; the codebase scope is
+ * orthogonal and never traverses this guard.
+ */
+function isWithinRacWhitelist(
+  requestedPath: string,
+  racScope: DiscoveryToolContext['racScope'],
+): boolean {
+  if (!racScope) return true;
+
+  const entries = [...(racScope.refs ?? []), ...(racScope.context ?? [])]
+    .map(p => p.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, ''));
+  if (entries.length === 0) return true;
+
+  const target = requestedPath.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, '');
+
+  for (const entry of entries) {
+    if (entry === target) return true;
+    if (target.startsWith(entry + '/')) return true;
+    if (entry.startsWith(target + '/')) return true;
+    if (target === '') return true;
+  }
+  return false;
+}
+
+const RAC_DENY_MESSAGE =
+  'Path is outside the RAC selection (refs/context). Decompose with explicit ' +
+  'RAC must rely only on user-selected sources — do not read or list files ' +
+  'the user did not include in this turn.';
+
 // ============================================
 // Handlers
 // ============================================
@@ -110,6 +170,11 @@ export function handleListFiles(
 ): string {
   const root = args.scope === 'codebase' ? ctx.codebasePath : ctx.featurePath;
   if (!root) return `Error: ${args.scope} scope is not available`;
+
+  if (args.scope === 'artifact'
+    && !isWithinRacWhitelist(args.directory, ctx.racScope)) {
+    return `Error: ${RAC_DENY_MESSAGE}`;
+  }
 
   const result = resolveAndValidate(root, args.directory);
   if (!result.valid) return `Error: ${result.error}`;
@@ -137,6 +202,11 @@ export function handleReadFile(
 ): string {
   const root = args.scope === 'codebase' ? ctx.codebasePath : ctx.featurePath;
   if (!root) return `Error: ${args.scope} scope is not available`;
+
+  if (args.scope === 'artifact'
+    && !isWithinRacWhitelist(args.path, ctx.racScope)) {
+    return `Error: ${RAC_DENY_MESSAGE}`;
+  }
 
   const result = resolveAndValidate(root, args.path);
   if (!result.valid) return `Error: ${result.error}`;

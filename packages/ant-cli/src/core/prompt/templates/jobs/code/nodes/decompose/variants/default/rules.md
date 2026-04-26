@@ -487,10 +487,21 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 ---
 
-## Package Tags (Split Design Doc Injection)
+## Package Tags (Tech-Tier Hint{{#unless isExplicitPipeline}} + Split Design Doc Injection{{/unless}})
 
-**Constraint**: Every task MUST have `"packages": [...]` to control which design documents are injected.
+**Constraint**: Every task MUST have `"packages": [...]` so the system can map each task to its tech-tier (language/framework) entry.
 
+{{#if isExplicitPipeline}}
+**Constraint — explicit RAC active**: The user has pinned the input documents in `## Provided Documents` above. Treat that selection as the COMPLETE authority for this turn. Do NOT cite, infer, open, or list any file outside the user's `refs ∪ context`. `packages` is a tech-tier hint ONLY in this mode — design / system / API-contract documents are NOT auto-injected by package tag, and the `read_file` / `list_files` tools refuse paths outside the RAC selection.
+
+**How to choose `packages`:**
+- Task touches frontend code -> `fe-main` (or `fe-{pkg}` for monorepo)
+- Task touches backend code -> `be-main` (or `be-{svc}` for MSA)
+- Task touches shared/common code -> `shared`
+- Task touches both tiers -> combine relevant `{tier}-{name}` tags
+
+`packages` decides per-task language/framework when the workspace declares per-package tiers. It does NOT decide which documents the plan/execute phases see — that is fixed by the RAC.
+{{else}}
 **Tag mapping:**
 
 | Tag | Maps To | Description |
@@ -514,6 +525,7 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 - Root workspace setup -> all tier tags in the project, combined with `"shared"`
 
 ⚠️ **Blind spot**: `shared` alone injects ONLY api-contract-main.md — no system design documents. Root setup and shared foundation tasks MUST combine all relevant tier tags. Without tier-specific system design documents, the plan phase cannot observe tech stack versions or infrastructure requirements.
+{{/if}}
 
 ---
 
@@ -606,13 +618,13 @@ When `type` is `"ui"` or `"design-system"`, add `"uiSections": [...]` to specify
 
 **Constraint**: When the observation above identifies cross-boundary atomic coordination needs, the coordination contract is shared infrastructure — the foundation task MUST define it. Without this contract, feature tasks bypass shared interfaces and independently implement coordination logic, causing architectural inconsistency.
 
-**Constraint**: The `packages` field MUST include all tier tags that parallel feature tasks span, combined with `"shared"`. `"shared"` alone provides only API contract — system design documents are required for the plan phase to identify infrastructure symbols. Always combine the relevant `{tier}-{name}` tags with `"shared"`.
+**Constraint**: The `packages` field MUST include all tier tags that parallel feature tasks span{{#unless isExplicitPipeline}}, combined with `"shared"`. `"shared"` alone provides only API contract — system design documents are required for the plan phase to identify infrastructure symbols. Always combine the relevant `{tier}-{name}` tags with `"shared"`{{/unless}}.
 
 **Constraint**: Feature tasks that depend on shared foundation symbols MUST NOT redefine them. They import and use what the shared foundation task established.
 
-⚠️ **Blind spot**: Domain types are easily identified as shared, but response DTOs (enriched types that combine entity data with joined fields) and infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing feature tasks to MODIFY shared files or create duplicate types. Cross-boundary coordination contracts (how atomic operations compose multiple persistence interfaces) are ESPECIALLY EASY TO OMIT — the foundation defines individual persistence interfaces but not how they compose atomically, forcing feature tasks to bypass those interfaces entirely. Additionally, if `packages` is set to `["shared"]` alone, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always combine tier tags with `"shared"`.
+⚠️ **Blind spot**: Domain types are easily identified as shared, but response DTOs (enriched types that combine entity data with joined fields) and infrastructure symbols (middleware types, error/response helpers, context extractors) are EASILY LEFT to individual feature tasks — causing feature tasks to MODIFY shared files or create duplicate types. Cross-boundary coordination contracts (how atomic operations compose multiple persistence interfaces) are ESPECIALLY EASY TO OMIT — the foundation defines individual persistence interfaces but not how they compose atomically, forcing feature tasks to bypass those interfaces entirely.{{#unless isExplicitPipeline}} Additionally, if `packages` is set to `["shared"]` alone, the plan phase receives NO system design documents and cannot identify infrastructure patterns. Always combine tier tags with `"shared"`.{{/unless}}
 
-⚠️ **Blind spot — external integration boundaries**: Cross-cutting integration boundaries (SDK clients, wallet/payment providers, auth libraries, third-party API clients) are EASILY LEFT to individual feature tasks because each feature's description tends to phrase the integration as a feature concern (e.g. "navbar shows wallet connect button" and "checkout uses wallet for payment" both implicitly require a wallet adapter). Each feature then independently constructs its own copy of the adapter in a different directory, producing dead code and a split source of truth for the same integration. When the design document names an external SDK / provider / API client that 2+ features touch, the adapter for that integration MUST be a shared foundation Implementations sub-task — even if no feature task description mentions the adapter explicitly.
+⚠️ **Blind spot — external integration boundaries**: Cross-cutting integration boundaries (SDK clients, wallet/payment providers, auth libraries, third-party API clients) are EASILY LEFT to individual feature tasks because each feature's description tends to phrase the integration as a feature concern (e.g. "navbar shows wallet connect button" and "checkout uses wallet for payment" both implicitly require a wallet adapter). Each feature then independently constructs its own copy of the adapter in a different directory, producing dead code and a split source of truth for the same integration. When {{#if isExplicitPipeline}}the user-pinned reference materials (see `## Provided Documents`){{else}}the design document{{/if}} names an external SDK / provider / API client that 2+ features touch, the adapter for that integration MUST be a shared foundation Implementations sub-task — even if no feature task description mentions the adapter explicitly.
 
 ### Shared Foundation Splitting
 
@@ -866,15 +878,15 @@ Output in this exact order:
 {{#if gameArtTierActive}}
 **{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<gameArtTier>` tag** (game-domain art policy — see Step 1.5 above):
 
-<gameArtTier>concept=modernCasual,perspective=2d</gameArtTier>
+<gameArtTier>concept=flatMinimal,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural</gameArtTier>
 
-The body is a comma-separated `axis=value` list. Phase 2 emits `concept` + `perspective`; Phase 4 extends to the remaining 5 axes.
+The body is a comma-separated `axis=value` list. Phase 4 emits all 7 axes (concept / perspective / entityCatalog / motionPattern / particleProfile / projectilePolicy / audioProfile).
 {{/if}}
 
 {{#if gameContentTierActive}}
 **{{#if needsBoundaryClassification}}{{#if gameArtTierActive}}4{{else}}3{{/if}}{{else}}{{#if gameArtTierActive}}3{{else}}2{{/if}}{{/if}}. `<gameContentTier>` tag** (game-domain content policy — see Step 1.6 above):
 
-<gameContentTier>genre=puzzle,coreLoop=solve</gameContentTier>
+<gameContentTier>genre=match3,coreLoop=solve</gameContentTier>
 {{/if}}
 
 **(N+1). `<tasks>` tag** (task array -- see Task Schema and ExecutionTier Classification above. `[]` when tier is `0` or `1`; exactly one task when tier is `2`; `>= 2` tasks including a verification task when tier is `3` or `4`.)

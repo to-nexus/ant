@@ -78,6 +78,27 @@ import { flattenPolicyToInclude } from '../../../../../../core/artifact/Artifact
 type ArtifactPolicy = { refs?: string[]; context?: string[] };
 
 /**
+ * Pipeline mode discriminator for `deriveArtifactPolicy`.
+ *
+ *   - `'infer'`   — RAC was inferred (no explicit user selection). The LLM's
+ *                   `packages` tag is the canonical signal for which design
+ *                   docs to inject; package → `fe-system-X.md` mapping is
+ *                   active.
+ *   - `'explicit'` — RAC was pinned by the user (`source: 'explicit'` AND
+ *                   non-empty `refs ∪ context`). The user-selected files
+ *                   are the sole authority; package-based ref synthesis
+ *                   is suppressed. `packages` survives only as a tech-tier
+ *                   hint consumed by `resolveTaskTechTiersFromMap`.
+ *
+ * Channel B closure for the `state.artifacts Post-RAC SSOT` (see
+ * `.cursorrules` and the `mossy-nearing-gleam` regression). Without
+ * suppression, a directive job whose RAC excluded `fe-system-main.md`
+ * still ended up with that path baked into every `task.artifactPolicy.refs`
+ * and `task.include`, which downstream phases then re-fetched from disk.
+ */
+export type ArtifactPolicyMode = 'infer' | 'explicit';
+
+/**
  * Derive role-annotated artifact selection policy from legacy task fields.
  * Returns undefined for verification tasks (no docs needed).
  *
@@ -98,6 +119,12 @@ type ArtifactPolicy = { refs?: string[]; context?: string[] };
  *                 code: execute/plan read files on demand rather than
  *                 receiving the whole bundle inline.
  * When undefined, fall back to 'ant' semantics for backward compatibility.
+ *
+ * `mode` — see `ArtifactPolicyMode`. Explicit pipelines suppress
+ * package → `fe-system-X.md` ref synthesis. UI/design-system tasks keep
+ * their `uiSections` branch in both modes because those paths are already
+ * inside the RAC (the user explicitly selected the UI source slot when
+ * the intent matrix exposed it).
  */
 export function deriveArtifactPolicy(
   taskType: TaskType,
@@ -105,6 +132,7 @@ export function deriveArtifactPolicy(
   uiSections?: string[],
   activeSpecRefFilename?: string | null,
   uiSource?: UiSource,
+  mode: ArtifactPolicyMode = 'infer',
 ): ArtifactPolicy | undefined {
   // R1 — phase layer is blind to `task.type`. The predicate helpers below
   // take a `{ type }` shape so this function (which owns only the type
@@ -139,7 +167,15 @@ export function deriveArtifactPolicy(
   const refPaths: string[] = [];
   if (activeSpecRefFilename) refPaths.push(`${ARTIFACT_PREFIX.SPEC}${activeSpecRefFilename}`);
 
-  if (packages?.length) {
+  // Channel B closure (`state.artifacts Post-RAC SSOT`): the
+  // `packages → fe-system-X.md` mapping is the legacy infer-mode
+  // mechanism for surfacing design docs to plan/execute. When the user
+  // explicitly pinned the RAC, those paths must come from the user's
+  // refs/context only — synthesizing them from `packages` reintroduces
+  // the `prime-jetting-grate` / `mossy-nearing-gleam` leak even though
+  // `state.artifacts` itself is RAC-bounded. `packages` is preserved on
+  // the task for tech-tier resolution only.
+  if (mode === 'infer' && packages?.length) {
     for (const pkg of packages) {
       if (pkg.startsWith('fe-')) refPaths.push(`${ARTIFACT_PREFIX.FE_SYSTEM}${pkg.slice(3)}.md`);
       else if (pkg.startsWith('be-')) refPaths.push(`${ARTIFACT_PREFIX.BE_SYSTEM}${pkg.slice(3)}.md`);
@@ -373,6 +409,7 @@ export function createTaskQueue(
   activeSpecRefFilename: string | null | undefined,
   defaultUiSource: UiSource | undefined,
   executionTier: ExecutionTierId,
+  mode: ArtifactPolicyMode = 'infer',
 ): {
   taskQueue: TaskQueue<CodeTask>;
   featureTasks: Map<string, CodeTask>;
@@ -479,9 +516,18 @@ export function createTaskQueue(
     const isUiRelated = isUiTask({ type: resolvedType }) || isDesignSystemTask({ type: resolvedType });
     const uiSource: UiSource | undefined = isUiRelated ? inheritedUiSource : undefined;
 
-    // artifactPolicy: role-annotated selection; include: flat backward-compat projection
+    // artifactPolicy: role-annotated selection; include: flat backward-compat projection.
+    //
+    // `mode` threads the RAC-source gate (Channel B closure). When
+    // `mode === 'explicit'` the user pinned refs/context — `packages` is
+    // a tech-tier hint only and MUST NOT auto-synthesize `fe-system-X.md`
+    // refs (`mossy-nearing-gleam` regression). The LLM may still emit a
+    // bare `include` array; we keep that pass-through but it is ignored
+    // by the explicit pipeline because explicit mode in
+    // `execute/buildMessages` selects from the RAC pool directly via
+    // `state.resolvedAction.{refs,context}` rather than `task.include`.
     const explicitInclude: string[] | undefined = Array.isArray((task as any).include) ? (task as any).include : undefined;
-    const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, activeSpecRefFilename, uiSource);
+    const artifactPolicy = deriveArtifactPolicy(resolvedType, packages, uiSections, activeSpecRefFilename, uiSource, mode);
     const include = explicitInclude ?? flattenPolicyToInclude(artifactPolicy);
 
     // Tier-Verification Alignment: Tier 2 Exploratory self-verify flag passthrough.
