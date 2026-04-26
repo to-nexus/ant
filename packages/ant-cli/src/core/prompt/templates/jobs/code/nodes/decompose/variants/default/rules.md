@@ -863,16 +863,16 @@ Output in this exact order:
 }
 </techTier>
 
-{{#if artTierActive}}
-**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<artTier>` tag** (game-domain art policy — see Step 1.5 above):
+{{#if gameArtTierActive}}
+**{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<gameArtTier>` tag** (game-domain art policy — see Step 1.5 above):
 
-<artTier>concept=modernCasual,perspective=2d</artTier>
+<gameArtTier>concept=modernCasual,perspective=2d</gameArtTier>
 
-The body is a comma-separated `axis=value` list. Phase 1 emits `concept` + `perspective`; Phase 3 extends to the remaining 5 axes.
+The body is a comma-separated `axis=value` list. Phase 2 emits `concept` + `perspective`; Phase 4 extends to the remaining 5 axes.
 {{/if}}
 
 {{#if gameContentTierActive}}
-**{{#if needsBoundaryClassification}}{{#if artTierActive}}4{{else}}3{{/if}}{{else}}{{#if artTierActive}}3{{else}}2{{/if}}{{/if}}. `<gameContentTier>` tag** (game-domain content policy — see Step 1.6 above):
+**{{#if needsBoundaryClassification}}{{#if gameArtTierActive}}4{{else}}3{{/if}}{{else}}{{#if gameArtTierActive}}3{{else}}2{{/if}}{{/if}}. `<gameContentTier>` tag** (game-domain content policy — see Step 1.6 above):
 
 <gameContentTier>genre=puzzle,coreLoop=solve</gameContentTier>
 {{/if}}

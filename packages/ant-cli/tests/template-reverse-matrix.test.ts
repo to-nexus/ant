@@ -34,15 +34,15 @@ import {
   LANGUAGE_VARIANT_MAP,
   resolveLanguageVariants,
   FRAMEWORK_NONE,
-  ART_TIER_TEMPLATE_PATHS,
-  ART_TIER_AXIS_KEYS,
-  ART_CONCEPT_VARIANTS,
-  ART_PERSPECTIVE_VARIANTS,
-  ART_ENTITY_CATALOG_VARIANTS,
-  ART_MOTION_PATTERN_VARIANTS,
-  ART_PARTICLE_PROFILE_VARIANTS,
-  ART_PROJECTILE_POLICY_VARIANTS,
-  ART_AUDIO_PROFILE_VARIANTS,
+  GAME_ART_TIER_TEMPLATE_PATHS,
+  GAME_ART_TIER_AXIS_KEYS,
+  GAME_ART_CONCEPT_VARIANTS,
+  GAME_ART_PERSPECTIVE_VARIANTS,
+  GAME_ART_ENTITY_CATALOG_VARIANTS,
+  GAME_ART_MOTION_PATTERN_VARIANTS,
+  GAME_ART_PARTICLE_PROFILE_VARIANTS,
+  GAME_ART_PROJECTILE_POLICY_VARIANTS,
+  GAME_ART_AUDIO_PROFILE_VARIANTS,
   GAME_CONTENT_TIER_TEMPLATE_PATHS,
   GAME_GENRE_VARIANTS,
   GAME_CORE_LOOP_VARIANTS,
@@ -196,6 +196,8 @@ function collectPolicyTemplatePaths(): Set<string> {
 // ============================================
 
 const TEMPLATE_VAR_EXPANSIONS: Record<string, string[]> = {
+  /** `artDesignDecompose`: `jobs/design/nodes/decompose/variants/art-design-${variant}/base` */
+  variant: ['by-ref', 'by-figma', 'by-desc'],
   logSuffix: ['by-figma', 'by-ref'],
   templateSuffix: ['by-figma', 'by-ref'],
   freshLogSuffix: ['by-figma', 'by-ref'],
@@ -449,28 +451,28 @@ function collectBasisPaths(): Set<string> {
     paths.add(VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job));
   }
 
-  // ── ArtTier paths (Phase 1) ──
-  paths.add(ART_TIER_TEMPLATE_PATHS.preamble());
-  const ART_VARIANT_MAP: Record<string, readonly string[]> = {
-    concept: ART_CONCEPT_VARIANTS,
-    perspective: ART_PERSPECTIVE_VARIANTS,
-    entityCatalog: ART_ENTITY_CATALOG_VARIANTS,
-    motionPattern: ART_MOTION_PATTERN_VARIANTS,
-    particleProfile: ART_PARTICLE_PROFILE_VARIANTS,
-    projectilePolicy: ART_PROJECTILE_POLICY_VARIANTS,
-    audioProfile: ART_AUDIO_PROFILE_VARIANTS,
+  // ── GameArtTier paths (Phase 2 — D12-revised) ──
+  paths.add(GAME_ART_TIER_TEMPLATE_PATHS.preamble());
+  const GAME_ART_VARIANT_MAP: Record<string, readonly string[]> = {
+    concept: GAME_ART_CONCEPT_VARIANTS,
+    perspective: GAME_ART_PERSPECTIVE_VARIANTS,
+    entityCatalog: GAME_ART_ENTITY_CATALOG_VARIANTS,
+    motionPattern: GAME_ART_MOTION_PATTERN_VARIANTS,
+    particleProfile: GAME_ART_PARTICLE_PROFILE_VARIANTS,
+    projectilePolicy: GAME_ART_PROJECTILE_POLICY_VARIANTS,
+    audioProfile: GAME_ART_AUDIO_PROFILE_VARIANTS,
   };
-  for (const axis of ART_TIER_AXIS_KEYS) {
-    const pathFn = ART_TIER_TEMPLATE_PATHS[axis as keyof typeof ART_TIER_TEMPLATE_PATHS];
+  for (const axis of GAME_ART_TIER_AXIS_KEYS) {
+    const pathFn = GAME_ART_TIER_TEMPLATE_PATHS[axis as keyof typeof GAME_ART_TIER_TEMPLATE_PATHS];
     if (typeof pathFn === 'function') {
-      for (const v of ART_VARIANT_MAP[axis]) {
+      for (const v of GAME_ART_VARIANT_MAP[axis]) {
         paths.add((pathFn as (v: string) => string)(v));
       }
     }
   }
-  // Job-specific artTier preambles (code + design, matching the renderer dispatch).
+  // Job-specific gameArtTier preambles (code + design, matching the renderer dispatch).
   for (const job of ['code', 'design']) {
-    paths.add(ART_TIER_TEMPLATE_PATHS.jobPreamble(job));
+    paths.add(GAME_ART_TIER_TEMPLATE_PATHS.jobPreamble(job));
   }
 
   // ── GameContentTier paths (Phase 1) ──

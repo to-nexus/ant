@@ -22,14 +22,6 @@
  *     intent even opt into this tier?). Domain compatibility is the matrix
  *     row. Runtime suppression layers on top.
  *
- * Motion locality invariant (I5):
- *   - `interactionGrammar` (visualTier layer) and `motionPattern` /
- *     `particleProfile` / `projectilePolicy` (artTier axes) describe
- *     DIFFERENT surfaces (HUD vs engine). The matrix declares both tiers
- *     active simultaneously for `react+phaser` so each surface gets the
- *     correct partial; `tests/motion-locality.test.ts` enforces no
- *     cross-pollution in the partial bodies.
- *
  * Future-domain extension (Phase 4+):
  *   - Adding `'3d'` / `'data-viz'` / `'interactive-art'` is a Domain union
  *     edit ([detection.ts]) plus row updates here. The
@@ -46,24 +38,28 @@ import type { TechTierConfig } from './rac';
 // ============================================
 
 /**
- * Phase 1 tier universe. Adding a new tier:
+ * Phase 2 tier universe (D22 + D23). Adding a new tier:
  *   1. extend this union,
  *   2. add a row to `TIER_DOMAIN_MATRIX`,
  *   3. (optional) add a `RUNTIME_SUPPRESSORS` entry,
  *   4. handle in PromptBuilder's `buildBasisSection` dispatch.
+ *
+ * D23 — `'domain'` is NOT a TierKey. Domain is a workspace-level 1st-class
+ * slot (D22) and acts as the matrix gate argument, not a wizard tier.
+ * Service-domain plan/spec basis wizards thus auto-collapse (no tier rows
+ * for service in the gameContentTier-only PLAN_TIERS / SPEC_TIERS).
+ *
  */
 export type TierKey =
-  | 'domain'
   | 'techTier'
   | 'visualTier'
-  | 'artTier'
+  | 'gameArtTier'
   | 'gameContentTier';
 
 export const TIER_KEYS: ReadonlyArray<TierKey> = [
-  'domain',
   'techTier',
   'visualTier',
-  'artTier',
+  'gameArtTier',
   'gameContentTier',
 ] as const;
 
@@ -71,18 +67,14 @@ export const TIER_KEYS: ReadonlyArray<TierKey> = [
 // SSOT-1: Tier × Domain matrix
 // ============================================
 //
-// `domain` itself is included as a tier so the partial-injection gate
-// (basis/domain/{d}.md) is uniform with the others — the matrix decides
-// whether to inject domain identity.
-//
 // The matrix is intentionally a flat literal so its consumers (UI wizards,
 // BE prompt builders, decompose tag-emit gates) can introspect at runtime.
+// `domain` is NOT in this map — it is the gate argument, not a tier (D23).
 
 export const TIER_DOMAIN_MATRIX: Readonly<Record<TierKey, ReadonlyArray<Domain>>> = {
-  domain:          ['service', 'game'],
   techTier:        ['service', 'game'],
   visualTier:      ['service', 'game'],
-  artTier:         ['game'],
+  gameArtTier:     ['game'],          // D12-revised — game-domain only
   gameContentTier: ['game'],
 } as const;
 
@@ -113,12 +105,13 @@ type RuntimeSuppressor = (ctx: TierRuntimeContext) => boolean;
  * gates only to be vetoed by these runtime checks. Returning `true` means
  * "suppress this tier".
  *
- * Inherits exactly the three suppressors that previously lived inside
- * `isVisualTierActive` (now deleted — D9):
+ * Inherits the three suppressors that previously lived inside
+ * `isVisualTierActive` (deleted — D9):
  *   - slot opt-in (handled by `slot.tiers?.includes(tier)`)
  *   - backend-only stack
  *   - hasUiDoc=true
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const RUNTIME_SUPPRESSORS: Partial<Record<TierKey, RuntimeSuppressor>> = {
   visualTier: (ctx) =>
     ctx.techTier?.stack === 'backend' || ctx.hasUiDoc === true,

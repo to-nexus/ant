@@ -11,7 +11,8 @@
  *   - workspace.ts : WorkspaceConfig, FeatureConfig
  *   - environment.ts: EnvironmentDetection
  *   - detection.ts : Mode, IntentGroup, InferredAction
- *   - uiDoc.ts     : ParsedUiDocs, UiDocSection
+ *   - designDoc.ts : ParsedDesignDocs, DesignDocSection (UI + GameArt surfaces)
+ *   - uiDoc.ts     : DEPRECATED re-export shim of designDoc (Phase 2)
  *   - user.ts      : UserContext
  *   - processEnv.ts: CHILD_PROCESS_ENV
  */
@@ -31,7 +32,10 @@ export * from './types/workspace';
 // Environment types
 export * from './types/environment';
 
-// UI document types
+// Design document types (UI + GameArt surfaces — D24/D25)
+export * from './types/designDoc';
+
+// UI document types — DEPRECATED shim (re-exports designDoc aliases)
 export * from './types/uiDoc';
 
 // Detection types

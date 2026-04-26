@@ -46,7 +46,7 @@ resolveVisualTier(userSelection?, autoDetected?, screenContext?) → Partial<Vis
 
 ### 런타임 비활성 Gate (Phase 1 — Tier Matrix SSOT)
 
-Phase 1 부터는 모든 tier (`domain` / `techTier` / `visualTier` / `artTier` / `gameContentTier`) 의 활성 여부를 [`@ant/shared/tier-matrix.ts`](../../packages/ant-shared/src/tier-matrix.ts) 의 단일 predicate `isTierActive(tier, slot, domain, runtime)` 가 결정한다. 옛 `isVisualTierActive` 헬퍼는 폐기 (D9). 동일 규칙이 FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 다섯 지점에 적용된다.
+Phase 1 부터는 모든 tier (`domain` / `techTier` / `visualTier` / `gameArtTier` / `gameContentTier`) 의 활성 여부를 [`@ant/shared/tier-matrix.ts`](../../packages/ant-shared/src/tier-matrix.ts) 의 단일 predicate `isTierActive(tier, slot, domain, runtime)` 가 결정한다. 옛 `isVisualTierActive` 헬퍼는 폐기 (D9). 동일 규칙이 FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 다섯 지점에 적용된다.
 
 ```
 isTierActive('visualTier', slot, domain, runtime) ⇔

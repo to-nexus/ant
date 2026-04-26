@@ -96,6 +96,17 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
   'rev-ui': { policies: ['ui-design-policy'], refMediaHints: ['text'] },
   'explain-ui': { policies: [], refMediaHints: ['text'] },
 
+  // ── Game Art Design (Phase 2 — D17) ────────
+  // Phase 2 reuses `ui-design-policy` as the closest existing policy. The
+  // dedicated game-art-design-policy partial set is a Phase 2 follow-up
+  // (`p2-game-art-decompose-prompts`); for now this slot guarantees the
+  // intents are matrix-recognised and routable.
+  'gen-art-figma': { policies: ['ui-design-policy'], refMediaHints: [] },
+  'gen-art-ref': { policies: ['ui-design-policy', 'visual-source-authority'], refMediaHints: ['image'] },
+  'gen-art-desc': { policies: ['ui-design-policy'], refMediaHints: ['text'] },
+  'rev-art': { policies: ['ui-design-policy'], refMediaHints: ['text'] },
+  'explain-art': { policies: [], refMediaHints: ['text'] },
+
   // ── Spec ───────────────────────────────────
   'gen-spec': { policies: [], refMediaHints: ['text'] },
   'rev-spec': { policies: [], refMediaHints: ['text'] },

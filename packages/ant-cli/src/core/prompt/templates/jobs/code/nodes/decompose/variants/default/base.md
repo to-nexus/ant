@@ -125,21 +125,21 @@ Output the tech tier in `<techTier>` tags before `<tasks>`:
 A `"design-system"` task at priority 200 is REQUIRED to implement the visual policy as token infrastructure. The visual tier layers are resolved via the `<visualTier>` tag (see visual-tier-detection section) — explicit values from `resolvedAction.basis.visualTier` are authoritative, missing layers are inferred from the work content.
 {{/if}}
 
-{{#if artTierActive}}
-**Step 1.5: Determine ArtTier (game-domain art policy)**
+{{#if gameArtTierActive}}
+**Step 1.5: Determine GameArtTier (game-domain art policy)**
 
-Phase 1 ships two ArtTier axes:
-- `concept` — overall art tone / silhouette palette. Candidates: {{{artConceptCandidates}}}.
+Phase 2 ships two GameArtTier axes:
+- `concept` — overall art tone / silhouette palette. Candidates: {{{gameArtConceptCandidates}}}.
 - `perspective` — camera / depth model. Candidates: `2d`, `3d`.
 
-Explicit values from `resolvedAction.basis.artTier` are authoritative — preserve them as-is. Infer missing axes from the directive and any provided refs (e.g. "match-3 puzzle" → `concept=modernCasual`, `perspective=2d`).
+Explicit values from `resolvedAction.basis.gameArtTier` are authoritative — preserve them as-is. Infer missing axes from the directive and any provided refs (e.g. "match-3 puzzle" → `concept=modernCasual`, `perspective=2d`).
 
-Output the art tier in `<artTier>` tags after `<techTier>` (before `<tasks>`):
+Output the game-art tier in `<gameArtTier>` tags after `<techTier>` (before `<tasks>`):
 
-<artTier>concept=modernCasual,perspective=2d</artTier>
+<gameArtTier>concept=modernCasual,perspective=2d</gameArtTier>
 
-- The body is a comma-separated `axis=value` list. Phase 1 uses concept + perspective only; Phase 3 extends to entityCatalog / motionPattern / particleProfile / projectilePolicy / audioProfile.
-- Unknown axes are silently dropped — emit only the two Phase 1 axes for now.
+- The body is a comma-separated `axis=value` list. Phase 2 uses concept + perspective only; Phase 4 extends to entityCatalog / motionPattern / particleProfile / projectilePolicy / audioProfile.
+- Unknown axes are silently dropped — emit only the two Phase 2 axes for now.
 {{/if}}
 
 {{#if gameContentTierActive}}
@@ -151,7 +151,7 @@ Two axes:
 
 Explicit values from `resolvedAction.basis.gameContentTier` are authoritative — preserve them as-is. Infer missing axes from the directive (e.g. "match-3" → `genre=puzzle`, `coreLoop=solve`).
 
-Output the game content tier in `<gameContentTier>` tags after `<artTier>` (before `<tasks>`):
+Output the game content tier in `<gameContentTier>` tags after `<gameArtTier>` (before `<tasks>`):
 
 <gameContentTier>genre=puzzle,coreLoop=solve</gameContentTier>
 {{/if}}

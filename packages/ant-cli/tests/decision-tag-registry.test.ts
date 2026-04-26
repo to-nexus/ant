@@ -1,11 +1,11 @@
 /**
- * Decision Tag Registry SSOT (Phase 1, I3)
+ * Decision Tag Registry SSOT (Phase 2, I3 — D12-revised)
  *
- * Phase 1 ships 3 NEW tags via the registry: `domain`, `artTier`,
+ * Phase 2 ships 3 tags via the registry: `domain`, `gameArtTier`,
  * `gameContentTier`. The 5th-slot `gameEngine` lives inside the existing
  * `<techTier>` JSON (parsed in `responseParser.ts`) and is NOT a separate
  * registry entry. The other 4 (executionTier / techTier / boundary /
- * directHints) keep their per-callsite parsers — Phase 3 migrates them.
+ * directHints) keep their per-callsite parsers — Phase 4 migrates them.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -17,10 +17,10 @@ import {
 } from '../src/core/llm-response/DecisionTagRegistry';
 
 describe('DECISION_TAG_REGISTRY', () => {
-  it('registers exactly the 3 Phase 1 tags (no <gameEngine> standalone)', () => {
+  it('registers exactly the 3 Phase 2 tags (no <gameEngine> standalone)', () => {
     expect(DECISION_TAG_REGISTRY.map(d => d.name)).toEqual([
       'domain',
-      'artTier',
+      'gameArtTier',
       'gameContentTier',
     ]);
   });
@@ -33,9 +33,9 @@ describe('parseDecisionTags — happy path', () => {
     expect(r.violations).toHaveLength(0);
   });
 
-  it('parses artTier (concept + perspective)', () => {
-    const r = parseDecisionTags('<artTier>concept=sfFantasy,perspective=2d</artTier>');
-    expect(r.parsed.artTier).toEqual({ concept: 'sfFantasy', perspective: '2d' });
+  it('parses gameArtTier (concept + perspective)', () => {
+    const r = parseDecisionTags('<gameArtTier>concept=sfFantasy,perspective=2d</gameArtTier>');
+    expect(r.parsed.gameArtTier).toEqual({ concept: 'sfFantasy', perspective: '2d' });
   });
 
   it('parses gameContentTier', () => {
@@ -46,21 +46,19 @@ describe('parseDecisionTags — happy path', () => {
   it('parses all three together', () => {
     const raw = `
       <domain>game</domain>
-      <artTier>concept=darkFantasy,perspective=2d</artTier>
+      <gameArtTier>concept=darkFantasy,perspective=2d</gameArtTier>
       <gameContentTier>genre=action,coreLoop=fight</gameContentTier>
     `;
     const r = parseDecisionTags(raw);
     expect(r.violations).toHaveLength(0);
     expect(r.missing).toHaveLength(0);
     expect(r.parsed.domain).toBe('game');
-    expect(r.parsed.artTier).toEqual({ concept: 'darkFantasy', perspective: '2d' });
+    expect(r.parsed.gameArtTier).toEqual({ concept: 'darkFantasy', perspective: '2d' });
     expect(r.parsed.gameContentTier).toEqual({ genre: 'action', coreLoop: 'fight' });
   });
 
-  it('IGNORES standalone <gameEngine> tag (lives inside <techTier> in Phase 1)', () => {
+  it('IGNORES standalone <gameEngine> tag (lives inside <techTier>)', () => {
     const r = parseDecisionTags('<gameEngine>phaser</gameEngine>');
-    // gameEngine is not a registered tag, so it appears in neither parsed
-    // nor violations — the body is simply not consumed by this registry.
     expect((r.parsed as Record<string, unknown>).gameEngine).toBeUndefined();
     expect(r.violations.find(v => v.tag === ('gameEngine' as never))).toBeUndefined();
   });
@@ -74,36 +72,36 @@ describe('parseDecisionTags — invalid bodies', () => {
   });
 
   it('drops unknown art axis silently (forward-compat)', () => {
-    const r = parseDecisionTags('<artTier>unknownAxis=foo,concept=sfFantasy</artTier>');
-    expect(r.parsed.artTier).toEqual({ concept: 'sfFantasy' });
+    const r = parseDecisionTags('<gameArtTier>unknownAxis=foo,concept=sfFantasy</gameArtTier>');
+    expect(r.parsed.gameArtTier).toEqual({ concept: 'sfFantasy' });
   });
 
-  it('records a violation when artTier body has no recognised axes', () => {
-    const r = parseDecisionTags('<artTier>unknown=foo</artTier>');
-    expect(r.parsed.artTier).toBeUndefined();
-    expect(r.violations).toContainEqual(expect.objectContaining({ tag: 'artTier' }));
+  it('records a violation when gameArtTier body has no recognised axes', () => {
+    const r = parseDecisionTags('<gameArtTier>unknown=foo</gameArtTier>');
+    expect(r.parsed.gameArtTier).toBeUndefined();
+    expect(r.violations).toContainEqual(expect.objectContaining({ tag: 'gameArtTier' }));
   });
 });
 
 describe('parseDecisionTags — missing tags', () => {
   it('lists all missing names', () => {
     const r = parseDecisionTags('');
-    expect(r.missing).toEqual(['domain', 'artTier', 'gameContentTier']);
+    expect(r.missing).toEqual(['domain', 'gameArtTier', 'gameContentTier']);
   });
 });
 
 describe('applyDecisionTagDefaults — graceful degrade (10.4)', () => {
-  it('fills artTier and gameContentTier defaults when missing', () => {
+  it('fills gameArtTier and gameContentTier defaults when missing', () => {
     const r = parseDecisionTags('');
-    const filled = applyDecisionTagDefaults(r.parsed, ['artTier', 'gameContentTier']);
-    expect(filled.artTier).toEqual({ concept: 'modernCasual', perspective: '2d' });
+    const filled = applyDecisionTagDefaults(r.parsed, ['gameArtTier', 'gameContentTier']);
+    expect(filled.gameArtTier).toEqual({ concept: 'modernCasual', perspective: '2d' });
     expect(filled.gameContentTier).toEqual({ genre: 'casual', coreLoop: 'collect' });
   });
 
   it('does not override an existing parsed value', () => {
-    const r = parseDecisionTags('<artTier>concept=darkFantasy,perspective=3d</artTier>');
-    const filled = applyDecisionTagDefaults(r.parsed, ['artTier']);
-    expect(filled.artTier).toEqual({ concept: 'darkFantasy', perspective: '3d' });
+    const r = parseDecisionTags('<gameArtTier>concept=darkFantasy,perspective=3d</gameArtTier>');
+    const filled = applyDecisionTagDefaults(r.parsed, ['gameArtTier']);
+    expect(filled.gameArtTier).toEqual({ concept: 'darkFantasy', perspective: '3d' });
   });
 });
 
@@ -113,9 +111,9 @@ describe('decisionTagRetryFraming', () => {
   });
 
   it('lists missing tags with hints', () => {
-    const out = decisionTagRetryFraming(['domain', 'artTier'], []);
+    const out = decisionTagRetryFraming(['domain', 'gameArtTier'], []);
     expect(out).toContain('<domain>');
-    expect(out).toContain('<artTier>');
+    expect(out).toContain('<gameArtTier>');
   });
 
   it('lists invalid bodies', () => {

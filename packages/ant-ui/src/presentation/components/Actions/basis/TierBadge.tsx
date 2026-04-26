@@ -1,4 +1,4 @@
-export type TierVariant = 'techTier' | 'visualTier' | 'artTier' | 'gameContentTier';
+export type TierVariant = 'techTier' | 'visualTier' | 'gameArtTier' | 'gameContentTier';
 
 export interface TierBadgeData {
   keyLabel: string;
@@ -33,7 +33,7 @@ const VARIANT_STYLES: Record<TierVariant, {
     changed: CHANGED_STYLE,
     keyColor: 'text-pink-400 dark:text-pink-500',
   },
-  artTier: {
+  gameArtTier: {
     normal: 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700/60',
     auto: AUTO_STYLE,
     changed: CHANGED_STYLE,

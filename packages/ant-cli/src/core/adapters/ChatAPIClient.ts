@@ -127,31 +127,20 @@ export class ChatAPIClient {
   // Lifecycle (compat — pre-§5 callers expect these to exist)
   // ─────────────────────────────────────────────────────────────────────
 
-  /**
-   * @deprecated chat-SSOT §5: no per-message state. Always returns false.
-   *
-   * Kept synchronous to preserve the pre-§5 caller contract — callers
-   * use `if (chatAPI.hasActiveMessage())` without `await`. Switching to
-   * a Promise would silently flip those branches to always-truthy
-   * (TS2801) and break finalize / cleanup paths.
-   */
-  hasActiveMessage(): boolean {
-    return false;
-  }
-
-  /** @deprecated chat-SSOT §5: no per-message state. Always returns null. */
-  async startMessage(): Promise<string | null> {
-    if (!this.enabled) return null;
-    const service = await getLLMResponseService();
-    if (!service) return null;
-    return service.startMessage();
-  }
-
   async finalizeMessage(cancelled: boolean = false): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
     if (!service) return;
     await service.finalizeMessage(cancelled);
+  }
+
+  /**
+   * Compat: callers open an assistant message before `sendLLMEvent` / choice
+   * cards. Post-§5 emission is stateless (turnId from orchestrator); this is a
+   * no-op but keeps ask / triage / visual paths compiling and behaving.
+   */
+  async startMessage(): Promise<void> {
+    if (!this.enabled) return;
   }
 
   // ─────────────────────────────────────────────────────────────────────

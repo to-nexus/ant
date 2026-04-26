@@ -27,9 +27,27 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     // Must stay in sync with ArtifactService.getSource()'s textExtensions list.
     acceptedExtensions: ['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.xml', '.csv'],
   },
+  // Phase 2 (D19-revised): `inputs/assets` is a CONTAINER parent for the
+  // two per-domain pools (`{service,game}/`). The per-domain policies
+  // below own `acceptedExtensions`; the parent stays subdir-only so the
+  // file-tree can render it but no direct file is allowed at the parent
+  // level. Phase 1's flat-image acceptedExtensions list moved into
+  // `inputs/assets/service` (icons/images) and `inputs/assets/game`
+  // (icons/images + tilemap json + Phase 4 hooks).
   'inputs/assets': {
     allowSubdirs: true,
+  },
+  // Phase 2 (D19-revised): per-domain assets pools.
+  'inputs/assets/service': {
+    allowSubdirs: true,
+    // Phase 4 hook will add `.woff` / `.woff2` / `.ttf` for service fonts.
     acceptedExtensions: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'],
+  },
+  'inputs/assets/game': {
+    allowSubdirs: true,
+    // Phase 4 hook will add `.mp3` / `.ogg` / `.wav` / `.atlas` / `.glb` /
+    // `.gltf`. `.json` is accepted now for tilemap manifests.
+    acceptedExtensions: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.json'],
   },
   'inputs/references': {
     allowSubdirs: false,
@@ -55,6 +73,12 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     // Handoff is intentionally free-form — any filetype is accepted and
     // nested subdirectories are allowed.
     allowSubdirs: true,
+  },
+  // Phase 2 (D24): game-art is FLAT — game-art-tokens / game-art-assets /
+  // game-art-spec land directly here, no sub-source containers.
+  'outputs/design/game-art': {
+    allowSubdirs: false,
+    acceptedExtensions: ['.json'],
   },
   'outputs/design/system': {
     allowSubdirs: false,
