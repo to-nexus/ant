@@ -1,16 +1,14 @@
 /**
  * UI Design Prompt Builder
- * 
+ *
  * Handles message building for ui-design work type:
  * - buildUiDesignMessages: Main message builder
  * - buildUiDesignFreshPrompt: Fresh prompt for tool loop continuation
  * - buildUiDesignSystemPrompt: System prompt loader (from template)
- * 
+ *
  * NOTE: Task instructions and tool guides are in templates:
- * - base-ui-design-by-ref.md (reference mode: Handlebars conditionals for task-specific content)
- * - rules-ui-design-by-ref.md (reference mode: tool usage rules)
- * - base-ui-design-by-figma.md (figma mode: MCP-based extraction)
- * - rules-ui-design-by-figma.md (figma mode: MCP tool usage rules)
+ * - variants/ui-design-by-desc/{base,rules}.md (description-driven mode — gen-ui-desc / rev-ui)
+ * - variants/ui-design-by-figma/{base,rules}.md (figma mode: MCP-based extraction)
  */
 
 import { DesignGraphState } from '../../../state';
@@ -25,12 +23,12 @@ import { selectArtifacts, selectArtifactsWithPolicy } from '../../../../../../..
 
 /**
  * Build multimodal messages for UI Design generation
- * 
+ *
  * TOOLING-BASED APPROACH:
- * - Images are NOT preloaded (avoids token explosion)
- * - LLM uses tools to selectively load images when needed:
- *   - list_reference_images: Discover available screenshots
- *   - read_reference_image: Load specific image for analysis
+ * - Tasks load source documents and assets through dedicated tools (rather
+ *   than pre-injecting full content) to keep the prompt under the cache
+ *   budget.
+ * - LLM uses tools when needed:
  *   - list_assets: List asset files for mapping
  */
 export async function buildUiDesignMessages(state: DesignGraphState): Promise<Array<{
@@ -144,7 +142,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
-      const logSuffix = figmaMode ? 'by-figma' : 'by-ref';
+      const logSuffix = figmaMode ? 'by-figma' : 'by-desc';
       await logPrompt(
         state.context.featurePath,
         jobId,
@@ -166,9 +164,6 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
             sourceDocs: selectedDocs.length > 0 ? `[${selectedDocs.reduce((s, a) => s + (a.content?.length || 0), 0)} chars, refs=${refs.length}, ctx=${ctx.length}]` : undefined,
             previousDocs: previousDocs ? `[${(previousDocs as string).length} chars]` : undefined,
-            uiReferences: state.uiReferences ? {
-              count: state.uiReferences.length,
-            } : undefined,
             uiAssetsList: state.uiAssetsList ? 'SET' : undefined,
           },
         }
@@ -251,31 +246,32 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
     });
   }
   
-  // ✅ 5. Add next step instruction after tool call (CRITICAL FIX)
-  // This ensures LLM continues with analysis phase instead of stopping after discovery
-  //
-  // IMPORTANT: buildUiDesignFreshPrompt is ONLY called when isAfterToolCall=true (Turn 2+)
-  // At this point, LLM has already called list_reference_images and has the results.
-  // We MUST always remind the LLM to continue - DO NOT rely on state.uiReferences
-  // because it may be undefined even when tool results exist!
+  // ✅ 5. Add next-step instruction after tool call (figma mode only).
+  // The continuation reminder existed because the legacy reference-image
+  // pipeline split the task into "discover refs (Turn 1) → load image
+  // (Turn 2) → emit JSON (Turn 3+)" and the LLM would otherwise stall
+  // before emitting the file. Figma mode keeps the same shape (probe
+  // metadata → fetch design context → emit JSON), so the figma-specific
+  // continuation partial still applies. Description mode generates the
+  // document directly from the prompt and does not need a continuation
+  // reminder; if the LLM happens to call `list_assets` first the regular
+  // execute prompt is enough to keep it going.
+  const freshFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   const isUiTokensTask = task?.id?.startsWith('ui-tokens');
   const isUiSpecTask = task?.id?.startsWith('ui-spec');
-  
-  // ALWAYS add instruction for ui-tokens and ui-spec tasks in Turn 2+
-  // Don't check hasDiscoveredImages - this function is only called after tool calls!
-  if (isUiTokensTask || isUiSpecTask) {
+
+  if (freshFigmaMode && (isUiTokensTask || isUiSpecTask)) {
     const targetDoc = isUiTokensTask ? 'ui-tokens.json' : 'ui-spec.json';
     console.log(`🔔 [FreshPrompt] Adding "Next Steps" instruction for ${task?.id} → ${targetDoc}`);
     const { FilePromptAdapter } = await import('../../../../../../../periphery/adapters/prompt/FilePromptAdapter');
     const adapter = new FilePromptAdapter();
-    const freshFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
-    const continuationTemplate = freshFigmaMode
-      ? 'jobs/design/nodes/execute/injections/ui-continuation-by-figma'
-      : 'jobs/design/nodes/execute/injections/ui-continuation';
-    const continuationText = await adapter.render(continuationTemplate, { targetDoc });
+    const continuationText = await adapter.render(
+      'jobs/design/nodes/execute/injections/ui-continuation-by-figma',
+      { targetDoc },
+    );
     content.push({
       type: 'text',
-      text: `\n\n${continuationText}`
+      text: `\n\n${continuationText}`,
     });
   }
   
@@ -287,7 +283,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
-      const freshLogSuffix = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig)) ? 'by-figma' : 'by-ref';
+      const freshLogSuffix = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig)) ? 'by-figma' : 'by-desc';
       await logPrompt(
         state.context.featurePath,
         jobIdFresh,
@@ -364,9 +360,9 @@ function countDescendants(parent: FigmaNodeSummary, all: FigmaNodeSummary[]): nu
 
 /**
  * Build resources summary for UI Design tasks
- * 
+ *
  * NOTE: This is dynamic data that must be generated at runtime
- * - Counts of available screenshots and assets
+ * - Counts of available assets
  * - Examples of file names
  */
 function buildResourcesSummary(state: DesignGraphState): string {
@@ -400,13 +396,8 @@ function buildResourcesSummary(state: DesignGraphState): string {
       }
     }
   } else {
-    resourcesSummary += '## Reference Images\n';
-    resourcesSummary += 'Use `list_reference_images` tool to discover available images, then use `read_reference_image` to load and analyze specific images.\n\n';
-
-    if (state.uiReferences?.length) {
-      resourcesSummary += `- **References**: ${state.uiReferences.length} images available\n`;
-      resourcesSummary += `  (Examples: ${state.uiReferences.slice(0, 5).join(', ')}${state.uiReferences.length > 5 ? '...' : ''})\n`;
-    }
+    resourcesSummary += '## Description-driven Mode\n';
+    resourcesSummary += 'No external visual source is provided. Treat the directive plus PRD / source documents listed below as the design authority and produce the UI documents directly from them.\n\n';
   }
   
   resourcesSummary += '\n## Asset Files\n';
@@ -460,8 +451,8 @@ function buildPreviousUiDocsFromPool(
 
 /**
  * Build system prompt for UI Design generation
- * 
- * Loads jobs/design/nodes/execute/variants/ui-design-{by-ref|by-figma}/base.md based on resolvedAction.intent
+ *
+ * Loads jobs/design/nodes/execute/variants/ui-design-{by-desc|by-figma}/base.md based on resolvedAction.intent
  * - Includes corresponding rules and injection guides via partials
  * - Injects previousChaptersSummary to prevent duplicate content
  * - Injects siblingTasks for MECE awareness in parallel chapters
@@ -575,7 +566,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   };
 
   const sysFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
-  const templateSuffix = sysFigmaMode ? 'by-figma' : 'by-ref';
+  const templateSuffix = sysFigmaMode ? 'by-figma' : 'by-desc';
   const templatePath = `jobs/design/nodes/execute/variants/ui-design-${templateSuffix}/base`;
 
   const template = await promptBuilder.render(templatePath, injectedVariables);

@@ -32,7 +32,8 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set) => 
       basisEditInitialTier: undefined,
       selectedActionId: null,
       selectedIntentId: null,
-      actionMetadata: {},
+      // D22: project domain default seed (workspace-level sticky slot).
+      actionMetadata: { domain: 'service' },
       highlightedArtifactDirs: [],
       bridgeConnected: null,
       bridgeDetected: false,

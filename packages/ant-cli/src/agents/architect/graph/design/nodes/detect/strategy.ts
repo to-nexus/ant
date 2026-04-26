@@ -75,9 +75,8 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     // strategy short-circuits the parsed domain to `actionMetadata.domain`.
     const explicitDomain = state.actionMetadata?.domain;
 
-    // Scan references, assets, existing docs
-    const { hasReferences, referencesList, hasAssets, assetsList, uiAssetsList, uiReferences } =
-      await scanInputs(featurePath);
+    // Scan assets, existing docs
+    const { hasAssets, assetsList, uiAssetsList } = await scanInputs(featurePath);
 
     // Pre-RAC SSOT — `state.workspaceState.systemDesignFileNames` is filled by triage's
     // `analyzeWorkspace`. Reading `state.existingDesignDocs` here would couple
@@ -89,9 +88,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     // Build prompt
     const prompt = await pb.render('jobs/design/nodes/detect/variants/default/base', {
       directive,
-      hasReferences: hasReferences || false,
       hasAssets: hasAssets || false,
-      referencesList: referencesList || '',
       assetsList: assetsList || '',
       figmaPopulated: figmaPopulated || false,
       hasUiDocs: await hasUiDocsOnDisk(featurePath),
@@ -113,7 +110,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       try {
         await logPrompt(featurePath, jobId, 'design', 'detect', prompt.length, {
           templatePath: 'jobs/design/nodes/detect/variants/default/base',
-          injectedVariables: { hasReferences, hasAssets, hasSystemDocs },
+          injectedVariables: { hasAssets, hasSystemDocs },
         });
       } catch { /* non-critical */ }
     }
@@ -182,7 +179,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
     }
 
     // ━━━ Build InferredAction ━━━
-    const inferred = buildInferredAction(parsed, { figmaPopulated, hasReferences });
+    const inferred = buildInferredAction(parsed, { figmaPopulated });
 
     // Resolve targetFiles for system-design
     if (parsed.intentGroup === 'design-system') {
@@ -222,7 +219,6 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       }
       console.log(`✅ Figma MCP reachable — pipeline=figma`);
     } else if (parsed.intentGroup === 'design-ui') {
-      stateUpdates.uiReferences = uiReferences;
       stateUpdates.uiAssetsList = uiAssetsList;
     }
 
@@ -279,13 +275,12 @@ async function handleClarifyResume(state: DesignGraphState): Promise<DetectResul
 function mapToIntentId(
   intentGroup: 'design-ui' | 'design-system' | 'design-spec',
   mode: Mode,
-  options?: { environment?: string; figmaPopulated?: boolean; hasReferences?: boolean },
+  options?: { environment?: string; figmaPopulated?: boolean },
 ): string {
   if (intentGroup === 'design-ui') {
     if (mode === 'refactor') return 'rev-ui';
     if (mode === 'explain') return 'explain-ui';
     if (options?.figmaPopulated) return 'gen-ui-figma';
-    if (options?.hasReferences) return 'gen-ui-ref';
     return 'gen-ui-desc';
   }
   if (intentGroup === 'design-spec') {
@@ -303,14 +298,13 @@ function mapToIntentId(
 
 function buildInferredAction(
   parsed: ParsedDesignResponse,
-  options: { figmaPopulated: boolean; hasReferences: boolean },
+  options: { figmaPopulated: boolean },
 ): InferredAction {
   const intentGroup = parsed.intentGroup as 'design-ui' | 'design-system' | 'design-spec';
 
   const intentId = parsed.intentId || mapToIntentId(intentGroup, parsed.jobMode, {
     environment: parsed.environment,
     figmaPopulated: options.figmaPopulated,
-    hasReferences: options.hasReferences,
   });
 
   return {
@@ -501,30 +495,10 @@ async function listFilesRecursive(dirPath: string, relativeTo = ''): Promise<str
 }
 
 async function scanInputs(featurePath: string) {
-  const referencesDir = path.join(featurePath, 'inputs/references');
   const assetsDir = path.join(featurePath, 'inputs/assets');
 
-  const refFiles = await listFilesRecursive(referencesDir);
   const assetFiles = await listFilesRecursive(assetsDir);
-  const hasReferences = refFiles.length > 0;
   const hasAssets = assetFiles.length > 0;
-
-  let referencesList = '';
-  if (hasReferences) {
-    const grouped: Record<string, string[]> = {};
-    for (const f of refFiles) {
-      const sep = f.indexOf('/');
-      const group = sep > 0 ? f.substring(0, sep) : '(root)';
-      (grouped[group] ||= []).push(f);
-    }
-    const parts: string[] = [];
-    for (const [group, files] of Object.entries(grouped)) {
-      parts.push(`**${group}/** (${files.length} files):`);
-      files.slice(0, 10).forEach(f => parts.push(`  - ${f}`));
-      if (files.length > 10) parts.push(`  ... and ${files.length - 10} more`);
-    }
-    referencesList = parts.join('\n');
-  }
 
   let assetsList = '';
   let uiAssetsList: Record<string, string[]> | undefined;
@@ -539,9 +513,7 @@ async function scanInputs(featurePath: string) {
     assetsList = Object.entries(grouped).map(([g, files]) => `**${g}/** (${files.length} files)`).join('\n');
   }
 
-  const uiReferences = hasReferences ? refFiles.map(f => `inputs/references/${f}`) : undefined;
-
-  return { hasReferences, referencesList, hasAssets, assetsList, uiAssetsList, uiReferences };
+  return { hasAssets, assetsList, uiAssetsList };
 }
 
 async function fileExistsInAntDir(filename: string, featurePath: string): Promise<boolean> {

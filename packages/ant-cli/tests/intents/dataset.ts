@@ -211,30 +211,6 @@ export const FIXTURES: IntentFixture[] = [
   },
 
   // ─────────────────────────────────────────────
-  // UI Design: Create Ref (1)
-  // ─────────────────────────────────────────────
-
-  {
-    intent: 'gen-ui-ref',
-    directive: D('gen-ui-ref'),
-    metadata: {
-      intent: 'gen-ui-ref',
-      refs: ['inputs/references/screenshot.png'],
-    },
-    documents: {},
-    routing: {
-      agent: 'architect', jobType: 'design', mode: 'generate',
-      intentGroup: 'design-ui',
-    },
-    prompt: {
-      templateBase: 'jobs/design/nodes/execute/variants/system-design/base',
-      requiredInjections: [],
-      forbiddenInjections: [],
-      mustContain: ['레퍼런스'],
-    },
-  },
-
-  // ─────────────────────────────────────────────
   // UI Design: Create Desc (1)
   // ─────────────────────────────────────────────
 

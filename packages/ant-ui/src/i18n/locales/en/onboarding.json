@@ -96,8 +96,6 @@
       "sourcesTooltip": "PRD, feature specs, requirements documents (.md, .txt, .json, etc.)",
       "assets": "UI Assets",
       "assetsTooltip": "Actual image files for the app — icons, logos, backgrounds (.svg, .png, .jpg, .webp)",
-      "references": "UI References",
-      "referencesTooltip": "Screenshots, mockups, or UI images for design reference (.png, .jpg, .webp, .svg)",
       "designDocs": "Design Docs",
       "designDocsTooltip": "Only Ant-formatted documents are recognized",
       "designDocsAntFormat": "Ant format",

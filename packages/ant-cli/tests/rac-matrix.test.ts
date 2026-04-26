@@ -113,8 +113,8 @@ describe('Action Config Matrix completeness', () => {
     }
   });
 
-  it('basis-dependent intents derive chatNeedsRefs = true via default (gen-code-sys, gen-code-spec, gen-ui-ref)', () => {
-    const basisIntents = ['gen-code-sys', 'gen-code-spec', 'gen-ui-ref'] as const;
+  it('basis-dependent intents derive chatNeedsRefs = true via default (gen-code-sys, gen-code-spec)', () => {
+    const basisIntents = ['gen-code-sys', 'gen-code-spec'] as const;
     for (const id of basisIntents) {
       const slots = getConfigSlots(id)!;
       expect(hasRealRefSlots(slots), `${id} should have real refs`).toBe(true);

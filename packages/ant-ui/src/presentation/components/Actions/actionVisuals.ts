@@ -3,7 +3,7 @@ import {
   FileText, Server, Palette, LayoutList, Code2, ImageIcon, BookOpen,
   FilePlus2, FilePen,
   Monitor, Layers, PenLine,
-  Figma, Camera, MessageSquareText, Paintbrush,
+  Figma, MessageSquareText, Paintbrush,
   ClipboardList, ClipboardPenLine,
   Wrench,
   MessageCircleQuestion, ClipboardCheck, Bot, MessageCircle,
@@ -55,13 +55,11 @@ const INTENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   'explain-sys':        BookOpenText,
 
   'gen-ui-figma':       Figma,
-  'gen-ui-ref':         Camera,
   'gen-ui-desc':        MessageSquareText,
   'rev-ui':             Paintbrush,
   'explain-ui':         BookOpenText,
 
   'gen-art-figma':      Figma,
-  'gen-art-ref':        Camera,
   'gen-art-desc':       MessageSquareText,
   'rev-art':            Brush,
   'explain-art':        BookOpenText,

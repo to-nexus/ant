@@ -101,14 +101,10 @@ describe('Tier I: Intent policies completeness', () => {
   });
 
   it('UI design intents get ui-design-policy', () => {
-    const uiIntents: IntentId[] = ['gen-ui-figma', 'gen-ui-ref', 'gen-ui-desc', 'rev-ui'];
+    const uiIntents: IntentId[] = ['gen-ui-figma', 'gen-ui-desc', 'rev-ui'];
     for (const id of uiIntents) {
       expect(resolveTierI(id), `${id}`).toContain('jobs/shared/injections/ui-design-policy');
     }
-  });
-
-  it('gen-ui-ref gets visual-source-authority via Tier I', () => {
-    expect(resolveTierI('gen-ui-ref')).toContain('jobs/shared/injections/visual-source-authority');
   });
 
   it('code intents have no static policies (only conditional)', () => {

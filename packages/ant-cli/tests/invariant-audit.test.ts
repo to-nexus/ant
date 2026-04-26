@@ -244,9 +244,9 @@ function expandTemplateVars(tmpl: string): string[] {
     'lang': ['typescript', 'go'],
     'fallbackLanguage': ['typescript', 'go'],
     'primaryLang': ['typescript', 'go'],
-    'logSuffix': ['by-figma', 'by-ref'],
-    'templateSuffix': ['by-figma', 'by-ref'],
-    'freshLogSuffix': ['by-figma', 'by-ref'],
+    'logSuffix': ['by-figma', 'by-desc'],
+    'templateSuffix': ['by-figma', 'by-desc'],
+    'freshLogSuffix': ['by-figma', 'by-desc'],
     'tool.name': ['run_command'],
   };
 

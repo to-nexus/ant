@@ -85,10 +85,6 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
     policies: ['ui-design-policy'],
     refMediaHints: [],
   },
-  'gen-ui-ref': {
-    policies: ['ui-design-policy', 'visual-source-authority'],
-    refMediaHints: ['image'],
-  },
   'gen-ui-desc': {
     policies: ['ui-design-policy'],
     refMediaHints: ['text'],
@@ -102,7 +98,6 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
   // (`p2-game-art-decompose-prompts`); for now this slot guarantees the
   // intents are matrix-recognised and routable.
   'gen-art-figma': { policies: ['ui-design-policy'], refMediaHints: [] },
-  'gen-art-ref': { policies: ['ui-design-policy', 'visual-source-authority'], refMediaHints: ['image'] },
   'gen-art-desc': { policies: ['ui-design-policy'], refMediaHints: ['text'] },
   'rev-art': { policies: ['ui-design-policy'], refMediaHints: ['text'] },
   'explain-art': { policies: [], refMediaHints: ['text'] },

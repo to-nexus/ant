@@ -190,37 +190,6 @@ export const ARCHITECT_TOOLS = {
       required: ['project', 'query'],
     },
   },
-  // ✅ NEW: UI Design specific tools
-  read_reference_image: {
-    name: 'read_reference_image',
-    description: 'Load a reference image for visual analysis. Returns image in base64 format. Use this to analyze design screenshots for color extraction, typography, spacing, and layout.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        path: {
-          type: 'string',
-          description: 'Image path relative to feature folder (e.g., "inputs/references/homepage-desktop.png")',
-        },
-      },
-      required: ['path'],
-    },
-  },
-  
-  list_reference_images: {
-    name: 'list_reference_images',
-    description: 'List all available reference images in inputs/references/. Use this first to discover what images are available for analysis. Optional subdirectory filter.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        category: {
-          type: 'string',
-          description: 'Optional subdirectory name to filter by',
-        },
-      },
-      required: [],
-    },
-  },
-  
   list_assets: {
     name: 'list_assets',
     description: 'List all runtime asset files in inputs/assets/. Use this to document asset mappings for ui-assets.json. Optional subdirectory filter.',

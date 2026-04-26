@@ -392,9 +392,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const canSendImages = llmProvider === 'anthropic';
 
     if (hasUiArtifacts && canSendImages && state.deps?.fileSystem) {
-      const uiReferenceImages = await ArtifactService.loadUiReferenceImages(state.context, state.deps.fileSystem);
-      
-      if (uiReferenceImages) {
+      const handoffImages = await ArtifactService.loadHandoffImages(state.context, state.deps.fileSystem);
+
+      if (handoffImages) {
         const fs = await import('fs');
         const path = await import('path');
 
@@ -404,7 +404,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10);
         const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10);
 
-        const candidates: string[] = uiReferenceImages
+        const candidates: string[] = handoffImages
           .filter(Boolean)
           .map(p => (typeof p === 'string' ? p.replace(/\\/g, '/') : p))
           .filter(p => !p.includes('/.gitkeep') && !p.endsWith('/.gitkeep'));
@@ -416,11 +416,11 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           uiImageBlocks.push({
             type: 'text',
             text:
-              `# UI Reference Images\n` +
-              `The following image blocks are screenshots/component states from \`inputs/references\`.\n` +
+              `# UI Handoff Images\n` +
+              `The following image blocks are images from \`outputs/design/ui/handoff\` (the handoff UI source — free-form bundle, observe only).\n` +
               `Use them to match layout/spacing/visual states.\n` +
               `IMPORTANT (runtime packaging, NOT authority): These image files are inputs to this prompt only — they are NOT automatically copied into the app runtime (e.g., not placed under \`public/\`). If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) follow explicit instructions in \`outputs/design/ui/ant/ui-assets.json\` (including destination paths).\n\n` +
-              `${previewList}\n`
+              `${previewList}\n`,
           });
         }
 
@@ -447,6 +447,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' :
             ext === '.webp' ? 'image/webp' :
             ext === '.gif' ? 'image/gif' :
+            ext === '.svg' ? 'image/svg+xml' :
             null;
 
           if (!mediaType) continue;
@@ -459,8 +460,8 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             source: {
               type: 'base64',
               media_type: mediaType as any,
-              data
-            }
+              data,
+            },
           });
         }
 

@@ -237,7 +237,6 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     
     const isUiDesign = state.resolvedAction?.intentGroup === 'design-ui'
       || state.resolvedAction?.intent === 'gen-ui-figma'
-      || state.resolvedAction?.intent === 'gen-ui-ref'
       || state.resolvedAction?.intent === 'gen-ui-desc'
       || state.resolvedAction?.intent === 'rev-ui';
     const isSpecDesign = state.resolvedAction?.intentGroup === 'design-spec';

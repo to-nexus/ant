@@ -14,7 +14,8 @@
  * 
  * ✅ XML 파서 통합 for Markdown 실시간 렌더링
  * ✅ UI Design 모드 지원 (detectedIntentGroup === 'design-ui')
- *     - 멀티모달 이미지 분석 (레퍼런스 스크린샷)
+ *     - by-figma: Figma MCP 구조적 데이터 추출
+ *     - by-desc: directive + PRD 기반 직접 작성
  *     - ui-tokens.json, ui-assets.json, ui-spec.json 생성
  */
 

@@ -329,9 +329,11 @@ The transformer registry is the self-documenting inventory. If it isn't there, i
 
 ---
 
-## Tier Matrix SSOT — `isTierActive(tier, slot, domain, runtime)` (Phase 1)
+## Tier Matrix SSOT — `isTierActive(tier, slot, domain, runtime)` (Phase 1 → D23 / D27)
 
-**모든 tier (`domain` / `techTier` / `visualTier` / `gameArtTier` / `gameContentTier`) 의 활성 여부 는 [`@ant/shared/tier-matrix.ts`](packages/ant-shared/src/tier-matrix.ts) 의 `isTierActive` 하나가 SSOT다. 산발 predicate (`isVisualTierActive`, `isArtTierActive` 등) 는 만들지 않는다. FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 5 지점 모두 이 predicate 만 호출한다.**
+**모든 tier (`techTier` / `visualTier` / `gameArtTier` / `gameContentTier`) 의 활성 여부 는 [`@ant/shared/tier-matrix.ts`](packages/ant-shared/src/tier-matrix.ts) 의 `isTierActive` 하나가 SSOT다. 산발 predicate (`isVisualTierActive`, `isArtTierActive` 등) 는 만들지 않는다. FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 5 지점 모두 이 predicate 만 호출한다.**
+
+**`domain` 은 TierKey 가 아니다 (D23 — Phase 2).** 워크스페이스 1급 selector (`WorkspaceConfig.domain` — D22) 로서 basis (= 활성 tier set) **위** 에 있으며, `isTierActive(tier, slot, domain, runtime)` 에 게이트 인자로만 전달된다. 도메인 정체성 본문은 `templates/domain/{d}.md` + `templates/jobs/<job>/domain/{d}.md` 에 산다 (D27 — v6). PromptBuilder 는 tier loop **밖** 에서 `renderDomainTier` 한 번 호출한다.
 
 ```
 active(tier) ⇔ slot.tiers?.includes(tier)
@@ -350,7 +352,7 @@ active(tier) ⇔ slot.tiers?.includes(tier)
 ### ❌ ABSOLUTELY FORBIDDEN
 
 - tier 활성 여부를 판단하는 자체 헬퍼 / 인라인 조건식을 새로 만들기. 모든 지점에서 `isTierActive(tier, slot, domain, runtime)` 만 호출한다.
-- `{{#if visualTierActive}}` 이외의 템플릿 이름으로 같은 게이트를 이중화하기 (`{{#if hasVisualTier}}`, `{{#if hasUiDoc}}` 등 alias 금지). 템플릿 변수는 node-level 에서 `isTierActive('visualTier', ...)` 결과를 `visualTierActive` 로 넘긴다. 동일 패턴 — `gameArtTierActive`, `gameContentTierActive`, `domainTierActive`.
+- `{{#if visualTierActive}}` 이외의 템플릿 이름으로 같은 게이트를 이중화하기 (`{{#if hasVisualTier}}`, `{{#if hasUiDoc}}` 등 alias 금지). 템플릿 변수는 node-level 에서 `isTierActive('visualTier', ...)` 결과를 `visualTierActive` 로 넘긴다. 동일 패턴 — `gameArtTierActive`, `gameContentTierActive`. (`domain` 은 tier 가 아니므로 `domainTierActive` 같은 변수는 신설 금지 — 도메인 분기가 필요하면 `templates/domain/` 또는 `templates/jobs/<job>/domain/` 에 본문을 둔다.)
 - `hasUiDoc` 을 "파일시스템에 UI artifact 가 있는가" 로 해석하기. 항상 post-RAC pool (BE) 또는 `actionMetadata.refs`/`context` (FE) 기준.
 - `hasUi` 가 true 인데 `resolvedAction.basis.visualTier` 를 계속 downstream 으로 흘려보내기. `decompose` 는 UI doc 감지 시 preset 을 `undefined` 로 비워 downstream 프롬프트가 스테일 값을 읽지 못하게 한다.
 
@@ -376,11 +378,20 @@ rg -n "isTierActive\(" --type ts
 
 ---
 
-## Domain-Branching Locality SSOT — basis/** 안에서만 (Phase 1, I1)
+## Domain-Branching Locality SSOT — domain/** + basis/** 안에서만 (Phase 1 → D27/v6, I1)
 
-**도메인 콘텐츠 분기 (`{{#if (eq domain 'game')}}` 등) 는 `templates/basis/**` 디렉토리 안에서만 합법이다.** 노드 본체 / variants / rules / system / injections / examples 어디에도 도메인 이름 비교를 넣지 않는다. 결정 슬롯 분기 (`{{#if gameEngineCandidates}}`) 는 메타-프로세스이므로 허용된다.
+**도메인 콘텐츠 분기 (`{{#if (eq domain 'game')}}` 등) 는 다음 4 디렉토리 안에서만 합법이다.** 노드 본체 / variants / rules / system / injections / examples 어디에도 도메인 이름 비교를 넣지 않는다. 결정 슬롯 분기 (`{{#if gameEngineCandidates}}`) 는 메타-프로세스이므로 허용된다.
 
-회귀 가드: `tests/domain-branching-locality.test.ts` 가 `basis/**` 외 디렉토리에서 도메인 이름 비교 0 hit 강제.
+| 디렉토리 | 책임 |
+|---|---|
+| `templates/domain/**` | 워크스페이스 1급 selector — 도메인 정체성 (job-agnostic) |
+| `templates/basis/**` | tier-gated 콘텐츠 (활성 tier set 의 본문) |
+| `templates/jobs/<job>/domain/**` | job × domain overlay (예: 게임 기획서 / SaaS PRD 골격) |
+| `templates/jobs/<job>/basis/**` | job × tier overlay |
+
+**위계** (D22 + D23 → D27): `domain` (워크스페이스 selector) → 매트릭스 게이트 (`isTierActive`) → `basis` (= 활성 tier set) → tier 별 본문. domain 은 selector 이지 selectee 가 아니므로 `basis/` 안이 아닌 sibling 으로 둔다 (v1 시점의 `basis/domain/` 잔재는 D27 로 정정).
+
+회귀 가드: `tests/domain-branching-locality.test.ts` 가 위 4 디렉토리 외에서 도메인 이름 비교 0 hit 강제.
 
 ---
 
@@ -397,6 +408,50 @@ rg -n "isTierActive\(" --type ts
 `interactionGrammar` (visualTier layer 4) 는 **UI/HUD 표면의 페이지 전환 / 호버 / 포커스** motion 만 다룬다. `gameartTier.{motionPattern, particleProfile, projectilePolicy}` 는 **엔진 내부 sprite tween / 파티클 / 투사체** motion 만 다룬다. 두 motion 의 cross-pollution (sprite/projectile 키워드를 interactionGrammar 에, page-transition/hover 키워드를 gameartTier 에) 은 금지.
 
 회귀 가드: `tests/motion-locality.test.ts`.
+
+---
+
+## Asset Surface Boundary SSOT — service vs game pool (Phase 2, I6)
+
+**`inputs/assets/` 는 도메인 1:1 로 분리된다 (D19-revised).** `inputs/assets/service/` 는 `outputs/design/ui/ant/ui-assets.json` 만 참조하고, `inputs/assets/game/` 은 `outputs/design/game-art/game-art-assets.json` 의 `kind: 'external'` 항목만 참조한다. `kind: 'inline'` 항목은 `src` 가 없으므로 lint 대상에서 제외된다 (D20).
+
+워크스페이스의 도메인 (D22 — `WorkspaceConfig.domain`) 이 `service` 면 `inputs/assets/game/` 트리는 `download_asset` / `list_assets` 핸들러에서 라우팅되지 않으며, 도메인이 `game` 이면 그 반대다. 게임 프로젝트도 HUD 자산은 `inputs/assets/game/icons/`, sprite 자산은 `inputs/assets/game/entities/` 처럼 한 풀 안에서 카테고리만 다르게 잡는다 — 두 풀을 동시에 쓰지 않는다.
+
+### ❌ 금지
+
+- `ui-assets.json` 의 `src` 가 `inputs/assets/game/...` 로 시작
+- `game-art-assets.json` 의 `kind: 'external'` 항목의 `src` 가 `inputs/assets/service/...` 로 시작
+- `download_asset` / `list_assets` 가 `intentGroup` 을 무시하고 단일 풀만 가리키도록 하드코딩
+
+### ✅ 정책
+
+- 풀 라우팅은 `state.workspaceConfig.domain` 한 곳에서 결정 — handler 는 그 결과만 소비
+- 마이그레이션이 필요할 때 (`inputs/assets/{icons,images,misc}` 잔재) `migrateAssetsToDomain(workspaceDomain)` 한 번 실행 — idempotent
+- 도메인 전환 시 자산은 사용자 책임으로 이동 — 시스템은 조용히 한 쪽만 활성화한다
+
+회귀 가드: `tests/asset-surface-boundary.test.ts` + `tests/assets-dir-canonical.test.ts`.
+
+---
+
+## Art Design Surface SSOT — UI surface ≠ game-art surface (Phase 2, I7)
+
+**UI design intent (`gen-ui-figma`/`gen-ui-desc`/`rev-ui`) 와 game-art design intent (`gen-art-figma`/`gen-art-desc`/`rev-art`) 는 직교 산출물이다 (D17/D18).** UI design 은 `outputs/design/ui/` 산출물 + `visualTier` 7 layer 의사결정만, game-art design 은 `outputs/design/game-art/` 산출물 + `gameArtTier` 7 axis 의사결정만 책임진다.
+
+art design 의 책임 한계는 **css-only inline + external 매핑** (D21). LLM 은 단순 도형 / svg 5-primitive 이하 / OscillatorNode config 까지만 inline 으로 채우고, production 수준 sprite / mp3 / 3D 모델은 사용자가 `inputs/assets/game/` 에 직접 배치 (`kind: 'external'`) 하거나 향후 `visual` job (Phase 5+) 이 제작한다.
+
+### ❌ 금지 (cross-pollination)
+
+- art design template 의 본문 (가이드 / 지시) 에 `visualLanguage` / `surfaceSystem` / `spatialSystem` / `interactionGrammar` 등 **UI surface 어휘** 가 등장 — 단, "NOT in scope" 같은 명시적 boundary disclaimer 는 backtick 으로 감싸 허용
+- UI design template 의 본문에 `sprite tween` / `OscillatorNode` / `particle system` / `projectile spawn` 등 **art surface 어휘** 가 등장
+- art design 의 LLM 응답이 `<visualTier>` 태그를, UI design 의 응답이 `<gameArtTier>` 태그를 emit — 매트릭스 게이트 (D18) 가 자동으로 닫는다
+
+### ✅ 정책
+
+- 두 surface 는 같은 RAC pool (PRD + system design) 을 공유하되 다른 산출물 디렉토리 / 다른 자산 풀을 쓴다
+- art design 은 `<gameArtTier>` 만 emit 하고, decompose 단계에서 `parseDecisionTags` 로 응답을 흡수해 `state.resolvedAction.basis.gameArtTier` 에 적용한다
+- inline payload 가 css-only 한계를 넘으면 (svg path 5+ primitives, css 100자+) 자동으로 `kind: 'external'` 후보로 escalate
+
+회귀 가드: `tests/art-design-surface.test.ts` + `tests/domain-gate.test.ts`.
 
 ---
 
@@ -459,7 +514,7 @@ Template block
 
 ### Pre-RAC exception
 
-`triage` and `detect` run BEFORE RAC exists. They may keep path-based workspace-scan flags (`hasPrd`, `hasFigmaConfig`, `hasScreens`, `hasUiDocs`, `hasDesignDoc`, `artifactAvailability`) because no role-annotated pool is available yet. These flags decide WHAT to put into the RAC; once RAC is built, they are obsolete for every downstream phase.
+`triage` and `detect` run BEFORE RAC exists. They may keep path-based workspace-scan flags (`hasPrd`, `hasFigmaConfig`, `hasUiDocs`, `hasDesignDoc`, `artifactAvailability`) because no role-annotated pool is available yet. These flags decide WHAT to put into the RAC; once RAC is built, they are obsolete for every downstream phase.
 
 ### Why This Matters
 

@@ -1,8 +1,19 @@
 import { useRef, useMemo, useCallback } from 'react';
 import { useStore } from '@/domain/store';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
+import {
+  useActiveTiers,
+  decideActionsStepAfterIntent,
+} from '@/application/hooks/features/useActiveTiers';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, getConfigSlots, isActionVisibleForDomain, type IntentGroup, type IntentId } from '@ant/shared';
+import {
+  ACTION_DEFINITIONS,
+  getIntentsForAction,
+  getConfigSlots,
+  isActionVisibleForDomain,
+  type IntentGroup,
+  type IntentId,
+} from '@ant/shared';
 import { ActionChipGrid, IntentChipGrid, type ChipItem } from './ActionChipGrid';
 import { ActionConfigView } from './ActionConfigView';
 import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
@@ -64,14 +75,15 @@ export function ActionsPanel() {
   const handleIntentSelect = useCallback((intentId: string) => {
     selectIntent(intentId);
     const slots = getConfigSlots(intentId as Parameters<typeof getConfigSlots>[0]);
-    // rev-* intents carry `basis: { tiers: [] }` — treat as no wizard.
-    const basisHasTiers = (slots?.basis?.tiers?.length ?? 0) > 0;
-    if (basisHasTiers && !actionMetadata.basis) {
-      setActionsStep('basis-edit');
-    } else {
-      setActionsStep('config');
-    }
-  }, [selectIntent, setActionsStep, actionMetadata.basis]);
+    // SSOT D27 — `decideActionsStepAfterIntent` funnels through
+    // `listActiveTiers` so static `slot.tiers` that the domain × runtime
+    // matrix has fully closed (e.g. service + gen-plan with PLAN_TIERS =
+    // ['gameContentTier']) route to `'config'` instead of `'basis-edit'`.
+    // Routing on the static count alone would mount a `BasisWizard` whose
+    // `availableTiers === []` triggers its `!currentStep → return null`
+    // defensive guard, leaving the panel completely blank.
+    setActionsStep(decideActionsStepAfterIntent(slots?.basis, actionMetadata));
+  }, [selectIntent, setActionsStep, actionMetadata]);
 
   const handleBack = useCallback(() => {
     if (step === 'basis-edit') {
@@ -104,6 +116,16 @@ export function ActionsPanel() {
       }),
     [lang, currentDomain],
   );
+
+  // Pre-compute the active-tier set for the currently-selected intent so
+  // the `basis-edit` render guard below can match `handleIntentSelect`'s
+  // routing decision exactly. Using `useActiveTiers` here keeps both
+  // sides on the same SSOT (`listActiveTiers`) and the same runtime
+  // context (`actionMetadata.{domain,basis,refs,context}`).
+  const selectedSlots = selectedIntentId
+    ? getConfigSlots(selectedIntentId as Parameters<typeof getConfigSlots>[0])
+    : null;
+  const selectedActiveTiers = useActiveTiers(selectedSlots?.basis);
 
   const intentChipItems = useCallback((): ChipItem[] => {
     if (!selectedActionId) return [];
@@ -185,17 +207,17 @@ export function ActionsPanel() {
       );
     }
 
-    if (step === 'basis-edit' && selectedIntentId) {
-      const slots = getConfigSlots(selectedIntentId as Parameters<typeof getConfigSlots>[0]);
-      // BasisWizard requires at least one configurable tier — rev-* intents
-      // (`tiers: []`) fall through and the panel renders nothing here, but
-      // the navigation path that brings the user to `basis-edit` already
-      // routes around them via `handleIntentSelect`.
-      if (slots?.basis && (slots.basis.tiers?.length ?? 0) > 0) {
+    if (step === 'basis-edit' && selectedIntentId && selectedSlots?.basis) {
+      // Mirrors `handleIntentSelect`'s SSOT (`listActiveTiers`). Falls
+      // through to `null` only when every static-opted-in tier has been
+      // closed by the matrix — same condition that would make
+      // `BasisWizard` render `null` internally — so we never mount a
+      // wizard that can't render anything.
+      if (selectedActiveTiers.length > 0) {
         return (
           <div className="h-full">
             <BasisWizard
-              basisSlot={slots.basis}
+              basisSlot={selectedSlots.basis}
               onBack={() => setActionsStep('config')}
               lang={lang}
               initialTier={basisEditInitialTier}

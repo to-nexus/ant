@@ -17,8 +17,6 @@ function makeWs(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
   return {
     hasPrd: false,
     hasDirective: true,
-    hasScreens: false,
-    hasComponents: false,
     hasAssets: false,
     hasFigmaConfig: false,
     hasSystemDesignDoc: false,

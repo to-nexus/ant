@@ -1,3 +1,3 @@
-## Game Engine: Godot (Phase 1 stub)
+## Game Engine: Godot (Phase 4+ stub)
 
-Open-source 2D / 3D engine. Phase 2 leaves this as a stub — Phaser is the only fully-supported engine in Phase 2.
+Open-source 2D / 3D engine. Phase 3 leaves this as a stub — Phaser is the only engine with a non-stub body in Phase 3. Code emitted with `gameEngine === 'godot'` falls back to the universal `domain === 'game'` overlay and MUST flag the missing engine partial as an open question.

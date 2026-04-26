@@ -7,7 +7,7 @@ import {
   GAME_ENGINE_OPTIONS,
   GAME_ART_CONCEPT_OPTIONS, GAME_ART_PERSPECTIVE_OPTIONS,
   GAME_GENRE_OPTIONS, GAME_CORE_LOOP_OPTIONS,
-  isTierActive,
+  listActiveTiers,
   getEffectiveDomain,
   pathsContainUiDoc,
 } from '@ant/shared';
@@ -62,9 +62,14 @@ export function getTierBadgeRows(
   const display = draftBasis ?? basis;
   const saved = basis;
   const effectiveDomain = getEffectiveDomain(domain);
-  const runtime = { techTier: display?.techTier, hasUiDoc };
+  // SSOT D27 — single facade call replaces the four per-tier
+  // `isTierActive` calls that used to inline the gate computation. Active
+  // set is queried once and consulted by membership below.
+  const active = new Set(
+    listActiveTiers(basisSlot, effectiveDomain, { techTier: display?.techTier, hasUiDoc }),
+  );
 
-  if (isTierActive('techTier', basisSlot, effectiveDomain, runtime)) {
+  if (active.has('techTier')) {
     const tc = display?.techTier;
     const isFullstack = tc?.stack === 'fullstack';
     const showGameEngine = effectiveDomain === 'game';
@@ -157,7 +162,7 @@ export function getTierBadgeRows(
     }
   }
 
-  if (isTierActive('visualTier', basisSlot, effectiveDomain, runtime)) {
+  if (active.has('visualTier')) {
     const badges: TierBadgeData[] = [];
     const vt = display?.visualTier;
 
@@ -181,7 +186,7 @@ export function getTierBadgeRows(
     rows.push({ tierKey: 'visualTier', badges });
   }
 
-  if (isTierActive('gameArtTier', basisSlot, effectiveDomain, runtime)) {
+  if (active.has('gameArtTier')) {
     const badges: TierBadgeData[] = [];
     const gat = display?.gameArtTier;
     const gameArtLayers = [
@@ -202,7 +207,7 @@ export function getTierBadgeRows(
     rows.push({ tierKey: 'gameArtTier', badges });
   }
 
-  if (isTierActive('gameContentTier', basisSlot, effectiveDomain, runtime)) {
+  if (active.has('gameContentTier')) {
     const badges: TierBadgeData[] = [];
     const gct = display?.gameContentTier;
     const gctLayers = [

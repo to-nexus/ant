@@ -1,11 +1,23 @@
 /**
- * I1 — Domain-Branching Locality (Phase 1)
+ * I1 — Domain-Branching Locality (Phase 1, refined by D27 / v6)
  *
- * Domain content branching MUST live inside `templates/basis/**` only.
- * Anywhere else, conditionals comparing `domain === 'game'` /
- * `domain === 'service'` (or Handlebars `{{#if (eq domain 'game')}}` etc.)
- * are forbidden — the matrix gate (`isTierActive`) drives partial
- * inclusion instead.
+ * Domain content branching MUST live inside one of the following
+ * "domain-aware" directories — anywhere else, conditionals comparing
+ * `domain === 'game'` / `domain === 'service'` (or Handlebars
+ * `{{#if (eq domain 'game')}}` etc.) are forbidden:
+ *
+ *   - `templates/domain/**`             (workspace identity, job-agnostic)
+ *   - `templates/basis/**`              (tier-gated content; some tier
+ *                                        partials still need to mention
+ *                                        domain-specific framing)
+ *   - `templates/jobs/<job>/domain/**`  (job × domain meta-pattern overlay)
+ *   - `templates/jobs/<job>/basis/**`   (job × tier overlay)
+ *
+ * D27 (v6) lifts `domain/` from `basis/domain/` into a sibling directory
+ * because `domain` is no longer a TierKey (D23) and basis is, by
+ * definition, the set of *tiers* that the domain has gated on. The
+ * matrix gate (`isTierActive`) drives partial inclusion; domain
+ * identity is layered separately by `PromptBuilder.renderDomainTier`.
  *
  * Decision-slot comparisons (`{{#if gameEngineCandidates}}`) are still
  * allowed because they are meta-process variables, not domain identity.
@@ -31,11 +43,18 @@ function collectMdFiles(dir: string): string[] {
   return results;
 }
 
-function isUnderBasis(file: string): boolean {
-  // Inside `templates/basis/` OR inside `templates/jobs/<job>/basis/`.
+function isInDomainAwareDir(file: string): boolean {
+  // Domain-aware directories where domain branching is legal:
+  //   - templates/domain/**            (workspace identity, D27)
+  //   - templates/basis/**             (tier-gated content)
+  //   - templates/jobs/<job>/domain/** (job × domain overlay, D27)
+  //   - templates/jobs/<job>/basis/**  (job × tier overlay)
   const rel = path.relative(TEMPLATES_ROOT, file).replace(/\\/g, '/');
+  if (rel.startsWith('domain/')) return true;
   if (rel.startsWith('basis/')) return true;
-  return /^jobs\/[^/]+\/basis\//.test(rel);
+  if (/^jobs\/[^/]+\/domain\//.test(rel)) return true;
+  if (/^jobs\/[^/]+\/basis\//.test(rel)) return true;
+  return false;
 }
 
 // Patterns that match domain-name comparisons.
@@ -45,22 +64,26 @@ function isUnderBasis(file: string): boolean {
 const DOMAIN_BRANCH_RE = /\{\{[#^]\s*if\s+[^}]*?(?:\bdomain\b[^}]*?['"]\s*(game|service)\s*['"]|['"]\s*(game|service)\s*['"][^}]*?\bdomain\b)/g;
 
 describe('I1 — Domain-Branching Locality', () => {
-  it('basis/** files MAY contain domain branches (allowed)', () => {
-    // Sanity: no offenders by definition; the test enforces no branches
-    // outside basis. We assert the lookup function is well-formed by
-    // checking a known basis file.
-    const basisDomainFile = path.join(TEMPLATES_ROOT, 'basis/domain/game.md');
-    if (fs.existsSync(basisDomainFile)) {
-      expect(isUnderBasis(basisDomainFile)).toBe(true);
+  it('domain-aware directories (domain/**, basis/**) MAY contain domain branches', () => {
+    // Sanity: assert the lookup function is well-formed by checking a
+    // known domain identity file (post-D27, lives at templates/domain/).
+    const domainIdentityFile = path.join(TEMPLATES_ROOT, 'domain/game.md');
+    if (fs.existsSync(domainIdentityFile)) {
+      expect(isInDomainAwareDir(domainIdentityFile)).toBe(true);
+    }
+    // Tier-gated basis files are also domain-aware.
+    const tierBasisDir = path.join(TEMPLATES_ROOT, 'basis');
+    if (fs.existsSync(tierBasisDir)) {
+      expect(isInDomainAwareDir(path.join(tierBasisDir, 'visualTier/_preamble.md'))).toBe(true);
     }
   });
 
-  it('domain content branches outside basis/** are forbidden', () => {
+  it('domain content branches outside domain-aware directories are forbidden', () => {
     const allFiles = collectMdFiles(TEMPLATES_ROOT);
     const offenders: Array<{ file: string; matches: string[] }> = [];
 
     for (const file of allFiles) {
-      if (isUnderBasis(file)) continue;
+      if (isInDomainAwareDir(file)) continue;
       const src = fs.readFileSync(file, 'utf-8');
       const matches = [...src.matchAll(DOMAIN_BRANCH_RE)].map(m => m[0]);
       if (matches.length > 0) {
@@ -71,7 +94,7 @@ describe('I1 — Domain-Branching Locality', () => {
     if (offenders.length > 0) {
       const report = offenders.map(o => `  ${o.file}: ${o.matches.join(' | ')}`).join('\n');
       throw new Error(
-        `Domain content branches found outside basis/**.\nMove them to basis/domain/{d}.md or jobs/<job>/basis/domain/{d}.md.\nViolations:\n${report}`,
+        `Domain content branches found outside domain-aware directories.\nLegal locations: templates/domain/**, templates/basis/**, jobs/<job>/domain/**, jobs/<job>/basis/**.\nViolations:\n${report}`,
       );
     }
     expect(offenders).toHaveLength(0);

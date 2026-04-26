@@ -353,19 +353,24 @@ export class ArtifactService {
   }
 
   /**
-   * Reference images for UI.
-   * Returns file paths under inputs/references/ (recursive) if they exist.
+   * Inline image candidates for the code job's multimodal channel.
+   *
+   * Reads `outputs/design/ui/handoff/**` and returns image paths
+   * (`.png/.jpg/.jpeg/.webp/.gif/.svg`). Handoff is a free-form file
+   * bundle (FPOP — observe only, no schema inference), so any image it
+   * contains is a legitimate "what the screen should look like" hint.
+   * Other UI sources are NOT scanned: `ant` is JSON-only and `figma` is
+   * URL-only / fetched via MCP.
    */
-  static async loadUiReferenceImages(
+  static async loadHandoffImages(
     context: ArtifactProjectContext,
-    fileSystem: FileSystemPort
+    fileSystem: FileSystemPort,
   ): Promise<string[] | undefined> {
     const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
-    const inputsDirAbs = path.join(featurePathAbs, "inputs");
-    const inputsDir = ArtifactService.toWorkspaceRelative(fileSystem, inputsDirAbs);
+    const handoffDirAbs = path.join(featurePathAbs, "outputs/design/ui/handoff");
+    const handoffDir = ArtifactService.toWorkspaceRelative(fileSystem, handoffDirAbs);
 
-    const referencesDir = path.join(inputsDir, 'references');
-    const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+    const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'];
 
     const collectImages = async (dir: string): Promise<string[]> => {
       if (!(await fileSystem.fileExists(dir))) return [];
@@ -387,7 +392,7 @@ export class ArtifactService {
       return results;
     };
 
-    const files = (await collectImages(referencesDir)).sort();
+    const files = (await collectImages(handoffDir)).sort();
     return files.length > 0 ? files : undefined;
   }
 

@@ -23,16 +23,14 @@ import type { ToolHandler } from './types';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export enum ToolName {
-  // ── Read (scope: codebase, artifact, reference, ant-source, workspace) ──
+  // ── Read (scope: codebase, artifact, ant-source, workspace) ──
   READ_FILE            = 'read_file',
   READ_SOURCE_DOC      = 'read_source_doc',
-  READ_REF_IMAGE       = 'read_reference_image',
   READ_ANT_SOURCE      = 'read_ant_source',
   READ_WORKSPACE_FILE  = 'read_workspace_file',
 
-  // ── List (scope: codebase, artifact, reference, ant-source, workspace) ──
+  // ── List (scope: codebase, artifact, ant-source, workspace) ──
   LIST_FILES           = 'list_files',
-  LIST_REF_IMAGES      = 'list_reference_images',
   LIST_ASSETS          = 'list_assets',
   LIST_ANT_FILES       = 'list_ant_files',
   LIST_WORKSPACE_FILES = 'list_workspace_files',
@@ -83,12 +81,10 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   // Read
   [ToolName.READ_FILE]:            '📖 Reading file',
   [ToolName.READ_SOURCE_DOC]:      '📖 Reading source doc',
-  [ToolName.READ_REF_IMAGE]:       '🖼️ Reading reference image',
   [ToolName.READ_ANT_SOURCE]:      '📖 Reading Ant source',
   [ToolName.READ_WORKSPACE_FILE]:  '📖 Reading workspace file',
   // List
   [ToolName.LIST_FILES]:           '📂 Listing files',
-  [ToolName.LIST_REF_IMAGES]:      '🖼️ Listing reference images',
   [ToolName.LIST_ASSETS]:          '📦 Listing assets',
   [ToolName.LIST_ANT_FILES]:       '📂 Listing Ant files',
   [ToolName.LIST_WORKSPACE_FILES]: '📂 Listing workspace files',
@@ -133,7 +129,6 @@ export const CACHEABLE_TOOLS: ReadonlySet<ToolName> = new Set([
   ToolName.LIST_FILES,
   ToolName.SEARCH_CODE,
   ToolName.READ_SOURCE_DOC,
-  ToolName.LIST_REF_IMAGES,
   ToolName.LIST_ASSETS,
 ]);
 
@@ -188,8 +183,6 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.SEARCH_CODE,
     // Read (artifact scope)
     ToolName.READ_SOURCE_DOC,
-    ToolName.READ_REF_IMAGE,
-    ToolName.LIST_REF_IMAGES,
     ToolName.LIST_ASSETS,
     // Search (web)
     ToolName.SEARCH_WEB,
@@ -272,8 +265,7 @@ export const TOOL_SETS = {
 
   uiDesign: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
-    ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.READ_REF_IMAGE,
-    ToolName.LIST_REF_IMAGES, ToolName.LIST_ASSETS,
+    ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
   ] as ToolName[],
 
   uiDesignFigma: [

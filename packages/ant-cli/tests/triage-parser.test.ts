@@ -12,14 +12,14 @@ function makeWorkspaceState(overrides: Partial<WorkspaceState> = {}): WorkspaceS
   return {
     hasPrd: false,
     hasDirective: true,
-    hasScreens: false,
-    hasComponents: false,
     hasAssets: false,
+    hasFigmaConfig: false,
     hasSystemDesignDoc: false,
     hasUiDocs: false,
     hasSpecDocs: false,
     hasCodebase: false,
     hasDesignDoc: false,
+    hasEvals: false,
     ...overrides,
   };
 }
@@ -148,9 +148,9 @@ describe('parseTriageResponse', () => {
       redirectReason: 'Design needed',
     };
 
-    it('ui-design mode when screens exist', () => {
+    it('ui-design mode when figma config exists', () => {
       const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('design-ui');
-      const ws = makeWorkspaceState({ hasScreens: true });
+      const ws = makeWorkspaceState({ hasFigmaConfig: true });
       const result = parseTriageResponse(wrap(designRedirectJson), 'code', 'architect', ws);
       expect(result!.choiceOptions!.positive.label).toBe('UI 디자인부터 시작');
       expect(result!.choiceOptions!.neutral.label).toBe('바로 진행');

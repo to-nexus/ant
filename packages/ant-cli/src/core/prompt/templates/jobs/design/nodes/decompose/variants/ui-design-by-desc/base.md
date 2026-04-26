@@ -1,6 +1,8 @@
-# UI Design Task Decomposition
+# UI Design Task Decomposition (Description-driven)
 
 You are decomposing UI documentation work into executable chapter tasks.
+
+**Source mode**: Description-driven — no reference images, no Figma file. The directive plus PRD / source documents drive the breakdown.
 
 **Job Mode**: {{detectedMode}}
 
@@ -42,7 +44,7 @@ You are decomposing UI documentation work into executable chapter tasks.
 ## 🆕 GENERATE MODE - Create New Documents
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**You are creating NEW UI design documents from scratch.**
+**You are creating NEW UI design documents from a directive plus PRD only.**
 
 **Philosophy**: Multiple tasks append to the SAME file sequentially (like System Design).
 {{/if}}
@@ -80,8 +82,9 @@ You are decomposing UI documentation work into executable chapter tasks.
 
 | Resource | Count |
 |----------|-------|
-| Reference images | {{referenceCount}} |
-| Asset files | {{assetCount}} |
+| Asset files (`inputs/assets/`) | {{assetCount}} |
+
+⚠️ **Blind spot**: When `assetCount` is `0`, ui-assets entries are placeholder slots derived from the directive — `src` paths point to where the user is expected to add the file later.
 
 ---
 
@@ -118,7 +121,7 @@ You are decomposing UI documentation work into executable chapter tasks.
 
 #### ui-spec.json (multi-chapter)
 
-**Observation target**: Identify the distinct pages/views/features in the project requirements.
+**Authoring target**: Identify the distinct pages/views/features in the project requirements.
 
 **Chapter roles** — each chapter has exactly ONE role:
 
@@ -126,7 +129,7 @@ You are decomposing UI documentation work into executable chapter tasks.
 |------|----------|----------------|
 | **Structure** (ch1) | 300 | Global settings ONLY: breakpoints, grid, containers, typography hierarchy, color roles. NO component behavior, NO interaction patterns, NO toast/accessibility. |
 | **Page** (ch2..chN-1) | 310–340 | ONE page or feature area. Page-specific layout, content, and component usage. Page-only behaviors (used in this page only) fully specified here. Shared components referenced by ID — do NOT redefine their variants/states/sizes. |
-| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library (full variant/state/size definitions), global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by observing previous chapter outputs. |
+| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library (full variant/state/size definitions), global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by inspecting previous chapter outputs. |
 
 **MECE constraint**: Each topic belongs to exactly ONE chapter.
 - Behavior used in only ONE page → that page's chapter
@@ -148,7 +151,7 @@ You are decomposing UI documentation work into executable chapter tasks.
 | Medium (landing page) | 2-3 chapters | 1-2 chapters | 3-4 chapters |
 | Large (multi-page) | 3+ chapters | 2+ chapters | 5+ chapters |
 
-**Your resources**: references={{referenceCount}}, assets={{assetCount}}
+**Your resources**: assets={{assetCount}}
 
 **Principle**: When unsure, create more chapters. Better to have small focused tasks than hit token limits.
 
@@ -156,4 +159,4 @@ You are decomposing UI documentation work into executable chapter tasks.
 
 ---
 
-{{> jobs/design/nodes/decompose/variants/ui-design-by-ref/rules}}
+{{> jobs/design/nodes/decompose/variants/ui-design-by-desc/rules}}
