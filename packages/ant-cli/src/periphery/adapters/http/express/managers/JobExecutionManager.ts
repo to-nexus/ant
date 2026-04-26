@@ -14,6 +14,7 @@ import { UserContext } from '../../../../../core/types/user';
 import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from './JobStateTracker';
 import { ServerDependencies } from '../types';
+import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 
 /**
  * JobExecutionManager
@@ -307,10 +308,24 @@ export class JobExecutionManager {
           resolve();
         } else {
           await this.handleFailedExit(jobId, params, code, signal);
-          
-          // Check if user stopped (don't reject in that case)
-          if (this.stateTracker.isUserStopped(jobId)) {
-            this.stateTracker.clearUserStopped(jobId);
+
+          // Check if user stopped via the Redis SSOT (don't reject in that case).
+          // The in-memory mirror in JobStateTracker was retired — see
+          // RedisStateStore.markUserStopped (set by /jobs/:id/stop).
+          const stateStore = getInfrastructureFactory().getStateStore();
+          let isUserStop = false;
+          try {
+            isUserStop = await stateStore.isUserStopped(jobId);
+          } catch (err) {
+            logger.warn(`Failed to read user-stopped flag from Redis`, {
+              component: 'JobExecutionManager',
+              jobId
+            }, err);
+          }
+          if (isUserStop) {
+            try {
+              await stateStore.clearUserStopped(jobId);
+            } catch { /* best-effort */ }
             resolve();
           } else {
             const status = state.jobs.get(jobId);
@@ -426,16 +441,22 @@ export class JobExecutionManager {
     
     // Analyze logs to determine interruption reason
     const interruption = this.analyzeFailureReason(jobId, code, signal, isUserStop);
-    
-    // Don't cleanup if user explicitly stopped (already handled in Stop API)
-    if (this.stateTracker.isUserStopped(jobId)) {
-      logger.debug(`Job was user-stopped; skipping exit handler cleanup`, { 
-        component: 'JobExecutionManager', 
-        jobId 
+
+    // Don't cleanup if user explicitly stopped (already handled in Stop API).
+    // user-stopped flag is read from Redis SSOT.
+    let userStoppedInRedis = false;
+    try {
+      const stateStore = getInfrastructureFactory().getStateStore();
+      userStoppedInRedis = await stateStore.isUserStopped(jobId);
+    } catch { /* best-effort — fall through to onJobComplete */ }
+    if (userStoppedInRedis) {
+      logger.debug(`Job was user-stopped; skipping exit handler cleanup`, {
+        component: 'JobExecutionManager',
+        jobId
       });
       return;
     }
-    
+
     await this.onJobComplete(jobId, params.project, params.feature, interruption);
   }
 

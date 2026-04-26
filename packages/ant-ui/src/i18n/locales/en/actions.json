@@ -117,12 +117,7 @@
       },
       "gameArtTier": {
         "concept": "Concept",
-        "perspective": "Perspective",
-        "entityCatalog": "Entities",
-        "motionPattern": "Motion",
-        "particleProfile": "Particles",
-        "projectilePolicy": "Projectiles",
-        "audioProfile": "Audio"
+        "perspective": "Perspective"
       },
       "gameContentTier": {
         "genre": "Genre",

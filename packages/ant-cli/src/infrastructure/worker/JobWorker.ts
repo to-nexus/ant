@@ -30,6 +30,7 @@ import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../../core/conf
 import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchUtils';
 import { parseRedisUrl } from '../utils/redis';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';
+import type { InterruptionReason } from '@ant/shared';
 import * as fs from 'fs';
 
 // ESM: derive __dirname from import.meta.url
@@ -38,6 +39,29 @@ const __dirname = path.dirname(__filename);
 
 const QUEUE_NAME = 'ant-jobs';
 const DEFAULT_CONCURRENCY = 2;
+
+/**
+ * Interruption reasons that represent a graceful, infrastructure-driven stop
+ * — the child process was terminated on purpose (user, lock, sleep, shutdown,
+ * stalled worker) and the non-zero exit code is expected. We log these at
+ * `info` level and skip the stderr dump because:
+ *   1. The child has already reported the structured `interruption.reason` via
+ *      its `RESULT:` payload, so the cause is unambiguous.
+ *   2. Each stderr line was already streamed to the console via the
+ *      `[job-runner:…:stderr]` prefix and persisted via `appendJobLog`.
+ *
+ * Reasons NOT in this list (`process_crash`, `server_crash`, `api_error`,
+ * `unknown`, etc.) fall through to the legacy `Job runner failed` branch
+ * with the full stderr dump, because those signal a defect / unexpected
+ * failure where the captured stderr is the primary debugging signal.
+ */
+const GRACEFUL_INTERRUPTION_REASONS: ReadonlySet<InterruptionReason> = new Set([
+  'user_stopped',
+  'worker_stalled',
+  'server_shutdown',
+  'system_sleep',
+  'lock_expired',
+]);
 
 export interface JobWorkerOptions {
   redisUrl: string;
@@ -285,74 +309,38 @@ export class JobWorker {
     await this.stateStore.clearUserStopped(jobId);
 
     try {
-      // Update status to running
+      // Update status to running.
+      // 'running' is a progress signal, not a terminal transition, so it's
+      // safe to write directly here. Terminal transitions
+      // (completed/failed/paused) are handled exclusively by
+      // finalize/pauseJob via the RouteConfigurator JOB_STATUS_UPDATES
+      // subscriber — JobWorker never writes terminal status directly.
       await this.stateStore.updateJobStatus(jobId, {
         status: 'running',
         startedAt: new Date().toISOString()
       });
 
-      // Check if user requested cancellation
+      // Pre-spawn cancellation guard. If POST /jobs/:id/stop already ran
+      // before the BullMQ worker dequeued this job, finalize has already
+      // recorded the terminal status — we just bail out without spawning.
       const isStopped = await this.stateStore.isUserStopped(jobId);
       if (isStopped) {
-        logger.info(`Job cancelled by user: ${jobId}`, { component: 'JobWorker', jobId });
-        await this.stateStore.updateJobStatus(jobId, { status: 'paused' });
+        logger.info(`Job cancelled by user (pre-spawn): ${jobId}`, { component: 'JobWorker', jobId });
         return { cancelled: true };
       }
 
-      // Execute job in child process
-      const result = await this.spawnJobProcess(job, payload);
-
-      // ✅ Determine correct job status from result
-      // A job can be "paused" (interruption with tasks remaining) even if outer success=true
-      const outputStatus = result.output?.status;
-      const hasInterruption = !!result.output?.interruption;
-      let jobStatus: 'completed' | 'failed' | 'paused';
-      if (outputStatus === 'paused' || hasInterruption) {
-        jobStatus = 'paused';
-      } else if (result.success) {
-        jobStatus = 'completed';
-      } else {
-        jobStatus = 'failed';
-      }
-      
-      // Guard: stalled handler may have already transitioned to 'paused' — don't overwrite
-      const currentStatus = await this.stateStore.getJobStatus(jobId);
-      if (currentStatus?.status === 'paused') {
-        logger.warn(
-          `Job ${jobId} already paused (likely by stalled handler) — skipping status update to '${jobStatus}'`,
-          { component: 'JobWorker', jobId }
-        );
-        return result;
-      }
-
-      // Update final status
-      await this.stateStore.updateJobStatus(jobId, {
-        status: jobStatus,
-        completedAt: new Date().toISOString(),
-        error: result.error
-      });
-
-      return result;
+      // Execute job in child process. The result (success/error/output) is
+      // returned to BullMQ; the queueEvents.completed/failed listeners on
+      // BullMQJobQueue then publish JOB_STATUS_UPDATES, which the
+      // RouteConfigurator handler routes to finalize (terminal) or pauseJob
+      // (resumable interruption). Status writes flow through that single
+      // SSOT, never from here.
+      return await this.spawnJobProcess(job, payload);
 
     } catch (error: any) {
       logger.error(`Job execution error: ${jobId}`, { component: 'JobWorker', jobId }, error);
-
-      // Guard: stalled handler may have already transitioned to 'paused'
-      const currentStatus = await this.stateStore.getJobStatus(jobId);
-      if (currentStatus?.status === 'paused') {
-        logger.warn(
-          `Job ${jobId} already paused (likely by stalled handler) — skipping status update to 'failed'`,
-          { component: 'JobWorker', jobId }
-        );
-        throw error;
-      }
-
-      await this.stateStore.updateJobStatus(jobId, {
-        status: 'failed',
-        completedAt: new Date().toISOString(),
-        error: error.message
-      });
-
+      // Re-throwing surfaces the error to BullMQ as a 'failed' event,
+      // which BullMQJobQueue forwards to RouteConfigurator → finalize.
       throw error;
     } finally {
       this.runningProcesses.delete(jobId);
@@ -625,16 +613,44 @@ export class JobWorker {
 
         if (code === 0) {
           resolve(parsedResult);
+          return;
+        }
+
+        // Graceful interruption — child emitted a structured RESULT whose
+        // `interruption.reason` is in the GRACEFUL_INTERRUPTION_REASONS
+        // whitelist (user_stopped, worker_stalled, server_shutdown,
+        // system_sleep, lock_expired). Log at info-level and skip the
+        // stderr dump; re-emitting accumulated stderr on top of an
+        // `error`-level "Job runner failed" line is what made user-stopped
+        // jobs look like crashes (e.g. the `oval-looking-booth` log noise
+        // from `[Decompose Validation]` warnings tailing a SIGTERM exit).
+        //
+        // Defective interruptions (`process_crash`, `server_crash`,
+        // `api_error`, `unknown`, ...) fall through to the failure branch
+        // so the stderr trace remains the primary debugging signal.
+        const interruption =
+          parsedResult.output?.interruption ?? parsedResult.interruption;
+        const reason = interruption?.reason as InterruptionReason | undefined;
+        if (reason && GRACEFUL_INTERRUPTION_REASONS.has(reason)) {
+          logger.info(
+            `Job runner interrupted (reason=${reason}, exitCode=${code})`,
+            { component: 'JobWorker', jobId }
+          );
+          resolve(parsedResult);
+          return;
+        }
+
+        logger.error(
+          `Job runner failed (exitCode=${code}${reason ? `, reason=${reason}` : ''}): ${stderr || 'No stderr'}`,
+          { component: 'JobWorker', jobId }
+        );
+        if (parsedResult.output) {
+          resolve(parsedResult);
         } else {
-          logger.error(`Job runner failed: ${stderr || 'No stderr'}`, { component: 'JobWorker', jobId });
-          if (parsedResult.output) {
-            resolve(parsedResult);
-          } else {
-            resolve({
-              success: false,
-              error: stderr || `Process exited with code ${code}`
-            });
-          }
+          resolve({
+            success: false,
+            error: stderr || `Process exited with code ${code}`
+          });
         }
       });
 

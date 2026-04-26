@@ -222,15 +222,16 @@ export async function decomposeGameArtDesign(
       if (isFigmaMode && !sf.includes('figma.json')) sf.push('figma.json');
 
       // RAC pool: sources + game-art outputs (+ optional UI ant docs for
-      // cross-surface context). Figma mode also includes the UI figma
-      // workfile reference because game-art figma is Phase 5+ — D24's
-      // flat game-art structure has no figma sub-source today.
+      // cross-surface context). D24-revised v8 — game-art now mounts the
+      // `ant/` sub-source (canonical), parallel to UI's ant. Figma mode
+      // also includes the UI figma workfile reference because game-art
+      // figma is Phase 5+ (parser-only hook today).
       const includePrefixes = isFigmaMode
-        ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
-        : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART, ARTIFACT_PREFIX.UI_ANT];
+        ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
+        : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT];
       const contextPrefixes = isFigmaMode
-        ? [ARTIFACT_PREFIX.GAME_ART, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
-        : [ARTIFACT_PREFIX.GAME_ART, ARTIFACT_PREFIX.UI_ANT];
+        ? [ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
+        : [ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT];
 
       taskQueue.push({
         id: task.id,

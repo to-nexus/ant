@@ -109,16 +109,18 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
   'explain-spec': { policies: [], refMediaHints: ['text'] },
 
   // ── Code ───────────────────────────────────
-  // D28 — code jobs receive ui-design-policy on `outputs/design/ui` slots
-  // (service domain) and game-art-design-policy on `outputs/design/game-art`
-  // slots (game domain). Domain matrix gates determine which slot is even
-  // selectable per workspace, so the same code intent serves both domains
-  // through the conditional policy mechanism.
+  // D28 — code jobs receive ui-design-policy on the `outputs/design/ui`
+  // ui-source slot (service domain) and game-art-design-policy on the
+  // `outputs/design/game-art/ant` game-art slot (game domain — D24-revised v8
+  // sub-source canonical). The slotPath must match a SlotDef.path exactly;
+  // domain matrix gates determine which slot is even selectable per
+  // workspace, so the same code intent serves both domains through the
+  // conditional policy mechanism.
   'gen-code-sys': {
     policies: [],
     conditionalPolicies: [
       { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
-      { slotPath: 'outputs/design/game-art', policy: 'game-art-design-policy' },
+      { slotPath: 'outputs/design/game-art/ant', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
@@ -126,7 +128,7 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
     policies: [],
     conditionalPolicies: [
       { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
-      { slotPath: 'outputs/design/game-art', policy: 'game-art-design-policy' },
+      { slotPath: 'outputs/design/game-art/ant', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
@@ -134,7 +136,7 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
     policies: [],
     conditionalPolicies: [
       { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
-      { slotPath: 'outputs/design/game-art', policy: 'game-art-design-policy' },
+      { slotPath: 'outputs/design/game-art/ant', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
@@ -142,7 +144,7 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
     policies: [],
     conditionalPolicies: [
       { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
-      { slotPath: 'outputs/design/game-art', policy: 'game-art-design-policy' },
+      { slotPath: 'outputs/design/game-art/ant', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },

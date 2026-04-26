@@ -110,47 +110,37 @@ export class JobCleanupManager {
           const isParallelMode = sessionData.state.parallelMode === true;
           
           if (isParallelMode) {
-            // ✅ FIX: Cross-process race condition prevention.
-            // cleanupJobState (API server) and child process checkpoint writes target
-            // the same session file without cross-process coordination. The session file
-            // may be stale (read before child's latest checkpoint). Use Redis checkpoint
-            // as the primary source of truth for completedTasks — it's updated atomically
-            // after every task completion and is always consistent.
-            let redisCompletedTasks: any[] | null = null;
-            let redisTaskQueue: any[] | null = null;
+            // ✅ Parallel-mode SSOT: Redis checkpoint (primary) → live snapshot
+            // (fallback) → session-as-is (last resort).
+            //
+            // The orchestrator's `saveCheckpoint(interruption)` writes Redis
+            // checkpoint synchronously and triggers the worker's onCheckpoint
+            // to atomicWriteFile the session. Both writers project the *same*
+            // checkpoint payload, so when Redis ≥ session in completed-task
+            // count, deriving from Redis carries `interrupted: true` flags
+            // forward without losing data; whichever side writes last produces
+            // identical state.
+            //
+            // Guard: if Redis is *behind* the session (TTL expiry, partial
+            // flush, or a write race where the worker's onCheckpoint reached
+            // disk before saveCheckpointSnapshot reached Redis), trusting
+            // Redis blindly would silently drop completed tasks. In that
+            // case we keep the session's completed history and only project
+            // the running tasks (with `interrupted:true`) onto the queue
+            // head. This preserves the Phase-3 invariant (`interrupted`
+            // flag survives) without sacrificing completed-task history.
+            let source: { queue?: any[]; completedTasks?: any[]; currentTask?: any; currentTasks?: any[] } | null = null;
+            let sourceLabel: 'checkpoint' | 'live' | 'none' = 'none';
             try {
               const redisCheckpoint = await stateStore.getTaskQueueCheckpoint(jobId);
               if (redisCheckpoint) {
-                redisCompletedTasks = redisCheckpoint.completedTasks || [];
-                redisTaskQueue = redisCheckpoint.queue || [];
-                logger.info(`Redis checkpoint found for parallel mode`, {
-                  component: 'JobCleanupManager',
-                  jobId
-                }, {
-                  redisCompleted: redisCompletedTasks!.length,
-                  redisQueue: redisTaskQueue!.length,
-                  sessionCompleted: (sessionData.state.completedTasksDetails || []).length,
-                  sessionQueue: (sessionData.state.taskQueue || []).length,
-                });
-              }
-              
-              // Also check live snapshot (more recent than checkpoint for running tasks)
-              if (!redisCheckpoint) {
+                source = redisCheckpoint;
+                sourceLabel = 'checkpoint';
+              } else {
                 const liveSnapshot = await stateStore.getTaskQueue(jobId);
                 if (liveSnapshot) {
-                  redisCompletedTasks = liveSnapshot.completedTasks || [];
-                  // Reconstruct queue: running tasks (as interrupted) + remaining queue
-                  const runningTasks = (liveSnapshot.currentTasks || (liveSnapshot.currentTask ? [liveSnapshot.currentTask] : []))
-                    .filter(Boolean)
-                    .map((t: any) => ({ ...t, interrupted: true }));
-                  redisTaskQueue = [...runningTasks, ...(liveSnapshot.queue || [])];
-                  logger.info(`Using live Redis snapshot for parallel mode`, {
-                    component: 'JobCleanupManager',
-                    jobId
-                  }, {
-                    redisCompleted: redisCompletedTasks!.length,
-                    redisQueue: redisTaskQueue!.length,
-                  });
+                  source = liveSnapshot;
+                  sourceLabel = 'live';
                 }
               }
             } catch (err) {
@@ -159,32 +149,60 @@ export class JobCleanupManager {
                 jobId
               }, err);
             }
-            
-            // Use whichever source has MORE completed tasks (Redis or session file).
-            // This ensures we never lose completed tasks due to cross-process race.
+
             const sessionCompleted = sessionData.state.completedTasksDetails || [];
-            const useRedis = redisCompletedTasks && redisCompletedTasks.length > sessionCompleted.length;
-            
-            if (useRedis) {
-              logger.info(`Using Redis data (more complete): ${redisCompletedTasks!.length} completed vs session ${sessionCompleted.length}`, {
-                component: 'JobCleanupManager',
-                jobId
-              });
-              sessionData.state = {
-                ...sessionData.state,
-                taskQueue: redisTaskQueue!,
-                completedTasks: redisCompletedTasks!.map((t: any) => t.id || t),
-                completedTasksDetails: redisCompletedTasks!,
-                currentTask: undefined
-              };
+            if (source) {
+              // Live snapshots keep running tasks in `currentTask(s)`; flatten
+              // them into the queue head with `interrupted: true` so the
+              // Kanban shows them as paused. Checkpoints already pre-flatten
+              // running tasks (via `ParallelOrchestrator.saveCheckpoint`), so
+              // currentTask(s) are normally undefined — but we run the same
+              // mapping unconditionally; it's a no-op when empty.
+              const runningInterrupted = (source.currentTasks ?? (source.currentTask ? [source.currentTask] : []))
+                .filter(Boolean)
+                .map((t: any) => ({ ...t, interrupted: true }));
+              const sourceCompleted = source.completedTasks ?? [];
+              const redisHasFullHistory = sourceCompleted.length >= sessionCompleted.length;
+              logger.info(
+                `Using Redis ${sourceLabel} as parallel-mode SSOT (redisFull=${redisHasFullHistory})`,
+                { component: 'JobCleanupManager', jobId },
+                {
+                  queue: (source.queue ?? []).length,
+                  runningInterrupted: runningInterrupted.length,
+                  redisCompleted: sourceCompleted.length,
+                  sessionCompleted: sessionCompleted.length,
+                },
+              );
+              if (redisHasFullHistory) {
+                sessionData.state = {
+                  ...sessionData.state,
+                  taskQueue: [...runningInterrupted, ...(source.queue ?? [])],
+                  completedTasks: sourceCompleted.map((t: any) => t.id || t),
+                  completedTasksDetails: sourceCompleted,
+                  currentTask: undefined,
+                };
+              } else {
+                // Redis is stale wrt the session's completed history — keep
+                // the session's completed list (no data loss) but still
+                // project Redis's running-as-interrupted onto the queue.
+                sessionData.state = {
+                  ...sessionData.state,
+                  taskQueue: [...runningInterrupted, ...(source.queue ?? [])],
+                  currentTask: undefined,
+                };
+              }
             } else {
-              logger.info(`Using session file data: ${sessionCompleted.length} completed`, {
+              // Redis fully drained — session file remains the only source.
+              // Drop currentTask defensively so the Kanban doesn't show a
+              // stale in-progress card. The session's existing taskQueue
+              // (last successful onCheckpoint) is preserved as-is.
+              logger.info(`No Redis source for parallel-mode cleanup; preserving session as-is`, {
                 component: 'JobCleanupManager',
                 jobId
               });
               sessionData.state = {
                 ...sessionData.state,
-                currentTask: undefined
+                currentTask: undefined,
               };
             }
           } else {
@@ -446,8 +464,18 @@ export class JobCleanupManager {
   ): Promise<void> {
     try {
       const state = this.stateTracker.getState();
-      const kanbanData = await this.deps.kanbanService.getKanbanData(
-        mapping.projectId, 
+      // Final-snapshot SSOT: cleanupJobState has already projected the
+      // Redis checkpoint into the session file (atomicWriteFile). At this
+      // point Redis status may still read 'running' (updateJobStatus runs
+      // after this) and the live taskQueue may still exist
+      // (sealJobRedisState runs even later) — using `getKanbanData` here
+      // would steer into LIVE/ESTIMATING and publish stale "in-progress"
+      // tasks. `getFinalSnapshotKanbanData` reads only the patched session
+      // file and always emits `dataSource: 'session'`, ensuring the
+      // broadcast reflects the post-cleanup final state regardless of
+      // Redis timing.
+      const kanbanData = await this.deps.kanbanService.getFinalSnapshotKanbanData(
+        mapping.projectId,
         mapping.featureName,
         jobType,
         state.jobToProject,

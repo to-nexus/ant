@@ -396,12 +396,12 @@ const SYS_DIR = 'outputs/design/system';
  */
 const UI_DIR = 'outputs/design/ui/ant';
 /**
- * Canonical game-art output directory (Phase 2 — D24, flat).
+ * Canonical game-art output directory (D24-revised v8 — sub-sourced).
  * `gen-game-art-*` / `rev-game-art` design intents emit their tokens/assets/spec
- * JSON bundle here — sub-source containers (ant/figma/handoff) are deliberately
- * omitted (D24); figma/handoff for game-art is deferred to Phase 5+.
+ * JSON bundle under the `ant/` canonical sub-source — mirrors `outputs/design/ui/ant/`.
+ * `figma/` and `handoff/` sub-sources are Phase 5+ hooks (parser-only today).
  */
-const GAME_ART_DIR = 'outputs/design/game-art';
+const GAME_ART_DIR = 'outputs/design/game-art/ant';
 const SPEC_DIR = 'outputs/design/spec';
 const SOURCES_DIR = 'inputs/sources';
 /**

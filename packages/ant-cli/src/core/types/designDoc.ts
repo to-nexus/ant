@@ -7,8 +7,9 @@
  * Surface taxonomy (D24/D25):
  *   - 'ui'      → outputs/design/ui/ant/{ui-tokens,ui-assets,ui-spec}.json
  *                 spec sub-section = chapter (header / main / footer / page)
- *   - 'gameArt' → outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json
+ *   - 'gameArt' → outputs/design/game-art/ant/{game-art-tokens,game-art-assets,game-art-spec}.json
  *                 spec sub-section = category dictionary (effects / characters / projectiles / npcs / ...)
+ *                 (D24-revised v8 — sub-sourced canonical, mirrors ui/ant)
  *
  * The two surfaces share the same JSON-dictionary parser shape — only the
  * semantics of sub-section keys differ, and the LLM picks those keys at

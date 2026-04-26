@@ -7,7 +7,7 @@ Design Job 의 두 surface — **UI Design** (서비스 도메인 전용) 과 **
 ### Surface 분리 (D17 / D18 / D28)
 
 - **UI Design** (`intentGroup === 'design-ui'`) — `outputs/design/ui/{ant,figma,handoff}/...` 산출 (3-source canonical). LLM 결정 태그 `<visualTier>`. basis tier `[visualTier, gameContentTier]`. **도메인=`service` 만 활성** (D28 — `TIER_DOMAIN_MATRIX.visualTier === ['service']`, ActionDefinition.domainGate=['service']). `gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui` intent.
-- **Game-Art Design** (`intentGroup === 'design-game-art'`) — `outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json` 산출 (D24 — flat, ant/figma/handoff 하위 sub-source 없음). LLM 결정 태그 `<gameArtTier>`. basis tier `[gameArtTier, gameContentTier]`. **도메인=`game` 만 활성** (D22/D28 — `TIER_DOMAIN_MATRIX.gameArtTier === ['game']`, ActionDefinition.domainGate=['game']). `gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art` intent.
+- **Game-Art Design** (`intentGroup === 'design-game-art'`) — `outputs/design/game-art/ant/{game-art-tokens,game-art-assets,game-art-spec}.json` 산출 (D24-revised v8 — sub-sourced canonical, `outputs/design/ui/ant/` 와 동형. `figma/`/`handoff/` 는 Phase 5+ hook). LLM 결정 태그 `<gameArtTier>`. basis tier `[gameArtTier, gameContentTier]`. **도메인=`game` 만 활성** (D22/D28 — `TIER_DOMAIN_MATRIX.gameArtTier === ['game']`, ActionDefinition.domainGate=['game']). `gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art` intent.
 
 두 surface 는 **수직 도메인 분리** (D28) — 게임 워크스페이스는 game-art surface 만 활성, 서비스 워크스페이스는 UI surface 만 활성. 게임의 HUD / 메뉴 / 컨트롤은 별도 산출물 (`outputs/design/ui/...`) 이 아니라 `game-art-tokens.json` 의 HUD CSS 토큰 + `game-art-spec.json` 의 `hud` / `menu` / `dialog` 카테고리 안에 통합 카탈로그화된다 (D25 의 dictionary 형식이 자연스럽게 흡수).
 
@@ -382,7 +382,7 @@ UI Design 과의 직접 비교:
 |------|-----------|-----------------|
 | intent | `gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui` | `gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art` |
 | 활성 도메인 (D28) | service 만 | game 만 |
-| 산출물 | `outputs/design/ui/{ant,figma,handoff}/...` (3-source canonical) | `outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json` (D24 — flat) |
+| 산출물 | `outputs/design/ui/{ant,figma,handoff}/...` (3-source canonical) | `outputs/design/game-art/ant/{game-art-tokens,game-art-assets,game-art-spec}.json` (D24-revised v8 — sub-sourced canonical, `figma/`/`handoff/` 는 Phase 5+ hook) |
 | 활성 자산 풀 | `inputs/assets/service/{icons,images,fonts,misc}` | `inputs/assets/game/{icons,images,entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` (HUD 자산 + 게임 자산 통합) |
 | LLM 결정 태그 | `<visualTier>` | `<gameArtTier>` (visualTier 미발행, D18) |
 | basis tier | `[visualTier, gameContentTier]` | `[gameArtTier, gameContentTier]` |
@@ -393,7 +393,7 @@ UI Design 과의 직접 비교:
 
 - **카테고리 dictionary 분해 (D25)**: `game-art-spec.json` / `game-art-assets.json` 의 sub-section 이 chapter (페이지 영역) 가 아니라 카테고리 키 dictionary (`effects` / `characters` / `projectiles` / `npcs` / `objectives` / `hud` / `menu` / `dialog` 등 — D28 으로 HUD 영역도 동일 dictionary 안). 표준 카테고리 가이드는 prompt overlay 에서만 제공하고 schema 가 강제하지 않는다.
 - **task 분해**: `game-art-tokens` 단일 task + `game-art-assets-{category}` parallel + `game-art-spec-{category}` parallel. 카테고리 종류는 LLM 이 게임 컨텍스트 (`gameContentTier.genre` + `gameArtTier.entityCatalog`) 에 따라 동적으로 결정한다.
-- **RAC pool**: `inputs/sources/` + `outputs/design/game-art/` (D28 — UI ant docs cross-surface context 폐기, game 도메인은 game-art 단일 surface).
+- **RAC pool**: `inputs/sources/` + `outputs/design/game-art/ant/` (D28 — UI ant docs cross-surface context 폐기, game 도메인은 game-art 단일 surface).
 - **decision tag**: 응답에서 `<gameArtTier>` 를 `parseDecisionTags` 로 흡수해 `state.resolvedAction.basis.gameArtTier` 에 적용 (explicit 선행, LLM 채움이 후행).
 
 ## 모드 (`game-art-design-by-desc` / `game-art-design-by-figma`)

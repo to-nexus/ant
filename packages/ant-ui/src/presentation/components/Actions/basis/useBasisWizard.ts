@@ -22,6 +22,10 @@ import {
   GAME_ENGINE_OPTIONS,
   GAME_ART_CONCEPT_OPTIONS,
   GAME_ART_PERSPECTIVE_OPTIONS,
+  // D46 (v9.2) — Game-art 5 asset axes (entityCatalog / motionPattern /
+  // particleProfile / projectilePolicy / audioProfile) are LLM-emitted
+  // only; their _OPTIONS arrays remain in @ant/shared for the BE
+  // decompose path but are no longer imported here.
   GAME_GENRE_OPTIONS,
   GAME_CORE_LOOP_OPTIONS,
   deriveInteractionGrammar,
@@ -104,6 +108,11 @@ function buildBasisFromSelections(
   if (isReal(vl)) vt.visualLanguage = vl as any;
   if (isReal(ss)) vt.surfaceSystem = ss as any;
 
+  // D46 (v9.2) — Only `concept` and `perspective` are wizard decisions.
+  // The 5 asset axes (entityCatalog / motionPattern / particleProfile /
+  // projectilePolicy / audioProfile) are LLM-emitted at decompose time;
+  // explicit basis intentionally leaves them unset so the registry
+  // candidate set drives the choice.
   const gat: Partial<GameArtTier> = {};
   if (isReal(selections.gameArtTier.concept)) gat.concept = selections.gameArtTier.concept as any;
   if (isReal(selections.gameArtTier.perspective)) gat.perspective = selections.gameArtTier.perspective as any;
@@ -260,6 +269,7 @@ export function useBasisWizard(
           surfaceSystem: currentBasis?.visualTier?.surfaceSystem,
         },
         gameArtTier: {
+          // D46 (v9.2) — only concept + perspective are wizard-managed.
           concept: currentBasis?.gameArtTier?.concept,
           perspective: currentBasis?.gameArtTier?.perspective,
         },
@@ -416,6 +426,11 @@ export function useBasisWizard(
     }
 
     if (step.tierKey === 'gameArtTier') {
+      // D46 (v9.2) — wizard exposes only concept + perspective. The 5
+      // asset axes (entityCatalog / motionPattern / particleProfile /
+      // projectilePolicy / audioProfile) are LLM-emitted at decompose
+      // time; if a future code path adds a step for them, surface the
+      // change and re-add the corresponding _OPTIONS branches here.
       switch (layerKey) {
         case 'concept': return GAME_ART_CONCEPT_OPTIONS;
         case 'perspective': return GAME_ART_PERSPECTIVE_OPTIONS;

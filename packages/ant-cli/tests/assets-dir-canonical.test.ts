@@ -57,12 +57,14 @@ describe('inputs/assets/{service,game} canonical layout', () => {
     expect(ARTIFACT_PREFIX.ASSETS_GAME).toBe('inputs/assets/game/');
   });
 
-  it('outputs/design/game-art is a flat surface (D24 — no ant/figma/handoff sub-source)', () => {
+  it('outputs/design/game-art is sub-sourced (D24-revised v8 — mirrors outputs/design/ui/)', () => {
     expect(ARTIFACT_PREFIX.GAME_ART).toBe('outputs/design/game-art/');
+    expect(ARTIFACT_PREFIX.GAME_ART_ANT).toBe('outputs/design/game-art/ant/');
     expect(CANONICAL_FEATURE_DIRS).toContain('outputs/design/game-art');
-    // Flat: no `outputs/design/game-art/ant` / `figma` / `handoff` registered.
-    for (const sub of ['ant', 'figma', 'handoff']) {
-      expect(CANONICAL_FEATURE_DIRS).not.toContain(`outputs/design/game-art/${sub}`);
-    }
+    expect(CANONICAL_FEATURE_DIRS).toContain('outputs/design/game-art/ant');
+    // figma / handoff sub-sources stay parser-only Phase 5+ hooks — no
+    // canonical directory creation today.
+    expect(CANONICAL_FEATURE_DIRS).not.toContain('outputs/design/game-art/figma');
+    expect(CANONICAL_FEATURE_DIRS).not.toContain('outputs/design/game-art/handoff');
   });
 });

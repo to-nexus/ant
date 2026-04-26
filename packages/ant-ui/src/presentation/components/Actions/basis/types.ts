@@ -37,6 +37,10 @@ export interface BasisWizardState {
       surfaceSystem?: string;
     };
     gameArtTier: {
+      // D46 (v9.2) — wizard manages only concept + perspective. The 5
+      // asset axes (entityCatalog / motionPattern / particleProfile /
+      // projectilePolicy / audioProfile) are LLM-emitted at decompose
+      // time and never enter wizard state.
       concept?: string;
       perspective?: string;
     };

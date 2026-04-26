@@ -39,14 +39,29 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
   // Phase 2 (D19-revised): per-domain assets pools.
   'inputs/assets/service': {
     allowSubdirs: true,
-    // Phase 4 hook will add `.woff` / `.woff2` / `.ttf` for service fonts.
-    acceptedExtensions: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'],
+    // Phase 4 (D-P4): web-font formats activated for the service domain
+    // so logo / brand / icon-pack fonts can ship under
+    // `inputs/assets/service/fonts/`.
+    acceptedExtensions: [
+      '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
+      '.woff', '.woff2', '.ttf', '.otf',
+    ],
   },
   'inputs/assets/game': {
     allowSubdirs: true,
-    // Phase 4 hook will add `.mp3` / `.ogg` / `.wav` / `.atlas` / `.glb` /
-    // `.gltf`. `.json` is accepted now for tilemap manifests.
-    acceptedExtensions: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.json'],
+    // Phase 4 (D-P4): audio + atlas + 3D model formats activated for the
+    // game domain. The game-art catalog (`game-art-assets.json`) records
+    // `kind: 'external'` `src` paths into these subdirs once
+    // `_meta.phaseScope === 'p4-external-enabled'`.
+    //   - audio (sfx / bgm): .mp3 / .ogg / .wav
+    //   - sprite atlas: .json (manifest) + .png / .webp (atlas image)
+    //   - 3D models (Phase 5+ hook, perspective='3d'): .glb / .gltf
+    acceptedExtensions: [
+      '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.json',
+      '.mp3', '.ogg', '.wav',
+      '.atlas',
+      '.glb', '.gltf',
+    ],
   },
   'outputs/design': {
     allowSubdirs: true,
@@ -69,11 +84,27 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     // nested subdirectories are allowed.
     allowSubdirs: true,
   },
-  // Phase 2 (D24): game-art is FLAT — game-art-tokens / game-art-assets /
-  // game-art-spec land directly here, no sub-source containers.
+  // v8 (D24-revised): game-art is sub-sourced (mirrors `outputs/design/ui/`).
+  // The parent surface only allows the `ant/` / `figma/` / `handoff/` sub-
+  // source containers; LLM-generated game-art-*.json files land directly
+  // under `ant/` (canonical sub-source).
   'outputs/design/game-art': {
+    allowSubdirs: true,
+  },
+  'outputs/design/game-art/ant': {
     allowSubdirs: false,
     acceptedExtensions: ['.json'],
+  },
+  // Phase 5+ hook — figma / handoff sub-sources stay parser-only until the
+  // visual job activates them. The policies are pre-registered so the
+  // upload contract is symmetric with `outputs/design/ui/`.
+  'outputs/design/game-art/figma': {
+    allowSubdirs: false,
+    acceptedExtensions: ['.json'],
+  },
+  'outputs/design/game-art/handoff': {
+    // Free-form handoff (mirrors ui/handoff) — Phase 5+ activates upload.
+    allowSubdirs: true,
   },
   'outputs/design/system': {
     allowSubdirs: false,

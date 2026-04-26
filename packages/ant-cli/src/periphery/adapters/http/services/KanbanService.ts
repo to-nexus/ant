@@ -146,49 +146,8 @@ export class KanbanService {
     const sessionPath = getSessionFilePathByJob(featurePath, jobType);
     
     let sessionData: any = null;
-    const safeReadSession = async (): Promise<any | null> => {
-      // ✅ Use async fs.access instead of fs.existsSync to avoid blocking the event loop.
-      // Blocking reads on EFS can stall the Realtime Server's Node.js event loop,
-      // preventing Redis Pub/Sub messages from flowing and causing SSE reconnect grace
-      // timeouts to fire incorrectly (setting isRunning=false while the job is still active).
-      try {
-        await fs.promises.access(sessionPath);
-      } catch {
-        return null;
-      }
-
-      const maxAttempts = 3;
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          // ✅ async read: does not block the Node.js event loop
-          const raw = await fs.promises.readFile(sessionPath, 'utf-8');
-          if (!raw || raw.trim().length === 0) {
-            if (attempt < maxAttempts) {
-              await new Promise(r => setTimeout(r, 25 * attempt));
-              continue;
-            }
-            return null;
-          }
-          const parsed = JSON.parse(raw);
-          this.lastGoodSessionByPath.set(sessionPath, parsed);
-          return parsed;
-        } catch (error: any) {
-          const isSyntax = error instanceof SyntaxError;
-          derr(`❌ [KanbanService] Error reading session file (attempt ${attempt}/${maxAttempts}):`, error);
-          if (attempt < maxAttempts && isSyntax) {
-            await new Promise(r => setTimeout(r, 25 * attempt));
-            continue;
-          }
-          const cached = this.lastGoodSessionByPath.get(sessionPath);
-          if (cached) return cached;
-          return null;
-        }
-      }
-      return null;
-    };
-    
     try {
-      sessionData = await safeReadSession();
+      sessionData = await this.safeReadSession(sessionPath);
     } catch (error) {
       derr(`❌ [KanbanService] Unexpected error in safeReadSession:`, error);
       sessionData = this.lastGoodSessionByPath.get(sessionPath) || null;
@@ -385,13 +344,41 @@ export class KanbanService {
     }
     
     // Priority 3: SESSION DATA (job completed or no session)
-    dlog(`\n📁 [KanbanService] SESSION DATA returned`);
+    return this.buildSessionKanbanData(sessionData, sessionJobId, jobType, isActuallyRunning);
+  }
+
+  /**
+   * Build a SESSION-mode KanbanData payload from a session file's state.
+   *
+   * Single source of truth for `dataSource: 'session'` projection — used by
+   * `getKanbanData`'s Priority 3 fall-through and by
+   * `getFinalSnapshotKanbanData` (lifecycle finalize/pause broadcast).
+   * Pure derivation from `sessionData`, no Redis access.
+   */
+  private buildSessionKanbanData(
+    sessionData: any,
+    sessionJobId: string | undefined,
+    jobType: string,
+    isActuallyRunning: boolean,
+  ): any {
+    const sessionState: Partial<SessionState> = sessionData?.state || {};
+    const sessionTaskQueue = sessionState.taskQueue || [];
+    const completedTaskIds = sessionState.completedTasks || [];
+    const completedTasksDetails = sessionState.completedTasksDetails || [];
+    const currentTask = sessionState.currentTask || null;
+
+    const MIN_RECURSION_LIMIT = 5;
+    const recursionLimit = parseInt(process.env.RECURSION_LIMIT || '', 10);
+    const finalLimit = (isNaN(recursionLimit) || recursionLimit < MIN_RECURSION_LIMIT)
+      ? 200
+      : recursionLimit;
+
     console.log(`[KanbanService] RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${sessionTaskQueue.length} ip=${currentTask ? 1 : 0} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning}`);
-    
+
     return {
       jobId: sessionJobId,
-      todo: sessionTaskQueue.filter((task: any) => 
-        !completedTaskIds.includes(task.id) && 
+      todo: sessionTaskQueue.filter((task: any) =>
+        !completedTaskIds.includes(task.id) &&
         (!currentTask || currentTask.id !== task.id)
       ),
       inProgress: currentTask ? [currentTask] : [],
@@ -411,5 +398,92 @@ export class KanbanService {
       jobType,
       agent: getAgentForJobSafe(jobType),
     };
+  }
+
+  /**
+   * Build a final-snapshot KanbanData payload for lifecycle broadcast
+   * (`finalizeTerminalJob` → `cleanupJobState` → `broadcastFinalUpdate`).
+   *
+   * Why a dedicated entry point: at broadcast time the Redis job status
+   * may still be `running` (updateJobStatus runs after cleanupJobState)
+   * and the live taskQueue may still exist (sealJobRedisState runs even
+   * later), which would steer `getKanbanData` into its LIVE / ESTIMATING
+   * branches and publish stale "in-progress" tasks. cleanupJobState has
+   * already projected Redis checkpoint into the session file and written
+   * it atomically, so the session file IS the final state and must be
+   * the SSOT for the broadcast — regardless of Redis state at the moment.
+   *
+   * Mirrors `getKanbanData`'s signature so call sites swap one method
+   * for the other without rewiring arguments. The `jobToProject` /
+   * `jobs` / `taskQueueSnapshots` parameters are accepted for signature
+   * symmetry but unused here (final snapshot derives only from disk).
+   */
+  async getFinalSnapshotKanbanData(
+    projectId: string,
+    featureName: string,
+    jobType: string,
+    _jobToProject?: Map<string, { projectId: string; featureName: string }>,
+    _jobs?: Map<string, any>,
+    _taskQueueSnapshots?: Map<string, any>,
+    userContext?: UserContext,
+  ): Promise<any> {
+    if (!this.workspaceResolver || !userContext) {
+      throw new Error('WorkspaceResolver and userContext are required');
+    }
+
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = getSessionFilePathByJob(featurePath, jobType);
+
+    const sessionData = await this.safeReadSession(sessionPath);
+    const sessionJobId: string | undefined = sessionData?.state?.jobId;
+
+    // isActuallyRunning is forced false: by the time finalize/pauseJob
+    // calls this, the job is logically terminal even if the Redis status
+    // write hasn't landed yet. The flag only feeds the diagnostic log.
+    return this.buildSessionKanbanData(sessionData, sessionJobId, jobType, false);
+  }
+
+  /**
+   * Read the session file with a small retry loop and last-known-good
+   * fallback. Extracted so both `getKanbanData` and
+   * `getFinalSnapshotKanbanData` share one I/O policy.
+   */
+  private async safeReadSession(sessionPath: string): Promise<any | null> {
+    const debug = process.env.DEBUG_KANBAN === '1';
+    const derr = (...args: any[]) => { if (debug) console.error(...args); };
+
+    try {
+      await fs.promises.access(sessionPath);
+    } catch {
+      return null;
+    }
+
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const raw = await fs.promises.readFile(sessionPath, 'utf-8');
+        if (!raw || raw.trim().length === 0) {
+          if (attempt < maxAttempts) {
+            await new Promise(r => setTimeout(r, 25 * attempt));
+            continue;
+          }
+          return null;
+        }
+        const parsed = JSON.parse(raw);
+        this.lastGoodSessionByPath.set(sessionPath, parsed);
+        return parsed;
+      } catch (error: any) {
+        const isSyntax = error instanceof SyntaxError;
+        derr(`❌ [KanbanService] Error reading session file (attempt ${attempt}/${maxAttempts}):`, error);
+        if (attempt < maxAttempts && isSyntax) {
+          await new Promise(r => setTimeout(r, 25 * attempt));
+          continue;
+        }
+        const cached = this.lastGoodSessionByPath.get(sessionPath);
+        if (cached) return cached;
+        return null;
+      }
+    }
+    return null;
   }
 }

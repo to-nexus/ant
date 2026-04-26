@@ -47,8 +47,9 @@ function validateUiDesignPrerequisites(state: DesignGraphState): void {
  *
  * - `gen-game-art-figma` requires a Figma config (same shape as ui-figma).
  * - `gen-game-art-desc` is directive-only — no references / assets required.
- * - `rev-game-art` requires existing `outputs/design/game-art/` documents
- *   (validated upstream by RAC; this fn is permissive here).
+ * - `rev-game-art` requires existing `outputs/design/game-art/ant/` documents
+ *   (validated upstream by RAC; this fn is permissive here). D24-revised v8 —
+ *   game-art is sub-sourced, mirroring ui/ant.
  */
 function validateGameArtDesignPrerequisites(state: DesignGraphState): void {
   const intent = state.resolvedAction?.intent;
