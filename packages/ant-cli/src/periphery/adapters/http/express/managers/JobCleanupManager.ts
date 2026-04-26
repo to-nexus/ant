@@ -396,12 +396,16 @@ export class JobCleanupManager {
           }
         }
         
-        // Broadcast final update (only for decomposable jobs that have Kanban)
-        const isDecomposable = jobType !== 'plan';
-        if (shouldBroadcast && isDecomposable) {
+        // Broadcast final update for every jobType. plan/visual jobs may
+        // not have a populated taskQueue, in which case the SESSION-only
+        // payload publishes empty todo/inProgress/completed and overwrites
+        // any leftover LIVE snapshot from the worker's KanbanBroadcaster.
+        // Frontend filters by `selectedJobType` so unrelated jobTypes are
+        // ignored without UI churn.
+        if (shouldBroadcast) {
           await this.broadcastFinalUpdate(
             mapping,
-            jobType as 'design' | 'code' | 'learn',
+            jobType,
             effectiveUserContext,
             jobId,
             interruptionReason,
@@ -457,7 +461,7 @@ export class JobCleanupManager {
    */
   private async broadcastFinalUpdate(
     mapping: { projectId: string; featureName: string; jobType: string; userContext?: UserContext },
-    jobType: 'design' | 'code' | 'learn',
+    jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual',
     userContext: UserContext,
     jobId: string,
     interruptionReason?: InterruptionDetails,
