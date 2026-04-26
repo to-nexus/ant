@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
-import { INTENT_DEFINITIONS, getConfigSlots, type ActionMetadata } from '@ant/shared';
+import { INTENT_DEFINITIONS, getConfigSlots, filterSlotsByDomain, type ActionMetadata } from '@ant/shared';
 import { X, Target, Crosshair, FileText, BookOpen, Zap, Lock } from 'lucide-react';
 
 interface BadgeProps {
@@ -48,7 +48,13 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
 
   const meta = metadata || storeMetadata;
 
-  const slots = useMemo(() => meta.intent ? getConfigSlots(meta.intent as any) : null, [meta.intent]);
+  // D28 — domain-filter slots so a service-workspace ref-lock check
+  // never matches a phantom game-art slot (and vice versa).
+  const slots = useMemo(() => {
+    if (!meta.intent) return null;
+    const raw = getConfigSlots(meta.intent as any);
+    return raw ? filterSlotsByDomain(raw, meta.domain) : null;
+  }, [meta.intent, meta.domain]);
 
   const isRefLocked = useCallback((refPath: string): boolean => {
     if (!slots) return false;

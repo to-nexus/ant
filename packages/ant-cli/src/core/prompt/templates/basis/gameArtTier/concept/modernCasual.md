@@ -45,3 +45,13 @@ The palette ratio: saturated primaries ~50%, accent secondaries ~30%, near-white
 - Token palette favors HSL with high lightness floor — no value goes below 25% lightness for primaries.
 - Inline css fills (gradients, rounded rects) dominate — modern casual rarely needs intricate svg.
 - HUD elements use bouncy animation tokens; hover / tap feedback is exaggerated.
+
+### HUD layout defaults (D28 — concept-derived)
+
+When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / `menu` / `dialog` categories, default to:
+
+- **Spacing rhythm**: `airy8pt` — generous padding between HUD panels, breathable score / coin readouts. Tight density (compact / dense) feels hostile to the friendly tone.
+- **Surface treatment**: `soft` (drop-shadow elevation) or `glassLight` (frosted overlay) — round corners (≥ 12px radius), no hard borders. Buttons use scale-up (~5%) on hover, bouncy spring on press.
+- **Typography weight**: medium-bold (600–700), rounded sans-serif (e.g. Nunito / Quicksand family). Avoid serif or display weights — they conflict with the playful silhouette.
+- **Border radius**: 12–24px on panels, 999px (pill) on action buttons. Sharp 0–4px corners read hostile.
+- **Focus ring / interaction tone**: expressive — visible scale-up + saturation bump on hover, micro-bounce on press, confetti / sparkle accent on success states.

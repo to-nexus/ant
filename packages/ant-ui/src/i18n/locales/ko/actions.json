@@ -28,7 +28,7 @@
       "modeDesc": "설명 기반",
       "modeDescDesc": "텍스트 설명으로 UI를 설계합니다 (정확도가 낮을 수 있음)"
     },
-    "art-design": {
+    "game-art-design": {
       "label": "게임 아트 설계",
       "description": "게임 아트 토큰, 에셋 카탈로그, 엔티티/이펙트 스펙을 설계합니다 (게임 도메인 전용)",
       "pickMode": "어떤 방식으로 게임 아트를 설계하시겠습니까?",

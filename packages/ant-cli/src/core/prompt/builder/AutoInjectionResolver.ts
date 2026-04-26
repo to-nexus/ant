@@ -166,13 +166,24 @@ export class AutoInjectionResolver {
         injections.push('jobs/code/nodes/execute/injections/port-management');
       }
 
-      // UI interpretation partial — dispatched per UiSource (ant / figma / handoff).
+      // UI / Game-art interpretation partial — D28 vertical domain split.
+      //   service domain → ui-source-dispatch (per UiSource: ant / figma / handoff)
+      //   game domain    → game-art-source (single flat partial, D24)
+      //
       // Injected for BOTH 'ui' and 'design-system' task types because a
       // design-system skeleton task needs the same per-source reading rules
-      // as an individual ui task. The dispatcher itself is a no-op when the
-      // `uiSource` template variable is null.
+      // as an individual ui task. The ui-source-dispatch partial itself is
+      // a no-op when the `uiSource` template variable is null.
+      //
+      // Routing the domain branch HERE keeps `ui-source-dispatch.md` free of
+      // domain conditionals — a Domain-Branching Locality (I1) requirement.
       if (job === 'code' && (taskType === 'ui' || taskType === 'design-system')) {
-        injections.push(`${jobPrefix}/ui-source-dispatch`);
+        const domain = resolvedAction?.domain;
+        if (domain === 'game') {
+          injections.push(`${jobPrefix}/game-art-source`);
+        } else {
+          injections.push(`${jobPrefix}/ui-source-dispatch`);
+        }
       }
 
       // Design job injections

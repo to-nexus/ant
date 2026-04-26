@@ -600,7 +600,8 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         }
 
         // 2) If the currently-selected action card violates the new
-        //    domain gate (e.g. `design-art` on service), unwind back
+        //    domain gate (e.g. `design-game-art` on service or
+        //    `design-ui` on game), unwind back
         //    to `pick-action` so the wizard never renders a `selectedId`
         //    whose tab was just hidden by the gate (the original
         //    "intent screen blank" regression).

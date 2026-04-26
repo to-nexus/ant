@@ -115,7 +115,7 @@ function computeReadiness(actionId: IntentGroup, ctx: TreeContext): ActionReadin
     case 'plan': return computePlan(ctx);
     case 'design-system': return computeSystemDesign(ctx);
     case 'design-ui': return computeUiDesign(ctx);
-    case 'design-art': return computeGameArtDesign(ctx);
+    case 'design-game-art': return computeGameArtDesign(ctx);
     case 'design-spec': return computeSpec(ctx);
     case 'code': return computeCode(ctx);
     case 'visual': return computeVisual(ctx);

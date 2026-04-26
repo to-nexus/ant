@@ -67,9 +67,10 @@ export function ActionsPanel() {
   }, [selectedActionId, selectAction]);
 
   const actionMetadata = useStore(s => s.actionMetadata);
-  // Phase 2 (D22): domain gate applies to pick-intent's ScrollableTabNav too.
-  // When workspace.domain === 'service', design-art tab disappears so the
-  // user cannot side-step the gate via tab switching.
+  // Phase 2 (D22/D28): domain gate applies to pick-intent's ScrollableTabNav too.
+  // When workspace.domain === 'service', design-game-art tab disappears, and
+  // when workspace.domain === 'game', design-ui tab disappears, so the user
+  // cannot side-step the gate via tab switching.
   const currentDomain = actionMetadata.domain;
 
   const handleIntentSelect = useCallback((intentId: string) => {

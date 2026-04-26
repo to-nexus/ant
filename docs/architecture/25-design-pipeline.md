@@ -2,28 +2,31 @@
 
 ## 개요
 
-Design Job 의 두 surface — **UI Design** (서비스 / 게임 양쪽) 과 **Game-Art Design** (도메인=`game` 만) — 는 동일한 graph (`detect → decompose → docGen ⇄ tool`) 를 공유하지만 산출물·자산 풀·decision tag 가 다른 sibling 파이프라인이다. 이 문서는 두 surface 의 동작과 contract 를 한 곳에 모은 우산 문서다.
+Design Job 의 두 surface — **UI Design** (서비스 도메인 전용) 과 **Game-Art Design** (게임 도메인 전용) — 는 동일한 graph (`detect → decompose → docGen ⇄ tool`) 를 공유하지만 산출물·자산 풀·decision tag 가 다른 sibling 파이프라인이다. 두 surface 는 **수직 도메인 분리** (D28) — 한 워크스페이스에 한 surface 만 활성된다.
 
-### Surface 분리 (D17/D18)
+### Surface 분리 (D17 / D18 / D28)
 
-- **UI Design** (`intentGroup === 'design-ui'`) — `outputs/design/ui/{ant,figma,handoff}/...` 산출 (3-source canonical). LLM 결정 태그 `<visualTier>`. basis tier `[visualTier, gameContentTier]`. 도메인=`service` 또는 `game` 양쪽에서 활성. `gen-ui-figma` / `gen-ui-desc` / `rev-ui` intent.
-- **Game-Art Design** (`intentGroup === 'design-art'`) — `outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json` 산출 (D24 — flat, ant/figma/handoff 하위 sub-source 없음). LLM 결정 태그 `<gameArtTier>` (visualTier 미발행 — D18). basis tier `[gameArtTier, gameContentTier]`. 도메인=`game` 만 활성 (D22 매트릭스 게이트 — `TIER_DOMAIN_MATRIX.gameArtTier === ['game']`). `gen-art-figma` / `gen-art-desc` / `rev-art` / `explain-art` intent.
+- **UI Design** (`intentGroup === 'design-ui'`) — `outputs/design/ui/{ant,figma,handoff}/...` 산출 (3-source canonical). LLM 결정 태그 `<visualTier>`. basis tier `[visualTier, gameContentTier]`. **도메인=`service` 만 활성** (D28 — `TIER_DOMAIN_MATRIX.visualTier === ['service']`, ActionDefinition.domainGate=['service']). `gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui` intent.
+- **Game-Art Design** (`intentGroup === 'design-game-art'`) — `outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json` 산출 (D24 — flat, ant/figma/handoff 하위 sub-source 없음). LLM 결정 태그 `<gameArtTier>`. basis tier `[gameArtTier, gameContentTier]`. **도메인=`game` 만 활성** (D22/D28 — `TIER_DOMAIN_MATRIX.gameArtTier === ['game']`, ActionDefinition.domainGate=['game']). `gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art` intent.
 
-두 surface 는 **단일 워크스페이스 안에서 병렬 활성** 가능하다 (게임 도메인). UI 가 HUD / 메뉴 / 페이지 chrome 을 담당하고, Game-Art 가 sprite / 파티클 / projectile / sfx / bgm 을 담당한다.
+두 surface 는 **수직 도메인 분리** (D28) — 게임 워크스페이스는 game-art surface 만 활성, 서비스 워크스페이스는 UI surface 만 활성. 게임의 HUD / 메뉴 / 컨트롤은 별도 산출물 (`outputs/design/ui/...`) 이 아니라 `game-art-tokens.json` 의 HUD CSS 토큰 + `game-art-spec.json` 의 `hud` / `menu` / `dialog` 카테고리 안에 통합 카탈로그화된다 (D25 의 dictionary 형식이 자연스럽게 흡수).
 
 ### Asset Surface Boundary (I6)
 
 자산 풀은 도메인 1:1 분리:
 
-- `inputs/assets/service/{icons,images,fonts,misc}` — `ui-assets.json` (도메인=service)
-- `inputs/assets/game/{icons,images}` — `ui-assets.json` (도메인=game, HUD/UI 자산)
-- `inputs/assets/game/{entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` — `game-art-assets.json` (도메인=game, 게임 자산)
+- `inputs/assets/service/{icons,images,fonts,misc}` — `ui-assets.json` (도메인=service 전용)
+- `inputs/assets/game/{icons,images,entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` — `game-art-assets.json` (도메인=game 전용, HUD 자산 + 게임 자산 통합)
 
 Cross-pollution 금지: `ui-assets.json` 의 src 가 `inputs/assets/game/...` 시작이거나, `game-art-assets.json` 의 `kind: 'external'` src 가 `inputs/assets/service/...` 시작이면 lint 실패. 회귀 가드 — `tests/asset-surface-boundary.test.ts` + production validator `infrastructure/workspace/gameArtAssetValidator.ts` (Phase 2).
 
-### Art Design Surface (I7)
+### Domain-Surface Boundary (I7-revised — D28)
 
-Game-Art design template 본문에 `visualLanguage` / `surfaceSystem` / `spatialSystem` 등 UI surface 어휘가 등장하면 lint 실패 (단, backtick 으로 감싼 명시적 boundary disclaimer 는 허용). 반대로 UI design template 에 `sprite tween` / `oscillator` / `particle system` 등 art 어휘가 등장해도 실패. 회귀 가드 — `tests/art-design-surface.test.ts`.
+Game-Art design template 본문에 `visualLanguage` / `surfaceSystem` / `spatialSystem` 등 UI surface 어휘가 등장하면 lint 실패 (단, backtick 으로 감싼 명시적 boundary disclaimer 는 허용). 반대로 UI design template 에 `sprite tween` / `oscillator` / `particle system` 등 art 어휘가 등장해도 실패. 회귀 가드 — `tests/game-art-design-surface.test.ts` + `tests/domain-surface-boundary.test.ts` (18 케이스: 매트릭스 / 액션 카드 / 코드 인텐트 ref/ctx 라우팅 / service 도메인 영향 zero).
+
+### 명명 일원화 (D28 — `art-*` → `game-art-*`)
+
+산출물 디렉토리 / 파일 / canonical / ARTIFACT_PREFIX / tier 이름 (`gameArtTier`) 모두 `game-art-*` SSOT 인데 v7 이전엔 인텐트 / IntentGroup / prompt 디렉토리 / 인젝션 / 코드 파일이 `art-*` 잔재였다. D28 이 hard rename 으로 정합 — 자세한 매핑 표는 [domain-and-game-tier-system-handoff.md §2.4 D28](../tmp/domain-and-game-tier-system-handoff.md) 참조.
 
 ### 자산 풀 부팅 마이그레이션 (D19-revised + D22)
 
@@ -369,7 +372,7 @@ Design Job 산출물(ui-tokens.json, ui-assets.json, ui-spec.json)은 Code Job�
 
 # Game-Art Design Pipeline
 
-Game-Art Design 파이프라인은 design job 의 `intentGroup === 'design-art'` 일 때 실행되는 문서 생성 파이프라인이다. 워크스페이스 도메인이 `game` 일 때만 ActionsPanel 에 카드가 노출된다 (D22 매트릭스 게이트). 도메인이 `service` 면 이 섹션 전체가 비활성이다.
+Game-Art Design 파이프라인은 design job 의 `intentGroup === 'design-game-art'` 일 때 실행되는 문서 생성 파이프라인이다. 워크스페이스 도메인이 `game` 일 때만 ActionsPanel 에 카드가 노출된다 (D22 매트릭스 게이트). 도메인이 `service` 면 이 섹션 전체가 비활성이다.
 
 ## 산출물 / 자산 풀
 
@@ -377,27 +380,28 @@ UI Design 과의 직접 비교:
 
 | 항목 | UI Design | Game-Art Design |
 |------|-----------|-----------------|
-| intent | `gen-ui-figma` / `gen-ui-desc` / `rev-ui` | `gen-art-figma` / `gen-art-desc` / `rev-art` / `explain-art` |
+| intent | `gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui` | `gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art` |
+| 활성 도메인 (D28) | service 만 | game 만 |
 | 산출물 | `outputs/design/ui/{ant,figma,handoff}/...` (3-source canonical) | `outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json` (D24 — flat) |
-| 활성 자산 풀 | `inputs/assets/service/{icons,images,fonts,misc}` (도메인=service) 또는 `inputs/assets/game/{icons,images}` (도메인=game) | `inputs/assets/game/{entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` (도메인=game 만) |
+| 활성 자산 풀 | `inputs/assets/service/{icons,images,fonts,misc}` | `inputs/assets/game/{icons,images,entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` (HUD 자산 + 게임 자산 통합) |
 | LLM 결정 태그 | `<visualTier>` | `<gameArtTier>` (visualTier 미발행, D18) |
 | basis tier | `[visualTier, gameContentTier]` | `[gameArtTier, gameContentTier]` |
 
-## 분해 (`decomposeArtDesign`)
+## 분해 (`decomposeGameArtDesign`)
 
-`packages/ant-cli/src/agents/architect/graph/design/nodes/decompose/artDesignDecompose.ts` 가 `intentGroup === 'design-art'` 일 때 진입. UI 분해와 다른 점:
+`packages/ant-cli/src/agents/architect/graph/design/nodes/decompose/gameArtDesignDecompose.ts` 가 `intentGroup === 'design-game-art'` 일 때 진입. UI 분해와 다른 점:
 
-- **카테고리 dictionary 분해 (D25)**: `game-art-spec.json` / `game-art-assets.json` 의 sub-section 이 chapter (페이지 영역) 가 아니라 카테고리 키 dictionary (`effects` / `characters` / `projectiles` / `npcs` / `objectives` 등). 표준 카테고리 가이드는 prompt overlay 에서만 제공하고 schema 가 강제하지 않는다.
+- **카테고리 dictionary 분해 (D25)**: `game-art-spec.json` / `game-art-assets.json` 의 sub-section 이 chapter (페이지 영역) 가 아니라 카테고리 키 dictionary (`effects` / `characters` / `projectiles` / `npcs` / `objectives` / `hud` / `menu` / `dialog` 등 — D28 으로 HUD 영역도 동일 dictionary 안). 표준 카테고리 가이드는 prompt overlay 에서만 제공하고 schema 가 강제하지 않는다.
 - **task 분해**: `game-art-tokens` 단일 task + `game-art-assets-{category}` parallel + `game-art-spec-{category}` parallel. 카테고리 종류는 LLM 이 게임 컨텍스트 (`gameContentTier.genre` + `gameArtTier.entityCatalog`) 에 따라 동적으로 결정한다.
-- **RAC pool**: `inputs/sources/` + `outputs/design/game-art/` + (선택) `outputs/design/ui/ant/` (cross-surface context). figma 모드에서는 `outputs/design/ui/figma/` 도 추가.
+- **RAC pool**: `inputs/sources/` + `outputs/design/game-art/` (D28 — UI ant docs cross-surface context 폐기, game 도메인은 game-art 단일 surface).
 - **decision tag**: 응답에서 `<gameArtTier>` 를 `parseDecisionTags` 로 흡수해 `state.resolvedAction.basis.gameArtTier` 에 적용 (explicit 선행, LLM 채움이 후행).
 
-## 모드 (`design-art-by-desc` / `design-art-by-figma`)
+## 모드 (`game-art-design-by-desc` / `game-art-design-by-figma`)
 
 UI Design 의 두 모드 (by-desc / by-figma) 와 1:1 대응. 모드 결정은 `intent` 매핑:
 
-- `gen-art-desc` / `rev-art` (figma 미연결) → by-desc 모드
-- `gen-art-figma` → by-figma 모드 (Figma MCP 통한 game-art 자산 / 컨셉 보드 탐색)
+- `gen-game-art-desc` / `rev-game-art` (figma 미연결) → by-desc 모드
+- `gen-game-art-figma` → by-figma 모드 (Figma MCP 통한 game-art 자산 / 컨셉 보드 탐색)
 
 도구 세트는 `TOOL_SETS.gameArtDesign` (by-desc) 와 `TOOL_SETS.gameArtDesignFigma` (by-figma) — UI 측 도구 세트와 형태가 같지만 작성 대상이 `game-art-*.json` 으로 바뀐다.
 
@@ -432,7 +436,7 @@ UI Design 의 두 모드 (by-desc / by-figma) 와 1:1 대응. 모드 결정은 `
 
 ```
 workspaceDomain  ?? racDomain
-  ?? (intentGroup === 'design-art' ? 'game' : 'service')
+  ?? (intentGroup === 'design-game-art' ? 'game' : 'service')
   ?? 'service'
 ```
 

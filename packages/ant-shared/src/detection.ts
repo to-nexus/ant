@@ -21,7 +21,7 @@ export type IntentGroup =
   | 'plan'
   | 'design-system'
   | 'design-ui'
-  | 'design-art'
+  | 'design-game-art'
   | 'design-spec'
   | 'code'
   | 'visual'
