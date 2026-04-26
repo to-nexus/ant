@@ -2,7 +2,7 @@
 
 ## 개요
 
-Figma Desktop MCP 데이터를 Ant 에이전트가 사용하기 위한 연결 인프라. 세 컴포넌트(Ant Web UI, Ant Desktop, Figma Desktop)의 연결·감지·인증 구조를 다룬다. 연결 이후의 에이전트 파이프라인은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
+Figma Desktop MCP 데이터를 Ant 에이전트가 사용하기 위한 연결 인프라. 세 컴포넌트(Ant Web UI, Ant Desktop, Figma Desktop)의 연결·감지·인증 구조를 다룬다. 연결 이후의 에이전트 파이프라인은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
 
 ## 컴포넌트 관계도
 
@@ -148,7 +148,7 @@ GNB 인디케이터: `bridgeStatusChecked && bridgeConnected !== true`일 때만
 
 ## 경계
 
-- UI Design Pipeline (연결 이후 에이전트 파이프라인): [25-ui-design-pipeline.md](25-ui-design-pipeline.md)
+- Design Pipeline (UI + Game-Art, 연결 이후 에이전트 파이프라인): [25-design-pipeline.md](25-design-pipeline.md)
 - Realtime System (SSE, Redis Pub/Sub): [21-realtime-system.md](21-realtime-system.md)
 - Frontend Architecture (Zustand, UI 계층): [30-frontend-architecture.md](30-frontend-architecture.md)
 - Shared Contracts (BridgeStatus 타입): [01-shared-contracts.md](01-shared-contracts.md)
