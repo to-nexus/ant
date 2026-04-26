@@ -66,6 +66,18 @@ function extractAllSrcFields(obj: any): string[] {
   return srcs;
 }
 
+/**
+ * Validate asset references for both UI and GameArt surfaces.
+ *
+ * - `ui-assets.json` — every `src` field must point to a locally
+ *   downloaded file (external-only — UI surface has no inline kind).
+ * - `game-art-assets.json` — only entries with `kind: 'external'` are
+ *   validated (D20). `kind: 'inline'` entries carry their data inside
+ *   the JSON (`svg` / `css` / `oscillator`) and are skipped.
+ *
+ * The validation runs against whichever document the active task
+ * targets (`ui-assets-*` → ui doc; `game-art-assets-*` → game-art doc).
+ */
 async function validateAssetReferences(state: DesignGraphState): Promise<{
   valid: boolean;
   missingFiles: string[];
@@ -73,12 +85,19 @@ async function validateAssetReferences(state: DesignGraphState): Promise<{
 }> {
   const featurePath = state.context.featurePath;
   const fs = await import('fs/promises');
+  const taskId = state.currentTask?.id ?? '';
 
-  const uiAssetsPath = path.join(featurePath, 'outputs', 'design', 'ui', 'ant', 'ui-assets.json');
+  const isGameArt = taskId.startsWith('game-art-assets-');
+  const assetPath = isGameArt
+    ? path.join(featurePath, 'outputs', 'design', 'game-art', 'game-art-assets.json')
+    : path.join(featurePath, 'outputs', 'design', 'ui', 'ant', 'ui-assets.json');
+
   try {
-    const content = await fs.readFile(uiAssetsPath, 'utf-8');
+    const content = await fs.readFile(assetPath, 'utf-8');
     const parsed = JSON.parse(content);
-    const srcPaths = extractAllSrcFields(parsed);
+    const srcPaths = isGameArt
+      ? extractGameArtExternalSrcs(parsed)
+      : extractAllSrcFields(parsed);
     const missing: string[] = [];
 
     for (const src of srcPaths) {
@@ -90,6 +109,26 @@ async function validateAssetReferences(state: DesignGraphState): Promise<{
   } catch {
     return { valid: true, missingFiles: [], totalRefs: 0 };
   }
+}
+
+/**
+ * Walk `game-art-assets.json` (category dictionary of entry arrays) and
+ * return the `src` of every `kind: 'external'` entry. Inline entries
+ * (`kind: 'inline'`) carry their data inline and are skipped.
+ */
+function extractGameArtExternalSrcs(parsed: any): string[] {
+  if (!parsed || typeof parsed !== 'object') return [];
+  const srcs: string[] = [];
+  for (const [key, value] of Object.entries(parsed)) {
+    if (key === '_meta') continue;
+    if (!Array.isArray(value)) continue;
+    for (const entry of value) {
+      if (entry && typeof entry === 'object' && (entry as any).kind === 'external' && typeof (entry as any).src === 'string') {
+        srcs.push((entry as any).src);
+      }
+    }
+  }
+  return srcs;
 }
 
 /**
@@ -262,23 +301,29 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     }
   }
 
-  // Asset validation gate: verify all src paths exist before completing ui-assets tasks
-  if (state.currentTask?.id.startsWith('ui-assets-')
-      && (state._assetValidationRetried || 0) >= 2) {
+  // Asset validation gate: verify all src paths exist before completing
+  // ui-assets / game-art-assets tasks. game-art-assets validates only
+  // entries with `kind: 'external'` — `kind: 'inline'` carry their data
+  // inline (D20).
+  const isAssetTask = state.currentTask?.id.startsWith('ui-assets-')
+    || state.currentTask?.id.startsWith('game-art-assets-');
+  if (isAssetTask && (state._assetValidationRetried || 0) >= 2) {
     console.warn(`⚠️  [checkTaskStatus] Asset validation retry limit reached (${state._assetValidationRetried}). Proceeding with incomplete assets.`);
   }
-  if (state.currentTask?.id.startsWith('ui-assets-')
-      && (state._assetValidationRetried || 0) < 2) {
+  if (isAssetTask && (state._assetValidationRetried || 0) < 2) {
     const validation = await validateAssetReferences(state);
     if (!validation.valid) {
+      const docLabel = state.currentTask?.id.startsWith('game-art-assets-')
+        ? 'game-art-assets.json (kind:external entries)'
+        : 'ui-assets.json';
       console.warn(`⚠️  [checkTaskStatus] Asset validation failed: ${validation.missingFiles.length}/${validation.totalRefs} not downloaded:`);
       for (const f of validation.missingFiles) console.warn(`   - ${f}`);
 
       const retryMessage = {
         role: 'user' as const,
-        content: `VALIDATION FAILED: ${validation.missingFiles.length} assets referenced in ui-assets.json are not downloaded:\n${
+        content: `VALIDATION FAILED: ${validation.missingFiles.length} assets referenced in ${docLabel} are not downloaded:\n${
           validation.missingFiles.map(f => `- ${f}`).join('\n')
-        }\n\nDownload the missing assets and update the document. Every src path MUST exist as a local file.`,
+        }\n\nEither download the missing files (kind:external must point at a local file) or convert the entry to kind:inline with simple-shape SVG/CSS/oscillator data.`,
       };
 
       return {

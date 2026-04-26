@@ -71,13 +71,34 @@ export function getModelDisplayName(modelName: string): string {
     .join(' ');
 }
 
+import type { Domain } from '@ant/shared';
+
 /**
  * Workspace Configuration
- * Defines project settings and repository location
+ * Defines project settings and repository location.
+ *
+ * Phase 2 (D22): `domain` is a workspace-level 1st-class slot, default
+ * `'service'`. ActionsPanel renders the domain selector at its TOP screen,
+ * sticky once chosen — individual intents cannot override. The current
+ * domain is exposed as a read-only chip at lower wizard depths.
  */
 export interface WorkspaceConfig {
   // Project identification
   projectName: string;
+
+  /**
+   * Project domain (Phase 2 — D22). Default `'service'`.
+   * - `'service'` — SaaS / web app domain. UI design via `outputs/design/ui/`,
+   *   asset pool via `inputs/assets/service/`. game-art intents are hidden
+   *   from ActionsPanel (matrix gate: TIER_DOMAIN_MATRIX.gameArtTier=['game']).
+   * - `'game'` — game domain. UI design AND game-art design active in
+   *   parallel; asset pool via `inputs/assets/game/`.
+   *
+   * The domain is sticky at the workspace level; intents inherit it via
+   * `actionMetadata.domain` (which the BE detect node treats as explicit
+   * override per 10.2 — explicit > infer).
+   */
+  domain?: Domain;
   
   // Repository settings
   repoType?: RepoType;              // Default: 'local'
@@ -129,8 +150,19 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
     throw new Error('Config with repoType="github" requires owner and repo');
   }
   
+  // Phase 2 (D22): domain is a 1st-class workspace slot, default 'service'.
+  // Validated as enum to keep accidental values out of the gate machinery.
+  const allowedDomains: ReadonlyArray<Domain> = ['service', 'game'];
+  const domain: Domain | undefined = (() => {
+    if (config.domain === undefined || config.domain === null) return undefined;
+    if (allowedDomains.includes(config.domain)) return config.domain as Domain;
+    console.warn(`[Config] Unknown workspace.domain="${config.domain}", falling back to 'service'`);
+    return 'service';
+  })();
+
   return {
     projectName: config.projectName,
+    domain,
     repoType: repoType,
     localPath: config.localPath,
     branchBase: config.branchBase,
@@ -153,6 +185,8 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
   
   return {
     projectName,
+    // Phase 2 (D22): default project domain is 'service'.
+    domain: 'service',
     repoType: 'local',
     llmModels: {
       design: {

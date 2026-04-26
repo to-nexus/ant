@@ -108,14 +108,14 @@ export interface VisualTier {
 }
 
 // ============================================
-// ArtTier — domain-agnostic art policy (7 axis)
+// GameArtTier — game-domain art policy (7 axis)
 // ============================================
 //
-// Phase 1 declares the full 7-axis shape so future-domain (3D, data-viz,
-// interactive-art) extensions are non-breaking. Phase 2 fills `concept` /
-// `perspective` only; Phase 3 fills the remaining 5 axis. The matrix gate
-// (`TIER_DOMAIN_MATRIX.artTier`) currently allows only `'game'`; Phase 4+
-// extends the row.
+// Phase 1 declared the full 7-axis shape so future-domain extensions stay
+// non-breaking. Phase 2 fills `concept` / `perspective` only; Phase 4 fills
+// the remaining 5 axis. The matrix gate (`TIER_DOMAIN_MATRIX.gameArtTier`)
+// allows only `'game'` (D12-revised — game-only naming, future non-game
+// art-heavy domains will get their own tier or rename when they arrive).
 //
 // Naming intent (D3): `concept` (not `visualLanguage`) so semantic collision
 // with `VisualTier.visualLanguage` is impossible — the two tiers describe
@@ -123,34 +123,34 @@ export interface VisualTier {
 //
 // Motion locality (I5):
 //   - `interactionGrammar` (visualTier) = UI/HUD page transitions / hover
-//   - `motionPattern` (artTier) = sprite tween / sprite animation / camera shake
+//   - `motionPattern` (gameArtTier) = sprite tween / sprite animation / camera shake
 //   - particle / projectile motion → `particleProfile` / `projectilePolicy`
 
-export type ArtConceptVariant =
+export type GameArtConceptVariant =
   | 'sfFantasy' | 'darkFantasy' | 'threeKingdoms' | 'martialArts'
   | 'modernCasual' | 'pixelRetro';
-export type ArtPerspectiveVariant = '2d' | '3d';
-export type ArtEntityCatalogVariant = 'minimal' | 'standard' | 'rich';
-export type ArtMotionPatternVariant = 'static' | 'subtle' | 'expressive';
-export type ArtParticleProfileVariant = 'none' | 'light' | 'heavy';
-export type ArtProjectilePolicyVariant = 'none' | 'simple' | 'complex';
-export type ArtAudioProfileVariant = 'procedural' | 'fileBased' | 'hybrid';
+export type GameArtPerspectiveVariant = '2d' | '3d';
+export type GameArtEntityCatalogVariant = 'minimal' | 'standard' | 'rich';
+export type GameArtMotionPatternVariant = 'static' | 'subtle' | 'expressive';
+export type GameArtParticleProfileVariant = 'none' | 'light' | 'heavy';
+export type GameArtProjectilePolicyVariant = 'none' | 'simple' | 'complex';
+export type GameArtAudioProfileVariant = 'procedural' | 'fileBased' | 'hybrid';
 
-export interface ArtTier {
+export interface GameArtTier {
   /** Phase 2 — tone / silhouette / lighting palette. */
-  concept?: ArtConceptVariant;
+  concept?: GameArtConceptVariant;
   /** Phase 2 — camera / depth / input mapping. */
-  perspective?: ArtPerspectiveVariant;
-  /** Phase 3 — character / object catalog policy. */
-  entityCatalog?: ArtEntityCatalogVariant;
-  /** Phase 3 — sprite tween / animation policy. */
-  motionPattern?: ArtMotionPatternVariant;
-  /** Phase 3 — particle system guidance. */
-  particleProfile?: ArtParticleProfileVariant;
-  /** Phase 3 — projectile / bullet policy. */
-  projectilePolicy?: ArtProjectilePolicyVariant;
-  /** Phase 3 — audio policy (procedural / fileBased / hybrid). */
-  audioProfile?: ArtAudioProfileVariant;
+  perspective?: GameArtPerspectiveVariant;
+  /** Phase 4 — character / object catalog policy. */
+  entityCatalog?: GameArtEntityCatalogVariant;
+  /** Phase 4 — sprite tween / animation policy. */
+  motionPattern?: GameArtMotionPatternVariant;
+  /** Phase 4 — particle system guidance. */
+  particleProfile?: GameArtParticleProfileVariant;
+  /** Phase 4 — projectile / bullet policy. */
+  projectilePolicy?: GameArtProjectilePolicyVariant;
+  /** Phase 4 — audio policy (procedural / fileBased / hybrid). */
+  audioProfile?: GameArtAudioProfileVariant;
 }
 
 // ============================================
@@ -172,8 +172,8 @@ export interface GameContentTier {
 export interface Basis {
   techTier?: TechTierConfig;
   visualTier?: VisualTier;
-  /** Phase 1 — domain-agnostic art tier (gated by `TIER_DOMAIN_MATRIX.artTier`). */
-  artTier?: ArtTier;
+  /** Phase 2 — game-domain art tier (gated by `TIER_DOMAIN_MATRIX.gameArtTier`). */
+  gameArtTier?: GameArtTier;
   /** Phase 1 — game-domain content tier (genre + coreLoop). */
   gameContentTier?: GameContentTier;
 }
@@ -202,8 +202,8 @@ export function buildBasisPreset(opts: {
     surfaceSystem?: SurfaceSystemVariant;
     spatialSystem?: SpatialSystemVariant;
   };
-  /** Phase 1 — game-domain art tier (concept / perspective fillable from wizard). */
-  artTier?: ArtTier;
+  /** Phase 2 — game-domain art tier (concept / perspective fillable from wizard). */
+  gameArtTier?: GameArtTier;
   /** Phase 1 — game-domain content tier (genre / coreLoop fillable from wizard). */
   gameContentTier?: GameContentTier;
 }): Basis {
@@ -223,7 +223,8 @@ export function buildBasisPreset(opts: {
   }
   const hasTiers = Object.keys(tierEntries).length > 0;
   const hasVisualLayers = opts.visualTier && Object.values(opts.visualTier).some(Boolean);
-  const hasArtAxis = opts.artTier && Object.values(opts.artTier).some(Boolean);
+  const gameArtInput = opts.gameArtTier;
+  const hasGameArtAxis = gameArtInput && Object.values(gameArtInput).some(Boolean);
   const hasGameContentAxis = opts.gameContentTier && Object.values(opts.gameContentTier).some(Boolean);
 
   return {
@@ -235,7 +236,7 @@ export function buildBasisPreset(opts: {
       ...(opts.designSystem ? { designSystem: opts.designSystem } : {}),
       ...(hasVisualLayers ? opts.visualTier : {}),
     } : undefined,
-    artTier: hasArtAxis ? { ...opts.artTier } : undefined,
+    gameArtTier: hasGameArtAxis ? { ...gameArtInput } : undefined,
     gameContentTier: hasGameContentAxis ? { ...opts.gameContentTier } : undefined,
   };
 }

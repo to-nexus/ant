@@ -31,6 +31,18 @@
       "modeDesc": "설명 기반",
       "modeDescDesc": "텍스트 설명으로 UI를 설계합니다 (정확도가 낮을 수 있음)"
     },
+    "art-design": {
+      "label": "게임 아트 설계",
+      "description": "게임 아트 토큰, 에셋 카탈로그, 엔티티/이펙트 스펙을 설계합니다 (게임 도메인 전용)",
+      "pickMode": "어떤 방식으로 게임 아트를 설계하시겠습니까?",
+      "domainGated": "프로젝트 도메인이 게임일 때만 사용 가능합니다",
+      "modeFigma": "Figma 기반",
+      "modeFigmaDesc": "Figma 파일에서 게임 아트 카탈로그를 추출합니다",
+      "modeRef": "레퍼런스 기반",
+      "modeRefDesc": "레퍼런스 이미지로 게임 아트 카탈로그를 작성합니다",
+      "modeDesc": "설명 기반",
+      "modeDescDesc": "텍스트 설명으로 게임 아트 카탈로그를 작성합니다"
+    },
     "spec": {
       "label": "기능 스펙 작성",
       "description": "특정 기능의 구현 계획을 작성합니다 (코드 영향 분석, 태스크, 수용 기준)",
@@ -111,7 +123,7 @@
     "configurePreset": "기술/디자인 프리셋 설정",
     "wizardTechTier": "기술 티어",
     "wizardVisualTier": "비주얼 티어",
-    "wizardArtTier": "아트 티어",
+    "wizardGameArtTier": "게임 아트 티어",
     "wizardGameContentTier": "게임 콘텐츠",
     "wizardDone": "완료",
     "wizardStepStack": "스택",
@@ -129,7 +141,7 @@
       "techTier": {
         "gameEngine": "엔진"
       },
-      "artTier": {
+      "gameArtTier": {
         "concept": "컨셉",
         "perspective": "시점",
         "entityCatalog": "엔티티",

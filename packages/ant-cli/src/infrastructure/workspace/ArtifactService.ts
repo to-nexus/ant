@@ -15,12 +15,13 @@
 import * as path from "path";
 import { GitPort, FileSystemPort } from "../../core/ports";
 import { WorkspacePathResolver } from "../../core/config/WorkspacePathResolver";
-import { ParsedUiDocs } from "../../core/types/uiDoc";
+import { ParsedDesignDocs } from "../../core/types/designDoc";
 import type { AgentJob } from "../../core/types/agent";
 import {
   parseUiDocs,
+  parseGameArtDocs,
   generateUiSectionsSummary,
-} from "./UiDocParser";
+} from "./DesignDocParser";
 import { normalizeTemplateDoc } from "../../core/utils/templateDetector";
 import { DESIGN_SUBDIRS, DESIGN_DIR } from "@ant/shared";
 
@@ -241,7 +242,7 @@ export class ArtifactService {
     context: ArtifactProjectContext,
     gitPort: GitPort,
     fileSystem: FileSystemPort
-  ): Promise<ParsedUiDocs | null> {
+  ): Promise<ParsedDesignDocs | null> {
     const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
     const designDirAbs = path.join(featurePathAbs, "outputs/design");
     const designDir = ArtifactService.toWorkspaceRelative(fileSystem, designDirAbs);
@@ -267,12 +268,79 @@ export class ArtifactService {
     }
 
     const parsed = parseUiDocs(uiSpec, uiTokens, uiAssets);
-    
+
     console.log(`   📊 [loadParsedUiContext] Parsed UI docs:`);
     console.log(`      - Tokens: ${parsed.tokensTokenEstimate || 0} estimated tokens`);
     console.log(`      - Assets: ${parsed.assetsTokenEstimate || 0} estimated tokens`);
     console.log(`      - Spec sections: ${parsed.specSections.size} sections, ~${parsed.specTotalTokens} tokens total`);
-    
+
+    return parsed;
+  }
+
+  /**
+   * Read a GameArt document from the canonical flat location
+   * (`outputs/design/game-art/<file>`). D24 — game-art has no ant/figma/handoff
+   * sub-source split; the three docs live directly under game-art/.
+   */
+  private static async readGameArtFile(
+    fileSystem: FileSystemPort,
+    designDir: string,
+    fileName: string,
+  ): Promise<string | undefined> {
+    const subPath = path.join(designDir, 'game-art', fileName);
+    if (await fileSystem.fileExists(subPath)) {
+      const content = await fileSystem.readFile(subPath);
+      return ArtifactService.normalizeUserDoc(content) || undefined;
+    }
+    return undefined;
+  }
+
+  /**
+   * Load GameArt documents (`game-art-tokens` / `game-art-assets` /
+   * `game-art-spec`) from `outputs/design/game-art/` (flat — D24) and parse
+   * them into the same `ParsedDesignDocs` shape used for UI, with
+   * `surface: 'gameArt'` so downstream prompts know to interpret spec
+   * sub-sections as category dictionary keys (D25).
+   *
+   * Returns `null` if the directory or all three files are absent —
+   * matching `loadParsedUiContext`'s contract.
+   */
+  static async loadParsedGameArtContext(
+    context: ArtifactProjectContext,
+    _gitPort: GitPort,
+    fileSystem: FileSystemPort,
+  ): Promise<ParsedDesignDocs | null> {
+    const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
+    const designDirAbs = path.join(featurePathAbs, "outputs/design");
+    const designDir = ArtifactService.toWorkspaceRelative(fileSystem, designDirAbs);
+
+    const designDirExists = await fileSystem.fileExists(designDir);
+    if (!designDirExists) {
+      console.log(`⚠️  [ArtifactService] loadParsedGameArtContext: designDir not found: ${designDir}`);
+      return null;
+    }
+
+    const spec = await ArtifactService.readGameArtFile(fileSystem, designDir, 'game-art-spec.json');
+    if (spec) console.log(`   ✅ [loadParsedGameArtContext] game-art-spec.json: loaded (${spec.length} chars)`);
+
+    const tokens = await ArtifactService.readGameArtFile(fileSystem, designDir, 'game-art-tokens.json');
+    if (tokens) console.log(`   ✅ [loadParsedGameArtContext] game-art-tokens.json: loaded (${tokens.length} chars)`);
+
+    const assets = await ArtifactService.readGameArtFile(fileSystem, designDir, 'game-art-assets.json');
+    if (assets) console.log(`   ✅ [loadParsedGameArtContext] game-art-assets.json: loaded (${assets.length} chars)`);
+
+    if (!spec && !tokens && !assets) {
+      console.log(`   ⚠️  [loadParsedGameArtContext] No GameArt documents found`);
+      return null;
+    }
+
+    const parsed = parseGameArtDocs(spec, tokens, assets);
+
+    console.log(`   📊 [loadParsedGameArtContext] Parsed GameArt docs:`);
+    console.log(`      - Tokens: ${parsed.tokensTokenEstimate || 0} estimated tokens`);
+    console.log(`      - Assets: ${parsed.assetsTokenEstimate || 0} estimated tokens`);
+    console.log(`      - Spec categories: ${parsed.specSections.size} sections, ~${parsed.specTotalTokens} tokens total`);
+
     return parsed;
   }
 
@@ -280,7 +348,7 @@ export class ArtifactService {
    * @deprecated Use ArtifactPipeline + resolveArtifacts() instead.
    * Kept only for backward compatibility with design job (Phase 3 migration).
    */
-  static getUiSectionsSummary(parsedDocs: ParsedUiDocs): string {
+  static getUiSectionsSummary(parsedDocs: ParsedDesignDocs): string {
     return generateUiSectionsSummary(parsedDocs);
   }
 

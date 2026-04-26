@@ -1,5 +1,5 @@
 /**
- * TIER_STEP_DEF — per-tier WizardStepDef[] map (Phase 1, p1-ui)
+ * TIER_STEP_DEF — per-tier WizardStepDef[] map (Phase 2 — D12-revised + D23)
  *
  * Mirrors the BE matrix-driven `isTierActive`. The wizard derives the
  * full step set by:
@@ -7,18 +7,18 @@
  *   1. listing active tiers via the matrix predicate,
  *   2. concatenating `TIER_STEP_DEF[tier]` for each.
  *
- * Phase 1 Step set:
+ * Phase 2 Step set:
  *   - techTier:        [stack, language, framework, gameEngine?]
  *                      (FULLSTACK_STEPS used when stack=fullstack)
  *   - visualTier:      [visualLanguage, surfaceSystem]
- *   - artTier:         [concept, perspective]      (Phase 3 adds 5 axes)
+ *   - gameArtTier:     [concept, perspective]      (Phase 4 adds 5 axes)
  *   - gameContentTier: [genre, coreLoop]
  *
  * Note: techTier is special — it has dynamic step ordering that depends
- * on the chosen stack (fullstack vs single). The single-stack path is
- * exposed here as `TECH_STEPS` (legacy alias `TECH_STEPS` from
- * `constants.ts` is reused). useBasisWizard handles the fullstack
- * branching via `computeTechSteps` (separate code path).
+ * on the chosen stack (fullstack vs single). The single-stack ordering
+ * lives in `constants.ts` as `TECH_STEPS` and is re-exposed here for
+ * `TIER_STEP_DEF`. useBasisWizard handles the fullstack branching via
+ * `computeTechSteps` (separate code path).
  */
 
 import type { WizardStepDef, TierKey } from './types';
@@ -37,17 +37,17 @@ export const GAME_ENGINE_STEP: WizardStepDef = {
   description: { en: 'Select the sub-engine that runs inside the framework', ko: '프레임워크 내부에서 동작할 서브 엔진을 선택하세요' },
 };
 
-export const ART_STEPS: WizardStepDef[] = [
+export const GAME_ART_STEPS: WizardStepDef[] = [
   {
     id: 'concept',
-    tierKey: 'artTier',
+    tierKey: 'gameArtTier',
     layerKey: 'concept',
     title: { en: 'Concept', ko: '컨셉' },
     description: { en: 'Choose the overall art tone and silhouette palette', ko: '전체 아트 톤과 실루엣 팔레트를 선택하세요' },
   },
   {
     id: 'perspective',
-    tierKey: 'artTier',
+    tierKey: 'gameArtTier',
     layerKey: 'perspective',
     title: { en: 'Perspective', ko: '시점' },
     description: { en: 'Choose the camera / depth model (2D vs 3D)', ko: '카메라/깊이 모델 (2D vs 3D) 을 선택하세요' },
@@ -84,7 +84,7 @@ export const GAME_CONTENT_STEPS: WizardStepDef[] = [
 export const TIER_STEP_DEF: Readonly<Record<TierKey, WizardStepDef[]>> = {
   techTier: [...TECH_STEPS],
   visualTier: [...VISUAL_STEPS],
-  artTier: ART_STEPS,
+  gameArtTier: GAME_ART_STEPS,
   gameContentTier: GAME_CONTENT_STEPS,
 } as const;
 

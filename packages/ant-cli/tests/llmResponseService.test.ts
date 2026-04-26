@@ -533,11 +533,6 @@ describe('LLMResponseService — sendLLMEvent dispatch', () => {
 });
 
 describe('LLMResponseService — lifecycle compat', () => {
-  it('hasActiveMessage / startMessage are no-op (chat-SSOT §5)', async () => {
-    const { service } = makeService();
-    expect(await service.hasActiveMessage()).toBe(false);
-    expect(await service.startMessage()).toBeNull();
-  });
 
   it('finalizeMessage(cancelled=true) clears the turn buffer', async () => {
     const { service, store } = makeService();

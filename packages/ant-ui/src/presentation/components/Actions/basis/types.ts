@@ -1,12 +1,11 @@
 import type { BasisSlotConfig } from '@ant/shared';
 
 /**
- * Wizard-internal tier identifier (Phase 1 — five tiers).
+ * Wizard-internal tier identifier (Phase 2 — D12-revised + D23).
  *
  * Mirrors the BE `TierKey` union from `@ant/shared/tier-matrix.ts`.
- * `domain` itself is not a wizard tier (it's a single-toggle decision
- * handled by `DomainToggle`); only tiers that present multi-step
- * selection appear here.
+ * `domain` is NOT a wizard tier — it's a workspace-level 1st-class slot
+ * (D22) handled by `DomainToggle` at the ActionsPanel top screen.
  *
  * Adding a new tier requires:
  *   1. extending this union,
@@ -16,7 +15,7 @@ import type { BasisSlotConfig } from '@ant/shared';
  *   5. wiring options inside `useBasisWizard.getOptionsForStep`,
  *   6. handling the new layerKeys inside `useBasisWizard.selectVariant`/`goToStep`.
  */
-export type TierKey = 'techTier' | 'visualTier' | 'artTier' | 'gameContentTier';
+export type TierKey = 'techTier' | 'visualTier' | 'gameArtTier' | 'gameContentTier';
 
 export interface BasisWizardState {
   activeTier: TierKey;
@@ -37,7 +36,7 @@ export interface BasisWizardState {
       visualLanguage?: string;
       surfaceSystem?: string;
     };
-    artTier: {
+    gameArtTier: {
       concept?: string;
       perspective?: string;
     };

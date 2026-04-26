@@ -1,20 +1,18 @@
 /**
- * I5 — Motion Locality (Phase 1, F-6)
+ * I5 — Motion Locality (Phase 2, F-6 — D12-revised)
  *
  * Motion vocabulary belongs to two distinct surfaces:
  *
  *   - `interactionGrammar` (visualTier layer 4) — UI/HUD page transitions,
  *     hover, focus, page entrance.
- *   - `artTier.motionPattern` / `particleProfile` / `projectilePolicy` —
+ *   - `gameArtTier.motionPattern` / `particleProfile` / `projectilePolicy` —
  *     engine-internal sprite tween / animation / camera shake / particles
  *     / projectiles.
  *
  * Cross-pollution (sprite/projectile/particle keywords inside
  * interactionGrammar partials, or page-transition/hover keywords inside
- * artTier motion partials) is forbidden so the two surfaces stay
- * non-overlapping. Phase 1 partial bodies are stub one-liners; this test
- * locks the keyword vocabulary in for the moment Phase 2/3 fills the
- * bodies.
+ * gameArtTier motion partials) is forbidden so the two surfaces stay
+ * non-overlapping. Phase 2 stub bodies; Phase 3+ fills bodies.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -31,8 +29,8 @@ function readMd(relPath: string): string {
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
 }
 
-function* walkArtTierMotionFiles(): Generator<string> {
-  const root = path.join(TEMPLATES_ROOT, 'basis/artTier');
+function* walkGameArtTierMotionFiles(): Generator<string> {
+  const root = path.join(TEMPLATES_ROOT, 'basis/gameArtTier');
   for (const axis of ['motionPattern', 'particleProfile', 'projectilePolicy']) {
     const dir = path.join(root, axis);
     if (!fs.existsSync(dir)) continue;
@@ -51,16 +49,16 @@ function* walkInteractionGrammarFiles(): Generator<string> {
 }
 
 describe('I5 — Motion Locality', () => {
-  it('artTier motion partials must not name UI-motion vocabulary', () => {
+  it('gameArtTier motion partials must not name UI-motion vocabulary', () => {
     const offenders: Array<{ file: string; match: string }> = [];
-    for (const rel of walkArtTierMotionFiles()) {
+    for (const rel of walkGameArtTierMotionFiles()) {
       const src = readMd(rel);
       const m = src.match(ART_MOTION_FORBIDDEN);
       if (m) offenders.push({ file: rel, match: m[0] });
     }
     if (offenders.length > 0) {
       throw new Error(
-        `art motion partials contain UI motion vocabulary:\n${offenders.map(o => `  ${o.file}: ${o.match}`).join('\n')}`,
+        `gameArtTier motion partials contain UI motion vocabulary:\n${offenders.map(o => `  ${o.file}: ${o.match}`).join('\n')}`,
       );
     }
     expect(offenders).toHaveLength(0);

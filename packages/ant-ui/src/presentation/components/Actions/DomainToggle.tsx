@@ -2,55 +2,59 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
-  type BasisSlotConfig,
   type Domain,
-  TIER_DOMAIN_MATRIX,
 } from '@ant/shared';
 import { Globe } from 'lucide-react';
 
 interface DomainToggleProps {
-  basisSlot?: BasisSlotConfig;
   className?: string;
+  /**
+   * When true (Phase 2 — D22), the toggle behaves as the workspace-level
+   * domain selector and is always visible. When false (legacy Phase 1
+   * usage that still exists at lower wizard depths), the toggle reads
+   * `actionMetadata.domain` for backward compatibility but skips the
+   * basis-cleanup side-effect.
+   *
+   * Default: `false` (read-only chip rendering at lower depths).
+   */
+  topLevel?: boolean;
 }
 
 /**
- * Phase 1 (D11) — explicit project-domain selector.
+ * Phase 2 (D22) — workspace-level project-domain selector.
  *
- * Renders only when the slot opts into the `'domain'` tier. Selecting
- * `game` / `service` writes `actionMetadata.domain`, which the detect
- * pipeline reads to bypass LLM domain inference (10.2 — explicit > infer).
+ * Always rendered at the ActionsPanel TOP screen. Selecting `game` /
+ * `service` writes `actionMetadata.domain` (sticky for the workspace);
+ * the detect pipeline reads it to bypass LLM domain inference (10.2 —
+ * explicit > infer).
  *
- * The toggle resets domain-heterogeneous basis selections. Switching from
- * service to game wipes the existing `gameContentTier` / `artTier`
- * preset (and vice-versa for the gameEngine 5th slot) so the wizard
- * starts from a clean state appropriate for the new domain.
+ * Switching domains resets domain-heterogeneous basis selections —
+ * service → game wipes `gameContentTier` / `gameArtTier`; the reverse
+ * additionally clears the `gameEngine` 5th slot.
  */
-export function DomainToggle({ basisSlot, className }: DomainToggleProps) {
+const ALL_DOMAINS: ReadonlyArray<Domain> = ['service', 'game'];
+
+export function DomainToggle({ className, topLevel = false }: DomainToggleProps) {
   const { t } = useTranslation('actions');
   const actionMetadata = useStore(s => s.actionMetadata);
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
 
-  // Static gate — only render when the slot opts into the `domain` tier
-  // and the matrix recognises at least one domain. The runtime visibility
-  // of the toggle therefore lives in the same SSOT as the rest of the
-  // wizard: the BasisSlotConfig matrix.
-  if (!basisSlot?.tiers?.includes('domain')) return null;
-  const domains: ReadonlyArray<Domain> = TIER_DOMAIN_MATRIX.domain;
-  if (domains.length < 2) return null;
-
+  // Phase 2 (D22): the toggle is always visible at the top level. At lower
+  // depths it renders as a read-only chip via the `topLevel === false`
+  // branch — `BasisSummaryBar` / `ActionConfigView` show the current
+  // domain inline so users can verify it without leaving their wizard.
   const current = actionMetadata.domain;
+  const domains = ALL_DOMAINS;
 
   const handleSelect = useCallback((next: Domain | undefined) => {
+    if (!topLevel) return; // chip mode is read-only
     if (current === next) return;
-    // Reset domain-heterogeneous basis fields when crossing domains.
-    // game ⇄ service swap erases tier-specific picks the user made for
-    // the previous domain (gameContentTier, artTier, gameEngine).
     const prevBasis = actionMetadata.basis;
     let nextBasis = prevBasis;
     if (prevBasis) {
       const cleaned = { ...prevBasis };
       if (next !== 'game') {
-        cleaned.artTier = undefined;
+        cleaned.gameArtTier = undefined;
         cleaned.gameContentTier = undefined;
         if (cleaned.techTier?.frontend) {
           cleaned.techTier = {
@@ -65,11 +69,11 @@ export function DomainToggle({ basisSlot, className }: DomainToggleProps) {
           };
         }
       }
-      const stillHasAny = cleaned.techTier || cleaned.visualTier || cleaned.artTier || cleaned.gameContentTier;
+      const stillHasAny = cleaned.techTier || cleaned.visualTier || cleaned.gameArtTier || cleaned.gameContentTier;
       nextBasis = stillHasAny ? cleaned : undefined;
     }
     updateActionMetadata({ domain: next, basis: nextBasis });
-  }, [current, actionMetadata.basis, updateActionMetadata]);
+  }, [current, actionMetadata.basis, updateActionMetadata, topLevel]);
 
   return (
     <div className={`flex items-center gap-2 ${className ?? ''}`}>
@@ -87,11 +91,13 @@ export function DomainToggle({ basisSlot, className }: DomainToggleProps) {
               role="radio"
               aria-checked={active}
               onClick={() => handleSelect(active ? undefined : d)}
+              disabled={!topLevel}
+              aria-disabled={!topLevel}
               className={`px-2 py-1 text-xs rounded transition-colors ${
                 active
                   ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-medium'
                   : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-              }`}
+              } ${!topLevel ? 'cursor-default opacity-80' : ''}`}
             >
               {t(`domain.toggle.option.${d}`)}
             </button>

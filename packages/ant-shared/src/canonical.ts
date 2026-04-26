@@ -35,7 +35,27 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'inputs/directives/design',          visibility: 'internal' },
   { path: 'inputs/directives/code',            visibility: 'internal' },
   { path: 'inputs/directives/learn',           visibility: 'internal' },
+  // Phase 2 (D19-revised): assets parent stays UI-visible as the
+  // container for the per-domain pools. workspace.domain decides which
+  // sub-pool is the active routing target (`service/` vs `game/`); the
+  // parent itself is subdir-only (see `artifact-dir-policy.ts`).
   { path: 'inputs/assets',                     visibility: 'ui:inputs' },
+  { path: 'inputs/assets/service',             visibility: 'internal' },
+  { path: 'inputs/assets/service/icons',       visibility: 'internal' },
+  { path: 'inputs/assets/service/images',      visibility: 'internal' },
+  { path: 'inputs/assets/service/fonts',       visibility: 'internal' },
+  { path: 'inputs/assets/service/misc',        visibility: 'internal' },
+  { path: 'inputs/assets/game',                visibility: 'internal' },
+  { path: 'inputs/assets/game/icons',          visibility: 'internal' },
+  { path: 'inputs/assets/game/images',         visibility: 'internal' },
+  { path: 'inputs/assets/game/entities',       visibility: 'internal' },
+  { path: 'inputs/assets/game/particles',      visibility: 'internal' },
+  { path: 'inputs/assets/game/projectiles',    visibility: 'internal' },
+  { path: 'inputs/assets/game/sfx',            visibility: 'internal' },
+  { path: 'inputs/assets/game/bgm',            visibility: 'internal' },
+  { path: 'inputs/assets/game/tilemaps',       visibility: 'internal' },
+  { path: 'inputs/assets/game/atlas',          visibility: 'internal' },
+  { path: 'inputs/assets/game/models',         visibility: 'internal' },
   { path: 'inputs/assets/gen',                 visibility: 'internal' },
   { path: 'inputs/assets/gen/sketches',         visibility: 'internal' },
   { path: 'inputs/references',                 visibility: 'ui:inputs' },
@@ -46,6 +66,9 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'outputs/design/ui/ant',             visibility: 'internal' },
   { path: 'outputs/design/ui/figma',           visibility: 'internal' },
   { path: 'outputs/design/ui/handoff',         visibility: 'internal' },
+  // Phase 2 (D24): game-art is FLAT — no ant/figma/handoff sub-source containers.
+  // figma/handoff for game-art deferred to Phase 5+.
+  { path: 'outputs/design/game-art',           visibility: 'internal' },
   { path: 'outputs/design/system',             visibility: 'internal' },
   { path: 'outputs/design/spec',               visibility: 'internal' },
   { path: 'outputs/evals',                     visibility: 'ui:outputs' },
@@ -137,10 +160,11 @@ export function isCanonicalDir(relativePath: string): boolean {
 // Design subdirectory helpers (Single Source of Truth)
 // ============================================
 
-export type DesignSubdir = 'ui' | 'system' | 'spec';
+export type DesignSubdir = 'ui' | 'art' | 'system' | 'spec';
 
 export const DESIGN_SUBDIR = {
   UI: 'ui',
+  ART: 'art',
   SYSTEM: 'system',
   SPEC: 'spec',
 } as const satisfies Record<string, DesignSubdir>;
@@ -151,11 +175,13 @@ export const DESIGN_DIR = 'outputs/design' as const;
 
 /**
  * Determine which design subdirectory a file belongs to based on filename.
- *   ui-*.json       → 'ui' (will be placed under ui/ant/)
- *   spec-*.md       → 'spec'
- *   everything else → 'system'  (be-system-*, fe-system-*, api-contract-*)
+ *   ui-*.json         → 'ui'   (will be placed under ui/ant/)
+ *   game-art-*.json   → 'art'  (will be placed under game-art/, FLAT — D24)
+ *   spec-*.md         → 'spec'
+ *   everything else   → 'system'  (be-system-*, fe-system-*, api-contract-*)
  */
 export function designSubdirOf(filename: string): DesignSubdir {
+  if (filename.startsWith('game-art-') && filename.endsWith('.json')) return 'art';
   if (filename.startsWith('ui-') && filename.endsWith('.json')) return 'ui';
   if (filename.startsWith('spec-') && filename.endsWith('.md')) return 'spec';
   return 'system';
@@ -163,11 +189,14 @@ export function designSubdirOf(filename: string): DesignSubdir {
 
 /**
  * Build the design output directory path for a given filename.
- * Returns e.g. 'outputs/design/system' or 'outputs/design/ui/ant' (ui-*.json files live under the ant canonical source).
+ * Returns e.g. 'outputs/design/system' or 'outputs/design/ui/ant' (ui-*.json
+ * files live under the ant canonical source) or 'outputs/design/game-art'
+ * (game-art-*.json files live FLAT — no sub-source — D24).
  */
 export function designDirOf(filename: string): string {
   const sub = designSubdirOf(filename);
   if (sub === 'ui') return `${DESIGN_DIR}/ui/ant`;
+  if (sub === 'art') return `${DESIGN_DIR}/game-art`;
   return `${DESIGN_DIR}/${sub}`;
 }
 
@@ -211,11 +240,26 @@ export const ARTIFACT_PREFIX = {
    * artifactPolicy can reference specific sections.
    */
   UI_ANT_SPEC: `${DESIGN_DIR}/ui/ant/spec/` as const,
+  /**
+   * Phase 2 (D24): game-art surface — FLAT canonical, no sub-source.
+   * The path itself is the directory; figma/handoff sub-sources for game-art
+   * are deferred to Phase 5+ (visual job).
+   */
+  GAME_ART: `${DESIGN_DIR}/game-art/` as const,
+  /**
+   * Virtual prefix for game-art-spec.json category-keyed sections (D25).
+   * Categories (effects/characters/projectiles/npcs/objectives/...) are
+   * dynamically chosen by the LLM based on the game context — schema does
+   * NOT enforce a fixed enum.
+   */
+  GAME_ART_SPEC: `${DESIGN_DIR}/game-art/spec/` as const,
   DESIGN: `${DESIGN_DIR}/` as const,
   SOURCES: 'inputs/sources' as const,
   API_CONTRACT: `${DESIGN_DIR}/system/api-contract-` as const,
   FE_SYSTEM: `${DESIGN_DIR}/system/fe-system-` as const,
   BE_SYSTEM: `${DESIGN_DIR}/system/be-system-` as const,
+  ASSETS_SERVICE: 'inputs/assets/service/' as const,
+  ASSETS_GAME: 'inputs/assets/game/' as const,
 } as const;
 
 /**
@@ -243,6 +287,23 @@ export function uiSourceOfPath(path: string): UiSource | null {
 export function pathsContainUiDoc(paths: readonly string[] | undefined): boolean {
   if (!paths?.length) return false;
   return paths.some(p => uiSourceOfPath(p) !== null);
+}
+
+/**
+ * Whether any path in the list is a game-art design document (Phase 2 — D24).
+ * D24 — game-art is FLAT: any path under `outputs/design/game-art/` qualifies.
+ */
+export function pathsContainGameArtDoc(paths: readonly string[] | undefined): boolean {
+  if (!paths?.length) return false;
+  return paths.some(p => p.startsWith(ARTIFACT_PREFIX.GAME_ART));
+}
+
+/**
+ * Whether any path in the list is a design document (UI or game-art).
+ * Convenience helper — union of `pathsContainUiDoc` + `pathsContainGameArtDoc`.
+ */
+export function pathsContainDesignDoc(paths: readonly string[] | undefined): boolean {
+  return pathsContainUiDoc(paths) || pathsContainGameArtDoc(paths);
 }
 
 // ============================================

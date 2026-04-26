@@ -5,7 +5,7 @@ import {
   STACK_OPTIONS, TECH_TIER_LANGUAGES, FRAMEWORK_LABELS,
   VISUAL_LANGUAGE_OPTIONS, SURFACE_SYSTEM_OPTIONS,
   GAME_ENGINE_OPTIONS,
-  ART_CONCEPT_OPTIONS, ART_PERSPECTIVE_OPTIONS,
+  GAME_ART_CONCEPT_OPTIONS, GAME_ART_PERSPECTIVE_OPTIONS,
   GAME_GENRE_OPTIONS, GAME_CORE_LOOP_OPTIONS,
   isTierActive,
   getEffectiveDomain,
@@ -157,25 +157,25 @@ export function getTierBadgeRows(
     rows.push({ tierKey: 'visualTier', badges });
   }
 
-  if (isTierActive('artTier', basisSlot, effectiveDomain, runtime)) {
+  if (isTierActive('gameArtTier', basisSlot, effectiveDomain, runtime)) {
     const badges: TierBadgeData[] = [];
-    const at = display?.artTier;
-    const artLayers = [
-      { key: 'concept' as const, options: ART_CONCEPT_OPTIONS },
-      { key: 'perspective' as const, options: ART_PERSPECTIVE_OPTIONS },
+    const gat = display?.gameArtTier;
+    const gameArtLayers = [
+      { key: 'concept' as const, options: GAME_ART_CONCEPT_OPTIONS },
+      { key: 'perspective' as const, options: GAME_ART_PERSPECTIVE_OPTIONS },
     ];
-    for (const { key, options } of artLayers) {
-      const val = at?.[key] as string | undefined;
+    for (const { key, options } of gameArtLayers) {
+      const val = gat?.[key] as string | undefined;
       if (val) {
         const opt = options.find(o => o.id === val);
         const label = opt?.label[lang] ?? val;
-        const savedVal = saved?.artTier?.[key] as string | undefined;
+        const savedVal = saved?.gameArtTier?.[key] as string | undefined;
         badges.push({ keyLabel: keyLabel(key, lang), label, isChanged: draftBasis ? val !== savedVal : false });
       } else {
         badges.push({ keyLabel: keyLabel(key, lang), label: AUTO_LABEL[lang], isAuto: true });
       }
     }
-    rows.push({ tierKey: 'artTier', badges });
+    rows.push({ tierKey: 'gameArtTier', badges });
   }
 
   if (isTierActive('gameContentTier', basisSlot, effectiveDomain, runtime)) {
@@ -205,14 +205,14 @@ export function getTierBadgeRows(
 const TIER_ICON: Record<TierKey, typeof Settings2> = {
   techTier: Settings2,
   visualTier: Palette,
-  artTier: Brush,
+  gameArtTier: Brush,
   gameContentTier: Gamepad2,
 };
 
 const TIER_ICON_COLOR: Record<TierKey, string> = {
   techTier: 'text-violet-500 dark:text-violet-400',
   visualTier: 'text-pink-500 dark:text-pink-400',
-  artTier: 'text-amber-500 dark:text-amber-400',
+  gameArtTier: 'text-amber-500 dark:text-amber-400',
   gameContentTier: 'text-emerald-500 dark:text-emerald-400',
 };
 
@@ -255,7 +255,7 @@ function TierRow({ row, onReset, onEdit, hasValues }: { row: TierBadgeRow; onRes
               switch (row.tierKey) {
                 case 'techTier': return 'Reset Tech Tier';
                 case 'visualTier': return 'Reset Visual Tier';
-                case 'artTier': return 'Reset Art Tier';
+                case 'gameArtTier': return 'Reset Game Art Tier';
                 case 'gameContentTier': return 'Reset Game Content';
               }
             })()}
@@ -310,7 +310,7 @@ export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, la
     switch (tierKey) {
       case 'techTier': return !!basis?.techTier;
       case 'visualTier': return !!basis?.visualTier;
-      case 'artTier': return !!basis?.artTier;
+      case 'gameArtTier': return !!basis?.gameArtTier;
       case 'gameContentTier': return !!basis?.gameContentTier;
     }
   };

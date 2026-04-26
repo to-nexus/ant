@@ -37,7 +37,7 @@ export interface UIActions {
   // Actions panel
   openActionsPanel: (actionId?: string) => void;
   setActionsStep: (step: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit') => void;
-  setBasisEditInitialTier: (tier: 'techTier' | 'visualTier' | 'artTier' | 'gameContentTier' | undefined) => void;
+  setBasisEditInitialTier: (tier: 'techTier' | 'visualTier' | 'gameArtTier' | 'gameContentTier' | undefined) => void;
   selectAction: (actionId: string) => void;
   selectIntent: (intentId: string) => void;
   updateActionMetadata: (patch: Partial<ActionMetadata>) => void;

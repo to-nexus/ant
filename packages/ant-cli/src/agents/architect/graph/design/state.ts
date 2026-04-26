@@ -47,6 +47,13 @@ export interface DesignGraphState extends TriageableState {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   artifacts?: import('@ant/shared').ResolvedArtifact[];
 
+  /**
+   * Resume bridge channel — populated when a checkpoint persisted the
+   * RAC-resolved artifact bundle. Resolve hydrates `artifacts` from this
+   * (or via `loadResolvedArtifacts`) and clears it after merge.
+   */
+  resolvedArtifacts?: import('@ant/shared').ResolvedArtifact[];
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // RAC (detect output → decompose enriches basis.techTier: TechTierConfig)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

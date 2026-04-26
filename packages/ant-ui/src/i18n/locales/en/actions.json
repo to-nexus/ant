@@ -18,6 +18,12 @@
       "description": "Design tokens, assets, and UI specifications",
       "pickMode": "How would you like to design the UI?"
     },
+    "art-design": {
+      "label": "Game Art Design",
+      "description": "Design game-art tokens, asset catalog, and entity/effect specifications (game domain only)",
+      "pickMode": "How would you like to design the game art?",
+      "domainGated": "Available only when the project domain is set to Game"
+    },
     "spec": {
       "label": "Feature Spec",
       "description": "Create implementation specs for a feature scope",
@@ -93,7 +99,7 @@
     "configurePreset": "Configure tech/design preset",
     "wizardTechTier": "Tech Tier",
     "wizardVisualTier": "Visual Tier",
-    "wizardArtTier": "Art Tier",
+    "wizardGameArtTier": "Game Art Tier",
     "wizardGameContentTier": "Game Content",
     "wizardDone": "Done",
     "wizardStepStack": "Stack",
@@ -111,7 +117,7 @@
       "techTier": {
         "gameEngine": "Engine"
       },
-      "artTier": {
+      "gameArtTier": {
         "concept": "Concept",
         "perspective": "Perspective",
         "entityCatalog": "Entities",

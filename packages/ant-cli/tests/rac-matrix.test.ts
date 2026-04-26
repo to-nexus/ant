@@ -201,7 +201,7 @@ describe('Action Config Matrix completeness', () => {
     const expectedDisabled = [
       'gen-visual-logo', 'gen-visual-icon', 'gen-visual-hero', 'gen-visual-illustration',
       'gen-code-directive',
-      'rev-plan', 'rev-sys', 'rev-ui', 'rev-spec',
+      'rev-plan', 'rev-sys', 'rev-ui', 'rev-art', 'rev-spec',
     ] as const;
     for (const id of expectedDisabled) {
       const slots = getConfigSlots(id)!;
@@ -222,7 +222,7 @@ describe('Action Config Matrix completeness', () => {
   });
 
   it('revise intents are all buildDisabled', () => {
-    const revIntents = ['rev-plan', 'rev-sys', 'rev-ui', 'rev-spec'] as const;
+    const revIntents = ['rev-plan', 'rev-sys', 'rev-ui', 'rev-art', 'rev-spec'] as const;
     for (const id of revIntents) {
       const slots = getConfigSlots(id)!;
       expect(slots.buildDisabled, `${id} should be buildDisabled`).toBe(true);

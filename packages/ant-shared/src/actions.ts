@@ -58,6 +58,12 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
     status: 'active',
   },
   {
+    id: 'design-art',
+    label: { en: 'Game Art Design', ko: '게임 아트 설계' },
+    description: { en: 'Design game-art tokens, asset catalog, and entity/effect specifications (game domain only)', ko: '게임 아트 토큰, 에셋 카탈로그, 엔티티/이펙트 스펙을 설계합니다 (게임 도메인 전용)' },
+    status: 'active',
+  },
+  {
     id: 'design-spec',
     label: { en: 'Feature Spec', ko: '기능 스펙' },
     description: { en: 'Create implementation specs for a feature scope', ko: '특정 기능의 구현 계획을 작성합니다' },
@@ -126,6 +132,14 @@ const INTENT_DEFINITIONS_INTERNAL = [
   { id: 'gen-ui-desc', intentGroup: 'design-ui', label: { en: 'Description-based', ko: '설명 기반' }, description: { en: 'Design UI from text description', ko: '텍스트 설명으로 UI를 설계합니다' } },
   { id: 'rev-ui', intentGroup: 'design-ui', label: { en: 'Update UI Design', ko: 'UI 설계 업데이트' }, description: { en: 'Revise existing UI design documents', ko: '기존 UI 설계 문서를 업데이트합니다' } },
   { id: 'explain-ui', intentGroup: 'design-ui', label: { en: 'Explain UI Design', ko: 'UI 설계 설명' }, description: { en: 'Explain UI design decisions and specs', ko: 'UI 설계 결정과 스펙을 설명합니다' } },
+
+  // Design — Game Art (Phase 2 — D17. domain=game only; the ActionsPanel
+  // gates the entire group via TIER_DOMAIN_MATRIX.gameArtTier=['game'])
+  { id: 'gen-art-figma', intentGroup: 'design-art', label: { en: 'Figma-based Art', ko: 'Figma 기반 아트' }, description: { en: 'Generate game-art catalog from Figma file', ko: 'Figma 파일에서 게임 아트 카탈로그를 생성합니다' } },
+  { id: 'gen-art-ref', intentGroup: 'design-art', label: { en: 'Reference-based Art', ko: '레퍼런스 기반 아트' }, description: { en: 'Generate game-art catalog from reference images', ko: '레퍼런스 이미지로 게임 아트 카탈로그를 생성합니다' } },
+  { id: 'gen-art-desc', intentGroup: 'design-art', label: { en: 'Description-based Art', ko: '설명 기반 아트' }, description: { en: 'Generate game-art catalog from text description', ko: '텍스트 설명으로 게임 아트 카탈로그를 생성합니다' } },
+  { id: 'rev-art', intentGroup: 'design-art', label: { en: 'Update Game Art', ko: '게임 아트 업데이트' }, description: { en: 'Revise existing game-art design documents', ko: '기존 게임 아트 설계 문서를 업데이트합니다' } },
+  { id: 'explain-art', intentGroup: 'design-art', label: { en: 'Explain Game Art', ko: '게임 아트 설명' }, description: { en: 'Explain game-art design decisions and assets', ko: '게임 아트 설계 결정과 에셋을 설명합니다' } },
 
   // Design — Spec
   { id: 'gen-spec', intentGroup: 'design-spec', label: { en: 'Create Spec', ko: '스펙 작성' }, description: { en: 'Write implementation spec for a feature', ko: '기능의 구현 스펙을 작성합니다' } },
@@ -241,6 +255,15 @@ export function deriveFromIntent(intent: IntentId): {
     case 'explain-ui':
       return { intentGroup: 'design-ui', mode: 'explain', agent: 'architect', jobType: 'design' };
 
+    case 'gen-art-figma':
+    case 'gen-art-ref':
+    case 'gen-art-desc':
+      return { intentGroup: 'design-art', mode: 'generate', agent: 'architect', jobType: 'design' };
+    case 'rev-art':
+      return { intentGroup: 'design-art', mode: 'refactor', agent: 'architect', jobType: 'design' };
+    case 'explain-art':
+      return { intentGroup: 'design-art', mode: 'explain', agent: 'architect', jobType: 'design' };
+
     case 'gen-spec':
       return { intentGroup: 'design-spec', mode: 'generate', agent: 'architect', jobType: 'design' };
     case 'rev-spec':
@@ -334,6 +357,20 @@ export const DESIGN_FILE_PATTERNS: ReadonlyArray<DesignFilePattern> = [
     prefixes: ['ui-'],
     ext: '.json',
     description: { en: 'UI design document', ko: 'UI 설계 문서' },
+    wildcardHint: { en: 'tokens, assets, or spec', ko: 'tokens, assets, 또는 spec' },
+  },
+  {
+    // Phase 2 (D24): game-art lives FLAT under outputs/design/game-art/.
+    // Three canonical files (tokens / assets / spec) all share the
+    // `game-art-` prefix; useActionReadiness.computeGameArtDesign feeds
+    // this pattern into validateDesignFileName so a misnamed sibling
+    // (e.g. random.json) surfaces as a namingIssue. Without this entry
+    // the validator silently passes anything in game-art/ — see
+    // file-descriptions.ts `expectedFiles` for the canonical trio.
+    dir: 'art',
+    prefixes: ['game-art-'],
+    ext: '.json',
+    description: { en: 'Game-art design document', ko: '게임 아트 설계 문서' },
     wildcardHint: { en: 'tokens, assets, or spec', ko: 'tokens, assets, 또는 spec' },
   },
   {

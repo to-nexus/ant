@@ -297,6 +297,10 @@ const L = {
   uiTokens: { en: 'ui-tokens.json', ko: 'ui-tokens.json' },
   uiAssets: { en: 'ui-assets.json', ko: 'ui-assets.json' },
   uiSpec: { en: 'ui-spec.json', ko: 'ui-spec.json' },
+  gameArtDesign: { en: 'Game Art Design', ko: '게임 아트 설계' },
+  gameArtTokens: { en: 'game-art-tokens.json', ko: 'game-art-tokens.json' },
+  gameArtAssets: { en: 'game-art-assets.json', ko: 'game-art-assets.json' },
+  gameArtSpec: { en: 'game-art-spec.json', ko: 'game-art-spec.json' },
   spec: { en: 'spec-*.md', ko: 'spec-*.md' },
   plan: { en: 'PRD', ko: '기획서' },
   prd: { en: 'prd.md', ko: 'prd.md' },
@@ -307,6 +311,7 @@ const HL = {
   prd: { en: 'PRD / Requirements', ko: '기획서' },
   systemDesign: { en: 'System Design Documents', ko: '시스템 설계 문서' },
   uiDesign: { en: 'UI Design Documents', ko: 'UI 설계 문서' },
+  gameArtDesign: { en: 'Game Art Design Documents (game-art-tokens / game-art-assets / game-art-spec)', ko: '게임 아트 설계 문서 (game-art-tokens / game-art-assets / game-art-spec)' },
   specDocs: { en: 'Feature Spec Documents', ko: '기능 스펙 문서' },
   designAll: { en: 'Design Documents', ko: '설계 문서' },
   figmaConfig: { en: 'Figma Configuration', ko: 'Figma 설정 파일' },
@@ -328,9 +333,22 @@ const SYS_DIR = 'outputs/design/system';
  * selected via `type: 'ui-source'` slots instead.
  */
 const UI_DIR = 'outputs/design/ui/ant';
+/**
+ * Canonical game-art output directory (Phase 2 — D24, flat).
+ * `gen-art-*` / `rev-art` design intents emit their tokens/assets/spec JSON
+ * bundle here — sub-source containers (ant/figma/handoff) are deliberately
+ * omitted (D24); figma/handoff for game-art is deferred to Phase 5+.
+ */
+const GAME_ART_DIR = 'outputs/design/game-art';
 const SPEC_DIR = 'outputs/design/spec';
 const SOURCES_DIR = 'inputs/sources';
 const REFS_DIR = 'inputs/references';
+/**
+ * Parent assets directory (Phase 2 — D19-revised). Workspace.domain decides
+ * the active sub-pool (`inputs/assets/service/` or `inputs/assets/game/`) at
+ * the asset handler layer; the matrix slot here exposes the parent so the FE
+ * Artifacts panel can show whichever pool the workspace owns.
+ */
 const ASSETS_DIR = 'inputs/assets';
 const ASSETS_GEN_DIR = 'inputs/assets/gen';
 
@@ -342,19 +360,30 @@ const UI_OUTPUTS: OutputSpec[] = [
   output('ui-assets', '.json', L.uiAssets, false),
   output('ui-spec', '.json', L.uiSpec, false),
 ];
+const GAME_ART_OUTPUTS: OutputSpec[] = [
+  output('game-art-tokens', '.json', L.gameArtTokens, false),
+  output('game-art-assets', '.json', L.gameArtAssets, false),
+  output('game-art-spec', '.json', L.gameArtSpec, false),
+];
 const SPEC_OUTPUTS: OutputSpec[] = [output('spec-', '.md', L.spec)];
 
 import type { IntentId } from './actions';
 
-// Tier presets per intent group (matches §4.1 SSOT-2 in the handoff doc):
-// plan / spec → domain + gameContentTier
-// gen-sys-* → domain + techTier + gameContentTier
-// gen-ui-* / rev-ui → domain + visualTier + artTier + gameContentTier
-// gen-code-* / rev-code → domain + techTier + visualTier + artTier + gameContentTier
-const PLAN_TIERS = ['domain', 'gameContentTier'] as const;
-const SYS_TIERS = ['domain', 'techTier', 'gameContentTier'] as const;
-const UI_TIERS = ['domain', 'visualTier', 'artTier', 'gameContentTier'] as const;
-const CODE_TIERS = ['domain', 'techTier', 'visualTier', 'artTier', 'gameContentTier'] as const;
+// Tier presets per intent group — Phase 2 (D23: 'domain' removed from tiers).
+// Domain is workspace-level (D22) and acts as the matrix gate, not a wizard
+// tier. Service-domain plan/spec wizards thus auto-collapse (gameContentTier
+// is game-only → no active tier rows for service → wizard hidden).
+//
+// plan / spec  → [gameContentTier]
+// gen-sys-*    → [techTier, gameContentTier]
+// gen-ui-*     → [visualTier, gameContentTier]                         (D18)
+// gen-art-*    → [gameArtTier, gameContentTier]                        (D18 — Phase 2)
+// gen-code-*   → [techTier, visualTier, gameArtTier, gameContentTier]
+const PLAN_TIERS = ['gameContentTier'] as const;
+const SYS_TIERS = ['techTier', 'gameContentTier'] as const;
+const UI_TIERS = ['visualTier', 'gameContentTier'] as const;
+const GAME_ART_TIERS = ['gameArtTier', 'gameContentTier'] as const;
+const CODE_TIERS = ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] as const;
 
 // Per-domain seed presets (Phase 1).
 const GAME_FE_PHASER = { stack: 'frontend' as const, gameEngine: 'phaser' as const };
@@ -394,9 +423,6 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: BE_OUTPUTS },
-    // game domain has no backend-only template (the matrix gates artTier
-    // and gameContentTier active for game; the engine still sits on
-    // frontend). Service-only seed.
     basis: { tiers: SYS_TIERS, defaults: { service: SERVICE_BE } },
   },
   'gen-sys-full': {
@@ -448,6 +474,42 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     buildDisabled: true,
     refsSingleSelect: true,
     basis: { tiers: UI_TIERS },
+  },
+
+  // ── Game Art Design (Phase 2 — D17. game domain only; ActionsPanel hides
+  // the entire group when workspace.domain === 'service' via the matrix
+  // gate TIER_DOMAIN_MATRIX.gameArtTier === ['game']) ────────────────
+  'gen-art-figma': {
+    refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
+    target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
+    basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
+  },
+  'gen-art-ref': {
+    refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
+    target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
+    basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
+  },
+  'gen-art-desc': {
+    refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    context: [ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
+    target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
+    chatRequiresRefs: false,
+    basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
+  },
+  'rev-art': {
+    refs: [refDir(GAME_ART_DIR, L.gameArtDesign, { createIntent: 'gen-art-desc', humanLabel: HL.gameArtDesign })],
+    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
+    target: { kind: 'revise' },
+    buildDisabled: true,
+    refsSingleSelect: true,
+    basis: { tiers: GAME_ART_TIERS },
+  },
+  'explain-art': {
+    refs: [refDir(GAME_ART_DIR, L.gameArtDesign, { humanLabel: HL.gameArtDesign })],
+    context: [],
+    target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
   },
 
   // ── Spec ──────────────────────────────────

@@ -1,11 +1,38 @@
 import { DesignGraphState } from '../../../state';
 import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
 import { isFigmaLocalAssetUrl, proxyAssetDownload } from '../../../../../../../periphery/adapters/figma/MCPTransport';
+import type { Domain } from '@ant/shared';
+
+/**
+ * Resolve the workspace asset pool root for the current job state (Phase 2 — D22).
+ *
+ * Resolution order (most authoritative first):
+ *   1. `workspaceConfig.domain` — the workspace-level 1st-class slot, the
+ *      SSOT once `p2-ui-actions-art-group` lands the top-level toggle.
+ *   2. `resolvedAction.domain` — per-turn explicit/inferred override
+ *      surfaced through the detect pipeline.
+ *   3. `intentGroup === 'design-art'` heuristic — guaranteed by the
+ *      matrix gate (TIER_DOMAIN_MATRIX.gameArtTier === ['game']).
+ *   4. Default `'service'`.
+ *
+ * Returns relative path string starting with `inputs/assets/`.
+ */
+function resolveAssetsRoot(state: DesignGraphState): string {
+  const workspaceDomain = (state.workspaceConfig as { domain?: Domain } | undefined)?.domain;
+  const racDomain = state.resolvedAction?.domain;
+  const intentGroup = state.resolvedAction?.intentGroup;
+  const effective: Domain =
+    workspaceDomain
+      ?? racDomain
+      ?? (intentGroup === 'design-art' ? 'game' : 'service');
+  return `inputs/assets/${effective}`;
+}
 
 /**
  * Handle download_asset tool
  *
- * Downloads a file from a URL and saves it to inputs/assets/{category}/{filename}.
+ * Downloads a file from a URL and saves it under the workspace's domain-keyed
+ * pool — `inputs/assets/{service|game}/{category}/{filename}` (Phase 2 — D22).
  * Used by LLM to download Figma-exported assets (SVG, PNG, etc.) from CDN URLs
  * returned by get_design_context.
  */
@@ -31,7 +58,10 @@ export async function handleDownloadAsset(
     throw new Error(`Invalid filename: ${filename}`);
   }
 
-  // Infer category from extension if not provided
+  // Infer category from extension if not provided. For game-art context the
+  // `entities` / `particles` / `sfx` defaults are more appropriate, but we
+  // keep the conservative `icons`/`images` fallback because the LLM is
+  // expected to pass `category` explicitly when working on game assets.
   if (!category) {
     const ext = sanitized.split('.').pop()?.toLowerCase();
     if (ext === 'svg') category = 'icons';
@@ -42,11 +72,12 @@ export async function handleDownloadAsset(
   const pathMod = await import('path');
   const fsMod = await import('fs/promises');
 
-  const destDir = pathMod.join(featurePath, 'inputs', 'assets', category);
+  const assetsRoot = resolveAssetsRoot(state); // 'inputs/assets/service' | 'inputs/assets/game'
+  const destDir = pathMod.join(featurePath, ...assetsRoot.split('/'), category);
   await fsMod.mkdir(destDir, { recursive: true });
 
   const destPath = pathMod.join(destDir, sanitized);
-  const relativePath = `inputs/assets/${category}/${sanitized}`;
+  const relativePath = `${assetsRoot}/${category}/${sanitized}`;
 
   try {
     const isCloudMode = process.env.ANT_SERVER_MODE === 'cloud';
@@ -105,7 +136,10 @@ export async function handleDownloadAsset(
 /**
  * Handle list_assets tool
  *
- * Lists all runtime asset files in inputs/assets/
+ * Lists all runtime asset files under the workspace's domain-keyed pool —
+ * `inputs/assets/{service|game}/...` (Phase 2 — D22). Lookup is strictly
+ * scoped to the resolved domain root; the parent `inputs/assets/` is a
+ * container only and is never enumerated as a fallback.
  */
 export async function handleListAssets(
   state: DesignGraphState,
@@ -123,8 +157,9 @@ export async function handleListAssets(
   if (!featurePath) {
     throw new Error('featurePath not available in context');
   }
-  
-  const assetsDir = path.join(featurePath, 'inputs', 'assets');
+
+  const assetsRoot = resolveAssetsRoot(state);
+  const assetsDir = path.join(featurePath, ...assetsRoot.split('/'));
   const targetDir = category 
     ? path.join(assetsDir, category)
     : assetsDir;
@@ -146,7 +181,7 @@ export async function handleListAssets(
       category: category || 'all',
       assets: [],
       count: 0,
-      message: 'No assets found. Add asset files to inputs/assets/',
+      message: `No assets found. Add asset files under ${assetsRoot}/.`,
     }, null, 2);
   }
   

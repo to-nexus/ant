@@ -115,6 +115,7 @@ function computeReadiness(actionId: IntentGroup, ctx: TreeContext): ActionReadin
     case 'plan': return computePlan(ctx);
     case 'design-system': return computeSystemDesign(ctx);
     case 'design-ui': return computeUiDesign(ctx);
+    case 'design-art': return computeGameArtDesign(ctx);
     case 'design-spec': return computeSpec(ctx);
     case 'code': return computeCode(ctx);
     case 'visual': return computeVisual(ctx);
@@ -194,6 +195,38 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
     ],
     outputDir: 'outputs/design/ui/ant',
     namingIssues: checkNaming(ctx.fileTree, 'outputs/design/ui/ant', 'ui'),
+  };
+}
+
+/**
+ * Phase 2 (D17 / D24) — game-art design readiness.
+ *
+ * The intent group is gated by workspace.domain === 'game' at the
+ * ActionsPanel layer (TIER_DOMAIN_MATRIX.gameArtTier). Here we compute the
+ * "what's missing for build?" surface the same way as ui-design but
+ * targeted at the FLAT `outputs/design/game-art/` canonical (D24).
+ */
+function computeGameArtDesign(ctx: TreeContext): ActionReadiness {
+  const hasRefs = dirHasFilesDeeply(ctx.fileTree, 'inputs/references');
+  const hasGameArt = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/game-art');
+  const buildReady = hasRefs || hasGameArt;
+  return {
+    buildReady,
+    buildBlockReason: buildReady
+      ? undefined
+      : { en: 'Reference images or a directive are required to begin game-art design', ko: '게임 아트 설계를 시작하려면 레퍼런스 이미지 또는 채팅 지시사항이 필요합니다' },
+    hasOutput: hasGameArt,
+    hasCodebase: ctx.hasCodebase,
+    detectedMode: hasRefs
+      ? { id: 'references', label: { en: 'Reference-based', ko: '레퍼런스 기반' } }
+      : { id: 'description', label: { en: 'Description-based', ko: '설명 기반' } },
+    subModes: [
+      { id: 'figma', active: ctx.figmaPopulated === true && ctx.bridgeConnected === true && ctx.figmaDesktopReachable, blockReason: ctx.figmaPopulated !== true ? { en: 'Set Figma URL in figma.json', ko: 'figma.json에 Figma URL을 설정하세요' } : undefined },
+      { id: 'references', active: hasRefs, blockReason: hasRefs ? undefined : { en: 'Upload references or use directive-based', ko: '레퍼런스 이미지를 업로드하거나 설명 기반을 사용하세요' } },
+      { id: 'description', active: true },
+    ],
+    outputDir: 'outputs/design/game-art',
+    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/game-art', 'art'),
   };
 }
 

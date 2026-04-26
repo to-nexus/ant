@@ -101,7 +101,7 @@ export function formatRACForChat(
 
   formatted += renderTechTierSection(rac, isKorean);
   formatted += renderVisualTierSection(rac, isKorean);
-  formatted += renderArtTierSection(rac, isKorean);
+  formatted += renderGameArtTierSection(rac, isKorean);
   formatted += renderGameContentTierSection(rac, isKorean);
 
   return formatted;
@@ -132,14 +132,16 @@ function renderModeSection(
 
 function renderIntentGroupSection(rac: ResolvedActionContext, isKorean: boolean): string {
   const ig = rac.intentGroup;
-  if (!ig || (ig !== 'design-ui' && ig !== 'design-spec' && ig !== 'design-system')) return '';
+  if (!ig || (ig !== 'design-ui' && ig !== 'design-art' && ig !== 'design-spec' && ig !== 'design-system')) return '';
 
-  const igEmoji = ig === 'design-ui' ? '🎨' : ig === 'design-spec' ? '📋' : '🏗️';
+  const igEmoji = ig === 'design-ui' ? '🎨' : ig === 'design-art' ? '🖌️' : ig === 'design-spec' ? '📋' : '🏗️';
   const igLabel = ig === 'design-ui'
     ? (isKorean ? 'UI 디자인' : 'UI Design')
-    : ig === 'design-spec'
-      ? (isKorean ? '기능 스펙' : 'Feature Spec')
-      : (isKorean ? '시스템 디자인' : 'System Design');
+    : ig === 'design-art'
+      ? (isKorean ? '게임 아트 디자인' : 'Game Art Design')
+      : ig === 'design-spec'
+        ? (isKorean ? '기능 스펙' : 'Feature Spec')
+        : (isKorean ? '시스템 디자인' : 'System Design');
   return isKorean
     ? `${igEmoji} **작업 유형**: ${igLabel}\n\n`
     : `${igEmoji} **Work Type**: ${igLabel}\n\n`;
@@ -168,12 +170,21 @@ function renderTargetSection(rac: ResolvedActionContext, isKorean: boolean): str
 }
 
 function renderDesignUiOutputSection(rac: ResolvedActionContext, isKorean: boolean): string {
-  if (rac.intentGroup !== 'design-ui') return '';
-  let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
-  out += `   • \`outputs/design/ui/ant/ui-tokens.json\`\n`;
-  out += `   • \`outputs/design/ui/ant/ui-assets.json\`\n`;
-  out += `   • \`outputs/design/ui/ant/ui-spec.json\`\n\n`;
-  return out;
+  if (rac.intentGroup === 'design-ui') {
+    let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
+    out += `   • \`outputs/design/ui/ant/ui-tokens.json\`\n`;
+    out += `   • \`outputs/design/ui/ant/ui-assets.json\`\n`;
+    out += `   • \`outputs/design/ui/ant/ui-spec.json\`\n\n`;
+    return out;
+  }
+  if (rac.intentGroup === 'design-art') {
+    let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
+    out += `   • \`outputs/design/game-art/game-art-tokens.json\`\n`;
+    out += `   • \`outputs/design/game-art/game-art-assets.json\`\n`;
+    out += `   • \`outputs/design/game-art/game-art-spec.json\`\n\n`;
+    return out;
+  }
+  return '';
 }
 
 function renderTechTierSection(rac: ResolvedActionContext, isKorean: boolean): string {
@@ -206,25 +217,26 @@ function renderTierTuple(
 }
 
 /**
- * Render the artTier (game-domain art policy) section of the chat RAC summary.
- * Phase 1 surfaces 2 axes (concept / perspective); Phase 3 will add 5 more.
+ * Render the gameArtTier (game-domain art policy) section of the chat RAC
+ * summary. Phase 2 surfaces 2 axes (concept / perspective); Phase 4 fills
+ * the remaining 5.
  */
-function renderArtTierSection(rac: ResolvedActionContext, isKorean: boolean): string {
-  const at = rac.basis?.artTier;
-  if (!at) return '';
+function renderGameArtTierSection(rac: ResolvedActionContext, isKorean: boolean): string {
+  const gat = rac.basis?.gameArtTier;
+  if (!gat) return '';
   const entries: Array<[string, string | undefined]> = [
-    [isKorean ? '컨셉' : 'Concept', at.concept],
-    [isKorean ? '시점' : 'Perspective', at.perspective],
-    [isKorean ? '엔티티' : 'Entities', at.entityCatalog],
-    [isKorean ? '모션' : 'Motion', at.motionPattern],
-    [isKorean ? '파티클' : 'Particles', at.particleProfile],
-    [isKorean ? '투사체' : 'Projectiles', at.projectilePolicy],
-    [isKorean ? '오디오' : 'Audio', at.audioProfile],
+    [isKorean ? '컨셉' : 'Concept', gat.concept],
+    [isKorean ? '시점' : 'Perspective', gat.perspective],
+    [isKorean ? '엔티티' : 'Entities', gat.entityCatalog],
+    [isKorean ? '모션' : 'Motion', gat.motionPattern],
+    [isKorean ? '파티클' : 'Particles', gat.particleProfile],
+    [isKorean ? '투사체' : 'Projectiles', gat.projectilePolicy],
+    [isKorean ? '오디오' : 'Audio', gat.audioProfile],
   ];
   const present = entries.filter(([, v]) => !!v);
   if (present.length === 0) return '';
 
-  const header = isKorean ? `🖌️ **아트 기반**\n` : `🖌️ **Art Basis**\n`;
+  const header = isKorean ? `🖌️ **게임 아트 기반**\n` : `🖌️ **Game Art Basis**\n`;
   return header + present.map(([k, v]) => `   • ${k}: ${v}`).join('\n') + '\n\n';
 }
 

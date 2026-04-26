@@ -239,11 +239,13 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
         {slots && (
           <>
-            {/* Phase 1 — Domain toggle (D11). Renders only when the slot
-                opts into the `domain` tier; sits above basis so domain
-                changes propagate to the wizard step set on next render. */}
-            {slots.basis?.tiers?.includes('domain') && (
-              <DomainToggle basisSlot={slots.basis} />
+            {/* Phase 2 (D22) — Domain chip (read-only at this depth).
+                The workspace-level domain selector lives at the ActionsPanel
+                top screen; here we just surface the current domain so users
+                can verify it without leaving the wizard. Toggling it at this
+                depth is disabled by the `topLevel={false}` default. */}
+            {slots.basis && (
+              <DomainToggle />
             )}
 
             {/* Basis preset (conditional) */}
@@ -268,7 +270,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                     if (!current) return;
                     const updated = { ...current, [tierKey]: undefined };
                     const hasAnything =
-                      updated.techTier || updated.visualTier || updated.artTier || updated.gameContentTier;
+                      updated.techTier || updated.visualTier || updated.gameArtTier || updated.gameContentTier;
                     updateActionMetadata({ basis: hasAnything ? updated : undefined });
                   }}
                   lang={lang}

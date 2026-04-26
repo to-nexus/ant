@@ -19,132 +19,132 @@
       "partial-ref"
     ]
   },
-  "basis/artTier/_preamble": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/audioProfile/fileBased": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/audioProfile/hybrid": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/audioProfile/procedural": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/concept/darkFantasy": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/concept/martialArts": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/concept/modernCasual": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/concept/pixelRetro": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/concept/sfFantasy": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/concept/threeKingdoms": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/entityCatalog/minimal": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/entityCatalog/rich": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/entityCatalog/standard": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/motionPattern/expressive": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/motionPattern/static": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/motionPattern/subtle": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/particleProfile/heavy": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/particleProfile/light": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/particleProfile/none": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/perspective/2d": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/perspective/3d": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/projectilePolicy/complex": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/projectilePolicy/none": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/artTier/projectilePolicy/simple": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
   "basis/domain/game": {
     "sources": [
       "basis-registry"
     ]
   },
   "basis/domain/service": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/audioProfile/fileBased": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/audioProfile/hybrid": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/audioProfile/procedural": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/darkFantasy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/martialArts": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/modernCasual": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/pixelRetro": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/sfFantasy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/threeKingdoms": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/entityCatalog/minimal": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/entityCatalog/rich": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/entityCatalog/standard": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/motionPattern/expressive": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/motionPattern/static": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/motionPattern/subtle": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/particleProfile/heavy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/particleProfile/light": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/particleProfile/none": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/perspective/2d": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/perspective/3d": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/projectilePolicy/complex": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/projectilePolicy/none": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/projectilePolicy/simple": {
     "sources": [
       "basis-registry"
     ]
@@ -628,17 +628,17 @@
       "render-call"
     ]
   },
-  "jobs/code/basis/artTier/_preamble": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
   "jobs/code/basis/domain/game": {
     "sources": [
       "basis-registry"
     ]
   },
   "jobs/code/basis/domain/service": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/basis/gameArtTier/_preamble": {
     "sources": [
       "basis-registry"
     ]
@@ -1080,11 +1080,6 @@
       "render-call"
     ]
   },
-  "jobs/design/basis/artTier/_preamble": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
   "jobs/design/basis/domain/game": {
     "sources": [
       "render-call",
@@ -1094,6 +1089,11 @@
   "jobs/design/basis/domain/service": {
     "sources": [
       "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/design/basis/gameArtTier/_preamble": {
+    "sources": [
       "basis-registry"
     ]
   },
@@ -1116,6 +1116,39 @@
   "jobs/design/basis/visualTier/_preamble": {
     "sources": [
       "basis-registry"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/art-design-by-desc/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/art-design-by-desc/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/art-design-by-figma/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/art-design-by-figma/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/art-design-by-ref/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/art-design-by-ref/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
     ]
   },
   "jobs/design/nodes/decompose/variants/system-design/base": {
@@ -1154,6 +1187,60 @@
   "jobs/design/nodes/detect/variants/default/base": {
     "sources": [
       "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-assets-guide-by-desc": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-assets-guide-by-figma": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-assets-guide-by-ref": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-spec-guide-by-desc": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-spec-guide-by-figma": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-spec-guide-by-ref": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-tokens-guide-by-desc": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-tokens-guide-by-figma": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/design/nodes/execute/injections/art-tokens-guide-by-ref": {
+    "sources": [
+      "partial-ref",
+      "manifest"
     ]
   },
   "jobs/design/nodes/execute/injections/ui-assets-guide-by-figma": {
@@ -1328,6 +1415,12 @@
     "sources": [
       "auto-injection",
       "render-call",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/game-art-tier-detection": {
+    "sources": [
+      "partial-ref",
       "manifest"
     ]
   },

@@ -15,7 +15,7 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, ART_CONCEPT_VARIANTS, ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, GAME_CORE_LOOP_VARIANTS, SUPPORTED_GAME_ENGINES } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, GAME_CORE_LOOP_VARIANTS, SUPPORTED_GAME_ENGINES } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -318,7 +318,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const _gameEngineEnabled =
     _effectiveDomain === 'game' &&
     isTierActive('techTier', _decomposeSlot, _effectiveDomain, _runtime);
-  const _artTierEnabled = isTierActive('artTier', _decomposeSlot, _effectiveDomain, _runtime);
+  const _gameArtTierEnabled = isTierActive('gameArtTier', _decomposeSlot, _effectiveDomain, _runtime);
   const _gameContentTierEnabled = isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime);
 
   const enrichedVars = {
@@ -332,8 +332,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     assetsHint,
     resolvedAction: state.resolvedAction,
     visualTierActive: isTierActive('visualTier', _decomposeSlot, _effectiveDomain, _runtime),
-    domainTierActive: isTierActive('domain', _decomposeSlot, _effectiveDomain, _runtime),
-    artTierActive: _artTierEnabled,
+    // D23: 'domain' is no longer a TierKey. It is a workspace-level slot
+    // (D22) — always active when a domain is resolved. basis/domain/{d}.md
+    // dispatch is gated by `domainTierActive` so legacy templates keep
+    // rendering until the §20.1.1 PromptBuilder loop migration lands.
+    domainTierActive: !!_effectiveDomain,
+    gameArtTierActive: _gameArtTierEnabled,
     gameContentTierActive: _gameContentTierEnabled,
     availableVisualLanguagesWithModes: getVisualLanguagesWithModes(),
     availableSurfaceSystems: SURFACE_SYSTEM_VARIANTS.join(', '),
@@ -343,17 +347,17 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     gameEngineCandidates: _gameEngineEnabled
       ? JSON.stringify(SUPPORTED_GAME_ENGINES)
       : undefined,
-    artConceptCandidates: _artTierEnabled
-      ? ART_CONCEPT_VARIANTS.map(v => `\`${v}\``).join(', ')
+    gameArtConceptCandidates: _gameArtTierEnabled
+      ? GAME_ART_CONCEPT_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
       : undefined,
-    artPerspectiveCandidates: _artTierEnabled
-      ? ART_PERSPECTIVE_VARIANTS.map(v => `\`${v}\``).join(', ')
+    gameArtPerspectiveCandidates: _gameArtTierEnabled
+      ? GAME_ART_PERSPECTIVE_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
       : undefined,
     gameGenreCandidates: _gameContentTierEnabled
-      ? GAME_GENRE_VARIANTS.map(v => `\`${v}\``).join(', ')
+      ? GAME_GENRE_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
       : undefined,
     gameCoreLoopCandidates: _gameContentTierEnabled
-      ? GAME_CORE_LOOP_VARIANTS.map(v => `\`${v}\``).join(', ')
+      ? GAME_CORE_LOOP_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
       : undefined,
     specClarifyBypassed: state._specClarifyBypassed === true,
     // Intent-level clarify gate. `<specClarify>` re-adjudicates the
@@ -550,9 +554,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       const { parseDecisionTags, decisionTagRetryFraming } =
         await import('../../../../../../core/llm-response/DecisionTagRegistry');
       decisionTagsAtFinal = parseDecisionTags(rawResponse);
-      const expectedTags: Array<'artTier' | 'gameContentTier'> = [];
-      if (isTierActive('artTier', _decomposeSlot, _effectiveDomain, _runtime)) {
-        expectedTags.push('artTier');
+      const expectedTags: Array<'gameArtTier' | 'gameContentTier'> = [];
+      if (isTierActive('gameArtTier', _decomposeSlot, _effectiveDomain, _runtime)) {
+        expectedTags.push('gameArtTier');
       }
       if (isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime)) {
         expectedTags.push('gameContentTier');
@@ -572,7 +576,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         nodeLabel: 'Decompose',
       });
       // Even if executionTier passed, retry when decision tags are missing
-      // for matrix-active tiers (game projects need artTier/gameContentTier
+      // for matrix-active tiers (game projects need gameArtTier/gameContentTier
       // emission for the LLM SSOT to be honoured).
       if (decisionTagViolationFraming && attempt < MAX_ATTEMPTS) {
         console.warn(
@@ -1006,9 +1010,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 6.65: Apply Phase 1 decision tags (artTier / gameContentTier)
+  // STEP 6.65: Apply Phase 1 decision tags (gameArtTier / gameContentTier)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // The decompose LLM emits `<artTier>` and `<gameContentTier>` only when
+  // The decompose LLM emits `<gameArtTier>` and `<gameContentTier>` only when
   // those tiers are matrix-active. The 5th-slot `gameEngine` is parsed
   // out of the existing `<techTier>` JSON in STEP 6.5 (responseParser
   // surfaces `parsedTechTier.gameEngine`); it is NOT re-parsed here.
@@ -1017,26 +1021,26 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // to avoid the cost of a second pass through the response body.
   if (state.resolvedAction && _effectiveDomain && decisionTagsAtFinal) {
     const { applyDecisionTagDefaults } = await import('../../../../../../core/llm-response/DecisionTagRegistry');
-    const expectedTags: Array<'artTier' | 'gameContentTier' | 'domain'> = [];
-    if (isTierActive('artTier', _decomposeSlot, _effectiveDomain, _runtime)) {
-      expectedTags.push('artTier');
+    const expectedTags: Array<'gameArtTier' | 'gameContentTier' | 'domain'> = [];
+    if (isTierActive('gameArtTier', _decomposeSlot, _effectiveDomain, _runtime)) {
+      expectedTags.push('gameArtTier');
     }
     if (isTierActive('gameContentTier', _decomposeSlot, _effectiveDomain, _runtime)) {
       expectedTags.push('gameContentTier');
     }
     const applied = applyDecisionTagDefaults(decisionTagsAtFinal.parsed, expectedTags);
 
-    const artTier = applied.artTier as import('@ant/shared').ArtTier | undefined;
+    const gameArtTier = applied.gameArtTier as import('@ant/shared').GameArtTier | undefined;
     const gameContentTier = applied.gameContentTier as import('@ant/shared').GameContentTier | undefined;
 
-    if (artTier || gameContentTier) {
+    if (gameArtTier || gameContentTier) {
       const newBasis: import('@ant/shared').Basis = { ...state.resolvedAction.basis };
-      if (artTier) newBasis.artTier = { ...(state.resolvedAction.basis?.artTier ?? {}), ...artTier };
+      if (gameArtTier) newBasis.gameArtTier = { ...(state.resolvedAction.basis?.gameArtTier ?? {}), ...gameArtTier };
       if (gameContentTier) newBasis.gameContentTier = { ...(state.resolvedAction.basis?.gameContentTier ?? {}), ...gameContentTier };
       state.resolvedAction = { ...state.resolvedAction, basis: newBasis };
       console.log(
         `🎮 [Decompose] Phase-1 decision tags applied: ` +
-        `artTier=${artTier ? Object.keys(artTier).join(',') : '-'}, ` +
+        `gameArtTier=${gameArtTier ? Object.keys(gameArtTier).join(',') : '-'}, ` +
         `gameContentTier=${gameContentTier ? Object.keys(gameContentTier).join(',') : '-'}`,
       );
     }
