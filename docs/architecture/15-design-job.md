@@ -22,7 +22,7 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 | workType | 조건 | 출력 파일 |
 |----------|------|----------|
 | `system-design` | PRD/directive만 있고 UI 입력 없음 | system-design.md, api-contract.md 등 |
-| `ui-design` | `outputs/design/ui/figma/figma.json` populated **또는** `inputs/references/` 존재 | `outputs/design/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` |
+| `ui-design` | `outputs/design/ui/figma/figma.json` populated **또는** description 디렉티브 | `outputs/design/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` |
 | `spec` | spec 모드로 명시적 지정 시 | spec 문서 |
 
 ## UI Design Pipeline Mode (Intent-Based)
@@ -32,11 +32,10 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 | Intent | 조건 | 방법론 | 도구 세트 |
 |--------|------|--------|----------|
 | `gen-ui-figma` | `outputs/design/ui/figma/figma.json` populated + MCP 가용 | Figma MCP 구조적 데이터 추출 → `outputs/design/ui/ant/ui-*.json` 로 산출 | `TOOL_SETS.uiDesignFigma` |
-| `gen-ui-ref` | references/ 존재 | 스크린샷 멀티모달 시각 분석 | `TOOL_SETS.uiDesign` |
-| `gen-ui-desc` | 텍스트 설명만 | 텍스트 기반 UI 설계 | `TOOL_SETS.uiDesign` |
-| `rev-ui` | 기존 UI 문서 수정 | figmaConfig 여부에 따라 Figma/Ref 모드 | 상황에 따라 결정 |
+| `gen-ui-desc` | 디렉티브 + PRD | 텍스트 설명을 기반으로 직접 UI 문서 작성 | `TOOL_SETS.uiDesign` |
+| `rev-ui` | 기존 UI 문서 수정 | by-desc 변종 (디렉티브) — Figma 미선택 모드 공통 진입점 | `TOOL_SETS.uiDesign` |
 
-Figma intent(`gen-ui-figma`)가 합성되면 references는 무시된다. 상세 파이프라인은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
+Figma intent(`gen-ui-figma`)가 합성되면 description 변종이 무시된다. 자유 형식 시각 자료(html/css/png)가 필요하면 `outputs/design/ui/handoff/` 로 직접 배치하여 코드 잡 멀티모달 채널이 사용한다 (handoff 는 design-job 디컴포즈 입력이 아니라 코드 잡의 추가 컨텍스트). 상세 파이프라인은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
 
 ## documentType (System Design)
 
@@ -73,7 +72,7 @@ checkTaskStatus -> [router]
 
 ### figmaExplore 노드
 
-Figma 모드 전용 노드. `detect` 이후, `decompose` 이전에 실행된다. LLM 호출 없이 프로그래밍적으로 Figma MCP 어댑터를 직접 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다. 상세 알고리즘은 [25-ui-design-pipeline.md](25-ui-design-pipeline.md) 참조.
+Figma 모드 전용 노드. `detect` 이후, `decompose` 이전에 실행된다. LLM 호출 없이 프로그래밍적으로 Figma MCP 어댑터를 직접 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 docGen에서 참조한다. 상세 알고리즘은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
 
 ### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
 
@@ -141,4 +140,4 @@ runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다
 - Tool 시스템 (도구 카탈로그, 레지스트리, 오케스트레이터): [19-tool-system.md](19-tool-system.md)
 - Code Job: [14-code-job.md](14-code-job.md)
 - 프롬프트 템플릿: [13-prompt-system.md](13-prompt-system.md)
-- UI Design 파이프라인 상세: [25-ui-design-pipeline.md](25-ui-design-pipeline.md)
+- Design 파이프라인 상세 (UI + Game-Art): [25-design-pipeline.md](25-design-pipeline.md)
