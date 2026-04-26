@@ -18,6 +18,13 @@ export interface TierBadgeRow {
   tierKey: TierKey;
   badges: TierBadgeData[];
   subLabel?: string;
+  /**
+   * The row is fully locked by the intent matrix (currently:
+   * techTier when `BasisSlotConfig.lockedStack` is set). The reset
+   * affordance is hidden; edit still navigates so the user can
+   * change non-locked fields (language / framework / gameEngine).
+   */
+  resetDisabled?: boolean;
 }
 
 // Domain SSOT: an unset (undefined) field on basis.techTier / basis.visualTier
@@ -61,6 +68,7 @@ export function getTierBadgeRows(
     const tc = display?.techTier;
     const isFullstack = tc?.stack === 'fullstack';
     const showGameEngine = effectiveDomain === 'game';
+    const lockedStack = basisSlot.lockedStack;
 
     if (isFullstack) {
       const buildSideBadges = (
@@ -94,13 +102,29 @@ export function getTierBadgeRows(
         return badges;
       };
 
-      rows.push({ tierKey: 'techTier', subLabel: 'FE', badges: buildSideBadges(tc?.frontend, saved?.techTier?.frontend, 'frontend') });
-      rows.push({ tierKey: 'techTier', subLabel: 'BE', badges: buildSideBadges(tc?.backend, saved?.techTier?.backend, 'backend') });
+      // FE row carries an inline locked-stack badge (e.g. gen-sys-full)
+      // so the user sees the immutable scope decision next to the
+      // editable language/framework badges.
+      const lockedBadge: TierBadgeData[] = lockedStack
+        ? [{
+            keyLabel: keyLabel('stack', lang),
+            label: STACK_OPTIONS.find(o => o.id === lockedStack)?.label[lang] ?? lockedStack,
+            isLocked: true,
+          }]
+        : [];
+      const feBadges = [...lockedBadge, ...buildSideBadges(tc?.frontend, saved?.techTier?.frontend, 'frontend')];
+      rows.push({ tierKey: 'techTier', subLabel: 'FE', badges: feBadges, resetDisabled: !!lockedStack });
+      rows.push({ tierKey: 'techTier', subLabel: 'BE', badges: buildSideBadges(tc?.backend, saved?.techTier?.backend, 'backend'), resetDisabled: !!lockedStack });
     } else {
       const badges: TierBadgeData[] = [];
       if (tc?.stack) {
         const opt = STACK_OPTIONS.find(o => o.id === tc.stack);
-        badges.push({ keyLabel: keyLabel('stack', lang), label: opt?.label[lang] ?? tc.stack, isChanged: draftBasis ? tc.stack !== saved?.techTier?.stack : false });
+        badges.push({
+          keyLabel: keyLabel('stack', lang),
+          label: opt?.label[lang] ?? tc.stack,
+          isChanged: draftBasis ? tc.stack !== saved?.techTier?.stack : false,
+          isLocked: !!lockedStack,
+        });
       } else {
         badges.push({ keyLabel: keyLabel('stack', lang), label: AUTO_LABEL[lang], isAuto: true });
       }
@@ -129,7 +153,7 @@ export function getTierBadgeRows(
         }
       }
 
-      rows.push({ tierKey: 'techTier', badges });
+      rows.push({ tierKey: 'techTier', badges, resetDisabled: !!lockedStack });
     }
   }
 
@@ -230,6 +254,10 @@ interface BasisSummaryBarProps {
 function TierRow({ row, onReset, onEdit, hasValues }: { row: TierBadgeRow; onReset?: () => void; onEdit?: () => void; hasValues?: boolean }) {
   const Icon = TIER_ICON[row.tierKey];
   const color = TIER_ICON_COLOR[row.tierKey];
+  // Locked rows still surface the edit button (user can change non-stack
+  // fields like language / framework) but hide reset because resetting
+  // would destroy the matrix-pinned stack value.
+  const showReset = !!onReset && hasValues && !row.resetDisabled;
 
   return (
     <div className="flex items-center gap-2">
@@ -245,7 +273,7 @@ function TierRow({ row, onReset, onEdit, hasValues }: { row: TierBadgeRow; onRes
         ))}
       </div>
       <div className="flex items-center gap-0.5 shrink-0">
-        {onReset && hasValues && (
+        {showReset && (
           <button
             type="button"
             onClick={onReset}

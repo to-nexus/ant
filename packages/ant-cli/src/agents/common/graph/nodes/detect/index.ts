@@ -251,21 +251,30 @@ function applyDomainDefaultsToBasis(
   domain: Domain | undefined,
   basis: Basis | undefined,
 ): Basis | undefined {
-  if (!domain) return basis;
   const slot = getConfigSlots(intentId as IntentId)?.basis;
-  const defaults = slot?.defaults?.[domain];
-  if (!defaults) return basis;
+  const lockedStack = slot?.lockedStack;
+  const defaults = domain ? slot?.defaults?.[domain] : undefined;
 
-  // Don't seed if the slot doesn't even opt into techTier — defaults are a
-  // techTier-shape concept (stack + gameEngine).
+  // Don't touch basis if the slot doesn't opt into techTier — locked
+  // stack and per-domain defaults are both techTier-shape concepts.
   if (!slot?.tiers?.includes('techTier')) return basis;
+
+  // Nothing to apply.
+  if (!lockedStack && !defaults) return basis;
 
   const next: Basis = basis ? { ...basis } : {};
   const techTier = next.techTier ? { ...next.techTier } : {};
-  if (defaults.stack && !techTier.stack) {
+
+  // lockedStack overrides any existing / inferred stack regardless of
+  // domain. Intent identity (gen-sys-fe / -be / -full) decides the stack;
+  // user input cannot drift it because the wizard hides the picker too.
+  if (lockedStack) {
+    techTier.stack = lockedStack;
+  } else if (defaults?.stack && !techTier.stack) {
     techTier.stack = defaults.stack;
   }
-  if (defaults.gameEngine) {
+
+  if (defaults?.gameEngine) {
     // gameEngine attaches to the frontend tier (or a single non-backend tier).
     const targetKey = (techTier.stack === 'backend') ? undefined : 'frontend' as const;
     if (targetKey) {

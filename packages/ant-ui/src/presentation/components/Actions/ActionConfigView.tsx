@@ -23,7 +23,6 @@ import {
   listDir,
 } from './config';
 import { BasisSummaryBar } from './basis';
-import { DomainToggle } from './DomainToggle';
 import type { FileWarningContext } from './config';
 
 interface ActionConfigViewProps {
@@ -239,17 +238,10 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
         {slots && (
           <>
-            {/* Phase 2 (D22) — Domain chip (read-only at this depth).
-                The workspace-level domain selector lives at the ActionsPanel
-                top screen; here we just surface the current domain so users
-                can verify it without leaving the wizard. Toggling it at this
-                depth is disabled by the `topLevel={false}` default. */}
-            {slots.basis && (
-              <DomainToggle />
-            )}
-
-            {/* Basis preset (conditional) */}
-            {slots.basis && (
+            {/* Basis preset — rev-* intents declare `basis.tiers === []` so
+                we skip the section entirely (their basis is fully encoded
+                in the artifact under review; user picks would conflict). */}
+            {slots.basis && (slots.basis.tiers?.length ?? 0) > 0 && (
               <Section
                 title={t('section.basis')}
                 icon={Layers}

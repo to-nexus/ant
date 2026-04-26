@@ -45,7 +45,7 @@ describe('BasisSlotConfig.defaults (data shape)', () => {
   });
 
   it('non-techTier intents (plan / spec / ui-design) carry no defaults', () => {
-    const intents: IntentId[] = ['gen-plan', 'rev-plan', 'gen-spec', 'rev-spec', 'gen-ui-figma', 'gen-ui-ref'];
+    const intents: IntentId[] = ['gen-plan', 'rev-plan', 'gen-spec', 'rev-spec', 'gen-ui-figma', 'gen-ui-desc'];
     for (const intent of intents) {
       const slot = getConfigSlots(intent)?.basis;
       expect(slot?.defaults).toBeUndefined();
@@ -68,12 +68,18 @@ function applyDomainDefaultsToBasis(
   domain: Domain,
   basis: Basis | undefined,
 ): Basis | undefined {
+  const lockedStack = slot?.lockedStack;
   const defaults = slot?.defaults?.[domain];
-  if (!defaults || !slot?.tiers?.includes('techTier')) return basis;
+  if (!slot?.tiers?.includes('techTier')) return basis;
+  if (!lockedStack && !defaults) return basis;
   const next: Basis = basis ? { ...basis } : {};
   const techTier = next.techTier ? { ...next.techTier } : {};
-  if (defaults.stack && !techTier.stack) techTier.stack = defaults.stack;
-  if (defaults.gameEngine && techTier.stack !== 'backend') {
+  if (lockedStack) {
+    techTier.stack = lockedStack;
+  } else if (defaults?.stack && !techTier.stack) {
+    techTier.stack = defaults.stack;
+  }
+  if (defaults?.gameEngine && techTier.stack !== 'backend') {
     const fe = techTier.frontend;
     if (fe) {
       if (!fe.gameEngine) techTier.frontend = { ...fe, gameEngine: defaults.gameEngine };
@@ -117,16 +123,53 @@ describe('applyDomainDefaultsToBasis — invariants', () => {
     expect(out?.techTier?.frontend).toBeUndefined();
   });
 
-  it('returns basis unchanged when slot has no game defaults (gen-sys-be)', () => {
+  it('returns basis with same shape when slot has no game defaults (gen-sys-be)', () => {
     const beSlot = getConfigSlots('gen-sys-be')?.basis;
     const before = { techTier: { stack: 'backend' as const } };
     const out = applyDomainDefaultsToBasis(beSlot, 'game', before);
-    expect(out).toBe(before);
+    // gen-sys-be carries `lockedStack: 'backend'` so the helper still rewrites
+    // techTier.stack — but the value (and therefore the user-visible basis)
+    // stays equivalent to the input.
+    expect(out).toEqual(before);
+    expect(out?.techTier?.stack).toBe('backend');
   });
 
   it('returns basis unchanged when domain has no entry in defaults', () => {
     const planSlot = getConfigSlots('gen-plan')?.basis;
     const out = applyDomainDefaultsToBasis(planSlot, 'game', undefined);
     expect(out).toBeUndefined();
+  });
+});
+
+// ============================================
+// lockedStack — gen-sys-fe / -be / -full pin stack regardless of input
+// ============================================
+
+describe('applyDomainDefaultsToBasis — lockedStack invariants', () => {
+  const cases: Array<{ intent: IntentId; lockedStack: 'frontend' | 'backend' | 'fullstack' }> = [
+    { intent: 'gen-sys-fe', lockedStack: 'frontend' },
+    { intent: 'gen-sys-be', lockedStack: 'backend' },
+    { intent: 'gen-sys-full', lockedStack: 'fullstack' },
+  ];
+
+  it.each(cases)('$intent forces stack=$lockedStack on a clean basis (service)', ({ intent, lockedStack }) => {
+    const slot = getConfigSlots(intent)?.basis;
+    const out = applyDomainDefaultsToBasis(slot, 'service', undefined);
+    expect(out?.techTier?.stack).toBe(lockedStack);
+  });
+
+  it.each(cases)('$intent forces stack=$lockedStack even on game domain', ({ intent, lockedStack }) => {
+    const slot = getConfigSlots(intent)?.basis;
+    const out = applyDomainDefaultsToBasis(slot, 'game', undefined);
+    expect(out?.techTier?.stack).toBe(lockedStack);
+  });
+
+  it.each(cases)('$intent overrides a stale user-supplied stack', ({ intent, lockedStack }) => {
+    const slot = getConfigSlots(intent)?.basis;
+    // Simulate a leftover stack from another IntentGroup leaking in (the FE
+    // techTierByGroup cache should already prevent this — defense-in-depth).
+    const stale: Basis = { techTier: { stack: 'fullstack' } };
+    const out = applyDomainDefaultsToBasis(slot, 'service', stale);
+    expect(out?.techTier?.stack).toBe(lockedStack);
   });
 });

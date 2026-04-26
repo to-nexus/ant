@@ -87,29 +87,30 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
   // Expected (tier, domain) cells per intent. After D23, `'domain'` is no
   // longer a TierKey — service-domain plan/spec wizards collapse because
   // gameContentTier is game-only (no other tiers), and the wizard is
-  // hidden entirely.
+  // hidden entirely. After the rev-overlay refactor, every `rev-*` intent
+  // declares `tiers: []` because the document under review already encodes
+  // every basis decision (exposing tier pickers would invite the user to
+  // overwrite settings already encoded in the artifact).
   const expectations: Array<{ intent: IntentId; tiers: ReadonlyArray<TierKey> }> = [
     { intent: 'gen-plan', tiers: ['gameContentTier'] },
-    { intent: 'rev-plan', tiers: ['gameContentTier'] },
+    { intent: 'rev-plan', tiers: [] },
     { intent: 'gen-spec', tiers: ['gameContentTier'] },
-    { intent: 'rev-spec', tiers: ['gameContentTier'] },
+    { intent: 'rev-spec', tiers: [] },
     { intent: 'gen-sys-fe', tiers: ['techTier', 'gameContentTier'] },
     { intent: 'gen-sys-be', tiers: ['techTier', 'gameContentTier'] },
     { intent: 'gen-sys-full', tiers: ['techTier', 'gameContentTier'] },
-    { intent: 'rev-sys', tiers: ['techTier', 'gameContentTier'] },
+    { intent: 'rev-sys', tiers: [] },
     { intent: 'gen-ui-figma', tiers: ['visualTier', 'gameContentTier'] },
-    { intent: 'gen-ui-ref', tiers: ['visualTier', 'gameContentTier'] },
     { intent: 'gen-ui-desc', tiers: ['visualTier', 'gameContentTier'] },
-    { intent: 'rev-ui', tiers: ['visualTier', 'gameContentTier'] },
+    { intent: 'rev-ui', tiers: [] },
     // Phase 2 (D17) — game-art design intents. tiers omits visualTier (D18).
     { intent: 'gen-art-figma', tiers: ['gameArtTier', 'gameContentTier'] },
-    { intent: 'gen-art-ref', tiers: ['gameArtTier', 'gameContentTier'] },
     { intent: 'gen-art-desc', tiers: ['gameArtTier', 'gameContentTier'] },
-    { intent: 'rev-art', tiers: ['gameArtTier', 'gameContentTier'] },
+    { intent: 'rev-art', tiers: [] },
     { intent: 'gen-code-sys', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
     { intent: 'gen-code-spec', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
     { intent: 'gen-code-directive', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
-    { intent: 'rev-code', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
+    { intent: 'rev-code', tiers: [] },
   ];
 
   it.each(expectations)('intent $intent has tiers $tiers', ({ intent, tiers }) => {
@@ -144,6 +145,36 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
       expect(tiers.length).toBe(0);
     }
   });
+
+  it('all rev-* intents expose zero configurable tiers', () => {
+    const REV_INTENTS: IntentId[] = ['rev-plan', 'rev-sys', 'rev-ui', 'rev-art', 'rev-spec', 'rev-code'];
+    for (const intent of REV_INTENTS) {
+      const slot = getConfigSlots(intent)?.basis;
+      expect(slot).toBeDefined();
+      expect(slot!.tiers ?? []).toEqual([]);
+    }
+  });
+
+  it('gen-sys-fe / gen-sys-be / gen-sys-full pin the stack via lockedStack', () => {
+    expect(getConfigSlots('gen-sys-fe')?.basis?.lockedStack).toBe('frontend');
+    expect(getConfigSlots('gen-sys-be')?.basis?.lockedStack).toBe('backend');
+    expect(getConfigSlots('gen-sys-full')?.basis?.lockedStack).toBe('fullstack');
+  });
+
+  it('non-design-system intents do not declare lockedStack', () => {
+    const NON_LOCKED: IntentId[] = [
+      'gen-plan', 'rev-plan',
+      'gen-spec', 'rev-spec',
+      'rev-sys',
+      'gen-ui-figma', 'gen-ui-desc', 'rev-ui',
+      'gen-art-figma', 'gen-art-desc', 'rev-art',
+      'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
+    ];
+    for (const intent of NON_LOCKED) {
+      const slot = getConfigSlots(intent)?.basis;
+      if (slot) expect(slot.lockedStack).toBeUndefined();
+    }
+  });
 });
 
 // ============================================
@@ -155,8 +186,8 @@ describe('full grid sweep (intent × domain × tier)', () => {
   const ARTIFACT_INTENTS: IntentId[] = [
     'gen-plan', 'rev-plan', 'gen-spec', 'rev-spec',
     'gen-sys-fe', 'gen-sys-be', 'gen-sys-full', 'rev-sys',
-    'gen-ui-figma', 'gen-ui-ref', 'gen-ui-desc', 'rev-ui',
-    'gen-art-figma', 'gen-art-ref', 'gen-art-desc', 'rev-art',
+    'gen-ui-figma', 'gen-ui-desc', 'rev-ui',
+    'gen-art-figma', 'gen-art-desc', 'rev-art',
     'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
   ];
 

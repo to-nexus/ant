@@ -7,7 +7,7 @@
 
 import type { DesignSubdir } from './canonical';
 import type { Domain, IntentGroup } from './detection';
-import type { Basis } from './rac';
+import type { Basis, TechTierConfig } from './rac';
 
 // ============================================
 // Action Definitions
@@ -36,6 +36,16 @@ export interface ActionDefinition {
    * Defaults to `true` when omitted.
    */
   readonly agentScoped?: boolean;
+  /**
+   * Phase 2 (D22) — domain gate for the entire action card.
+   *
+   * When set, the ActionsPanel only renders this card if
+   * `actionMetadata.domain` (= the workspace-level project domain)
+   * is in the list. Undefined means domain-agnostic (visible on every
+   * domain). Aligned with `TIER_DOMAIN_MATRIX` — `design-art` is gated
+   * by `gameArtTier=['game']`, so this list mirrors that row.
+   */
+  readonly domainGate?: ReadonlyArray<Domain>;
 }
 
 export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
@@ -62,6 +72,7 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
     label: { en: 'Game Art Design', ko: '게임 아트 설계' },
     description: { en: 'Design game-art tokens, asset catalog, and entity/effect specifications (game domain only)', ko: '게임 아트 토큰, 에셋 카탈로그, 엔티티/이펙트 스펙을 설계합니다 (게임 도메인 전용)' },
     status: 'active',
+    domainGate: ['game'], // D22: hidden when workspace domain === 'service'
   },
   {
     id: 'design-spec',
@@ -128,7 +139,6 @@ const INTENT_DEFINITIONS_INTERNAL = [
 
   // Design — UI
   { id: 'gen-ui-figma', intentGroup: 'design-ui', label: { en: 'Figma-based', ko: 'Figma 기반' }, description: { en: 'Extract design from Figma file', ko: 'Figma 파일에서 디자인을 추출합니다' } },
-  { id: 'gen-ui-ref', intentGroup: 'design-ui', label: { en: 'Screenshot-based', ko: '스크린샷 기반' }, description: { en: 'Design UI from reference images', ko: '레퍼런스 이미지로 UI를 설계합니다' } },
   { id: 'gen-ui-desc', intentGroup: 'design-ui', label: { en: 'Description-based', ko: '설명 기반' }, description: { en: 'Design UI from text description', ko: '텍스트 설명으로 UI를 설계합니다' } },
   { id: 'rev-ui', intentGroup: 'design-ui', label: { en: 'Update UI Design', ko: 'UI 설계 업데이트' }, description: { en: 'Revise existing UI design documents', ko: '기존 UI 설계 문서를 업데이트합니다' } },
   { id: 'explain-ui', intentGroup: 'design-ui', label: { en: 'Explain UI Design', ko: 'UI 설계 설명' }, description: { en: 'Explain UI design decisions and specs', ko: 'UI 설계 결정과 스펙을 설명합니다' } },
@@ -136,7 +146,6 @@ const INTENT_DEFINITIONS_INTERNAL = [
   // Design — Game Art (Phase 2 — D17. domain=game only; the ActionsPanel
   // gates the entire group via TIER_DOMAIN_MATRIX.gameArtTier=['game'])
   { id: 'gen-art-figma', intentGroup: 'design-art', label: { en: 'Figma-based Art', ko: 'Figma 기반 아트' }, description: { en: 'Generate game-art catalog from Figma file', ko: 'Figma 파일에서 게임 아트 카탈로그를 생성합니다' } },
-  { id: 'gen-art-ref', intentGroup: 'design-art', label: { en: 'Reference-based Art', ko: '레퍼런스 기반 아트' }, description: { en: 'Generate game-art catalog from reference images', ko: '레퍼런스 이미지로 게임 아트 카탈로그를 생성합니다' } },
   { id: 'gen-art-desc', intentGroup: 'design-art', label: { en: 'Description-based Art', ko: '설명 기반 아트' }, description: { en: 'Generate game-art catalog from text description', ko: '텍스트 설명으로 게임 아트 카탈로그를 생성합니다' } },
   { id: 'rev-art', intentGroup: 'design-art', label: { en: 'Update Game Art', ko: '게임 아트 업데이트' }, description: { en: 'Revise existing game-art design documents', ko: '기존 게임 아트 설계 문서를 업데이트합니다' } },
   { id: 'explain-art', intentGroup: 'design-art', label: { en: 'Explain Game Art', ko: '게임 아트 설명' }, description: { en: 'Explain game-art design decisions and assets', ko: '게임 아트 설계 결정과 에셋을 설명합니다' } },
@@ -182,6 +191,22 @@ export function getIntentsForAction(group: IntentGroup): ReadonlyArray<IntentDef
   return INTENT_DEFINITIONS.filter(d => d.intentGroup === group);
 }
 
+/**
+ * Phase 2 (D22) — true iff the action card is visible for the given
+ * workspace domain. Cards with no `domainGate` are always visible;
+ * gated cards are hidden when the current domain is not listed. The
+ * default `'service'` matches the workspace default seed, so calling
+ * this helper with `undefined` behaves like the FE before a user has
+ * touched the toggle.
+ */
+export function isActionVisibleForDomain(
+  def: Pick<ActionDefinition, 'domainGate'>,
+  domain: Domain | undefined,
+): boolean {
+  if (!def.domainGate || def.domainGate.length === 0) return true;
+  return def.domainGate.includes(domain ?? 'service');
+}
+
 /** Type guard: check if a string is a valid IntentId from INTENT_DEFINITIONS. */
 export function isValidIntentId(id: string): id is IntentId {
   return INTENT_DEFINITIONS.some(d => d.id === id);
@@ -214,6 +239,18 @@ export interface ActionMetadata {
    * Universal across artifact-producing jobs (plan / design / code / spec).
    */
   domain?: Domain;
+  /**
+   * Per-IntentGroup techTier cache. Only `techTier` is scoped per group;
+   * `visualTier` / `gameArtTier` / `gameContentTier` remain sticky on
+   * `basis` so the user's design intent stays consistent across groups.
+   *
+   * The currently-active group's value is mirrored into `basis.techTier`
+   * (the SSOT consumed by the wizard, BE detect, and prompt builder).
+   * `selectAction` / `openActionsPanel` / `resetActionMetadata` swap
+   * `basis.techTier` ⇄ `techTierByGroup[group]` whenever the active group
+   * changes; `updateActionMetadata` mirrors changes back into the cache.
+   */
+  techTierByGroup?: Partial<Record<IntentGroup, TechTierConfig>>;
 }
 
 /**
@@ -247,7 +284,6 @@ export function deriveFromIntent(intent: IntentId): {
       return { intentGroup: 'design-system', mode: 'explain', agent: 'architect', jobType: 'design' };
 
     case 'gen-ui-figma':
-    case 'gen-ui-ref':
     case 'gen-ui-desc':
       return { intentGroup: 'design-ui', mode: 'generate', agent: 'architect', jobType: 'design' };
     case 'rev-ui':
@@ -256,7 +292,6 @@ export function deriveFromIntent(intent: IntentId): {
       return { intentGroup: 'design-ui', mode: 'explain', agent: 'architect', jobType: 'design' };
 
     case 'gen-art-figma':
-    case 'gen-art-ref':
     case 'gen-art-desc':
       return { intentGroup: 'design-art', mode: 'generate', agent: 'architect', jobType: 'design' };
     case 'rev-art':
@@ -382,7 +417,7 @@ export const DESIGN_FILE_PATTERNS: ReadonlyArray<DesignFilePattern> = [
   },
 ];
 
-export const FREE_FORM_DIRS = ['inputs/sources', 'inputs/references', 'inputs/assets'] as const;
+export const FREE_FORM_DIRS = ['inputs/sources', 'inputs/assets'] as const;
 
 /**
  * Validate a design output filename against known patterns.
