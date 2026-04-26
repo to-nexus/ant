@@ -14,6 +14,7 @@ import { createDefaultTask, createExplainTask } from "./defaults";
 import { updateKanban } from "./kanbanUpdate";
 import { enterDecomposeNode, exitDecomposeNode } from "./workflowInstrument";
 import { decomposeUiDesign } from "./uiDesignDecompose";
+import { decomposeArtDesign } from "./artDesignDecompose";
 import { decomposeSystemDesign } from "./systemDesignDecompose";
 import { decomposeSpec } from "./specDecompose";
 import { BOUNDARY, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
@@ -56,6 +57,48 @@ function validateUiDesignPrerequisites(state: DesignGraphState): void {
       "Please add design reference images to inputs/references/.\n" +
       "- Screenshots are used for layout, color, and typography analysis.\n" +
       "- Include diverse viewports and states when possible."
+    );
+  }
+}
+
+/**
+ * Validate prerequisites for game-art design intents (`gen-art-figma`,
+ * `gen-art-ref`, `gen-art-desc`, `rev-art`).
+ *
+ * - `gen-art-figma` requires a Figma config (same shape as ui-figma).
+ * - `gen-art-ref` requires reference images OR existing user-placed
+ *   external assets.
+ * - `gen-art-desc` is directive-only — no references / assets required.
+ * - `rev-art` requires existing `outputs/design/game-art/` documents
+ *   (validated upstream by RAC; this fn is permissive here).
+ */
+function validateArtDesignPrerequisites(state: DesignGraphState): void {
+  const intent = state.resolvedAction?.intent;
+
+  if (intent === 'gen-art-figma') {
+    if (!state.figmaConfig?.file) {
+      throw new Error(
+        "No Figma file configured for game-art document generation.\n\n" +
+        "Required: figma.json with a Figma URL in the 'file' field."
+      );
+    }
+    return;
+  }
+
+  if (intent === 'gen-art-desc' || intent === 'rev-art') {
+    return;
+  }
+
+  const hasReferences = state.uiReferences?.length;
+  const hasAssets = state.uiAssetsList && Object.values(state.uiAssetsList).some(arr => arr.length > 0);
+
+  if (!hasReferences && !hasAssets) {
+    throw new Error(
+      "No input files found for game-art document generation.\n\n" +
+      "Required for gen-art-ref:\n" +
+      "- inputs/references/ - Concept art / sprite mock-ups (PNG/JPG/SVG)\n" +
+      "- inputs/assets/game/ - User-placed game assets (sprites, tilemaps)\n\n" +
+      "If you only have a directive, use the gen-art-desc intent instead."
     );
   }
 }
@@ -228,9 +271,11 @@ async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphS
     state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('decompose', state._uiLocale), 'decompose');
   }
 
-  // Validate UI design prerequisites
+  // Validate UI / Game-Art design prerequisites
   if (state.resolvedAction?.intentGroup === 'design-ui') {
     validateUiDesignPrerequisites(state);
+  } else if (state.resolvedAction?.intentGroup === 'design-art') {
+    validateArtDesignPrerequisites(state);
   }
 
   // Workflow enter
@@ -256,6 +301,17 @@ async function runDesignDecompose(state: DesignGraphState): Promise<DesignGraphS
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (state.resolvedAction?.intentGroup === 'design-ui') {
       return decomposeUiDesign(state, {
+        phaseStart,
+        newJobId: timing.newJobId,
+        newJobTiming: timing.newJobTiming,
+      });
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Game-Art Design mode: LLM-driven decomposition (D17)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (state.resolvedAction?.intentGroup === 'design-art') {
+      return decomposeArtDesign(state, {
         phaseStart,
         newJobId: timing.newJobId,
         newJobTiming: timing.newJobTiming,

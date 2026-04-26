@@ -331,7 +331,7 @@ The transformer registry is the self-documenting inventory. If it isn't there, i
 
 ## Tier Matrix SSOT — `isTierActive(tier, slot, domain, runtime)` (Phase 1)
 
-**모든 tier (`domain` / `techTier` / `visualTier` / `artTier` / `gameContentTier`) 의 활성 여부 는 [`@ant/shared/tier-matrix.ts`](packages/ant-shared/src/tier-matrix.ts) 의 `isTierActive` 하나가 SSOT다. 산발 predicate (`isVisualTierActive`, `isArtTierActive` 등) 는 만들지 않는다. FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 5 지점 모두 이 predicate 만 호출한다.**
+**모든 tier (`domain` / `techTier` / `visualTier` / `gameArtTier` / `gameContentTier`) 의 활성 여부 는 [`@ant/shared/tier-matrix.ts`](packages/ant-shared/src/tier-matrix.ts) 의 `isTierActive` 하나가 SSOT다. 산발 predicate (`isVisualTierActive`, `isArtTierActive` 등) 는 만들지 않는다. FE wizard / FE summary / BE code decompose / BE design decompose / BE PromptBuilder.buildBasisSection 5 지점 모두 이 predicate 만 호출한다.**
 
 ```
 active(tier) ⇔ slot.tiers?.includes(tier)
@@ -342,7 +342,7 @@ active(tier) ⇔ slot.tiers?.includes(tier)
 | 축 | 닫히는 조건 | 출처 |
 |---|---|---|
 | slot | `slot.tiers` 에 tier 미포함 | 인텐트별 정적 config (`getConfigSlots(intent).basis.tiers`) |
-| domain | `TIER_DOMAIN_MATRIX[tier]` 에 domain 미포함 | 매트릭스 (Phase 1: artTier/gameContentTier 는 `['game']`) |
+| domain | `TIER_DOMAIN_MATRIX[tier]` 에 domain 미포함 | 매트릭스 (Phase 1: gameArtTier/gameContentTier 는 `['game']`) |
 | runtime | `visualTier`: `techTier.stack === 'backend'` 또는 `hasUiDoc === true` | 런타임 RAC basis / post-RAC pool |
 
 `hasUiDoc` 은 **사용자가 RAC 에 포함시킨 UI 디자인 문서**(ant / figma / handoff)의 존재 여부다. 파일시스템에 존재하는 것만으로는 부족하고, `refs` 또는 `context` 슬롯으로 사용자가 결정해 넣어야 true. UI 디자인 문서 자체가 디자인 시스템 권위이므로 병렬 visual tier 주입은 중복이다.
@@ -350,7 +350,7 @@ active(tier) ⇔ slot.tiers?.includes(tier)
 ### ❌ ABSOLUTELY FORBIDDEN
 
 - tier 활성 여부를 판단하는 자체 헬퍼 / 인라인 조건식을 새로 만들기. 모든 지점에서 `isTierActive(tier, slot, domain, runtime)` 만 호출한다.
-- `{{#if visualTierActive}}` 이외의 템플릿 이름으로 같은 게이트를 이중화하기 (`{{#if hasVisualTier}}`, `{{#if hasUiDoc}}` 등 alias 금지). 템플릿 변수는 node-level 에서 `isTierActive('visualTier', ...)` 결과를 `visualTierActive` 로 넘긴다. 동일 패턴 — `artTierActive`, `gameContentTierActive`, `domainTierActive`.
+- `{{#if visualTierActive}}` 이외의 템플릿 이름으로 같은 게이트를 이중화하기 (`{{#if hasVisualTier}}`, `{{#if hasUiDoc}}` 등 alias 금지). 템플릿 변수는 node-level 에서 `isTierActive('visualTier', ...)` 결과를 `visualTierActive` 로 넘긴다. 동일 패턴 — `gameArtTierActive`, `gameContentTierActive`, `domainTierActive`.
 - `hasUiDoc` 을 "파일시스템에 UI artifact 가 있는가" 로 해석하기. 항상 post-RAC pool (BE) 또는 `actionMetadata.refs`/`context` (FE) 기준.
 - `hasUi` 가 true 인데 `resolvedAction.basis.visualTier` 를 계속 downstream 으로 흘려보내기. `decompose` 는 UI doc 감지 시 preset 을 `undefined` 로 비워 downstream 프롬프트가 스테일 값을 읽지 못하게 한다.
 
@@ -394,7 +394,7 @@ rg -n "isTierActive\(" --type ts
 
 ## Motion Locality SSOT — UI motion ≠ engine art motion (Phase 1, I5)
 
-`interactionGrammar` (visualTier layer 4) 는 **UI/HUD 표면의 페이지 전환 / 호버 / 포커스** motion 만 다룬다. `artTier.{motionPattern, particleProfile, projectilePolicy}` 는 **엔진 내부 sprite tween / 파티클 / 투사체** motion 만 다룬다. 두 motion 의 cross-pollution (sprite/projectile 키워드를 interactionGrammar 에, page-transition/hover 키워드를 artTier 에) 은 금지.
+`interactionGrammar` (visualTier layer 4) 는 **UI/HUD 표면의 페이지 전환 / 호버 / 포커스** motion 만 다룬다. `gameartTier.{motionPattern, particleProfile, projectilePolicy}` 는 **엔진 내부 sprite tween / 파티클 / 투사체** motion 만 다룬다. 두 motion 의 cross-pollution (sprite/projectile 키워드를 interactionGrammar 에, page-transition/hover 키워드를 gameartTier 에) 은 금지.
 
 회귀 가드: `tests/motion-locality.test.ts`.
 

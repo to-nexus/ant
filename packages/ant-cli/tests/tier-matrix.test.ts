@@ -1,10 +1,10 @@
 /**
- * Tier Matrix SSOT (Phase 1, I2)
+ * Tier Matrix SSOT (Phase 2 — D12-revised + D22 + D23, I2)
  *
  * The matrix is the single authority for "is tier X active for slot Y in
  * domain Z under runtime R?". This test exercises the full grid:
  *
- *   - 5 tiers (`domain` / `techTier` / `visualTier` / `artTier` / `gameContentTier`)
+ *   - 4 tiers (`techTier` / `visualTier` / `gameArtTier` / `gameContentTier`)
  *   - 2 domains (`service` / `game`)
  *   - representative slot configs from `getConfigSlots`
  *   - runtime suppression scenarios for `visualTier`
@@ -28,18 +28,17 @@ import {
 const ALL_DOMAINS: ReadonlyArray<Domain> = ['service', 'game'];
 
 describe('TIER_DOMAIN_MATRIX', () => {
-  it('all 5 tiers are present', () => {
-    expect(TIER_KEYS).toEqual(['domain', 'techTier', 'visualTier', 'artTier', 'gameContentTier']);
+  it('all 4 tiers are present (D23 removed `domain`)', () => {
+    expect(TIER_KEYS).toEqual(['techTier', 'visualTier', 'gameArtTier', 'gameContentTier']);
   });
 
-  it('domain / techTier / visualTier are domain-universal', () => {
-    expect(TIER_DOMAIN_MATRIX.domain).toEqual(expect.arrayContaining(['service', 'game']));
+  it('techTier / visualTier are domain-universal', () => {
     expect(TIER_DOMAIN_MATRIX.techTier).toEqual(expect.arrayContaining(['service', 'game']));
     expect(TIER_DOMAIN_MATRIX.visualTier).toEqual(expect.arrayContaining(['service', 'game']));
   });
 
-  it('artTier and gameContentTier are game-only in Phase 1', () => {
-    expect(TIER_DOMAIN_MATRIX.artTier).toEqual(['game']);
+  it('gameArtTier and gameContentTier are game-only (D12-revised)', () => {
+    expect(TIER_DOMAIN_MATRIX.gameArtTier).toEqual(['game']);
     expect(TIER_DOMAIN_MATRIX.gameContentTier).toEqual(['game']);
   });
 });
@@ -54,55 +53,63 @@ describe('isTierActive — slot/domain/runtime composition', () => {
   });
 
   it('returns false when slot omits the tier even if matrix permits', () => {
-    const slot: BasisSlotConfig = { tiers: ['domain'] };
+    const slot: BasisSlotConfig = { tiers: ['gameContentTier'] };
     expect(isTierActive('techTier', slot, 'service')).toBe(false);
-    expect(isTierActive('artTier', slot, 'game')).toBe(false);
+    expect(isTierActive('gameArtTier', slot, 'game')).toBe(false);
   });
 
   it('returns false when matrix forbids the (tier, domain) combo', () => {
-    const slot: BasisSlotConfig = { tiers: ['domain', 'artTier', 'gameContentTier'] };
-    expect(isTierActive('artTier', slot, 'service')).toBe(false);
+    const slot: BasisSlotConfig = { tiers: ['gameArtTier', 'gameContentTier'] };
+    expect(isTierActive('gameArtTier', slot, 'service')).toBe(false);
     expect(isTierActive('gameContentTier', slot, 'service')).toBe(false);
   });
 
   it('returns true when slot opts in AND matrix permits', () => {
-    const slot: BasisSlotConfig = { tiers: ['domain', 'artTier', 'gameContentTier'] };
-    expect(isTierActive('artTier', slot, 'game')).toBe(true);
+    const slot: BasisSlotConfig = { tiers: ['gameArtTier', 'gameContentTier'] };
+    expect(isTierActive('gameArtTier', slot, 'game')).toBe(true);
     expect(isTierActive('gameContentTier', slot, 'game')).toBe(true);
   });
 
   it('visualTier suppressor: backend-only stack closes the gate', () => {
-    const slot: BasisSlotConfig = { tiers: ['domain', 'visualTier'] };
+    const slot: BasisSlotConfig = { tiers: ['visualTier'] };
     expect(isTierActive('visualTier', slot, 'service', { techTier: { stack: 'backend' } })).toBe(false);
     expect(isTierActive('visualTier', slot, 'service', { techTier: { stack: 'frontend' } })).toBe(true);
   });
 
   it('visualTier suppressor: hasUiDoc closes the gate', () => {
-    const slot: BasisSlotConfig = { tiers: ['domain', 'visualTier'] };
+    const slot: BasisSlotConfig = { tiers: ['visualTier'] };
     expect(isTierActive('visualTier', slot, 'service', { hasUiDoc: true })).toBe(false);
     expect(isTierActive('visualTier', slot, 'service', { hasUiDoc: false })).toBe(true);
   });
 });
 
-describe('intent matrix (§4.1 SSOT-2)', () => {
-  // Expected (tier, domain) cells per intent.
+describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
+  // Expected (tier, domain) cells per intent. After D23, `'domain'` is no
+  // longer a TierKey — service-domain plan/spec wizards collapse because
+  // gameContentTier is game-only (no other tiers), and the wizard is
+  // hidden entirely.
   const expectations: Array<{ intent: IntentId; tiers: ReadonlyArray<TierKey> }> = [
-    { intent: 'gen-plan', tiers: ['domain', 'gameContentTier'] },
-    { intent: 'rev-plan', tiers: ['domain', 'gameContentTier'] },
-    { intent: 'gen-spec', tiers: ['domain', 'gameContentTier'] },
-    { intent: 'rev-spec', tiers: ['domain', 'gameContentTier'] },
-    { intent: 'gen-sys-fe', tiers: ['domain', 'techTier', 'gameContentTier'] },
-    { intent: 'gen-sys-be', tiers: ['domain', 'techTier', 'gameContentTier'] },
-    { intent: 'gen-sys-full', tiers: ['domain', 'techTier', 'gameContentTier'] },
-    { intent: 'rev-sys', tiers: ['domain', 'techTier', 'gameContentTier'] },
-    { intent: 'gen-ui-figma', tiers: ['domain', 'visualTier', 'artTier', 'gameContentTier'] },
-    { intent: 'gen-ui-ref', tiers: ['domain', 'visualTier', 'artTier', 'gameContentTier'] },
-    { intent: 'gen-ui-desc', tiers: ['domain', 'visualTier', 'artTier', 'gameContentTier'] },
-    { intent: 'rev-ui', tiers: ['domain', 'visualTier', 'artTier', 'gameContentTier'] },
-    { intent: 'gen-code-sys', tiers: ['domain', 'techTier', 'visualTier', 'artTier', 'gameContentTier'] },
-    { intent: 'gen-code-spec', tiers: ['domain', 'techTier', 'visualTier', 'artTier', 'gameContentTier'] },
-    { intent: 'gen-code-directive', tiers: ['domain', 'techTier', 'visualTier', 'artTier', 'gameContentTier'] },
-    { intent: 'rev-code', tiers: ['domain', 'techTier', 'visualTier', 'artTier', 'gameContentTier'] },
+    { intent: 'gen-plan', tiers: ['gameContentTier'] },
+    { intent: 'rev-plan', tiers: ['gameContentTier'] },
+    { intent: 'gen-spec', tiers: ['gameContentTier'] },
+    { intent: 'rev-spec', tiers: ['gameContentTier'] },
+    { intent: 'gen-sys-fe', tiers: ['techTier', 'gameContentTier'] },
+    { intent: 'gen-sys-be', tiers: ['techTier', 'gameContentTier'] },
+    { intent: 'gen-sys-full', tiers: ['techTier', 'gameContentTier'] },
+    { intent: 'rev-sys', tiers: ['techTier', 'gameContentTier'] },
+    { intent: 'gen-ui-figma', tiers: ['visualTier', 'gameContentTier'] },
+    { intent: 'gen-ui-ref', tiers: ['visualTier', 'gameContentTier'] },
+    { intent: 'gen-ui-desc', tiers: ['visualTier', 'gameContentTier'] },
+    { intent: 'rev-ui', tiers: ['visualTier', 'gameContentTier'] },
+    // Phase 2 (D17) — game-art design intents. tiers omits visualTier (D18).
+    { intent: 'gen-art-figma', tiers: ['gameArtTier', 'gameContentTier'] },
+    { intent: 'gen-art-ref', tiers: ['gameArtTier', 'gameContentTier'] },
+    { intent: 'gen-art-desc', tiers: ['gameArtTier', 'gameContentTier'] },
+    { intent: 'rev-art', tiers: ['gameArtTier', 'gameContentTier'] },
+    { intent: 'gen-code-sys', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
+    { intent: 'gen-code-spec', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
+    { intent: 'gen-code-directive', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
+    { intent: 'rev-code', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
   ];
 
   it.each(expectations)('intent $intent has tiers $tiers', ({ intent, tiers }) => {
@@ -111,10 +118,23 @@ describe('intent matrix (§4.1 SSOT-2)', () => {
     expect(new Set(slot!.tiers ?? [])).toEqual(new Set(tiers));
   });
 
+  it('service-domain plan/spec wizards collapse (D23 effect)', () => {
+    // PLAN_TIERS / SPEC_TIERS = [gameContentTier], which is game-only.
+    // Service domain therefore has zero active tiers → wizard hides.
+    for (const intent of ['gen-plan', 'rev-plan', 'gen-spec', 'rev-spec'] as const) {
+      const slot = getConfigSlots(intent)?.basis;
+      const activeForService = TIER_KEYS.filter(t =>
+        isTierActive(t, slot, 'service', {}),
+      );
+      expect(activeForService).toEqual([]);
+    }
+  });
+
   it('ask / explain / learn / visual intents are matrix-bypass', () => {
     const bypass: IntentId[] = [
       'ask-evaluate', 'ask-ant', 'ask-general',
       'explain-code', 'explain-ui', 'explain-sys', 'explain-spec', 'explain-plan', 'explain-visual',
+      'explain-art',
       'gen-learn',
       'gen-visual-logo', 'gen-visual-icon', 'gen-visual-hero', 'gen-visual-illustration',
     ];
@@ -128,24 +148,21 @@ describe('intent matrix (§4.1 SSOT-2)', () => {
 
 // ============================================
 // Full grid sweep — every (intent, domain, tier) cell exercised.
-// Required by handoff doc (Phase 1 §15.5):
-//   "5 tier × 2 domain × ~16 intent ≈ 160+ assertion".
+// Phase 2 grid: 4 tiers × 2 domains × ~20 intents ≈ 160+ assertions.
 // ============================================
 
 describe('full grid sweep (intent × domain × tier)', () => {
-  // Artifact-producing intents that opt into at least one tier.
   const ARTIFACT_INTENTS: IntentId[] = [
     'gen-plan', 'rev-plan', 'gen-spec', 'rev-spec',
     'gen-sys-fe', 'gen-sys-be', 'gen-sys-full', 'rev-sys',
     'gen-ui-figma', 'gen-ui-ref', 'gen-ui-desc', 'rev-ui',
+    'gen-art-figma', 'gen-art-ref', 'gen-art-desc', 'rev-art',
     'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
   ];
 
   for (const intent of ARTIFACT_INTENTS) {
     for (const domain of ALL_DOMAINS) {
       for (const tier of TIER_KEYS) {
-        // Expected: tier active iff slot opts in AND matrix permits the
-        // (tier, domain) cell. Runtime suppression is exercised separately.
         const slot = getConfigSlots(intent)?.basis;
         const slotOptsIn = !!slot?.tiers?.includes(tier);
         const matrixPermits = TIER_DOMAIN_MATRIX[tier].includes(domain);
@@ -158,11 +175,10 @@ describe('full grid sweep (intent × domain × tier)', () => {
     }
   }
 
-  // Non-artifact intents (ask / explain / learn / visual) — every cell
-  // must be inactive because the slots have no `basis.tiers`.
   const NON_ARTIFACT_INTENTS: IntentId[] = [
     'ask-evaluate', 'ask-ant', 'ask-general',
     'explain-code', 'explain-ui', 'explain-sys', 'explain-spec', 'explain-plan', 'explain-visual',
+    'explain-art',
     'gen-learn',
     'gen-visual-logo', 'gen-visual-icon', 'gen-visual-hero', 'gen-visual-illustration',
   ];

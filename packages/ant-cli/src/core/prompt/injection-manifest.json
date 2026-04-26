@@ -9,7 +9,8 @@
     "role-guide": [],
     "refactor-guidance": ["resolvedAction"],
     "explain-guidance": ["resolvedAction"],
-    "visual-tier-detection": ["availableVisualLanguagesWithModes", "availableSurfaceSystems", "availableSpatialSystems", "resolvedAction"]
+    "visual-tier-detection": ["availableVisualLanguagesWithModes", "availableSurfaceSystems", "availableSpatialSystems", "resolvedAction"],
+    "game-art-tier-detection": ["gameArtConceptCandidates", "resolvedAction"]
   },
   "jobs/code/base/injections": {
     "text-format-compact": [],
@@ -57,6 +58,15 @@
     "ui-spec-guide-by-ref": [],
     "ui-spec-guide-by-figma": [],
     "ui-continuation": ["targetDoc"],
-    "ui-continuation-by-figma": ["targetDoc"]
+    "ui-continuation-by-figma": ["targetDoc"],
+    "art-tokens-guide-by-ref": [],
+    "art-tokens-guide-by-figma": [],
+    "art-tokens-guide-by-desc": [],
+    "art-assets-guide-by-ref": ["forceAppend"],
+    "art-assets-guide-by-figma": ["forceAppend"],
+    "art-assets-guide-by-desc": ["forceAppend"],
+    "art-spec-guide-by-ref": ["forceAppend"],
+    "art-spec-guide-by-figma": ["forceAppend"],
+    "art-spec-guide-by-desc": ["forceAppend"]
   }
 }

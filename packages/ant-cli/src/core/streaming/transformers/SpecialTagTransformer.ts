@@ -134,7 +134,7 @@ export class SpecialTagTransformer {
       transform: () => ({ consumed: true })
     });
     this.register({
-      pattern: /<artTier>\s*[\s\S]*?\s*<\/artTier>/i,
+      pattern: /<gameArtTier>\s*[\s\S]*?\s*<\/gameArtTier>/i,
       transform: () => ({ consumed: true })
     });
     this.register({
@@ -371,18 +371,13 @@ export class SpecialTagTransformer {
 
       const mode = parsed.mode || parsed.detectedMode || parsed.jobMode || parsed.designMode || 'generate';
 
-      // Phase 1 — basis carries 4 tier fields. `emitDetectOutcome` always
-      // emits flat shape (`parsed.techTier`, `parsed.artTier`, etc.); the
-      // nested `parsed.basis` shape is no longer produced anywhere, so we
-      // only support the flat unpack path. Future emitters MUST keep the
-      // flat contract — adding back nested shape requires a deliberate
-      // SSOT update, not silent compatibility.
-      const flatBasisHasAny = !!(parsed.techTier || parsed.visualTier || parsed.artTier || parsed.gameContentTier);
+      const flatGameArtTier = parsed.gameArtTier;
+      const flatBasisHasAny = !!(parsed.techTier || parsed.visualTier || flatGameArtTier || parsed.gameContentTier);
       const basis: Basis | undefined = flatBasisHasAny
         ? {
             techTier: parsed.techTier,
             visualTier: parsed.visualTier,
-            artTier: parsed.artTier,
+            gameArtTier: flatGameArtTier,
             gameContentTier: parsed.gameContentTier,
           }
         : undefined;

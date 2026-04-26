@@ -1,7 +1,7 @@
 /**
  * Game Content Tier Registry ↔ Template Sync (Phase 1)
  *
- * Mirrors the artTier / visualTier parity tests for the gameContentTier
+ * Mirrors the gameArtTier / visualTier parity tests for the gameContentTier
  * registry. Phase 1 ships full variant lists for genre × 7 + coreLoop × 5
  * with Phase 1 stub bodies (Phase 2 fills content).
  */

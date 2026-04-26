@@ -1,5 +1,5 @@
 /**
- * DecisionTagRegistry — Single Source of Truth (SSOT-2, Phase 1)
+ * DecisionTagRegistry — Single Source of Truth (SSOT-2)
  *
  * LLM-emitted decision tag lifecycle (7 stages: emit → parse → validate →
  * applyToState → retry → render → preamble) lives in one registry. New
@@ -7,28 +7,20 @@
  * iteration in `parseDecisionTags`, `decisionTagRetryFraming`,
  * `SpecialTagTransformer`) picks them up automatically.
  *
- * Phase 1 registers 3 NEW tags: `domain`, `artTier`, and `gameContentTier`.
- * The 5th-slot `gameEngine` lives inside the existing `<techTier>` JSON
- * (parsed in `responseParser.ts`) — the handoff §9 describes this as the
- * "5번째 슬롯" of `<techTier>`, NOT a separate tag. The existing 4 tags
- * (`executionTier`, `techTier`, `boundary`, `directHints`) remain in their
- * own callsites for now; migration into this registry is a Phase 3 task.
- *
- * Renderable tags are also wired through `SpecialTagTransformer` (the
- * Canonical Tag Rendering SSOT) — registry entries here describe how the
- * decompose / detect node consumes the tag; the transformer describes how
- * the chat surface formats or suppresses it.
+ * Phase 1 registered 3 tags: `domain`, `gameArtTier`, `gameContentTier`. Phase 2
+ * (D12-revised) renames `gameArtTier`; the on-the-wire XML tag also flips so
+ * prompts must emit `<gameArtTier>...</gameArtTier>`.
  */
 
 import type {
   Domain,
-  ArtTier,
+  GameArtTier,
   GameContentTier,
 } from '@ant/shared';
 import {
-  ART_TIER_AXIS_KEYS,
-  ART_CONCEPT_VARIANTS,
-  ART_PERSPECTIVE_VARIANTS,
+  GAME_ART_TIER_AXIS_KEYS,
+  GAME_ART_CONCEPT_VARIANTS,
+  GAME_ART_PERSPECTIVE_VARIANTS,
   GAME_GENRE_VARIANTS,
   GAME_CORE_LOOP_VARIANTS,
 } from '@ant/shared';
@@ -37,7 +29,7 @@ import {
 // Public types
 // ============================================
 
-export type DecisionTagName = 'domain' | 'artTier' | 'gameContentTier';
+export type DecisionTagName = 'domain' | 'gameArtTier' | 'gameContentTier';
 
 export interface DecisionTagViolation {
   tag: DecisionTagName;
@@ -61,7 +53,7 @@ export class DecisionTagViolationError extends Error {
  */
 export type ParsedDecisionTag =
   | { name: 'domain'; value: Domain }
-  | { name: 'artTier'; value: ArtTier }
+  | { name: 'gameArtTier'; value: GameArtTier }
   | { name: 'gameContentTier'; value: GameContentTier };
 
 // ============================================
@@ -97,43 +89,43 @@ const domainTagDef: DecisionTagDef<Domain> = {
 };
 
 /**
- * artTier emission body grammar (Phase 1):
- *   `concept=sfFantasy,perspective=2d`        (Phase 1 — 2 axis only)
- *   `concept=sfFantasy,perspective=2d,entityCatalog=standard,...`  (Phase 3)
+ * gameArtTier emission body grammar (Phase 2 — D12-revised rename):
+ *   `concept=sfFantasy,perspective=2d`                         (Phase 2 — 2 axis only)
+ *   `concept=sfFantasy,perspective=2d,entityCatalog=standard,...`  (Phase 4)
  *
  * Unknown axes / unknown values are dropped silently — the matrix gate +
  * graceful degrade keep the system safe even when LLM emits a future-axis
  * value that isn't in the registry yet.
  */
-const artTierTagDef: DecisionTagDef<ArtTier> = {
-  name: 'artTier',
-  pattern: /<artTier>\s*([\s\S]*?)\s*<\/artTier>/i,
+const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
+  name: 'gameArtTier',
+  pattern: /<gameArtTier>\s*([\s\S]*?)\s*<\/gameArtTier>/i,
   defaultOnRetryExhaustion: { concept: 'modernCasual', perspective: '2d' },
   retryPolicy: 'inline',
   parse: (raw) => {
-    const out: ArtTier = {};
+    const out: GameArtTier = {};
     const body = raw.trim();
     if (!body) return { ok: false, reason: 'missing' };
     for (const part of body.split(',')) {
       const [k, v] = part.split('=').map(s => s.trim());
       if (!k || !v) continue;
-      if (!(ART_TIER_AXIS_KEYS as readonly string[]).includes(k)) continue;
-      // Phase 1 only validates the two filled axes; future-axis values are
-      // accepted blindly (Phase 3 fills the variants).
+      if (!(GAME_ART_TIER_AXIS_KEYS as readonly string[]).includes(k)) continue;
+      // Phase 2 only validates the two filled axes; future-axis values are
+      // accepted blindly (Phase 4 fills the variants).
       switch (k) {
         case 'concept':
-          if ((ART_CONCEPT_VARIANTS as readonly string[]).includes(v)) out.concept = v as ArtTier['concept'];
+          if ((GAME_ART_CONCEPT_VARIANTS as readonly string[]).includes(v)) out.concept = v as GameArtTier['concept'];
           break;
         case 'perspective':
-          if ((ART_PERSPECTIVE_VARIANTS as readonly string[]).includes(v)) out.perspective = v as ArtTier['perspective'];
+          if ((GAME_ART_PERSPECTIVE_VARIANTS as readonly string[]).includes(v)) out.perspective = v as GameArtTier['perspective'];
           break;
-        // Phase 3 axes — accept any string for forward compatibility, the
+        // Phase 4 axes — accept any string for forward compatibility, the
         // type system narrows on read so this is safe.
-        case 'entityCatalog':       out.entityCatalog = v as ArtTier['entityCatalog']; break;
-        case 'motionPattern':       out.motionPattern = v as ArtTier['motionPattern']; break;
-        case 'particleProfile':     out.particleProfile = v as ArtTier['particleProfile']; break;
-        case 'projectilePolicy':    out.projectilePolicy = v as ArtTier['projectilePolicy']; break;
-        case 'audioProfile':        out.audioProfile = v as ArtTier['audioProfile']; break;
+        case 'entityCatalog':       out.entityCatalog = v as GameArtTier['entityCatalog']; break;
+        case 'motionPattern':       out.motionPattern = v as GameArtTier['motionPattern']; break;
+        case 'particleProfile':     out.particleProfile = v as GameArtTier['particleProfile']; break;
+        case 'projectilePolicy':    out.projectilePolicy = v as GameArtTier['projectilePolicy']; break;
+        case 'audioProfile':        out.audioProfile = v as GameArtTier['audioProfile']; break;
       }
     }
     if (Object.keys(out).length === 0) return { ok: false, reason: 'invalid_value', observed: raw };
@@ -166,7 +158,7 @@ const gameContentTierTagDef: DecisionTagDef<GameContentTier> = {
 
 export const DECISION_TAG_REGISTRY: ReadonlyArray<DecisionTagDef<unknown>> = [
   domainTagDef,
-  artTierTagDef,
+  gameArtTierTagDef,
   gameContentTierTagDef,
 ] as const;
 

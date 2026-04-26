@@ -10,7 +10,7 @@
  */
 
 import type { PromptPort } from '../../ports';
-import type { PolicyKey, Basis, BasisSlotConfig, Domain, TierKey, ArtTier } from '@ant/shared';
+import type { PolicyKey, Basis, BasisSlotConfig, Domain, TierKey, GameArtTier } from '@ant/shared';
 import { getPromptPolicies, POLICY_TEMPLATE_MAP } from '@ant/shared';
 import {
   resolveLanguageVariants,
@@ -18,8 +18,8 @@ import {
   FRAMEWORK_NONE,
   VISUAL_TIER_TEMPLATE_PATHS,
   VISUAL_TIER_LAYER_KEYS,
-  ART_TIER_TEMPLATE_PATHS,
-  ART_TIER_AXIS_KEYS,
+  GAME_ART_TIER_TEMPLATE_PATHS,
+  GAME_ART_TIER_AXIS_KEYS,
   GAME_CONTENT_TIER_TEMPLATE_PATHS,
   TIER_KEYS,
   isTierActive,
@@ -55,7 +55,7 @@ export class PromptBuilder implements PromptPort {
 
   /**
    * Render only the basis section (stack + language + framework + visualTier
-   * + artTier + gameContentTier + domain). For nodes that use render() but
+   * + gameArtTier + gameContentTier + domain). For nodes that use render() but
    * still need basis context (e.g., plan / verify / error / test-code hooks).
    *
    * Phase 1 (BC4) — `slot` is REQUIRED. Callers MUST pass
@@ -321,26 +321,30 @@ export class PromptBuilder implements PromptPort {
       `fe=${basis.techTier?.frontend?.language || 'none'}/${basis.techTier?.frontend?.framework || 'none'}, ` +
       `gameEngine=${basis.techTier?.frontend?.gameEngine ?? basis.techTier?.backend?.gameEngine ?? 'none'}, ` +
       `visualTier=${basis.visualTier ? Object.keys(basis.visualTier).join(',') : 'none'}, ` +
-      `artTier=${basis.artTier ? Object.keys(basis.artTier).join(',') : 'none'}, ` +
+      `gameArtTier=${basis.gameArtTier ? Object.keys(basis.gameArtTier).join(',') : 'none'}, ` +
       `gameContentTier=${basis.gameContentTier ? Object.keys(basis.gameContentTier).join(',') : 'none'}, ` +
       `taskTechTiers=${taskTechTiers?.length || 0}`
     );
+
+    // Phase 2 (D23): `domain` is rendered ONCE up-front independent of the
+    // tier loop — it is no longer a TierKey, but the partial-injection gate
+    // still wants the domain identity overlay so jobs/{job}/basis/domain/{d}
+    // is layered on top of the global identity. The matrix decides which
+    // tiers to inject for the current intent / domain.
+    await this.renderDomainTier(sections, basis, job, effectiveDomain, outPaths);
 
     for (const tier of TIER_KEYS) {
       if (!isTierActive(tier as TierKey, slot, effectiveDomain, runtime)) continue;
 
       switch (tier) {
-        case 'domain':
-          await this.renderDomainTier(sections, basis, job, effectiveDomain, outPaths);
-          break;
         case 'techTier':
           await this.renderTechTier(sections, basis, job, taskTechTiers, effectiveDomain, outPaths);
           break;
         case 'visualTier':
           await this.renderVisualTier(sections, basis, job, outPaths);
           break;
-        case 'artTier':
-          await this.renderArtTier(sections, basis, job, outPaths);
+        case 'gameArtTier':
+          await this.renderGameArtTier(sections, basis, job, outPaths);
           break;
         case 'gameContentTier':
           await this.renderGameContentTier(sections, basis, job, outPaths);
@@ -471,26 +475,26 @@ export class PromptBuilder implements PromptPort {
     await this.tryPushBasisTemplate(sections, VISUAL_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
   }
 
-  private async renderArtTier(
+  private async renderGameArtTier(
     sections: string[],
     basis: Basis,
     job: string,
     outPaths?: Set<string>,
   ): Promise<void> {
-    const at = basis.artTier;
-    if (!at) return;
-    const hasAnyAxis = ART_TIER_AXIS_KEYS.some(k => at[k as keyof ArtTier]);
+    const gat = basis.gameArtTier;
+    if (!gat) return;
+    const hasAnyAxis = GAME_ART_TIER_AXIS_KEYS.some(k => gat[k as keyof GameArtTier]);
     if (!hasAnyAxis) return;
-    await this.tryPushBasisTemplate(sections, ART_TIER_TEMPLATE_PATHS.preamble(), outPaths);
-    for (const axis of ART_TIER_AXIS_KEYS) {
-      const value = at[axis as keyof ArtTier];
+    await this.tryPushBasisTemplate(sections, GAME_ART_TIER_TEMPLATE_PATHS.preamble(), outPaths);
+    for (const axis of GAME_ART_TIER_AXIS_KEYS) {
+      const value = gat[axis as keyof GameArtTier];
       if (!value) continue;
-      const pathFn = ART_TIER_TEMPLATE_PATHS[axis as keyof typeof ART_TIER_TEMPLATE_PATHS];
+      const pathFn = GAME_ART_TIER_TEMPLATE_PATHS[axis as keyof typeof GAME_ART_TIER_TEMPLATE_PATHS];
       if (typeof pathFn === 'function') {
         await this.tryPushBasisTemplate(sections, (pathFn as (v: string) => string)(value as string), outPaths);
       }
     }
-    await this.tryPushBasisTemplate(sections, ART_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
+    await this.tryPushBasisTemplate(sections, GAME_ART_TIER_TEMPLATE_PATHS.jobPreamble(job), outPaths);
   }
 
   private async renderGameContentTier(

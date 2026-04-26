@@ -1,0 +1,331 @@
+/**
+ * GameArt Design Decompose
+ *
+ * LLM-driven task decomposition for **game-art design work** —
+ * `game-art-tokens.json` / `game-art-assets.json` / `game-art-spec.json`
+ * under `outputs/design/game-art/` (D24, flat structure).
+ *
+ * Key differences from `decomposeUiDesign`:
+ *   - Surface = game-art (not UI). Output dir is flat (no ant/figma/handoff).
+ *   - Categories instead of chapters (D25). The LLM picks dictionary keys
+ *     (effects / characters / projectiles / ...).
+ *   - Asset entries carry `kind: 'inline' | 'external'` (D20).
+ *   - `gameArtTier.{concept,perspective}` is the active tier (D18 — UI
+ *     tier `visualTier` is not in scope here).
+ */
+
+import { DesignGraphState } from "../../state";
+import { DesignTask } from "../../../../types/task";
+import { TaskQueue } from "../../../../types/task";
+import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
+import { logErrorHeader } from "../../../code/nodes/_common/errorHandler";
+import { updateKanban } from "./kanbanUpdate";
+import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
+import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
+import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { safeLogPrompt } from "../../utils/promptLog";
+import { saveDecomposeCheckpoint } from "../../session/checkpoint";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, GAME_ART_CONCEPT_VARIANTS, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
+import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
+import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
+
+interface DecomposeContext {
+  phaseStart: number;
+  newJobId: string;
+  newJobTiming: any;
+}
+
+/** Pick the decompose template variant based on RAC + figma config. */
+function pickArtDesignVariant(state: DesignGraphState): 'by-ref' | 'by-figma' | 'by-desc' {
+  const intent = state.resolvedAction?.intent;
+  if (intent === 'gen-art-figma') return 'by-figma';
+  if (intent === 'gen-art-desc') return 'by-desc';
+  // Default for `gen-art-ref` and `rev-art` — references-based.
+  return 'by-ref';
+}
+
+/**
+ * Handle game-art design decomposition via LLM.
+ */
+export async function decomposeArtDesign(
+  state: DesignGraphState,
+  ctx: DecomposeContext,
+): Promise<DesignGraphState> {
+  const {
+    buildAllSourceDocs,
+    buildSourceFileIndex,
+    DECOMPOSE_SOURCE_THRESHOLD,
+    READ_SOURCE_DOC_TOOL,
+    decomposeWithToolLoop,
+    handleReadSourceFile,
+  } = await import('../docGen/sourceSelector');
+
+  const pool = new ArtifactPoolView(state.artifacts || []);
+  const sourceRecord = pool.sourcesAsRecord();
+
+  const sourceDocsSize = pool.sourcesSize();
+  const useToolMode = sourceDocsSize > DECOMPOSE_SOURCE_THRESHOLD;
+
+  let directiveContext: string;
+  if (useToolMode) {
+    console.log(`📊 [ArtDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
+    const fileIndex = buildSourceFileIndex(sourceRecord);
+    const parts = [
+      `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to game-art decisions.`,
+      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
+    ].filter(Boolean);
+    directiveContext = parts.join('\n\n---\n\n');
+  } else {
+    console.log(`📊 [ArtDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
+    const allSourceDocs = buildAllSourceDocs(sourceRecord);
+    const parts = [
+      allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
+      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
+    ].filter(Boolean);
+    directiveContext = parts.length > 0 ? parts.join('\n\n---\n\n') : '';
+  }
+
+  const sourceFileNames = pool.sourceFileNames();
+  const variant = pickArtDesignVariant(state);
+  const isFigmaMode = variant === 'by-figma'
+    && isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
+  if (isFigmaMode && !sourceFileNames.includes('figma.json')) {
+    sourceFileNames.push('figma.json');
+  }
+
+  // Render prompt
+  const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
+  const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
+  const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/art-design-${variant}/base`;
+
+  // Asset count is sourced from `inputs/assets/game/` (D19-revised) when
+  // workspace.domain is `game`. The pool view's `uiAssetsList` is reused
+  // here because the asset-handler routing (D22 auto-effect) already
+  // points it at the game pool. If a future reorg splits the lists,
+  // this is the single dispatch point to update.
+  const assetCount = state.uiAssetsList
+    ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
+    : 0;
+
+  const artDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
+    directiveContext,
+    referenceCount: state.uiReferences?.length || 0,
+    assetCount,
+    detectedMode: state.resolvedAction?.mode || 'generate',
+    sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
+    nodeSummary: isFigmaMode && state.figmaExplorationResult?.nodeSummary
+      ? state.figmaExplorationResult.nodeSummary
+          .map(n => `${'  '.repeat(n.depth)}${n.type} "${n.name}" nodeId=${n.nodeId} (${n.childCount} children)`)
+          .join('\n')
+      : undefined,
+    variationMatrixSummary: isFigmaMode && state.figmaExplorationResult?.variationMatrix?.length
+      ? state.figmaExplorationResult.variationMatrix
+          .map(v => {
+            const widths = [...new Set(v.frames.map(f => Math.round(f.width)))].sort((a, b) => b - a);
+            return `"${v.section}" (${v.pageNodeId}): [${widths.map(w => w + 'px').join(', ')}]`;
+          })
+          .join('\n')
+      : undefined,
+    gameArtConceptCandidates: GAME_ART_CONCEPT_VARIANTS.map((v: string) => `\`${v}\``).join(', '),
+    resolvedAction: state.resolvedAction,
+  });
+
+  await safeLogPrompt(
+    state.context.featurePath,
+    state.jobId || state._httpJobId || 'unknown',
+    'decompose-artDesign',
+    artDecomposePrompt.length,
+    {
+      templatePath: decomposeTemplatePath,
+      usedTemplates: [`jobs/design/nodes/decompose/variants/art-design-${variant}/rules`],
+    },
+  );
+
+  try {
+    await showChatPlaceholder();
+    const llmToUse = await resolveLLMClient(state);
+    if (!llmToUse) throw new Error('LLM client not available');
+
+    let textResponse: string;
+
+    if (useToolMode && pool.hasSources()) {
+      const { response, usage } = await decomposeWithToolLoop(
+        llmToUse,
+        [{ role: 'user', content: artDecomposePrompt }],
+        [READ_SOURCE_DOC_TOOL],
+        (name, args) => {
+          if (name === 'read_source_doc') {
+            return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
+          }
+          return `Error: Unknown tool "${name}"`;
+        },
+        {
+          temperature: LLM_TEMPERATURE.DECOMPOSE,
+          maxTokens: LLM_MAX_TOKENS.DEFAULT,
+          enableThinking: true,
+          thinkingBudget: 10000,
+          state: state as any,
+        },
+      );
+      textResponse = response;
+      applyEstimatingUsage(state, 'decompose', usage, { subNode: 'art', promptChars: artDecomposePrompt.length });
+    } else {
+      const result = await llmToUse.invokeWithUsage?.(
+        [{ role: 'user', content: artDecomposePrompt }],
+        { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT },
+      );
+      textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: artDecomposePrompt }]);
+      applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'art', promptChars: artDecomposePrompt.length });
+    }
+
+    // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
+    // BEFORE the JSON output. Missing tag degrades to Tier 0 Reflex.
+    const executionTier = coerceExecutionTier(
+      parseExecutionTierTag(textResponse),
+      'ArtDecompose',
+    );
+    console.log(`🧭 [ArtDecompose] executionTier=${executionTier}`);
+
+    // Parse and validate
+    const parsedResponse = parseLLMJsonResponse(textResponse);
+    const response: {
+      strategy?: string;
+      targetFiles: string[];
+      tasks: Array<{
+        id: string;
+        name: string;
+        targetFile: string;
+        description: string;
+        priority: number;
+        parallelGroup?: string;
+      }>;
+    } = parsedResponse;
+
+    if (!response.targetFiles || !response.tasks) {
+      throw new Error('Invalid game-art task breakdown format from LLM');
+    }
+
+    // Build task queue
+    const taskQueue = new TaskQueue<DesignTask>();
+    response.tasks.forEach((task) => {
+      // Each game-art category task owns its own parallelGroup (one
+      // category = one top-level dictionary key, no merge conflict).
+      // Tokens is a single task — also unique group.
+      const parallelGroup = typeof task.parallelGroup === 'string' ? task.parallelGroup : task.id;
+
+      const sf: string[] = Array.isArray((task as any).sourceFiles) ? [...(task as any).sourceFiles] : [];
+      if (isFigmaMode && !sf.includes('figma.json')) sf.push('figma.json');
+
+      // RAC pool: sources + game-art outputs (+ optional UI ant docs for
+      // cross-surface context). Figma mode also includes the UI figma
+      // workfile reference because game-art figma is Phase 5+ — D24's
+      // flat game-art structure has no figma sub-source today.
+      const includePrefixes = isFigmaMode
+        ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
+        : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART, ARTIFACT_PREFIX.UI_ANT];
+      const contextPrefixes = isFigmaMode
+        ? [ARTIFACT_PREFIX.GAME_ART, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
+        : [ARTIFACT_PREFIX.GAME_ART, ARTIFACT_PREFIX.UI_ANT];
+
+      taskQueue.push({
+        id: task.id,
+        name: task.name,
+        type: 'doc',
+        priority: task.priority,
+        description: task.description,
+        sourceFiles: sf.length > 0 ? sf : undefined,
+        include: includePrefixes,
+        artifactPolicy: {
+          refs: [ARTIFACT_PREFIX.SOURCES],
+          context: contextPrefixes,
+        },
+        completed: false,
+        targetFile: task.targetFile,
+        parallelGroup,
+      } as DesignTask);
+    });
+
+    // Pre-compute forceAppend and isLastTaskForDocument per targetFile group
+    const tasksByFile = new Map<string, DesignTask[]>();
+    for (const task of taskQueue.getAll()) {
+      const file = task.targetFile || '';
+      if (!tasksByFile.has(file)) tasksByFile.set(file, []);
+      tasksByFile.get(file)!.push(task);
+    }
+    for (const tasks of tasksByFile.values()) {
+      tasks.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+      for (let i = 0; i < tasks.length; i++) {
+        if (i > 0) tasks[i].forceAppend = true;
+        if (i === tasks.length - 1) tasks[i].isLastTaskForDocument = true;
+      }
+    }
+
+    if (sourceFileNames.length > 0) {
+      for (const task of taskQueue.getAll()) {
+        if (!task.sourceFiles || task.sourceFiles.length === 0) {
+          console.warn(`⚠️ [Art Decompose] task "${task.id}" missing sourceFiles`);
+        }
+      }
+    }
+
+    console.log(`✅ Art decompose: ${taskQueue.size()} tasks (${response.strategy || 'category-based'} strategy)`);
+
+    // Finalize estimating phase
+    const phaseBreakdown = { ...(state._phaseTimings || {}), decompose: Date.now() - ctx.phaseStart };
+    const finalJobTiming = JobTimingManager.finalizeEstimatingPhase(ctx.newJobTiming, ctx.newJobTiming.startedAt, phaseBreakdown);
+    if (state.deps?.kanbanUpdate?.setJobTiming) {
+      state.deps.kanbanUpdate.setJobTiming(finalJobTiming);
+    }
+
+    // Game-art design is always frontend (rendered through the React/canvas
+    // host that owns the engine sub-host).
+    const artTechTier = buildTechTier(state.profile, 'frontend');
+    console.log(`✅ TechTier: stack=frontend, language=${artTechTier.language}, framework=${artTechTier.framework || 'none'}`);
+
+    const basisTechTierConfig: TechTierConfig = {
+      stack: 'frontend',
+      frontend: { ...artTechTier, stack: 'frontend' as const },
+    };
+    state.resolvedAction = {
+      ...state.resolvedAction!,
+      basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
+    };
+
+    state.jobId = ctx.newJobId;
+    state.jobTiming = finalJobTiming;
+    state.executionTier = executionTier;
+    await saveDecomposeCheckpoint(state, {
+      taskQueue: taskQueue.getAll(),
+      completedTasks: [],
+      completedTasksDetails: [],
+    });
+
+    updateKanban(state, null, taskQueue.getAll());
+
+    await recordUserTurnMeta({
+      session: state.deps?.session,
+      turnId: state.turnId,
+      jobId: ctx.newJobId,
+      jobType: 'design',
+      executionTier,
+      nodeLabel: 'ArtDecompose',
+    });
+
+    return {
+      ...state,
+      taskQueue,
+      completedTasks: [],
+      completedTasksDetails: [],
+      _httpJobId: state._httpJobId,
+      jobId: ctx.newJobId,
+      jobTiming: finalJobTiming,
+      executionTier,
+      boundary: BOUNDARY.HEAVYWEIGHT,
+    };
+  } catch (error: any) {
+    logErrorHeader('decompose');
+    console.error(error);
+    throw error;
+  }
+}

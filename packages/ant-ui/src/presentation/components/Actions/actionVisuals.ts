@@ -9,6 +9,7 @@ import {
   MessageCircleQuestion, ClipboardCheck, Bot, MessageCircle,
   BookOpenText,
   Gem, Shapes, PanelTop, PenTool,
+  Brush,
 } from 'lucide-react';
 
 // ============================================
@@ -29,6 +30,7 @@ export const ACTION_VISUALS: Record<IntentGroup, VisualDef> = {
   plan:              { icon: FileText,  bg: 'bg-blue-100 dark:bg-blue-900/50',    text: 'text-blue-600 dark:text-blue-400' },
   'design-system':   { icon: Server,    bg: 'bg-purple-100 dark:bg-purple-900/50', text: 'text-purple-600 dark:text-purple-400' },
   'design-ui':       { icon: Palette,   bg: 'bg-pink-100 dark:bg-pink-900/50',    text: 'text-pink-600 dark:text-pink-400' },
+  'design-art':      { icon: Brush,     bg: 'bg-amber-100 dark:bg-amber-900/50',  text: 'text-amber-600 dark:text-amber-400' },
   'design-spec':     { icon: LayoutList, bg: 'bg-rose-100 dark:bg-rose-900/50',    text: 'text-rose-600 dark:text-rose-400' },
   code:              { icon: Code2,     bg: 'bg-emerald-100 dark:bg-emerald-900/50', text: 'text-emerald-600 dark:text-emerald-400' },
   visual:            { icon: ImageIcon, bg: 'bg-violet-100 dark:bg-violet-900/50', text: 'text-violet-600 dark:text-violet-400' },
@@ -57,6 +59,12 @@ const INTENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   'gen-ui-desc':        MessageSquareText,
   'rev-ui':             Paintbrush,
   'explain-ui':         BookOpenText,
+
+  'gen-art-figma':      Figma,
+  'gen-art-ref':        Camera,
+  'gen-art-desc':       MessageSquareText,
+  'rev-art':            Brush,
+  'explain-art':        BookOpenText,
 
   'gen-spec':           ClipboardList,
   'rev-spec':           ClipboardPenLine,

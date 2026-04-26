@@ -37,7 +37,7 @@ export * from './action-config-matrix';
 export * from './file-descriptions';
 export * from './tech-tier-registry';
 export * from './visual-tier-registry';
-export * from './art-tier-registry';
+export * from './game-art-tier-registry';
 export * from './game-content-tier-registry';
 export * from './tier-matrix';
 export * from './rac';

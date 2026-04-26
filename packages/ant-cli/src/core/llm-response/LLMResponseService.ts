@@ -218,27 +218,6 @@ export class LLMResponseService {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // Compat — message lifecycle (legacy callers)
-  //
-  // The chat-SSOT §5 rewrite removes the `ChatMessage` scratchpad. These
-  // methods are retained so existing callers compile unchanged; they are
-  // best-effort no-ops or buffer flushes. Phase 9 retires the surface.
-  // ═══════════════════════════════════════════════════════════════════
-
-  /** @deprecated chat-SSOT §5: no per-message state. Always returns false. */
-  async hasActiveMessage(): Promise<boolean> {
-    return false;
-  }
-
-  /**
-   * @deprecated chat-SSOT §5: no per-message state. Returns null so legacy
-   * callers that gate on a non-null id keep working as a no-op.
-   */
-  async startMessage(): Promise<string | null> {
-    return null;
-  }
-
   /**
    * Finalize the in-flight turn buffer: drain text/thinking into chat.jsonl
    * and clear the per-worker streaming buffer. `cancelled=true` skips the
