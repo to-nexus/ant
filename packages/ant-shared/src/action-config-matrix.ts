@@ -68,7 +68,10 @@ export interface BasisSlotConfig {
   /**
    * Active tier keys for this intent. Order-insensitive; the matrix
    * iterates in the canonical `TIER_KEYS` order. Phase 1: no entry ⇔
-   * this slot does not opt into any basis tier.
+   * this slot does not opt into any basis tier. An empty array means
+   * the intent declares basis presence but exposes zero configurable
+   * tiers (rev-* intents — the document under review already encodes
+   * every basis decision).
    */
   tiers?: ReadonlyArray<import('./tier-matrix').TierKey>;
   /**
@@ -81,6 +84,16 @@ export interface BasisSlotConfig {
     stack?: 'frontend' | 'backend' | 'fullstack';
     gameEngine?: import('./rac').GameEngine;
   }>>;
+  /**
+   * Stack lock — when set, `techTier.stack` is force-pinned to this value
+   * for the intent regardless of domain seed or user input. The wizard
+   * hides the Stack step and the BE detect helper
+   * (`applyDomainDefaultsToBasis`) overrides any inherited / inferred
+   * stack so the user cannot change it. Used by `gen-sys-fe`,
+   * `gen-sys-be`, `gen-sys-full` whose intent identity *is* the stack
+   * decision.
+   */
+  lockedStack?: import('./rac').Stack;
 }
 
 export interface ConfigSlots {
@@ -289,7 +302,6 @@ const L = {
   uiDesign: { en: 'UI Design', ko: 'UI 설계' },
   specDocs: { en: 'Spec Documents', ko: '스펙 문서' },
   figmaConfig: { en: 'Figma Config', ko: 'Figma 설정' },
-  references: { en: 'Reference Images', ko: '레퍼런스 이미지' },
   assets: { en: 'Assets', ko: '에셋' },
   feSystem: { en: 'fe-system-*.md', ko: 'fe-system-*.md' },
   beSystem: { en: 'be-system-*.md', ko: 'be-system-*.md' },
@@ -315,7 +327,6 @@ const HL = {
   specDocs: { en: 'Feature Spec Documents', ko: '기능 스펙 문서' },
   designAll: { en: 'Design Documents', ko: '설계 문서' },
   figmaConfig: { en: 'Figma Configuration', ko: 'Figma 설정 파일' },
-  references: { en: 'Reference Images', ko: '레퍼런스 이미지' },
   assets: { en: 'Asset Files', ko: '에셋 파일' },
   visual: { en: 'Generated Images', ko: '생성 이미지' },
 } as const;
@@ -327,10 +338,10 @@ const HL = {
 const SYS_DIR = 'outputs/design/system';
 /**
  * Canonical ant-ui output directory.
- * UI design jobs (gen-ui-figma / gen-ui-ref / gen-ui-desc) emit their tokens
- * /assets/spec JSON bundle here — this is the `UiSource.ant` slot. Figma and
- * handoff UI sources live under `outputs/design/ui/{figma,handoff}/` and are
- * selected via `type: 'ui-source'` slots instead.
+ * UI design jobs (gen-ui-figma / gen-ui-desc) emit their tokens/assets/spec
+ * JSON bundle here — this is the `UiSource.ant` slot. Figma and handoff UI
+ * sources live under `outputs/design/ui/{figma,handoff}/` and are selected
+ * via `type: 'ui-source'` slots instead.
  */
 const UI_DIR = 'outputs/design/ui/ant';
 /**
@@ -342,7 +353,6 @@ const UI_DIR = 'outputs/design/ui/ant';
 const GAME_ART_DIR = 'outputs/design/game-art';
 const SPEC_DIR = 'outputs/design/spec';
 const SOURCES_DIR = 'inputs/sources';
-const REFS_DIR = 'inputs/references';
 /**
  * Parent assets directory (Phase 2 — D19-revised). Workspace.domain decides
  * the active sub-pool (`inputs/assets/service/` or `inputs/assets/game/`) at
@@ -406,10 +416,17 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
-    basis: { tiers: PLAN_TIERS },
+    // rev-* intents derive every basis decision from the document under
+    // review — exposing tier pickers would invite the user to overwrite
+    // settings already encoded in the artifact.
+    basis: { tiers: [] },
   },
 
   // ── System Design: Gen ─────────────────────
+  // Stack identity is part of the intent (`-fe` / `-be` / `-full`) — the
+  // wizard hides the Stack step via `lockedStack`, and BE detect's
+  // `applyDomainDefaultsToBasis` force-overrides any inherited stack so
+  // mention-path / cross-group leftovers cannot override it.
   'gen-sys-fe': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
@@ -417,13 +434,14 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     basis: {
       tiers: SYS_TIERS,
       defaults: { service: SERVICE_FE, game: GAME_FE_PHASER },
+      lockedStack: 'frontend',
     },
   },
   'gen-sys-be': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { humanLabel: HL.systemDesign })],
     target: { kind: 'generate', dir: SYS_DIR, outputs: BE_OUTPUTS },
-    basis: { tiers: SYS_TIERS, defaults: { service: SERVICE_BE } },
+    basis: { tiers: SYS_TIERS, defaults: { service: SERVICE_BE }, lockedStack: 'backend' },
   },
   'gen-sys-full': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
@@ -432,6 +450,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     basis: {
       tiers: SYS_TIERS,
       defaults: { service: SERVICE_FULL, game: GAME_FE_PHASER },
+      lockedStack: 'fullstack',
     },
   },
 
@@ -442,19 +461,13 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
-    basis: { tiers: SYS_TIERS },
+    basis: { tiers: [] },
   },
 
   // ── UI Design: Gen ─────────────────────────
   'gen-ui-figma': {
     refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
-    target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
-    basis: { tiers: UI_TIERS },
-  },
-  'gen-ui-ref': {
-    refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
-    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
     basis: { tiers: UI_TIERS },
   },
@@ -473,7 +486,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
-    basis: { tiers: UI_TIERS },
+    basis: { tiers: [] },
   },
 
   // ── Game Art Design (Phase 2 — D17. game domain only; ActionsPanel hides
@@ -481,12 +494,6 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   // gate TIER_DOMAIN_MATRIX.gameArtTier === ['game']) ────────────────
   'gen-art-figma': {
     refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
-    context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
-    target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
-    basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
-  },
-  'gen-art-ref': {
-    refs: [refDir(REFS_DIR, L.references, { humanLabel: HL.references })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
     basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
@@ -504,7 +511,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
-    basis: { tiers: GAME_ART_TIERS },
+    basis: { tiers: [] },
   },
   'explain-art': {
     refs: [refDir(GAME_ART_DIR, L.gameArtDesign, { humanLabel: HL.gameArtDesign })],
@@ -532,7 +539,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     target: { kind: 'revise' },
     buildDisabled: true,
     refsSingleSelect: true,
-    basis: { tiers: PLAN_TIERS },
+    basis: { tiers: [] },
   },
 
   // ── Code: Gen (3 pipeline-specific intents) ──
@@ -562,7 +569,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [codebaseRef(), refDir(SPEC_DIR, L.specDocs, { required: false, createIntent: 'gen-spec', humanLabel: HL.specDocs })],
     context: [ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }), uiSourceCtx({ createIntent: 'gen-ui-desc' })],
     target: { kind: 'codebase' },
-    basis: { tiers: CODE_TIERS },
+    basis: { tiers: [] },
   },
 
   // ── Visual ────────────────────────────────

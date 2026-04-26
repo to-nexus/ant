@@ -1,8 +1,122 @@
 import { StateCreator } from 'zustand';
 import { UIState } from '../types';
 import { STORAGE_KEYS, saveToStorage } from '../storage';
-import { type ActionMetadata, deriveFromIntent, getConfigSlots } from '@ant/shared';
+import {
+  type ActionMetadata,
+  ACTION_DEFINITIONS,
+  deriveFromIntent,
+  getConfigSlots,
+  isActionVisibleForDomain,
+  type IntentGroup,
+  type Basis,
+  type TechTierConfig,
+} from '@ant/shared';
 import i18n from '@/i18n';
+
+// ─────────────────────────────────────────────────────────────────────────
+// IntentGroup-scoped techTier cache helpers
+//
+// The user's `techTier` selection (stack / language / framework / gameEngine)
+// is per-IntentGroup — code-job tech choices must NOT leak into design-job
+// intents and vice versa. `basis.techTier` mirrors the active group's entry
+// from `techTierByGroup`; whenever `selectedActionId` transitions, we swap
+// the live mirror to match the new group. Other tiers (visualTier /
+// gameArtTier / gameContentTier) stay on `basis` as sticky, group-agnostic
+// state.
+// ─────────────────────────────────────────────────────────────────────────
+
+type GroupCache = Partial<Record<IntentGroup, TechTierConfig>>;
+
+function basisHasOtherTiers(basis: Basis | undefined): boolean {
+  if (!basis) return false;
+  return !!(basis.visualTier || basis.gameArtTier || basis.gameContentTier);
+}
+
+/**
+ * Force-apply `BasisSlotConfig.lockedStack` onto `basis.techTier.stack`
+ * when the new intent declares a lock. Used on intent changes within the
+ * same IntentGroup (e.g. user toggles between gen-sys-fe / gen-sys-be /
+ * gen-sys-full via the IntentTabNav) so the live mirror always matches
+ * the lock without waiting for the wizard to mount and normalize.
+ *
+ * Stack change cascades into clearing language / framework on the prior
+ * shape — a fullstack `feLanguage` makes no sense once we lock to
+ * single-side, and a single-stack `language` carries the wrong slot key
+ * for fullstack. We keep `gameEngine` only when the new stack still
+ * allows it (frontend / fullstack).
+ */
+function applyLockedStackToBasis(
+  basis: Basis | undefined,
+  intentId: string | undefined,
+): Basis | undefined {
+  if (!intentId) return basis;
+  const slot = getConfigSlots(intentId as any);
+  const lockedStack = slot?.basis?.lockedStack;
+  if (!lockedStack) return basis;
+
+  const tt = basis?.techTier;
+  if (tt?.stack === lockedStack) return basis;
+
+  const carriedGameEngine =
+    lockedStack !== 'backend'
+      ? (tt?.frontend?.gameEngine ?? tt?.backend?.gameEngine)
+      : undefined;
+
+  const cleanedTechTier: TechTierConfig = { stack: lockedStack };
+  if (carriedGameEngine) {
+    cleanedTechTier.frontend = { stack: 'frontend', gameEngine: carriedGameEngine };
+  }
+
+  return basis ? { ...basis, techTier: cleanedTechTier } : { techTier: cleanedTechTier };
+}
+
+/**
+ * Save outgoing group's techTier into the cache and restore the incoming
+ * group's value into `basis.techTier`. When the group is unchanged, this
+ * still mirrors any in-place edit on `basis.techTier` into the cache so
+ * the SSOT (live mirror = cache entry) holds across every update path.
+ */
+function applyGroupSwap(
+  basis: Basis | undefined,
+  cache: GroupCache,
+  prevGroup: IntentGroup | null,
+  nextGroup: IntentGroup | null,
+): { basis: Basis | undefined; cache: GroupCache } {
+  const nextCache: GroupCache = { ...cache };
+
+  if (prevGroup) {
+    const liveTechTier = basis?.techTier;
+    if (liveTechTier) {
+      nextCache[prevGroup] = liveTechTier;
+    } else {
+      delete nextCache[prevGroup];
+    }
+  }
+
+  if (prevGroup === nextGroup) {
+    return { basis, cache: nextCache };
+  }
+
+  const restored = nextGroup ? nextCache[nextGroup] : undefined;
+  if (restored) {
+    return {
+      basis: { ...(basis || {}), techTier: restored },
+      cache: nextCache,
+    };
+  }
+
+  if (!basis) return { basis: undefined, cache: nextCache };
+
+  if (basis.techTier === undefined) {
+    return { basis, cache: nextCache };
+  }
+
+  const stripped: Basis = { ...basis, techTier: undefined };
+  return {
+    basis: basisHasOtherTiers(stripped) ? stripped : undefined,
+    cache: nextCache,
+  };
+}
 
 export interface UIActions {
   toggleTheme: () => void;
@@ -117,7 +231,11 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   basisEditInitialTier: undefined,
   selectedActionId: null,
   selectedIntentId: null,
-  actionMetadata: {} as ActionMetadata,
+  // Phase 2 (D22) — workspace project domain defaults to 'service' so the
+  // ActionsPanel renders the matrix-correct card set on first paint and
+  // the BE detect pipeline gets a deterministic explicit override (10.2).
+  // The chip is mutated only via the top-level DomainToggle on `pick-action`.
+  actionMetadata: { domain: 'service' } as ActionMetadata,
   highlightedArtifactDirs: [] as string[],
   spotlightTarget: null as { type: 'file' | 'dir'; path: string } | null,
   pendingClarifyAnswers: {},
@@ -308,6 +426,15 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         step = 'pick-intent';
       }
 
+      const prevGroup = (s.selectedActionId ?? null) as IntentGroup | null;
+      const nextGroup = (actionId ?? null) as IntentGroup | null;
+      const { basis, cache } = applyGroupSwap(
+        s.actionMetadata.basis as Basis | undefined,
+        (s.actionMetadata.techTierByGroup ?? {}) as GroupCache,
+        prevGroup,
+        nextGroup,
+      );
+
       return {
         mainPanelActiveTab: 'actions',
         mainPanelOpenTabs: { ...s.mainPanelOpenTabs, actions: true },
@@ -316,7 +443,12 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         basisEditInitialTier: undefined,
         selectedActionId: actionId || null,
         selectedIntentId,
-        actionMetadata: { basis: s.actionMetadata.basis },
+        // D22: preserve sticky workspace-level domain across action navigation.
+        actionMetadata: {
+          basis,
+          domain: s.actionMetadata.domain,
+          techTierByGroup: cache,
+        },
       };
     });
   },
@@ -330,25 +462,65 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   },
 
   selectAction: (actionId: string) => {
-    set((s: any) => ({
-      selectedActionId: actionId,
-      selectedIntentId: null,
-      actionMetadata: { basis: s.actionMetadata.basis },
-    }));
+    set((s: any) => {
+      const prevGroup = (s.selectedActionId ?? null) as IntentGroup | null;
+      const nextGroup = actionId as IntentGroup;
+      const { basis, cache } = applyGroupSwap(
+        s.actionMetadata.basis as Basis | undefined,
+        (s.actionMetadata.techTierByGroup ?? {}) as GroupCache,
+        prevGroup,
+        nextGroup,
+      );
+      return {
+        selectedActionId: actionId,
+        selectedIntentId: null,
+        // D22: preserve sticky workspace-level domain. techTier is scoped
+        // per IntentGroup — `applyGroupSwap` rotates the live mirror.
+        actionMetadata: {
+          basis,
+          domain: s.actionMetadata.domain,
+          techTierByGroup: cache,
+        },
+      };
+    });
   },
 
   selectIntent: (intentId: string) => {
     const derived = deriveFromIntent(intentId as Parameters<typeof deriveFromIntent>[0]);
-    set((s: any) => ({
-      selectedIntentId: intentId,
-      actionMetadata: {
-        intent: intentId,
-        basis: s.actionMetadata.basis,
-      },
-      selectedAgent: derived.agent,
-      selectedJobType: derived.jobType as any,
-      pendingChatInput: { message: '', source: 'intent-change' },
-    }));
+    set((s: any) => {
+      const normalizedBasis = applyLockedStackToBasis(
+        s.actionMetadata.basis as Basis | undefined,
+        intentId,
+      );
+
+      // Mirror the (possibly normalized) live techTier into the per-group
+      // cache so a later group switch saves the locked value, not the
+      // pre-lock stack the user came in with.
+      const group = (s.selectedActionId ?? null) as IntentGroup | null;
+      let nextCache = (s.actionMetadata.techTierByGroup ?? {}) as GroupCache;
+      if (group) {
+        nextCache = { ...nextCache };
+        if (normalizedBasis?.techTier) {
+          nextCache[group] = normalizedBasis.techTier;
+        } else {
+          delete nextCache[group];
+        }
+      }
+
+      return {
+        selectedIntentId: intentId,
+        actionMetadata: {
+          intent: intentId,
+          basis: normalizedBasis,
+          // D22: preserve sticky workspace-level domain.
+          domain: s.actionMetadata.domain,
+          techTierByGroup: nextCache,
+        },
+        selectedAgent: derived.agent,
+        selectedJobType: derived.jobType as any,
+        pendingChatInput: { message: '', source: 'intent-change' },
+      };
+    });
   },
 
   updateActionMetadata: (patch: Partial<ActionMetadata>) => {
@@ -365,6 +537,9 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
           const derived = deriveFromIntent(patch.intent);
           updates.selectedAgent = derived.agent;
           updates.selectedJobType = derived.jobType;
+          // Re-apply intent-level lockedStack so an IntentTabNav swap from
+          // gen-sys-be → gen-sys-fe forces stack='frontend' immediately.
+          next.basis = applyLockedStackToBasis(next.basis as Basis | undefined, patch.intent);
         }
       }
 
@@ -375,6 +550,96 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         }
       }
 
+      // Phase 2 (D22) — domain transition policy. Centralized here so
+      // every entry point (DomainToggle, `@domain:` mention, future
+      // SSE broadcast) shares the same cleanup contract instead of
+      // each call site re-implementing it.
+      if (patch.domain !== undefined && patch.domain !== s.actionMetadata.domain) {
+        // 1) game → service: drop game-only basis tiers and the gameEngine
+        //    5th slot. visualTier survives — it is matrix-permitted on both
+        //    domains and the user's previous selection is still meaningful.
+        if (patch.domain !== 'game' && next.basis) {
+          const cleaned = { ...next.basis };
+          cleaned.gameArtTier = undefined;
+          cleaned.gameContentTier = undefined;
+          if (cleaned.techTier?.frontend) {
+            cleaned.techTier = {
+              ...cleaned.techTier,
+              frontend: { ...cleaned.techTier.frontend, gameEngine: undefined },
+            };
+          }
+          if (cleaned.techTier?.backend) {
+            cleaned.techTier = {
+              ...cleaned.techTier,
+              backend: { ...cleaned.techTier.backend, gameEngine: undefined },
+            };
+          }
+          const stillHasAny =
+            cleaned.techTier || cleaned.visualTier || cleaned.gameArtTier || cleaned.gameContentTier;
+          next.basis = stillHasAny ? cleaned : undefined;
+        }
+
+        // 1b) Same gameEngine cleanup applies to the per-group cache so
+        //     a stale `phaser` doesn't resurface when the user revisits
+        //     a group whose live mirror is no longer active.
+        if (patch.domain !== 'game' && next.techTierByGroup) {
+          const scrubbed: GroupCache = {};
+          for (const key of Object.keys(next.techTierByGroup) as IntentGroup[]) {
+            const ttc = next.techTierByGroup[key];
+            if (!ttc) continue;
+            let cleaned = ttc;
+            if (cleaned.frontend?.gameEngine) {
+              cleaned = { ...cleaned, frontend: { ...cleaned.frontend, gameEngine: undefined } };
+            }
+            if (cleaned.backend?.gameEngine) {
+              cleaned = { ...cleaned, backend: { ...cleaned.backend, gameEngine: undefined } };
+            }
+            scrubbed[key] = cleaned;
+          }
+          next.techTierByGroup = scrubbed;
+        }
+
+        // 2) If the currently-selected action card violates the new
+        //    domain gate (e.g. `design-art` on service), unwind back
+        //    to `pick-action` so the wizard never renders a `selectedId`
+        //    whose tab was just hidden by the gate (the original
+        //    "intent screen blank" regression).
+        const selId = s.selectedActionId as IntentGroup | null;
+        if (selId) {
+          const def = ACTION_DEFINITIONS.find(d => d.id === selId);
+          if (def && !isActionVisibleForDomain(def, patch.domain)) {
+            updates.selectedActionId = null;
+            updates.selectedIntentId = null;
+            updates.actionsStep = 'pick-action';
+            updates.basisEditInitialTier = undefined;
+            // Drop the now-orphaned per-intent fields too.
+            next.intent = undefined;
+            next.refs = undefined;
+            next.context = undefined;
+            next.target = undefined;
+          }
+        }
+      }
+
+      // techTier cache mirror — keep `basis.techTier` and
+      // `techTierByGroup[currentGroup]` in lockstep, and run the
+      // group-swap helper if the active group transitions in this update
+      // (e.g. domain-gate unwind sets selectedActionId → null above).
+      const prevGroup = (s.selectedActionId ?? null) as IntentGroup | null;
+      const nextGroup = (
+        updates.selectedActionId !== undefined
+          ? updates.selectedActionId
+          : s.selectedActionId
+      ) as IntentGroup | null;
+      const swapResult = applyGroupSwap(
+        next.basis as Basis | undefined,
+        (next.techTierByGroup ?? {}) as GroupCache,
+        prevGroup,
+        nextGroup,
+      );
+      next.basis = swapResult.basis;
+      next.techTierByGroup = swapResult.cache;
+
       updates.actionMetadata = next;
       return updates;
     });
@@ -384,8 +649,22 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     set((s: any) => {
       const nextOpen = { ...s.mainPanelOpenTabs, actions: false };
       const nextOrder = s.mainPanelTabOrder.filter((t: string) => t !== 'actions');
+      const prevGroup = (s.selectedActionId ?? null) as IntentGroup | null;
+      const { basis, cache } = applyGroupSwap(
+        s.actionMetadata.basis as Basis | undefined,
+        (s.actionMetadata.techTierByGroup ?? {}) as GroupCache,
+        prevGroup,
+        null,
+      );
       return {
-        actionMetadata: { basis: s.actionMetadata.basis },
+        // D22: preserve sticky workspace-level domain. Other-tier basis
+        // selections survive; techTier rotates back into the cache so a
+        // future `openActionsPanel(group)` restores it.
+        actionMetadata: {
+          basis,
+          domain: s.actionMetadata.domain,
+          techTierByGroup: cache,
+        },
         selectedIntentId: null,
         actionsStep: 'pick-action' as const,
         basisEditInitialTier: undefined,

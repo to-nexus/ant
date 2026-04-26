@@ -135,12 +135,17 @@ function computeTechSteps(
   hasTechTier: boolean,
   hasDefaultStack: boolean,
   domain: Domain,
+  hasLockedStack: boolean,
 ): WizardStepDef[] {
   if (!hasTechTier) return [];
   const sel = selections.techTier;
   const isFullstack = sel.stack === 'fullstack';
   const steps: WizardStepDef[] = [];
-  if (!hasDefaultStack) {
+  // `lockedStack` (intent identity already pins the stack — gen-sys-fe / -be
+  // / -full) and `hasDefaultStack` (per-domain seed) both make the Stack
+  // step redundant; the wizard should never let the user pick a value the
+  // intent matrix has already decided.
+  if (!hasDefaultStack && !hasLockedStack) {
     steps.push(TECH_STEPS[0]);
     if (!isReal(sel.stack)) return steps;
   }
@@ -214,12 +219,20 @@ export function useBasisWizard(
   const savedBasisRef = useRef<Basis | undefined>(currentBasis);
 
   const [state, setState] = useState<BasisWizardState>(() => {
-    // Phase 1 — `defaults[domain]` is the per-domain seed. The seed only
-    // fills slots the user has not already populated, so a saved basis
-    // from a previous turn is never overwritten here.
+    // Seed priority (highest → lowest):
+    //   1. `lockedStack` — intent identity decides the stack (gen-sys-*).
+    //   2. saved `currentBasis.techTier.stack` — user's prior pick.
+    //   3. `defaults[domain]` — per-domain seed.
+    // When `lockedStack` overrides a previously-different stack, dependent
+    // fields (language / framework / feLanguage / etc.) must be cleared:
+    // a fullstack `feLanguage` makes no sense once the lock pins us to a
+    // single-side stack, and vice versa.
+    const lockedStack = basisSlot.lockedStack;
     const domainDefaults = basisSlot.defaults?.[effectiveDomain];
-    const seedStack = currentBasis?.techTier?.stack
-      ?? domainDefaults?.stack;
+    const stashedStack = currentBasis?.techTier?.stack;
+    const seedStack = lockedStack ?? stashedStack ?? domainDefaults?.stack;
+    const lockOverridesStashed = !!lockedStack && !!stashedStack && lockedStack !== stashedStack;
+
     const seedGameEngine = currentBasis?.techTier?.frontend?.gameEngine
       ?? currentBasis?.techTier?.backend?.gameEngine
       ?? domainDefaults?.gameEngine;
@@ -230,12 +243,16 @@ export function useBasisWizard(
       selections: {
         techTier: {
           stack: seedStack,
-          language: currentBasis?.techTier?.frontend?.language ?? currentBasis?.techTier?.backend?.language,
-          framework: currentBasis?.techTier?.frontend?.framework ?? currentBasis?.techTier?.backend?.framework,
-          feLanguage: currentBasis?.techTier?.frontend?.language,
-          feFramework: currentBasis?.techTier?.frontend?.framework,
-          beLanguage: currentBasis?.techTier?.backend?.language,
-          beFramework: currentBasis?.techTier?.backend?.framework,
+          language: lockOverridesStashed
+            ? undefined
+            : currentBasis?.techTier?.frontend?.language ?? currentBasis?.techTier?.backend?.language,
+          framework: lockOverridesStashed
+            ? undefined
+            : currentBasis?.techTier?.frontend?.framework ?? currentBasis?.techTier?.backend?.framework,
+          feLanguage: lockOverridesStashed ? undefined : currentBasis?.techTier?.frontend?.language,
+          feFramework: lockOverridesStashed ? undefined : currentBasis?.techTier?.frontend?.framework,
+          beLanguage: lockOverridesStashed ? undefined : currentBasis?.techTier?.backend?.language,
+          beFramework: lockOverridesStashed ? undefined : currentBasis?.techTier?.backend?.framework,
           gameEngine: seedGameEngine,
         },
         visualTier: {
@@ -257,6 +274,7 @@ export function useBasisWizard(
 
   const hasTechTier = !!basisSlot.tiers?.includes('techTier');
   const hasDefaultStack = !!basisSlot.defaults?.[effectiveDomain]?.stack;
+  const hasLockedStack = !!basisSlot.lockedStack;
   const isFullstack = state.selections.techTier.stack === 'fullstack';
 
   // Runtime Visual Tier gate: backend-only stacks have no visual policy.
@@ -305,8 +323,8 @@ export function useBasisWizard(
   // says "let the system decide". `getOptionsForStep`'s `isReal()` gating is
   // kept as defense-in-depth against a future regression here.
   const techSteps = useMemo(
-    () => computeTechSteps(state.selections, hasTechTier, hasDefaultStack, effectiveDomain),
-    [state.selections, hasTechTier, hasDefaultStack, effectiveDomain],
+    () => computeTechSteps(state.selections, hasTechTier, hasDefaultStack, effectiveDomain, hasLockedStack),
+    [state.selections, hasTechTier, hasDefaultStack, effectiveDomain, hasLockedStack],
   );
 
   const visualSteps = useMemo(
@@ -490,7 +508,7 @@ export function useBasisWizard(
       let newActiveSteps: WizardStepDef[];
       switch (step.tierKey) {
         case 'techTier':
-          newActiveSteps = computeTechSteps(next.selections, hasTechTier, hasDefaultStack, effectiveDomain);
+          newActiveSteps = computeTechSteps(next.selections, hasTechTier, hasDefaultStack, effectiveDomain, hasLockedStack);
           break;
         case 'visualTier':
           newActiveSteps = computeVisualSteps(next.selections, hasVisualTier);
@@ -510,7 +528,7 @@ export function useBasisWizard(
       if (isLastStep || isGroupBoundary) return next;
       return { ...next, stepIndex: prev.stepIndex + 1 };
     });
-  }, [activeSteps, state.stepIndex, hasTechTier, hasDefaultStack, hasVisualTier, hasGameArtTier, hasGameContentTier, effectiveDomain]);
+  }, [activeSteps, state.stepIndex, hasTechTier, hasDefaultStack, hasLockedStack, hasVisualTier, hasGameArtTier, hasGameContentTier, effectiveDomain]);
 
   const goToStep = useCallback((index: number) => {
     setState(prev => {
@@ -613,11 +631,12 @@ export function useBasisWizard(
   const discardDraft = useCallback(() => {
     const saved = savedBasisRef.current;
     const domainDefaults = basisSlot.defaults?.[effectiveDomain];
+    const lockedStack = basisSlot.lockedStack;
     setState(prev => ({
       ...prev,
       selections: {
         techTier: {
-          stack: saved?.techTier?.stack ?? domainDefaults?.stack,
+          stack: lockedStack ?? saved?.techTier?.stack ?? domainDefaults?.stack,
           language: saved?.techTier?.frontend?.language ?? saved?.techTier?.backend?.language,
           framework: saved?.techTier?.frontend?.framework ?? saved?.techTier?.backend?.framework,
           feLanguage: saved?.techTier?.frontend?.language,
@@ -641,7 +660,7 @@ export function useBasisWizard(
         },
       },
     }));
-  }, [basisSlot.defaults, effectiveDomain]);
+  }, [basisSlot.defaults, basisSlot.lockedStack, effectiveDomain]);
 
   // --- Group navigation ---
 
