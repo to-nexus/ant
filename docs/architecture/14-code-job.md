@@ -376,4 +376,4 @@ Code job의 verification 사이클은 7개 축(Axis A–G)으로 분해된다. �
 - Job 실행/중단/재개: [10-job-lifecycle.md](10-job-lifecycle.md)
 - Tool 시스템 (도구 카탈로그, 레지스트리, CodeCommandPolicy): [19-tool-system.md](19-tool-system.md)
 - Design Job: [15-design-job.md](15-design-job.md)
-- UI Design 파이프라인 상세: [25-ui-design-pipeline.md](25-ui-design-pipeline.md)
+- Design 파이프라인 상세 (UI + Game-Art): [25-design-pipeline.md](25-design-pipeline.md)

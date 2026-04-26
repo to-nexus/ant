@@ -1,8 +1,44 @@
-# UI Design Pipeline
+# Design Pipeline
 
 ## 개요
 
-UI Design 파이프라인은 design job의 `workType === 'ui-design'`일 때 실행되는 문서 생성 파이프라인이다. 두 가지 상호배타적 소스 모드(by-ref, by-figma)가 있으며, 동일한 출력(ui-tokens.json, ui-assets.json, ui-spec.json)을 생성한다.
+Design Job 의 두 surface — **UI Design** (서비스 / 게임 양쪽) 과 **Game-Art Design** (도메인=`game` 만) — 는 동일한 graph (`detect → decompose → docGen ⇄ tool`) 를 공유하지만 산출물·자산 풀·decision tag 가 다른 sibling 파이프라인이다. 이 문서는 두 surface 의 동작과 contract 를 한 곳에 모은 우산 문서다.
+
+### Surface 분리 (D17/D18)
+
+- **UI Design** (`intentGroup === 'design-ui'`) — `outputs/design/ui/{ant,figma,handoff}/...` 산출 (3-source canonical). LLM 결정 태그 `<visualTier>`. basis tier `[visualTier, gameContentTier]`. 도메인=`service` 또는 `game` 양쪽에서 활성. `gen-ui-figma` / `gen-ui-desc` / `rev-ui` intent.
+- **Game-Art Design** (`intentGroup === 'design-art'`) — `outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json` 산출 (D24 — flat, ant/figma/handoff 하위 sub-source 없음). LLM 결정 태그 `<gameArtTier>` (visualTier 미발행 — D18). basis tier `[gameArtTier, gameContentTier]`. 도메인=`game` 만 활성 (D22 매트릭스 게이트 — `TIER_DOMAIN_MATRIX.gameArtTier === ['game']`). `gen-art-figma` / `gen-art-desc` / `rev-art` / `explain-art` intent.
+
+두 surface 는 **단일 워크스페이스 안에서 병렬 활성** 가능하다 (게임 도메인). UI 가 HUD / 메뉴 / 페이지 chrome 을 담당하고, Game-Art 가 sprite / 파티클 / projectile / sfx / bgm 을 담당한다.
+
+### Asset Surface Boundary (I6)
+
+자산 풀은 도메인 1:1 분리:
+
+- `inputs/assets/service/{icons,images,fonts,misc}` — `ui-assets.json` (도메인=service)
+- `inputs/assets/game/{icons,images}` — `ui-assets.json` (도메인=game, HUD/UI 자산)
+- `inputs/assets/game/{entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` — `game-art-assets.json` (도메인=game, 게임 자산)
+
+Cross-pollution 금지: `ui-assets.json` 의 src 가 `inputs/assets/game/...` 시작이거나, `game-art-assets.json` 의 `kind: 'external'` src 가 `inputs/assets/service/...` 시작이면 lint 실패. 회귀 가드 — `tests/asset-surface-boundary.test.ts` + production validator `infrastructure/workspace/gameArtAssetValidator.ts` (Phase 2).
+
+### Art Design Surface (I7)
+
+Game-Art design template 본문에 `visualLanguage` / `surfaceSystem` / `spatialSystem` 등 UI surface 어휘가 등장하면 lint 실패 (단, backtick 으로 감싼 명시적 boundary disclaimer 는 허용). 반대로 UI design template 에 `sprite tween` / `oscillator` / `particle system` 등 art 어휘가 등장해도 실패. 회귀 가드 — `tests/art-design-surface.test.ts`.
+
+### 자산 풀 부팅 마이그레이션 (D19-revised + D22)
+
+기존 `inputs/assets/{icons,images,misc}/` 자산은 워크스페이스 부팅 시 `migrateAssetsToDomain` 가 한 번 idempotent 실행되어 `inputs/assets/{service|game}/{icons,images,misc}/` 로 이동한다. `outputs/design/ui/ant/ui-assets.json` 의 `src` 도 함께 갱신된다. 두 호출 트리거 (Phase 2 — D22):
+
+- **워크스페이스 부팅** — `ensureCanonicalStructure(featurePath)` 끝에서 `reconcileAssetsToDomain(featurePath)` 가 sibling `config.json` 의 `domain` 을 자동 발견해 호출 (canonical 구조 invariant 와 동일한 entry point).
+- **도메인 토글** — `ProjectCrudService.updateProjectConfig` 가 이전/새 `domain` 을 비교, 변경 시 `reconcileProjectAssetsToDomain({ projectPathAbs, domain })` 로 모든 feature 일괄 마이그레이션.
+
+회귀 가드 — `tests/reconcile-assets-to-domain.test.ts` (9 케이스).
+
+---
+
+# UI Design Pipeline
+
+UI Design 파이프라인은 design job의 `intentGroup === 'design-ui'`일 때 실행되는 문서 생성 파이프라인이다. 두 가지 상호배타적 소스 모드(by-desc, by-figma)가 있으며, 동일한 출력(ui-tokens.json, ui-assets.json, ui-spec.json)을 생성한다.
 
 ## 소스 모드
 
@@ -12,18 +48,20 @@ UI Design 파이프라인은 design job의 `workType === 'ui-design'`일 때 실
 
 ```
 isFigmaPipeline(resolvedAction.intent, isFigmaDataPopulated(figmaConfig))
-  intent === 'gen-ui-figma'                          →  figma 파이프라인
+  intent === 'gen-ui-figma'                       →  figma 파이프라인
   intent === 'rev-ui' && figmaConfig populated    →  figma 파이프라인
-  그 외 (gen-ui-ref, gen-ui-desc, rev-ui 등)      →  ref 파이프라인
+  그 외 (gen-ui-desc, rev-ui 등)                  →  description (by-desc) 파이프라인
 ```
 
 Figma 파이프라인이 우선한다. `gen-ui-figma` intent이거나, `rev-ui`에서 figma.json이 populated이면 Figma 모드로 진입한다.
 
+`outputs/design/ui/handoff/` (자유 형식 시각 자료) 는 design-job 디컴포즈 입력이 아니라 코드 잡 멀티모달 채널의 추가 컨텍스트로만 쓰인다. design-job 자체는 directive + PRD 만으로 by-desc 모드를 진행한다.
+
 ### 입출력 요약
 
-| 항목 | by-ref | by-figma |
-|------|--------|----------|
-| 입력 소스 | `inputs/references/` 이미지 | `outputs/design/ui/figma/figma.json` 설정 |
+| 항목 | by-desc | by-figma |
+|------|---------|----------|
+| 입력 소스 | 디렉티브 + PRD (`inputs/sources/`) | `outputs/design/ui/figma/figma.json` 설정 |
 | 보조 입력 | `inputs/assets/` (사용자 제공) | `inputs/assets/` (사용자 제공) |
 | 출력 | `outputs/design/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` | 동일 |
 | 문서 의존 체인 | tokens ∥ assets → spec | 동일 |
@@ -75,28 +113,26 @@ Design Job이 생성하는 문서의 Code Job에서의 권위 수준:
 - **ui-assets.json**: SSOT — 에셋 경로의 유일한 원천. fallback 없음
 - **ui-spec.json**: Primary — 레이아웃의 1차 참조. spec이 침묵하는 세부사항은 프레임워크 best practices 적용
 
-## by-ref 파이프라인 (Reference/Screenshot 기반)
+## by-desc 파이프라인 (Description / Directive 기반)
 
 ### 방법론
 
-LLM이 멀티모달 입력으로 스크린샷 이미지를 직접 분석하여 디자인 토큰, 에셋 구조, UI 스펙을 추출한다.
+LLM이 디렉티브 + PRD / source documents 만으로 디자인 토큰, 에셋 구조, UI 스펙을 직접 작성한다. 멀티모달 시각 입력 없이 directive 의 explicit 요구와 PRD intent 가 설계 권위다.
 
 ### 데이터 플로우
 
 ```
-inputs/references/ (이미지)
-  → detect: uiReferences = [파일 경로 목록]
-  → decompose: referenceCount 기반 복잡도 평가 → taskQueue
-  → docGen: buildResourcesSummary(uiReferences) → LLM 프롬프트 주입
-  → LLM: read_reference_image 도구로 이미지 분석 → JSON 문서 생성
+inputs/sources/ + directive (+ visualTier)
+  → detect: 디렉티브 + PRD / 자산 카운트만 워크스페이스 스캔
+  → decompose: PRD 분량 + visualTier 기반 복잡도 평가 → taskQueue
+  → docGen: buildResourcesSummary(directive/PRD/assets) → LLM 프롬프트 주입
+  → LLM: 직접 JSON 문서 생성 (필요 시 list_assets / read_file 만 호출)
 ```
 
 ### 도구 세트 (TOOL_SETS.uiDesign)
 
 | 도구 | 역할 |
 |------|------|
-| `read_reference_image` | 스크린샷 이미지를 멀티모달 입력으로 읽기 |
-| `list_reference_images` | inputs/references/ 파일 목록 |
 | `list_assets` | inputs/assets/ 파일 목록 |
 | `read_file` | 기존 문서, PRD 읽기 |
 | `edit_file` | 문서 수정 |
@@ -105,18 +141,15 @@ inputs/references/ (이미지)
 ### 프롬프트 템플릿
 
 ```
-templates/design/phases/execute/
-  base-ui-design-by-ref.md           ← 최상위 템플릿 (WHAT)
-  rules-ui-design-by-ref.md          ← 모드 규칙 (HOW)
+templates/jobs/design/nodes/execute/
+  variants/ui-design-by-desc/{base,rules}.md
   injections/
-    ui-tokens-guide-by-ref.md        ← 토큰 추출 가이드
-    ui-assets-guide-by-ref.md        ← 에셋 분류 가이드
-    ui-spec-guide-by-ref.md          ← 스펙 작성 가이드
-    ui-continuation.md               ← Turn 2+ 이어쓰기 안내
+    ui-tokens-guide-by-desc.md       ← 토큰 작성 가이드
+    ui-assets-guide-by-desc.md       ← 에셋 분류 가이드
+    ui-spec-guide-by-desc.md         ← 스펙 작성 가이드
 
-templates/design/phases/decompose/
-  base-ui-design-by-ref.md           ← decompose 템플릿
-  rules-ui-design-by-ref.md          ← decompose 규칙
+templates/jobs/design/nodes/decompose/
+  variants/ui-design-by-desc/{base,rules}.md
 ```
 
 ## by-figma 파이프라인 (Figma MCP 기반)
@@ -240,24 +273,23 @@ templates/design/phases/decompose/
 
 ## 템플릿 구조
 
-### 2계층 분리 (by-ref / by-figma)
+### 2계층 분리 (by-desc / by-figma)
 
-by-ref과 by-figma가 각각 독립적인 규칙 세트를 가진다. 공통 규칙은 각 규칙 파일 내에서 중복 없이 관리한다.
+by-desc과 by-figma가 각각 독립적인 규칙 세트를 가진다. 공통 규칙은 각 규칙 파일 내에서 중복 없이 관리한다.
 
-### 코드 레이어 분기 (uiDesignPrompt.ts)
+### 코드 레이어 분기 (docGen/intent/ui.ts)
 
 ```
 buildUiDesignSystemPrompt():
   isFigmaPipeline(resolvedAction.intent, figmaPopulated)
-    → 'design/phases/execute/base-ui-design-by-figma'
+    → 'jobs/design/nodes/execute/variants/ui-design-by-figma/base'
     → figmaExplorationResult 변수 주입
   otherwise
-    → 'design/phases/execute/base-ui-design-by-ref'
-    → uiReferences 변수 주입
+    → 'jobs/design/nodes/execute/variants/ui-design-by-desc/base'
 
 buildResourcesSummary():
   figma 파이프라인 → MCP 도구 안내 + 매트릭스 요약 + 에셋 카운트
-  ref 파이프라인   → Reference Images + Asset Files 목록
+  desc 파이프라인  → directive / PRD / asset 카운트 안내
 ```
 
 docGen/index.ts에서 도구 세트 선택:
@@ -333,10 +365,83 @@ interface FigmaExplorationResult {
 
 Design Job 산출물(ui-tokens.json, ui-assets.json, ui-spec.json)은 Code Job에서 `ArtifactService.loadParsedUiContext()`를 통해 로딩되며, `UiDocParser`가 ui-spec.json을 메모리상에서 논리적 섹션으로 분할하여 태스크별로 필요한 부분만 주입한다.
 
+---
+
+# Game-Art Design Pipeline
+
+Game-Art Design 파이프라인은 design job 의 `intentGroup === 'design-art'` 일 때 실행되는 문서 생성 파이프라인이다. 워크스페이스 도메인이 `game` 일 때만 ActionsPanel 에 카드가 노출된다 (D22 매트릭스 게이트). 도메인이 `service` 면 이 섹션 전체가 비활성이다.
+
+## 산출물 / 자산 풀
+
+UI Design 과의 직접 비교:
+
+| 항목 | UI Design | Game-Art Design |
+|------|-----------|-----------------|
+| intent | `gen-ui-figma` / `gen-ui-desc` / `rev-ui` | `gen-art-figma` / `gen-art-desc` / `rev-art` / `explain-art` |
+| 산출물 | `outputs/design/ui/{ant,figma,handoff}/...` (3-source canonical) | `outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json` (D24 — flat) |
+| 활성 자산 풀 | `inputs/assets/service/{icons,images,fonts,misc}` (도메인=service) 또는 `inputs/assets/game/{icons,images}` (도메인=game) | `inputs/assets/game/{entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` (도메인=game 만) |
+| LLM 결정 태그 | `<visualTier>` | `<gameArtTier>` (visualTier 미발행, D18) |
+| basis tier | `[visualTier, gameContentTier]` | `[gameArtTier, gameContentTier]` |
+
+## 분해 (`decomposeArtDesign`)
+
+`packages/ant-cli/src/agents/architect/graph/design/nodes/decompose/artDesignDecompose.ts` 가 `intentGroup === 'design-art'` 일 때 진입. UI 분해와 다른 점:
+
+- **카테고리 dictionary 분해 (D25)**: `game-art-spec.json` / `game-art-assets.json` 의 sub-section 이 chapter (페이지 영역) 가 아니라 카테고리 키 dictionary (`effects` / `characters` / `projectiles` / `npcs` / `objectives` 등). 표준 카테고리 가이드는 prompt overlay 에서만 제공하고 schema 가 강제하지 않는다.
+- **task 분해**: `game-art-tokens` 단일 task + `game-art-assets-{category}` parallel + `game-art-spec-{category}` parallel. 카테고리 종류는 LLM 이 게임 컨텍스트 (`gameContentTier.genre` + `gameArtTier.entityCatalog`) 에 따라 동적으로 결정한다.
+- **RAC pool**: `inputs/sources/` + `outputs/design/game-art/` + (선택) `outputs/design/ui/ant/` (cross-surface context). figma 모드에서는 `outputs/design/ui/figma/` 도 추가.
+- **decision tag**: 응답에서 `<gameArtTier>` 를 `parseDecisionTags` 로 흡수해 `state.resolvedAction.basis.gameArtTier` 에 적용 (explicit 선행, LLM 채움이 후행).
+
+## 모드 (`design-art-by-desc` / `design-art-by-figma`)
+
+UI Design 의 두 모드 (by-desc / by-figma) 와 1:1 대응. 모드 결정은 `intent` 매핑:
+
+- `gen-art-desc` / `rev-art` (figma 미연결) → by-desc 모드
+- `gen-art-figma` → by-figma 모드 (Figma MCP 통한 game-art 자산 / 컨셉 보드 탐색)
+
+도구 세트는 `TOOL_SETS.gameArtDesign` (by-desc) 와 `TOOL_SETS.gameArtDesignFigma` (by-figma) — UI 측 도구 세트와 형태가 같지만 작성 대상이 `game-art-*.json` 으로 바뀐다.
+
+## Asset entries — `kind: 'inline' | 'external'` (D20/D21)
+
+`game-art-assets.json` 의 항목은 두 종류:
+
+| `kind`     | 출처                                                   | Phase 3 css-only scope |
+|------------|--------------------------------------------------------|------------------------|
+| `inline`   | LLM 이 JSON 안에 직접 작성 (`css` / `svg` / `oscillator`) | ✅ 단순 도형 / 단순 사운드 한정 (D21) |
+| `external` | 사용자가 `inputs/assets/game/{cat}/` 에 배치한 파일      | 모든 production 자산 (mp3 / png / 3D 모델 등) |
+
+런타임 검증:
+
+- `validateAssetReferences` 가 `kind: 'external'` src 경로만 디스크 검증, `kind: 'inline'` 은 skip (`design/graph.ts` 의 `extractGameArtExternalSrcs` 헬퍼).
+- `infrastructure/workspace/gameArtAssetValidator.ts` 가 D20 + I6 invariant 를 programmatic backstop 으로 강제 — `kind: 'external'` 인데 src 가 service 풀로 시작하면 throw, 게임 풀 외부면 issue, 미존재면 issue. 회귀 가드 `tests/art-asset-validation.test.ts` (9 케이스).
+
+## Phase scope (`_meta.phaseScope` — D21)
+
+`game-art-assets.json` 은 `_meta.phaseScope` 마커를 carry 한다:
+
+| `phaseScope` | Phase | 효과 |
+|--------------|-------|------|
+| `'p2-css-only'` | 3 default | inline + external 모두 readable. external audio (`sfx`/`bgm`) 는 코드-시점에 suppressed — procedural OscillatorNode 가 유일한 audio path. |
+| `'p4-external-enabled'` | 4+ | external entry 전부 load. file-based audio 활성. |
+
+코드 잡은 LLM-emit `audioProfile` 보다 `phaseScope` 마커를 우선한다 (Phase 3 boundary 보호). 자세한 contract 는 `templates/jobs/code/basis/gameArtTier/_preamble.md`.
+
+## 도구 라우팅 (D22 — `pickAssetsRoot`)
+
+`download_asset` / `list_assets` 두 도구는 도메인-keyed 풀로만 라우팅된다:
+
+```
+workspaceDomain  ?? racDomain
+  ?? (intentGroup === 'design-art' ? 'game' : 'service')
+  ?? 'service'
+```
+
+순수 helper `pickAssetsRoot` 는 `infrastructure/...handlers/assets.ts` 에 export — 회귀 가드 `tests/assets-handler-routing.test.ts` (12 케이스) 가 surface-isolation 보장 (service 워크스페이스가 game 풀로 절대 가지 않음).
+
 ## 경계
 
 - Design Job 개요: [15-design-job.md](15-design-job.md)
 - Figma 연동 인프라: [26-figma-integration-infra.md](26-figma-integration-infra.md)
-- Code Job의 UI 문서 소비: [14-code-job.md](14-code-job.md)
+- Code Job 의 UI/Game-Art 문서 소비: [14-code-job.md](14-code-job.md)
 - 프롬프트 시스템: [13-prompt-system.md](13-prompt-system.md)
 - 공유 계약 타입: [01-shared-contracts.md](01-shared-contracts.md)
