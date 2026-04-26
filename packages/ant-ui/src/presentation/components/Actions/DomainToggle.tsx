@@ -46,34 +46,15 @@ export function DomainToggle({ className, topLevel = false }: DomainToggleProps)
   const current = actionMetadata.domain;
   const domains = ALL_DOMAINS;
 
-  const handleSelect = useCallback((next: Domain | undefined) => {
+  const handleSelect = useCallback((next: Domain) => {
     if (!topLevel) return; // chip mode is read-only
-    if (current === next) return;
-    const prevBasis = actionMetadata.basis;
-    let nextBasis = prevBasis;
-    if (prevBasis) {
-      const cleaned = { ...prevBasis };
-      if (next !== 'game') {
-        cleaned.gameArtTier = undefined;
-        cleaned.gameContentTier = undefined;
-        if (cleaned.techTier?.frontend) {
-          cleaned.techTier = {
-            ...cleaned.techTier,
-            frontend: { ...cleaned.techTier.frontend, gameEngine: undefined },
-          };
-        }
-        if (cleaned.techTier?.backend) {
-          cleaned.techTier = {
-            ...cleaned.techTier,
-            backend: { ...cleaned.techTier.backend, gameEngine: undefined },
-          };
-        }
-      }
-      const stillHasAny = cleaned.techTier || cleaned.visualTier || cleaned.gameArtTier || cleaned.gameContentTier;
-      nextBasis = stillHasAny ? cleaned : undefined;
-    }
-    updateActionMetadata({ domain: next, basis: nextBasis });
-  }, [current, actionMetadata.basis, updateActionMetadata, topLevel]);
+    if (current === next) return; // active re-click is a no-op (D22: domain is required)
+    // The store's `updateActionMetadata` centralizes the domain-transition
+    // contract: it cleans up game-only basis tiers + unwinds the wizard
+    // when the active action card no longer passes the matrix gate.
+    // Same contract is shared by `@domain:` mention.
+    updateActionMetadata({ domain: next });
+  }, [current, updateActionMetadata, topLevel]);
 
   return (
     <div className={`flex items-center gap-2 ${className ?? ''}`}>
@@ -90,7 +71,7 @@ export function DomainToggle({ className, topLevel = false }: DomainToggleProps)
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => handleSelect(active ? undefined : d)}
+              onClick={() => handleSelect(d)}
               disabled={!topLevel}
               aria-disabled={!topLevel}
               className={`px-2 py-1 text-xs rounded transition-colors ${

@@ -36,13 +36,18 @@ interface DecomposeContext {
   newJobTiming: any;
 }
 
-/** Pick the decompose template variant based on RAC + figma config. */
-function pickArtDesignVariant(state: DesignGraphState): 'by-ref' | 'by-figma' | 'by-desc' {
+/**
+ * Pick the decompose template variant based on the chosen intent.
+ *
+ * - `gen-art-figma` → `by-figma` (Figma MCP-driven catalog generation)
+ * - `gen-art-desc`, `rev-art` and any other entry point → `by-desc`
+ *   (directive-driven generation; `rev-art` modifies an existing
+ *   game-art document and shares the directive contract)
+ */
+function pickArtDesignVariant(state: DesignGraphState): 'by-figma' | 'by-desc' {
   const intent = state.resolvedAction?.intent;
   if (intent === 'gen-art-figma') return 'by-figma';
-  if (intent === 'gen-art-desc') return 'by-desc';
-  // Default for `gen-art-ref` and `rev-art` — references-based.
-  return 'by-ref';
+  return 'by-desc';
 }
 
 /**
@@ -110,7 +115,6 @@ export async function decomposeArtDesign(
 
   const artDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
     directiveContext,
-    referenceCount: state.uiReferences?.length || 0,
     assetCount,
     detectedMode: state.resolvedAction?.mode || 'generate',
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,
@@ -291,6 +295,51 @@ export async function decomposeArtDesign(
       ...state.resolvedAction!,
       basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
     };
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Apply <gameArtTier> decision tag (Phase 2 — D18 + p2-art-decision-mechanism)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Art-design is the only design-job context that emits `<gameArtTier>`
+    // (UI design suppresses it — D18). The matrix gate is implicit:
+    // `intentGroup === 'design-art'` ⇒ workspace.domain === 'game'
+    // (TIER_DOMAIN_MATRIX.gameArtTier=['game']), so reaching this code
+    // path already guarantees the tier is active. We always parse + apply
+    // (no extra gate needed) so existing explicit basis values are
+    // preserved (registry default falls back only when both are missing).
+    try {
+      const { parseDecisionTags, applyDecisionTagDefaults } =
+        await import('../../../../../../core/llm-response/DecisionTagRegistry');
+      const decisionTags = parseDecisionTags(textResponse);
+      const applied = applyDecisionTagDefaults(decisionTags.parsed, ['gameArtTier']);
+      const emittedGameArtTier = applied.gameArtTier as
+        | import('@ant/shared').GameArtTier
+        | undefined;
+      if (emittedGameArtTier) {
+        const existing = state.resolvedAction.basis?.gameArtTier ?? {};
+        // Explicit-over-infer (10.2): existing axes WIN. The LLM can only
+        // fill axes the user did not pre-specify in `actionMetadata.basis`.
+        const merged: import('@ant/shared').GameArtTier = {
+          ...emittedGameArtTier,
+          ...existing,
+        };
+        state.resolvedAction = {
+          ...state.resolvedAction,
+          basis: { ...state.resolvedAction.basis, gameArtTier: merged },
+        };
+        console.log(
+          `🎨 [ArtDecompose] gameArtTier applied: ${Object.entries(merged)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(', ')}`,
+        );
+      } else if (decisionTags.violations.length > 0) {
+        console.warn(
+          `⚠️ [ArtDecompose] <gameArtTier> violations: ` +
+            decisionTags.violations.map(v => v.message).join('; '),
+        );
+      }
+    } catch (e) {
+      console.warn(`⚠️ [ArtDecompose] decision-tag apply skipped:`, e);
+    }
 
     state.jobId = ctx.newJobId;
     state.jobTiming = finalJobTiming;

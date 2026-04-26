@@ -126,12 +126,8 @@ export interface WorkspaceState {
   sourceFileNames?: string[];    // 파일명 목록 (e.g. ["prd.md", "tech-spec.md"])
   
   // Design job - ui-design mode
-  hasScreens: boolean;           // inputs/references/screens/
-  hasComponents: boolean;        // inputs/references/components/
   hasAssets: boolean;            // inputs/assets/
   hasFigmaConfig: boolean;       // outputs/design/ui/figma/figma.json with populated file value (workfile reference only; MCP reachability is NOT included — see code resolve's detectFigmaSource for the combined check)
-  screenCount?: number;
-  componentCount?: number;
   assetCount?: number;
   
   // Design job - system-design mode

@@ -91,7 +91,7 @@ G. Non-prompt (비프롬프트)
 | 6C | 에이전트 TS 코드의 `render('path')`/`templates: { base: 'path' }` 경로에 `.md` 파일 존재 | fail |
 | 6D | `AutoInjectionResolver.resolve()` 조합 전수 실행 결과의 모든 경로에 `.md` 파일 존재 | fail |
 
-6C는 템플릿 리터럴의 `${var}` 변수를 UI suffix(`by-figma`/`by-ref`), 언어(`typescript`/`go`), tool name(`run_command`) 등으로 확장한다.
+6C는 템플릿 리터럴의 `${var}` 변수를 UI suffix(`by-figma`/`by-desc`), 언어(`typescript`/`go`), tool name(`run_command`) 등으로 확장한다.
 
 ### prompt-smoke.test.ts
 

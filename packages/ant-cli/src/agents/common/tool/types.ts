@@ -210,7 +210,6 @@ export interface ToolExecutionContext {
   files?: Map<string, any>;
 
   // === Design-specific (populated by design buildContext) ===
-  uiReferences?: string[];
   uiAssetsList?: Record<string, string[]>;
   existingDesignDocs?: Record<string, string>;
 }

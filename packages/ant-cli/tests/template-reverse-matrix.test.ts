@@ -197,10 +197,10 @@ function collectPolicyTemplatePaths(): Set<string> {
 
 const TEMPLATE_VAR_EXPANSIONS: Record<string, string[]> = {
   /** `artDesignDecompose`: `jobs/design/nodes/decompose/variants/art-design-${variant}/base` */
-  variant: ['by-ref', 'by-figma', 'by-desc'],
-  logSuffix: ['by-figma', 'by-ref'],
-  templateSuffix: ['by-figma', 'by-ref'],
-  freshLogSuffix: ['by-figma', 'by-ref'],
+  variant: ['by-figma', 'by-desc'],
+  logSuffix: ['by-figma', 'by-desc'],
+  templateSuffix: ['by-figma', 'by-desc'],
+  freshLogSuffix: ['by-figma', 'by-desc'],
   job: ['code', 'design'],
   'mapLang(techTier.language)': ['typescript', 'go'],
   'mapLang(lang)': ['typescript', 'go'],
@@ -412,9 +412,10 @@ function collectBasisPaths(): Set<string> {
     }
   }
 
-  // Standalone basis domain (fallback in buildBasisSection)
+  // D27 (v6): domain identity lives at `templates/domain/{d}.md` (above
+  // basis, since domain is the workspace selector, not a tier).
   for (const domain of ['game', 'service']) {
-    paths.add(`basis/domain/${domain}`);
+    paths.add(TECH_TIER_TEMPLATE_PATHS.basisDomain(domain));
   }
 
   // Setup templates (pushed by AutoInjectionResolver, also buildBasisSection for some paths)
@@ -495,9 +496,10 @@ function collectBasisPaths(): Set<string> {
     paths.add(TECH_TIER_TEMPLATE_PATHS.jobGameEngine('code', engine));
   }
 
-  // ── Plan job basis overlay (Phase 1, F-1) ──
-  // jobs/plan/basis/domain/{game,service}.md is reachable via buildBasisSection's
-  // domain dispatch; explicitly enumerate so the matrix knows about it.
+  // ── Plan job domain overlay (Phase 1 F-1 + D27 v6) ──
+  // jobs/plan/domain/{game,service}.md is reachable via
+  // PromptBuilder.renderDomainTier; explicitly enumerate so the matrix
+  // knows about it.
   for (const domain of ['game', 'service']) {
     paths.add(TECH_TIER_TEMPLATE_PATHS.jobDomain('plan', domain));
   }

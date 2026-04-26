@@ -95,16 +95,6 @@ exports[`Intent Acceptance > gen-ui-figma > prompt build: injection list snapsho
 ]
 `;
 
-exports[`Intent Acceptance > gen-ui-ref > prompt build: injection list snapshot 1`] = `
-[
-  "jobs/shared/injections/ui-design-policy",
-  "jobs/shared/injections/visual-source-authority",
-  "jobs/shared/injections/directive",
-  "jobs/design/base/injections/document-language",
-  "jobs/shared/injections/action-context",
-]
-`;
-
 exports[`Intent Acceptance > rev-code > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/directive",

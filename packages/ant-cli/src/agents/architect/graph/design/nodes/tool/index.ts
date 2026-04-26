@@ -6,7 +6,7 @@
  * are adapted via designToolAdapters and registered at runtime.
  *
  * State data needed by design handlers is injected via ToolExecutionContext
- * fields (sourceDocuments, uiReferences, uiAssetsList, etc.) — no module-level
+ * fields (sourceDocuments, uiAssetsList, etc.) — no module-level
  * _cachedState variable.
  */
 
@@ -30,7 +30,7 @@ const designToolResultManager = new ToolResultManager(tokenManager, {
 
 /**
  * Registry is built lazily. State-dependent handlers use ctx fields
- * (sourceDocuments, uiReferences, uiAssetsList, figmaExplorationResult, etc.)
+ * (sourceDocuments, uiAssetsList, figmaExplorationResult, etc.)
  * populated by buildContext at call time — no _cachedState closure.
  */
 const registry = createDesignToolRegistry();
@@ -66,7 +66,6 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       figmaConfig: state.figmaConfig,
       userId: state.context?.userId,
       sourceDocuments: state.artifacts,
-      uiReferences: state.uiReferences,
       uiAssetsList: state.uiAssetsList,
       existingDesignDocs: state.existingDesignDocs,
     };

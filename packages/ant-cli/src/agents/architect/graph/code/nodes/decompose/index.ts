@@ -332,10 +332,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     assetsHint,
     resolvedAction: state.resolvedAction,
     visualTierActive: isTierActive('visualTier', _decomposeSlot, _effectiveDomain, _runtime),
-    // D23: 'domain' is no longer a TierKey. It is a workspace-level slot
-    // (D22) — always active when a domain is resolved. basis/domain/{d}.md
-    // dispatch is gated by `domainTierActive` so legacy templates keep
-    // rendering until the §20.1.1 PromptBuilder loop migration lands.
+    // D23 + D27: 'domain' is not a TierKey — it is the workspace selector
+    // above the tier set (D22). Templates at `templates/domain/{d}.md` and
+    // `templates/jobs/{job}/domain/{d}.md` are layered by
+    // `PromptBuilder.renderDomainTier` outside the tier loop. The
+    // `domainTierActive` flag is kept as a truthy guard for downstream
+    // template forks that want to know "is a domain resolved at all?"
+    // without inspecting `domain` directly.
     domainTierActive: !!_effectiveDomain,
     gameArtTierActive: _gameArtTierEnabled,
     gameContentTierActive: _gameContentTierEnabled,

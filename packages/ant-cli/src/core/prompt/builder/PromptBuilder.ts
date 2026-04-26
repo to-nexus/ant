@@ -326,11 +326,13 @@ export class PromptBuilder implements PromptPort {
       `taskTechTiers=${taskTechTiers?.length || 0}`
     );
 
-    // Phase 2 (D23): `domain` is rendered ONCE up-front independent of the
-    // tier loop — it is no longer a TierKey, but the partial-injection gate
-    // still wants the domain identity overlay so jobs/{job}/basis/domain/{d}
-    // is layered on top of the global identity. The matrix decides which
-    // tiers to inject for the current intent / domain.
+    // Phase 2 (D23) + D27 (v6): `domain` is rendered ONCE up-front,
+    // independent of the tier loop, because it is the workspace selector
+    // *above* the tier set (= basis). The partial-injection contract still
+    // layers `templates/domain/{d}.md` (identity) and
+    // `templates/jobs/{job}/domain/{d}.md` (job × domain meta-pattern overlay)
+    // on top of each other. The matrix decides which tiers to inject for
+    // the current intent / domain — domain itself is not a tier.
     await this.renderDomainTier(sections, basis, job, effectiveDomain, outPaths);
 
     for (const tier of TIER_KEYS) {
@@ -371,10 +373,12 @@ export class PromptBuilder implements PromptPort {
     domain: Domain,
     outPaths?: Set<string>,
   ): Promise<void> {
-    // Phase 1: prefer the job-scoped overlay (jobs/{job}/basis/domain/{d}.md);
-    // fall back to the global identity partial (basis/domain/{d}.md). When
-    // both exist, both are injected — the global identity sets up shared
-    // language and the job overlay layers job-specific meta-pattern guidance.
+    // D27 (v6): both files live ABOVE basis/ to reflect that domain is a
+    // workspace selector, not a tier. Order:
+    //   1. templates/domain/{d}.md            — global identity (job-agnostic)
+    //   2. templates/jobs/{job}/domain/{d}.md — job × domain meta-pattern
+    // When both exist, both are injected: identity first, then the job
+    // overlay layers job-specific guidance (e.g. plan job → GDD/PRD skeleton).
     await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.basisDomain(domain), outPaths);
     await this.tryPushBasisTemplate(sections, TECH_TIER_TEMPLATE_PATHS.jobDomain(job, domain), outPaths);
   }

@@ -25,7 +25,7 @@ import {
   GAME_GENRE_OPTIONS,
   GAME_CORE_LOOP_OPTIONS,
   deriveInteractionGrammar,
-  isTierActive,
+  listActiveTiers,
   getEffectiveDomain,
   pathsContainUiDoc,
   type VisualLanguageVariant,
@@ -34,7 +34,6 @@ import {
   TECH_STEPS,
   FULLSTACK_STEPS,
   VISUAL_STEPS,
-  TIER_REGISTRY,
   pickInitialTier,
 } from './constants';
 import {
@@ -297,20 +296,23 @@ export function useBasisWizard(
     [actionMetadata.refs, actionMetadata.context],
   );
 
-  // Per-tier runtime gate. Static `isConfigured` is necessary but not
-  // sufficient — `isTierActive` in @ant/shared is the SSOT that combines:
-  //   1. slot opt-in (`tiers` array)
-  //   2. domain × tier matrix (Phase 1: gameArtTier / gameContentTier require game)
-  //   3. runtime suppressors (visualTier: backend stack / hasUiDoc)
-  const isTierAvailable = useCallback((tier: TierKey): boolean => {
-    const def = TIER_REGISTRY.find((t) => t.id === tier);
-    if (!def?.isConfigured(basisSlot)) return false;
-    return isTierActive(tier, basisSlot, effectiveDomain, { techTier: currentTechTierForGate, hasUiDoc });
-  }, [basisSlot, effectiveDomain, currentTechTierForGate, hasUiDoc]);
-
+  // SSOT D27 — `listActiveTiers` (in @ant/shared) is the single facade
+  // that combines slot opt-in, the domain × tier matrix, and runtime
+  // suppressors. The `TIER_REGISTRY.isConfigured` check is redundant with
+  // step 1 inside `isTierActive` (`slot.tiers?.includes(tier)`); we keep
+  // the registry as the canonical iteration order via `availableTiers`'s
+  // ordering downstream.
   const availableTiers = useMemo<TierKey[]>(
-    () => TIER_REGISTRY.map((t) => t.id).filter(isTierAvailable),
-    [isTierAvailable],
+    () => listActiveTiers(basisSlot, effectiveDomain, {
+      techTier: currentTechTierForGate,
+      hasUiDoc,
+    }),
+    [basisSlot, effectiveDomain, currentTechTierForGate, hasUiDoc],
+  );
+
+  const isTierAvailable = useCallback(
+    (tier: TierKey): boolean => availableTiers.includes(tier),
+    [availableTiers],
   );
 
   const hasVisualTier = isTierAvailable('visualTier');

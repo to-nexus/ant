@@ -105,7 +105,6 @@ const SAMPLE_VARS: Record<string, any> = {
   jobMode: 'create',
   existingDesignFiles: [],
   hasExistingDesign: false,
-  referenceCount: 0,
   assetCount: 0,
 
   // design/phases/detect
@@ -118,8 +117,6 @@ const SAMPLE_VARS: Record<string, any> = {
   hasFeSystemDesign: false,
   hasBeSystemDesign: false,
   hasAssets: false,
-  hasScreens: false,
-  hasComponents: false,
 
   // planner/plan
   hasExistingDocument: false,

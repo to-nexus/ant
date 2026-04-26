@@ -58,7 +58,6 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
   { path: 'inputs/assets/game/models',         visibility: 'internal' },
   { path: 'inputs/assets/gen',                 visibility: 'internal' },
   { path: 'inputs/assets/gen/sketches',         visibility: 'internal' },
-  { path: 'inputs/references',                 visibility: 'ui:inputs' },
   // outputs
   { path: 'outputs',                           visibility: 'internal' },
   { path: 'outputs/design',                    visibility: 'ui:outputs' },

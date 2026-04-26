@@ -20,8 +20,6 @@ import {
   handleHallucinatedFileWrite,
   handleFigmaTool,
   handleReadSourceFileFromState,
-  handleReadReferenceImage,
-  handleListReferenceImages,
   handleDownloadAsset,
   handleListAssets,
 } from './handlers';
@@ -49,7 +47,6 @@ export function createDesignToolHandlers(): Map<string, ToolHandler> {
       context: { featurePath: ctx.featurePath || ctx.workingDir, projectName: ctx.project, featureFolder: ctx.featureFolder },
       deps: { fileSystem: ctx.fileSystem, git: ctx.git, redis: ctx.redis, fileTreeUpdate: ctx.fileTreeUpdate },
       artifacts: ctx.sourceDocuments,
-      uiReferences: ctx.uiReferences,
       uiAssetsList: ctx.uiAssetsList,
       existingDesignDocs: ctx.existingDesignDocs,
       figmaExplorationResult: ctx.figmaExplorationResult,
@@ -74,35 +71,6 @@ export function createDesignToolHandlers(): Map<string, ToolHandler> {
       startLine, endLine, totalLines,
     });
     return { content: result, error: isError ? result : undefined };
-  });
-
-  // read_reference_image: returns multimodal image+text content
-  handlers.set('read_reference_image', async (ctx, args) => {
-    const state = stateFromCtx(ctx);
-    const result = await handleReadReferenceImage(state, args as any);
-    if (result && typeof result === 'object' && result.type === 'image') {
-      const imageData = result as { type: 'image'; path: string; base64: string; mediaType: string };
-      return {
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: imageData.mediaType, data: imageData.base64 },
-          },
-          {
-            type: 'text',
-            text: `✅ Image loaded: ${imageData.path}\n\nAnalyze the visual elements above for design token extraction, component specifications, or layout analysis as needed for your current task.`,
-          },
-        ],
-      };
-    }
-    return wrapStringResult(result as string);
-  });
-
-  // list_reference_images
-  handlers.set('list_reference_images', async (ctx, args) => {
-    const state = stateFromCtx(ctx);
-    const result = await handleListReferenceImages(state, args as any);
-    return wrapStringResult(result);
   });
 
   // download_asset: needs ChatAPI for download status UI

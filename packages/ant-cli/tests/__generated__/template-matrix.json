@@ -19,16 +19,6 @@
       "partial-ref"
     ]
   },
-  "basis/domain/game": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "basis/domain/service": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
   "basis/gameArtTier/_preamble": {
     "sources": [
       "basis-registry"
@@ -482,6 +472,16 @@
       "basis-registry"
     ]
   },
+  "domain/game": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "domain/service": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "infra/compaction/system": {
     "sources": [
       "render-call"
@@ -628,16 +628,6 @@
       "render-call"
     ]
   },
-  "jobs/code/basis/domain/game": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "jobs/code/basis/domain/service": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
   "jobs/code/basis/gameArtTier/_preamble": {
     "sources": [
       "basis-registry"
@@ -708,6 +698,16 @@
     ]
   },
   "jobs/code/basis/visualTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/domain/game": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/code/domain/service": {
     "sources": [
       "basis-registry"
     ]
@@ -1080,18 +1080,6 @@
       "render-call"
     ]
   },
-  "jobs/design/basis/domain/game": {
-    "sources": [
-      "render-call",
-      "basis-registry"
-    ]
-  },
-  "jobs/design/basis/domain/service": {
-    "sources": [
-      "render-call",
-      "basis-registry"
-    ]
-  },
   "jobs/design/basis/gameArtTier/_preamble": {
     "sources": [
       "basis-registry"
@@ -1118,6 +1106,18 @@
       "basis-registry"
     ]
   },
+  "jobs/design/domain/game": {
+    "sources": [
+      "render-call",
+      "basis-registry"
+    ]
+  },
+  "jobs/design/domain/service": {
+    "sources": [
+      "render-call",
+      "basis-registry"
+    ]
+  },
   "jobs/design/nodes/decompose/variants/art-design-by-desc/base": {
     "sources": [
       "render-call"
@@ -1140,17 +1140,6 @@
       "partial-ref"
     ]
   },
-  "jobs/design/nodes/decompose/variants/art-design-by-ref/base": {
-    "sources": [
-      "render-call"
-    ]
-  },
-  "jobs/design/nodes/decompose/variants/art-design-by-ref/rules": {
-    "sources": [
-      "render-call",
-      "partial-ref"
-    ]
-  },
   "jobs/design/nodes/decompose/variants/system-design/base": {
     "sources": [
       "render-call"
@@ -1162,23 +1151,23 @@
       "partial-ref"
     ]
   },
+  "jobs/design/nodes/decompose/variants/ui-design-by-desc/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/ui-design-by-desc/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
   "jobs/design/nodes/decompose/variants/ui-design-by-figma/base": {
     "sources": [
       "render-call"
     ]
   },
   "jobs/design/nodes/decompose/variants/ui-design-by-figma/rules": {
-    "sources": [
-      "render-call",
-      "partial-ref"
-    ]
-  },
-  "jobs/design/nodes/decompose/variants/ui-design-by-ref/base": {
-    "sources": [
-      "render-call"
-    ]
-  },
-  "jobs/design/nodes/decompose/variants/ui-design-by-ref/rules": {
     "sources": [
       "render-call",
       "partial-ref"
@@ -1201,12 +1190,6 @@
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/art-assets-guide-by-ref": {
-    "sources": [
-      "partial-ref",
-      "manifest"
-    ]
-  },
   "jobs/design/nodes/execute/injections/art-spec-guide-by-desc": {
     "sources": [
       "partial-ref",
@@ -1214,12 +1197,6 @@
     ]
   },
   "jobs/design/nodes/execute/injections/art-spec-guide-by-figma": {
-    "sources": [
-      "partial-ref",
-      "manifest"
-    ]
-  },
-  "jobs/design/nodes/execute/injections/art-spec-guide-by-ref": {
     "sources": [
       "partial-ref",
       "manifest"
@@ -1237,20 +1214,14 @@
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/art-tokens-guide-by-ref": {
-    "sources": [
-      "partial-ref",
-      "manifest"
-    ]
-  },
-  "jobs/design/nodes/execute/injections/ui-assets-guide-by-figma": {
+  "jobs/design/nodes/execute/injections/ui-assets-guide-by-desc": {
     "sources": [
       "render-call",
       "partial-ref",
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/ui-assets-guide-by-ref": {
+  "jobs/design/nodes/execute/injections/ui-assets-guide-by-figma": {
     "sources": [
       "render-call",
       "partial-ref",
@@ -1263,9 +1234,10 @@
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/ui-continuation": {
+  "jobs/design/nodes/execute/injections/ui-spec-guide-by-desc": {
     "sources": [
       "render-call",
+      "partial-ref",
       "manifest"
     ]
   },
@@ -1276,7 +1248,7 @@
       "manifest"
     ]
   },
-  "jobs/design/nodes/execute/injections/ui-spec-guide-by-ref": {
+  "jobs/design/nodes/execute/injections/ui-tokens-guide-by-desc": {
     "sources": [
       "render-call",
       "partial-ref",
@@ -1284,13 +1256,6 @@
     ]
   },
   "jobs/design/nodes/execute/injections/ui-tokens-guide-by-figma": {
-    "sources": [
-      "render-call",
-      "partial-ref",
-      "manifest"
-    ]
-  },
-  "jobs/design/nodes/execute/injections/ui-tokens-guide-by-ref": {
     "sources": [
       "render-call",
       "partial-ref",
@@ -1322,23 +1287,23 @@
       "render-call"
     ]
   },
+  "jobs/design/nodes/execute/variants/ui-design-by-desc/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/ui-design-by-desc/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
   "jobs/design/nodes/execute/variants/ui-design-by-figma/base": {
     "sources": [
       "render-call"
     ]
   },
   "jobs/design/nodes/execute/variants/ui-design-by-figma/rules": {
-    "sources": [
-      "render-call",
-      "partial-ref"
-    ]
-  },
-  "jobs/design/nodes/execute/variants/ui-design-by-ref/base": {
-    "sources": [
-      "render-call"
-    ]
-  },
-  "jobs/design/nodes/execute/variants/ui-design-by-ref/rules": {
     "sources": [
       "render-call",
       "partial-ref"
@@ -1359,17 +1324,17 @@
       "render-call"
     ]
   },
-  "jobs/plan/basis/domain/game": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
-  "jobs/plan/basis/domain/service": {
-    "sources": [
-      "basis-registry"
-    ]
-  },
   "jobs/plan/basis/gameContentTier/_preamble": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/plan/domain/game": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "jobs/plan/domain/service": {
     "sources": [
       "basis-registry"
     ]

@@ -69,8 +69,6 @@ export async function analyzeWorkspace(
     featurePath,
     hasPrd: false,
     hasDirective: false,
-    hasScreens: false,
-    hasComponents: false,
     hasAssets: false,
     hasFigmaConfig: false,
     hasSystemDesignDoc: false,
@@ -78,7 +76,7 @@ export async function analyzeWorkspace(
     hasEvals: false,
     hasSpecDocs: false,
     hasDesignDoc: false,
-    hasCodebase: false
+    hasCodebase: false,
   };
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -127,23 +125,6 @@ export async function analyzeWorkspace(
         break;
       }
     }
-  }
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check references (for ui-design) — screens and components separately
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const screensPath = path.join(featurePath, 'inputs', 'references', 'screens');
-  const screensCount = countFilesInDir(screensPath, true);
-  state.hasScreens = screensCount > 0;
-  if (state.hasScreens) {
-    state.screenCount = screensCount;
-  }
-
-  const componentsPath = path.join(featurePath, 'inputs', 'references', 'components');
-  const componentsCount = countFilesInDir(componentsPath, true);
-  state.hasComponents = componentsCount > 0;
-  if (state.hasComponents) {
-    state.componentCount = componentsCount;
   }
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -263,8 +244,6 @@ function createEmptyWorkspaceState(): WorkspaceState {
   return {
     hasPrd: false,
     hasDirective: false,
-    hasScreens: false,
-    hasComponents: false,
     hasAssets: false,
     hasFigmaConfig: false,
     hasSystemDesignDoc: false,
@@ -272,7 +251,7 @@ function createEmptyWorkspaceState(): WorkspaceState {
     hasEvals: false,
     hasSpecDocs: false,
     hasDesignDoc: false,
-    hasCodebase: false
+    hasCodebase: false,
   };
 }
 
@@ -291,18 +270,12 @@ export function formatWorkspaceState(state: WorkspaceState): string {
     : 'ℹ️ No directive');
   
   lines.push('');
-  lines.push('### References (ui-design)');
+  lines.push('### Visual Sources (ui-design)');
   lines.push(state.hasFigmaConfig
     ? '✅ Figma: file configured'
     : 'ℹ️ No Figma config');
-  lines.push(state.hasScreens 
-    ? `✅ Screens: ${state.screenCount || 'multiple'} files` 
-    : '❌ No screen references');
-  lines.push(state.hasComponents 
-    ? `✅ Components: ${state.componentCount || 'multiple'} files` 
-    : 'ℹ️ No component references');
-  lines.push(state.hasAssets 
-    ? `✅ Assets: ${state.assetCount || 'multiple'} files` 
+  lines.push(state.hasAssets
+    ? `✅ Assets: ${state.assetCount || 'multiple'} files`
     : 'ℹ️ No asset files');
   
   lines.push('');

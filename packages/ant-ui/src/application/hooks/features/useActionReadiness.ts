@@ -169,28 +169,26 @@ function computeSystemDesign(ctx: TreeContext): ActionReadiness {
 }
 
 function computeUiDesign(ctx: TreeContext): ActionReadiness {
-  const hasRefs = dirHasFilesDeeply(ctx.fileTree, 'inputs/references');
   const figmaConfigured = ctx.figmaPopulated === true;
   const figmaReady = figmaConfigured && ctx.bridgeConnected === true && ctx.figmaDesktopReachable;
   // Design jobs emit ant-canonical outputs at `outputs/design/ui/ant/`;
   // deep-check the parent so any of the three UiSource subdirectories
   // (ant / figma / handoff) counts as "UI source present".
   const hasUi = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/ui');
-  const buildReady = figmaReady || hasRefs;
+  // description mode is always available (chat directive is the design
+  // authority), so build is reachable as long as the user is willing to
+  // chat. Figma simply enables the figma-based sub-mode.
+  const buildReady = true;
 
   return {
     buildReady,
-    buildBlockReason: buildReady ? undefined : { en: 'Figma or reference images required', ko: 'Figma 또는 레퍼런스 이미지가 필요합니다' },
     hasOutput: hasUi,
     hasCodebase: ctx.hasCodebase,
     detectedMode: figmaReady
       ? { id: 'figma', label: { en: 'Figma-based', ko: 'Figma 기반' } }
-      : hasRefs
-        ? { id: 'references', label: { en: 'Screenshot-based', ko: '스크린샷 기반' } }
-        : { id: 'description', label: { en: 'Description-based', ko: '설명 기반' } },
+      : { id: 'description', label: { en: 'Description-based', ko: '설명 기반' } },
     subModes: [
       { id: 'figma', active: figmaReady, blockReason: !figmaConfigured ? { en: 'Set Figma URL in figma.json', ko: 'figma.json에 Figma URL을 설정하세요' } : !figmaReady ? { en: 'Figma Desktop connection required', ko: 'Figma Desktop 연결이 필요합니다' } : undefined },
-      { id: 'references', active: hasRefs, blockReason: hasRefs ? undefined : { en: 'Upload screenshots to inputs/references/', ko: 'inputs/references/에 스크린샷을 업로드하세요' } },
       { id: 'description', active: true },
     ],
     outputDir: 'outputs/design/ui/ant',
@@ -207,22 +205,20 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
  * targeted at the FLAT `outputs/design/game-art/` canonical (D24).
  */
 function computeGameArtDesign(ctx: TreeContext): ActionReadiness {
-  const hasRefs = dirHasFilesDeeply(ctx.fileTree, 'inputs/references');
   const hasGameArt = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/game-art');
-  const buildReady = hasRefs || hasGameArt;
+  // description mode is always available (chat directive is the design
+  // authority); figma sub-mode lights up when the workfile reference is
+  // configured and the MCP bridge is reachable.
+  const figmaSubReady = ctx.figmaPopulated === true && ctx.bridgeConnected === true && ctx.figmaDesktopReachable;
   return {
-    buildReady,
-    buildBlockReason: buildReady
-      ? undefined
-      : { en: 'Reference images or a directive are required to begin game-art design', ko: '게임 아트 설계를 시작하려면 레퍼런스 이미지 또는 채팅 지시사항이 필요합니다' },
+    buildReady: true,
     hasOutput: hasGameArt,
     hasCodebase: ctx.hasCodebase,
-    detectedMode: hasRefs
-      ? { id: 'references', label: { en: 'Reference-based', ko: '레퍼런스 기반' } }
+    detectedMode: figmaSubReady
+      ? { id: 'figma', label: { en: 'Figma-based', ko: 'Figma 기반' } }
       : { id: 'description', label: { en: 'Description-based', ko: '설명 기반' } },
     subModes: [
-      { id: 'figma', active: ctx.figmaPopulated === true && ctx.bridgeConnected === true && ctx.figmaDesktopReachable, blockReason: ctx.figmaPopulated !== true ? { en: 'Set Figma URL in figma.json', ko: 'figma.json에 Figma URL을 설정하세요' } : undefined },
-      { id: 'references', active: hasRefs, blockReason: hasRefs ? undefined : { en: 'Upload references or use directive-based', ko: '레퍼런스 이미지를 업로드하거나 설명 기반을 사용하세요' } },
+      { id: 'figma', active: figmaSubReady, blockReason: ctx.figmaPopulated !== true ? { en: 'Set Figma URL in figma.json', ko: 'figma.json에 Figma URL을 설정하세요' } : undefined },
       { id: 'description', active: true },
     ],
     outputDir: 'outputs/design/game-art',

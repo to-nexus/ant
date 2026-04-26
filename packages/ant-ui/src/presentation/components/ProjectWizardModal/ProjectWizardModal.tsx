@@ -69,7 +69,6 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   // ── Step 3 ──
   const [sourcesFiles, setSourcesFiles] = useState<File[]>([]);
   const [assetsFiles, setAssetsFiles] = useState<File[]>([]);
-  const [referencesFiles, setReferencesFiles] = useState<File[]>([]);
   const [designDocsFiles, setDesignDocsFiles] = useState<File[]>([]);
   const [directive, setDirective] = useState('');
   const [showDirective, setShowDirective] = useState(false);
@@ -200,7 +199,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
   const gitReadOnly = !!existingProjectId && gitUrlFromConfig;
 
-  const hasModeDepData = sourcesFiles.length + assetsFiles.length + referencesFiles.length + designDocsFiles.length > 0 || directive.trim().length > 0;
+  const hasModeDepData = sourcesFiles.length + assetsFiles.length + designDocsFiles.length > 0 || directive.trim().length > 0;
 
   const hasDirective = showDirective && directive.trim().length > 0;
   const hasDesignInputs = sourcesFiles.length > 0;
@@ -232,7 +231,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   const handleModeChange = (newMode: 'design' | 'code') => {
     if (newMode === mode) return;
     const apply = () => {
-      setSourcesFiles([]); setAssetsFiles([]); setReferencesFiles([]);
+      setSourcesFiles([]); setAssetsFiles([]);
       setDesignDocsFiles([]); setDirective(''); setShowDirective(false);
       setMode(newMode);
       setCurrentStep(1);
@@ -301,7 +300,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     const needsProject = !existingProjectId;
     const hasGitAction = !gitReadOnly && gitEnabled && gitAction !== 'none' && gitUrl.trim().length > 0 && patStatus?.configured;
     const uploadableDesignDocs = designDocsFiles.filter((f) => isCanonicalDesignDoc(f.name));
-    const hasFiles = sourcesFiles.length + assetsFiles.length + referencesFiles.length + (mode === 'code' ? uploadableDesignDocs.length : 0) > 0;
+    const hasFiles = sourcesFiles.length + assetsFiles.length + (mode === 'code' ? uploadableDesignDocs.length : 0) > 0;
 
     const userDirective = directive.trim();
     const effectiveDirective = startJob
@@ -411,7 +410,6 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         };
         await batch(sourcesFiles, 'inputs/sources');
         await batch(assetsFiles, 'inputs/assets');
-        await batch(referencesFiles, 'inputs/references');
         if (mode === 'code' && uploadableDesignDocs.length > 0) {
           const byDesignDir = new Map<string, File[]>();
           for (const f of uploadableDesignDocs) {
@@ -478,7 +476,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     }
   }, [
     isExecuting, existingProjectId, projectName, repositoryName, gitUrl, gitAction, patStatus,
-    featureName, directive, showDirective, sourcesFiles, assetsFiles, referencesFiles,
+    featureName, directive, showDirective, sourcesFiles, assetsFiles,
     designDocsFiles, mode, backendMode, language, gitEnabled, gitReadOnly, t,
     setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType,
     setRunning, setCurrentJob, fetchProjects, setProjectSetupConfig,
@@ -553,8 +551,6 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 onSourcesChange={setSourcesFiles}
                 assetsFiles={assetsFiles}
                 onAssetsChange={setAssetsFiles}
-                referencesFiles={referencesFiles}
-                onReferencesChange={setReferencesFiles}
                 designDocsFiles={designDocsFiles}
                 onDesignDocsChange={setDesignDocsFiles}
                 directive={directive}

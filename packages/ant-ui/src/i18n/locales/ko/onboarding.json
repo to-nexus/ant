@@ -96,8 +96,6 @@
       "sourcesTooltip": "PRD, 기능 스펙, 요구사항 문서 (.md, .txt, .json 등)",
       "assets": "UI 에셋",
       "assetsTooltip": "앱에 포함할 실제 이미지 파일 — 아이콘, 로고, 배경 등 (.svg, .png, .jpg, .webp)",
-      "references": "UI 참고 화면",
-      "referencesTooltip": "프론트엔드 디자인 시 참고할 스크린샷, 목업, UI 이미지 (.png, .jpg, .webp, .svg)",
       "designDocs": "설계 문서",
       "designDocsTooltip": "Ant 형식의 문서만 인식됩니다",
       "designDocsAntFormat": "Ant 형식",

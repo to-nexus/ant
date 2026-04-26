@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, type IntentGroup, type ActionReadiness } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, isActionVisibleForDomain, type IntentGroup, type ActionReadiness } from '@ant/shared';
+import { useStore } from '@/domain/store';
 import { ActionChip } from './ActionChip';
 
 const EMPTY_READINESS: ActionReadiness = {
@@ -24,15 +25,20 @@ interface ActionChipGridProps {
 export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, title, subtitle }: ActionChipGridProps) {
   const { i18n } = useTranslation('actions');
   const lang = i18n.language as 'en' | 'ko';
+  // Phase 2 (D22): the workspace-level project domain gates which Action
+  // cards are visible (e.g. `design-art` is hidden when domain==='service').
+  // Cards without a `domainGate` field stay visible on every domain.
+  const currentDomain = useStore(s => s.actionMetadata.domain);
 
   const defs = useMemo(() => {
-    if (!agentFilter) return ACTION_DEFINITIONS;
-    return ACTION_DEFINITIONS.filter(def => {
+    const domainFiltered = ACTION_DEFINITIONS.filter(def => isActionVisibleForDomain(def, currentDomain));
+    if (!agentFilter) return domainFiltered;
+    return domainFiltered.filter(def => {
       if (def.agentScoped === false) return false;
       const intents = getIntentsForAction(def.id);
       return intents.some(intent => deriveFromIntent(intent.id).agent === agentFilter);
     });
-  }, [agentFilter]);
+  }, [agentFilter, currentDomain]);
   const gap = variant === 'large' ? 'gap-4' : 'gap-3';
   const isSingle = defs.length === 1;
 

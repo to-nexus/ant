@@ -60,7 +60,7 @@ export function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState)
     case 'plan':
       return true;
     case 'design':
-      return ws.hasPrd || ws.hasScreens || ws.hasComponents || ws.hasAssets || ws.hasFigmaConfig;
+      return ws.hasPrd || ws.hasAssets || ws.hasFigmaConfig;
     case 'code':
       return ws.hasDesignDoc || ws.hasCodebase;
     case 'learn':
@@ -376,10 +376,6 @@ export function buildTriagePrompt(params: {
     hasPrd: workspaceState.hasPrd,
     prdPath: workspaceState.prdPath || 'available',
     hasDirective: workspaceState.hasDirective,
-    hasScreens: workspaceState.hasScreens,
-    screenCount: workspaceState.screenCount || 0,
-    hasComponents: workspaceState.hasComponents,
-    componentCount: workspaceState.componentCount || 0,
     hasAssets: workspaceState.hasAssets,
     assetCount: workspaceState.assetCount || 0,
     hasFigmaConfig: workspaceState.hasFigmaConfig,

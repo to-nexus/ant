@@ -226,10 +226,8 @@ Build an API
 ❌ No PRD
 ✅ Directive
 
-### References
-
-❌ No screen references
-ℹ️ No component references
+### Visual Sources
+ℹ️ No Figma config
 ℹ️ No assets
 
 ### Design Documents
@@ -242,20 +240,19 @@ Build an API
 
 ### design job (agent: architect)
 Creates specifications and architecture documents.
-Three modes: UI Design (from reference images or Figma), System Design (from PRD), and Spec (feature-scoped planning).
+Three modes: UI Design (from Figma or directive/PRD), System Design (from PRD), and Spec (feature-scoped planning).
 Spec mode analyzes existing codebase and plans multi-boundary changes before implementation.
 Output documents guide Code Job for accurate implementation.
 
 
 #### Mode: ui-design
-Generates UI specification documents from reference images or Figma design files.
-Analyzes visual design to extract tokens, components, and layouts.
-Works with any design tool output (Figma live files, screenshots, wireframes, etc.)
+Generates UI specification documents from a Figma design file or a description (PRD + directive).
+Analyzes visual design or requirement text to extract tokens, components, and layouts.
 
 
 **Prerequisites:**
 - Required:
-  - Reference images (inputs/references/) OR Figma design files configured (outputs/design/ui/figma/figma.json)
+  - PRD document (inputs/sources/) OR Figma design files configured (outputs/design/ui/figma/figma.json)
 - Recommended:
   - Asset files like icons and images (inputs/assets/)
 

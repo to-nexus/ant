@@ -3,9 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   INTENT_DEFINITIONS,
+  ACTION_DEFINITIONS,
   getConfigSlots,
+  isActionVisibleForDomain,
   type IntentId,
   type Domain,
+  type IntentGroup,
 } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
@@ -159,11 +162,22 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     const q = query.toLowerCase();
 
     switch (prefix) {
-      case '@intent:':
+      case '@intent:': {
+        // Phase 2 (D22): mirror the ActionsPanel domain gate so users
+        // cannot side-step it via mention. `gen-art-*` / `rev-art` /
+        // `explain-art` (intentGroup `design-art`) disappear when the
+        // current workspace domain is `service`.
+        const hiddenGroups = new Set<IntentGroup>(
+          ACTION_DEFINITIONS
+            .filter(def => !isActionVisibleForDomain(def, actionMetadata.domain))
+            .map(def => def.id)
+        );
         return INTENT_DEFINITIONS
+          .filter(d => !hiddenGroups.has(d.intentGroup))
           .filter(d => d.id.toLowerCase().includes(q) || d.label.en.toLowerCase().includes(q) || d.label.ko.includes(q))
           .slice(0, 8)
           .map(d => ({ type: 'intent', id: d.id, label: d.id, description: d.label.ko }));
+      }
 
       case '@target:':
         return buildGroupedFileSuggestions('target', '@target:', allFilePaths, query, actionMetadata.intent);
@@ -187,7 +201,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       default:
         return [];
     }
-  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, explicitSettable]);
+  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, DOMAIN_OPTIONS]);
 
   const showSuggestions = (prefix !== null || commandQuery !== null) && suggestions.length > 0;
 

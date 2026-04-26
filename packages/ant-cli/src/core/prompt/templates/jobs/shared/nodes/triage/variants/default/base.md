@@ -17,10 +17,8 @@ You analyze user input to determine intent and execution readiness.
 {{#if hasPrd}}✅ PRD: {{prdPath}}{{else}}❌ No PRD{{/if}}
 {{#if hasDirective}}✅ Directive{{else}}ℹ️ No directive{{/if}}
 
-### References
-{{#if hasFigmaConfig}}✅ Figma: design file configured{{/if}}
-{{#if hasScreens}}✅ Screens: {{screenCount}} files{{else}}{{#unless hasFigmaConfig}}❌ No screen references{{/unless}}{{/if}}
-{{#if hasComponents}}✅ Components: {{componentCount}} files{{else}}ℹ️ No component references{{/if}}
+### Visual Sources
+{{#if hasFigmaConfig}}✅ Figma: design file configured{{else}}ℹ️ No Figma config{{/if}}
 {{#if hasAssets}}✅ Assets: {{assetCount}} files{{else}}ℹ️ No assets{{/if}}
 
 ### Design Documents

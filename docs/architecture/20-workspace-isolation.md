@@ -18,11 +18,9 @@ ANT는 멀티테넌트 워크스페이스 구조를 사용한다. 조직, 사용
                         inputs/
                             sources/            (prd.md, directive.md)
                             directives/         (design/, code/, learn/)
-                            references/         (screens/, components/)
-                            assets/             (gen/sketches/)
-                            figma.json
+                            assets/             (service/ or game/ — domain-keyed; gen/sketches/)
                         outputs/
-                            design/             (설계 문서)
+                            design/             (설계 문서; ui/{ant,figma,handoff}/, system/, spec/, game-art/)
                             plan/               (PRD staging)
                             evals/              (prd/, ui-design/, system-design/, code/)
                         sessions/

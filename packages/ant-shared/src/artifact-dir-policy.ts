@@ -23,7 +23,6 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
   'inputs/sources': {
     allowSubdirs: false,
     // Only text-formattable files are injected into prompts.
-    // Images are not processed here — use inputs/references/ for design reference images.
     // Must stay in sync with ArtifactService.getSource()'s textExtensions list.
     acceptedExtensions: ['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.xml', '.csv'],
   },
@@ -48,10 +47,6 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     // Phase 4 hook will add `.mp3` / `.ogg` / `.wav` / `.atlas` / `.glb` /
     // `.gltf`. `.json` is accepted now for tilemap manifests.
     acceptedExtensions: ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.json'],
-  },
-  'inputs/references': {
-    allowSubdirs: false,
-    acceptedExtensions: ['.png', '.jpg', '.jpeg', '.webp', '.gif'],
   },
   'outputs/design': {
     allowSubdirs: true,

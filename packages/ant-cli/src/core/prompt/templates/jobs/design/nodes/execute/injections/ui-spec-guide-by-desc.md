@@ -1,7 +1,7 @@
-## ui-spec.json Generation Guide
+## ui-spec.json Generation Guide (Description-driven)
 
 ### Purpose
-Define **what** to build (visual & behavioral requirements) in structured JSON, not **how** to implement it.
+Define **what** to build (visual & behavioral requirements) in structured JSON, not **how** to implement it. The directive plus PRD is the design authority — there are no screenshots or Figma data in this mode.
 
 **Include design intent**: For key layout decisions, add `"intent"` field explaining WHY this design choice was made. This helps Code Job understand the purpose, not just the structure.
 
@@ -18,25 +18,19 @@ Define **what** to build (visual & behavioral requirements) in structured JSON, 
 
 ## Source Priority Principle
 
-**Default: Observe Screenshot First**
+**Authority order (highest first):**
 
-Your primary task is to observe and document what you SEE in the screenshot.
-
-**Exception: Explicit Override**
-
-If Directive or PRD contains **explicit, specific instructions** that contradict your observation, follow the Directive/PRD instead.
+1. **Directive** — explicit, specific instructions and overrides
+2. **PRD / source documents** — product context, content structure, feature scope
+3. **visualTier (visualLanguage / surfaceSystem / spatialSystem)** — when present, anchors aesthetic and layout defaults
+4. **Reasonable defaults** — only for properties the inputs do not constrain; mark them as inferred in `intent`
 
 **"Explicit" indicators:**
 - Specific technical properties are stated
 - Exact numeric values are provided
-- Direct contradiction markers are present (e.g., "MUST override", "regardless of visual")
+- Direct contradiction markers are present (e.g., "MUST be ...")
 
-**Not explicit (follow screenshot):**
-- General guidance or preferences
-- Feature descriptions without technical specifications
-- Ambiguous or vague instructions
-
-**When overriding observation:** Document the contradiction and resolution in `"intent"` field.
+When the directive overrides a default, document the resolution in the `"intent"` field.
 
 ---
 
@@ -44,11 +38,9 @@ If Directive or PRD contains **explicit, specific instructions** that contradict
 
 | Source | Use For | Priority |
 |--------|---------|----------|
-| **Screenshot** | Visual styling, layout, spacing | **Default** |
-| **PRD** | Text content, feature requirements, interactions | Default |
-| **Directive** | Additional constraints, explicit overrides | **Highest** (when explicit) |
-
-**Principle**: Observe screenshot first, unless explicitly overridden by written specifications.
+| **Directive** | Explicit constraints, technical overrides, must-have invariants | **Highest** |
+| **PRD** | Pages, content, feature requirements, interactions | Default |
+| **visualTier** | Aesthetic anchor (when present) | Default for visual properties |
 
 ---
 
@@ -76,7 +68,7 @@ If Directive or PRD contains **explicit, specific instructions** that contradict
 }
 ```
 
-> ⚠️ **This is minimum structure, not exhaustive.** Document ALL observed properties from the screenshot. If you see border-radius, shadows, gradients, animations, or any other visual property — add it.
+> ⚠️ **This is minimum structure, not exhaustive.** Document ALL properties the project needs (border-radius, shadows, gradients, animations, etc.) when the directive / PRD calls for them.
 
 ### Element Classification
 
@@ -92,36 +84,35 @@ If Directive or PRD contains **explicit, specific instructions** that contradict
 {
   "<element-id>": {
     "intent": "<why this design choice>",
-    "layout": "<observed>",
+    "layout": "<intent-derived>",
     "background": "colors.bg.<token>",
     "container": {
       "display": "flex | grid",
       "flexDirection": "row | column",
-      "alignItems": "<observed>",
-      "justifyContent": "<observed>"
+      "alignItems": "<intent-derived>",
+      "justifyContent": "<intent-derived>"
     },
-    "content": { /* observed structure */ },
+    "content": { /* directive / PRD-derived structure */ },
     "states": { /* hover, active, focus, disabled */ },
     "responsive": { /* breakpoint differences */ }
   }
 }
 ```
 
-**⚠️ Responsive field**: Every top-level section, component, and overlay MUST include a `"responsive"` key at its root level. Nested children inherit the parent's responsive context — do NOT repeat `"responsive"` in every child node. If no breakpoint difference is observed, use empty object `{}`.
-```
+**⚠️ Responsive field**: Every top-level section, component, and overlay MUST include a `"responsive"` key at its root level. Nested children inherit the parent's responsive context — do NOT repeat `"responsive"` in every child node. If no breakpoint difference is required, use empty object `{}`.
 
 **Intent examples:**
 - `"intent": "logo left, menu right for clear navigation hierarchy"`
 - `"intent": "3-column grid to showcase ecosystem pillars with equal weight"`
-- `"intent": "staggered layout to create visual rhythm and break monotony"`
+- `"intent": "staggered layout to create visual rhythm"`
 
-> ⚠️ **Add ALL observed properties.** The format above shows common fields, but include everything you observe: `borderRadius`, `shadow`, `gap`, `padding`, `opacity`, `animation`, etc.
+> ⚠️ **Add ALL properties the project requires.** The format above shows common fields; include `borderRadius`, `shadow`, `gap`, `padding`, `opacity`, `animation`, etc. when they belong to the design intent.
 
 Apply this format to `sections`, `components`, and `overlays`.
 
 ### Key Naming Convention
 
-JSON keys fall into exactly two categories. Observe which category before naming:
+JSON keys fall into exactly two categories:
 
 | Category | Rule | Applies to | Example |
 |----------|------|-----------|---------|
@@ -133,7 +124,7 @@ JSON keys fall into exactly two categories. Observe which category before naming
 - Schema properties describe HOW it is structured
 
 **FORBIDDEN** for identifier keys:
-- camelCase (`"heroSection"`) — this is a schema property pattern
+- camelCase (`"heroSection"`) — schema property pattern
 - Dot notation (`"6.4"`) — not a valid identifier
 - Bare numbers (`"10"`) — not descriptive
 
@@ -146,33 +137,31 @@ JSON keys fall into exactly two categories. Observe which category before naming
 
 ---
 
-## Observation Protocol
+## Authoring Protocol
 
 > **Follow procedurally. Do not skip steps.**
 
 ### Step 1: Container Structure (Primary)
 
-For each section/component, determine **overall container structure first**:
+For each section/component derived from the directive / PRD:
 
-**1. Determine Primary Direction**
-- Look at child elements
-- Arranged horizontally side-by-side? → `flexDirection: "row"`
-- Stacked vertically? → `flexDirection: "column"`
+**1. Determine Primary Direction** based on intent
+- Side-by-side child elements → `flexDirection: "row"`
+- Stacked vertically → `flexDirection: "column"`
 
 **2. Identify Nested Structure**
-- Are there containers within containers?
-- If yes, **repeat Step 1 for each nested container**
+- Containers within containers? Repeat Step 1 for each nested container
 
 **General Principle:**
 ```
-Analyze outer → inner (outside-in)
+Author outer → inner (outside-in)
 Determine direction independently at each level
 Parent direction ≠ Child direction (independent!)
 ```
 
 ### Step 2: Child Arrangement
 
-Observe **actual positioning** of child elements within container:
+For every container with multiple children, document:
 
 | Checkpoint | Question |
 |-----------|----------|
@@ -183,25 +172,15 @@ Observe **actual positioning** of child elements within container:
 
 **⚠️ CRITICAL: Multiple Cards/Items Arrangement**
 
-**Observation checkpoint:**
-- Look at the **overall container** holding all cards
-- Are cards placed **side-by-side** (horizontal) or **stacked on top of each other** (vertical)?
-
-**Specification mapping:**
-
-| What you see | Correct spec | Wrong spec |
-|--------------|-------------|------------|
-| Cards stacked vertically | `flexDirection: "column"` OR `gridTemplateColumns: "1fr"` (1 column) | ❌ `gridTemplateColumns: "repeat(N, 1fr)"` where N = card count |
-| Cards side-by-side horizontally | `flexDirection: "row"` OR `gridTemplateColumns: "repeat(N, 1fr)"` (N columns) | ❌ `flexDirection: "column"` |
+| Intent | Correct spec | Wrong spec |
+|--------|-------------|------------|
+| Cards stacked vertically | `flexDirection: "column"` OR `gridTemplateColumns: "1fr"` | ❌ `gridTemplateColumns: "repeat(N, 1fr)"` for N cards |
+| Cards side-by-side horizontally | `flexDirection: "row"` OR `gridTemplateColumns: "repeat(N, 1fr)"` | ❌ `flexDirection: "column"` |
 
 **Constraint:**
 - Do NOT use `gridTemplateColumns: "repeat(N, 1fr)"` just because there are N cards
 - `repeat(N, 1fr)` in **columns** = N cards **horizontally** (side-by-side)
 - For vertical stack: Use `1fr` (single column) or `flexDirection: "column"`
-
-**After determining overall arrangement:**
-- If vertical stack → What's the **internal layout** of each card?
-- If internal is row → Is image on left or right? Does it alternate?
 
 ### Step 3: Element Details
 
@@ -209,7 +188,7 @@ Record individual element properties:
 - Colors, typography, spacing → **use token references**
 - Images → objectFit (cover/contain/fill)
 - States → hover, active, focus
-- ⚠️ **gradient/overlay check**: Actually observed? If not, don't add
+- ⚠️ **gradient/overlay check**: Only if the directive / PRD calls for them
 
 ### ⚠️ CRITICAL: Element Order in Containers
 
@@ -229,16 +208,7 @@ Use `contentOrder` array **inside each element definition**:
 }
 ```
 
-**⚠️ OBSERVE the screenshot for EVERY container:**
-1. Which child appears FIRST (top or left)? → Put it first
-2. Which child appears SECOND? → Put it second
-
-**Examples (for reference - always OBSERVE actual order):**
-- Container shows: Label on TOP, Icon on BOTTOM → `["title", "icon"]`
-- Container shows: Icon on TOP, Label on BOTTOM → `["icon", "title"]`
-- Container shows: Image on LEFT, Text on RIGHT → `["image", "content"]`
-
-**Constraint:** 
+**Constraint:**
 - Code Job cannot guess visual sequence from JSON property order
 - Missing `contentOrder` = rendering order undefined = BUG
 
@@ -252,20 +222,19 @@ Use `contentOrder` array **inside each element definition**:
 - Element type (headers are not always column)
 - Background color (dark sections ≠ centered alignment)
 - Common conventions (not all cards are horizontal grids)
-- Background image presence → overlay presence (❌)
 
 ### 🚫 Default-to-Nothing
 
-**If not observed, do NOT add:**
+**If the directive / PRD does not call for it, do NOT add:**
 - overlay / gradient
 - shadow / border
 - animation effects
 
 ```json
-// ❌ WRONG - not observed but added
+// ❌ WRONG - not requested but added
 "background": { "asset": "bg-hero", "gradient": {...} }
 
-// ✅ CORRECT - only what was observed
+// ✅ CORRECT - only what was requested
 "background": { "asset": "bg-hero" }
 ```
 
@@ -275,19 +244,14 @@ Use `contentOrder` array **inside each element definition**:
 
 ### 🔄 Variation Principle
 
-If repeated elements are **visually different**, document each variation.
-
-Test: "Can you distinguish A from B with content hidden?" → If yes, record differences
-- Image position (left ↔ right)
-- Background color (different tokens)
-- Size ratio
+If repeated elements need to differ visually, document each variation explicitly. If the directive does not specify a variation, keep them identical.
 
 ### ✅ Pattern Consistency
 
 > **Identical pattern → Identical spec**
 
 ```
-Observed: 3 sections all have [Title LEFT | Description RIGHT]
+Intent: 3 sections all have [Title LEFT | Description RIGHT]
 
 ✅ All should have flexDirection: "row"
 ❌ 2 have row, 1 has column (inconsistent!)
@@ -295,9 +259,9 @@ Observed: 3 sections all have [Title LEFT | Description RIGHT]
 
 ### 🎨 Color Uncertainty
 
-When exact color is uncertain, use description:
-- `"colorDescription": "light purple"` (uncertain)
-- `"color": "colors.bg.lightPurple"` (certain)
+When exact color is not specified, use the visualTier or describe intent:
+- `"colorDescription": "light purple"` (descriptive, when no exact value)
+- `"color": "colors.bg.lightPurple"` (precise, when token is defined)
 
 ---
 
@@ -329,23 +293,21 @@ When exact color is uncertain, use description:
 
 ### ⚠️ Image Sizing: Relative vs Fixed
 
-**Observation rule:** Does the image fill its container or have fixed dimensions?
-
-| Observation | Correct Spec |
+| Intent | Correct Spec |
 |-------------|--------------|
 | Image fills container width | `width: "100%"` |
 | Image has fixed size regardless of container | `width: "600px"` (exact px) |
 | Image scales with section | `width: "100%", objectFit: "cover"` |
 
 **Constraint:** Do NOT default to fixed pixels. Ask:
-- Does image scale when viewport changes? → `"100%"`
-- Does image stay same size? → Fixed `"Npx"`
+- Should the image scale with viewport? → `"100%"`
+- Should it stay the same size? → Fixed `"Npx"`
 
 ---
 
 ## Shared Components (Top-Level `components` Key)
 
-**Principle**: Components that repeat across multiple pages should be defined ONCE in top-level `components`, then referenced by page sections. This prevents inconsistent specs for the same element.
+**Principle**: Components that repeat across multiple pages should be defined ONCE in top-level `components`, then referenced by page sections.
 
 **When to populate**:
 - Button/Input/Select with consistent styling across pages → extract
@@ -397,9 +359,9 @@ When exact color is uncertain, use description:
 - [ ] Only specified elements documented
 - [ ] All values use tokens
 - [ ] `sections`, `components`, `overlays` are object format (not array)
-- [ ] Spatial relationships observed for every container
-- [ ] Item-level variations documented
-- [ ] No assumed properties (overlay, gradient, shadow)
+- [ ] Spatial relationships explicit for every container
+- [ ] Variations between similar elements clearly documented
+- [ ] No invented properties (overlay, gradient, shadow)
 - [ ] States (hover, active, focus) documented where applicable
 - [ ] **Intent provided** for key layout decisions (sections, complex containers)
 
@@ -409,7 +371,7 @@ When exact color is uncertain, use description:
 
 ### Fixed Header + Full-Viewport Section
 
-Observe and document:
+Document explicitly:
 - Is section BEHIND or BELOW header?
 - Header background: transparent or opaque?
 
@@ -422,15 +384,15 @@ Observe and document:
 
 ### Positioned Elements
 
-For each positioned element, observe:
-- Which corner/edge is it anchored to?
-- Is it inside container or floating on page?
+For each positioned element, document:
+- Which corner/edge it is anchored to
+- Whether it is inside a container or floating on the page
 
 ---
 
 ## Workflow
 
-1. **Load references**: `list_reference_images`, `read_reference_image`
-2. **Observe**: Study layout, spacing, colors, typography
-3. **Document**: Write what you SEE in JSON
-4. **Verify**: Run quality checklist
+1. **Read inputs**: `read_file` PRD if you need to refresh requirements; consult `directive` and `visualTier`
+2. **Plan**: Identify which sections/components belong to your task
+3. **Document**: Write the JSON, anchored on directive + PRD intent
+4. **Verify**: Run the quality checklist

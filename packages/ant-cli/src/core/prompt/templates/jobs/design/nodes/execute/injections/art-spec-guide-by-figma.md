@@ -46,7 +46,7 @@ Spec entries REFERENCE asset ids; they never duplicate asset bytes.
   },
   "<your-category>": {
     "<entry-id>": {
-      /* category-specific shape — see by-ref guide for examples */
+      /* category-specific shape — see by-desc guide for examples */
     }
   }
 }

@@ -1,7 +1,7 @@
 ## game-art-tokens.json Generation Guide (Figma)
 
 ### Purpose
-Capture the global art-tier tokens — palette, silhouette, lighting,
+Capture the global game-art-tier tokens — palette, silhouette, lighting,
 motion tone — derived from the project's `gameArtTier.concept` and the
 Figma file's color / effect / style variables.
 
