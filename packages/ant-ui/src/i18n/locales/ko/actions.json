@@ -136,12 +136,7 @@
       },
       "gameArtTier": {
         "concept": "컨셉",
-        "perspective": "시점",
-        "entityCatalog": "엔티티",
-        "motionPattern": "모션",
-        "particleProfile": "파티클",
-        "projectilePolicy": "투사체",
-        "audioProfile": "오디오"
+        "perspective": "시점"
       },
       "gameContentTier": {
         "genre": "장르",

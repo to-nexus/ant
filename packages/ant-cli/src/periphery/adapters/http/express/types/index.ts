@@ -18,7 +18,10 @@ export interface JobExecutionState {
   currentJobId: string | null;
   taskQueueSnapshots: Map<string, TaskQueueSnapshot>;
   jobToProject: Map<string, JobProjectMapping>;
-  userStoppedJobs: Set<string>;
+  // user-stopped flag is owned by RedisStateStore (see
+  // `markUserStopped`/`isUserStopped`/`clearUserStopped`). The previous
+  // in-memory `userStoppedJobs: Set<string>` mirror was retired to
+  // collapse the SSOT to a single Redis key.
 }
 
 /**

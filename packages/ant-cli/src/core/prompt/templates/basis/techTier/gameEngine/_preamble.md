@@ -15,10 +15,10 @@ Every engine partial answers the same six questions in the same order so cross-e
 5. **Scene ↔ host communication** — the documented contract for engine→host (events) and host→engine (public method / message) traffic.
 6. **Asset pipeline** — how `game-art-assets.json` entries (`kind: 'inline'` / `kind: 'external'`) become loaded textures / sounds in the engine's preload phase.
 
-### Phase-3 minimum scope reminder
+### Registry scope (v7 — D29)
 
-In Phase 3 only **`phaser`** has a non-stub body. `godot` and `cocos-creator` carry one-line placeholders and are reserved for Phase 4+ work. When the LLM emits `gameEngine` other than `phaser`, the build degrades gracefully: the runtime falls back to the universal `domain === 'game'` overlay (`templates/jobs/code/domain/game.md`) without engine-specific guidance, and downstream code MUST flag the missing partial as an open question rather than fabricate API names.
+`SUPPORTED_GAME_ENGINES` is intentionally a single-element registry today: `['phaser']`. Phaser 3 is a 2D HTML5 engine that mounts cleanly inside React; alternative engines (godot / cocos-creator / babylon / three) are deferred to Phase 5+ where the visual job's production-asset pipeline justifies the extra integration cost. The decision pipeline (decompose → emit → parse → applyToState) is unchanged — `gameEngineCandidates` still serializes the (cardinality-1) candidate list and the LLM still emits `<techTier>...|phaser</techTier>` through the normal channel.
 
 ### Decision tag handoff
 
-`gameEngine` is part of `techTier`'s decision payload (DecisionTagRegistry, D8). The LLM emits it during the detect / decompose phase as `<techTier>frontend|typescript|react|<gameEngine></techTier>`. Code execution then consumes the engine partial verbatim — no implicit defaulting beyond Phase 3's `phaser`.
+`gameEngine` is part of `techTier`'s decision payload (DecisionTagRegistry, D8). The LLM emits it during the detect / decompose phase as `<techTier>frontend|typescript|react|<gameEngine></techTier>`. Code execution then consumes the engine partial verbatim — cardinality-1 means the resulting selection is deterministic, but the explicit/infer policy still applies (basis-wizard explicit selection always wins).

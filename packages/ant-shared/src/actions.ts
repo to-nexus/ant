@@ -397,14 +397,14 @@ export const DESIGN_FILE_PATTERNS: ReadonlyArray<DesignFilePattern> = [
     wildcardHint: { en: 'tokens, assets, or spec', ko: 'tokens, assets, 또는 spec' },
   },
   {
-    // Phase 2 (D24): game-art lives FLAT under outputs/design/game-art/.
+    // D24-revised v8: game-art lives sub-sourced under outputs/design/game-art/ant/.
     // Three canonical files (tokens / assets / spec) all share the
     // `game-art-` prefix; useActionReadiness.computeGameArtDesign feeds
     // this pattern into validateDesignFileName so a misnamed sibling
     // (e.g. random.json) surfaces as a namingIssue. Without this entry
-    // the validator silently passes anything in game-art/ — see
+    // the validator silently passes anything in game-art/ant/ — see
     // file-descriptions.ts `expectedFiles` for the canonical trio.
-    dir: 'art',
+    dir: 'gameArtAnt',
     prefixes: ['game-art-'],
     ext: '.json',
     description: { en: 'Game-art design document', ko: '게임 아트 설계 문서' },

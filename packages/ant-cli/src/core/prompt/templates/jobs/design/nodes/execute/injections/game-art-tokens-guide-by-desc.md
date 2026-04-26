@@ -5,26 +5,26 @@ Capture the global game-art-tier tokens — palette, silhouette, lighting,
 motion tone — derived from the project's `gameArtTier.concept` and the
 written directive / PRD.
 
-### Surface scope (D24 — flat structure)
-- Output path: `outputs/design/game-art/game-art-tokens.json`
-- No `ant` / `figma` / `handoff` sub-directory — game-art is flat.
+### Surface scope (D24-revised v8 — sub-sourced canonical)
+- Output path: `outputs/design/game-art/ant/game-art-tokens.json`
+- `ant/` is the LLM-generated canonical sub-source (mirrors `outputs/design/ui/ant/`).
+- `figma/` / `handoff/` sub-directories are Phase 5+ hooks — parser-only today.
 
 ### Core Principles
 
 #### 1. Concept-derived
 The chosen `gameArtTier.concept` is the primary signal. Each concept
-variant has a canonical palette mood:
+variant has a canonical palette mood (v8 — D32-revised, 5 concepts):
 
-| concept variant | palette mood | silhouette weight | lighting tone | motion easing |
-|-----------------|--------------|-------------------|---------------|---------------|
-| sfFantasy       | cool / neon  | bold              | neon          | snappy        |
-| darkFantasy     | desaturated  | bold              | dramatic      | weighted      |
-| threeKingdoms   | warm earth   | medium            | dramatic      | weighted      |
-| martialArts     | warm / red   | medium            | soft          | snappy        |
-| modernCasual    | bright / pop | medium            | flat          | snappy        |
-| pixelRetro      | high contrast| bold              | flat          | snappy        |
+| concept variant | palette mood                   | silhouette weight | lighting tone     | motion easing | natural-fit sub-genre (gentle hint, not enforced) |
+|-----------------|--------------------------------|-------------------|-------------------|---------------|---------------------------------------------------|
+| flatMinimal     | single + 1–2 accents           | medium / soft     | flat (no shadow)  | snappy        | match3, slidingPuzzle, cardSolitaire              |
+| pixelRetro      | 16-color limited (NES / GB)    | bold (pixel block)| hard-edge / step  | step          | slidingPuzzle (Sokoban), arcadeSnake              |
+| neonArcade      | dark bg + neon complementary   | thin-line (glow)  | radial neon glow  | snappy        | arcadePaddle (Tron), arcadeSnake                  |
+| softPastel      | pastel hue (#FFD8E4 / #C7E2FF) | rounded / soft    | pillowy / soft    | slow ease-out | match3 (Two Dots / Threes), cardSolitaire         |
+| cardClassic     | green felt + white face + suits| flat (suit picto) | flat shadow / flip| snappy        | cardSolitaire (Solitaire / FreeCell — primary)    |
 
-These rows are starting points — the directive may shift any axis.
+These rows are starting points — the directive may shift any axis. The "natural-fit sub-genre" column is a soft hint (D32-revised: no genre × concept matrix is enforced — the directive may legitimately pair any concept with any sub-genre).
 
 #### 2. Directive-grounded
 When the directive specifies a particular palette ("neon cyan and
@@ -41,7 +41,7 @@ All assets and spec entries reference these tokens by dot notation.
   "_meta": {
     "gameArtTier": {
       "concept": "<one of the chosen concept variants>",
-      "perspective": "2d" | "3d"
+      "perspective": "2d"
     }
   },
   "palette": {
@@ -73,7 +73,7 @@ All assets and spec entries reference these tokens by dot notation.
 ### Output Format
 
 ```xml
-<file path="outputs/design/game-art/game-art-tokens.json">
+<file path="outputs/design/game-art/ant/game-art-tokens.json">
 {
   "_meta": { "gameArtTier": { "concept": "...", "perspective": "2d" } },
   "palette": { ... },

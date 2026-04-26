@@ -308,6 +308,12 @@ export class ChatService {
     if (!turnId) {
       // No matching user_turn means the durable log can't anchor the
       // cancelled card. Skip emission rather than write a turnless line.
+      // Surface a warning so this failure mode is visible in logs — when
+      // it happens the user sees no Cancelled/Resume card after refresh.
+      logger.warn(
+        `appendChoicePresentedCancelled: no user_turn matches jobId=${jobId} (project=${projectId}, feature=${featureName}, reason=${args.reason}). Skipping emission.`,
+        { component: COMPONENT },
+      );
       return { cardId: '', emitted: false };
     }
 

@@ -7,7 +7,7 @@ versus what must be sourced from disk.
 
 ### 1. Responsibility — what game-art design IS
 
-Game-art design produces three artifacts under `outputs/design/game-art/`:
+Game-art design produces three artifacts under `outputs/design/game-art/ant/` (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`):
 
 - **`game-art-tokens.json`** — palette / silhouette / lighting / motion-tone
   derived from `gameArtTier.concept`. **D28** — also carries HUD CSS
@@ -187,8 +187,9 @@ borrow from it.
   like `visualLanguage` / `surfaceSystem` / `spatialSystem` — those are
   service-domain-only.
 - ❌ Do NOT reference `outputs/design/ui/ant/...` from any
-  `game-art-*.json` artifact. The two surfaces are vertically split by
-  domain (D28), so there is no cross-link.
+  `game-art-*.json` artifact under `outputs/design/game-art/ant/`. The
+  two surfaces are vertically split by domain (D28), so there is no
+  cross-link.
 - ❌ Do NOT reference `inputs/assets/service/...` from
   `game-art-assets.json` (I6 — Asset Surface Boundary).
 - ✅ DO reference the same PRD and system-design RAC pool as upstream

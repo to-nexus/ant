@@ -55,19 +55,20 @@ export interface TechTier {
   framework?: string;
   stack?: Stack;
   packageManager?: 'npm' | 'yarn' | 'pnpm' | 'bun';
-  /** Phase 1: game-domain sub-engine slot ('phaser' | 'godot' | 'cocos-creator'). */
+  /** Phase 1: game-domain sub-engine slot. v7 (D29) — single registered variant `'phaser'`; Phase 5+ widens the candidate set. */
   gameEngine?: GameEngine;
 }
 
 /**
  * Game engine — the 5th slot inside `TechTier` (game domain only).
  *
- * Phase 2 ships `phaser` as the only fully implemented engine; `godot` and
- * `cocos-creator` are stubs. The matrix gate (`TIER_DOMAIN_MATRIX.techTier`
- * combined with `domain === 'game'`) decides when this slot is even
- * consulted.
+ * v7 (D29) — registry single-element: `'phaser'`. Phase 5+ hook will widen
+ * the union when additional engines (godot / cocos-creator / babylon /
+ * three) re-enter the candidate set. The matrix gate
+ * (`TIER_DOMAIN_MATRIX.techTier` combined with `domain === 'game'`) decides
+ * when this slot is even consulted.
  */
-export type GameEngine = 'phaser' | 'godot' | 'cocos-creator';
+export type GameEngine = 'phaser';
 
 /**
  * Aggregated tech tier configuration — stack + per-side tiers.
@@ -124,10 +125,27 @@ export interface VisualTier {
 //   - `motionPattern` (gameArtTier) = sprite tween / sprite animation / camera shake
 //   - particle / projectile motion → `particleProfile` / `projectilePolicy`
 
+/**
+ * v8 (D32-revised) — 5 concepts diversified for the 5 sub-genres.
+ * `pixelRetro` carries through from Phase 3; `flatMinimal` and
+ * `neonArcade` were introduced in v7's pre-revision pass; `softPastel`
+ * and `cardClassic` are v8 additions tuned for match3-class and
+ * cardSolitaire respectively. Phase 5+ widens the union when the
+ * production-asset pipeline opens (dark-fantasy / three-kingdoms /
+ * martial-arts / sf-fantasy etc.).
+ */
 export type GameArtConceptVariant =
-  | 'sfFantasy' | 'darkFantasy' | 'threeKingdoms' | 'martialArts'
-  | 'modernCasual' | 'pixelRetro';
-export type GameArtPerspectiveVariant = '2d' | '3d';
+  | 'flatMinimal'
+  | 'pixelRetro'
+  | 'neonArcade'
+  | 'softPastel'
+  | 'cardClassic';
+/**
+ * v7 (D30) — registry single-element: `'2d'`. Phaser 3 is a 2D engine and
+ * css-only inline cannot author production 3D assets (glTF / textures /
+ * lighting). Phase 5+ widens this union when the visual job activates.
+ */
+export type GameArtPerspectiveVariant = '2d';
 export type GameArtEntityCatalogVariant = 'minimal' | 'standard' | 'rich';
 export type GameArtMotionPatternVariant = 'static' | 'subtle' | 'expressive';
 export type GameArtParticleProfileVariant = 'none' | 'light' | 'heavy';
@@ -155,15 +173,34 @@ export interface GameArtTier {
 // GameContentTier — game-only content policy
 // ============================================
 
+/**
+ * v8 (D31-revised) — 5 sub-genres tuned for css-only inline production.
+ * Each sub-genre commits a narrow domain (board/match-rule, sliding-rule,
+ * card-suit, paddle-physics, snake-grid) so the LLM-emitted partial does
+ * not blur category boundaries the way the v7 `puzzle/casual/arcade`
+ * super-categories did. Phase 5+ widens the registry when the visual job
+ * authors production assets for action/platformer/shooter/rpg/strategy.
+ */
 export type GameGenreVariant =
-  | 'action' | 'puzzle' | 'platformer' | 'shooter'
-  | 'rpg' | 'strategy' | 'casual';
-export type GameCoreLoopVariant = 'collect' | 'fight' | 'build' | 'explore' | 'solve';
+  | 'match3'
+  | 'slidingPuzzle'
+  | 'cardSolitaire'
+  | 'arcadePaddle'
+  | 'arcadeSnake';
+
+/**
+ * v8 (D31-revised) — coreLoop registry stays 3-element (`solve` /
+ * `collect` / `survive`), but the candidate set seen by the LLM is
+ * narrowed by the genre-loop matrix (`GENRE_CORELOOP_MATRIX`) once a genre
+ * is decided. The pipeline does NOT branch on genre — `gameCoreLoopCandidates`
+ * is the only gate.
+ */
+export type GameCoreLoopVariant = 'solve' | 'collect' | 'survive';
 
 export interface GameContentTier {
-  /** Phase 2 — genre identity (puzzle, action, ...). */
+  /** Genre identity (D31-revised v8: match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake — 5 sub-genres). */
   genre?: GameGenreVariant;
-  /** Phase 2 — core loop pattern (collect / fight / build / explore / solve). */
+  /** Core-loop pattern (D31-revised v8: solve / collect / survive — 3 universals, matrix-gated per genre by `GENRE_CORELOOP_MATRIX`). */
   coreLoop?: GameCoreLoopVariant;
 }
 

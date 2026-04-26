@@ -257,6 +257,12 @@ async function main(): Promise<void> {
 //
 // Timing budget (worst case: stall handler, 2500ms grace):
 //   resolveKillReason 100ms + gracefulShutdown 1800ms = 1900ms < 2500ms
+//
+// Output contract: After graceful shutdown completes (orchestrator pushes
+// running tasks back as interrupted + checkpoint saved), emit a final
+// `RESULT:{json}` line so JobWorker → BullMQ → RouteConfigurator can read
+// the interruption reason and route to the correct lifecycle transition
+// (finalize for user_stopped, pauseJob for the rest).
 process.on('SIGTERM', async () => {
   const jobId = process.env.ANT_JOB_ID || 'unknown';
   const reason = await resolveKillReason(jobId);
@@ -277,10 +283,59 @@ process.on('SIGTERM', async () => {
     console.error(`[JobRunner] Graceful shutdown error:`, error?.message);
   }
 
+  reportResult(false, {
+    success: false,
+    job: process.env.ANT_JOB_TYPE,
+    interruption: buildSigtermInterruption(reason),
+  });
+  await new Promise<void>(resolve => process.stdout.write('', () => resolve()));
+
   killReasonRedis?.disconnect();
   console.log(`[JobRunner] Exiting with code 143 (SIGTERM, reason=${reason})`);
   process.exit(143);
 });
+
+/**
+ * Build an `InterruptionDetails`-shaped object from a SIGTERM kill reason.
+ * Mirrors the patterns used in `JobExecutionManager.analyzeFailureReason`,
+ * `ServerLifecycleManager`, and `StaleJobRecovery` so downstream consumers
+ * (RouteConfigurator → finalize/pauseJob, JobCleanupManager, ChatService
+ * cancelled card) receive a consistent payload regardless of the kill path.
+ */
+function buildSigtermInterruption(reason: InterruptionReason) {
+  const timestamp = new Date().toISOString();
+  switch (reason) {
+    case 'user_stopped':
+      return {
+        reason,
+        message: 'Task stopped by user',
+        timestamp,
+        canResume: true,
+        metadata: { stoppedBy: 'user_action' },
+      };
+    case 'server_shutdown':
+      return {
+        reason,
+        message: 'Server is shutting down',
+        timestamp,
+        canResume: true,
+      };
+    case 'server_crash':
+      return {
+        reason,
+        message: 'Server was terminated unexpectedly. You can resume this job.',
+        timestamp,
+        canResume: true,
+      };
+    default:
+      return {
+        reason,
+        message: `Job interrupted: ${reason}`,
+        timestamp,
+        canResume: true,
+      };
+  }
+}
 
 // Run
 main();

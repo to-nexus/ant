@@ -35,7 +35,7 @@ A `collect` loop without density / variety / risk delta is a treadmill — the p
 
 ### Affinity
 
-Strong fit: `platformer`, `casual`. Possible: `action`, `rpg`, `shooter` (loot drops).
+Strong fit: `match3` (each cleared chain is a collect cycle), `cardSolitaire` (suit completions are the collected unit). Possible: `arcadeSnake` (food pickup), `arcadePaddle` (brick clear treated as score collection).
 
 ### Blind-spot reminders
 

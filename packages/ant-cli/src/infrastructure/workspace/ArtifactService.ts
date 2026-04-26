@@ -278,18 +278,28 @@ export class ArtifactService {
   }
 
   /**
-   * Read a GameArt document from the canonical flat location
-   * (`outputs/design/game-art/<file>`). D24 — game-art has no ant/figma/handoff
-   * sub-source split; the three docs live directly under game-art/.
+   * Read a GameArt document from the canonical sub-sourced location
+   * (`outputs/design/game-art/ant/<file>`). D24-revised v8 — game-art now
+   * mirrors UI's sub-source split (`ant/` is the LLM-generated canonical;
+   * `figma/`/`handoff/` are Phase 5+ hooks). The legacy flat path
+   * (`outputs/design/game-art/<file>`) is read as a fallback so workspaces
+   * still in transit (post-flat-write but pre-migration) keep working —
+   * `migrateGameArtToAntSubdir` lifts the file on next workspace boot.
    */
   private static async readGameArtFile(
     fileSystem: FileSystemPort,
     designDir: string,
     fileName: string,
   ): Promise<string | undefined> {
-    const subPath = path.join(designDir, 'game-art', fileName);
-    if (await fileSystem.fileExists(subPath)) {
-      const content = await fileSystem.readFile(subPath);
+    const antPath = path.join(designDir, 'game-art', 'ant', fileName);
+    if (await fileSystem.fileExists(antPath)) {
+      const content = await fileSystem.readFile(antPath);
+      return ArtifactService.normalizeUserDoc(content) || undefined;
+    }
+    // Legacy flat path — tolerated until the migration helper relocates the file.
+    const flatPath = path.join(designDir, 'game-art', fileName);
+    if (await fileSystem.fileExists(flatPath)) {
+      const content = await fileSystem.readFile(flatPath);
       return ArtifactService.normalizeUserDoc(content) || undefined;
     }
     return undefined;
@@ -297,10 +307,10 @@ export class ArtifactService {
 
   /**
    * Load GameArt documents (`game-art-tokens` / `game-art-assets` /
-   * `game-art-spec`) from `outputs/design/game-art/` (flat — D24) and parse
-   * them into the same `ParsedDesignDocs` shape used for UI, with
-   * `surface: 'gameArt'` so downstream prompts know to interpret spec
-   * sub-sections as category dictionary keys (D25).
+   * `game-art-spec`) from `outputs/design/game-art/ant/` (D24-revised v8 —
+   * sub-sourced canonical) and parse them into the same `ParsedDesignDocs`
+   * shape used for UI, with `surface: 'gameArt'` so downstream prompts know
+   * to interpret spec sub-sections as category dictionary keys (D25).
    *
    * Returns `null` if the directory or all three files are absent —
    * matching `loadParsedUiContext`'s contract.

@@ -179,9 +179,9 @@ function renderDesignUiOutputSection(rac: ResolvedActionContext, isKorean: boole
   }
   if (rac.intentGroup === 'design-game-art') {
     let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
-    out += `   • \`outputs/design/game-art/game-art-tokens.json\`\n`;
-    out += `   • \`outputs/design/game-art/game-art-assets.json\`\n`;
-    out += `   • \`outputs/design/game-art/game-art-spec.json\`\n\n`;
+    out += `   • \`outputs/design/game-art/ant/game-art-tokens.json\`\n`;
+    out += `   • \`outputs/design/game-art/ant/game-art-assets.json\`\n`;
+    out += `   • \`outputs/design/game-art/ant/game-art-spec.json\`\n\n`;
     return out;
   }
   return '';

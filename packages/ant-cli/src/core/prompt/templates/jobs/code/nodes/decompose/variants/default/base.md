@@ -126,34 +126,40 @@ A `"design-system"` task at priority 200 is REQUIRED to implement the visual pol
 {{/if}}
 
 {{#if gameArtTierActive}}
-**Step 1.5: Determine GameArtTier (game-domain art policy)**
+**Step 1.5: Determine GameArtTier (game-domain art policy — 7 axes, Phase 4 emit complete)**
 
-Phase 2 ships two GameArtTier axes:
+GameArtTier ships 7 axes. Each axis has a registry-backed candidate set; the LLM emits a comma-separated `axis=value` list:
+
 - `concept` — overall art tone / silhouette palette. Candidates: {{{gameArtConceptCandidates}}}.
-- `perspective` — camera / depth model. Candidates: `2d`, `3d`.
+- `perspective` — camera / depth model. Candidates: `2d` (D30 v7 — 3D deferred to Phase 5+).
+- `entityCatalog` — character / object catalog policy. Candidates: `minimal`, `standard`, `rich`.
+- `motionPattern` — sprite tween / animation policy. Candidates: `static`, `subtle`, `expressive`.
+- `particleProfile` — particle density on feedback events. Candidates: `none`, `light`, `heavy`.
+- `projectilePolicy` — projectile mechanics policy. Candidates: `none`, `simple`, `complex` (css-only scope recommends `none` / `simple`).
+- `audioProfile` — audio source policy. Candidates: `procedural`, `fileBased`, `hybrid`.
 
-Explicit values from `resolvedAction.basis.gameArtTier` are authoritative — preserve them as-is. Infer missing axes from the directive and any provided refs (e.g. "match-3 puzzle" → `concept=modernCasual`, `perspective=2d`).
+Explicit values from `resolvedAction.basis.gameArtTier` are authoritative — preserve them as-is. Infer missing axes from the directive and any provided refs (e.g. "match-3 puzzle, soft pastel tone" → `concept=softPastel,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural`).
 
 Output the game-art tier in `<gameArtTier>` tags after `<techTier>` (before `<tasks>`):
 
-<gameArtTier>concept=modernCasual,perspective=2d</gameArtTier>
+<gameArtTier>concept=flatMinimal,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural</gameArtTier>
 
-- The body is a comma-separated `axis=value` list. Phase 2 uses concept + perspective only; Phase 4 extends to entityCatalog / motionPattern / particleProfile / projectilePolicy / audioProfile.
-- Unknown axes are silently dropped — emit only the two Phase 2 axes for now.
+- The body is a comma-separated `axis=value` list — emit all 7 axes.
+- Unknown axes are silently dropped; unknown values for known axes are dropped at parse time and the slot falls back to the default-on-retry value.
 {{/if}}
 
 {{#if gameContentTierActive}}
 **Step 1.6: Determine GameContentTier (game-domain content policy)**
 
 Two axes:
-- `genre` — game genre identity. Candidates: {{{gameGenreCandidates}}}.
-- `coreLoop` — player loop pattern. Candidates: {{{gameCoreLoopCandidates}}}.
+- `genre` — game genre identity (sub-genre, css-only inline production scope). Candidates: {{{gameGenreCandidates}}}.
+- `coreLoop` — player loop pattern (matrix-narrowed by the resolved genre — D31-revised v8). Candidates: {{{gameCoreLoopCandidates}}}.
 
-Explicit values from `resolvedAction.basis.gameContentTier` are authoritative — preserve them as-is. Infer missing axes from the directive (e.g. "match-3" → `genre=puzzle`, `coreLoop=solve`).
+Explicit values from `resolvedAction.basis.gameContentTier` are authoritative — preserve them as-is. Infer missing axes from the directive (e.g. "match-3 with cascading drops" → `genre=match3`, `coreLoop=solve`; "Snake clone with food and walls" → `genre=arcadeSnake`, `coreLoop=survive`).
 
 Output the game content tier in `<gameContentTier>` tags after `<gameArtTier>` (before `<tasks>`):
 
-<gameContentTier>genre=puzzle,coreLoop=solve</gameContentTier>
+<gameContentTier>genre=match3,coreLoop=solve</gameContentTier>
 {{/if}}
 
 **Step 2: Break into Tasks**

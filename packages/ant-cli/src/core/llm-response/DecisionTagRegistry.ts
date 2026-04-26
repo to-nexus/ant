@@ -21,8 +21,14 @@ import {
   GAME_ART_TIER_AXIS_KEYS,
   GAME_ART_CONCEPT_VARIANTS,
   GAME_ART_PERSPECTIVE_VARIANTS,
+  GAME_ART_ENTITY_CATALOG_VARIANTS,
+  GAME_ART_MOTION_PATTERN_VARIANTS,
+  GAME_ART_PARTICLE_PROFILE_VARIANTS,
+  GAME_ART_PROJECTILE_POLICY_VARIANTS,
+  GAME_ART_AUDIO_PROFILE_VARIANTS,
   GAME_GENRE_VARIANTS,
   GAME_CORE_LOOP_VARIANTS,
+  GENRE_CORELOOP_MATRIX,
 } from '@ant/shared';
 
 // ============================================
@@ -89,18 +95,35 @@ const domainTagDef: DecisionTagDef<Domain> = {
 };
 
 /**
- * gameArtTier emission body grammar (Phase 2 — D12-revised rename):
- *   `concept=sfFantasy,perspective=2d`                         (Phase 2 — 2 axis only)
- *   `concept=sfFantasy,perspective=2d,entityCatalog=standard,...`  (Phase 4)
+ * gameArtTier emission body grammar:
+ *   Phase 3:  `concept=flatMinimal,perspective=2d`
+ *   Phase 4:  `concept=flatMinimal,perspective=2d,entityCatalog=standard,
+ *             motionPattern=subtle,particleProfile=light,projectilePolicy=none,
+ *             audioProfile=procedural`
  *
- * Unknown axes / unknown values are dropped silently — the matrix gate +
- * graceful degrade keep the system safe even when LLM emits a future-axis
- * value that isn't in the registry yet.
+ * Phase 4 (this revision) — the parser validates ALL 7 axes against their
+ * registry-backed candidate sets. Unknown axes are dropped silently
+ * (forward-compat); unknown values for known axes are dropped (the
+ * registry-disk 1:1 invariant guarantees a `.md` partial exists for every
+ * accepted value).
  */
 const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
   name: 'gameArtTier',
   pattern: /<gameArtTier>\s*([\s\S]*?)\s*<\/gameArtTier>/i,
-  defaultOnRetryExhaustion: { concept: 'modernCasual', perspective: '2d' },
+  // v8 (D30 + D32-revised) — perspective single-element (`'2d'`); concept
+  // default `'flatMinimal'` is the most domain-agnostic of the 5 v8
+  // concepts (works for match3 / slidingPuzzle / cardSolitaire alike).
+  // Phase 4 (this revision) — the 5 new axes also carry conservative
+  // defaults that work in css-only inline production.
+  defaultOnRetryExhaustion: {
+    concept: 'flatMinimal',
+    perspective: '2d',
+    entityCatalog: 'minimal',
+    motionPattern: 'static',
+    particleProfile: 'none',
+    projectilePolicy: 'none',
+    audioProfile: 'procedural',
+  },
   retryPolicy: 'inline',
   parse: (raw) => {
     const out: GameArtTier = {};
@@ -110,8 +133,6 @@ const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
       const [k, v] = part.split('=').map(s => s.trim());
       if (!k || !v) continue;
       if (!(GAME_ART_TIER_AXIS_KEYS as readonly string[]).includes(k)) continue;
-      // Phase 2 only validates the two filled axes; future-axis values are
-      // accepted blindly (Phase 4 fills the variants).
       switch (k) {
         case 'concept':
           if ((GAME_ART_CONCEPT_VARIANTS as readonly string[]).includes(v)) out.concept = v as GameArtTier['concept'];
@@ -119,13 +140,21 @@ const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
         case 'perspective':
           if ((GAME_ART_PERSPECTIVE_VARIANTS as readonly string[]).includes(v)) out.perspective = v as GameArtTier['perspective'];
           break;
-        // Phase 4 axes — accept any string for forward compatibility, the
-        // type system narrows on read so this is safe.
-        case 'entityCatalog':       out.entityCatalog = v as GameArtTier['entityCatalog']; break;
-        case 'motionPattern':       out.motionPattern = v as GameArtTier['motionPattern']; break;
-        case 'particleProfile':     out.particleProfile = v as GameArtTier['particleProfile']; break;
-        case 'projectilePolicy':    out.projectilePolicy = v as GameArtTier['projectilePolicy']; break;
-        case 'audioProfile':        out.audioProfile = v as GameArtTier['audioProfile']; break;
+        case 'entityCatalog':
+          if ((GAME_ART_ENTITY_CATALOG_VARIANTS as readonly string[]).includes(v)) out.entityCatalog = v as GameArtTier['entityCatalog'];
+          break;
+        case 'motionPattern':
+          if ((GAME_ART_MOTION_PATTERN_VARIANTS as readonly string[]).includes(v)) out.motionPattern = v as GameArtTier['motionPattern'];
+          break;
+        case 'particleProfile':
+          if ((GAME_ART_PARTICLE_PROFILE_VARIANTS as readonly string[]).includes(v)) out.particleProfile = v as GameArtTier['particleProfile'];
+          break;
+        case 'projectilePolicy':
+          if ((GAME_ART_PROJECTILE_POLICY_VARIANTS as readonly string[]).includes(v)) out.projectilePolicy = v as GameArtTier['projectilePolicy'];
+          break;
+        case 'audioProfile':
+          if ((GAME_ART_AUDIO_PROFILE_VARIANTS as readonly string[]).includes(v)) out.audioProfile = v as GameArtTier['audioProfile'];
+          break;
       }
     }
     if (Object.keys(out).length === 0) return { ok: false, reason: 'invalid_value', observed: raw };
@@ -136,7 +165,10 @@ const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
 const gameContentTierTagDef: DecisionTagDef<GameContentTier> = {
   name: 'gameContentTier',
   pattern: /<gameContentTier>\s*([\s\S]*?)\s*<\/gameContentTier>/i,
-  defaultOnRetryExhaustion: { genre: 'casual', coreLoop: 'collect' },
+  // v8 (D31-revised) — `match3` × `solve` is the most compact, css-only-
+  // verifiable default (Bejeweled-style swap+cascade). The matrix admits
+  // this pair (`match3 → [solve, collect]`).
+  defaultOnRetryExhaustion: { genre: 'match3', coreLoop: 'solve' },
   retryPolicy: 'inline',
   parse: (raw) => {
     const out: GameContentTier = {};
@@ -149,6 +181,16 @@ const gameContentTierTagDef: DecisionTagDef<GameContentTier> = {
         out.genre = v as GameContentTier['genre'];
       } else if (k === 'coreLoop' && (GAME_CORE_LOOP_VARIANTS as readonly string[]).includes(v)) {
         out.coreLoop = v as GameContentTier['coreLoop'];
+      }
+    }
+    // v8 (D31-revised / I9) — apply the genre×coreLoop matrix at parse
+    // time. If the LLM emits a (genre, coreLoop) pair outside the matrix,
+    // drop the coreLoop so retry / default-fill can reissue. This is a
+    // pure lookup; no node-side branching.
+    if (out.genre && out.coreLoop) {
+      const allowed = GENRE_CORELOOP_MATRIX[out.genre];
+      if (allowed && !(allowed as readonly string[]).includes(out.coreLoop)) {
+        out.coreLoop = undefined;
       }
     }
     if (Object.keys(out).length === 0) return { ok: false, reason: 'invalid_value', observed: raw };

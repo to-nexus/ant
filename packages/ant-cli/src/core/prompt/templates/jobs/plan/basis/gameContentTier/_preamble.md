@@ -6,8 +6,8 @@ This overlay sharpens **two GDD sections** when their tier values are pre-decide
 
 | Tier value | Applies to GDD section | What the overlay sharpens |
 |---|---|---|
-| `genre` (puzzle / shooter / rpg / platformer / strategy / casual / action) | §2 Genre & Coreloop | Genre-defining systems the PRD MUST commit |
-| `coreLoop` (collect / fight / build / explore / solve) | §2 Genre & Coreloop, §4 MDA | Loop-defining steps the PRD MUST commit |
+| `genre` (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` — D31-revised v8) | §2 Genre & Coreloop | Genre-defining systems the PRD MUST commit |
+| `coreLoop` (`solve` / `collect` / `survive` — matrix-gated per genre, D31-revised v8) | §2 Genre & Coreloop, §4 MDA | Loop-defining steps the PRD MUST commit |
 
 ### Genre commitment principle (when `genre` is decided)
 
@@ -15,13 +15,11 @@ When the genre is decided in this turn or pre-set on the basis, the PRD MUST com
 
 | Genre | Categories the PRD MUST cover (the project's specific instance, not the baseline) |
 |---|---|
-| puzzle | board / matching rule / combo or chain rule |
-| shooter | aim / fire / ammunition or cooldown |
-| rpg | stats or growth / inventory / quest or progression goal |
-| platformer | move / jump or traversal verb / hazard or obstacle |
-| strategy | unit or resource / decision turn / win condition |
-| action | core verb / hit feedback / threat pacing |
-| casual | one-touch input / one-screen scope / session-length cap |
+| `match3` | board (grid + tile pool) / matching rule (≥3 same-kind line + L/T/5 extensions) / cascade rule (gravity + refill + chain) |
+| `slidingPuzzle` | board (n×n grid + 1 empty cell) / sliding rule (4-neighbour swap into empty) / completion condition (target arrangement, e.g. 1..n²−1 ordered) |
+| `cardSolitaire` | card model (suit + rank universe) / tableau structure (stacks + foundations + waste / freecell) / legal-move predicate (rank±1 + suit/colour discipline) |
+| `arcadePaddle` | paddle physics (bounce + spin influence) / threat ramp (ball speed / brick layout / death-line) / score and life budget |
+| `arcadeSnake` | grid + snake-body chain / collision rule (self-collision + wall) / growth and speed ramp on pickup |
 
 The PRD must cite the project's **own twist** on each category — what makes THIS game different from the genre baseline. A PRD that only restates the baseline is empty (SBS violation: the genre gate's information payload is zero).
 
@@ -31,19 +29,32 @@ When `coreLoop` is decided, the PRD MUST describe the loop as a **3- or 4-step c
 
 | coreLoop | Skeleton (each step is a player verb the PRD owns) | What MUST change between iterations |
 |---|---|---|
-| collect | explore → pick → carry → store | Density / variety / risk near the pickup |
-| fight | engage → strike → react → recover | Threat composition / tempo / reward |
-| build | gather → place → optimize → repeat | Constraint tightness / unlocked options |
-| explore | observe → choose → traverse → discover | Map novelty / path branching / memorability |
-| solve | observe → hypothesize → act → confirm | Puzzle structure / constraint count / lookahead |
+| `solve` | observe → hypothesize → act → confirm | Puzzle structure / constraint count / lookahead depth |
+| `collect` | spot → reach → pick up → store | Density / variety / payoff cadence near the pickup |
+| `survive` | sense threat → respond → maintain rhythm → endure | Threat tempo / death-line ramp / lifeline budget |
 
 These skeletons are **starting points**, not contracts — the PRD is allowed to rename steps, merge two, or split one, as long as the rewritten loop still answers "what does the player do, in what order, and what changes next time".
 
+### Matrix gate (D31-revised v8 — I9)
+
+The two axes are NOT independent. `GENRE_CORELOOP_MATRIX` (in `@ant/shared`) names which coreLoops are reachable for each genre — the decompose pipeline filters out-of-matrix pairs at parse time:
+
+| Genre | Legal coreLoop set |
+|---|---|
+| `match3` | `solve`, `collect` |
+| `slidingPuzzle` | `solve` |
+| `cardSolitaire` | `solve`, `collect` |
+| `arcadePaddle` | `survive`, `collect` |
+| `arcadeSnake` | `survive`, `collect` |
+
+The PRD MUST commit a `(genre, coreLoop)` pair already in the matrix. Pairs outside it (`arcadePaddle + solve`, `cardSolitaire + survive`, ...) are filtered before the design / code job sees them — surfacing one in the GDD costs a retry round and never reaches downstream.
+
 ### Reminders (FPOP-style blind spots)
 
-- ⚠️ Do NOT lift the genre's **mechanics** from a famous game — name the project's own verbs. "Like Tetris" is not a commitment; "rotate / drop / clear-line / refill-from-top" is.
-- ⚠️ A coreLoop step must be a **verb the player issues**, not a system reaction. "Damage is dealt" is a system reaction; "player times the swing" is the verb.
-- ⚠️ When `genre` and `coreLoop` are both decided, they MUST be consistent with each other. A `puzzle` genre with a `fight` coreLoop is either a categorical error or the directive is intentionally subverting the genre — make the subversion explicit in the GDD.
+- ⚠️ Do NOT lift the genre's **mechanics** from a famous game — name the project's own verbs. "Like Bejeweled" is not a commitment; "swap two adjacent tiles → match-3 → cascade → refill" is.
+- ⚠️ A coreLoop step must be a **verb the player issues**, not a system reaction. "Damage is dealt" is a system reaction; "player times the dodge" is the verb.
+- ⚠️ When `genre` and `coreLoop` are both decided, they MUST come from `GENRE_CORELOOP_MATRIX` (D31-revised v8). The decompose pipeline filters out-of-matrix pairs at parse time — surfacing one in the PRD costs a retry round.
+- ⚠️ The `match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` registry is css-only-tuned. Production-asset-dependent genres (action, platformer, shooter, rpg, strategy) are deferred to Phase 5+ when the visual job activates (legacy super-categories archived).
 - ⚠️ Multi-loop games (a meta-loop wrapping a moment-loop, e.g. roguelite) state both loops separately — coreLoop in this overlay is the **inner / shortest** loop. Outer loop, if any, is captured in §11 Meta-Progression of the GDD.
 
 ### Out of scope for this overlay

@@ -197,15 +197,20 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
 }
 
 /**
- * Phase 2 (D17 / D24) — game-art design readiness.
+ * D24-revised v8 — game-art design readiness.
  *
  * The intent group is gated by workspace.domain === 'game' at the
  * ActionsPanel layer (TIER_DOMAIN_MATRIX.gameArtTier). Here we compute the
  * "what's missing for build?" surface the same way as ui-design but
- * targeted at the FLAT `outputs/design/game-art/` canonical (D24).
+ * targeted at the sub-sourced canonical `outputs/design/game-art/ant/`
+ * (mirrors `outputs/design/ui/ant/`). The flat `outputs/design/game-art/`
+ * is still scanned for buildReady / hasOutput so legacy workspaces that
+ * have not yet run `migrateGameArtToAntSubdir` keep working in transit.
  */
 function computeGameArtDesign(ctx: TreeContext): ActionReadiness {
-  const hasGameArt = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/game-art');
+  const hasGameArtAnt = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/game-art/ant');
+  const hasGameArtFlat = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/game-art');
+  const hasGameArt = hasGameArtAnt || hasGameArtFlat;
   // description mode is always available (chat directive is the design
   // authority); figma sub-mode lights up when the workfile reference is
   // configured and the MCP bridge is reachable.
@@ -221,8 +226,8 @@ function computeGameArtDesign(ctx: TreeContext): ActionReadiness {
       { id: 'figma', active: figmaSubReady, blockReason: ctx.figmaPopulated !== true ? { en: 'Set Figma URL in figma.json', ko: 'figma.json에 Figma URL을 설정하세요' } : undefined },
       { id: 'description', active: true },
     ],
-    outputDir: 'outputs/design/game-art',
-    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/game-art', 'art'),
+    outputDir: 'outputs/design/game-art/ant',
+    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/game-art/ant', 'gameArtAnt'),
   };
 }
 
