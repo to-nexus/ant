@@ -112,8 +112,8 @@ rules.md의 Classification Protocol 단계:
 ### Job별 Prerequisites
 
 **Design Job (ui-design 모드)**
-- Required: `inputs/references/screens/` (화면 캡처)
-- Recommended: `inputs/references/components/`, `inputs/assets/`
+- Required: `outputs/design/ui/figma/figma.json` (Figma 모드) 또는 PRD/디렉티브 (description 모드)
+- Recommended: `inputs/assets/` (사용자 제공 에셋)
 
 **Design Job (system-design 모드)**
 - Required: PRD 또는 directive
@@ -135,7 +135,7 @@ plan job에서 다른 job으로 redirect 시 `hasTargetJobPrerequisites()` 함�
 
 | Target Job | 필요 조건 |
 |------------|----------|
-| design | hasPrd \|\| hasScreens \|\| hasComponents \|\| hasAssets |
+| design | hasPrd \|\| hasAssets \|\| hasFigmaConfig |
 | code | hasPrd \|\| hasDesignDoc \|\| hasCodebase |
 | learn | hasCodebase |
 | visual | 항상 true (directive만으로 충분) |
@@ -151,7 +151,8 @@ Triage 노드는 `workspaceAnalyzer`를 통해 현재 워크스페이스 상태�
 |-----------|----------|
 | `hasPrd` | `inputs/sources/prd.md` 존재 및 실질 콘텐츠 유무 |
 | `hasDirective` | directive 또는 채팅 입력 존재 |
-| `hasScreens` | `inputs/references/screens/` 파일 존재 |
+| `hasFigmaConfig` | `outputs/design/ui/figma/figma.json` populated |
+| `hasAssets` | `inputs/assets/` 내 자산 파일 존재 |
 | `hasDesignDoc` | `outputs/design/` 내 설계 문서 존재 |
 | `hasCodebase` | 벡터 DB 인덱스 존재 |
 | `hasSpecDocs` | `outputs/design/spec-*.md` 파일 존재 |

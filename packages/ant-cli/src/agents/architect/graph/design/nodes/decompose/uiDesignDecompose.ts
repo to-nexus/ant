@@ -77,15 +77,17 @@ export async function decomposeUiDesign(
     sourceFileNames.push('figma.json');
   }
 
-  // Render prompt
+  // Render prompt — figma mode dispatches to the by-figma variant; all
+  // other UI design entry points (gen-ui-desc / rev-ui) share the
+  // description-driven by-desc variant. The legacy `by-ref` variant has
+  // been removed alongside the gen-ui-ref intent.
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
-  const templateSuffix = isFigmaMode ? 'by-figma' : 'by-ref';
+  const templateSuffix = isFigmaMode ? 'by-figma' : 'by-desc';
   const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/ui-design-${templateSuffix}/base`;
 
   const uiDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
     uiContext,
-    referenceCount: state.uiReferences?.length || 0,
     assetCount: state.uiAssetsList
       ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
       : 0,
@@ -123,7 +125,7 @@ export async function decomposeUiDesign(
     {
       templatePath: decomposeTemplatePath,
       usedTemplates: [`jobs/design/nodes/decompose/variants/ui-design-${templateSuffix}/rules`],
-    }
+    },
   );
 
   try {

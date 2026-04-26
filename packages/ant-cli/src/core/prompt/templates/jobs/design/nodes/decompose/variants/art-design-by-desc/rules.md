@@ -251,7 +251,7 @@ Before outputting, verify:
 ## 🎨 GAME-ART POLICY DETECTION
 
 After the main JSON output, output a `<gameArtTier>` tag with the
-detected art-tier axis values.
+detected game-art-tier axis values.
 
 {{> jobs/shared/injections/game-art-tier-detection}}
 {{/if}}

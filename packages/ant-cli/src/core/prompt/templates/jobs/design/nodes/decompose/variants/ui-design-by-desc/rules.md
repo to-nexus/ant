@@ -1,20 +1,18 @@
 ## ExecutionTier Classification
 
-**Observation target**: The breadth of UI documentation implied by the directive, the mode, and the reference images / source documents supplied in this prompt.
+**Authoring target**: The breadth of UI documentation implied by the directive, the mode, and the source documents supplied in this prompt.
 
 | Tier | Label | Principle |
 |---|---|---|
 | `0` | Reflex        | Read-only explanation; no UI document produced. |
 | `1` | OneShot       | Single concrete edit to one existing UI document (e.g. a targeted token or asset change). |
-| `2` | Exploratory   | Must observe the references/sources before choosing what to document; still a single cohesive edit. |
-| `3` | Task          | Multiple chapters of UI documentation driven by the directive alone, without systematic grounding on external reference docs. |
-| `4` | RefsGrounded  | Multiple chapters systematically grounded in reference images plus PRD / source documents supplied in this prompt. |
+| `2` | Exploratory   | Must consult sources before choosing what to document; still a single cohesive edit. |
+| `3` | Task          | Multiple chapters of UI documentation driven by the directive alone. |
+| `4` | RefsGrounded  | Multiple chapters systematically grounded in PRD / source documents supplied in this prompt. |
 
 **Constraint**: Emit exactly one `<executionTier>N</executionTier>` tag BEFORE the JSON output. `N` is a single digit `0`–`4`.
 
-**Constraint**: Reference images alone do not force Tier 4. Tier 4 applies when the UI documentation is systematically derived from those references (full-page ref → full UI spec). If the directive asks for a narrow refactor, prefer tier `1` even when references exist.
-
-⚠️ **Blind spot**: When references are the source of truth for the breakdown, the tier is `4`, NOT `3`. The signature of Tier 4 is "the documentation is produced BY mapping the references" — not merely "references are attached".
+⚠️ **Blind spot**: When the PRD / source documents are the source of truth for the breakdown, the tier is `4`, NOT `3`. Tier 4 applies when the documentation is produced BY mapping those source documents.
 
 ---
 
@@ -61,7 +59,7 @@ Adjust chapter count based on expected content:
 Each task MUST include `sourceFiles` — an array of source filenames that the task needs to reference.
 
 - A task MAY reference 1 or more files depending on its scope
-- Observe each file's relevance to the task's domain concepts, not just its target document
+- Note each file's relevance to the task's domain concepts, not just its target document
 - **Constraint**: Do NOT omit a file that contains requirements relevant to the task scope
 - ⚠️ **Blind spot**: Foundational context files (domain glossaries, shared models) are relevant to tasks that reference those domain concepts — do NOT skip them because they lack a direct section mapping
 {{/if}}

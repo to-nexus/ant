@@ -2,9 +2,10 @@
  * F-1 — plan generate basis injection flow (Phase 1)
  *
  * `buildSystemPrompt` (planner / generate) MUST opt into basis injection
- * via `pipeline.includeBasis` + `basis` + `techContext` so the
- * tier-iterating buildBasisSection wires `jobs/plan/basis/domain/{d}.md`
- * (and any future plan-overlay tiers).
+ * via `pipeline.includeBasis` + `basis` + `techContext` so
+ * buildBasisSection wires `templates/domain/{d}.md` (identity, D27),
+ * `templates/jobs/plan/domain/{d}.md` (GDD/PRD skeleton overlay, D27),
+ * and any plan-overlay tiers.
  *
  * This is a regression for the v1 plan F-1 defect (`includeBasis` was
  * never set). The test inspects the source of `buildSystemPrompt.ts`

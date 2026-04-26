@@ -51,11 +51,14 @@ export async function buildSystemPrompt(
     templates: { base: 'jobs/plan/nodes/plan/variants/default/base', rules: 'jobs/plan/nodes/plan/variants/default/rules' },
     intent: state.resolvedAction?.intent,
     artifacts: resolvedArtifacts.length > 0 ? resolvedArtifacts : undefined,
-    // Phase 1 (F-1): plan generate must opt into basis injection so the
-    // tier-iterating buildBasisSection wires `jobs/plan/basis/domain/{d}.md`
-    // (game PRD / service PRD skeleton) and any future plan-overlay tiers.
-    // Without `includeBasis: true` + `basis` + `techContext`, the section
-    // is silently skipped and plan-overlay templates are dead code.
+    // Phase 1 (F-1) + D27: plan generate must opt into basis injection so
+    // `buildBasisSection` runs. That section now layers
+    // `templates/domain/{d}.md` (identity, D27) +
+    // `templates/jobs/plan/domain/{d}.md` (GDD/PRD skeleton overlay) on top
+    // of the active tier set, in addition to any plan-overlay tiers
+    // (gameContentTier, etc.). Without `includeBasis: true` + `basis` +
+    // `techContext`, the section is silently skipped and plan-overlay
+    // templates are dead code.
     pipeline: {
       includeBasis: true,
     },

@@ -6,8 +6,6 @@ function makeWs(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
   return {
     hasPrd: false,
     hasDirective: false,
-    hasScreens: false,
-    hasComponents: false,
     hasAssets: false,
     hasFigmaConfig: false,
     hasSystemDesignDoc: false,
@@ -23,23 +21,19 @@ function makeWs(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
 describe('hasTargetJobPrerequisites', () => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Target: design
-  // Needs: hasPrd || hasScreens || hasComponents || hasAssets
+  // Needs: hasPrd || hasAssets || hasFigmaConfig
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   describe('target = design', () => {
     it('returns true when PRD exists', () => {
       expect(hasTargetJobPrerequisites('design', makeWs({ hasPrd: true }))).toBe(true);
     });
 
-    it('returns true when screens exist', () => {
-      expect(hasTargetJobPrerequisites('design', makeWs({ hasScreens: true }))).toBe(true);
-    });
-
-    it('returns true when components exist', () => {
-      expect(hasTargetJobPrerequisites('design', makeWs({ hasComponents: true }))).toBe(true);
-    });
-
     it('returns true when assets exist', () => {
       expect(hasTargetJobPrerequisites('design', makeWs({ hasAssets: true }))).toBe(true);
+    });
+
+    it('returns true when Figma config exists', () => {
+      expect(hasTargetJobPrerequisites('design', makeWs({ hasFigmaConfig: true }))).toBe(true);
     });
 
     it('returns false when no design prerequisites exist', () => {

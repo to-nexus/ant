@@ -143,12 +143,7 @@ Observe the **intent** of the directive with respect to existing documents:
 {{/if}}
 
 {{#unless hasUiDocs}}
-{{#if hasReferences}}
-
-- UI docs missing, reference images available → `"ui-design"` + `"generate"` (visual materials ready)
-{{else}}
-- UI docs missing, no references → `"system-design"` + `"generate"` (cannot do UI without visuals)
-{{/if}}
+- UI docs missing, no Figma config → `"system-design"` + `"generate"` (UI design needs Figma or an explicit description directive)
 {{/unless}}
 
 {{#if hasUiDocs}}
@@ -171,7 +166,6 @@ UI Design Documents: exist
 {{#if hasUiSpec}}- ui-spec.json{{/if}}
 {{else}}
 UI Design Documents: not found
-{{#if hasReferences}}- Reference images: available{{else}}- Reference images: not available{{/if}}
 {{/if}}
 
 {{#if hasSystemDocs}}
@@ -216,16 +210,6 @@ Asset files: available
 {{directive}}
 ```
 
-{{#if referencesList}}
-
-### Reference Images
-
-```
-{{referencesList}}
-```
-
-{{/if}}
-
 {{#if assetsList}}
 
 ### Assets
@@ -259,8 +243,7 @@ After determining intentGroup, jobMode, domain, and environment, select the prec
 | intentId | Condition |
 |----------|-----------|
 | `gen-ui-figma` | generate + Figma config populated |
-| `gen-ui-ref` | generate + reference images available (no Figma) |
-| `gen-ui-desc` | generate + description only (no Figma, no references) |
+| `gen-ui-desc` | generate + description (no Figma) |
 | `rev-ui` | refactor |
 | `explain-ui` | explain |
 
@@ -275,7 +258,6 @@ After determining intentGroup, jobMode, domain, and environment, select the prec
 ### Runtime Hints
 
 {{#if figmaPopulated}}- Figma config: **populated** (file URL configured){{else}}- Figma config: not populated{{/if}}
-{{#if hasReferences}}- Reference images: **available**{{else}}- Reference images: not available{{/if}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -296,9 +278,9 @@ Respond with ONLY JSON wrapped in `<detect>` tags. No markdown fences.
 ### ui-design
 
 {{#unless explicitDomain}}
-{ "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-ui-figma" | "gen-ui-ref" | "gen-ui-desc" | "rev-ui" | "explain-ui", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "domain": "game" | "service", "domainReasoning": "1-2 sentences" }
+{ "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-ui-figma" | "gen-ui-desc" | "rev-ui" | "explain-ui", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences", "domain": "game" | "service", "domainReasoning": "1-2 sentences" }
 {{else}}
-{ "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-ui-figma" | "gen-ui-ref" | "gen-ui-desc" | "rev-ui" | "explain-ui", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences" }
+{ "intentGroup": "ui-design", "intentGroupReasoning": "1-2 sentences", "intentId": "gen-ui-figma" | "gen-ui-desc" | "rev-ui" | "explain-ui", "jobMode": "generate" | "refactor" | "explain", "jobModeReasoning": "1-2 sentences" }
 {{/unless}}
 
 ### system-design

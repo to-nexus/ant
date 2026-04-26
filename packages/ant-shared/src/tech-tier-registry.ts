@@ -183,13 +183,18 @@ export const TECH_TIER_TEMPLATE_PATHS = {
     `jobs/${job}/basis/techTier/language/${variant}`,
   jobFramework: (job: string, fw: string) =>
     `jobs/${job}/basis/techTier/framework/${fw}`,
+  // Domain (workspace selector) lives ABOVE basis (= active tier set).
+  // D27 (v6) — moved out of `basis/domain/` because `domain` is no longer a
+  // TierKey (D23) and basis is, by definition, the set of *tiers* that the
+  // domain has gated on. Keeping `domain/{d}.md` next to `basis/` makes the
+  // hierarchy explicit: domain selects → basis ⊆ TIER_DOMAIN_MATRIX[domain].
   jobDomain: (job: string, domain: string) =>
-    `jobs/${job}/basis/domain/${domain}`,
+    `jobs/${job}/domain/${domain}`,
   gameEnginePreamble: () => 'basis/techTier/gameEngine/_preamble',
   gameEngine: (engine: string) => `basis/techTier/gameEngine/${engine}`,
   jobGameEngine: (job: string, engine: string) =>
     `jobs/${job}/basis/techTier/gameEngine/${engine}`,
-  basisDomain: (domain: string) => `basis/domain/${domain}`,
+  basisDomain: (domain: string) => `domain/${domain}`,
 } as const;
 
 // ============================================

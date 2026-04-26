@@ -10,8 +10,6 @@ interface StepFilesAndStartProps {
   onSourcesChange: (f: File[]) => void;
   assetsFiles: File[];
   onAssetsChange: (f: File[]) => void;
-  referencesFiles: File[];
-  onReferencesChange: (f: File[]) => void;
   designDocsFiles: File[];
   onDesignDocsChange: (f: File[]) => void;
   directive: string;
@@ -25,7 +23,6 @@ export function StepFilesAndStart({
   t, mode,
   sourcesFiles, onSourcesChange,
   assetsFiles, onAssetsChange,
-  referencesFiles, onReferencesChange,
   designDocsFiles, onDesignDocsChange,
   directive, onDirectiveChange,
   showDirective, onShowDirectiveToggle,
@@ -55,15 +52,6 @@ export function StepFilesAndStart({
             tooltip={t('quickstart.projectWizard.assetsTooltip')}
             files={assetsFiles}
             onFilesChange={onAssetsChange}
-            dropzoneText={t('quickstart.projectWizard.fileDropzone')}
-            addMoreText={t('quickstart.projectWizard.addMoreFiles')}
-            maxFileListHeight="max-h-28"
-          />
-          <FileUploadArea
-            label={t('quickstart.projectWizard.references')}
-            tooltip={t('quickstart.projectWizard.referencesTooltip')}
-            files={referencesFiles}
-            onFilesChange={onReferencesChange}
             dropzoneText={t('quickstart.projectWizard.fileDropzone')}
             addMoreText={t('quickstart.projectWizard.addMoreFiles')}
             maxFileListHeight="max-h-28"

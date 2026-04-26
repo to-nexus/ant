@@ -58,7 +58,6 @@
 | Intent | Chat | Build |
 |--------|------|-------|
 | gen-ui-figma | refs | refs |
-| gen-ui-ref | refs | refs |
 | gen-ui-desc | 무조건 | refs |
 | rev-ui | target | 불가 |
 | explain-ui | refs | refs |

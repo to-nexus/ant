@@ -27,7 +27,10 @@ import { emitDetectOutcome } from "../../../../../../core/streaming/emitDetectOu
 // ============================================
 
 function validateUiDesignPrerequisites(state: DesignGraphState): void {
-  // Figma mode: references come from Figma MCP, not local files
+  // Figma mode is the only branch that needs a hard prerequisite check —
+  // the figma.json file must exist and carry a Figma URL. Description-mode
+  // (gen-ui-desc) and refactor (rev-ui) get their authoritative inputs
+  // from the RAC pool (PRD / existing UI doc) and need no extra gate here.
   if (isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig))) {
     if (!state.figmaConfig?.file) {
       throw new Error(
@@ -35,39 +38,14 @@ function validateUiDesignPrerequisites(state: DesignGraphState): void {
         "Required: figma.json with a Figma URL in the 'file' field."
       );
     }
-    return;
-  }
-
-  const hasReferences = state.uiReferences?.length;
-  const hasAssets = state.uiAssetsList && Object.values(state.uiAssetsList).some(arr => arr.length > 0);
-
-  if (!hasReferences && !hasAssets) {
-    throw new Error(
-      "No input files found for UI document generation.\n\n" +
-      "Required:\n" +
-      "- inputs/references/ - Design reference images (screenshots, component snapshots, etc.)\n" +
-      "- inputs/assets/ - Runtime asset files (optional)\n\n" +
-      "Please add at least one image or asset file."
-    );
-  }
-
-  if (!hasReferences) {
-    throw new Error(
-      "No reference images found for UI document generation.\n\n" +
-      "Please add design reference images to inputs/references/.\n" +
-      "- Screenshots are used for layout, color, and typography analysis.\n" +
-      "- Include diverse viewports and states when possible."
-    );
   }
 }
 
 /**
  * Validate prerequisites for game-art design intents (`gen-art-figma`,
- * `gen-art-ref`, `gen-art-desc`, `rev-art`).
+ * `gen-art-desc`, `rev-art`).
  *
  * - `gen-art-figma` requires a Figma config (same shape as ui-figma).
- * - `gen-art-ref` requires reference images OR existing user-placed
- *   external assets.
  * - `gen-art-desc` is directive-only — no references / assets required.
  * - `rev-art` requires existing `outputs/design/game-art/` documents
  *   (validated upstream by RAC; this fn is permissive here).
@@ -82,24 +60,6 @@ function validateArtDesignPrerequisites(state: DesignGraphState): void {
         "Required: figma.json with a Figma URL in the 'file' field."
       );
     }
-    return;
-  }
-
-  if (intent === 'gen-art-desc' || intent === 'rev-art') {
-    return;
-  }
-
-  const hasReferences = state.uiReferences?.length;
-  const hasAssets = state.uiAssetsList && Object.values(state.uiAssetsList).some(arr => arr.length > 0);
-
-  if (!hasReferences && !hasAssets) {
-    throw new Error(
-      "No input files found for game-art document generation.\n\n" +
-      "Required for gen-art-ref:\n" +
-      "- inputs/references/ - Concept art / sprite mock-ups (PNG/JPG/SVG)\n" +
-      "- inputs/assets/game/ - User-placed game assets (sprites, tilemaps)\n\n" +
-      "If you only have a directive, use the gen-art-desc intent instead."
-    );
   }
 }
 

@@ -424,11 +424,12 @@ function detectUsedTemplates(state: DesignGraphState, targetFile: string): strin
     templates.push('jobs/design/base/injections/frontend-guide');
   }
 
-  // Domain-specific guides
+  // Domain-specific guides — D27 (v6) lifts these out of `basis/domain/`
+  // because `domain` is a workspace selector, not a TierKey (D23).
   if (state.resolvedAction?.domain === 'game') {
-    templates.push('jobs/design/basis/domain/game');
+    templates.push('jobs/design/domain/game');
   } else if (state.resolvedAction?.domain === 'service') {
-    templates.push('jobs/design/basis/domain/service');
+    templates.push('jobs/design/domain/service');
   }
 
   const tiers = resolveDesignTechTierCandidates(state, targetFile);

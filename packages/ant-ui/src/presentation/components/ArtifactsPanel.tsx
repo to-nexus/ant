@@ -987,7 +987,6 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const sessionsNodes = fileTree?.find(node => node.name === 'sessions')?.children || [];
 
   const inputNodeHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }> = {
-    references: { label: t('panel.dirHint.references'), tooltip: t('panel.dirHintTooltip.references'), colorScheme: 'purple' },
     assets: { label: t('panel.dirHint.assets'), tooltip: t('panel.dirHintTooltip.assets'), colorScheme: 'purple' },
     sources: { label: t('panel.dirHint.sources'), tooltip: t('panel.dirHintTooltip.sources'), colorScheme: 'amber' },
   };

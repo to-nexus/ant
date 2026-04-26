@@ -53,8 +53,7 @@ ant-workspaces/{org}/{group}/{project}/
 │
 └── features/{feature}/
     ├── inputs/                        # [Input]
-    │   ├── assets/                    # Source assets
-    │   ├── references/                # Reference images
+    │   ├── assets/                    # Source assets (service/ or game/ subpool)
     │   └── sources/
     │       └── prd.md                 # PRD document
     │

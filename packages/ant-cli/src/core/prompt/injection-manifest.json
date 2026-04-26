@@ -51,21 +51,17 @@
     "frontend-guide": []
   },
   "jobs/design/nodes/execute/injections": {
-    "ui-tokens-guide-by-ref": [],
+    "ui-tokens-guide-by-desc": [],
     "ui-tokens-guide-by-figma": [],
-    "ui-assets-guide-by-ref": [],
+    "ui-assets-guide-by-desc": [],
     "ui-assets-guide-by-figma": [],
-    "ui-spec-guide-by-ref": [],
+    "ui-spec-guide-by-desc": [],
     "ui-spec-guide-by-figma": [],
-    "ui-continuation": ["targetDoc"],
     "ui-continuation-by-figma": ["targetDoc"],
-    "art-tokens-guide-by-ref": [],
     "art-tokens-guide-by-figma": [],
     "art-tokens-guide-by-desc": [],
-    "art-assets-guide-by-ref": ["forceAppend"],
     "art-assets-guide-by-figma": ["forceAppend"],
     "art-assets-guide-by-desc": ["forceAppend"],
-    "art-spec-guide-by-ref": ["forceAppend"],
     "art-spec-guide-by-figma": ["forceAppend"],
     "art-spec-guide-by-desc": ["forceAppend"]
   }

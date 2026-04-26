@@ -241,7 +241,7 @@ This category covers TWO types of unclarity:
 - Related information grouped together (not scattered across sections).
 - Numbered sections or IDs that enable cross-reference (e.g., "per §3.2", "see FR-05").
 - Appropriate use of tables, lists, and formatting.
-- File references (screenshots, assets) with correct paths.
+- File references (Figma URLs, handoff bundle paths, assets) with correct paths.
 
 **Signals of poor structure:**
 - All content in flat prose with no section headings.
@@ -351,10 +351,9 @@ This category covers TWO types of unclarity:
 
 ### 4.6 Reference Files Check
 
-**Screenshots:**
-- [ ] All screenshot paths are valid? (`inputs/references/screens/`)
-- [ ] Filenames are descriptive? (e.g., `desktop-2560.png`, `mobile-375.png`)
-- [ ] Each screenshot's purpose is explained?
+**Visual sources:**
+- [ ] If Figma is used, `outputs/design/ui/figma/figma.json` is configured with the file URL?
+- [ ] If a free-form handoff bundle exists (`outputs/design/ui/handoff/`), each file's purpose is explained?
 
 **Assets:**
 - [ ] Asset source paths specified? (`inputs/assets/`)
@@ -779,7 +778,7 @@ After writing, verify:
 - [ ] **Content**: all UI text, links, data — actual values, not placeholders
 - [ ] **Requirements**: each feature has behavior, conditions, outcomes
 - [ ] **Non-functional**: performance, security, accessibility with numbers
-- [ ] **References**: screenshot paths specified (if applicable)
+- [ ] **References**: Figma URL or handoff bundle paths specified (if applicable)
 
 ### 9.3 Common Mistakes
 
@@ -845,7 +844,8 @@ After writing, verify:
 - [Risk factors]
 
 ## 9) References
-- Screenshots: `inputs/references/screens/[filename].png`
+- Figma workfile: `outputs/design/ui/figma/figma.json` (URL only)
+- Handoff bundle: `outputs/design/ui/handoff/[path]` (free-form)
 - Assets: `inputs/assets/[path]`
 ```
 

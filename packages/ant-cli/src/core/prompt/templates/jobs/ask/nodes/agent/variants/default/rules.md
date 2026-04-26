@@ -88,7 +88,6 @@
 |-----------|----------|
 | `inputs/sources/` | PRD documents |
 | `inputs/directives/` | User directives (design/code) |
-| `inputs/references/` | Design reference images |
 | `inputs/assets/` | Icons, images, logos |
 | `outputs/design/{system,ui,spec}/` | Generated design documents (system MD, UI JSON, spec MD) |
 | `outputs/evals/` | Evaluation reports (prd/, ui-design/, system-design/, code/) |

@@ -175,7 +175,6 @@ export interface DesignGraphState extends TriageableState {
   
   // ✅ UI document generation context
   // Populated when resolvedAction?.intentGroup === 'design-ui'
-  uiReferences?: string[];  // All image paths under inputs/references/ (recursive)
   uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under inputs/assets/
   
   // ✅ Figma Integration (All-or-Nothing: Full MCP required)

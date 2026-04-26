@@ -2,28 +2,19 @@
 
 ## TOOL USAGE
 
-You have access to tools for exploring reference images and assets:
+You have access to tools for exploring assets and existing documents:
 
 | Tool | Purpose |
 |------|---------|
-| `list_reference_images` | Discover available reference images |
-| `read_reference_image` | Load specific image for visual analysis |
 | `list_assets` | List asset files grouped by subdirectory |
 | `read_file` | Read existing documents or PRD |
 
 ### Workflow
 
-1. **First**: Use `list_reference_images` or `list_assets` to discover available resources
-2. **Then**: Use `read_reference_image` to load and analyze specific images (ONE PER TURN)
-3. **Finally**: Generate the document using `<file>` or `<append>` XML tag (see below)
+1. **First**: If you need to understand existing assets or documents, use `list_assets` / `read_file`.
+2. **Then**: Generate the document directly using `<file>` or `<append>` XML tag (see below).
 
-### Image Loading Strategy
-
-- **ui-tokens.json**: Load 2-3 key screenshots with diverse UI elements
-- **ui-assets.json**: Use `list_assets` primarily, images optional for context
-- **ui-spec.json**: Prioritize full-page screenshots, then observe component details
-
-> ⚠️ **IMPORTANT**: Images are NOT preloaded. You MUST use `read_reference_image` tool to see screenshot content.
+> ⚠️ **IMPORTANT**: Description-driven mode receives NO screenshots and NO Figma file. The directive plus PRD are the design authority.
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -295,7 +286,7 @@ For dependent tasks (ui-spec), you will find REFERENCE sections in this prompt c
 
 1. **Token-First**: ALL visual values MUST reference tokens (e.g., `token(color.primary)`, NOT `#1E40AF`)
 2. **Specification Only**: Document WHAT to build, NOT HOW (no framework names, no implementation code)
-3. **Complete Coverage**: Capture ALL visual elements and interactions visible in screenshots
+3. **Complete Coverage**: Capture all behaviors and requirements implied by the directive / PRD
 4. **Use REFERENCE Sections**: For dependent tasks, find and use `# REFERENCE:` sections in this prompt
 
 ---
@@ -324,7 +315,7 @@ For dependent tasks (ui-spec), you will find REFERENCE sections in this prompt c
 ```
 
 **Content Requirements**:
-- Extract **exact values** from screenshots (no approximations)
+- Derive token values from the directive / PRD (brand colors, typography scale, density goals)
 - Use semantic keys that describe **purpose**, not appearance
 
 ---
@@ -341,10 +332,10 @@ For dependent tasks (ui-spec), you will find REFERENCE sections in this prompt c
 }
 ```
 
-> Categories are determined by observing asset purpose from filenames and directory structure. Do NOT assume fixed categories.
+> Categories are determined by observing the asset purpose mentioned in the directive / PRD or implied by `inputs/assets/` subdirectories. Do NOT assume fixed categories.
 
 **Content Requirements**:
-- Distinguish **background images** (decorative) vs **content images** (structural)
+- Distinguish **background images** (decorative) vs **content images** (structural) when assets exist
 
 ---
 
@@ -389,15 +380,14 @@ Before outputting, verify:
 
 **Content Quality**:
 - [ ] Content is in **Markdown table format** where appropriate
-- [ ] **Exact values** extracted from screenshots (no approximations)
+- [ ] **Token-first values** (no raw hex codes, pixel values, framework classes)
 - [ ] **ALL visual values** use token references (e.g., `token(color.primary)`)
-- [ ] **NO raw values** (hex codes, pixel values, framework classes)
 - [ ] Document section is **complete and self-contained**
 
 **Pattern Consistency (for ui-spec.json)**:
-- [ ] **Spatial relationships observed**: Every container's child arrangement (axis, alignment, distribution) explicitly determined from screenshot
+- [ ] **Spatial relationships explicit**: Every container's child arrangement (axis, alignment, distribution) called out
 - [ ] **Repeating patterns identified**: Components/sections with identical visual structure grouped
-- [ ] **Specification consistency verified**: Same visual pattern → Same layout properties (no exceptions)
+- [ ] **Specification consistency verified**: Same pattern → Same layout properties (no exceptions)
 
 **Shared Component References (for ui-spec.json page chapters)**:
 - [ ] If task description lists `Shared components [...]`, those IDs are referenced via `componentRef` only
@@ -416,20 +406,17 @@ Before outputting, verify:
 
 **Rules:**
 1. Output `<done>true</done>` ONLY after:
-   - All required screenshots have been analyzed
    - Document content has been generated with `<file>` or `<append>` tag
    - You have no more tool calls to make
 
 2. **Do NOT output `<done>true</done>` if:**
    - You just made a tool call (wait for the result first)
    - You haven't generated the document yet
-   - You still need to load more images
 
 3. **Typical flow:**
    ```
-   Turn 1: list_reference_images() → Wait
-   Turn 2: read_reference_image(...) → Wait
-   Turn 3: <file>...</file> or <append>...</append> + <done>true</done>
+   Turn 1 (optional): list_assets() / read_file(prd) → Wait
+   Turn 2: <file>...</file> or <append>...</append> + <done>true</done>
    ```
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**

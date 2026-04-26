@@ -2,7 +2,7 @@
  * useImagePreview — Fetch a feature-relative image file as an object URL.
  *
  * Shared by any chat card that needs to show an inline image preview
- * (figma_called screenshot, downloaded asset, read_reference_image, etc.).
+ * (figma_called screenshot, downloaded asset, etc.).
  *
  * Lifecycle: fetch → createObjectURL → auto-revoke on unmount / path change.
  */

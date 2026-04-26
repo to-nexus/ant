@@ -49,7 +49,7 @@ The `figmaNodeId` field provides traceability back to the source frame.
 
 #### `kind: 'inline'` shape (D21 css-only policy)
 
-Same shape as in the by-ref variant:
+Same shape as in the by-desc variant:
 - SVG: `format: 'svg', svg: '<svg viewBox=...>'`
 - CSS: `format: 'css', css: '.id { ... }'`
 - Audio: `format: 'oscillator', oscillator: { type, frequency, durationMs, gain }`

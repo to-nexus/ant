@@ -107,7 +107,7 @@ Detect 파이프라인의 공통 어휘와 LLM 추론 출력 타입.
 |---------------|------|------|
 | `plan` | 3 | `gen-plan`, `rev-plan`, `explain-plan` |
 | `design-system` | 5 | `gen-sys-fe`, `gen-sys-be`, `gen-sys-full`, `rev-sys`, `explain-sys` |
-| `design-ui` | 5 | `gen-ui-figma`, `gen-ui-ref`, `gen-ui-desc`, `rev-ui`, `explain-ui` |
+| `design-ui` | 4 | `gen-ui-figma`, `gen-ui-desc`, `rev-ui`, `explain-ui` |
 | `design-spec` | 3 | `gen-spec`, `rev-spec`, `explain-spec` |
 | `code` | 5 | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `rev-code`, `explain-code` |
 | `visual` | 2 | `gen-visual`, `explain-visual` |
@@ -138,7 +138,7 @@ Infer:    strategy.run() → InferredAction → mergeWithMetadata() → resolveT
 | `TECH_TIER_FRAMEWORKS` | `Record<string, BasisOption[]>` — 언어별 프레임워크 선택 상수 |
 | `VISUAL_TIER_DESIGN_SYSTEMS` | `BasisOption[]` — 디자인 시스템 선택 상수 (현재 빈 배열) |
 | `buildBasisPreset()` | `(opts) => Basis` — UI에서 basis preset 생성 |
-| `InferWorkspaceState` | infer 경로 보조: `hasFigmaConfig?`, `hasScreens?`, `hasComponents?`, `hasPrd?`, `hasDesignDoc?`, `hasSpecDocs?`, `targetFiles?` |
+| `InferWorkspaceState` | infer 경로 보조: `hasFigmaConfig?`, `hasPrd?`, `hasDesignDoc?`, `hasSpecDocs?`, `targetFiles?` |
 | `resolveToRAC()` | `(intentId, slots?, source?, basis?) => ResolvedActionContext` — mode/intentGroup은 `deriveFromIntent()`로 파생 |
 | `mergeWithMetadata()` | `(inferred, metadata?) => { intentId, target?, refs?, context?, domain?, basis? }` — infer 경로에서 metadata 보충 |
 | `mergeTechTier()` | `(preset?, inferred?) => TechTier` — preset 필드 우선, 빈 필드는 inferred에서 채움 |
@@ -210,7 +210,7 @@ UI(`ActionConfigView`)가 intent 선택 시점에 `actionMetadata.target`을 세
 |-------------|-----------|
 | plan (3) | `gen-plan`, `rev-plan`, `explain-plan` |
 | design-system (5) | `gen-sys-fe`, `gen-sys-be`, `gen-sys-full`, `rev-sys`, `explain-sys` |
-| design-ui (5) | `gen-ui-figma`, `gen-ui-ref`, `gen-ui-desc`, `rev-ui`, `explain-ui` |
+| design-ui (4) | `gen-ui-figma`, `gen-ui-desc`, `rev-ui`, `explain-ui` |
 | design-spec (3) | `gen-spec`, `rev-spec`, `explain-spec` |
 | code (5) | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `rev-code`, `explain-code` |
 | visual (2) | `gen-visual`, `explain-visual` |
