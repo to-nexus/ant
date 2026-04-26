@@ -481,20 +481,69 @@ export class ProjectCrudService {
   
   /**
    * Update project configuration
+   *
+   * Phase 2 (D22) — when `WorkspaceConfig.domain` changes, every feature
+   * under the project gets a one-shot idempotent asset migration so the
+   * new pool layout (`inputs/assets/{service|game}/...`) is reachable on
+   * the next agent turn. Migration runs after the config write so a
+   * crash mid-migration leaves config + tree in a consistent post-toggle
+   * state (re-running the toggle is a noop).
    */
   async updateProjectConfig(projectId: string, config: any, userContext: UserContext): Promise<void> {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
     const configPath = path.join(projectPath, 'config.json');
-    
-    // Ensure project directory exists
+
+    let previousDomain: 'service' | 'game' | undefined;
+    try {
+      const previousRaw = await fs.promises.readFile(configPath, 'utf-8');
+      const previousParsed = JSON.parse(previousRaw) as { domain?: unknown };
+      if (previousParsed?.domain === 'service' || previousParsed?.domain === 'game') {
+        previousDomain = previousParsed.domain;
+      }
+    } catch {
+      // First-time write — no previous domain to compare against.
+    }
+
     await fs.promises.mkdir(projectPath, { recursive: true });
-    
-    // Write config
+
     await fs.promises.writeFile(
       configPath,
       JSON.stringify(config, null, 2),
       'utf-8'
     );
+
+    const nextDomain = (config as { domain?: unknown })?.domain;
+    if (
+      (nextDomain === 'service' || nextDomain === 'game') &&
+      nextDomain !== previousDomain
+    ) {
+      try {
+        const { reconcileProjectAssetsToDomain } = await import(
+          '../../../../../infrastructure/workspace/reconcileAssetsToDomain'
+        );
+        const result = await reconcileProjectAssetsToDomain({
+          projectPathAbs: projectPath,
+          domain: nextDomain,
+        });
+        const featureCount = Object.keys(result).length;
+        if (featureCount > 0) {
+          logger.info('[updateProjectConfig] reconciled asset pools after domain toggle', {
+            component: 'ProjectCrudService',
+            projectId,
+          }, {
+            previousDomain: previousDomain ?? null,
+            nextDomain,
+            featureCount,
+          });
+        }
+      } catch (err: unknown) {
+        const reason = err instanceof Error ? err.message : String(err);
+        logger.warn('[updateProjectConfig] domain-toggle migration skipped', {
+          component: 'ProjectCrudService',
+          projectId,
+        }, { reason });
+      }
+    }
   }
 }
 
