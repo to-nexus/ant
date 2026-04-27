@@ -31,3 +31,5 @@ export {
   buildIntentClarifyTemplateVars,
 } from './gate';
 export type { IntentCommittedState } from './gate';
+export { consumeAwaitingClarify } from './continuation';
+export type { ClarifyContinuableState } from './continuation';

@@ -23,6 +23,7 @@ export const PlanAnnotation = Annotation.Root({
   pendingToolCalls: Annotation<any>,
   phaseTokenUsages: Annotation<any>,
   executionTier: Annotation<any>,
+  awaitingClarify: Annotation<any>,
 } as const);
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
@@ -64,6 +65,15 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
    * only.
    */
   executionTier?: ExecutionTierId;
+
+  /**
+   * Set when generate emits a `<clarify>` card and the run pauses for user
+   * input. On the next invocation, runner restores this flag from session
+   * state so `routeAfterPlannerResolve` can short-circuit triage/detect and
+   * generate's entry hook (`consumeAwaitingClarify`) can append the user's
+   * answer to NODE_GENERATE before the LLM call. Cleared by the helper.
+   */
+  awaitingClarify?: boolean;
 }
 
 /** Helper to read planMode from resolvedAction */

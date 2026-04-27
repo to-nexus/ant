@@ -419,6 +419,27 @@ export class JobCleanupManager {
         // sources (StaleJobRecovery, BullMQ stalled handler, etc.)
         // can't double-emit.
         if (interruptionReason && mapping.projectId && mapping.featureName) {
+          // Backstop for the cancelled-turn streaming overlay: sweep every
+          // active TURN_BUFFER for this feature and broadcast empty
+          // snapshots so the FE projector clears its `streamingBuffers`
+          // mirror. Best-effort — never throws or blocks the cancelled
+          // card emission below. Covers the SIGTERM 1.8s race where a
+          // parallel worker exits before
+          // `LLMResponseService.finalizeMessage(true)` can run.
+          try {
+            await this.deps.chatService.clearAllTurnBuffers(
+              mapping.projectId,
+              mapping.featureName,
+              effectiveUserContext,
+            );
+          } catch (err) {
+            logger.warn(
+              `clearAllTurnBuffers backstop failed`,
+              { component: 'JobCleanupManager', jobId },
+              err,
+            );
+          }
+
           await this.deps.chatService.appendChoicePresentedCancelled(
             mapping.projectId,
             mapping.featureName,

@@ -30,7 +30,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { getTools } from './tools';
-import { parseClarifyTags } from '../../../../../common/clarify';
+import { parseClarifyTags, consumeAwaitingClarify } from '../../../../../common/clarify';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
 
@@ -70,17 +70,13 @@ export async function docGen(
     console.log(`   Task tokens so far: ${taskTokensSoFar.totalTokens} (in=${taskTokensSoFar.inputTokens} out=${taskTokensSoFar.outputTokens})`);
   }
   
-  // ✅ Spec clarify continuation: append user's clarify response to conversation history
+  // ✅ Spec clarify continuation: append user's clarify response to NODE_DOCGEN
+  // via the shared helper. Gated on `intentGroup === 'design-spec'` because
+  // only spec clarify writes the docGen-kind checkpoint; other intent groups
+  // never set `awaitingClarify` on this state.
   if (intentGroup === 'design-spec' && state.awaitingClarify && state.overrideDirective) {
     console.log(`📋 [DocGen/Spec] Clarify continuation — appending user response to conversation`);
-    state.conversations = {
-      ...state.conversations,
-      [CONV_KEYS.NODE_DOCGEN]: [...nodeDocGen, {
-        role: 'user',
-        content: state.overrideDirective,
-      }],
-    };
-    state.awaitingClarify = false;
+    consumeAwaitingClarify(state, CONV_KEYS.NODE_DOCGEN);
   }
   
   let messages;
