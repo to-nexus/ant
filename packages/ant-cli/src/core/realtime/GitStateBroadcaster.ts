@@ -49,6 +49,7 @@ import {
   getRealtimeBroadcastChannel,
   BroadcasterOptions,
 } from './types';
+import { InflightTracker } from './InflightTracker';
 
 /**
  * Minimal publisher contract — compatible with both `ioredis.Redis.publish`
@@ -74,6 +75,11 @@ export class GitStateBroadcaster {
   private readonly publisher: GitChangePublisher;
   private readonly userContext?: UserContext;
   private readonly ownedRedis?: Redis;
+  // Tracks in-flight publishes so close() can flush before quitting the
+  // owned Redis. Important because parent broadcasters (e.g. FileTree)
+  // run close() concurrently via Promise.all — without flush a co-emitted
+  // gitState publish could be cut off mid-flight.
+  private readonly inflight = new InflightTracker();
 
   constructor(options: GitStateBroadcasterOptions | BroadcasterOptions) {
     if ('publisher' in options) {
@@ -197,22 +203,31 @@ export class GitStateBroadcaster {
       data,
     };
 
-    try {
-      await this.publisher(channel, message);
-    } catch (error: any) {
-      console.warn(
-        `[GitStateBroadcaster] Failed to publish gitState (${data.cause}):`,
-        error?.message ?? error
-      );
-    }
+    const exec = (async () => {
+      try {
+        await this.publisher(channel, message);
+      } catch (error: any) {
+        console.warn(
+          `[GitStateBroadcaster] Failed to publish gitState (${data.cause}):`,
+          error?.message ?? error
+        );
+      }
+    })();
+    this.inflight.track(exec);
+    return exec;
   }
 
   /**
    * Close the owned Redis connection (if any). When a shared
    * publisher is used (StateStorePort-backed), this is a no-op —
    * the owner is responsible for lifecycle.
+   *
+   * Flushes in-flight publishes first so a co-emitted gitState event
+   * (from FileTreeBroadcaster) finishes landing on Redis before the
+   * connection is closed.
    */
   async close(): Promise<void> {
+    await this.inflight.flush();
     if (this.ownedRedis) {
       try {
         await this.ownedRedis.quit();
