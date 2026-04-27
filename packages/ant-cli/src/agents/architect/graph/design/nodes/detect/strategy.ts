@@ -9,7 +9,7 @@
 import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { DesignGraphState } from '../../state.js';
 import type { InferredAction, Mode } from '@ant/shared';
-import { isFigmaDataPopulated, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
+import { isFigmaDataPopulated, extractFigmaUrlParts, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
 import { runEstimatingLLMStream } from '../../../../../common/graph/llmHelpers.js';
 import { resolveDesignTargetFiles } from '../../../../../../core/types/detection.js';
@@ -217,7 +217,26 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
         stateUpdates.tokenUsage = state.tokenUsage;
         return { inferred, stateUpdates };
       }
-      console.log(`✅ Figma MCP reachable — pipeline=figma`);
+      // SSOT: parse fileKey/startNodeId from figmaConfig.file once detect
+      // confirms the figma pipeline is viable. Without this, the unified
+      // common figma handler (which reads `ctx.figmaFileKey` directly) would
+      // reject every figma_* tool call in the worker subgraph as
+      // "Figma fileKey not configured" — design-spec already does this via
+      // `checkSpecFigma()`. design-ui has no equivalent helper because MCP
+      // reachability and URL parseability are independent concerns: a
+      // malformed URL is a graceful skip rather than a hard error.
+      if (state.figmaConfig?.file) {
+        const parts = extractFigmaUrlParts(state.figmaConfig.file);
+        if (parts.fileKey) {
+          stateUpdates.figmaFileKey = parts.fileKey;
+          stateUpdates.figmaStartNodeId = parts.nodeId;
+          console.log(`✅ Figma MCP reachable — pipeline=figma (fileKey=${parts.fileKey})`);
+        } else {
+          console.log(`✅ Figma MCP reachable — pipeline=figma (⚠️  could not parse fileKey from URL)`);
+        }
+      } else {
+        console.log(`✅ Figma MCP reachable — pipeline=figma`);
+      }
     } else if (parsed.intentGroup === 'design-ui') {
       stateUpdates.uiAssetsList = uiAssetsList;
     }
