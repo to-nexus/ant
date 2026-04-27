@@ -53,9 +53,10 @@ import { PlanCard } from './PlanCard';
 import { TaskResponseCard } from './TaskResponseCard';
 import { TypingIndicator } from './TypingIndicator';
 import { aggregateChatStatuses } from './aggregateChatStatuses';
-import type {
-  Turn,
-  TurnSection,
+import {
+  MAIN_WORKER_SCOPE,
+  type Turn,
+  type TurnSection,
 } from '@/domain/store/selectors/chat';
 
 interface TurnItemProps {
@@ -126,8 +127,22 @@ function SectionStack({ turnId, section }: { turnId: string; section: TurnSectio
     return ids;
   }, [section.items]);
 
+  // Surface the task label inside the scope key (`worker-N#task-K`).
+  // Prefer a human-readable taskName from a `task_response` /
+  // `plan_generating` line's metadata when present so users see the
+  // narrative identity rather than the internal task id.
+  const sectionHeader = useMemo(
+    () => buildSectionHeader(section),
+    [section],
+  );
+
   return (
     <div className="space-y-2">
+      {sectionHeader && (
+        <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 px-1 pt-1">
+          {sectionHeader}
+        </div>
+      )}
       {renderItems.map((entry, idx) => (
         <RenderEntry
           key={entry.key ?? idx}
@@ -157,6 +172,44 @@ function SectionStack({ turnId, section }: { turnId: string; section: TurnSectio
       })}
     </div>
   );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Section header — surfaces `worker-N#task-K` identity for clarity
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function parseScope(scope: string): { workerLabel?: string; taskKey?: string } {
+  if (scope === MAIN_WORKER_SCOPE) return {};
+  const [workerPart, taskPart] = scope.split('#', 2);
+  return {
+    workerLabel: workerPart || undefined,
+    taskKey: taskPart || undefined,
+  };
+}
+
+/**
+ * Best-effort task name extraction from a section's events. The BE
+ * stamps `metadata.taskName` on `task_response` / `plan_generating` /
+ * `plan` chat_status lines, so we surface that for the header label.
+ * Falls back to the raw `taskKey` (task id) when no human-readable
+ * name is found.
+ */
+function buildSectionHeader(section: TurnSection): string | null {
+  const { workerLabel, taskKey } = parseScope(section.workerScope);
+  if (!workerLabel) return null;
+  if (!taskKey) return null; // No task scope → don't clutter with bare worker label.
+
+  let taskName: string | undefined;
+  for (const item of section.items) {
+    if (item.kind !== 'status') continue;
+    const md = (item.line.metadata ?? {}) as Record<string, unknown>;
+    const candidate = typeof md.taskName === 'string' ? md.taskName : undefined;
+    if (candidate) {
+      taskName = candidate;
+      break;
+    }
+  }
+  return `${workerLabel} · ${taskName ?? taskKey}`;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -406,15 +459,13 @@ function PendingStatusCard({
       jobType: 'code',
       cardId: pending.cardId,
       statusType: pending.statusType as ChatStatusType,
-      workerScope: workerScope === MAIN_WORKER_SCOPE_LITERAL ? undefined : workerScope,
+      workerScope: workerScope === MAIN_WORKER_SCOPE ? undefined : workerScope,
       metadata: pending.metadata,
     }),
     [pending, turnId, workerScope],
   );
   return <StatusCardDispatch line={line} pending={pending} isStreaming={isStreaming} />;
 }
-
-const MAIN_WORKER_SCOPE_LITERAL = '_main_';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Markdown assistant text — used by both finalized message and live overlay
