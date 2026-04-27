@@ -172,3 +172,63 @@ describe('designDetectStrategy — figmaFileKey propagation (design-ui)', () => 
     expect(result.stateUpdates?.figmaStartNodeId).toBeUndefined();
   });
 });
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Resume path — designResolveStrategy.onResume must rehydrate fileKey/
+// startNodeId from figmaConfig.file. The graph routing in graph.ts:817-823
+// skips detect on resume, so without this rehydrate every legacy
+// checkpoint (saved before the detect-side fix when state.figmaFileKey
+// was undefined and JSON.stringify dropped it) keeps resurrecting the
+// same "Figma fileKey not configured" failure forever.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe('designResolveStrategy.onResume — figmaFileKey rehydrate', () => {
+  function buildResumeState(opts: { figmaUrl?: string }) {
+    return {
+      context: {
+        project: 'p',
+        featureFolder: 'f',
+        // Empty featurePath skips disk reloads (existingDesignDocs scan,
+        // loadResolvedArtifacts) — keeps the test hermetic.
+        featurePath: '',
+        workingDir: '',
+        userId: 'u-1',
+        organizationId: 'org-1',
+        userLanguage: 'ko',
+      },
+      // No deps.session → hydrateFeatureContext returns
+      // { featureContext: undefined, turnId: undefined }.
+      deps: {},
+      figmaConfig: opts.figmaUrl ? { file: opts.figmaUrl } : undefined,
+      conversations: {},
+      planText: '',
+    } as any;
+  }
+
+  it('rehydrates figmaFileKey/figmaStartNodeId from figmaConfig.file (legacy checkpoint with figmaConfig but missing fileKey)', async () => {
+    const { designResolveStrategy } = await import(
+      '../src/agents/architect/graph/design/nodes/resolve'
+    );
+
+    const figmaUrl =
+      'https://www.figma.com/design/z08MukCkkOSGXiITeSRj5V/-PoSA?node-id=5087-4505';
+    const state = buildResumeState({ figmaUrl });
+
+    const result = await designResolveStrategy.onResume!(state);
+
+    expect(result.figmaFileKey).toBe('z08MukCkkOSGXiITeSRj5V');
+    expect(result.figmaStartNodeId).toBe('5087:4505');
+  });
+
+  it('omits figma fields when figmaConfig is absent (non-figma resume jobs unaffected)', async () => {
+    const { designResolveStrategy } = await import(
+      '../src/agents/architect/graph/design/nodes/resolve'
+    );
+
+    const state = buildResumeState({});
+    const result = await designResolveStrategy.onResume!(state);
+
+    expect(result.figmaFileKey).toBeUndefined();
+    expect(result.figmaStartNodeId).toBeUndefined();
+  });
+});
