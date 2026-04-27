@@ -33,7 +33,7 @@ interface DecomposeContext {
 // Response Type
 // ============================================
 
-interface SystemDesignResponse {
+export interface SystemDesignResponse {
   documentType: 'unified' | 'contract-first' | 'msa-contract-first';
   services?: string[];
   fePackages?: string[];
@@ -78,6 +78,21 @@ function isSystemDesignFile(fileName: string): boolean {
   return SYSTEM_DESIGN_FILE_PATTERNS.some(p => p.test(fileName));
 }
 
+/**
+ * Strip the matrix-injected path prefix (`outputs/design/system/`) so the
+ * basename — the only token `validateAndFixTargetFiles` recognises — is left
+ * intact. Wildcards (`-*.md`) are preserved; the validator collapses or
+ * expands them based on the LLM's MSA decision.
+ *
+ * Pre-`0f9ee7e4` regression: action-config-matrix's `formatOutputSpec` ships
+ * `outputs/design/system/be-system-*.md` into `actionMetadata.target`. Without
+ * this strip, downstream strict-equality (`f === 'be-system-main.md'`) sees
+ * the full path + wildcard and never matches.
+ */
+function stripDesignTargetPrefix(file: string): string {
+  return file.split('/').pop() ?? file;
+}
+
 // ============================================
 // Resolved TargetFiles Validation (Single Source of Truth)
 // ============================================
@@ -88,26 +103,34 @@ function isSystemDesignFile(fileName: string): boolean {
  *
  * Flow: MSA expansion → task remap → documentType inference → coverage check.
  *
- * MSA expansion (both FE and BE):
- *   be-system-main.md → be-system-{service}.md  (when response.services exists)
- *   fe-system-main.md → fe-system-{package}.md  (when response.fePackages exists)
- *   api-contract-main.md → api-contract-{service}.md  (when response.services exists)
+ * Placeholder semantics (matrix wildcard contract since 0f9ee7e4):
+ *   - `*` is a postfix placeholder ("filled by LLM's MSA decision")
+ *   - multi-package: response.services / fePackages → per-package postfix
+ *   - single-package: collapse to `main`
+ *
+ * MSA expansion accepts both `-main.md` (legacy detect path) and `-*.md`
+ * (matrix path) as expansion keys:
+ *   be-system-{main,*}.md → be-system-{service}.md  (when response.services exists)
+ *   fe-system-{main,*}.md → fe-system-{package}.md  (when response.fePackages exists)
+ *   api-contract-{main,*}.md → api-contract-{service}.md  (when response.services exists)
+ *
+ * Single-package fallback: any wildcard surviving Step 1 collapses to `-main.md`.
  */
-function validateAndFixTargetFiles(
+export function validateAndFixTargetFiles(
   response: SystemDesignResponse,
   resolvedTargetFiles: string[],
   _detectedEnv: string | undefined,
   jobMode: Mode = 'generate'
 ): SystemDesignResponse {
   // Step 1: MSA expansion FIRST (before any task validation)
-  // Replaces -main.md with per-service/package files when MSA is detected
+  // Replaces `-main.md` / `-*.md` placeholders with per-service/package files when MSA is detected
   let effectiveTargetFiles = [...resolvedTargetFiles];
 
   if (response.services?.length) {
     effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
-      f === 'be-system-main.md'
+      f === 'be-system-main.md' || f === 'be-system-*.md'
         ? response.services!.map(s => `be-system-${s}.md`)
-        : f === 'api-contract-main.md'
+        : f === 'api-contract-main.md' || f === 'api-contract-*.md'
           ? response.services!.map(s => `api-contract-${s}.md`)
           : [f]
     );
@@ -115,11 +138,18 @@ function validateAndFixTargetFiles(
 
   if (response.fePackages?.length) {
     effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
-      f === 'fe-system-main.md'
+      f === 'fe-system-main.md' || f === 'fe-system-*.md'
         ? response.fePackages!.map(p => `fe-system-${p}.md`)
         : [f]
     );
   }
+
+  // Single-package fallback: wildcards not consumed by MSA expansion collapse
+  // to `-main.md`. The downstream strict-equality (Step 2 task filter, Step 5
+  // coverage check) is concrete-filename only.
+  effectiveTargetFiles = effectiveTargetFiles.map(f =>
+    f.endsWith('-*.md') ? f.replace(/-\*\.md$/, '-main.md') : f
+  );
 
   response.targetFiles = effectiveTargetFiles;
 
@@ -358,7 +388,11 @@ export async function decomposeSystemDesign(
     ? Object.keys(state.existingDesignDocs).filter(isSystemDesignFile)
     : [];
   const jobMode = state.resolvedAction?.mode || 'generate';
-  const resolvedTargetFiles = state.resolvedAction?.target;
+  // Matrix wildcard contract (`0f9ee7e4`+): `state.resolvedAction.target` arrives as
+  // `outputs/design/system/be-system-*.md`. Strip the prefix so basename-only
+  // comparisons in `validateAndFixTargetFiles` work; wildcards stay intact and
+  // the validator decides between MSA expansion vs `-main.md` collapse.
+  const resolvedTargetFiles = state.resolvedAction?.target?.map(stripDesignTargetPrefix);
   const detectedEnv: Stack = state.resolvedAction?.intent?.includes('-fe') ? 'frontend' : state.resolvedAction?.intent?.includes('-be') ? 'backend' : 'fullstack';
 
   // For prompt: use resolvedTargetFiles as the authority for file constraints
