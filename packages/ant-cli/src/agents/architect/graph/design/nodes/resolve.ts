@@ -3,7 +3,7 @@ import { WorkspacePathResolver } from "../../../../../core/config/WorkspacePathR
 import { DesignGraphState } from "../state";
 import * as path from "path";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
-import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR } from "@ant/shared";
+import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR, extractFigmaUrlParts } from "@ant/shared";
 import { hydrateFeatureContext } from "../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
@@ -120,12 +120,25 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       { jobId: state.jobId, logPrefix: 'Design Resolve/Resume' },
     );
 
+    // Resume routing in `graph.ts` skips detect, so figmaFileKey /
+    // figmaStartNodeId are not re-derived on resume. Legacy checkpoints
+    // produced before the detect-side fix never persisted these fields
+    // (state was undefined and JSON.stringify dropped them), which made
+    // every worker figma_* call fail with "Figma fileKey not configured".
+    // Rehydrate from the canonical SSOT (figmaConfig.file) here —
+    // idempotent for fresh checkpoints, recovery for legacy ones.
+    const figmaParts = state.figmaConfig?.file
+      ? extractFigmaUrlParts(state.figmaConfig.file)
+      : undefined;
+
     return {
       existingDesignDocs,
       artifacts: resumeUpdatedArtifacts,
       resolvedArtifacts: resumeArtifacts,
       featureContext,
       turnId,
+      ...(figmaParts?.fileKey && { figmaFileKey: figmaParts.fileKey }),
+      ...(figmaParts?.nodeId && { figmaStartNodeId: figmaParts.nodeId }),
     } as Partial<DesignGraphState>;
   },
 
@@ -157,21 +170,26 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       prd = undefined;
     }
 
-    // Template check for generate mode
+    // Template check for generate mode — the plan-job canonical filename
+    // is domain-aware (service → prd.md, game → gdd.md). Either file
+    // sitting in template state should be surfaced to the user as the
+    // same fix-the-template error.
     if (jobMode === 'generate' && !prd) {
       const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
       const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
       const root = fileSystem.getRootPath?.() || '';
       const sourceDir = root ? path.relative(root, sourceDirAbs) : sourceDirAbs;
-      const prdPath = path.join(sourceDir, 'prd.md');
-      if (await fileSystem.fileExists(prdPath)) {
-        const raw = await fileSystem.readFile(prdPath);
-        if (raw && isTemplateContent(raw)) {
-          throw new Error(
-            "PRD(prd.md)가 아직 템플릿 상태입니다.\n" +
-            "- prd.md 상단의 `<!-- ant:template -->` 줄을 삭제하고 내용을 채워주세요.\n" +
-            "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다.",
-          );
+      for (const planFilename of ['prd.md', 'gdd.md'] as const) {
+        const planPath = path.join(sourceDir, planFilename);
+        if (await fileSystem.fileExists(planPath)) {
+          const raw = await fileSystem.readFile(planPath);
+          if (raw && isTemplateContent(raw)) {
+            throw new Error(
+              `기획서(${planFilename})가 아직 템플릿 상태입니다.\n` +
+              `- ${planFilename} 상단의 \`<!-- ant:template -->\` 줄을 삭제하고 내용을 채워주세요.\n` +
+              "- 해당 마커가 남아있으면 시스템은 '비어있는 입력'으로 취급합니다.",
+            );
+          }
         }
       }
     }

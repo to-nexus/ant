@@ -29,7 +29,7 @@ The `fileBased` audio profile commits to **external audio files placed under `in
 
 ### Phase scope contract
 
-`fileBased` requires **`_meta.phaseScope === 'p4-external-enabled'`**. Under `phaseScope === 'p2-css-only'`, the marker overrides the LLM's profile choice and forces `procedural` (see `_preamble.md` Section 5). The scope marker's authority means that a `fileBased` declaration in a Phase-3 project degrades cleanly to procedural until the user upgrades the phase scope.
+`fileBased` requires **`_meta.audioScope === 'external-enabled'`**. Under `audioScope === 'procedural-only'`, the marker overrides the LLM's profile choice and forces `procedural` (see `_preamble.md` Section 5). The scope marker's authority means that a `fileBased` declaration in a baseline-audio project degrades cleanly to procedural until the user upgrades the audio scope.
 
 ### Genre cross-reference (D31-revised v8 — guidance, not strict)
 
@@ -55,7 +55,7 @@ Each sub-genre benefits but none requires `fileBased` — `procedural` is the Ph
 
 ### Blind-spot reminders
 
-- ⚠️ `fileBased` while `phaseScope === 'p2-css-only'` runs in degraded procedural mode (silently or with a console notice). The project's PRD should call out the upgrade path.
+- ⚠️ `fileBased` while `audioScope === 'procedural-only'` runs in degraded procedural mode (silently or with a console notice). The project's PRD should call out the upgrade path.
 - ⚠️ Missing audio files at runtime cause Phaser preload errors — the project should validate asset existence in CI / pre-deploy. The ANT validator (Phase 4) checks `kind: 'external'` paths for existence.
 - ⚠️ Listing oscillator-format entries in the `sfx` category while `audioProfile === 'fileBased'` is inconsistent — those should migrate to `external` or the profile should be `hybrid`.
 - ⚠️ License / royalty considerations for shipped audio belong outside this tier — but the project team owes a license audit before publish.

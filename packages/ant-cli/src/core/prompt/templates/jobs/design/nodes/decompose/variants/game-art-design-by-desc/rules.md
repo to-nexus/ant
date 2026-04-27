@@ -72,6 +72,24 @@ Each task MUST include `sourceFiles` — an array of source filenames.
 
 - Empty categories MUST be omitted
 
+### 7.5 GDD Hand-off Citation (when GDD is in source documents)
+
+When the GDD provides `EN-XXX` / `LV-XXX` identifiers in §8 Content
+Scope and `MC-XXX` / `RW-XXX` in §4 / §6, asset and spec category
+derivation MUST cite those IDs:
+
+- Each `game-art-assets-{category}` task description MUST cite the
+  `EN-` / `LV-` IDs the category covers
+  (e.g., `Implements GDD §8 (EN-Hero, EN-Hero-Wounded)`)
+- Each `game-art-spec-{category}` task description MUST cite the
+  `MC-` / `RW-` IDs (e.g., `Implements GDD §4 / MC-Combat`)
+- The `game-art-tokens` task description MUST cite `GDD §4 / §6`
+  Aesthetic + Reward & Feedback vocabulary
+- An asset / spec task without a GDD citation creates shadow IDs that
+  diverge from the planner's commitment. When the GDD is genuinely
+  absent, state `GDD absent — categories extracted from directive` in
+  each task description so the gap is visible.
+
 ### 8. Asset-Source Kind Discipline (CRITICAL — D20 / D21)
 
 **Every asset entry has exactly one `kind: 'inline' | 'external'`.**
@@ -244,7 +262,17 @@ Before outputting, verify:
 - ✅ When `assetCount = 0`, every assets task description specifies
   inline as default
 - ✅ External entries only present if the directive explicitly references
-  a user-placed file
+  a user-placed file (or the GDD §8 cites a sprite path for that entity)
+
+### GDD Hand-off Citation
+- ✅ When GDD is in source documents: every `game-art-assets-{category}`
+  description cites the `EN-` / `LV-` IDs it covers
+- ✅ When GDD is in source documents: every `game-art-spec-{category}`
+  description cites the `MC-` / `RW-` IDs it covers
+- ✅ When GDD is in source documents: `game-art-tokens` description
+  cites `GDD §4 / §6` Aesthetic + Reward vocabulary
+- ✅ When GDD is absent: every task description states
+  `GDD absent — categories extracted from directive`
 
 ---
 

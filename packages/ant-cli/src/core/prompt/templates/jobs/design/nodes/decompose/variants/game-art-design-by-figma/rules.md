@@ -92,6 +92,29 @@ without rescanning root.
   in `particles` or `entities` (assets) — that is reference, not duplication
 - Empty categories MUST be omitted
 
+### 8.5 GDD Hand-off Citation + EN ↔ Figma Alignment (when GDD is in source documents)
+
+When the GDD provides `EN-XXX` / `LV-XXX` identifiers in §8 Content
+Scope and `MC-XXX` / `RW-XXX` in §4 / §6, both inputs MUST be aligned:
+
+- One asset task per `EN-` / `LV-` cluster from GDD §8 — task ID prefers
+  GDD entity ID alignment (e.g., `game-art-assets-entities-hero`)
+- Each `game-art-assets-{category}` task description MUST: (a) cite the
+  GDD IDs (`Implements GDD §8 (EN-Hero, EN-Hero-Wounded)`), (b) record
+  the Figma node-id mapping (`Figma: <nodeId list>`), and (c) state
+  the alignment source — `figma node cited by GDD` / `frame name match: <name>` /
+  `unmapped — Figma frame proposes new EN-`
+- Each `game-art-spec-{category}` task description MUST cite `MC-` / `RW-`
+  IDs and the Figma frames that visualize the mechanic / reward
+- The `game-art-tokens` task description MUST cite `GDD §4 / §6`
+  Aesthetic + Reward vocabulary plus the Figma variable groups consumed
+- A Figma frame that does not map to any `EN-` / `LV-` from GDD §8:
+  include it as a separate task with `unmapped — proposes new EN-` note;
+  the planner can then back-fill the GDD with the proposed `EN-` ID
+- When the GDD is genuinely absent, state `GDD absent — categories
+  extracted from Figma frames` in each task description so the gap is
+  visible
+
 ### 9. Asset-Source Kind Discipline (CRITICAL — D20 / D21)
 
 **Every asset entry has exactly one `kind: 'inline' | 'external'`.**
@@ -263,10 +286,13 @@ Before outputting, verify:
 - ✅ No empty categories
 
 ### Task Descriptions
-- ✅ Token task description mentions `gameArtTier.concept`
+- ✅ Token task description mentions `gameArtTier.concept` and (when GDD present) cites `GDD §4 / §6` Aesthetic + Reward vocabulary
 - ✅ Assets task descriptions mention the inline / external kind policy
 - ✅ Spec task descriptions reference asset ids
 - ✅ Every task scopes a Figma nodeId where applicable
+- ✅ When GDD is in source documents: every assets task description cites the `EN-` / `LV-` IDs and the Figma node-id mapping with alignment source
+- ✅ When GDD is in source documents: every spec task description cites the `MC-` / `RW-` IDs
+- ✅ When GDD is absent: every task description states `GDD absent — categories extracted from Figma frames`
 
 ---
 

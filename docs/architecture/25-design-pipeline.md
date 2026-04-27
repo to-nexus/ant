@@ -409,26 +409,28 @@ UI Design 의 두 모드 (by-desc / by-figma) 와 1:1 대응. 모드 결정은 `
 
 `game-art-assets.json` 의 항목은 두 종류:
 
-| `kind`     | 출처                                                   | Phase 3 css-only scope |
+| `kind`     | 출처                                                   | Design-time inline-payload ceiling (D21) |
 |------------|--------------------------------------------------------|------------------------|
-| `inline`   | LLM 이 JSON 안에 직접 작성 (`css` / `svg` / `oscillator`) | ✅ 단순 도형 / 단순 사운드 한정 (D21) |
+| `inline`   | LLM 이 JSON 안에 직접 작성 (`css` / `svg` / `oscillator`) | ✅ 단순 도형 / 단순 사운드 한정 (D21) — 디자인이 inline 으로 저작 가능한 복잡도 한계 |
 | `external` | 사용자가 `inputs/assets/game/{cat}/` 에 배치한 파일      | 모든 production 자산 (mp3 / png / 3D 모델 등) |
+
+D21 의 "css-only" 표현은 디자인-시점 inline 페이로드의 복잡도 ceiling 을 가리키며, 코드잡의 캔버스 렌더링 정책과는 별개다 (엔진 캔버스는 CSS 로 자산을 만들 수 없으므로 코드잡은 별도의 "available canvas methods" 카탈로그를 commit — `templates/jobs/code/basis/gameArtTier/_preamble.md` §7 참조).
 
 런타임 검증:
 
 - `validateAssetReferences` 가 `kind: 'external'` src 경로만 디스크 검증, `kind: 'inline'` 은 skip (`design/graph.ts` 의 `extractGameArtExternalSrcs` 헬퍼).
 - `infrastructure/workspace/gameArtAssetValidator.ts` 가 D20 + I6 invariant 를 programmatic backstop 으로 강제 — `kind: 'external'` 인데 src 가 service 풀로 시작하면 throw, 게임 풀 외부면 issue, 미존재면 issue. 회귀 가드 `tests/art-asset-validation.test.ts` (9 케이스).
 
-## Phase scope (`_meta.phaseScope` — D21)
+## Scope markers (`_meta.audioScope` / `_meta.visualScope` — D21)
 
-`game-art-assets.json` 은 `_meta.phaseScope` 마커를 carry 한다:
+`game-art-assets.json` 은 두 개의 독립 스코프 마커를 carry 한다 (이전의 단일 `_meta.phaseScope` 를 분리):
 
-| `phaseScope` | Phase | 효과 |
-|--------------|-------|------|
-| `'p2-css-only'` | 3 default | inline + external 모두 readable. external audio (`sfx`/`bgm`) 는 코드-시점에 suppressed — procedural OscillatorNode 가 유일한 audio path. |
-| `'p4-external-enabled'` | 4+ | external entry 전부 load. file-based audio 활성. |
+| 마커 | 값 | 효과 |
+|---|---|---|
+| `_meta.audioScope` | `'procedural-only'` (default) / `'external-enabled'` | `'procedural-only'` 은 external audio (`sfx`/`bgm`) 를 코드-시점에 suppressed — procedural OscillatorNode 가 유일한 audio path. `'external-enabled'` 는 외부 오디오 로딩 활성. |
+| `_meta.visualScope` | `'baseline'` (default) / `'atlas-enabled'` | `'baseline'` 은 카탈로그 inline / 단일 external 이미지 + 엔진 절차 API + 빌드타임 정적 자산 + 런타임 절차적 텍스처 합성을 허용. atlas / 멀티 emitter / 멀티 projectile 그룹은 차단. `'atlas-enabled'` 활성. image-LLM 호출 / image-LLM 출력 자산 삽입은 양쪽 값에 걸친 절대 컷. |
 
-코드 잡은 LLM-emit `audioProfile` 보다 `phaseScope` 마커를 우선한다 (Phase 3 boundary 보호). 자세한 contract 는 `templates/jobs/code/basis/gameArtTier/_preamble.md`.
+두 마커는 직교 — 각 의사결정 surface 가 다르므로 `audioScope: 'external-enabled'` 와 `visualScope: 'baseline'` 의 페어링 (또는 그 반대) 도 합법이다. 코드 잡은 LLM-emit `audioProfile` 보다 `audioScope` 마커를 우선한다 (baseline boundary 보호). 자세한 contract 는 `templates/jobs/code/basis/gameArtTier/_preamble.md`.
 
 ## 도구 라우팅 (D22 — `pickAssetsRoot`)
 

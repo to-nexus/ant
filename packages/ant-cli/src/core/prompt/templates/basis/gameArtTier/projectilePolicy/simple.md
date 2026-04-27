@@ -31,10 +31,11 @@ The `projectiles` category in `game-art-spec.json` records the per-projectile be
 }
 ```
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (D31-revised v9 — guidance, not strict)
 
-- `match3`, `slidingPuzzle`, `cardSolitaire`, `arcadePaddle`, `arcadeSnake` — `simple` is **unusual** for all 5 v8 sub-genres. None of them are projectile-centric in their canonical form. Adopt `simple` only when the project explicitly introduces a projectile mechanic (e.g. a "shoot the queue" power-up in match-3, a paddle that fires a beam after a brick combo).
-- For mainstream usage, `simple` is reserved for Phase 5+ when shooter / arcade-shooter / platformer genres re-enter the registry.
+- `match3`, `slidingPuzzle`, `cardSolitaire`, `arcadePaddle`, `arcadeSnake` — `simple` is **unusual** for these 5 v9 sub-genres. None of them are projectile-centric in their canonical form. Adopt `simple` only when the project explicitly introduces a projectile mechanic (e.g. a "shoot the queue" power-up in match-3, a paddle that fires a beam after a brick combo).
+- `crowdRunner` — `simple` is **canonical** when the auto-firing crowd uses one projectile kind with straight-line motion and single-hit behaviour. The crowd is the firing pool; per-unit projectiles spawn at a fixed cadence per `fireRate` attribute. Step up to `complex` only when the op universe introduces multi-projectile / piercing / homing variants.
+- For super-category Phase 5+ projectile-centric domains (action / platformer / arcade-shoot — legacy / archived), `simple` is the entry point when the registry widens.
 
 ### Code-time consequences
 

@@ -15,7 +15,7 @@ The `complex` projectile policy commits to **multi-kind projectiles with non-tri
 
 ### Phase scope contract
 
-`complex` typically requires **`_meta.phaseScope === 'p4-external-enabled'`** AND `entityCatalog === 'standard'` or `'rich'` AND `motionPattern === 'expressive'` to feel cohesive. The css-only inline scope cannot author the visual variety this policy implies; the SFX expectations are similarly broader than `procedural` can deliver.
+`complex` typically requires **`_meta.visualScope === 'atlas-enabled'`** AND `entityCatalog === 'standard'` or `'rich'` AND `motionPattern === 'expressive'` to feel cohesive. The baseline visual scope cannot author the visual variety this policy implies; the SFX expectations are similarly broader than `procedural` can deliver, so pairing with `_meta.audioScope === 'external-enabled'` is typical.
 
 ### Genre cross-reference (D31-revised v8 — guidance, not strict)
 
@@ -37,6 +37,6 @@ For all 5 v8 sub-genres (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadeP
 ### Blind-spot reminders
 
 - ⚠️ `complex` while `entityCatalog === 'minimal'` is incoherent — the catalog needs distinct entries for each projectile kind (and probably their hit / explosion variants).
-- ⚠️ `complex` while `phaseScope === 'p2-css-only'` is rejected — the inline complexity ceiling cannot author the visual variety.
+- ⚠️ `complex` while `visualScope === 'baseline'` is rejected — the design-time inline-payload ceiling cannot author the visual variety.
 - ⚠️ `complex` adopted by a v8 sub-genre is a category drift signal — the design pipeline should question the genre choice rather than the policy.
 - ⚠️ Performance budget at `complex` requires explicit testing on lower-end devices; the policy CAN ship at 60fps but only with disciplined pooling and per-kind rate limiting.

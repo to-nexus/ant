@@ -10,6 +10,27 @@ in scope here.
 **Source mode**: Figma — components / sprite frames / variables drive
 the breakdown via real-time MCP exploration.
 
+**SSOT alignment**: When a GDD is available in source documents, two
+SSOT inputs must be aligned:
+
+1. **GDD §8 Content Scope** (`EN-XXX`, `LV-XXX`) — entity / level
+   catalog
+2. **Figma frames / nodeIds** — visual design surface
+
+Each `EN-` / `LV-` from the GDD MUST map to one or more Figma frames;
+pick the frame(s) whose name or annotation best matches the entity
+semantically. When the GDD cites a Figma node-id for an entity (e.g.,
+`EN-Hero — figma: 1234:5678`), use that exact node-id as the primary
+input for that entity. When the GDD does not cite figma but `EN-` IDs
+exist, pick the matching frame from the Figma exploration result and
+record the chosen mapping in the task description as
+`EN-<name> ↔ figma:<nodeId>`. When the GDD lacks `EN-` IDs (legacy or
+absent), fall back to Figma frame names alone, but flag the gap
+(`GDD lacks EN- IDs — categories extracted from Figma frame names`)
+in each task description.
+
+The directive **supplements** both inputs; it does NOT override them.
+
 **Job Mode**: {{detectedMode}}
 
 {{#if (eq detectedMode "refactor")}}
@@ -129,17 +150,28 @@ under the 8K cap).
 
 | Task ID | Priority | Topic |
 |---------|----------|-------|
-| `game-art-tokens` | 100 | Palette, silhouette, lighting, motion-tone tokens — derived from `gameArtTier.concept` and the Figma color/effect variables. |
+| `game-art-tokens` | 100 | Palette, silhouette, lighting, motion-tone tokens — derived from **GDD §4 MDA Aesthetic** + **GDD §6 Reward & Feedback** + the Figma color / effect variables when GDD is present; fall back to `gameArtTier.concept` + Figma variables only when GDD is absent. Description MUST cite `GDD §4 / §6` (when GDD present) and the Figma variable groups consumed. |
 
 ---
 
 ### game-art-assets.json (category-parallel tasks)
 
-**One task per asset category present in the Figma file.** Map Figma
-component sets to asset categories — `entities` for character /
-collectible components, `particles` for VFX components, `projectiles`
-for projectile components, etc. Categories with zero items SHOULD be
-omitted.
+**Category derivation**:
+
+- **When GDD §8 Content Scope is present**: one task per `EN-XXX` (or
+  `LV-XXX`) cluster from GDD §8, mapped to Figma frames. Category task
+  ID prefers GDD entity ID alignment (e.g.,
+  `game-art-assets-entities-hero` for `EN-Hero`). Description MUST
+  cite (a) the GDD IDs (`Implements GDD §8 (EN-Hero, EN-Hero-Wounded)`),
+  (b) the Figma node-id mapping (`Figma: <nodeId list>`), and (c) the
+  alignment source (`figma node cited by GDD` / `frame name match: <name>` /
+  `unmapped — Figma frame proposes new EN-`).
+- **When GDD is absent**: fall back to mapping Figma component sets to
+  asset categories — `entities` for character / collectible components,
+  `particles` for VFX components, `projectiles` for projectile
+  components, etc. Categories with zero items SHOULD be omitted. Flag
+  the gap (`GDD absent — categories extracted from Figma frames`) in
+  each task description.
 
 | Task ID format | Priority | Topic |
 |----------------|----------|-------|
@@ -151,6 +183,11 @@ omitted.
   if a sprite export was placed under `inputs/assets/game/...`,
   otherwise `kind: 'inline'` with simple-shape SVG approximation.
 - A Figma effect / overlay frame → `kind: 'inline'` SVG or CSS only.
+- **GDD asset citation precedence**: When GDD §8 cites a sprite path
+  for a specific `EN-XXX` (e.g.,
+  `EN-Hero — sprite: inputs/assets/game/entities/hero.png`), use that
+  cited path as the asset's `external` `src` regardless of Figma
+  state — the GDD citation is the planner's explicit commitment.
 
 **Asset-source kind policy (D20)** — see rules.md.
 
@@ -158,9 +195,17 @@ omitted.
 
 ### game-art-spec.json (category-parallel tasks)
 
-**One task per spec category** — derived from Figma frame names that
-describe behavior (e.g. an "interactions" page → `effects` spec; a
-"states" frame → `characters` spec).
+**Category derivation**:
+
+- **When GDD is present**: one task per `MC-XXX` from §4 MDA Mechanics
+  or `RW-XXX` from §6 Reward & Feedback. Spec task description MUST
+  cite the GDD ID and the Figma frames that visualize the mechanic /
+  reward (e.g., `Implements GDD §4 / MC-Combat → Figma: <nodeId list>`).
+- **When GDD is absent**: fall back to deriving spec categories from
+  Figma frame names that describe behavior (e.g. an "interactions"
+  page → `effects` spec; a "states" frame → `characters` spec). Flag
+  the gap (`GDD absent — spec categories extracted from Figma frames`)
+  in each task description.
 
 | Task ID format | Priority | Topic |
 |----------------|----------|-------|

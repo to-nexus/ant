@@ -14,6 +14,46 @@ import { generateFileOutline } from './fileOutline';
 import type { ResolvedArtifact } from '@ant/shared';
 
 /**
+ * Filenames that own the `gen-plan` SSOT role across the two domains.
+ * Both prd.md (service) and gdd.md (game) are sorted to the front of any
+ * source-document listing so design and code prompts see the canonical
+ * plan document first regardless of which domain authored it.
+ */
+const PLAN_FILE_NAMES = new Set(['prd.md', 'gdd.md']);
+
+/**
+ * Sort comparator that pulls plan-job canonical filenames (prd.md /
+ * gdd.md) to the front of source-document listings, then falls back to
+ * locale-aware alphabetic order. The two plan filenames are treated as
+ * equal-priority so a workspace with one or the other (or both, in
+ * legacy migrated cases) gets a stable ordering.
+ */
+function comparePlanFirst(a: string, b: string): number {
+  const aIsPlan = PLAN_FILE_NAMES.has(a);
+  const bIsPlan = PLAN_FILE_NAMES.has(b);
+  if (aIsPlan && !bIsPlan) return -1;
+  if (!aIsPlan && bIsPlan) return 1;
+  if (aIsPlan && bIsPlan) {
+    // Stable inside the plan group: prd.md before gdd.md alphabetically
+    // anyway, but make the intent explicit.
+    return a === 'prd.md' ? -1 : b === 'prd.md' ? 1 : 0;
+  }
+  return a.localeCompare(b);
+}
+
+/**
+ * Find the canonical plan-job filename (prd.md or gdd.md) in a list of
+ * candidate filenames. Prefer `prd.md` when both are present (legacy
+ * migration safety: a workspace that authored prd.md before the gdd.md
+ * split keeps prd.md as authoritative).
+ */
+function findPlanFile(filenames: string[]): string | undefined {
+  if (filenames.includes('prd.md')) return 'prd.md';
+  if (filenames.includes('gdd.md')) return 'gdd.md';
+  return undefined;
+}
+
+/**
  * Build formatted source documents string for a specific task.
  *
  * @param sourceFiles - Files assigned to this task (1 or more).
@@ -32,11 +72,7 @@ export function buildSourceDocsForTask(
 
   if (filesToInclude.length === 0) return '';
 
-  const sorted = [...filesToInclude].sort((a, b) => {
-    if (a === 'prd.md') return -1;
-    if (b === 'prd.md') return 1;
-    return a.localeCompare(b);
-  });
+  const sorted = [...filesToInclude].sort(comparePlanFirst);
 
   return sorted
     .map(f => `--- ${f} ---\n\n${sourceDocuments[f]}`)
@@ -77,11 +113,7 @@ export function buildCondensedSourceDocs(
   const HEADER_OVERHEAD = 20;
   const SEPARATOR_OVERHEAD = 4;
 
-  const allFiles = Object.keys(sourceDocuments).sort((a, b) => {
-    if (a === 'prd.md') return -1;
-    if (b === 'prd.md') return 1;
-    return a.localeCompare(b);
-  });
+  const allFiles = Object.keys(sourceDocuments).sort(comparePlanFirst);
 
   const totalContentSize = allFiles.reduce((sum, f) => {
     return sum + sourceDocuments[f].length + HEADER_OVERHEAD + SEPARATOR_OVERHEAD;
@@ -93,8 +125,12 @@ export function buildCondensedSourceDocs(
       .join('\n\n');
   }
 
-  const prdKey = allFiles.find(f => f === 'prd.md');
-  const otherFiles = allFiles.filter(f => f !== 'prd.md');
+  // The plan document (prd.md for service, gdd.md for game) is the
+  // highest-priority context for downstream classification and design.
+  // Always include it in full; truncation distributes across other
+  // files only.
+  const prdKey = findPlanFile(allFiles);
+  const otherFiles = prdKey ? allFiles.filter(f => f !== prdKey) : allFiles;
 
   let usedChars = 0;
   const parts: string[] = [];
@@ -196,11 +232,7 @@ export function buildSourceFileIndex(
 
   const includeLineNumbers = options?.includeLineNumbers ?? false;
 
-  const sorted = Object.keys(sourceDocuments).sort((a, b) => {
-    if (a === 'prd.md') return -1;
-    if (b === 'prd.md') return 1;
-    return a.localeCompare(b);
-  });
+  const sorted = Object.keys(sourceDocuments).sort(comparePlanFirst);
 
   const totalChars = Object.values(sourceDocuments).reduce((s, c) => s + c.length, 0);
 
@@ -267,11 +299,7 @@ export function buildSourceDocsAsResolved(
 ): ResolvedArtifact[] {
   if (!sourceDocuments || Object.keys(sourceDocuments).length === 0) return [];
 
-  const sorted = Object.keys(sourceDocuments).sort((a, b) => {
-    if (a === 'prd.md') return -1;
-    if (b === 'prd.md') return 1;
-    return a.localeCompare(b);
-  });
+  const sorted = Object.keys(sourceDocuments).sort(comparePlanFirst);
 
   return sorted.map(filename => ({
     path: filename,

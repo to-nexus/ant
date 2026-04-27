@@ -126,12 +126,15 @@ export interface VisualTier {
 //   - particle / projectile motion → `particleProfile` / `projectilePolicy`
 
 /**
- * v8 (D32-revised) — 5 concepts diversified for the 5 sub-genres.
- * `pixelRetro` carries through from Phase 3; `flatMinimal` and
- * `neonArcade` were introduced in v7's pre-revision pass; `softPastel`
- * and `cardClassic` are v8 additions tuned for match3-class and
- * cardSolitaire respectively. Phase 5+ widens the union when the
- * production-asset pipeline opens (dark-fantasy / three-kingdoms /
+ * v9 (D32-revised) — 5 concepts diversified across the 6 sub-genres.
+ * The concept registry is intentionally smaller than the genre registry
+ * — concepts generalise across genres. `pixelRetro` carries through
+ * from Phase 3; `flatMinimal` and `neonArcade` were introduced in v7's
+ * pre-revision pass; `softPastel` and `cardClassic` are v8 additions
+ * tuned for match3-class and cardSolitaire respectively. The `crowdRunner`
+ * genre (added v9) reads naturally with `flatMinimal` / `neonArcade` /
+ * `pixelRetro`. Phase 5+ widens the union when the production-asset
+ * pipeline opens (dark-fantasy / three-kingdoms /
  * martial-arts / sf-fantasy etc.).
  */
 export type GameArtConceptVariant =
@@ -174,19 +177,26 @@ export interface GameArtTier {
 // ============================================
 
 /**
- * v8 (D31-revised) — 5 sub-genres tuned for css-only inline production.
- * Each sub-genre commits a narrow domain (board/match-rule, sliding-rule,
- * card-suit, paddle-physics, snake-grid) so the LLM-emitted partial does
- * not blur category boundaries the way the v7 `puzzle/casual/arcade`
- * super-categories did. Phase 5+ widens the registry when the visual job
- * authors production assets for action/platformer/shooter/rpg/strategy.
+ * v9 (D31-revised) — 6 sub-genres tuned for css-only inline production.
+ * Each sub-genre commits a narrow systems-shape domain (board/match-rule,
+ * sliding-rule, card-suit, paddle-physics, snake-grid, crowd+steering)
+ * so the LLM-emitted partial does not blur category boundaries the way
+ * the v7 `puzzle/casual/arcade` super-categories did. Phase 5+ widens
+ * the registry when the visual job authors production assets for
+ * action/platformer/shooter/rpg/strategy super-categories.
+ *
+ * Genre partials are GUIDES, not closed contracts: they fix the systems
+ * shape *categories* the project must cover and surface universal blind
+ * spots, but the axes inside each category (steering axis, op universe,
+ * formation rule, threat shape, …) remain PRD's surface.
  */
 export type GameGenreVariant =
   | 'match3'
   | 'slidingPuzzle'
   | 'cardSolitaire'
   | 'arcadePaddle'
-  | 'arcadeSnake';
+  | 'arcadeSnake'
+  | 'crowdRunner';
 
 /**
  * v8 (D31-revised) — coreLoop registry stays 3-element (`solve` /
@@ -198,9 +208,9 @@ export type GameGenreVariant =
 export type GameCoreLoopVariant = 'solve' | 'collect' | 'survive';
 
 export interface GameContentTier {
-  /** Genre identity (D31-revised v8: match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake — 5 sub-genres). */
+  /** Genre identity (D31-revised v9: match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner — 6 sub-genres). */
   genre?: GameGenreVariant;
-  /** Core-loop pattern (D31-revised v8: solve / collect / survive — 3 universals, matrix-gated per genre by `GENRE_CORELOOP_MATRIX`). */
+  /** Core-loop pattern (D31-revised v9: solve / collect / survive — 3 universals, matrix-gated per genre by `GENRE_CORELOOP_MATRIX`). */
   coreLoop?: GameCoreLoopVariant;
 }
 

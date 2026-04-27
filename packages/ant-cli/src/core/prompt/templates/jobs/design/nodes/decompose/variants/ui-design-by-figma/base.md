@@ -146,15 +146,20 @@ Format: "section name" (pageNodeId): [distinct widths, largest first]
 
 #### ui-spec.json (multi-chapter)
 
-**Observation target**: Identify the distinct pages/views/features in the project requirements.
+**Observation target**: Identify the distinct pages/views/features. **Two SSOT inputs** must be aligned:
+
+1. **PRD §5 IA / §6 Screen Composition** (when PRD is in source documents) — `SC-XXX` identifiers define the page chapter list. Use the `SC-` ID as the page chapter task ID suffix (e.g., `ui-spec-SC-Search`).
+2. **Figma frames / nodeIds** (always available) — each `SC-` from the PRD MUST map to one or more Figma frames; pick the frame(s) whose name or annotation best matches the `SC-` semantically.
+
+**Alignment rule**: When the PRD cites a Figma node-id for an `SC-` (`SC-ProductDetail — figma: 1234:5678`), use that exact node-id as the primary input for that page chapter. When the PRD does not cite figma but `SC-` IDs exist, pick the matching frame from the Figma exploration result and record the chosen mapping in the task description as `SC-<name> ↔ figma:<nodeId>`. When neither PRD `SC-` IDs nor PRD citations exist, fall back to Figma frame names alone, but flag the gap (`PRD lacks SC- IDs — page list extracted from Figma frame names`) in the task description.
 
 **Chapter roles** — each chapter has exactly ONE role:
 
-| Role | Priority | Scope boundary |
-|------|----------|----------------|
-| **Structure** (ch1) | 300 | Global settings ONLY: breakpoints, grid, containers, typography hierarchy, color roles. NO component behavior, NO interaction patterns, NO toast/accessibility. |
-| **Page** (ch2..chN-1) | 310–340 | ONE page or feature area. Page-specific layout, content, and component usage. Page-only behaviors (used in this page only) fully specified here. Shared components referenced by ID — do NOT redefine their variants/states/sizes. |
-| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library (full variant/state/size definitions), global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by observing previous chapter outputs. |
+| Role | Priority | Scope boundary | PRD hand-off citation |
+|------|----------|----------------|----------------------|
+| **Structure** (ch1) | 300 | Global settings ONLY: breakpoints, grid, containers, typography hierarchy, color roles. NO component behavior, NO interaction patterns, NO toast/accessibility. | (rare) `PRD §9 NFR (a11y)` if accessibility commitments exist |
+| **Page** (ch2..chN-1) | 310–340 | ONE `SC-XXX` page mapped to Figma frames. Page-specific layout, content, and component usage from PRD §6 entry for that `SC-` AND from the chosen Figma frame(s). Page-only behaviors fully specified here. Shared components referenced by ID — do NOT redefine. | `PRD §6 / SC-XXX` + the Figma node-id(s) mapped to it; any `PRD §7 / CP-XXX` entries that apply to this page only |
+| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library (full variant/state/size definitions), global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by observing previous chapter outputs. | `PRD §6` cross-screen components + `PRD §7 / CP-XXX` cross-screen content policies |
 
 **MECE constraint**: Each topic belongs to exactly ONE chapter.
 - Behavior used in only ONE page → that page's chapter
@@ -162,8 +167,9 @@ Format: "section name" (pageNodeId): [distinct widths, largest first]
 - Do NOT create a separate "interactions + accessibility" chapter
 
 **Component Ownership Contract** (prevents duplication between page and shared chapters):
+- Component scoping (page-only vs shared) is **derived from the PRD**: §6 (per-screen composition) tells whether a component belongs to a specific `SC-XXX`; §7 (content & domain policy) tells whether a content rule applies cross-screen. Components used by exactly one `SC-XXX` → that page's chapter; components referenced by 2+ `SC-XXX` → shared chapter. When PRD `SC-` IDs are absent, fall back to Figma component-instance reuse counts.
 - Shared chapter description MUST start with `Components: <id1>, <id2>, ...` listing every component ID it will define. These IDs become JSON keys — use short, kebab-case names (e.g., `gnb`, `button`, `input`, `dropdown`, `table-data`, `tab-bar`).
-- Each page chapter description MUST include: `Shared components [<id1>, <id2>, ...]: reference by componentRef only — do NOT redefine.`
+- Each page chapter description MUST include: (a) `Implements PRD §6 / SC-<name>` (or `PRD lacks SC- IDs — extracted from Figma frame "<name>"` as fallback), (b) `Figma: <nodeId list>`, (c) `Shared components [<id1>, <id2>, ...]: reference by componentRef only — do NOT redefine.`
 - A component used in exactly ONE page belongs in that page's chapter, NOT in shared.
 
 ---

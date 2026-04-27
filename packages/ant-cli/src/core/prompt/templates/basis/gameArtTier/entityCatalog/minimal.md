@@ -34,7 +34,7 @@ Beyond 3 entries the project should commit `entityCatalog === 'standard'` instea
 
 ### Phase scope
 
-`minimal` is the css-only baseline (`_meta.phaseScope === 'p2-css-only'`). It works under both phase scopes — the Phase 4 hook does not change the entity catalog (only audio / atlas activate).
+`minimal` sits comfortably at the baseline visual scope (`_meta.visualScope === 'baseline'`). It works under both visual scopes — `'atlas-enabled'` does not change the entity catalog (only atlas / multi-emitter / multi-projectile setups activate), and `audioScope` is independent.
 
 ### Blind-spot reminders
 

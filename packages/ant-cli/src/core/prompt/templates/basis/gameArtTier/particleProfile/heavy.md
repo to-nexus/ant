@@ -32,7 +32,7 @@ The `effects` category in `game-art-spec.json` then references multiple ids per 
 
 ### Phase scope contract
 
-`heavy` typically requires **`_meta.phaseScope === 'p4-external-enabled'`** when external particle atlases are used. Pure-inline `heavy` is workable for simpler shapes but quickly bumps the css-only complexity ceiling (D21). Mixed inline + external is the usual configuration.
+`heavy` typically requires **`_meta.visualScope === 'atlas-enabled'`** when external particle atlases are used. Pure-inline `heavy` is workable for simpler shapes but quickly bumps the design-time inline-payload ceiling (D21). Mixed inline + external is the usual configuration.
 
 ### Genre cross-reference (D31-revised v8 — guidance, not strict)
 
@@ -54,7 +54,7 @@ The `effects` category in `game-art-spec.json` then references multiple ids per 
 
 ### Blind-spot reminders
 
-- ⚠️ `heavy` while `phaseScope === 'p2-css-only'` is workable but constrained. The project either downgrades to `light` or accepts inline shape budget pressure.
+- ⚠️ `heavy` while `visualScope === 'baseline'` is workable but constrained. The project either downgrades to `light` or accepts inline shape budget pressure.
 - ⚠️ `heavy` while `audioProfile === 'procedural'` lands lopsided — visual fireworks without audio fireworks. Step up audio together.
 - ⚠️ Ambient continuous emitters in `heavy` need an explicit on/off control surface (PRD should commit "ambient particles can be disabled in settings"). On lower-end devices, ambient is the first thing to cut.
 - ⚠️ `heavy` while `motionPattern === 'static'` is inconsistent — static scenes do not benefit from heavy particles.

@@ -403,9 +403,21 @@ export class ArtifactPoolView {
     return this.sources.reduce((s, a) => s + (a.content?.length || 0), 0);
   }
 
-  /** prd.md content (replaces sourceDocuments['prd.md']). */
+  /**
+   * Canonical plan-document content.
+   *
+   * Service domain emits `prd.md`, game domain emits `gdd.md`. Both are
+   * canonical outputs of `gen-plan` and represent the same SSOT role —
+   * the plan document for the workspace. This getter returns whichever
+   * one is present in the pool, preferring `prd.md` when both exist
+   * (legacy migration safety: a workspace that authored prd.md before
+   * the gdd.md split keeps that file as authoritative).
+   */
   prdContent(): string | undefined {
-    return this.pool.find(a => a.path === 'inputs/sources/prd.md')?.content;
+    return (
+      this.pool.find(a => a.path === 'inputs/sources/prd.md')?.content ??
+      this.pool.find(a => a.path === 'inputs/sources/gdd.md')?.content
+    );
   }
 
   /** Find a spec artifact by filename (e.g. `spec-login.md`). */

@@ -79,7 +79,7 @@ Scene transitions:
 
 ### 3. Graphics API policy
 
-Phase 3 minimum uses **procedural shapes only** via `Phaser.GameObjects.Graphics`:
+Baseline visual scope (`_meta.visualScope === 'baseline'`, the default) uses **procedural shapes** via `Phaser.GameObjects.Graphics`:
 
 ```ts
 const g = this.add.graphics();
@@ -89,14 +89,14 @@ g.lineStyle(2, 0xffffff, 0.8);
 g.strokeCircle(cx, cy, r);
 ```
 
-Allowed primitives in Phase 3:
+Allowed primitives in baseline visual scope:
 
 - `fillStyle` / `fillRect` / `fillCircle` / `fillTriangle` / `fillRoundedRect`
 - `lineStyle` / `strokeRect` / `strokeCircle` / `strokeRoundedRect`
 - `Phaser.GameObjects.Text` for HUD glyphs (no custom fonts; rely on system fonts)
 - `Phaser.GameObjects.Sprite` only when an `external` catalog entry exists in `game-art-assets.json` (preload via `BootScene`)
 
-Phase 4 hook (NOT active in Phase 3):
+Atlas-enabled hook (active when `_meta.visualScope === 'atlas-enabled'`):
 
 - `this.load.atlas` / `this.load.spritesheet` for sprite atlases
 - `this.add.particles` with custom textures
@@ -106,7 +106,7 @@ Phase 4 hook (NOT active in Phase 3):
 
 ### 4. Audio API policy
 
-Phase 3 minimum is **procedural via Web Audio**, not Phaser's `SoundManager`. The reason is `gameArtTier.audioProfile === 'procedural'` (Phase 3 default, D16) — `OscillatorNode` configs in `game-art-assets.json` map directly:
+Baseline audio scope (`_meta.audioScope === 'procedural-only'`, the default) is **procedural via Web Audio**, not Phaser's `SoundManager`. The reason is `gameArtTier.audioProfile === 'procedural'` (default, D16) — `OscillatorNode` configs in `game-art-assets.json` map directly:
 
 ```ts
 function playOscillator(ctx: AudioContext, cfg: OscillatorConfig) {
@@ -121,12 +121,12 @@ function playOscillator(ctx: AudioContext, cfg: OscillatorConfig) {
 }
 ```
 
-The `AudioContext` is created lazily on the first user gesture (browser autoplay policy) and stored on `MainScene.data` or a global singleton — Phaser's `SoundManager` is bypassed in Phase 3.
+The `AudioContext` is created lazily on the first user gesture (browser autoplay policy) and stored on `MainScene.data` or a global singleton — Phaser's `SoundManager` is bypassed under baseline audio.
 
-Phase 4 hook (NOT active in Phase 3):
+External-enabled hook (active when `_meta.audioScope === 'external-enabled'`):
 
 - `this.load.audio('shoot', 'inputs/assets/game/sfx/shoot.mp3')` + `this.sound.play('shoot')`
-- `audioProfile === 'fileBased'` flips the policy; Phase 3 force-suppresses `external` sfx/bgm regardless of LLM emission.
+- `audioProfile === 'fileBased'` flips the policy; baseline audio scope force-suppresses `external` sfx/bgm regardless of LLM emission.
 
 ### 5. Scene ↔ React communication
 
@@ -189,12 +189,12 @@ class BootScene extends Phaser.Scene {
 Constraints:
 
 - I6 — `entry.src` MUST start with `inputs/assets/game/`. Reaching into `inputs/assets/service/` from a game-art catalog is a boundary violation.
-- `_meta.phaseScope === 'p2-css-only'` (Phase 3 default) suppresses external sfx/bgm — the loader skips `kind: 'external'` audio entries until `'p4-external-enabled'`.
+- `_meta.audioScope === 'procedural-only'` (default) suppresses external sfx/bgm — the loader skips `kind: 'external'` audio entries until `'external-enabled'`. `_meta.visualScope === 'baseline'` (default) likewise gates atlas / multi-emitter / multi-projectile setups behind `'atlas-enabled'`.
 - Catalog ids are stable inside one design pass — do NOT rename ids in code without re-running the design job, or `game-art-spec.json` cross-references break.
 
 ### Blind-spot reminders
 
 - ⚠️ Forgetting `game.destroy(true)` on React unmount leaks the WebGL context; subsequent mounts fail to acquire the canvas.
 - ⚠️ A scene without `shutdown` cleanup leaks Phaser event listeners — the next `scene.start('main')` doubles every handler.
-- ⚠️ Loading audio with `this.load.audio` while `phaseScope === 'p2-css-only'` silently violates the procedural audio policy. Always honor the marker.
+- ⚠️ Loading audio with `this.load.audio` while `audioScope === 'procedural-only'` silently violates the procedural audio policy. Always honor the marker.
 - ⚠️ Cross-scene state via `MainScene.staticField` is invisible in tests. Use `game.registry` or scene events.

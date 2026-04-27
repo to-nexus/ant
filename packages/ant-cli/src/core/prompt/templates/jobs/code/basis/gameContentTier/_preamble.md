@@ -4,9 +4,9 @@
 
 This preamble defines how a code intent **applies** the genre / coreLoop decision at runtime. The universal ledger commits the genre's identity and loop steps; this file commits the code-side discipline for materializing them.
 
-### 1. Genre → boundary mapping (D31-revised v8 — 5 sub-genres)
+### 1. Genre → boundary mapping (D31-revised v9 — 6 sub-genres)
 
-`gameContentTier.genre` decides which Domain shapes are likely. The genre partial supplies the canonical entity model; this file commits the boundary each genre's rule reducer lives behind:
+`gameContentTier.genre` decides which Domain shapes are likely. The genre partial supplies the canonical systems-shape categories; this file commits the boundary each genre's rule reducer lives behind. The categories are FIXED per genre; the **axes inside each category** (op universe, steering axis, threat shape, …) are PRD's twist surface and reach the reducer via spec entries — code does not hardcode them.
 
 | Genre | Domain rule reducer (engine-agnostic) | Render visual idiom | HUD readouts |
 |---|---|---|---|
@@ -15,12 +15,13 @@ This preamble defines how a code intent **applies** the genre / coreLoop decisio
 | `cardSolitaire` | card model + tableau reducer with legal-move predicate (rank±1 + suit/colour) | card faces with suit pictograms, tableau / foundation / waste columns | score (variant-specific), move count, undo button, stockpile state |
 | `arcadePaddle` | paddle / ball physics reducer with collision + speed-ramp | paddle + ball + brick layout, particle on impact | score, lives remaining, wave / brick-count indicator |
 | `arcadeSnake` | grid + snake-segment-chain reducer with collision + growth | grid cells with snake body + pickups | score, snake length, current speed tier |
+| `crowdRunner` | crowd + steering reducer (steering input + advance + formation) + modifier-gate stream reducer + threat-field reducer with terminal predicate | crowd silhouettes laid out by formation rule, gate / threat affordances along the course, projectile streams from the crowd | crowd-resource readout, next-gate / threat anticipation, terminal progress, power-state flags |
 
-- **Domain** owns the rule reducer. The reducer is engine-agnostic and tested in isolation. A `match3` reducer never imports Phaser; a `cardSolitaire` reducer never imports React.
+- **Domain** owns the rule reducer. The reducer is engine-agnostic and tested in isolation. A `match3` reducer never imports Phaser; a `crowdRunner` reducer never imports React; the **steering axis / op universe / threat shape / terminal kind** are **spec inputs**, not branched code paths.
 - **Render** owns the visual idiom. Render reads Domain snapshots; never the inverse.
-- **HUD** owns the player-facing readouts (the rightmost column above; details in each genre partial's "HUD essentials" section). HUD is **screen-space** and lives in **React** — it subscribes to Phaser events via `useSyncExternalStore` (or a manual DOM mutation pattern for per-frame updates). The Phaser `UIScene` is reserved for **world-space** overlays (sprite-anchored speech bubbles, in-world banners) and is typically empty for the five single-screen genres. See `jobs/code/domain/game.md` §7 for the coordinate-system partition.
+- **HUD** owns the player-facing readouts (the rightmost column above; details in each genre partial's "HUD essentials" section). HUD is **screen-space** and lives in **React** — it subscribes to Phaser events via `useSyncExternalStore` (or a manual DOM mutation pattern for per-frame updates). The Phaser `UIScene` is reserved for **world-space** overlays (sprite-anchored speech bubbles, in-world banners). Most v9 genres are single-screen (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake`); `crowdRunner` is single-screen-with-dynamic-camera (camera follows the crowd along the course). The HUD ↔ React invariant holds **regardless of camera dynamics** — screen-space HUD lives in React for every genre. See `jobs/code/domain/game.md` §7 for the coordinate-system partition.
 
-### 2. CoreLoop → loop owner contract (D31-revised v8 — 3 universal coreLoops)
+### 2. CoreLoop → loop owner contract (D31-revised v9 — 3 universal coreLoops)
 
 `gameContentTier.coreLoop` decides what cycle the loop owner orchestrates. The loop owner is the engine boundary (techTier × gameEngine), but the **shape** of one cycle comes from the coreLoop partial:
 
@@ -32,7 +33,7 @@ This preamble defines how a code intent **applies** the genre / coreLoop decisio
 
 Code intent emits these as **named events** on the loop owner — never as ad-hoc `setTimeout` chains.
 
-### 3. Genre × coreLoop matrix (D31-revised v8 — I9)
+### 3. Genre × coreLoop matrix (D31-revised v9 — I9)
 
 The two axes are NOT independent. `GENRE_CORELOOP_MATRIX` (in `@ant/shared`) names which coreLoops are legal for each genre — the decompose pipeline filters out-of-matrix pairs at parse time, so code job consumers always see a legal pair:
 
@@ -43,18 +44,20 @@ The two axes are NOT independent. `GENRE_CORELOOP_MATRIX` (in `@ant/shared`) nam
 | `cardSolitaire` | `solve`, `collect` | reflective placement (`solve`) or foundation-promotion payoff (`collect`) |
 | `arcadePaddle` | `survive`, `collect` | death-line ramp (`survive`) or brick / coin pickup (`collect`) |
 | `arcadeSnake` | `survive`, `collect` | self-collision avoidance (`survive`) or pickup chain (`collect`) |
+| `crowdRunner` | `survive`, `collect` | crowd-loss ramp toward the terminal (`survive`) or gate / pickup accrual (`collect`) |
 
-If the code job ever sees an out-of-matrix pair (LLM emit + parser bug), it MUST surface the conflict as an open question rather than silently picking one. Out-of-matrix pairs (`arcadePaddle + solve`, `cardSolitaire + survive`, ...) are filtered upstream — never silently coerce.
+If the code job ever sees an out-of-matrix pair (LLM emit + parser bug), it MUST surface the conflict as an open question rather than silently picking one. Out-of-matrix pairs (`arcadePaddle + solve`, `cardSolitaire + survive`, `crowdRunner + solve`, ...) are filtered upstream — never silently coerce.
 
 ### 4. HUD essentials (from genre partial)
 
-Each genre partial lists "HUD essentials" — the player-facing readouts the genre demands. **HUD = React rendering surface** (screen-space, fixed to viewport); the Phaser `UIScene` is **world-space overlay only** (sprite-anchored UI). For the five single-screen genres, every readout below is screen-space and lives in React:
+Each genre partial lists "HUD essentials" — the player-facing readouts the genre demands. **HUD = React rendering surface** (screen-space, fixed to viewport); the Phaser `UIScene` is **world-space overlay only** (sprite-anchored UI). The HUD ↔ React invariant holds even when the genre uses a dynamic camera — screen-space readouts always live in React, world-space anchors live in `UIScene`. Per genre, HUD readouts:
 
 - `match3` — score, move-count remaining, objective tracker, combo / cascade indicator
 - `slidingPuzzle` — move count, optional timer, target-arrangement preview tile
 - `cardSolitaire` — score (variant-specific), move count, undo button, stockpile state indicator
 - `arcadePaddle` — score, lives remaining, current wave / brick count
 - `arcadeSnake` — score, snake length, current speed tier
+- `crowdRunner` — crowd-resource readout, next-gate / threat anticipation, terminal progress (distance / boss-HP / score-zone clock), power-state flags (time-bound buffs surface remaining duration; permanent stacks need not)
 
 Constraints:
 
@@ -67,3 +70,4 @@ Constraints:
 - ❌ Hardcoding genre-specific magic numbers (`MAX_COMBO = 5`, `BOARD_SIZE = 8`) without a sibling spec entry — magic numbers belong to `outputs/design/spec/...`.
 - ❌ Mixing two genres' HUD idioms in one React HUD tree (a paddle / ball readout in a `cardSolitaire` runtime) — the genre boundary is also a HUD boundary.
 - ❌ Coercing an out-of-matrix `(genre, coreLoop)` pair in code — the matrix gate is enforced at decompose / parse, code MUST trust the upstream filter.
+- ❌ Branching on the **axes inside a genre's systems-shape category** (e.g. `if (steeringAxis === 'X-only') { ... } else if (steeringAxis === 'radial') { ... }`) inside a core / shared module — these axes are project-specific spec inputs; the reducer reads them as data, not control flow. Genre-level branching at the outer router boundary is allowed (one genre → one reducer entry); axis-level branching belongs inside the reducer body and is driven by spec-loaded values.

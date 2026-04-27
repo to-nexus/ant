@@ -27,14 +27,16 @@ Both paths share **one art direction** — palette / silhouette / lighting / mot
 
 Component / scene STRUCTURE comes from the code skeleton (or refs). STYLE / behaviour / asset choice comes from `game-art-*.json`. These are orthogonal inputs; reading the skeleton first prevents accidental DOM / scene edits during a styling pass.
 
-### Constraint (Phase scope marker)
+### Constraint (Scope markers)
 
-Every `game-art-assets.json` carries `_meta.phaseScope`:
+Every `game-art-assets.json` carries two independent markers:
 
-- `'p2-css-only'` (Phase 3 default) — inline + external both readable, BUT all `kind: 'external'` audio entries (`sfx`, `bgm`) are suppressed at load time. Procedural OscillatorNode is the only audio path.
-- `'p4-external-enabled'` (Phase 4+) — all `kind: 'external'` entries (including audio) load. File-based audio activates.
+| Marker | Values | Code-time effect |
+|---|---|---|
+| `_meta.audioScope` | `'procedural-only'` (default) / `'external-enabled'` | `'procedural-only'` suppresses all `kind: 'external'` audio entries at load time — procedural OscillatorNode is the only audio path. `'external-enabled'` lifts the suppression and file-based audio activates. |
+| `_meta.visualScope` | `'baseline'` (default) / `'atlas-enabled'` | `'baseline'` keeps the canvas on catalog entries + the engine's procedural API + build-time static assets + runtime procedural texture composition; atlas / multi-emitter / multi-projectile groups are disabled. `'atlas-enabled'` activates them. |
 
-Code MUST honor the marker regardless of the LLM-emitted `audioProfile`.
+Code MUST honor each marker regardless of the LLM-emitted `audioProfile` / axis values. The `audioScope` marker overrides `audioProfile` when they disagree (procedural wins on the baseline boundary). image-LLM API calls and image-LLM-derived asset insertion are forbidden across both `visualScope` values — that surface is reserved for the future `visual` job.
 
 ### Constraint (Immutable skeleton)
 
