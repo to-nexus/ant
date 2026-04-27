@@ -290,11 +290,13 @@ export class SSEService {
     }
     
     // Strict key match - NO FALLBACK
+    // No-clients case is normal: the user-scoped Redis channel delivers events
+    // from every project/feature for this user, but local clients are registered
+    // per project/feature. Multi-pod cloud also amplifies this. Silently ignore.
     const key = this.getSessionKey(projectId, featureName, userContext);
     const clients = this.clients.get(key);
-    
+
     if (!clients || clients.size === 0) {
-      logger.warn(`[SSE:PubSub] no clients for key=${key} (registered: [${[...this.clients.keys()].join(', ')}])`, { component: 'SSEService' });
       return;
     }
     
