@@ -45,6 +45,26 @@ export type ProjectConfigSlice = ProjectConfigState & ProjectConfigActions;
 // Dedup map keyed by projectId — same-project re-fetch reuses in-flight promise.
 const inFlight: Map<string, Promise<void>> = new Map();
 
+/**
+ * Phase 2 (D22) — mirror `WorkspaceConfig.domain` (the persisted SSOT in
+ * `config.json`) into `actionMetadata.domain` so refresh / re-entry
+ * restores the same domain the user last toggled to. The PUT guard
+ * inside `updateActionMetadata` keeps this from echoing back as another
+ * write because `cfg.data.domain === patch.domain` after this set().
+ */
+function mirrorWorkspaceDomainToActionMetadata(
+  state: any,
+  cfg: ProjectConfig | null | undefined,
+): void {
+  const cfgDomain = cfg?.domain;
+  if (cfgDomain !== 'service' && cfgDomain !== 'game') return;
+  const current = state.actionMetadata?.domain;
+  if (current === cfgDomain) return;
+  if (typeof state.updateActionMetadata === 'function') {
+    state.updateActionMetadata({ domain: cfgDomain });
+  }
+}
+
 export const createProjectConfigSlice: StateCreator<
   any,
   [],
@@ -83,6 +103,7 @@ export const createProjectConfigSlice: StateCreator<
             refreshing: false,
           },
         });
+        mirrorWorkspaceDomainToActionMetadata(get(), cfg);
       } catch (error) {
         console.error('[projectConfigSlice] fetchProjectConfig failed:', error);
         if (get().selectedProject !== projectId) return;
@@ -115,6 +136,7 @@ export const createProjectConfigSlice: StateCreator<
         refreshing: false,
       },
     });
+    mirrorWorkspaceDomainToActionMetadata(get(), created);
   },
 
   updateProjectConfig: async (projectId, config) => {
@@ -139,6 +161,7 @@ export const createProjectConfigSlice: StateCreator<
           refreshing: false,
         },
       });
+      mirrorWorkspaceDomainToActionMetadata(get(), saved ?? config);
       // Pull an authoritative git-world snapshot so disk flags reflect the new
       // config. `fresh: true` bypasses the remoteExists cache because
       // githubRepo may have just changed.

@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { UIState } from '../types';
-import { STORAGE_KEYS, saveToStorage, loadFromStorage } from '../storage';
+import { STORAGE_KEYS, saveToStorage } from '../storage';
 import {
   type ActionMetadata,
   ACTION_DEFINITIONS,
@@ -12,6 +12,10 @@ import {
   type TechTierConfig,
   type Domain,
 } from '@ant/shared';
+import {
+  updateProjectConfig as apiUpdateProjectConfig,
+  type ProjectConfig,
+} from '@/infrastructure/http/api';
 import i18n from '@/i18n';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -210,12 +214,32 @@ const applyTheme = (theme: 'light' | 'dark') => {
   }
 };
 
-function getInitialActionDomain(): Domain {
-  const selectedProject = loadFromStorage(STORAGE_KEYS.SELECTED_PROJECT) as string | null;
-  if (!selectedProject) return 'service';
-  const projectDomains = (loadFromStorage(STORAGE_KEYS.PROJECT_DOMAINS) || {}) as Record<string, Domain | undefined>;
-  const stored = projectDomains[selectedProject];
-  return stored === 'game' ? 'game' : 'service';
+/**
+ * Phase 2 (D22) — fire-and-forget write of `WorkspaceConfig.domain` to
+ * `config.json` (BE artifact). This is the SSOT for project-level domain
+ * persistence; localStorage / sessionStorage are intentionally not used
+ * for this slot. The BE additionally runs `reconcileProjectAssetsToDomain`
+ * on the toggle, so callers don't need a follow-up migration step.
+ *
+ * Guard: skip the PUT when `cfg.domain === nextDomain` so the inverse
+ * sync path (`fetchProjectConfig` → `updateActionMetadata({ domain })`)
+ * is a no-op rather than an echo write.
+ */
+function persistWorkspaceDomain(
+  selectedProject: string | undefined,
+  cfg: ProjectConfig | undefined,
+  nextDomain: Domain,
+): void {
+  if (!selectedProject) return;
+  if (!cfg) return;
+  if (cfg.domain === nextDomain) return;
+
+  void apiUpdateProjectConfig(selectedProject, {
+    ...cfg,
+    domain: nextDomain,
+  }).catch((error) => {
+    console.error('[uiSlice] failed to persist workspace domain', error);
+  });
 }
 
 export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => ({
@@ -244,7 +268,11 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   // ActionsPanel renders the matrix-correct card set on first paint and
   // the BE detect pipeline gets a deterministic explicit override (10.2).
   // The chip is mutated only via the top-level DomainToggle on `pick-action`.
-  actionMetadata: { domain: getInitialActionDomain() } as ActionMetadata,
+  // The persisted SSOT is `WorkspaceConfig.domain` in the project's
+  // `config.json` artifact — `projectConfigSlice.fetchProjectConfig`
+  // hydrates this value on project load, and `updateActionMetadata`
+  // writes it back on toggle.
+  actionMetadata: { domain: 'service' } as ActionMetadata,
   highlightedArtifactDirs: [] as string[],
   spotlightTarget: null as { type: 'file' | 'dir'; path: string } | null,
   pendingClarifyAnswers: {},
@@ -630,12 +658,16 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
           }
         }
 
+        // Persist into the BE artifact (`config.json`) — the SSOT for
+        // project-level domain. `fetchProjectConfig` rehydrates this on
+        // refresh / project re-entry. The PUT is intentionally
+        // fire-and-forget so the UI stays snappy; the inverse-sync guard
+        // in `persistWorkspaceDomain` keeps it idempotent.
         const selectedProject = s.selectedProject as string | undefined;
-        if (selectedProject) {
-          const projectDomains = (loadFromStorage(STORAGE_KEYS.PROJECT_DOMAINS) || {}) as Record<string, Domain | undefined>;
-          projectDomains[selectedProject] = patch.domain;
-          saveToStorage(STORAGE_KEYS.PROJECT_DOMAINS, projectDomains);
-        }
+        const cfgData = (s.projectConfig?.data ?? undefined) as
+          | ProjectConfig
+          | undefined;
+        persistWorkspaceDomain(selectedProject, cfgData, patch.domain);
       }
 
       // techTier cache mirror — keep `basis.techTier` and
