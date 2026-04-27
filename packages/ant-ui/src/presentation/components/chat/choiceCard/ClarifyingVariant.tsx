@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Palette, Check, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
+import { selectPausedNonTaskJob } from '@/domain/store/selectors';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { useImagePreview } from '../useImagePreview';
@@ -465,11 +466,19 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
   const { toast } = useToastContext();
   const selectedAgent = useStore(state => state.selectedAgent);
   const selectedJobType = useStore(state => state.selectedJobType);
+  // Invariant I1 — when a non-task job (plan / visual) is paused on a
+  // clarify card, runJob MUST forward THAT job's (jobType, agent) instead
+  // of the store's selected* values, which may have drifted to 'code' /
+  // 'architect' since the card was issued (zonal-dreaming-novel).
+  const pausedNonTask = useStore(selectPausedNonTaskJob);
   const pendingAnswers = useStore(state => state.pendingClarifyAnswers);
   const setPendingClarifyAnswer = useStore(state => state.setPendingClarifyAnswer);
   const setPendingClarifyContext = useStore(state => state.setPendingClarifyContext);
   const clearPendingClarify = useStore(state => state.clearPendingClarify);
   const { runJob } = useJobExecution();
+
+  const enqueueAgent = pausedNonTask?.agent ?? selectedAgent;
+  const enqueueJobType = pausedNonTask?.jobType ?? selectedJobType;
 
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxStartValue, setLightboxStartValue] = useState('');
@@ -535,7 +544,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
-      await runJob(selectedAgent, selectedJobType, directive);
+      await runJob(enqueueAgent, enqueueJobType, directive);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Failed:', error);
     } finally {
@@ -558,7 +567,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
-      await runJob(selectedAgent, selectedJobType, `[SKETCH_FINALIZE:${sketchIndex}]`);
+      await runJob(enqueueAgent, enqueueJobType, `[SKETCH_FINALIZE:${sketchIndex}]`);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Sketch select failed:', error);
     } finally {
@@ -580,7 +589,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
-      await runJob(selectedAgent, selectedJobType, `[SKETCH_FEEDBACK] ${text}`);
+      await runJob(enqueueAgent, enqueueJobType, `[SKETCH_FEEDBACK] ${text}`);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Custom input failed:', error);
     } finally {
@@ -599,7 +608,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
-      await runJob(selectedAgent, selectedJobType, '[SKETCH_REGENERATE]');
+      await runJob(enqueueAgent, enqueueJobType, '[SKETCH_REGENERATE]');
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Regenerate failed:', error);
     } finally {

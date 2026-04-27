@@ -19,6 +19,7 @@ import { WorkflowBridge } from '../bridges/WorkflowBridge';
 import { ChoiceService } from '../../../../../infrastructure/choice/ChoiceService';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstants';
+import { isSessionableJobType } from '@ant/shared';
 
 /**
  * RouteConfigurator
@@ -462,7 +463,18 @@ export class RouteConfigurator {
       const factory = getInfrastructureFactory();
       const jobQueue = factory.getJobQueue();
       const stateStore = factory.getStateStore();
-      
+
+      // Single source of truth: jobType MUST be a sessionable type. The
+      // legacy `params.jobType || 'code'` fallback silently downcast plan /
+      // visual to code (zonal-dreaming-novel regression — Invariant I1).
+      if (!isSessionableJobType(params.jobType)) {
+        throw new Error(
+          `[RouteConfigurator] Invalid jobType: ${params.jobType}. ` +
+          `Expected one of: code, design, learn, plan, visual.`,
+        );
+      }
+      const jobType = params.jobType;
+
       // Generate jobId
       const { generateHumanId } = await import('../../../../../utils/humanId');
       const jobId = params.jobId || generateHumanId();
@@ -491,7 +503,7 @@ export class RouteConfigurator {
         projectId: params.project,
         feature: params.feature,
         featureName: params.feature,  // Alias for feature
-        type: params.jobType || 'code',
+        type: jobType,
         agent: params.agent || 'architect',
         mode: params.mode || 'generate',
         userContext: params.userContext,
@@ -515,7 +527,7 @@ export class RouteConfigurator {
         status: 'queued',
         projectId: params.project,
         featureName: params.feature,
-        type: params.jobType || 'code',
+        type: jobType,
         mode: params.mode,
         userContext: params.userContext,
         timestamp: new Date().toISOString()
@@ -526,7 +538,7 @@ export class RouteConfigurator {
       const userContextStr = params.userContext 
         ? `${params.userContext.organizationId}:${params.userContext.userId}` 
         : 'undefined';
-      logger.info(`📝 [JobMapping] Saving job mapping to Redis: ${jobId} → ${params.project}/${params.feature} (${params.jobType || 'code'}), userContext: ${userContextStr}`, { 
+      logger.info(`📝 [JobMapping] Saving job mapping to Redis: ${jobId} → ${params.project}/${params.feature} (${jobType}), userContext: ${userContextStr}`, { 
         component: 'RouteConfigurator', 
         jobId
       });
@@ -534,7 +546,7 @@ export class RouteConfigurator {
       await stateStore.setJobMapping(jobId, {
         projectId: params.project,
         featureName: params.feature,
-        jobType: params.jobType || 'code',
+        jobType: jobType,
         userContext: params.userContext
       });
       
@@ -544,7 +556,7 @@ export class RouteConfigurator {
       });
       
       // Register in local stateTracker (cache for Kanban routes)
-      this.stateTracker.initializeJob(jobId, params.project, params.feature, params.jobType || 'code', params.userContext);
+      this.stateTracker.initializeJob(jobId, params.project, params.feature, jobType, params.userContext);
       
       // ⏱️ DEBUG: Record enqueue completion time
       const enqueueEndTime = Date.now();

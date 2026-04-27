@@ -15,6 +15,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from './JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
+import { isSessionableJobType, type SessionableJobType } from '@ant/shared';
 
 /**
  * JobExecutionManager
@@ -40,10 +41,19 @@ export class JobExecutionManager {
     
     const projectId = params.project;
     const featureName = params.feature;
-    const jobType = (params.jobType === 'design' || params.jobType === 'code' || params.jobType === 'learn') 
-      ? params.jobType 
-      : 'code';
-    
+    // Single source of truth: jobType MUST be a sessionable type. Silent
+    // downcast to 'code' is forbidden — it produced the zonal-dreaming-novel
+    // regression where a paused plan job had its clarify-answer enqueue
+    // converted into a brand-new code job. See `.cursorrules`
+    // "Non-task Clarify Continuation Invariants" (I1).
+    if (!isSessionableJobType(params.jobType)) {
+      throw new Error(
+        `[JobExecutionManager] Invalid jobType: ${params.jobType}. ` +
+        `Expected one of: code, design, learn, plan, visual.`,
+      );
+    }
+    const jobType: SessionableJobType = params.jobType;
+
     // Generate jobId
     const jobId = params.jobId || generateHumanId();
     const isResume = !!params.jobId;
@@ -364,10 +374,18 @@ export class JobExecutionManager {
     // Check session for interruption details (even with exit code 0)
     if (mapping) {
       try {
+        // mapping.jobType is set by stateTracker.initializeJob with the
+        // validated jobType from executeJob(); a missing value here would
+        // be a structural bug — never silently downcast to 'code' (I1).
+        if (!isSessionableJobType(mapping.jobType)) {
+          throw new Error(
+            `[JobExecutionManager] Job mapping has invalid jobType=${mapping.jobType} for jobId=${jobId}`,
+          );
+        }
         const sessionData = await this.deps.sessionService.readSessionData(
           mapping.projectId, 
           mapping.featureName || 'skeleton',
-          mapping.jobType || 'code',
+          mapping.jobType,
           mapping.userContext
         );
         
