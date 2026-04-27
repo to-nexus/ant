@@ -9,7 +9,7 @@
  * Short content (1-2 lines) only takes the space it needs.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, MessageSquare } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import ReactMarkdown from 'react-markdown';
@@ -23,7 +23,7 @@ interface TaskResponseCardProps {
   isStreaming?: boolean;
 }
 
-export function TaskResponseCard({ line, pending, isStreaming }: TaskResponseCardProps) {
+export const TaskResponseCard = memo(function TaskResponseCard({ line, pending, isStreaming }: TaskResponseCardProps) {
   const content = lineToContent(line, pending);
   const contentRef = useRef<HTMLDivElement>(null);
   const textContent = content.content || '';
@@ -188,4 +188,4 @@ export function TaskResponseCard({ line, pending, isStreaming }: TaskResponseCar
       )}
     </div>
   );
-}
+});

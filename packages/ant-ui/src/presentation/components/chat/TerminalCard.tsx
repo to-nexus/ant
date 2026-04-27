@@ -3,7 +3,7 @@
  * Used for: command_running, command_streaming, command
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Terminal, ChevronDown, ChevronRight, ShieldAlert } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
@@ -25,7 +25,7 @@ interface TerminalCardProps {
   isStreaming?: boolean;
 }
 
-export function TerminalCard({ line, pending }: TerminalCardProps) {
+export const TerminalCard = memo(function TerminalCard({ line, pending }: TerminalCardProps) {
   const content = lineToContent(line, pending);
   const { t } = useTranslation('chat');
   const outputRef = useRef<HTMLDivElement>(null);
@@ -200,4 +200,4 @@ export function TerminalCard({ line, pending }: TerminalCardProps) {
       )}
     </div>
   );
-}
+});

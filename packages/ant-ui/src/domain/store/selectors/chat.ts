@@ -121,27 +121,70 @@ export interface Turn {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Reference-stability cache
+// Incremental projection cache (Phase 11.1 — chat-render-jank-fix)
 // ═══════════════════════════════════════════════════════════════════════
 //
-// `selectTurns` is invoked on every store update. Returning a fresh
-// `Turn[]` each call would force every chat consumer to re-render on
-// unrelated slice updates. Cache the projection keyed by the
-// `(chatEvents, streamingBuffers)` references — the slice creates new
-// references when either changes (immutable update), so identity is
-// the change signal. While both refs stay stable we return the same
-// `Turn[]` reference and React bails out.
+// `selectTurns` runs on every store update; in long sessions
+// `chatEvents` can hold hundreds of lines and a single SSE delta would
+// otherwise re-fold the entire history. The cache below splits the
+// projection into per-turn slots so an `appendChatEvent` of a single
+// line only re-projects the affected turn, and `applyStreamingDelta`
+// only re-folds one section. Every other turn keeps its previous
+// `Turn` reference, which lets `React.memo` on `TurnItem` bail out for
+// the rest of the viewport.
+//
+// Reference-stability invariants:
+//   • `selectTurns` returns the same `Turn[]` ref iff every per-turn
+//     slot reused its prior `Turn` and the turn order is unchanged.
+//   • A `Turn` reference is reused iff its per-turn `events` array AND
+//     its per-turn `buffersByScope` map both still hold the same refs
+//     as the previous projection.
+//   • A per-turn `events` array is reused when no new event landed in
+//     that turn; a per-turn `buffersByScope` map is reused when none of
+//     its (scope → `StreamingBuffer`) entries changed identity.
+//
+// Cache invalidation is monotonic: if any invariant breaks for a turn,
+// only that turn re-projects. Full rebuild only happens when the
+// `chatEvents` array is no longer a prefix of the previous one (i.e.
+// `replaceChatEvents` / `clearChatEvents`).
 // ═══════════════════════════════════════════════════════════════════════
 
 interface TurnsCacheEntry {
   events: ChatLine[];
   buffers: Record<BufferKey, StreamingBuffer>;
   turns: Turn[];
+  /** Per-turn live (non-collapsed) events. Reference-stable iff that turn's events are unchanged. */
+  eventsByTurn: Map<string, ChatLine[]>;
+  /** Per-turn streaming buffers. Reference-stable iff that turn's buffer set is unchanged. */
+  buffersByTurn: Map<string, Map<string, StreamingBuffer>>;
+  /** Events-only turn order (does NOT include orphan-buffer-only turnIds). */
+  eventsTurnOrder: string[];
+  /** Combined turn order (events first, then orphan-buffer-only) — matches `turns`. */
+  turnOrder: string[];
+  /** Per-turn cached projection — reused when both `eventsArr` and `buffersByScope` refs match. */
+  turnByTurnId: Map<
+    string,
+    {
+      eventsArr: ChatLine[];
+      buffersByScope: Map<string, StreamingBuffer>;
+      turn: Turn;
+    }
+  >;
 }
 
 let turnsCache: TurnsCacheEntry | null = null;
 
 const EMPTY_TURNS: Turn[] = Object.freeze([]) as unknown as Turn[];
+const EMPTY_LINES: ChatLine[] = Object.freeze([]) as unknown as ChatLine[];
+const EMPTY_BUFFER_MAP: Map<string, StreamingBuffer> = new Map();
+
+/**
+ * Test-only: drop the module-level cache so a test can simulate a
+ * cold projector. Production code must never call this.
+ */
+export function __resetTurnsCacheForTests(): void {
+  turnsCache = null;
+}
 
 export interface ChatProjectorState {
   chatEvents: ChatLine[];
@@ -153,88 +196,213 @@ export interface ChatProjectorState {
 // ═══════════════════════════════════════════════════════════════════════
 
 export function selectTurns(state: ChatProjectorState): Turn[] {
-  const { chatEvents, streamingBuffers } = state;
-  if (!chatEvents || chatEvents.length === 0) {
-    if (!streamingBuffers || Object.keys(streamingBuffers).length === 0) {
-      return EMPTY_TURNS;
-    }
+  const events = state.chatEvents ?? EMPTY_LINES;
+  const buffers = state.streamingBuffers ?? {};
+
+  if (events.length === 0 && Object.keys(buffers).length === 0) {
+    return EMPTY_TURNS;
   }
 
-  if (
-    turnsCache &&
-    turnsCache.events === chatEvents &&
-    turnsCache.buffers === streamingBuffers
-  ) {
+  if (turnsCache && turnsCache.events === events && turnsCache.buffers === buffers) {
     return turnsCache.turns;
   }
 
-  const turns = projectTurns(chatEvents ?? [], streamingBuffers ?? {});
+  const prev = turnsCache;
+  const { eventsByTurn, eventsTurnOrder } = buildEventsByTurn(events, prev);
+  const buffersByTurn = buildBuffersByTurn(buffers, prev);
+
+  // turnOrder = events-defined turns first, then orphan-buffer-only turns
+  // (in iteration order). Once an orphan turn appears in events its
+  // position is taken from `eventsTurnOrder`, so renaming an orphan turn
+  // to a real turn doesn't shuffle the list.
+  const turnOrder: string[] = [...eventsTurnOrder];
+  const seen = new Set(turnOrder);
+  for (const turnId of buffersByTurn.keys()) {
+    if (!seen.has(turnId)) {
+      turnOrder.push(turnId);
+      seen.add(turnId);
+    }
+  }
+
+  const turns: Turn[] = [];
+  const turnByTurnId = new Map<
+    string,
+    { eventsArr: ChatLine[]; buffersByScope: Map<string, StreamingBuffer>; turn: Turn }
+  >();
+  let allReused = !!prev && turnOrder.length === prev.turnOrder.length;
+
+  for (let i = 0; i < turnOrder.length; i++) {
+    const turnId = turnOrder[i];
+    const eventsArr = eventsByTurn.get(turnId) ?? EMPTY_LINES;
+    const buffersByScope = buffersByTurn.get(turnId) ?? EMPTY_BUFFER_MAP;
+    const cached = prev?.turnByTurnId.get(turnId);
+    if (
+      cached &&
+      cached.eventsArr === eventsArr &&
+      cached.buffersByScope === buffersByScope
+    ) {
+      turns.push(cached.turn);
+      turnByTurnId.set(turnId, cached);
+    } else {
+      const turn = projectSingleTurn(turnId, eventsArr, buffersByScope);
+      const entry = { eventsArr, buffersByScope, turn };
+      turns.push(turn);
+      turnByTurnId.set(turnId, entry);
+      allReused = false;
+    }
+    if (allReused && prev!.turnOrder[i] !== turnId) {
+      allReused = false;
+    }
+  }
+
+  // When every turn slot was reused and the turn order is unchanged,
+  // keep the previous `Turn[]` reference so React.memo bails out at the
+  // root level too. This happens, for instance, when `replaceChatEvents`
+  // is fed a snapshot whose entries reference-equal the prior cache.
+  const finalTurns =
+    allReused && prev && turns.length === prev.turns.length
+      ? prev.turns
+      : turnOrder.length === 0
+        ? EMPTY_TURNS
+        : turns;
+
   turnsCache = {
-    events: chatEvents ?? [],
-    buffers: streamingBuffers ?? {},
-    turns,
+    events,
+    buffers,
+    turns: finalTurns,
+    eventsByTurn,
+    buffersByTurn,
+    eventsTurnOrder,
+    turnOrder,
+    turnByTurnId,
   };
-  return turns;
+  return finalTurns;
 }
 
-function projectTurns(
+/**
+ * Group `events` into per-turn arrays, dropping `collapsed` lines.
+ *
+ * Fast path: when `events` extends `prev.events` as a strict prefix
+ * (the common SSE-append case), we clone only the per-turn arrays for
+ * turns that received new lines, leaving the rest reference-stable.
+ * Same-content / different-array case (rare) also reuses prev — only a
+ * different content prefix forces full re-grouping.
+ */
+function buildEventsByTurn(
   events: ChatLine[],
-  buffers: Record<BufferKey, StreamingBuffer>,
-): Turn[] {
-  // Filter collapsed lines — they exist on disk but are excluded from UI.
-  const live = events.filter((l) => !l.collapsed);
-
-  // 1. Group events by turnId in their original order so we can rebuild
-  //    the conversation chronology turn-by-turn.
-  const turnOrder: string[] = [];
-  const byTurn = new Map<string, ChatLine[]>();
-  for (const line of live) {
-    const turnId = line.turnId;
-    if (!byTurn.has(turnId)) {
-      byTurn.set(turnId, []);
-      turnOrder.push(turnId);
-    }
-    byTurn.get(turnId)!.push(line);
-  }
-
-  // 2. Project each turn.
-  const turns: Turn[] = [];
-  for (const turnId of turnOrder) {
-    const lines = byTurn.get(turnId)!;
-    turns.push(projectSingleTurn(turnId, lines, buffers));
-  }
-
-  // 3. Surface streaming buffers that have no events yet (orphan
-  //    pre-flight chunks). Real chat-SSOT writes a user_turn first so
-  //    this branch is rare, but it keeps the projector total.
-  for (const [key, buf] of Object.entries(buffers)) {
-    if (byTurn.has(buf.turnId)) continue;
-    const turn: Turn = {
-      turnId: buf.turnId,
-      jobId: '',
-      jobType: 'code',
-      ts: new Date().toISOString(),
-      sections: [
-        {
-          workerScope: buf.workerScope || MAIN_WORKER_SCOPE,
-          items: [],
-          activeText: buf.text,
-          activeThinking: buf.thinking,
-          pendingCards: buf.pendingCards,
-        },
-      ],
+  prev: TurnsCacheEntry | null,
+): { eventsByTurn: Map<string, ChatLine[]>; eventsTurnOrder: string[] } {
+  if (prev && prev.events === events) {
+    return {
+      eventsByTurn: prev.eventsByTurn,
+      eventsTurnOrder: prev.eventsTurnOrder,
     };
-    turns.push(turn);
-    void key;
   }
 
-  return turns;
+  if (prev && events.length >= prev.events.length) {
+    let isPrefix = true;
+    for (let i = 0; i < prev.events.length; i++) {
+      if (events[i] !== prev.events[i]) {
+        isPrefix = false;
+        break;
+      }
+    }
+    if (isPrefix) {
+      if (events.length === prev.events.length) {
+        // New array reference, identical contents — reuse per-turn arrays
+        // verbatim so downstream Turn caches stay warm.
+        return {
+          eventsByTurn: prev.eventsByTurn,
+          eventsTurnOrder: prev.eventsTurnOrder,
+        };
+      }
+      const eventsByTurn = new Map(prev.eventsByTurn);
+      const eventsTurnOrder = [...prev.eventsTurnOrder];
+      const dirty = new Set<string>();
+      for (let i = prev.events.length; i < events.length; i++) {
+        const line = events[i];
+        if (line.collapsed) continue;
+        const turnId = line.turnId;
+        if (!eventsByTurn.has(turnId)) {
+          eventsByTurn.set(turnId, []);
+          eventsTurnOrder.push(turnId);
+        } else if (!dirty.has(turnId)) {
+          // First mutation for this turn: clone its array so prev keeps
+          // its reference-stable view.
+          eventsByTurn.set(turnId, [...eventsByTurn.get(turnId)!]);
+          dirty.add(turnId);
+        }
+        eventsByTurn.get(turnId)!.push(line);
+      }
+      return { eventsByTurn, eventsTurnOrder };
+    }
+  }
+
+  // Full re-group.
+  const eventsByTurn = new Map<string, ChatLine[]>();
+  const eventsTurnOrder: string[] = [];
+  for (const line of events) {
+    if (line.collapsed) continue;
+    const turnId = line.turnId;
+    if (!eventsByTurn.has(turnId)) {
+      eventsByTurn.set(turnId, []);
+      eventsTurnOrder.push(turnId);
+    }
+    eventsByTurn.get(turnId)!.push(line);
+  }
+  return { eventsByTurn, eventsTurnOrder };
+}
+
+/**
+ * Group `buffers` into per-turn `Map<scope, StreamingBuffer>` slots.
+ *
+ * Reuses the prev slot's reference when no entry inside it changed
+ * identity, so an `applyStreamingDelta` that touches one buffer key
+ * only invalidates that turn's slot.
+ */
+function buildBuffersByTurn(
+  buffers: Record<BufferKey, StreamingBuffer>,
+  prev: TurnsCacheEntry | null,
+): Map<string, Map<string, StreamingBuffer>> {
+  if (prev && prev.buffers === buffers) {
+    return prev.buffersByTurn;
+  }
+
+  const out = new Map<string, Map<string, StreamingBuffer>>();
+  for (const buf of Object.values(buffers)) {
+    const turnId = buf.turnId;
+    let m = out.get(turnId);
+    if (!m) {
+      m = new Map();
+      out.set(turnId, m);
+    }
+    m.set(buf.workerScope || MAIN_WORKER_SCOPE, buf);
+  }
+
+  if (prev) {
+    for (const [turnId, m] of out) {
+      const prevM = prev.buffersByTurn.get(turnId);
+      if (prevM && mapsRefEqual(prevM, m)) {
+        out.set(turnId, prevM);
+      }
+    }
+  }
+  return out;
+}
+
+function mapsRefEqual<K, V>(a: Map<K, V>, b: Map<K, V>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const [k, v] of a) {
+    if (b.get(k) !== v) return false;
+  }
+  return true;
 }
 
 function projectSingleTurn(
   turnId: string,
   lines: ChatLine[],
-  buffers: Record<BufferKey, StreamingBuffer>,
+  buffersByScope: Map<string, StreamingBuffer>,
 ): Turn {
   let user: ChatUserTurnLine | undefined;
   const firstLine = lines[0];
@@ -293,14 +461,12 @@ function projectSingleTurn(
   });
 
   const sections: TurnSection[] = sectionOrder.map((scope) =>
-    foldSection(scope, linesByScope.get(scope) ?? [], buffers, turnId),
+    foldSection(scope, linesByScope.get(scope) ?? [], buffersByScope),
   );
 
   // Sections that exist only as a streaming buffer (no events for that
   // worker scope yet) — rare but keeps live workers visible immediately.
-  for (const [, buf] of Object.entries(buffers)) {
-    if (buf.turnId !== turnId) continue;
-    const scope = buf.workerScope || MAIN_WORKER_SCOPE;
+  for (const [scope, buf] of buffersByScope) {
     if (sections.some((s) => s.workerScope === scope)) continue;
     sections.push({
       workerScope: scope,
@@ -324,8 +490,7 @@ function projectSingleTurn(
 function foldSection(
   workerScope: string,
   lines: ChatLine[],
-  buffers: Record<BufferKey, StreamingBuffer>,
-  turnId: string,
+  buffersByScope: Map<string, StreamingBuffer>,
 ): TurnSection {
   // Two passes:
   //   pass 1 — choice + status fold by cardId (last-write-wins for
@@ -362,14 +527,14 @@ function foldSection(
   // card_running line) doesn't duplicate the rendered card.
   const emittedCards = new Set<string>();
   const items: TurnItem[] = [];
+  const buf = buffersByScope.get(workerScope);
 
   for (const line of lines) {
     if (line.type === 'chat_status') {
       if (emittedCards.has(line.cardId)) continue;
       emittedCards.add(line.cardId);
       const folded = statusByCard.get(line.cardId) ?? line;
-      const bufKey = makeBufferKey(turnId, workerScope);
-      const pending = buffers[bufKey]?.pendingCards?.[line.cardId];
+      const pending = buf?.pendingCards?.[line.cardId];
       items.push({ kind: 'status', line: folded, pending });
     } else if (line.type === 'assistant_thinking') {
       items.push({ kind: 'thinking', line });
@@ -412,9 +577,6 @@ function foldSection(
     // user_turn already extracted above.
   }
 
-  // Streaming overlay for this section.
-  const bufKey = makeBufferKey(turnId, workerScope);
-  const buf = buffers[bufKey];
   return {
     workerScope,
     items,

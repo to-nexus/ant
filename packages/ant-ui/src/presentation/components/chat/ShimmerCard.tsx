@@ -11,7 +11,7 @@
  * footer until the worker emits the durable line.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Brain, ChevronRight } from 'lucide-react';
 import type { ChatThinkingLine } from '@ant/shared';
 import { TypingIndicator } from './TypingIndicator';
@@ -33,7 +33,7 @@ interface ShimmerCardThinkingProps {
 
 type ShimmerCardProps = ShimmerCardPlaceholderProps | ShimmerCardThinkingProps;
 
-export function ShimmerCard(props: ShimmerCardProps) {
+export const ShimmerCard = memo(function ShimmerCard(props: ShimmerCardProps) {
   if (props.variant === 'placeholder') {
     return <TypingIndicator />;
   }
@@ -45,7 +45,7 @@ export function ShimmerCard(props: ShimmerCardProps) {
       isStreaming={!props.line}
     />
   );
-}
+});
 
 interface ThinkingVariantProps {
   text: string;

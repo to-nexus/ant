@@ -14,6 +14,7 @@
  * downstream design work risks drifting from the refined plan doc.
  */
 
+import { memo } from 'react';
 import { AlertTriangle, FileText } from 'lucide-react';
 import type {
   ChatStatusLine,
@@ -34,7 +35,7 @@ function isRefineImpactMetadata(
   return updatedDoc === 'prd.md' || updatedDoc === 'gdd.md';
 }
 
-export function RefineImpactCard({ line, pending: _pending }: RefineImpactCardProps) {
+export const RefineImpactCard = memo(function RefineImpactCard({ line, pending: _pending }: RefineImpactCardProps) {
   const meta = isRefineImpactMetadata(line.metadata) ? line.metadata : undefined;
 
   if (!meta) {
@@ -125,4 +126,4 @@ export function RefineImpactCard({ line, pending: _pending }: RefineImpactCardPr
       )}
     </div>
   );
-}
+});

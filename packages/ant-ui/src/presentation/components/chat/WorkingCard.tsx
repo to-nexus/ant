@@ -6,7 +6,7 @@
  * - Complete: explored, retrieved, grepped, read, indexed, analyzed, stored
  */
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Eye, Search, FileSearch, Database, FileCode, Package, ChevronDown, ChevronRight, Download, Palette, Eraser } from 'lucide-react';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { useStore } from '@/domain/store';
@@ -306,7 +306,7 @@ function WorkingCardHeader({
   );
 }
 
-export function WorkingCard({ line, pending, variant }: WorkingCardProps) {
+export const WorkingCard = memo(function WorkingCard({ line, pending, variant }: WorkingCardProps) {
   const content = lineToContent(line, pending);
   const [isExpanded, setIsExpanded] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -510,4 +510,4 @@ export function WorkingCard({ line, pending, variant }: WorkingCardProps) {
       )}
     </div>
   );
-}
+});

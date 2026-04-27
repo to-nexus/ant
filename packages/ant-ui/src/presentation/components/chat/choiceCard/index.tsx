@@ -14,6 +14,7 @@
  * `/chat/choice-resolved` endpoint with the cardId from `presented`.
  */
 
+import { memo } from 'react';
 import type {
   ChatChoicePresentedLine,
   ChatChoiceResolvedLine,
@@ -29,7 +30,7 @@ interface ChoiceCardProps {
   resolved?: ChatChoiceResolvedLine;
 }
 
-export function ChoiceCard({ presented, resolved }: ChoiceCardProps) {
+export const ChoiceCard = memo(function ChoiceCard({ presented, resolved }: ChoiceCardProps) {
   switch (presented.cardType) {
     case 'triage_choice':
       return <TriageChoiceVariant presented={presented} resolved={resolved} />;
@@ -44,6 +45,6 @@ export function ChoiceCard({ presented, resolved }: ChoiceCardProps) {
     default:
       return null;
   }
-}
+});
 
 export default ChoiceCard;
