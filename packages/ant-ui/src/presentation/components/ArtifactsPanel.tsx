@@ -147,9 +147,11 @@ interface DirectoryViewProps {
   nodeHints?: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }>;
   fileIndicators?: Record<string, React.ReactNode>;
   sectionPrefix?: string;
+  /** When returns true, mutation is blocked and a warning was shown — do not open delete confirm. */
+  notifyArtifactMutationBlocked?: () => boolean;
 }
 
-function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints, fileIndicators, sectionPrefix }: DirectoryViewProps) {
+function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints, fileIndicators, sectionPrefix, notifyArtifactMutationBlocked }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
   const [sectionCollapsed, setSectionCollapsed] = useState(false);
@@ -478,6 +480,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                     setRenameValue(node.name);
                   } : undefined}
                   onDelete={onDelete && !isClearable ? () => {
+                    if (notifyArtifactMutationBlocked?.()) return;
                     showConfirm(t('confirm.deleteItem', { type: node.type, name: node.name }), {
                       type: 'warning',
                       title: t('confirm.deleteTitle'),
@@ -487,6 +490,7 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
                     });
                   } : undefined}
                   onClearContents={isClearable && onDelete ? () => {
+                    if (notifyArtifactMutationBlocked?.()) return;
                     showConfirm(t('confirm.clearContentsDetail', { name: node.name }), {
                       type: 'warning',
                       title: t('confirm.clearContentsTitle'),
@@ -1056,6 +1060,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDropError={showDropError}
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}
+          notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
           fileIndicators={{
             ...Object.fromEntries(
               templateFiles.map(n => [n.name, <TemplateStatusIndicator key={n.name} reason={n.meta?.templateReason ?? undefined} contentLength={n.meta?.templateContentLength} threshold={n.meta?.templateThreshold} t={t} />])
@@ -1081,6 +1086,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDropError={showDropError}
           unseenArtifacts={unseenArtifacts}
           onMarkSeen={markArtifactsSeen}
+          notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
           fileIndicators={{
             'figma.json': (
               <FigmaStatusIndicator
@@ -1109,6 +1115,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           onDownload={handleDownload}
           onDropError={showDropError}
           isSessionSection={true}
+          notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
         />
 
       </div>
