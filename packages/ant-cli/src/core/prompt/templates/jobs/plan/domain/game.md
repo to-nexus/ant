@@ -13,12 +13,12 @@ The GDD is partitioned into a **Required core (8)**, **Conditional (4)**, and **
 | # | Section | Designer commitment | Outcome the section commits |
 |---|---|---|---|
 | 1 | Core Concept | One-line pitch | Who plays, what they do, why it is fun — in a single sentence |
-| 2 | Genre & Coreloop (`CL-XXX`) | What kind of game it is | Concrete genre + repeatable action cycle (3- or 4-step), each step issued a `CL-` ID |
+| 2 | Genre & Coreloop (`CL-XXX`) | What kind of game it is | Concrete genre + repeatable action cycle. **Coreloop is exactly 3 or 4 named steps; fewer than 3 is not a loop, more than 4 is a roadmap. Each step issues a `CL-XXX` ID.** |
 | 3 | 5-Minute Hook | First-impression contract | What a first-time player MUST experience in the first five minutes |
-| 4 | Mechanics → Dynamics → Aesthetic (`MC-XXX`) | What → how → feel | Player verbs (each issued `MC-` ID), emergent interactions, intended feeling (MDA layering) |
+| 4 | Mechanics → Dynamics → Aesthetic (`MC-XXX`) | What → how → feel | Player verbs, emergent interactions, intended feeling. **At least one `MC-XXX` mechanic is issued; MDA layering is explicit — Mechanics (verbs), Dynamics (emergent interactions), and Aesthetic (intended feeling) are each named separately, never collapsed into one layer.** |
 | 7 | Fail Condition & Recovery | Failure as design | What counts as failure; how the player learns from it; restart cost |
-| 8 | Content Scope (`EN-XXX`, `LV-XXX`) | Ceiling on creation work | Number of stages / characters / items / enemies — explicit bound, each entity / level issued an ID |
-| 9 | Input & Perspective | Control & camera contract | Control scheme, viewpoint (2D side / 2D top / 3D first / ...), device target, **orientation policy** (locked-portrait / locked-landscape / fluid), **viewport target** (fullscreen / windowed) |
+| 8 | Content Scope (`EN-XXX`, `LV-XXX`) | Ceiling on creation work | **Integer counts mandatory (e.g. "3 stages", "5 enemy archetypes" — "a few" / "several" is a planning failure). Every entity issues `EN-XXX` and every level issues `LV-XXX`.** |
+| 9 | Input & Perspective | Control & camera contract | Control scheme, viewpoint (2D side / 2D top / 3D first / ...), device target. **Both `orientation policy` (locked-portrait / locked-landscape / fluid) AND `viewport target` (fullscreen / windowed) are committed on a single explicit line — omitting either lets downstream design / code default silently.** |
 | 12 | Out-of-Scope (Non-Goals) | Explicit cuts | What this build is NOT — bounds the prototype |
 
 #### Conditional (include only when the directive warrants it; otherwise note in §12 / §Open Questions)
