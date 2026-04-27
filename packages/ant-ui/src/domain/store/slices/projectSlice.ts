@@ -3,6 +3,7 @@ import { ProjectState } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import type { Feature } from '@/infrastructure/http/api';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
+import type { Domain } from '@ant/shared';
 
 export interface ProjectActions {
   setProjects: (projects: string[]) => void;
@@ -72,6 +73,7 @@ export const createProjectSlice: StateCreator<
 
   setSelectedProject: (projectId) => {
     const state = get() as any;
+    const projectDomains = (loadFromStorage(STORAGE_KEYS.PROJECT_DOMAINS) || {}) as Record<string, Domain | undefined>;
     
     // ✅ Same project re-selection: skip destructive reset
     if (projectId && projectId === state.selectedProject) {
@@ -107,6 +109,9 @@ export const createProjectSlice: StateCreator<
       // Scrub project config. git-world reset is driven by `useProjectLifecycle`
       // which observes `(selectedProject, selectedFeature)` transitions.
       if (state.clearProjectConfig) state.clearProjectConfig();
+      if (typeof state.updateActionMetadata === 'function') {
+        state.updateActionMetadata({ domain: 'service' });
+      }
 
       removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
       removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
@@ -142,6 +147,10 @@ export const createProjectSlice: StateCreator<
       if (state.clearProjectConfig) state.clearProjectConfig();
 
       saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
+      const restoredDomain = projectDomains[projectId] === 'game' ? 'game' : 'service';
+      if (typeof state.updateActionMetadata === 'function') {
+        state.updateActionMetadata({ domain: restoredDomain });
+      }
 
       // Fetch features list (async, non-blocking). Feature restoration
       // lives in `useSessionLoader` — the only sanctioned place that polls

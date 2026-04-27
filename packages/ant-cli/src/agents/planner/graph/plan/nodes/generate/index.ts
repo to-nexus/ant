@@ -31,7 +31,7 @@ import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 
 import { buildSystemPrompt, getTargetPath, formatConversationForPrompt } from './buildSystemPrompt';
-import { parseClarifyTags, stripClarifyTags } from '../../../../../common/clarify';
+import { parseClarifyTags, stripClarifyTags, consumeAwaitingClarify } from '../../../../../common/clarify';
 import { saveConversationToSession, pruneConversationHistory } from './sessionWriter';
 
 /**
@@ -39,6 +39,15 @@ import { saveConversationToSession, pruneConversationHistory } from './sessionWr
  */
 export async function generateNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
   const recursionCount = (state.recursionCount || 0) + 1;
+
+  // ✅ Clarify continuation: if the previous run paused on a `<clarify>`
+  // card, append the user's answer (state.overrideDirective) to
+  // NODE_GENERATE before building messages so the LLM sees it. No-op when
+  // awaitingClarify is falsy. Mirrors design docGen's same call.
+  if (state.awaitingClarify && state.overrideDirective) {
+    console.log(`📋 [Planner:Generate] Clarify continuation — appending user response to conversation`);
+    consumeAwaitingClarify(state, CONV_KEYS.NODE_GENERATE);
+  }
 
   const planMode = getPlanMode(state);
   const modeLabel = planMode === 'generate' ? 'Creating' : planMode === 'explain' ? 'Analyzing' : 'Refining';
@@ -298,8 +307,19 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     }
     
     const clarifyHistory = [...updatedHistory, { role: 'assistant', content: cleanedResponseText }];
-    await saveConversationToSession(state, cleanedResponseText, undefined, clarifyHistory, compactionMeta);
-    
+    // ✅ Persist awaitingClarify=true so the next run's runner restores RAC
+    // + conversations and short-circuits triage/detect via
+    // routeAfterPlannerResolve. Without this, the next run loses original
+    // intent and re-asks the same clarify questions.
+    await saveConversationToSession(
+      state,
+      cleanedResponseText,
+      undefined,
+      clarifyHistory,
+      compactionMeta,
+      { awaitingClarify: true },
+    );
+
     if (state.deps?.kanbanUpdate?.clearEstimatingActivity) {
       state.deps.kanbanUpdate.clearEstimatingActivity();
     }
@@ -333,6 +353,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       pendingToolCalls: [],
       tokenUsage: state.tokenUsage,
       recursionCount,
+      awaitingClarify: true,
     };
   }
   

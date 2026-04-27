@@ -5,6 +5,7 @@ export const STORAGE_KEYS = {
   TASK_MODE: 'ant-ui:task-mode',
   SELECTED_PROJECT: 'ant-ui:selected-project',  // ✅ sessionStorage
   PROJECT_LAST_FEATURES: 'ant-ui:project-last-features',  // ✅ Map of project → last feature (sessionStorage)
+  PROJECT_DOMAINS: 'ant-ui:project-domains',  // ✅ Map of project → workspace domain (sessionStorage)
   SELECTED_AGENT: 'ant-ui:selected-agent',
   SELECTED_JOB_TYPE: 'ant-ui:selected-job-type',
   THEME: 'ant-ui:theme',
@@ -24,6 +25,7 @@ export const DEFAULT_LOCAL_BACKEND_PORT = 4100;
 const SESSION_STORAGE_KEYS = new Set<string>([
   STORAGE_KEYS.SELECTED_PROJECT,
   STORAGE_KEYS.PROJECT_LAST_FEATURES,
+  STORAGE_KEYS.PROJECT_DOMAINS,
   STORAGE_KEYS.SELECTED_AGENT,
   STORAGE_KEYS.SELECTED_JOB_TYPE,
 ]);

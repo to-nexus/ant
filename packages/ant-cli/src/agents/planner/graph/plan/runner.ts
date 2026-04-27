@@ -142,6 +142,34 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
           console.warn('⚠️ [PlanRunner] Failed to clear stale interruption:', clearErr);
         }
         
+      } else if (session?.state && session.state.awaitingClarify) {
+        // ✅ Clarify continuation: previous run emitted a `<clarify>` card and
+        // wrote `awaitingClarify=true` + RAC + conversations to session.
+        // Restore everything so triage/detect can be skipped via
+        // routeAfterPlannerResolve and generate's entry hook can append the
+        // user's answer (state.overrideDirective) to NODE_GENERATE.
+        // Mirrors design/runner.ts:138-156 (canonical pattern).
+        console.log(`🔄 [PlanRunner] Restoring awaitingClarify state from session`);
+        initialState.isResume = true;
+        initialState.awaitingClarify = true;
+
+        if (session.state.conversations) {
+          initialState.conversations = { ...initialState.conversations, ...session.state.conversations };
+        }
+        if (session.state.resolvedAction) {
+          initialState.resolvedAction = session.state.resolvedAction;
+          console.log(`🔄 [PlanRunner] Restoring resolvedAction (mode=${session.state.resolvedAction.mode})`);
+        }
+        if (session.state.directive && !initialState.directive) {
+          initialState.directive = session.state.directive;
+        }
+        if (session.state.chatSource !== undefined) {
+          initialState.chatSource = session.state.chatSource;
+        }
+        if (session.state.tokenUsage) {
+          initialState.tokenUsage = session.state.tokenUsage;
+        }
+        // overrideDirective stays as params (= the new clarify answer text)
       } else if (session?.state && isEnvResume()) {
         // ✅ Early-interrupted session fallback (cancelled before generate completed)
         // GUARD: Only when API explicitly says this is a resume (ANT_IS_RESUME)
@@ -182,7 +210,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
             directive: initialState.directive || existingDirective,
             overrideDirective: initialState.overrideDirective || initialState.directive,
             chatSource: params.chatSource,
-            resolvedAction: initialState.resolvedAction,
+            // ✅ Preserve persisted RAC when the current run hasn't computed
+            // one yet. clarify-continuation jobs arrive without
+            // `actionMetadata` (FE doesn't re-send it), so without this guard
+            // we'd overwrite the run-1 `resolvedAction` with `undefined`
+            // and force detect to re-infer intent from the bare answer text.
+            resolvedAction: initialState.resolvedAction ?? session.state?.resolvedAction,
             jobId: params._httpJobId || session.state?.jobId,
             // ✅ Clear stale interruption from previous job.
             // Without this, JobCleanupManager's fallback logic reuses the old

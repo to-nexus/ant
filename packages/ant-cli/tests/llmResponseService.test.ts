@@ -541,6 +541,26 @@ describe('LLMResponseService — lifecycle compat', () => {
     expect(store.clearBufferCalls.length).toBeGreaterThan(0);
   });
 
+  it('finalizeMessage(cancelled=true) also broadcasts an empty streaming_buffer_snapshot so FE clears its overlay', async () => {
+    // Mirrors the flush-path contract: without an empty snapshot the FE's
+    // `streamingBuffers[key]` mirror keeps the cancelled turn's
+    // activeText/activeThinking/pendingCards live, surfacing as ghost
+    // overlays beneath the freshly-emitted cancelled card on Stop.
+    const { service, store } = makeService();
+    await service.streamTextChunk('half-finished');
+    await service.streamThinkingChunk('partial reasoning');
+    await service.registerPendingCard('card-pending', 'reading', { filePath: 'a.ts' });
+    await service.finalizeMessage(true);
+
+    const snapshots = emittedSnapshots(store);
+    expect(snapshots.length).toBeGreaterThanOrEqual(1);
+    const last = snapshots[snapshots.length - 1];
+    expect(last.text).toBe('');
+    expect(last.thinking).toBe('');
+    expect(last.pendingCards).toEqual({});
+    expect(last.turnId).toBe('turn-1');
+  });
+
   it('finalizeMessage(cancelled=false) drains text + thinking into chat.jsonl', async () => {
     const { service, store } = makeService();
     await service.streamTextChunk('text-content');
