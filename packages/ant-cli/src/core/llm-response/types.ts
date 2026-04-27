@@ -83,4 +83,4 @@ export type ChatStatusType =
   | 'downloading' | 'downloaded'
   | 'figma_calling' | 'figma_called'
   | 'plan_generating' | 'plan'
-  | 'task_response';
+  | 'task_response_streaming' | 'task_response';

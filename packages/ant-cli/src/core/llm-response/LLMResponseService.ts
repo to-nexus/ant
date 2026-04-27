@@ -67,6 +67,7 @@ const PROGRESS_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
   'downloading',
   'figma_calling',
   'plan_generating',
+  'task_response_streaming',
   'command_running',
   'command_streaming',
   'file_creating',

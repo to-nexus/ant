@@ -380,6 +380,23 @@ export class ChatAPIClient {
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  // Task-response streaming
+  // ─────────────────────────────────────────────────────────────────────
+
+  /**
+   * Append a task_response chunk to the pendingCard locked at the first
+   * `task_response_streaming` emission. Mirrors `streamPlanChunk` — every
+   * chunk lands on the same cardId's `streamedOutput` in the TURN_BUFFER
+   * so the chat.jsonl carries a single terminal `task_response` line per
+   * card with the full accumulated content (see CommonRenderStrategy).
+   */
+  async streamTaskResponseChunk(cardId: string, chunk: string): Promise<void> {
+    if (!this.enabled || !cardId || !chunk) return;
+    const service = await getLLMResponseService();
+    await service?.streamCardOutput(cardId, chunk);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
   // Legacy helpers
   // ─────────────────────────────────────────────────────────────────────
 
