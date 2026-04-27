@@ -774,6 +774,33 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
   return filename.startsWith(spec.prefix) && filename.endsWith(spec.ext);
 }
 
+/**
+ * Derive default target paths from the matrix for a given intent.
+ *
+ * Mirrors the FE behaviour in `ActionConfigView.tsx` so that BE detect
+ * paths see the same canonical target list when `actionMetadata.target`
+ * is absent (chat-driven explicit submit, mention-path with explicit
+ * toggle, …). Returns:
+ *
+ *   - `kind: 'generate'` + outputs → `[`${dir}/${formatOutputSpec(o)}`]`
+ *   - `kind: 'generate'` + no outputs → `[dir]`
+ *   - any other kind (revise / codebase / chat-only) → `undefined`
+ *
+ * dusk-mounding-pilot regression — the explicit branch of `detect/index.ts`
+ * previously trusted `metadata.target` verbatim and produced an empty
+ * RAC.target for chat-driven `gen-plan`, which then erased the system
+ * prompt's "Target Path" section and let the LLM hallucinate
+ * `outputs/documents/prd.md`. Routing the explicit branch through this
+ * helper restores parity with the infer branch and the FE.
+ */
+export function getDefaultTargetPaths(intent: IntentId): string[] | undefined {
+  const slots = getConfigSlots(intent);
+  const target = slots?.target;
+  if (!target || target.kind !== 'generate') return undefined;
+  if (target.outputs.length === 0) return [target.dir];
+  return target.outputs.map(o => `${target.dir}/${formatOutputSpec(o)}`);
+}
+
 /** @deprecated Use matchesOutputSpec */
 export const matchesExpectedFile = matchesOutputSpec;
 

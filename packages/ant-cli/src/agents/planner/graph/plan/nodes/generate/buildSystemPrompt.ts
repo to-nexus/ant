@@ -45,6 +45,21 @@ export async function buildSystemPrompt(
   const hasTargets = (state.resolvedAction?.target?.length ?? 0) > 0;
   const planMode = getPlanMode(state);
 
+  // dusk-mounding-pilot guard — the detect explicit branch now always
+  // populates a default target via the matrix, but if a future caller
+  // produces a generate/refactor RAC with an empty `target`, the prompt
+  // would silently drop the "Target Path" section and the LLM would
+  // hallucinate a path (last regression: `outputs/documents/prd.md`).
+  // Hard-fail loudly here instead of producing a degraded prompt.
+  // `explain` mode is read-only and legitimately has no target.
+  if (!targetPath && (planMode === 'generate' || planMode === 'refactor')) {
+    throw new Error(
+      `[Planner:Generate] resolvedAction.target is empty in ${planMode} mode `
+      + `(intent=${state.resolvedAction?.intent ?? 'unknown'}, source=${state.resolvedAction?.source ?? 'unknown'}). `
+      + `Refusing to render a Target-Path-less prompt — see detect/index.ts explicit branch fallback.`,
+    );
+  }
+
   const resolvedArtifacts = state.resolvedArtifacts || [];
 
   const result = await promptBuilder.build({
