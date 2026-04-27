@@ -55,18 +55,35 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
   });
 
   describe('runtime suppressors close visualTier even on service domain', () => {
-    // gen-ui-figma's static tiers are ['visualTier', 'gameContentTier'].
+    // gen-ui-desc's static tiers are ['visualTier', 'gameContentTier'].
     // Under service: gameContentTier is closed by the matrix, leaving
     // visualTier — but if the user already attached a UI design doc
     // (handoff/ant/figma) to refs, visualTier suppresses too, leaving
     // zero active tiers.
-    it('gen-ui-figma with hasUiDoc-equivalent ref → config', () => {
-      const slot = getConfigSlots('gen-ui-figma')?.basis;
+    //
+    // (`gen-ui-figma` was the original gen-ui pick here, but its static
+    // `basis.tiers` was pruned to drop visualTier — figma source is the
+    // visual authority, so the wizard step would be a no-op. With
+    // visualTier no longer in the static set the suppressor is never
+    // exercised for that intent. `gen-ui-desc` is the natural successor
+    // because it still opts into visualTier statically.)
+    it('gen-ui-desc with hasUiDoc-equivalent ref → config', () => {
+      const slot = getConfigSlots('gen-ui-desc')?.basis;
       const metadata = empty({
         domain: 'service',
         refs: ['outputs/design/ui/handoff/spec.md'],
       });
       expect(decideActionsStepAfterIntent(slot, metadata)).toBe('config');
+    });
+
+    // Direct routing test for the figma intent: with visualTier elided
+    // from static tiers and gameContentTier closed by the service-domain
+    // matrix, the chip click MUST land on `config` — no wizard required.
+    // Pinning this prevents a future revert of the matrix prune from
+    // silently re-introducing the wizard hop on chip click.
+    it('gen-ui-figma on service (empty refs) → config (static tier prune)', () => {
+      const slot = getConfigSlots('gen-ui-figma')?.basis;
+      expect(decideActionsStepAfterIntent(slot, empty({ domain: 'service' }))).toBe('config');
     });
   });
 
