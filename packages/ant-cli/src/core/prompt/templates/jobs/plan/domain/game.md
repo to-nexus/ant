@@ -18,7 +18,7 @@ The GDD is partitioned into 12 sections. The partition is **mutually exclusive**
 | 6 | Reward & Feedback | What the game gives back | Intrinsic (mastery / discovery) vs extrinsic (score / item / unlock) cadence + visibility |
 | 7 | Fail Condition & Recovery | Failure as design | What counts as failure; how the player learns from it; restart cost |
 | 8 | Content Scope | Ceiling on creation work | Number of stages / characters / items / enemies — explicit bound |
-| 9 | Input & Perspective | Control & camera contract | Control scheme, viewpoint (2D side / 2D top / 3D first / ...), device target |
+| 9 | Input & Perspective | Control & camera contract | Control scheme, viewpoint (2D side / 2D top / 3D first / ...), device target, **orientation policy** (locked-portrait / locked-landscape / fluid), **viewport target** (fullscreen / windowed) |
 | 10 | Game Modes | Solitary or social | Single / co-op / async / competitive; if multiple, how they relate |
 | 11 | Meta-Progression | What survives a session | Account-bound vs save-bound; permanent unlock vs per-run reset |
 | 12 | Out-of-Scope (Non-Goals) | Explicit cuts | What this build is NOT — bounds the prototype |
@@ -55,6 +55,7 @@ This file is gated on `domain === 'game'`. It is REQUIRED to use game-design voc
 - ⚠️ Progression Curve (section 5) is NOT just "the player gets stronger" — it must commit to **what changes between iterations** of the coreloop (faster, denser, novel verb, narrative beat).
 - ⚠️ MDA (section 4) is layered: **Mechanics** are the verbs (`jump`, `shoot`, `match-three`); **Dynamics** are what emerges from interaction (`combo`, `risk-reward`); **Aesthetic** is the intended feeling (`fellowship`, `discovery`, `mastery`). State all three; do NOT collapse them.
 - ⚠️ Content Scope (section 8) needs a number. "A few stages" is a planning failure — write "3 stages" and accept that design or playtest may revise it.
+- ⚠️ Input & Perspective (section 9) MUST commit an **orientation policy** AND a **viewport target**. Omitting them lets downstream design / code default silently, and a portrait-only puzzle that ships landscape (or vice versa) is a defect that surfaces only in playtest. Single-line commitment is enough — e.g., "locked-portrait, fullscreen" — but it MUST be explicit.
 
 ### Refine-mode discipline
 
