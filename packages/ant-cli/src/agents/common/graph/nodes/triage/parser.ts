@@ -163,12 +163,32 @@ function buildRedirectChoice(parsed: any, currentJob?: string, workspaceState?: 
 }
 
 /**
+ * Map design.yaml mode ids → ANT intentGroup notation used by UI/labels.
+ *
+ * The YAML mode ids and the codebase-wide intentGroup tags evolved separately:
+ * - YAML (core/data/triage/jobs/design.yaml): `ui-design | system-design | spec`
+ * - Codebase intentGroup (actions.ts, action cards, design graph): `design-ui | design-system | design-spec`
+ *
+ * Until the YAML schema is unified with intentGroup, this helper performs the
+ * one-way translation needed by parser.ts and any other consumer that expects
+ * intentGroup keys.
+ */
+const YAML_MODE_TO_INTENT_GROUP: Record<string, string> = {
+  'ui-design': 'design-ui',
+  'system-design': 'design-system',
+  'spec': 'design-spec',
+};
+
+/**
  * Detect design mode from workspace state.
+ * Returns intentGroup notation (`design-ui | design-system | design-spec`).
  * Falls back to 'design-spec' when AgentRegistry or workspaceState is unavailable.
  */
 function detectDesignMode(workspaceState?: WorkspaceState): string {
   if (!workspaceState) return 'design-spec';
-  return AgentRegistry.detectMode('design', workspaceState) || 'design-spec';
+  const yamlModeId = AgentRegistry.detectMode('design', workspaceState);
+  if (!yamlModeId) return 'design-spec';
+  return YAML_MODE_TO_INTENT_GROUP[yamlModeId] || 'design-spec';
 }
 
 /**

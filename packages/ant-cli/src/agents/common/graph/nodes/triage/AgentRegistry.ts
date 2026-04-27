@@ -302,6 +302,9 @@ class AgentRegistryClass {
           satisfied = ws.hasAssets;
         } else if (prereq.path === 'outputs/design') {
           satisfied = ws.hasDesignDoc;
+        } else if (prereq.path === 'inputs/sources') {
+          // workspaceAnalyzer 가 inputs/sources 의 텍스트 파일을 스캔하여 hasPrd 로 표현
+          satisfied = ws.hasPrd;
         }
         break;
         
@@ -384,6 +387,7 @@ class AgentRegistryClass {
     if (type === 'directory_with_files') {
       if (path === 'inputs/assets') return ws.hasAssets;
       if (path === 'outputs/design') return ws.hasDesignDoc;
+      if (path === 'inputs/sources') return ws.hasPrd;
     }
     
     if (type === 'file_with_content') {
