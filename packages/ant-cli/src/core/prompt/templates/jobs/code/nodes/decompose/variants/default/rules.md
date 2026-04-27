@@ -23,13 +23,19 @@ OUTPUT FORMAT:
 
 **Constraint**: Classify using the directive, the mode, and the provided context/refs ONLY. Do NOT invent scope beyond what the directive states.
 
-**Constraint**: When classification is ambiguous between two tiers, prefer the LOWER tier **among tiers valid for the current mode** (see Output shape by mode × tier below: Tier `0` is valid only for `explain`; `generate` / `refactor` start at Tier `1`). The executor can always escalate; over-decomposing a simple directive wastes tokens and serializes work unnecessarily. Dropping below the mode's minimum tier is NOT a valid "lower" classification.
+**Constraint — design refs force Tier 4 for write modes**: When mode is `generate` or `refactor` AND the prompt section `## Available Reference Documents` lists ANY reference document (a `role='ref'` design artifact — spec, system-design, ui, or game-art — chosen by the intent matrix), the executionTier MUST be `4`. The reference document IS the **Development Source** that enumerates this turn's work; classifying lower would collapse multiple work units the document describes into a single task. The intent matrix in `@ant/shared/action-config-matrix.ts` is the SSOT for which artifact kinds are `refs:` for each `gen-code-*` / `rev-code` intent. This rule is enforced by a runtime validator — emitting Tier 1/2/3 with a design ref present will be rejected and retried.
 
-**Constraint**: The presence of refs alone does NOT imply Tier 4. Only when the directive's requested work is directly grounded in those refs (the refs are the source of truth for the breakdown) does the tier become 4. If refs exist but the directive asks for something unrelated, prefer `3` over `4`.
+**Constraint — directive-driven tier (no design refs)**: When the prompt section `## Available Reference Documents` is absent or empty, classify by directive scope alone:
+- Tier `1` — single write, verification genuinely unneeded (comment / typo / safe config tweak).
+- Tier `2` — single unit of work that needs install/typecheck/build/test verification (the task owns inline self-verify).
+- Tier `3` — multi-unit, multi-boundary work whose breakdown the directive itself describes.
+Lower-tier preference applies ONLY between these three when genuine unit-count ambiguity remains under a fixed directive (NOT to escape Tier 4 when a design ref is present).
 
 **Constraint**: Tier 1 is reserved for writes where verification is genuinely unnecessary. If the change could plausibly break typecheck / build / test — choose Tier 2 so the task owns inline self-verify. "Unsure whether verification is needed" is itself a signal to pick Tier 2.
 
 **Constraint**: Tier 2 emits EXACTLY ONE task. If the directive truly needs more than one independent unit of work, classify as Tier 3 (or 4 when refs-grounded) instead. Tier 3/4 emit `>= 2` tasks AND MUST include a dedicated verification task (`type: "verification"`, `priority: 1000`).
+
+**Constraint — Tier 4 task enumeration**: When the active reference document enumerates work units (numbered tasks, sections, requirements, acceptance criteria), every enumerated unit MUST appear as a distinct task in `<tasks>`. Do NOT collapse multiple enumerated units into one task. Do NOT silently drop units the document lists. The breakdown is faithful to the document — not optimized for brevity.
 
 ### Output shape by mode × tier
 
@@ -107,30 +113,24 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
   - `3` Task          — multi-boundary or multi-concern implementation; verification task governs gates.
   - `4` RefsGrounded  — the implementation scope is enumerated by a supplied reference document.
 
-**Constraint**: Do NOT infer tier from task-count expectations. Observe the directive, mode, and refs, then classify.
-
 **Constraint**: The Tier 1 vs Tier 2 boundary is "does verification add value?". A comment edit or typo fix does not — Tier 1. A bug fix, feature skeleton, or config change that could plausibly break typecheck/build/test does — Tier 2 with `selfVerifyOnDone: true`.
 
 ---
 
-## Spec Clarify (source adequacy for tier 3/4 decomposition)
+## Spec Clarify (source adequacy for tier 3 decomposition)
 
 {{#unless intentClarifyDisabled}}
-**Observation target**: When the tier is `3` or `4` and mode is not `explain`, observe whether the user has supplied source for THIS directive (via per-turn pins) sufficient to anchor a confident task breakdown.
+**Observation target**: When the tier is `3` and mode is `generate` / `refactor`, observe whether a design reference document (spec / system-design / ui / game-art) is present in the artifact pool. If a design ref is present, this turn is structurally Tier 4 (see ExecutionTier Classification above) and Spec Clarify does NOT fire.
 
-**Principle**: Every checkpoint question below is phrased so that a `yes` answer moves toward emission. `<specClarify>` fires only when ALL three answers are `yes` together.
+**Principle**: Spec Clarify fires only when the breakdown is multi-unit (Tier 3) AND no design reference grounds it. Under that condition, fabricating a breakdown is guessing — the user should be offered a chance to switch to a design/spec pass first.
 
 | Checkpoint | Question (yes = points to emit) |
 |-----------|----------------|
 | **Mode** | Is the active mode `generate` or `refactor` (i.e., NOT `explain`)? |
-| **Tier** | Is the tier `3` (Task) or `4` (RefsGrounded)? |
-| **User-pinned references absent** | Does the prompt's `## User-Pinned References` section report `0` pinned documents (or is the section missing/empty)? |
+| **Tier** | Is the tier `3` (Task) — i.e., multi-unit but NOT grounded in a design ref? |
+| **Multi-unit directive** | Does the directive describe two or more independent units of work that cannot be collapsed into a single Tier 2 task? |
 
-⚠️ **Blind spot — user-pinned ≠ auto-injected**: Only the user's explicit per-turn pins count toward the "User-pinned references absent" checkpoint. Role-based auto-injected artifacts (system design docs, PRDs, etc. that appear later in the prompt under "Provided Documents" / role injections) DO NOT count — they were not selected by the user for THIS directive and provide no signal about whether the user intended a spec/design pass first. Observe ONLY the `## User-Pinned References` section.
-
-**Principle**: When every checkpoint is `yes`, the user has not supplied source for this directive at this tier. Producing a breakdown under that condition degrades to guessing and MUST be deferred — the user should be offered a chance to switch to a design/spec pass first.
-
-**Constraint**: Emit `<specClarify>` EXCLUSIVELY when ALL three checkpoints above are `yes` together.
+**Constraint**: Emit `<specClarify>` EXCLUSIVELY when ALL three checkpoints above are `yes` together. When a design ref is present in the artifact pool, the tier is `4` (per the ExecutionTier Classification design-ref rule) and Spec Clarify is structurally inapplicable.
 
 **Constraint**: When `<specClarify>` is emitted, emit `<tasks>[]` alongside it. Do NOT fabricate a task breakdown without user-supplied source.
 
@@ -165,7 +165,7 @@ First, analyze step by step (think through):
 - If tier is `0` or `1`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`.
 - If tier is `2`: emit exactly ONE task with `selfVerifyOnDone: true` (or `false` for explain). Skip the multi-task breakdown rules (Shared Foundation / Parallel Execution / Final Verification task — the lone task automatically runs a verify cycle after apply, no separate verification task is needed).
 {{#unless intentClarifyDisabled}}
-- If tier is `3` or `4` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all four checkpoints indicate no source, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown.
+- If tier is `3` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all three checkpoints fire, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown. (Tier `4` is structurally grounded in a design ref — Spec Clarify never fires there.)
 {{/unless}}
 - If tier is `3` or `4`:
   - Is this a new project or existing project?
@@ -841,7 +841,7 @@ Output in this exact order:
 **Constraint**: Emit `<executionTier>` and `<directHints>` BEFORE `<techTier>`. The tier commitment anchors the rest of the output.
 
 {{#unless intentClarifyDisabled}}
-**0.2. `<specClarify>` tag** (CONDITIONAL — see Spec Clarify above). Emit ONLY when all four Spec Clarify checkpoints fire. Omit the tag entirely otherwise:
+**0.2. `<specClarify>` tag** (CONDITIONAL — see Spec Clarify above). Emit ONLY when all three Spec Clarify checkpoints fire (Tier 3 + write mode + multi-unit directive without a design ref). Omit the tag entirely otherwise:
 
 <specClarify>
 {

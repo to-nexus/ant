@@ -8,10 +8,13 @@
  * - `parseExecutionTierTag`    — extract the tag value from a raw LLM
  *   response. Returns `undefined` when the tag is missing or malformed.
  * - `validateExecutionTier`    — strict contract check. Throws
- *   `ExecutionTierViolation` on missing tag OR on `tier === 0` for
- *   `generate`/`refactor` modes (where Tier 0 is forbidden — see the
- *   decompose rules.md matrix). Intended for Tier Entry Nodes that
- *   drive an inline retry loop on violation.
+ *   `ExecutionTierViolation` on missing tag, on `tier === 0` for
+ *   `generate`/`refactor` modes, OR on tier ≠ 4 for `generate`/`refactor`
+ *   modes when the artifact pool carries a design reference document
+ *   (`pool.hasAnyDesignRef() === true`). Design refs structurally imply
+ *   multi-boundary work grounded in an external document — Tier 4 is the
+ *   only valid classification. Intended for Tier Entry Nodes that drive
+ *   an inline retry loop on violation.
  * - `coerceExecutionTier`      — legacy lenient default (Reflex) used by
  *   nodes that do NOT implement retry (e.g. `SpecialTagTransformer`
  *   fallback rendering). New callers should prefer
@@ -26,9 +29,17 @@
  *   - `explain`   → Tier 0 allowed.
  *   - `generate`  → Tier 1 minimum (Tier 0 forbidden — see rules.md §F).
  *   - `refactor`  → Tier 1 minimum (Tier 0 forbidden).
+ *
+ * Structural maxima (Phase 2 — design-ref grounding):
+ *   - `generate`/`refactor` mode + design ref present in the pool
+ *     ⇒ Tier 4 is REQUIRED. Lower tiers collapse the document's
+ *     enumerated work units into a single task — bitter-blazing-cloak
+ *     regression. The intent matrix is the SSOT for "what counts as a
+ *     design ref" (see `@ant/shared/action-config-matrix.ts`).
  */
 
 import { ExecutionTierId } from './types';
+import type { ArtifactPoolView } from '../artifact/ArtifactPipeline';
 
 export function parseExecutionTierTag(
   raw: string | undefined,
@@ -64,20 +75,32 @@ export function coerceExecutionTier(
  * the call. See `decompose/index.ts` for the canonical retry shape.
  *
  * Failure modes:
- *   - `MISSING_TAG`            — LLM omitted `<executionTier>` entirely
- *                                OR emitted a malformed body that
- *                                `parseExecutionTierTag` could not parse
- *                                (non-integer, out-of-range, or empty).
- *   - `FORBIDDEN_TIER_FOR_MODE` — LLM emitted a tier that is forbidden
- *                                for the current mode (today: Tier 0 for
- *                                `generate`/`refactor`). Silent
- *                                degradation to a lenient value would
- *                                mask the exact class of prompt drift
- *                                that caused metal-issuing-honor.
+ *   - `MISSING_TAG`              — LLM omitted `<executionTier>` entirely
+ *                                  OR emitted a malformed body that
+ *                                  `parseExecutionTierTag` could not parse
+ *                                  (non-integer, out-of-range, or empty).
+ *   - `FORBIDDEN_TIER_FOR_MODE`  — LLM emitted a tier that is forbidden
+ *                                  for the current mode (today: Tier 0 for
+ *                                  `generate`/`refactor`). Silent
+ *                                  degradation to a lenient value would
+ *                                  mask the exact class of prompt drift
+ *                                  that caused metal-issuing-honor.
+ *   - `DESIGN_REF_REQUIRES_TIER4` — Pool carries a design ref
+ *                                  (`pool.hasAnyDesignRef() === true`)
+ *                                  for `generate`/`refactor` mode but the
+ *                                  LLM emitted a tier other than 4. The
+ *                                  document grounds multi-boundary work;
+ *                                  collapsing it into Tier 1/2/3 is the
+ *                                  bitter-blazing-cloak regression
+ *                                  shape — five enumerated tasks become
+ *                                  a single one. Caught and retried with
+ *                                  framing that quotes the intent
+ *                                  matrix's role assignment.
  */
 export type ExecutionTierViolationCode =
   | 'MISSING_TAG'
-  | 'FORBIDDEN_TIER_FOR_MODE';
+  | 'FORBIDDEN_TIER_FOR_MODE'
+  | 'DESIGN_REF_REQUIRES_TIER4';
 
 export class ExecutionTierViolation extends Error {
   public readonly code: ExecutionTierViolationCode;
@@ -93,10 +116,14 @@ export class ExecutionTierViolation extends Error {
       observedTier?: ExecutionTierId;
     },
   ) {
-    const message =
-      code === 'MISSING_TAG'
-        ? `[${opts.nodeLabel}] LLM output missing <executionTier> tag (mode=${opts.mode ?? 'unknown'})`
-        : `[${opts.nodeLabel}] LLM emitted <executionTier>${opts.observedTier}</executionTier> which is forbidden for mode=${opts.mode}`;
+    let message: string;
+    if (code === 'MISSING_TAG') {
+      message = `[${opts.nodeLabel}] LLM output missing <executionTier> tag (mode=${opts.mode ?? 'unknown'})`;
+    } else if (code === 'FORBIDDEN_TIER_FOR_MODE') {
+      message = `[${opts.nodeLabel}] LLM emitted <executionTier>${opts.observedTier}</executionTier> which is forbidden for mode=${opts.mode}`;
+    } else {
+      message = `[${opts.nodeLabel}] LLM emitted <executionTier>${opts.observedTier}</executionTier> but pool carries a design ref — Tier 4 is required for mode=${opts.mode}`;
+    }
     super(message);
     this.name = 'ExecutionTierViolation';
     this.code = code;
@@ -109,11 +136,22 @@ export class ExecutionTierViolation extends Error {
 export interface ValidateExecutionTierOpts {
   mode?: string;
   nodeLabel: string;
+  /**
+   * Post-RAC artifact pool. When supplied, the validator enforces the
+   * structural rule "design ref present + write mode ⇒ Tier 4". Pass
+   * `undefined` only for legacy call sites that have no access to the
+   * pool (e.g. design-job decompose where the artifact pool is shaped
+   * differently); the additional check is silently skipped in that
+   * case. The two existing failure modes (`MISSING_TAG`,
+   * `FORBIDDEN_TIER_FOR_MODE`) are unaffected.
+   */
+  pool?: ArtifactPoolView;
 }
 
 /**
  * Strict counterpart to {@link coerceExecutionTier}. Throws
- * {@link ExecutionTierViolation} on missing tag or forbidden-for-mode.
+ * {@link ExecutionTierViolation} on missing tag, forbidden-for-mode, or
+ * design-ref-but-not-Tier-4.
  *
  * Caller contract: wrap in try/catch and retry with framing. Do NOT
  * swallow the violation silently — the whole point of this helper is to
@@ -131,11 +169,20 @@ export function validateExecutionTier(
       mode: opts.mode,
     });
   }
-  if (
-    parsed === ExecutionTierId.Reflex &&
-    (opts.mode === 'generate' || opts.mode === 'refactor')
-  ) {
+  const isWriteMode = opts.mode === 'generate' || opts.mode === 'refactor';
+  if (parsed === ExecutionTierId.Reflex && isWriteMode) {
     throw new ExecutionTierViolation('FORBIDDEN_TIER_FOR_MODE', {
+      nodeLabel: opts.nodeLabel,
+      mode: opts.mode,
+      observedTier: parsed,
+    });
+  }
+  if (
+    isWriteMode &&
+    opts.pool?.hasAnyDesignRef() &&
+    parsed !== ExecutionTierId.RefsGrounded
+  ) {
+    throw new ExecutionTierViolation('DESIGN_REF_REQUIRES_TIER4', {
       nodeLabel: opts.nodeLabel,
       mode: opts.mode,
       observedTier: parsed,
@@ -147,7 +194,7 @@ export function validateExecutionTier(
 /**
  * Build a short, assertive framing message to append to the user prompt
  * before a retry. Deliberately concrete — tells the LLM exactly what to
- * emit and why Tier 0 (for generate/refactor) is wrong.
+ * emit and why the previous classification was wrong.
  */
 export function buildExecutionTierViolationFraming(
   violation: ExecutionTierViolation,
@@ -162,12 +209,25 @@ export function buildExecutionTierViolationFraming(
     );
   }
   const modeLabel = violation.mode ?? 'generate/refactor';
+  if (violation.code === 'FORBIDDEN_TIER_FOR_MODE') {
+    return (
+      header +
+      `Your previous response emitted \`<executionTier>0</executionTier>\` for \`${modeLabel}\` mode, ` +
+      'which is FORBIDDEN. Tier 0 (Reflex) is reserved for `explain` mode only. ' +
+      `For \`${modeLabel}\` the minimum executionTier is \`1\` (OneShot, single verification-unneeded write). ` +
+      'A "no change required" outcome must be reached AFTER observing the code inside a Tier 1+ execution, ' +
+      'never at classification time. Re-emit with `<executionTier>1</executionTier>` or higher.'
+    );
+  }
+  // DESIGN_REF_REQUIRES_TIER4
   return (
     header +
-    `Your previous response emitted \`<executionTier>0</executionTier>\` for \`${modeLabel}\` mode, ` +
-    'which is FORBIDDEN. Tier 0 (Reflex) is reserved for `explain` mode only. ' +
-    `For \`${modeLabel}\` the minimum executionTier is \`1\` (OneShot, single verification-unneeded write). ` +
-    'A "no change required" outcome must be reached AFTER observing the code inside a Tier 1+ execution, ' +
-    'never at classification time. Re-emit with `<executionTier>1</executionTier>` or higher.'
+    `Your previous response emitted \`<executionTier>${violation.observedTier}</executionTier>\` for \`${modeLabel}\` mode, ` +
+    'but the artifact pool carries a design reference document (spec / system-design / ui / game-art with `role=ref`). ' +
+    'Per the intent matrix (`@ant/shared/action-config-matrix.ts`), a design ref is the **Development Source** of this turn — ' +
+    'it enumerates multi-boundary work and MUST be faithfully decomposed against. ' +
+    'Tier 4 (RefsGrounded) is the ONLY valid classification: emit one task per work unit the document enumerates ' +
+    '(plus a final `verification` task), never collapse them into a single Tier 1/2/3 unit. ' +
+    'Re-emit with `<executionTier>4</executionTier>`.'
   );
 }
