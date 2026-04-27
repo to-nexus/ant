@@ -22,6 +22,36 @@ It helps you describe **game rules, state ownership, determinism, and synchroniz
   - **Difficulty scaling (if applicable)**: Whether and how ball/paddle speed or other parameters change over time or based on performance (describe trends/policies, not exact numeric curves).
 - State invariants MUST be independent of rendering, networking, or input device APIs.
 
+### 2.5 GDD ↔ Design Responsibility Split (cite GDD §X to keep MECE)
+
+**Principle**: The GDD is the SSOT for game content (coreloop / mechanics / aesthetic / fail / content scope / input & perspective / modes / meta-progression). System Design (game-system), game-art design (`game-art-design-by-{desc,figma}`), and game-content (balancing) **cite GDD sections by stable identifier** and elaborate **only the boundary / token / value** their axis owns. A design document that re-lists mechanics, re-derives entity catalogs, or restates aesthetic vocabulary is duplicating GDD content — that is an MECE violation.
+
+**Citation pattern**: When a design task addresses content from the GDD, cite the GDD section and the symbolic ID. Examples:
+
+- `GDD §4 (MC-Combat) → this design only specifies the input → event flow and simulation determinism for combat`
+- `GDD §8 (EN-Hero) → this game-art task only commits the asset entries for hero variants`
+- `GDD §6 (RW-Score) → this game-content task only sets the reward catalog values`
+- `GDD §10 (GM-CoOp) → this design only specifies the synchronization policy for cooperative play`
+
+**Hand-off table** (mirrors the GDD overlay's hand-off table — designs MUST respect this split):
+
+| GDD section | Game-System Design picks up | Game-Art Design picks up | Game-Content (balancing) picks up |
+|---|---|---|---|
+| §2 Coreloop (`CL-XXX`) | State machine and transitions of coreloop steps | (indirect) | (rare) |
+| §4 MDA Mechanics (`MC-XXX`) | Input → event flow, simulation determinism | Mechanic-feedback motion-tone | Mechanic tuning values |
+| §4 MDA Aesthetic | (indirect) | Palette / silhouette / lighting tokens | (indirect) |
+| §5 Progression Curve | (indirect) | (indirect) | Curve dataset |
+| §6 Reward & Feedback (`RW-XXX`) | (rare) | Feedback visuals / motion-tone | Reward catalog values |
+| §7 Fail Condition | State transition (defeat → restart cost) | Fail UI treatment | (rare) |
+| §8 Content Scope (`EN-XXX`, `LV-XXX`) | (indirect) | SSOT for asset categories and counts | Content catalog |
+| §9 Input & Perspective | Input handling / viewport policy | Viewport / camera scheme / orientation visuals | (rare) |
+| §10 Game Modes (`GM-XXX`) | Multiplayer synchronization policy | (rare) | Mode-specific content |
+| §11 Meta-Progression (`MP-XXX`) | Persistence contract | (rare) | (rare) |
+
+**Constraint**: A design task whose output enumerates `MC-`, `EN-`, `LV-`, `RW-`, `GM-`, or `MP-` identifiers without citing the GDD section that defined them is creating shadow IDs. Design MUST cite the GDD; GDD identifiers are the SSOT.
+
+**Constraint**: When the GDD is missing a section the design needs (e.g. §10 Game Modes is omitted yet the directive asks for sync policy), do NOT silently fabricate the policy — surface the gap as a question or a Pipeline-Input-Sufficiency failure that should be back-filled in the GDD.
+
 ### 3. Simulation Determinism & Timestep Policies
 - For any time‑based game (including single‑player), the System Design MUST state high‑level determinism and tick policies, even if the PRD does not mention them:
   - **Determinism**: Is the simulation intended to be deterministic across runs given the same command sequence? If not, which sources of non‑determinism are acceptable?

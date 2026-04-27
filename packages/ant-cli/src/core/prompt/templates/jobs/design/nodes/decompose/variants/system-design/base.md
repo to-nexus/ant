@@ -100,7 +100,9 @@ These are initial defaults for this tier. **MSA DETECTION below may expand them*
 
 ## 📥 INPUT CONTEXT
 
-### Requirements
+### Requirements (PRD / GDD)
+
+The requirements document (`prd.md` for service domain, `gdd.md` for game domain — both authored by the plan job and stored in `sources/`) is the SSOT for product surface. Cite PRD/GDD sections by stable identifier (`PRD §5 / SC-Search`, `GDD §8 / EN-Hero`) when a task depends on a specific section. Do not re-derive content the document already commits to.
 
 {{spec}}
 
@@ -108,15 +110,19 @@ These are initial defaults for this tier. **MSA DETECTION below may expand them*
 
 ## 📊 PROJECT SCOPE ANALYSIS
 
-**Analyze requirements complexity before breaking down tasks.**
+**Analyze requirements complexity before breaking down tasks.** Each complexity question below maps to a specific PRD/GDD section — observe that section first, fall back to LLM extraction only if the section is missing (and surface the gap as an Open Question rather than fabricating).
 
-### Step 1: Complexity Questions
+### Step 1: Complexity Questions (cite PRD/GDD §X)
 
-1. **Backend Complexity**: Does it need a backend? Database? How many tables/entities?
-2. **Feature Count**: How many distinct user-facing features?
-3. **Pages/Views**: How many different screens/pages?
-4. **External Systems**: Does it integrate with external APIs, payment, auth services?
-5. **User Roles**: Multiple user types with different permissions?
+| # | Question | Service domain (PRD) | Game domain (GDD) |
+|---|---|---|---|
+| 1 | **Backend Complexity** — does it need a backend / database / how many entities? | PRD §10 Data & Permissions (count `EN-XXX`); PRD §11 External Dependencies (whether 3rd-party storage replaces an owned DB) | GDD §11 Meta-Progression (whether session-spanning persistence exists) + GDD §10 Game Modes (whether multiplayer requires a server) |
+| 2 | **Feature Count** — how many distinct user-facing features? | PRD §8 Functional Requirements (count `FR-XX`) | GDD §4 MDA Mechanics (count `MC-XXX`) |
+| 3 | **Pages / Views** — how many different screens/pages? | PRD §5 IA (count `SC-XXX`) | GDD does not have "pages" in the service sense — substitute with §2 Coreloop step count (`CL-XXX`) and §10 Game Mode count (`GM-XXX`) |
+| 4 | **External Systems** — does it integrate with external APIs, payment, auth services? | PRD §11 External Dependencies | Usually 0 for a game prototype; if non-zero, the GDD records it under §12 Out-of-Scope or as a single line in §1 Core Concept |
+| 5 | **User Roles** — multiple user types with different permissions? | PRD §3 Personas + PRD §10 Permissions (count `RB-XXX`) | GDD §10 Game Modes (count distinct player roles per mode, e.g. host vs joiner) |
+
+If a referenced section is missing from the PRD/GDD, treat the corresponding score input as a known gap — record it in the task description as `Source missing: PRD §N` and proceed with the most defensible interpretation. Do NOT fabricate counts.
 
 ### Step 1.5: Backend/Fullstack Complexity Indicators
 
@@ -160,6 +166,7 @@ These are initial defaults for this tier. **MSA DETECTION below may expand them*
 - `assignedSections` defines EXCLUSIVE scope — each section assigned to exactly ONE task
 - Total tasks for a document type MUST NOT exceed the number of catalog sections for that type
 - Skip conditional catalog sections whose condition is not met
+- **PRD/GDD hand-off citation** — each task's `description` MUST cite the PRD/GDD sections / stable IDs the task elaborates (e.g. `Implements PRD §10 / RB-Seller and §11 (payment dependency)` or `Implements GDD §4 / MC-Combat`). Tasks without a hand-off citation are likely duplicating PRD/GDD content. When the task is purely architectural (e.g. error-propagation policy not bound to a specific identifier), write `Architectural — no direct PRD/GDD hand-off`.
 
 ---
 
@@ -188,13 +195,17 @@ Use these catalogs to distribute sections across tasks. Each task description re
 
 ### Abstraction Level (applies to ALL document types)
 
-| ✅ Architecture Level | ❌ Implementation Level |
-|----------------------|------------------------|
-| Boundary responsibilities and ownership | Specific algorithms, formulas, calculation steps |
-| Data flow direction between boundaries | Exact parameter values (timeouts, coefficients, thresholds) |
-| Dependency rules (what imports what) | Library/framework usage details (API calls, syntax) |
-| Design rationale (WHY this pattern) | Performance optimization tricks |
-| Error propagation POLICY | Storage implementation details (key names, serialization format) |
+System design is bounded by **three axes**, not two. The **Content/UX Level** is owned by the PRD/GDD authored in the plan job — system design MUST cite it, not duplicate it.
+
+| ✅ Architecture Level (system design owns) | 🛡 Content / UX Level (PRD/GDD owns — cite, do NOT restate) | ❌ Implementation Level (forbidden) |
+|---|---|---|
+| Boundary responsibilities and ownership | Service: screen list (`SC-XXX`), screen composition & states, content & domain policy (`CP-XXX`) → cite PRD §5 / §6 / §7. Game: coreloop steps (`CL-XXX`), mechanic catalog (`MC-XXX`), entity catalog (`EN-XXX`), aesthetic vocabulary, viewport / orientation policy → cite GDD §2 / §4 / §8 / §9. | Specific algorithms, formulas, calculation steps |
+| Data flow direction between boundaries | Service: user flows (`FL-XXX`) and their branches / exceptions / recoveries → cite PRD §4. Game: fail conditions and reward catalogs (`RW-XXX`) → cite GDD §6 / §7. | Exact parameter values (timeouts, coefficients, thresholds) |
+| Dependency rules (what imports what) | (PRD/GDD does not own this axis — it is purely architectural.) | Library/framework usage details (API calls, syntax) |
+| Design rationale (WHY this pattern) | Functional requirements (`FR-XX`) the architecture is justifying — cite PRD §8. | Performance optimization tricks |
+| Error propagation POLICY | Permission boundaries (`RB-XXX`), entity ownership (`EN-XXX`) — cite PRD §10. | Storage implementation details (key names, serialization format) |
+
+**Constraint**: When the architecture decision references a PRD/GDD-owned identifier, the design output MUST link back with a stable-ID citation (e.g. `enforces PRD §10 / RB-Seller`). Re-listing the screen catalog or the entity catalog inside system design — without citation — is a duplication that downstream code consumers will treat as the authoritative source, fragmenting MECE.
 
 ---
 

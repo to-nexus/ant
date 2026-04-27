@@ -3,6 +3,13 @@
  *
  * Side effects (figmaSuccess/figmaError) allow the calling node's hooks
  * to maintain error counters without coupling the handler to graph state.
+ *
+ * `nodeName` enrichment is gated on `ctx.figmaExplorationResult?.nodeSummary`
+ * presence — design jobs populate it via `buildContext`, code jobs leave it
+ * undefined and fall back to nodeId-only chat status meta. This keeps the
+ * handler common-shaped while preserving the design UX of showing node
+ * names ("phase1") in chat status without leaking design state shape into
+ * the tool transport layer.
  */
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
@@ -20,12 +27,15 @@ export async function handleFigmaTool(
   }
 
   const nodeId = args.nodeId as string | undefined;
-  const statusMeta = { toolName, nodeId };
+  const nodeName = nodeId
+    ? ctx.figmaExplorationResult?.nodeSummary?.find((n: any) => n.nodeId === nodeId)?.name
+    : undefined;
+  const statusMeta = { toolName, nodeId, nodeName };
   const mergeIdx = await ctx.chatStatus.showStatus('figma_calling', statusMeta);
 
   try {
     const mcpResult = await callFigmaMCPTool(
-      { userId: ctx.userId, redis: ctx.redis, taskId: undefined },
+      { userId: ctx.userId, redis: ctx.redis, taskId: ctx.taskId },
       toolName,
       ctx.figmaFileKey,
       args.nodeId,
