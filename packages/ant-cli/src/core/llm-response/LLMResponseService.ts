@@ -890,9 +890,12 @@ export class LLMResponseService {
 
   /**
    * Common metadata header used by every line emitted from this service.
-   * `workerScope` is omitted on the main graph and set to `worker-N` for
-   * parallel workers (matches the LineBase contract documented in
-   * `@ant/shared/session-log.ts`).
+   * `workerScope` is omitted on the main graph and set to `worker-N`
+   * (no active task) or `worker-N#task-K` (within a task) by
+   * `TurnContext.getWorkerScopeKey()`. The `#task-K` suffix lets the
+   * FE projector partition long-lived worker output per task and sort
+   * sections chronologically (matches the LineBase contract documented
+   * in `@ant/shared/session-log.ts`).
    */
   private lineBase(_kind: ChatLine['type']) {
     const turnId = this.getTurnId();

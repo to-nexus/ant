@@ -36,17 +36,24 @@ export class TurnContext {
   }
 
   /**
-   * Stable worker-scope key used for `TURN_BUFFER` namespacing.
+   * Stable worker-scope key used for `TURN_BUFFER` namespacing AND
+   * for the FE projector's per-task section grouping.
    *
-   *   - main graph                → `_main_`
-   *   - parallel TaskWorker N     → `worker-N`
+   *   - main graph                  → `_main_`
+   *   - parallel worker, no task    → `worker-N`
+   *   - parallel worker, in a task  → `worker-N#task-K`
    *
-   * This mirrors the AsyncLocalStorage-based isolation the legacy
-   * `SessionStore` used so parallel workers continue to maintain
-   * independent in-flight streams.
+   * `task-K` is the task's stable id (or `name` fallback) set via
+   * `runInTaskScope` inside `TaskWorker.executeTask`. Including it
+   * partitions a long-lived worker's chat events per task so the FE
+   * can sort sections by first-event timestamp — restoring chronology
+   * when the same worker handles tasks across barrier cohorts.
    */
   getWorkerScopeKey(): string {
     const scope = getWorkerScope();
-    return scope ? `worker-${scope.workerId}` : '_main_';
+    if (!scope) return '_main_';
+    return scope.taskKey
+      ? `worker-${scope.workerId}#${scope.taskKey}`
+      : `worker-${scope.workerId}`;
   }
 }

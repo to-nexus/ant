@@ -17,12 +17,21 @@
  * Folding rules (mirrors the chat-SSOT spec):
  *  - `turnId` groups every event into a `Turn`.
  *  - Within a turn, `workerScope` (defaulted to `_main_`) splits into
- *    sub-sections so parallel workers render in their own card stacks.
+ *    sub-sections. The BE stamps `worker-N#task-K` when a parallel
+ *    TaskWorker is inside a task, so each task gets its own section
+ *    even when a long-lived worker handles multiple tasks across
+ *    barrier cohorts.
+ *  - Sections sort by first-event timestamp (ascending) with `_main_`
+ *    pinned to the first position — restores chronology when later
+ *    cohorts are queued behind earlier ones.
  *  - `chat_status` lines fold by `cardId` (last-write-wins) so a card's
  *    progressive states (e.g. `command_running` → `command_streaming`
  *    → `command`) collapse into one item.
  *  - `choice_presented` + `choice_resolved` pair on `cardId` and render
- *    as a single resolved/unresolved choice item.
+ *    as a single resolved/unresolved choice item. Cancelled cards have
+ *    no special routing — they flow into `_main_` (no workerScope on
+ *    the appender) and the rest of the turn naturally renders below
+ *    them once new worker output arrives.
  *  - `streamingBuffers` overlay produces `activeText` / `activeThinking`
  *    / `pendingCards` so live deltas surface above the durable folded
  *    cards without mutating the disk SSOT.
@@ -66,21 +75,6 @@ export interface StreamingBuffer {
 export type BufferKey = string; // `${turnId}:${workerScope}`
 
 export const MAIN_WORKER_SCOPE = '_main_' as const;
-
-/**
- * Synthetic section that always renders LAST in a turn — reserved for
- * turn-terminator cards (e.g. `cardType: 'cancelled'` emitted by
- * `ChatService.appendChoicePresentedCancelled`).
- *
- * Why: the cancelled card is the lifecycle "stop" marker; it must appear
- * after every parallel-worker section in the turn, otherwise users see
- * worker output dangling beneath the stop card. The cancelled line itself
- * has no `workerScope` (the server emits it from the HTTP path), so it
- * would otherwise fall into `_main_` and render BEFORE worker sections.
- * Mapping that single cardType to this dedicated section keeps the
- * chat-SSOT cardType-position policy explicit and local to the projector.
- */
-export const TERMINAL_SECTION = '_terminal_' as const;
 
 export function makeBufferKey(turnId: string, workerScope?: string | null): BufferKey {
   return `${turnId}:${workerScope || MAIN_WORKER_SCOPE}`;
@@ -249,43 +243,53 @@ function projectSingleTurn(
   const sectionOrder: string[] = [];
   const linesByScope = new Map<string, ChatLine[]>();
 
+  // First-event timestamp per scope — used for chronological section
+  // ordering below. `_main_` is anchored to the user_turn's ts so the
+  // turn header sits above any worker output even if the first
+  // `_main_` event happens late.
+  const firstTsByScope = new Map<string, string>();
+
   for (const line of lines) {
     if (line.type === 'user_turn') {
       user = line;
       jobId ||= line.jobId;
       jobType = (line.jobType as LogJobType) ?? jobType;
+      // Anchor `_main_` to the user_turn ts. Doesn't create the section
+      // by itself; only used for ordering when `_main_` events exist.
+      if (!firstTsByScope.has(MAIN_WORKER_SCOPE)) {
+        firstTsByScope.set(MAIN_WORKER_SCOPE, line.ts);
+      }
       // user_turn is rendered above sections, not inside them.
       continue;
     }
-    // Turn-terminator routing: cancelled cards must render below every
-    // parallel-worker section (see TERMINAL_SECTION). Every other line
-    // falls into its own workerScope (or `_main_` when omitted).
-    let scope = line.workerScope || MAIN_WORKER_SCOPE;
-    if (
-      line.type === 'choice_presented' &&
-      (line as ChatChoicePresentedLine).cardType === 'cancelled'
-    ) {
-      scope = TERMINAL_SECTION;
-    }
+    const scope = line.workerScope || MAIN_WORKER_SCOPE;
     if (!linesByScope.has(scope)) {
       linesByScope.set(scope, []);
       sectionOrder.push(scope);
     }
     linesByScope.get(scope)!.push(line);
+    if (!firstTsByScope.has(scope)) firstTsByScope.set(scope, line.ts);
     jobId ||= line.jobId;
   }
 
-  // Section ordering (chat-SSOT cardType-position policy):
-  //   1. `_main_`       — always first.
-  //   2. `worker-N`     — alphabetical (localeCompare) so parallel workers
-  //                       have a stable left-to-right column order.
-  //   3. `_terminal_`   — always last (cancelled / turn-terminator cards).
+  // Section ordering — chronological by first-event timestamp.
+  //
+  // `_main_` is pinned to the FIRST position regardless of ts so the
+  // turn-level orchestration narrative (assistant_message, etc.) reads
+  // as the introduction to the parallel work that follows. Every other
+  // section sorts by ascending `firstTsByScope`, with workerScope as a
+  // tiebreaker for determinism. This restores chronology across
+  // long-lived TaskWorkers that handle barrier cohorts in sequence
+  // (e.g. UI cohort → test-code cohort): a worker that picks up a
+  // cohort-2 task gets a fresh `worker-N#task-K` scope whose first ts
+  // sorts AFTER cohort-1 sections, so cohort-2 messages render below.
   sectionOrder.sort((a, b) => {
     if (a === b) return 0;
     if (a === MAIN_WORKER_SCOPE) return -1;
     if (b === MAIN_WORKER_SCOPE) return 1;
-    if (a === TERMINAL_SECTION) return 1;
-    if (b === TERMINAL_SECTION) return -1;
+    const ta = firstTsByScope.get(a) ?? '';
+    const tb = firstTsByScope.get(b) ?? '';
+    if (ta !== tb) return ta < tb ? -1 : 1;
     return a.localeCompare(b);
   });
 

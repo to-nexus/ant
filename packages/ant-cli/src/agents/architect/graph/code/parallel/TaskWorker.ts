@@ -18,7 +18,7 @@ import type { TaskOrchestrator } from './TaskOrchestrator';
 import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
-import { runInWorkerScope } from '../../../../../core/parallel/workerScope';
+import { runInTaskScope, runInWorkerScope } from '../../../../../core/parallel/workerScope';
 import { VerificationTerminalError } from '../tasks/_shared/verify/errors';
 import { hooksForTaskType } from '../tasks/_shared/registry';
 import type { TaskType } from '@ant/shared';
@@ -237,10 +237,18 @@ export class TaskWorker<T extends BaseTask> {
     // for complex tasks (plan → execute ↔ tool loop easily exceeds 25 node transitions).
     // Use sharedContext.recursionLimit (from env RECURSION_LIMIT via runner.ts).
     const envLimit = parseInt(process.env.RECURSION_LIMIT || '200', 10);
+    // Wrap with `runInTaskScope` (inside `runInWorkerScope`) so every
+    // chat event emitted during this task carries `worker-N#task-K`
+    // identity. The FE projector splits sections per task and sorts by
+    // first-event timestamp, restoring chronology when a long-lived
+    // worker handles tasks across barrier cohorts.
+    const taskKey = task.id || task.name;
     const result = await runInWorkerScope(this.workerId, () =>
-      graph.invoke(workerState, {
-        recursionLimit: workerState.recursionLimit || envLimit,
-      })
+      runInTaskScope(taskKey, () =>
+        graph.invoke(workerState, {
+          recursionLimit: workerState.recursionLimit || envLimit,
+        }),
+      ),
     );
     this.currentState = result;
     return result;
