@@ -298,7 +298,18 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     console.log(`💬 [Planner:Generate] Found ${clarifyBlocks.length} clarify block(s), sending choice cards`);
     
     const cleanedResponseText = stripClarifyTags(responseText);
-    
+
+    // ✅ Drain text buffer (lead-in message) BEFORE emitting the clarify card
+    // so chat.jsonl orders assistant_message → choice_presented; UI then renders
+    // the prose above the card. `orchestrator.finalize(true)` was called earlier
+    // with hasToolCalls=true, which intentionally skips finalizeMessage so a
+    // pending tool/file card can ride the same turn — but for the clarify-card
+    // path we want the buffered text flushed now. Without this, the post-graph
+    // finalize runs after sendClarify and the message ends up below the card.
+    // Mirrors design docGen's spec clarify path which calls finalizeMessage()
+    // before persisting its checkpoint.
+    await chatAPI.finalizeMessage();
+
     try {
       const { sendClarify } = await import('../../../../../common/clarify');
       await sendClarify(clarifyBlocks);
