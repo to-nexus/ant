@@ -243,6 +243,23 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       console.log(`📄 [Design Resolve] Loaded figma.json: ${figmaConfig.file ? '1 file configured' : 'no file'}`);
     } catch { /* Non-critical */ }
 
+    // SSOT — derive figmaFileKey/figmaStartNodeId from figmaConfig.file at the
+    // single point where figmaConfig enters state. Detect (explicit branch in
+    // common/graph/nodes/detect/index.ts) does NOT call strategy.run(), so
+    // any URL parsing inside the design strategy is bypassed for explicit
+    // submissions (`actionMetadata.explicit=true`). The unified figma handler
+    // (`agents/common/tool/handlers/figma.ts`) reads `ctx.figmaFileKey` and
+    // rejects every figma_* call with "Figma fileKey not configured" if the
+    // key is missing — the regression that fired for `azure-keeping-cairn`
+    // (gen-ui-figma, explicit=true) where workers fell back to `figma.json`-as-
+    // text. Pairing parsing with figmaConfig load makes this the SSOT for
+    // both explicit and infer new-job paths; the resume path keeps its own
+    // rehydrate in `onResume` because checkpoints persist `figmaConfig` but
+    // historically dropped `figmaFileKey`/`figmaStartNodeId`.
+    const figmaParts = figmaConfig?.file
+      ? extractFigmaUrlParts(figmaConfig.file)
+      : undefined;
+
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Feature Context + turnId (session redesign — Phase C §11/§12/§13)
     // Shared with onResume via `hydrateFeatureContext` so both paths recover
@@ -282,6 +299,8 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       _httpJobId: state._httpJobId,
       featureContext,
       turnId,
+      ...(figmaParts?.fileKey && { figmaFileKey: figmaParts.fileKey }),
+      ...(figmaParts?.nodeId && { figmaStartNodeId: figmaParts.nodeId }),
     } as Partial<DesignGraphState>;
   },
 };
