@@ -70,7 +70,14 @@
     "fetchSuggestionsFailed": "수정 제안을 가져올 수 없습니다.",
     "invalidExtension": "{{dir}}은(는) 다음 파일만 허용합니다: {{allowed}}",
     "subdirsNotAllowed": "{{dir}}에는 하위 폴더를 생성할 수 없습니다",
-    "uploadPartialBlocked": "{{total}}개 중 {{blocked}}개 파일이 차단되었습니다 (허용되지 않는 형식)"
+    "uploadPartialBlocked": "{{total}}개 중 {{blocked}}개 파일이 차단되었습니다 (허용되지 않는 형식)",
+    "artifactBlockedTitle": "아티팩트를 변경할 수 없음",
+    "artifactBlockedSignIn": "아티팩트 파일을 업로드하거나 수정하려면 로그인하세요.",
+    "artifactBlockedDisconnected": "서버와 연결이 끊어졌습니다. 연결 후 다시 시도하세요.",
+    "artifactBlockedStopping": "작업이 중단되는 중입니다. 완료된 뒤 다시 시도하세요.",
+    "artifactBlockedRunning": "작업이 실행 중입니다. 작업이 끝나거나 중지될 때까지 아티팩트 업로드·편집·삭제를 할 수 없습니다.",
+    "artifactBlockedSelectContext": "아티팩트를 변경하려면 프로젝트와 기능을 먼저 선택하세요.",
+    "artifactBlockedGeneric": "지금은 아티팩트를 변경할 수 없습니다."
   },
   "editor": {
     "placeholder": "파일 내용...",

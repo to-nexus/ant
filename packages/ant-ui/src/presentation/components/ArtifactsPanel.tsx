@@ -7,7 +7,7 @@ import { createFile, uploadFiles, createDirectory, deleteFileOrDirectory, rename
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { Button } from '@/presentation/components/common/button';
 import { textColors, cn } from '@/shared/utils/design-system';
-import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
+import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNotifyArtifactMutationBlocked';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { FileActionMenu } from './FileActionMenu';
@@ -692,8 +692,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const figmaDesktopReachable = useStore((state) => state.figmaDesktopReachable);
   const setAccountConfigScrollTarget = useStore((state) => state.setAccountConfigScrollTarget);
   
-  // ✅ UI Action Policy
-  const policy = useUIActionPolicy();
+  const notifyArtifactMutationBlocked = useNotifyArtifactMutationBlocked();
   const { showError } = useAlertModalContext();
   const { t } = useTranslation('artifacts');
 
@@ -750,6 +749,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   };
 
   const handleCreateFile = async (dirPath: string, fileName: string) => {
+    if (notifyArtifactMutationBlocked()) return;
     if (!selectedProject || !selectedFeature) return;
 
     try {
@@ -767,6 +767,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   };
 
   const handleCreateDirectory = async (dirPath: string, dirName: string) => {
+    if (notifyArtifactMutationBlocked()) return;
     if (!selectedProject || !selectedFeature) return;
 
     try {
@@ -784,6 +785,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   };
 
   const handleDelete = async (itemPath: string) => {
+    if (notifyArtifactMutationBlocked()) return;
     if (!selectedProject || !selectedFeature) return;
     
     try {
@@ -807,6 +809,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   };
 
   const handleRename = async (oldPath: string, newName: string) => {
+    if (notifyArtifactMutationBlocked()) return;
     if (!selectedProject || !selectedFeature) return;
 
     const parentDir = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
@@ -889,6 +892,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     dirPath: string,
     files: UploadFileEntry[],
   ) => {
+    if (notifyArtifactMutationBlocked()) return;
     if (!selectedProject || !selectedFeature) return;
 
     const count = files.length;
@@ -918,12 +922,13 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     } finally {
       abortRef.current = null;
     }
-  }, [selectedProject, selectedFeature, refreshFileTree, showError, t, dismissUpload]);
+  }, [selectedProject, selectedFeature, refreshFileTree, showError, t, dismissUpload, notifyArtifactMutationBlocked]);
 
   const checkConflictsAndUpload = useCallback((
     dirPath: string,
     entries: UploadFileEntry[],
   ) => {
+    if (notifyArtifactMutationBlocked()) return;
     if (!fileTree) {
       doUpload(dirPath, entries);
       return;
@@ -934,7 +939,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       return;
     }
     setConflictModal({ isOpen: true, conflictingFiles: conflicts, dirPath, entries });
-  }, [fileTree, doUpload]);
+  }, [fileTree, doUpload, notifyArtifactMutationBlocked]);
 
   const handleConflictResolve = useCallback((resolution: ConflictResolution) => {
     const { dirPath, entries } = conflictModal;
@@ -1038,12 +1043,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           sectionPrefix="inputs"
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
-          onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
-          onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
-          onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
-          onDropFiles={policy.canUploadFiles ? handleDropFiles : undefined}
-          onRename={policy.canCreateFile ? handleRename : undefined}
-          onDelete={policy.canDeleteFile ? handleDelete : undefined}
+          onCreateFile={handleCreateFile}
+          onCreateDirectory={handleCreateDirectory}
+          onUploadFiles={handleUploadFiles}
+          onDropFiles={handleDropFiles}
+          onRename={handleRename}
+          onDelete={handleDelete}
           onSend={handleSend}
           onDownload={handleDownload}
           isNarrow={isNarrow}
@@ -1063,12 +1068,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           sectionPrefix="outputs"
           onFileSelect={handleFileSelect}
           selectedFile={selectedFile}
-          onCreateFile={policy.canCreateFile ? handleCreateFile : undefined}
-          onCreateDirectory={policy.canCreateDirectory ? handleCreateDirectory : undefined}
-          onUploadFiles={policy.canUploadFiles ? handleUploadFiles : undefined}
-          onDropFiles={policy.canUploadFiles ? handleDropFiles : undefined}
-          onRename={policy.canCreateFile ? handleRename : undefined}
-          onDelete={policy.canDeleteFile ? handleDelete : undefined}
+          onCreateFile={handleCreateFile}
+          onCreateDirectory={handleCreateDirectory}
+          onUploadFiles={handleUploadFiles}
+          onDropFiles={handleDropFiles}
+          onRename={handleRename}
+          onDelete={handleDelete}
           onSend={handleSend}
           onDownload={handleDownload}
           isNarrow={isNarrow}
