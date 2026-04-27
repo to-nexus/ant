@@ -286,6 +286,28 @@ describe('LLMResponseService — finalized line emission', () => {
     expect(lines[0].type).toBe('choice_presented');
     expect((lines[0] as any).cardId).toBe('choice-1');
     expect((lines[0] as any).cardType).toBe('triage_choice');
+    // `triage_choice` runs in the `_main_` (no workerScope) section
+    // so the line MUST omit `workerScope`. Regression guard for the
+    // synthetic-scope branch only firing on `spec_complete`.
+    expect((lines[0] as any).workerScope).toBeUndefined();
+  });
+
+  it('appendChoicePresented mints a synthetic workerScope for spec_complete', async () => {
+    // chat-SSOT §섹션-정렬 — `_main_` is pinned to the FE first
+    // section. Without a synthetic scope the spec_complete card
+    // outranks the spec body emitted by parallel TaskWorkers.
+    // Mirror the cancelled-card pattern (see ChatService).
+    const { service, store } = makeService();
+    await service.appendChoicePresented({
+      cardId: 'spec-card-1',
+      cardType: 'spec_complete',
+      prompt: 'Spec Complete',
+      payload: { specFile: 'auth.md' },
+    });
+    const lines = emittedLines(store);
+    expect(lines).toHaveLength(1);
+    expect((lines[0] as any).cardType).toBe('spec_complete');
+    expect((lines[0] as any).workerScope).toBe('_spec_complete_:spec-card-1');
   });
 
   it('skips emission silently when turnId is not set', async () => {

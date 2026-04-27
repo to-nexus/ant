@@ -68,8 +68,8 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 1. Identify which artifact the directive targets
 2. Determine which job OWNS that artifact — the job whose \`outputs\` include that artifact type (see AVAILABLE JOBS)
 3. Compare owning job with current job:
-   - Same → \`proceed\` (owning job handles explain internally). **STOP — skip Steps 3–7.**
-   - Different → \`redirect\` to owning job with \`suggestedJob\` and \`suggestedAgent\`. **STOP — skip Steps 3–7.**
+   - Same → \`proceed\` (owning job handles explain internally). **STOP — skip Steps 3–8.**
+   - Different → \`redirect\` to owning job with \`suggestedJob\` and \`suggestedAgent\`. **STOP — skip Steps 3–8.**
 
 **Constraint**: Directives that request modification, improvement, or creation of artifacts are modification intent, NOT explain intent. Observe whether the expected outcome is a changed artifact or an answer.
 
@@ -83,7 +83,7 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 
 | Observation | Action |
 |-------------|--------|
-| No different artifact type requested as output | \`proceed\` — skip Steps 4–7 |
+| No different artifact type requested as output | \`proceed\` — skip Steps 4–8 |
 | Explicitly requests to produce a different artifact type | Continue to Step 4 |
 
 **Constraint**: Mentioning technologies, architecture patterns, design constraints, or domain concepts that overlap with another job's scope is NOT requesting that job's artifact. These are inputs to the current job's output.
@@ -120,28 +120,79 @@ exports[`buildTriagePrompt > snapshot: full prompt structure for code job 1`] = 
 |-------------------|------------------------|--------|
 | Yes | Yes | target = \`code\` |
 | No | Yes | target = \`design\` (design artifacts needed first) |
-| Any | No | target = \`code\` |
+| Any | No | → Step 6 |
 
-**Constraint (conservative)**: Only explicit development/implementation directives qualify as "implementation request" — develop, implement, code, build, "start development". Analysis, investigation, bug diagnosis, modification, explanation do NOT qualify.
+**Constraint (conservative)**: Only explicit development/implementation directives qualify as "implementation request" — develop, implement, code, build, "start development". Analysis, investigation, bug diagnosis, modification, explanation do NOT qualify. **When uncertain, always pass to Step 6.**
 
-### Step 6: Agent Match (for work intent)
+### Step 6: Scope Routing
+
+**Applies when**: No explicit artifact (Step 4) AND not implementation request (Step 5).
+
+**Observation targets** (in order):
+
+#### 6.1: Modification Intent Check
+
+Observe whether the directive's content implies changes will result:
+
+| Content describes | Modification intent? |
+|-------------------|---------------------|
+| Problems, defects, broken behavior, root cause investigation | Yes — analysis will lead to fixes |
+| Requests to fix, modify, add, refactor, implement | Yes — direct modification |
+| Pure understanding: "how does X work?", "explain Y", "describe Z" | No — explanation only |
+
+- **Modification intent = No** → target = \`code\` (explain mode, any boundary). **STOP — skip 6.2.**
+- **Modification intent = Yes** → proceed to 6.2.
+
+**Constraint**: Observe the CONTENT of the request, not just the verb. "Why doesn't X work?" describes broken behavior (modification intent). "How does X work?" asks for understanding (no modification intent).
+
+#### 6.2: Scope Breadth + Source Adequacy (modification intent only)
+
+**Principle (RAC-aware)**: When the directive spans multiple boundaries AND the user has not explicitly pinned reference documents for this turn, the work needs a spec/design pass before code can land confidently. Workspace-wide document presence is irrelevant here — only the user's explicit injection counts as source.
+
+1. **Scope breadth** — observe the specificity of the directive's target:
+   - **Single-boundary**: directive names a specific, narrow target (one file, one function, one UI element, one API endpoint). The change is self-contained.
+   - **Multi-boundary**: everything else — multiple concerns simultaneously addressed (e.g., UI policy + runtime fix, FE + BE, multiple features), broad/vague directive, cross-layer impact, empty project.
+   - **Constraint**: When uncertain, default to multi-boundary.
+
+2. **Source adequacy** — observe \`## USER-PINNED REFERENCES\` in WORKSPACE STATE:
+   - **Pinned present**: count > 0 (user explicitly attached \`@\`-mentioned refs / context for this turn)
+   - **Pinned absent**: count == 0 (no user-pinned refs, regardless of which docs exist in the workspace at large)
+   - **Constraint**: Auto-injected role-based artifacts (system design docs, etc.) do NOT count as user-pinned. Only the explicit per-turn \`actionMetadata.refs\` / \`actionMetadata.context\` populated by the user counts.
+
+**Decision**:
+
+| Scope breadth | Source adequacy | Target |
+|---------------|-----------------|--------|
+| Single-boundary | Any | \`code\` |
+| Multi-boundary | Pinned present | \`code\` |
+| Multi-boundary | Pinned absent | \`design\` (suggest spec design before code) |
+
+Compare target vs current job:
+- target == current → \`proceed\`
+- target != current → \`redirect\` with \`suggestedJob\` and \`suggestedAgent\`
+
+⚠️ **Blind spot — scope underestimation**: Bugs that manifest in one place but originate across multiple layers (UI, data, API, state management) span multiple boundaries. Observe the FULL scope of affected subsystems, not just where the symptom appears.
+
+⚠️ **Blind spot — auto-injected ≠ user-pinned**: Workspace may contain many design/spec documents that get role-based auto-injected later in the pipeline. Those do NOT signal "the user supplied source for THIS directive". Only \`## USER-PINNED REFERENCES\` counts here.
+
+### Step 7: Agent Match (for work intent)
 
 **Principle**: Each job definition in AVAILABLE JOBS includes its \`agent\`. Compare the target job's agent with the current agent (shown in SESSION).
 
 | Observation | Action |
 |-------------|--------|
-| Target job's agent matches current agent | Continue to Step 7 |
+| Target job's agent matches current agent | Continue to Step 8 |
 | Target job's agent differs from current agent | Set \`redirect\` with \`suggestedAgent\` + \`suggestedJob\` |
 
-### Step 7: Determine Status
+### Step 8: Determine Status
 
 | Observation | Status |
 |-------------|--------|
 | Request matches current job capability AND prerequisites present | \`proceed\` |
-| Steps 4–5 determined a different job or agent than current | \`redirect\` |
+| Steps 4–6 determined a different job or agent than current | \`redirect\` |
 | Request matches current job BUT REQUIRED prerequisites missing | \`blocked\` |
 
-**Constraint**: If Steps 4–5 set \`redirect\`, Step 7 MUST NOT override it.
+**Constraint**: If Steps 4–6 set \`redirect\`, Step 8 MUST NOT override it.
 
 **Constraint**: Only missing REQUIRED prerequisites trigger \`blocked\`. Missing RECOMMENDED prerequisites do NOT affect status.
 
@@ -197,6 +248,7 @@ When user input appears to be:
 
 ⚠️ **Route by output, not topic**: The current job type is the default context. Mentioning technologies or design concepts is INPUT to the current job, not a request for another job's artifact. (Step 3)
 ⚠️ **Implementation requires design artifacts**: Code redirect is valid only when design documents exist. No design docs + implementation request → redirect to design, not code. (Step 5)
+⚠️ **Multi-boundary modification requires user-pinned source**: When the directive spans multiple boundaries AND the user has not pinned any reference for this turn, redirect to design (spec mode) before attempting code. Auto-injected workspace docs do NOT substitute for user-pinned references. (Step 6.2)
 ⚠️ **Artifact output = WORK**: Producing or modifying artifacts → \`work\`
 ⚠️ **Artifact/codebase explanation = WORK (explain intent)**: Explaining project codebase, architecture, or any artifacts → \`work\`. Explain intent routes to the artifact-owning job: PRD→plan, design docs→design, codebase→code. (Step 2.5)
 ⚠️ **Ask = Ant system + rubric-referenced**: \`ask\` covers Ant tool questions AND any request referencing rubric/eval criteria. Project code/artifact content questions without rubric reference → \`work\`.
@@ -235,6 +287,12 @@ Build an API
 ❌ No system design
 
 ❌ No design documents
+
+## USER-PINNED REFERENCES
+
+❌ User has not pinned any reference document for this turn.
+
+⚠️ **Important**: This section reflects ONLY user-explicit per-turn pins (\`actionMetadata.refs\` + \`actionMetadata.context\`). Workspace-wide design/spec/PRD documents that may be auto-injected later by role-based routing are NOT counted here. Use this section — not the workspace-wide document availability above — when judging "did the user supply source for this directive?" in Step 6.2.
 
 ## AVAILABLE JOBS
 
@@ -343,7 +401,15 @@ Handles refactoring, bug fixes, feature additions, optimizations.
 - Performance optimizations
 
 **Redirect signals:**
-- → to_design: Request has modification intent, spans multiple boundaries with no relevant spec document, OR request explicitly targets a design artifact (specification, architecture document, UI spec). Pure explanation/analysis without modification intent stays in code job regardless of boundary count.
+- → to_design: Request has modification intent AND spans multiple boundaries (cross-layer, multiple concerns)
+AND the user has not pinned any reference document for this turn (\`actionMetadata.refs\` /
+\`actionMetadata.context\` empty). Auto-injected role-based artifacts in the workspace do NOT
+substitute for user-pinned references — only explicit per-turn pins count as "source supplied
+for this directive". Also redirects when the request explicitly targets a design artifact
+(specification, architecture document, UI spec). Pure explanation/analysis without modification
+intent stays in code job regardless of boundary count. See triage rules.md Step 6.2 for the
+decision matrix.
+
 - → to_learn: Request target is codebase analysis or indexing output
 
 ### learn job (agent: architect)

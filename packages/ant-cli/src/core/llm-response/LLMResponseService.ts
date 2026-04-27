@@ -324,8 +324,22 @@ export class LLMResponseService {
     payload?: Record<string, unknown>;
   }): Promise<void> {
     if (!this.enabled || !args.cardId || !this.getTurnId()) return;
+    const base = this.lineBase('choice_presented');
+    // Synthetic per-card workerScope for `spec_complete` so the card
+    // lands in its own FE section and sorts chronologically below the
+    // spec body emitted by parallel TaskWorkers. Without this the card
+    // inherits the `_main_` workerScope (no scope on the line) and
+    // `selectTurns` pins `_main_` to the first section regardless of
+    // ts — producing the "turn reversal" where the completion card
+    // appears above the spec it is summarising. Mirrors the cancelled
+    // card pattern (`ChatService.appendChoicePresentedCancelled`).
+    const workerScope =
+      args.cardType === 'spec_complete'
+        ? `_spec_complete_:${args.cardId}`
+        : (base as { workerScope?: string }).workerScope;
     const line: ChatChoicePresentedLine = {
-      ...this.lineBase('choice_presented'),
+      ...base,
+      ...(workerScope ? { workerScope } : {}),
       type: 'choice_presented',
       cardId: args.cardId,
       cardType: args.cardType,

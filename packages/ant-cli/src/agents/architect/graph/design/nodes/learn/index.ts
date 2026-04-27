@@ -424,6 +424,15 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       
       const isKo = state._uiLocale === 'ko' || state._uiLocale !== 'en';
       
+      // Carry the data the FE needs to start the code job through the
+      // explicit pipeline (no LLM detect re-interpretation of the
+      // "Implement <specFile>" directive). `specPath` pins the spec as
+      // a ref, `sourceFiles` becomes the explicit context (PRD / GDD /
+      // user-uploaded originals), and `domain` keeps the resolved
+      // domain stable across the design→code hand-off.
+      const sourceFiles = state.workspaceState?.sourceFileNames ?? [];
+      const racDomain = state.resolvedAction?.domain;
+
       await chatAPI.sendChoiceCard({
         type: 'spec_complete',
         title: isKo ? '스펙 작성 완료' : 'Spec Complete',
@@ -432,7 +441,13 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
             id: 'develop',
             label: isKo ? '바로 개발 시작' : 'Start Development',
             action: 'redirect',
-            data: { targetJob: 'code', specFile },
+            data: {
+              targetJob: 'code',
+              specFile,
+              specPath: `outputs/design/spec/${specFile}`,
+              sourceFiles,
+              ...(racDomain ? { domain: racDomain } : {}),
+            },
           },
           {
             id: 'later',

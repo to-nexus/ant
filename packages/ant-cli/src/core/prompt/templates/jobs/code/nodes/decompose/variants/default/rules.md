@@ -116,24 +116,23 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
 ## Spec Clarify (source adequacy for tier 3/4 decomposition)
 
 {{#unless intentClarifyDisabled}}
-**Observation target**: When the tier is `3` or `4` and mode is not `explain`, observe whether the Development Source (see Scope Determination) can anchor a confident task breakdown.
+**Observation target**: When the tier is `3` or `4` and mode is not `explain`, observe whether the user has supplied source for THIS directive (via per-turn pins) sufficient to anchor a confident task breakdown.
 
-**Principle**: Every checkpoint question below is phrased so that a `yes` answer moves toward emission. `<specClarify>` fires only when ALL four answers are `yes` together.
+**Principle**: Every checkpoint question below is phrased so that a `yes` answer moves toward emission. `<specClarify>` fires only when ALL three answers are `yes` together.
 
 | Checkpoint | Question (yes = points to emit) |
 |-----------|----------------|
 | **Mode** | Is the active mode `generate` or `refactor` (i.e., NOT `explain`)? |
 | **Tier** | Is the tier `3` (Task) or `4` (RefsGrounded)? |
-| **Design absent** | Does the prompt show no `Design Document Availability` entries — either the section is missing entirely or it lists no documents? |
-| **Spec absent** | Does the prompt show no directive-relevant `Spec Documents Available` entries — either the section is missing entirely or the listed entries do not relate to the directive? |
+| **User-pinned references absent** | Does the prompt's `## User-Pinned References` section report `0` pinned documents (or is the section missing/empty)? |
 
-⚠️ **Blind spot**: Absence is the signal. When a section is omitted from this prompt, that omission IS the observation — do NOT treat an unseen section as "unknown" or "probably present elsewhere".
+⚠️ **Blind spot — user-pinned ≠ auto-injected**: Only the user's explicit per-turn pins count toward the "User-pinned references absent" checkpoint. Role-based auto-injected artifacts (system design docs, PRDs, etc. that appear later in the prompt under "Provided Documents" / role injections) DO NOT count — they were not selected by the user for THIS directive and provide no signal about whether the user intended a spec/design pass first. Observe ONLY the `## User-Pinned References` section.
 
-**Principle**: When every checkpoint is `yes`, there is no source to decompose from. Producing a breakdown under that condition degrades to guessing and MUST be deferred.
+**Principle**: When every checkpoint is `yes`, the user has not supplied source for this directive at this tier. Producing a breakdown under that condition degrades to guessing and MUST be deferred — the user should be offered a chance to switch to a design/spec pass first.
 
-**Constraint**: Emit `<specClarify>` EXCLUSIVELY when ALL four checkpoints above are `yes` together.
+**Constraint**: Emit `<specClarify>` EXCLUSIVELY when ALL three checkpoints above are `yes` together.
 
-**Constraint**: When `<specClarify>` is emitted, emit `<tasks>[]` alongside it. Do NOT fabricate a task breakdown without a Development Source.
+**Constraint**: When `<specClarify>` is emitted, emit `<tasks>[]` alongside it. Do NOT fabricate a task breakdown without user-supplied source.
 
 **Constraint**: If ANY observation above is false, OMIT `<specClarify>` entirely. Do NOT emit `{}` or a placeholder. Proceed with normal decomposition.
 

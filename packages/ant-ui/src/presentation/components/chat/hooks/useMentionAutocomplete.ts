@@ -15,14 +15,18 @@ import type { FileNode } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 
 export interface MentionSuggestion {
-  type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'command' | 'domain';
+  type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'command';
   id: string;
   label: string;
   description?: string;
   group?: 'suggested' | 'all';
 }
 
-const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@domain:', '@explicit'] as const;
+// Phase 2 (D22): `domain` is a workspace-scoped 1st-class selector and is
+// mutated only via `DomainToggle`. The chat-input mention surface is
+// turn-scoped and would let users desync workspace state per-message,
+// so `@domain:` is intentionally absent from this list.
+const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@explicit'] as const;
 type MentionPrefix = (typeof MENTION_PREFIXES)[number];
 
 type FileMentionPrefix = '@target:' | '@ref:' | '@ctx:';
@@ -118,7 +122,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     { type: 'command', id: '@target:', label: t('mention.target.label'), description: t('mention.target.description') },
     { type: 'command', id: '@ref:',    label: t('mention.ref.label'),    description: t('mention.ref.description') },
     { type: 'command', id: '@ctx:',    label: t('mention.ctx.label'),    description: t('mention.ctx.description') },
-    { type: 'command', id: '@domain:', label: t('mention.domain.label'), description: t('mention.domain.description') },
   ], [t]);
 
   const EXPLICIT_COMMAND = useMemo<MentionSuggestion>(() => ({
@@ -127,13 +130,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     label: t('mention.explicit.label'),
     description: t('mention.explicit.description'),
   }), [t]);
-
-  // Phase 1 domain options for `@domain:` mention. The Domain union is
-  // static so we hardcode the value list and only translate the description.
-  const DOMAIN_OPTIONS = useMemo<ReadonlyArray<{ id: Domain; label: string; description: string }>>(() => [
-    { id: 'game',    label: 'game',    description: t('mention.domain.option.game.description') },
-    { id: 'service', label: 'service', description: t('mention.domain.option.service.description') },
-  ], [t]);
 
   const allFilePaths = useMemo(() => flattenFilePaths(fileTree), [fileTree]);
 
@@ -201,11 +197,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       case '@ctx:':
         return buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain);
 
-      case '@domain:':
-        return DOMAIN_OPTIONS
-          .filter(d => d.id.toLowerCase().includes(q) || d.label.toLowerCase().includes(q))
-          .map(d => ({ type: 'domain', id: d.id, label: d.label, description: d.description }));
-
       case '@explicit':
         if (!explicitSettable) return [];
         if (q === '') return [{ type: 'explicit', id: 'true', label: 'Explicit', description: 'Skip triage, use metadata as-is' }];
@@ -214,7 +205,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       default:
         return [];
     }
-  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, DOMAIN_OPTIONS]);
+  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND]);
 
   const showSuggestions = (prefix !== null || commandQuery !== null) && suggestions.length > 0;
 
@@ -269,12 +260,6 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         if (!next || canStartChat) {
           updateActionMetadata({ explicit: next ? true : undefined });
         }
-        break;
-      }
-      case 'domain': {
-        // Phase 1 invariant — explicit > infer (10.2). Setting domain via
-        // mention takes precedence over LLM inference downstream.
-        updateActionMetadata({ domain: suggestion.id as Domain });
         break;
       }
     }

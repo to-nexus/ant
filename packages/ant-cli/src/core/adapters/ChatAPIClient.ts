@@ -258,6 +258,13 @@ export class ChatAPIClient {
         if (choice.data.response) metadata.evalContent = choice.data.response;
         if (choice.data.featurePath) metadata.featurePath = choice.data.featurePath;
         if (choice.data.specFile) metadata.specFile = choice.data.specFile;
+        // spec_complete: explicit-pipeline metadata for the code job
+        // started from the "Start Development" button. The FE reads
+        // these to construct ActionMetadata so the resulting code job
+        // bypasses LLM detect re-interpretation of the directive.
+        if (choice.data.specPath) metadata.specPath = choice.data.specPath;
+        if (choice.data.sourceFiles) metadata.sourceFiles = choice.data.sourceFiles;
+        if (choice.data.domain) metadata.domain = choice.data.domain;
       }
     }
     await this.showChatStatus('choice_card', metadata);
