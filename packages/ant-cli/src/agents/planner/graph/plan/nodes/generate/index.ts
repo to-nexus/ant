@@ -370,6 +370,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
   
   // === Explain mode: read-only Q&A — skip extraction, disk write, choice card ===
   const targetRelPath = getTargetPath(state);
+  let resolvedTargetRelPath = targetRelPath;
   let generatedDocument: string | undefined;
   
   if (planMode === 'explain') {
@@ -381,9 +382,34 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       ? files.find(f => f.path.includes(path.basename(targetRelPath)))
       : files[0];
     generatedDocument = matchedFile?.content || undefined;
-    
-    if (!generatedDocument && planMode === 'refactor' && targetRelPath) {
-      const editTargetPath = path.join(state.featurePath, targetRelPath);
+
+    // dusk-mounding-pilot writer hardening — defense in depth.
+    // Primary defense: detect explicit branch fallback + buildSystemPrompt
+    // hard-fail keep `targetRelPath` populated for any generate/refactor
+    // job. If a future regression bypasses both, the writer used to gate
+    // on `generatedDocument && targetRelPath` and silently drop a fully
+    // streamed PRD body (the original dusk-mounding-pilot signature).
+    // Now: when `targetRelPath` is absent but the LLM emitted a `<file>`
+    // tag with a safe path (whitelisted prefix + no traversal), promote
+    // it so the body lands somewhere on disk instead of vanishing.
+    if (generatedDocument && !resolvedTargetRelPath && matchedFile?.path) {
+      const emitted = matchedFile.path;
+      if (isSafeStagingPath(emitted)) {
+        console.warn(
+          `⚠️ [Planner:Generate] RAC.target empty — writer falling back to LLM-emitted path "${emitted}". `
+          + `This is a safety net; investigate why detect produced an empty target.`,
+        );
+        resolvedTargetRelPath = emitted;
+      } else {
+        console.error(
+          `❌ [Planner:Generate] RAC.target empty AND LLM-emitted path "${emitted}" failed whitelist; `
+          + `refusing to write outside the feature root. Document body retained in session.`,
+        );
+      }
+    }
+
+    if (!generatedDocument && planMode === 'refactor' && resolvedTargetRelPath) {
+      const editTargetPath = path.join(state.featurePath, resolvedTargetRelPath);
       try {
         generatedDocument = await fsPromises.readFile(editTargetPath, 'utf-8');
         console.log(`📝 [Planner:Generate] Read edited document from target (${generatedDocument.length} chars)`);
@@ -392,8 +418,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       }
     }
     
-    if (generatedDocument && targetRelPath) {
-      const targetAbsPath = path.join(state.featurePath, targetRelPath);
+    if (generatedDocument && resolvedTargetRelPath) {
+      const targetAbsPath = path.join(state.featurePath, resolvedTargetRelPath);
       const sourcePath = state.resolvedAction?.target?.[0];
       
       if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
@@ -403,7 +429,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       try {
         await fsPromises.mkdir(path.dirname(targetAbsPath), { recursive: true });
         await fsPromises.writeFile(targetAbsPath, generatedDocument, 'utf-8');
-        console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to ${targetRelPath}`);
+        console.log(`📝 [Planner:Generate] Written ${generatedDocument.length} chars to ${resolvedTargetRelPath}`);
       } catch (error: any) {
         console.error(`❌ [Planner:Generate] Failed to write document: ${error.message}`);
         throw error;
@@ -419,7 +445,7 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
             state.deps.fileTreeUpdate.notifyFileTreeUpdate(projectId, featureName);
             if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
               (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
-                projectId, featureName, [targetRelPath]
+                projectId, featureName, [resolvedTargetRelPath]
               );
             }
           } catch (error: any) {
@@ -459,6 +485,19 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     if (!generatedDocument) {
       const textOnlyHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
       await saveConversationToSession(state, responseText, undefined, textOnlyHistory, compactionMeta);
+    } else if (!resolvedTargetRelPath) {
+      // dusk-mounding-pilot regression closure — `generatedDocument` was
+      // produced but no safe target path could be derived. Previously this
+      // branch was silently dead (the original 7.7KB-PRD-loss path). We
+      // still save the conversation so the body lives in `chat.jsonl` /
+      // `plan.json` for forensic recovery, and surface a loud error so
+      // the regression is observable.
+      const droppedHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
+      await saveConversationToSession(state, responseText, undefined, droppedHistory, compactionMeta);
+      console.error(
+        `❌ [Planner:Generate] Document body (${generatedDocument.length} chars) generated but no safe target path resolved — `
+        + `body retained in session conversation only. RAC.target was empty and any LLM-emitted path failed the safety whitelist.`,
+      );
     }
   }
   
@@ -485,8 +524,8 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
     content: responseText,
     timestamp: new Date().toISOString(),
     metadata: {
-      hasArtifact: !!generatedDocument,
-      artifactPath: generatedDocument ? targetRelPath : undefined,
+      hasArtifact: !!generatedDocument && !!resolvedTargetRelPath,
+      artifactPath: generatedDocument && resolvedTargetRelPath ? resolvedTargetRelPath : undefined,
       mode: planMode,
     },
   });
@@ -507,4 +546,29 @@ export function routeAfterGenerate(state: PlanGraphState): 'tool' | '__end__' {
     return 'tool';
   }
   return '__end__';
+}
+
+/**
+ * dusk-mounding-pilot writer-fallback safety whitelist.
+ *
+ * Validates that a feature-relative path emitted by the LLM (in a `<file>`
+ * tag) is safe to use as the disk-write target when RAC.target is empty.
+ * Two checks layered on top of the prefix whitelist:
+ *
+ *   1. Reject absolute paths so a buggy LLM cannot escape the feature root
+ *      (e.g. `/etc/passwd`, `C:\Users\...`).
+ *   2. Reject any normalised form that escapes the feature directory
+ *      (`../`, `..\\`, leading `..`).
+ *
+ * Whitelist prefixes — these mirror the feature-directory canonical layout
+ * (`inputs/sources/`, `outputs/`) since the planner only ever writes PRD
+ * artifacts into those subtrees.
+ */
+export function isSafeStagingPath(rel: string): boolean {
+  if (!rel || typeof rel !== 'string') return false;
+  if (path.isAbsolute(rel)) return false;
+  const normalized = path.normalize(rel).replace(/\\/g, '/');
+  if (normalized.startsWith('..') || normalized.includes('/../')) return false;
+  const ALLOWED_PREFIXES = ['inputs/sources/', 'outputs/'] as const;
+  return ALLOWED_PREFIXES.some(prefix => normalized.startsWith(prefix));
 }
