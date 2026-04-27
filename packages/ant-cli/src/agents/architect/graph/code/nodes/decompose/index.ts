@@ -15,7 +15,7 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState } from "../../state";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTiersFromMap, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, GAME_GENRE_VARIANTS, coreLoopCandidatesFor, SUPPORTED_GAME_ENGINES } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -1098,8 +1098,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const currentTechTierConfig = state.resolvedAction?.basis?.techTier;
   if (currentTechTierConfig) {
+    // Explicit techTier (raw actionMetadata.basis.techTier — never merged with LLM emit)
+    // is the authority signal: preset fields override LLM-emitted packageTiers entries
+    // for the same stack. Mirrors the visualTier / gameArtTier / gameContentTier policy.
+    const explicitTechTier = state.actionMetadata?.basis?.techTier;
     for (const task of taskQueue.getAll()) {
-      task.techTiers = resolveTaskTechTiersFromMap(task.packages, currentTechTierConfig, parsedTechTier?.packageTiers);
+      const resolved = resolveTaskTechTiersFromMap(task.packages, currentTechTierConfig, parsedTechTier?.packageTiers);
+      task.techTiers = applyExplicitTechTierOverrides(resolved, explicitTechTier);
     }
     const narrowedCount = taskQueue.getAll().filter(t => {
       const first = t.techTiers?.[0];
@@ -1107,6 +1112,16 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     }).length;
     if (narrowedCount > 0) {
       console.log(`🎯 [Decompose] Task-level techTier: ${narrowedCount} task(s) narrowed from ${currentTechTierConfig.stack}`);
+    }
+    if (explicitTechTier) {
+      const overrideCount = taskQueue.getAll().filter(t => {
+        const first = t.techTiers?.[0];
+        const e = first?.stack === 'frontend' ? explicitTechTier.frontend : first?.stack === 'backend' ? explicitTechTier.backend : undefined;
+        return !!e?.framework;
+      }).length;
+      if (overrideCount > 0) {
+        console.log(`🔒 [Decompose] Explicit techTier authoritative: applied to ${overrideCount} task(s)`);
+      }
     }
   }
 
