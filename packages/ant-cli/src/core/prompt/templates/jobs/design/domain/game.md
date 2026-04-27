@@ -72,4 +72,15 @@ It helps you describe **game rules, state ownership, determinism, and synchroniz
 - ❌ No tick implementation code (`requestAnimationFrame`, `setInterval`, timers) or frame scheduling details.
 - ❌ No internal state structs like `{ x, y, vx, vy }` – use conceptual names only (e.g., "position", "velocity", "direction").
 
+### 9. Render Boundary Policy (Coordinate-System Partition)
+- System Design MUST commit which UI elements are **screen-space** vs **world-space** — at policy level only, with no engine API names:
+  - **Screen-space** UI is fixed to the viewport: HUD readouts (score / lives / move-count), menus, pause overlay, settings, full-screen modals (Game Over / Win), page chrome. Owner: the HTML/CSS surface (e.g., React).
+  - **World-space** UI moves with the game camera: sprite-anchored speech bubbles, in-world banners, NPC nameplates. Owner: the engine canvas surface.
+  - Decision rule (commit in System Design): *"if the camera pans, does this UI element pan with it?"* — yes ⇒ world-space, no ⇒ screen-space.
+- For single-screen genres (no camera pan), the world-space slot is typically empty and every UI element collapses to screen-space. Document this collapse explicitly so downstream code does not invent in-world UI.
+- System Design MUST also commit a **viewport-fill policy** at concept level: full-bleed (canvas fills viewport, HUD overlays as screen-space) vs windowed (canvas occupies a sub-region, HUD around it). The policy is implementation-agnostic; engine scale APIs (`FIT` / `RESIZE` / etc.) belong to code, not design.
+- Responsive boundary commitment: name which UI decisions adapt with viewport breakpoints (HUD layout, typography scaling) and which stay anchored to a fixed design resolution (canvas aspect, world bounds). Conflicts between the two MUST be surfaced in System Design rather than left to code.
+- ❌ Do NOT specify which engine class hosts the HUD or which CSS framework styles it — those are code-time decisions.
+- ❌ Do NOT prescribe pixel coordinates for HUD slots — system design names slot identities (`scoreReadout`, `livesIndicator`); placement / sizing is a code / design-spec concern.
+
 This guide is **game-domain specific** and MUST NOT be injected for non-game (service) projects.

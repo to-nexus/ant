@@ -84,12 +84,12 @@ Under `phaseScope === 'p2-css-only'`, `fileBased` and `hybrid` BOTH degrade to p
 
 A game-domain code job consumes **one** asset surface — the game-art catalog under `outputs/design/game-art/ant/` (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`). The service-domain UI catalog (`outputs/design/ui/ant/ui-*.json`) is NOT in scope (D28 vertical split).
 
-Both render paths in a React + Phaser host pull from the same source:
+The render paths split by **coordinate system** (see `jobs/code/domain/game.md` §7) — screen-space UI is React, world-space UI is the engine canvas. Both paths pull tokens / specs from the same `game-art-*` SSOT so the two surfaces share one art direction:
 
-| Render surface | Reads | Loader |
-|---|---|---|
-| `UIScene` / React HUD overlay (menus / score / dialog) | `game-art-tokens.json` HUD CSS tokens + `game-art-spec.json` `hud` / `menu` / `dialog` categories + `game-art-assets.json` glyph entries | React imports inline SVG / CSS or external icons from `inputs/assets/game/icons/` |
-| `MainScene` (game canvas) sprite / particle / projectile | `game-art-assets.json` `entities` / `particles` / `projectiles` categories | `BootScene.preload` registers textures from inline base64 or external `src` under `inputs/assets/game/{category}/` |
+| Render path (coordinate system) | Owner | Reads | Loader |
+|---|---|---|---|
+| Screen-space — React HUD overlay (HUD readouts / menus / dialog / settings / page chrome) | React (HTML/CSS) | `game-art-tokens.json` HUD CSS tokens + `game-art-spec.json` `hud` / `menu` / `dialog` categories + `game-art-assets.json` glyph entries | React imports inline SVG / CSS or external icons from `inputs/assets/game/icons/` |
+| World-space — Phaser `MainScene` (sprites / particles / projectiles) and `UIScene` (sprite-anchored speech bubbles, in-world banners — typically empty for the five single-screen genres) | Phaser scene | `game-art-tokens.json` palette / silhouette / lighting / motion-tone + `game-art-assets.json` `entities` / `particles` / `projectiles` categories | `BootScene.preload` registers textures from inline base64 or external `src` under `inputs/assets/game/{category}/` |
 
 Forbidden cross-pollution:
 
