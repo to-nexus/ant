@@ -1,4 +1,5 @@
 import { API_BASE, authFetch, apiPut } from './client';
+import type { Domain } from '@ant/shared';
 
 export interface JobLLMConfig {
   default?: string;
@@ -22,6 +23,14 @@ export interface ProjectConfig {
   localPath?: string;
   githubRepo?: string;
   branchBase?: string;
+  /**
+   * Workspace domain (Phase 2 — D22). Persisted on the BE in `config.json`
+   * and treated as the SSOT for the project-level domain selector. The
+   * FE mirrors this into `actionMetadata.domain` whenever the project
+   * config loads, and writes back via PUT when the user toggles
+   * `DomainToggle` so refresh / re-entry restore the same domain.
+   */
+  domain?: Domain;
   llmModels?: {
     design?: JobLLMConfig;
     code?: JobLLMConfig;

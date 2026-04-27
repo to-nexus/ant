@@ -18,59 +18,51 @@
  *       seeded `'service'` at first paint and after `reset()`.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from 'zustand';
 import { createUISlice, type UISlice } from '../uiSlice';
 import { createResetSlice, type ResetSlice } from '../resetSlice';
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../../storage';
+import type { ProjectConfig } from '@/infrastructure/http/api';
+
+// `persistWorkspaceDomain` (uiSlice) writes `WorkspaceConfig.domain` back
+// to the project's `config.json` artifact via `updateProjectConfig`. Stub
+// the module so the test can both observe the PUT and gate on whether
+// the guard fires. The mock fn must be created via `vi.hoisted` because
+// `vi.mock` factories are lifted above all imports — a plain `const`
+// would be in the temporal-dead-zone when the factory runs.
+const { updateProjectConfigMock } = vi.hoisted(() => ({
+  updateProjectConfigMock: vi.fn(),
+}));
+vi.mock('@/infrastructure/http/api', () => ({
+  updateProjectConfig: updateProjectConfigMock,
+}));
+
+beforeEach(() => {
+  updateProjectConfigMock.mockReset();
+  updateProjectConfigMock.mockResolvedValue(undefined);
+});
 
 // Minimal store harness — only the slices we need for this contract.
-type TestStore = UISlice & ResetSlice & { selectedProject?: string };
+// `selectedProject` and `projectConfig` are seeded in-band because
+// `persistWorkspaceDomain` reads them off the same store; we don't pull
+// in the real `projectSlice` / `projectConfigSlice` since their fetch
+// machinery is irrelevant to the persistence contract under test.
+type TestStore = UISlice & ResetSlice & {
+  selectedProject?: string;
+  projectConfig?: { data?: ProjectConfig | null };
+};
 
-function makeStore(selectedProject?: string) {
+function makeStore(opts: {
+  selectedProject?: string;
+  projectConfig?: ProjectConfig | null;
+} = {}) {
   return create<TestStore>()((...args) => ({
     ...createUISlice(...args),
     ...createResetSlice(...args),
-    selectedProject,
+    selectedProject: opts.selectedProject,
+    projectConfig: { data: opts.projectConfig ?? null },
   }));
 }
-
-function createStorageMock(): Storage {
-  let store: Record<string, string> = {};
-  return {
-    get length() {
-      return Object.keys(store).length;
-    },
-    clear: () => {
-      store = {};
-    },
-    getItem: (key: string) => (key in store ? store[key] : null),
-    key: (index: number) => Object.keys(store)[index] ?? null,
-    removeItem: (key: string) => {
-      delete store[key];
-    },
-    setItem: (key: string, value: string) => {
-      store[key] = value;
-    },
-  };
-}
-
-beforeEach(() => {
-  if (!globalThis.localStorage) {
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: createStorageMock(),
-      configurable: true,
-    });
-  }
-  if (!globalThis.sessionStorage) {
-    Object.defineProperty(globalThis, 'sessionStorage', {
-      value: createStorageMock(),
-      configurable: true,
-    });
-  }
-  localStorage.clear();
-  sessionStorage.clear();
-});
 
 describe('uiSlice — domain default seed (D22)', () => {
   it('initial actionMetadata.domain === "service"', () => {
@@ -85,19 +77,53 @@ describe('uiSlice — domain default seed (D22)', () => {
     store.getState().reset();
     expect(store.getState().actionMetadata.domain).toBe('service');
   });
+});
 
-  it('hydrates actionMetadata.domain from selected-project map', () => {
-    saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, 'proj-a');
-    saveToStorage(STORAGE_KEYS.PROJECT_DOMAINS, { 'proj-a': 'game' });
-    const store = makeStore();
-    expect(store.getState().actionMetadata.domain).toBe('game');
+describe('uiSlice — domain persistence to BE artifact (D22)', () => {
+  it('writes WorkspaceConfig.domain back to config.json on toggle', () => {
+    const store = makeStore({
+      selectedProject: 'proj-a',
+      projectConfig: {
+        repositoryName: 'proj-a',
+        repoType: 'local',
+        domain: 'service',
+      },
+    });
+    store.getState().updateActionMetadata({ domain: 'game' });
+    expect(updateProjectConfigMock).toHaveBeenCalledTimes(1);
+    expect(updateProjectConfigMock).toHaveBeenCalledWith('proj-a', {
+      repositoryName: 'proj-a',
+      repoType: 'local',
+      domain: 'game',
+    });
   });
 
-  it('persists domain per selected project on update', () => {
-    const store = makeStore('proj-a');
+  it('skips PUT when cfg.domain already matches (inverse-sync guard)', () => {
+    // Simulates `projectConfigSlice.fetchProjectConfig` mirroring cfg.domain
+    // back into actionMetadata — the resulting `updateActionMetadata` call
+    // must NOT echo a PUT, otherwise every refresh would trigger a write.
+    const store = makeStore({
+      selectedProject: 'proj-a',
+      projectConfig: {
+        repositoryName: 'proj-a',
+        repoType: 'local',
+        domain: 'game',
+      },
+    });
     store.getState().updateActionMetadata({ domain: 'game' });
-    const domainMap = (loadFromStorage(STORAGE_KEYS.PROJECT_DOMAINS) || {}) as Record<string, string | undefined>;
-    expect(domainMap['proj-a']).toBe('game');
+    expect(updateProjectConfigMock).not.toHaveBeenCalled();
+  });
+
+  it('does not PUT when no project is selected', () => {
+    const store = makeStore();
+    store.getState().updateActionMetadata({ domain: 'game' });
+    expect(updateProjectConfigMock).not.toHaveBeenCalled();
+  });
+
+  it('does not PUT when projectConfig has not yet loaded', () => {
+    const store = makeStore({ selectedProject: 'proj-a' });
+    store.getState().updateActionMetadata({ domain: 'game' });
+    expect(updateProjectConfigMock).not.toHaveBeenCalled();
   });
 });
 
