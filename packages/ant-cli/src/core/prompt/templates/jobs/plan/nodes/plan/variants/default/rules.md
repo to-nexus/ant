@@ -93,18 +93,20 @@ Natural-language directives are always incomplete — even detailed ones omit sc
 
 #### Gap Observation Protocol
 
-For each standard PRD section, observe whether the user's input covers it:
+For each section family, observe whether the user's input covers it. The exact section list is defined by the **domain overlay** (service or game) loaded below — do not invent an alternative structure here.
 
-| PRD Section | What to observe |
-|-------------|-----------------|
-| Problem / Goal | Is the problem or goal stated? Is non-scope mentioned? |
-| User Scenarios | Are target users or workflows described? |
-| Functional Requirements | Are specific features or behaviors listed? |
-| Non-Functional Requirements | Are performance, security, or accessibility mentioned? |
-| Constraints / Risks | Are technical or business constraints stated? |
-| Technical Considerations | Are stack preferences or integration points mentioned? |
+| Section family | What to observe |
+|---|---|
+| Problem / Goal / Non-goals | Is the problem stated? Are non-goals listed? |
+| Personas & Frequency | Are target users listed with usage cadence (daily / weekly / quarterly)? |
+| User Scenarios & Core Flows | Are key flows described with branches, exceptions, and recovery? |
+| Information Architecture | Are screens / pages listed with stable IDs and one-line responsibility? |
+| Screen Composition & States | Per screen, are default / empty / loading / error / permission-denied states defined? |
+| Content & Domain Policy | Are sort / filter / pagination / default / suppression rules stated? |
+| Functional Requirements | Are testable behaviors listed with cross-references to flow / screen / policy IDs? |
+| Conditional sections | For each Conditional section the domain overlay defines (e.g. NFR, Data & Permissions, External Dependencies, Constraints, Success Metrics): does the directive's scope warrant inclusion, or is the omission noted? |
 
-**Constraint**: If a section's information is not observed, do NOT fabricate it. Ask the user or record it as an open question in the PRD.
+**Constraint**: If a section's information is not observed, do NOT fabricate it. Ask the user or record it as an open question in the document.
 **Constraint**: If multiple valid approaches exist for an unspecified decision, present them as alternatives for the user to choose.
 
 #### PRD Output
@@ -140,17 +142,9 @@ These principles apply ONLY when creating a new document from scratch, or when t
 
 ⚠️ **Blind Spot Reminder**: When making targeted edits, there is a tendency to "improve" surrounding content (compressing verbose sections, rewriting adjacent paragraphs, normalizing formatting). This is NOT allowed unless the directive explicitly requests it.
 
-## Standard PRD Structure
+## Document Structure (delegated to domain overlay)
 
-The following structure is a guideline. Adapt sections as appropriate for the project:
-
-1. **Summary** - One-line description
-2. **Problem / Goal** - What problem this solves, what the goal is, and what is NOT in scope
-3. **User Scenarios** - Key user workflows
-4. **Functional Requirements** - Specific, testable requirements
-5. **Non-Functional Requirements** - Performance, accessibility, security
-6. **Constraints / Risks** - Known limitations and risks
-7. **Technical Considerations** - Stack preferences, integration points (if known)
+The exact section list is defined by the **domain overlay** loaded below (service / game). The overlay partitions sections into **Required core** (always present), **Conditional** (include only when the directive's scope warrants it; otherwise record the omission in §Open Questions in one line), and **Optional / Always-on** as appropriate. Do NOT impose an alternative structure here — the overlay is the SSOT.
 
 ## Tool Usage
 
@@ -201,6 +195,9 @@ Observe what already exists in the workspace before generating new content.
 ⚠️ **Blind Spot**: When the directive is broad, there is a tendency to invent detailed requirements (specific payment methods, specific auth providers, specific database choices) that the user never mentioned. State what is unknown as an open question or decision point, do NOT fill it with assumptions.
 
 - **Do NOT remove existing requirements** unless the user explicitly asks to.
-- **Do NOT add implementation details** (code, architecture) - focus on WHAT, not HOW.
-- **Do NOT include evaluation scores** - that is the evaluator's job.
+- **Do NOT include technical implementation details** (code, schema / DTO shape, framework / library / storage / engine selection, exact timeout / retry / cooldown numbers) — those belong to design / code.
+- **DO include product-surface content planning** — information architecture, screen composition with state matrix (default / empty / loading / error / permission-denied), interaction flows with branches and exceptions, and content & domain policies (sort / filter / pagination / defaults / suppression / tie-breaker). The slogan "WHAT not HOW" applies to **technical implementation**, NOT to product surface — the PRD/GDD owns content; design owns architecture and tokens.
+- **Do NOT include forbidden-by-default chapters** unless the directive explicitly requests them: test scenarios / QA guides, operational / deployment / monitoring runbooks, migration plans, security threat models. These belong to design / code or dedicated jobs and inflate the document without adding planning value.
+- **Required core / Conditional / Optional discipline** — the domain overlay loaded below partitions sections into Required core (always present), Conditional (include only when the directive's scope warrants it), and Optional / Always-on. When a Conditional section is omitted, record the reason in §Open Questions in one line; do NOT silently drop it.
+- **Do NOT include evaluation scores** — that is the evaluator's job.
 - **Do NOT proactively restructure or condense** the document beyond the user's directive scope.

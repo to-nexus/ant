@@ -158,6 +158,12 @@ export interface ToolExecutionContext {
   figmaFileKey?: string;
   figmaExplorationResult?: any;
   figmaAvailable?: boolean;
+  /**
+   * Active task id propagated to figma MCP debug log (`mcp-<jobId>.json`)
+   * so per-task call traces stay distinguishable. Optional — handlers
+   * fall back to `undefined` task scope when absent.
+   */
+  taskId?: string;
 
   // === Command policy / verification handlers ===
   activePhase?: 'plan' | 'execute';
@@ -212,6 +218,16 @@ export interface ToolExecutionContext {
   // === Design-specific (populated by design buildContext) ===
   uiAssetsList?: Record<string, string[]>;
   existingDesignDocs?: Record<string, string>;
+  /**
+   * Pre-resolved asset pool root for the active workspace, e.g.
+   * `inputs/assets/service` or `inputs/assets/game` (D22 — Asset Surface
+   * Boundary). Computed by design `buildContext` via `pickAssetsRoot`
+   * from `state.workspaceConfig.domain` / `state.resolvedAction.domain` /
+   * `state.resolvedAction.intentGroup`. `download_asset` / `list_assets`
+   * handlers consume this directly so they stay ctx-pure (no graph state
+   * leakage into the tool layer).
+   */
+  assetsRoot?: string;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

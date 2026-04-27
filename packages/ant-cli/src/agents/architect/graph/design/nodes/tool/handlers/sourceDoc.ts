@@ -1,32 +1,58 @@
-import { DesignGraphState } from '../../../state';
+/**
+ * read_source_doc handler (design-only, ctx-pure).
+ *
+ * Reads from the artifact pool (`ctx.sourceDocuments`) populated by
+ * design `loadResolvedArtifacts`. The artifact pool is a RAC-scoped
+ * subset of disk content already loaded into memory — bypassing it for a
+ * fresh `read_file` would re-load already-resolved documents.
+ *
+ * Wraps a `read_source` chat status pair (`addReadingSource` →
+ * `addReadSourceComplete`) so the chat UI shows the request as a source
+ * read, not a generic file read.
+ */
+
+import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
 import { ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 
-/**
- * Handle read_source_doc tool — reads from artifact pool.
- * Supports optional startLine/endLine for selective reading of large documents.
- */
-export function handleReadSourceFileFromState(
-  state: DesignGraphState,
-  args: { filename: string; startLine?: number; endLine?: number }
-): string {
+export async function handleReadSourceDoc(
+  ctx: ToolExecutionContext,
+  args: { filename: string; startLine?: number; endLine?: number },
+): Promise<ToolResult> {
   const { filename, startLine, endLine } = args;
-  const pool = new ArtifactPoolView(state.artifacts || []);
+
+  if (!filename) {
+    const msg = 'read_source_doc requires filename';
+    return { content: msg, error: msg };
+  }
+
+  const readIdx = await ctx.chatStatus.addReadingSource(filename, startLine, endLine);
+
+  const pool = new ArtifactPoolView(ctx.sourceDocuments || []);
   const docs = pool.sourcesAsRecord();
+
   if (!docs[filename]) {
     const available = Object.keys(docs).length > 0 ? Object.keys(docs).join(', ') : 'none';
-    return `Error: File "${filename}" not found. Available: ${available}`;
+    const errMsg = `File "${filename}" not found. Available: ${available}`;
+    await ctx.chatStatus.addReadSourceComplete(filename, readIdx, {
+      error: errMsg, startLine, endLine,
+    });
+    return { content: `Error: ${errMsg}`, error: errMsg };
   }
 
   const content = docs[filename];
   const lines = content.split('\n');
   const totalLines = lines.length;
 
+  await ctx.chatStatus.addReadSourceComplete(filename, readIdx, {
+    startLine, endLine, totalLines,
+  });
+
   if (startLine || endLine) {
     const start = Math.max(1, startLine || 1);
     const end = Math.min(totalLines, endLine || totalLines);
     const slice = lines.slice(start - 1, end).join('\n');
-    return `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`;
+    return { content: `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}` };
   }
 
-  return `[Total: ${totalLines} lines]\n\n${content}`;
+  return { content: `[Total: ${totalLines} lines]\n\n${content}` };
 }

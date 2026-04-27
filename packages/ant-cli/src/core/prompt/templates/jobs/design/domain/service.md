@@ -53,6 +53,33 @@ It provides **service-domain-specific concerns** that the tier-specific guide (b
 
 **Constraint**: Domain policies MUST NOT be silently overridden by ad-hoc rules in orchestration, presentation, or infrastructure concerns.
 
+#### 2.2 PRD ↔ Design Responsibility Split (cite PRD §X to keep MECE)
+
+**Principle**: The PRD is the SSOT for product surface (information architecture, screen composition, content & domain policy, functional requirements). System Design and UI Design **cite PRD sections by stable identifier** and elaborate **only the boundary / token / state** their axis owns. A design document that re-lists screens, re-derives entities, or restates content rules is duplicating PRD content — that is an MECE violation.
+
+**Citation pattern**: When a design task addresses content from the PRD, cite the PRD section and the symbolic ID. Examples:
+
+- `PRD §7 (CP-SearchSort) → this design only specifies the index choice and query pattern that enforces it`
+- `PRD §6 (SC-ProductDetail, empty state) → this design only commits the state-machine transition that drives that visual`
+- `PRD §10 (RB-Seller, EN-Product) → this design only specifies the persistence contract and the RBAC enforcement boundary`
+
+**Hand-off table** (mirrors the PRD overlay's hand-off table — designs MUST respect this split):
+
+| PRD section | System Design picks up | UI Design picks up |
+|---|---|---|
+| §4 Core Flows (`FL-XXX`) | Event flow / state owner / transactional consistency boundary | Screen transitions / loading & error patterns |
+| §5 IA (`SC-XXX`) | Routing / URL surface owner | Navigation components / IA tokens |
+| §6 Screen Composition & States | State-machine owner per state | Component composition / per-state visual spec |
+| §7 Content & Domain Policy (`CP-XXX`) | Data-layer policy enforcement (indexes, query patterns) | Empty / error visual treatments / sort & filter UI |
+| §8 FR | Use-case orchestration boundary | (usually absorbed into §6 / §7) |
+| §9 NFR | Performance / security boundary policy | Accessibility commitments at component level |
+| §10 Data & Permissions | Persistence contract / RBAC enforcement boundary | Permission-aware UI gating |
+| §11 External Deps | Integration contract / failure semantics | (rare) |
+
+**Constraint**: A design task whose output enumerates `SC-`, `FL-`, `CP-`, `EN-`, or `RB-` identifiers without citing the PRD section that defined them is creating shadow IDs. Design MUST cite the PRD; PRD identifiers are the SSOT.
+
+**Constraint**: When the PRD is missing a section the design needs (e.g. §11 External Dependencies is absent), do NOT silently fabricate the contract — surface the gap as a question or a Pipeline-Input-Sufficiency failure that should be back-filled in the PRD.
+
 ---
 
 ### 3. Orchestration & State Ownership

@@ -1,5 +1,4 @@
-import { DesignGraphState } from '../../../state';
-import { getChatAPIClient } from '../../../../../../../core/adapters/ChatAPIClient';
+import type { ToolExecutionContext, ToolResult } from '../../../../../../common/tool/types';
 import { isFigmaLocalAssetUrl, proxyAssetDownload } from '../../../../../../../periphery/adapters/figma/MCPTransport';
 import type { Domain } from '@ant/shared';
 
@@ -41,53 +40,52 @@ export function pickAssetsRoot(input: AssetsRootInput): string {
 }
 
 /**
- * Resolve the workspace asset pool root for the current job state (Phase 2 — D22).
- * Thin adapter that pulls the three signals out of `DesignGraphState` and
- * delegates to the pure `pickAssetsRoot`.
- */
-export function resolveAssetsRoot(state: DesignGraphState): string {
-  const workspaceDomain = (state.workspaceConfig as { domain?: Domain } | undefined)?.domain;
-  return pickAssetsRoot({
-    workspaceDomain,
-    racDomain: state.resolvedAction?.domain,
-    intentGroup: state.resolvedAction?.intentGroup,
-  });
-}
-
-/**
- * Handle download_asset tool
+ * Handle download_asset tool (ctx-pure).
  *
  * Downloads a file from a URL and saves it under the workspace's domain-keyed
  * pool — `inputs/assets/{service|game}/{category}/{filename}` (Phase 2 — D22).
  * Used by LLM to download Figma-exported assets (SVG, PNG, etc.) from CDN URLs
  * returned by get_design_context.
+ *
+ * In cloud mode, asset URLs that point to Figma Desktop's local server
+ * (127.0.0.1:3845) are proxied through the bridge — `ctx.userId` /
+ * `ctx.redis` MUST be populated for that branch. Falls back to direct
+ * `fetch` for public CDN URLs.
  */
 export async function handleDownloadAsset(
-  state: DesignGraphState,
-  args: { url: string; filename: string; category?: string }
-): Promise<string> {
+  ctx: ToolExecutionContext,
+  args: { url: string; filename: string; category?: string },
+): Promise<ToolResult> {
   const { url, filename } = args;
   let { category } = args;
 
   if (!url || !filename) {
-    throw new Error('download_asset requires url and filename');
+    const msg = 'download_asset requires url and filename';
+    return { content: msg, error: msg };
   }
 
-  const featurePath = state.context.featurePath;
+  const featurePath = ctx.featurePath;
   if (!featurePath) {
-    throw new Error('featurePath not available in context');
+    const msg = 'featurePath not available in context';
+    return { content: msg, error: msg };
   }
 
-  // Path traversal prevention
+  const assetsRoot = ctx.assetsRoot;
+  if (!assetsRoot) {
+    const msg = 'assetsRoot not configured in context (design buildContext must populate it)';
+    return { content: msg, error: msg };
+  }
+
+  // Path traversal prevention — sanitize the LLM-supplied filename.
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
   if (sanitized.includes('..') || sanitized.startsWith('/')) {
-    throw new Error(`Invalid filename: ${filename}`);
+    const msg = `Invalid filename: ${filename}`;
+    return { content: msg, error: msg };
   }
 
-  // Infer category from extension if not provided. For game-art context the
-  // `entities` / `particles` / `sfx` defaults are more appropriate, but we
-  // keep the conservative `icons`/`images` fallback because the LLM is
-  // expected to pass `category` explicitly when working on game assets.
+  // Infer category from extension if not provided. Conservative defaults
+  // (icons / images) — game-art tasks are expected to pass `category`
+  // explicitly (e.g. 'entities' / 'particles' / 'sfx').
   if (!category) {
     const ext = sanitized.split('.').pop()?.toLowerCase();
     if (ext === 'svg') category = 'icons';
@@ -98,22 +96,21 @@ export async function handleDownloadAsset(
   const pathMod = await import('path');
   const fsMod = await import('fs/promises');
 
-  const assetsRoot = resolveAssetsRoot(state); // 'inputs/assets/service' | 'inputs/assets/game'
   const destDir = pathMod.join(featurePath, ...assetsRoot.split('/'), category);
   await fsMod.mkdir(destDir, { recursive: true });
 
   const destPath = pathMod.join(destDir, sanitized);
   const relativePath = `${assetsRoot}/${category}/${sanitized}`;
 
+  const dlMergeIdx = await ctx.chatStatus.showStatus('downloading', { filename: sanitized });
+
   try {
     const isCloudMode = process.env.ANT_SERVER_MODE === 'cloud';
-    const userId = state.context?.userId;
-    const redis = state.deps?.redis;
     let buffer: Buffer;
 
-    if (isCloudMode && isFigmaLocalAssetUrl(url) && userId && redis) {
+    if (isCloudMode && isFigmaLocalAssetUrl(url) && ctx.userId && ctx.redis) {
       console.log(`📥 [Tool] download_asset: proxying via bridge for ${sanitized}`);
-      buffer = await proxyAssetDownload(userId, redis, url);
+      buffer = await proxyAssetDownload(ctx.userId, ctx.redis, url);
     } else {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30_000);
@@ -130,37 +127,55 @@ export async function handleDownloadAsset(
 
     await fsMod.writeFile(destPath, buffer);
 
-    const sizeKB = (buffer.length / 1024).toFixed(1);
+    const sizeBytes = buffer.length;
+    const sizeKB = (sizeBytes / 1024).toFixed(1);
     console.log(`📥 [Tool] download_asset: ${relativePath} (${sizeKB} KB)`);
 
-    if (state.deps?.fileTreeUpdate) {
-      const featureName = state.context.featureFolder || 'default';
-      state.deps.fileTreeUpdate.notifyFileTreeUpdate(state.context.project, featureName);
+    if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
+      const featureName = ctx.featureFolder;
+      ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, featureName);
 
-      if ('addUnseenArtifacts' in state.deps.fileTreeUpdate) {
-        (state.deps.fileTreeUpdate as any).addUnseenArtifacts(
-          state.context.project, featureName, [relativePath]
+      if ('addUnseenArtifacts' in ctx.fileTreeUpdate) {
+        (ctx.fileTreeUpdate as any).addUnseenArtifacts(
+          ctx.project, featureName, [relativePath]
         );
       }
     }
 
-    return JSON.stringify({
+    const isImage = /\.(png|jpe?g|webp|gif|svg)$/i.test(relativePath);
+    await ctx.chatStatus.showStatus('downloaded', {
+      filename: sanitized,
+      sizeKB,
+      _mergeIndex: dlMergeIdx,
+      ...(isImage ? { imagePath: relativePath } : {}),
+    });
+
+    const payload = JSON.stringify({
       success: true,
       path: relativePath,
       filename: sanitized,
       category,
-      sizeBytes: buffer.length,
+      sizeBytes,
     });
+
+    return { content: payload };
   } catch (err: any) {
-    if (err.name === 'AbortError') {
-      throw new Error(`Download timed out after 30s: ${url}`);
-    }
-    throw new Error(`Failed to download asset from ${url}: ${err.message}`);
+    const errMsg = err.name === 'AbortError'
+      ? `Download timed out after 30s: ${url}`
+      : `Failed to download asset from ${url}: ${err.message}`;
+
+    await ctx.chatStatus.showStatus('downloaded', {
+      filename: sanitized,
+      error: true,
+      _mergeIndex: dlMergeIdx,
+    });
+
+    return { content: JSON.stringify({ error: errMsg }), error: errMsg };
   }
 }
 
 /**
- * Handle list_assets tool
+ * Handle list_assets tool (ctx-pure).
  *
  * Lists all runtime asset files under the workspace's domain-keyed pool —
  * `inputs/assets/{service|game}/...` (Phase 2 — D22). Lookup is strictly
@@ -168,68 +183,76 @@ export async function handleDownloadAsset(
  * container only and is never enumerated as a fallback.
  */
 export async function handleListAssets(
-  state: DesignGraphState,
-  args: { category?: string }
-): Promise<string> {
+  ctx: ToolExecutionContext,
+  args: { category?: string },
+): Promise<ToolResult> {
   const { category } = args;
-  const fileSystem = state.deps?.fileSystem;
-  
+  const fileSystem = ctx.fileSystem;
   if (!fileSystem) {
-    throw new Error('FileSystemPort not available');
-  }
-  
-  const path = await import('path');
-  const featurePath = state.context.featurePath;
-  if (!featurePath) {
-    throw new Error('featurePath not available in context');
+    const msg = 'FileSystemPort not available';
+    return { content: msg, error: msg };
   }
 
-  const assetsRoot = resolveAssetsRoot(state);
+  const featurePath = ctx.featurePath;
+  if (!featurePath) {
+    const msg = 'featurePath not available in context';
+    return { content: msg, error: msg };
+  }
+
+  const assetsRoot = ctx.assetsRoot;
+  if (!assetsRoot) {
+    const msg = 'assetsRoot not configured in context';
+    return { content: msg, error: msg };
+  }
+
+  const path = await import('path');
   const assetsDir = path.join(featurePath, ...assetsRoot.split('/'));
-  const targetDir = category 
+  const targetDir = category
     ? path.join(assetsDir, category)
     : assetsDir;
-  
+
   const rootPath = fileSystem.getRootPath?.() || '';
   const relativePath = rootPath
     ? path.relative(rootPath, targetDir)
     : targetDir.replace(/^\//, '');
-  
+
   let allFiles: string[] = [];
   try {
     allFiles = await fileSystem.listFiles(relativePath, []);
   } catch {
-    // Directory doesn't exist or not accessible
+    // Directory doesn't exist or not accessible — treated as empty pool.
   }
-  
+
   if (allFiles.length === 0) {
-    return JSON.stringify({
-      category: category || 'all',
-      assets: [],
-      count: 0,
-      message: `No assets found. Add asset files under ${assetsRoot}/.`,
-    }, null, 2);
+    return {
+      content: JSON.stringify({
+        category: category || 'all',
+        assets: [],
+        count: 0,
+        message: `No assets found. Add asset files under ${assetsRoot}/.`,
+      }, null, 2),
+    };
   }
-  
+
   const featureRelPath = rootPath
     ? path.relative(rootPath, featurePath)
     : featurePath.replace(/^\//, '');
-  
+
   const assetsRelPath = rootPath
     ? path.relative(rootPath, assetsDir)
     : assetsDir.replace(/^\//, '');
-  
+
   const grouped: Record<string, { path: string; filename: string; extension: string }[]> = {};
-  
+
   for (const file of allFiles) {
     const featureRelativePath = file.startsWith(featureRelPath)
       ? file.slice(featureRelPath.length).replace(/^[\/\\]/, '')
       : file;
     const filename = path.basename(file);
     const extension = path.extname(file).toLowerCase();
-    
+
     const assetInfo = { path: featureRelativePath, filename, extension };
-    
+
     const assetRelative = file.startsWith(assetsRelPath)
       ? file.slice(assetsRelPath.length).replace(/^[\/\\]/, '')
       : featureRelativePath;
@@ -237,24 +260,25 @@ export async function handleListAssets(
     const group = parts.length > 1 ? parts[0] : '(root)';
     (grouped[group] ||= []).push(assetInfo);
   }
-  
+
   const totalCount = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
   const groupSummary = Object.entries(grouped).map(([k, v]) => `${k}: ${v.length}`).join(', ');
   console.log(`   📦 Found ${totalCount} assets (${groupSummary})`);
-  
+
   if (totalCount > 0) {
-    const chatAPI = getChatAPIClient();
-    const mergeIndex = await chatAPI.showChatStatus('grepping', { filesCount: 0, totalFiles: 0 });
-    await chatAPI.showChatStatus('grepped', { 
+    const mergeIndex = await ctx.chatStatus.showStatus('grepping', { filesCount: 0, totalFiles: 0 });
+    await ctx.chatStatus.showStatus('grepped', {
       filesCount: totalCount,
       filesList: allFiles,
-      _mergeIndex: mergeIndex
+      _mergeIndex: mergeIndex,
     });
   }
-  
-  return JSON.stringify({
-    category: category || 'all',
-    groups: grouped,
-    total: totalCount,
-  }, null, 2);
+
+  return {
+    content: JSON.stringify({
+      category: category || 'all',
+      groups: grouped,
+      total: totalCount,
+    }, null, 2),
+  };
 }
