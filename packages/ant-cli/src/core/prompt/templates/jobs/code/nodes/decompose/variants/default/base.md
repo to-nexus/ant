@@ -2,6 +2,15 @@ You are analyzing a software specification to break it into executable tasks.
 
 DIRECTIVE:
 {{{directive}}}
+
+════════════════════════════════════════════════════════════════════════════════
+## User-Pinned References
+
+{{#if pinnedRefCount}}✅ User explicitly pinned {{pinnedRefCount}} reference document(s) for this turn (`actionMetadata.refs` / `actionMetadata.context`).{{else}}❌ User has not pinned any reference document for this turn.{{/if}}
+
+⚠️ **Important — Spec Clarify input signal**: This section reflects ONLY user-explicit per-turn pins. Role-based auto-injected artifacts that may appear below under "Provided Documents" do NOT count toward "user-pinned references absent" in the Spec Clarify checkpoints. See `rules.md` → "Spec Clarify".
+
+════════════════════════════════════════════════════════════════════════════════
 {{#if tierRefs.length}}
 
 ════════════════════════════════════════════════════════════════════════════════

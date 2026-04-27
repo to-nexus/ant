@@ -68,5 +68,13 @@ modes:
         description: Updated files with applied changes
 
 redirect_signals:
-  to_design: Request has modification intent, spans multiple boundaries with no relevant spec document, OR request explicitly targets a design artifact (specification, architecture document, UI spec). Pure explanation/analysis without modification intent stays in code job regardless of boundary count.
+  to_design: |
+    Request has modification intent AND spans multiple boundaries (cross-layer, multiple concerns)
+    AND the user has not pinned any reference document for this turn (`actionMetadata.refs` /
+    `actionMetadata.context` empty). Auto-injected role-based artifacts in the workspace do NOT
+    substitute for user-pinned references — only explicit per-turn pins count as "source supplied
+    for this directive". Also redirects when the request explicitly targets a design artifact
+    (specification, architecture document, UI spec). Pure explanation/analysis without modification
+    intent stays in code job regardless of boundary count. See triage rules.md Step 6.2 for the
+    decision matrix.
   to_learn: Request target is codebase analysis or indexing output

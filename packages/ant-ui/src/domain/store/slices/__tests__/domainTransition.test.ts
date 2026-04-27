@@ -125,6 +125,29 @@ describe('uiSlice — domain persistence to BE artifact (D22)', () => {
     store.getState().updateActionMetadata({ domain: 'game' });
     expect(updateProjectConfigMock).not.toHaveBeenCalled();
   });
+
+  it('backfills disk SSOT when cfg.domain is missing and store already matches', () => {
+    // Simulates a legacy / externally-created project whose `config.json`
+    // lacks the `domain` field. Store starts at the default 'service' so
+    // the patch matches the existing store value — but the disk SSOT
+    // is still empty, so the persist branch must fire to backfill.
+    const store = makeStore({
+      selectedProject: 'proj-a',
+      projectConfig: {
+        repositoryName: 'proj-a',
+        repoType: 'local',
+        // domain intentionally absent
+      },
+    });
+    expect(store.getState().actionMetadata.domain).toBe('service');
+    store.getState().updateActionMetadata({ domain: 'service' });
+    expect(updateProjectConfigMock).toHaveBeenCalledTimes(1);
+    expect(updateProjectConfigMock).toHaveBeenCalledWith('proj-a', {
+      repositoryName: 'proj-a',
+      repoType: 'local',
+      domain: 'service',
+    });
+  });
 });
 
 describe('uiSlice — domain transition cleanup (game → service)', () => {
