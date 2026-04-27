@@ -10,6 +10,10 @@ import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
  * (sign-in, disconnected, stopping, running, or missing selection).
  *
  * @returns `true` if the caller should abort the mutation (modal was shown).
+ *
+ * Opens the warning on the next macrotask so it is not cleared by the same
+ * global {@link AlertModal} instance closing after a nested `showConfirm`
+ * `onConfirm` (e.g. artifact delete confirm → blocked → must show warning).
  */
 export function useNotifyArtifactMutationBlocked(): () => boolean {
   const policy = useUIActionPolicy();
@@ -24,29 +28,24 @@ export function useNotifyArtifactMutationBlocked(): () => boolean {
     if (policy.canCreateFile) return false;
 
     const title = t('error.artifactBlockedTitle');
-
+    let message: string;
     if (backendMode === 'cloud' && !userEmail) {
-      showWarning(t('error.artifactBlockedSignIn'), { title, type: 'warning' });
-      return true;
-    }
-    if (policy.isDisconnected) {
-      showWarning(t('error.artifactBlockedDisconnected'), { title, type: 'warning' });
-      return true;
-    }
-    if (policy.isStopping) {
-      showWarning(t('error.artifactBlockedStopping'), { title, type: 'warning' });
-      return true;
-    }
-    if (policy.isRunning) {
-      showWarning(t('error.artifactBlockedRunning'), { title, type: 'warning' });
-      return true;
-    }
-    if (!selectedProject || !selectedFeature) {
-      showWarning(t('error.artifactBlockedSelectContext'), { title, type: 'warning' });
-      return true;
+      message = t('error.artifactBlockedSignIn');
+    } else if (policy.isDisconnected) {
+      message = t('error.artifactBlockedDisconnected');
+    } else if (policy.isStopping) {
+      message = t('error.artifactBlockedStopping');
+    } else if (policy.isRunning) {
+      message = t('error.artifactBlockedRunning');
+    } else if (!selectedProject || !selectedFeature) {
+      message = t('error.artifactBlockedSelectContext');
+    } else {
+      message = t('error.artifactBlockedGeneric');
     }
 
-    showWarning(t('error.artifactBlockedGeneric'), { title, type: 'warning' });
+    setTimeout(() => {
+      showWarning(message, { title, type: 'warning' });
+    }, 0);
     return true;
   }, [
     policy.canCreateFile,
