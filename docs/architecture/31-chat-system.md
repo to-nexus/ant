@@ -96,6 +96,36 @@ isStreaming이 아닌 메시지의 잔여 placeholder는 렌더링하지 않는�
 
 SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지의 중간 콘텐츠가 유실될 수 있다. 이를 방지하기 위해 재연결 시 Redis에 저장된 현재 세션 스냅샷과 프론트엔드 상태를 동기화한다.
 
+## Worker Scope · Task Scope · Section Ordering
+
+채팅 이벤트의 `workerScope`는 두 차원을 합성한 식별자다. `core/parallel/workerScope.ts`의 AsyncLocalStorage가 두 dimension을 모두 들고 있으며, `TurnContext.getWorkerScopeKey()`가 단일 키 형태로 직렬화한다.
+
+| 상황 | scope key |
+|------|-----------|
+| 메인 그래프 (no worker) | `_main_` |
+| 병렬 worker, task 외부 | `worker-N` |
+| 병렬 worker, task 실행 중 | `worker-N#task-K` |
+
+`task-K`는 `task.id`(또는 `task.name` fallback)로 안정적이다. `TaskWorker.executeTask`가 `runInWorkerScope(workerId, …)` 안에서 `runInTaskScope(taskKey, …)`로 task 별 scope를 overlay한다. 이 두 단계 wrapping 덕에 LLM emit, file ops, tool 호출 등 모든 chat 이벤트가 자동으로 정확한 식별자를 부여받는다.
+
+### 왜 두 차원인가
+
+`TaskWorker`는 long-lived 루프다. 한 worker가 cohort 1의 task A를 끝내고 cohort 2의 task B를 이어 잡는다. `workerScope`만 사용하면 cohort 2 메시지가 cohort 1과 같은 화면 위치에 누적되어, **이미 끝난 다른 worker의 cohort 1 메시지보다 위쪽 스크롤**에 나타나는 시간 역전이 발생한다(`rigid-fanning-faith` 회귀). `taskKey`를 합성하면 task별로 별도 섹션이 생기고 시간순 정렬과 결합해 chronology가 보존된다.
+
+### FE 섹션 정렬
+
+`selectTurns`는 turn 안에서 `workerScope` 단위로 섹션을 만들고 다음 규칙으로 정렬한다:
+
+1. `_main_`은 항상 첫 위치(turn-level orchestration narrative).
+2. 그 외 섹션은 첫 이벤트 timestamp 오름차순.
+3. 동률은 `workerScope.localeCompare`로 결정.
+
+cancelled choice card는 별도 합성 섹션이 아니라 `_main_`로 흐른다(appender가 `workerScope`를 emit하지 않음). resolved 후 후속 worker 출력이 들어오면 새 섹션이 cancelled 카드 아래에 추가되어 더 이상 "최근 위치 고정"되지 않는다.
+
+### 호환성
+
+기존 `worker-N` 형식 chat.jsonl 로그는 그대로 단일 섹션으로 분리되며, 시간순 정렬만 추가 적용된다. 두 형식이 같은 turn에 섞여 있어도 섹션 키 단위로 분리되므로 안전하다.
+
 ## Choice Card
 
 ### Variant

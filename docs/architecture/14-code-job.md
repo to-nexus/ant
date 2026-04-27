@@ -38,6 +38,8 @@ decompose 이후 `parallelOrchestrator` 노드로 분기한다. TaskOrchestrator
 
 Worker Subgraph는 `CodeGraphChannels`를 spread하여 메인 그래프와 채널을 동기화한다. 새 채널 추가 시 `CodeGraphChannels`(`graph.ts`)에만 추가하면 Worker에 자동 반영된다. 상세: [11-agent-architecture.md](11-agent-architecture.md) "Worker Subgraph 채널 정의" 참조.
 
+`TaskWorker.executeTask`는 `runInWorkerScope(workerId, …)` 안에서 `runInTaskScope(task.id, …)`로 한 번 더 감싸 모든 chat 이벤트가 `worker-N#task-K` 식별자를 자동 부여받게 한다. long-lived worker가 barrier cohort 사이를 가로질러 task를 직렬 실행해도 FE 섹션이 task별로 분리되고 시간순 정렬되어 chronology가 보존된다. 식별자/정렬 규약 상세: [31-chat-system.md](31-chat-system.md) "Worker Scope · Task Scope · Section Ordering".
+
 ## 주요 노드
 
 ### resolve

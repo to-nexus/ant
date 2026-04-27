@@ -290,20 +290,92 @@ describe('selectTurns — workerScope sub-sections', () => {
     ]);
   });
 
-  it('routes `cardType: "cancelled"` choice_presented into the `_terminal_` section that always renders LAST', () => {
-    // Mirrors a real stop scenario: parallel workers commit lines under
-    // worker-N, then the HTTP cleanup path emits a cancelled choice card
-    // with no workerScope. The cancelled card must appear AFTER every
-    // worker section so it reads as the turn's stop marker, not as a
-    // mid-turn _main_ item.
+  it('orders sections chronologically by first-event timestamp (worker IDs not lexicographic)', () => {
+    // worker-2 starts BEFORE worker-1; sections must follow chronology
+    // (not alphabetical). When `_main_` has its own event the anchor
+    // sort still pins it first.
+    const u = userTurn('t-chrono');
+    const mainMsg = assistantMessage('t-chrono', 'turn-level intro');
+    const w2First = status('t-chrono', 'card-w2-a', 'read', { filePath: 'a.ts' }, 'worker-2');
+    const w1First = status('t-chrono', 'card-w1-a', 'read', { filePath: 'b.ts' }, 'worker-1');
+    const w2Second = status('t-chrono', 'card-w2-b', 'read', { filePath: 'c.ts' }, 'worker-2');
+
+    const turns = selectTurns({
+      chatEvents: [u, mainMsg, w2First, w1First, w2Second],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      MAIN_WORKER_SCOPE,
+      'worker-2',
+      'worker-1',
+    ]);
+  });
+
+  it('splits a single long-lived worker into per-task sections via `worker-N#task-K` scope', () => {
+    // Mirrors the `rigid-fanning-faith` regression: a TaskWorker picks
+    // up cohort-1 task A, then cohort-2 task B. Each task must occupy
+    // its own section so cohort-2 messages don't fold into cohort-1's
+    // pinned screen position.
+    const u = userTurn('t-multi');
+    const w0Task1 = status('t-multi', 'c1', 'read', { filePath: 'a.ts' }, 'worker-0#task-A');
+    const w0Task2 = status('t-multi', 'c2', 'read', { filePath: 'b.ts' }, 'worker-0#task-B');
+
+    const turns = selectTurns({
+      chatEvents: [u, w0Task1, w0Task2],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      'worker-0#task-A',
+      'worker-0#task-B',
+    ]);
+  });
+
+  it('renders cohort-2 tasks BELOW cohort-1 tasks even when later-cohort task runs on the same worker', () => {
+    // Reproduces the user-reported regression: worker-3 in
+    // `rigid-fanning-faith` ran a UI-cohort task and later a
+    // visual-cohort task. Without per-task scope, cohort-2 messages
+    // appended in the middle of the scroll because worker-3 was
+    // pinned. With `worker-N#task-K` + chronological sort, each task
+    // gets its own section in start-time order.
+    const u = userTurn('t-cohort');
+    const w3UiA = status('t-cohort', 'c1', 'read', { filePath: 'ui-a.ts' }, 'worker-3#task-uiA');
+    const w4UiB = status('t-cohort', 'c2', 'read', { filePath: 'ui-b.ts' }, 'worker-4#task-uiB');
+    // Visual cohort starts after both UI tasks emit at least one event.
+    const w3VisualA = status('t-cohort', 'c3', 'read', { filePath: 'vis-a.ts' }, 'worker-3#task-visA');
+    const w5VisualB = status('t-cohort', 'c4', 'read', { filePath: 'vis-b.ts' }, 'worker-5#task-visB');
+
+    const turns = selectTurns({
+      chatEvents: [u, w3UiA, w4UiB, w3VisualA, w5VisualB],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      'worker-3#task-uiA',
+      'worker-4#task-uiB',
+      'worker-3#task-visA',
+      'worker-5#task-visB',
+    ]);
+  });
+
+  it('keeps every choice card (including cancelled) in the natural workerScope — no `_terminal_` synthetic section', () => {
+    // The previous policy routed cardType:'cancelled' into a synthetic
+    // `_terminal_` section pinned to the bottom. That pinned the
+    // cancelled card to the most-recent screen position even after
+    // resume + new worker output, masking chronology. Cancelled cards
+    // now flow into `_main_` (the appender omits workerScope) and
+    // chronological section ordering does the right thing.
     const u = userTurn('t-stop');
     const mainMsg = assistantMessage('t-stop', 'decompose response');
     const w1Msg = status('t-stop', 'card-w1', 'read', { filePath: 'b.ts' }, 'worker-1');
-    const w2Msg = status('t-stop', 'card-w2', 'read', { filePath: 'c.ts' }, 'worker-2');
     const cancelled = choicePresented('t-stop', 'cancelled-card-1', 'cancelled');
 
     const turns = selectTurns({
-      chatEvents: [u, mainMsg, w1Msg, w2Msg, cancelled],
+      chatEvents: [u, mainMsg, w1Msg, cancelled],
       streamingBuffers: emptyBuffers(),
     });
 
@@ -311,27 +383,17 @@ describe('selectTurns — workerScope sub-sections', () => {
     expect(sections.map((s) => s.workerScope)).toEqual([
       MAIN_WORKER_SCOPE,
       'worker-1',
-      'worker-2',
-      '_terminal_',
     ]);
 
-    // `_main_` keeps the durable assistant_message but does NOT contain
-    // the cancelled card — it lives in `_terminal_` instead.
+    // Cancelled card lives in `_main_` alongside the assistant_message.
     const mainItems = sections[0].items;
-    expect(mainItems).toEqual([
-      expect.objectContaining({ kind: 'assistant_message' }),
-    ]);
-
-    const terminalItems = sections[3].items;
-    expect(terminalItems).toHaveLength(1);
-    expect(terminalItems[0].kind).toBe('choice');
-    if (terminalItems[0].kind === 'choice') {
-      expect(terminalItems[0].presented.cardType).toBe('cancelled');
-      expect(terminalItems[0].presented.cardId).toBe('cancelled-card-1');
-    }
+    expect(mainItems.map((i: any) => i.kind)).toEqual(['assistant_message', 'choice']);
+    const cancelledItem = mainItems[1] as any;
+    expect(cancelledItem.presented.cardType).toBe('cancelled');
+    expect(cancelledItem.presented.cardId).toBe('cancelled-card-1');
   });
 
-  it('keeps non-cancelled choice cards (e.g. triage_choice) in `_main_` rather than `_terminal_`', () => {
+  it('keeps non-cancelled choice cards (e.g. triage_choice) in `_main_`', () => {
     const u = userTurn('t-triage');
     const triage = choicePresented('t-triage', 'triage-1', 'triage_choice');
 
