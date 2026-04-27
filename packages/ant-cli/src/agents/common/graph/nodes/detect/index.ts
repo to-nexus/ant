@@ -132,7 +132,7 @@ export function createDetectNode<T extends DetectableState>(
         // intent-specific hardcode.
         const explicitTarget = metadata.target?.length
           ? metadata.target
-          : getDefaultTargetPaths(intentId as IntentId);
+          : getDefaultTargetPaths(intentId as IntentId, metadata.domain);
         if (!metadata.target?.length && explicitTarget?.length) {
           console.log(`⚡ [detect] Explicit: target missing → matrix default ${JSON.stringify(explicitTarget)}`);
         }

@@ -103,6 +103,16 @@ When the Variation Groups data shows a section with multiple width variants:
 - The ui-spec task for that section MUST include the variation group's `pageNodeId` in its description
 - This ensures the executor can query responsive breakpoint designs, not just the desktop view
 
+### 10. PRD Hand-off Citation + SC ↔ Figma Alignment
+
+When the PRD provides `SC-XXX` identifiers in §5 IA / §6 Screen Composition (in source documents), the page chapter list MUST be derived from those IDs and aligned with Figma frames:
+
+- One page chapter per `SC-XXX` from PRD §5 — task ID format `ui-spec-SC-<Name>` (e.g., `ui-spec-SC-Search`)
+- Each page chapter description MUST: (a) cite `Implements PRD §6 / SC-<Name>`, (b) record the Figma node-id mapping `Figma: <nodeId list>` and the alignment source — either `figma node cited by PRD` (when PRD §5/§6 cites the node-id) or `frame name match: <frame-name>` (when alignment is by Figma frame name) or `unmapped — Figma frame not aligned to any SC-` (flag for review)
+- Shared chapter description MUST cite cross-screen `PRD §6` patterns and `PRD §7 / CP-XXX` policies
+- When the PRD is missing or lacks `SC-` IDs, fall back to extracting page list from Figma frame names alone, and state `PRD lacks SC- IDs — page list extracted from Figma frame names` in each page chapter description
+- A Figma frame that does not map to any `SC-` from the PRD: include it as a separate page chapter with `unmapped — proposes new SC-` note in the description; the planner can then back-fill the PRD with the proposed `SC-` ID
+
 ---
 
 ## 🚫 FORBIDDEN TASKS

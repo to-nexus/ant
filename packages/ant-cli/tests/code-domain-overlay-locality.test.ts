@@ -164,17 +164,17 @@ describe('Phaser engine partial — SBS gate sanity', () => {
   });
 });
 
-describe('Game-art code-overlay preamble — phaseScope discriminator', () => {
-  // The code-side gameArtTier preamble must reference the
-  // `phaseScope` marker — that is the boundary that gates external
-  // audio in Phase 3 vs Phase 4 (D16 / D21). Without the marker, the
-  // code emitted today silently ignores the scope guard.
+describe('Game-art code-overlay preamble — audioScope / visualScope discriminators', () => {
+  // The code-side gameArtTier preamble must reference both scope markers —
+  // `audioScope` gates external audio loading and `visualScope` gates atlas /
+  // multi-emitter / multi-projectile setups (D16 / D21). Without these
+  // markers, the code emitted today silently ignores the scope guard.
   const FILE = path.join(TEMPLATES_ROOT, 'jobs/code/basis/gameArtTier/_preamble.md');
 
-  it('code/basis/gameArtTier/_preamble.md references phaseScope marker', () => {
+  it('code/basis/gameArtTier/_preamble.md references audioScope and visualScope markers', () => {
     const src = fs.readFileSync(FILE, 'utf-8');
-    expect(src).toMatch(/phaseScope/);
-    expect(src).toMatch(/p2-css-only/);
+    expect(src).toMatch(/audioScope/);
+    expect(src).toMatch(/visualScope/);
   });
 
   it('code/basis/gameArtTier/_preamble.md is non-stub (length > 800 chars)', () => {

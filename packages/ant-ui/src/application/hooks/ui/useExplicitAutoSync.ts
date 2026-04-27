@@ -28,6 +28,7 @@ import { useActionFooterPolicy } from './useActionFooterPolicy';
 export function useExplicitAutoSync(): void {
   const { canStartChat } = useActionFooterPolicy();
   const intent = useStore(s => s.actionMetadata.intent);
+  const domain = useStore(s => s.actionMetadata.domain);
   const prevRef = useRef<boolean | null>(null);
 
   useEffect(() => {
@@ -49,11 +50,16 @@ export function useExplicitAutoSync(): void {
     }
   }, [canStartChat]);
 
-  // Auto-target derivation. Triggered whenever the intent changes (or
-  // canStartChat gates explicit on) so the user-visible badge reflects
-  // what BE will resolve. Skips when the user has already populated
-  // `target` via ActionConfigView (manual selection wins) or when the
-  // matrix has no synthesisable target (revise / codebase / chat-only).
+  // Auto-target derivation. Triggered whenever the intent or domain
+  // changes (or canStartChat gates explicit on) so the user-visible
+  // badge reflects what BE will resolve. Skips when the user has
+  // already populated `target` via ActionConfigView (manual selection
+  // wins) or when the matrix has no synthesisable target (revise /
+  // codebase / chat-only).
+  //
+  // gen-plan is domain-aware: the matrix lists both prd.md and gdd.md
+  // as candidates, but `getDefaultTargetPaths(intent, domain)` collapses
+  // to the domain-canonical filename so the badge shows a single path.
   useEffect(() => {
     const store = useStore.getState();
     const meta = store.actionMetadata;
@@ -61,9 +67,9 @@ export function useExplicitAutoSync(): void {
     if (!meta.intent) return;
     if (meta.target?.length) return;
 
-    const defaults = getDefaultTargetPaths(meta.intent as IntentId);
+    const defaults = getDefaultTargetPaths(meta.intent as IntentId, meta.domain);
     if (!defaults?.length) return;
 
     store.updateActionMetadata({ target: defaults });
-  }, [intent, canStartChat]);
+  }, [intent, domain, canStartChat]);
 }

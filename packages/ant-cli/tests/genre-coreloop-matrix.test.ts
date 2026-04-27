@@ -1,5 +1,5 @@
 /**
- * I9 — Genre × CoreLoop Matrix Gate (D31-revised v8)
+ * I9 — Genre × CoreLoop Matrix Gate (D31-revised v9)
  *
  * The matrix is the SOLE SSOT for "which coreLoops are reachable per genre".
  * Three guards land here:
@@ -57,6 +57,7 @@ describe('I9 — coreLoopCandidatesFor (helper SSOT)', () => {
     expect(coreLoopCandidatesFor('cardSolitaire')).toEqual(GENRE_CORELOOP_MATRIX.cardSolitaire);
     expect(coreLoopCandidatesFor('arcadePaddle')).toEqual(GENRE_CORELOOP_MATRIX.arcadePaddle);
     expect(coreLoopCandidatesFor('arcadeSnake')).toEqual(GENRE_CORELOOP_MATRIX.arcadeSnake);
+    expect(coreLoopCandidatesFor('crowdRunner')).toEqual(GENRE_CORELOOP_MATRIX.crowdRunner);
   });
 
   it('falls back to the universe (GAME_CORE_LOOP_VARIANTS) when genre is undefined', () => {
@@ -69,11 +70,17 @@ describe('I9 — coreLoopCandidatesFor (helper SSOT)', () => {
     expect(coreLoopCandidatesFor('slidingPuzzle')).not.toContain('survive');
   });
 
-  it('matrix admits two loops for match3 / cardSolitaire / arcadePaddle / arcadeSnake', () => {
+  it('matrix admits two loops for match3 / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner', () => {
     expect(coreLoopCandidatesFor('match3').length).toBe(2);
     expect(coreLoopCandidatesFor('cardSolitaire').length).toBe(2);
     expect(coreLoopCandidatesFor('arcadePaddle').length).toBe(2);
     expect(coreLoopCandidatesFor('arcadeSnake').length).toBe(2);
+    expect(coreLoopCandidatesFor('crowdRunner').length).toBe(2);
+  });
+
+  it('crowdRunner matrix row admits survive and collect, drops solve', () => {
+    expect(coreLoopCandidatesFor('crowdRunner')).toEqual(['survive', 'collect']);
+    expect(coreLoopCandidatesFor('crowdRunner')).not.toContain('solve');
   });
 });
 
@@ -111,6 +118,11 @@ describe('I9 — DecisionTagRegistry parser gate', () => {
     const r = parseDecisionTags('<gameContentTier>genre=arcadeSnake,coreLoop=solve</gameContentTier>');
     expect(r.parsed.gameContentTier).toEqual({ genre: 'arcadeSnake' });
   });
+
+  it('drops crowdRunner × solve (matrix admits [survive, collect])', () => {
+    const r = parseDecisionTags('<gameContentTier>genre=crowdRunner,coreLoop=solve</gameContentTier>');
+    expect(r.parsed.gameContentTier).toEqual({ genre: 'crowdRunner' });
+  });
 });
 
 describe('I9 — DecisionTagRegistry parser admits matrix-allowed pairs', () => {
@@ -124,6 +136,8 @@ describe('I9 — DecisionTagRegistry parser admits matrix-allowed pairs', () => 
     ['arcadePaddle', 'collect'],
     ['arcadeSnake', 'survive'],
     ['arcadeSnake', 'collect'],
+    ['crowdRunner', 'survive'],
+    ['crowdRunner', 'collect'],
   ] as const)('keeps %s × %s (matrix-admitted)', (genre, coreLoop) => {
     const r = parseDecisionTags(`<gameContentTier>genre=${genre},coreLoop=${coreLoop}</gameContentTier>`);
     expect(r.parsed.gameContentTier).toEqual({ genre, coreLoop });

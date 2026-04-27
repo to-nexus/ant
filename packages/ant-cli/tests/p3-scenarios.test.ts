@@ -93,7 +93,7 @@ describe('Phase 3 — Scenario A (single-shot directive, match-3 / Phaser)', () 
     },
     {
       rel: 'jobs/code/basis/gameArtTier/_preamble',
-      markers: [/phaseScope/i, /p2-css-only/i, /OscillatorNode/i],
+      markers: [/audioScope/i, /visualScope/i, /OscillatorNode/i],
     },
     {
       rel: 'jobs/code/basis/gameContentTier/_preamble',
@@ -126,7 +126,7 @@ describe('Phase 3 — Scenario A (single-shot directive, match-3 / Phaser)', () 
     }
   });
 
-  it('css-only preamble forbids runtime catalog mutation + fs reads (D21 hard cuts)', () => {
+  it('gameArtTier preamble forbids runtime catalog mutation + fs reads (D21 hard cuts)', () => {
     const content = readTemplate('jobs/code/basis/gameArtTier/_preamble');
     expect(content).toMatch(/forbidden|MUST NOT|do not/i);
     expect(content).toMatch(/runtime/i);
@@ -296,7 +296,7 @@ describe('Phase 3 — Scenario B (3+1 chain: plan → sys-fe → ui+art design �
 //     4. basis/gameArtTier/projectilePolicy/none.md        — Phase 4 axis
 //     5. basis/gameArtTier/audioProfile/fileBased.md       — Phase 4 axis
 //   And the code-overlay preamble MUST commit the audio-loader conditional
-//   (`phaseScope === 'p4-external-enabled'` activates `this.load.audio`).
+//   (`audioScope === 'external-enabled'` activates `this.load.audio`).
 
 describe('Phase 4 — Scenario C (external-asset enabled match-3 / fileBased audio)', () => {
   const SCENARIO_C_AXIS_PARTIALS: ReadonlyArray<{ rel: string; markers: ReadonlyArray<RegExp> }> = [
@@ -333,11 +333,12 @@ describe('Phase 4 — Scenario C (external-asset enabled match-3 / fileBased aud
     },
   );
 
-  it('code-overlay game-art preamble stages the Phase 4 audio loader conditional', () => {
+  it('code-overlay game-art preamble stages the audio loader conditional behind audioScope', () => {
     const content = readTemplate('jobs/code/basis/gameArtTier/_preamble');
-    expect(content).toMatch(/p4-external-enabled/);
-    // BootScene.preload conditional shape — staged as illustrative code.
-    expect(content).toMatch(/this\.load\.audio|load\.audio/);
+    expect(content).toMatch(/audioScope/);
+    expect(content).toMatch(/external-enabled/);
+    // Conditional shape — staged as illustrative code (engine partial commits the API names).
+    expect(content).toMatch(/audio loader|load\.audio/);
   });
 
   it('asset-extension policy admits .mp3 / .ogg / .wav under inputs/assets/game (D-P4)', async () => {
@@ -358,9 +359,10 @@ describe('Phase 4 — Scenario C (external-asset enabled match-3 / fileBased aud
     );
   });
 
-  it('assets-guide-by-desc (game-art) commits to the Phase 4 external-asset hook', () => {
+  it('assets-guide-by-desc (game-art) commits to the external-asset hook via per-marker gating', () => {
     const content = readTemplate('jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc');
-    expect(content).toMatch(/p4-external-enabled/);
+    expect(content).toMatch(/audioScope/);
+    expect(content).toMatch(/external-enabled/);
     expect(content).toMatch(/sfx|bgm/);
   });
 });

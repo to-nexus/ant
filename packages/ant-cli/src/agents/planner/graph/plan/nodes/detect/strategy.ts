@@ -13,6 +13,7 @@
 import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { PlanGraphState } from '../../state.js';
 import type { Domain, InferredAction } from '@ant/shared';
+import { getCanonicalPlanPath, pickExistingPlanFilename } from '@ant/shared';
 import { runEstimatingLLMStream, upsertPhaseTokenUsage } from '../../../../../common/graph/llmHelpers.js';
 import { parseExecutionTierTag, coerceExecutionTier, ExecutionTierId } from '../../../../../../core/executionTier/index.js';
 
@@ -32,11 +33,11 @@ export const planDetectStrategy: DetectStrategy<PlanGraphState> = {
 
     console.log(`📋 [Plan:Detect] Determined intentId: ${intentId} (executionTier=${executionTier}, domain=${finalDomain ?? 'unset'}${explicitDomain ? ' [explicit]' : ''})`);
 
-    const targets = resolveTargets(state);
+    const targets = resolveTargets(state, finalDomain);
 
     const inferred: InferredAction = {
       intentId,
-      target: targets.length > 0 ? targets : ['inputs/sources/prd.md'],
+      target: targets.length > 0 ? targets : [getCanonicalPlanPath(finalDomain)],
       domain: finalDomain,
       reasoning: { intent: reasoning, domain: finalDomainReasoning },
       sourceJob: 'plan',
@@ -57,7 +58,13 @@ async function determinePlanIntent(
   const path = await import('path');
   const { normalizeTemplateDoc } = await import('../../../../../../core/utils/templateDetector.js');
 
-  const targets = resolveTargets(state);
+  // Pre-LLM target resolution uses only `explicitDomain` — the
+  // inferred domain is not available until after the LLM runs. The
+  // hasExistingTarget signal is used as a binary "does any plan
+  // document already exist" check, so cross-domain leftovers (a game
+  // project with prd.md from before the gdd.md split) still register
+  // as existing.
+  const targets = resolveTargets(state, explicitDomain);
   const hasExistingTarget = targets.length > 0 && targets.some(t => {
     try {
       const raw = fs.readFileSync(path.join(state.featurePath, t), 'utf-8');
@@ -68,10 +75,11 @@ async function determinePlanIntent(
   return await detectPlanIntentViaLLM(state, hasExistingTarget, explicitDomain);
 }
 
-function resolveTargets(state: PlanGraphState): string[] {
+function resolveTargets(state: PlanGraphState, domain: Domain | undefined): string[] {
   if (state.actionMetadata?.target?.length) return state.actionMetadata.target;
   const sourceFileNames = state.workspaceState?.sourceFileNames;
-  if (sourceFileNames?.includes('prd.md')) return ['inputs/sources/prd.md'];
+  const existingPlanFile = pickExistingPlanFilename(sourceFileNames, domain);
+  if (existingPlanFile) return [`inputs/sources/${existingPlanFile}`];
   if (sourceFileNames?.length) return sourceFileNames.map(f => `inputs/sources/${f}`);
   return [];
 }

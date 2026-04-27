@@ -164,6 +164,11 @@
       "basis-registry"
     ]
   },
+  "basis/gameContentTier/genre/crowdRunner": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
   "basis/gameContentTier/genre/match3": {
     "sources": [
       "basis-registry"

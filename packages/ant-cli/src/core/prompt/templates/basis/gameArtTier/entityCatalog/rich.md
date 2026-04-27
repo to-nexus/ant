@@ -21,7 +21,7 @@ When this variant is active, `game-art-assets.json`'s `entities` category lists 
 
 ### Phase scope contract
 
-`rich` requires **`_meta.phaseScope === 'p4-external-enabled'`** — the Phase 3 / `p2-css-only` scope cannot author this many distinct inline svg / CSS shapes within the complexity ceiling (D21). If `entityCatalog === 'rich'` is emitted while `phaseScope === 'p2-css-only'`, the design pipeline downgrades the effective catalog to `standard` and surfaces a notice.
+`rich` requires **`_meta.visualScope === 'atlas-enabled'`** — the baseline visual scope cannot author this many distinct inline svg / CSS shapes within the design-time inline-payload ceiling (D21). If `entityCatalog === 'rich'` is emitted while `visualScope === 'baseline'`, the design pipeline downgrades the effective catalog to `standard` and surfaces a notice.
 
 ### Genre cross-reference (D31-revised v8 — guidance, not strict)
 
@@ -41,6 +41,6 @@ When `entityCatalog === 'rich'` is selected today, the design pipeline emits a P
 
 ### Blind-spot reminders
 
-- ⚠️ `rich` while `phaseScope === 'p2-css-only'` is an inconsistency — the validator should downgrade or reject.
+- ⚠️ `rich` while `visualScope === 'baseline'` is an inconsistency — the validator should downgrade or reject.
 - ⚠️ Listing 8+ entities without animation manifests is a "wide but shallow" `rich` — typically the project meant `standard` with cosmetic variants. The signal for `rich` is the **per-entry animation cycle**, not just the entry count.
 - ⚠️ A `rich` catalog adopted by a `cardSolitaire` project should justify the deviation explicitly (PRD section). Otherwise downgrade to `minimal` to honor the genre's tone.

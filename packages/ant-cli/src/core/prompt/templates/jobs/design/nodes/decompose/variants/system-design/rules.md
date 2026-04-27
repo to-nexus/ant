@@ -39,6 +39,7 @@
 | Component/service names ("GNB", "AuthService") | Boundary roles ("navigation boundary", "auth orchestration") |
 | Step-by-step procedures | Topic areas referencing guide sections |
 | Implementation-level detail ("polling every 5s") | Architecture-level scope ("real-time data strategy") |
+| Re-listing PRD/GDD identifiers without citation | Citing the PRD/GDD section + symbolic ID this task elaborates (e.g., `Implements PRD §10 / RB-Seller`, `Implements GDD §4 / MC-Combat`). Architectural tasks with no direct hand-off MUST state `Architectural — no direct PRD/GDD hand-off`. |
 
 ### Incremental Document Building
 
@@ -381,6 +382,7 @@ Before outputting, verify:
 - ✅ `assignedSections` lists exact catalog section names (e.g., `"§ Overview"`)
 - ✅ Every catalog section (except unmet conditionals) is assigned to exactly ONE task — no overlap, no gaps
 - ✅ Description uses ABSTRACT terms (no LocalStorage, React Router, etc.)
+- ✅ Description either cites the PRD/GDD §X / symbolic ID this task elaborates, or explicitly marks itself "Architectural — no direct PRD/GDD hand-off"
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
 {{#if sourceFileNames}}- ✅ Every task has `sourceFiles` with relevant source filenames

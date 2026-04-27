@@ -14,7 +14,7 @@
 **Critical:**
 
 - If the plan lists N catalog entries → the code MUST copy and reference all N.
-- If the plan records `_meta.phaseScope` = `'p2-css-only'` → external sfx/bgm are suppressed at load time (Phase 4 hook gates external audio).
+- If the plan records `_meta.audioScope === 'procedural-only'` → external sfx/bgm are suppressed at load time. If `_meta.visualScope === 'baseline'` → atlas / multi-emitter / multi-projectile setups are disabled.
 - When system-design and the game-art source conflict on art / motion / audio → the game-art source wins.
 - HUD / menu / dialog rendering belongs to the game-art surface in game-domain workspaces (D28). Service-domain UI artifacts (`outputs/design/ui/ant/ui-*.json`) are NOT consulted in a game workspace.
 
@@ -23,7 +23,7 @@
 **Before implementing, check the plan's inventory.** Every asset, token, or behaviour that reaches the code MUST be traceable to a plan line that itself was traceable to a `game-art-*.json` entry.
 
 1. For `kind: 'external'` entries — copy or import from the `src` path (always under `inputs/assets/game/`).
-2. For `kind: 'inline'` entries — materialize the `css` / `svg` / `oscillator` payload at sprite-spawn / play time. Do NOT base64-encode or fabricate beyond the css-only ceiling (D21).
+2. For `kind: 'inline'` entries — materialize the `css` / `svg` / `oscillator` payload at sprite-spawn / play time. Do NOT register **new** entries in the engine's texture cache from code (e.g. base64-encoding a fresh payload at code time and adding it as if it were a catalog entry); the code job consumes the catalog, it does not author it. The design-time inline-payload ceiling (D21) applies to the design surface, not to engine procedural rendering at runtime.
 3. Verify count: plan says N → code uses N.
 
 ### Domain-Surface Boundary (I7-revised)

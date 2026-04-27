@@ -6,8 +6,8 @@ This overlay sharpens **two GDD sections** when their tier values are pre-decide
 
 | Tier value | Applies to GDD section | What the overlay sharpens |
 |---|---|---|
-| `genre` (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` — D31-revised v8) | §2 Genre & Coreloop | Genre-defining systems the PRD MUST commit |
-| `coreLoop` (`solve` / `collect` / `survive` — matrix-gated per genre, D31-revised v8) | §2 Genre & Coreloop, §4 MDA | Loop-defining steps the PRD MUST commit |
+| `genre` (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` / `crowdRunner` — D31-revised v9) | §2 Genre & Coreloop | Genre-defining systems the PRD MUST commit |
+| `coreLoop` (`solve` / `collect` / `survive` — matrix-gated per genre, D31-revised v9) | §2 Genre & Coreloop, §4 MDA | Loop-defining steps the PRD MUST commit |
 
 ### Genre commitment principle (when `genre` is decided)
 
@@ -20,6 +20,7 @@ When the genre is decided in this turn or pre-set on the basis, the PRD MUST com
 | `cardSolitaire` | card model (suit + rank universe) / tableau structure (stacks + foundations + waste / freecell) / legal-move predicate (rank±1 + suit/colour discipline) |
 | `arcadePaddle` | paddle physics (bounce + spin influence) / threat ramp (ball speed / brick layout / death-line) / score and life budget |
 | `arcadeSnake` | grid + snake-body chain / collision rule (self-collision + wall) / growth and speed ramp on pickup |
+| `crowdRunner` | crowd + steering model (steering axis / advance policy / formation rule / count↔formation bridge) / modifier-gate stream (op universe + placement cadence + conflict policy) / threat field + terminal (threat shape / interaction model / terminal kind / lose condition) |
 
 The PRD must cite the project's **own twist** on each category — what makes THIS game different from the genre baseline. A PRD that only restates the baseline is empty (SBS violation: the genre gate's information payload is zero).
 
@@ -35,7 +36,7 @@ When `coreLoop` is decided, the PRD MUST describe the loop as a **3- or 4-step c
 
 These skeletons are **starting points**, not contracts — the PRD is allowed to rename steps, merge two, or split one, as long as the rewritten loop still answers "what does the player do, in what order, and what changes next time".
 
-### Matrix gate (D31-revised v8 — I9)
+### Matrix gate (D31-revised v9 — I9)
 
 The two axes are NOT independent. `GENRE_CORELOOP_MATRIX` (in `@ant/shared`) names which coreLoops are reachable for each genre — the decompose pipeline filters out-of-matrix pairs at parse time:
 
@@ -46,15 +47,17 @@ The two axes are NOT independent. `GENRE_CORELOOP_MATRIX` (in `@ant/shared`) nam
 | `cardSolitaire` | `solve`, `collect` |
 | `arcadePaddle` | `survive`, `collect` |
 | `arcadeSnake` | `survive`, `collect` |
+| `crowdRunner` | `survive`, `collect` |
 
-The PRD MUST commit a `(genre, coreLoop)` pair already in the matrix. Pairs outside it (`arcadePaddle + solve`, `cardSolitaire + survive`, ...) are filtered before the design / code job sees them — surfacing one in the GDD costs a retry round and never reaches downstream.
+The PRD MUST commit a `(genre, coreLoop)` pair already in the matrix. Pairs outside it (`arcadePaddle + solve`, `cardSolitaire + survive`, `crowdRunner + solve`, ...) are filtered before the design / code job sees them — surfacing one in the GDD costs a retry round and never reaches downstream.
 
 ### Reminders (FPOP-style blind spots)
 
 - ⚠️ Do NOT lift the genre's **mechanics** from a famous game — name the project's own verbs. "Like Bejeweled" is not a commitment; "swap two adjacent tiles → match-3 → cascade → refill" is.
 - ⚠️ A coreLoop step must be a **verb the player issues**, not a system reaction. "Damage is dealt" is a system reaction; "player times the dodge" is the verb.
-- ⚠️ When `genre` and `coreLoop` are both decided, they MUST come from `GENRE_CORELOOP_MATRIX` (D31-revised v8). The decompose pipeline filters out-of-matrix pairs at parse time — surfacing one in the PRD costs a retry round.
-- ⚠️ The `match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` registry is css-only-tuned. Production-asset-dependent genres (action, platformer, shooter, rpg, strategy) are deferred to Phase 5+ when the visual job activates (legacy super-categories archived).
+- ⚠️ When `genre` and `coreLoop` are both decided, they MUST come from `GENRE_CORELOOP_MATRIX` (D31-revised v9). The decompose pipeline filters out-of-matrix pairs at parse time — surfacing one in the PRD costs a retry round.
+- ⚠️ The `match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` / `crowdRunner` registry is css-only-tuned. Production-asset-dependent super-categories (action / platformer / shooter / rpg / strategy) are deferred to Phase 5+ when the visual job activates (legacy super-categories archived).
+- ⚠️ Genre partials are GUIDES not contracts — they fix the systems-shape *categories* the PRD must cover, but the axes inside each category (steering axis, op universe, formation rule, threat shape, terminal kind, …) remain the PRD's twist surface. A PRD that names only the categories without committing the axes is empty (SBS violation).
 - ⚠️ Multi-loop games (a meta-loop wrapping a moment-loop, e.g. roguelite) state both loops separately — coreLoop in this overlay is the **inner / shortest** loop. Outer loop, if any, is captured in §11 Meta-Progression of the GDD.
 
 ### Out of scope for this overlay

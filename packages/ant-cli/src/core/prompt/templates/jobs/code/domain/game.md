@@ -56,7 +56,8 @@ Asset import is driven by `game-art-assets.json` (D20). The code job consumes th
 
 - `kind: 'inline'` — translate the inline payload into a runtime value at module scope: `css` becomes a `style` / template literal, `svg` becomes an inline element or `Image` blob, `oscillator` becomes a Web Audio config object. NO file I/O.
 - `kind: 'external'` — load from the verbatim `src` path under `inputs/assets/game/...`. The loading boundary depends on the engine partial's preload API; Domain does NOT load assets directly.
-- `_meta.phaseScope === 'p2-css-only'` (Phase 3 default) forces all `sfx` / `bgm` to procedural OscillatorNode configs — external audio is gated behind `'p4-external-enabled'`. Always honor the marker.
+- `_meta.audioScope === 'procedural-only'` (default) forces all `sfx` / `bgm` to procedural OscillatorNode configs; `'external-enabled'` activates file-based audio. Always honor the marker.
+- `_meta.visualScope === 'baseline'` (default) keeps the canvas on catalog entries + the engine's procedural API + build-time static assets; `'atlas-enabled'` lifts atlas / multi-emitter / multi-projectile setups. The five canvas-side method categories are committed by `jobs/code/basis/gameArtTier/_preamble.md` §7; concrete API names live in the engine partial.
 - Cross-pool reach is forbidden (I6): `game-art-assets.json` MUST NOT reference `inputs/assets/service/`, and `ui-assets.json` MUST NOT reference `inputs/assets/game/`. The two surfaces share workspace.domain but their pools are 1:1 separated.
 
 ### 5. Determinism boundary
@@ -78,7 +79,8 @@ Make the boundary explicit in code:
 | Frame-time-dependent movement (`x += 5`) | Always integrate `dt` |
 | Cross-scene private-field access | Name the boundary or emit an event |
 | `Math.random()` inside deterministic Domain | Use a seeded RNG owned by Domain |
-| External-asset imports while `phaseScope === 'p2-css-only'` for sfx/bgm | Phase 3 is procedural-audio only |
+| External-asset imports while `audioScope === 'procedural-only'` for sfx/bgm | Baseline audio scope is procedural-only |
+| image-LLM API calls / insertion of image-LLM-derived assets | Out-of-scope for the code job — reserved for the future `visual` job (Phase 5+) |
 
 ### 7. Render boundary & viewport
 
@@ -150,7 +152,7 @@ This file is gated on `domain === 'game'`. It is REQUIRED to use game implementa
 - ⚠️ **Scene shutdown leaks** are the single most common bug. Every `on(event, fn)` registered in a scene MUST have a paired `off(event, fn)` in `shutdown`.
 - ⚠️ **Frame-dependent movement** (`x += speed`) is invisible until the device frame rate changes. Always integrate `dt`.
 - ⚠️ **HUD writing back to Domain** corrupts replay determinism. HUD emits commands; commands are the only path back into Domain.
-- ⚠️ **External asset references during `p2-css-only`** for sfx/bgm bypass the phase scope marker and break Phase 3's "no user-placed files required" guarantee.
+- ⚠️ **External asset references while `audioScope === 'procedural-only'`** for sfx/bgm bypass the marker and break the baseline scope's "no user-placed audio files required" guarantee.
 - ⚠️ **`Math.random()` inside Domain** silently breaks replays / multiplayer / save-load. Funnel randomness through a seeded source.
 
 ### Refine-mode discipline

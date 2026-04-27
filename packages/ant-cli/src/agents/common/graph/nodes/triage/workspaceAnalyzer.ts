@@ -105,8 +105,18 @@ export async function analyzeWorkspace(
   state.hasPrd = validSourceFiles.length > 0;
 
   if (state.hasPrd) {
-    const prdPath = path.join(sourcesDir, 'prd.md');
-    state.prdPath = validSourceFiles.includes('prd.md') ? prdPath : path.join(sourcesDir, validSourceFiles[0]);
+    // Plan-job canonical outputs are domain-aware: service → prd.md,
+    // game → gdd.md. The analyzer does not know the workspace domain
+    // here, so prefer prd.md, then gdd.md, then fall back to the first
+    // source file. Either canonical filename is treated as "the plan
+    // document"; downstream resolvers use `pickExistingPlanFilename`
+    // when domain context is available.
+    const canonical = validSourceFiles.includes('prd.md')
+      ? 'prd.md'
+      : validSourceFiles.includes('gdd.md')
+        ? 'gdd.md'
+        : validSourceFiles[0];
+    state.prdPath = path.join(sourcesDir, canonical);
   }
   console.log(`📄 [WorkspaceAnalyzer] Source files: ${validSourceFiles.length} found (${validSourceFiles.join(', ') || 'none'}) → hasPrd=${state.hasPrd}`);
   

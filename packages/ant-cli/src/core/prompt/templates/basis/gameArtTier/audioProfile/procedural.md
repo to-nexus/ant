@@ -32,7 +32,7 @@ The procedural format keeps the `sfx` entries text-only — the inline complexit
 
 ### Phase scope contract
 
-`procedural` is the Phase 3 default and works under both `phaseScope === 'p2-css-only'` and `'p4-external-enabled'`. When `phaseScope === 'p2-css-only'`, ALL audio is forced procedural regardless of LLM-emitted `audioProfile` — that is the marker's job (see `_preamble.md` Section 5).
+`procedural` is the default audio profile and works under both `audioScope === 'procedural-only'` and `'external-enabled'`. When `audioScope === 'procedural-only'`, ALL audio is forced procedural regardless of LLM-emitted `audioProfile` — that is the marker's job (see `_preamble.md` Section 5).
 
 ### Genre cross-reference (D31-revised v8 — guidance, not strict)
 
@@ -58,6 +58,6 @@ The procedural format gives each sub-genre a distinct sonic signature without ex
 
 ### Blind-spot reminders
 
-- ⚠️ `procedural` while `phaseScope === 'p4-external-enabled'` is legal but limiting — Phase 4 enables file-based audio; procedurally remaining is a deliberate constraint, not a default.
+- ⚠️ `procedural` while `audioScope === 'external-enabled'` is legal but limiting — the upgraded scope enables file-based audio; procedurally remaining is a deliberate constraint, not a default.
 - ⚠️ Listing `kind: 'external'` entries in the `sfx` category while `audioProfile === 'procedural'` is a contract violation. The validator should flag.
 - ⚠️ Procedural SFX with `durationMs > 600` reads as a "musical phrase" rather than feedback — those belong in BGM, not sfx.

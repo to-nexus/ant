@@ -2,20 +2,26 @@
  * Game Content Tier Registry — Single Source of Truth
  *
  * Game-domain only (D4). Two axes:
- *   - genre: 5 sub-genres tuned for css-only inline production (D31-revised v8).
+ *   - genre: 6 sub-genres tuned for css-only inline production (D31-revised v9).
  *   - coreLoop: 3 universal patterns; the candidate set the LLM sees is
- *               narrowed per-genre by `GENRE_CORELOOP_MATRIX` (D31-revised v8).
+ *               narrowed per-genre by `GENRE_CORELOOP_MATRIX` (D31-revised v9).
  *
  * Template path SSOT: every variant emitted MUST have a `.md` file at the
  * path returned by GAME_CONTENT_TIER_TEMPLATE_PATHS; the registry-disk
  * 1:1 invariant is enforced by `tests/game-content-tier-registry.test.ts`.
  *
- * v8 (D31-revised) — genre 7→3 (v7) → 3→5 (v8). The 5 sub-genres carry
- * narrower commitments (board/match-rule, sliding-rule, card-suit,
- * paddle-physics, snake-grid) and are individually authorable in css-only
- * inline production. The matrix `GENRE_CORELOOP_MATRIX` keeps the
- * coreLoop candidate set short per-genre so the LLM cannot emit a
- * mismatched loop (e.g. `cardSolitaire + survive`).
+ * v9 (D31-revised) — genre 5→6. The 6 sub-genres carry narrow
+ * systems-shape commitments (board/match-rule, sliding-rule, card-suit,
+ * paddle-physics, snake-grid, crowd+steering) and are individually
+ * authorable in css-only inline production. The matrix
+ * `GENRE_CORELOOP_MATRIX` keeps the coreLoop candidate set short per-
+ * genre so the LLM cannot emit a mismatched loop (e.g.
+ * `cardSolitaire + survive`).
+ *
+ * Each genre partial is a GUIDE — it fixes the systems-shape categories
+ * the project must cover and surfaces universal blind spots, but the
+ * axes inside each category (steering axis, op universe, formation
+ * rule, threat shape, …) remain PRD's surface.
  */
 
 import type { GameGenreVariant, GameCoreLoopVariant } from './rac';
@@ -31,6 +37,7 @@ export const GAME_GENRE_VARIANTS: readonly GameGenreVariant[] = [
   'cardSolitaire',
   'arcadePaddle',
   'arcadeSnake',
+  'crowdRunner',
 ] as const;
 
 export const GAME_CORE_LOOP_VARIANTS: readonly GameCoreLoopVariant[] = [
@@ -44,7 +51,7 @@ export const GAME_CONTENT_TIER_AXIS_KEYS = ['genre', 'coreLoop'] as const;
 export type GameContentTierAxisKey = (typeof GAME_CONTENT_TIER_AXIS_KEYS)[number];
 
 // ============================================
-// Genre × CoreLoop Matrix (D31-revised v8 — I9 SSOT)
+// Genre × CoreLoop Matrix (D31-revised v9 — I9 SSOT)
 // ============================================
 //
 // The matrix is the SOLE SSOT for "which coreLoops are reachable given a
@@ -61,6 +68,7 @@ export const GENRE_CORELOOP_MATRIX: Readonly<Record<GameGenreVariant, ReadonlyAr
   cardSolitaire: ['solve', 'collect'],
   arcadePaddle:  ['survive', 'collect'],
   arcadeSnake:   ['survive', 'collect'],
+  crowdRunner:   ['survive', 'collect'],
 } as const;
 
 /**
@@ -98,6 +106,7 @@ export const GAME_GENRE_OPTIONS: BasisOption[] = [
   { id: 'cardSolitaire', label: { en: 'Card Solitaire', ko: '카드 솔리테어' }, description: { en: 'Card stacks + suit/number matching (Solitaire / FreeCell / Memory)', ko: '카드 스택 + suit/숫자 매칭 (Solitaire / FreeCell)' }, accentColor: 'green' },
   { id: 'arcadePaddle', label: { en: 'Arcade Paddle', ko: '아케이드 패들' }, description: { en: 'Paddle + ball + brick (Pong / Breakout)', ko: 'paddle + ball + brick (Pong / Breakout)' }, accentColor: 'amber' },
   { id: 'arcadeSnake', label: { en: 'Arcade Snake', ko: '아케이드 스네이크' }, description: { en: 'Grid movement + body/obstacle avoidance (Snake / Tron / Frogger)', ko: '그리드 이동 + 자기몸/장애물 회피 (Snake / Tron / Frogger)' }, accentColor: 'red' },
+  { id: 'crowdRunner', label: { en: 'Crowd Runner', ko: '크라우드 러너' }, description: { en: 'Auto-advancing crowd + steering input + modifier gates + threat field (hyper-casual runners)', ko: '자동 진행 크라우드 + 스티어링 입력 + 모디파이어 게이트 + 위협 (하이퍼캐주얼 러너)' }, accentColor: 'orange' },
 ];
 
 export const GAME_CORE_LOOP_OPTIONS: BasisOption[] = [

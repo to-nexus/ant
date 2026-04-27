@@ -34,8 +34,11 @@ import type { BasisOption } from './tech-tier-registry';
 // ============================================
 
 /**
- * v8 (D32-revised) — 5 concepts tuned for css-only production and the 5
- * sub-genres registered by D31-revised. `pixelRetro` is the only concept
+ * v9 (D32-revised) — 5 concepts tuned for the design-time inline-payload
+ * ceiling and the 6 sub-genres registered by D31-revised v9. The concept
+ * registry is intentionally smaller than the genre registry — concepts
+ * generalise across genres (a `flatMinimal` look fits `match3` /
+ * `arcadePaddle` / `crowdRunner` alike). `pixelRetro` is the only concept
  * carried over from Phase 3; the rest are post-v7 (`flatMinimal` /
  * `neonArcade`) plus v8 additions (`softPastel` / `cardClassic`). Phase
  * 5+ widens the union when production assets are authored.
@@ -51,11 +54,12 @@ export const GAME_ART_CONCEPT_VARIANTS: readonly GameArtConceptVariant[] = [
 /**
  * v7 (D30): `GAME_ART_PERSPECTIVE_VARIANTS` is a single-element registry
  * today (`['2d']`). Phaser 3 is a 2D HTML5 engine; production 3D requires
- * glTF models / lighting / scene graph that cannot be authored at the
- * css-only inline scope. Three.js / `enable3d` / `Phaser3D` integrations are
- * Phase 5+ hooks (visual job activates 3D production assets first). The
- * decision pipeline is unchanged — `gameArtPerspectiveCandidates` still
- * serializes the (cardinality-1) candidate list and the LLM still emits
+ * glTF models / lighting / scene graph that cannot be authored within the
+ * design-time inline-payload ceiling. Three.js / `enable3d` / `Phaser3D`
+ * integrations are Phase 5+ hooks (visual job activates 3D production
+ * assets first). The decision pipeline is unchanged —
+ * `gameArtPerspectiveCandidates` still serializes the (cardinality-1)
+ * candidate list and the LLM still emits
  * `<gameArtTier>...,perspective=2d,...</gameArtTier>` through the normal
  * channel.
  */
@@ -159,6 +163,6 @@ export const GAME_ART_PROJECTILE_POLICY_OPTIONS: BasisOption[] = [
 
 export const GAME_ART_AUDIO_PROFILE_OPTIONS: BasisOption[] = [
   { id: 'procedural', label: { en: 'Procedural', ko: '프로시저럴' }, description: { en: 'Web Audio OscillatorNode SFX, no external files — Phase 3 default', ko: 'Web Audio 오실레이터 SFX, 외부 파일 없음 — Phase 3 기본값' }, accentColor: 'sky' },
-  { id: 'fileBased', label: { en: 'File-Based', ko: '파일 기반' }, description: { en: 'External .mp3/.ogg/.wav under inputs/assets/game/{sfx,bgm}/ (requires p4-external-enabled)', ko: '외부 .mp3/.ogg/.wav (p4-external-enabled 필요)' }, accentColor: 'green' },
+  { id: 'fileBased', label: { en: 'File-Based', ko: '파일 기반' }, description: { en: 'External .mp3/.ogg/.wav under inputs/assets/game/{sfx,bgm}/ (requires audioScope=external-enabled)', ko: '외부 .mp3/.ogg/.wav (audioScope=external-enabled 필요)' }, accentColor: 'green' },
   { id: 'hybrid', label: { en: 'Hybrid', ko: '하이브리드' }, description: { en: 'Procedural SFX + external BGM — bridge mode', ko: '프로시저럴 SFX + 외부 BGM — 브릿지 모드' }, accentColor: 'amber' },
 ];

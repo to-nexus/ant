@@ -51,8 +51,9 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     allowSubdirs: true,
     // Phase 4 (D-P4): audio + atlas + 3D model formats activated for the
     // game domain. The game-art catalog (`game-art-assets.json`) records
-    // `kind: 'external'` `src` paths into these subdirs once
-    // `_meta.phaseScope === 'p4-external-enabled'`.
+    // `kind: 'external'` `src` paths into these subdirs once the relevant
+    // scope marker is upgraded — `_meta.audioScope === 'external-enabled'`
+    // for sfx/bgm, `_meta.visualScope === 'atlas-enabled'` for atlas.
     //   - audio (sfx / bgm): .mp3 / .ogg / .wav
     //   - sprite atlas: .json (manifest) + .png / .webp (atlas image)
     //   - 3D models (Phase 5+ hook, perspective='3d'): .glb / .gltf

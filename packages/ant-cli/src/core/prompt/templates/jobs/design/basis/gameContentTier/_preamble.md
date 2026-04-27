@@ -6,25 +6,27 @@ This overlay sharpens **how genre + coreLoop reach into system design** — Doma
 
 ### 1. Genre → Domain rule reducer shape
 
-The genre registry (D31-revised v8 — `match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake`) names which Domain shapes are likely. The design job MUST commit the rule reducer's **state model**, **authoritative inputs**, and **event emission** before the code job materialises it:
+The genre registry (D31-revised v9 — `match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` / `crowdRunner`) names which Domain shapes are likely. The design job MUST commit the rule reducer's **state model**, **authoritative inputs**, and **event emission** before the code job materialises it. Domain event names are **abstract verbs** at this layer; concrete sub-events (e.g. which modifier op fired in `crowdRunner`) are rolled up into the abstract verb so the reducer admits any twist on the genre's axes without renaming events:
 
-| Genre | Rule reducer state model | Authoritative inputs | Domain events emitted |
+| Genre | Rule reducer state model | Authoritative inputs | Domain events emitted (abstract verbs) |
 |---|---|---|---|
 | `match3` | board grid + tile-kind enum + active-cascade flag + move budget | swap commands; cascade tick | `MatchCleared` / `CascadeChained` / `BoardRefilled` / `MoveBudgetExhausted` / `Won` |
 | `slidingPuzzle` | n×n cell array + empty-cell index + move count | sliding commands (4-neighbour into empty) | `TileSlid` / `ArrangementMatched` / `MoveCounted` / `Won` |
 | `cardSolitaire` | tableau columns + foundations + waste / freecell + move count | card-pickup + place commands; stockpile draw | `CardMoved` / `FoundationPromoted` / `Won` / `LegalMovesExhausted` |
 | `arcadePaddle` | ball (position + velocity) + paddle position + brick layout + lives + speed tier | paddle-move command + tick `dt` | `BallReflected` / `BrickHit` / `LifeLost` / `WaveCleared` / `SpeedRamped` / `Lost` |
 | `arcadeSnake` | grid + snake-segment chain + pickup positions + speed tier | direction commands + tick `dt` | `SnakeMoved` / `PickupCollected` / `SnakeGrew` / `SelfCollided` / `Lost` |
+| `crowdRunner` | crowd resource (count + attribute pool) + formation snapshot + course progress + active modifiers + threat-field state + terminal predicate | steering command (axis-agnostic) + tick `dt` | `CrowdMutated` (any op on the crowd resource — `+N`/`×N`/`÷N`/`+Damage`/…) / `CrowdEngaged` (any auto-fire / contact event) / `CrowdAttrited` (any threat-induced loss) / `ThresholdCrossed` (any cliff / cap / soft-cap warning) / `Won` / `Lost` |
 
 Reducer constraints (FPOP):
 
 - Domain event names MUST be **rule-focused** (`MatchCleared`, not `ScoreIncreased`). Score is a meta-rule the Application layer derives from rule events.
-- The state model MUST exclude rendering / input-device specifics. `ballPositionPx` is a rendering concern; `ballPosition` (in domain units) belongs to Domain.
+- Event names MUST be **abstract over the genre's polymorphism axes**. `CrowdMutated` rolls up every modifier op variant (`+N` / `×N` / `÷N` / `+Damage` / `+Shield` / `split` / `merge`); the specific op fired travels as an event payload field, not as a new event type. This keeps the reducer's event surface stable across PRD twists on the op universe.
+- The state model MUST exclude rendering / input-device specifics. `ballPositionPx` is a rendering concern; `ballPosition` (in domain units) belongs to Domain. Steering commands MUST be expressed in domain units (`{ axis: <axisId>, value: number }`) so the reducer admits any steering axis (X-only / X+Y / radial / lane-swap) without code branching.
 - The reducer MUST be testable as `(state, command, dt) → newState + events[]` without instantiating any engine / rendering / HUD layer.
 
 ### 2. CoreLoop → simulation cycle granularity
 
-The coreLoop registry (D31-revised v8 — `solve` / `collect` / `survive`) names the inner cycle the design MUST schedule. Combined with `gameArtTier.motionPattern` (Phase 4), it sets the simulation tick policy:
+The coreLoop registry (D31-revised v9 — `solve` / `collect` / `survive`) names the inner cycle the design MUST schedule. Combined with `gameArtTier.motionPattern` (Phase 4), it sets the simulation tick policy:
 
 | coreLoop | One cycle | Tick / cycle schedule |
 |---|---|---|
@@ -34,7 +36,7 @@ The coreLoop registry (D31-revised v8 — `solve` / `collect` / `survive`) names
 
 The design overlay names the **policy** (which cycles are tick-bound vs input-bound); the engine partial supplies the API names; the code job materialises both.
 
-### 3. Genre × coreLoop matrix gate (D31-revised v8 — I9)
+### 3. Genre × coreLoop matrix gate (D31-revised v9 — I9)
 
 The matrix is enforced upstream by `GENRE_CORELOOP_MATRIX` + parser drop — the design job always sees a legal pair:
 
@@ -45,6 +47,7 @@ The matrix is enforced upstream by `GENRE_CORELOOP_MATRIX` + parser drop — the
 | `cardSolitaire` | `solve`, `collect` | reflective placement (`solve`) or foundation-promotion payoff (`collect`) |
 | `arcadePaddle` | `survive`, `collect` | death-line ramp (`survive`) or brick / coin pickup (`collect`) |
 | `arcadeSnake` | `survive`, `collect` | self-collision avoidance (`survive`) or pickup chain (`collect`) |
+| `crowdRunner` | `survive`, `collect` | crowd-attrition ramp toward the terminal (`survive`) or gate / pickup accrual (`collect`) |
 
 If an out-of-matrix pair surfaces in the LLM-emitted basis (a parser bug), surface it as an open question rather than silently coercing — the design surface is the last gate before code materialisation.
 
@@ -73,8 +76,9 @@ If an out-of-matrix pair surfaces in the LLM-emitted basis (a parser bug), surfa
 - ⚠️ **Solitaire multi-card drag** semantics — design MUST commit whether sub-stack drag is allowed; touch interfaces need clear pivot feedback (interaction-grammar trap).
 - ⚠️ **Paddle spin influence** — design MUST commit whether paddle position / velocity at impact affects ball angle (policy level only — formulas live in spec).
 - ⚠️ **Snake speed-tier ramp** — design MUST commit ramp granularity (per-pickup, per-N-pickups, per-second) and any soft-cap to keep late-game playable.
+- ⚠️ **`crowdRunner` resource cliff and formation overflow** — design MUST commit (a) a floor / clamp / preview mechanism so a single high-N divisor or full-formation hit cannot wipe the run with no anticipation, and (b) a soft-cap, density-preservation policy, or re-layout rule so unbounded multiplicative ops do not push the formation outside the steering surface. These reminders apply *regardless* of which steering axis, op universe, or threat shape the PRD picks — they are universal across the genre's polymorphism axes.
 - ⚠️ **HUD-Domain write-back** — under any genre, HUD MUST NOT mutate Domain. Player input from HUD becomes a command; commands are the only inbound mutation channel.
-- ⚠️ **Determinism break under `survive`** — paddle / snake reducers need fixed-timestep; surfacing variable-timestep here corrupts replays and any future multiplayer.
+- ⚠️ **Determinism break under `survive`** — paddle / snake / crowdRunner reducers need fixed-timestep; surfacing variable-timestep here corrupts replays and any future multiplayer.
 
 ### 7. Out of scope for this overlay
 

@@ -16,7 +16,8 @@
 - ❌ `this.scene.run('main')` followed by `this.scene.start('main')` — `run` and `start` overlap and double the loop. Pick one.
 - ❌ `setTimeout(() => scene.events.emit(...), N)` for game-pacing — pacing belongs to `update(dt)` accumulators, not to wall-clock timers.
 - ❌ Importing `phaser` inside Domain modules — Domain is engine-agnostic. Engine types live only inside scene files.
-- ❌ Calling `this.load.audio(...)` while `_meta.phaseScope === 'p2-css-only'` — Phase 3 audio is procedural OscillatorNode, not file-based.
+- ❌ Calling `this.load.audio(...)` while `_meta.audioScope === 'procedural-only'` — baseline audio is procedural OscillatorNode, not file-based.
+- ❌ Calling `this.load.atlas(...)` / wiring multi-emitter or multi-projectile groups while `_meta.visualScope === 'baseline'` — those activate only at `'atlas-enabled'`.
 
 ### Required wiring patterns
 
@@ -147,6 +148,6 @@ This file MUST stay consistent with:
 
 - `basis/techTier/gameEngine/phaser.md` — universal Phaser ledger (API names, scene lifecycle, audio policy)
 - `jobs/code/domain/game.md` §7 — render boundary & viewport (screen-space React vs world-space engine, viewport-fill is the React container's responsibility)
-- `jobs/code/basis/gameArtTier/_preamble.md` — css-only asset import policy
+- `jobs/code/basis/gameArtTier/_preamble.md` — asset import policy (inline / external / engine procedural rendering, gated by `audioScope` × `visualScope`)
 
 If two of those say different things about the same surface, the **most-specific gate** wins (engine partial > domain overlay > tier preamble). When that does not resolve, surface the conflict as an open question rather than picking silently.

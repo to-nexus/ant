@@ -46,4 +46,4 @@ Each entry is a single shape; the emitter config (count, spread, lifetime) is in
 
 - ⚠️ A `light` profile that emits 20+ particles per event is creeping into `heavy` — the LLM may need to constrain the count.
 - ⚠️ Continuous emitters (always-on trails, ambient dust) are not `light` even at low particle counts — that pattern belongs to `heavy`. `light` is event-bursted, not ambient.
-- ⚠️ `light` while `phaseScope === 'p2-css-only'` is fully feasible — particle textures stay inline. External particle atlases activate in Phase 4.
+- ⚠️ `light` while `visualScope === 'baseline'` is fully feasible — particle textures stay inline. External particle atlases activate at `visualScope === 'atlas-enabled'`.
