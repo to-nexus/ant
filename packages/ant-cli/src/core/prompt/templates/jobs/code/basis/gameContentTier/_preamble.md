@@ -18,7 +18,7 @@ This preamble defines how a code intent **applies** the genre / coreLoop decisio
 
 - **Domain** owns the rule reducer. The reducer is engine-agnostic and tested in isolation. A `match3` reducer never imports Phaser; a `cardSolitaire` reducer never imports React.
 - **Render** owns the visual idiom. Render reads Domain snapshots; never the inverse.
-- **HUD** owns the player-facing readouts (the rightmost column above; details in each genre partial's "HUD essentials" section). Code wires them as `UIScene` (or equivalent) overlays.
+- **HUD** owns the player-facing readouts (the rightmost column above; details in each genre partial's "HUD essentials" section). HUD is **screen-space** and lives in **React** — it subscribes to Phaser events via `useSyncExternalStore` (or a manual DOM mutation pattern for per-frame updates). The Phaser `UIScene` is reserved for **world-space** overlays (sprite-anchored speech bubbles, in-world banners) and is typically empty for the five single-screen genres. See `jobs/code/domain/game.md` §7 for the coordinate-system partition.
 
 ### 2. CoreLoop → loop owner contract (D31-revised v8 — 3 universal coreLoops)
 
@@ -48,7 +48,7 @@ If the code job ever sees an out-of-matrix pair (LLM emit + parser bug), it MUST
 
 ### 4. HUD essentials (from genre partial)
 
-Each genre partial lists "HUD essentials" — the player-facing readouts the genre demands. The code job wires them as `UIScene` (or equivalent) overlays that read Domain snapshots:
+Each genre partial lists "HUD essentials" — the player-facing readouts the genre demands. **HUD = React rendering surface** (screen-space, fixed to viewport); the Phaser `UIScene` is **world-space overlay only** (sprite-anchored UI). For the five single-screen genres, every readout below is screen-space and lives in React:
 
 - `match3` — score, move-count remaining, objective tracker, combo / cascade indicator
 - `slidingPuzzle` — move count, optional timer, target-arrangement preview tile
@@ -65,5 +65,5 @@ Constraints:
 
 - ❌ Inferring genre / coreLoop from the directive at code-emission time without the LLM's emitted decision tag — the basis decision is the SSOT.
 - ❌ Hardcoding genre-specific magic numbers (`MAX_COMBO = 5`, `BOARD_SIZE = 8`) without a sibling spec entry — magic numbers belong to `outputs/design/spec/...`.
-- ❌ Mixing two genres' HUD idioms in one `UIScene` (a paddle / ball overlay in a `cardSolitaire` runtime) — the genre boundary is also a HUD boundary.
+- ❌ Mixing two genres' HUD idioms in one React HUD tree (a paddle / ball readout in a `cardSolitaire` runtime) — the genre boundary is also a HUD boundary.
 - ❌ Coercing an out-of-matrix `(genre, coreLoop)` pair in code — the matrix gate is enforced at decompose / parse, code MUST trust the upstream filter.

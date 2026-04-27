@@ -6,7 +6,7 @@ This overlay defines the **implementation discipline** specific to game projects
 
 ### MECE implementation section map
 
-The implementation surface is partitioned into 6 sections. The partition is **mutually exclusive** (each section answers one boundary commitment) and **collectively exhaustive** (the union covers every code-time decision a playable build forces).
+The implementation surface is partitioned into 7 sections. The partition is **mutually exclusive** (each section answers one boundary commitment) and **collectively exhaustive** (the union covers every code-time decision a playable build forces).
 
 | # | Section | Implementation commitment | Outcome the section commits |
 |---|---|---|---|
@@ -16,6 +16,7 @@ The implementation surface is partitioned into 6 sections. The partition is **mu
 | 4 | Asset import policy | How catalog entries become runtime values | `kind: 'inline'` mapped in code, `kind: 'external'` loaded from `inputs/assets/game/...`; wiring per `audioProfile` and `entityCatalog` axes |
 | 5 | Determinism boundary | What is repeatable, what is approximate | Rule application is deterministic; particle / interpolation may approximate; this boundary is named in code, not implicit |
 | 6 | What NOT to write | Constraints that bound the build | Pixel-perfect coordinates, frame-dependent formulas, DOM access from Domain, `setInterval` for game logic |
+| 7 | Render boundary & viewport | Which surface owns which UI; how the playable surface fills the viewport | Screen-space UI vs world-space UI partition; viewport-fill policy is the React container's responsibility; canvas aspect adaptation belongs to the engine scale policy |
 
 If a directive fits multiple sections, **split** rather than merge — duplication across sections is an MECE violation and downstream review will inherit it.
 
@@ -78,6 +79,52 @@ Make the boundary explicit in code:
 | Cross-scene private-field access | Name the boundary or emit an event |
 | `Math.random()` inside deterministic Domain | Use a seeded RNG owned by Domain |
 | External-asset imports while `phaseScope === 'p2-css-only'` for sfx/bgm | Phase 3 is procedural-audio only |
+
+### 7. Render boundary & viewport
+
+A playable build runs two render systems in the same browser tab — an HTML/CSS surface and an engine canvas. They MUST be partitioned by **coordinate system**, not by "kind of UI". Mixing the partition leaks frame-by-frame camera-transform math into React or pulls accessibility / typography / i18n responsibilities into the engine.
+
+#### Coordinate-system partition (the rule)
+
+| Surface | Owner | What lives here |
+|---|---|---|
+| Screen-space — fixed to the viewport | React (HTML/CSS) | HUD readouts (score / lives / move-count / combo), menus, pause overlay, settings, full-screen modals (Game Over / Win / Confirm), page chrome |
+| World-space — moves with the game camera | Engine canvas | Sprites, particles, projectiles, audio, AND any UI whose position is tied to a world coordinate (sprite-anchored speech bubble, in-world banner, NPC nameplate) |
+
+The single decision rule: *"if the camera pans, does this UI element pan with it?"* — yes ⇒ world-space (engine), no ⇒ screen-space (React). Putting world-space UI into React forces the React tree to re-mirror the camera transform every frame; this is the most common source of visible misalignment between UI and world.
+
+Currently registered genres (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake`) are all single-screen — the camera does not pan — so the world-space-UI slot is typically empty and **every UI element naturally collapses into screen-space (React)**. The world-space slot stays available as a seam for future camera-panning genres; do not invent in-world UI for these five.
+
+#### Viewport contract
+
+- The playable surface fills the viewport (`100dvw × 100dvh`). "Filling the viewport" is the **React container's responsibility, not the engine's** — the canvas only fills whatever box its parent gives it. A canvas with no parent layout collapses to `0 × 0` or to its intrinsic block size.
+- The React container declares: full-bleed layout (`display: grid; place-items: stretch` or `flex` + `flex: 1` on the canvas wrapper), `100dvw / 100dvh` (NOT `100vw / 100vh`), safe-area inset padding for devices with notches.
+- The canvas declares its own pixel buffer through the engine API (engine partial supplies the names) — `width` / `height` HTML attributes on `<canvas>` are forbidden in the React JSX; the engine owns those.
+
+#### Desktop / mobile responsive boundary
+
+| Decision | Owner |
+|---|---|
+| HUD layout switches between landscape / portrait (or breakpoints) | React — media query / container query |
+| HUD spacing / typography scales with viewport | React — clamp / vmin / container units |
+| Canvas aspect adaptation (letterbox / full-bleed / fit-with-overflow) | Engine — scale policy (the engine partial commits the API name) |
+| Canvas pixel buffer adapts to `devicePixelRatio` | Engine — its own resize handler |
+| Orientation lock (portrait-only / landscape-only / fluid) | Plan-level decision; both surfaces honor it |
+
+If the HUD layout decision and the canvas scale decision conflict on the same dimension, surface the conflict as an open question — do not silently let one win.
+
+#### Side-effect mitigation
+
+- ⚠️ **Pointer-event routing (R1)**: A React HUD that overlays the canvas with default `pointer-events` absorbs touch / click events that should reach the canvas. The HUD container MUST default to `pointer-events: none`; only the interactive subset (buttons, sliders, menu items) re-enables `pointer-events: auto`. Forgetting this is the second-most-common reason a freshly built game appears to "not respond to clicks".
+- ⚠️ **Modal stack location (R3)**: Full-screen modals (Game Over, Pause, Settings, Confirm) are screen-space — they belong in React, not in an engine scene. Building a modal as an engine scene forfeits browser routing, focus management, and screen-reader compatibility. The exception is **in-world** dialog (a speech bubble anchored to an NPC sprite) — that one stays in the engine because its position is world-bound.
+- ⚠️ **Single-screen disclaimer (R5)**: The five registered genres are all single-screen, so the world-space-UI slot is normally empty. Do not invent in-world UI for these five. When a future camera-panning genre lands, world-space UI activates naturally — until then, every UI element resolves to screen-space (React).
+
+#### Blind-spot reminders
+
+- ⚠️ **Canvas pinned to top-left** is almost never the engine's fault — it is the React parent's CSS. The default block layout left-aligns the canvas to its content box; without `display: grid; place-items: stretch` (or `flex` + `flex: 1` + a sized parent), the canvas collapses to its intrinsic block layout and looks "stuck" in the corner.
+- ⚠️ **`100vh` jumps on mobile** when the browser address bar shows / hides. Use `100dvh` (dynamic viewport height) for the playable surface; `100vh` is reserved for cases where the jump is intentional.
+- ⚠️ **iOS notch / Android system bars** crop the playable surface. Apply `env(safe-area-inset-{top,right,bottom,left})` padding on the React container; never on the canvas itself.
+- ⚠️ **`<canvas width="800" height="600">` HTML attributes** lock the pixel buffer at build time and prevent the engine from adapting to viewport / DPR. Let the engine call `setSize` after mount; CSS controls the layout box.
 
 ### Section authoring principles (FPOP)
 

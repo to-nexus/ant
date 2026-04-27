@@ -12,16 +12,16 @@ Path: `outputs/design/game-art/ant/` (D24-revised v8 — sub-sourced canonical, 
 
 These three JSON documents are the authoritative specification for game-domain visual implementation — for BOTH the in-canvas surface (sprites / particles / projectiles / audio) AND the HUD/menu surface (D28). Treat each field as a direct constraint — do not paraphrase away a value that is explicitly present.
 
-### Principle (One source, two render paths)
+### Principle (One source, two render paths split by coordinate system)
 
-In a React + Phaser host, a game project has two render paths:
+A React + Phaser host runs two render paths in the same browser tab. The split is by **coordinate system** — see `jobs/code/domain/game.md` §7 for the full partition rule:
 
-| Render surface | Reads | Loader |
-|---|---|---|
-| Phaser scene (in-canvas) | `game-art-assets.json` (entities / particles / projectiles / sfx / bgm / tilemaps) | `BootScene.preload` registers textures from inline base64 or external `src` |
-| React HUD overlay (menus / score / dialog / settings) | `game-art-tokens.json` (HUD CSS tokens) + `game-art-spec.json` (`hud` / `menu` / `dialog` categories) | React imports inline SVG / CSS or external icons; CSS-in-JS reads tokens |
+| Render path (coordinate system) | Owner | Reads | Loader |
+|---|---|---|---|
+| Screen-space — React HUD overlay (HUD readouts / menus / dialog / settings / page chrome) | React | `game-art-tokens.json` (HUD CSS tokens) + `game-art-spec.json` (`hud` / `menu` / `dialog` categories) | React imports inline SVG / CSS or external icons; CSS-in-JS reads tokens |
+| World-space — Phaser scenes (sprites / particles / projectiles + sprite-anchored UI in `UIScene`) | Phaser | `game-art-tokens.json` (palette / silhouette / lighting / motion-tone) + `game-art-assets.json` (entities / particles / projectiles / sfx / bgm / tilemaps) | `BootScene.preload` registers textures from inline base64 or external `src` |
 
-Both paths share **one art direction** — palette / silhouette / lighting / motion-tone come from `game-art-tokens.json` and inform the HUD's CSS treatment as much as the sprite's appearance.
+Both paths share **one art direction** — palette / silhouette / lighting / motion-tone come from `game-art-tokens.json` and inform the React HUD's CSS treatment as much as the sprite's appearance. The five registered genres are all single-screen so the world-space slot in `UIScene` is typically empty; every UI element resolves to screen-space (React).
 
 ### Principle (Separation of structure vs. style)
 
