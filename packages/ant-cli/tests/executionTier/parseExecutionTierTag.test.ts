@@ -12,7 +12,18 @@ import {
   ExecutionTierViolation,
   buildExecutionTierViolationFraming,
 } from '../../src/core/executionTier';
+import { ArtifactPoolView } from '../../src/core/artifact/ArtifactPipeline';
 import { ExecutionTierId } from '@ant/shared';
+import type { ResolvedArtifact } from '@ant/shared';
+
+function poolWith(...paths: Array<{ path: string; role: 'ref' | 'context' }>): ArtifactPoolView {
+  const artifacts: ResolvedArtifact[] = paths.map(({ path, role }) => ({
+    path,
+    role,
+    content: 'stub',
+  }));
+  return new ArtifactPoolView(artifacts);
+}
 
 beforeAll(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -138,6 +149,148 @@ describe('validateExecutionTier', () => {
       expect((e as ExecutionTierViolation).code).toBe('MISSING_TAG');
     }
   });
+
+  describe('design-ref grounding (DESIGN_REF_REQUIRES_TIER4)', () => {
+    it('throws DESIGN_REF_REQUIRES_TIER4 when generate mode + spec ref + tier=2', () => {
+      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      try {
+        validateExecutionTier(ExecutionTierId.Exploratory, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          pool,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect(e).toBeInstanceOf(ExecutionTierViolation);
+        expect((e as ExecutionTierViolation).code).toBe('DESIGN_REF_REQUIRES_TIER4');
+        expect((e as ExecutionTierViolation).mode).toBe('generate');
+        expect((e as ExecutionTierViolation).observedTier).toBe(ExecutionTierId.Exploratory);
+      }
+    });
+
+    it('throws DESIGN_REF_REQUIRES_TIER4 for refactor mode + system-design ref + tier=3', () => {
+      const pool = poolWith({ path: 'outputs/design/system/be-system-main.md', role: 'ref' });
+      try {
+        validateExecutionTier(ExecutionTierId.Task, {
+          mode: 'refactor',
+          nodeLabel: 'Decompose',
+          pool,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect((e as ExecutionTierViolation).code).toBe('DESIGN_REF_REQUIRES_TIER4');
+      }
+    });
+
+    it('throws DESIGN_REF_REQUIRES_TIER4 for ui ref (under ui/ant)', () => {
+      const pool = poolWith({ path: 'outputs/design/ui/ant/ui-spec.json', role: 'ref' });
+      try {
+        validateExecutionTier(ExecutionTierId.OneShot, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          pool,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect((e as ExecutionTierViolation).code).toBe('DESIGN_REF_REQUIRES_TIER4');
+      }
+    });
+
+    it('throws DESIGN_REF_REQUIRES_TIER4 for game-art ref', () => {
+      const pool = poolWith({ path: 'outputs/design/game-art/ant/game-art-spec.json', role: 'ref' });
+      try {
+        validateExecutionTier(ExecutionTierId.Task, {
+          mode: 'refactor',
+          nodeLabel: 'Decompose',
+          pool,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect((e as ExecutionTierViolation).code).toBe('DESIGN_REF_REQUIRES_TIER4');
+      }
+    });
+
+    it('passes through Tier 4 when design ref is present (no violation)', () => {
+      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      expect(
+        validateExecutionTier(ExecutionTierId.RefsGrounded, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          pool,
+        }),
+      ).toBe(ExecutionTierId.RefsGrounded);
+    });
+
+    it('does NOT throw for design CONTEXT only (role=context, not ref)', () => {
+      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'context' });
+      expect(
+        validateExecutionTier(ExecutionTierId.Task, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          pool,
+        }),
+      ).toBe(ExecutionTierId.Task);
+    });
+
+    it('does NOT throw for explain mode even with design ref', () => {
+      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      expect(
+        validateExecutionTier(ExecutionTierId.Task, {
+          mode: 'explain',
+          nodeLabel: 'Decompose',
+          pool,
+        }),
+      ).toBe(ExecutionTierId.Task);
+    });
+
+    it('does NOT throw when pool is omitted (legacy call sites)', () => {
+      expect(
+        validateExecutionTier(ExecutionTierId.Task, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+        }),
+      ).toBe(ExecutionTierId.Task);
+    });
+
+    it('does NOT throw when pool has no design refs', () => {
+      const pool = poolWith({ path: 'inputs/sources/prd.md', role: 'ref' });
+      expect(
+        validateExecutionTier(ExecutionTierId.Task, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          pool,
+        }),
+      ).toBe(ExecutionTierId.Task);
+    });
+
+    it('precedence — MISSING_TAG still wins over DESIGN_REF_REQUIRES_TIER4', () => {
+      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      try {
+        validateExecutionTier(undefined, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          pool,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect((e as ExecutionTierViolation).code).toBe('MISSING_TAG');
+      }
+    });
+
+    it('precedence — FORBIDDEN_TIER_FOR_MODE wins over DESIGN_REF_REQUIRES_TIER4', () => {
+      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      try {
+        validateExecutionTier(ExecutionTierId.Reflex, {
+          mode: 'generate',
+          nodeLabel: 'Decompose',
+          pool,
+        });
+        expect.fail('should have thrown');
+      } catch (e) {
+        expect((e as ExecutionTierViolation).code).toBe('FORBIDDEN_TIER_FOR_MODE');
+      }
+    });
+  });
 });
 
 describe('buildExecutionTierViolationFraming', () => {
@@ -163,5 +316,19 @@ describe('buildExecutionTierViolationFraming', () => {
     expect(framing).toContain('refactor');
     expect(framing).toContain('explain');
     expect(framing).toMatch(/\bTier\s*1\b|<executionTier>1<\/executionTier>/);
+  });
+
+  it('produces a DESIGN_REF_REQUIRES_TIER4-specific retry message naming the matrix', () => {
+    const v = new ExecutionTierViolation('DESIGN_REF_REQUIRES_TIER4', {
+      nodeLabel: 'Decompose',
+      mode: 'generate',
+      observedTier: ExecutionTierId.Exploratory,
+    });
+    const framing = buildExecutionTierViolationFraming(v);
+    expect(framing).toContain('design reference document');
+    expect(framing).toContain('Development Source');
+    expect(framing).toContain('action-config-matrix');
+    expect(framing).toContain('<executionTier>4</executionTier>');
+    expect(framing).toContain('verification');
   });
 });

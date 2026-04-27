@@ -25,7 +25,7 @@ import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels
 import { getSessionDebugDir } from '../../../../../core/utils/sessionPaths.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 import { resolveToRAC } from '@ant/shared';
-import type { ResolvedActionContext, IntentId, ActionMetadata } from '@ant/shared';
+import type { ResolvedActionContext, IntentId } from '@ant/shared';
 
 // Cache for loaded templates
 let triageBaseTemplate: HandlebarsTemplateDelegate | null = null;
@@ -154,7 +154,6 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     workspaceState,
     jobCapabilities,
     sessionDigest: state.sessionDigest,
-    actionMetadata: state.actionMetadata,
   });
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -357,27 +356,16 @@ export function buildTriagePrompt(params: {
   jobCapabilities: string;
   existingTaskSummary?: string;
   sessionDigest?: string;
-  actionMetadata?: ActionMetadata;
 }): { system: string; user: string } {
-  const { userInput, currentJob, currentAgent, workspaceState, jobCapabilities, existingTaskSummary, sessionDigest, actionMetadata } = params;
+  const { userInput, currentJob, currentAgent, workspaceState, jobCapabilities, existingTaskSummary, sessionDigest } = params;
 
   const { base, rules } = loadTriageTemplates();
-
-  // RAC-aware multi-boundary signal (Step 6.2 of triage rules):
-  // Count user-explicit per-turn pins. Auto-injected role-based artifacts
-  // are decided downstream in detect/decompose and MUST NOT inflate this
-  // count — Step 6.2 must judge "did the user supply source for THIS
-  // directive?" off explicit pins only.
-  const pinnedRefCount =
-    (actionMetadata?.refs?.length ?? 0) +
-    (actionMetadata?.context?.length ?? 0);
 
   const user = base({
     currentAgent,
     currentJob,
     userInput,
     jobCapabilities,
-    // Workspace state
     hasPrd: workspaceState.hasPrd,
     prdPath: workspaceState.prdPath || 'available',
     hasDirective: workspaceState.hasDirective,
@@ -389,11 +377,8 @@ export function buildTriagePrompt(params: {
     hasCodebase: workspaceState.hasCodebase,
     indexedFileCount: workspaceState.indexedFileCount || 'unknown',
     hasDesignDoc: workspaceState.hasDesignDoc,
-    pinnedRefCount,
-    // Existing task context (for continuation assessment)
     hasExistingTasks: !!existingTaskSummary,
     existingTaskSummary,
-    // Session context digest
     hasSessionDigest: !!sessionDigest,
     sessionDigest,
   });
