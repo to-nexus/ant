@@ -1,27 +1,49 @@
 /**
- * Regression test: design-ui detect must populate `figmaFileKey` /
- * `figmaStartNodeId` once the Figma MCP is reachable.
+ * Regression tests: design-job `figmaFileKey` / `figmaStartNodeId`
+ * propagation must survive every state-entry path (new-job explicit,
+ * new-job infer, resume).
  *
- * Background — `487cfeab refactor(design-tools): remove state proxies and
- * unify figma flow` moved every figma_* tool handler onto a `ctx`-pure
- * surface that reads `ctx.figmaFileKey` directly and rejects with
- * "Figma fileKey not configured" when the key is missing. The earlier
- * implementation parsed the URL on the fly inside the design-specific
- * handler, which masked the fact that `state.figmaFileKey` was never
- * being seeded for the `design-ui` pipeline. After the refactor, every
- * worker `figma_get_metadata` / `figma_get_design_context` /
- * `figma_get_screenshot` call in a design-ui job started failing with
- * the missing-key error (job `even-getting-knave`, chat.jsonl ll. 12-19).
+ * Background timeline:
+ *   - `487cfeab refactor(design-tools): remove state proxies and unify
+ *     figma flow` moved every figma_* tool handler onto a `ctx`-pure
+ *     surface that reads `ctx.figmaFileKey` directly. The unified handler
+ *     rejects with "Figma fileKey not configured" the moment the key is
+ *     missing.
+ *   - `b808153b fix(design-detect): seed figma fileKey for design-ui
+ *     pipeline` added URL parsing inside `designDetectStrategy.run()` —
+ *     covered the **infer** path only.
+ *   - `840c718d test(design): cover resume figma fileKey rehydrate path`
+ *     added rehydration to `designResolveStrategy.onResume` for resumed
+ *     checkpoints — covered the **resume** path only.
+ *   - `azure-keeping-cairn` (gen-ui-figma, `actionMetadata.explicit=true`)
+ *     hit the **explicit** detect branch in `common/graph/nodes/detect/
+ *     index.ts` which short-circuits before `strategy.run()` runs, so the
+ *     b808153b fix never executed and every worker `figma_*` call fell
+ *     back to "Figma fileKey not configured". This was the exact
+ *     coverage gap the b808153b/840c718d patches left open.
  *
- * `design-spec` already seeds the key via `checkSpecFigma()`. This test
- * pins the equivalent contract for `design-ui`: detect, after MCP
- * reachability passes, must extract fileKey/startNodeId from
- * `state.figmaConfig.file` and forward them on `stateUpdates` so the
- * worker tool node's `buildContext` can hand them off to ctx.
+ * Fix: centralise `figmaConfig.file` → `figmaFileKey/figmaStartNodeId`
+ * derivation inside `designResolveStrategy` (the SSOT — resolve is the
+ * single point where `figmaConfig` enters state on both new-job and
+ * resume). `loadArtifacts` covers new-job (explicit + infer); `onResume`
+ * covers resumed checkpoints. `designDetectStrategy` no longer parses
+ * the URL — its sole figma responsibility is MCP reachability.
+ *
+ * The tests below pin that contract:
+ *   - `loadArtifacts` always seeds figma keys when `figma.json` carries
+ *     a parseable URL — independent of actionMetadata, so explicit and
+ *     infer paths converge.
+ *   - `onResume` rehydrates from `state.figmaConfig.file` (legacy
+ *     checkpoints predate the seeding fix).
+ *   - `designDetectStrategy` still surfaces `designError` when MCP is
+ *     unreachable, but no longer claims ownership over the keys.
  */
 
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { extractFigmaUrlParts } from '@ant/shared';
+import { describe, it, expect, vi, beforeAll, afterEach, beforeEach } from 'vitest';
+import { extractFigmaUrlParts, FIGMA_CONFIG_PATH } from '@ant/shared';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Module mocks — ChatAPIClient (sends fake LLM events to the chat) and
@@ -69,7 +91,16 @@ async function* makeStream(response: string) {
   yield { type: 'done' };
 }
 
-function buildState(opts: { figmaUrl: string; llmResponse: string }) {
+const designUiDetectResponse = `<detect>
+{
+  "intentGroup": "design-ui",
+  "intentGroupReasoning": "Figma URL provided and assets present.",
+  "jobMode": "generate",
+  "jobModeReasoning": "Generate UI documents from scratch."
+}
+</detect>`;
+
+function buildDetectState(opts: { figmaUrl: string; llmResponse: string }) {
   const llm = {
     stream: () => makeStream(opts.llmResponse),
   };
@@ -101,23 +132,124 @@ function buildState(opts: { figmaUrl: string; llmResponse: string }) {
   } as any;
 }
 
-const designUiDetectResponse = `<detect>
-{
-  "intentGroup": "design-ui",
-  "intentGroupReasoning": "Figma URL provided and assets present.",
-  "jobMode": "generate",
-  "jobModeReasoning": "Generate UI documents from scratch."
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// loadArtifacts harness — minimal real-fs scaffolding so the figma.json
+// read path executes end-to-end. fileSystem/gitPort stubs return empty
+// for everything else (sources, directives, system docs) so the test
+// stays focused on the SSOT contract this file pins.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+interface LoadArtifactsHarness {
+  featurePath: string;
+  cleanup: () => void;
+  buildState: (opts: {
+    figmaUrl?: string;
+    actionMetadataExplicit?: boolean;
+    resolvedActionMode?: 'generate' | 'modify' | 'refactor' | undefined;
+  }) => any;
 }
-</detect>`;
+
+function makeLoadArtifactsHarness(): LoadArtifactsHarness {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-design-resolve-figma-'));
+  const projectName = 'p';
+  const featureFolder = 'f';
+  const projectPath = path.join(tmpRoot, projectName);
+  const featurePath = path.join(projectPath, 'features', featureFolder);
+  fs.mkdirSync(featurePath, { recursive: true });
+
+  const fileSystemStub = {
+    readFile: async () => null,
+    writeFile: async () => {},
+    fileExists: async () => false,
+    deleteFile: async () => {},
+    readDirectory: async () => [],
+    createDirectory: async () => {},
+    listFiles: async () => [],
+    isDirectory: async () => false,
+    copyFile: async () => {},
+    moveFile: async () => {},
+    copyDirectory: async () => {},
+    moveDirectory: async () => {},
+    getRootPath: () => featurePath,
+    getWorkspaceRoot: () => featurePath,
+  };
+
+  const gitPortStub = {} as any;
+
+  const workspaceResolver = {
+    getProjectPath: () => projectPath,
+    getFeaturePath: () => featurePath,
+  };
+
+  return {
+    featurePath,
+    cleanup: () => fs.rmSync(tmpRoot, { recursive: true, force: true }),
+    buildState({ figmaUrl, actionMetadataExplicit, resolvedActionMode }) {
+      // Seed the canonical figma.json on disk. `loadArtifacts` reads from
+      // `<feature>/outputs/design/ui/figma/figma.json` — the same path the
+      // checkout-time figma sync writes to.
+      const figmaJsonPath = path.join(featurePath, FIGMA_CONFIG_PATH);
+      fs.mkdirSync(path.dirname(figmaJsonPath), { recursive: true });
+      if (figmaUrl) {
+        fs.writeFileSync(
+          figmaJsonPath,
+          JSON.stringify({ file: figmaUrl }, null, 2),
+          'utf-8',
+        );
+      } else if (fs.existsSync(figmaJsonPath)) {
+        fs.unlinkSync(figmaJsonPath);
+      }
+
+      return {
+        context: {
+          project: projectName,
+          featureFolder,
+          // featurePath is intentionally LEFT BLANK so `validateWorkspace
+          // AndFeature` runs the resolver and writes the resolved path
+          // back onto context — mirrors the production call site.
+          featurePath: '',
+          workingDir: featurePath,
+          userId: 'u-1',
+          organizationId: 'org-1',
+          userLanguage: 'ko',
+        },
+        // No actionMetadata/explicit handling lives in `loadArtifacts`;
+        // it is included here purely as scenario documentation — when set
+        // to `true` the regression-flow comment in the test body marks
+        // the equivalent of the production `azure-keeping-cairn` job.
+        actionMetadata: actionMetadataExplicit
+          ? { explicit: true, intent: 'gen-ui-figma' }
+          : undefined,
+        resolvedAction: resolvedActionMode
+          ? { intent: 'gen-ui-figma', mode: resolvedActionMode, slots: {} }
+          : undefined,
+        deps: {
+          git: gitPortStub,
+          fileSystem: fileSystemStub,
+          workspaceResolver,
+        },
+        conversations: {},
+        planText: '',
+      } as any;
+    },
+  };
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Tests
+// loadArtifacts — figma key seeding (SSOT). Covers new-job paths
+// (explicit AND infer), since neither path mutates figmaConfig before
+// resolve runs.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-describe('designDetectStrategy — figmaFileKey propagation (design-ui)', () => {
-  it('extracts fileKey and startNodeId from figmaConfig.file when MCP is reachable (regression: figma_* tools rejected with "fileKey not configured")', async () => {
-    const { designDetectStrategy } = await import(
-      '../src/agents/architect/graph/design/nodes/detect/strategy'
+describe('designResolveStrategy.loadArtifacts — figmaFileKey seeding (SSOT)', () => {
+  let harness: LoadArtifactsHarness;
+
+  beforeEach(() => { harness = makeLoadArtifactsHarness(); });
+  afterEach(() => { harness.cleanup(); });
+
+  it('extracts fileKey and startNodeId from figma.json on disk (new-job path covers explicit + infer)', async () => {
+    const { designResolveStrategy } = await import(
+      '../src/agents/architect/graph/design/nodes/resolve'
     );
 
     const figmaUrl =
@@ -126,36 +258,99 @@ describe('designDetectStrategy — figmaFileKey propagation (design-ui)', () => 
     expect(expected.fileKey).toBe('z08MukCkkOSGXiITeSRj5V');
     expect(expected.nodeId).toBe('5087:4505');
 
-    const state = buildState({ figmaUrl, llmResponse: designUiDetectResponse });
+    const state = harness.buildState({ figmaUrl, resolvedActionMode: 'modify' });
+    const result = await designResolveStrategy.loadArtifacts(state);
+
+    expect(result.figmaFileKey).toBe(expected.fileKey);
+    expect(result.figmaStartNodeId).toBe(expected.nodeId);
+    // Sanity: figmaConfig itself is also returned as before.
+    expect(result.figmaConfig?.file).toBe(figmaUrl);
+  });
+
+  it('seeds figmaFileKey alone when the URL has no node-id (startNodeId is optional)', async () => {
+    const { designResolveStrategy } = await import(
+      '../src/agents/architect/graph/design/nodes/resolve'
+    );
+
+    const figmaUrl = 'https://www.figma.com/design/abcDEF123/My-Design';
+    const state = harness.buildState({ figmaUrl, resolvedActionMode: 'modify' });
+    const result = await designResolveStrategy.loadArtifacts(state);
+
+    expect(result.figmaFileKey).toBe('abcDEF123');
+    expect(result.figmaStartNodeId).toBeUndefined();
+  });
+
+  it('seeds figmaFileKey for explicit=true gen-ui-figma jobs (regression: `azure-keeping-cairn`)', async () => {
+    // Exact reproduction of the regression: a new job submitted with
+    // `actionMetadata.explicit=true, intent='gen-ui-figma'`. In production
+    // this short-circuits common detect (`detect/index.ts:113`) so
+    // `designDetectStrategy.run()` never executes and the b808153b fix —
+    // which seeded the keys *inside* strategy.run — was bypassed entirely.
+    // After the SSOT move into resolve, this scenario MUST surface
+    // `figmaFileKey` regardless of what detect chooses to do downstream.
+    const { designResolveStrategy } = await import(
+      '../src/agents/architect/graph/design/nodes/resolve'
+    );
+
+    const figmaUrl =
+      'https://www.figma.com/design/explicit42/AzureKeepingCairn?node-id=10-20';
+    const state = harness.buildState({
+      figmaUrl,
+      actionMetadataExplicit: true,
+      resolvedActionMode: 'modify',
+    });
+    const result = await designResolveStrategy.loadArtifacts(state);
+
+    expect(result.figmaFileKey).toBe('explicit42');
+    expect(result.figmaStartNodeId).toBe('10:20');
+  });
+
+  it('omits figma key fields when figma.json is empty (no Figma file configured)', async () => {
+    const { designResolveStrategy } = await import(
+      '../src/agents/architect/graph/design/nodes/resolve'
+    );
+
+    // No URL provided — harness leaves figma.json absent so loadArtifacts
+    // creates an empty figma config (createEmptyFigmaData), which has no
+    // `file` field. Seeding must skip in this branch.
+    const state = harness.buildState({ figmaUrl: undefined, resolvedActionMode: 'modify' });
+    const result = await designResolveStrategy.loadArtifacts(state);
+
+    expect(result.figmaFileKey).toBeUndefined();
+    expect(result.figmaStartNodeId).toBeUndefined();
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// designDetectStrategy — MCP reachability is detect's only figma
+// concern. URL parsing has moved to resolve (SSOT), so detect must
+// neither claim nor mutate fileKey/startNodeId.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe('designDetectStrategy — figma MCP reachability (no key seeding)', () => {
+  it('does not re-seed figma keys when MCP is reachable (resolve owns the SSOT)', async () => {
+    const { designDetectStrategy } = await import(
+      '../src/agents/architect/graph/design/nodes/detect/strategy'
+    );
+
+    const figmaUrl =
+      'https://www.figma.com/design/z08MukCkkOSGXiITeSRj5V/-%EB%94%94%EC%9E%90%EC%9D%B8?node-id=5087-4505';
+    const state = buildDetectState({ figmaUrl, llmResponse: designUiDetectResponse });
     const result = await designDetectStrategy.run(state);
 
     expect(mockCheckLocalMCPAvailability).toHaveBeenCalled();
     expect(result.inferred?.intentId).toBeTruthy();
     expect(result.stateUpdates?.designError).toBeUndefined();
 
-    // The contract: detect MUST seed both keys so the worker subgraph's
-    // `buildContext` can hand them off to `ctx.figmaFileKey` /
-    // `ctx.figmaStartNodeId`. Without these, the common figma handler's
-    // ctx-only check rejects every tool call.
-    expect(result.stateUpdates?.figmaFileKey).toBe(expected.fileKey);
-    expect(result.stateUpdates?.figmaStartNodeId).toBe(expected.nodeId);
-  });
-
-  it('seeds figmaFileKey alone when the URL has no node-id (startNodeId is optional)', async () => {
-    const { designDetectStrategy } = await import(
-      '../src/agents/architect/graph/design/nodes/detect/strategy'
-    );
-
-    const figmaUrl = 'https://www.figma.com/design/abcDEF123/My-Design';
-    const state = buildState({ figmaUrl, llmResponse: designUiDetectResponse });
-    const result = await designDetectStrategy.run(state);
-
-    expect(result.stateUpdates?.figmaFileKey).toBe('abcDEF123');
+    // Detect's responsibility is MCP reachability. Seeding lives in
+    // resolve, so detect MUST NOT clobber or re-derive these keys —
+    // doing so would re-introduce the b808153b coverage gap by
+    // splitting ownership across two nodes.
+    expect(result.stateUpdates?.figmaFileKey).toBeUndefined();
     expect(result.stateUpdates?.figmaStartNodeId).toBeUndefined();
-    expect(result.stateUpdates?.designError).toBeUndefined();
   });
 
-  it('does not seed figmaFileKey when MCP is unreachable (detect short-circuits with designError before URL parsing)', async () => {
+  it('surfaces designError when MCP is unreachable (figma key concerns are independent)', async () => {
     mockCheckLocalMCPAvailability.mockImplementationOnce(async () => false);
 
     const { designDetectStrategy } = await import(
@@ -164,10 +359,12 @@ describe('designDetectStrategy — figmaFileKey propagation (design-ui)', () => 
 
     const figmaUrl =
       'https://www.figma.com/design/unreachable123/Test?node-id=1-2';
-    const state = buildState({ figmaUrl, llmResponse: designUiDetectResponse });
+    const state = buildDetectState({ figmaUrl, llmResponse: designUiDetectResponse });
     const result = await designDetectStrategy.run(state);
 
     expect(result.stateUpdates?.designError?.type).toBe('figma_mcp_unavailable');
+    // Detect never touches figma keys regardless of MCP outcome —
+    // resolve already populated them upstream from figma.json.
     expect(result.stateUpdates?.figmaFileKey).toBeUndefined();
     expect(result.stateUpdates?.figmaStartNodeId).toBeUndefined();
   });
@@ -177,7 +374,7 @@ describe('designDetectStrategy — figmaFileKey propagation (design-ui)', () => 
 // Resume path — designResolveStrategy.onResume must rehydrate fileKey/
 // startNodeId from figmaConfig.file. The graph routing in graph.ts:817-823
 // skips detect on resume, so without this rehydrate every legacy
-// checkpoint (saved before the detect-side fix when state.figmaFileKey
+// checkpoint (saved before the resolve-side fix when state.figmaFileKey
 // was undefined and JSON.stringify dropped it) keeps resurrecting the
 // same "Figma fileKey not configured" failure forever.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
