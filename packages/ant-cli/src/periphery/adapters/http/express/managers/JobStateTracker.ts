@@ -2,6 +2,7 @@ import { JobStatus, LogEntry } from '../../../../../core/ports';
 import { UserContext } from '../../../../../core/types/user';
 import { logger } from '../../../../../utils/logger';
 import { JobExecutionState, TaskQueueSnapshot, JobProjectMapping } from '../types';
+import type { SessionableJobType } from '@ant/shared';
 
 /**
  * JobStateTracker
@@ -52,13 +53,16 @@ export class JobStateTracker {
   }
 
   /**
-   * Initialize job tracking
+   * Initialize job tracking. `jobType` is the full sessionable union
+   * (`code | design | learn | plan | visual`) so non-task jobs (plan /
+   * visual) are tracked alongside decomposable jobs without silent
+   * downcast (Invariant I1).
    */
   initializeJob(
     jobId: string, 
     projectId: string, 
     featureName: string, 
-    jobType: 'design' | 'code' | 'learn',
+    jobType: SessionableJobType,
     userContext?: UserContext
   ): void {
     // Initialize job status

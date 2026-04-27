@@ -1,4 +1,5 @@
 import { useStore } from '@/domain/store';
+import { selectPausedNonTaskJob } from '@/domain/store/selectors';
 import { API_BASE, addChatUserMessage, resolveChoice } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
 import { deriveFromIntent } from '@ant/shared';
@@ -131,6 +132,12 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     const storeActionMetadata = useStore.getState().actionMetadata;
     const hasMetadata = storeActionMetadata && Object.keys(storeActionMetadata).length > 0;
 
+    // Invariant I1 — paused non-task job (plan / visual on a clarify
+    // card) overrides every other jobType/agent source. The store's
+    // selectedJobType + actionMetadata.intent may have drifted to 'code'
+    // since the card was issued (zonal-dreaming-novel regression).
+    const pausedNonTask = selectPausedNonTaskJob(useStore.getState());
+
     try {
       const { turnId } = await addChatUserMessage(
         selectedProject,
@@ -144,8 +151,8 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
       const derived = hasMetadata && storeActionMetadata.intent
         ? deriveFromIntent(storeActionMetadata.intent)
         : null;
-      const resolvedAgent = derived?.agent || selectedAgent;
-      const resolvedJobType = derived?.jobType || selectedJobType;
+      const resolvedAgent = pausedNonTask?.agent ?? derived?.agent ?? selectedAgent;
+      const resolvedJobType = pausedNonTask?.jobType ?? derived?.jobType ?? selectedJobType;
 
       const jobExecution = executeCodeJob({
         projectId: selectedProject,

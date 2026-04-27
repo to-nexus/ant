@@ -12,6 +12,27 @@ import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state
 import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
 import { appendJobSnapshotToSession } from '../../routes/helpers/sessionCleanup';
+import { isNonTaskJob } from '@ant/shared';
+
+/**
+ * Invariant I2 — `cancelled` choice cards (Resume / Dismiss UI) must not
+ * be emitted for a clarify-paused non-task job. The clarify card itself
+ * IS the paused-state UI; emitting a cancelled card alongside it produces
+ * conflicting affordances. The gate is intentionally narrow (non-task
+ * AND `awaitingClarify === true`) so decomposable jobs and non-task jobs
+ * paused for OTHER reasons (recursion limit / user_stopped / fatal error)
+ * keep the existing cancelled-card flow.
+ *
+ * Exported so the gate is unit-testable in isolation from the rest of
+ * cleanupJobState's heavyweight dependencies.
+ */
+export function shouldSuppressCancelledCardForClarify(
+  jobType: string,
+  sessionState: { awaitingClarify?: boolean } | undefined | null,
+): boolean {
+  if (!isNonTaskJob(jobType)) return false;
+  return sessionState?.awaitingClarify === true;
+}
 
 /**
  * JobCleanupManager
@@ -419,39 +440,54 @@ export class JobCleanupManager {
         // sources (StaleJobRecovery, BullMQ stalled handler, etc.)
         // can't double-emit.
         if (interruptionReason && mapping.projectId && mapping.featureName) {
-          // Backstop for the cancelled-turn streaming overlay: sweep every
-          // active TURN_BUFFER for this feature and broadcast empty
-          // snapshots so the FE projector clears its `streamingBuffers`
-          // mirror. Best-effort — never throws or blocks the cancelled
-          // card emission below. Covers the SIGTERM 1.8s race where a
-          // parallel worker exits before
-          // `LLMResponseService.finalizeMessage(true)` can run.
-          try {
-            await this.deps.chatService.clearAllTurnBuffers(
+          // Invariant I2 — see `shouldSuppressCancelledCardForClarify`
+          // for the gate contract and rationale.
+          const suppressedByClarify = shouldSuppressCancelledCardForClarify(
+            jobType,
+            sessionData?.state,
+          );
+
+          if (suppressedByClarify) {
+            logger.info(
+              `Suppressing cancelled card for clarify-paused non-task job (Invariant I2)`,
+              { component: 'JobCleanupManager', jobId },
+              { jobType, reason: interruptionReason.reason },
+            );
+          } else {
+            // Backstop for the cancelled-turn streaming overlay: sweep
+            // every active TURN_BUFFER for this feature and broadcast
+            // empty snapshots so the FE projector clears its
+            // `streamingBuffers` mirror. Best-effort — never throws or
+            // blocks the cancelled card emission below. Covers the
+            // SIGTERM 1.8s race where a parallel worker exits before
+            // `LLMResponseService.finalizeMessage(true)` can run.
+            try {
+              await this.deps.chatService.clearAllTurnBuffers(
+                mapping.projectId,
+                mapping.featureName,
+                effectiveUserContext,
+              );
+            } catch (err) {
+              logger.warn(
+                `clearAllTurnBuffers backstop failed`,
+                { component: 'JobCleanupManager', jobId },
+                err,
+              );
+            }
+
+            await this.deps.chatService.appendChoicePresentedCancelled(
               mapping.projectId,
               mapping.featureName,
-              effectiveUserContext,
-            );
-          } catch (err) {
-            logger.warn(
-              `clearAllTurnBuffers backstop failed`,
-              { component: 'JobCleanupManager', jobId },
-              err,
+              jobId,
+              {
+                reason: interruptionReason.reason,
+                message: interruptionReason.message,
+                jobType: jobType as any,
+                designErrorType: (interruptionReason.metadata as any)?.designErrorType,
+                userContext: effectiveUserContext,
+              },
             );
           }
-
-          await this.deps.chatService.appendChoicePresentedCancelled(
-            mapping.projectId,
-            mapping.featureName,
-            jobId,
-            {
-              reason: interruptionReason.reason,
-              message: interruptionReason.message,
-              jobType: jobType as any,
-              designErrorType: (interruptionReason.metadata as any)?.designErrorType,
-              userContext: effectiveUserContext,
-            },
-          );
         }
       } catch (error) {
         logger.error(`Error in cleanupJobState`, { 
