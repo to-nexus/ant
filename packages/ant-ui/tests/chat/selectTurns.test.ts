@@ -26,7 +26,7 @@
  * "올바른 fold 시맨틱" 을 verify 한다.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import type {
   ChatLine,
   ChatStatusLine,
@@ -39,11 +39,18 @@ import type {
 } from '@ant/shared';
 import {
   selectTurns,
+  __resetTurnsCacheForTests,
   type StreamingBuffer,
   type BufferKey,
   MAIN_WORKER_SCOPE,
   makeBufferKey,
 } from '../../src/domain/store/selectors/chat';
+
+// The selector keeps a module-level cache so previous tests would
+// otherwise pollute incremental-cache assertions in later tests.
+beforeEach(() => {
+  __resetTurnsCacheForTests();
+});
 
 // ─────────────────────────────────────────────────────────────────────
 // Fixture helpers
@@ -838,13 +845,185 @@ describe('selectTurns — cache identity', () => {
     expect(a).toBe(b);
   });
 
-  it('returns a fresh Turn[] when the chatEvents reference changes (new array, same content)', () => {
+  it('returns the same Turn[] reference when chatEvents has new array ref but identical contents (incremental-cache contract)', () => {
+    // Phase 11.1: the projector switched to a per-turn incremental
+    // cache. When events content is identical (every element ref-equal),
+    // every per-turn slot is reused, so the root `Turn[]` reference is
+    // preserved too. This is what lets `React.memo` on `TurnItem` bail
+    // out across `replaceChatEvents` snapshots that match the cache.
     const evA: ChatLine[] = [userTurn('t-1'), assistantMessage('t-1')];
     const evB: ChatLine[] = [...evA];
 
     const a = selectTurns({ chatEvents: evA, streamingBuffers: emptyBuffers() });
     const b = selectTurns({ chatEvents: evB, streamingBuffers: emptyBuffers() });
 
+    expect(a).toBe(b);
+  });
+
+  it('returns a fresh Turn[] when content actually differs between calls', () => {
+    const evA: ChatLine[] = [userTurn('t-1'), assistantMessage('t-1', 'first')];
+    const evB: ChatLine[] = [userTurn('t-2'), assistantMessage('t-2', 'second')];
+
+    const a = selectTurns({ chatEvents: evA, streamingBuffers: emptyBuffers() });
+    const b = selectTurns({ chatEvents: evB, streamingBuffers: emptyBuffers() });
+
     expect(a).not.toBe(b);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. Incremental projection cache (Phase 11.1 — chat-render-jank-fix)
+// ─────────────────────────────────────────────────────────────────────
+//
+// The projector splits its work per-turn so an SSE delta on one turn
+// (or one streaming buffer) never re-folds the entire history. Each
+// untouched turn keeps its previous `Turn` reference, which is what
+// `React.memo` on `TurnItem` reads to bail out for the rest of the
+// viewport. These tests pin those reference-stability invariants.
+// ─────────────────────────────────────────────────────────────────────
+
+describe('selectTurns — incremental cache (per-turn reference stability)', () => {
+  it('preserves Turn references for older turns when a new turn is appended', () => {
+    const u1 = userTurn('t-1');
+    const m1 = assistantMessage('t-1', 'reply 1');
+    const evA: ChatLine[] = [u1, m1];
+    const a = selectTurns({ chatEvents: evA, streamingBuffers: emptyBuffers() });
+    expect(a).toHaveLength(1);
+
+    // Append a new turn — old turn must keep its reference.
+    const u2 = userTurn('t-2');
+    const m2 = assistantMessage('t-2', 'reply 2');
+    const evB: ChatLine[] = [...evA, u2, m2];
+    const b = selectTurns({ chatEvents: evB, streamingBuffers: emptyBuffers() });
+
+    expect(b).toHaveLength(2);
+    expect(b[0]).toBe(a[0]); // t-1 reference preserved
+    expect(b).not.toBe(a);
+  });
+
+  it('preserves Turn references for unaffected turns when a new line lands in an existing turn', () => {
+    const u1 = userTurn('t-1');
+    const m1 = assistantMessage('t-1', 'reply 1');
+    const u2 = userTurn('t-2');
+    const m2 = assistantMessage('t-2', 'reply 2');
+    const evA: ChatLine[] = [u1, m1, u2, m2];
+    const a = selectTurns({ chatEvents: evA, streamingBuffers: emptyBuffers() });
+    expect(a).toHaveLength(2);
+
+    // New line in t-2 only — t-1 must keep its ref, t-2 must change.
+    const m2b = status('t-2', 'card-x', 'read', { filePath: 'x.ts' });
+    const evB: ChatLine[] = [...evA, m2b];
+    const b = selectTurns({ chatEvents: evB, streamingBuffers: emptyBuffers() });
+
+    expect(b[0]).toBe(a[0]);
+    expect(b[1]).not.toBe(a[1]);
+  });
+
+  it('preserves Turn references when only the streamingBuffers reference changes but no buffer entry differs', () => {
+    const evA: ChatLine[] = [userTurn('t-1'), assistantMessage('t-1')];
+    const buf: StreamingBuffer = {
+      turnId: 't-1',
+      workerScope: MAIN_WORKER_SCOPE,
+      text: 'hello',
+    };
+    const buffersA: Record<BufferKey, StreamingBuffer> = {
+      [makeBufferKey('t-1', MAIN_WORKER_SCOPE)]: buf,
+    };
+    const buffersB: Record<BufferKey, StreamingBuffer> = { ...buffersA };
+
+    const a = selectTurns({ chatEvents: evA, streamingBuffers: buffersA });
+    const b = selectTurns({ chatEvents: evA, streamingBuffers: buffersB });
+
+    // Same buffer entry, different outer ref — Turn ref must be reused.
+    expect(b[0]).toBe(a[0]);
+  });
+
+  it('only re-projects the affected turn when a streaming-delta updates one turn`s buffer', () => {
+    const u1 = userTurn('t-1');
+    const m1 = assistantMessage('t-1', 'reply 1');
+    const u2 = userTurn('t-2');
+    const events: ChatLine[] = [u1, m1, u2];
+
+    const t1Buf: StreamingBuffer = { turnId: 't-1', workerScope: MAIN_WORKER_SCOPE, text: 'a' };
+    const t2Buf: StreamingBuffer = { turnId: 't-2', workerScope: MAIN_WORKER_SCOPE, text: 'b' };
+    const buffersA: Record<BufferKey, StreamingBuffer> = {
+      [makeBufferKey('t-1', MAIN_WORKER_SCOPE)]: t1Buf,
+      [makeBufferKey('t-2', MAIN_WORKER_SCOPE)]: t2Buf,
+    };
+    const a = selectTurns({ chatEvents: events, streamingBuffers: buffersA });
+
+    // Update only t-2's buffer (mimics applyStreamingDelta on t-2).
+    const t2BufNext: StreamingBuffer = { ...t2Buf, text: 'b+' };
+    const buffersB: Record<BufferKey, StreamingBuffer> = {
+      ...buffersA,
+      [makeBufferKey('t-2', MAIN_WORKER_SCOPE)]: t2BufNext,
+    };
+    const b = selectTurns({ chatEvents: events, streamingBuffers: buffersB });
+
+    expect(b[0]).toBe(a[0]); // t-1 untouched
+    expect(b[1]).not.toBe(a[1]); // t-2 reprojected
+    expect(b[1].sections[0].activeText).toBe('b+');
+  });
+
+  it('full-rebuild path triggers when chatEvents is no longer a prefix of the previous array', () => {
+    const evA: ChatLine[] = [userTurn('t-1'), assistantMessage('t-1', 'hello')];
+    const a = selectTurns({ chatEvents: evA, streamingBuffers: emptyBuffers() });
+
+    // Brand new history (e.g. clearChatEvents → new turn) — no prefix
+    // overlap, full reproject is forced.
+    const evB: ChatLine[] = [userTurn('t-2'), assistantMessage('t-2', 'hi')];
+    const b = selectTurns({ chatEvents: evB, streamingBuffers: emptyBuffers() });
+
+    expect(b).not.toBe(a);
+    expect(b[0].turnId).toBe('t-2');
+  });
+
+  it('drops orphan turns whose buffers were cleared between calls', () => {
+    const orphanBuf: StreamingBuffer = {
+      turnId: 't-orphan',
+      workerScope: MAIN_WORKER_SCOPE,
+      thinking: 'pre-flight',
+    };
+    const buffersA: Record<BufferKey, StreamingBuffer> = {
+      [makeBufferKey('t-orphan', MAIN_WORKER_SCOPE)]: orphanBuf,
+    };
+    const a = selectTurns({ chatEvents: [], streamingBuffers: buffersA });
+    expect(a).toHaveLength(1);
+    expect(a[0].turnId).toBe('t-orphan');
+
+    // Real user_turn lands AND orphan buffer is gone.
+    const u = userTurn('t-real');
+    const b = selectTurns({ chatEvents: [u], streamingBuffers: emptyBuffers() });
+    expect(b).toHaveLength(1);
+    expect(b[0].turnId).toBe('t-real');
+  });
+
+  it('500-turn append: 499 unchanged Turn refs are preserved', () => {
+    // Build a 500-turn history (one user_turn + one assistant_message
+    // per turn). This is the long-session smoke case from the plan §검증
+    // — we don't time the call (CI flake risk) but verify the
+    // structural invariant that drives the win: every untouched turn
+    // must reuse its previous Turn reference, so React.memo on
+    // `TurnItem` bails out for 499 of 500 viewport candidates.
+    const TURN_COUNT = 500;
+    const events: ChatLine[] = [];
+    for (let i = 0; i < TURN_COUNT; i++) {
+      events.push(userTurn(`t-${i}`, `prompt ${i}`));
+      events.push(assistantMessage(`t-${i}`, `reply ${i}`));
+    }
+    const a = selectTurns({ chatEvents: events, streamingBuffers: emptyBuffers() });
+    expect(a).toHaveLength(TURN_COUNT);
+
+    // Append one new turn — only the trailing Turn should differ.
+    const eventsB: ChatLine[] = [
+      ...events,
+      userTurn(`t-${TURN_COUNT}`),
+      assistantMessage(`t-${TURN_COUNT}`),
+    ];
+    const b = selectTurns({ chatEvents: eventsB, streamingBuffers: emptyBuffers() });
+    expect(b).toHaveLength(TURN_COUNT + 1);
+    for (let i = 0; i < TURN_COUNT; i++) {
+      expect(b[i]).toBe(a[i]);
+    }
   });
 });

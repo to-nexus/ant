@@ -4,7 +4,7 @@
  * Displays file creation/editing/deletion with incremental content updates
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Ban } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
@@ -19,7 +19,7 @@ interface FileCardProps {
   isStreaming?: boolean;
 }
 
-export function FileCard({ line, pending, operation }: FileCardProps) {
+export const FileCard = memo(function FileCard({ line, pending, operation }: FileCardProps) {
   const content = lineToContent(line, pending);
   const { t } = useTranslation('chat');
   const contentRef = useRef<HTMLDivElement>(null);
@@ -332,5 +332,5 @@ export function FileCard({ line, pending, operation }: FileCardProps) {
       )}
     </div>
   );
-}
+});
 

@@ -3,6 +3,7 @@
  * Used for: tool_action (mkdir, etc.)
  */
 
+import { memo } from 'react';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { lineToContent } from './cards/lineToContent';
 
@@ -11,7 +12,7 @@ interface ToolActionCardProps {
   pending?: PendingCardSnapshot;
 }
 
-export function ToolActionCard({ line, pending }: ToolActionCardProps) {
+export const ToolActionCard = memo(function ToolActionCard({ line, pending }: ToolActionCardProps) {
   const content = lineToContent(line, pending);
   const icon = content.metadata?.actionIcon || '🔧';
   const toolContent = content.content;
@@ -23,4 +24,4 @@ export function ToolActionCard({ line, pending }: ToolActionCardProps) {
       <span className="font-medium">{toolContent}</span>
     </div>
   );
-}
+});

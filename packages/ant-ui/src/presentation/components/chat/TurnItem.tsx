@@ -27,7 +27,7 @@
  * carry a `ChatStatusLine` payload internally.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type {
@@ -64,7 +64,13 @@ interface TurnItemProps {
   turn: Turn;
 }
 
-export function TurnItem({ turn }: TurnItemProps) {
+// Memo: `selectTurns` keeps a `Turn` reference stable across SSE deltas
+// that don't touch this turn (per-turn incremental cache). Combined
+// with `SectionStack`/`AssistantTextBlock` memos below, the entire
+// subtree of an unaffected turn bails out of reconciliation — which is
+// what unblocks long-session jank with `react-virtuoso` already in
+// place.
+export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
   return (
     <div className="w-full">
       {turn.user && <UserBubble user={turn.user} />}
@@ -79,13 +85,13 @@ export function TurnItem({ turn }: TurnItemProps) {
       </div>
     </div>
   );
-}
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // User bubble
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function UserBubble({ user }: { user: ChatUserTurnLine }) {
+const UserBubble = memo(function UserBubble({ user }: { user: ChatUserTurnLine }) {
   return (
     <div className="w-full bg-blue-50 dark:bg-blue-900/20">
       <div className="px-4 py-3 rounded-lg">
@@ -98,13 +104,22 @@ function UserBubble({ user }: { user: ChatUserTurnLine }) {
       </div>
     </div>
   );
-}
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Section stack
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function SectionStack({ turnId, section }: { turnId: string; section: TurnSection }) {
+// Memo: section ref is per-turn-stable thanks to `selectTurns`'s
+// per-turn cache, so an SSE delta in a sibling section doesn't
+// re-render this one.
+const SectionStack = memo(function SectionStack({
+  turnId,
+  section,
+}: {
+  turnId: string;
+  section: TurnSection;
+}) {
   const isStreaming = !!(
     section.activeText ||
     section.activeThinking ||
@@ -173,7 +188,7 @@ function SectionStack({ turnId, section }: { turnId: string; section: TurnSectio
       })}
     </div>
   );
-}
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Section header — surfaces `worker-N#task-K` identity for clarity
@@ -299,7 +314,17 @@ function buildRenderItems(section: TurnSection): RenderEntry[] {
 // Render-entry dispatch
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function RenderEntry({ entry, isStreaming }: { entry: RenderEntry; isStreaming: boolean }) {
+// Memo: most parent re-renders happen because ONE entry in the parent's
+// `renderItems` changed. With `useMemo([section])` returning a stable
+// renderItems when section is unchanged, every entry ref is also stable
+// — so this memo lets unaffected entries skip reconciliation entirely.
+const RenderEntry = memo(function RenderEntry({
+  entry,
+  isStreaming,
+}: {
+  entry: RenderEntry;
+  isStreaming: boolean;
+}) {
   switch (entry.kind) {
     case 'thinking':
       return <ShimmerCard variant="thinking" line={entry.line} />;
@@ -310,7 +335,7 @@ function RenderEntry({ entry, isStreaming }: { entry: RenderEntry; isStreaming: 
     case 'choice':
       return <ChoiceCard presented={entry.presented} resolved={entry.resolved} />;
   }
-}
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Status card dispatch — one switch on `statusType`
@@ -322,7 +347,11 @@ interface StatusCardDispatchProps {
   isStreaming: boolean;
 }
 
-function StatusCardDispatch({ line, pending, isStreaming }: StatusCardDispatchProps) {
+const StatusCardDispatch = memo(function StatusCardDispatch({
+  line,
+  pending,
+  isStreaming,
+}: StatusCardDispatchProps) {
   switch (line.statusType) {
     case 'placeholder':
       return isStreaming ? <ShimmerCard variant="placeholder" /> : null;
@@ -432,13 +461,13 @@ function StatusCardDispatch({ line, pending, isStreaming }: StatusCardDispatchPr
       // visibility instead of silently swallowing.
       return null;
   }
-}
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Pending card overlay (for cards that have not yet finalized)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function PendingStatusCard({
+const PendingStatusCard = memo(function PendingStatusCard({
   pending,
   turnId,
   workerScope,
@@ -474,13 +503,89 @@ function PendingStatusCard({
     [pending, turnId, workerScope],
   );
   return <StatusCardDispatch line={line} pending={pending} isStreaming={isStreaming} />;
-}
+});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Markdown assistant text — used by both finalized message and live overlay
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function AssistantTextBlock({ text, isStreaming }: { text: string; isStreaming: boolean }) {
+// Hoisted to module scope so each `AssistantTextBlock` render reuses
+// the same `components` reference. Combined with `React.memo` below,
+// this means a finalized assistant message never re-runs the markdown
+// pipeline once it has been parsed.
+const REMARK_PLUGINS = [remarkGfm];
+
+const MARKDOWN_COMPONENTS = {
+  pre: ({ node, className, children, ...props }: any) => (
+    <pre
+      className="my-2 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap break-words"
+      style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+      {...props}
+    >
+      {children}
+    </pre>
+  ),
+  code: ({ node, className, children, ...props }: any) => {
+    const hasLanguage = /language-\w+/.test(className || '');
+    const isMultiLine = String(children).includes('\n');
+    if (hasLanguage || isMultiLine) {
+      return <code className={className} {...props}>{children}</code>;
+    }
+    return (
+      <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono break-words" {...props}>
+        {children}
+      </code>
+    );
+  },
+  a: ({ node, children, ...props }: any) => (
+    <a className="text-blue-600 dark:text-blue-400 hover:underline break-words" target="_blank" rel="noopener noreferrer" {...props}>
+      {children}
+    </a>
+  ),
+  table: ({ node, children, ...props }: any) => (
+    <div className="overflow-x-auto my-4">
+      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  th: ({ node, children, ...props }: any) => (
+    <th className="px-4 py-2 bg-gray-50 dark:bg-gray-800 text-left text-xs font-semibold break-words" {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ node, children, ...props }: any) => (
+    <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-sm break-words" {...props}>
+      {children}
+    </td>
+  ),
+  p: ({ node, children, ...props }: any) => (
+    <div className="my-2 leading-relaxed break-words" {...props}>
+      {children}
+    </div>
+  ),
+  h1: ({ node, children, ...props }: any) => (
+    <h1 className="text-xl font-bold my-3 break-words" {...props}>{children}</h1>
+  ),
+  h2: ({ node, children, ...props }: any) => (
+    <h2 className="text-lg font-bold my-2 break-words" {...props}>{children}</h2>
+  ),
+  h3: ({ node, children, ...props }: any) => (
+    <h3 className="text-base font-bold my-2 break-words" {...props}>{children}</h3>
+  ),
+};
+
+// Memo: the most expensive render in a long chat is `ReactMarkdown` on
+// long finalized messages. Once a turn is finalized, `text` and
+// `isStreaming` (false) never change, so this bails out of every
+// future re-render.
+const AssistantTextBlock = memo(function AssistantTextBlock({
+  text,
+  isStreaming,
+}: {
+  text: string;
+  isStreaming: boolean;
+}) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevContentLengthRef = useRef(0);
 
@@ -502,74 +607,13 @@ function AssistantTextBlock({ text, isStreaming }: { text: string; isStreaming: 
         className="prose prose-sm dark:prose-invert max-w-none w-full select-text"
         style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
       >
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            pre: ({ node, className, children, ...props }: any) => (
-              <pre
-                className="my-2 px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm font-mono whitespace-pre-wrap break-words"
-                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                {...props}
-              >
-                {children}
-              </pre>
-            ),
-            code: ({ node, className, children, ...props }: any) => {
-              const hasLanguage = /language-\w+/.test(className || '');
-              const isMultiLine = String(children).includes('\n');
-              if (hasLanguage || isMultiLine) {
-                return <code className={className} {...props}>{children}</code>;
-              }
-              return (
-                <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-sm font-mono break-words" {...props}>
-                  {children}
-                </code>
-              );
-            },
-            a: ({ node, children, ...props }: any) => (
-              <a className="text-blue-600 dark:text-blue-400 hover:underline break-words" target="_blank" rel="noopener noreferrer" {...props}>
-                {children}
-              </a>
-            ),
-            table: ({ node, children, ...props }: any) => (
-              <div className="overflow-x-auto my-4">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700" {...props}>
-                  {children}
-                </table>
-              </div>
-            ),
-            th: ({ node, children, ...props }: any) => (
-              <th className="px-4 py-2 bg-gray-50 dark:bg-gray-800 text-left text-xs font-semibold break-words" {...props}>
-                {children}
-              </th>
-            ),
-            td: ({ node, children, ...props }: any) => (
-              <td className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 text-sm break-words" {...props}>
-                {children}
-              </td>
-            ),
-            p: ({ node, children, ...props }: any) => (
-              <div className="my-2 leading-relaxed break-words" {...props}>
-                {children}
-              </div>
-            ),
-            h1: ({ node, children, ...props }: any) => (
-              <h1 className="text-xl font-bold my-3 break-words" {...props}>{children}</h1>
-            ),
-            h2: ({ node, children, ...props }: any) => (
-              <h2 className="text-lg font-bold my-2 break-words" {...props}>{children}</h2>
-            ),
-            h3: ({ node, children, ...props }: any) => (
-              <h3 className="text-base font-bold my-2 break-words" {...props}>{children}</h3>
-            ),
-          }}
-        >
+        <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
           {text}
         </ReactMarkdown>
       </div>
     </div>
   );
-}
+});
 
 // Re-export TypingIndicator for callers that previously imported it from
 // MessageItem (used by ChatHistory's footer typing indicator).
