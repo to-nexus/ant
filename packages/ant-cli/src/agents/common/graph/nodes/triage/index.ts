@@ -53,23 +53,23 @@ function loadTriageTemplates(): { base: HandlebarsTemplateDelegate; rules: strin
 
 /**
  * Check whether the workspace has input materials for the target job.
- * Directive is excluded — it is always present when the user types anything.
+ *
+ * SSOT: delegates to the AgentRegistry which loads per-mode prerequisites from
+ * `core/data/triage/jobs/*.yaml`. The detected mode is used so that mode-specific
+ * required prerequisites (e.g. `spec` mode of design only needs has_directive)
+ * are respected instead of a hardcoded union.
+ *
+ * Caller must ensure `AgentRegistry.initialize()` has been awaited.
  */
 export function hasTargetJobPrerequisites(targetJob: string, ws: WorkspaceState): boolean {
-  switch (targetJob) {
-    case 'plan':
-      return true;
-    case 'design':
-      return ws.hasPrd || ws.hasAssets || ws.hasFigmaConfig;
-    case 'code':
-      return ws.hasDesignDoc || ws.hasCodebase;
-    case 'learn':
-      return ws.hasCodebase;
-    case 'visual':
-      return true;
-    default:
-      return true;
-  }
+  const job = AgentRegistry.getJob(targetJob);
+  if (!job) return true;
+
+  const modeId = AgentRegistry.detectMode(targetJob, ws);
+  if (!modeId) return true;
+
+  const status = AgentRegistry.checkPrerequisites(targetJob, modeId, ws);
+  return status.allRequiredMet;
 }
 
 /**
@@ -213,7 +213,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     const targetJob = triageResult.suggestedJob;
 
     if (!hasTargetJobPrerequisites(targetJob, workspaceState)) {
-      console.log(`🛡️ [Triage] Guard: ${currentJob}→${targetJob} redirect blocked — no target job prerequisites in workspace`);
+      console.log(`🛡️ [Triage] Guard: ${currentJob}→${targetJob} redirect blocked — target job prerequisites not satisfied (per ${targetJob}.yaml)`);
       triageResult.workStatus = 'proceed';
       triageResult.suggestedJob = undefined;
       triageResult.suggestedAgent = undefined;
@@ -222,12 +222,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
       triageResult.redirectReason = undefined;
       triageResult.displayMessage = undefined;
 
-      const guardMessages: Record<string, string> = {
-        code: '코드 작업을 시작하려면 디자인 문서가 필요합니다. 먼저 디자인 작업을 진행해주세요.',
-        plan: 'PRD가 워크스페이스에 없습니다. PRD를 먼저 작성해주세요.',
-      };
-      triageResult._guardMessage = guardMessages[targetJob]
-        || `${targetJob} 작업에 필요한 입력 자료가 워크스페이스에 없습니다.`;
+      triageResult._guardMessage = `${targetJob} 작업에 필요한 입력 자료가 워크스페이스에 없습니다.`;
     }
   }
 

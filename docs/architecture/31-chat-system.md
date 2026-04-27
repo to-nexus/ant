@@ -105,8 +105,11 @@ SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지
 | 메인 그래프 (no worker) | `_main_` |
 | 병렬 worker, task 외부 | `worker-N` |
 | 병렬 worker, task 실행 중 | `worker-N#task-K` |
+| cancelled choice card | `_cancelled_:{cardId}` |
 
 `task-K`는 `task.id`(또는 `task.name` fallback)로 안정적이다. `TaskWorker.executeTask`가 `runInWorkerScope(workerId, …)` 안에서 `runInTaskScope(taskKey, …)`로 task 별 scope를 overlay한다. 이 두 단계 wrapping 덕에 LLM emit, file ops, tool 호출 등 모든 chat 이벤트가 자동으로 정확한 식별자를 부여받는다.
+
+`_cancelled_:{cardId}`는 AsyncLocalStorage가 아니라 `ChatService.appendChoicePresentedCancelled`가 직접 stamping하는 합성 scope다. cardId가 pauseSeq를 포함하므로 한 turn 안에서 여러 번 pause-resume이 발생해도 각 cancellation이 독립 섹션으로 분리된다. 짝이 되는 `choice_resolved`는 `findTurnIdByCardId`가 원본 presented 라인에서 scope를 surfacing해 동일 섹션에 머무른다.
 
 ### 왜 두 차원인가
 
@@ -119,12 +122,9 @@ SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지
 1. `_main_`은 항상 첫 위치(turn-level orchestration narrative).
 2. 그 외 섹션은 첫 이벤트 timestamp 오름차순.
 3. 동률은 `workerScope.localeCompare`로 결정.
+4. cancelled choice card는 BE에서 합성 `_cancelled_:{cardId}` scope를 받는다. 이 scope의 첫 이벤트 ts는 곧 사용자가 Stop을 누른 시점이므로 규칙 2에 의해 그 이전 worker 출력 **아래**에 자연 배치된다. 재개(`Resume`) 후 신규 worker scope의 첫 ts는 더 크므로, 추가 출력이 들어올수록 cancelled 카드는 위로 밀려나며 더 이상 "스크롤 최상단 고정"되지 않는다.
 
-cancelled choice card는 별도 합성 섹션이 아니라 `_main_`로 흐른다(appender가 `workerScope`를 emit하지 않음). resolved 후 후속 worker 출력이 들어오면 새 섹션이 cancelled 카드 아래에 추가되어 더 이상 "최근 위치 고정"되지 않는다.
-
-### 호환성
-
-기존 `worker-N` 형식 chat.jsonl 로그는 그대로 단일 섹션으로 분리되며, 시간순 정렬만 추가 적용된다. 두 형식이 같은 turn에 섞여 있어도 섹션 키 단위로 분리되므로 안전하다.
+`TurnItem.parseScope`는 `_main_`과 `_cancelled_:` 프리픽스 두 합성 scope의 worker label 헤더를 억제한다. cancelled 카드 자체가 시각적으로 self-contained ChoiceCard이므로 scope 라벨 노출은 노이즈일 뿐이다.
 
 ## Choice Card
 
