@@ -19,8 +19,53 @@ import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createDesignToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import { CACHEABLE_TOOLS } from '../../../../../common/tool/toolCatalog';
-import type { ToolExecutionContext, ToolExecutionEvent } from '../../../../../common/tool/types';
+import type { ToolExecutionContext, ToolSideEffect } from '../../../../../common/tool/types';
 import { createDesignToolHandlers } from './designToolAdapters';
+import { pickAssetsRoot } from './handlers';
+import { isFigmaPipeline, isFigmaDataPopulated } from '@ant/shared';
+
+const FIGMA_CONNECTION_LOST_THRESHOLD = 3;
+
+/**
+ * Apply figma sideEffects to the worker graph state. Exported for unit
+ * tests; production callers go through the `afterExecution` hook below.
+ *
+ * Counter policy:
+ * - `figmaSuccess`        → reset `_figmaConsecutiveErrors` to 0
+ * - `figmaError(connection|environment)` → increment counter; flip
+ *   `_figmaConnectionLost` once the threshold is crossed AND the active
+ *   intent is figma-bound (else the flag would fire for code jobs that
+ *   just happened to call figma without a real figma pipeline).
+ * - `figmaError(data|rate_limit|other)`  → no counter change. `data`
+ *   is per-request (e.g. invalid nodeId); `rate_limit` is re-thrown as
+ *   `FigmaRateLimitError` upstream and handled globally; `other` is the
+ *   safety bucket and avoids false-positive interrupts.
+ */
+export function applyFigmaSideEffects(
+  state: DesignGraphState,
+  sideEffects: readonly ToolSideEffect[] | undefined,
+): void {
+  if (!sideEffects || sideEffects.length === 0) return;
+  for (const effect of sideEffects) {
+    switch (effect.type) {
+      case 'figmaSuccess':
+        state._figmaConsecutiveErrors = 0;
+        break;
+      case 'figmaError': {
+        if (effect.category === 'connection' || effect.category === 'environment') {
+          state._figmaConsecutiveErrors = (state._figmaConsecutiveErrors || 0) + 1;
+          const inFigmaPipeline =
+            isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig)) ||
+            state.figmaAvailable === true;
+          if (inFigmaPipeline && (state._figmaConsecutiveErrors ?? 0) >= FIGMA_CONNECTION_LOST_THRESHOLD) {
+            state._figmaConnectionLost = true;
+          }
+        }
+        break;
+      }
+    }
+  }
+}
 
 const tokenManager = new TokenBudgetManager();
 const designToolResultManager = new ToolResultManager(tokenManager, {
@@ -49,6 +94,12 @@ const toolNodeFn = createToolNode<DesignGraphState>({
   },
 
   buildContext(state): ToolExecutionContext {
+    const assetsRoot = pickAssetsRoot({
+      workspaceDomain: (state.workspaceConfig as { domain?: any } | undefined)?.domain,
+      racDomain: state.resolvedAction?.domain,
+      intentGroup: state.resolvedAction?.intentGroup,
+    });
+
     return {
       fileSystem: state.deps?.fileSystem as any,
       chatStatus: createChatStatusReporter(),
@@ -65,6 +116,9 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       figmaAvailable: state.figmaAvailable,
       figmaConfig: state.figmaConfig,
       userId: state.context?.userId,
+      organizationId: state.context?.organizationId,
+      taskId: state.currentTask?.id,
+      assetsRoot,
       sourceDocuments: state.artifacts,
       uiAssetsList: state.uiAssetsList,
       existingDesignDocs: state.existingDesignDocs,
@@ -111,6 +165,13 @@ const toolNodeFn = createToolNode<DesignGraphState>({
           }).catch(() => { /* non-blocking */ });
         } catch { /* non-blocking */ }
       }
+
+      // Figma error counter — drives Gate 1.5 in workerCheckTaskStatus.
+      // Throwaway-state mutation in the figma handler (the previous design)
+      // never reached worker graph state; the SSOT is now the sideEffect
+      // emitted by `common/tool/handlers/figma.ts` and consumed here via
+      // `applyFigmaSideEffects`. Counter policy is documented on that helper.
+      applyFigmaSideEffects(state, event.result.sideEffects);
     },
 
   },

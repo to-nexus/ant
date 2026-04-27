@@ -93,6 +93,18 @@ export async function handleEditFile(
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
       await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
+      // Feature-workspace contract: edits under `outputs/` are surfaced
+      // as unseen artifacts in the UI. Path-prefix gate only (no job-type
+      // branch) so it stays consistent with `handleCreateFile` and the
+      // ingestion paths in `chat.routes.ts` / `transfer.routes.ts`.
+      if (
+        'addUnseenArtifacts' in ctx.fileTreeUpdate &&
+        resolved.displayPath.startsWith('outputs/')
+      ) {
+        (ctx.fileTreeUpdate as any).addUnseenArtifacts(
+          ctx.project, ctx.featureFolder, [resolved.displayPath]
+        );
+      }
     }
 
     // If the edit produced the same content, emit fileNotChanged so the

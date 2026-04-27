@@ -1326,6 +1326,26 @@
       "render-call"
     ]
   },
+  "jobs/plan/shared/design-handoff-table": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/plan/shared/external-asset-citation": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/plan/shared/identifier-convention": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/plan/shared/pipeline-input-sufficiency": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/shared/injections/action-context": {
     "sources": [
       "auto-injection",
