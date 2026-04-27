@@ -367,11 +367,13 @@ const L = {
   spec: { en: 'spec-*.md', ko: 'spec-*.md' },
   plan: { en: 'PRD', ko: '기획서' },
   prd: { en: 'prd.md', ko: 'prd.md' },
+  gdd: { en: 'gdd.md', ko: 'gdd.md' },
   visual: { en: 'Generated Images', ko: '생성 이미지' },
 } as const;
 
 const HL = {
   prd: { en: 'PRD / Requirements', ko: '기획서' },
+  gdd: { en: 'GDD / Game Design Document', ko: 'GDD / 게임 기획서' },
   systemDesign: { en: 'System Design Documents', ko: '시스템 설계 문서' },
   uiDesign: { en: 'UI Design Documents', ko: 'UI 설계 문서' },
   gameArtDesign: { en: 'Game Art Design Documents (game-art-tokens / game-art-assets / game-art-spec)', ko: '게임 아트 설계 문서 (game-art-tokens / game-art-assets / game-art-spec)' },
@@ -428,7 +430,89 @@ const GAME_ART_OUTPUTS: OutputSpec[] = [
 ];
 const SPEC_OUTPUTS: OutputSpec[] = [output('spec-', '.md', L.spec)];
 
+/**
+ * Plan job output candidates. Service domain emits `prd.md`; game domain
+ * emits `gdd.md`. The matrix lists both so FE / detect tooling that does
+ * not yet know the domain can hide both files from the SOURCES_DIR
+ * listing (`excludeFiles`). Resolve-time domain selection happens via
+ * `getPlanOutputs(domain)` — callers MUST funnel through that helper
+ * once the domain is known so that the actual `target.outputs` is the
+ * single domain-correct entry.
+ */
+const PRD_OUTPUT: OutputSpec = output('prd', '.md', L.prd, false);
+const GDD_OUTPUT: OutputSpec = output('gdd', '.md', L.gdd, false);
+const PLAN_OUTPUTS: OutputSpec[] = [PRD_OUTPUT, GDD_OUTPUT];
+
 import type { IntentId } from './actions';
+import type { Domain } from './detection';
+
+/**
+ * Resolve the single plan-job output for a given workspace domain.
+ *
+ * - `domain === 'game'` → `gdd.md`
+ * - `domain === 'service'` or `undefined` → `prd.md`
+ *
+ * Callers (planner resolve, common detect) MUST funnel `target.outputs`
+ * through this helper once the domain is known so the system prompt's
+ * "Target Path" section receives a single domain-correct filename.
+ */
+export function getPlanOutputs(domain: Domain | undefined): OutputSpec[] {
+  if (domain === 'game') return [GDD_OUTPUT];
+  return [PRD_OUTPUT];
+}
+
+/**
+ * Filenames the plan job may emit across all domains. Used by ref
+ * slots and listings that need to hide canonical plan outputs from the
+ * source listing without knowing the active domain.
+ */
+export const PLAN_OUTPUT_FILENAMES = ['prd.md', 'gdd.md'] as const;
+
+/**
+ * Domain-aware canonical filename for the plan-job output.
+ *
+ * Service / unknown domain → `'prd.md'`. Game domain → `'gdd.md'`.
+ * Use this whenever a single canonical filename is needed (target
+ * inference, fallback paths, log strings).
+ */
+export function getCanonicalPlanFilename(domain: Domain | undefined): string {
+  return domain === 'game' ? 'gdd.md' : 'prd.md';
+}
+
+/**
+ * Workspace-relative path for the canonical plan-job output, by domain.
+ *
+ * Always returns `inputs/sources/<filename>` where `<filename>` is the
+ * domain-canonical name from `getCanonicalPlanFilename`.
+ */
+export function getCanonicalPlanPath(domain: Domain | undefined): string {
+  return `inputs/sources/${getCanonicalPlanFilename(domain)}`;
+}
+
+/**
+ * Selects the best existing plan-job output filename from a list of
+ * source filenames, preferring the domain-canonical filename if
+ * present. Returns `undefined` when neither `prd.md` nor `gdd.md` is in
+ * the list.
+ *
+ * Resolution order:
+ *   1. domain-canonical filename (gdd.md for game, prd.md otherwise)
+ *   2. the other plan filename (cross-domain leftover from a previous
+ *      session that the user has not migrated)
+ */
+export function pickExistingPlanFilename(
+  sourceFileNames: readonly string[] | undefined,
+  domain: Domain | undefined,
+): string | undefined {
+  if (!sourceFileNames || sourceFileNames.length === 0) return undefined;
+  const canonical = getCanonicalPlanFilename(domain);
+  if (sourceFileNames.includes(canonical)) return canonical;
+  // Fall back to the other plan filename if it happens to exist (e.g.
+  // legacy game project with prd.md authored before the gdd.md split).
+  const other = canonical === 'prd.md' ? 'gdd.md' : 'prd.md';
+  if (sourceFileNames.includes(other)) return other;
+  return undefined;
+}
 
 // Tier presets per intent group — Phase 2 (D23: 'domain' removed from tiers).
 // Domain is workspace-level (D22) and acts as the matrix gate, not a wizard
@@ -455,9 +539,13 @@ const SERVICE_FULL = { stack: 'fullstack' as const };
 const MATRIX: Record<IntentId, ConfigSlots> = {
   // ── Plan ──────────────────────────────────
   'gen-plan': {
-    refs: [refDir(SOURCES_DIR, L.sources, { required: false, humanLabel: HL.prd, excludeFiles: ['prd.md'] })],
+    refs: [refDir(SOURCES_DIR, L.sources, { required: false, humanLabel: HL.prd, excludeFiles: [...PLAN_OUTPUT_FILENAMES] })],
     context: [],
-    target: { kind: 'generate', dir: SOURCES_DIR, outputs: [output('prd', '.md', L.prd, false)] },
+    // Both candidates listed so resolve-time helpers (`getPlanOutputs`)
+    // and FE listings know the canonical filenames per domain. The
+    // resolve nodes (planner / common detect) collapse this to a single
+    // entry once the domain is known.
+    target: { kind: 'generate', dir: SOURCES_DIR, outputs: PLAN_OUTPUTS },
     chatRequiresRefs: false,
     basis: { tiers: PLAN_TIERS },
   },
@@ -520,7 +608,13 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
-    basis: { tiers: UI_TIERS },
+    // figma.json (locked ref) is the visual authority — the figma source
+    // already encodes every visualTier decision the wizard would expose.
+    // Surfacing visualTier here would force the user through a wizard
+    // whose answers figma immediately overrides. BE matches: the
+    // `hasUiDoc=true` runtime suppressor in `tier-matrix.ts` already
+    // closes visualTier post-RAC; this just aligns the static gate.
+    basis: { tiers: ['gameContentTier'] },
   },
   'gen-ui-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
@@ -547,7 +641,10 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
-    basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
+    // figma.json (locked ref) is the game-art authority — same reasoning
+    // as `gen-ui-figma` above. gameContentTier (genre / coreLoop) stays
+    // because figma cannot decide gameplay axes; user must pick.
+    basis: { tiers: ['gameContentTier'], defaults: { game: GAME_FE_PHASER } },
   },
   'gen-game-art-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
@@ -793,11 +890,25 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
  * `outputs/documents/prd.md`. Routing the explicit branch through this
  * helper restores parity with the infer branch and the FE.
  */
-export function getDefaultTargetPaths(intent: IntentId): string[] | undefined {
+export function getDefaultTargetPaths(
+  intent: IntentId,
+  domain?: Domain,
+): string[] | undefined {
   const slots = getConfigSlots(intent);
   const target = slots?.target;
   if (!target || target.kind !== 'generate') return undefined;
   if (target.outputs.length === 0) return [target.dir];
+
+  // Plan job is domain-aware: `MATRIX['gen-plan'].target.outputs` lists
+  // both prd.md and gdd.md as candidates so listings (FE excludeFiles)
+  // can hide both. The actual default path for a given workspace is the
+  // single domain-canonical one — service → prd.md, game → gdd.md,
+  // unknown → service semantics.
+  if (intent === 'gen-plan') {
+    const planOutputs = getPlanOutputs(domain);
+    return planOutputs.map(o => `${target.dir}/${formatOutputSpec(o)}`);
+  }
+
   return target.outputs.map(o => `${target.dir}/${formatOutputSpec(o)}`);
 }
 

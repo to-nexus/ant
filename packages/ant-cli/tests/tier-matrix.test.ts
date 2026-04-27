@@ -20,9 +20,12 @@ import {
   TIER_KEYS,
   type TierKey,
   getConfigSlots,
+  INTENT_DEFINITIONS,
   type IntentId,
   type Domain,
   type BasisSlotConfig,
+  uiSourceOfPath,
+  gameArtSourceOfPath,
 } from '@ant/shared';
 
 const ALL_DOMAINS: ReadonlyArray<Domain> = ['service', 'game'];
@@ -103,11 +106,16 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     { intent: 'gen-sys-be', tiers: ['techTier', 'gameContentTier'] },
     { intent: 'gen-sys-full', tiers: ['techTier', 'gameContentTier'] },
     { intent: 'rev-sys', tiers: [] },
-    { intent: 'gen-ui-figma', tiers: ['visualTier', 'gameContentTier'] },
+    // figma source is the visualTier authority — wizard tier intentionally
+    // elided so the user is not forced to override what figma already
+    // decides on action-tab entry.
+    { intent: 'gen-ui-figma', tiers: ['gameContentTier'] },
     { intent: 'gen-ui-desc', tiers: ['visualTier', 'gameContentTier'] },
     { intent: 'rev-ui', tiers: [] },
     // Phase 2 (D17/D28) — game-art design intents. tiers omits visualTier (D18).
-    { intent: 'gen-game-art-figma', tiers: ['gameArtTier', 'gameContentTier'] },
+    // figma source is the gameArtTier authority — wizard tier elided
+    // (mirrors `gen-ui-figma`).
+    { intent: 'gen-game-art-figma', tiers: ['gameContentTier'] },
     { intent: 'gen-game-art-desc', tiers: ['gameArtTier', 'gameContentTier'] },
     { intent: 'rev-game-art', tiers: [] },
     { intent: 'gen-code-sys', tiers: ['techTier', 'visualTier', 'gameArtTier', 'gameContentTier'] },
@@ -176,6 +184,41 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     for (const intent of NON_LOCKED) {
       const slot = getConfigSlots(intent)?.basis;
       if (slot) expect(slot.lockedStack).toBeUndefined();
+    }
+  });
+
+  // Locked authority-source invariant.
+  //
+  // When an intent fixes a UI / game-art *authority* file as a locked ref
+  // (e.g. `gen-ui-figma` / `gen-game-art-figma` with `figma.json` locked),
+  // the source itself decides the matching tier. Surfacing that tier in
+  // the wizard would force the user through a step whose answers the
+  // authority source immediately overrides, and would race the FE
+  // routing (`decideActionsStepAfterIntent` is called before the
+  // auto-select effect in `ActionConfigView` populates `actionMetadata.refs`,
+  // so the `hasUiDoc=true` runtime suppressor cannot fire in time —
+  // see [tierRouting.ts](packages/ant-ui/src/application/hooks/features/tierRouting.ts)).
+  //
+  // SSOT for the authority-path classification: `uiSourceOfPath` /
+  // `gameArtSourceOfPath` from canonical.ts.
+  it('intents with a locked file ref to a UI / game-art authority path do not declare the matching tier', () => {
+    for (const def of INTENT_DEFINITIONS) {
+      const slots = getConfigSlots(def.id);
+      if (!slots) continue;
+      const lockedAuthorityFiles = slots.refs.filter(
+        (r) => r.locked && r.type === 'file' && r.path,
+      );
+      const tiers = slots.basis?.tiers ?? [];
+      for (const r of lockedAuthorityFiles) {
+        if (uiSourceOfPath(r.path)) {
+          expect(tiers, `${def.id} locks ${r.path} (UI authority) but exposes visualTier`)
+            .not.toContain('visualTier' as TierKey);
+        }
+        if (gameArtSourceOfPath(r.path)) {
+          expect(tiers, `${def.id} locks ${r.path} (game-art authority) but exposes gameArtTier`)
+            .not.toContain('gameArtTier' as TierKey);
+        }
+      }
     }
   });
 });
