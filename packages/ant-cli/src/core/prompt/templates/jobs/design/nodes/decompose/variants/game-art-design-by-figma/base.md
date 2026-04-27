@@ -81,11 +81,15 @@ assets and spec. Figma component / frame ids scope each category task.
 
 ## 📥 INPUT CONTEXT
 
-{{#if directiveContext}}
-### Directive
+### Requirements ({{documentName}})
 
-{{{directiveContext}}}
-{{/if}}
+{{> jobs/design/nodes/decompose/shared/input-context}}
+
+---
+
+## ⚖️ GDD ↔ FIGMA CONFLICT POLICY
+
+{{> jobs/design/shared/asset-conflict-policy}}
 
 ---
 

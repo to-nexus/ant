@@ -156,3 +156,63 @@ describe('Design overlay — game-axis GDD citation guidance', () => {
     expect(src).toMatch(/EN ↔ Figma Alignment/);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────
+// PRD/GDD ↔ Figma conflict policy (F2 follow-up)
+//
+// Pins the role-aware conflict matrix. Both figma decompose templates
+// MUST cite the shared policy partial, the partial itself MUST publish
+// the visual / behavior / ambiguous axes plus the role-asymmetric rule,
+// and the plan-side external-asset-citation partial MUST cross-link
+// downstream so plan and design have a single SSOT for resolving
+// PRD/GDD-vs-Figma disagreements.
+// ──────────────────────────────────────────────────────────────────────
+
+describe('Asset conflict policy — partial + cross-links (F2)', () => {
+  const POLICY_PARTIAL = 'jobs/design/shared/asset-conflict-policy.md';
+
+  it('asset-conflict-policy partial publishes the visual / behavior / ambiguous axis matrix', () => {
+    const src = read(POLICY_PARTIAL);
+    expect(src).toMatch(/Figma wins for visual/);
+    expect(src).toMatch(/PRD\/GDD wins for behavior/);
+    expect(src).toMatch(/Ambiguous|cite-first/);
+    expect(src).toMatch(/§Open Questions/);
+  });
+
+  it('asset-conflict-policy partial covers the role-asymmetric case (ref vs context)', () => {
+    const src = read(POLICY_PARTIAL);
+    // The role-aware matrix MUST tell the LLM that an explicit
+    // user demotion (ref vs context) overrides the axis split.
+    expect(src).toMatch(/role="ref"/);
+    expect(src).toMatch(/role="context"/);
+    expect(src).toMatch(/asymmetric|Asymmetric/i);
+    // Ref must be authoritative over context regardless of axis.
+    expect(src).toMatch(/(ref|`role="ref"`).*authoritative/i);
+  });
+
+  it('asset-conflict-policy partial provides refine-mode stale-source detection', () => {
+    const src = read(POLICY_PARTIAL);
+    expect(src).toMatch(/refine[- ]mode|rev-(?:ui|game-art)/i);
+    expect(src).toMatch(/stale/i);
+    expect(src).toMatch(/timestamp|commit|last_modified/i);
+  });
+
+  it('ui-design-by-figma/base.md cites the shared asset-conflict-policy partial', () => {
+    const src = read('jobs/design/nodes/decompose/variants/ui-design-by-figma/base.md');
+    expect(src).toMatch(
+      /\{\{>\s*jobs\/design\/shared\/asset-conflict-policy/,
+    );
+  });
+
+  it('game-art-design-by-figma/base.md cites the shared asset-conflict-policy partial', () => {
+    const src = read('jobs/design/nodes/decompose/variants/game-art-design-by-figma/base.md');
+    expect(src).toMatch(
+      /\{\{>\s*jobs\/design\/shared\/asset-conflict-policy/,
+    );
+  });
+
+  it('plan/shared/external-asset-citation.md cross-links the design conflict policy', () => {
+    const src = read('jobs/plan/shared/external-asset-citation.md');
+    expect(src).toMatch(/jobs\/design\/shared\/asset-conflict-policy/);
+  });
+});

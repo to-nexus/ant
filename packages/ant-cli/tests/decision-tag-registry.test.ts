@@ -106,7 +106,7 @@ describe('parseDecisionTags — invalid bodies', () => {
   });
 });
 
-describe('parseDecisionTags — genre × coreLoop matrix gate (I9 — D31-revised v8)', () => {
+describe('parseDecisionTags — genre × coreLoop matrix gate (I9 — D31-revised v9)', () => {
   it('drops coreLoop when LLM emits a pair outside GENRE_CORELOOP_MATRIX (cardSolitaire × survive)', () => {
     const r = parseDecisionTags('<gameContentTier>genre=cardSolitaire,coreLoop=survive</gameContentTier>');
     // cardSolitaire only admits [solve, collect] per matrix.

@@ -55,6 +55,6 @@ When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / 
 - **Border radius**: 6–10px on panels (matching the card corners), 999px on action buttons. Sharp corners feel cold against the felt.
 - **Focus ring / interaction tone**: warm — 200ms gold-tone fade on hover, gentle press depression on click. Card-flip animation is the win-state celebration.
 
-### Genre affinity (D32-revised v8 — guidance, not a hard gate)
+### Genre affinity (guidance, not a hard gate)
 
-`cardClassic` is the 1st-class match for `cardSolitaire` (the canonical Solitaire tone). It works as an unusual choice for `match3` only when the project explicitly themes "playing cards as match tiles". `slidingPuzzle`, `arcadePaddle`, and `arcadeSnake` are mismatches — the table-and-chairs context fights those genres' verbs.
+`cardClassic` is the 1st-class match for `cardSolitaire` (the canonical Solitaire tone). It works as an unusual choice for `match3` only when the project explicitly themes "playing cards as match tiles". `slidingPuzzle`, `arcadePaddle`, `arcadeSnake`, and `crowdRunner` are mismatches — the table-and-chairs context fights those genres' verbs (auto-advance + crowd dynamics in particular do not read as a card table).

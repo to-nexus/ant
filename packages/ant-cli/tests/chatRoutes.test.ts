@@ -78,6 +78,10 @@ class FakeStateStore implements Partial<StateStorePort> {
     this.pauseSeqByTurn.set(turnId, next);
     return next;
   }
+
+  async getCurrentPauseSeq(turnId: string): Promise<number> {
+    return this.pauseSeqByTurn.get(turnId) ?? 0;
+  }
   async clearTurnBuffer(): Promise<void> {}
   async clearTurnBufferPendingCard(): Promise<void> {}
   async appendToTurnBuffer(): Promise<void> {}

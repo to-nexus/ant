@@ -6,7 +6,7 @@ This overlay sharpens **how genre + coreLoop reach into system design** — Doma
 
 ### 1. Genre → Domain rule reducer shape
 
-The genre registry (D31-revised v9 — `match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` / `crowdRunner`) names which Domain shapes are likely. The design job MUST commit the rule reducer's **state model**, **authoritative inputs**, and **event emission** before the code job materialises it. Domain event names are **abstract verbs** at this layer; concrete sub-events (e.g. which modifier op fired in `crowdRunner`) are rolled up into the abstract verb so the reducer admits any twist on the genre's axes without renaming events:
+The genre registry (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake` / `crowdRunner`) names which Domain shapes are likely. The design job MUST commit the rule reducer's **state model**, **authoritative inputs**, and **event emission** before the code job materialises it. Domain event names are **abstract verbs** at this layer; concrete sub-events (e.g. which modifier op fired in `crowdRunner`) are rolled up into the abstract verb so the reducer admits any twist on the genre's axes without renaming events:
 
 | Genre | Rule reducer state model | Authoritative inputs | Domain events emitted (abstract verbs) |
 |---|---|---|---|
@@ -26,7 +26,7 @@ Reducer constraints (FPOP):
 
 ### 2. CoreLoop → simulation cycle granularity
 
-The coreLoop registry (D31-revised v9 — `solve` / `collect` / `survive`) names the inner cycle the design MUST schedule. Combined with `gameArtTier.motionPattern` (Phase 4), it sets the simulation tick policy:
+The coreLoop registry (`solve` / `collect` / `survive`) names the inner cycle the design MUST schedule. Combined with `gameArtTier.motionPattern` (Phase 4), it sets the simulation tick policy:
 
 | coreLoop | One cycle | Tick / cycle schedule |
 |---|---|---|
@@ -36,7 +36,7 @@ The coreLoop registry (D31-revised v9 — `solve` / `collect` / `survive`) names
 
 The design overlay names the **policy** (which cycles are tick-bound vs input-bound); the engine partial supplies the API names; the code job materialises both.
 
-### 3. Genre × coreLoop matrix gate (D31-revised v9 — I9)
+### 3. Genre × coreLoop matrix gate (I9)
 
 The matrix is enforced upstream by `GENRE_CORELOOP_MATRIX` + parser drop — the design job always sees a legal pair:
 

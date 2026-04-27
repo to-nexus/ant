@@ -1088,6 +1088,12 @@
       "basis-registry"
     ]
   },
+  "jobs/design/nodes/decompose/shared/input-context": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
   "jobs/design/nodes/decompose/variants/game-art-design-by-desc/base": {
     "sources": [
       "render-call"
@@ -1285,6 +1291,11 @@
     ]
   },
   "jobs/design/nodes/revise/variants/default/rules": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
+  "jobs/design/shared/asset-conflict-policy": {
     "sources": [
       "partial-ref"
     ]

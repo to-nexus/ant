@@ -14,7 +14,7 @@ canvas-side methods.
 
 ### 1. Responsibility — what game-art design IS
 
-Game-art design produces three artifacts under `outputs/design/game-art/ant/` (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`):
+Game-art design produces three artifacts under `outputs/design/game-art/ant/` (sub-sourced canonical, mirrors `outputs/design/ui/ant/`):
 
 - **`game-art-tokens.json`** — palette / silhouette / lighting / motion-tone
   derived from `gameArtTier.concept`. **D28** — also carries HUD CSS
@@ -64,7 +64,7 @@ and let the user place the production asset themselves.
 
 When the game needs assets above the css-only ceiling, art design
 records `kind: 'external'` entries pointing into `inputs/assets/game/`
-(D19-revised — service / game pools are domain-1:1 separated, I6).
+(service / game pools are domain-1:1 separated, I6).
 The user (or, in Phase 5+, a `visual` job) is responsible for placing
 the actual file at the recorded path:
 

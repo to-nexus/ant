@@ -19,13 +19,14 @@ When this variant is active, `game-art-assets.json`'s `entities` category lists 
 
 Beyond 4 entries → `entityCatalog === 'rich'`. Below 2 entries → `entityCatalog === 'minimal'`.
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
 - `match3` → standard typically introduces a "special tile" entity beyond the gem (line-clear / bomb / color-bomb sprite). Each special is its own entry.
-- `slidingPuzzle` → in puzzle-class subgenres with NPCs (Sokoban with a pusher character) the hero shape is its own entry.
+- `slidingPuzzle` → in tile-puzzle subgenres with NPCs (Sokoban with a pusher character) the hero shape is its own entry.
 - `cardSolitaire` → standard is unusual — the canonical card frame is a single shape; only adopt when the project introduces companion characters (e.g. a dealer mascot).
 - `arcadePaddle` → standard introduces brick variants (multi-hit brick, power-up brick), each a distinct entry.
 - `arcadeSnake` → standard introduces obstacle variants (wall segment, moving hazard) and a distinct food shape.
+- `crowdRunner` → standard is canonical — the unit silhouette + at least one threat silhouette + the gate / pickup affordance are distinct entries; modifier-gate variants (op-flavoured glyphs) are entity-catalog rows when their visual identity matters.
 
 ### Code-time consequences
 

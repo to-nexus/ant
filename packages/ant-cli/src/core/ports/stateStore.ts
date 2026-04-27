@@ -560,6 +560,20 @@ export interface StateStorePort {
    */
   nextPauseSeq(turnId: string): Promise<number>;
 
+  /**
+   * Peek (GET-only, no INCR) the current pause sequence for a turn.
+   * Returns 0 when the key is absent / unset (no cancellation has
+   * occurred for this turn yet).
+   *
+   * Why peek-only: the cancelled-cardId path
+   * (`ChatService.appendChoicePresentedCancelled`) owns the INCR side
+   * of `pauseSeq`. Workers consume the *current* value to compose
+   * cycle-aware worker scopes (`worker-N#task-K#p{n}`) — see chat-SSOT
+   * §섹션-정렬 rule 4. Calling INCR here would race against the
+   * cancellation path and skip values.
+   */
+  getCurrentPauseSeq(turnId: string): Promise<number>;
+
   // ============================================
   // Pending Choice Management (for Cloud Mode)
   // ============================================

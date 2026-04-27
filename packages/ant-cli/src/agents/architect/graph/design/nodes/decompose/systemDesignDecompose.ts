@@ -324,43 +324,31 @@ export async function decomposeSystemDesign(
   ctx: DecomposeContext
 ): Promise<DesignGraphState> {
   const {
-    buildAllSourceDocs,
-    buildSourceFileIndex,
-    getSourceDocsSize,
     DECOMPOSE_SOURCE_THRESHOLD,
     READ_SOURCE_DOC_TOOL,
     decomposeWithToolLoop,
     handleReadSourceFile,
   } = await import('../docGen/sourceSelector');
+  const { buildDecomposeContext } = await import('./buildDecomposeContext');
 
   const pool = new ArtifactPoolView(state.artifacts || []);
   const sourceRecord = pool.sourcesAsRecord();
 
-  // Hybrid strategy: small projects → inline, large projects → tool-use (RAG)
-  const sourceDocsSize = pool.sourcesSize();
-  const useToolMode = sourceDocsSize > DECOMPOSE_SOURCE_THRESHOLD;
-
-  const designContent = pool.firstDesignContent();
-  let spec: string;
-  if (useToolMode) {
-    console.log(`📊 [SystemDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const fileIndex = buildSourceFileIndex(sourceRecord);
-    const specParts = [
-      `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to architecture decisions, service boundaries, and task decomposition. Prioritize files about service decomposition, bounded contexts, and domain boundaries — these determine MSA detection.`,
-      designContent ? `PREVIOUS DESIGN:\n${designContent.split('\n').slice(0, 50).join('\n')}\n...` : null,
-      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
-    ].filter(Boolean);
-    spec = specParts.join('\n\n---\n\n');
-  } else {
-    console.log(`📊 [SystemDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const allSourceDocs = buildAllSourceDocs(sourceRecord);
-    const specParts = [
-      allSourceDocs ? `SOURCE DOCUMENTS:\n${allSourceDocs}` : null,
-      designContent ? `PREVIOUS DESIGN:\n${designContent}` : null,
-      state.directive ? `DIRECTIVE:\n${state.directive}` : null
-    ].filter(Boolean);
-    spec = specParts.join('\n\n---\n\n');
-  }
+  // Role-aware partition of the RAC-derived pool. Replaces the legacy
+  // `spec` variable that flattened sources/previous-design/directive
+  // into a single string and discarded the role provenance assigned by
+  // `loadResolvedArtifacts` upstream.
+  const decomposeCtx = buildDecomposeContext(pool, state, {
+    includePreviousDesign: true,
+    toolModeThreshold: DECOMPOSE_SOURCE_THRESHOLD,
+  });
+  const useToolMode = decomposeCtx.meta.sourcesMode === 'tool';
+  console.log(
+    `📊 [SystemDecompose] sourcesMode=${decomposeCtx.meta.sourcesMode}, ` +
+    `refSize=${decomposeCtx.meta.refSize.toLocaleString()}, ` +
+    `contextSize=${decomposeCtx.meta.contextSize.toLocaleString()}, ` +
+    `threshold=${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()}`,
+  );
 
   // Extract existing system design file names (pattern-filtered, not all .md).
   // Used as a refactor-mode filename constraint only — the document CONTENT
@@ -386,7 +374,10 @@ export async function decomposeSystemDesign(
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   const prompt = await promptAdapter.render('jobs/design/nodes/decompose/variants/system-design/base', {
-    spec,
+    documentName: decomposeCtx.documentName,
+    refs: decomposeCtx.refs,
+    context: decomposeCtx.context,
+    directive: decomposeCtx.directive,
     detectedMode: jobMode,
     existingDesignFiles: promptExistingFiles,
     primaryDesignFile: promptPrimaryFile,
@@ -402,14 +393,19 @@ export async function decomposeSystemDesign(
     prompt.length,
     {
       templatePath: 'jobs/design/nodes/decompose/variants/system-design/base',
-      usedTemplates: ['jobs/design/nodes/decompose/variants/system-design/rules'],
+      usedTemplates: [
+        'jobs/design/nodes/decompose/variants/system-design/rules',
+        'jobs/design/nodes/decompose/shared/input-context',
+      ],
       injectedVariables: {
-        spec: spec ? `[${spec.length} chars]` : undefined,
+        documentName: decomposeCtx.documentName,
+        sourcesMode: decomposeCtx.meta.sourcesMode,
+        refSize: decomposeCtx.meta.refSize,
+        contextSize: decomposeCtx.meta.contextSize,
         hasSystemDesignRef: pool.hasSystemDesignRef(),
         environment: detectedEnv,
         resolvedTargetFiles,
         useToolMode,
-        sourceDocsSize,
       },
     }
   );

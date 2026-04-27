@@ -5,7 +5,7 @@ Author one category of behavior / motion / policy spec entries in
 `game-art-spec.json` from a directive only. Categories are LLM-decided
 dictionary keys (D25).
 
-### Surface scope (D24-revised v8 — sub-sourced canonical)
+### Surface scope (sub-sourced canonical)
 - Output path: `outputs/design/game-art/ant/game-art-spec.json`
 - `ant/` is the LLM-generated canonical sub-source (mirrors `outputs/design/ui/ant/`); `figma/` / `handoff/` sub-directories are Phase 5+ hooks.
 

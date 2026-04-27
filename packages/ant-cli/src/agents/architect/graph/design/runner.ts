@@ -25,7 +25,32 @@ export async function runDesignGraph(initial: DesignGraphState) {
   const app = buildDesignGraph();
   const finalLimit = loadRecursionLimit();
   console.log(`🔍 [DesignRunner] Recursion limit: ${finalLimit}`);
-  
+
+  // F3.5 — surface stale design tasks emitted by the most recent
+  // `rev-plan` impact alert. Read-only; the chat-status card is the
+  // SSOT, this helper just logs so operators see the count in console
+  // before the graph invocation begins.
+  if (initial.context?.featurePath) {
+    try {
+      const { loadStaleTasks } = await import('../../../../core/refine/loadStaleTasks');
+      const summary = await loadStaleTasks(initial.context.featurePath);
+      if (summary.affectedTaskIds.length > 0) {
+        console.log(
+          `📌 [DesignRunner] ${summary.affectedTaskIds.length} task(s) marked stale by most recent rev-plan: ` +
+          summary.affectedTaskIds.join(', '),
+        );
+      }
+      if (summary.unscannableTaskIds.length > 0) {
+        console.log(
+          `⚠️  [DesignRunner] ${summary.unscannableTaskIds.length} task(s) built without PRD/GDD as ref — ` +
+          'cross-document sync cannot speak for them.',
+        );
+      }
+    } catch (error: any) {
+      console.warn(`⚠️  [DesignRunner] loadStaleTasks failed: ${error?.message ?? error}`);
+    }
+  }
+
   // ✅ CRITICAL: Check for resumable session BEFORE invoke
   // If session has taskQueue with interruption, restore it to initial state
   if (initial.deps?.session && initial.context.featureFolder) {

@@ -56,6 +56,6 @@ When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / 
 - **Border radius**: 0–4px (sharp corners on panels and buttons). Rounded shapes feel friendly — neon-arcade is not friendly.
 - **Focus ring / interaction tone**: instant — single-frame color flash on tap, 100ms glow-pulse on focus. No scale changes; the glow does the work.
 
-### Genre affinity (D32-revised v8 — guidance, not a hard gate)
+### Genre affinity (guidance, not a hard gate)
 
-`neonArcade` is the canonical match for `arcadePaddle` (Tron paddle), `arcadeSnake` (Tron grid), and any project that wants a synthwave atmosphere. It is unusual — but legal — for `match3` (energy-crystal theme) and `cardSolitaire` (futuristic card deck). `slidingPuzzle` rarely benefits.
+`neonArcade` is the canonical match for `arcadePaddle` (Tron paddle), `arcadeSnake` (Tron grid), `crowdRunner` (Tron-tunnel runner: glowing crowd silhouettes, neon-rim gates, scanline corridor), and any project that wants a synthwave atmosphere. It is unusual — but legal — for `match3` (energy-crystal theme) and `cardSolitaire` (futuristic card deck). `slidingPuzzle` rarely benefits.

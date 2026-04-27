@@ -27,7 +27,7 @@ Natural: `solve` (every move requires reading suit / rank state and predicting d
 - **Stock-pile state indicator** — "N cards left in stockpile, M passes available" matters in stockpile-bound variants.
 - **Undo button** — solitaire's expected affordance. Commit whether unlimited or cost-bound.
 
-### Concept affinity (D32-revised v8 — guidance, not a hard gate)
+### Concept affinity (guidance, not a hard gate)
 
 Naturally readable concepts: `cardClassic` (the canonical green-felt + white card face + suit pictogram tone — the 1st-class match for this genre), `flatMinimal` (modern app-store solitaire with rounded card corners), `softPastel` (cozy variant with muted hues). `pixelRetro` works for a Game-Boy-era solitaire; `neonArcade` is unusual.
 

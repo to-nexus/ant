@@ -73,6 +73,30 @@ describe('workerScope', () => {
     });
     expect(ran).toBe(true);
   });
+
+  it('overlays `cycleSeq` when the three-arg form is used', async () => {
+    await runInWorkerScope(2, async () => {
+      await runInTaskScope('task-A', 3, async () => {
+        const inner = getWorkerScope();
+        expect(inner?.workerId).toBe(2);
+        expect(inner?.taskKey).toBe('task-A');
+        expect(inner?.cycleSeq).toBe(3);
+      });
+    });
+  });
+
+  it('elides `cycleSeq` when explicitly 0 (first-attempt schema parity)', async () => {
+    await runInWorkerScope(2, async () => {
+      await runInTaskScope('task-A', 0, async () => {
+        const inner = getWorkerScope();
+        expect(inner?.taskKey).toBe('task-A');
+        // `cycleSeq` MUST stay undefined so `getWorkerScopeKey` emits
+        // the legacy `worker-N#task-K` form (no `#p0` suffix). This
+        // preserves chat.jsonl schema continuity with pre-fix events.
+        expect(inner?.cycleSeq).toBeUndefined();
+      });
+    });
+  });
 });
 
 describe('TurnContext.getWorkerScopeKey', () => {
@@ -112,6 +136,27 @@ describe('TurnContext.getWorkerScopeKey', () => {
         expect(ctx.getWorkerScopeKey()).toBe('worker-2#task-XYZ');
       });
       expect(ctx.getWorkerScopeKey()).toBe('worker-2');
+    });
+  });
+
+  it('appends `#p{cycleSeq}` when running inside `runInTaskScope(taskKey, cycleSeq, fn)` and cycleSeq > 0', async () => {
+    const ctx = makeContext();
+    await runInWorkerScope(2, async () => {
+      await runInTaskScope('task-XYZ', 4, async () => {
+        expect(ctx.getWorkerScopeKey()).toBe('worker-2#task-XYZ#p4');
+      });
+    });
+  });
+
+  it('omits the cycle suffix when cycleSeq is 0 — preserves the two-axis legacy schema for the first attempt', async () => {
+    const ctx = makeContext();
+    await runInWorkerScope(2, async () => {
+      await runInTaskScope('task-XYZ', 0, async () => {
+        // Identical to the two-arg form so chat.jsonl events recorded
+        // before the cycle-aware fix continue to fold into the same
+        // section — no migration needed.
+        expect(ctx.getWorkerScopeKey()).toBe('worker-2#task-XYZ');
+      });
     });
   });
 });

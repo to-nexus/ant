@@ -479,7 +479,31 @@ export async function generateNode(state: PlanGraphState): Promise<Partial<PlanG
       
       const prdHistory = [...updatedHistory, { role: 'assistant', content: responseText }];
       await saveConversationToSession(state, responseText, generatedDocument, prdHistory, compactionMeta);
-      
+
+      // F3 cross-document sync — when this turn was a `rev-plan` (refactor
+      // mode) and the document on disk is the canonical plan output
+      // (`prd.md` / `gdd.md`), surface a `refine_impact` chat-status card
+      // listing design tasks that cite the rewritten sections. The hook
+      // is best-effort: failures swallow so a flaky session read never
+      // blocks the plan write itself.
+      if (planMode === 'refactor') {
+        const planFilename = path.basename(resolvedTargetRelPath);
+        if (planFilename === 'prd.md' || planFilename === 'gdd.md') {
+          try {
+            const { emitRefineImpactAlert } = await import('../../../../../../core/refine/refineImpactAlert');
+            await emitRefineImpactAlert({
+              featurePath: state.featurePath,
+              updatedDoc: planFilename,
+              llmResponse: responseText,
+              directive: state.directive,
+            });
+          } catch (error: any) {
+            console.warn(
+              `⚠️ [Planner:Generate] Failed to emit refine impact alert: ${error?.message ?? error}`,
+            );
+          }
+        }
+      }
     }
     
     if (!generatedDocument) {

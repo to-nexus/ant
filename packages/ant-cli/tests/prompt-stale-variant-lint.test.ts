@@ -5,11 +5,11 @@
  * deprecated variant vocabulary (v7 / v8 sweep):
  *
  *   - concept = `modernCasual` / `sfFantasy` / `darkFantasy` / `threeKingdoms` / `martialArts`
- *               (D32-revised v8 narrowed concept registry to 5 active variants)
+ *               (D32-revised v9 narrowed concept registry to 5 active variants — registry size unchanged from v8)
  *   - genre   = `puzzle` / `casual` / `arcade` / `action` / `platformer` / `shooter` / `rpg` / `strategy`
- *               (D31-revised v8 narrowed genre registry to 5 sub-genres)
+ *               (D31-revised v9 narrowed genre registry to 6 sub-genres — match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner)
  *   - coreLoop= `fight` / `build` / `explore`
- *               (D31-revised v8 narrowed coreLoop to 3 universals)
+ *               (D31-revised v9 narrowed coreLoop to 3 universals — solve / collect / survive)
  *   - perspective = `3d`
  *               (D30 v7 single-element registry)
  *   - gameEngine = `godot` / `cocos-creator`
@@ -321,18 +321,18 @@ describe('D45 (v9.1) — gameContentTier preamble × Registry Consistency (stric
       throw new Error(
         `D45 lint failure — ${allCitations.length} bare-word citation(s) of deprecated genre / coreLoop in gameContentTier preamble bodies.\n` +
         `These four files are uniquely vulnerable to silent registry drift because they enumerate genre / coreLoop tables — a plain-English deprecated word in a row / example is almost certainly stale.\n` +
-        `Add a Phase 5+ hook marker (one of: ${ALLOWLIST_MARKERS.join(', ')}) to the same / adjacent line OR replace with a v8/v9 registry-current variant (match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake; solve / collect / survive).\n` +
+        `Add a Phase 5+ hook marker (one of: ${ALLOWLIST_MARKERS.join(', ')}) to the same / adjacent line OR replace with a v9 registry-current variant (match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner; solve / collect / survive).\n` +
         `Citations:\n${summary}`,
       );
     }
     expect(allCitations).toEqual([]);
   });
 
-  it('camel-case compound names (slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake) are NOT flagged by the strict scan', () => {
+  it('camel-case compound names (slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake / crowdRunner) are NOT flagged by the strict scan', () => {
     // Document the regex boundary behaviour: the strict scan must NOT
-    // false-positive on the v8 active registry compounds. Use a synthetic
+    // false-positive on the registry-current compounds. Use a synthetic
     // line to verify.
-    const tmpLine = 'genres: match3, slidingPuzzle, cardSolitaire, arcadePaddle, arcadeSnake';
+    const tmpLine = 'genres: match3, slidingPuzzle, cardSolitaire, arcadePaddle, arcadeSnake, crowdRunner';
     const fakeFile = path.join(TEMPLATES_ROOT, '__nonexistent__.md');
     // Use a synthetic in-memory scan equivalent.
     const out: Citation[] = [];
@@ -343,5 +343,134 @@ describe('D45 (v9.1) — gameContentTier preamble × Registry Consistency (stric
       }
     }
     expect(out).toEqual([]);
+  });
+});
+
+// ============================================
+// Prompt-body × revision-metadata cleanliness
+// ============================================
+//
+// Why this guard exists: prompt template bodies are *vertical content* —
+// the LLM only needs the rule / decision in force at this point in time.
+// Revision-history metadata (`Dxx-revised`, `vN`, `N sub-genres`,
+// `vN — Dxx`, `Dxx vN`) is human-only bookkeeping that belongs in
+// `.ts` docstrings, registry-source comments, or changelog files —
+// putting it in `.md` prompt bodies wastes tokens and confuses the
+// model with bookkeeping it cannot act on.
+//
+// Allowed in `.md`:
+//   - decision SSOT IDs cited as a *single* token (`I9`, `D28`) for
+//     traceability — these are not version metadata.
+//   - real external library version numbers (`validator/v10`,
+//     `jsdom v27+`, `Vite v8`, Go module `v0.0.0`) — these are
+//     factual statements about external packages.
+//
+// Forbidden in `.md`:
+//   - `D31-revised`, `D32-revised`, `D24-revised`, ... (revision label)
+//   - `v8`/`v9` in registry-counting context (e.g. `v9 sub-genres`,
+//     `v9 — D31-revised`, `(v8/v9 — Dxx)`)
+//   - `N sub-genres` / `N sub-genre set` / `N v9 sub-genres` counts
+//
+// The patterns below are written narrowly so they only catch the
+// metadata shape, not external library versions or single-ID
+// citations.
+
+const REVISION_METADATA_PATTERNS: Array<{ name: string; re: RegExp }> = [
+  // `D31-revised`, `D32-revised`, `D24-revised`, ... — revision-label form
+  { name: 'D<n>-revised', re: /\bD\d+-revised\b/ },
+  // `vN — Dxx` / `vN \(Dxx` / `Dxx vN` / `(Dxx vN ...)` — version-coupled-to-decision-id metadata
+  { name: 'vN coupled with Dxx', re: /\bv\d+\s*[—\-(]\s*D\d+\b|\bD\d+\s+v\d+\b/ },
+  // `N sub-genres` / `N sub-genre set` — registry-count metadata
+  { name: 'N sub-genres count', re: /\b\d+\s+sub-genres?(?:\s+(?:set|registry|tuned))?/ },
+  // `vN sub-genres` — version-coupled count
+  { name: 'vN sub-genres', re: /\bv\d+\s+sub-genres?\b/ },
+  // `vN concepts` — version-coupled concept count
+  { name: 'vN concepts', re: /\bv\d+\s+concepts?\b/ },
+];
+
+function scanFileForRevisionMetadata(fileAbs: string, fileRel: string): Citation[] {
+  const text = fs.readFileSync(fileAbs, 'utf8');
+  const lines = text.split('\n');
+  const out: Citation[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    for (const { name, re } of REVISION_METADATA_PATTERNS) {
+      if (re.test(line)) {
+        out.push({
+          fileRel,
+          line: i + 1,
+          pattern: name,
+          text: line.trim().slice(0, 200),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+describe('Prompt body × revision metadata cleanliness', () => {
+  const templates = walkMarkdown(TEMPLATES_ROOT);
+
+  it('templates root resolves to a non-empty directory', () => {
+    expect(templates.length).toBeGreaterThan(0);
+  });
+
+  it('no prompt template body contains revision-history metadata (D<n>-revised / vN-coupled-to-Dxx / N sub-genres / vN concepts)', () => {
+    const allCitations: Citation[] = [];
+    for (const fileAbs of templates) {
+      const fileRel = path.relative(TEMPLATES_ROOT, fileAbs);
+      allCitations.push(...scanFileForRevisionMetadata(fileAbs, fileRel));
+    }
+
+    if (allCitations.length > 0) {
+      const summary = allCitations
+        .map(c => `  - ${c.fileRel}:${c.line}  [${c.pattern}]\n      ${c.text}`)
+        .join('\n');
+      throw new Error(
+        `Prompt body lint failure — ${allCitations.length} revision-metadata citation(s) found in .md template bodies.\n` +
+        `Prompt bodies are vertical content (the rule in force right now). Revision history (D<n>-revised, vN coupled with Dxx, N sub-genres counts, vN concepts) belongs in .ts docstrings / registry comments / changelogs, NOT in .md prompts.\n` +
+        `Remove the metadata token while preserving the rule statement.\n` +
+        `Citations:\n${summary}`,
+      );
+    }
+    expect(allCitations).toEqual([]);
+  });
+
+  it('the metadata regex does NOT false-positive on real external library version numbers', () => {
+    // Sanity: the regex must NOT match `validator/v10`, `jsdom v27+`,
+    // `Vite v8`, `nestjs/config v3`, Go `v0.0.0` — these are factual
+    // statements about external packages, not registry metadata.
+    const externalVersions = [
+      '`validator/v10`: tag syntax differs from v9',
+      'jsdom v27+ is pure ESM',
+      'Vite v8 / vitest v4 embed rolldown',
+      '`@nestjs/config` v3: schema validation',
+      'github.com/{org}/{project}/shared v0.0.0',
+      'Exact version (e.g., `v1.10.1`)',
+      'shadcn X v0.4 pinned because incompatible with react@19',
+    ];
+    for (const sample of externalVersions) {
+      for (const { name, re } of REVISION_METADATA_PATTERNS) {
+        expect(re.test(sample), `pattern "${name}" should NOT match "${sample}"`).toBe(false);
+      }
+    }
+  });
+
+  it('the metadata regex DOES match the patterns we are forbidding', () => {
+    // Sanity: confirm the patterns we want forbidden actually trip the
+    // regex — otherwise a future refactor that breaks the regex would
+    // silently disable the guard.
+    const forbidden = [
+      '### Concept affinity (D32-revised v9 — guidance, not a hard gate)',
+      'D31-revised v9 — 6 sub-genres',
+      'D24-revised v8 — sub-sourced canonical',
+      'these 5 v9 sub-genres are projectile-centric',
+      'all 5 v9 concepts pair naturally',
+      'D30 v7 — 3D deferred',
+    ];
+    for (const sample of forbidden) {
+      const matched = REVISION_METADATA_PATTERNS.some(({ re }) => re.test(sample));
+      expect(matched, `at least one pattern should match "${sample}"`).toBe(true);
+    }
   });
 });

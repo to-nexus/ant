@@ -156,9 +156,9 @@ export const GAME_ART_PARTICLE_PROFILE_OPTIONS: BasisOption[] = [
 ];
 
 export const GAME_ART_PROJECTILE_POLICY_OPTIONS: BasisOption[] = [
-  { id: 'none', label: { en: 'None', ko: '없음' }, description: { en: 'Zero projectiles — canonical for all 5 v8 sub-genres', ko: '투사체 없음 — v8 5종 서브 장르 기본값' }, accentColor: 'slate' },
-  { id: 'simple', label: { en: 'Simple', ko: '심플' }, description: { en: 'One projectile kind, straight-line motion, single-hit (rare in v8 sub-genres)', ko: '단일 투사체, 직선 이동, 단발 충돌 (v8 sub-genre 에선 드묾)' }, accentColor: 'amber' },
-  { id: 'complex', label: { en: 'Complex', ko: '컴플렉스' }, description: { en: 'Multi-kind + homing/spread/piercing (Phase 5+ recommended — bullet-hell, RPG)', ko: '다종 + 호밍/확산/관통 (Phase 5+ 권장 — 불릿헬, RPG)' }, accentColor: 'violet' },
+  { id: 'none', label: { en: 'None', ko: '없음' }, description: { en: 'Zero projectiles — canonical for 5 of 6 v9 sub-genres (match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake)', ko: '투사체 없음 — v9 6종 중 5종 (match3 등) 기본값' }, accentColor: 'slate' },
+  { id: 'simple', label: { en: 'Simple', ko: '심플' }, description: { en: 'One projectile kind, straight-line motion, single-hit — canonical for crowdRunner; rare in the other v9 sub-genres', ko: '단일 투사체, 직선 이동, 단발 충돌 — crowdRunner 기본값' }, accentColor: 'amber' },
+  { id: 'complex', label: { en: 'Complex', ko: '컴플렉스' }, description: { en: 'Multi-kind + homing/spread/piercing (crowdRunner with rich op universe; Phase 5+ recommended for bullet-hell / RPG super-categories)', ko: '다종 + 호밍/확산/관통 (crowdRunner 의 풍부한 op universe 또는 Phase 5+ 권장 — 불릿헬, RPG)' }, accentColor: 'violet' },
 ];
 
 export const GAME_ART_AUDIO_PROFILE_OPTIONS: BasisOption[] = [

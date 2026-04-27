@@ -15,7 +15,7 @@ Every engine partial answers the same six questions in the same order so cross-e
 5. **Scene ↔ host communication** — the documented contract for engine→host (events) and host→engine (public method / message) traffic.
 6. **Asset pipeline** — how `game-art-assets.json` entries (`kind: 'inline'` / `kind: 'external'`) become loaded textures / sounds in the engine's preload phase.
 
-### Registry scope (v7 — D29)
+### Registry scope
 
 `SUPPORTED_GAME_ENGINES` is intentionally a single-element registry today: `['phaser']`. Phaser 3 is a 2D HTML5 engine that mounts cleanly inside React; alternative engines (godot / cocos-creator / babylon / three) are deferred to Phase 5+ where the visual job's production-asset pipeline justifies the extra integration cost. The decision pipeline (decompose → emit → parse → applyToState) is unchanged — `gameEngineCandidates` still serializes the (cardinality-1) candidate list and the LLM still emits `<techTier>...|phaser</techTier>` through the normal channel.
 

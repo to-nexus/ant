@@ -48,6 +48,7 @@ import { TerminalCard } from './TerminalCard';
 import { FileCard } from './FileCard';
 import { ToolActionCard } from './ToolActionCard';
 import { ContextLoadedCard } from './ContextLoadedCard';
+import { RefineImpactCard } from './RefineImpactCard';
 import { ChoiceCard } from './choiceCard';
 import { PlanCard } from './PlanCard';
 import { TaskResponseCard } from './TaskResponseCard';
@@ -376,6 +377,9 @@ function StatusCardDispatch({ line, pending, isStreaming }: StatusCardDispatchPr
 
     case 'context_loaded':
       return <ContextLoadedCard line={line} pending={pending} />;
+
+    case 'refine_impact':
+      return <RefineImpactCard line={line} pending={pending} />;
 
     case 'tool_action':
       return <ToolActionCard line={line} pending={pending} />;
