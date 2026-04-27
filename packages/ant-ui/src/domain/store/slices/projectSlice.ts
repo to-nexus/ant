@@ -3,7 +3,6 @@ import { ProjectState } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import type { Feature } from '@/infrastructure/http/api';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import type { Domain } from '@ant/shared';
 
 export interface ProjectActions {
   setProjects: (projects: string[]) => void;
@@ -73,7 +72,6 @@ export const createProjectSlice: StateCreator<
 
   setSelectedProject: (projectId) => {
     const state = get() as any;
-    const projectDomains = (loadFromStorage(STORAGE_KEYS.PROJECT_DOMAINS) || {}) as Record<string, Domain | undefined>;
     
     // ✅ Same project re-selection: skip destructive reset
     if (projectId && projectId === state.selectedProject) {
@@ -109,6 +107,11 @@ export const createProjectSlice: StateCreator<
       // Scrub project config. git-world reset is driven by `useProjectLifecycle`
       // which observes `(selectedProject, selectedFeature)` transitions.
       if (state.clearProjectConfig) state.clearProjectConfig();
+      // D22: with no project selected we have no `WorkspaceConfig.domain`
+      // to mirror. Reset to `'service'` so the ActionsPanel matrix gates
+      // back to the default surface; the BE PUT guard inside
+      // `updateActionMetadata` no-ops on missing project config so this
+      // reset never echoes back to the (now-absent) artifact.
       if (typeof state.updateActionMetadata === 'function') {
         state.updateActionMetadata({ domain: 'service' });
       }
@@ -147,10 +150,13 @@ export const createProjectSlice: StateCreator<
       if (state.clearProjectConfig) state.clearProjectConfig();
 
       saveToStorage(STORAGE_KEYS.SELECTED_PROJECT, projectId);
-      const restoredDomain = projectDomains[projectId] === 'game' ? 'game' : 'service';
-      if (typeof state.updateActionMetadata === 'function') {
-        state.updateActionMetadata({ domain: restoredDomain });
-      }
+      // D22: do NOT seed `actionMetadata.domain` here from any client-side
+      // cache. The SSOT is `WorkspaceConfig.domain` in `config.json`, which
+      // `useProjectLifecycle` fetches via `fetchProjectConfig` and which
+      // `projectConfigSlice` then mirrors into `actionMetadata.domain` via
+      // `updateActionMetadata`. Until that fetch lands the chip stays at
+      // its current value (default `'service'`) — a one-frame visual flip
+      // that's preferable to a stale localStorage echo.
 
       // Fetch features list (async, non-blocking). Feature restoration
       // lives in `useSessionLoader` — the only sanctioned place that polls
