@@ -34,9 +34,21 @@ export function useJobExecution() {
    * @param agent - Agent type (e.g., 'architect')
    * @param jobType - Job type: 'design' | 'code' | 'learn' | 'plan'
    * @param directive - Optional override directive (for redirect from triage)
-   * @param options - Optional job options (e.g., skipTriage after proceed choice)
+   * @param options - Optional job options:
+   *   - skipTriage: bypass the triage LLM after a proceed/redirect choice
+   *   - actionMetadata: explicit ActionMetadata (intent / refs / context /
+   *     domain / explicit flag). Forwarded to `executeCodeJob` so the
+   *     code/design job can run through the explicit pipeline instead of
+   *     re-inferring slots from the directive string. Used by choice
+   *     cards that already know the intent (e.g. spec_complete →
+   *     gen-code-spec).
    */
-  const runJob = useCallback(async (agent: string, jobType: string, directive?: string, options?: { skipTriage?: boolean }) => {
+  const runJob = useCallback(async (
+    agent: string,
+    jobType: string,
+    directive?: string,
+    options?: { skipTriage?: boolean; actionMetadata?: import('@ant/shared').ActionMetadata },
+  ) => {
     const state = useStore.getState();
     const { 
       isRunning, 
@@ -141,7 +153,8 @@ export function useJobExecution() {
         agent: agent,
         chatSource: true,  // ✅ Enable Chat SSE for all jobs
         overrideDirective: directive,  // ✅ Pass directive for redirect
-        skipTriage: options?.skipTriage  // ✅ Skip triage after proceed choice
+        skipTriage: options?.skipTriage,  // ✅ Skip triage after proceed choice
+        actionMetadata: options?.actionMetadata,  // ✅ Explicit pipeline metadata (e.g. from spec_complete card)
       });
       
       // Store job execution object for stop functionality

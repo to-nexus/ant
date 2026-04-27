@@ -403,21 +403,37 @@ export function WorkingCard({ line, pending, variant }: WorkingCardProps) {
   };
 
   // Complete state — or aggregated progress state — expandable card.
+  // The wrapper is intentionally a <div role="button"> rather than <button>:
+  // it nests a TruncatableText chevron control, an image preview <button>,
+  // and other interactive children. A real <button> here would produce
+  // invalid HTML (button-in-button), which the browser silently rewrites
+  // and which can throw off react-virtuoso's row-height measurement.
+  const interactive = hasExpandable || isDownloadedAsset;
+  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!interactive) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleCardClick();
+    }
+  };
   return (
     <div className="border border-gray-200/50 dark:border-gray-700/50 rounded-lg overflow-hidden bg-transparent">
-      <button 
+      <div
+        role="button"
+        tabIndex={interactive ? 0 : -1}
+        aria-disabled={!interactive}
         className={`w-full flex items-center gap-2 px-3 py-2 transition-colors 
                     ${containerClass}
-                    ${hasExpandable || isDownloadedAsset ? 'cursor-pointer' : 'cursor-default'}`}
-        onClick={handleCardClick}
-        disabled={!hasExpandable && !isDownloadedAsset}
+                    ${interactive ? 'cursor-pointer' : 'cursor-default'}`}
+        onClick={interactive ? handleCardClick : undefined}
+        onKeyDown={handleCardKeyDown}
       >
         <WorkingCardHeader
           {...headerProps}
           isExpanded={isExpanded}
           hasExpandable={hasExpandable}
         />
-      </button>
+      </div>
 
       {/* Image preview block — screenshot (figma_called) or asset thumbnail (downloaded) */}
       {previewUrl && (

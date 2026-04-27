@@ -392,6 +392,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           .join(', ')
       : undefined,
     specClarifyBypassed: state._specClarifyBypassed === true,
+    // Spec-Clarify input signal — RAC-aware "user-pinned references absent"
+    // checkpoint counts ONLY user-explicit per-turn pins. Auto-injected
+    // role-based artifacts in `## Provided Documents` MUST NOT inflate this
+    // — they did not originate from a user choice for THIS directive. See
+    // `core/prompt/templates/jobs/code/nodes/decompose/variants/default/rules.md`
+    // → "Spec Clarify" and the matching Step 6.2 in triage rules.
+    pinnedRefCount:
+      (state.actionMetadata?.refs?.length ?? 0) +
+      (state.actionMetadata?.context?.length ?? 0),
     // Intent-level clarify gate. `<specClarify>` re-adjudicates the
     // active intent (redirect_to_design = job switch, proceed_without_spec
     // = skip source contract) and MUST NOT fire when the upstream

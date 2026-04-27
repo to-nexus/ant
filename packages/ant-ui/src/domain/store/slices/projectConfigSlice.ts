@@ -51,17 +51,28 @@ const inFlight: Map<string, Promise<void>> = new Map();
  * restores the same domain the user last toggled to. The PUT guard
  * inside `updateActionMetadata` keeps this from echoing back as another
  * write because `cfg.data.domain === patch.domain` after this set().
+ *
+ * Backfill branch: when `cfg` exists but `cfg.domain` is absent (legacy
+ * projects, or any project whose `config.json` was created without an
+ * explicit `domain` field), set the store to `'service'`. The
+ * downstream `updateActionMetadata` → `persistWorkspaceDomain` chain
+ * then PUTs the missing field to disk on first project entry, making
+ * the SSOT explicit. Subsequent entries observe `cfg.domain === 'service'`
+ * and the inverse-sync guard turns the second pass into a no-op.
  */
 function mirrorWorkspaceDomainToActionMetadata(
   state: any,
   cfg: ProjectConfig | null | undefined,
 ): void {
-  const cfgDomain = cfg?.domain;
-  if (cfgDomain !== 'service' && cfgDomain !== 'game') return;
+  if (!cfg) return;
+  const cfgDomain = cfg.domain;
+  const nextDomain = (cfgDomain === 'service' || cfgDomain === 'game')
+    ? cfgDomain
+    : 'service';
   const current = state.actionMetadata?.domain;
-  if (current === cfgDomain) return;
+  if (current === nextDomain && cfgDomain === nextDomain) return;
   if (typeof state.updateActionMetadata === 'function') {
-    state.updateActionMetadata({ domain: cfgDomain });
+    state.updateActionMetadata({ domain: nextDomain });
   }
 }
 

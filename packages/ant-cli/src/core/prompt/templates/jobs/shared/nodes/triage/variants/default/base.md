@@ -27,6 +27,12 @@ You analyze user input to determine intent and execution readiness.
 
 {{#if hasDesignDoc}}✅ Design documents exist{{else}}❌ No design documents{{/if}}
 
+## USER-PINNED REFERENCES
+
+{{#if pinnedRefCount}}✅ User explicitly pinned {{pinnedRefCount}} reference document(s) for this turn (via ActionsPanel selection or `@`-mention).{{else}}❌ User has not pinned any reference document for this turn.{{/if}}
+
+⚠️ **Important**: This section reflects ONLY user-explicit per-turn pins (`actionMetadata.refs` + `actionMetadata.context`). Workspace-wide design/spec/PRD documents that may be auto-injected later by role-based routing are NOT counted here. Use this section — not the workspace-wide document availability above — when judging "did the user supply source for this directive?" in Step 6.2.
+
 {{{jobCapabilities}}}
 
 {{#if hasSessionDigest}}

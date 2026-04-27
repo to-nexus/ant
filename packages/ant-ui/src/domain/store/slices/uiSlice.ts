@@ -588,9 +588,16 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       }
 
       // Phase 2 (D22) — domain transition policy. Centralized here so
-      // every entry point (DomainToggle, `@domain:` mention, future
-      // SSE broadcast) shares the same cleanup contract instead of
-      // each call site re-implementing it.
+      // every entry point (DomainToggle, projectConfigSlice mirror /
+      // backfill, future SSE broadcast) shares the same cleanup contract
+      // instead of each call site re-implementing it.
+      //
+      // Two-tier guard: cleanup runs only on actual domain change
+      // (game ↔ service); persist (`persistWorkspaceDomain`) runs on
+      // every domain patch and short-circuits internally when
+      // `cfg.domain === nextDomain`. Splitting the gates lets the
+      // backfill path — where store already matches `next` but disk is
+      // empty — still trigger the PUT.
       if (patch.domain !== undefined && patch.domain !== s.actionMetadata.domain) {
         // 1) game → service: drop game-only basis tiers and the gameEngine
         //    5th slot. visualTier survives — it is matrix-permitted on both
@@ -657,12 +664,14 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
             next.target = undefined;
           }
         }
+      }
 
-        // Persist into the BE artifact (`config.json`) — the SSOT for
-        // project-level domain. `fetchProjectConfig` rehydrates this on
-        // refresh / project re-entry. The PUT is intentionally
-        // fire-and-forget so the UI stays snappy; the inverse-sync guard
-        // in `persistWorkspaceDomain` keeps it idempotent.
+      // Persist runs for every domain patch (not just changes) so the
+      // disk-backfill path (mirror sees `cfg.domain` undefined, store
+      // already at default 'service') still triggers a PUT. The inner
+      // `cfg.domain === nextDomain` guard inside `persistWorkspaceDomain`
+      // makes refresh / re-entry no-op.
+      if (patch.domain !== undefined) {
         const selectedProject = s.selectedProject as string | undefined;
         const cfgData = (s.projectConfig?.data ?? undefined) as
           | ProjectConfig
