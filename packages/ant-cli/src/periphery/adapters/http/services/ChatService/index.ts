@@ -453,7 +453,14 @@ export class ChatService {
       choiceSelected: string;
       resolvedLabel: string;
       answer?: Record<string, unknown>;
-      jobType?: LogJobType;
+      /**
+       * Card-identity SSOT (Invariant I3): jobType is intentionally NOT
+       * accepted from the caller. We always lookup the original
+       * choice_presented line by cardId and reuse its jobType, so the
+       * resolver's `selectedJobType` (which may have drifted to 'code'
+       * since the card was issued — see zonal-dreaming-novel regression)
+       * cannot re-label the card.
+       */
       userContext?: UserContext;
     },
   ): Promise<{ resolved: boolean }> {
@@ -474,12 +481,15 @@ export class ChatService {
     }
 
     const ctx = args.userContext ?? this.defaultUserContext;
-    const turnId = await this.findTurnIdForJobWithFallback(
-      projectId,
-      featureName,
-      args.jobId,
-      ctx,
-    );
+
+    // Card-identity SSOT — read jobType from the original card. If the
+    // card cannot be located the resolve event is suppressed (a missing
+    // card is a structural error; we'd rather surface it via the empty
+    // result than silently mint a `jobType: 'code'` line).
+    const cardOrigin = await this.findTurnIdByCardId(projectId, featureName, args.cardId, ctx);
+    const turnId =
+      cardOrigin?.turnId ??
+      (await this.findTurnIdForJobWithFallback(projectId, featureName, args.jobId, ctx));
 
     if (turnId) {
       // Build ONE line and route it through both sinks so the disk
@@ -490,9 +500,9 @@ export class ChatService {
       const line: ChatLine = {
         type: 'choice_resolved',
         ts: new Date().toISOString(),
-        jobId: args.jobId,
+        jobId: cardOrigin?.jobId ?? args.jobId,
         turnId,
-        jobType: args.jobType ?? DEFAULT_JOB_TYPE,
+        jobType: cardOrigin?.jobType ?? DEFAULT_JOB_TYPE,
         cardId: args.cardId,
         choiceSelected: args.choiceSelected,
         resolvedLabel: args.resolvedLabel,
@@ -945,7 +955,7 @@ export class ChatService {
       if (line.type === 'choice_resolved') resolvedIds.add(line.cardId);
     }
 
-    const targets: Array<{ cardId: string; jobType: LogJobType }> = [];
+    const targets: string[] = [];
     for (const line of lines) {
       if (line.collapsed) continue;
       if (line.type !== 'choice_presented') continue;
@@ -953,17 +963,19 @@ export class ChatService {
       if (presented.cardType !== 'cancelled') continue;
       if (presented.jobId !== jobId) continue;
       if (resolvedIds.has(presented.cardId)) continue;
-      targets.push({ cardId: presented.cardId, jobType: presented.jobType });
+      targets.push(presented.cardId);
     }
 
     let resolvedCount = 0;
-    for (const t of targets) {
+    for (const cardId of targets) {
+      // jobType is intentionally not forwarded — appendChoiceResolved
+      // looks up the original choice_presented line via cardId so the
+      // resolve event carries the card-bound jobType (Invariant I3).
       const result = await this.appendChoiceResolved(projectId, featureName, {
         jobId,
-        cardId: t.cardId,
+        cardId,
         choiceSelected: args.choiceSelected ?? 'resume',
         resolvedLabel: args.resolvedLabel ?? 'Resumed',
-        jobType: t.jobType,
         userContext: ctx,
       });
       if (result.resolved) resolvedCount++;
@@ -989,7 +1001,7 @@ export class ChatService {
     featureName: string,
     cardId: string,
     userContext?: UserContext,
-  ): Promise<{ turnId: string; jobId: string } | null> {
+  ): Promise<{ turnId: string; jobId: string; jobType: LogJobType } | null> {
     const ctx = userContext ?? this.defaultUserContext;
     const adapter = this.makeAdapter(projectId, featureName, ctx);
     if (!adapter) return null;
@@ -999,7 +1011,12 @@ export class ChatService {
         if (line.collapsed) continue;
         if (line.type !== 'choice_presented') continue;
         if ((line as ChatChoicePresentedLine).cardId === cardId) {
-          return { turnId: line.turnId, jobId: line.jobId };
+          // Card-identity SSOT (Invariant I3): the resolve event MUST
+          // carry the same jobType as the original choice_presented line.
+          // We surface jobType here so callers (route handler /
+          // appendChoiceResolved) can never re-label a card with the
+          // resolver's `selectedJobType`.
+          return { turnId: line.turnId, jobId: line.jobId, jobType: line.jobType };
         }
       }
     } catch (err) {

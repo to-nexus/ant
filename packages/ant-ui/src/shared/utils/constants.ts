@@ -28,6 +28,12 @@ export const AVAILABLE_JOBS = [
     agent: 'Architect'
   },
   {
+    value: 'plan' as const,
+    label: '📋 Plan',
+    description: 'Generate / refactor PRD',
+    agent: 'Planner'
+  },
+  {
     value: 'visual' as const,
     label: '🖼️ Visual',
     description: 'Generate visual assets',

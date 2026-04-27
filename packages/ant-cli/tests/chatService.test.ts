@@ -347,13 +347,68 @@ describe('ChatService — Phase 9 emission contract', () => {
     });
 
     const ctx = await service.findTurnIdByCardId('proj', 'feat-a', 'card-locate', USER_CTX);
-    expect(ctx).toEqual({ turnId: 't-aa', jobId: 'job-1' });
+    expect(ctx).toEqual({ turnId: 't-aa', jobId: 'job-1', jobType: 'code' });
   });
 
   it('findTurnIdByCardId returns null when no matching presentation exists', async () => {
     await seedUserTurn('job-1', 't-aa');
     const ctx = await service.findTurnIdByCardId('proj', 'feat-a', 'missing-card', USER_CTX);
     expect(ctx).toBeNull();
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Invariant I3 — Card-identity jobType fidelity
+  //
+  // The `choice_resolved` line MUST carry the same jobType as the
+  // original `choice_presented` line, regardless of whether the
+  // resolver was running with a different selectedJobType (the
+  // zonal-dreaming-novel regression).
+  // ─────────────────────────────────────────────────────────────────
+  it('appendChoiceResolved preserves the cards original jobType (Invariant I3)', async () => {
+    // Seed a user_turn for a PLAN job — same shape as the runtime
+    // produces for `gen-plan` directives.
+    const adapter = new FileSessionAdapter(featurePath, 'planner', 'proj', 'feat-a');
+    await adapter.appendUserTurn(
+      {
+        type: 'user_turn',
+        ts: new Date().toISOString(),
+        jobId: 'plan-job-1',
+        turnId: 't-plan',
+        jobType: 'plan',
+        text: 'make me a match-3 game',
+      } as any,
+      { skipFeature: false },
+    );
+
+    // Plan job presents a clarify card.
+    await service.appendChoicePresented('proj', 'feat-a', {
+      jobId: 'plan-job-1',
+      cardId: 'card-clarify-plan',
+      cardType: 'clarifying',
+      jobType: 'plan',
+      userContext: USER_CTX,
+    });
+
+    // Resolve it — caller tries to claim a different jobType (mimicking
+    // the regression where FE selectedJobType drifted to 'code'). The
+    // service ignores the caller's jobType and reads from the card.
+    await service.appendChoiceResolved('proj', 'feat-a', {
+      jobId: 'plan-job-1',
+      cardId: 'card-clarify-plan',
+      choiceSelected: 'submitted',
+      resolvedLabel: 'Answered',
+      // Intentionally NOT passing jobType — and even if we did, the
+      // type signature now rejects it to make the SSOT explicit.
+      userContext: USER_CTX,
+    });
+
+    const resolvedLines = chatEventLines(store).filter(
+      (l): l is ChatChoiceResolvedLine => l.type === 'choice_resolved',
+    );
+    expect(resolvedLines).toHaveLength(1);
+    expect(resolvedLines[0].cardId).toBe('card-clarify-plan');
+    expect(resolvedLines[0].jobType).toBe('plan');
+    expect(resolvedLines[0].jobId).toBe('plan-job-1');
   });
 
   it('appendChatStatus persists chat_status line + broadcasts SSE', async () => {

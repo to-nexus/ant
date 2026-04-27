@@ -14,6 +14,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
+import { selectPausedNonTaskJob } from '@/domain/store/selectors';
 import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition, dismissInterruptedJob } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -104,7 +105,16 @@ export function useJobExecution() {
         const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true);
         
         // ✅ Restore correct jobType from server (interrupted job may differ from current UI mode)
-        if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
+        // Invariant I4 — but a clarify-paused non-task job (plan / visual)
+        // takes priority. Without this guard, resuming an unrelated code
+        // job would silently flip selectedJobType away from the paused
+        // plan, hijacking the next clarify answer (zonal-dreaming-novel).
+        const pausedNonTask = selectPausedNonTaskJob(useStore.getState());
+        if (pausedNonTask && pausedNonTask.jobType !== result.jobType) {
+          console.log(
+            `[useJobExecution] 🛡️ Skipping setSelectedJobType('${result.jobType}') — paused ${pausedNonTask.jobType} job ${pausedNonTask.jobId} is the active conversation`,
+          );
+        } else if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
           useStore.setState({ jobStartPending: true });
           useStore.getState().setSelectedJobType(result.jobType);
         }
