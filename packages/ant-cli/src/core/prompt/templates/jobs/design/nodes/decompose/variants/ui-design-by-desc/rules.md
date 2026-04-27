@@ -78,7 +78,16 @@ Each task MUST include `sourceFiles` — an array of source filenames that the t
 - Shared chapter description MUST list component IDs it will define: `Components: <id1>, <id2>, ...` — these become JSON keys
 - Each page chapter description MUST repeat the shared component list: `Shared components [<id1>, <id2>, ...]: reference by componentRef only`
 
-### 8. ui-assets.json Path Consistency (CRITICAL!)
+### 8. PRD Hand-off Citation (when PRD is in source documents)
+
+When the PRD provides `SC-XXX` identifiers in §5 IA / §6 Screen Composition, the page chapter list MUST be derived from those IDs:
+
+- One page chapter per `SC-XXX` from PRD §5 — task ID format `ui-spec-SC-<Name>` (e.g., `ui-spec-SC-Search`, `ui-spec-SC-ProductDetail`)
+- Each page chapter description MUST cite the PRD section it implements: `Implements PRD §6 / SC-<Name>` (and any `PRD §7 / CP-XXX` content policies that apply only to this page)
+- Shared chapter description MUST cite cross-screen `PRD §6` patterns and `PRD §7 / CP-XXX` policies that span 2+ `SC-XXX`
+- A page chapter that does not cite a `SC-` ID is a duplication risk — design is creating shadow page IDs that diverge from the PRD's IA. When the PRD does not surface `SC-` IDs (legacy mode), state `PRD lacks SC- IDs — page list extracted from prose` in the description so the gap is visible.
+
+### 9. ui-assets.json Path Consistency (CRITICAL!)
 
 **When creating ui-assets tasks:**
 
@@ -242,6 +251,7 @@ Before outputting, verify:
 ### Task Descriptions
 - ✅ **ui-spec-ch1 description includes "global settings" or "breakpoints"**
 - ✅ **ch2+ descriptions include "(append)" and "skip documented topics"**
+- ✅ **When PRD source contains `SC-` IDs**: each page chapter description cites `PRD §6 / SC-<name>` and the page chapter task ID embeds `SC-<name>`
 
 ---
 
