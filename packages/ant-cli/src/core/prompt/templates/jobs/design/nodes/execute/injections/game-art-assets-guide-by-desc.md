@@ -20,32 +20,32 @@ directive only — without reference images or Figma frames as grounding.
 | kind       | When valid (directive-only mode)                                              |
 |------------|--------------------------------------------------------------------------------|
 | `inline`   | Default — every entry without a directive-referenced external file             |
-| `external` | When the directive explicitly names a user-placed file (e.g. "use my hero.svg") OR when `_meta.phaseScope === 'p4-external-enabled'` and the asset category supports external mapping (sfx / bgm / atlas / entities) |
+| `external` | When the directive explicitly names a user-placed file (e.g. "use my hero.svg") OR when the relevant scope marker is upgraded — `_meta.audioScope === 'external-enabled'` for `sfx` / `bgm`, `_meta.visualScope === 'atlas-enabled'` for `atlas` / multi-image entities |
 
 **Directive-only constraint**: Without references or Figma, the LLM
 CANNOT invent production sprite paths — `kind: 'external'` entries are
 allowed only when the directive supplies the file name AND the file is
 present under `inputs/assets/game/...`.
 
-### Phase 4 external-asset hook (`_meta.phaseScope === 'p4-external-enabled'`)
+### External-asset hook (per-marker)
 
-When the project marks `_meta.phaseScope` as `'p4-external-enabled'`, the
-following category-specific external mappings activate:
+External mapping availability is split between the two markers; each
+category is gated by exactly one of them:
 
-| Category      | External activation                                                                 |
-|---------------|--------------------------------------------------------------------------------------|
-| `sfx`         | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `inputs/assets/game/sfx/`         |
-| `bgm`         | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `inputs/assets/game/bgm/`         |
-| `atlas`       | `kind: 'external'` atlas JSON + image pairs under `inputs/assets/game/atlas/`       |
-| `entities`    | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/entities/`             |
-| `particles`   | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/particles/`            |
-| `projectiles` | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/projectiles/`          |
+| Category      | Gate                                  | External activation                                                            |
+|---------------|---------------------------------------|--------------------------------------------------------------------------------|
+| `sfx`         | `_meta.audioScope === 'external-enabled'` | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `inputs/assets/game/sfx/` |
+| `bgm`         | `_meta.audioScope === 'external-enabled'` | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `inputs/assets/game/bgm/` |
+| `entities`    | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/entities/`        |
+| `particles`   | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/particles/`       |
+| `projectiles` | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/projectiles/`     |
+| `atlas`       | `_meta.visualScope === 'atlas-enabled'`   | `kind: 'external'` atlas JSON + image pairs under `inputs/assets/game/atlas/` |
 
-Under `_meta.phaseScope === 'p2-css-only'` (default), all SFX / BGM
+Under `_meta.audioScope === 'procedural-only'` (default), all SFX / BGM
 entries MUST stay `kind: 'inline'` (`format: 'oscillator'` for SFX, BGM
 omitted entirely or also procedural). The code job's audio loader honors
-the marker — `audioProfile === 'fileBased'` while `phaseScope === 'p2-css-only'`
-falls back to procedural at runtime.
+the marker — `audioProfile === 'fileBased'` while
+`audioScope === 'procedural-only'` falls back to procedural at runtime.
 
 #### `kind: 'inline'` shape (D21 — DEFAULT)
 
@@ -122,20 +122,26 @@ file exists; non-existent paths cause task failure.
 ```json
 {
   "_meta": {
-    "phaseScope": "p2-css-only" | "p4-external-enabled"
+    "audioScope": "procedural-only" | "external-enabled",
+    "visualScope": "baseline" | "atlas-enabled"
   },
   "<your-category>": [
-    /* entries — inline-first under p2-css-only;
-       inline + external under p4-external-enabled */
+    /* entries — inline-first when both markers are at default;
+       per-marker external activation when upgraded */
   ]
 }
 ```
 
-`phaseScope` derivation: when the project basis declares
-`gameArtTier.audioProfile === 'fileBased'` or `'hybrid'`, OR
-`gameArtTier.entityCatalog === 'rich'`, OR
-`gameArtTier.particleProfile === 'heavy'`, the scope is
-`'p4-external-enabled'`. Otherwise default to `'p2-css-only'`.
+Marker derivation:
+
+- `audioScope`: when the project basis declares
+  `gameArtTier.audioProfile === 'fileBased'` or `'hybrid'`, set
+  `'external-enabled'`. Otherwise default to `'procedural-only'`.
+- `visualScope`: when the project basis declares
+  `gameArtTier.entityCatalog === 'rich'` OR
+  `gameArtTier.particleProfile === 'heavy'` OR
+  `gameArtTier.projectilePolicy === 'complex'`, set `'atlas-enabled'`.
+  Otherwise default to `'baseline'`.
 
 ### Output Format
 
@@ -157,7 +163,7 @@ file exists; non-existent paths cause task failure.
 ```xml
 <file path="outputs/design/game-art/ant/game-art-assets.json">
 {
-  "_meta": { "phaseScope": "p2-css-only" },
+  "_meta": { "audioScope": "procedural-only", "visualScope": "baseline" },
   "<your-category>": [
     /* entries */
   ]

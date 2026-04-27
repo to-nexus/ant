@@ -1,9 +1,16 @@
-## 🎨 Game-Art Design Overlay (D21 — css-only scope)
+## 🎨 Game-Art Design Overlay (D21 — inline-payload ceiling)
 
 This preamble is injected for game-art **design** intents (`gen-game-art-figma` /
 `gen-game-art-desc` / `rev-game-art`). It defines the responsibility boundary of
 game-art design — what kinds of assets the LLM is allowed to author inline
 versus what must be sourced from disk.
+
+The "css-only" framing below describes the **design-time inline complexity
+ceiling** (what the LLM may author into a JSON payload). It is independent
+from the code job's canvas rendering policy (see
+`jobs/code/basis/gameArtTier/_preamble.md` §1.2 / §7) — the engine canvas at
+runtime cannot use CSS, and the code job has its own enumeration of legal
+canvas-side methods.
 
 ### 1. Responsibility — what game-art design IS
 
@@ -76,16 +83,16 @@ Art design's contract with the user is the **`src` path** — once it is
 recorded in `game-art-assets.json`, downstream `code` jobs treat that
 path as the authoritative location.
 
-### 4. Phase scope marker
+### 4. Scope markers (`_meta.audioScope`, `_meta.visualScope`)
 
-`game-art-assets.json._meta.phaseScope` is the explicit dial:
+`game-art-assets.json._meta` carries two independent dials, each gating a different downstream surface at runtime:
 
-- `'p2-css-only'` (Phase 2 default) — inline + external both allowed,
-  but external entries for sfx/bgm are deferred to Phase 4.
-- `'p4-external-enabled'` (Phase 4) — external sfx / bgm / atlas / 3D
-  models become first-class entries; `code` job imports them directly.
+| Marker | Values | Effect |
+|---|---|---|
+| `_meta.audioScope` | `'procedural-only'` (default) / `'external-enabled'` | `'procedural-only'` defers external `sfx` / `bgm` entries — only inline OscillatorNode plays at runtime. `'external-enabled'` activates external audio loading. |
+| `_meta.visualScope` | `'baseline'` (default) / `'atlas-enabled'` | `'baseline'` keeps the code job on catalog single-image assets + engine procedural API. `'atlas-enabled'` activates atlas / multi-emitter / multi-projectile setups (paired with `entityCatalog === 'rich'` / `particleProfile === 'heavy'` / `projectilePolicy === 'complex'`). |
 
-If the LLM is unsure, default to `'p2-css-only'`.
+If the LLM is unsure, default to `audioScope: 'procedural-only'` and `visualScope: 'baseline'`. The two markers are orthogonal — pairing `audioScope: 'external-enabled'` with `visualScope: 'baseline'` (or vice versa) is legal.
 
 ### 5. Invariants (recap — I6 / I7-revised)
 
@@ -140,8 +147,10 @@ Decisions:
   Category keys must remain stable inside one design pass —
   `game-art-spec.json` references entries by `id`, so renaming after the
   fact corrupts the spec doc.
-- Set `_meta.phaseScope` explicitly: `'p2-css-only'` (Phase 2 default —
-  external sfx/bgm deferred) or `'p4-external-enabled'` (Phase 4+).
+- Set `_meta.audioScope` and `_meta.visualScope` explicitly. Defaults:
+  `audioScope: 'procedural-only'` (external sfx/bgm deferred) and
+  `visualScope: 'baseline'` (atlas / multi-emitter / multi-projectile
+  deferred). Upgrade values: `'external-enabled'` and `'atlas-enabled'`.
 
 ### B. Entity Catalog Decision (`gameArtTier.entityCatalog`)
 
@@ -168,8 +177,8 @@ Phase 4 axis. Decides whether `sfx` / `bgm` catalog entries can be
 | `fileBased`   | `kind: 'external'` mp3 / ogg / wav under `inputs/assets/game/sfx/` and `bgm/`.        |
 | `hybrid`      | Procedural SFX + external BGM. Bridge mode for prototypes that already have a BGM.    |
 
-When `phaseScope === 'p2-css-only'`, force `audioProfile = 'procedural'`
-regardless of LLM-emitted value (Phase 4 hook gates external audio).
+When `audioScope === 'procedural-only'`, force `audioProfile = 'procedural'`
+regardless of LLM-emitted value (the marker gates external audio).
 
 ### D. Domain-Surface Boundary (I7-revised — D28)
 

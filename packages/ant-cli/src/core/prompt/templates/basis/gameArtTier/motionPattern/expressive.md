@@ -46,5 +46,5 @@ The `expressive` motion pattern commits to **spring physics, bounce, squash-and-
 ### Blind-spot reminders
 
 - ⚠️ `expressive` while `particleProfile === 'none'` is suspicious — expressive motion typically fires particles at the same beat. Either downgrade motion or step up particles.
-- ⚠️ `expressive` while `phaseScope === 'p2-css-only'` and `audioProfile === 'procedural'` is workable but flat — expressive visuals without expressive audio land lopsided. The project may want to declare `audioProfile === 'procedural'` is a deliberate constraint.
+- ⚠️ `expressive` while `audioScope === 'procedural-only'` and `audioProfile === 'procedural'` is workable but flat — expressive visuals without expressive audio land lopsided. The project may want to declare `audioProfile === 'procedural'` is a deliberate constraint.
 - ⚠️ Stacking 5+ simultaneous tweens on different entities every frame degrades modest devices. The PRD should commit a "max simultaneous flourish count" if expressive feedback is critical.

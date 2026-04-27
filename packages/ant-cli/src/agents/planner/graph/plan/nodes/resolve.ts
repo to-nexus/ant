@@ -7,8 +7,14 @@
  *
  * Target resolution (3 cases):
  *   1. Explicit: actionMetadata.target from UI
- *   2. Infer + prd.md exists: ['inputs/sources/prd.md']
- *   3. Infer + no prd.md + other sources: all source files (LLM clarifies)
+ *   2. Infer + canonical plan file exists (prd.md for service / gdd.md
+ *      for game): pick the domain-canonical one if present, fall back
+ *      to the other plan filename if the workspace happens to carry it
+ *   3. Infer + no plan file + other sources: all source files (LLM clarifies)
+ *
+ * Domain comes from `actionMetadata.domain` when explicit; otherwise it
+ * is unknown at resolve time (detect runs after this node) and we
+ * default to `'service'` semantics (`prd.md`).
  */
 
 import * as fs from 'fs';
@@ -19,7 +25,11 @@ import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common
 import { buildSessionDigest } from '../../../../common/graph/utils/sessionDigest';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
-import type { ResolvedArtifact } from '@ant/shared';
+import {
+  getCanonicalPlanPath,
+  pickExistingPlanFilename,
+  type ResolvedArtifact,
+} from '@ant/shared';
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 
 export const planResolveStrategy: ResolveStrategy<PlanGraphState> = {
@@ -45,6 +55,10 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
   // 1. Resolve target
   const isExplicit = !!actionMetadata?.intent;
   const isExplainIntent = actionMetadata?.intent === 'explain-plan';
+  // Domain is known here only when caller supplied it explicitly.
+  // Detect runs after resolve, so an inferred domain is not available
+  // yet — fall back to service semantics (`prd.md`).
+  const explicitDomain = actionMetadata?.domain;
   let targets: string[];
 
   if (actionMetadata?.target?.length) {
@@ -55,9 +69,10 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     targets = [];
   } else {
     const sourceFileNames = state.workspaceState?.sourceFileNames;
-    if (sourceFileNames?.includes('prd.md')) {
-      targets = ['inputs/sources/prd.md'];
-      console.log(`   Target (infer): prd.md found`);
+    const existingPlanFile = pickExistingPlanFilename(sourceFileNames, explicitDomain);
+    if (existingPlanFile) {
+      targets = [`inputs/sources/${existingPlanFile}`];
+      console.log(`   Target (infer): ${existingPlanFile} found`);
     } else if (sourceFileNames?.length) {
       targets = sourceFileNames.map(f => `inputs/sources/${f}`);
       console.log(`   Target (infer/clarify): ${targets.length} source files, LLM will clarify`);
@@ -77,8 +92,9 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
 
   // 3. Infer default target
   if (targets.length === 0 && !isExplicit) {
-    targets = ['inputs/sources/prd.md'];
-    console.log(`   Target (infer default): inputs/sources/prd.md`);
+    const fallbackTarget = getCanonicalPlanPath(explicitDomain);
+    targets = [fallbackTarget];
+    console.log(`   Target (infer default): ${fallbackTarget}`);
   }
 
   // 4. Load refs/context content

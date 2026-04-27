@@ -130,10 +130,16 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       // prevents the FE/BE divergence that produced the
       // dusk-mounding-pilot regression (FE-only target population, BE
       // saw `target=undefined`).
-      updateActionMetadata({ target: getDefaultTargetPaths(intentId) });
+      //
+      // gen-plan is domain-aware: pass `actionMetadata.domain` so the
+      // panel previews `gdd.md` for game projects and `prd.md` for
+      // service / unknown.
+      updateActionMetadata({
+        target: getDefaultTargetPaths(intentId, actionMetadata.domain),
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [intentId]);
+  }, [intentId, actionMetadata.domain]);
 
   const handleOpenIde = useCallback(() => {
     setMainView('codeIde');

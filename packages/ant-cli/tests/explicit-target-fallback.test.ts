@@ -39,12 +39,27 @@ import { isSafeStagingPath } from '../src/agents/planner/graph/plan/nodes/genera
 // ============================================
 
 describe('getDefaultTargetPaths — matrix-derived defaults', () => {
-  it('gen-plan → ["inputs/sources/prd.md"] (single non-pattern output)', () => {
+  it('gen-plan (no domain) → ["inputs/sources/prd.md"] (service-default fallback)', () => {
     expect(getDefaultTargetPaths('gen-plan')).toEqual(['inputs/sources/prd.md']);
   });
 
-  it('gen-sys-fe → expanded fe-system pattern under SYS_DIR', () => {
+  it('gen-plan + service domain → ["inputs/sources/prd.md"]', () => {
+    expect(getDefaultTargetPaths('gen-plan', 'service')).toEqual([
+      'inputs/sources/prd.md',
+    ]);
+  });
+
+  it('gen-plan + game domain → ["inputs/sources/gdd.md"] (domain-aware split)', () => {
+    expect(getDefaultTargetPaths('gen-plan', 'game')).toEqual([
+      'inputs/sources/gdd.md',
+    ]);
+  });
+
+  it('gen-sys-fe → expanded fe-system pattern under SYS_DIR (domain-agnostic)', () => {
     expect(getDefaultTargetPaths('gen-sys-fe')).toEqual([
+      'outputs/design/system/fe-system-*.md',
+    ]);
+    expect(getDefaultTargetPaths('gen-sys-fe', 'game')).toEqual([
       'outputs/design/system/fe-system-*.md',
     ]);
   });
@@ -112,10 +127,10 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
     fs.rmSync(featurePath, { recursive: true, force: true });
   });
 
-  it('gen-plan + explicit:true + target:undefined → RAC.target = ["inputs/sources/prd.md"]', async () => {
+  it('gen-plan + explicit:true + service domain + target:undefined → RAC.target = ["inputs/sources/prd.md"]', async () => {
     const node = createDetectNode(makeNoopStrategy());
     const state = makeState(
-      { intent: 'gen-plan', explicit: true, domain: 'game' },
+      { intent: 'gen-plan', explicit: true, domain: 'service' },
       featurePath,
     );
 
@@ -129,6 +144,38 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
     // populated by the fallback. Downstream prompts gate `{{#if
     // targetPath}}` on this — proving the regression channel is closed.
     expect(result.resolvedAction!.hasExplicitFields).toBe(true);
+  });
+
+  it('gen-plan + explicit:true + game domain + target:undefined → RAC.target = ["inputs/sources/gdd.md"]', async () => {
+    // Domain-aware filename split: the plan job's canonical output is
+    // `gdd.md` for game projects so the system prompt's "Target Path"
+    // section, the disk writer, and the FE preview all converge on the
+    // same domain-correct path. Service projects continue to use prd.md
+    // (asserted in the sibling test above).
+    const node = createDetectNode(makeNoopStrategy());
+    const state = makeState(
+      { intent: 'gen-plan', explicit: true, domain: 'game' },
+      featurePath,
+    );
+
+    const result = await node(state);
+
+    expect(result.resolvedAction!.target).toEqual(['inputs/sources/gdd.md']);
+  });
+
+  it('gen-plan + explicit:true + no domain → service-default RAC.target', async () => {
+    // When the FE submits gen-plan without a domain (legacy / chat
+    // entry point pre-DomainToggle), the matrix fallback resolves to
+    // service semantics so prd.md is the canonical landing path.
+    const node = createDetectNode(makeNoopStrategy());
+    const state = makeState(
+      { intent: 'gen-plan', explicit: true },
+      featurePath,
+    );
+
+    const result = await node(state);
+
+    expect(result.resolvedAction!.target).toEqual(['inputs/sources/prd.md']);
   });
 
   it('explicit-supplied target wins over the matrix default (no clobbering)', async () => {

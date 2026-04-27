@@ -121,15 +121,15 @@ You are decomposing UI documentation work into executable chapter tasks.
 
 #### ui-spec.json (multi-chapter)
 
-**Authoring target**: Identify the distinct pages/views/features in the project requirements.
+**Authoring target**: Identify the distinct pages/views/features by reading the **PRD's Information Architecture (§5) and Screen Composition & States (§6)** — `SC-XXX` identifiers from the PRD are the SSOT for the page chapter list. Use the `SC-` ID as the page chapter task ID suffix (e.g., `ui-spec-SC-Search`, `ui-spec-SC-ProductDetail`). When the PRD does not surface `SC-` IDs (legacy PRD or directive-only mode), fall back to extracting page list from prose, but flag the gap in the task description.
 
 **Chapter roles** — each chapter has exactly ONE role:
 
-| Role | Priority | Scope boundary |
-|------|----------|----------------|
-| **Structure** (ch1) | 300 | Global settings ONLY: breakpoints, grid, containers, typography hierarchy, color roles. NO component behavior, NO interaction patterns, NO toast/accessibility. |
-| **Page** (ch2..chN-1) | 310–340 | ONE page or feature area. Page-specific layout, content, and component usage. Page-only behaviors (used in this page only) fully specified here. Shared components referenced by ID — do NOT redefine their variants/states/sizes. |
-| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library (full variant/state/size definitions), global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by inspecting previous chapter outputs. |
+| Role | Priority | Scope boundary | PRD hand-off citation |
+|------|----------|----------------|----------------------|
+| **Structure** (ch1) | 300 | Global settings ONLY: breakpoints, grid, containers, typography hierarchy, color roles. NO component behavior, NO interaction patterns, NO toast/accessibility. | (rare) `PRD §9 NFR (a11y)` if accessibility commitments exist |
+| **Page** (ch2..chN-1) | 310–340 | ONE `SC-XXX` page. Page-specific layout, content, and component usage from PRD §6 entry for that `SC-`. Page-only behaviors fully specified here. Shared components referenced by ID — do NOT redefine. | `PRD §6 / SC-XXX` (per-screen composition + state matrix) AND any `PRD §7 / CP-XXX` (content policy) entries that apply to this page only |
+| **Shared** (chN or components) | 349 | Cross-page shared patterns ONLY: reusable component library (full variant/state/size definitions), global accessibility, toast system, keyboard navigation. Define based on project requirements — NOT by inspecting previous chapter outputs. | `PRD §6` cross-screen components + `PRD §7 / CP-XXX` cross-screen content policies (e.g., empty-state policy used across multiple `SC-`) |
 
 **MECE constraint**: Each topic belongs to exactly ONE chapter.
 - Behavior used in only ONE page → that page's chapter
@@ -137,8 +137,9 @@ You are decomposing UI documentation work into executable chapter tasks.
 - Do NOT create a separate "interactions + accessibility" chapter
 
 **Component Ownership Contract** (prevents duplication between page and shared chapters):
+- Component scoping (page-only vs shared) is **derived from the PRD**: §6 (per-screen composition) tells whether a component belongs to a specific `SC-XXX`; §7 (content & domain policy) tells whether a content rule applies cross-screen. Components used by exactly one `SC-XXX` → that page's chapter; components referenced by 2+ `SC-XXX` → shared chapter.
 - Shared chapter description MUST start with `Components: <id1>, <id2>, ...` listing every component ID it will define. These IDs become JSON keys — use short, kebab-case names (e.g., `gnb`, `button`, `input`, `dropdown`, `table-data`, `tab-bar`).
-- Each page chapter description MUST include: `Shared components [<id1>, <id2>, ...]: reference by componentRef only — do NOT redefine.`
+- Each page chapter description MUST include: (a) `Implements PRD §6 / SC-<name>` citation, (b) `Shared components [<id1>, <id2>, ...]: reference by componentRef only — do NOT redefine.`
 - A component used in exactly ONE page belongs in that page's chapter, NOT in shared.
 
 ---

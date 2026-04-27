@@ -30,7 +30,7 @@ The `sfx` category stays inline; the `bgm` category is purely external.
 
 ### Phase scope contract
 
-`hybrid` requires **`_meta.phaseScope === 'p4-external-enabled'`** because the BGM half is external. Under `phaseScope === 'p2-css-only'`, the marker overrides BGM and falls back to silence (the procedural SFX half continues to work).
+`hybrid` requires **`_meta.audioScope === 'external-enabled'`** because the BGM half is external. Under `audioScope === 'procedural-only'`, the marker overrides BGM and falls back to silence (the procedural SFX half continues to work).
 
 ### Genre cross-reference (D31-revised v8 — guidance, not strict)
 
@@ -54,6 +54,6 @@ The `sfx` category stays inline; the `bgm` category is purely external.
 
 ### Blind-spot reminders
 
-- ⚠️ `hybrid` while `phaseScope === 'p2-css-only'` falls back to procedural SFX + silent BGM — the project ships without atmosphere. Document the upgrade path in PRD.
+- ⚠️ `hybrid` while `audioScope === 'procedural-only'` falls back to procedural SFX + silent BGM — the project ships without atmosphere. Document the upgrade path in PRD.
 - ⚠️ Listing `kind: 'external'` entries in the `sfx` category while `audioProfile === 'hybrid'` is inconsistent — those should migrate to the `bgm` category or the profile should be `fileBased`.
 - ⚠️ The single `AudioContext` shared between the procedural synth and Phaser's BGM playback may need a context-suspend dance when the page loses focus — the audio module should listen for `visibilitychange` and pause both subsystems coherently.
