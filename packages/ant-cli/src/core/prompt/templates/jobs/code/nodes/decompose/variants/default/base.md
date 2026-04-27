@@ -96,6 +96,8 @@ Observe the following in order:
 3. **Directive and PRD** — only when design documents are absent
 {{/if}}
 
+Explicit values from `resolvedAction.basis.techTier` are authoritative — preserve them as-is in your `<techTier>` output and in any per-package `packageTiers` entries that target the same stack. Infer only the slots that are not pinned by the explicit basis.
+
 Output the tech tier in `<techTier>` tags before `<tasks>`:
 
 <techTier>

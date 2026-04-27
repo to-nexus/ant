@@ -19,7 +19,7 @@ import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
-import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTierConfig, resolveTaskTechTiers, type PackageTierEntry } from "@ant/shared";
+import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTierConfig, resolveTaskTechTiersFromMap, applyExplicitTechTierOverrides, type PackageTierEntry } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 
 interface DecomposeContext {
@@ -234,7 +234,12 @@ function targetFileToTag(targetFile: string): string | undefined {
 // Task Queue Population
 // ============================================
 
-function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[] = [], graphTechTier: import('@ant/shared').TechTier): TaskQueue<DesignTask> {
+function buildTaskQueue(
+  response: SystemDesignResponse,
+  sourceFileNames: string[] = [],
+  basisTechTierConfig: TechTierConfig,
+  explicitTechTier: TechTierConfig | undefined,
+): TaskQueue<DesignTask> {
   const taskQueue = new TaskQueue<DesignTask>();
   
   // Pre-compute isLastTaskForDocument per targetFile group
@@ -262,7 +267,8 @@ function buildTaskQueue(response: SystemDesignResponse, sourceFileNames: string[
     
     const tag = targetFileToTag(taskData.targetFile);
     const packages = tag ? [tag] : undefined;
-    const taskTechTiers = resolveTaskTechTiers(packages, graphTechTier, response.packageTiers);
+    const resolvedTiers = resolveTaskTechTiersFromMap(packages, basisTechTierConfig, response.packageTiers);
+    const taskTechTiers = applyExplicitTechTierOverrides(resolvedTiers, explicitTechTier);
 
     taskQueue.push({
       id: taskData.id,
@@ -586,8 +592,9 @@ export async function decomposeSystemDesign(
     basis: { ...state.resolvedAction?.basis, techTier: basisTechTierConfig },
   };
 
-  // Build task queue
-  const taskQueue = buildTaskQueue(response, sourceFileNames, graphTechTier);
+  // Build task queue. Explicit techTier (raw, never merged with LLM emit)
+  // is forwarded so per-task tiers preserve user-pinned framework/language.
+  const taskQueue = buildTaskQueue(response, sourceFileNames, basisTechTierConfig, state.actionMetadata?.basis?.techTier);
 
   // Log decompose result
   await safeLogPrompt(
