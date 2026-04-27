@@ -77,10 +77,13 @@ export function TaskCard({
     label: safeType.toUpperCase() 
   };
   
+  /** Long paths / URLs: break inside long tokens when needed (stricter than word-only wrap). */
+  const pathFriendlyText = 'min-w-0 max-w-full [overflow-wrap:anywhere]';
+
   return (
     <div 
       className={cn(
-        'p-3 rounded-lg border transition-colors relative',
+        'p-3 rounded-lg border transition-colors relative min-w-0 w-full',
         status === 'in-progress' ? 'border-2' : '',
         colors.border,
         colors.bg
@@ -98,7 +101,7 @@ export function TaskCard({
         </div>
       )}
       
-      <div className="flex items-start gap-2 relative z-10">
+      <div className="flex min-w-0 items-start gap-2 relative z-10">
         {showExpandButton && (
           <button
             className="mt-0.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
@@ -118,10 +121,13 @@ export function TaskCard({
         <div className="flex-1 min-w-0">
           {/* Task Name - Full Width (Clickable to toggle) */}
           <div 
-            className={`mb-2 ${showExpandButton ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+            className={cn(
+              'mb-2 min-w-0',
+              showExpandButton ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''
+            )}
             onClick={showExpandButton ? toggleExpand : undefined}
           >
-            <span className={cn('text-sm font-medium', colors.text.primary)}>
+            <span className={cn('block text-sm font-medium', pathFriendlyText, colors.text.primary)}>
               {task.name}
             </span>
           </div>
@@ -129,7 +135,7 @@ export function TaskCard({
           {/* Badges + Timer Row - Wrap automatically (Clickable to toggle) */}
           <div 
             className={cn(
-              'flex flex-wrap items-center gap-2',
+              'flex min-w-0 flex-wrap items-center gap-2',
               showExpandButton ? 'cursor-pointer' : ''
             )}
             onClick={showExpandButton ? toggleExpand : undefined}
@@ -166,17 +172,17 @@ export function TaskCard({
             
             {/* Package Scope */}
             {task.packages && task.packages.length > 0 && (
-              <span className={cn('inline-flex items-start gap-1 text-xs min-w-0', colors.text.secondary)}>
+              <span className={cn('flex min-w-0 max-w-full flex-wrap items-start gap-1 text-xs', colors.text.secondary)}>
                 <Package className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                <span className="break-words min-w-0">{task.packages.join(', ')}</span>
+                <span className={pathFriendlyText}>{task.packages.join(', ')}</span>
               </span>
             )}
             
             {/* Source Files (design job) */}
             {!task.packages && task.sourceFiles && task.sourceFiles.length > 0 && (
-              <span className={cn('inline-flex items-start gap-1 text-xs min-w-0', colors.text.secondary)}>
+              <span className={cn('flex min-w-0 max-w-full flex-wrap items-start gap-1 text-xs', colors.text.secondary)}>
                 <FileText className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                <span className="break-words min-w-0">{task.sourceFiles.join(', ')}</span>
+                <span className={pathFriendlyText}>{task.sourceFiles.join(', ')}</span>
               </span>
             )}
             
@@ -207,8 +213,8 @@ export function TaskCard({
           {expanded && hasDescription && (
             <div 
               className={cn(
-                'mt-2 p-2 rounded border text-xs select-text relative z-20',
-                'break-words whitespace-pre-wrap',  // ✅ Break long words (file paths) + preserve line breaks
+                'mt-2 min-w-0 p-2 rounded border text-xs select-text relative z-20',
+                'whitespace-pre-wrap [overflow-wrap:anywhere]',
                 colors.border,
                 'bg-white dark:bg-gray-900',
                 colors.text.secondary
