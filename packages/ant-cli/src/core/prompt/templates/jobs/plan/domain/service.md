@@ -16,10 +16,10 @@ The PRD is partitioned into a **Required core (8)**, **Conditional (5)**, and an
 | 2 | Problem & Goal & Out-of-Scope | Why this work exists | JTBD framing + non-goals listed up front to bound design |
 | 3 | Personas & Frequency | Who acts | Primary / secondary actors with usage cadence (daily / weekly / quarterly) |
 | 4 | User Scenarios & Core Flows (`FL-XXX`) | How time unfolds | Trigger → steps → branches → exceptions → recovery for the key flows |
-| 5 | Information Architecture (`SC-XXX`) | How space is organized | Page tree / navigation model / list of primary screens with one-line responsibility each |
-| 6 | Screen Composition & States (`SC-XXX × state`) | What lives on each screen | Per-screen information composition + state matrix (default / empty / loading / error / permission-denied / edge) |
-| 7 | Content & Domain Policy (`CP-XXX`) | How content behaves across screens | Search / filter / sort / pagination policy, defaults, surface / suppression rules, tie-breaker order |
-| 8 | Functional Requirements (`FR-XX`) | What the product does | Testable behaviors, prioritized, each FR cross-referencing one or more `FL-`, `SC-`, or `CP-` IDs |
+| 5 | Information Architecture (`SC-XXX`) | How space is organized | Page tree / navigation model / list of primary screens with one-line responsibility each. **Every IA item issues a stable `SC-XXX` ID, and every issued SC MUST also appear in §6 with a full state matrix — orphan SC (issued in §5 but missing from §6) is a commit violation.** |
+| 6 | Screen Composition & States (`SC-XXX × state`) | What lives on each screen | Per-screen information composition + state matrix. **Mandatory baseline states per SC: `default` / `empty` / `loading` / `error` / `permission-denied` (5 states); add `edge` when the screen has a meaningful boundary case. Each state row commits at least one observable line (what the user sees / what data is shown / what action is enabled).** |
+| 7 | Content & Domain Policy (`CP-XXX`) | How content behaves across screens | **Five-axis policy commitment: `sort` + `filter` + `pagination` + `suppression` + `tie-breaker`. Each axis issues a `CP-XXX` ID (a single CP may bundle related axes when they describe one cohesive policy).** Defaults, surface / suppression rules, tie-breaker order. |
+| 8 | Functional Requirements (`FR-XX`) | What the product does | Testable behaviors, prioritized. **Every FR cross-references at least one `FL-` / `SC-` / `CP-` ID (no exception) — an FR without cross-reference is unanchored and design cannot trace it back to a flow / screen / policy.** |
 
 #### Conditional (include only when the directive warrants it; otherwise note in §14)
 
