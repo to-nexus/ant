@@ -21,6 +21,10 @@ import type {
   StreamingBuffer,
 } from '@/domain/store/selectors/chat';
 import type { ChatSseEvent, ChatLine, TurnBufferSnapshotMap } from '@ant/shared';
+import {
+  enqueueStreamingDelta,
+  flushStreamingDeltaBatch,
+} from './streamingDeltaBatch';
 
 const MAIN_WORKER_SCOPE = '_main_';
 
@@ -76,6 +80,9 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
 
     switch (chatEvent.type) {
       case 'chat_initial_state': {
+        // Hydration replaces the substrate wholesale — drop any in-flight
+        // batched deltas to avoid them landing on top of the new snapshot.
+        flushStreamingDeltaBatch(get);
         const buffers = snapshotsToMap(chatEvent.turnBuffers);
         get().replaceChatEvents(chatEvent.events, buffers, chatEvent.serverTs);
         console.log(
@@ -92,6 +99,9 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
           console.debug(`[Store] 💬 dropping stale chat_event_appended (${chatEvent.producedAt} < ${last})`);
           break;
         }
+        // Finalize MUST observe every preceding delta so the durable
+        // line never appears before its accumulated streaming chunks.
+        flushStreamingDeltaBatch(get);
         get().appendChatEvent(line);
         // file_create / file_edit / downloaded refresh the file tree.
         if (line.type === 'chat_status') {
@@ -108,7 +118,7 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
       }
 
       case 'streaming_delta': {
-        get().applyStreamingDelta({
+        enqueueStreamingDelta(get, {
           turnId: chatEvent.turnId,
           workerScope: chatEvent.workerScope,
           kind: chatEvent.kind,
@@ -120,6 +130,11 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
       }
 
       case 'streaming_buffer_snapshot': {
+        // The snapshot OVERWRITES the buffer for this scope, so any
+        // chunks we have queued are about to be invalidated. Flush them
+        // first so they land before the snapshot replaces the entry —
+        // then the snapshot wins as the authoritative state.
+        flushStreamingDeltaBatch(get);
         get().replaceStreamingBuffer({
           turnId: chatEvent.turnId,
           workerScope: chatEvent.workerScope,
@@ -132,6 +147,7 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
       }
 
       case 'events_cleared': {
+        flushStreamingDeltaBatch(get);
         get().clearChatEvents(chatEvent.scope);
         // `scope='full'` means the BE collapsed feature.jsonl too;
         // wipe FE breadcrumb cache so the Timeline tab drops stale rows.

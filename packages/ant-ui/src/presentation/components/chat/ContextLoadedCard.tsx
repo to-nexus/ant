@@ -7,6 +7,7 @@
  * Usage: showChatStatus('context_loaded', { items: [{ label: 'Eval report', detail: 'eval-2026-02-10.md' }] })
  */
 
+import { memo } from 'react';
 import { BookOpen } from 'lucide-react';
 import type { ChatStatusLine, PendingCardSnapshot } from '@ant/shared';
 import { lineToContent } from './cards/lineToContent';
@@ -16,7 +17,7 @@ interface ContextLoadedCardProps {
   pending?: PendingCardSnapshot;
 }
 
-export function ContextLoadedCard({ line, pending }: ContextLoadedCardProps) {
+export const ContextLoadedCard = memo(function ContextLoadedCard({ line, pending }: ContextLoadedCardProps) {
   const content = lineToContent(line, pending);
   const items = content.metadata?.items as Array<{ label: string; detail?: string }> | undefined;
 
@@ -49,4 +50,4 @@ export function ContextLoadedCard({ line, pending }: ContextLoadedCardProps) {
       </div>
     </div>
   );
-}
+});
