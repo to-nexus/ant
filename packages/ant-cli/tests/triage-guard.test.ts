@@ -147,3 +147,45 @@ describe('hasTargetJobPrerequisites (SSOT-driven)', () => {
     });
   });
 });
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// detectMode priority for the design job — matches the YAML mode ordering
+// (spec → ui-design → system-design). Code-only workspaces with directive
+// only must hit `spec`, not `ui-design`. Visual artifacts win for ui-design.
+// PRD without visual artifacts falls through to system-design.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+describe('AgentRegistry.detectMode("design", ws) priority', () => {
+  beforeAll(async () => {
+    await AgentRegistry.initialize();
+  });
+
+  it('directive only (code workspace) → spec', () => {
+    expect(AgentRegistry.detectMode('design', makeWs({ hasDirective: true }))).toBe('spec');
+  });
+
+  it('figma config (with directive) → ui-design (visual artifact wins)', () => {
+    expect(
+      AgentRegistry.detectMode('design', makeWs({ hasDirective: true, hasFigmaConfig: true })),
+    ).toBe('ui-design');
+  });
+
+  it('assets only (with directive) → ui-design', () => {
+    expect(
+      AgentRegistry.detectMode('design', makeWs({ hasDirective: true, hasAssets: true })),
+    ).toBe('ui-design');
+  });
+
+  it('PRD only (no visual, no directive) → system-design', () => {
+    expect(AgentRegistry.detectMode('design', makeWs({ hasPrd: true }))).toBe('system-design');
+  });
+
+  it('PRD + directive (no visual) → system-design (PRD takes precedence over spec)', () => {
+    expect(
+      AgentRegistry.detectMode('design', makeWs({ hasPrd: true, hasDirective: true })),
+    ).toBe('system-design');
+  });
+
+  it('all empty → falls back to first mode (spec)', () => {
+    expect(AgentRegistry.detectMode('design', makeWs())).toBe('spec');
+  });
+});

@@ -240,14 +240,31 @@ Build an API
 
 ### design job (agent: architect)
 Creates specifications and architecture documents.
-Three modes: UI Design (from Figma or directive/PRD), System Design (from PRD), and Spec (feature-scoped planning).
+Three modes: Spec (feature-scoped multi-boundary planning), UI Design (from Figma or visual assets), System Design (from PRD or instructions).
 Spec mode analyzes existing codebase and plans multi-boundary changes before implementation.
 Output documents guide Code Job for accurate implementation.
 
 
+#### Mode: spec
+Creates feature-scoped specification documents for implementation planning.
+Analyzes existing codebase to understand affected boundaries and plan changes.
+Handles multi-boundary tasks: bug analysis, feature additions, complex modifications.
+Has full codebase analysis capability — equivalent to code job's analysis power.
+
+
+**Prerequisites:**
+- Recommended:
+  - Existing codebase for analysis
+
+**Scope:**
+- Feature-scoped implementation planning
+- Multi-boundary bug analysis and root cause investigation
+- Cross-module impact analysis
+- Task decomposition for complex modifications
+
 #### Mode: ui-design
-Generates UI specification documents from a Figma design file or a description (PRD + directive).
-Analyzes visual design or requirement text to extract tokens, components, and layouts.
+Generates UI specification documents from a Figma design file or visual assets.
+Analyzes visual design or asset files to extract tokens, components, and layouts.
 
 
 **Prerequisites:**
@@ -279,23 +296,6 @@ Suitable for backend, fullstack, or complex system design.
 - API interface design (REST, GraphQL, etc.)
 - Data model and schema design
 - Service boundaries and interactions
-
-#### Mode: spec
-Creates feature-scoped specification documents for implementation planning.
-Analyzes existing codebase to understand affected boundaries and plan changes.
-Handles multi-boundary tasks: bug analysis, feature additions, complex modifications.
-Has full codebase analysis capability — equivalent to code job's analysis power.
-
-
-**Prerequisites:**
-- Recommended:
-  - Existing codebase for analysis
-
-**Scope:**
-- Feature-scoped implementation planning
-- Multi-boundary bug analysis and root cause investigation
-- Cross-module impact analysis
-- Task decomposition for complex modifications
 
 **Redirect signals:**
 - → to_code: Design documents already exist AND the directive requests implementation as the output. Design job handles explanation, analysis, and investigation directly (has code reading tools).

@@ -148,8 +148,11 @@ describe('parseTriageResponse', () => {
       redirectReason: 'Design needed',
     };
 
+    // AgentRegistry.detectMode returns YAML mode ids (`ui-design | system-design | spec`).
+    // parser.ts maps them to intentGroup notation (`design-ui | design-system | design-spec`)
+    // before label/displayName lookup. These tests mock the YAML mode id to verify the mapping.
     it('ui-design mode when figma config exists', () => {
-      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('design-ui');
+      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('ui-design');
       const ws = makeWorkspaceState({ hasFigmaConfig: true });
       const result = parseTriageResponse(wrap(designRedirectJson), 'code', 'architect', ws);
       expect(result!.choiceOptions!.positive.label).toBe('UI 디자인부터 시작');
@@ -160,7 +163,7 @@ describe('parseTriageResponse', () => {
     });
 
     it('system-design mode when PRD exists without screens', () => {
-      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('design-system');
+      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('system-design');
       const ws = makeWorkspaceState({ hasPrd: true });
       const result = parseTriageResponse(wrap(designRedirectJson), 'code', 'architect', ws);
       expect(result!.choiceOptions!.positive.label).toBe('시스템 설계부터 시작');
@@ -170,7 +173,7 @@ describe('parseTriageResponse', () => {
     });
 
     it('spec mode when only directive exists', () => {
-      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('design-spec');
+      const spy = vi.spyOn(AgentRegistry, 'detectMode').mockReturnValue('spec');
       const ws = makeWorkspaceState({ hasDirective: true });
       const result = parseTriageResponse(wrap(designRedirectJson), 'code', 'architect', ws);
       expect(result!.choiceOptions!.positive.label).toBe('스펙 설계부터 시작');
