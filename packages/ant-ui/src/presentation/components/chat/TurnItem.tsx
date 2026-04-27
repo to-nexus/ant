@@ -180,6 +180,10 @@ function SectionStack({ turnId, section }: { turnId: string; section: TurnSectio
 
 function parseScope(scope: string): { workerLabel?: string; taskKey?: string } {
   if (scope === MAIN_WORKER_SCOPE) return {};
+  // Cancelled card sections (`_cancelled_:{cardId}`) are visually
+  // self-contained as a ChoiceCard; suppress the worker label header
+  // so they don't render with a noisy "_cancelled_:..." subtitle.
+  if (scope.startsWith('_cancelled_:')) return {};
   const [workerPart, taskPart] = scope.split('#', 2);
   return {
     workerLabel: workerPart || undefined,
@@ -406,6 +410,7 @@ function StatusCardDispatch({ line, pending, isStreaming }: StatusCardDispatchPr
       return <PlanCard line={line} pending={pending} isStreaming={isStreaming} />;
 
     // ===== Task Response Card =====
+    case 'task_response_streaming':
     case 'task_response':
       return <TaskResponseCard line={line} pending={pending} isStreaming={isStreaming} />;
 
