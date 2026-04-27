@@ -30,6 +30,7 @@ import {
   BroadcasterOptions 
 } from './types';
 import { UserContext } from '../types/user';
+import { InflightTracker } from './InflightTracker';
 
 /**
  * Lightweight async mutex for serializing concurrent enterNode/exitNode calls.
@@ -83,7 +84,11 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   
   // Mutex for serializing concurrent state mutations from parallel workers
   private readonly mutex = new BroadcasterMutex();
-  
+
+  // Tracks fire-and-forget broadcasts so close() can flush them before
+  // tearing down Redis connections.
+  private readonly inflight = new InflightTracker();
+
   // Active worker tracking
   private activeWorkers = new Map<number, ActiveWorkerInfo>();
   
@@ -138,10 +143,12 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
       activeActors: [],
     };
     
-    // Fire-and-forget broadcast
-    this.broadcastState(false).catch(err => {
-      console.warn(`[WorkflowBroadcaster] Failed to broadcast startJob:`, err.message);
-    });
+    // Fire-and-forget broadcast — tracked so close() can flush.
+    this.inflight.track(
+      this.broadcastState(false).catch(err => {
+        console.warn(`[WorkflowBroadcaster] Failed to broadcast startJob:`, err.message);
+      })
+    );
     
     console.log(`[WorkflowBroadcaster] Job started: ${jobId}`);
   }
@@ -151,8 +158,12 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
    * @param workerId - Worker identifier (0 for sequential, N for parallel workers)
    * Returns Promise to ensure SSE ordering
    * Uses mutex to prevent race conditions from concurrent worker calls
+   *
+   * The execution promise is tracked so callers that fire-and-forget
+   * (e.g. planner generate's pre-LLM enterNode) still flush before the
+   * broadcaster closes.
    */
-  async enterNode(
+  enterNode(
     jobId: string, 
     nodeId: string,
     workerId: number,
@@ -161,7 +172,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
     recursionCount?: number,
     recursionLimit?: number
   ): Promise<void> {
-    await this.mutex.runExclusive(async () => {
+    const exec = this.mutex.runExclusive(async () => {
       // Close previous node's history entry for this worker
       const prev = this.activeWorkers.get(workerId);
       if (prev) {
@@ -199,26 +210,33 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
       await this.broadcastState(false);
       console.log(`[WorkflowBroadcaster] Enter node: ${nodeId} (worker=${workerId}${taskInfo ? `, task: ${taskInfo.name}` : ''})`);
     });
+    this.inflight.track(exec);
+    return exec;
   }
 
   /**
    * Track node exit
    * @param workerId - Worker identifier (0 for sequential, N for parallel workers)
    * Now async with mutex to prevent race conditions with concurrent enterNode/exitNode calls
+   *
+   * Execution is tracked so non-awaited fire-and-forget callers still
+   * flush via close().
    */
-  async exitNode(jobId: string, nodeId: string, workerId: number): Promise<void> {
-    try {
-      await this.mutex.runExclusive(async () => {
+  exitNode(jobId: string, nodeId: string, workerId: number): Promise<void> {
+    const exec = this.mutex
+      .runExclusive(async () => {
         this.activeWorkers.delete(workerId);
         this.rebuildActiveNodes();
         this.closeHistoryEntry(nodeId);
         
         await this.broadcastState(false);
+      })
+      .catch((err: any) => {
+        // Catch internally to prevent unhandled rejection from non-awaited callers
+        console.warn(`[WorkflowBroadcaster] Failed to broadcast exitNode(${nodeId}, worker=${workerId}):`, err.message);
       });
-    } catch (err: any) {
-      // Catch internally to prevent unhandled rejection from non-awaited callers
-      console.warn(`[WorkflowBroadcaster] Failed to broadcast exitNode(${nodeId}, worker=${workerId}):`, err.message);
-    }
+    this.inflight.track(exec);
+    return exec;
   }
 
   /**
@@ -229,10 +247,12 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
       this.state.activeActors.push(actorId);
     }
     
-    // Fire-and-forget broadcast
-    this.broadcastState(false).catch(err => {
-      console.warn(`[WorkflowBroadcaster] Failed to broadcast startActor:`, err.message);
-    });
+    // Fire-and-forget broadcast — tracked so close() can flush.
+    this.inflight.track(
+      this.broadcastState(false).catch(err => {
+        console.warn(`[WorkflowBroadcaster] Failed to broadcast startActor:`, err.message);
+      })
+    );
   }
 
   /**
@@ -241,18 +261,20 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   endActorInteraction(jobId: string, actorId: string): void {
     this.state.activeActors = this.state.activeActors.filter(a => a !== actorId);
     
-    // Fire-and-forget broadcast
-    this.broadcastState(false).catch(err => {
-      console.warn(`[WorkflowBroadcaster] Failed to broadcast endActor:`, err.message);
-    });
+    // Fire-and-forget broadcast — tracked so close() can flush.
+    this.inflight.track(
+      this.broadcastState(false).catch(err => {
+        console.warn(`[WorkflowBroadcaster] Failed to broadcast endActor:`, err.message);
+      })
+    );
   }
 
   /**
    * Clear stale worker entries after parallel orchestrator completes.
    * Workers' last node (usually 'learn') stays in activeWorkers until cleared.
    */
-  async clearWorkers(jobId: string, workerIds?: number[]): Promise<void> {
-    await this.mutex.runExclusive(async () => {
+  clearWorkers(jobId: string, workerIds?: number[]): Promise<void> {
+    const exec = this.mutex.runExclusive(async () => {
       if (workerIds) {
         for (const wId of workerIds) {
           const info = this.activeWorkers.get(wId);
@@ -272,6 +294,8 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
       await this.broadcastState(false);
       console.log(`[WorkflowBroadcaster] Cleared workers: ${workerIds ? workerIds.join(',') : 'all'}`);
     });
+    this.inflight.track(exec);
+    return exec;
   }
 
   /**
@@ -360,9 +384,11 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   }
 
   /**
-   * Close Redis connections
+   * Close Redis connections. Flushes in-flight broadcasts first so
+   * fire-and-forget node entry/exit emissions don't race `quit()`.
    */
   async close(): Promise<void> {
+    await this.inflight.flush();
     await this.redis.quit();
     await this.pubRedis.quit();
   }

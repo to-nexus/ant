@@ -19,10 +19,12 @@ import { PreviewUpdatePort, PreviewStructureType } from '../ports/preview';
 import { UserContext } from '../types/user';
 import { getRealtimeBroadcastChannel, BroadcasterOptions } from './types';
 import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
+import { InflightTracker } from './InflightTracker';
 
 export class PreviewBroadcaster implements PreviewUpdatePort {
   private pubRedis: Redis;
   private readonly options: BroadcasterOptions;
+  private readonly inflight = new InflightTracker();
 
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
@@ -49,10 +51,13 @@ export class PreviewBroadcaster implements PreviewUpdatePort {
     projectProfile?: { language: string; framework?: string }
   ): void {
     const ctx = userContext || this.options.userContext;
-    this.doBroadcast(projectId, featureName, structureType, ctx, projectProfile)
-      .catch(err => {
-        console.warn(`[PreviewBroadcaster] Failed to broadcast structureType:`, err.message);
-      });
+    // Tracked so close() can flush before pubRedis.quit() drops the publish.
+    this.inflight.track(
+      this.doBroadcast(projectId, featureName, structureType, ctx, projectProfile)
+        .catch(err => {
+          console.warn(`[PreviewBroadcaster] Failed to broadcast structureType:`, err.message);
+        })
+    );
   }
 
   private async doBroadcast(
@@ -113,6 +118,7 @@ export class PreviewBroadcaster implements PreviewUpdatePort {
   }
 
   async close(): Promise<void> {
+    await this.inflight.flush();
     await this.pubRedis.quit();
   }
 }
