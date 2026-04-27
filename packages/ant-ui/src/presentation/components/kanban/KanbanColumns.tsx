@@ -22,12 +22,12 @@ function InlineNodeStatus({ node }: { node: ActiveWorkerNode | undefined }) {
     nodeId.split(/(?=[A-Z])/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
   return (
-    <div className="flex items-center gap-1.5 px-3 py-1 bg-gray-50/50 dark:bg-gray-800/30 rounded-b-lg border-x border-b border-gray-200/60 dark:border-gray-700/40">
-      <div className="relative flex h-1.5 w-1.5">
+    <div className="flex min-w-0 items-center gap-1.5 px-3 py-1 bg-gray-50/50 dark:bg-gray-800/30 rounded-b-lg border-x border-b border-gray-200/60 dark:border-gray-700/40">
+      <div className="relative flex h-1.5 w-1.5 shrink-0">
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
         <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
       </div>
-      <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+      <span className="min-w-0 text-[10px] font-medium text-blue-600 dark:text-blue-400 [overflow-wrap:anywhere]">
         {formatNodeName(node.nodeId)}
       </span>
     </div>
@@ -147,6 +147,7 @@ export function KanbanColumns({
               return (
                 <motion.div
                   key={taskId}
+                  className="min-w-0"
                   layoutId={`task-${taskId}`}
                   layout
                   initial={{ opacity: 0, scale: 0.9 }}
@@ -201,9 +202,10 @@ export function KanbanColumns({
               );
               
               return (
-                <div key={`in-progress-${taskId}`} className="space-y-0">
+                <div key={`in-progress-${taskId}`} className="min-w-0 space-y-0">
                   <motion.div
                     key={taskId}
+                    className="min-w-0"
                     layoutId={`task-${taskId}`}
                     layout
                     transition={{ 
@@ -265,7 +267,7 @@ export function KanbanColumns({
                       damping: 35
                     }
                   }}
-                  className="relative"
+                  className="relative min-w-0"
                   style={{ isolation: 'isolate' }}
                 >
                   {/* ✅ Golden shine effect for newly completed tasks */}
