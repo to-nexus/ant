@@ -349,6 +349,7 @@ export function generateChatStatusContent(
     case 'plan':
       return metadata?.content ?? '';
 
+    case 'task_response_streaming':
     case 'task_response':
       return metadata?.content ?? '';
 

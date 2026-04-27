@@ -82,17 +82,20 @@ export class CommonRenderStrategy implements IRenderStrategy {
 
           this.taskResponseBuffer += text;
 
+          // First chunk mints the cardId via the progress status. Subsequent
+          // chunks stream into the same TURN_BUFFER pendingCard — they don't
+          // append jsonl lines because `task_response_streaming` is a
+          // PROGRESS_STATUS type. The terminal `task_response` line is
+          // emitted from `finalize()` with the accumulated buffer as
+          // `metadata.content`, so chat.jsonl carries exactly one line per
+          // task_response card.
           if (this.taskResponseIndex === undefined) {
-            this.taskResponseIndex = await this.chatAPI.showChatStatus('task_response', {
-              content: this.taskResponseBuffer,
-              taskName: this.parallelTaskName
-            });
-          } else {
-            await this.chatAPI.showChatStatus('task_response', {
+            this.taskResponseIndex = await this.chatAPI.showChatStatus('task_response_streaming', {
               content: this.taskResponseBuffer,
               taskName: this.parallelTaskName,
-              _mergeIndex: this.taskResponseIndex
             });
+          } else {
+            await this.chatAPI.streamTaskResponseChunk(this.taskResponseIndex, text);
           }
         } else {
           await this.responseRenderer.renderResponse(action);
@@ -169,11 +172,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
     await this.fileRenderer.finalize();
 
     if (this.taskResponseIndex !== undefined) {
+      // Persist the full accumulated text on the terminal line so the FE
+      // projector can reproduce the card from this single jsonl entry.
+      // `_mergeIndex` keeps the cardId stable so `appendChatStatus` clears
+      // the matching pendingCard from the TURN_BUFFER on transition.
       await this.chatAPI.showChatStatus('task_response', {
+        content: this.taskResponseBuffer,
+        taskName: this.parallelTaskName,
         _mergeIndex: this.taskResponseIndex,
-        _preserveContent: true,
-        completed: true,
-        taskName: this.parallelTaskName
       });
       this.taskResponseIndex = undefined;
       this.taskResponseBuffer = '';
