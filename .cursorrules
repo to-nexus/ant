@@ -831,8 +831,13 @@ rg "figmaAvailable\?\s*:\s*boolean" packages/ant-cli/src/agents/architect/graph/
 
 - TypeScript strict mode
 - ESLint + Prettier
-- JSDoc comments recommended for functions
 - Console logs use emoji prefixes (e.g., `📄 [DocGen]`, `🔧 [Tool]`)
+
+### Comments — lean by default (에이전트/인간 공통)
+
+- **주석 과다 금지.** 줄마다 설명을 달거나, 블록 주석으로 구현을 “번역”하지 않는다. **한 파일·한 diff 안에서 주석(빈 줄 제외 non-code line)이 실행 코드보다 길거나 많아지는 패턴은 금지**다. 코드가 읽히게 이름·분리·타입으로 표현한다.
+- 이미 있는 주석·코드를 “설명용 주석”으로 덮어쓰지 않는다. 새 주석은 **비명확한 불변식, 외부 계약, 왜 이 방식인지(안전/성능/회귀 한 줄)** 같이 코드만으로 전달하기 어려운 곳에만 최소한으로 추가한다.
+- **JSDoc**은 공개 API·소비자가 봐야 할 계약·`@deprecated` 등 **필요할 때만 짧게**. 모든 함수에 장문 JSDoc을 의무로 붙이지 않는다. 당연한 동작을 JSDoc으로 반복하지 않는다.
 
 ---
 
