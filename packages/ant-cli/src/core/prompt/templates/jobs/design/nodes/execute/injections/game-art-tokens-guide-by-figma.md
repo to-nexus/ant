@@ -5,7 +5,7 @@ Capture the global game-art-tier tokens — palette, silhouette, lighting,
 motion tone — derived from the project's `gameArtTier.concept` and the
 Figma file's color / effect / style variables.
 
-### Surface scope (D24-revised v8 — sub-sourced canonical)
+### Surface scope (sub-sourced canonical)
 - Output path: `outputs/design/game-art/ant/game-art-tokens.json`
 - `ant/` is the LLM-generated canonical sub-source (mirrors `outputs/design/ui/ant/`).
 - `figma/` / `handoff/` sub-directories are Phase 5+ hooks — parser-only today.

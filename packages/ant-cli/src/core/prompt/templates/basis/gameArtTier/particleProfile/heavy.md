@@ -34,13 +34,14 @@ The `effects` category in `game-art-spec.json` then references multiple ids per 
 
 `heavy` typically requires **`_meta.visualScope === 'atlas-enabled'`** when external particle atlases are used. Pure-inline `heavy` is workable for simpler shapes but quickly bumps the design-time inline-payload ceiling (D21). Mixed inline + external is the usual configuration.
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
 - `arcadePaddle` → `heavy` is the canonical match for "juicy" Breakout / Arkanoid clones. Brick break + chain-explosion + ball-trail layers are the genre's expected feedback at this tier.
 - `match3` → `heavy` is unusual but legal for "Royal Match"-style juicy match-3. Cascading match clears stack debris + confetti + ambient sparkle.
 - `arcadeSnake` → `heavy` is unusual. Snake's clean Tron-grid aesthetic rarely benefits; reserve for "Slither.io"-style variants where leaderboard / boss interactions justify big VFX.
-- `slidingPuzzle` → `heavy` mismatches the genre. Reflective puzzles want quiet feedback.
+- `slidingPuzzle` → `heavy` mismatches the genre. Reflective tile-puzzles want quiet feedback.
 - `cardSolitaire` → `heavy` mismatches the canonical `cardClassic` tone. Reserve for arcade-card hybrids ("Solitaire with magic").
+- `crowdRunner` → `heavy` is reachable for projects that commit continuous bullet trails, ambient course-edge effects, formation-explosion on heavy ops, and big terminal / boss telegraphs. Default `crowdRunner` fits `light`; `heavy` is opt-in for ambitious feedback.
 
 ### Code-time consequences
 
@@ -48,7 +49,7 @@ The `effects` category in `game-art-spec.json` then references multiple ids per 
 - `BootScene.preload` registers all particle textures (external atlas typical).
 - Sound (`audioProfile`) at this tier typically rises to `fileBased` or `hybrid` — particle bursts and SFX should fire on the same beat.
 
-### Concept affinity (D32-revised v8 — guidance, not strict)
+### Concept affinity (guidance, not strict)
 
 `heavy` pairs naturally with `neonArcade` (Tron explosion grids, ambient neon dust, scanline overlays driven by particles). It works for `flatMinimal` only when the project explicitly leans into "juicy" feedback (Royal Match-style); otherwise downgrade. `pixelRetro` rarely supports `heavy` — era-faithful retro lacks the hardware tradition for it (only stylized retro that amplifies the era is acceptable). `softPastel` and `cardClassic` mismatch.
 

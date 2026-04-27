@@ -2,7 +2,7 @@
 
 ### Follow the plan + game-art source
 
-**Your plan contains an inventory derived from `outputs/design/game-art/ant/`** — the three sub-sourced artifacts `game-art-tokens.json`, `game-art-assets.json`, and `game-art-spec.json` (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`). The per-artifact reading rules are injected via `game-art-source`.
+**Your plan contains an inventory derived from `outputs/design/game-art/ant/`** — the three sub-sourced artifacts `game-art-tokens.json`, `game-art-assets.json`, and `game-art-spec.json` (sub-sourced canonical, mirrors `outputs/design/ui/ant/`). The per-artifact reading rules are injected via `game-art-source`.
 
 **Implementation rules:**
 

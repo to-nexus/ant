@@ -13,13 +13,14 @@ The `none` particle profile commits to **zero particle emitters in the project**
 - No CSS `@keyframes` or `animation` rules that simulate particles via inline `<div>` shrapnel.
 - `game-art-assets.json` has no `particles` category, or the category is empty (`"particles": []`).
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
 - `slidingPuzzle` → `none` is the canonical match. The genre's reflective tone has no use for particle bursts.
 - `cardSolitaire` → `none` is the canonical match. The card-table aesthetic does not want shrapnel; only the win-state cascade flourish is acceptable, and that is achieved via `motionPattern` (cards fanning out), not particles.
 - `match3` → `none` is unusual. Match-3 typically benefits from at least `light` (match-clear spark). Use `none` only for the most minimalist match-3 variants that lean fully on color / motion.
 - `arcadePaddle` → `none` is unusual. The brick break naturally calls for a debris burst.
 - `arcadeSnake` → `none` is acceptable for minimalist Tron-style snake; use `light` if the food-eat moment wants a pulse.
+- `crowdRunner` → `none` is unusual — gate-pass affordance, unit-loss feedback, and the auto-fire stream all benefit from at least `light` particles. `none` only fits a deliberately minimalist `crowdRunner` twist that leans fully on motion + audio for engagement feedback.
 
 ### Code-time consequences
 
@@ -27,7 +28,7 @@ The `none` particle profile commits to **zero particle emitters in the project**
 - The render budget is the lightest possible — `none` projects can ship at 60 fps on the most modest devices.
 - HUD overlay rendering (React-side) keeps its own animations; `none` here only constrains the in-canvas surface.
 
-### Concept affinity (D32-revised v8 — guidance, not strict)
+### Concept affinity (guidance, not strict)
 
 `none` pairs naturally with `cardClassic` and `pixelRetro` (era-faithful, no particle systems on the original hardware). It works for `flatMinimal` and `softPastel` (calm aesthetics). `neonArcade` rarely benefits from `none` — neon visuals expect at least a glow trail.
 

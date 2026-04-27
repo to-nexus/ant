@@ -12,11 +12,11 @@ The `none` projectile policy commits to **zero projectile entities** — no bull
 - `game-art-assets.json` has no `projectiles` category, or the category is empty.
 - `game-art-spec.json` `projectiles` category is omitted.
 
-### Genre cross-reference (D31-revised v9 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
-For 5 of the 6 v9 sub-genres (`match3`, `slidingPuzzle`, `cardSolitaire`, `arcadePaddle`, `arcadeSnake`), `projectilePolicy === 'none'` is the canonical match. None of these are projectile-centric. The ball in `arcadePaddle` is the central play entity, not a projectile (it is deflected, not fired). The body cells in `arcadeSnake` are the trail of the player, not projectiles.
+For `match3`, `slidingPuzzle`, `cardSolitaire`, `arcadePaddle`, and `arcadeSnake`, `projectilePolicy === 'none'` is the canonical match. None of these are projectile-centric. The ball in `arcadePaddle` is the central play entity, not a projectile (it is deflected, not fired). The body cells in `arcadeSnake` are the trail of the player, not projectiles.
 
-`crowdRunner` is the one v9 sub-genre that *can* be projectile-centric (auto-firing crowds). `none` only fits a `crowdRunner` twist that explicitly drops firing in favour of contact-only / aim-assist-without-projectiles interaction — otherwise step up to `simple` or `complex`.
+`crowdRunner` is the one sub-genre that *can* be projectile-centric (auto-firing crowds). `none` only fits a `crowdRunner` twist that explicitly drops firing in favour of contact-only / aim-assist-without-projectiles interaction — otherwise step up to `simple` or `complex`.
 
 If the project introduces a projectile mechanic (a power-up that fires a bomb, a special tile that emits a beam), the policy should step up to `simple` for that one mechanic.
 
@@ -28,7 +28,7 @@ If the project introduces a projectile mechanic (a power-up that fires a bomb, a
 
 ### Concept affinity
 
-`none` pairs with all 5 v9 concepts because no concept-tier consideration applies — the policy is a hard "absent" decision.
+`none` pairs with all registered concepts because no concept-tier consideration applies — the policy is a hard "absent" decision.
 
 ### Blind-spot reminders
 

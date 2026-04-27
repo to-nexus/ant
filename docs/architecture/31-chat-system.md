@@ -98,22 +98,27 @@ SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지
 
 ## Worker Scope · Task Scope · Section Ordering
 
-채팅 이벤트의 `workerScope`는 두 차원을 합성한 식별자다. `core/parallel/workerScope.ts`의 AsyncLocalStorage가 두 dimension을 모두 들고 있으며, `TurnContext.getWorkerScopeKey()`가 단일 키 형태로 직렬화한다.
+채팅 이벤트의 `workerScope`는 **세 차원**을 합성한 식별자다. `core/parallel/workerScope.ts`의 AsyncLocalStorage가 세 dimension을 모두 들고 있으며, `TurnContext.getWorkerScopeKey()`가 단일 키 형태로 직렬화한다.
 
 | 상황 | scope key |
 |------|-----------|
 | 메인 그래프 (no worker) | `_main_` |
 | 병렬 worker, task 외부 | `worker-N` |
-| 병렬 worker, task 실행 중 | `worker-N#task-K` |
+| 병렬 worker, task 실행 중 (첫 시도) | `worker-N#task-K` |
+| 병렬 worker, task 실행 중 (resume cycle) | `worker-N#task-K#p{cycleSeq}` |
 | cancelled choice card | `_cancelled_:{cardId}` |
 
-`task-K`는 `task.id`(또는 `task.name` fallback)로 안정적이다. `TaskWorker.executeTask`가 `runInWorkerScope(workerId, …)` 안에서 `runInTaskScope(taskKey, …)`로 task 별 scope를 overlay한다. 이 두 단계 wrapping 덕에 LLM emit, file ops, tool 호출 등 모든 chat 이벤트가 자동으로 정확한 식별자를 부여받는다.
+`task-K`는 `task.id`(또는 `task.name` fallback)로 안정적이다. `TaskWorker.executeTask`가 `runInWorkerScope(workerId, …)` 안에서 `runInTaskScope(taskKey, cycleSeq, …)`로 task 별 scope를 overlay한다. 이 두 단계 wrapping 덕에 LLM emit, file ops, tool 호출 등 모든 chat 이벤트가 자동으로 정확한 식별자를 부여받는다.
+
+`cycleSeq`는 turnId-level pause/resume cycle index다. `TaskWorker.executeTask`가 task subgraph를 invoke 하기 직전 `LLMResponseService.getCurrentPauseSeq()`(= `StateStorePort.getCurrentPauseSeq(turnId)` GET-peek)를 호출해 받아온다. 첫 시도(아직 cancellation 한 번도 없음)에는 0이 반환되고 suffix가 생략되어 키가 `worker-N#task-K`로 두 차원 form과 동형이다 — pre-fix 시점에 기록된 chat.jsonl 라인과의 schema 연속성이 보존된다. Stop이 한 번 일어나면 `ChatService.appendChoicePresentedCancelled`가 동일 redis key (`ant:chat:pauseSeq:{turnId}`)를 INCR해 cancelled cardId의 seq 부분과 cycleSeq를 한 SSOT로 묶는다. peek 측은 INCR 하지 않으므로 두 path가 race하지 않는다.
 
 `_cancelled_:{cardId}`는 AsyncLocalStorage가 아니라 `ChatService.appendChoicePresentedCancelled`가 직접 stamping하는 합성 scope다. cardId가 pauseSeq를 포함하므로 한 turn 안에서 여러 번 pause-resume이 발생해도 각 cancellation이 독립 섹션으로 분리된다. 짝이 되는 `choice_resolved`는 `findTurnIdByCardId`가 원본 presented 라인에서 scope를 surfacing해 동일 섹션에 머무른다.
 
-### 왜 두 차원인가
+### 왜 세 차원인가
 
-`TaskWorker`는 long-lived 루프다. 한 worker가 cohort 1의 task A를 끝내고 cohort 2의 task B를 이어 잡는다. `workerScope`만 사용하면 cohort 2 메시지가 cohort 1과 같은 화면 위치에 누적되어, **이미 끝난 다른 worker의 cohort 1 메시지보다 위쪽 스크롤**에 나타나는 시간 역전이 발생한다(`rigid-fanning-faith` 회귀). `taskKey`를 합성하면 task별로 별도 섹션이 생기고 시간순 정렬과 결합해 chronology가 보존된다.
+- **`workerId` (1축)**: long-lived TaskWorker 루프 식별자.
+- **`taskKey` (2축)**: 한 worker가 cohort 1의 task A를 끝내고 cohort 2의 task B를 이어 잡을 때 cohort 별 섹션 분리. 누락 시 cohort 2 메시지가 이미 끝난 다른 worker의 cohort 1 메시지보다 위쪽 스크롤에 나타나는 시간 역전이 발생한다(`rigid-fanning-faith` 회귀).
+- **`cycleSeq` (3축)**: 한 task가 Stop/Resume cycle을 거쳐도 `task.id`는 동일하므로 누락 시 모든 cycle의 events가 한 section에 누적되고 그 section 의 first ts가 첫 시도 시점에 영구 anchor된다. cancelled card의 first ts(=Stop 시점)가 항상 더 늦으므로 chronological sort 결과 cancelled section이 worker section *아래* 로 가서 채팅 입력창 바로 위에 "고정" 된다(`even-getting-knave` 회귀). cycleSeq를 부착하면 각 cycle이 independent section을 갖고 first ts가 cycle 시작점이 되어 cancelled card 가 Resume 후 자연스럽게 위로 밀려난다.
 
 ### FE 섹션 정렬
 
@@ -122,9 +127,9 @@ SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지
 1. `_main_`은 항상 첫 위치(turn-level orchestration narrative).
 2. 그 외 섹션은 첫 이벤트 timestamp 오름차순.
 3. 동률은 `workerScope.localeCompare`로 결정.
-4. cancelled choice card는 BE에서 합성 `_cancelled_:{cardId}` scope를 받는다. 이 scope의 첫 이벤트 ts는 곧 사용자가 Stop을 누른 시점이므로 규칙 2에 의해 그 이전 worker 출력 **아래**에 자연 배치된다. 재개(`Resume`) 후 신규 worker scope의 첫 ts는 더 크므로, 추가 출력이 들어올수록 cancelled 카드는 위로 밀려나며 더 이상 "스크롤 최상단 고정"되지 않는다.
+4. cancelled choice card는 BE에서 합성 `_cancelled_:{cardId}` scope를 받는다. 이 scope의 첫 이벤트 ts는 곧 사용자가 Stop을 누른 시점이므로 규칙 2에 의해 그 이전 worker 출력 **아래**에 자연 배치된다. 재개(`Resume`) 직후 worker가 다음 task 시도를 시작하면 `cycleSeq` 가 1 증가하여 worker scope가 `worker-N#task-K#p1` 로 바뀌고, 그 새 scope 의 첫 ts 는 cancelled scope 보다 더 늦으므로 추가 출력이 들어올수록 cancelled 카드는 위로 밀려난다. 즉 cycleSeq 가 없으면 이 규칙이 성립하지 않는다 — `even-getting-knave` 회귀의 본질이 이 의존성이었다.
 
-`TurnItem.parseScope`는 `_main_`과 `_cancelled_:` 프리픽스 두 합성 scope의 worker label 헤더를 억제한다. cancelled 카드 자체가 시각적으로 self-contained ChoiceCard이므로 scope 라벨 노출은 노이즈일 뿐이다.
+`TurnItem.parseScope`는 `_main_`과 `_cancelled_:` 프리픽스 두 합성 scope의 worker label 헤더를 억제한다. cancelled 카드 자체가 시각적으로 self-contained ChoiceCard이므로 scope 라벨 노출은 노이즈일 뿐이다. cycleSeq suffix(`#p{n}`)는 worker label 의 일부로 그대로 통과시켜 디버그 시 어느 cycle 의 출력인지 판별 가능하다.
 
 ## Choice Card
 

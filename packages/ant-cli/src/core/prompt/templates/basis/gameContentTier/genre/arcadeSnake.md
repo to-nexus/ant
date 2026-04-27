@@ -27,7 +27,7 @@ Natural: `survive` (the death-line ramp is canonical for snake-class — every f
 - **Speed / tick-rate indicator** — for variants that ramp tick rate as score grows; visible so players see the difficulty curve.
 - **Food locator hint** (optional, for larger grids) — a directional arrow on screen edge when the food is off-screen.
 
-### Concept affinity (D32-revised v8 — guidance, not a hard gate)
+### Concept affinity (guidance, not a hard gate)
 
 Naturally readable concepts: `neonArcade` (the canonical Tron-grid look — the 1st-class match), `pixelRetro` (NES / Game-Boy Snake), `flatMinimal` (modern phone-app Snake). `softPastel` and `cardClassic` are unusual.
 

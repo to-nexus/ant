@@ -102,7 +102,7 @@ Atlas-enabled hook (active when `_meta.visualScope === 'atlas-enabled'`):
 - `this.add.particles` with custom textures
 - WebGL shader pipelines
 
-❌ Do NOT reach for `Phaser.GameObjects.Image` with a remote URL — assets MUST come through the `inputs/assets/game/...` pool (D19-revised, I6).
+❌ Do NOT reach for `Phaser.GameObjects.Image` with a remote URL — assets MUST come through the `inputs/assets/game/...` pool (I6).
 
 ### 4. Audio API policy
 

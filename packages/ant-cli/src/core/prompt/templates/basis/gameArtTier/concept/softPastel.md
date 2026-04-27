@@ -55,6 +55,6 @@ When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / 
 - **Border radius**: 16–24px on panels, 999px (pill) on action buttons, 50% on indicator dots. Sharp corners read aggressive against the pastel palette.
 - **Focus ring / interaction tone**: gentle — 250–400ms color-fade on hover, soft scale-up on press, settle-back on release. Never an instant snap.
 
-### Genre affinity (D32-revised v8 — guidance, not a hard gate)
+### Genre affinity (guidance, not a hard gate)
 
-`softPastel` is the 1st-class match for cozy `match3` (Two Dots / Threes tone) and works naturally for `cardSolitaire` casual variants. `slidingPuzzle` benefits when the project wants a "puzzle book on a rainy afternoon" tone. `arcadePaddle` and `arcadeSnake` are unusual fits — the survive loop's tension expects sharper feedback than soft-pastel naturally provides.
+`softPastel` is the 1st-class match for cozy `match3` (Two Dots / Threes tone) and works naturally for `cardSolitaire` casual variants. `slidingPuzzle` benefits when the project wants a "puzzle book on a rainy afternoon" tone. `arcadePaddle`, `arcadeSnake`, and `crowdRunner` are unusual fits — the survive loop's tension expects sharper feedback than soft-pastel naturally provides; only adopt for a calmer "drone garden / paper-craft procession" reframing of the genre.

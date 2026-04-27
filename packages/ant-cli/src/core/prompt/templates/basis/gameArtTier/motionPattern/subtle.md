@@ -22,13 +22,14 @@ The `subtle` motion pattern commits to **ease-in-out tweens with short durations
 - One CSS transition slot per state for HUD elements (e.g. `transition: transform 200ms ease-out`); never multiple chained transitions.
 - The motion budget runs about 5–10ms per frame on modest devices — well within the 16ms budget.
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
 - `match3` → `subtle` is the canonical match. The cascade-drop ease is the genre's signature motion — tiles should fall with inertia, not snap. Match-3 without `subtle` motion feels mechanical.
 - `cardSolitaire` → `subtle` is the canonical match. Card-flip + card-settle expect ease curves; the table is a calm surface that rewards smoothness.
-- `slidingPuzzle` → `subtle` is unusual but legal — sliding-puzzles with `subtle` ease (instead of `static` snap) feel modern / app-store-ish (e.g. iOS slide-puzzle apps).
+- `slidingPuzzle` → `subtle` is unusual but legal — sliding-tile games with `subtle` ease (instead of `static` snap) feel modern / app-store-ish (e.g. iOS slide-tile apps).
 - `arcadePaddle` → `subtle` works for the brick-break tween (brick fades out over 200ms instead of disappearing instantly). Ball motion stays continuous (physics, not tween).
 - `arcadeSnake` → `subtle` is unusual; the grid-tick advance breaks if you try to ease between body cells. Reserve `subtle` for non-positional cues (food pulse, score-flash).
+- `crowdRunner` → `subtle` is the canonical match. Steering ease (lateral lerp toward the target lane / position) and gate-pass affordance (modifier flash on contact) want short ease curves, not snap. Stronger expressive motion (heavy camera shake, formation explosion) belongs to `expressive`.
 
 ### Code-time consequences
 
@@ -36,7 +37,7 @@ The `subtle` motion pattern commits to **ease-in-out tweens with short durations
 - Animation manifest entries (when used with `entityCatalog === 'standard'` or higher) define short cycles (≤ 8 frames) — not full walk cycles.
 - HUD CSS uses 150–250ms transitions on hover / press; longer durations belong to `expressive`.
 
-### Concept affinity (D32-revised v8 — guidance, not strict)
+### Concept affinity (guidance, not strict)
 
 `subtle` is the most domain-agnostic motion pattern. It pairs naturally with `flatMinimal` (modern app feel), `cardClassic` (table calmness), and `softPastel` (cozy pace). It works for `pixelRetro` only when the project explicitly mixes pixel art with smooth tweens (a stylistic choice — declare in PRD). `neonArcade` benefits more from `expressive`.
 

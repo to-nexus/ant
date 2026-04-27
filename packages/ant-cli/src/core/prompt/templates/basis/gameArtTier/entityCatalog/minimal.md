@@ -18,13 +18,14 @@ When this variant is active, `game-art-assets.json`'s `entities` category lists 
 
 Beyond 3 entries the project should commit `entityCatalog === 'standard'` instead — the SBS payload is "we are not authoring distinct character art".
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
 - `match3` → 1 gem geometry × N tinted color variants (the variants are `game-art-tokens.json` palette slots applied to the same `entities[0]` shape; the catalog itself stays minimal).
 - `slidingPuzzle` → 1 tile shape × the goal-state markers (e.g. number labels rendered as text overlay, not a separate sprite).
 - `cardSolitaire` → 1 card-frame shape; the suit pictogram (`♠♥♦♣`) is a Unicode glyph rendered on top, not a separate entity.
 - `arcadePaddle` → paddle + ball + brick = 3 entries, each a single rectangle.
 - `arcadeSnake` → head + body-cell + food = 3 entries; the body extension uses repeated body-cell instances.
+- `crowdRunner` → unit + threat + gate = 3 entries; the crowd is `entities[0]` instanced N times, the gate / threat each a single recognisable shape with op / threat label rendered as text or glyph overlay.
 
 ### Code-time consequences
 

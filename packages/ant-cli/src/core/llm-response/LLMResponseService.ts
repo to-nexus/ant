@@ -208,6 +208,35 @@ export class LLMResponseService {
   }
 
   /**
+   * Peek the turnId-level pause sequence (`pauseSeq`) that
+   * `ChatService.appendChoicePresentedCancelled` increments on every
+   * Stop. Used by `TaskWorker.executeTask` to mint cycle-aware worker
+   * scopes (`worker-N#task-K#p{cycleSeq}`) so resumed cycles render in
+   * their own FE section instead of piggy-backing on the original
+   * task's first-event timestamp. Returns 0 when no Stop has occurred
+   * yet (or the service is unconfigured) — the caller treats this as
+   * "no suffix" and emits the legacy `worker-N#task-K` form.
+   *
+   * GET-only (peek). The INCR side stays exclusively with the
+   * cancellation path so workers cannot race-skip a pauseSeq.
+   */
+  async getCurrentPauseSeq(): Promise<number> {
+    if (!this.enabled) return 0;
+    const turnId = this.getTurnId();
+    if (!turnId) return 0;
+    try {
+      return await this.stateStore.getCurrentPauseSeq(turnId);
+    } catch (err) {
+      logger.warn(
+        `getCurrentPauseSeq failed for turnId=${turnId}`,
+        { component: 'LLMResponseService' },
+        err,
+      );
+      return 0;
+    }
+  }
+
+  /**
    * Tear down the process-scoped chat-log appender registration. Tests
    * that construct multiple service instances in one process call this
    * between cases; production workers exit immediately after the job.

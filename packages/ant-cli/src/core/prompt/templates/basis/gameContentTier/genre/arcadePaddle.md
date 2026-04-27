@@ -27,7 +27,7 @@ Natural: `survive` (the ball-alive cycle is the canonical survive pattern). Stro
 - **Brick count remaining** (Breakout-class only) — surfaces level progress; transition to next level fires when count hits zero.
 - **Power-up active state** — when a power-up modifies paddle behavior (wider / narrower / sticky / multi-ball), the HUD flags it with a duration bar or icon.
 
-### Concept affinity (D32-revised v8 — guidance, not a hard gate)
+### Concept affinity (guidance, not a hard gate)
 
 Naturally readable concepts: `neonArcade` (the canonical Tron / synthwave palette for paddle-and-ball — the 1st-class match), `pixelRetro` (Atari 2600 Breakout aesthetic), `flatMinimal` (modern minimalist Breakout). `softPastel` and `cardClassic` are unusual fits.
 

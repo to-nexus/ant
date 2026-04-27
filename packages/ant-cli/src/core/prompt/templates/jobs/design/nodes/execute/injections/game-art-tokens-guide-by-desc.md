@@ -5,7 +5,7 @@ Capture the global game-art-tier tokens — palette, silhouette, lighting,
 motion tone — derived from the project's `gameArtTier.concept` and the
 written directive / PRD.
 
-### Surface scope (D24-revised v8 — sub-sourced canonical)
+### Surface scope (sub-sourced canonical)
 - Output path: `outputs/design/game-art/ant/game-art-tokens.json`
 - `ant/` is the LLM-generated canonical sub-source (mirrors `outputs/design/ui/ant/`).
 - `figma/` / `handoff/` sub-directories are Phase 5+ hooks — parser-only today.
@@ -14,7 +14,7 @@ written directive / PRD.
 
 #### 1. Concept-derived
 The chosen `gameArtTier.concept` is the primary signal. Each concept
-variant has a canonical palette mood (v8 — D32-revised, 5 concepts):
+variant has a canonical palette mood:
 
 | concept variant | palette mood                   | silhouette weight | lighting tone     | motion easing | natural-fit sub-genre (gentle hint, not enforced) |
 |-----------------|--------------------------------|-------------------|-------------------|---------------|---------------------------------------------------|
@@ -24,7 +24,7 @@ variant has a canonical palette mood (v8 — D32-revised, 5 concepts):
 | softPastel      | pastel hue (#FFD8E4 / #C7E2FF) | rounded / soft    | pillowy / soft    | slow ease-out | match3 (Two Dots / Threes), cardSolitaire         |
 | cardClassic     | green felt + white face + suits| flat (suit picto) | flat shadow / flip| snappy        | cardSolitaire (Solitaire / FreeCell — primary)    |
 
-These rows are starting points — the directive may shift any axis. The "natural-fit sub-genre" column is a soft hint (D32-revised: no genre × concept matrix is enforced — the directive may legitimately pair any concept with any sub-genre).
+These rows are starting points — the directive may shift any axis. The "natural-fit sub-genre" column is a soft hint: no genre × concept matrix is enforced — the directive may legitimately pair any concept with any sub-genre.
 
 #### 2. Directive-grounded
 When the directive specifies a particular palette ("neon cyan and

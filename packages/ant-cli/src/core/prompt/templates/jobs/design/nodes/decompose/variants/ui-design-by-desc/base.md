@@ -53,11 +53,9 @@ You are decomposing UI documentation work into executable chapter tasks.
 
 ## 📥 INPUT CONTEXT
 
-{{#if uiContext}}
-### Requirements
+### Requirements ({{documentName}})
 
-{{{uiContext}}}
-{{/if}}
+{{> jobs/design/nodes/decompose/shared/input-context}}
 
 ---
 

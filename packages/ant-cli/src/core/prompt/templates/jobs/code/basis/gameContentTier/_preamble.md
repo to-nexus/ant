@@ -4,7 +4,7 @@
 
 This preamble defines how a code intent **applies** the genre / coreLoop decision at runtime. The universal ledger commits the genre's identity and loop steps; this file commits the code-side discipline for materializing them.
 
-### 1. Genre → boundary mapping (D31-revised v9 — 6 sub-genres)
+### 1. Genre → boundary mapping
 
 `gameContentTier.genre` decides which Domain shapes are likely. The genre partial supplies the canonical systems-shape categories; this file commits the boundary each genre's rule reducer lives behind. The categories are FIXED per genre; the **axes inside each category** (op universe, steering axis, threat shape, …) are PRD's twist surface and reach the reducer via spec entries — code does not hardcode them.
 
@@ -19,9 +19,9 @@ This preamble defines how a code intent **applies** the genre / coreLoop decisio
 
 - **Domain** owns the rule reducer. The reducer is engine-agnostic and tested in isolation. A `match3` reducer never imports Phaser; a `crowdRunner` reducer never imports React; the **steering axis / op universe / threat shape / terminal kind** are **spec inputs**, not branched code paths.
 - **Render** owns the visual idiom. Render reads Domain snapshots; never the inverse.
-- **HUD** owns the player-facing readouts (the rightmost column above; details in each genre partial's "HUD essentials" section). HUD is **screen-space** and lives in **React** — it subscribes to Phaser events via `useSyncExternalStore` (or a manual DOM mutation pattern for per-frame updates). The Phaser `UIScene` is reserved for **world-space** overlays (sprite-anchored speech bubbles, in-world banners). Most v9 genres are single-screen (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake`); `crowdRunner` is single-screen-with-dynamic-camera (camera follows the crowd along the course). The HUD ↔ React invariant holds **regardless of camera dynamics** — screen-space HUD lives in React for every genre. See `jobs/code/domain/game.md` §7 for the coordinate-system partition.
+- **HUD** owns the player-facing readouts (the rightmost column above; details in each genre partial's "HUD essentials" section). HUD is **screen-space** and lives in **React** — it subscribes to Phaser events via `useSyncExternalStore` (or a manual DOM mutation pattern for per-frame updates). The Phaser `UIScene` is reserved for **world-space** overlays (sprite-anchored speech bubbles, in-world banners). Most registered genres are single-screen (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake`); `crowdRunner` is single-screen-with-dynamic-camera (camera follows the crowd along the course). The HUD ↔ React invariant holds **regardless of camera dynamics** — screen-space HUD lives in React for every genre. See `jobs/code/domain/game.md` §7 for the coordinate-system partition.
 
-### 2. CoreLoop → loop owner contract (D31-revised v9 — 3 universal coreLoops)
+### 2. CoreLoop → loop owner contract
 
 `gameContentTier.coreLoop` decides what cycle the loop owner orchestrates. The loop owner is the engine boundary (techTier × gameEngine), but the **shape** of one cycle comes from the coreLoop partial:
 
@@ -33,7 +33,7 @@ This preamble defines how a code intent **applies** the genre / coreLoop decisio
 
 Code intent emits these as **named events** on the loop owner — never as ad-hoc `setTimeout` chains.
 
-### 3. Genre × coreLoop matrix (D31-revised v9 — I9)
+### 3. Genre × coreLoop matrix (I9)
 
 The two axes are NOT independent. `GENRE_CORELOOP_MATRIX` (in `@ant/shared`) names which coreLoops are legal for each genre — the decompose pipeline filters out-of-matrix pairs at parse time, so code job consumers always see a legal pair:
 

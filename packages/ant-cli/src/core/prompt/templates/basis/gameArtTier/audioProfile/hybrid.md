@@ -32,15 +32,16 @@ The `sfx` category stays inline; the `bgm` category is purely external.
 
 `hybrid` requires **`_meta.audioScope === 'external-enabled'`** because the BGM half is external. Under `audioScope === 'procedural-only'`, the marker overrides BGM and falls back to silence (the procedural SFX half continues to work).
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
-`hybrid` is a strong fit for any v8 sub-genre when the project has a BGM track ready but does not yet want to author a full SFX library. Concrete pairings:
+`hybrid` is a strong fit for any registered sub-genre when the project has a BGM track ready but does not yet want to author a full SFX library. Concrete pairings:
 
 - `match3` → procedural cascade SFX + a relaxing-puzzle BGM track.
 - `slidingPuzzle` → procedural snap / chime SFX + ambient meditative BGM.
 - `cardSolitaire` → procedural flip / deal SFX + jazz / café BGM.
 - `arcadePaddle` → procedural hit / crash SFX + retro-arcade BGM.
 - `arcadeSnake` → procedural tick / eat SFX + chiptune BGM track.
+- `crowdRunner` → procedural gate / fire / loss SFX + driving / build-up BGM track that ramps near the terminal.
 
 ### Code-time consequences
 

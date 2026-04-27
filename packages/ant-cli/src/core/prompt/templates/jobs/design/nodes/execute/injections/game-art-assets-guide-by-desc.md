@@ -4,7 +4,7 @@
 Author one category of asset entries in `game-art-assets.json` from a
 directive only — without reference images or Figma frames as grounding.
 
-### Surface scope (D24-revised v8 — sub-sourced canonical)
+### Surface scope (sub-sourced canonical)
 - Output path: `outputs/design/game-art/ant/game-art-assets.json` (mirrors `outputs/design/ui/ant/`).
 
 ### ⚠️ CRITICAL: Scope & Surface Boundary

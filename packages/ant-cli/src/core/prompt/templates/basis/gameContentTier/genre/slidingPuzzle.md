@@ -27,7 +27,7 @@ Natural: `solve` (the canonical deliberate-planning loop — observe state, hypo
 - **Undo / reset controls** — the genre's recovery surface. PRD MUST commit whether undo is unlimited, cost-bound, or absent.
 - **Hint button** (optional) — for puzzle-pack variants; commit explicitly when present.
 
-### Concept affinity (D32-revised v8 — guidance, not a hard gate)
+### Concept affinity (guidance, not a hard gate)
 
 Naturally readable concepts: `pixelRetro` (NES-era Sokoban tile aesthetic), `flatMinimal` (modern numbered-tile or Material crate). `softPastel` works for a "calm puzzle book" tone. `neonArcade` is unusual; `cardClassic` mismatches the genre.
 

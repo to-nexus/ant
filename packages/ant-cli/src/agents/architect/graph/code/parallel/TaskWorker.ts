@@ -22,6 +22,7 @@ import { runInTaskScope, runInWorkerScope } from '../../../../../core/parallel/w
 import { VerificationTerminalError } from '../tasks/_shared/verify/errors';
 import { hooksForTaskType } from '../tasks/_shared/registry';
 import type { TaskType } from '@ant/shared';
+import { getLLMResponseServiceOrNull } from '../../../../../core/adapters/ChatAPIClient';
 
 /**
  * Produce a `WorkerSnapshot` from any code-graph state object.
@@ -242,9 +243,36 @@ export class TaskWorker<T extends BaseTask> {
     // identity. The FE projector splits sections per task and sorts by
     // first-event timestamp, restoring chronology when a long-lived
     // worker handles tasks across barrier cohorts.
+    //
+    // `cycleSeq` (peek of the turnId-level pauseSeq) carries the
+    // pause/resume cycle index so a task that survives a Stop/Resume
+    // cycle mints `worker-N#task-K#p{cycleSeq}` instead of piggy-backing
+    // on the original `worker-N#task-K` section. Without the suffix the
+    // FE projector anchors the worker section's firstTs to the first
+    // attempt forever — cancelled cards (`_cancelled_:{cardId}`,
+    // synthetic scope) sort BELOW the worker section and the user sees
+    // the cancelled card "stuck" at the chat input even after resume
+    // (`even-getting-knave` regression). See
+    // docs/architecture/31-chat-system.md §섹션-정렬 rule 4.
     const taskKey = task.id || task.name;
+    let cycleSeq = 0;
+    try {
+      const llmService = await getLLMResponseServiceOrNull();
+      if (llmService) {
+        cycleSeq = await llmService.getCurrentPauseSeq();
+      }
+    } catch (err) {
+      // Best-effort. If the peek fails the worker still runs — it just
+      // emits with the legacy two-axis scope. Better to lose the cycle
+      // suffix than to abort the task on a Redis blip.
+      console.warn(
+        `[Worker ${this.workerId}] getCurrentPauseSeq failed; falling back to cycleSeq=0`,
+        err,
+      );
+      cycleSeq = 0;
+    }
     const result = await runInWorkerScope(this.workerId, () =>
-      runInTaskScope(taskKey, () =>
+      runInTaskScope(taskKey, cycleSeq, () =>
         graph.invoke(workerState, {
           recursionLimit: workerState.recursionLimit || envLimit,
         }),

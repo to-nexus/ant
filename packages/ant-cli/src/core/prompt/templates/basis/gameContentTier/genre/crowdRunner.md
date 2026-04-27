@@ -32,7 +32,7 @@ Natural: `survive` (the crowd-loss → game-over loop is canonical — every thr
 - **Terminal progress** — distance to finish / boss HP / score-zone clock. Without a terminal readout, an auto-advancing run feels anxious without payoff.
 - **Power-state flags** — when a modifier op grants time-bound buffs (`+Shield 5s`, `+FireRate 8s`), surface the remaining duration. Permanent ops (stacking `+Damage`) need not.
 
-### Concept affinity (D32-revised v8 — guidance, not a hard gate)
+### Concept affinity (guidance, not a hard gate)
 
 Naturally readable concepts: `flatMinimal` (modern hyper-casual look), `neonArcade` (tron-tunnel runner), `pixelRetro` (8-bit lane-runner). `softPastel` works for a calmer "drone garden" theme; `cardClassic` is unusual — only adopt with an explicit visual rationale.
 
