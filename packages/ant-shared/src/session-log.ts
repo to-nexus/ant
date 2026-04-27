@@ -222,6 +222,7 @@ export type ChatStatusType =
   | 'figma_calling' | 'figma_called'
   | 'plan_generating' | 'plan'
   | 'task_response_streaming' | 'task_response'
+  | 'refine_impact'
   | 'text';
 
 /**

@@ -133,7 +133,7 @@ A `"design-system"` task at priority 200 is REQUIRED to implement the visual pol
 GameArtTier ships 7 axes. Each axis has a registry-backed candidate set; the LLM emits a comma-separated `axis=value` list:
 
 - `concept` — overall art tone / silhouette palette. Candidates: {{{gameArtConceptCandidates}}}.
-- `perspective` — camera / depth model. Candidates: `2d` (D30 v7 — 3D deferred to Phase 5+).
+- `perspective` — camera / depth model. Candidates: `2d` (3D deferred to Phase 5+).
 - `entityCatalog` — character / object catalog policy. Candidates: `minimal`, `standard`, `rich`.
 - `motionPattern` — sprite tween / animation policy. Candidates: `static`, `subtle`, `expressive`.
 - `particleProfile` — particle density on feedback events. Candidates: `none`, `light`, `heavy`.
@@ -155,7 +155,7 @@ Output the game-art tier in `<gameArtTier>` tags after `<techTier>` (before `<ta
 
 Two axes:
 - `genre` — game genre identity (sub-genre, css-only inline production scope). Candidates: {{{gameGenreCandidates}}}.
-- `coreLoop` — player loop pattern (matrix-narrowed by the resolved genre — D31-revised v8). Candidates: {{{gameCoreLoopCandidates}}}.
+- `coreLoop` — player loop pattern (matrix-narrowed by the resolved genre). Candidates: {{{gameCoreLoopCandidates}}}.
 
 Explicit values from `resolvedAction.basis.gameContentTier` are authoritative — preserve them as-is. Infer missing axes from the directive (e.g. "match-3 with cascading drops" → `genre=match3`, `coreLoop=solve`; "Snake clone with food and walls" → `genre=arcadeSnake`, `coreLoop=survive`).
 

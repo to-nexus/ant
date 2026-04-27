@@ -63,11 +63,9 @@ if the user has explicitly placed files under `inputs/assets/game/...`
 
 ## 📥 INPUT CONTEXT
 
-{{#if directiveContext}}
-### Directive
+### Requirements ({{documentName}})
 
-{{{directiveContext}}}
-{{/if}}
+{{> jobs/design/nodes/decompose/shared/input-context}}
 
 ---
 

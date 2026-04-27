@@ -34,15 +34,16 @@ The procedural format keeps the `sfx` entries text-only — the inline complexit
 
 `procedural` is the default audio profile and works under both `audioScope === 'procedural-only'` and `'external-enabled'`. When `audioScope === 'procedural-only'`, ALL audio is forced procedural regardless of LLM-emitted `audioProfile` — that is the marker's job (see `_preamble.md` Section 5).
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
-`procedural` is the canonical audio profile for ALL 5 v8 sub-genres in Phase 3:
+`procedural` is the canonical audio profile for ALL registered sub-genres in Phase 3:
 
 - `match3` → tile-tap, match-clear (rising pitch), cascade (descending pitch ramps).
 - `slidingPuzzle` → slide-tap, snap-to-grid click, goal-reached chime.
 - `cardSolitaire` → card-flip, card-place, suit-complete chime.
 - `arcadePaddle` → paddle-hit, brick-break, ball-lose.
 - `arcadeSnake` → tick (subtle), food-eat, death.
+- `crowdRunner` → gate-pass (op-flavoured tone), unit-fire (short blip), unit-loss (low thud), terminal-arrival chime.
 
 The procedural format gives each sub-genre a distinct sonic signature without external asset production.
 

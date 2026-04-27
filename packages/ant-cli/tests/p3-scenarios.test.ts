@@ -10,17 +10,17 @@
  *
  * Scenario A (single-shot directive, match-3 / Phaser):
  *   gen-code-directive + workspaceConfig.domain === 'game'
- *   + basis.gameContentTier = { genre: 'match3', coreLoop: 'solve' }       (D31-revised v8)
- *   + basis.gameArtTier     = { concept: 'flatMinimal', perspective: '2d' } (D32-revised v8 + D30)
+ *   + basis.gameContentTier = { genre: 'match3', coreLoop: 'solve' }       (D31-revised v9)
+ *   + basis.gameArtTier     = { concept: 'flatMinimal', perspective: '2d' } (D32-revised v9 + D30)
  *   + basis.techTier        = [{ stack: 'frontend', language: 'typescript',
  *                                framework: 'react', gameEngine: 'phaser' }]  (D29 single)
  *
  *   PromptBuilder MUST be able to layer:
  *     1. domain/game.md                                  — workspace identity
  *     2. jobs/code/domain/game.md                        — code-overlay
- *     3. basis/gameContentTier/genre/match3.md           — Wave 2 ledger (v8)
+ *     3. basis/gameContentTier/genre/match3.md           — Wave 2 ledger (v9)
  *     4. basis/gameContentTier/coreLoop/solve.md         — Wave 2 ledger
- *     5. basis/gameArtTier/concept/flatMinimal.md        — Wave 2 ledger (v8)
+ *     5. basis/gameArtTier/concept/flatMinimal.md        — Wave 2 ledger (v9)
  *     6. basis/gameArtTier/perspective/2d.md             — Wave 2 ledger
  *     7. basis/techTier/gameEngine/phaser.md             — Wave 1 engine
  *     8. jobs/code/basis/gameArtTier/_preamble.md        — Wave 1 css-only
@@ -132,14 +132,14 @@ describe('Phase 3 — Scenario A (single-shot directive, match-3 / Phaser)', () 
     expect(content).toMatch(/runtime/i);
   });
 
-  it('genre partial is non-stub (≥ 600 chars) and locality-clean vs sibling genres (D31-revised v8)', () => {
+  it('genre partial is non-stub (≥ 600 chars) and locality-clean vs sibling genres (D31-revised v9)', () => {
     const content = plainText(readTemplate('basis/gameContentTier/genre/match3'));
     expect(content.length).toBeGreaterThan(600);
-    // v8 sibling genres — match3 partial MUST NOT borrow vocabulary from
-    // its 4 siblings in plain prose. Backtick-wrapped citations are
+    // v9 sibling genres — match3 partial MUST NOT borrow vocabulary from
+    // its 5 siblings in plain prose. Backtick-wrapped citations are
     // stripped by `plainText` so the cross-reference table at the bottom
     // (which lists siblings as `match3 → flatMinimal/...`) is not flagged.
-    for (const sibling of ['slidingPuzzle', 'cardSolitaire', 'arcadePaddle', 'arcadeSnake']) {
+    for (const sibling of ['slidingPuzzle', 'cardSolitaire', 'arcadePaddle', 'arcadeSnake', 'crowdRunner']) {
       expect(content, `match3.md leaks sibling genre "${sibling}" in plain text`).not.toMatch(
         new RegExp(`\\b${sibling}\\b`, 'i'),
       );
@@ -278,7 +278,7 @@ describe('Phase 3 — Scenario B (3+1 chain: plan → sys-fe → ui+art design �
 //
 // Scenario C upgrades Scenario A:
 //   gen-code-sys + workspaceConfig.domain === 'game'
-//   + basis.gameContentTier = { genre: 'match3', coreLoop: 'solve' }       (D31-revised v8)
+//   + basis.gameContentTier = { genre: 'match3', coreLoop: 'solve' }       (D31-revised v9)
 //   + basis.gameArtTier     = {
 //       concept: 'flatMinimal', perspective: '2d',
 //       entityCatalog: 'standard',                                          (Phase 4)

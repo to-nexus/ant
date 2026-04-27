@@ -55,6 +55,6 @@ When emitting `game-art-tokens.json` HUD tokens or `game-art-spec.json` `hud` / 
 - **Border radius**: 12–16px on panels, 8–12px on cells, 999px (pill) only on call-to-action buttons. Sharp 0–4px corners read hostile against the soft palette.
 - **Focus ring / interaction tone**: subtle — 2px accent-color outline on focus, 200ms color-fade on hover, no scale changes on idle. Restrained delight reserved for win-state.
 
-### Genre affinity (D32-revised v8 — guidance, not a hard gate)
+### Genre affinity (guidance, not a hard gate)
 
-`flatMinimal` is the most domain-agnostic of the 5 concepts. It pairs naturally with `match3` (clean gem look), `slidingPuzzle` (Material crate aesthetic), and `cardSolitaire` (modern phone-app solitaire). It is also the safe default when the LLM is unsure — its calm tone refuses to overstate any genre.
+`flatMinimal` is the most domain-agnostic of the 5 concepts. It pairs naturally with `match3` (clean gem look), `slidingPuzzle` (Material crate aesthetic), `cardSolitaire` (modern phone-app solitaire), and `crowdRunner` (modern hyper-casual look — bold flat units / gates / threats with high silhouette contrast). It is also the safe default when the LLM is unsure — its calm tone refuses to overstate any genre.

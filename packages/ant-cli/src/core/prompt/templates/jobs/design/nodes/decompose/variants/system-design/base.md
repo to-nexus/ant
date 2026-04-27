@@ -100,11 +100,11 @@ These are initial defaults for this tier. **MSA DETECTION below may expand them*
 
 ## 📥 INPUT CONTEXT
 
-### Requirements (PRD / GDD)
+### Requirements ({{documentName}})
 
 The requirements document (`prd.md` for service domain, `gdd.md` for game domain — both authored by the plan job and stored in `sources/`) is the SSOT for product surface. Cite PRD/GDD sections by stable identifier (`PRD §5 / SC-Search`, `GDD §8 / EN-Hero`) when a task depends on a specific section. Do not re-derive content the document already commits to.
 
-{{spec}}
+{{> jobs/design/nodes/decompose/shared/input-context}}
 
 ---
 

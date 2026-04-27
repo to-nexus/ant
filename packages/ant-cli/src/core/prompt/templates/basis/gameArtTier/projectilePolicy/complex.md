@@ -17,11 +17,13 @@ The `complex` projectile policy commits to **multi-kind projectiles with non-tri
 
 `complex` typically requires **`_meta.visualScope === 'atlas-enabled'`** AND `entityCatalog === 'standard'` or `'rich'` AND `motionPattern === 'expressive'` to feel cohesive. The baseline visual scope cannot author the visual variety this policy implies; the SFX expectations are similarly broader than `procedural` can deliver, so pairing with `_meta.audioScope === 'external-enabled'` is typical.
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
-For all 5 v8 sub-genres (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake`), `complex` is **a mismatch**. None of these sub-genres are projectile-centric. Adopting `complex` for any of them is a strong signal that the project is drifting outside its declared genre — revisit the genre choice or downgrade the projectile policy.
+For `match3` / `slidingPuzzle` / `cardSolitaire` / `arcadePaddle` / `arcadeSnake`, `complex` is **a mismatch**. None of these sub-genres are projectile-centric. Adopting `complex` for any of them is a strong signal that the project is drifting outside its declared genre — revisit the genre choice or downgrade the projectile policy.
 
-`complex` is the policy reserved for Phase 5+ when shooter / bullet-hell / RPG-with-spells re-enter the registry. Today it functions as a **lookahead** — declared but not active.
+For `crowdRunner`, `complex` is reachable when the op universe introduces multiple projectile kinds (bolt + bomb + beam variants), homing / piercing variants, or split-projectile attribute ops — the visual variety must justify the production cost. The default `crowdRunner` projectile policy is `simple`; `complex` is opt-in for ambitious twists.
+
+For Phase 5+ super-categories (bullet-hell / RPG-with-spells — legacy / archived) `complex` is the lookahead policy when the registry widens.
 
 ### Code-time consequences
 
@@ -38,5 +40,5 @@ For all 5 v8 sub-genres (`match3` / `slidingPuzzle` / `cardSolitaire` / `arcadeP
 
 - ⚠️ `complex` while `entityCatalog === 'minimal'` is incoherent — the catalog needs distinct entries for each projectile kind (and probably their hit / explosion variants).
 - ⚠️ `complex` while `visualScope === 'baseline'` is rejected — the design-time inline-payload ceiling cannot author the visual variety.
-- ⚠️ `complex` adopted by a v8 sub-genre is a category drift signal — the design pipeline should question the genre choice rather than the policy.
+- ⚠️ `complex` adopted by a non-shooter sub-genre is a category drift signal — the design pipeline should question the genre choice rather than the policy.
 - ⚠️ Performance budget at `complex` requires explicit testing on lower-end devices; the policy CAN ship at 60fps but only with disciplined pooling and per-kind rate limiting.

@@ -111,7 +111,7 @@ const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
   name: 'gameArtTier',
   pattern: /<gameArtTier>\s*([\s\S]*?)\s*<\/gameArtTier>/i,
   // v8 (D30 + D32-revised) — perspective single-element (`'2d'`); concept
-  // default `'flatMinimal'` is the most domain-agnostic of the 5 v8
+  // default `'flatMinimal'` is the most domain-agnostic of the 5 v9
   // concepts (works for match3 / slidingPuzzle / cardSolitaire alike).
   // Phase 4 (this revision) — the 5 new axes also carry conservative
   // defaults that work in css-only inline production.
@@ -165,7 +165,7 @@ const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
 const gameContentTierTagDef: DecisionTagDef<GameContentTier> = {
   name: 'gameContentTier',
   pattern: /<gameContentTier>\s*([\s\S]*?)\s*<\/gameContentTier>/i,
-  // v8 (D31-revised) — `match3` × `solve` is the most compact, css-only-
+  // v9 (D31-revised) — `match3` × `solve` is the most compact, css-only-
   // verifiable default (Bejeweled-style swap+cascade). The matrix admits
   // this pair (`match3 → [solve, collect]`).
   defaultOnRetryExhaustion: { genre: 'match3', coreLoop: 'solve' },
@@ -183,7 +183,7 @@ const gameContentTierTagDef: DecisionTagDef<GameContentTier> = {
         out.coreLoop = v as GameContentTier['coreLoop'];
       }
     }
-    // v8 (D31-revised / I9) — apply the genre×coreLoop matrix at parse
+    // v9 (D31-revised / I9) — apply the genre×coreLoop matrix at parse
     // time. If the LLM emits a (genre, coreLoop) pair outside the matrix,
     // drop the coreLoop so retry / default-fill can reissue. This is a
     // pure lookup; no node-side branching.

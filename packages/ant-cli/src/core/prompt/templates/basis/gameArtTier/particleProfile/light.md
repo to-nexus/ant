@@ -24,13 +24,14 @@ The `light` particle profile commits to **5–10 particles per emit event, singl
 
 Each entry is a single shape; the emitter config (count, spread, lifetime) is in `game-art-spec.json` `effects` category, not in the asset catalog itself.
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
 - `match3` → `light` is the canonical match. Match-clear spark (3-match → 5 particles, 4-match → 7 particles, 5-match → 10 particles + accent color) is the genre's sweet spot.
 - `arcadeSnake` → `light` works well for the food-eat pulse moment. Otherwise the snake body's grid-tick advance has no particle need.
 - `arcadePaddle` → `light` is the lower-bound option for brick break (5–10 debris particles per brick). For more theatric feedback, `heavy`.
 - `slidingPuzzle` → `light` is unusual but legal — the reflective tone usually asks for no particles, but a tile-solved flourish at the goal-state moment can be a `light` pulse.
 - `cardSolitaire` → `light` is unusual. Reserve for the foundation-completion celebration only (cascade of stars across the foundation row).
+- `crowdRunner` → `light` is the canonical match. Gate-pass spark, unit-loss pulse, threshold-cross flash, and per-cluster muzzle blip all sit comfortably under `light`'s event-bursted budget. Step up to `heavy` only if the project commits continuous trails (auto-fire bullet trail, bossfight ambient debris).
 
 ### Code-time consequences
 
@@ -38,7 +39,7 @@ Each entry is a single shape; the emitter config (count, spread, lifetime) is in
 - The motion budget rises by ~2–3ms per frame during active emit windows; idle scenes have zero particle cost.
 - Particle emitters are typically attached to short-lived events — the project should NOT keep emitters running continuously (that drifts toward `heavy`).
 
-### Concept affinity (D32-revised v8 — guidance, not strict)
+### Concept affinity (guidance, not strict)
 
 `light` pairs naturally with `flatMinimal` (single-color sparks), `softPastel` (gentle pulse), and `pixelRetro` (era-appropriate 1–4-pixel shrapnel — limited but expected). `neonArcade` benefits from `light` (neon spark on hit) and can step up to `heavy`. `cardClassic` rarely uses `light`; the table aesthetic prefers `none`.
 

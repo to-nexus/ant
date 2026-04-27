@@ -58,38 +58,31 @@ export async function decomposeGameArtDesign(
   ctx: DecomposeContext,
 ): Promise<DesignGraphState> {
   const {
-    buildAllSourceDocs,
-    buildSourceFileIndex,
     DECOMPOSE_SOURCE_THRESHOLD,
     READ_SOURCE_DOC_TOOL,
     decomposeWithToolLoop,
     handleReadSourceFile,
   } = await import('../docGen/sourceSelector');
+  const { buildDecomposeContext } = await import('./buildDecomposeContext');
 
   const pool = new ArtifactPoolView(state.artifacts || []);
   const sourceRecord = pool.sourcesAsRecord();
 
-  const sourceDocsSize = pool.sourcesSize();
-  const useToolMode = sourceDocsSize > DECOMPOSE_SOURCE_THRESHOLD;
-
-  let directiveContext: string;
-  if (useToolMode) {
-    console.log(`📊 [GameArtDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const fileIndex = buildSourceFileIndex(sourceRecord);
-    const parts = [
-      `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to game-art decisions.`,
-      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
-    ].filter(Boolean);
-    directiveContext = parts.join('\n\n---\n\n');
-  } else {
-    console.log(`📊 [GameArtDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const allSourceDocs = buildAllSourceDocs(sourceRecord);
-    const parts = [
-      allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
-      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
-    ].filter(Boolean);
-    directiveContext = parts.length > 0 ? parts.join('\n\n---\n\n') : '';
-  }
+  // Role-aware partition. The shared input-context partial replaces the
+  // legacy `directiveContext` string with `<sources role="…" doc="GDD">`
+  // (game domain) so the prompt mirrors the RAC-assigned roles instead
+  // of flattening everything under a hard-coded "PRD:" header.
+  const decomposeCtx = buildDecomposeContext(pool, state, {
+    includePreviousDesign: false,
+    toolModeThreshold: DECOMPOSE_SOURCE_THRESHOLD,
+  });
+  const useToolMode = decomposeCtx.meta.sourcesMode === 'tool';
+  console.log(
+    `📊 [GameArtDecompose] sourcesMode=${decomposeCtx.meta.sourcesMode}, ` +
+    `refSize=${decomposeCtx.meta.refSize.toLocaleString()}, ` +
+    `contextSize=${decomposeCtx.meta.contextSize.toLocaleString()}, ` +
+    `threshold=${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()}`,
+  );
 
   const sourceFileNames = pool.sourceFileNames();
   const variant = pickGameArtDesignVariant(state);
@@ -114,7 +107,10 @@ export async function decomposeGameArtDesign(
     : 0;
 
   const artDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
-    directiveContext,
+    documentName: decomposeCtx.documentName,
+    refs: decomposeCtx.refs,
+    context: decomposeCtx.context,
+    directive: decomposeCtx.directive,
     assetCount,
     detectedMode: state.resolvedAction?.mode || 'generate',
     sourceFileNames: sourceFileNames.length > 0 ? sourceFileNames : undefined,

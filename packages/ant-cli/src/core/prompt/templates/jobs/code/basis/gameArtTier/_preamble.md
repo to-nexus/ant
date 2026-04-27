@@ -96,7 +96,7 @@ Under `audioScope === 'procedural-only'`, `fileBased` and `hybrid` BOTH degrade 
 
 ### 4. Domain-Surface Boundary (I7-revised — D28)
 
-A game-domain code job consumes **one** asset surface — the game-art catalog under `outputs/design/game-art/ant/` (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`). The service-domain UI catalog (`outputs/design/ui/ant/ui-*.json`) is NOT in scope (D28 vertical split).
+A game-domain code job consumes **one** asset surface — the game-art catalog under `outputs/design/game-art/ant/` (sub-sourced canonical, mirrors `outputs/design/ui/ant/`). The service-domain UI catalog (`outputs/design/ui/ant/ui-*.json`) is NOT in scope (D28 vertical split).
 
 The render paths split by **coordinate system** (see `jobs/code/domain/game.md` §7) — screen-space UI is React, world-space UI is the engine canvas. Both paths pull tokens / specs from the same `game-art-*` SSOT so the two surfaces share one art direction:
 

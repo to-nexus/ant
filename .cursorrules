@@ -467,9 +467,9 @@ game-art design's responsibility limit is **css-only inline + external mapping**
 
 ---
 
-## Genre × CoreLoop Matrix Gate SSOT — I9 (D31-revised v8)
+## Genre × CoreLoop Matrix Gate SSOT — I9 (D31-revised v9)
 
-**`gameContentTier` 의 `(genre, coreLoop)` 후보 set 은 `GENRE_CORELOOP_MATRIX` lookup 의 결과만 노출한다.** 모든 narrowing 은 `coreLoopCandidatesFor(genre)` SSOT 에 위임 — 노드 본체에 `if (genre === 'match3') ...` 같은 short-circuit 분기는 도입 금지 (D6 / I1 — Domain-Branching Locality 그대로).
+**`gameContentTier` 의 `(genre, coreLoop)` 후보 set 은 `GENRE_CORELOOP_MATRIX` lookup 의 결과만 노출한다.** 모든 narrowing 은 `coreLoopCandidatesFor(genre)` SSOT 에 위임 — 노드 본체에 `if (genre === 'match3') ...` 같은 short-circuit 분기는 도입 금지 (D6 / I1 — Domain-Branching Locality 그대로). 장르 partial 은 GUIDE 이며 contract 가 아니다 — systems-shape 카테고리는 고정이지만 카테고리 안의 axes (steering axis, op universe, threat shape 등) 는 PRD 의 surface 다.
 
 `packages/ant-shared/src/game-content-tier-registry.ts`:
 
@@ -480,6 +480,7 @@ export const GENRE_CORELOOP_MATRIX = {
   cardSolitaire: ['solve', 'collect'],
   arcadePaddle:  ['survive', 'collect'],
   arcadeSnake:   ['survive', 'collect'],
+  crowdRunner:   ['survive', 'collect'],
 } as const;
 
 export function coreLoopCandidatesFor(genre): readonly GameCoreLoopVariant[];

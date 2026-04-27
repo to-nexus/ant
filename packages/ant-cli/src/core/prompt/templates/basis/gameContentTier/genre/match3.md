@@ -27,7 +27,7 @@ Natural: `solve` (predict-then-swap, observe-cascade-effect). Strong fit: `colle
 - **Objective tracker** — when the level is "collect 30 blue tiles" or "drop the cherry to the bottom row", the HUD must surface progress on each move.
 - **Combo/cascade indicator** — a brief "x2 / x3" multiplier badge that surges on each cascade tick. This is the player's feedback that the cascade rule is firing.
 
-### Concept affinity (D32-revised v8 — guidance, not a hard gate)
+### Concept affinity (guidance, not a hard gate)
 
 Naturally readable concepts: `flatMinimal` (clean Material/iOS gem look), `softPastel` (Two Dots / Threes-style cushion grid), `pixelRetro` (8-bit gem set with limited palette). `neonArcade` works for an "energy crystal" theme; `cardClassic` is unusual — only adopt with an explicit visual rationale (e.g. "playing cards as match tiles").
 

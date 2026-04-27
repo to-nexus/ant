@@ -21,13 +21,14 @@ The `static` motion pattern commits to **discrete position changes** — entitie
 - No CSS transitions on game-art-driven UI elements (HUD CSS transitions for hover / press are still allowed via `interactionGrammar` for service-domain workspaces; in game-domain workspaces the HUD is part of `game-art` and a `static` motion pattern means even the HUD is hard-cut).
 - No `requestAnimationFrame` interpolation for entity positions; the only RAF use is the engine's tick scheduler.
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
 - `slidingPuzzle` → `static` is the canonical match. Tile-snap-to-grid IS the genre's motion language. Easing the slide breaks the genre's reflective tone.
 - `match3` → `static` is unusual. Match-3 cascades typically benefit from a `subtle` ease (the dropping tiles have inertia).
 - `cardSolitaire` → `static` works for very minimal solitaire variants; the canonical `cardClassic` tone expects `subtle` (card flip + settle).
 - `arcadePaddle` → `static` is unusual. Paddle / ball motion expects continuous physics; `static` is only reasonable for grid-bound paddle variants.
 - `arcadeSnake` → `static` is the canonical match. Grid-tick body advance IS the genre's motion language.
+- `crowdRunner` → `static` is a strong mismatch — the crowd's continuous advance and steering are the genre's motion language. Only adopt `static` for a lane-tick variant where the crowd snaps between discrete lanes per tick rather than gliding.
 
 ### Code-time consequences
 
@@ -35,7 +36,7 @@ The `static` motion pattern commits to **discrete position changes** — entitie
 - Positions are integers (or grid coordinates) at all times; sub-pixel rendering is forbidden (CSS `image-rendering: pixelated` if the project also uses `pixelRetro`).
 - The motion budget is zero — no tween / particle / spring math runs per frame outside of the engine's housekeeping.
 
-### Concept affinity (D32-revised v8 — guidance, not strict)
+### Concept affinity (guidance, not strict)
 
 `static` pairs naturally with `pixelRetro` (era-faithful step animation) and `cardClassic` (calm table). It works for `flatMinimal` (stark, clean grids) but most flat-minimal projects benefit from `subtle`. `softPastel` and `neonArcade` are unusual fits — those concepts expect at least some motion to convey their tone.
 

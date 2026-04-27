@@ -141,3 +141,50 @@ export const CHAT_SSE_EVENT_TYPES = {
   STREAMING_BUFFER_SNAPSHOT: 'streaming_buffer_snapshot',
   EVENTS_CLEARED: 'events_cleared',
 } as const;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Refine-impact alert — F3 cross-document synchronisation
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * One affected design task surfaced to the operator after a rev-plan
+ * completion. The chat-status card uses this shape inside
+ * `metadata.affected[]`. The FE renders one line per item beneath the
+ * summary headline.
+ */
+export interface RefineImpactAffected {
+  taskId: string;
+  taskName: string;
+  targetFile?: string;
+  /** PRD/GDD identifiers / `§X` markers this task cited that were rewritten. */
+  matchedSections: string[];
+}
+
+/**
+ * Metadata shape for `chat_status` lines whose `statusType === 'refine_impact'`.
+ *
+ * Emitted by the rev-plan completion hook
+ * (`packages/ant-cli/src/core/refine/refineImpactAlert.ts`) once
+ * `extractDependencies` + `extractPlanDiff` + `detectAffectedTasks`
+ * have produced a result.
+ *
+ * Keep the shape stable — `generateChatStatusContent('refine_impact', ...)`
+ * in `chat-status.ts` and the FE alert renderer both rely on it.
+ */
+export interface RefineImpactMetadata {
+  /** Canonical plan output that was rewritten by `rev-plan`. */
+  updatedDoc: 'prd.md' | 'gdd.md';
+  /** PRD/GDD section markers / stable identifiers extracted from the diff. */
+  updatedSections: string[];
+  /** Cascade layers that contributed (LLM tag, git diff, or user directive). */
+  diffSources: Array<'llm-tag' | 'git-diff' | 'directive'>;
+  /** Design tasks whose citations intersect `updatedSections`. */
+  affected: RefineImpactAffected[];
+  /**
+   * Design tasks excluded from `affected` because their authoring
+   * checkpoint did not have the plan doc as `role='ref'`. The FE
+   * meta banner uses this list so users see which tasks the
+   * synchronisation can NOT speak about.
+   */
+  unscannableTaskIds: string[];
+}

@@ -35,40 +35,32 @@ export async function decomposeUiDesign(
   ctx: DecomposeContext
 ): Promise<DesignGraphState> {
   const {
-    buildAllSourceDocs,
-    buildSourceFileIndex,
-    getSourceDocsSize,
     DECOMPOSE_SOURCE_THRESHOLD,
     READ_SOURCE_DOC_TOOL,
     decomposeWithToolLoop,
     handleReadSourceFile,
   } = await import('../docGen/sourceSelector');
+  const { buildDecomposeContext } = await import('./buildDecomposeContext');
 
   const pool = new ArtifactPoolView(state.artifacts || []);
   const sourceRecord = pool.sourcesAsRecord();
 
-  // Hybrid strategy: small → inline, large → tool-use (RAG)
-  const sourceDocsSize = pool.sourcesSize();
-  const useToolMode = sourceDocsSize > DECOMPOSE_SOURCE_THRESHOLD;
-
-  let uiContext: string;
-  if (useToolMode) {
-    console.log(`📊 [UIDecompose] Tool-use mode: ${sourceDocsSize.toLocaleString()} chars > ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const fileIndex = buildSourceFileIndex(sourceRecord);
-    const parts = [
-      `SOURCE DOCUMENTS (index only — use read_source_doc tool for full content):\n\n${fileIndex}\n\nRead files relevant to UI design decisions.`,
-      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
-    ].filter(Boolean);
-    uiContext = parts.join('\n\n---\n\n');
-  } else {
-    console.log(`📊 [UIDecompose] Inline mode: ${sourceDocsSize.toLocaleString()} chars <= ${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()} threshold`);
-    const allSourceDocs = buildAllSourceDocs(sourceRecord);
-    const parts = [
-      allSourceDocs ? `PRD:\n${allSourceDocs}` : null,
-      state.directive ? `DIRECTIVE:\n${state.directive}` : null,
-    ].filter(Boolean);
-    uiContext = parts.length > 0 ? parts.join('\n\n---\n\n') : '';
-  }
+  // Role-aware partition (refs / context preserved). The legacy
+  // `uiContext` string with the hard-coded "PRD:" header is replaced by
+  // `<sources role="…" doc="{PRD|GDD}">` blocks rendered by the shared
+  // input-context partial — game-domain pools now correctly render as
+  // GDD instead of being mislabelled.
+  const decomposeCtx = buildDecomposeContext(pool, state, {
+    includePreviousDesign: false,
+    toolModeThreshold: DECOMPOSE_SOURCE_THRESHOLD,
+  });
+  const useToolMode = decomposeCtx.meta.sourcesMode === 'tool';
+  console.log(
+    `📊 [UIDecompose] sourcesMode=${decomposeCtx.meta.sourcesMode}, ` +
+    `refSize=${decomposeCtx.meta.refSize.toLocaleString()}, ` +
+    `contextSize=${decomposeCtx.meta.contextSize.toLocaleString()}, ` +
+    `threshold=${DECOMPOSE_SOURCE_THRESHOLD.toLocaleString()}`,
+  );
 
   const { isFigmaPipeline, isFigmaDataPopulated } = await import('@ant/shared');
   const sourceFileNames = pool.sourceFileNames();
@@ -87,7 +79,10 @@ export async function decomposeUiDesign(
   const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/ui-design-${templateSuffix}/base`;
 
   const uiDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
-    uiContext,
+    documentName: decomposeCtx.documentName,
+    refs: decomposeCtx.refs,
+    context: decomposeCtx.context,
+    directive: decomposeCtx.directive,
     assetCount: state.uiAssetsList
       ? Object.values(state.uiAssetsList).reduce((sum, arr) => sum + arr.length, 0)
       : 0,

@@ -380,7 +380,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     gameGenreCandidates: _gameContentTierEnabled
       ? GAME_GENRE_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
       : undefined,
-    // v8 (D31-revised / I9) — coreLoop candidate set is matrix-gated by
+    // v9 (D31-revised / I9) — coreLoop candidate set is matrix-gated by
     // the resolved genre. When genre is decided up-front (basis wizard
     // explicit or a previous LLM emit), the LLM only sees the loops the
     // matrix admits for that genre; otherwise the universe is exposed

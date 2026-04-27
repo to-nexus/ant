@@ -5,7 +5,7 @@ Author one category of asset entries in `game-art-assets.json`.
 Categories are LLM-decided dictionary keys (D25). Each Figma frame /
 component group maps to one category.
 
-### Surface scope (D24-revised v8 — sub-sourced canonical)
+### Surface scope (sub-sourced canonical)
 - Output path: `outputs/design/game-art/ant/game-art-assets.json` (mirrors `outputs/design/ui/ant/`).
 
 ### ⚠️ CRITICAL: Scope & Surface Boundary

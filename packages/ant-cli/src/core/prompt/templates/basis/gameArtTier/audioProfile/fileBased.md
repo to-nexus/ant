@@ -31,15 +31,16 @@ The `fileBased` audio profile commits to **external audio files placed under `in
 
 `fileBased` requires **`_meta.audioScope === 'external-enabled'`**. Under `audioScope === 'procedural-only'`, the marker overrides the LLM's profile choice and forces `procedural` (see `_preamble.md` Section 5). The scope marker's authority means that a `fileBased` declaration in a baseline-audio project degrades cleanly to procedural until the user upgrades the audio scope.
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
-`fileBased` lifts every v8 sub-genre's audio quality:
+`fileBased` lifts every registered sub-genre's audio quality:
 
 - `match3` → richer match-clear chime, multi-layered cascade SFX, rich BGM.
 - `slidingPuzzle` → ambient piano BGM, satisfying snap SFX with reverb tail.
 - `cardSolitaire` → crisp card flip / shuffle / deal SFX, optional jazz BGM.
 - `arcadePaddle` → punchy ball-paddle hit, ball-brick crash, sweep BGM.
 - `arcadeSnake` → satisfying food-eat crunch, retro-tone BGM, death-thud.
+- `crowdRunner` → recorded gate-pass impact, layered fire / hit SFX, dynamic BGM that ramps with crowd-resource state and terminal proximity.
 
 Each sub-genre benefits but none requires `fileBased` — `procedural` is the Phase 3 sweet spot.
 

@@ -23,11 +23,12 @@ When this variant is active, `game-art-assets.json`'s `entities` category lists 
 
 `rich` requires **`_meta.visualScope === 'atlas-enabled'`** — the baseline visual scope cannot author this many distinct inline svg / CSS shapes within the design-time inline-payload ceiling (D21). If `entityCatalog === 'rich'` is emitted while `visualScope === 'baseline'`, the design pipeline downgrades the effective catalog to `standard` and surfaces a notice.
 
-### Genre cross-reference (D31-revised v8 — guidance, not strict)
+### Genre cross-reference (guidance, not strict)
 
-- `match3`, `slidingPuzzle`, `cardSolitaire` — `rich` is unusual for these genres in the v8 sub-genre set. Match-3 and card-solitaire do not require a multi-character roster; sliding-puzzle is reflective and does not add NPCs. Adopt `rich` only when the project explicitly introduces story characters (e.g. a match-3 with a level-map mascot roster).
+- `match3`, `slidingPuzzle`, `cardSolitaire` — `rich` is unusual for these genres. Match-3 and card-solitaire do not require a multi-character roster; sliding-puzzle is reflective and does not add NPCs. Adopt `rich` only when the project explicitly introduces story characters (e.g. a match-3 with a level-map mascot roster).
 - `arcadePaddle` — `rich` is unusual. The canonical paddle / ball / brick set fits `minimal` or `standard`; only adopt `rich` for thematic reskin packs.
 - `arcadeSnake` — `rich` is unusual. The canonical body / food / obstacle set fits `minimal`; `rich` is reserved for narrative / shop-driven snake variants.
+- `crowdRunner` — `rich` is reachable when the project commits a unit-cosmetic roster (multi-tier crowd skins + boss-stage telegraphs + variant gate glyphs). Default `crowdRunner` fits `standard`; `rich` is opt-in for projects that want production-grade unit / boss animation.
 
 ### Code-time consequences
 

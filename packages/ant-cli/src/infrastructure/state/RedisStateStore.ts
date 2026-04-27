@@ -1215,6 +1215,14 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     return seq;
   }
 
+  async getCurrentPauseSeq(turnId: string): Promise<number> {
+    const key = getCancelledPauseSeqKey(turnId);
+    const raw = await this.redis.get(key);
+    if (!raw) return 0;
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+
   // ============================================
   // Pending Choice Management
   // ============================================

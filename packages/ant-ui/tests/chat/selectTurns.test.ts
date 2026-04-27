@@ -484,6 +484,149 @@ describe('selectTurns — workerScope sub-sections', () => {
       expect(items[0].presented.cardType).toBe('triage_choice');
     }
   });
+
+  it('interleaves cancelled cards between cycle-suffixed worker sections across multiple stop/resume cycles (`even-getting-knave` regression)', () => {
+    // Reproduces the user-reported `even-getting-knave` regression in
+    // `posa/features/base`: a single design task survived three
+    // stop/resume cycles. Without cycle suffix, every cycle's events
+    // folded into one `worker-N#task-K` section anchored to cycle 1's
+    // first ts — so all cancelled cards (each minted at its own stop
+    // ts) sorted BELOW the worker section, leaving the latest cancelled
+    // card "stuck" right above the chat input even after Resume.
+    //
+    // With `worker-N#task-K#p{cycleSeq}` minted by `TaskWorker` (peek
+    // of `pauseSeq` at task entry), each cycle gets its own section
+    // whose first ts is the cycle's actual start. Cancelled cards
+    // chronologically interleave between cycle sections.
+    const u = userTurn('t-knave');
+    const cancelled1Scope = '_cancelled_:cancelled-t-knave-j1-1';
+    const cancelled2Scope = '_cancelled_:cancelled-t-knave-j1-2';
+    const cancelled3Scope = '_cancelled_:cancelled-t-knave-j1-3';
+
+    // Cycle 0 — first attempt (no suffix, matches legacy two-axis form).
+    const c0a = status('t-knave', 'c0a', 'read', { filePath: 'a.ts' }, 'worker-1#task-A');
+    const c0b = status('t-knave', 'c0b', 'read', { filePath: 'b.ts' }, 'worker-1#task-A');
+    // Stop 1.
+    const cancelled1 = choicePresented('t-knave', 'cancelled-t-knave-j1-1', 'cancelled', cancelled1Scope);
+    // Resume 1 + cycle 1 (`#p1` suffix).
+    const resolved1 = choiceResolved('t-knave', 'cancelled-t-knave-j1-1', 'resume', 'Resumed', cancelled1Scope);
+    const c1a = status('t-knave', 'c1a', 'read', { filePath: 'c.ts' }, 'worker-1#task-A#p1');
+    // Stop 2.
+    const cancelled2 = choicePresented('t-knave', 'cancelled-t-knave-j1-2', 'cancelled', cancelled2Scope);
+    // Resume 2 + cycle 2 (`#p2` suffix).
+    const resolved2 = choiceResolved('t-knave', 'cancelled-t-knave-j1-2', 'resume', 'Resumed', cancelled2Scope);
+    const c2a = status('t-knave', 'c2a', 'read', { filePath: 'd.ts' }, 'worker-1#task-A#p2');
+    // Stop 3 — final state the user observes; cancelled-3 is the most
+    // recent event so it should render at the bottom (closest to input).
+    const cancelled3 = choicePresented('t-knave', 'cancelled-t-knave-j1-3', 'cancelled', cancelled3Scope);
+
+    const turns = selectTurns({
+      chatEvents: [
+        u,
+        c0a,
+        c0b,
+        cancelled1,
+        resolved1,
+        c1a,
+        cancelled2,
+        resolved2,
+        c2a,
+        cancelled3,
+      ],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      'worker-1#task-A',
+      cancelled1Scope,
+      'worker-1#task-A#p1',
+      cancelled2Scope,
+      'worker-1#task-A#p2',
+      cancelled3Scope,
+    ]);
+
+    // The latest cancelled card occupies the LAST section — visually
+    // closest to the chat input — which matches user expectation while
+    // a stop is in effect.
+    const last = sections[sections.length - 1];
+    expect(last.workerScope).toBe(cancelled3Scope);
+    expect(last.items).toHaveLength(1);
+    const lastItem = last.items[0] as any;
+    expect(lastItem.kind).toBe('choice');
+    expect(lastItem.presented.cardType).toBe('cancelled');
+    expect(lastItem.presented.cardId).toBe('cancelled-t-knave-j1-3');
+    expect(lastItem.resolved).toBeUndefined();
+  });
+
+  it('pushes the cancelled card upward once cycle-N+1 worker output starts emitting after Resume', () => {
+    // Same setup as above but the user clicks Resume on cancelled-3 and
+    // a fresh cycle-3 (`#p3`) section starts collecting messages. The
+    // cycle-3 section's first ts is later than cancelled-3's first ts,
+    // so chronological sort puts cycle-3 BELOW the cancelled-3 section.
+    // This is the behaviour the architecture doc §섹션-정렬 rule 4
+    // promised; before the cycle-suffix fix it never held.
+    const u = userTurn('t-knave-r');
+    const cancelled3Scope = '_cancelled_:cancelled-t-knave-r-j1-3';
+
+    const c0 = status('t-knave-r', 'c0', 'read', { filePath: 'a.ts' }, 'worker-1#task-A');
+    const cancelled3 = choicePresented('t-knave-r', 'cancelled-t-knave-r-j1-3', 'cancelled', cancelled3Scope);
+    const resolved3 = choiceResolved('t-knave-r', 'cancelled-t-knave-r-j1-3', 'resume', 'Resumed', cancelled3Scope);
+    // Cycle-3 (`#p3`) first message — emitted AFTER cancelled-3 ts.
+    const c3a = status('t-knave-r', 'c3a', 'read', { filePath: 'b.ts' }, 'worker-1#task-A#p3');
+
+    const turns = selectTurns({
+      chatEvents: [u, c0, cancelled3, resolved3, c3a],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      'worker-1#task-A',
+      cancelled3Scope,
+      'worker-1#task-A#p3',
+    ]);
+    // The cancelled card now sits ABOVE the cycle-3 worker output and
+    // the bottom-most section is the worker (= chat input shows new
+    // worker output, not the cancelled card).
+    expect(sections[sections.length - 1].workerScope).toBe('worker-1#task-A#p3');
+    // The resolved sibling is paired with its presented in the
+    // cancelled section.
+    const cancelledItem = sections[1].items[0] as any;
+    expect(cancelledItem.kind).toBe('choice');
+    expect(cancelledItem.resolved?.choiceSelected).toBe('resume');
+  });
+
+  it('keeps multiple parallel workers in the same cycle aligned via shared cycleSeq suffix', () => {
+    // pauseSeq is turnId-level, so every worker that re-enters
+    // `runInTaskScope` after the same Resume click reads the same peek
+    // value and stamps the same `#p{n}` suffix. This guarantees that a
+    // 2-worker fan-out emits two sibling sections with identical cycle
+    // suffix instead of drifting apart.
+    const u = userTurn('t-fan');
+
+    // Cycle 0 — both workers' first attempts.
+    const w0a = status('t-fan', 'w0a', 'read', { filePath: 'a.ts' }, 'worker-0#task-A');
+    const w1a = status('t-fan', 'w1a', 'read', { filePath: 'b.ts' }, 'worker-1#task-B');
+    // Stop happens (cancelled card omitted for brevity — the suffix
+    // contract is what matters here).
+    // Cycle 1 — both workers re-enter at the same cycleSeq.
+    const w0b = status('t-fan', 'w0b', 'read', { filePath: 'c.ts' }, 'worker-0#task-A#p1');
+    const w1b = status('t-fan', 'w1b', 'read', { filePath: 'd.ts' }, 'worker-1#task-B#p1');
+
+    const turns = selectTurns({
+      chatEvents: [u, w0a, w1a, w0b, w1b],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      'worker-0#task-A',
+      'worker-1#task-B',
+      'worker-0#task-A#p1',
+      'worker-1#task-B#p1',
+    ]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

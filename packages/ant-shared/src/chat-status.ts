@@ -353,6 +353,45 @@ export function generateChatStatusContent(
     case 'task_response':
       return metadata?.content ?? '';
 
+    case 'refine_impact': {
+      // Emitted by the rev-plan completion hook (F3). Surfaces which
+      // PRD/GDD sections were rewritten and which design tasks cite
+      // them, so the operator knows which downstream design tasks
+      // turned stale. Metadata shape:
+      //   { updatedDoc: 'prd.md' | 'gdd.md',
+      //     updatedSections: string[],
+      //     affected: { taskId; taskName; matchedSections[] }[],
+      //     unscannableTaskIds: string[],
+      //     diffSources: ('llm-tag' | 'git-diff' | 'directive')[] }
+      const doc = metadata?.updatedDoc ?? 'plan document';
+      const sections: string[] = Array.isArray(metadata?.updatedSections)
+        ? (metadata!.updatedSections as string[])
+        : [];
+      const affected: Array<{ taskName?: string }> = Array.isArray(metadata?.affected)
+        ? (metadata!.affected as Array<{ taskName?: string }>)
+        : [];
+      const unscannable: string[] = Array.isArray(metadata?.unscannableTaskIds)
+        ? (metadata!.unscannableTaskIds as string[])
+        : [];
+
+      const sectionLabel = sections.length === 0
+        ? 'no identifiable sections'
+        : sections.length <= 3
+          ? sections.join(', ')
+          : `${sections.slice(0, 3).join(', ')} +${sections.length - 3}`;
+
+      const lines = [
+        `📌 ${doc} refined: ${sectionLabel}`,
+        `→ ${affected.length} design task(s) reference the updated section(s) and may be stale.`,
+      ];
+      if (unscannable.length > 0) {
+        lines.push(
+          `⚠️ ${unscannable.length} design task(s) were built without ${doc} as ref — sync cannot speak for them.`,
+        );
+      }
+      return lines.join('\n');
+    }
+
     case 'text':
       return typeof metadata?.content === 'string' ? metadata.content : '';
 
