@@ -292,21 +292,54 @@ describe('aggregateChatStatuses — originalIndex stability', () => {
 });
 
 describe('aggregateChatStatuses — body rendering via generateChatStatusContent', () => {
-  // Smoke-test that the synthesized aggregate line still produces a body
-  // through the shared serializer. The body is no longer baked into the
-  // aggregator output; downstream `lineToContent` calls
-  // `generateChatStatusContent(statusType, metadata)` to produce it.
-  it('aggregated read line renders "Read: N files" via the shared serializer', () => {
+  // The body string is owned by `generateChatStatusContent` — these tests
+  // lock the user-visible "Read: N files" wording so a regression in the
+  // shared serializer (e.g. dropping the aggregated branch) is caught
+  // before it reaches the chat UI.
+  it('aggregated read line renders "Read: N files"', () => {
     const input = [
       line('read', { filePath: 'a.ts' }),
       line('read', { filePath: 'b.ts' }),
       line('read', { filePath: 'c.ts' }),
     ];
     const out = aggregateChatStatuses(input);
-    const body = bodyOf(out[0]);
-    // The body string is owned by `generateChatStatusContent`; we just
-    // assert it produces *something* non-empty so the contract holds.
-    expect(typeof body).toBe('string');
-    expect(body.length).toBeGreaterThan(0);
+    expect(bodyOf(out[0])).toBe('Read: 3 files');
+  });
+
+  it('count grows monotonically as more reads land in the bucket', () => {
+    const slots = [
+      line('read', { filePath: 'a.ts' }),
+      line('read', { filePath: 'b.ts' }),
+      line('read', { filePath: 'c.ts' }),
+      line('read', { filePath: 'd.ts' }),
+    ];
+    // Simulate the streaming case by aggregating progressively longer
+    // prefixes — mirrors the chat panel re-rendering as new SSE events
+    // arrive between paints.
+    expect(bodyOf(aggregateChatStatuses(slots.slice(0, 1))[0])).toBe('Read: a.ts');
+    expect(bodyOf(aggregateChatStatuses(slots.slice(0, 2))[0])).toBe('Read: 2 files');
+    expect(bodyOf(aggregateChatStatuses(slots.slice(0, 3))[0])).toBe('Read: 3 files');
+    expect(bodyOf(aggregateChatStatuses(slots.slice(0, 4))[0])).toBe('Read: 4 files');
+  });
+
+  it('aggregated trailing in-flight renders "Reading: N files..."', () => {
+    const input = [
+      line('read', { filePath: 'a.ts' }),
+      line('read', { filePath: 'b.ts' }),
+      line('reading', { filePath: 'c.ts' }),
+    ];
+    const out = aggregateChatStatuses(input);
+    // Only confirmed completions (a.ts, b.ts) feed `filesCount`; the
+    // in-flight slot is surfaced via the detail line ("In flight: c.ts").
+    expect(bodyOf(out[0])).toBe('Reading: 2 files...');
+  });
+
+  it('aggregated read_source uses "docs" instead of "files"', () => {
+    const input = [
+      line('read_source', { filePath: 'one.md' }),
+      line('read_source', { filePath: 'two.md' }),
+    ];
+    const out = aggregateChatStatuses(input);
+    expect(bodyOf(out[0])).toBe('Read source: 2 docs');
   });
 });

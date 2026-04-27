@@ -119,6 +119,17 @@ export function generateChatStatusContent(
 
     case 'reading': {
       const filePath = metadata?.filePath ?? '';
+      // FE-side aggregator (aggregateChatStatuses) collapses adjacent read
+      // cards and rebuilds metadata with `aggregated: true` + `filesList` /
+      // `filesCount`, dropping the per-slot `filePath`. Surface the running
+      // total here so the inline strip ticks "Reading: 2 files..." → "3
+      // files..." as new completions land.
+      const aggCount = metadata?.aggregated
+        ? Math.max(metadata?.filesCount ?? 0, (metadata?.filesList as unknown[] | undefined)?.length ?? 0)
+        : 0;
+      if (aggCount > 0) {
+        return `Reading: ${aggCount} ${aggCount === 1 ? 'file' : 'files'}...`;
+      }
       return filePath ? `Reading: ${filePath}...` : 'Reading: file...';
     }
 
@@ -126,11 +137,27 @@ export function generateChatStatusContent(
       const filePath = metadata?.filePath ?? '';
       const error = metadata?.error;
       if (error) return `❌ Read Failed: ${filePath || error}`;
+      // Aggregated bucket: prefer the running file count over the now-absent
+      // single `filePath`. Without this branch the body falls through to the
+      // `Read: file` fallback because `renderBucketLine` rebuilds metadata
+      // without `filePath`.
+      const aggCount = metadata?.aggregated
+        ? Math.max(metadata?.filesCount ?? 0, (metadata?.filesList as unknown[] | undefined)?.length ?? 0)
+        : 0;
+      if (aggCount > 0) {
+        return `Read: ${aggCount} ${aggCount === 1 ? 'file' : 'files'}`;
+      }
       return filePath ? `Read: ${filePath}` : 'Read: file';
     }
 
     case 'reading_source': {
       const fn = metadata?.filePath ?? '';
+      const aggCount = metadata?.aggregated
+        ? Math.max(metadata?.filesCount ?? 0, (metadata?.filesList as unknown[] | undefined)?.length ?? 0)
+        : 0;
+      if (aggCount > 0) {
+        return `Reading source: ${aggCount} ${aggCount === 1 ? 'doc' : 'docs'}...`;
+      }
       const range = metadata?.startLine ? ` (L${metadata.startLine}-L${metadata.endLine || '?'})` : '';
       return fn ? `Reading source: ${fn}${range}...` : 'Reading source doc...';
     }
@@ -139,6 +166,12 @@ export function generateChatStatusContent(
       const fn = metadata?.filePath ?? '';
       const error = metadata?.error;
       if (error) return `❌ Read Source Failed: ${fn || error}`;
+      const aggCount = metadata?.aggregated
+        ? Math.max(metadata?.filesCount ?? 0, (metadata?.filesList as unknown[] | undefined)?.length ?? 0)
+        : 0;
+      if (aggCount > 0) {
+        return `Read source: ${aggCount} ${aggCount === 1 ? 'doc' : 'docs'}`;
+      }
       const range = metadata?.startLine
         ? ` (L${metadata.startLine}-L${metadata.endLine || '?'} of ${metadata.totalLines || '?'})`
         : metadata?.totalLines ? ` (${metadata.totalLines} lines)` : '';
