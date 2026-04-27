@@ -30,11 +30,18 @@ export async function pruneConversationHistory(
 
 /**
  * Save conversation history to session file for multi-turn persistence.
- * 
+ *
  * On first run: adds user directive + assistant response.
  * On continuation: adds assistant response (user message was already appended by resolve).
- * 
+ *
  * Also saves node history (full LLM messages) for resume support.
+ *
+ * `opts.awaitingClarify`: when true, persist the clarify-pause flag so the
+ * next planner runner invocation restores RAC + conversations and routes
+ * straight to generate (see runner.ts awaitingClarify branch). Mirrors
+ * design's `saveClarifyCheckpoint(kind:'docgen')` semantically; planner
+ * doesn't have a separate checkpoint module so we fold it into the existing
+ * conversation save to keep all session writes on one path.
  */
 export async function saveConversationToSession(
   state: PlanGraphState,
@@ -42,6 +49,7 @@ export async function saveConversationToSession(
   generatedDocument: string | undefined,
   currentConversationHistory?: Array<{ role: string; content: any }>,
   compaction?: ConversationCompaction,
+  opts?: { awaitingClarify?: boolean },
 ): Promise<void> {
   const featurePath = state.featurePath;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
@@ -108,6 +116,11 @@ export async function saveConversationToSession(
     sessionData.state.jobTiming = state.deps?.stateSnapshot?.jobTiming;
     sessionData.state.recursionCount = state.recursionCount;
     sessionData.state.recursionLimit = state.recursionLimit;
+    // ✅ Persist clarify-pause flag so the next runner invocation restores
+    // RAC + conversations and routes resolve → generate (mirrors design's
+    // saveClarifyCheckpoint(kind:'docgen')). Always write so a non-clarify
+    // save resets the flag (cannot leave it stale from a prior run).
+    sessionData.state.awaitingClarify = opts?.awaitingClarify === true ? true : undefined;
     if (currentConversationHistory?.length) {
       try {
         sessionData.state.conversations[CONV_KEYS.NODE_GENERATE] = await pruneConversationHistory(currentConversationHistory);

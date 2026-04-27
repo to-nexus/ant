@@ -365,6 +365,80 @@ export class ChatService {
   }
 
   /**
+   * Server-side backstop for the cancelled-turn streaming overlay.
+   *
+   * Why: when a worker's child process is SIGTERM'd, the
+   * `LLMResponseService.finalizeMessage(true)` path that normally
+   * publishes the empty `streaming_buffer_snapshot` (see Phase 2) may
+   * not finish within the 1.8s graceful-shutdown budget — leaving stale
+   * `activeText`/`activeThinking`/`pendingCards` overlays in the FE's
+   * Zustand mirror. The HTTP-side `cleanupJobState` runs after the
+   * worker has already exited, so we sweep every active TURN_BUFFER for
+   * the feature, drop the Redis keys, and broadcast empty snapshots so
+   * the FE projector clears its `streamingBuffers[key]` for each
+   * `(turnId, workerScope)` pair.
+   *
+   * Idempotent and best-effort: an already-empty buffer simply yields
+   * an empty list; partial Redis or broadcast failures are logged but
+   * never thrown so they cannot block the lifecycle helper that called
+   * us.
+   */
+  async clearAllTurnBuffers(
+    projectId: string,
+    featureName: string,
+    userContext?: UserContext,
+  ): Promise<void> {
+    const ctx = userContext ?? this.defaultUserContext;
+    if (!ctx || !this.stateStore) return;
+    const sessionKey = getSessionKey(projectId, featureName, ctx);
+
+    let active: Awaited<ReturnType<StateStorePort['listActiveTurnBuffers']>>;
+    try {
+      active = await this.stateStore.listActiveTurnBuffers(sessionKey);
+    } catch (err) {
+      logger.warn(`clearAllTurnBuffers: listActiveTurnBuffers failed`, { component: COMPONENT }, err);
+      return;
+    }
+    if (active.length === 0) return;
+
+    for (const snap of active) {
+      // `_main_` round-trips as `undefined` over the wire (see
+      // `LLMResponseService.workerScopeForLine`), keeping the FE's
+      // bufferKey scheme consistent across worker / HTTP emitters.
+      const wireScope = snap.workerScope && snap.workerScope !== '_main_' ? snap.workerScope : undefined;
+      try {
+        await this.stateStore.clearTurnBuffer(sessionKey, snap.turnId, snap.workerScope || undefined);
+      } catch (err) {
+        logger.warn(
+          `clearAllTurnBuffers: clearTurnBuffer failed for turnId=${snap.turnId} ws=${snap.workerScope}`,
+          { component: COMPONENT },
+          err,
+        );
+      }
+      try {
+        this.broadcaster.broadcastStreamingBufferSnapshot(
+          projectId,
+          featureName,
+          {
+            turnId: snap.turnId,
+            workerScope: wireScope,
+            text: '',
+            thinking: '',
+            pendingCards: {},
+          },
+          ctx,
+        );
+      } catch (err) {
+        logger.warn(
+          `clearAllTurnBuffers: broadcastStreamingBufferSnapshot failed for turnId=${snap.turnId}`,
+          { component: COMPONENT },
+          err,
+        );
+      }
+    }
+  }
+
+  /**
    * Resolve a previously-presented choice card. Idempotent via the
    * per-cardId NX flag (chat-SSOT §7) — the second caller for the same
    * cardId no-ops. Also publishes to the choice-resolved Pub/Sub channel

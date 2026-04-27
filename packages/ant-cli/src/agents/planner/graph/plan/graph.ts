@@ -1,13 +1,19 @@
 /**
  * Plan LangGraph
- * 
- * All runs:  __start__ → resolve → triage → (conditional) → detect → generate ⟷ tool → END
- * 
+ *
+ * Default flow: __start__ → resolve → triage → (conditional) → detect → generate ⟷ tool → END
+ *
  * Triage branches:  ask → __end__, redirect → __end__, blocked → __end__, proceed → detect
- * 
- * Triage always runs — even for conversation continuations — so the system can
- * detect agent/job switches (e.g., user requests code work mid-planner session).
- * 
+ *
+ * Triage normally runs even for conversation continuations so the system can
+ * detect agent/job switches (e.g., user requests code work mid-planner
+ * session). The single exception is the clarify-continuation short-circuit:
+ * when `isResume && awaitingClarify && overrideDirective` the runner has
+ * already restored the prior RAC, so resolve routes directly to generate
+ * (mirrors design `routeAfterResolve`). This preserves the original intent
+ * across the clarify round-trip without re-running triage/detect on the
+ * answer text.
+ *
  * generate handles: LLM streaming → file card (via StreamOrchestrator) → disk write → choice card → session
  * No separate write node — same pattern as design job's docGen.
  */
@@ -22,6 +28,20 @@ import { triage } from '../../../common/graph/nodes/triage';
 import { createDetectNode } from '../../../common/graph/nodes/detect/index.js';
 import { planDetectStrategy } from './nodes/detect/strategy.js';
 import { withPhaseTracking } from '../../../common/graph/llmHelpers';
+
+/**
+ * Route after resolve for planner agent.
+ * Short-circuits triage/detect when this is a clarify continuation — the
+ * runner already restored RAC + conversations from session, and generate's
+ * entry hook will append the user's answer to NODE_GENERATE.
+ */
+function routeAfterPlannerResolve(state: PlanGraphState): string {
+  if (state.isResume && state.awaitingClarify && state.overrideDirective) {
+    console.log('[PlannerResolveRouter] awaitingClarify continuation → generate (skip triage/detect)');
+    return 'generate';
+  }
+  return 'triage';
+}
 
 /**
  * Route after triage for planner agent.
@@ -69,12 +89,19 @@ export function buildPlanGraph() {
   graph.addNode('generate', withPhaseTracking('generate', generateNode) as any);
   graph.addNode('tool', toolNode as any);
   
-  // Edges: resolve → triage → (conditional) → detect → generate → ... → END
+  // Edges: resolve → (triage | generate) → detect → generate → ... → END
   graph.addEdge('__start__' as any, 'resolve' as any);
-  
-  // After resolve: always run triage (detects agent/job switches even in continuations)
-  graph.addEdge('resolve' as any, 'triage' as any);
-  
+
+  // After resolve: triage by default; clarify continuation skips to generate.
+  graph.addConditionalEdges(
+    'resolve' as any,
+    routeAfterPlannerResolve as any,
+    {
+      triage: 'triage',
+      generate: 'generate',
+    } as any
+  );
+
   graph.addConditionalEdges(
     'triage' as any,
     routeAfterPlannerTriage as any,

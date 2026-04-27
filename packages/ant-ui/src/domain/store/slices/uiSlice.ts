@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { UIState } from '../types';
-import { STORAGE_KEYS, saveToStorage } from '../storage';
+import { STORAGE_KEYS, saveToStorage, loadFromStorage } from '../storage';
 import {
   type ActionMetadata,
   ACTION_DEFINITIONS,
@@ -10,6 +10,7 @@ import {
   type IntentGroup,
   type Basis,
   type TechTierConfig,
+  type Domain,
 } from '@ant/shared';
 import i18n from '@/i18n';
 
@@ -209,6 +210,14 @@ const applyTheme = (theme: 'light' | 'dark') => {
   }
 };
 
+function getInitialActionDomain(): Domain {
+  const selectedProject = loadFromStorage(STORAGE_KEYS.SELECTED_PROJECT) as string | null;
+  if (!selectedProject) return 'service';
+  const projectDomains = (loadFromStorage(STORAGE_KEYS.PROJECT_DOMAINS) || {}) as Record<string, Domain | undefined>;
+  const stored = projectDomains[selectedProject];
+  return stored === 'game' ? 'game' : 'service';
+}
+
 export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => ({
   // ==================
   // State
@@ -235,7 +244,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   // ActionsPanel renders the matrix-correct card set on first paint and
   // the BE detect pipeline gets a deterministic explicit override (10.2).
   // The chip is mutated only via the top-level DomainToggle on `pick-action`.
-  actionMetadata: { domain: 'service' } as ActionMetadata,
+  actionMetadata: { domain: getInitialActionDomain() } as ActionMetadata,
   highlightedArtifactDirs: [] as string[],
   spotlightTarget: null as { type: 'file' | 'dir'; path: string } | null,
   pendingClarifyAnswers: {},
@@ -619,6 +628,13 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
             next.context = undefined;
             next.target = undefined;
           }
+        }
+
+        const selectedProject = s.selectedProject as string | undefined;
+        if (selectedProject) {
+          const projectDomains = (loadFromStorage(STORAGE_KEYS.PROJECT_DOMAINS) || {}) as Record<string, Domain | undefined>;
+          projectDomains[selectedProject] = patch.domain;
+          saveToStorage(STORAGE_KEYS.PROJECT_DOMAINS, projectDomains);
         }
       }
 

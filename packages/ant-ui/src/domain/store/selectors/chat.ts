@@ -67,6 +67,21 @@ export type BufferKey = string; // `${turnId}:${workerScope}`
 
 export const MAIN_WORKER_SCOPE = '_main_' as const;
 
+/**
+ * Synthetic section that always renders LAST in a turn — reserved for
+ * turn-terminator cards (e.g. `cardType: 'cancelled'` emitted by
+ * `ChatService.appendChoicePresentedCancelled`).
+ *
+ * Why: the cancelled card is the lifecycle "stop" marker; it must appear
+ * after every parallel-worker section in the turn, otherwise users see
+ * worker output dangling beneath the stop card. The cancelled line itself
+ * has no `workerScope` (the server emits it from the HTTP path), so it
+ * would otherwise fall into `_main_` and render BEFORE worker sections.
+ * Mapping that single cardType to this dedicated section keeps the
+ * chat-SSOT cardType-position policy explicit and local to the projector.
+ */
+export const TERMINAL_SECTION = '_terminal_' as const;
+
 export function makeBufferKey(turnId: string, workerScope?: string | null): BufferKey {
   return `${turnId}:${workerScope || MAIN_WORKER_SCOPE}`;
 }
@@ -235,13 +250,22 @@ function projectSingleTurn(
   const linesByScope = new Map<string, ChatLine[]>();
 
   for (const line of lines) {
-    const scope = line.workerScope || MAIN_WORKER_SCOPE;
     if (line.type === 'user_turn') {
       user = line;
       jobId ||= line.jobId;
       jobType = (line.jobType as LogJobType) ?? jobType;
       // user_turn is rendered above sections, not inside them.
       continue;
+    }
+    // Turn-terminator routing: cancelled cards must render below every
+    // parallel-worker section (see TERMINAL_SECTION). Every other line
+    // falls into its own workerScope (or `_main_` when omitted).
+    let scope = line.workerScope || MAIN_WORKER_SCOPE;
+    if (
+      line.type === 'choice_presented' &&
+      (line as ChatChoicePresentedLine).cardType === 'cancelled'
+    ) {
+      scope = TERMINAL_SECTION;
     }
     if (!linesByScope.has(scope)) {
       linesByScope.set(scope, []);
@@ -251,11 +275,17 @@ function projectSingleTurn(
     jobId ||= line.jobId;
   }
 
-  // _main_ always renders first when present.
+  // Section ordering (chat-SSOT cardType-position policy):
+  //   1. `_main_`       — always first.
+  //   2. `worker-N`     — alphabetical (localeCompare) so parallel workers
+  //                       have a stable left-to-right column order.
+  //   3. `_terminal_`   — always last (cancelled / turn-terminator cards).
   sectionOrder.sort((a, b) => {
     if (a === b) return 0;
     if (a === MAIN_WORKER_SCOPE) return -1;
     if (b === MAIN_WORKER_SCOPE) return 1;
+    if (a === TERMINAL_SECTION) return 1;
+    if (b === TERMINAL_SECTION) return -1;
     return a.localeCompare(b);
   });
 

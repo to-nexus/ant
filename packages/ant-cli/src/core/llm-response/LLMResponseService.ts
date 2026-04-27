@@ -511,6 +511,26 @@ export class LLMResponseService {
       .catch((err) =>
         logger.warn(`clearTurnBuffer failed`, { component: 'LLMResponseService' }, err),
       );
+
+    // Match the flush-path contract (see `replaceTurnBuffer` →
+    // `streaming_buffer_snapshot`): emit an empty snapshot so the FE
+    // projector clears its in-memory `streamingBuffers[key]` mirror.
+    // Without this signal a cancelled turn leaves stale
+    // `activeText`/`activeThinking`/`pendingCards` overlays beneath the
+    // durable lines just persisted, which on a Stop+parallel scenario
+    // surfaces as ghost output sitting next to the cancelled card.
+    this.broadcaster.broadcastStreamingBufferSnapshot(
+      this.turnContext.context.projectId,
+      this.turnContext.context.featureName,
+      {
+        turnId,
+        workerScope: this.workerScopeForLine(),
+        text: '',
+        thinking: '',
+        pendingCards: {},
+      },
+      this.turnContext.context.userContext,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════

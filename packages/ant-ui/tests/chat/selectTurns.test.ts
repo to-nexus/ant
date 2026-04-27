@@ -289,6 +289,65 @@ describe('selectTurns — workerScope sub-sections', () => {
       'worker-2',
     ]);
   });
+
+  it('routes `cardType: "cancelled"` choice_presented into the `_terminal_` section that always renders LAST', () => {
+    // Mirrors a real stop scenario: parallel workers commit lines under
+    // worker-N, then the HTTP cleanup path emits a cancelled choice card
+    // with no workerScope. The cancelled card must appear AFTER every
+    // worker section so it reads as the turn's stop marker, not as a
+    // mid-turn _main_ item.
+    const u = userTurn('t-stop');
+    const mainMsg = assistantMessage('t-stop', 'decompose response');
+    const w1Msg = status('t-stop', 'card-w1', 'read', { filePath: 'b.ts' }, 'worker-1');
+    const w2Msg = status('t-stop', 'card-w2', 'read', { filePath: 'c.ts' }, 'worker-2');
+    const cancelled = choicePresented('t-stop', 'cancelled-card-1', 'cancelled');
+
+    const turns = selectTurns({
+      chatEvents: [u, mainMsg, w1Msg, w2Msg, cancelled],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      MAIN_WORKER_SCOPE,
+      'worker-1',
+      'worker-2',
+      '_terminal_',
+    ]);
+
+    // `_main_` keeps the durable assistant_message but does NOT contain
+    // the cancelled card — it lives in `_terminal_` instead.
+    const mainItems = sections[0].items;
+    expect(mainItems).toEqual([
+      expect.objectContaining({ kind: 'assistant_message' }),
+    ]);
+
+    const terminalItems = sections[3].items;
+    expect(terminalItems).toHaveLength(1);
+    expect(terminalItems[0].kind).toBe('choice');
+    if (terminalItems[0].kind === 'choice') {
+      expect(terminalItems[0].presented.cardType).toBe('cancelled');
+      expect(terminalItems[0].presented.cardId).toBe('cancelled-card-1');
+    }
+  });
+
+  it('keeps non-cancelled choice cards (e.g. triage_choice) in `_main_` rather than `_terminal_`', () => {
+    const u = userTurn('t-triage');
+    const triage = choicePresented('t-triage', 'triage-1', 'triage_choice');
+
+    const turns = selectTurns({
+      chatEvents: [u, triage],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([MAIN_WORKER_SCOPE]);
+    const items = sections[0].items;
+    expect(items[0].kind).toBe('choice');
+    if (items[0].kind === 'choice') {
+      expect(items[0].presented.cardType).toBe('triage_choice');
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────
