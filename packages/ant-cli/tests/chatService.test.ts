@@ -287,6 +287,80 @@ describe('ChatService — Phase 9 emission contract', () => {
       (l) => l.type === 'choice_presented' && (l as any).cardType === 'cancelled',
     );
     expect(cancelledLines).toHaveLength(1);
+
+    // chat-SSOT FE-projector contract: each cancelled card lands in
+    // its own synthetic `_cancelled_:{cardId}` workerScope so the FE
+    // sorts it chronologically instead of pinning it to `_main_`'s
+    // first-position slot.
+    expect((cancelledLines[0] as any).workerScope).toBe(
+      `_cancelled_:${first.cardId}`,
+    );
+  });
+
+  it('appendChoiceResolved inherits the cancelled presented line workerScope so resolved siblings share the synthetic FE section', async () => {
+    await seedUserTurn('job-rs', 't-rs');
+    const cancelled = await service.appendChoicePresentedCancelled(
+      'proj',
+      'feat-a',
+      'job-rs',
+      {
+        reason: 'user_stopped',
+        message: 'Task cancelled',
+        userContext: USER_CTX,
+      },
+    );
+    expect(cancelled.emitted).toBe(true);
+
+    await service.appendChoiceResolved('proj', 'feat-a', {
+      jobId: 'job-rs',
+      cardId: cancelled.cardId,
+      choiceSelected: 'resume',
+      resolvedLabel: 'Resumed',
+      userContext: USER_CTX,
+    });
+
+    const resolved = chatEventLines(store).find(
+      (l): l is ChatChoiceResolvedLine =>
+        l.type === 'choice_resolved' && l.cardId === cancelled.cardId,
+    );
+    expect(resolved).toBeDefined();
+    expect((resolved as any).workerScope).toBe(`_cancelled_:${cancelled.cardId}`);
+  });
+
+  it('autoResolveStaleCancelledCards preserves the originating workerScope on the synthetic Superseded resolved line', async () => {
+    // Seed two distinct jobs in the same feature so the second
+    // cancellation triggers auto-resolution of the first job's stale
+    // cancelled card. The synthetic `auto_stale` resolved line must
+    // carry the FIRST job's workerScope so it pairs with its
+    // presented sibling in the FE projector.
+    await seedUserTurn('job-stale-a', 't-sa');
+    await seedUserTurn('job-stale-b', 't-sb');
+
+    const aFirst = await service.appendChoicePresentedCancelled(
+      'proj',
+      'feat-a',
+      'job-stale-a',
+      { reason: 'user_stopped', message: 'A cancelled', userContext: USER_CTX },
+    );
+    expect(aFirst.emitted).toBe(true);
+
+    // New cancelled card for a different job — triggers auto-resolve
+    // of every prior unresolved cancelled (excluding the new jobId).
+    const bFirst = await service.appendChoicePresentedCancelled(
+      'proj',
+      'feat-a',
+      'job-stale-b',
+      { reason: 'user_stopped', message: 'B cancelled', userContext: USER_CTX },
+    );
+    expect(bFirst.emitted).toBe(true);
+
+    const autoResolved = chatEventLines(store).find(
+      (l): l is ChatChoiceResolvedLine =>
+        l.type === 'choice_resolved' && (l as any).choiceSelected === 'auto_stale',
+    );
+    expect(autoResolved).toBeDefined();
+    expect(autoResolved!.cardId).toBe(aFirst.cardId);
+    expect((autoResolved as any).workerScope).toBe(`_cancelled_:${aFirst.cardId}`);
   });
 
   it('appendChoiceResolved publishes the choice-resolved Pub/Sub envelope', async () => {

@@ -110,12 +110,21 @@ describe('Artifact Ownership Routing', () => {
       expect(hasTargetJobPrerequisites('plan', makeWs({ hasPrd: true }))).toBe(true);
     });
 
-    it('blocks redirect to code when no design docs or codebase', () => {
-      expect(hasTargetJobPrerequisites('code', makeWs())).toBe(false);
+    it('allows redirect to code when directive provided (modification mode)', () => {
+      // makeWs() defaults to hasDirective: true → matches code.yaml modification mode prereq
+      expect(hasTargetJobPrerequisites('code', makeWs())).toBe(true);
+    });
+
+    it('blocks redirect to code when neither directive nor design exists', () => {
+      expect(hasTargetJobPrerequisites('code', makeWs({ hasDirective: false }))).toBe(false);
     });
 
     it('allows redirect to design when PRD exists', () => {
       expect(hasTargetJobPrerequisites('design', makeWs({ hasPrd: true }))).toBe(true);
+    });
+
+    it('allows redirect to design when only directive exists (spec mode regression guard)', () => {
+      expect(hasTargetJobPrerequisites('design', makeWs())).toBe(true);
     });
   });
 

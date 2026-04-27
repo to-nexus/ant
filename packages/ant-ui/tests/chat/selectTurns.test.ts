@@ -114,6 +114,7 @@ function choicePresented(
   turnId: string,
   cardId: string,
   cardType = 'triage_choice',
+  workerScope?: string,
 ): ChatChoicePresentedLine {
   return {
     type: 'choice_presented',
@@ -123,6 +124,7 @@ function choicePresented(
     jobType: 'code',
     cardId,
     cardType,
+    ...(workerScope ? { workerScope } : {}),
   } as ChatChoicePresentedLine;
 }
 
@@ -131,6 +133,7 @@ function choiceResolved(
   cardId: string,
   choiceSelected = 'proceed',
   resolvedLabel = 'Proceeded',
+  workerScope?: string,
 ): ChatChoiceResolvedLine {
   return {
     type: 'choice_resolved',
@@ -141,7 +144,8 @@ function choiceResolved(
     cardId,
     choiceSelected,
     resolvedLabel,
-  };
+    ...(workerScope ? { workerScope } : {}),
+  } as ChatChoiceResolvedLine;
 }
 
 function emptyBuffers(): Record<BufferKey, StreamingBuffer> {
@@ -362,17 +366,24 @@ describe('selectTurns — workerScope sub-sections', () => {
     ]);
   });
 
-  it('keeps every choice card (including cancelled) in the natural workerScope — no `_terminal_` synthetic section', () => {
-    // The previous policy routed cardType:'cancelled' into a synthetic
-    // `_terminal_` section pinned to the bottom. That pinned the
-    // cancelled card to the most-recent screen position even after
-    // resume + new worker output, masking chronology. Cancelled cards
-    // now flow into `_main_` (the appender omits workerScope) and
-    // chronological section ordering does the right thing.
+  it('routes cancelled cards to a synthetic `_cancelled_:{cardId}` scope so they sort chronologically below earlier worker output', () => {
+    // Regression: the previous policy let cancelled cards inherit
+    // `_main_`, which is hard-pinned to the first section. When the
+    // user clicked Stop AFTER worker output had landed, the cancelled
+    // card rendered ABOVE that worker output (scroll-top fixation).
+    // ChatService.appendChoicePresentedCancelled now stamps a
+    // synthetic `_cancelled_:{cardId}` workerScope; combined with
+    // chronological section ordering, the cancelled card lands at its
+    // actual ts — i.e. below the worker output that ran before Stop.
     const u = userTurn('t-stop');
     const mainMsg = assistantMessage('t-stop', 'decompose response');
     const w1Msg = status('t-stop', 'card-w1', 'read', { filePath: 'b.ts' }, 'worker-1');
-    const cancelled = choicePresented('t-stop', 'cancelled-card-1', 'cancelled');
+    const cancelled = choicePresented(
+      't-stop',
+      'cancelled-t-stop-j1-1',
+      'cancelled',
+      '_cancelled_:cancelled-t-stop-j1-1',
+    );
 
     const turns = selectTurns({
       chatEvents: [u, mainMsg, w1Msg, cancelled],
@@ -383,14 +394,77 @@ describe('selectTurns — workerScope sub-sections', () => {
     expect(sections.map((s) => s.workerScope)).toEqual([
       MAIN_WORKER_SCOPE,
       'worker-1',
+      '_cancelled_:cancelled-t-stop-j1-1',
     ]);
 
-    // Cancelled card lives in `_main_` alongside the assistant_message.
-    const mainItems = sections[0].items;
-    expect(mainItems.map((i: any) => i.kind)).toEqual(['assistant_message', 'choice']);
-    const cancelledItem = mainItems[1] as any;
+    // `_main_` keeps the orchestration intro only.
+    expect(sections[0].items.map((i: any) => i.kind)).toEqual(['assistant_message']);
+    // worker-1 keeps its own status card.
+    expect(sections[1].items.map((i: any) => i.kind)).toEqual(['status']);
+    // Cancelled card occupies its own dedicated section, rendered last.
+    const cancelledItems = sections[2].items;
+    expect(cancelledItems).toHaveLength(1);
+    const cancelledItem = cancelledItems[0] as any;
+    expect(cancelledItem.kind).toBe('choice');
     expect(cancelledItem.presented.cardType).toBe('cancelled');
-    expect(cancelledItem.presented.cardId).toBe('cancelled-card-1');
+    expect(cancelledItem.presented.cardId).toBe('cancelled-t-stop-j1-1');
+  });
+
+  it('pushes the cancelled card upward when post-resume worker output accumulates with later ts', () => {
+    // Resume scenario: after the user clicks Resume on the cancelled
+    // card, a choice_resolved sibling lands in the same synthetic
+    // scope (BE inherits the presented line's workerScope), and any
+    // new worker output that follows must render BELOW the cancelled
+    // section because its first-event ts is later.
+    const u = userTurn('t-resume');
+    const mainMsg = assistantMessage('t-resume', 'decompose response');
+    const w1Msg = status('t-resume', 'card-w1', 'read', { filePath: 'b.ts' }, 'worker-1');
+    const cancelledScope = '_cancelled_:cancelled-t-resume-j1-1';
+    const cancelled = choicePresented(
+      't-resume',
+      'cancelled-t-resume-j1-1',
+      'cancelled',
+      cancelledScope,
+    );
+    const resumed = choiceResolved(
+      't-resume',
+      'cancelled-t-resume-j1-1',
+      'resume',
+      'Resumed',
+      cancelledScope,
+    );
+    const w2NewMsg = status(
+      't-resume',
+      'card-w2-new',
+      'read',
+      { filePath: 'c.ts' },
+      'worker-0#new-task',
+    );
+
+    const turns = selectTurns({
+      chatEvents: [u, mainMsg, w1Msg, cancelled, resumed, w2NewMsg],
+      streamingBuffers: emptyBuffers(),
+    });
+
+    const sections = turns[0].sections;
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      MAIN_WORKER_SCOPE,
+      'worker-1',
+      cancelledScope,
+      'worker-0#new-task',
+    ]);
+
+    // Cancelled section still pairs presented + resolved into one item.
+    const cancelledSection = sections[2];
+    expect(cancelledSection.items).toHaveLength(1);
+    const cancelledItem = cancelledSection.items[0] as any;
+    expect(cancelledItem.kind).toBe('choice');
+    expect(cancelledItem.presented.cardType).toBe('cancelled');
+    expect(cancelledItem.resolved?.choiceSelected).toBe('resume');
+    expect(cancelledItem.resolved?.resolvedLabel).toBe('Resumed');
+
+    // New worker output sits below the cancelled card.
+    expect(sections[3].items.map((i: any) => i.kind)).toEqual(['status']);
   });
 
   it('keeps non-cancelled choice cards (e.g. triage_choice) in `_main_`', () => {

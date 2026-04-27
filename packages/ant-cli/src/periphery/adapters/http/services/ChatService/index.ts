@@ -344,6 +344,11 @@ export class ChatService {
       ? await this.stateStore.nextPauseSeq(turnId).catch(() => Date.now())
       : Date.now();
     const cardId = `cancelled-${turnId}-${jobId}-${pauseSeq}`;
+    // Synthetic per-card workerScope: each cancelled card lands in its
+    // own FE section so chronological sort places it at its actual ts
+    // rather than piggybacking on `_main_`'s pinned-first position.
+    // See `selectTurns` + 31-chat-system.md §섹션-정렬.
+    const workerScope = `_cancelled_:${cardId}`;
     const adapter = this.makeAdapter(projectId, featureName, ctx);
     const line: ChatChoicePresentedLine = {
       type: 'choice_presented',
@@ -351,6 +356,7 @@ export class ChatService {
       jobId,
       turnId,
       jobType: args.jobType ?? DEFAULT_JOB_TYPE,
+      workerScope,
       cardId,
       cardType: 'cancelled',
       prompt: args.message,
@@ -503,6 +509,11 @@ export class ChatService {
         jobId: cardOrigin?.jobId ?? args.jobId,
         turnId,
         jobType: cardOrigin?.jobType ?? DEFAULT_JOB_TYPE,
+        // Inherit the original presented line's workerScope so the
+        // resolved line lands in the same FE section as its sibling.
+        // Critical for cancelled cards whose presented carries a
+        // synthetic `_cancelled_:{cardId}` scope.
+        ...(cardOrigin?.workerScope ? { workerScope: cardOrigin.workerScope } : {}),
         cardId: args.cardId,
         choiceSelected: args.choiceSelected,
         resolvedLabel: args.resolvedLabel,
@@ -1001,7 +1012,12 @@ export class ChatService {
     featureName: string,
     cardId: string,
     userContext?: UserContext,
-  ): Promise<{ turnId: string; jobId: string; jobType: LogJobType } | null> {
+  ): Promise<{
+    turnId: string;
+    jobId: string;
+    jobType: LogJobType;
+    workerScope?: string;
+  } | null> {
     const ctx = userContext ?? this.defaultUserContext;
     const adapter = this.makeAdapter(projectId, featureName, ctx);
     if (!adapter) return null;
@@ -1016,7 +1032,16 @@ export class ChatService {
           // We surface jobType here so callers (route handler /
           // appendChoiceResolved) can never re-label a card with the
           // resolver's `selectedJobType`.
-          return { turnId: line.turnId, jobId: line.jobId, jobType: line.jobType };
+          //
+          // workerScope is also surfaced so cancelled-card resolves
+          // land in the SAME synthetic FE section as their presented
+          // sibling (chronological placement, see selectTurns).
+          return {
+            turnId: line.turnId,
+            jobId: line.jobId,
+            jobType: line.jobType,
+            workerScope: line.workerScope,
+          };
         }
       }
     } catch (err) {
@@ -1100,7 +1125,13 @@ export class ChatService {
       if (line.type === 'choice_resolved') resolvedIds.add(line.cardId);
     }
 
-    const stale: Array<{ cardId: string; jobId: string; turnId: string; jobType: LogJobType }> = [];
+    const stale: Array<{
+      cardId: string;
+      jobId: string;
+      turnId: string;
+      jobType: LogJobType;
+      workerScope?: string;
+    }> = [];
     for (const line of lines) {
       if (line.collapsed) continue;
       if (line.type !== 'choice_presented') continue;
@@ -1113,6 +1144,7 @@ export class ChatService {
         jobId: presented.jobId,
         turnId: presented.turnId,
         jobType: presented.jobType,
+        workerScope: presented.workerScope,
       });
     }
 
@@ -1126,6 +1158,11 @@ export class ChatService {
         jobId: entry.jobId,
         turnId: entry.turnId,
         jobType: entry.jobType,
+        // Preserve presented↔resolved scope pairing so the synthetic
+        // resolved lands in the same FE section as the cancelled
+        // presented (otherwise the cancelled card would render
+        // unresolved while a phantom resolved appears in `_main_`).
+        ...(entry.workerScope ? { workerScope: entry.workerScope } : {}),
         cardId: entry.cardId,
         choiceSelected: 'auto_stale',
         resolvedLabel: 'Superseded',

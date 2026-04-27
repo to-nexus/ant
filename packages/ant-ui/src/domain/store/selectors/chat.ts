@@ -28,10 +28,13 @@
  *    progressive states (e.g. `command_running` → `command_streaming`
  *    → `command`) collapse into one item.
  *  - `choice_presented` + `choice_resolved` pair on `cardId` and render
- *    as a single resolved/unresolved choice item. Cancelled cards have
- *    no special routing — they flow into `_main_` (no workerScope on
- *    the appender) and the rest of the turn naturally renders below
- *    them once new worker output arrives.
+ *    as a single resolved/unresolved choice item. Cancelled cards
+ *    receive a synthetic `_cancelled_:{cardId}` workerScope on the BE
+ *    appender (`ChatService.appendChoicePresentedCancelled`) so each
+ *    cancellation lands in its own section and the chronological sort
+ *    places it at its actual ts — i.e. below worker output that ran
+ *    before the user clicked Stop, and above worker output that
+ *    accumulates after Resume.
  *  - `streamingBuffers` overlay produces `activeText` / `activeThinking`
  *    / `pendingCards` so live deltas surface above the durable folded
  *    cards without mutating the disk SSOT.
@@ -244,9 +247,10 @@ function projectSingleTurn(
   const linesByScope = new Map<string, ChatLine[]>();
 
   // First-event timestamp per scope — used for chronological section
-  // ordering below. `_main_` is anchored to the user_turn's ts so the
-  // turn header sits above any worker output even if the first
-  // `_main_` event happens late.
+  // ordering below. `_main_` is hard-pinned to first via the sort
+  // comparator (orchestration-narrative policy), so its ts entry is
+  // unused for ordering; we therefore record only the actual first
+  // `_main_` event ts for parity with other scopes.
   const firstTsByScope = new Map<string, string>();
 
   for (const line of lines) {
@@ -254,11 +258,6 @@ function projectSingleTurn(
       user = line;
       jobId ||= line.jobId;
       jobType = (line.jobType as LogJobType) ?? jobType;
-      // Anchor `_main_` to the user_turn ts. Doesn't create the section
-      // by itself; only used for ordering when `_main_` events exist.
-      if (!firstTsByScope.has(MAIN_WORKER_SCOPE)) {
-        firstTsByScope.set(MAIN_WORKER_SCOPE, line.ts);
-      }
       // user_turn is rendered above sections, not inside them.
       continue;
     }
