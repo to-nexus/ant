@@ -373,37 +373,46 @@ export function resolveTaskTechTiersFromMap(
       framework: entry.framework || configTier?.framework,
       stack: key,
       packageManager: configTier?.packageManager,
+      gameEngine: configTier?.gameEngine,
     });
   }
   return result.length > 0 ? result : allTiers;
 }
 
-/** @deprecated Use resolveTaskTechTiersFromMap instead */
-export function resolveTaskTechTiers(
-  packages: string[] | undefined,
-  jobTechTier: TechTier,
-  packageTiers?: Record<string, PackageTierEntry>,
+/**
+ * Apply explicit (preset) techTier overrides on top of resolved task tiers.
+ *
+ * Policy: explicit fields from `actionMetadata.basis.techTier` are authoritative
+ * — they win over any value emitted by the LLM in `<techTier>` / `packageTiers`.
+ * Mirrors the `visualTier` / `gameArtTier` / `gameContentTier` invariant.
+ *
+ * Behavior:
+ *  - `explicit` undefined → return input unchanged (infer path; preserves
+ *    monorepo per-package divergence emitted via packageTiers).
+ *  - For each task tier, if `explicit.{frontend|backend}` matches `tier.stack`,
+ *    explicit fields (language / framework / packageManager / gameEngine) are
+ *    merged onto the tier with explicit-first precedence.
+ *  - Stacks not pinned by explicit are returned unchanged.
+ */
+export function applyExplicitTechTierOverrides(
+  taskTiers: TechTier[],
+  explicit: TechTierConfig | undefined,
 ): TechTier[] {
-  if (!packages?.length || !packageTiers || Object.keys(packageTiers).length === 0) {
-    return [jobTechTier];
-  }
-
-  const resolved = packages
-    .map(pkg => packageTiers[pkg])
-    .filter((entry): entry is PackageTierEntry => !!entry);
-
-  if (resolved.length === 0) return [jobTechTier];
-
-  const seen = new Set<string>();
-  const tiers: TechTier[] = [];
-  for (const entry of resolved) {
-    const key = `${entry.stack}|${entry.language}|${entry.framework ?? ''}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      tiers.push(buildTechTier(entry, entry.stack as Stack));
-    }
-  }
-  return tiers;
+  if (!explicit) return taskTiers;
+  return taskTiers.map(tier => {
+    const e =
+      tier.stack === 'frontend' ? explicit.frontend
+      : tier.stack === 'backend' ? explicit.backend
+      : undefined;
+    if (!e) return tier;
+    return {
+      ...tier,
+      language: e.language ?? tier.language,
+      framework: e.framework ?? tier.framework,
+      packageManager: e.packageManager ?? tier.packageManager,
+      gameEngine: e.gameEngine ?? tier.gameEngine,
+    };
+  });
 }
 
 /**
