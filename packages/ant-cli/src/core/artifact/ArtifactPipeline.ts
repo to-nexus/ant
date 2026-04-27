@@ -48,11 +48,11 @@
  */
 
 import type { ResolvedArtifact, UiSource } from '@ant/shared';
-import { ARTIFACT_PREFIX, uiSourceOfPath } from '@ant/shared';
+import { ARTIFACT_PREFIX, uiSourceOfPath, gameArtSourceOfPath } from '@ant/shared';
 import { compactContent } from '../utils/contentCompactor';
 
 // ────────────────────────────────────────────────────────────────
-// UI artifact recognition
+// UI / game-art artifact recognition
 // ────────────────────────────────────────────────────────────────
 
 /**
@@ -65,6 +65,15 @@ export function isUiArtifactPath(p: string): boolean {
   return p.startsWith(ARTIFACT_PREFIX.UI_ANT)
     || p.startsWith(ARTIFACT_PREFIX.UI_FIGMA)
     || p.startsWith(ARTIFACT_PREFIX.UI_HANDOFF);
+}
+
+/**
+ * An artifact counts as "game-art" if it lives under any of the three
+ * game-art sub-source subdirectories: `outputs/design/game-art/{ant,figma,handoff}/`.
+ * Mirrors `isUiArtifactPath` shape (D24-revised).
+ */
+export function isGameArtArtifactPath(p: string): boolean {
+  return gameArtSourceOfPath(p) !== null;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -249,6 +258,10 @@ export class ArtifactPoolView {
     return this.pool.filter(a => isUiArtifactPath(a.path));
   }
 
+  get gameArt(): ResolvedArtifact[] {
+    return this.pool.filter(a => isGameArtArtifactPath(a.path));
+  }
+
   get sources(): ResolvedArtifact[] {
     return this.pool.filter(a => a.path.startsWith(ARTIFACT_PREFIX.SOURCES));
   }
@@ -269,6 +282,7 @@ export class ArtifactPoolView {
   hasSystemDesign(): boolean { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN)); }
   hasSpec(): boolean         { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SPEC)); }
   hasUi(): boolean           { return this.pool.some(a => isUiArtifactPath(a.path)); }
+  hasGameArt(): boolean      { return this.pool.some(a => isGameArtArtifactPath(a.path)); }
   hasSources(): boolean      { return this.pool.some(a => a.path.startsWith(ARTIFACT_PREFIX.SOURCES)); }
 
   // ── Role-scoped checks — Contract (ref) / Background (context) ──
@@ -292,6 +306,37 @@ export class ArtifactPoolView {
   }
   hasUiContext(): boolean {
     return this.pool.some(a => a.role === 'context' && isUiArtifactPath(a.path));
+  }
+
+  hasGameArtRef(): boolean {
+    return this.pool.some(a => a.role === 'ref' && isGameArtArtifactPath(a.path));
+  }
+  hasGameArtContext(): boolean {
+    return this.pool.some(a => a.role === 'context' && isGameArtArtifactPath(a.path));
+  }
+
+  /**
+   * Aggregate "any design ref present" — true when any of the four design
+   * artifact kinds (system-design / spec / ui / game-art) is present in
+   * the pool with `role='ref'`.
+   *
+   * SSOT for "the user / intent supplied a design reference document for
+   * this turn". When this returns true, decompose's executionTier is
+   * structurally pinned to Tier 4 for `generate`/`refactor` modes — the
+   * presence of a design ref means the work is multi-boundary and must be
+   * faithfully decomposed against the document, never collapsed by
+   * single-task heuristics. Enforced at runtime by
+   * `validateExecutionTier` in `core/executionTier`.
+   *
+   * Mirrors the role assignments in `@ant/shared/action-config-matrix.ts`:
+   * the four design kinds are exactly the slots that the matrix marks as
+   * `refs:` for any `gen-code-*` / `rev-code` intent.
+   */
+  hasAnyDesignRef(): boolean {
+    return this.hasSystemDesignRef()
+      || this.hasSpecRef()
+      || this.hasUiRef()
+      || this.hasGameArtRef();
   }
 
   /**

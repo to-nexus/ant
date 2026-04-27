@@ -3,24 +3,22 @@ You are analyzing a software specification to break it into executable tasks.
 DIRECTIVE:
 {{{directive}}}
 
-════════════════════════════════════════════════════════════════════════════════
-## User-Pinned References
-
-{{#if pinnedRefCount}}✅ User explicitly pinned {{pinnedRefCount}} reference document(s) for this turn (`actionMetadata.refs` / `actionMetadata.context`).{{else}}❌ User has not pinned any reference document for this turn.{{/if}}
-
-⚠️ **Important — Spec Clarify input signal**: This section reflects ONLY user-explicit per-turn pins. Role-based auto-injected artifacts that may appear below under "Provided Documents" do NOT count toward "user-pinned references absent" in the Spec Clarify checkpoints. See `rules.md` → "Spec Clarify".
-
-════════════════════════════════════════════════════════════════════════════════
 {{#if tierRefs.length}}
 
 ════════════════════════════════════════════════════════════════════════════════
-## Available Reference Documents (tier-classification signal)
+## Available Reference Documents (Development Source)
 
-The following reference documents are attached to this turn. They are a
-tier-classification signal: when the directive asks for work that is
-systematically grounded in these refs, emit `<executionTier>4</executionTier>`;
-when refs exist but the directive is unrelated to their content, prefer
-`<executionTier>3</executionTier>`.
+The following reference documents are attached to this turn as
+`role='ref'` design artifacts (chosen by the intent matrix in
+`@ant/shared/action-config-matrix.ts`). They are the **Development
+Source** that grounds this turn's work — every enumerated unit inside
+these documents (numbered tasks, sections, requirements, acceptance
+criteria) MUST be reflected as a distinct task in `<tasks>`.
+
+For `generate` / `refactor` modes the executionTier is structurally
+fixed: emit `<executionTier>4</executionTier>`. Lower tiers collapse
+the document's enumerated work and are rejected by the runtime
+validator.
 
 {{#each tierRefs}}
 - {{this.label}} ({{this.path}})
