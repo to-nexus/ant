@@ -72,7 +72,7 @@ Clarifying questions may span multiple turns. After each round of answers, re-ob
 **Constraints:**
 - Minimum 1, maximum 5 `<clarify>` blocks per turn.
 - Maximum 3 total questioning rounds before generation MUST proceed. Unresolved gaps are recorded as "Open Questions" in the PRD.
-- When enough information is gathered to fill the core PRD sections (Problem/Goal, User Scenarios, Functional Requirements), generate immediately — do NOT ask further questions.
+- Generate only when **every Required core section** defined by the domain overlay can be authored with substantive content at the overlay's stated commit depth. The overlay is the SSOT for both the section list and the per-section commit depth — do not impose an alternative threshold here. When the directive lacks information for a Required core section, choose between (a) clarify, or (b) commit a domain-conventional default with an explicit `> Assumed: ...` note inline. **Open Questions is reserved for Conditional sections only — Required core has no Open-Questions escape.**
 
 **Observation:**
 - How many questions to ask per turn depends on the severity and interdependency of observed gaps.
@@ -106,7 +106,7 @@ For each section family, observe whether the user's input covers it. The exact s
 | Functional Requirements | Are testable behaviors listed with cross-references to flow / screen / policy IDs? |
 | Conditional sections | For each Conditional section the domain overlay defines (e.g. NFR, Data & Permissions, External Dependencies, Constraints, Success Metrics): does the directive's scope warrant inclusion, or is the omission noted? |
 
-**Constraint**: If a section's information is not observed, do NOT fabricate it. Ask the user or record it as an open question in the document.
+**Constraint**: If a Conditional section's information is not observed, record the gap in the overlay-defined open-questions section with a one-line reason. **For Required core sections, ask via `<clarify>` or commit a domain-conventional default with an explicit `> Assumed: ...` note inline — Open Questions is NOT a valid escape for Required core.** Fabrication (inventing requirements the directive did not imply) is forbidden in either case.
 **Constraint**: If multiple valid approaches exist for an unspecified decision, present them as alternatives for the user to choose.
 
 #### PRD Output
