@@ -8,6 +8,8 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Eye, FileText, AlertTriangle } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
+import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNotifyArtifactMutationBlocked';
 import { JsonYamlPreview } from './JsonYamlPreview';
 import { isFigmaDataPopulated } from '@ant/shared';
 import { getSmartEditConfig } from './smartEdit/config';
@@ -146,6 +148,8 @@ interface FileEditorPanelProps {
 export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const { t } = useTranslation('artifacts');
   const { showError } = useAlertModalContext();
+  const policy = useUIActionPolicy();
+  const notifyArtifactMutationBlocked = useNotifyArtifactMutationBlocked();
   const selectedProject = useStore((state) => state.selectedProject);
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
@@ -374,13 +378,14 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const handleSave = useCallback(async () => {
     if (!selectedProject || !selectedFeature || !selectedFile) return;
     if (isBinaryImageFile) return;
+    if (notifyArtifactMutationBlocked()) return;
     try {
       await saveCurrentFile();
     } catch (error) {
       console.error('Failed to save file:', error);
       showError(t('error.saveFailed'), { title: t('common:error.title') });
     }
-  }, [selectedProject, selectedFeature, selectedFile, isBinaryImageFile, saveCurrentFile, showError, t]);
+  }, [selectedProject, selectedFeature, selectedFile, isBinaryImageFile, notifyArtifactMutationBlocked, saveCurrentFile, showError, t]);
 
   const handleRevert = useCallback(() => {
     discardBuffer();
@@ -583,11 +588,13 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                 config={smartEditConfig!}
                 initialResult={deserializeResult}
                 onChange={handleContentChange}
+                disabled={!policy.canCreateFile}
               />
             ) : (
               <LineNumberedEditor
                 value={editedContent}
                 onChange={handleContentChange}
+                disabled={!policy.canCreateFile}
               />
             )}
 
@@ -597,7 +604,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                   size="sm"
                   variant="outline"
                   onClick={handleReset}
-                  disabled={loading || saving || isAlreadyEmpty}
+                  disabled={loading || saving || isAlreadyEmpty || !policy.canCreateFile}
                 >
                   {t('fileEditor.reset')}
                 </Button>
@@ -613,7 +620,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
               <Button
                 size="sm"
                 onClick={handleSave}
-                disabled={loading || saving || !hasChanges}
+                disabled={loading || saving || !hasChanges || !policy.canCreateFile}
               >
                 {saving ? t('fileEditor.saving') : t('fileEditor.save')}
               </Button>
