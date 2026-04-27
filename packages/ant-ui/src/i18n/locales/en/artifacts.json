@@ -70,7 +70,14 @@
     "fetchSuggestionsFailed": "Unable to fetch suggestions.",
     "invalidExtension": "{{dir}} only accepts: {{allowed}}",
     "subdirsNotAllowed": "Subdirectories are not allowed in {{dir}}",
-    "uploadPartialBlocked": "{{blocked}} of {{total}} files were blocked (unsupported type)"
+    "uploadPartialBlocked": "{{blocked}} of {{total}} files were blocked (unsupported type)",
+    "artifactBlockedTitle": "Cannot change artifacts",
+    "artifactBlockedSignIn": "Sign in to upload or edit artifact files.",
+    "artifactBlockedDisconnected": "The server is disconnected. Reconnect, then try again.",
+    "artifactBlockedStopping": "A job is stopping. Wait until it finishes, then try again.",
+    "artifactBlockedRunning": "A job is running. Artifact uploads and edits are disabled until it finishes or is stopped.",
+    "artifactBlockedSelectContext": "Select a project and feature before changing artifacts.",
+    "artifactBlockedGeneric": "Artifact changes are not available right now."
   },
   "editor": {
     "placeholder": "File content...",
