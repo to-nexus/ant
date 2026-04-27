@@ -28,6 +28,7 @@ import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
 import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
 import { ensureCanonicalStructure } from '../utils/sessionPaths';
 import { GitStateBroadcaster } from './GitStateBroadcaster';
+import { InflightTracker } from './InflightTracker';
 
 // File patterns to exclude from tree
 const EXCLUDE_PATTERNS = [
@@ -51,6 +52,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   private readonly projectPath: string;
   private readonly userContext?: UserContext;
   private readonly gitStateBroadcaster?: GitStateBroadcaster;
+  private readonly inflight = new InflightTracker();
   
   constructor(
     options: BroadcasterOptions & { projectPath: string },
@@ -80,22 +82,31 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
    */
   async notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): Promise<void> {
     const ctx = userContext || this.userContext;
-    // Fire-and-forget with error logging
-    this.broadcastFileTree(projectId, featureName, ctx)
-      .catch(err => {
-        console.warn(`[FileTreeBroadcaster] Failed to notify file tree update:`, err.message);
-      });
+    // Fire-and-forget with error logging — tracked so `close()` can flush
+    // the in-flight publish before `pubRedis.quit()`. Without flush-on-close,
+    // a single end-of-graph emission (e.g. plan job) races the connection
+    // shutdown and the FE never receives the fileTree event.
+    this.inflight.track(
+      this.broadcastFileTree(projectId, featureName, ctx)
+        .catch(err => {
+          console.warn(`[FileTreeBroadcaster] Failed to notify file tree update:`, err.message);
+        })
+    );
 
     // Co-emit the unified `gitState` (cause='workingTreeChange') so the
     // frontend refreshes its git snapshot whenever the working tree is
     // mutated — including plain file writes that don't touch `.git/index`
     // (GitWatcherService can't detect those). Covered non-git paths
     // (session JSON writes etc.) produce an inexpensive debounced refetch.
-    this.gitStateBroadcaster
-      ?.notifyWorkingTreeChange(projectId, featureName, ctx)
-      .catch(err => {
-        console.warn(`[FileTreeBroadcaster] Failed to co-emit gitState:`, err?.message ?? err);
-      });
+    if (this.gitStateBroadcaster) {
+      this.inflight.track(
+        this.gitStateBroadcaster
+          .notifyWorkingTreeChange(projectId, featureName, ctx)
+          .catch(err => {
+            console.warn(`[FileTreeBroadcaster] Failed to co-emit gitState:`, err?.message ?? err);
+          })
+      );
+    }
   }
 
   /**
@@ -228,8 +239,23 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   /**
    * Add unseen artifact paths and broadcast update via SSE.
    * Called by job nodes after generating output files.
+   *
+   * The returned promise is also registered with `inflight` so callers
+   * that fire-and-forget (e.g. planner generate) still benefit from
+   * flush-on-close — without flush, the publish races `pubRedis.quit()`.
    */
-  async addUnseenArtifacts(
+  addUnseenArtifacts(
+    projectId: string,
+    featureName: string,
+    artifactPaths: string[],
+    userContext?: UserContext
+  ): Promise<void> {
+    const exec = this.doAddUnseenArtifacts(projectId, featureName, artifactPaths, userContext);
+    this.inflight.track(exec);
+    return exec;
+  }
+
+  private async doAddUnseenArtifacts(
     projectId: string,
     featureName: string,
     artifactPaths: string[],
@@ -269,9 +295,12 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   }
 
   /**
-   * Close Redis connection
+   * Close Redis connection. Flush any in-flight broadcasts first so a
+   * single end-of-job emission (e.g. plan PRD/GDD write) is delivered
+   * before `pubRedis.quit()` tears down the connection.
    */
   async close(): Promise<void> {
+    await this.inflight.flush();
     await this.pubRedis.quit();
   }
 }

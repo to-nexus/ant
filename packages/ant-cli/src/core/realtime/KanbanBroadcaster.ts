@@ -32,6 +32,7 @@ import {
 } from './types';
 import { UserContext } from '../types/user';
 import { getAgentForJobSafe } from '../utils/sessionPaths';
+import { InflightTracker } from './InflightTracker';
 
 /** Sentinel key for "no workerId" snapshots stored in cachedCurrentPhaseTokenUsages. */
 const MAIN_WORKER_KEY = -1;
@@ -74,6 +75,11 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedCurrentTasks: BaseTask[] = [];
   private cachedQueue: BaseTask[] = [];
   private cachedCompletedTasks: BaseTask[] = [];
+
+  // Tracks fire-and-forget broadcasts so close() can flush them before
+  // tearing down Redis connections. Prevents end-of-job emissions from
+  // racing `pubRedis.quit()` (most visible on short jobs like `plan`).
+  private readonly inflight = new InflightTracker();
   
   constructor(options: BroadcasterOptions) {
     const isTLS = options.redisUrl.startsWith('rediss://');
@@ -125,17 +131,19 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     // Preserve cached completedTasks in the Redis snapshot so that
     // KanbanService.getKanbanData() can distinguish "between rounds" from
     // "truly empty" and avoid returning stale sessionTaskQueue as todo.
-    this.broadcastKanbanUpdate(
-      this.jobId,
-      [],    // no current tasks during estimating
-      [],    // no tasks in queue during estimating
-      this.cachedCompletedTasks,
-      this.cachedRecursionCount,
-      this.cachedRecursionLimit,
-      this.cachedTokenUsage,
-    ).catch(err => {
-      console.warn(`[KanbanBroadcaster] Failed to broadcast estimating activity:`, err.message);
-    });
+    this.inflight.track(
+      this.broadcastKanbanUpdate(
+        this.jobId,
+        [],    // no current tasks during estimating
+        [],    // no tasks in queue during estimating
+        this.cachedCompletedTasks,
+        this.cachedRecursionCount,
+        this.cachedRecursionLimit,
+        this.cachedTokenUsage,
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to broadcast estimating activity:`, err.message);
+      })
+    );
   }
 
   /**
@@ -155,17 +163,19 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     
     // Broadcast immediately so frontend removes the loading banner.
     // Preserve cached completedTasks (same rationale as setEstimatingActivity).
-    this.broadcastKanbanUpdate(
-      this.jobId,
-      [],
-      [],
-      this.cachedCompletedTasks,
-      this.cachedRecursionCount,
-      this.cachedRecursionLimit,
-      this.cachedTokenUsage,
-    ).catch(err => {
-      console.warn(`[KanbanBroadcaster] Failed to broadcast cleared activity:`, err.message);
-    });
+    this.inflight.track(
+      this.broadcastKanbanUpdate(
+        this.jobId,
+        [],
+        [],
+        this.cachedCompletedTasks,
+        this.cachedRecursionCount,
+        this.cachedRecursionLimit,
+        this.cachedTokenUsage,
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to broadcast cleared activity:`, err.message);
+      })
+    );
   }
 
   /**
@@ -178,17 +188,19 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
 
     // Only re-broadcast if currently in estimating mode (no tasks yet)
     if (this.estimatingLabel) {
-      this.broadcastKanbanUpdate(
-        this.jobId,
-        [],
-        [],
-        this.cachedCompletedTasks,
-        this.cachedRecursionCount,
-        this.cachedRecursionLimit,
-        tokenUsage,
-      ).catch(err => {
-        console.warn(`[KanbanBroadcaster] Failed to broadcast token usage:`, err.message);
-      });
+      this.inflight.track(
+        this.broadcastKanbanUpdate(
+          this.jobId,
+          [],
+          [],
+          this.cachedCompletedTasks,
+          this.cachedRecursionCount,
+          this.cachedRecursionLimit,
+          tokenUsage,
+        ).catch(err => {
+          console.warn(`[KanbanBroadcaster] Failed to broadcast token usage:`, err.message);
+        })
+      );
     }
   }
 
@@ -200,17 +212,19 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.cachedPhaseTokenUsages = phases;
 
     if (this.estimatingLabel) {
-      this.broadcastKanbanUpdate(
-        this.jobId,
-        [],
-        [],
-        this.cachedCompletedTasks,
-        this.cachedRecursionCount,
-        this.cachedRecursionLimit,
-        this.cachedTokenUsage,
-      ).catch(err => {
-        console.warn(`[KanbanBroadcaster] Failed to broadcast phase token usages:`, err.message);
-      });
+      this.inflight.track(
+        this.broadcastKanbanUpdate(
+          this.jobId,
+          [],
+          [],
+          this.cachedCompletedTasks,
+          this.cachedRecursionCount,
+          this.cachedRecursionLimit,
+          this.cachedTokenUsage,
+        ).catch(err => {
+          console.warn(`[KanbanBroadcaster] Failed to broadcast phase token usages:`, err.message);
+        })
+      );
     }
   }
 
@@ -226,17 +240,19 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     const key = typeof snapshot.workerId === 'number' ? snapshot.workerId : MAIN_WORKER_KEY;
     this.cachedCurrentPhaseTokenUsages.set(key, snapshot);
 
-    this.broadcastKanbanUpdate(
-      this.jobId,
-      this.cachedCurrentTasks,
-      this.cachedQueue,
-      this.cachedCompletedTasks,
-      this.cachedRecursionCount,
-      this.cachedRecursionLimit,
-      this.cachedTokenUsage,
-    ).catch(err => {
-      console.warn(`[KanbanBroadcaster] Failed to broadcast current phase token usage:`, err.message);
-    });
+    this.inflight.track(
+      this.broadcastKanbanUpdate(
+        this.jobId,
+        this.cachedCurrentTasks,
+        this.cachedQueue,
+        this.cachedCompletedTasks,
+        this.cachedRecursionCount,
+        this.cachedRecursionLimit,
+        this.cachedTokenUsage,
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to broadcast current phase token usage:`, err.message);
+      })
+    );
   }
 
   /**
@@ -245,17 +261,19 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    */
   clearWorkerPhaseTokenUsage(workerId: number): void {
     if (!this.cachedCurrentPhaseTokenUsages.delete(workerId)) return;
-    this.broadcastKanbanUpdate(
-      this.jobId,
-      this.cachedCurrentTasks,
-      this.cachedQueue,
-      this.cachedCompletedTasks,
-      this.cachedRecursionCount,
-      this.cachedRecursionLimit,
-      this.cachedTokenUsage,
-    ).catch(err => {
-      console.warn(`[KanbanBroadcaster] Failed to broadcast worker cleanup:`, err.message);
-    });
+    this.inflight.track(
+      this.broadcastKanbanUpdate(
+        this.jobId,
+        this.cachedCurrentTasks,
+        this.cachedQueue,
+        this.cachedCompletedTasks,
+        this.cachedRecursionCount,
+        this.cachedRecursionLimit,
+        this.cachedTokenUsage,
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to broadcast worker cleanup:`, err.message);
+      })
+    );
   }
 
   /**
@@ -310,17 +328,19 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     );
     this.cachedCurrentTasks = updatedTasks;
 
-    this.broadcastKanbanUpdate(
-      this.jobId,
-      updatedTasks,
-      this.cachedQueue,
-      this.cachedCompletedTasks,
-      this.cachedRecursionCount,
-      this.cachedRecursionLimit,
-      this.cachedTokenUsage,
-    ).catch(err => {
-      console.warn(`[KanbanBroadcaster] Failed to broadcast task token update:`, err.message);
-    });
+    this.inflight.track(
+      this.broadcastKanbanUpdate(
+        this.jobId,
+        updatedTasks,
+        this.cachedQueue,
+        this.cachedCompletedTasks,
+        this.cachedRecursionCount,
+        this.cachedRecursionLimit,
+        this.cachedTokenUsage,
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to broadcast task token update:`, err.message);
+      })
+    );
   }
 
   /**
@@ -353,17 +373,19 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     this.cachedCompletedTasks = completedTasks;
 
     // Fire-and-forget with error logging
-    this.broadcastKanbanUpdate(
-      taskId, 
-      currentTasks, 
-      queue, 
-      completedTasks, 
-      recursionCount, 
-      recursionLimit,
-      tokenUsage
-    ).catch(err => {
-      console.warn(`[KanbanBroadcaster] Failed to update task queue:`, err.message);
-    });
+    this.inflight.track(
+      this.broadcastKanbanUpdate(
+        taskId, 
+        currentTasks, 
+        queue, 
+        completedTasks, 
+        recursionCount, 
+        recursionLimit,
+        tokenUsage
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to update task queue:`, err.message);
+      })
+    );
   }
 
   /**
@@ -510,16 +532,21 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
     // (for disaster recovery). If written to the live key, a page refresh between
     // checkpoint and the next broadcast would show all running tasks as "interrupted".
     const key = `${TASK_QUEUE_CHECKPOINT_KEY_PREFIX}${this.jobId}`;
-    // Fire-and-forget — this is a backup, not critical path
-    this.redis.set(key, JSON.stringify(snapshot), 'EX', TASK_QUEUE_TTL).catch(err => {
-      console.warn(`[KanbanBroadcaster] Failed to save checkpoint snapshot to Redis:`, err.message);
-    });
+    // Fire-and-forget — this is a backup, not critical path. Tracked so a
+    // close that lands mid-write can still flush the SET before quit.
+    this.inflight.track(
+      this.redis.set(key, JSON.stringify(snapshot), 'EX', TASK_QUEUE_TTL).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to save checkpoint snapshot to Redis:`, err.message);
+      })
+    );
   }
 
   /**
-   * Close Redis connections
+   * Close Redis connections. Flushes in-flight broadcasts/snapshot writes
+   * first so a final emission isn't dropped by `quit()` mid-publish.
    */
   async close(): Promise<void> {
+    await this.inflight.flush();
     await this.redis.quit();
     await this.pubRedis.quit();
   }
