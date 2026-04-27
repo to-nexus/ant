@@ -4,26 +4,26 @@
 
 ### Generate Mode Output (full document creation)
 
-When creating a NEW document from scratch (no existing document), output the complete document wrapped in a `<file>` XML tag. Use the **staging path** from the system prompt:
+When creating a NEW document from scratch (no existing document), output the complete document wrapped in a `<file>` XML tag. Use the **target path** from the system prompt:
 
 ```
-<file path="{staging_path}">
+<file path="{target_path}">
 # Document Title
 ...full content...
 </file>
 ```
 
-- The `path` attribute MUST match the staging path provided in the "Staging Path" section above.
+- The `path` attribute MUST match the target path provided in the "Target Path" section above.
 - Everything inside the `<file>` tag is the document content.
 - Do NOT wrap the content in code fences — output raw markdown inside the tag.
 - Text OUTSIDE the `<file>` tag (e.g., reasoning before a tool call) is shown as chat text.
 
 ### Refine Mode Output (editing existing document)
 
-When an existing document is present, use the `edit_file` tool for targeted modifications. Use the **staging path** from the system prompt:
+When an existing document is present, use the `edit_file` tool for targeted modifications. Use the **target path** from the system prompt:
 
 ```
-edit_file(path="{staging_path}", old_str="exact text to find", new_str="replacement text")
+edit_file(path="{target_path}", old_str="exact text to find", new_str="replacement text")
 ```
 
 - Each `edit_file` call makes ONE logical change.
@@ -32,7 +32,7 @@ edit_file(path="{staging_path}", old_str="exact text to find", new_str="replacem
 - After all edits, output a brief summary of changes as chat text.
 - Do NOT output a `<file>` tag in refine mode (unless the directive explicitly asks to rewrite the entire document from scratch).
 
-**Constraint**: Use ONLY the staging path listed in the system prompt. Do NOT invent or hardcode file paths.
+**Constraint**: Use ONLY the target path listed in the system prompt's "Target Path" section. Do NOT invent or hardcode file paths.
 
 ## Clarifying Questions with Options (Both Modes)
 

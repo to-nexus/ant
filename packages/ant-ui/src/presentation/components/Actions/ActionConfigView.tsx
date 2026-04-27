@@ -9,7 +9,7 @@ import {
   type IntentId,
   getConfigSlots,
   filterSlotsByDomain,
-  formatOutputSpec,
+  getDefaultTargetPaths,
 } from '@ant/shared';
 import { IntentTabNav } from './IntentTabNav';
 import { PageTransition } from './PageTransition';
@@ -119,14 +119,18 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
     const { target } = slots;
     if (target.kind === 'revise') {
+      // Revise targets the locked single ref selection — the matrix
+      // helper returns undefined for `kind: 'revise'` because there is
+      // no static path. Fall back to the resolved ref(s) here.
       updateActionMetadata({ target: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
-    } else if (target.kind === 'generate' && target.outputs.length > 0) {
-      const expectedPaths = target.outputs.map(os => `${target.dir}/${formatOutputSpec(os)}`);
-      updateActionMetadata({ target: expectedPaths });
-    } else if (target.kind === 'generate') {
-      updateActionMetadata({ target: [target.dir] });
     } else {
-      updateActionMetadata({ target: undefined });
+      // generate / codebase / chat-only — the matrix SSOT
+      // (`getDefaultTargetPaths`) drives both this panel and BE detect's
+      // explicit branch fallback. Keeping a single derivation here
+      // prevents the FE/BE divergence that produced the
+      // dusk-mounding-pilot regression (FE-only target population, BE
+      // saw `target=undefined`).
+      updateActionMetadata({ target: getDefaultTargetPaths(intentId) });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intentId]);

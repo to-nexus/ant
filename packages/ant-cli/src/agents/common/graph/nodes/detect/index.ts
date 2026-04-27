@@ -18,6 +18,7 @@ import {
   mergeWithMetadata,
   isValidIntentId,
   getConfigSlots,
+  getDefaultTargetPaths,
 } from '@ant/shared';
 import { loadResolvedArtifacts } from '../../loadDocumentsForRAC.js';
 import { getEstimatingLabel, type UILocale } from '../../timing/estimatingLabels.js';
@@ -116,8 +117,28 @@ export function createDetectNode<T extends DetectableState>(
           throw new Error('[detect] explicit=true but no intent provided in actionMetadata');
         }
         intentId = metadata.intent;
+
+        // dusk-mounding-pilot regression — chat-driven explicit submits
+        // (DomainToggle / `@domain:` mention / explicit toggle without
+        // ActionConfigView) omit `target` entirely. The FE only fills
+        // `target` when ActionConfigView is opened; every other surface
+        // expects the BE to mirror the matrix default. Without this
+        // fallback, RAC.target is undefined → buildSystemPrompt drops the
+        // "Target Path" section → the LLM hallucinates a path
+        // (e.g. `outputs/documents/prd.md`) → the disk writer is gated on
+        // `targetRelPath` so the artifact is silently dropped. Mirrors
+        // the infer branch's `target: targets ?? ['inputs/sources/prd.md']`
+        // behaviour through the matrix-defined SSOT instead of an
+        // intent-specific hardcode.
+        const explicitTarget = metadata.target?.length
+          ? metadata.target
+          : getDefaultTargetPaths(intentId as IntentId);
+        if (!metadata.target?.length && explicitTarget?.length) {
+          console.log(`⚡ [detect] Explicit: target missing → matrix default ${JSON.stringify(explicitTarget)}`);
+        }
+
         slots = {
-          target: metadata.target,
+          target: explicitTarget,
           refs: metadata.refs,
           context: metadata.context,
           // Phase 1 (10.2): explicit > infer. ActionMetadata.domain set via
