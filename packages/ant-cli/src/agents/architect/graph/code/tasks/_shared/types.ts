@@ -176,6 +176,21 @@ export interface TaskPlanHook {
    */
   toolLoopLogTemplate?: string;
   /**
+   * Override the no-more-tools synthesis nudge issued when the plan↔tool
+   * loop hits `PLAN_TOOL_LOOP_MAX`. Task types that need to reinforce a
+   * variant-specific decision under finalize pressure publish a tailored
+   * nudge here; unimplemented slots fall back to the generic
+   * `FINALIZE_NUDGE` constant in `planGeneration.ts`.
+   *
+   * Restores the per-type nudge surface that `a71234c2 refactor(plan):
+   * drop DiagnosticTask concept from finalize path` retired — but via the
+   * hook registry instead of the inline `if (isVerificationTask(task) ||
+   * isErrorTask(task))` branch that violated R1. Phase code stays a
+   * single-line `hooksForTaskType(task.type)?.plan?.finalizeNudge?.(ctx)
+   * ?? FINALIZE_NUDGE`.
+   */
+  finalizeNudge?(ctx: { task: CodeTask; state: ArchitectGraphState }): string;
+  /**
    * Called at plan retry entry with `state.planText` set to the just-failed
    * plan. Publishers own retry termination end-to-end; the phase layer skips
    * its generic `state.retries/maxRetries` path when this hook exists.
