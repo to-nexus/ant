@@ -808,14 +808,19 @@ export async function runPlanLLMWithTools(
 }
 
 /**
- * Task-type-blind finalize nudge issued when the plan↔tool loop exhausts
- * its budget. Stops further tool calls and asks the LLM to synthesize a
- * `<plan>` from what it has gathered, following the format spec that
- * already sits in the initial prompt (`variants/{verification,error,...}/
- * base.md`). No schema / threshold / field names are re-declared here —
- * templates are the SSOT for output format.
+ * Default finalize nudge used when no task-type-specific override exists.
+ * Stops further tool calls and asks the LLM to synthesize a `<plan>` from
+ * what it has gathered, following the format spec already in the initial
+ * prompt. Task types whose initial prompt presents multiple output formats
+ * (e.g. test-code's Format A / Format B) need to reinforce the decision
+ * under finalize pressure — they publish `plan.finalizeNudge` to override
+ * this default. Templates remain the SSOT for output schema; the override
+ * only adds a decision-level reminder, never a schema redefinition.
+ *
+ * Exported so per-task-type tests can assert that hooks publishing their
+ * own nudge do NOT accidentally return this default string.
  */
-const FINALIZE_NUDGE =
+export const FINALIZE_NUDGE =
   'You have finished exploring. Do NOT call any more tools. ' +
   'Based on all tool results above, output exactly one `<plan>{JSON}</plan>` block ' +
   'following the format specified in the initial prompt.';
@@ -842,11 +847,15 @@ export async function finalizePlanFromExploration(
   const llmToUse = await selectLLMForTask(llm, task, state);
   if (!llmToUse?.stream) return null;
 
+  // R1 — single-line dispatch. NEVER inline `if (task.type === ...)` here;
+  // task-type-specific finalize guidance lives behind `plan.finalizeNudge`.
+  const nudge = hooksForTaskType(task.type)?.plan?.finalizeNudge?.({ task, state }) ?? FINALIZE_NUDGE;
+
   const finalizeMessage: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }> = [
     ...history,
     {
       role: 'user' as const,
-      content: FINALIZE_NUDGE,
+      content: nudge,
     },
   ];
 

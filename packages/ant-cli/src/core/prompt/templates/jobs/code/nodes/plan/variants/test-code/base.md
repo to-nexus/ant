@@ -55,6 +55,10 @@ Use `read_file` / `list_files` / `search_code` to understand:
 
 **Constraint**: Batch reads upfront. When you need to read multiple files, issue ALL reads in ONE response.
 
+**Constraint**: Stop reading once you can identify the slice boundaries. The signal is observable — you can name two or more disjoint groupings of test targets, OR you confirm a single cohesive scope. Continuing to read past that point burns tool-loop budget and risks finalize fallback.
+
+⚠️ **Blind spot**: Endless exploration. The slice decision is the goal of Step 1; once it is observable, move to Step 2 / Step 3 immediately.
+
 ### Step 2 — Install Test Runner (if missing)
 
 **Principle**: Test-runner dependencies belong to the parent plan phase, never to a sub-task. Sub-tasks run in parallel and would race on `package-lock.json`.
@@ -72,11 +76,13 @@ Use `read_file` / `list_files` / `search_code` to understand:
 
 ### Step 3 — Decide: Single Task or Feature-Slice Split?
 
+**Constraint**: Two or more disjoint groupings observable → Format B is REQUIRED. Single cohesive scope → Format A.
+
 | Observation | Decision |
 |------------|----------|
 | **One natural module boundary** (single small package, homogeneous scope) | Emit a **single plan** (no `batches[]`). You will write all tests yourself in the execute phase. |
 | **Multiple independent module groupings with no file overlap** between their test targets | Emit a **batched plan**. Each batch becomes a parallel sub-task. |
-| **Multiple groupings but they share config files / mocks / helpers** | Prefer a single plan — cross-batch file overlap forces `exclusive: true` on every sub-task, which serializes them and negates the parallelism win. |
+| **Multiple groupings sharing runtime test fixtures (mocks/helpers) — types/enums do NOT count** | Prefer a single plan — cross-batch file overlap forces `exclusive: true` on every sub-task, which serializes them and negates the parallelism win. |
 
 **Feature-slice principle**: A slice is a cohesive scope whose test files DO NOT overlap with any other slice's test files (no two slices write the same file). Slices typically correspond to a domain module, a layer, or a feature directory.
 
