@@ -195,31 +195,39 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         }
       },
       onCheckpoint: async (checkpoint) => {
+        // Merge failed tasks into taskQueue so full task definitions survive
+        // process termination (user stop, kill, etc.). Without this, only
+        // summary data (taskId/taskName/error) is persisted and the task
+        // cannot be resumed.
+        //
+        // Mark them as `interrupted: true` so the UI's TaskCard shows the
+        // "Paused" badge — semantically "all permanent failures are also
+        // interrupted at the job level". `_failed` / `_failureReason` are
+        // kept for the resume path (`TaskOrchestrator` clears them on retry)
+        // and for batchSplit handling.
+        const failedAsQueue = checkpoint.failedTasks.map(f => ({
+          ...f.task,
+          interrupted: true,
+          _failed: true,
+          _failureReason: f.error.message,
+        }));
+        // Deduplicate: if a failed task was re-enqueued (e.g. verification after
+        // batch split), the re-enqueued version in checkpoint.taskQueue has the
+        // same id. Keep only the failed-record copy to avoid duplicate ids in the
+        // persisted taskQueue.
+        const failedIds = new Set(failedAsQueue.map((t: any) => t.id));
+        const dedupedQueue = checkpoint.taskQueue.filter(t => !failedIds.has(t.id));
+        const mergedQueue = [...failedAsQueue, ...dedupedQueue];
+
         if (state.deps?.session && state.context.featureFolder) {
           try {
-            // Merge failed tasks into taskQueue so full task definitions survive
-            // process termination (user stop, kill, etc.). Without this, only
-            // summary data (taskId/taskName/error) is persisted and the task
-            // cannot be resumed.
-            const failedAsQueue = checkpoint.failedTasks.map(f => ({
-              ...f.task,
-              _failed: true,
-              _failureReason: f.error.message,
-            }));
-            // Deduplicate: if a failed task was re-enqueued (e.g. verification after
-            // batch split), the re-enqueued version in checkpoint.taskQueue has the
-            // same id. Keep only the failed-record copy to avoid duplicate ids in the
-            // persisted taskQueue.
-            const failedIds = new Set(failedAsQueue.map((t: any) => t.id));
-            const dedupedQueue = checkpoint.taskQueue.filter(t => !failedIds.has(t.id));
-
             await state.deps.session.updateArtifacts(
               state.context.project,
               state.context.featureFolder,
               'code',
               {
                 state: {
-                  taskQueue: [...failedAsQueue, ...dedupedQueue],
+                  taskQueue: mergedQueue,
                   completedTasks: checkpoint.completedTasks.map(t => t.id),
                   completedTasksDetails: checkpoint.completedTasks,
                   failedTasks: checkpoint.failedTasks.map(f => ({
@@ -262,13 +270,18 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
             console.warn(`⚠️ [ParallelOrchestrator] Checkpoint save failed:`, err);
           }
         }
-        
+
         // ✅ Also save checkpoint snapshot to Redis as backup.
         // If the session file is corrupted/stale when cleanupJobState reads it,
         // Redis serves as a fallback to prevent task state loss.
+        //
+        // Send the SAME mergedQueue we just wrote to the session so the SSOT
+        // stays consistent. Without this, JobCleanupManager's parallel-mode
+        // path overwrites session.taskQueue with Redis's queue (which would
+        // not include failed tasks), erasing the failed cards from the UI.
         if (state.deps?.kanbanUpdate?.saveCheckpointSnapshot && state._httpJobId) {
           state.deps.kanbanUpdate.saveCheckpointSnapshot(
-            checkpoint.taskQueue,
+            mergedQueue,
             checkpoint.completedTasks,
             checkpoint.tokenUsage,
           );
@@ -437,12 +450,14 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   }
 
   // ✅ If any tasks permanently failed (non-recursion-limit), save interrupted state.
-  // Failed tasks go back to the queue with a _failed flag for visibility.
+  // Failed tasks go back to the queue with `interrupted: true` (so the UI's
+  // TaskCard shows the "Paused" badge) plus `_failed` / `_failureReason`
+  // (used by the resume path and batchSplit) for visibility.
   if (result.hasFailures && !result.hasInterruptedTasks && state.deps?.session && state.context.featureFolder) {
     try {
-      // Put failed tasks back into the queue (marked as failed) for UI display
       const failedAsQueue = result.failedTasks.map(f => ({
         ...f.task,
+        interrupted: true,
         _failed: true,
         _failureReason: f.error.message,
       }));

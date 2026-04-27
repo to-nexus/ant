@@ -275,8 +275,16 @@ export class ToolResultManager {
 
   /**
    * run_command 결과 truncation
-   * 전략: Header(30%) + Tail(50%) 보존. Build error는 보통 출력 끝에 위치하므로
-   * tail을 더 많이 보존한다.
+   *
+   * 전략: 문자 단위 Head + Tail 컷.
+   * - 입력이 "많은 짧은 줄"이든 "적은 수의 거대한 줄"이든 무관하게
+   *   항상 토큰 예산 내로 줄어듦을 보장한다.
+   * - Tail 65%를 우선 보존 — build error / 요약은 보통 출력 끝에 위치.
+   * - 줄 경계에서 깨질 수 있으나 모델은 부분 라인을 정상 처리한다.
+   *
+   * 이전의 줄 기반 휴리스틱은 한 줄이 거대한 입력(minified js, 1줄짜리
+   * stderr 덤프 등)에서 `Math.max(10, …)` 바닥값과 `lines.length` 비례식이
+   * 결합되어 사실상 truncation이 동작하지 않는 케이스가 있었다.
    */
   private truncateRunCommand(result: any): TruncationResult {
     const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
@@ -292,32 +300,36 @@ export class ToolResultManager {
       };
     }
 
-    const lines = resultStr.split('\n');
-    const keepRatio = maxTokens / originalTokens;
-    const totalKeepLines = Math.max(10, Math.floor(lines.length * keepRatio));
-    const keepStart = Math.min(Math.floor(totalKeepLines * 0.35), Math.floor(lines.length * 0.3));
-    const keepEnd = Math.min(totalKeepLines - keepStart, Math.floor(lines.length * 0.5));
-    const omittedLines = lines.length - keepStart - keepEnd;
+    // tokenBudget.estimateTokens = ceil(chars / 2.8). SAFETY_MARGIN으로
+    // 추정 오차 + 배너 자리(~120 chars)를 보수적으로 흡수한다.
+    const CHARS_PER_TOKEN = 2.8;
+    const SAFETY_MARGIN = 0.9;
+    const charBudget = Math.max(
+      Math.floor(maxTokens * CHARS_PER_TOKEN * SAFETY_MARGIN),
+      1000,
+    );
+    const headChars = Math.floor(charBudget * 0.35);
+    const tailChars = charBudget - headChars;
 
-    const truncated = [
-      ...lines.slice(0, keepStart),
-      `\n... (${omittedLines} lines omitted, output too large: ${originalTokens.toLocaleString()} tokens → ${maxTokens.toLocaleString()} limit) ...\n`,
-      ...lines.slice(-keepEnd),
-    ].join('\n');
+    const head = resultStr.slice(0, headChars);
+    const tail = resultStr.slice(-tailChars);
+    const omittedChars = Math.max(0, resultStr.length - head.length - tail.length);
+    const banner = `\n... (${omittedChars.toLocaleString()} chars omitted, output too large: ${originalTokens.toLocaleString()} tokens → ${maxTokens.toLocaleString()} limit) ...\n`;
 
+    const truncated = head + banner + tail;
     const truncatedTokens = this.tokenManager.estimateTokens(truncated);
 
     console.log(`\n✂️  [ToolResult] Truncated run_command:`);
-    console.log(`   Original: ${originalTokens.toLocaleString()} tokens (${lines.length} lines)`);
-    console.log(`   Truncated: ${truncatedTokens.toLocaleString()} tokens`);
-    console.log(`   Kept: First ${keepStart} + Last ${keepEnd} lines (target: ${maxTokens} tokens)`);
+    console.log(`   Original: ${originalTokens.toLocaleString()} tokens (${resultStr.length.toLocaleString()} chars)`);
+    console.log(`   Truncated: ${truncatedTokens.toLocaleString()} tokens (${truncated.length.toLocaleString()} chars)`);
+    console.log(`   Strategy: head ${headChars.toLocaleString()} + tail ${tailChars.toLocaleString()} chars (target: ${maxTokens} tokens)`);
 
     return {
       content: truncated,
       wasTruncated: true,
       originalTokens,
       truncatedTokens,
-      reason: `Command output too large, kept header and tail`,
+      reason: `Command output too large, kept head and tail by char count`,
     };
   }
 
