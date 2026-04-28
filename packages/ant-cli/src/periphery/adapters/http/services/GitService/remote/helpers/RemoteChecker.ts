@@ -47,7 +47,18 @@ export class RemoteChecker {
       };
 
       const token = await githubAuthService.getToken(credentialContext);
-      const octokit = new Octokit({ auth: token });
+      // Suppress Octokit's default warn-level "GET ... - 404" line — the 404
+      // path is a normal "not yet published" signal in our Setup flow, not an
+      // error. Real failures still throw and are logged by callers.
+      const octokit = new Octokit({
+        auth: token,
+        log: {
+          debug: () => {},
+          info: () => {},
+          warn: () => {},
+          error: (msg: string) => console.error('[RemoteChecker][octokit]', msg),
+        },
+      });
 
       try {
         // Try to get repository info via GitHub API
@@ -56,7 +67,7 @@ export class RemoteChecker {
         return true;
       } catch (error: any) {
         if (error?.status === 404) {
-          console.log(`[RemoteChecker] ❌ Repository does not exist: ${owner}/${repo}`);
+          console.log(`[RemoteChecker] Repository not yet published (404): ${owner}/${repo}`);
           return false;
         }
 
