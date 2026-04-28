@@ -71,6 +71,59 @@ function prepareTagJson(body: string): string {
   return sanitizeJsonControlChars(stripCodeFence(body));
 }
 
+/**
+ * Tolerant extractor for the first complete JSON object inside a `<task>`
+ * body. The decompose contract calls for a single JSON object per `<task>`
+ * wrapper, but the LLM occasionally interleaves analytical prose before
+ * or after the object — XML element wrappers carry a strong "document
+ * section" prior in training data, which the strict JSON-array contract
+ * used to suppress structurally. JSON.parse rejects any non-whitespace
+ * after the closing `}` ("Unexpected non-whitespace character after JSON
+ * at position N"), turning a benign prose leak into a job-killing
+ * SyntaxError.
+ *
+ * Strategy: locate the first `{`, then scan forward tracking string state
+ * and brace depth until the matching closing `}`. Return that exact
+ * substring; the caller still runs it through `prepareTagJson` and
+ * `JSON.parse` so every JSON validity guarantee is preserved.
+ *
+ * Behaviour notes:
+ *   - When no `{` is present, returns the body unchanged so `JSON.parse`
+ *     throws with the same diagnostic as before (no behaviour drift on
+ *     truly malformed bodies).
+ *   - String escapes (`\\"`, `\\\\`) are honoured so a `}` inside a JSON
+ *     string literal does not prematurely close the scan.
+ *   - This is scoped to `<task>` bodies; other JSON-bearing tags
+ *     (`<techTier>`, `<directHints>`, `<specClarify>`, `<references>`,
+ *     legacy `<tasks>` JSON-array) keep their strict parsing because
+ *     prose-leak has only been observed inside per-`<task>` wrappers.
+ */
+function extractFirstJsonObject(body: string): string {
+  const src = body;
+  let i = 0;
+  while (i < src.length && src[i] !== '{') i++;
+  if (i === src.length) return body;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let j = i; j < src.length; j++) {
+    const c = src[j];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) return src.slice(i, j + 1);
+    }
+  }
+  return body;
+}
+
 import type { PackageTierEntry, TaskType, GameEngine } from '@ant/shared';
 import { SUPPORTED_GAME_ENGINES } from '@ant/shared';
 import { flattenPolicyToInclude } from '../../../../../../core/artifact/ArtifactPipeline';
@@ -241,7 +294,7 @@ export interface ParsedDecomposeResponse {
 function parseTasksBody(inner: string): unknown {
   const taskMatches = [...inner.matchAll(/<task>\s*([\s\S]*?)\s*<\/task>/g)];
   if (taskMatches.length > 0) {
-    return taskMatches.map(m => JSON.parse(prepareTagJson(m[1])));
+    return taskMatches.map(m => JSON.parse(prepareTagJson(extractFirstJsonObject(m[1]))));
   }
 
   const trimmed = inner.trim();
@@ -262,7 +315,7 @@ function parseTasksBody(inner: string): unknown {
  * end of stream and the retry loop handles it).
  */
 export function parseTaskItemJson(rawJson: string): unknown {
-  return JSON.parse(prepareTagJson(rawJson));
+  return JSON.parse(prepareTagJson(extractFirstJsonObject(rawJson)));
 }
 
 /**
