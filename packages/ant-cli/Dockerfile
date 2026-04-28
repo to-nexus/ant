@@ -46,8 +46,18 @@ COPY pnpm-lock.yaml ./
 COPY packages/ant-shared/package.json ./packages/ant-shared/
 COPY packages/ant-cli/package.json ./packages/ant-cli/
 
-# Install dependencies (frozen lockfile for reproducibility)
-RUN pnpm install --frozen-lockfile --ignore-scripts
+# Install dependencies (frozen lockfile for reproducibility).
+# We rely on root package.json `pnpm.onlyBuiltDependencies` to whitelist exactly
+# which postinstall scripts may run (currently only `@vscode/ripgrep`). Do NOT
+# pass `--ignore-scripts` here: it would silently skip the ripgrep binary
+# download and produce a runtime ENOENT for `search_code` (see CLAUDE.md →
+# Native-Binary Dependencies).
+RUN pnpm install --frozen-lockfile
+
+# Fail the build immediately if ripgrep's bin is missing — a runtime ENOENT
+# from `search_code` is much harder to diagnose than a build failure here.
+RUN test -x "$(ls -d node_modules/.pnpm/@vscode+ripgrep@*/node_modules/@vscode/ripgrep/bin/rg | head -n1)" \
+    || (echo "ERROR: @vscode/ripgrep binary missing — postinstall was skipped (check pnpm.onlyBuiltDependencies and that --ignore-scripts is NOT set)" && exit 1)
 
 # Copy source code
 COPY packages/ant-shared ./packages/ant-shared
@@ -145,8 +155,15 @@ COPY pnpm-lock.yaml ./
 COPY packages/ant-shared/package.json ./packages/ant-shared/
 COPY packages/ant-cli/package.json ./packages/ant-cli/
 
-# Install all dependencies
-RUN pnpm install --frozen-lockfile --ignore-scripts
+# Install all dependencies.
+# `--ignore-scripts` MUST NOT be passed: pnpm 10 already restricts postinstall
+# execution to `pnpm.onlyBuiltDependencies` (root package.json). Passing
+# `--ignore-scripts` would skip ripgrep's binary download and break
+# `search_code` at runtime with a silent ENOENT.
+RUN pnpm install --frozen-lockfile
+
+RUN test -x "$(ls -d node_modules/.pnpm/@vscode+ripgrep@*/node_modules/@vscode/ripgrep/bin/rg | head -n1)" \
+    || (echo "ERROR: @vscode/ripgrep binary missing in preview stage" && exit 1)
 
 # Copy ant-shared from builder
 COPY --from=builder /app/packages/ant-shared ./packages/ant-shared
@@ -231,8 +248,14 @@ COPY pnpm-lock.yaml ./
 COPY packages/ant-shared/package.json ./packages/ant-shared/
 COPY packages/ant-cli/package.json ./packages/ant-cli/
 
-# Install all dependencies (tsx execution needs devDependencies like typescript)
-RUN pnpm install --frozen-lockfile --ignore-scripts
+# Install all dependencies (tsx execution needs devDependencies like typescript).
+# Do NOT add `--ignore-scripts`: pnpm 10's `onlyBuiltDependencies` already
+# restricts which postinstall scripts may run. Skipping all of them silently
+# breaks `@vscode/ripgrep` (ENOENT in `search_code` at runtime).
+RUN pnpm install --frozen-lockfile
+
+RUN test -x "$(ls -d node_modules/.pnpm/@vscode+ripgrep@*/node_modules/@vscode/ripgrep/bin/rg | head -n1)" \
+    || (echo "ERROR: @vscode/ripgrep binary missing in production stage" && exit 1)
 
 # Copy ant-shared from builder
 COPY --from=builder /app/packages/ant-shared ./packages/ant-shared
