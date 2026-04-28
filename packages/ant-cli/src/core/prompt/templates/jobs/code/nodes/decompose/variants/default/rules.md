@@ -41,20 +41,20 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 
 | Mode                    | Tier                       | `<tasks>` content                                     | `<directHints>` content |
 |---|---|---|---|
-| `explain`               | `0`                        | `[]`                                                  | `{}` (answerable from the directive alone) |
-| `explain`               | `1`                        | `[]`                                                  | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
-| `explain`               | `2`                        | Exactly one task, `type: "explain"`, `priority: 200`, `selfVerifyOnDone: false` | `{}` |
-| `explain`               | `3` / `4`                  | Exactly one task, `type: "explain"`, `priority: 200`  | `{}` |
-| `generate` / `refactor` | `1`                        | `[]`                                                  | `{ "targetFiles": [...] }` listing the files the single action touches |
-| `generate` / `refactor` | `2`                        | Exactly one task (type is one of `error`/`feature`/`ui`/`setup`) with `selfVerifyOnDone: true` | `{}` |
-| `generate` / `refactor` | `3` / `4`                  | Full task breakdown per the rules below, `>= 2` tasks INCLUDING a verification task (priority 1000) | `{}` |
+| `explain`               | `0`                        | empty (`<tasks></tasks>`)                             | `{}` (answerable from the directive alone) |
+| `explain`               | `1`                        | empty (`<tasks></tasks>`)                             | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
+| `explain`               | `2`                        | Exactly one `<task>`, `type: "explain"`, `priority: 200`, `selfVerifyOnDone: false` | `{}` |
+| `explain`               | `3` / `4`                  | Exactly one `<task>`, `type: "explain"`, `priority: 200` | `{}` |
+| `generate` / `refactor` | `1`                        | empty (`<tasks></tasks>`)                             | `{ "targetFiles": [...] }` listing the files the single action touches |
+| `generate` / `refactor` | `2`                        | Exactly one `<task>` (type is one of `error`/`feature`/`ui`/`setup`) with `selfVerifyOnDone: true` | `{}` |
+| `generate` / `refactor` | `3` / `4`                  | Full task breakdown per the rules below, `>= 2` `<task>` elements INCLUDING a verification task (priority 1000) | `{}` |
 
 **Constraint**: For `generate` / `refactor` modes, the minimum executionTier is `1`. Do NOT emit `<executionTier>0</executionTier>` for these modes. A "no change required" outcome is NEVER a classification-time decision — it can only be the conclusion of a Tier 1+ execution that observes the code and produces no file edits. Tier `0` remains valid ONLY for `explain` mode (read-only textual answer from the directive alone).
 
-**Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply whenever `<tasks>` is non-empty (tiers `2`, `3`, and `4`). When `<tasks>` is `[]` (tiers `0`, `1`), skip the reasoning steps those rules describe.
+**Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply whenever `<tasks>` contains at least one `<task>` (tiers `2`, `3`, and `4`). When `<tasks>` is empty (tiers `0`, `1`), skip the reasoning steps those rules describe.
 
 {{#unless intentClarifyDisabled}}
-**Constraint**: The `generate` / `refactor` + tier `3`/`4` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes `[]` and `<specClarify>` is emitted instead of a task breakdown. Spec Clarify does NOT fire at Tier 2 — a single-unit task always has enough source.
+**Constraint**: The `generate` / `refactor` + tier `3`/`4` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes empty and `<specClarify>` is emitted instead of a task breakdown. Spec Clarify does NOT fire at Tier 2 — a single-unit task always has enough source.
 {{/unless}}
 
 **Constraint**: When tier is `2` AND mode is `explain`, emit exactly one task:
@@ -88,7 +88,7 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 
 Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this case.
 
-⚠️ **Blind spot**: Tiers `0` and `1` skip task breakdown entirely. Populate ONLY `<executionTier>`, `<directHints>`, `<techTier>`, and `<tasks>[]`. Do not add boilerplate tasks to "make decomposition look complete".
+⚠️ **Blind spot**: Tiers `0` and `1` skip task breakdown entirely. Populate ONLY `<executionTier>`, `<directHints>`, `<techTier>`, and `<tasks></tasks>` (empty). Do not add boilerplate tasks to "make decomposition look complete".
 
 ⚠️ **Blind spot**: The "single concrete action / one-task-is-enough" situation belongs to Tier 2 (with self-verify), NOT Tier 3 with one task. Tier 3 is reserved for `>= 2` tasks. If you were about to emit a single-task Tier 3 breakdown, downgrade to Tier 2 and set `selfVerifyOnDone: true` on that sole task.
 
@@ -132,7 +132,7 @@ Do NOT add `feature`, `ui`, `test-code`, `doc`, or `verification` tasks in this 
 
 **Constraint**: Emit `<specClarify>` EXCLUSIVELY when ALL three checkpoints above are `yes` together. When a design ref is present in the artifact pool, the tier is `4` (per the ExecutionTier Classification design-ref rule) and Spec Clarify is structurally inapplicable.
 
-**Constraint**: When `<specClarify>` is emitted, emit `<tasks>[]` alongside it. Do NOT fabricate a task breakdown without user-supplied source.
+**Constraint**: When `<specClarify>` is emitted, emit empty `<tasks></tasks>` alongside it. Do NOT fabricate a task breakdown without user-supplied source.
 
 **Constraint**: If ANY observation above is false, OMIT `<specClarify>` entirely. Do NOT emit `{}` or a placeholder. Proceed with normal decomposition.
 
@@ -162,10 +162,10 @@ The tag content MUST be a single JSON object with these fields (no others):
 
 First, analyze step by step (think through):
 - **Classify executionTier first**: `0` Reflex, `1` OneShot, `2` Exploratory, `3` Task, or `4` RefsGrounded? (see ExecutionTier Classification above)
-- If tier is `0` or `1`: skip the remaining reasoning steps, populate `<directHints>`, and output `<tasks>[]`.
+- If tier is `0` or `1`: skip the remaining reasoning steps, populate `<directHints>`, and output empty `<tasks></tasks>`.
 - If tier is `2`: emit exactly ONE task with `selfVerifyOnDone: true` (or `false` for explain). Skip the multi-task breakdown rules (Shared Foundation / Parallel Execution / Final Verification task — the lone task automatically runs a verify cycle after apply, no separate verification task is needed).
 {{#unless intentClarifyDisabled}}
-- If tier is `3` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all three checkpoints fire, emit `<specClarify>` with `<tasks>[]` and stop reasoning about breakdown. (Tier `4` is structurally grounded in a design ref — Spec Clarify never fires there.)
+- If tier is `3` and mode is NOT `explain`: run the Spec Clarify observation (see Spec Clarify above). If all three checkpoints fire, emit `<specClarify>` with empty `<tasks></tasks>` and stop reasoning about breakdown. (Tier `4` is structurally grounded in a design ref — Spec Clarify never fires there.)
 {{/unless}}
 - If tier is `3` or `4`:
   - Is this a new project or existing project?
@@ -186,29 +186,13 @@ Then output the tags in the order defined in the Output Sequence section below.
 
 ## Task Schema
 
-Each task object MUST follow this schema:
+Each task is wrapped in its own `<task>...</task>` element so the system can render
+tasks one-by-one as they stream in. The body of each `<task>` is a single JSON object
+following the schema below:
 
 <tasks>
-[
-  {
-    "id": "kebab-case-id",
-    "name": "Human-readable task name",
-    "type": "setup" | "feature" | "design-system" | "ui" | "test-code" | "doc" | "error" | "explain",
-    "priority": 100,
-    "packages": ["<tier>-<name>"],
-    "exclusive": true,
-    "description": "What to do"
-  },
-  {
-    "id": "another-task",
-    "name": "Another Task",
-    "type": "feature",
-    "priority": 300,
-    "packages": ["<tier>-<name>"],
-    "parallelGroup": "scope-id",
-    "description": "What to do"
-  }
-]
+<task>{"id": "kebab-case-id", "name": "Human-readable task name", "type": "setup", "priority": 100, "packages": ["<tier>-<name>"], "exclusive": true, "description": "What to do"}</task>
+<task>{"id": "another-task", "name": "Another Task", "type": "feature", "priority": 300, "packages": ["<tier>-<name>"], "parallelGroup": "scope-id", "description": "What to do"}</task>
 </tasks>
 
 **Field reference:**
@@ -227,8 +211,9 @@ Each task object MUST follow this schema:
 | `description` | Yes | Scope boundary + design doc section reference |
 
 CRITICAL:
-- The JSON inside `<tasks>` tags MUST be valid JSON (no trailing commas, proper quotes)
-- Use `<tasks>` wrapper so the JSON can be reliably extracted
+- The body inside each `<task>...</task>` element MUST be a single valid JSON object (no trailing commas, proper quotes)
+- Each task MUST be wrapped in its own `<task>...</task>` element — do NOT emit a JSON array inside `<tasks>` (the system parses tasks incrementally as each `</task>` arrives)
+- Emit `<tasks></tasks>` (no inner `<task>` elements) when no tasks are required (Tier 0 / Tier 1)
 
 ---
 
@@ -870,7 +855,7 @@ The body is a comma-separated `axis=value` list. Phase 4 emits all 7 axes (conce
 <gameContentTier>genre=match3,coreLoop=solve</gameContentTier>
 {{/if}}
 
-**(N+1). `<tasks>` tag** (task array -- see Task Schema and ExecutionTier Classification above. `[]` when tier is `0` or `1`; exactly one task when tier is `2`; `>= 2` tasks including a verification task when tier is `3` or `4`.)
+**(N+1). `<tasks>` tag** (sequence of `<task>` elements -- see Task Schema and ExecutionTier Classification above. Empty (`<tasks></tasks>`) when tier is `0` or `1`; exactly one `<task>` when tier is `2`; `>= 2` `<task>` elements including a verification task when tier is `3` or `4`.)
 
 **(N+2). `<references>` tag** (REQUIRED, even if empty):
 

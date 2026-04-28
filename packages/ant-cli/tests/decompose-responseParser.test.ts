@@ -203,6 +203,68 @@ describe('parseLLMResponse — specClarify', () => {
   });
 });
 
+describe('parseLLMResponse — per-task XML wrappers (current contract)', () => {
+  // Decompose contract: `<tasks>` body is a sequence of `<task>{json}</task>`
+  // wrappers so the streaming pipeline can render tasks one-by-one as
+  // each `</task>` arrives. The legacy JSON-array contract is kept as a
+  // BC fallback (covered by `code fence tolerance` below).
+  it('parses a single <task> wrapper', () => {
+    const tasks =
+      '<task>{"id":"t1","name":"T1","type":"feature","priority":300,"packages":["shared"]}</task>';
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks>${tasks}</tasks>`,
+    );
+    expect(r.tasks).toHaveLength(1);
+    expect(r.tasks[0].id).toBe('t1');
+    expect(r.tasks[0].name).toBe('T1');
+  });
+
+  it('parses multiple <task> wrappers in order', () => {
+    const tasks = [
+      '<task>{"id":"a","name":"A","type":"setup","priority":100,"packages":["shared"]}</task>',
+      '<task>{"id":"b","name":"B","type":"feature","priority":300,"packages":["shared"]}</task>',
+      '<task>{"id":"c","name":"C","type":"verification","priority":1000,"packages":["shared"]}</task>',
+    ].join('\n');
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks>\n${tasks}\n</tasks>`,
+    );
+    expect(r.tasks.map((t: any) => t.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('treats empty <tasks></tasks> as []', () => {
+    const r = parseLLMResponse(
+      `<executionTier>1</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks></tasks>`,
+    );
+    expect(r.tasks).toEqual([]);
+  });
+
+  it('tolerates whitespace and newlines between <task> wrappers', () => {
+    const tasks = `
+      <task>
+        {"id":"a","name":"A","type":"feature","priority":300,"packages":["shared"]}
+      </task>
+
+      <task>
+        {"id":"b","name":"B","type":"feature","priority":400,"packages":["shared"]}
+      </task>
+    `;
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks>${tasks}</tasks>`,
+    );
+    expect(r.tasks.map((t: any) => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('strips a ```json fence around the inner JSON of a single <task>', () => {
+    const tasks =
+      '<task>```json\n{"id":"t1","name":"T1","type":"feature","priority":300,"packages":["shared"]}\n```</task>';
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks>${tasks}</tasks>`,
+    );
+    expect(r.tasks).toHaveLength(1);
+    expect(r.tasks[0].id).toBe('t1');
+  });
+});
+
 describe('parseLLMResponse — code fence tolerance across tags', () => {
   // Triple-backtick fences are forbidden by the prompt but the LLM
   // violates this occasionally. Every JSON-bearing tag must survive.

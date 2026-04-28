@@ -50,7 +50,7 @@ pnpm dev:local:all
 pnpm dev:local          # API 서버 (4100)
 pnpm dev:realtime-server  # Realtime SSE 서버 (4101)
 pnpm dev:job-worker     # BullMQ Job Worker
-pnpm dev:preview-worker # Preview 서버 (4102)
+pnpm dev:preview-server # Preview 서버 (4102)
 pnpm dev:ui             # 프론트엔드 Vite dev server
 ```
 

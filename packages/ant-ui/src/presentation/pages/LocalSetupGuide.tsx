@@ -255,7 +255,7 @@ export function LocalSetupGuide() {
                   </h5>
                   <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm">
                     <code className="text-gray-900 dark:text-gray-100">
-                      pnpm dev:preview-worker
+                      pnpm dev:preview-server
                     </code>
                   </div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">

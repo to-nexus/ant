@@ -5,7 +5,7 @@
 For each slot in `resolvedAction.basis.techTier` — `stack`, `frontend.{language,framework,packageManager,gameEngine}`, `backend.{language,framework,packageManager,gameEngine}`:
 
 - If the slot is present in `resolvedAction.basis.techTier`, that value is EXPLICIT — emit it verbatim. Do not reinterpret or substitute.
-- The explicit basis overrides any conflicting signal in design documents, PRD, refs, or context. Treat document statements about technology as descriptive, not prescriptive, when an explicit basis is set.
+- The explicit basis overrides any conflicting signal in design documents, PRD, refs, or context. When an explicit basis is set, treat document statements about technology as descriptive context — not as an authoritative override.
 - INFER a slot only when it is absent from `resolvedAction.basis.techTier`.
 
 {{#if resolvedAction.basis.techTier.stack}}

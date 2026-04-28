@@ -162,7 +162,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
         // Re-inject placeholder (typing indicator) while clarify content is being generated
         await this.chatAPI.showChatStatus('placeholder');
         break;
-        
+
+      case 'task_added':
+        // Side-channel action emitted by the decompose stream parser.
+        // Consumed by the decompose llmCaller's `onAction` hook (Kanban
+        // partial broadcast). No chat rendering — `<tasks>` is suppressed
+        // by `SpecialTagTransformer` and the Kanban board owns the visual.
+        break;
+
       default:
         console.warn(`[CommonRenderStrategy] Unknown action type: ${action.type}`);
     }

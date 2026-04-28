@@ -14,7 +14,7 @@
     "dev:api-server": "ANT_SERVER_MODE=cloud ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:server",
     "dev:realtime-server": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:realtime-server",
     "dev:job-worker": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:job-worker",
-    "dev:preview-worker": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:preview-worker",
+    "dev:preview-server": "ANT_REDIS_URL=redis://localhost:16379 ANT_PREVIEW_WORKERS=http://localhost:8080 pnpm --filter @ant/cli dev:preview-server",
     
     "dev:infra": "concurrently \"docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml up -d\" \"docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml up -d\"",
     "dev:infra:down": "docker compose -f packages/ant-cli/src/periphery/integrations/cache-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/vector-memory/docker-compose.yml down && docker compose -f packages/ant-cli/src/periphery/integrations/visual-processor/docker-compose.yml down",
@@ -49,7 +49,7 @@
     "start:api-server": "pnpm --filter @ant/cli start:server",
     "start:realtime-server": "pnpm --filter @ant/cli start:realtime-server",
     "start:job-worker": "pnpm --filter @ant/cli start:job-worker",
-    "start:preview-worker": "pnpm --filter @ant/cli start:preview-worker",
+    "start:preview-server": "pnpm --filter @ant/cli start:preview-server",
     
     "init:workspace": "pnpm --filter @ant/cli init:workspace",
     "init:feature": "pnpm --filter @ant/cli init:feature",

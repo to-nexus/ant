@@ -11,9 +11,11 @@
  * formatting logic.
  *
  * Currently registered tags:
- * - <done>, <learn_command>, <tasks>, <references>, <detect>       — formatted
+ * - <done>, <learn_command>, <references>, <detect>                 — formatted
  * - <executionTier>                                                 — formatted
+ * - <tasks>, <task>                                                 — suppressed (rendered by Kanban; per-task surfaced via XMLStreamParser `task_added`)
  * - <techTier>, <boundary>, <directHints>, <specClarify>            — suppressed (internal)
+ * - <domain>, <gameArtTier>, <gameContentTier>                      — suppressed (DecisionTagRegistry, re-emitted via <detect>)
  */
 
 import { UserLanguage, getCompletionMessage } from '../../utils/languageDetector';
@@ -81,6 +83,16 @@ export class SpecialTagTransformer {
     this.register({
       pattern: /<tasks>\s*([\s\S]*?)\s*<\/tasks>/,
       transform: (match, language) => this.transformTasks(match, language)
+    });
+
+    // 3a. <task> tag — safety net. The XMLStreamParser strips per-task
+    // wrappers inline (`<tasks>`-context only) and surfaces them as
+    // `task_added` actions; if a stray `<task>` somehow reaches the
+    // response stream (e.g. `<tasks>` wrapper missing), suppress it
+    // here so it does not leak into chat as raw XML text.
+    this.register({
+      pattern: /<task>\s*[\s\S]*?\s*<\/task>/,
+      transform: () => ({ consumed: true })
     });
     
     // 4. <references> 태그 변환기
