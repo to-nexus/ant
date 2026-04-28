@@ -27,7 +27,8 @@ import { validateTasks } from "./validation";
 import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareDesignDocument } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
-import { parseLLMResponse, createTaskQueue, logTaskSummary } from "./responseParser";
+import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary } from "./responseParser";
+import type { BaseTask, TaskType } from "@ant/shared";
 import {
   ExecutionTierId,
   validateExecutionTier,
@@ -522,8 +523,85 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   >>;
   let decisionTagsAtFinal: DecisionTagsResult | undefined;
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Streaming Kanban broadcast — task-by-task during the LLM stream.
+  //
+  // The XMLStreamParser surfaces every `<task>...</task>` element as a
+  // `task_added` action, which the llmCaller forwards here via
+  // `onTaskParsed`. We accumulate a minimal `BaseTask` per task and call
+  // the kanbanUpdate port so the todo column fills one at a time. This
+  // is purely a UI presentation concern — the canonical `taskQueue` is
+  // built later by `createTaskQueue(parsed.tasks, ...)` and overwrites
+  // anything the partial broadcasts placed on the board.
+  //
+  // On retry the accumulator and live Kanban snapshot must be reset
+  // (the next attempt will produce a fresh stream of `<task>` elements).
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let accumulatedTasks: BaseTask[] = [];
+  const broadcastAccumulated = (): void => {
+    const broadcaster = state.deps?.kanbanUpdate;
+    if (!broadcaster || !state._httpJobId) return;
+    broadcaster.updateTaskQueue(
+      state._httpJobId,
+      null,
+      accumulatedTasks,
+      [],
+      state.recursionCount,
+      state.recursionLimit,
+      undefined,
+    );
+  };
+  const resetAccumulated = (): void => {
+    if (accumulatedTasks.length === 0) return;
+    accumulatedTasks = [];
+    // Broadcast the cleared state so UI drops any task cards rendered
+    // during the previous (now-discarded) attempt before the next stream
+    // starts emitting fresh `<task>` elements.
+    broadcastAccumulated();
+  };
+  const onTaskParsed = (rawJson: string): void => {
+    let raw: any;
+    try {
+      raw = parseTaskItemJson(rawJson);
+    } catch {
+      // Partial / malformed JSON inside a single `<task>` — skip the
+      // partial broadcast. The end-of-stream `parseLLMResponse` will
+      // throw on the same body and the retry loop will re-issue.
+      return;
+    }
+    if (!raw || typeof raw !== 'object') return;
+    const id = typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : undefined;
+    const name = typeof raw.name === 'string' && raw.name.length > 0 ? raw.name : undefined;
+    if (!id || !name) return;
+    // Dedupe by id within the same attempt — guards against the rare
+    // case where a network retry inside the tool-use loop replays the
+    // same `<tasks>` block and our parser observes the same `<task>`
+    // twice. Whole-attempt resets are owned by `resetAccumulated()`.
+    if (accumulatedTasks.some(t => t.id === id)) return;
+    const type: TaskType = typeof raw.type === 'string' ? raw.type as TaskType : 'feature';
+    const priority = typeof raw.priority === 'number' ? raw.priority : 300;
+    const description = typeof raw.description === 'string' ? raw.description : '';
+    const packages = Array.isArray(raw.packages) ? raw.packages.filter((p: any) => typeof p === 'string') : undefined;
+    const exclusive = typeof raw.exclusive === 'boolean' ? raw.exclusive : undefined;
+    const parallelGroup = typeof raw.parallelGroup === 'string' ? raw.parallelGroup : undefined;
+    const minimal: BaseTask = {
+      id,
+      name,
+      type,
+      priority,
+      description,
+      ...(packages && { packages }),
+      ...(exclusive !== undefined && { exclusive }),
+      ...(parallelGroup && { parallelGroup }),
+    };
+    accumulatedTasks = [...accumulatedTasks, minimal];
+    console.log(`📋 [Decompose] Streaming task → Kanban: ${id} (${type}, p${priority})`);
+    broadcastAccumulated();
+  };
+
   while (true) {
     attempt++;
+    resetAccumulated();
 
     try {
       const { READ_DESIGN_DOC_TOOL, handleReadDesignDoc } = await import('./designSelector');
@@ -554,6 +632,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           return `Error: Unknown tool "${name}"`;
         },
         state,
+        onTaskParsed,
       });
       rawResponse = result.response;
       decomposeTokenUsage = result.tokenUsage;

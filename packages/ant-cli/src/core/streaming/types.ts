@@ -20,7 +20,8 @@ export type ParsedActionType =
   | 'clarify_start'
   | 'exploration_start'
   | 'exploration_progress'
-  | 'exploration_complete';
+  | 'exploration_complete'
+  | 'task_added';
 
 export interface ParsedAction {
   type: ParsedActionType;
@@ -32,6 +33,13 @@ export interface ParsedAction {
     blockStart?: boolean;  // For thinking: marks <thinking> tag opened (new block)
     blockEnd?: boolean;    // ✅ For thinking: marks </thinking> tag closed (duration calc)
     durationMs?: number;   // ✅ For thinking: duration in milliseconds (from LLM or local timer)
+    /**
+     * `task_added` — raw JSON body of a single `<task>...</task>` element
+     * extracted from the decompose stream. Consumed by the decompose
+     * llmCaller's `onAction` hook for partial Kanban broadcast; chat
+     * rendering is a no-op (see CommonRenderStrategy).
+     */
+    rawJson?: string;
   };
 }
 

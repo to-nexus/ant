@@ -17,6 +17,16 @@ interface ParserContext {
   insideFile: boolean;
   insideAppend: boolean;  // ✅ NEW: <append> tag
   insideTasks: boolean; // ✅ Changed: Now used to track but will emit to response
+  /**
+   * Inside a single `<task>...</task>` element nested under `<tasks>`.
+   * Decompose contract emits one JSON object per `<task>` so the
+   * streaming pipeline can broadcast them to the Kanban board one at a
+   * time (see decompose llmCaller `onAction` hook). Body is accumulated
+   * in `taskItemContent` and flushed as a `task_added` action on
+   * `</task>`.
+   */
+  insideTask: boolean;
+  taskItemContent: string;
   insideLearnCommand: boolean;  // ✅ NEW: <learn_command> tag
   learnCommandContent: string;  // ✅ NEW: Accumulate learn_command content
   tasksContent: string;  // ✅ NEW: Accumulate tasks content
@@ -37,6 +47,8 @@ export class XMLStreamParser implements IStreamParser {
     insideFile: false,
     insideAppend: false,  // ✅ NEW
     insideTasks: false,
+    insideTask: false,
+    taskItemContent: '',
     insideLearnCommand: false,  // ✅ NEW
     learnCommandContent: '',  // ✅ NEW
     tasksContent: '',  // ✅ NEW
@@ -258,6 +270,59 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
+      // 11a. Check for <task> opening (inside <tasks>, outside thinking).
+      // Per-task wrapper from the decompose contract: each <task>{json}</task>
+      // is parsed and surfaced as a `task_added` action so the decompose
+      // node can broadcast Kanban updates one task at a time. Fire BEFORE
+      // §12 / §12b so a task element's closing is never confused with the
+      // `</tasks>` block close.
+      if (!this.context.insideThinking && this.context.insideTasks && !this.context.insideTask
+          && this.buffer.includes('<task>')) {
+        const startIdx = this.buffer.indexOf('<task>');
+        // Drop any leading filler before the <task> opening (whitespace,
+        // legacy `[` / `,` from the older JSON-array contract). It is
+        // not surfaced to chat — `<tasks>` is suppressed by §13 anyway.
+        this.buffer = this.buffer.substring(startIdx + '<task>'.length);
+        this.context.insideTask = true;
+        this.context.taskItemContent = '';
+        continueParsingLoop = true;
+        continue;
+      }
+
+      // 11b. Check for </task> closing — emit task_added action.
+      if (this.context.insideTask && this.buffer.includes('</task>')) {
+        const endIdx = this.buffer.indexOf('</task>');
+        this.context.taskItemContent += this.buffer.substring(0, endIdx);
+        this.buffer = this.buffer.substring(endIdx + '</task>'.length);
+
+        const rawJson = this.context.taskItemContent.trim();
+        if (rawJson.length > 0) {
+          actions.push({
+            type: 'task_added',
+            data: { rawJson },
+          });
+        }
+
+        this.context.insideTask = false;
+        this.context.taskItemContent = '';
+        continueParsingLoop = true;
+        continue;
+      }
+
+      // 11c. Accumulate content inside <task> while holding back the
+      // `</task>` lookahead so a closing tag that straddles a chunk
+      // boundary isn't accidentally consumed.
+      if (this.context.insideTask && this.buffer.length > 0) {
+        const lookahead = '</task>';
+        if (this.buffer.length > lookahead.length) {
+          const flushable = this.buffer.substring(0, this.buffer.length - lookahead.length);
+          this.context.taskItemContent += flushable;
+          this.buffer = this.buffer.substring(flushable.length);
+        }
+        // Wait for more tokens before deciding (avoid consuming partial </task>).
+        continue;
+      }
+
       // 12. Check for </tasks> closing (outside thinking)
       if (!this.context.insideThinking && this.context.insideTasks && this.buffer.includes('</tasks>')) {
         const endIdx = this.buffer.indexOf('</tasks>');
@@ -274,10 +339,20 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 13. Accumulate content inside <tasks> (outside thinking)
-      if (!this.context.insideThinking && this.context.insideTasks && this.buffer.length > 0) {
-        this.context.tasksContent += this.buffer;
-        this.buffer = '';
+      // 13. Accumulate content inside <tasks> but OUTSIDE <task>.
+      // Fires for whitespace / legacy JSON-array residue between `<tasks>`
+      // and the first `<task>` (or after the last `</task>`). The buffer
+      // must hold back enough lookahead to detect both `<task>` and
+      // `</tasks>` openings that straddle a chunk boundary.
+      if (!this.context.insideThinking && this.context.insideTasks && !this.context.insideTask
+          && this.buffer.length > 0) {
+        // Longest tag we still need to detect from the buffer is `</tasks>` (8 chars).
+        const lookahead = 8;
+        if (this.buffer.length > lookahead) {
+          const flushable = this.buffer.substring(0, this.buffer.length - lookahead);
+          this.context.tasksContent += flushable;
+          this.buffer = this.buffer.substring(flushable.length);
+        }
         continue;
       }
       
@@ -947,6 +1022,8 @@ export class XMLStreamParser implements IStreamParser {
       insideFile: false,
       insideAppend: false,
       insideTasks: false,
+      insideTask: false,
+      taskItemContent: '',
       insideLearnCommand: false,  // ✅ NEW
       learnCommandContent: '',  // ✅ NEW
       tasksContent: '',  // ✅ NEW

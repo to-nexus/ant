@@ -10,6 +10,7 @@
 import { LLMClient, ToolDefinition } from "../../../../../../core/ports";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import type { TokenTrackingState } from "../../../../../common/graph/llmHelpers";
+import type { ParsedAction } from "../../../../../../core/streaming/types";
 
 interface CallDecomposeOptions {
   tools?: ToolDefinition[];
@@ -22,6 +23,22 @@ interface CallDecomposeOptions {
    * `beginNodePhase()`.
    */
   state?: TokenTrackingState;
+
+  /**
+   * Optional per-task callback invoked once for every `<task>...</task>`
+   * element the streaming parser observes mid-stream. The argument is the
+   * raw JSON body inside the wrapper. The decompose node uses this to
+   * push partial Kanban broadcasts so the todo column fills one task at
+   * a time instead of all-at-once at stream end.
+   *
+   * Both code-job paths forward the callback:
+   *   - Inline mode (no tools)         → `StreamOrchestrator.onAction`
+   *   - Tool-use mode (RAG, with tools) → `decomposeWithToolLoop.onTaskParsed`
+   *
+   * Errors thrown by the callback propagate — the decompose retry loop
+   * resets accumulated state per attempt.
+   */
+  onTaskParsed?: (rawJson: string) => void | Promise<void>;
 }
 
 /**
@@ -72,6 +89,12 @@ export async function callLLMForDecompose(
         enableThinking: true,
         thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
         state: options.state,
+        // Forward the per-task hook so partial Kanban broadcasts fire
+        // even when decompose runs in tool-use (RAG) mode. Without this
+        // forwarding, the todo column would only populate after the
+        // entire decompose stream completes — which is precisely the
+        // behaviour the streaming feature is designed to replace.
+        onTaskParsed: options.onTaskParsed,
       },
     );
     return { response, tokenUsage: usage };
@@ -85,11 +108,24 @@ export async function callLLMForDecompose(
   const { XMLStreamParser } = await import('../../../../../../core/streaming/parsers/XMLStreamParser');
   const { CommonRenderStrategy } = await import('../../../../../../core/streaming/strategies/CommonRenderStrategy');
   const { StreamOrchestrator } = await import('../../../../../../core/streaming/StreamOrchestrator');
-  
+
+  // Forward per-task events to the caller-supplied hook. Wrapped here
+  // (not in StreamOrchestrator) so the orchestrator stays payload-agnostic
+  // and only this node knows about the `task_added` action.
+  const onTaskParsedHook = options?.onTaskParsed;
+  const onAction = onTaskParsedHook
+    ? async (action: ParsedAction) => {
+        if (action.type === 'task_added' && action.data.rawJson) {
+          await onTaskParsedHook(action.data.rawJson);
+        }
+      }
+    : undefined;
+
   let orchestrator = new StreamOrchestrator({
     parser: new XMLStreamParser(),
     renderStrategy: new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined),
-    existingFiles: new Set()
+    existingFiles: new Set(),
+    onAction,
   });
   
   let response = '';
@@ -115,7 +151,8 @@ export async function callLLMForDecompose(
       orchestrator = new StreamOrchestrator({
         parser: new XMLStreamParser(),
         renderStrategy: new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined),
-        existingFiles: new Set()
+        existingFiles: new Set(),
+        onAction,
       });
       continue;
     }

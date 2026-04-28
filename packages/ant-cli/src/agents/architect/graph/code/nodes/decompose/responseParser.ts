@@ -219,24 +219,75 @@ export interface ParsedDecomposeResponse {
 }
 
 /**
+ * Parse the body of a `<tasks>...</tasks>` block into an array of task
+ * objects.
+ *
+ * Two contracts are supported:
+ *
+ *   1. **Per-task wrappers (current)** — `<task>{json}</task>` repeated
+ *      inside `<tasks>`. Each `<task>` body is a single JSON object. This
+ *      is the format the streaming pipeline can render task-by-task as
+ *      each `</task>` arrives (see `XMLStreamParser.task_added`).
+ *
+ *   2. **Legacy JSON array (BC fallback)** — `<tasks>[ {...}, {...} ]</tasks>`.
+ *      Older prompts and most existing test fixtures use this shape, and
+ *      LLMs occasionally regress to it. We accept both so a contract
+ *      drift never silently collapses to a 0-task no-op success.
+ *
+ * An empty `<tasks></tasks>` (or `<tasks>[]</tasks>`) maps to `[]`. The
+ * caller validates `Array.isArray` so a malformed legacy body that
+ * parses to a non-array is rejected with the canonical error message.
+ */
+function parseTasksBody(inner: string): unknown {
+  const taskMatches = [...inner.matchAll(/<task>\s*([\s\S]*?)\s*<\/task>/g)];
+  if (taskMatches.length > 0) {
+    return taskMatches.map(m => JSON.parse(prepareTagJson(m[1])));
+  }
+
+  const trimmed = inner.trim();
+  if (trimmed.length === 0 || trimmed === '[]') {
+    return [];
+  }
+
+  // Legacy JSON-array contract.
+  return JSON.parse(prepareTagJson(inner));
+}
+
+/**
+ * Parse the JSON body of a single `<task>...</task>` element that the
+ * streaming pipeline already isolated. Used by the decompose llmCaller's
+ * `task_added` hook — partial broadcasts only need a minimal projection
+ * (id / name / type / priority) so a malformed JSON throws here and the
+ * caller swallows it (the final `parseLLMResponse` throws again at the
+ * end of stream and the retry loop handles it).
+ */
+export function parseTaskItemJson(rawJson: string): unknown {
+  return JSON.parse(prepareTagJson(rawJson));
+}
+
+/**
  * Parse LLM response and extract tasks
  * 
  * Expected format: 
- * <tasks>[...]</tasks>
+ * <tasks>
+ *   <task>{json}</task>
+ *   <task>{json}</task>
+ * </tasks>
  * <references>[...]</references>  (optional, can be empty array)
  * 
- * STRICT MODE: No fallback parsing. LLM MUST follow the XML tag format.
+ * STRICT MODE: <tasks> wrapper is required. The body may use per-task
+ * wrappers (current contract) or a legacy JSON array (BC fallback).
  */
 export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
   try {
-    // ✅ Extract JSON array from <tasks> XML tag (REQUIRED)
+    // ✅ Extract <tasks> XML tag body (REQUIRED)
     const tasksMatch = rawResponse.match(/<tasks>\s*([\s\S]*?)\s*<\/tasks>/);
     
     if (!tasksMatch) {
       throw new Error('Invalid response: <tasks> tag is required. LLM must follow the prompt format strictly.');
     }
     
-    const tasks = JSON.parse(prepareTagJson(tasksMatch[1]));
+    const tasks = parseTasksBody(tasksMatch[1]);
     
     if (!Array.isArray(tasks)) {
       throw new Error('Invalid response: tasks must be an array');
