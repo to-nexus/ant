@@ -19,7 +19,7 @@ import { IRenderStrategy } from './strategies/IRenderStrategy';
 import { StreamState } from './state/StreamState';
 import { FileRegistry } from './state/FileRegistry';
 import { LLMStreamEvent } from '../ports/llm';
-import { StreamResult } from './types';
+import { ParsedAction, StreamResult } from './types';
 
 export interface StreamOrchestratorConfig {
   parser: IStreamParser;
@@ -28,6 +28,14 @@ export interface StreamOrchestratorConfig {
   fileSystem?: any;  // ✅ FileSystemPort for disk checks (optional)
   codebaseRel?: string;  // ✅ Codebase directory relative to workspace (for path normalization)
   otherWorkerPaths?: Set<string>;  // ✅ Paths created by other parallel workers (must not be treated as overwrite targets)
+  /**
+   * Optional side-channel hook invoked for every parsed action BEFORE
+   * the render strategy receives it. Used by decompose to surface
+   * `task_added` actions to its Kanban broadcaster without coupling
+   * the rendering layer to that concern. Errors thrown by the hook
+   * propagate out of `processEvent` / `finalize`.
+   */
+  onAction?: (action: ParsedAction) => void | Promise<void>;
 }
 
 export class StreamOrchestrator {
@@ -36,12 +44,14 @@ export class StreamOrchestrator {
   private state: StreamState;
   private registry: FileRegistry;
   private streamStarted: boolean = false;  // ✅ Track if stream has started
+  private readonly onAction?: (action: ParsedAction) => void | Promise<void>;
   
   constructor(config: StreamOrchestratorConfig) {
     this.parser = config.parser;
     this.renderStrategy = config.renderStrategy;
     this.registry = new FileRegistry(config.existingFiles, config.fileSystem, config.codebaseRel, config.otherWorkerPaths);
     this.state = new StreamState();
+    this.onAction = config.onAction;
   }
   
   /**
@@ -80,8 +90,13 @@ export class StreamOrchestrator {
       // 1. Parse event → actions
       const actions = this.parser.parse(event, this.state);
       
-      // 2. Render each action
+      // 2. Side-channel hook (e.g. decompose Kanban broadcaster) THEN render.
+      //    Hook runs first so partial broadcasts are not blocked on render
+      //    side effects (file writes, chat status updates).
       for (const action of actions) {
+        if (this.onAction) {
+          await this.onAction(action);
+        }
         await this.renderStrategy.render(action, this.registry);
       }
     } catch (error) {
@@ -109,8 +124,12 @@ export class StreamOrchestrator {
         console.log(`[StreamOrchestrator] 🔚 Flushing ${finalActions.length} final action(s)`);
       }
       
-      // Process final actions
+      // Process final actions (hook then render — same ordering as the
+      // streaming path so callers see every action exactly once).
       for (const action of finalActions) {
+        if (this.onAction) {
+          await this.onAction(action);
+        }
         await this.renderStrategy.render(action, this.registry);
       }
       

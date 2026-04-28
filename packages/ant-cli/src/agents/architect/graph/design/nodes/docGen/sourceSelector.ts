@@ -92,6 +92,24 @@ export interface DecomposeToolLoopOptions {
    * Requires the caller to have seeded the snapshot via `beginNodePhase()`.
    */
   state?: TokenTrackingState;
+
+  /**
+   * Optional per-task callback. Called once for every `<task>...</task>`
+   * element observed in the streaming text of any round. The argument is
+   * the raw JSON body (without the wrapper tags). Used by code-job
+   * decompose to push partial Kanban broadcasts so the todo column fills
+   * one task at a time during tool-use (RAG) decompose runs.
+   *
+   * The tool loop runs an XMLStreamParser over `event.text` chunks and
+   * filters `task_added` actions. A network retry inside a round resets
+   * the parser; a duplicate emission across rounds (extremely rare under
+   * the prompt contract — `<tasks>` only appears once) is the caller's
+   * responsibility to dedupe.
+   *
+   * Design-job decompose does not emit `<task>` elements and therefore
+   * never passes this callback.
+   */
+  onTaskParsed?: (rawJson: string) => void | Promise<void>;
 }
 
 /**
@@ -119,6 +137,22 @@ export async function decomposeWithToolLoop(
   let allMessages = [...messages];
   let totalUsage: TaskTokenUsage | undefined;
   let cumulativeToolResultChars = 0;
+
+  // Streaming `<task>{json}</task>` extraction. We instantiate a parser
+  // once per `decomposeWithToolLoop` invocation so a `<tasks>` block
+  // that lands in the final round is parsed incrementally and forwarded
+  // to the caller's `onTaskParsed` hook. Reset on `event.type === 'retry'`
+  // so a network retry inside a single round does not produce stale
+  // `task_added` emissions from the failed attempt.
+  let xmlParser: import('../../../../../../core/streaming/parsers/XMLStreamParser').XMLStreamParser | null = null;
+  let xmlState: import('../../../../../../core/streaming/state/StreamState').StreamState | null = null;
+  if (options.onTaskParsed) {
+    const { XMLStreamParser } = await import('../../../../../../core/streaming/parsers/XMLStreamParser');
+    const { StreamState } = await import('../../../../../../core/streaming/state/StreamState');
+    xmlParser = new XMLStreamParser();
+    xmlState = new StreamState();
+  }
+  const onTaskParsedHook = options.onTaskParsed;
 
   for (let round = 0; round < maxRounds; round++) {
     const isLastRound = round === maxRounds - 1;
@@ -152,12 +186,28 @@ export async function decomposeWithToolLoop(
         thinkingSignature = '';
         toolCalls.length = 0;
         roundUsage = undefined;
+        if (xmlParser) xmlParser.reset();
+        if (xmlState) xmlState.reset();
         continue;
       }
       if (options.state) {
         maybeUpdatePhaseTokenUsage(options.state, event);
       }
-      if (event.text) response += event.text;
+      if (event.text) {
+        response += event.text;
+
+        // Surface per-task wrappers for the caller's Kanban broadcaster.
+        // Errors in the hook propagate out of the loop so the decompose
+        // retry layer can handle them like any other stream failure.
+        if (xmlParser && xmlState && onTaskParsedHook) {
+          const actions = xmlParser.parse(event, xmlState);
+          for (const action of actions) {
+            if (action.type === 'task_added' && action.data.rawJson) {
+              await onTaskParsedHook(action.data.rawJson);
+            }
+          }
+        }
+      }
       if (event.thinking) thinking += event.thinking;
       if (event.signature) thinkingSignature = event.signature;
       if (event.type === 'tool_use' && event.toolUse) {
