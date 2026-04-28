@@ -20,6 +20,7 @@ import type { PlanPromptCtx, PlanPromptResult } from '../types';
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import { collectConfigSnapshot, renderConfigBlock } from './configSnapshot';
 import { formatCodeContext, mapLang } from '../helpers/planPrompt';
+import { workspaceDepSnapshotVars } from '../helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -80,6 +81,97 @@ function renderSessionSummary(
   parts.push(`- Outstanding gates: ${missing.length > 0 ? missing.join(', ') : 'none'}`);
   if (batchSplits > 0) parts.push(`- Prior batch-split cycles: ${batchSplits}`);
   return parts.join('\n');
+}
+
+/**
+ * Compress a single plan body into a 2~5 line summary for the verify-mode
+ * plan prompt. Used to surface in-task plan history (the carrier the
+ * cycle-N+1 plan LLM otherwise lacks — `Session.planHistoryBodies()` is
+ * non-empty but not previously rendered into the prompt).
+ *
+ * Extracts only `task.goal`, `diagnostics.rootCauses[].cause`, and the
+ * `implementation.modify[].target` (plus `batches[].modify[].target` for
+ * Format B plans) — full bodies are excluded to keep the surface bounded.
+ *
+ * Returns a parse-failure stub when the body is not valid JSON; the
+ * prompt explicitly tells the LLM that an unparseable attempt should
+ * still be treated as "previously tried" rather than a clean slate.
+ *
+ * Exported for unit tests (`tests/tasks/verification/priorPlans.test.ts`).
+ * Not part of the public API.
+ */
+export function summarizePlanBody(body: string, attemptIndex: number): string | null {
+  if (!body) return null;
+  let parsed: any;
+  try {
+    const stripped = body.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+    parsed = JSON.parse(stripped);
+  } catch {
+    return `- **Attempt ${attemptIndex}**: (plan body could not be parsed as JSON; ${body.length} chars in history — treat as a prior attempt with unknown specifics)`;
+  }
+
+  const goal: string = parsed?.task?.goal ?? '(no goal)';
+  const rootCauses: string[] = Array.isArray(parsed?.diagnostics?.rootCauses)
+    ? parsed.diagnostics.rootCauses
+        .map((rc: any) => rc?.cause)
+        .filter((c: unknown): c is string => typeof c === 'string' && c.length > 0)
+        .map((c: string) => (c.length > 240 ? c.slice(0, 240) + '…' : c))
+    : [];
+
+  const modifyTargets = new Set<string>();
+  if (Array.isArray(parsed?.implementation?.modify)) {
+    for (const m of parsed.implementation.modify) {
+      if (typeof m?.target === 'string') modifyTargets.add(m.target);
+    }
+  }
+  if (Array.isArray(parsed?.batches)) {
+    for (const b of parsed.batches) {
+      if (Array.isArray(b?.modify)) {
+        for (const m of b.modify) {
+          if (typeof m?.target === 'string') modifyTargets.add(m.target);
+        }
+      }
+    }
+  }
+
+  const lines: string[] = [`- **Attempt ${attemptIndex}** — goal: ${goal}`];
+  for (const cause of rootCauses) {
+    lines.push(`  - Root cause: ${cause}`);
+  }
+  if (modifyTargets.size > 0) {
+    lines.push(`  - Modified: ${[...modifyTargets].join(', ')}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Render the prior-plan attempts block. Receives the bounded buffer
+ * `Session.planHistoryBodies()` (newest last, capped at
+ * `PLAN_HISTORY_BODY_LIMIT = 3`) and returns a markdown bullet list with
+ * one entry per prior plan body.
+ *
+ * SSOT for the cycle-N+1 plan LLM's view of "what I already tried" —
+ * deliberately complements (not replaces) `renderSessionSummary` (which
+ * carries scalar attempt counters). Without this carrier the LLM sees
+ * only `attempts: N` and re-discovers the same fix space from scratch
+ * each cycle — the cascade pattern observed in `misty-filling-rivet`.
+ *
+ * Returns `undefined` when the buffer is empty or every body fails the
+ * summarizer — the template `{{#if hasPriorPlans}}` block then stays
+ * silent on the first cycle.
+ *
+ * Exported for unit tests (`tests/tasks/verification/priorPlans.test.ts`).
+ * Not part of the public API.
+ */
+export function renderPriorPlans(bodies: readonly string[]): string | undefined {
+  if (!bodies || bodies.length === 0) return undefined;
+  const lines: string[] = [];
+  bodies.forEach((body, idx) => {
+    const summary = summarizePlanBody(body, idx + 1);
+    if (summary) lines.push(summary);
+  });
+  if (lines.length === 0) return undefined;
+  return lines.join('\n\n');
 }
 
 
@@ -162,6 +254,18 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   // removed `buildDiagnosticRetryContext` narrative (postmortem §4.1).
   const sessionSummary = renderSessionSummary(session);
 
+  // Prior-plan attempts in this same task — the carrier the cycle-N+1
+  // plan LLM otherwise lacks. `Session.planHistoryBodies()` already
+  // accumulates the bounded buffer; this exposes a compressed (root
+  // cause + modify targets) view to the prompt so the LLM can detect
+  // its own cascade pattern. Distinct from postmortem §4.1's removed
+  // narrative — that channel embedded *prior tasks'* prePlanText into
+  // the prompt (cross-task leak); this one is *same-task* attempt
+  // history bounded by `PLAN_HISTORY_BODY_LIMIT` and is the only
+  // signal the cycle-N+1 LLM has when static gates produce no new
+  // violations (runtime-bug scenario, e.g. `misty-filling-rivet`).
+  const priorPlans = renderPriorPlans(session?.planHistoryBodies() ?? []);
+
   const taskTechTiers = task.techTiers?.length
     ? task.techTiers
     : (getTechTier(state) ? [getTechTier(state)!] : []);
@@ -177,6 +281,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     state.resolvedAction?.domain,
     _verifySlot,
   );
+
+  const depSnapshot = await workspaceDepSnapshotVars(ctx);
 
   const body = await promptBuilder.render('jobs/code/nodes/plan/variants/verification/base', {
     taskId: task.id,
@@ -200,10 +306,14 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     cachedPassedSteps,
     sessionSummary,
     hasSessionSummary: !!sessionSummary,
+    priorPlans,
+    hasPriorPlans: !!priorPlans,
+    priorPlanCount: session?.planHistoryBodies().length ?? 0,
     antrulesContent,
     resolvedAction: state.resolvedAction,
     hasFrontend,
     hasBackend,
+    ...depSnapshot,
   });
 
   const text = basisSection ? `${basisSection}\n\n---\n\n${body}` : body;
@@ -222,7 +332,10 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       hasViolationsText: !!violationsText,
       violationsTextLen: violationsText?.length ?? 0,
       hasSessionSummary: !!sessionSummary,
+      hasPriorPlans: !!priorPlans,
+      priorPlanCount: session?.planHistoryBodies().length ?? 0,
       batchSplitCount: session?.batchSplitCount() ?? 0,
+      hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
     },
   };
 }
