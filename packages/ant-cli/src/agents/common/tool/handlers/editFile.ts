@@ -124,16 +124,18 @@ export async function handleEditFile(
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
       await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
-      // Feature-workspace contract: edits under `outputs/` are surfaced
-      // as unseen artifacts in the UI. Path-prefix gate only (no job-type
-      // branch) so it stays consistent with `handleCreateFile` and the
-      // ingestion paths in `chat.routes.ts` / `transfer.routes.ts`.
+      // Feature-workspace contract: edits under generated-artifact domains
+      // (`architecture/`, `visual/`, `meta/evals/`) are surfaced as unseen
+      // artifacts in the UI. Path-prefix gate only (no job-type branch) so
+      // it stays consistent with `handleCreateFile` and the ingestion paths
+      // in `chat.routes.ts` / `transfer.routes.ts`.
+      const dp = resolved.displayPath;
       if (
         'addUnseenArtifacts' in ctx.fileTreeUpdate &&
-        resolved.displayPath.startsWith('outputs/')
+        (dp.startsWith('architecture/') || dp.startsWith('visual/') || dp.startsWith('meta/evals/'))
       ) {
         (ctx.fileTreeUpdate as any).addUnseenArtifacts(
-          ctx.project, ctx.featureFolder, [resolved.displayPath]
+          ctx.project, ctx.featureFolder, [dp]
         );
       }
     }

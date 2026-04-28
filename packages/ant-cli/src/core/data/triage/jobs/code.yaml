@@ -14,7 +14,11 @@ modes:
       Generates components, services, APIs, tests based on specifications.
     detection:
       any_of:
-        - path: outputs/design
+        - path: architecture/system
+          type: directory_with_files
+        - path: architecture/spec
+          type: directory_with_files
+        - path: visual/ui
           type: directory_with_files
     prerequisites:
       required:
@@ -22,8 +26,14 @@ modes:
           type: any_of
           items:
             - type: directory_with_files
-              path: outputs/design
-              description: Design documents (outputs/design/system/, ui/, spec/)
+              path: architecture/system
+              description: System design documents (architecture/system/)
+            - type: directory_with_files
+              path: architecture/spec
+              description: Spec documents (architecture/spec/)
+            - type: directory_with_files
+              path: visual/ui
+              description: UI design artifacts (visual/ui/)
             - type: has_directive
               description: Task description entered via chat
       recommended:
@@ -47,7 +57,11 @@ modes:
       all_of:
         - type: has_directive
         - none_of:
-            - path: outputs/design
+            - path: architecture/system
+              type: directory_with_files
+            - path: architecture/spec
+              type: directory_with_files
+            - path: visual/ui
               type: directory_with_files
     prerequisites:
       required:

@@ -50,7 +50,7 @@ reading from an environment variable injected at dev server startup.
 - **Static assets in HTML**: Hardcoded paths in HTML templates (favicon, manifest, etc.) are NOT rewritten by the framework base path. Use relative paths or template the prefix.
 - **SVG assets MUST be imported as React components (SVGR)** — NOT via `<Image>` or `<img>`. SVGR renders inline with no network request, so basePath is irrelevant. Using `<img>` or `<Image>` for SVGs routes them through the image optimizer, which rejects SVG unless explicitly configured.
 - **Raster images MUST NOT use bare `<img>` with URL paths** — basePath prefix is not applied. Use the framework's image component. This applies to ALL image URL sources, not only design assets.
-- **Favicon in `inputs/assets/` is EASILY OVERLOOKED during setup.** Favicon is project metadata — not a design asset from `ui-assets.json`. If `inputs/assets/` contains a favicon file, copy it to the framework's conventional metadata location during setup.
+- **Favicon in `assets/` is EASILY OVERLOOKED during setup.** Favicon is project metadata — not a design asset from `ui-assets.json`. If `assets/` contains a favicon file, copy it to the framework's conventional metadata location during setup.
 
 ---
 

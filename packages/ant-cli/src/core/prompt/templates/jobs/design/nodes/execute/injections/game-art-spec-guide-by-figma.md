@@ -7,8 +7,8 @@ Each Figma frame describing behavior (states / interactions / variants)
 maps to one category.
 
 ### Surface scope (sub-sourced canonical)
-- Output path: `outputs/design/game-art/ant/game-art-spec.json`
-- `ant/` is the LLM-generated canonical sub-source (mirrors `outputs/design/ui/ant/`); `figma/` / `handoff/` sub-directories are Phase 5+ hooks.
+- Output path: `visual/game-art/ant/game-art-spec.json`
+- `ant/` is the LLM-generated canonical sub-source (mirrors `visual/ui/ant/`); `figma/` / `handoff/` sub-directories are Phase 5+ hooks.
 
 ### Spec vs Assets distinction (CRITICAL)
 
@@ -33,7 +33,7 @@ Spec entries REFERENCE asset ids; they never duplicate asset bytes.
 **🚨 READ YOUR TASK DESCRIPTION — generate ONLY the category it specifies!**
 
 - Each category has its own task
-- Do NOT write `outputs/design/ui/...` paths
+- Do NOT write `visual/ui/...` paths
 
 ### JSON Structure (per task — one category)
 
@@ -68,7 +68,7 @@ not Figma-facing.
 **Parallel category task**: use `<append>` to merge your category.
 
 ```xml
-<append path="outputs/design/game-art/ant/game-art-spec.json">
+<append path="visual/game-art/ant/game-art-spec.json">
 {
   "<your-category>": {
     "<entry-id>": { /* spec */ }
@@ -80,7 +80,7 @@ not Figma-facing.
 **First task**: use `<file>` with `_meta`.
 
 ```xml
-<file path="outputs/design/game-art/ant/game-art-spec.json">
+<file path="visual/game-art/ant/game-art-spec.json">
 {
   "_meta": {
     "gameContentTier": { "genre": "...", "coreLoop": "..." }

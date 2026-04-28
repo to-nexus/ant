@@ -152,7 +152,7 @@ describe('validateExecutionTier', () => {
 
   describe('design-ref grounding (DESIGN_REF_REQUIRES_TIER4)', () => {
     it('throws DESIGN_REF_REQUIRES_TIER4 when generate mode + spec ref + tier=2', () => {
-      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      const pool = poolWith({ path: 'architecture/spec/spec-feature.md', role: 'ref' });
       try {
         validateExecutionTier(ExecutionTierId.Exploratory, {
           mode: 'generate',
@@ -169,7 +169,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('throws DESIGN_REF_REQUIRES_TIER4 for refactor mode + system-design ref + tier=3', () => {
-      const pool = poolWith({ path: 'outputs/design/system/be-system-main.md', role: 'ref' });
+      const pool = poolWith({ path: 'architecture/system/be-system-main.md', role: 'ref' });
       try {
         validateExecutionTier(ExecutionTierId.Task, {
           mode: 'refactor',
@@ -183,7 +183,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('throws DESIGN_REF_REQUIRES_TIER4 for ui ref (under ui/ant)', () => {
-      const pool = poolWith({ path: 'outputs/design/ui/ant/ui-spec.json', role: 'ref' });
+      const pool = poolWith({ path: 'visual/ui/ant/ui-spec.json', role: 'ref' });
       try {
         validateExecutionTier(ExecutionTierId.OneShot, {
           mode: 'generate',
@@ -197,7 +197,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('throws DESIGN_REF_REQUIRES_TIER4 for game-art ref', () => {
-      const pool = poolWith({ path: 'outputs/design/game-art/ant/game-art-spec.json', role: 'ref' });
+      const pool = poolWith({ path: 'visual/game-art/ant/game-art-spec.json', role: 'ref' });
       try {
         validateExecutionTier(ExecutionTierId.Task, {
           mode: 'refactor',
@@ -211,7 +211,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('passes through Tier 4 when design ref is present (no violation)', () => {
-      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      const pool = poolWith({ path: 'architecture/spec/spec-feature.md', role: 'ref' });
       expect(
         validateExecutionTier(ExecutionTierId.RefsGrounded, {
           mode: 'generate',
@@ -222,7 +222,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('does NOT throw for design CONTEXT only (role=context, not ref)', () => {
-      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'context' });
+      const pool = poolWith({ path: 'architecture/spec/spec-feature.md', role: 'context' });
       expect(
         validateExecutionTier(ExecutionTierId.Task, {
           mode: 'generate',
@@ -233,7 +233,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('does NOT throw for explain mode even with design ref', () => {
-      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      const pool = poolWith({ path: 'architecture/spec/spec-feature.md', role: 'ref' });
       expect(
         validateExecutionTier(ExecutionTierId.Task, {
           mode: 'explain',
@@ -253,7 +253,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('does NOT throw when pool has no design refs', () => {
-      const pool = poolWith({ path: 'inputs/sources/prd.md', role: 'ref' });
+      const pool = poolWith({ path: 'plan/prd.md', role: 'ref' });
       expect(
         validateExecutionTier(ExecutionTierId.Task, {
           mode: 'generate',
@@ -264,7 +264,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('precedence — MISSING_TAG still wins over DESIGN_REF_REQUIRES_TIER4', () => {
-      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      const pool = poolWith({ path: 'architecture/spec/spec-feature.md', role: 'ref' });
       try {
         validateExecutionTier(undefined, {
           mode: 'generate',
@@ -278,7 +278,7 @@ describe('validateExecutionTier', () => {
     });
 
     it('precedence — FORBIDDEN_TIER_FOR_MODE wins over DESIGN_REF_REQUIRES_TIER4', () => {
-      const pool = poolWith({ path: 'outputs/design/spec/spec-feature.md', role: 'ref' });
+      const pool = poolWith({ path: 'architecture/spec/spec-feature.md', role: 'ref' });
       try {
         validateExecutionTier(ExecutionTierId.Reflex, {
           mode: 'generate',

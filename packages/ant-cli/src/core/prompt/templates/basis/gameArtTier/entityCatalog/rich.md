@@ -32,13 +32,13 @@ When this variant is active, `game-art-assets.json`'s `entities` category lists 
 
 ### Code-time consequences
 
-- Phaser `BootScene.preload` performs `this.load.atlas(...)` calls for each external sprite atlas. The atlas JSON + image pairs live under `inputs/assets/game/atlas/`.
+- Phaser `BootScene.preload` performs `this.load.atlas(...)` calls for each external sprite atlas. The atlas JSON + image pairs live under `assets/game/atlas/`.
 - Animation manifest: the `entities[*].animations[]` field per entry lists named cycles (`idle`, `walk`, `attack`) with frame ids and durations. The Phaser `AnimationManager` consumes this manifest 1:1.
 - React HUD integration: rich character art rarely flows into HUD; HUD glyphs stay `minimal` or `standard` even when the in-canvas catalog is `rich`.
 
 ### Phase 5+ hook signal
 
-When `entityCatalog === 'rich'` is selected today, the design pipeline emits a Phase 5+ note: production sprite assets (atlas + animation frames) are not authored by the LLM — the user (or, in Phase 5+, the visual job) places them under `inputs/assets/game/atlas/` and the catalog `src` paths reference them. The css-only inline alternative is **not viable** for this tier.
+When `entityCatalog === 'rich'` is selected today, the design pipeline emits a Phase 5+ note: production sprite assets (atlas + animation frames) are not authored by the LLM — the user (or, in Phase 5+, the visual job) places them under `assets/game/atlas/` and the catalog `src` paths reference them. The css-only inline alternative is **not viable** for this tier.
 
 ### Blind-spot reminders
 

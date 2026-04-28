@@ -326,20 +326,20 @@ describe('chat.routes — Phase 9/13 contract', () => {
       );
       expect(res.status).toBe(200);
 
-      // Persisted as outputs/evals/spec-review/eval-...md
-      const files = await fs.readdir(path.join(featurePath, 'outputs', 'evals', 'spec-review'));
+      // Persisted as meta/evals/spec-review/eval-...md
+      const files = await fs.readdir(path.join(featurePath, 'meta', 'evals', 'spec-review'));
       expect(files).toHaveLength(1);
       expect(files[0]).toMatch(/^eval-.*\.md$/);
 
       const written = await fs.readFile(
-        path.join(featurePath, 'outputs', 'evals', 'spec-review', files[0]),
+        path.join(featurePath, 'meta', 'evals', 'spec-review', files[0]),
         'utf-8',
       );
       expect(written).toContain('good');
 
       // savedPath stamped onto the choice_resolved.answer
       const resolved = chatEvents(store).find((l) => l.type === 'choice_resolved') as any;
-      expect(resolved?.answer?.savedPath).toMatch(/outputs\/evals\/spec-review\//);
+      expect(resolved?.answer?.savedPath).toMatch(/meta\/evals\/spec-review\//);
     });
   });
 

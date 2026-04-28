@@ -417,9 +417,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             type: 'text',
             text:
               `# UI Handoff Images\n` +
-              `The following image blocks are images from \`outputs/design/ui/handoff\` (the handoff UI source — free-form bundle, observe only).\n` +
+              `The following image blocks are images from \`visual/ui/handoff\` (the handoff UI source — free-form bundle, observe only).\n` +
               `Use them to match layout/spacing/visual states.\n` +
-              `IMPORTANT (runtime packaging, NOT authority): These image files are inputs to this prompt only — they are NOT automatically copied into the app runtime (e.g., not placed under \`public/\`). If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) follow explicit instructions in \`outputs/design/ui/ant/ui-assets.json\` (including destination paths).\n\n` +
+              `IMPORTANT (runtime packaging, NOT authority): These image files are inputs to this prompt only — they are NOT automatically copied into the app runtime (e.g., not placed under \`public/\`). If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) follow explicit instructions in \`visual/ui/ant/ui-assets.json\` (including destination paths).\n\n` +
               `${previewList}\n`,
           });
         }
@@ -797,14 +797,14 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
   if (state.runtimeAssetsIndex?.count && state.runtimeAssetsIndex.count > 0) {
     const idx = state.runtimeAssetsIndex;
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(`📦 Available Assets (inputs/assets)`);
+    lines.push(`📦 Available Assets (assets/)`);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     lines.push(`Check if this task needs any assets from the list below.`);
     lines.push(`If needed: SVG (.svg) → copy to codebase/src/assets/ and import as React component (SVGR).`);
     lines.push(`Raster (png, jpg, webp) → copy to codebase/public/ and use framework image component.`);
     lines.push(``);
     if (state.context?.featurePath) {
-      lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/inputs/assets/`);
+      lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/assets/`);
     }
     lines.push(`SVG destination: codebase/src/assets/ (SVGR import — webpack processes source tree only)`);
     lines.push(`Raster destination: codebase/public/ (URL reference via framework image component)`);

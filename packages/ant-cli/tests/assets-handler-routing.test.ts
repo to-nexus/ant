@@ -5,7 +5,7 @@
  * `download_asset` and `list_assets`. The template at
  * `jobs/code/basis/gameArtTier/_preamble.md` and the design rules under
  * `jobs/design/basis/gameArtTier/_preamble.md` rely on the assertion that
- * a `game` workspace's tools never write into `inputs/assets/service/`
+ * a `game` workspace's tools never write into `assets/service/`
  * and vice versa; this suite makes that contract programmatic so a
  * refactor that re-introduces a hard-coded fallback trips a lint failure.
  *
@@ -24,29 +24,29 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
   // Workspace-level domain wins (the SSOT slot)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  it('routes to inputs/assets/service/ when workspace.domain === service', () => {
+  it('routes to assets/service/ when workspace.domain === service', () => {
     expect(pickAssetsRoot({ workspaceDomain: 'service' }))
-      .toBe('inputs/assets/service');
+      .toBe('assets/service');
   });
 
-  it('routes to inputs/assets/game/ when workspace.domain === game', () => {
+  it('routes to assets/game/ when workspace.domain === game', () => {
     expect(pickAssetsRoot({ workspaceDomain: 'game' }))
-      .toBe('inputs/assets/game');
+      .toBe('assets/game');
   });
 
   it('workspaceDomain wins over racDomain (workspace SSOT precedence)', () => {
     expect(
       pickAssetsRoot({ workspaceDomain: 'game', racDomain: 'service' }),
-    ).toBe('inputs/assets/game');
+    ).toBe('assets/game');
     expect(
       pickAssetsRoot({ workspaceDomain: 'service', racDomain: 'game' }),
-    ).toBe('inputs/assets/service');
+    ).toBe('assets/service');
   });
 
   it('workspaceDomain wins over intentGroup === design-game-art', () => {
     expect(
       pickAssetsRoot({ workspaceDomain: 'service', intentGroup: 'design-game-art' }),
-    ).toBe('inputs/assets/service');
+    ).toBe('assets/service');
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -55,31 +55,31 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
 
   it('falls back to racDomain when workspaceDomain is absent', () => {
     expect(pickAssetsRoot({ racDomain: 'service' }))
-      .toBe('inputs/assets/service');
+      .toBe('assets/service');
     expect(pickAssetsRoot({ racDomain: 'game' }))
-      .toBe('inputs/assets/game');
+      .toBe('assets/game');
   });
 
   it('racDomain wins over intentGroup heuristic', () => {
     expect(
       pickAssetsRoot({ racDomain: 'service', intentGroup: 'design-game-art' }),
-    ).toBe('inputs/assets/service');
+    ).toBe('assets/service');
   });
 
   it('falls back to game when intentGroup === design-game-art (matrix gate)', () => {
     expect(pickAssetsRoot({ intentGroup: 'design-game-art' }))
-      .toBe('inputs/assets/game');
+      .toBe('assets/game');
   });
 
   it('non-game-art intentGroups do NOT trigger the game heuristic', () => {
     expect(pickAssetsRoot({ intentGroup: 'design-ui' }))
-      .toBe('inputs/assets/service');
+      .toBe('assets/service');
     expect(pickAssetsRoot({ intentGroup: 'design-system' }))
-      .toBe('inputs/assets/service');
+      .toBe('assets/service');
   });
 
   it('all signals absent → default service', () => {
-    expect(pickAssetsRoot({})).toBe('inputs/assets/service');
+    expect(pickAssetsRoot({})).toBe('assets/service');
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -94,8 +94,8 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
     ];
     for (const c of cases) {
       const root = pickAssetsRoot(c);
-      expect(root).toBe('inputs/assets/service');
-      expect(root.startsWith('inputs/assets/game')).toBe(false);
+      expect(root).toBe('assets/service');
+      expect(root.startsWith('assets/game')).toBe(false);
     }
   });
 
@@ -107,16 +107,16 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
     ];
     for (const c of cases) {
       const root = pickAssetsRoot(c);
-      expect(root).toBe('inputs/assets/game');
-      expect(root.startsWith('inputs/assets/service')).toBe(false);
+      expect(root).toBe('assets/game');
+      expect(root.startsWith('assets/service')).toBe(false);
     }
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Return shape — relative path under inputs/assets/
+  // Return shape — relative path under assets/
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  it('always returns a relative path that starts with inputs/assets/ and ends without trailing slash', () => {
+  it('always returns a relative path that starts with assets/ and ends without trailing slash', () => {
     for (const c of [
       { workspaceDomain: 'service' as const },
       { workspaceDomain: 'game' as const },
@@ -124,7 +124,7 @@ describe('Asset handler routing (D22) — pickAssetsRoot', () => {
       {},
     ]) {
       const root = pickAssetsRoot(c);
-      expect(root.startsWith('inputs/assets/')).toBe(true);
+      expect(root.startsWith('assets/')).toBe(true);
       expect(root.endsWith('/')).toBe(false);
     }
   });

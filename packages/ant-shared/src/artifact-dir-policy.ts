@@ -20,34 +20,35 @@ export type ArtifactDirPolicy = {
 };
 
 export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
-  'inputs/sources': {
+  // plan — depth -1 (sources 폴더 제거, 파일 직속). prd.md / gdd.md 가 직접 위치.
+  'plan': {
     allowSubdirs: false,
     // Only text-formattable files are injected into prompts.
     // Must stay in sync with ArtifactService.getSource()'s textExtensions list.
     acceptedExtensions: ['.md', '.txt', '.json', '.yaml', '.yml', '.html', '.xml', '.csv'],
   },
-  // Phase 2 (D19-revised): `inputs/assets` is a CONTAINER parent for the
-  // two per-domain pools (`{service,game}/`). The per-domain policies
-  // below own `acceptedExtensions`; the parent stays subdir-only so the
+  // Phase 2 (D19-revised): `assets` is a CONTAINER parent for the two
+  // per-domain pools (`{service,game}/`). The per-domain policies below
+  // own `acceptedExtensions`; the parent stays subdir-only so the
   // file-tree can render it but no direct file is allowed at the parent
   // level. Phase 1's flat-image acceptedExtensions list moved into
-  // `inputs/assets/service` (icons/images) and `inputs/assets/game`
-  // (icons/images + tilemap json + Phase 4 hooks).
-  'inputs/assets': {
+  // `assets/service` (icons/images) and `assets/game` (icons/images +
+  // tilemap json + Phase 4 hooks).
+  'assets': {
     allowSubdirs: true,
   },
   // Phase 2 (D19-revised): per-domain assets pools.
-  'inputs/assets/service': {
+  'assets/service': {
     allowSubdirs: true,
     // Phase 4 (D-P4): web-font formats activated for the service domain
     // so logo / brand / icon-pack fonts can ship under
-    // `inputs/assets/service/fonts/`.
+    // `assets/service/fonts/`.
     acceptedExtensions: [
       '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
       '.woff', '.woff2', '.ttf', '.otf',
     ],
   },
-  'inputs/assets/game': {
+  'assets/game': {
     allowSubdirs: true,
     // Phase 4 (D-P4): audio + atlas + 3D model formats activated for the
     // game domain. The game-art catalog (`game-art-assets.json`) records
@@ -64,70 +65,69 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
       '.glb', '.gltf',
     ],
   },
-  'outputs/design': {
-    allowSubdirs: true,
-    acceptedExtensions: ['.md', '.json'],
+  // architecture — system / spec 두 트랙. 부모 정책은 두지 않는다 (서브 정책으로 충분).
+  'architecture/system': {
+    allowSubdirs: false,
+    acceptedExtensions: ['.md'],
   },
-  'outputs/design/ui': {
+  'architecture/spec': {
+    allowSubdirs: false,
+    acceptedExtensions: ['.md'],
+  },
+  // visual — ui / game-art 두 sub-source 컨테이너. 부모 정책은 두지 않는다.
+  'visual/ui': {
     // Parent UI source directory — contains ant/ / figma/ / handoff/ subdirs.
     allowSubdirs: true,
   },
-  'outputs/design/ui/ant': {
+  'visual/ui/ant': {
     allowSubdirs: false,
     acceptedExtensions: ['.json'],
   },
-  'outputs/design/ui/figma': {
+  'visual/ui/figma': {
     allowSubdirs: false,
     acceptedExtensions: ['.json'],
   },
-  'outputs/design/ui/handoff': {
+  'visual/ui/handoff': {
     // Handoff is intentionally free-form — any filetype is accepted and
     // nested subdirectories are allowed.
     allowSubdirs: true,
   },
-  // v8 (D24-revised): game-art is sub-sourced (mirrors `outputs/design/ui/`).
+  // v8 (D24-revised): game-art is sub-sourced (mirrors `visual/ui/`).
   // The parent surface only allows the `ant/` / `figma/` / `handoff/` sub-
   // source containers; LLM-generated game-art-*.json files land directly
   // under `ant/` (canonical sub-source).
-  'outputs/design/game-art': {
+  'visual/game-art': {
     allowSubdirs: true,
   },
-  'outputs/design/game-art/ant': {
+  'visual/game-art/ant': {
     allowSubdirs: false,
     acceptedExtensions: ['.json'],
   },
   // Phase 5+ hook — figma / handoff sub-sources stay parser-only until the
   // visual job activates them. The policies are pre-registered so the
-  // upload contract is symmetric with `outputs/design/ui/`.
-  'outputs/design/game-art/figma': {
+  // upload contract is symmetric with `visual/ui/`.
+  'visual/game-art/figma': {
     allowSubdirs: false,
     acceptedExtensions: ['.json'],
   },
-  'outputs/design/game-art/handoff': {
+  'visual/game-art/handoff': {
     // Free-form handoff (mirrors ui/handoff) — Phase 5+ activates upload.
     allowSubdirs: true,
   },
-  'outputs/design/system': {
+  // meta/evals — 평가 산출물 (네 슬러그: prd / ui-design / system-design / code).
+  'meta/evals/prd': {
     allowSubdirs: false,
     acceptedExtensions: ['.md'],
   },
-  'outputs/design/spec': {
+  'meta/evals/ui-design': {
     allowSubdirs: false,
     acceptedExtensions: ['.md'],
   },
-  'outputs/evals/prd': {
+  'meta/evals/system-design': {
     allowSubdirs: false,
     acceptedExtensions: ['.md'],
   },
-  'outputs/evals/ui-design': {
-    allowSubdirs: false,
-    acceptedExtensions: ['.md'],
-  },
-  'outputs/evals/system-design': {
-    allowSubdirs: false,
-    acceptedExtensions: ['.md'],
-  },
-  'outputs/evals/code': {
+  'meta/evals/code': {
     allowSubdirs: false,
     acceptedExtensions: ['.md'],
   },

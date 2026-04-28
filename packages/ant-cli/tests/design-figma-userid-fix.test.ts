@@ -71,7 +71,7 @@ function buildCtx(overrides: Partial<ToolExecutionContext> = {}): ToolExecutionC
     userId: 'u-1',
     organizationId: 'org-1',
     taskId: 'ui-tokens-ch1',
-    assetsRoot: 'inputs/assets/service',
+    assetsRoot: 'assets/service',
     ...overrides,
   };
 }
@@ -393,7 +393,7 @@ describe('design download_asset (ctx-pure)', () => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 describe('design read_source_doc (ctx-pure)', () => {
-  // ArtifactPoolView.sourcesAsRecord strips the `inputs/sources/` prefix —
+  // ArtifactPoolView.sourcesAsRecord strips the `plan/` prefix —
   // filename is the bare basename ('prd.md'), matching how the design LLM
   // refers to source docs in prompts.
   it('returns the matching artifact body from ctx.sourceDocuments', async () => {
@@ -402,7 +402,7 @@ describe('design read_source_doc (ctx-pure)', () => {
     const ctx = buildCtx({
       sourceDocuments: [
         {
-          path: 'inputs/sources/prd.md',
+          path: 'plan/prd.md',
           content: 'line 1\nline 2\nline 3',
           role: 'context',
           kind: 'sources',
@@ -420,7 +420,7 @@ describe('design read_source_doc (ctx-pure)', () => {
     const readSourceDoc = handlers.get('read_source_doc')!;
     const ctx = buildCtx({
       sourceDocuments: [
-        { path: 'inputs/sources/prd.md', content: 'x', role: 'context', kind: 'sources' },
+        { path: 'plan/prd.md', content: 'x', role: 'context', kind: 'sources' },
       ],
     });
     const result = await readSourceDoc(ctx, { filename: 'missing.md' });
@@ -434,7 +434,7 @@ describe('design read_source_doc (ctx-pure)', () => {
     const ctx = buildCtx({
       sourceDocuments: [
         {
-          path: 'inputs/sources/prd.md',
+          path: 'plan/prd.md',
           content: 'a\nb\nc\nd\ne',
           role: 'context',
           kind: 'sources',

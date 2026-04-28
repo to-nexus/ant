@@ -186,3 +186,25 @@ Key variables for `packages/ant-cli/.env`:
 ## Documentation
 
 Detailed architecture docs are in `docs/architecture/` (00–17). Testing strategy is in `docs/testing/`.
+
+## Enforcement
+
+Workspace 1차 분류 축이 도메인 의미(`plan` / `architecture` / `visual` / `assets` / `meta` / `sessions` / `codebase`)로 정렬된 후, 옛 I/O 트리 경로 잔존을 막는 manual sweep:
+
+```bash
+# ripgrep 의 `ts` 타입은 *.ts / *.tsx / *.cts / *.mts 를 모두 매칭한다 (`rg --type-list` 참고).
+rg "outputs/design|inputs/sources|inputs/assets|inputs/references|inputs/directives|outputs/evals" \
+  packages/ant-cli/src packages/ant-shared/src packages/ant-ui/src \
+  packages/ant-cli/src/core/prompt/templates docs \
+  --type ts --type md \
+  --glob '!**/changelog/**' \
+  --glob '!**/migrate-workspace-layout.mjs' \
+  --glob '!**/legacy-path-residue.test.ts' \
+  --glob '!**/no-legacy-references.test.ts' \
+  --glob '!**/docs/tmp/**'
+# Expected: 0 matches
+```
+
+자동 회귀 가드는 [packages/ant-cli/tests/legacy-path-residue.test.ts](packages/ant-cli/tests/legacy-path-residue.test.ts) 가 담당; 위 명령은 수동 sweep.
+
+디스크 마이그레이션은 1회성: `pnpm migrate:workspace --apply --workspaces-path <ANT_WORKSPACE_BASE_PATH>`.

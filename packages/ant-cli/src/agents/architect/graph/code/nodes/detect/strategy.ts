@@ -9,7 +9,7 @@ import type { DetectStrategy, DetectResult } from '../../../../../common/graph/n
 import type { ArchitectGraphState } from '../../state.js';
 import type { InferredAction } from '@ant/shared';
 import type { WorkspaceState } from '../../../../../common/graph/nodes/triage/types.js';
-import { DESIGN_DIR } from '@ant/shared';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
 import { runEstimatingLLMStream } from '../../../../../common/graph/llmHelpers.js';
 import { logPrompt } from '../../../../../../core/utils/promptLogger.js';
@@ -31,8 +31,8 @@ export const codeDetectStrategy: DetectStrategy<ArchitectGraphState> = {
     const prompt = await promptBuilder.render('jobs/code/nodes/detect/variants/default/base', {
       directive: state.directive || '',
       artifactAvailability: formatArtifactAvailability(ws),
-      hasDesignDoc: ws?.hasSystemDesignDoc ?? false,
-      hasSpecDocs: ws?.hasSpecDocs ?? false,
+      hasDesignDoc: ws?.hasArchitectureSystem ?? false,
+      hasSpecDocs: ws?.hasArchitectureSpec ?? false,
     });
 
     const jobId = state._httpJobId || 'unknown';
@@ -107,13 +107,13 @@ function formatArtifactAvailability(ws?: WorkspaceState): string {
   if (!ws) return '';
   const lines: string[] = [];
   if (ws.systemDesignFileNames?.length) {
-    lines.push(`- \`${DESIGN_DIR}/system/\`: ${ws.systemDesignFileNames.join(', ')}`);
+    lines.push(`- \`${ARTIFACT_PREFIX.SYSTEM_DESIGN}\`: ${ws.systemDesignFileNames.join(', ')}`);
   }
   if (ws.specDocNames?.length) {
-    lines.push(`- \`${DESIGN_DIR}/spec/\`: ${ws.specDocNames.join(', ')}`);
+    lines.push(`- \`${ARTIFACT_PREFIX.SPEC}\`: ${ws.specDocNames.join(', ')}`);
   }
-  if (ws.sourceFileNames?.length) {
-    lines.push(`- \`inputs/sources/\`: ${ws.sourceFileNames.join(', ')}`);
+  if (ws.planFileNames?.length) {
+    lines.push(`- \`${ARTIFACT_PREFIX.SOURCES}/\`: ${ws.planFileNames.join(', ')}`);
   }
   if (lines.length > 0) {
     const result = lines.join('\n');

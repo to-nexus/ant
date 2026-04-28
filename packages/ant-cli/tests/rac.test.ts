@@ -228,13 +228,13 @@ describe('resolveToRAC — explicit path', () => {
 
   it('does NOT include documents (resolve node adds them separately)', () => {
     const rac = resolveToRAC('gen-code-sys', {
-      refs: ['inputs/sources/prd.md'],
-      context: ['outputs/design/system/fe-system-main.md'],
+      refs: ['plan/prd.md'],
+      context: ['architecture/system/fe-system-main.md'],
     }, 'explicit');
 
     expect(rac.documents).toBeUndefined();
-    expect(rac.refs).toEqual(['inputs/sources/prd.md']);
-    expect(rac.context).toEqual(['outputs/design/system/fe-system-main.md']);
+    expect(rac.refs).toEqual(['plan/prd.md']);
+    expect(rac.context).toEqual(['architecture/system/fe-system-main.md']);
   });
 
   it('covers all INTENT_DEFINITIONS', () => {

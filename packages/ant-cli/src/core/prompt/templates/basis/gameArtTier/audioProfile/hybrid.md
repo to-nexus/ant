@@ -22,7 +22,7 @@ The `hybrid` audio profile commits to **procedural OscillatorNode for SFX + exte
   { "id": "match-clear", "kind": "inline", "format": "oscillator", "type": "triangle", "frequency": 660, "frequencyEnd": 1320, "durationMs": 220, "gain": 0.5 }
 ],
 "bgm": [
-  { "id": "ambient-loop", "kind": "external", "src": "inputs/assets/game/bgm/ambient-loop.mp3", "format": "mp3", "loop": true }
+  { "id": "ambient-loop", "kind": "external", "src": "assets/game/bgm/ambient-loop.mp3", "format": "mp3", "loop": true }
 ]
 ```
 

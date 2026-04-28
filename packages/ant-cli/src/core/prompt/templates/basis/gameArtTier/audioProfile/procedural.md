@@ -4,7 +4,7 @@
 
 ### Promise
 
-The `procedural` audio profile commits to **Web Audio API OscillatorNode + GainNode + envelope shaping**. Every SFX in the project is synthesized at runtime from primitive waveforms — sine / square / sawtooth / triangle — modulated by quick envelopes. There are zero external audio assets; `inputs/assets/game/sfx/` and `inputs/assets/game/bgm/` may be empty (or contain user-placed legacy files that this profile ignores). The project ships entirely with Web Audio synthesis.
+The `procedural` audio profile commits to **Web Audio API OscillatorNode + GainNode + envelope shaping**. Every SFX in the project is synthesized at runtime from primitive waveforms — sine / square / sawtooth / triangle — modulated by quick envelopes. There are zero external audio assets; `assets/game/sfx/` and `assets/game/bgm/` may be empty (or contain user-placed legacy files that this profile ignores). The project ships entirely with Web Audio synthesis.
 
 ### What "procedural" looks like in code
 

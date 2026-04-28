@@ -13,17 +13,19 @@ You analyze user input to determine intent and execution readiness.
 
 ## WORKSPACE STATE
 
-### Inputs
-{{#if hasPrd}}✅ PRD: {{prdPath}}{{else}}❌ No PRD{{/if}}
-{{#if hasDirective}}✅ Directive{{else}}ℹ️ No directive{{/if}}
+### Plan
+{{#if hasPlan}}✅ Plan: {{planPath}}{{else}}❌ No plan{{/if}}
+{{#if hasMetaDirectives}}✅ Directive{{else}}ℹ️ No directive{{/if}}
 
 ### Visual Sources
 {{#if hasFigmaConfig}}✅ Figma: design file configured{{else}}ℹ️ No Figma config{{/if}}
 {{#if hasAssets}}✅ Assets: {{assetCount}} files{{else}}ℹ️ No assets{{/if}}
 
 ### Design Documents
-{{#if hasUiDocs}}✅ UI specification exists{{else}}❌ No UI specification{{/if}}
-{{#if hasSystemDesignDoc}}✅ System design exists{{else}}❌ No system design{{/if}}
+{{#if hasVisualUi}}✅ UI specification exists{{else}}❌ No UI specification{{/if}}
+{{#if hasVisualGameArt}}✅ Game-art specification exists{{else}}ℹ️ No game-art specification{{/if}}
+{{#if hasArchitectureSystem}}✅ System design exists{{else}}❌ No system design{{/if}}
+{{#if hasArchitectureSpec}}✅ Spec documents exist{{else}}ℹ️ No spec documents{{/if}}
 
 {{#if hasDesignDoc}}✅ Design documents exist{{else}}❌ No design documents{{/if}}
 

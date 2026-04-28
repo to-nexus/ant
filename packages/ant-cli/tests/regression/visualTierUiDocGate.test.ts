@@ -32,16 +32,16 @@ const mk = (path: string, role: 'ref' | 'context' = 'ref'): ResolvedArtifact => 
 
 describe('Visual Tier × UI doc gate — FE surfaces', () => {
   it('gate is OPEN when no UI doc sits in user-selected RAC', () => {
-    const refs = ['outputs/design/system/fe-system-app.md'];
-    const ctx  = ['inputs/sources/prd.md'];
+    const refs = ['architecture/system/fe-system-app.md'];
+    const ctx  = ['plan/prd.md'];
     expect(pathsContainUiDoc([...refs, ...ctx])).toBe(false);
     expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pathsContainUiDoc([...refs, ...ctx]) })).toBe(true);
   });
 
   it.each([
-    ['ant',     'outputs/design/ui/ant/ui-spec.json'],
-    ['figma',   'outputs/design/ui/figma/figma.json'],
-    ['handoff', 'outputs/design/ui/handoff/overview.html'],
+    ['ant',     'visual/ui/ant/ui-spec.json'],
+    ['figma',   'visual/ui/figma/figma.json'],
+    ['handoff', 'visual/ui/handoff/overview.html'],
   ])('gate CLOSES when a %s UI doc lives in refs', (_kind, path) => {
     const refs = [path];
     expect(pathsContainUiDoc(refs)).toBe(true);
@@ -49,14 +49,14 @@ describe('Visual Tier × UI doc gate — FE surfaces', () => {
   });
 
   it('gate CLOSES when the UI doc is supplied via context (not refs)', () => {
-    const ctx = ['outputs/design/ui/handoff/spec.md'];
+    const ctx = ['visual/ui/handoff/spec.md'];
     expect(pathsContainUiDoc(ctx)).toBe(true);
     expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pathsContainUiDoc(ctx) })).toBe(false);
   });
 
   it('gate CLOSES even when refs+context mix non-UI paths alongside one UI doc', () => {
-    const refs = ['outputs/design/system/fe-system-app.md'];
-    const ctx  = ['inputs/sources/prd.md', 'outputs/design/ui/ant/ui-spec.json'];
+    const refs = ['architecture/system/fe-system-app.md'];
+    const ctx  = ['plan/prd.md', 'visual/ui/ant/ui-spec.json'];
     expect(pathsContainUiDoc([...refs, ...ctx])).toBe(true);
     expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pathsContainUiDoc([...refs, ...ctx]) })).toBe(false);
   });
@@ -65,17 +65,17 @@ describe('Visual Tier × UI doc gate — FE surfaces', () => {
 describe('Visual Tier × UI doc gate — BE ArtifactPoolView', () => {
   it('pool.hasUi() = false → gate OPEN', () => {
     const pool = new ArtifactPoolView([
-      mk('outputs/design/system/fe-system-app.md'),
-      mk('inputs/sources/prd.md', 'context'),
+      mk('architecture/system/fe-system-app.md'),
+      mk('plan/prd.md', 'context'),
     ]);
     expect(pool.hasUi()).toBe(false);
     expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pool.hasUi() })).toBe(true);
   });
 
   it.each([
-    ['ant',     'outputs/design/ui/ant/ui-spec.json'],
-    ['figma',   'outputs/design/ui/figma/figma.json'],
-    ['handoff', 'outputs/design/ui/handoff/overview.html'],
+    ['ant',     'visual/ui/ant/ui-spec.json'],
+    ['figma',   'visual/ui/figma/figma.json'],
+    ['handoff', 'visual/ui/handoff/overview.html'],
   ])('pool.hasUi() = true via %s → gate CLOSED', (_kind, path) => {
     const pool = new ArtifactPoolView([mk(path)]);
     expect(pool.hasUi()).toBe(true);
@@ -84,7 +84,7 @@ describe('Visual Tier × UI doc gate — BE ArtifactPoolView', () => {
 
   it('UI doc with role=context still closes the gate (role-agnostic)', () => {
     const pool = new ArtifactPoolView([
-      mk('outputs/design/ui/ant/ui-spec.json', 'context'),
+      mk('visual/ui/ant/ui-spec.json', 'context'),
     ]);
     expect(pool.hasUi()).toBe(true);
     expect(isTierActive('visualTier', slot, 'service', { techTier: fe, hasUiDoc: pool.hasUi() })).toBe(false);

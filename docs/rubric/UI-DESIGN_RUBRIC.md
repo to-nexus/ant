@@ -39,20 +39,26 @@
 ```
 ant-workspaces/{org}/{group}/{project}/
 └── features/{feature}/
-    ├── inputs/                        # [Input]
-    │   ├── assets/                    # Source assets
-    │   ├── references/
-    │   │   └── screens/               # Reference screenshots ★
-    │   └── sources/
-    │       └── prd.md                 # PRD document
+    ├── plan/                          # [Input]
+    │   └── prd.md                     # PRD document
     │
-    ├── outputs/                       # [Output]
-    │   ├── design/
-    │   │   ├── system-design.md       # System design document
-    │   │   ├── ui-spec.json           # UI specification ★
-    │   │   ├── ui-tokens.json         # Design tokens ★
-    │   │   └── ui-assets.json         # Asset mapping ★
-    │   └── evals/                     # Evaluation reports
+    ├── assets/                        # [Input] Source assets
+    │
+    ├── visual/                        # [Output] UI design surface
+    │   └── ui/
+    │       ├── ant/
+    │       │   ├── ui-spec.json       # UI specification ★
+    │       │   ├── ui-tokens.json     # Design tokens ★
+    │       │   └── ui-assets.json     # Asset mapping ★
+    │       ├── figma/                 # Figma reference (figma.json)
+    │       └── handoff/               # Free-form handoff bundle (incl. reference screenshots) ★
+    │
+    ├── architecture/                  # [Output]
+    │   └── system/
+    │       └── *-system-*.md          # System design documents
+    │
+    ├── meta/
+    │   └── evals/
     │       └── ui-design/             # UI design evaluation reports
     │           └── evaluidesign-{jobId}.md
     │
@@ -103,10 +109,10 @@ ant-workspaces/{org}/{group}/{project}/
 
 ```markdown
 Read the following files:
-1. `outputs/design/ui-spec.json` - UI specification
-2. `outputs/design/ui-tokens.json` - Design tokens  
-3. `outputs/design/ui-assets.json` - Asset mapping
-4. `inputs/sources/prd.md` - PRD for text verification
+1. `visual/ui/ant/ui-spec.json` - UI specification
+2. `visual/ui/ant/ui-tokens.json` - Design tokens
+3. `visual/ui/ant/ui-assets.json` - Asset mapping
+4. `plan/prd.md` - PRD for text verification
 ```
 
 ### Step 3: Evidence-Based Comparison (DETAILED)
@@ -546,7 +552,7 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 ### Storage Location
 
 ```
-features/{feature}/outputs/evals/ui-design/evaluidesign-{jobId}.md
+features/{feature}/meta/evals/ui-design/evaluidesign-{jobId}.md
 ```
 
 ### Naming Convention

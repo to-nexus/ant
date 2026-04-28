@@ -45,7 +45,7 @@ You have access to tools for exploring assets and existing documents:
 
 **Example:**
 ```xml
-<file path="outputs/design/ui/ant/ui-spec.json">
+<file path="visual/ui/ant/ui-spec.json">
 {
   ... existing content unchanged ...,
   "components": {
@@ -82,7 +82,7 @@ You have access to tools for exploring assets and existing documents:
 **⚠️ You MUST use `<append>` tag. The system deep-merges your output with other chapters.**
 
 ```xml
-<append path="outputs/design/ui/{{targetFile}}">
+<append path="visual/ui/{{targetFile}}">
 {
   "YOUR_CATEGORY": { ... }
 }
@@ -105,7 +105,7 @@ Use `<file>` tag:
 
 **For JSON files (ui-tokens.json, ui-assets.json):**
 ```xml
-<file path="outputs/design/ui/ant/ui-tokens.json">
+<file path="visual/ui/ant/ui-tokens.json">
 {
   "colors": { ... },
   "typography": { ... }
@@ -115,7 +115,7 @@ Use `<file>` tag:
 
 **For ui-spec.json:**
 ```xml
-<file path="outputs/design/ui/ant/ui-spec.json">
+<file path="visual/ui/ant/ui-spec.json">
 {
   "layout": { ... },
   "sections": {
@@ -142,7 +142,7 @@ Use `<append>` tag:
 
 **For JSON files (ui-tokens.json, ui-assets.json):**
 ```xml
-<append path="outputs/design/ui/ant/ui-tokens.json">
+<append path="visual/ui/ant/ui-tokens.json">
 {
   "newCategory": { ... }
 }
@@ -152,7 +152,7 @@ The system will automatically merge this into the existing JSON.
 
 **For ui-spec.json:**
 ```xml
-<append path="outputs/design/ui/ant/ui-spec.json">
+<append path="visual/ui/ant/ui-spec.json">
 {
   "sections": {
     "newSection": { ... }
@@ -162,10 +162,10 @@ The system will automatically merge this into the existing JSON.
 ```
 
 **Examples**:
-- `ui-tokens-ch1` or `ui-tokens` → Use `<file path="outputs/design/ui/ant/ui-tokens.json">` (JSON format)
-- `ui-tokens-ch2` → Use `<append path="outputs/design/ui/ant/ui-tokens.json">` (merge into existing JSON)
-- `ui-assets-ch2` → Use `<append path="outputs/design/ui/ant/ui-assets.json">` (merge into existing JSON)
-- `ui-spec-ch3` → Use `<append path="outputs/design/ui/ant/ui-spec.json">` (merge into existing JSON)
+- `ui-tokens-ch1` or `ui-tokens` → Use `<file path="visual/ui/ant/ui-tokens.json">` (JSON format)
+- `ui-tokens-ch2` → Use `<append path="visual/ui/ant/ui-tokens.json">` (merge into existing JSON)
+- `ui-assets-ch2` → Use `<append path="visual/ui/ant/ui-assets.json">` (merge into existing JSON)
+- `ui-spec-ch3` → Use `<append path="visual/ui/ant/ui-spec.json">` (merge into existing JSON)
 
 {{/if}}
 {{/if}}
@@ -176,27 +176,27 @@ The system will automatically merge this into the existing JSON.
 
 1. **First chapter** (`-ch1` or no suffix) → `<file>` tag
 2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag
-3. **Path prefix**: Always `outputs/design/ui/`
+3. **Path prefix**: Always `visual/ui/`
 4. **One file per category**: All ui-tokens chapters → `ui-tokens.json`
 
 ### ❌ DO NOT
 
 ```xml
 <!-- WRONG: Using <file> for chapter 2 -->
-<file path="outputs/design/ui/ant/ui-tokens.json">  ← Will OVERWRITE existing content!
+<file path="visual/ui/ant/ui-tokens.json">  ← Will OVERWRITE existing content!
 
-<!-- WRONG: Wrong path -->
-<file path="inputs/sources/ui-tokens.json">
+<!-- WRONG: Wrong path (UI tokens belong under visual/ui/ant/, not the plan or codebase tree) -->
+<file path="codebase/ui-tokens.json">
 
 <!-- WRONG: Creating separate files per chapter -->
-<file path="outputs/design/ui/ant/ui-tokens-ch2.json">  ← All chapters go to same file!
+<file path="visual/ui/ant/ui-tokens-ch2.json">  ← All chapters go to same file!
 ```
 
 ### ✅ CORRECT
 
 ```xml
 <!-- Task: ui-tokens-ch1 (FIRST) -->
-<file path="outputs/design/ui/ant/ui-tokens.json">
+<file path="visual/ui/ant/ui-tokens.json">
 {
   "colors": {
     "primary": { "blue": "#1E40AF" },
@@ -208,7 +208,7 @@ The system will automatically merge this into the existing JSON.
 
 ```xml
 <!-- Task: ui-tokens-ch2 (CONTINUATION) - merge into existing JSON -->
-<append path="outputs/design/ui/ant/ui-tokens.json">
+<append path="visual/ui/ant/ui-tokens.json">
 {
   "typography": {
     "heading": { "family": "Inter, sans-serif", "xl": { "size": "48px", "weight": 700 } }
@@ -219,7 +219,7 @@ The system will automatically merge this into the existing JSON.
 
 ```xml
 <!-- Task: ui-tokens-ch3 (CONTINUATION) -->
-<append path="outputs/design/ui/ant/ui-tokens.json">
+<append path="visual/ui/ant/ui-tokens.json">
 {
   "spacing": { "sm": "8px", "md": "16px", "lg": "24px" }
 }
@@ -332,7 +332,7 @@ For dependent tasks (ui-spec), you will find REFERENCE sections in this prompt c
 }
 ```
 
-> Categories are determined by observing the asset purpose mentioned in the directive / PRD or implied by `inputs/assets/` subdirectories. Do NOT assume fixed categories.
+> Categories are determined by observing the asset purpose mentioned in the directive / PRD or implied by `assets/` subdirectories. Do NOT assume fixed categories.
 
 **Content Requirements**:
 - Distinguish **background images** (decorative) vs **content images** (structural) when assets exist
@@ -375,7 +375,7 @@ Before outputting, verify:
 {{else}}
 - [ ] Used `<file>` for first chapter (task ID has no `-ch` suffix or ends with `-ch1`)
 {{/if}}
-- [ ] Path starts with `outputs/design/ui/`
+- [ ] Path starts with `visual/ui/`
 - [ ] Filename matches category (`ui-tokens.json`, `ui-assets.json`, or `ui-spec.json`)
 
 **Content Quality**:

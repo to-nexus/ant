@@ -39,36 +39,36 @@ import { isSafeStagingPath } from '../src/agents/planner/graph/plan/nodes/genera
 // ============================================
 
 describe('getDefaultTargetPaths — matrix-derived defaults', () => {
-  it('gen-plan (no domain) → ["inputs/sources/prd.md"] (service-default fallback)', () => {
-    expect(getDefaultTargetPaths('gen-plan')).toEqual(['inputs/sources/prd.md']);
+  it('gen-plan (no domain) → ["plan/prd.md"] (service-default fallback)', () => {
+    expect(getDefaultTargetPaths('gen-plan')).toEqual(['plan/prd.md']);
   });
 
-  it('gen-plan + service domain → ["inputs/sources/prd.md"]', () => {
+  it('gen-plan + service domain → ["plan/prd.md"]', () => {
     expect(getDefaultTargetPaths('gen-plan', 'service')).toEqual([
-      'inputs/sources/prd.md',
+      'plan/prd.md',
     ]);
   });
 
-  it('gen-plan + game domain → ["inputs/sources/gdd.md"] (domain-aware split)', () => {
+  it('gen-plan + game domain → ["plan/gdd.md"] (domain-aware split)', () => {
     expect(getDefaultTargetPaths('gen-plan', 'game')).toEqual([
-      'inputs/sources/gdd.md',
+      'plan/gdd.md',
     ]);
   });
 
   it('gen-sys-fe → expanded fe-system pattern under SYS_DIR (domain-agnostic)', () => {
     expect(getDefaultTargetPaths('gen-sys-fe')).toEqual([
-      'outputs/design/system/fe-system-*.md',
+      'architecture/system/fe-system-*.md',
     ]);
     expect(getDefaultTargetPaths('gen-sys-fe', 'game')).toEqual([
-      'outputs/design/system/fe-system-*.md',
+      'architecture/system/fe-system-*.md',
     ]);
   });
 
   it('gen-sys-full → multi-output expansion preserves matrix order', () => {
     expect(getDefaultTargetPaths('gen-sys-full')).toEqual([
-      'outputs/design/system/fe-system-*.md',
-      'outputs/design/system/be-system-*.md',
-      'outputs/design/system/api-contract-*.md',
+      'architecture/system/fe-system-*.md',
+      'architecture/system/be-system-*.md',
+      'architecture/system/api-contract-*.md',
     ]);
   });
 
@@ -76,7 +76,7 @@ describe('getDefaultTargetPaths — matrix-derived defaults', () => {
     // Visual gen intents define `outputs: []` because the asset filename
     // is decided at runtime by the model. The matrix dir is still the
     // canonical staging location.
-    expect(getDefaultTargetPaths('gen-visual-logo')).toEqual(['inputs/assets/gen']);
+    expect(getDefaultTargetPaths('gen-visual-logo')).toEqual(['assets/gen']);
   });
 
   it('rev-plan → undefined (kind: revise has no synthesisable target)', () => {
@@ -127,7 +127,7 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
     fs.rmSync(featurePath, { recursive: true, force: true });
   });
 
-  it('gen-plan + explicit:true + service domain + target:undefined → RAC.target = ["inputs/sources/prd.md"]', async () => {
+  it('gen-plan + explicit:true + service domain + target:undefined → RAC.target = ["plan/prd.md"]', async () => {
     const node = createDetectNode(makeNoopStrategy());
     const state = makeState(
       { intent: 'gen-plan', explicit: true, domain: 'service' },
@@ -139,14 +139,14 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
     expect(result.resolvedAction).toBeDefined();
     expect(result.resolvedAction!.intent).toBe('gen-plan');
     expect(result.resolvedAction!.source).toBe('explicit');
-    expect(result.resolvedAction!.target).toEqual(['inputs/sources/prd.md']);
+    expect(result.resolvedAction!.target).toEqual(['plan/prd.md']);
     // Sanity: hasExplicitFields should now be true because target was
     // populated by the fallback. Downstream prompts gate `{{#if
     // targetPath}}` on this — proving the regression channel is closed.
     expect(result.resolvedAction!.hasExplicitFields).toBe(true);
   });
 
-  it('gen-plan + explicit:true + game domain + target:undefined → RAC.target = ["inputs/sources/gdd.md"]', async () => {
+  it('gen-plan + explicit:true + game domain + target:undefined → RAC.target = ["plan/gdd.md"]', async () => {
     // Domain-aware filename split: the plan job's canonical output is
     // `gdd.md` for game projects so the system prompt's "Target Path"
     // section, the disk writer, and the FE preview all converge on the
@@ -160,7 +160,7 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
 
     const result = await node(state);
 
-    expect(result.resolvedAction!.target).toEqual(['inputs/sources/gdd.md']);
+    expect(result.resolvedAction!.target).toEqual(['plan/gdd.md']);
   });
 
   it('gen-plan + explicit:true + no domain → service-default RAC.target', async () => {
@@ -175,12 +175,12 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
 
     const result = await node(state);
 
-    expect(result.resolvedAction!.target).toEqual(['inputs/sources/prd.md']);
+    expect(result.resolvedAction!.target).toEqual(['plan/prd.md']);
   });
 
   it('explicit-supplied target wins over the matrix default (no clobbering)', async () => {
     const node = createDetectNode(makeNoopStrategy());
-    const userTarget = ['inputs/sources/custom-prd.md'];
+    const userTarget = ['plan/custom-prd.md'];
     const state = makeState(
       { intent: 'gen-plan', explicit: true, target: userTarget, domain: 'service' },
       featurePath,
@@ -201,7 +201,7 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
     const result = await node(state);
 
     expect(result.resolvedAction!.target).toEqual([
-      'outputs/design/system/fe-system-*.md',
+      'architecture/system/fe-system-*.md',
     ]);
   });
 
@@ -231,26 +231,19 @@ describe('createDetectNode — explicit branch default-target invariant', () => 
 // safety predicate must:
 //
 //   - Allow only feature-relative paths under whitelisted prefixes.
+//     Today the planner only ever writes PRD/GDD plan documents and
+//     evaluation reports, so the whitelist is `plan/` + `meta/evals/`.
 //   - Reject absolute paths (no `/etc/...` escapes).
 //   - Reject any normalised form that climbs out of the feature root.
 //
-// The original dusk-mounding-pilot LLM emitted
-// `outputs/documents/prd.md` — under the `outputs/` prefix → currently
-// permitted. That is intentional: the writer must not silently drop
-// data, even into a non-canonical-but-feature-local location.
-//
 describe('isSafeStagingPath — writer fallback whitelist', () => {
-  it('allows canonical inputs/sources path', () => {
-    expect(isSafeStagingPath('inputs/sources/prd.md')).toBe(true);
+  it('allows canonical plan path', () => {
+    expect(isSafeStagingPath('plan/prd.md')).toBe(true);
+    expect(isSafeStagingPath('plan/gdd.md')).toBe(true);
   });
 
-  it('allows canonical outputs paths (canonical and ad-hoc subdirs)', () => {
-    expect(isSafeStagingPath('outputs/design/system/fe-system-main.md')).toBe(true);
-    // The dusk-mounding-pilot LLM-emitted path itself — a non-canonical
-    // sibling of outputs/ — must still be admitted so the body lands
-    // somewhere instead of vanishing. Operators can grep `outputs/**`
-    // to find recoverable artifacts after a rare regression.
-    expect(isSafeStagingPath('outputs/documents/prd.md')).toBe(true);
+  it('allows canonical eval report path', () => {
+    expect(isSafeStagingPath('meta/evals/prd/eval-2026-04-28.md')).toBe(true);
   });
 
   it('rejects absolute paths', () => {
@@ -260,14 +253,18 @@ describe('isSafeStagingPath — writer fallback whitelist', () => {
 
   it('rejects paths that traverse out of the feature root', () => {
     expect(isSafeStagingPath('../escape/prd.md')).toBe(false);
-    expect(isSafeStagingPath('inputs/sources/../../escape/prd.md')).toBe(false);
-    expect(isSafeStagingPath('outputs/../../etc/passwd')).toBe(false);
+    expect(isSafeStagingPath('plan/../../escape/prd.md')).toBe(false);
+    expect(isSafeStagingPath('meta/../../etc/passwd')).toBe(false);
   });
 
   it('rejects paths outside whitelisted prefixes', () => {
     expect(isSafeStagingPath('sessions/planner/plan.json')).toBe(false);
     expect(isSafeStagingPath('arbitrary/dir/file.md')).toBe(false);
     expect(isSafeStagingPath('prd.md')).toBe(false);
+    // Cross-domain artifacts belong to the architect, not the planner —
+    // the planner writer must not silently drop data into them.
+    expect(isSafeStagingPath('architecture/system/fe-system-main.md')).toBe(false);
+    expect(isSafeStagingPath('visual/ui/ant/ui-tokens.json')).toBe(false);
   });
 
   it('rejects empty / non-string inputs', () => {

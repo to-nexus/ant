@@ -52,17 +52,23 @@ ant-workspaces/{org}/{group}/{project}/
 │   └── (project-specific structure)   # Varies by framework/language
 │
 └── features/{feature}/
-    ├── inputs/                        # [Input]
-    │   ├── assets/                    # Source assets (service/ or game/ subpool)
-    │   └── sources/
-    │       └── prd.md                 # PRD document
+    ├── plan/                          # [Input]
+    │   └── prd.md                     # PRD document
     │
-    ├── outputs/                       # [Intermediate outputs]
-    │   ├── design/
-    │   │   ├── system-design.md       # System design document
-    │   │   ├── ui-spec.json           # UI specification
-    │   │   ├── ui-tokens.json         # Design tokens
-    │   │   └── ui-assets.json         # Asset mapping
+    ├── assets/                        # [Input] Source assets (service/ or game/ subpool)
+    │
+    ├── architecture/                  # [Intermediate outputs]
+    │   ├── system/
+    │   │   └── *-system-*.md          # System design documents
+    │   └── spec/
+    │
+    ├── visual/                        # [Intermediate outputs]
+    │   └── ui/ant/
+    │       ├── ui-spec.json           # UI specification
+    │       ├── ui-tokens.json         # Design tokens
+    │       └── ui-assets.json         # Asset mapping
+    │
+    ├── meta/
     │   └── evals/                     # Evaluation reports
     │       └── code/
     │           └── evalcode-{jobId}.md # Evaluation reports
@@ -86,15 +92,15 @@ ant-workspaces/{org}/{group}/{project}/
 ```markdown
 Read the following files in order:
 
-1. **Check PRD**: `inputs/sources/prd.md`
+1. **Check PRD**: `plan/prd.md`
    - Understand requirements
    - Check tech stack constraints
 
-2. **Check design documents**: `outputs/design/`
-   - system-design.md: Architecture decisions
-   - ui-spec.json: Section-by-section specs
-   - ui-tokens.json: Design tokens
-   - ui-assets.json: Asset mapping
+2. **Check design documents**: `architecture/system/`, `architecture/spec/`, `visual/ui/`
+   - architecture/system/*.md: Architecture decisions
+   - visual/ui/ant/ui-spec.json: Section-by-section specs
+   - visual/ui/ant/ui-tokens.json: Design tokens
+   - visual/ui/ant/ui-assets.json: Asset mapping
 
 3. **Check execution process**: `sessions/`
    - code.json: Task queue, completion status, timing, token usage
@@ -526,7 +532,7 @@ Path: ant-workspaces/{org}/{group}/{project}/features/{feature}/
 ### 8.1 Evaluation Report Location
 
 ```
-features/{feature}/outputs/evals/code/evalcode-{jobId}.md
+features/{feature}/meta/evals/code/evalcode-{jobId}.md
 ```
 
 ### 8.2 Plan Text Location
@@ -627,7 +633,7 @@ Search for arbitrary value patterns in component files
 
 **Pattern**:
 - Commands run in `features/{feature}/` instead of `codebase/`
-- `features/` contains inputs/outputs/sessions, not code
+- `features/` contains plan/architecture/visual/assets/meta/sessions/, not code
 - `codebase/` contains actual project code
 
 **Root Cause**: LLM doesn't distinguish between project folders

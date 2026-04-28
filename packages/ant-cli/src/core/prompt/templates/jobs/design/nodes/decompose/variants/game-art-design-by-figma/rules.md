@@ -121,7 +121,7 @@ Scope and `MC-XXX` / `RW-XXX` in §4 / §6, both inputs MUST be aligned:
 
 | kind       | Where data lives | Production scope                                                       |
 |------------|------------------|------------------------------------------------------------------------|
-| `external` | `inputs/assets/game/<subdir>/<file>` | Production-grade — user-placed sprite export      |
+| `external` | `assets/game/<subdir>/<file>` | Production-grade — user-placed sprite export      |
 | `inline`   | Embedded in JSON (`svg` / `css` / `oscillator`) | Simple-shape / single-tone / short-duration only |
 
 **Inline scope (D21 — Phase 2 css-only policy)**:
@@ -133,7 +133,7 @@ Scope and `MC-XXX` / `RW-XXX` in §4 / §6, both inputs MUST be aligned:
 
 **External scope**:
 
-- The `src` path MUST start with `inputs/assets/game/`
+- The `src` path MUST start with `assets/game/`
 - The `src` MUST point to an extension allowed by the artifact-dir
   policy (Phase 2: images + JSON tilemaps)
 
@@ -148,7 +148,7 @@ DO NOT CREATE:
 - ❌ Deployment / Operations / Infrastructure tasks
 - ❌ Single mega-task that writes all three documents
 - ❌ Empty categories
-- ❌ Tasks targeting `outputs/design/ui/...` or `inputs/assets/service/...`
+- ❌ Tasks targeting `visual/ui/...` or `assets/service/...`
   — those belong to UI design intents (I6 surface boundary)
 {{#if (eq detectedMode "refactor")}}
 - ❌ Multiple category-based tasks (refactor mode = single focused task)
@@ -207,7 +207,7 @@ Emit `<executionTier>N</executionTier>` BEFORE the JSON output.
       "name": "Assets: Entities",
       "targetFile": "game-art-assets.json",
 {{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "Entity asset entries. Scope: nodeId=<entity-frame-id>. Use kind:external for user-placed sprite exports under inputs/assets/game/entities/; use kind:inline for css-only primitives.",
+{{/if}}      "description": "Entity asset entries. Scope: nodeId=<entity-frame-id>. Use kind:external for user-placed sprite exports under assets/game/entities/; use kind:inline for css-only primitives.",
       "priority": 200,
       "parallelGroup": "game-art-assets-entities"
     },

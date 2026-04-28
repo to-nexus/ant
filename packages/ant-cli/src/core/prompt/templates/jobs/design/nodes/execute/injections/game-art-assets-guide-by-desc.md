@@ -5,14 +5,14 @@ Author one category of asset entries in `game-art-assets.json` from a
 directive only — without reference images or Figma frames as grounding.
 
 ### Surface scope (sub-sourced canonical)
-- Output path: `outputs/design/game-art/ant/game-art-assets.json` (mirrors `outputs/design/ui/ant/`).
+- Output path: `visual/game-art/ant/game-art-assets.json` (mirrors `visual/ui/ant/`).
 
 ### ⚠️ CRITICAL: Scope & Surface Boundary
 
 **🚨 READ YOUR TASK DESCRIPTION — generate ONLY the category it specifies!**
 
 - Each category has its own task; do NOT bleed into siblings
-- Do NOT write `outputs/design/ui/...` paths — that is the UI surface
+- Do NOT write `visual/ui/...` paths — that is the UI surface
   (I6 Asset Surface Boundary)
 
 ### Asset-Source Kind Policy (D20 — directive-only inline-first)
@@ -25,7 +25,7 @@ directive only — without reference images or Figma frames as grounding.
 **Directive-only constraint**: Without references or Figma, the LLM
 CANNOT invent production sprite paths — `kind: 'external'` entries are
 allowed only when the directive supplies the file name AND the file is
-present under `inputs/assets/game/...`.
+present under `assets/game/...`.
 
 ### External-asset hook (per-marker)
 
@@ -34,12 +34,12 @@ category is gated by exactly one of them:
 
 | Category      | Gate                                  | External activation                                                            |
 |---------------|---------------------------------------|--------------------------------------------------------------------------------|
-| `sfx`         | `_meta.audioScope === 'external-enabled'` | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `inputs/assets/game/sfx/` |
-| `bgm`         | `_meta.audioScope === 'external-enabled'` | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `inputs/assets/game/bgm/` |
-| `entities`    | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/entities/`        |
-| `particles`   | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/particles/`       |
-| `projectiles` | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `inputs/assets/game/projectiles/`     |
-| `atlas`       | `_meta.visualScope === 'atlas-enabled'`   | `kind: 'external'` atlas JSON + image pairs under `inputs/assets/game/atlas/` |
+| `sfx`         | `_meta.audioScope === 'external-enabled'` | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `assets/game/sfx/` |
+| `bgm`         | `_meta.audioScope === 'external-enabled'` | `kind: 'external'` `.mp3` / `.ogg` / `.wav` under `assets/game/bgm/` |
+| `entities`    | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `assets/game/entities/`        |
+| `particles`   | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `assets/game/particles/`       |
+| `projectiles` | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `assets/game/projectiles/`     |
+| `atlas`       | `_meta.visualScope === 'atlas-enabled'`   | `kind: 'external'` atlas JSON + image pairs under `assets/game/atlas/` |
 
 Under `_meta.audioScope === 'procedural-only'` (default), all SFX / BGM
 entries MUST stay `kind: 'inline'` (`format: 'oscillator'` for SFX, BGM
@@ -108,13 +108,13 @@ custom properties).
 {
   "id": "<stable-id>",
   "kind": "external",
-  "src": "inputs/assets/game/<subdir>/<file>",
+  "src": "assets/game/<subdir>/<file>",
   "format": "svg" | "png" | "jpg" | "webp" | "json",
   "rendering": "sprite" | "graphics-blit" | "div"
 }
 ```
 
-`src` MUST start with `inputs/assets/game/`. The system validates the
+`src` MUST start with `assets/game/`. The system validates the
 file exists; non-existent paths cause task failure.
 
 ### JSON Structure
@@ -149,7 +149,7 @@ Marker derivation:
 **Parallel category task**: use `<append>` to merge your category.
 
 ```xml
-<append path="outputs/design/game-art/ant/game-art-assets.json">
+<append path="visual/game-art/ant/game-art-assets.json">
 {
   "<your-category>": [
     /* entries */
@@ -161,7 +161,7 @@ Marker derivation:
 **First task**: use `<file>` with `_meta`.
 
 ```xml
-<file path="outputs/design/game-art/ant/game-art-assets.json">
+<file path="visual/game-art/ant/game-art-assets.json">
 {
   "_meta": { "audioScope": "procedural-only", "visualScope": "baseline" },
   "<your-category>": [
@@ -179,7 +179,7 @@ Marker derivation:
 3. **inline-first**: external entries only with directive-referenced files
 4. **Inline scope respected**: simple primitives only
 5. **Concept-aligned**: visuals reflect `gameArtTier.concept` mood
-6. **Path safety**: any external `src` starts with `inputs/assets/game/`
+6. **Path safety**: any external `src` starts with `assets/game/`
 7. **Valid JSON**
 
 ### Workflow

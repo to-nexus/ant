@@ -89,8 +89,8 @@ async function validateAssetReferences(state: DesignGraphState): Promise<{
 
   const isGameArt = taskId.startsWith('game-art-assets-');
   const assetPath = isGameArt
-    ? path.join(featurePath, 'outputs', 'design', 'game-art', 'game-art-assets.json')
-    : path.join(featurePath, 'outputs', 'design', 'ui', 'ant', 'ui-assets.json');
+    ? path.join(featurePath, 'visual', 'game-art', 'ant', 'game-art-assets.json')
+    : path.join(featurePath, 'visual', 'ui', 'ant', 'ui-assets.json');
 
   try {
     const content = await fs.readFile(assetPath, 'utf-8');
@@ -688,7 +688,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
   // task-completion edge above; this keeps the pool aligned with the
   // post-RAC SSOT (RAC-resolved artifacts + this job's own outputs).
   // The legacy whole-tree scan helper is intentionally NOT used — it
-  // would pull in arbitrary `outputs/design/**` files that the user did
+  // would pull in arbitrary `architecture/**` / `visual/**` files that the user did
   // not put in the RAC. See `.cursorrules` "state.artifacts Post-RAC
   // SSOT".
   const parallelFeaturePath = state.context.featurePath || '';

@@ -290,7 +290,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const fileList = (decomposeVars.codebaseFilePaths && decomposeVars.codebaseFilePaths.length > 0)
     ? decomposeVars.codebaseFilePaths.map((f: string) => `- ${f}`).join('\n') : '';
   const assetsHint = decomposeVars.runtimeAssetsIndex && decomposeVars.runtimeAssetsIndex.count > 0
-    ? `\n\n## Runtime Assets Available (inputs/assets)\nThere are ${decomposeVars.runtimeAssetsIndex.count} runtime asset file(s) under inputs/assets.\nThese are NOT auto-copied. You MUST add a task to copy them into the correct static asset root for the target app (monorepo-aware).\nCopy rule: preserve relative paths under inputs/assets.\nPlacement rule by format:\n- SVG (.svg) → <app>/src/assets/ (source tree, for SVGR import)\n- Raster (png, jpg, webp) → <app>/public/ (static serving)\nExamples:\n- inputs/assets/icons/x.svg -> <app>/src/assets/icons/x.svg\n- inputs/assets/bg/hero.webp -> <app>/public/bg/hero.webp\nAsset file list (first 50):\n${decomposeVars.runtimeAssetsIndex.files.slice(0, 50).map((f: string) => `- ${f}`).join('\n')}\n`
+    ? `\n\n## Runtime Assets Available (assets/)\nThere are ${decomposeVars.runtimeAssetsIndex.count} runtime asset file(s) under assets/.\nThese are NOT auto-copied. You MUST add a task to copy them into the correct static asset root for the target app (monorepo-aware).\nCopy rule: preserve relative paths under assets/.\nPlacement rule by format:\n- SVG (.svg) → <app>/src/assets/ (source tree, for SVGR import)\n- Raster (png, jpg, webp) → <app>/public/ (static serving)\nExamples:\n- assets/service/icons/x.svg -> <app>/src/assets/icons/x.svg\n- assets/service/images/hero.webp -> <app>/public/bg/hero.webp\nAsset file list (first 50):\n${decomposeVars.runtimeAssetsIndex.files.slice(0, 50).map((f: string) => `- ${f}`).join('\n')}\n`
     : '';
   // Gate flag — decompose activates design-system task guidance
   // whenever ANY UI artifact (ref or context) is present in the
@@ -307,7 +307,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // load sections per task via artifactPolicy.
   //
   // ID = basename — fine for all three UiSource prefixes
-  // (`outputs/design/ui/{ant,figma,handoff}/…`).
+  // (`visual/ui/{ant,figma,handoff}/…`).
   const uiArtifactPaths = pool.ui.map(a => ({
     id: a.path.split('/').pop() ?? a.path,
     role: a.role,

@@ -9,7 +9,7 @@
 import type { DetectStrategy, DetectResult } from '../../../../../common/graph/nodes/detect/types.js';
 import type { DesignGraphState } from '../../state.js';
 import type { InferredAction, Mode } from '@ant/shared';
-import { isFigmaDataPopulated, DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
+import { isFigmaDataPopulated, ARTIFACT_PREFIX } from '@ant/shared';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig.js';
 import { runEstimatingLLMStream } from '../../../../../common/graph/llmHelpers.js';
 import { resolveDesignTargetFiles } from '../../../../../../core/types/detection.js';
@@ -91,7 +91,7 @@ export const designDetectStrategy: DetectStrategy<DesignGraphState> = {
       hasAssets: hasAssets || false,
       assetsList: assetsList || '',
       figmaPopulated: figmaPopulated || false,
-      hasUiDocs: await hasUiDocsOnDisk(featurePath),
+      hasVisualUi: await hasUiDocsOnDisk(featurePath),
       hasUiTokens: await fileExistsInAntDir('ui-tokens.json', featurePath),
       hasUiAssets: await fileExistsInAntDir('ui-assets.json', featurePath),
       hasUiSpec: await fileExistsInAntDir('ui-spec.json', featurePath),
@@ -509,7 +509,7 @@ async function listFilesRecursive(dirPath: string, relativeTo = ''): Promise<str
 }
 
 async function scanInputs(featurePath: string) {
-  const assetsDir = path.join(featurePath, 'inputs/assets');
+  const assetsDir = path.join(featurePath, 'assets');
 
   const assetFiles = await listFilesRecursive(assetsDir);
   const hasAssets = assetFiles.length > 0;
@@ -531,7 +531,7 @@ async function scanInputs(featurePath: string) {
 }
 
 async function fileExistsInAntDir(filename: string, featurePath: string): Promise<boolean> {
-  const antDir = path.join(featurePath, DESIGN_DIR, DESIGN_SUBDIR.UI, 'ant');
+  const antDir = path.join(featurePath, ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, ''));
   try {
     await fsp.access(path.join(antDir, filename));
     return true;

@@ -47,35 +47,6 @@
     }
   },
 
-  "materials": {
-    "sectionTitle": "Materials",
-    "present": "Available",
-    "requiredMissing": "Required for BUILD",
-    "optionalMissing": "Optional — improves accuracy",
-    "namingIssue": "Unrecognized file format",
-    "namingHint": "Expected format: {{pattern}}",
-    "sources": "Source Documents",
-    "sourcesDesc": "PRD, requirements, reference docs — multiple files accepted",
-    "designDirective": "Design Directive",
-    "designDirectiveDesc": "Additional design instructions",
-    "figmaConfig": "Figma Configuration",
-    "figmaConfigDesc": "Figma file URL configuration",
-    "designDocs": "Design Documents",
-    "designDocsDesc": "Used as context if available",
-    "specs": "Feature Specs",
-    "specsDesc": "Implementation specs for code generation",
-    "systemDesign": "System Design",
-    "systemDesignDesc": "Architecture and API design",
-    "uiDesign": "UI Design",
-    "uiDesignDesc": "UI tokens, assets, and specs"
-  },
-
-  "outputs": {
-    "sectionTitle": "Outputs",
-    "empty": "No outputs generated yet",
-    "directory": "Output directory"
-  },
-
   "basis": {
     "title": "Tech Preset",
     "language": "Language",
@@ -176,13 +147,6 @@
     "refsRequired": "Reference files are required"
   },
 
-  "intent": {
-    "pickTitle": "What would you like to do?",
-    "refs": "Reference Files",
-    "context": "Additional Context",
-    "outputDir": "Output directory"
-  },
-
   "emptySlot": {
     "missing": "No {{name}} found",
     "addFile": "Add file...",
@@ -212,12 +176,5 @@
     "explain-spec": "Please explain the spec documents",
     "explain-plan": "Please explain the PRD",
     "explain-visual": "Please explain the visual assets"
-  },
-
-  "status": {
-    "buildReady": "BUILD ready",
-    "hasOutput": "Has outputs",
-    "materialsMissing": "Materials needed",
-    "namingWarning": "Naming issues"
   }
 }

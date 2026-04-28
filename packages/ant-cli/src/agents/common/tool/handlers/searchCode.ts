@@ -78,7 +78,15 @@ export async function handleSearchCode(
 
   const wantsWorkspaceScope = (() => {
     const fp = (file_pattern || '').replace(/\\/g, '/').replace(/^\.?\//, '');
-    return fp.startsWith('features/') || fp.startsWith('inputs/') || fp.startsWith('outputs/') || fp.startsWith('sessions/');
+    return (
+      fp.startsWith('features/') ||
+      fp.startsWith('plan/') ||
+      fp.startsWith('architecture/') ||
+      fp.startsWith('visual/') ||
+      fp.startsWith('assets/') ||
+      fp.startsWith('meta/') ||
+      fp.startsWith('sessions/')
+    );
   })();
   const resolvedRoot = await resolveToolDirectory(ctx, wantsWorkspaceScope ? 'features' : '.');
 

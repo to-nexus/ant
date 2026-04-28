@@ -67,7 +67,7 @@ Constraints:
 ### 5. Forbidden code-time shortcuts
 
 - ❌ Inferring genre / coreLoop from the directive at code-emission time without the LLM's emitted decision tag — the basis decision is the SSOT.
-- ❌ Hardcoding genre-specific magic numbers (`MAX_COMBO = 5`, `BOARD_SIZE = 8`) without a sibling spec entry — magic numbers belong to `outputs/design/spec/...`.
+- ❌ Hardcoding genre-specific magic numbers (`MAX_COMBO = 5`, `BOARD_SIZE = 8`) without a sibling spec entry — magic numbers belong to `architecture/spec/...`.
 - ❌ Mixing two genres' HUD idioms in one React HUD tree (a paddle / ball readout in a `cardSolitaire` runtime) — the genre boundary is also a HUD boundary.
 - ❌ Coercing an out-of-matrix `(genre, coreLoop)` pair in code — the matrix gate is enforced at decompose / parse, code MUST trust the upstream filter.
 - ❌ Branching on the **axes inside a genre's systems-shape category** (e.g. `if (steeringAxis === 'X-only') { ... } else if (steeringAxis === 'radial') { ... }`) inside a core / shared module — these axes are project-specific spec inputs; the reducer reads them as data, not control flow. Genre-level branching at the outer router boundary is allowed (one genre → one reducer entry); axis-level branching belongs inside the reducer body and is driven by spec-loaded values.

@@ -26,9 +26,9 @@ modes:
       all_of:
         - type: has_directive
         - none_of:
-            - path: inputs/sources
+            - path: plan
               type: directory_with_files
-            - path: inputs/assets
+            - path: assets
               type: directory_with_files
             - type: figma_config
     prerequisites:
@@ -58,7 +58,7 @@ modes:
     # system-design or spec depending on workspace shape.
     detection:
       any_of:
-        - path: inputs/assets
+        - path: assets
           type: directory_with_files
         - type: figma_config
     prerequisites:
@@ -67,17 +67,17 @@ modes:
           type: any_of
           items:
             - type: file_with_content
-              path: inputs/prd.md
-              description: PRD document (inputs/sources/)
+              path: plan/prd.md
+              description: PRD document (plan/)
             - type: has_directive
               description: Instructions entered via chat
             - type: figma_config
-              description: Figma design files configured (outputs/design/ui/figma/figma.json)
+              description: Figma design files configured (visual/ui/figma/figma.json)
       recommended:
         - id: assets
           type: directory_with_files
-          path: inputs/assets
-          description: Asset files like icons and images (inputs/assets/)
+          path: assets
+          description: Asset files like icons and images (assets/)
     scope:
       - Design tokens (colors, typography, spacing, shadows)
       - Asset mappings and icon system
@@ -101,7 +101,7 @@ modes:
     # directive shape suggests system/architecture work — fallback path).
     detection:
       any_of:
-        - path: inputs/sources
+        - path: plan
           type: directory_with_files
         - type: has_directive
     prerequisites:
@@ -110,8 +110,8 @@ modes:
           type: any_of
           items:
             - type: file_with_content
-              path: inputs/prd.md
-              description: PRD document (inputs/prd.md)
+              path: plan/prd.md
+              description: PRD document (plan/prd.md)
             - type: has_directive
               description: Instructions entered via chat
       recommended:

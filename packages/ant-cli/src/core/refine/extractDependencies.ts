@@ -11,7 +11,7 @@
  *
  * Pipeline-mode awareness:
  *
- * - **infer**: `intent` matrix path-default activates `inputs/sources/*`
+ * - **infer**: `intent` matrix path-default activates `plan/*`
  *   (PRD/GDD) as `role='ref'`, so the LLM almost always sees PRD/GDD
  *   content and cites stable ids. `hasPrdRef` is true.
  * - **explicit + PRD ref**: same shape — pool carries the plan doc as
@@ -42,8 +42,8 @@ export interface TaskDependency {
   citedSections: string[];
   /**
    * Whether the design checkpoint's `resolvedAction.refs` contained the
-   * canonical plan filename (`inputs/sources/prd.md` or `gdd.md`) at
-   * the time this task was built.
+   * canonical plan filename (`plan/prd.md` or `plan/gdd.md`) at the
+   * time this task was built.
    *
    * When false, `detectAffectedTasks` MUST exclude this task from the
    * affected list — the LLM never saw the plan doc so the citation
@@ -118,7 +118,7 @@ function extractIdentifiers(haystack: string | undefined | null): string[] {
   return [...found].sort();
 }
 
-const PLAN_PATHS = ['inputs/sources/prd.md', 'inputs/sources/gdd.md'];
+const PLAN_PATHS = ['plan/prd.md', 'plan/gdd.md'];
 
 /**
  * Decide whether the checkpoint's RAC.refs contained a canonical plan

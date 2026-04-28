@@ -134,9 +134,9 @@ export interface BaseTask {
    * When unset, taskType-based default rules apply (backward compatible).
    *
    * Examples:
-   * - `['outputs/design/spec/spec-auth']` → specific spec only
-   * - `['outputs/design/system/fe-system-main.md']` → specific system design
-   * - `['outputs/design/ui/tokens', 'outputs/design/ui/spec/header']` → UI subset
+   * - `['architecture/spec/spec-auth']` → specific spec only
+   * - `['architecture/system/fe-system-main.md']` → specific system design
+   * - `['visual/ui/tokens', 'visual/ui/ant/spec/header']` → UI subset
    */
   include?: string[];
 

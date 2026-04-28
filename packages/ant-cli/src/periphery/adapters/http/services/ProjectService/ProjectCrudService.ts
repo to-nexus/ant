@@ -484,9 +484,9 @@ export class ProjectCrudService {
    *
    * Phase 2 (D22) — when `WorkspaceConfig.domain` changes, every feature
    * under the project gets a one-shot idempotent asset migration so the
-   * new pool layout (`inputs/assets/{service|game}/...`) is reachable on
-   * the next agent turn. Migration runs after the config write so a
-   * crash mid-migration leaves config + tree in a consistent post-toggle
+   * new pool layout (`assets/{service|game}/...`) is reachable on the
+   * next agent turn. Migration runs after the config write so a crash
+   * mid-migration leaves config + tree in a consistent post-toggle
    * state (re-running the toggle is a noop).
    */
   async updateProjectConfig(projectId: string, config: any, userContext: UserContext): Promise<void> {

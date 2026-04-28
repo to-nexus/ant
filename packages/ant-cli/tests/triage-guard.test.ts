@@ -5,14 +5,15 @@ import type { WorkspaceState } from '../src/agents/common/graph/nodes/triage/typ
 
 function makeWs(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
   return {
-    hasPrd: false,
-    hasDirective: false,
+    hasPlan: false,
+    hasMetaDirectives: false,
     hasAssets: false,
     hasFigmaConfig: false,
-    hasSystemDesignDoc: false,
-    hasUiDocs: false,
-    hasEvals: false,
-    hasSpecDocs: false,
+    hasArchitectureSystem: false,
+    hasVisualUi: false,
+    hasVisualGameArt: false,
+    hasMetaEvals: false,
+    hasArchitectureSpec: false,
     hasDesignDoc: false,
     hasCodebase: false,
     ...overrides,
@@ -37,11 +38,11 @@ describe('hasTargetJobPrerequisites (SSOT-driven)', () => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   describe('target = design', () => {
     it('returns true when directive exists (ui-design via has_directive)', () => {
-      expect(hasTargetJobPrerequisites('design', makeWs({ hasDirective: true }))).toBe(true);
+      expect(hasTargetJobPrerequisites('design', makeWs({ hasMetaDirectives: true }))).toBe(true);
     });
 
     it('returns true when PRD exists (system-design via PRD)', () => {
-      expect(hasTargetJobPrerequisites('design', makeWs({ hasPrd: true }))).toBe(true);
+      expect(hasTargetJobPrerequisites('design', makeWs({ hasPlan: true }))).toBe(true);
     });
 
     it('returns true when Figma config exists (ui-design via figma_config)', () => {
@@ -59,20 +60,46 @@ describe('hasTargetJobPrerequisites (SSOT-driven)', () => {
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Target: code
-  // - new-development required: outputs/design || directive (any_of)
+  // - new-development required: architecture (system/spec) || visual || directive (any_of)
   // - modification required: directive
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   describe('target = code', () => {
     it('returns true when directive exists (modification mode)', () => {
-      expect(hasTargetJobPrerequisites('code', makeWs({ hasDirective: true }))).toBe(true);
+      expect(hasTargetJobPrerequisites('code', makeWs({ hasMetaDirectives: true }))).toBe(true);
     });
 
-    it('returns true when design doc exists (new-development mode)', () => {
-      expect(hasTargetJobPrerequisites('code', makeWs({ hasDesignDoc: true }))).toBe(true);
+    it('returns true when an architecture/system doc exists (new-development mode)', () => {
+      // workspaceAnalyzer 가 디스크에서 architecture/system/ 산출물을 발견하면
+      // hasArchitectureSystem 와 (집계인) hasDesignDoc 를 동시에 켠다. AgentRegistry
+      // 는 granular flag 만 본다 — fixture 도 invariant 를 따라 둘 다 세팅.
+      expect(
+        hasTargetJobPrerequisites(
+          'code',
+          makeWs({ hasArchitectureSystem: true, hasDesignDoc: true }),
+        ),
+      ).toBe(true);
+    });
+
+    it('returns true when an architecture/spec doc exists (new-development via spec)', () => {
+      expect(
+        hasTargetJobPrerequisites(
+          'code',
+          makeWs({ hasArchitectureSpec: true, hasDesignDoc: true }),
+        ),
+      ).toBe(true);
+    });
+
+    it('returns true when a visual/ui doc exists (new-development via UI)', () => {
+      expect(
+        hasTargetJobPrerequisites(
+          'code',
+          makeWs({ hasVisualUi: true, hasDesignDoc: true }),
+        ),
+      ).toBe(true);
     });
 
     it('returns false when only PRD exists (PRD is not a code prereq)', () => {
-      expect(hasTargetJobPrerequisites('code', makeWs({ hasPrd: true }))).toBe(false);
+      expect(hasTargetJobPrerequisites('code', makeWs({ hasPlan: true }))).toBe(false);
     });
 
     it('returns false when only codebase indexed (codebase is recommended, not required)', () => {
@@ -107,11 +134,11 @@ describe('hasTargetJobPrerequisites (SSOT-driven)', () => {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   describe('target = plan', () => {
     it('returns true when directive provided (generate mode)', () => {
-      expect(hasTargetJobPrerequisites('plan', makeWs({ hasDirective: true }))).toBe(true);
+      expect(hasTargetJobPrerequisites('plan', makeWs({ hasMetaDirectives: true }))).toBe(true);
     });
 
     it('returns true when PRD and directive exist (refine/explain mode)', () => {
-      expect(hasTargetJobPrerequisites('plan', makeWs({ hasPrd: true, hasDirective: true }))).toBe(true);
+      expect(hasTargetJobPrerequisites('plan', makeWs({ hasPlan: true, hasMetaDirectives: true }))).toBe(true);
     });
 
     it('returns false when neither PRD nor directive exists', () => {
@@ -119,7 +146,7 @@ describe('hasTargetJobPrerequisites (SSOT-driven)', () => {
     });
 
     it('returns false when only PRD exists without directive (refine requires directive)', () => {
-      expect(hasTargetJobPrerequisites('plan', makeWs({ hasPrd: true }))).toBe(false);
+      expect(hasTargetJobPrerequisites('plan', makeWs({ hasPlan: true }))).toBe(false);
     });
   });
 
@@ -138,8 +165,8 @@ describe('hasTargetJobPrerequisites (SSOT-driven)', () => {
   // design's spec mode, which only requires has_directive.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   describe('regression: code→design(spec) redirect with directive only', () => {
-    it('design guard passes when only hasDirective (enables spec mode redirect)', () => {
-      expect(hasTargetJobPrerequisites('design', makeWs({ hasDirective: true }))).toBe(true);
+    it('design guard passes when only hasMetaDirectives (enables spec mode redirect)', () => {
+      expect(hasTargetJobPrerequisites('design', makeWs({ hasMetaDirectives: true }))).toBe(true);
     });
 
     it('design guard blocks when no inputs at all', () => {
@@ -160,28 +187,28 @@ describe('AgentRegistry.detectMode("design", ws) priority', () => {
   });
 
   it('directive only (code workspace) → spec', () => {
-    expect(AgentRegistry.detectMode('design', makeWs({ hasDirective: true }))).toBe('spec');
+    expect(AgentRegistry.detectMode('design', makeWs({ hasMetaDirectives: true }))).toBe('spec');
   });
 
   it('figma config (with directive) → ui-design (visual artifact wins)', () => {
     expect(
-      AgentRegistry.detectMode('design', makeWs({ hasDirective: true, hasFigmaConfig: true })),
+      AgentRegistry.detectMode('design', makeWs({ hasMetaDirectives: true, hasFigmaConfig: true })),
     ).toBe('ui-design');
   });
 
   it('assets only (with directive) → ui-design', () => {
     expect(
-      AgentRegistry.detectMode('design', makeWs({ hasDirective: true, hasAssets: true })),
+      AgentRegistry.detectMode('design', makeWs({ hasMetaDirectives: true, hasAssets: true })),
     ).toBe('ui-design');
   });
 
   it('PRD only (no visual, no directive) → system-design', () => {
-    expect(AgentRegistry.detectMode('design', makeWs({ hasPrd: true }))).toBe('system-design');
+    expect(AgentRegistry.detectMode('design', makeWs({ hasPlan: true }))).toBe('system-design');
   });
 
   it('PRD + directive (no visual) → system-design (PRD takes precedence over spec)', () => {
     expect(
-      AgentRegistry.detectMode('design', makeWs({ hasPrd: true, hasDirective: true })),
+      AgentRegistry.detectMode('design', makeWs({ hasPlan: true, hasMetaDirectives: true })),
     ).toBe('system-design');
   });
 

@@ -15,14 +15,15 @@ import type { WorkspaceState } from '../src/agents/common/graph/nodes/triage/typ
 
 function makeWs(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
   return {
-    hasPrd: false,
-    hasDirective: true,
+    hasPlan: false,
+    hasMetaDirectives: true,
     hasAssets: false,
     hasFigmaConfig: false,
-    hasSystemDesignDoc: false,
-    hasUiDocs: false,
-    hasEvals: false,
-    hasSpecDocs: false,
+    hasArchitectureSystem: false,
+    hasVisualUi: false,
+    hasVisualGameArt: false,
+    hasMetaEvals: false,
+    hasArchitectureSpec: false,
     hasDesignDoc: false,
     hasCodebase: false,
     ...overrides,
@@ -107,20 +108,20 @@ describe('Artifact Ownership Routing', () => {
     });
 
     it('allows redirect to plan when PRD exists (explain/refine mode)', () => {
-      expect(hasTargetJobPrerequisites('plan', makeWs({ hasPrd: true }))).toBe(true);
+      expect(hasTargetJobPrerequisites('plan', makeWs({ hasPlan: true }))).toBe(true);
     });
 
     it('allows redirect to code when directive provided (modification mode)', () => {
-      // makeWs() defaults to hasDirective: true → matches code.yaml modification mode prereq
+      // makeWs() defaults to hasMetaDirectives: true → matches code.yaml modification mode prereq
       expect(hasTargetJobPrerequisites('code', makeWs())).toBe(true);
     });
 
     it('blocks redirect to code when neither directive nor design exists', () => {
-      expect(hasTargetJobPrerequisites('code', makeWs({ hasDirective: false }))).toBe(false);
+      expect(hasTargetJobPrerequisites('code', makeWs({ hasMetaDirectives: false }))).toBe(false);
     });
 
     it('allows redirect to design when PRD exists', () => {
-      expect(hasTargetJobPrerequisites('design', makeWs({ hasPrd: true }))).toBe(true);
+      expect(hasTargetJobPrerequisites('design', makeWs({ hasPlan: true }))).toBe(true);
     });
 
     it('allows redirect to design when only directive exists (spec mode regression guard)', () => {
@@ -134,7 +135,7 @@ describe('Artifact Ownership Routing', () => {
         userInput: 'PRD에 기술스택이 뭐가 있어?',
         currentJob: 'design',
         currentAgent: 'architect',
-        workspaceState: makeWs({ hasPrd: true }),
+        workspaceState: makeWs({ hasPlan: true }),
         jobCapabilities: AgentRegistry.generatePromptContext(),
       });
 
@@ -149,7 +150,7 @@ describe('Artifact Ownership Routing', () => {
         userInput: 'PRD 분석해줘',
         currentJob: 'design',
         currentAgent: 'architect',
-        workspaceState: makeWs({ hasPrd: true }),
+        workspaceState: makeWs({ hasPlan: true }),
         jobCapabilities: AgentRegistry.generatePromptContext(),
       });
 

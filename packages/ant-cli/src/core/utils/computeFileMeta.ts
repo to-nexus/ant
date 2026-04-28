@@ -7,6 +7,7 @@
  */
 
 import type { FileResourceMeta } from '@ant/shared';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 import { getTemplateReason } from './templateDetector';
 
 export interface ComputeFileMetaArgs {
@@ -17,10 +18,10 @@ export interface ComputeFileMetaArgs {
 }
 
 /**
- * Files under `inputs/sources/` are evaluated for template/empty state;
+ * Files under `plan/` are evaluated for template/empty state;
  * other paths report `isTemplate=false` unconditionally.
  */
-const TEMPLATE_EVAL_PREFIX = 'inputs/sources/';
+const TEMPLATE_EVAL_PREFIX = `${ARTIFACT_PREFIX.SOURCES}/`;
 
 export function computeFileMeta(args: ComputeFileMetaArgs): FileResourceMeta {
   const shouldEvaluate = args.relativePath.startsWith(TEMPLATE_EVAL_PREFIX);

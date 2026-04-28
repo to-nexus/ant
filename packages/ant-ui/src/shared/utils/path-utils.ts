@@ -16,14 +16,14 @@ export interface PathItem {
  *
  * @example
  * normalizePaths([
- *   { path: 'outputs', type: 'directory' },
- *   { path: 'outputs/design/spec/spec-example.md', type: 'file' },
- *   { path: 'outputs/design', type: 'directory' },
- *   { path: 'inputs/spec.md', type: 'file' },
+ *   { path: 'architecture', type: 'directory' },
+ *   { path: 'architecture/spec/spec-example.md', type: 'file' },
+ *   { path: 'architecture/spec', type: 'directory' },
+ *   { path: 'plan/prd.md', type: 'file' },
  * ])
  * // => [
- * //   { path: 'outputs', type: 'directory' },
- * //   { path: 'inputs/spec.md', type: 'file' },
+ * //   { path: 'architecture', type: 'directory' },
+ * //   { path: 'plan/prd.md', type: 'file' },
  * // ]
  */
 export function normalizePaths(items: PathItem[]): PathItem[] {

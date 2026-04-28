@@ -6,7 +6,7 @@
 - `ui-assets.json` — asset source→destination map
 - `ui-spec.json` — layout structure and visual behaviour per section
 
-Path: `outputs/design/ui/ant/`. Sections of `ui-spec.json` are addressable individually; the pool exposes each as `outputs/design/ui/ant/spec/{id}`.
+Path: `visual/ui/ant/`. Sections of `ui-spec.json` are addressable individually; the pool exposes each as `visual/ui/ant/spec/{id}`.
 
 ### Principle (Authority)
 

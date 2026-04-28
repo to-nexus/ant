@@ -24,7 +24,7 @@ export interface CompactOptions {
   /** Human-readable document label shown in the compacted header. */
   label: string;
   /**
-   * File path for read_file instruction (e.g. "outputs/design/ui/ant/ui-assets.json").
+   * File path for read_file instruction (e.g. "visual/ui/ant/ui-assets.json").
    * When omitted the compacted output omits the read_file hint.
    */
   filePath?: string;

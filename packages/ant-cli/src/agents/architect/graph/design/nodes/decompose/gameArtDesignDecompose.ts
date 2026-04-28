@@ -3,7 +3,7 @@
  *
  * LLM-driven task decomposition for **game-art design work** —
  * `game-art-tokens.json` / `game-art-assets.json` / `game-art-spec.json`
- * under `outputs/design/game-art/` (D24, flat structure).
+ * under `visual/game-art/ant/` (D24-revised v8, sub-source structure).
  *
  * Key differences from `decomposeUiDesign`:
  *   - Surface = game-art (not UI). Output dir is flat (no ant/figma/handoff).
@@ -97,7 +97,7 @@ export async function decomposeGameArtDesign(
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/game-art-design-${variant}/base`;
 
-  // Asset count is sourced from `inputs/assets/game/` (D19-revised) when
+  // Asset count is sourced from `assets/game/` (D19-revised) when
   // workspace.domain is `game`. The pool view's `uiAssetsList` is reused
   // here because the asset-handler routing (D22 auto-effect) already
   // points it at the game pool. If a future reorg splits the lists,

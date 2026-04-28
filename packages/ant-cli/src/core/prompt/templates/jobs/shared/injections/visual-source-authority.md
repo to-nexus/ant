@@ -6,9 +6,9 @@ A code job consumes exactly one `UiSource` at a time. Which source is active is 
 
 | `uiSource` | Primary visual source | How it is read |
 |------------|----------------------|----------------|
-| `ant`      | `outputs/design/ui/ant/{ui-tokens, ui-assets, ui-spec}.json` | Direct JSON read (schema-based) |
+| `ant`      | `visual/ui/ant/{ui-tokens, ui-assets, ui-spec}.json` | Direct JSON read (schema-based) |
 | `figma`    | Figma workfile (URL only in `figma.json`) | MCP tools at execute time |
-| `handoff`  | `outputs/design/ui/handoff/**` files | Manifest stubs injected; contents read on demand via `read_file` |
+| `handoff`  | `visual/ui/handoff/**` files | Manifest stubs injected; contents read on demand via `read_file` |
 | *(none)*   | VisualTier policy or framework defaults | See fallback rules |
 
 The three sources NEVER coexist — RAC resolution rejects mixed selections. The prompts therefore receive exactly one interpretation partial via `ui-source-dispatch`.

@@ -49,7 +49,7 @@ describe('buildBreadcrumb — bubble-up tiers', () => {
 
   it('LARGE tier (51–200): specs + top-level paths, capped', () => {
     const paths = Array.from({ length: 60 }, (_, i) => `src/module${i % 10}/${i}.ts`);
-    const specs = ['docs/spec-a.md', 'docs/spec-b.md', 'outputs/design/design.md'];
+    const specs = ['docs/spec-a.md', 'docs/spec-b.md', 'architecture/design.md'];
     const touched = [...specs, ...paths];
     const bc = buildBreadcrumb(baseInput({ touched }));
     expect(bc.anchors.specs).toBeDefined();

@@ -2,7 +2,7 @@
 
 ### Principle (Identity of the input)
 
-`figma.json` at `outputs/design/ui/figma/figma.json` is a **workfile reference**, not a design artifact. It holds a Figma URL (plus derived `fileKey` / `nodeId`) and **nothing else** — no tokens, no exported frames, no variable dumps.
+`figma.json` at `visual/ui/figma/figma.json` is a **workfile reference**, not a design artifact. It holds a Figma URL (plus derived `fileKey` / `nodeId`) and **nothing else** — no tokens, no exported frames, no variable dumps.
 
 ### Principle (Observable truth)
 

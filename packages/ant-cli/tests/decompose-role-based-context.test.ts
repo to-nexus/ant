@@ -129,9 +129,9 @@ const GAME_STATE = { resolvedAction: { domain: 'game' as const } };
 describe('buildDecomposeContext — RAC pipeline mode coverage', () => {
   it('explicit-ref-only: user picked PRD as the sole ref → role=ref sources, no context bucket', () => {
     // Mirrors detect/index.ts L113-148 (explicit branch).
-    // metadata.refs=['inputs/sources/prd.md'] → loadResolvedArtifacts
+    // metadata.refs=['plan/prd.md'] → loadResolvedArtifacts
     // marks the loaded file with role='ref'.
-    const view = pool(ref('inputs/sources/prd.md', 'PRD content'));
+    const view = pool(ref('plan/prd.md', 'PRD content'));
     const c = buildDecomposeContext(view, SERVICE_STATE, {
       includePreviousDesign: true,
       toolModeThreshold: THRESHOLD,
@@ -150,8 +150,8 @@ describe('buildDecomposeContext — RAC pipeline mode coverage', () => {
     // metadata.context — `loadResolvedArtifacts` emits role='context'
     // and the helper MUST surface it in the context bucket only.
     const view = pool(
-      ref('inputs/sources/prd.md', 'PRD content'),
-      ctx('outputs/design/system/be-system-main.md', 'previous BE design'),
+      ref('plan/prd.md', 'PRD content'),
+      ctx('architecture/system/be-system-main.md', 'previous BE design'),
     );
     const c = buildDecomposeContext(view, SERVICE_STATE, {
       includePreviousDesign: true,
@@ -165,11 +165,11 @@ describe('buildDecomposeContext — RAC pipeline mode coverage', () => {
 
   it('infer-default: intent-matrix path-defaulted PRD as ref → identical output to explicit-ref-only', () => {
     // After `mergeWithMetadata` (rac.ts L595-613) the inferred
-    // `inputs/sources/prd.md` ref carries through to RAC.refs and the
+    // `plan/prd.md` ref carries through to RAC.refs and the
     // pool sees role='ref'. The decompose helper is mode-agnostic —
     // the partial output should be indistinguishable from the explicit
     // path because role provenance, not pipeline branch, is the SSOT.
-    const view = pool(ref('inputs/sources/prd.md', 'PRD content'));
+    const view = pool(ref('plan/prd.md', 'PRD content'));
     const c = buildDecomposeContext(view, SERVICE_STATE, {
       includePreviousDesign: true,
       toolModeThreshold: THRESHOLD,
@@ -184,8 +184,8 @@ describe('buildDecomposeContext — RAC pipeline mode coverage', () => {
     // The previous-design system-design artifact is NOT in sources,
     // so it lands on `refs.previousDesign` (not `refs.sources`).
     const view = pool(
-      ref('inputs/sources/prd.md', 'PRD content'),
-      ref('outputs/design/system/be-system-main.md', 'BE design content'),
+      ref('plan/prd.md', 'PRD content'),
+      ref('architecture/system/be-system-main.md', 'BE design content'),
     );
     const c = buildDecomposeContext(view, SERVICE_STATE, {
       includePreviousDesign: true,
@@ -235,12 +235,12 @@ describe('buildDecomposeContext — tool-mode size accounting', () => {
   it('large explicit/additive ref outside sources/* still trips tool-mode', () => {
     // Regression guard: pre-(γ) implementation only measured
     // sources/* (`pool.sourcesSize()`), so a user adding a 250K
-    // context artifact under outputs/design/... would silently keep
+    // context artifact under architecture/... would silently keep
     // sources/* inline. The (γ) helper sums every ref+context
     // artifact's content length so the toolModeThreshold reflects
     // the actual prompt budget pressure.
-    const big = ctx('outputs/design/system/be-system-main.md', 'X'.repeat(250_000));
-    const small = ref('inputs/sources/prd.md', 'tiny');
+    const big = ctx('architecture/system/be-system-main.md', 'X'.repeat(250_000));
+    const small = ref('plan/prd.md', 'tiny');
     const c = buildDecomposeContext(pool(small, big), SERVICE_STATE, {
       includePreviousDesign: false,
       toolModeThreshold: 200_000,
@@ -253,7 +253,7 @@ describe('buildDecomposeContext — tool-mode size accounting', () => {
 
   it('small pool stays inline', () => {
     const c = buildDecomposeContext(
-      pool(ref('inputs/sources/prd.md', 'tiny')),
+      pool(ref('plan/prd.md', 'tiny')),
       SERVICE_STATE,
       { includePreviousDesign: false, toolModeThreshold: 200_000 },
     );
@@ -269,22 +269,22 @@ describe('buildDecomposeContext — tool-mode size accounting', () => {
 describe('buildDecomposeContext — arbitrary explicit/additive paths', () => {
   it('explicit ref outside sources/* + outside system-design lands in refs.other', () => {
     // A user explicitly promoting a spec to ref (e.g. via
-    // `actionMetadata.refs=['outputs/design/spec/spec-login.md']`)
+    // `actionMetadata.refs=['architecture/spec/spec-login.md']`)
     // MUST surface in the partial; the legacy implementation dropped
     // it because the inline string only concatenated sources/*.
-    const view = pool(ref('outputs/design/spec/spec-login.md', 'login spec'));
+    const view = pool(ref('architecture/spec/spec-login.md', 'login spec'));
     const c = buildDecomposeContext(view, SERVICE_STATE, {
       includePreviousDesign: false,
       toolModeThreshold: THRESHOLD,
     });
     expect(c.refs.other).toEqual([
-      { path: 'outputs/design/spec/spec-login.md', content: 'login spec' },
+      { path: 'architecture/spec/spec-login.md', content: 'login spec' },
     ]);
     expect(c.refs.sources).toBeUndefined();
   });
 
   it('context-only previous design lands in context.previousDesign, not refs', () => {
-    const view = pool(ctx('outputs/design/system/be-system-main.md', 'prev'));
+    const view = pool(ctx('architecture/system/be-system-main.md', 'prev'));
     const c = buildDecomposeContext(view, SERVICE_STATE, {
       includePreviousDesign: true,
       toolModeThreshold: THRESHOLD,

@@ -44,7 +44,7 @@ Constraints:
 
 ### 3. External fallback (per-category loading rules)
 
-`kind: 'external'` entries point at files under `inputs/assets/game/{category}/...`. The loading boundary is engine-specific and lives in the engine partial; this file commits which categories are gated by which marker.
+`kind: 'external'` entries point at files under `assets/game/{category}/...`. The loading boundary is engine-specific and lives in the engine partial; this file commits which categories are gated by which marker.
 
 #### 3.1 Audio categories — gated by `audioScope`
 
@@ -96,20 +96,20 @@ Under `audioScope === 'procedural-only'`, `fileBased` and `hybrid` BOTH degrade 
 
 ### 4. Domain-Surface Boundary (I7-revised — D28)
 
-A game-domain code job consumes **one** asset surface — the game-art catalog under `outputs/design/game-art/ant/` (sub-sourced canonical, mirrors `outputs/design/ui/ant/`). The service-domain UI catalog (`outputs/design/ui/ant/ui-*.json`) is NOT in scope (D28 vertical split).
+A game-domain code job consumes **one** asset surface — the game-art catalog under `visual/game-art/ant/` (sub-sourced canonical, mirrors `visual/ui/ant/`). The service-domain UI catalog (`visual/ui/ant/ui-*.json`) is NOT in scope (D28 vertical split).
 
 The render paths split by **coordinate system** (see `jobs/code/domain/game.md` §7) — screen-space UI is React, world-space UI is the engine canvas. Both paths pull tokens / specs from the same `game-art-*` SSOT so the two surfaces share one art direction:
 
 | Render path (coordinate system) | Owner | Reads | Loader |
 |---|---|---|---|
-| Screen-space — React HUD overlay (HUD readouts / menus / dialog / settings / page chrome) | React (HTML/CSS) | `game-art-tokens.json` HUD CSS tokens + `game-art-spec.json` `hud` / `menu` / `dialog` categories + `game-art-assets.json` glyph entries | React imports inline SVG / CSS or external icons from `inputs/assets/game/icons/` |
-| World-space — engine scene (sprites / particles / projectiles) and overlay scene (sprite-anchored speech bubbles, in-world banners — typically empty for the five single-screen genres) | Engine scene | `game-art-tokens.json` palette / silhouette / lighting / motion-tone + `game-art-assets.json` `entities` / `particles` / `projectiles` categories | Boot scene preload registers textures from inline base64 or external `src` under `inputs/assets/game/{category}/` |
+| Screen-space — React HUD overlay (HUD readouts / menus / dialog / settings / page chrome) | React (HTML/CSS) | `game-art-tokens.json` HUD CSS tokens + `game-art-spec.json` `hud` / `menu` / `dialog` categories + `game-art-assets.json` glyph entries | React imports inline SVG / CSS or external icons from `assets/game/icons/` |
+| World-space — engine scene (sprites / particles / projectiles) and overlay scene (sprite-anchored speech bubbles, in-world banners — typically empty for the five single-screen genres) | Engine scene | `game-art-tokens.json` palette / silhouette / lighting / motion-tone + `game-art-assets.json` `entities` / `particles` / `projectiles` categories | Boot scene preload registers textures from inline base64 or external `src` under `assets/game/{category}/` |
 
 Forbidden cross-pollution:
 
-- ❌ A HUD glyph MUST NOT be sourced from `outputs/design/ui/ant/ui-assets.json` (that catalog is service-domain-only — D28).
+- ❌ A HUD glyph MUST NOT be sourced from `visual/ui/ant/ui-assets.json` (that catalog is service-domain-only — D28).
 - ❌ An in-canvas sprite MUST NOT come from a `ui-source` slot.
-- ❌ Engine textures MUST NOT load from `inputs/assets/service/...` — the game pool is the only legal `external` `src` root for a game workspace.
+- ❌ Engine textures MUST NOT load from `assets/service/...` — the game pool is the only legal `external` `src` root for a game workspace.
 - ❌ A game-domain code job MUST NOT import or reference `ui-tokens.json` / `ui-spec.json`. HUD CSS values come from `game-art-tokens.json` (palette / silhouette / lighting / motion-tone + HUD spacing / typography / radius / shadow).
 
 The single-source guarantee is what keeps the in-canvas surface and the HUD surface tonally consistent — both render paths derive from the same `gameArtTier.concept` decision.

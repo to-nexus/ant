@@ -5,6 +5,7 @@ import { hydrateFeatureContext } from "../../../../../../core/context/featureCon
 import { getExecutionTier } from "../../../../../../core/executionTier";
 import type { ResolveStrategy } from '../../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../../common/graph/nodes/resolve/utils';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 
 /**
  * Code Resolve Strategy
@@ -174,7 +175,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
     // signals (figma MCP, runtime assets, directive, session context)
     // and a lightweight design-presence boolean used by the
     // "no design + no directive" guard below. Wholesale loading of
-    // `outputs/design/system|spec|ui` or `inputs/sources` here is
+    // `architecture/system|spec`, `visual/ui` or `plan` here is
     // forbidden — see `.cursorrules` "state.artifacts Post-RAC SSOT".
     const designResult = await ArtifactService.findLatestDesign(context, gitPort, fileSystem);
     const design = designResult?.content || undefined;
@@ -203,7 +204,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       throw new Error(
         "No design document or directive found.\n" +
         "For new features: Run 'architect design' first.\n" +
-        "For modifications: Provide directive in workspace/{project}/{feature}/inputs/directives/code/directive.md",
+        "For modifications: Provide directive in workspace/{project}/{feature}/meta/directives/code/directive.md",
       );
     }
 
@@ -251,7 +252,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       const ra = state.resolvedAction;
       if (!ra || !figmaDetected.available || !figmaFileKey) return ra;
       const anyRacPath = [...(ra.refs ?? []), ...(ra.context ?? [])]
-        .some(p => p.startsWith('outputs/design/ui/figma/'));
+        .some(p => p.startsWith(ARTIFACT_PREFIX.UI_FIGMA));
       if (!anyRacPath) return ra;
       return {
         ...ra,
@@ -290,7 +291,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Helper: index runtime assets under inputs/assets/
+// Helper: index runtime assets under assets/
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async function indexRuntimeAssets(featurePath?: string): Promise<{ files: string[]; count: number }> {
@@ -298,7 +299,7 @@ async function indexRuntimeAssets(featurePath?: string): Promise<{ files: string
   try {
     const pathMod = await import('path');
     const fsMod = await import('fs');
-    const assetsRootAbs = pathMod.join(featurePath, 'inputs', 'assets');
+    const assetsRootAbs = pathMod.join(featurePath, 'assets');
     const files: string[] = [];
     const maxFiles = parseInt(process.env.ANT_RUNTIME_ASSETS_INDEX_MAX || '200', 10);
 

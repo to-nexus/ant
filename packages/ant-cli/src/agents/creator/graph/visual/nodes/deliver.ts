@@ -3,7 +3,7 @@
  *
  * Handles final output:
  * 1. If sketchImages exist (from sketch) → save and notify (image gallery for selection)
- * 2. If finalImage exists (from render) → save to inputs/assets/gen/ and notify
+ * 2. If finalImage exists (from render) → save to assets/gen/ and notify
  * 3. If svgSketches exist (from engrave) → save and notify
  *
  * After saving, clears temporary state (sketchImages, engineeredPrompt, etc.)
@@ -116,7 +116,7 @@ async function deliverFinalImage(
   const ext = mimeToExt(imageMime);
   const timestamp = Date.now();
   const filename = `gen-${timestamp}.${ext}`;
-  const outputDir = path.join(featurePath, 'inputs/assets/gen');
+  const outputDir = path.join(featurePath, 'assets/gen');
 
   fs.mkdirSync(outputDir, { recursive: true });
 
@@ -143,7 +143,7 @@ async function deliverFinalImage(
 
   try {
     const chatAPI = getChatAPIClient();
-    const relativePath = `inputs/assets/gen/${filename}`;
+    const relativePath = `assets/gen/${filename}`;
     const sizeKB = (imageData.length / 1024).toFixed(1);
     await chatAPI.showChatStatus('downloaded', {
       filename,
@@ -159,10 +159,10 @@ async function deliverFinalImage(
 
   const chapterMarker: ConversationMessage = {
     role: 'system',
-    content: `[Asset saved: inputs/assets/gen/${filename}]`,
+    content: `[Asset saved: assets/gen/${filename}]`,
     timestamp: new Date().toISOString(),
     metadata: {
-      savedAsset: `inputs/assets/gen/${filename}`,
+      savedAsset: `assets/gen/${filename}`,
       chapterSummary: `Generated ${ext.toUpperCase()} image from prompt: "${state.engineeredPrompt?.substring(0, 80)}..."`,
     },
   };
@@ -195,7 +195,7 @@ async function deliverSketchImages(
 ): Promise<Partial<VisualGraphState>> {
   const sketches = state.sketchImages!;
   const timestamp = Date.now();
-  const outputDir = path.join(featurePath, 'inputs/assets/gen/sketches');
+  const outputDir = path.join(featurePath, 'assets/gen/sketches');
   fs.mkdirSync(outputDir, { recursive: true });
 
   const sketchEntries: Array<{ index: number; imagePath: string; thumbnailPath: string }> = [];
@@ -221,8 +221,8 @@ async function deliverSketchImages(
 
     sketchEntries.push({
       index: sketch.index,
-      imagePath: `inputs/assets/gen/sketches/${filename}`,
-      thumbnailPath: `inputs/assets/gen/sketches/${thumbFilename}`,
+      imagePath: `assets/gen/sketches/${filename}`,
+      thumbnailPath: `assets/gen/sketches/${thumbFilename}`,
     });
   }
 
@@ -288,7 +288,7 @@ async function deliverSvgSketches(
   const sketches = state.svgSketches!;
 
   if (sketches.length === 1) {
-    const outputDir = path.join(featurePath, 'inputs/assets/gen');
+    const outputDir = path.join(featurePath, 'assets/gen');
     fs.mkdirSync(outputDir, { recursive: true });
 
     const filename = `gen-${Date.now()}.svg`;
@@ -298,7 +298,7 @@ async function deliverSvgSketches(
 
     try {
       const chatAPI = getChatAPIClient();
-      const relativePath = `inputs/assets/gen/${filename}`;
+      const relativePath = `assets/gen/${filename}`;
       const sizeKB = (Buffer.byteLength(sketches[0].code, 'utf-8') / 1024).toFixed(1);
       await chatAPI.showChatStatus('downloaded', {
         filename,
@@ -314,10 +314,10 @@ async function deliverSvgSketches(
 
     const chapterMarker: ConversationMessage = {
       role: 'system',
-      content: `[SVG saved: inputs/assets/gen/${filename}]`,
+      content: `[SVG saved: assets/gen/${filename}]`,
       timestamp: new Date().toISOString(),
       metadata: {
-        savedAsset: `inputs/assets/gen/${filename}`,
+        savedAsset: `assets/gen/${filename}`,
         chapterSummary: `Generated SVG from prompt: "${state.engineeredPrompt?.substring(0, 80)}..."`,
       },
     };
@@ -345,7 +345,7 @@ async function deliverSvgSketches(
 
   // Multiple SVG sketches: save files, generate thumbnails, use same sketch selection UI as images
   const timestamp = Date.now();
-  const outputDir = path.join(featurePath, 'inputs/assets/gen/sketches');
+  const outputDir = path.join(featurePath, 'assets/gen/sketches');
   fs.mkdirSync(outputDir, { recursive: true });
 
   const sketchEntries: Array<{ index: number; imagePath: string; thumbnailPath: string }> = [];
@@ -370,8 +370,8 @@ async function deliverSvgSketches(
 
     sketchEntries.push({
       index: sketch.index,
-      imagePath: `inputs/assets/gen/sketches/${filename}`,
-      thumbnailPath: `inputs/assets/gen/sketches/${thumbFilename}`,
+      imagePath: `assets/gen/sketches/${filename}`,
+      thumbnailPath: `assets/gen/sketches/${thumbFilename}`,
     });
   }
 

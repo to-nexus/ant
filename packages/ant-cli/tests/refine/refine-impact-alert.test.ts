@@ -63,13 +63,13 @@ async function withFeature<T>(
 }
 
 const SERVICE_RAC = {
-  refs: ['inputs/sources/prd.md'],
+  refs: ['plan/prd.md'],
   context: [],
 } as const;
 
 const NO_PLAN_REF_RAC = {
-  refs: ['outputs/design/spec/spec-foo.md'],
-  context: ['inputs/sources/prd.md'],
+  refs: ['architecture/spec/spec-foo.md'],
+  context: ['plan/prd.md'],
 } as const;
 
 const designTask = (id: string, description: string) => ({

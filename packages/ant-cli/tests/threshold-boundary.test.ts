@@ -26,7 +26,7 @@ function makeString(len: number): string {
 function makeDesignDocsState(totalChars: number) {
   return {
     artifacts: [
-      { path: 'outputs/design/system/fe-system-main.md', content: makeString(totalChars), role: 'ref' },
+      { path: 'architecture/system/fe-system-main.md', content: makeString(totalChars), role: 'ref' },
     ],
   } as any;
 }

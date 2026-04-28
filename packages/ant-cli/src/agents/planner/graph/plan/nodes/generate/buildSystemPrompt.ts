@@ -49,7 +49,7 @@ export async function buildSystemPrompt(
   // populates a default target via the matrix, but if a future caller
   // produces a generate/refactor RAC with an empty `target`, the prompt
   // would silently drop the "Target Path" section and the LLM would
-  // hallucinate a path (last regression: `outputs/documents/prd.md`).
+  // hallucinate a path (last regression: `architecture/system/main.md`).
   // Hard-fail loudly here instead of producing a degraded prompt.
   // `explain` mode is read-only and legitimately has no target.
   if (!targetPath && (planMode === 'generate' || planMode === 'refactor')) {

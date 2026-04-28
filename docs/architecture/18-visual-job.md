@@ -99,10 +99,10 @@ Visual job의 모든 노드는 Gemini 모델만 사용한다.
 
 | 종류 | 경로 |
 |------|------|
-| 최종 이미지 | `{featurePath}/inputs/assets/gen/gen-{timestamp}.{ext}` |
-| 썸네일 | `{featurePath}/inputs/assets/gen/gen-{timestamp}-thumb.jpeg` |
-| 스케치 이미지 | `{featurePath}/inputs/assets/gen/sketches/sketch-{timestamp}-{index}.{ext}` |
-| SVG | `{featurePath}/inputs/assets/gen/gen-{timestamp}.svg` |
+| 최종 이미지 | `{featurePath}/assets/gen/gen-{timestamp}.{ext}` |
+| 썸네일 | `{featurePath}/assets/gen/gen-{timestamp}-thumb.jpeg` |
+| 스케치 이미지 | `{featurePath}/assets/gen/sketches/sketch-{timestamp}-{index}.{ext}` |
+| SVG | `{featurePath}/assets/gen/gen-{timestamp}.svg` |
 
 ### 채팅 알림
 

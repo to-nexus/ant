@@ -22,7 +22,7 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 | workType | 조건 | 출력 파일 |
 |----------|------|----------|
 | `system-design` | PRD/directive만 있고 UI 입력 없음 | system-design.md, api-contract.md 등 |
-| `ui-design` | `outputs/design/ui/figma/figma.json` populated **또는** description 디렉티브 | `outputs/design/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` |
+| `ui-design` | `visual/ui/figma/figma.json` populated **또는** description 디렉티브 | `visual/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` |
 | `spec` | spec 모드로 명시적 지정 시 | spec 문서 |
 
 ## UI Design Pipeline Mode (Intent-Based)
@@ -31,11 +31,11 @@ Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 arc
 
 | Intent | 조건 | 방법론 | 도구 세트 |
 |--------|------|--------|----------|
-| `gen-ui-figma` | `outputs/design/ui/figma/figma.json` populated + MCP 가용 | Figma MCP 구조적 데이터 추출 → `outputs/design/ui/ant/ui-*.json` 로 산출 | `TOOL_SETS.uiDesignFigma` |
+| `gen-ui-figma` | `visual/ui/figma/figma.json` populated + MCP 가용 | Figma MCP 구조적 데이터 추출 → `visual/ui/ant/ui-*.json` 로 산출 | `TOOL_SETS.uiDesignFigma` |
 | `gen-ui-desc` | 디렉티브 + PRD | 텍스트 설명을 기반으로 직접 UI 문서 작성 | `TOOL_SETS.uiDesign` |
 | `rev-ui` | 기존 UI 문서 수정 | by-desc 변종 (디렉티브) — Figma 미선택 모드 공통 진입점 | `TOOL_SETS.uiDesign` |
 
-Figma intent(`gen-ui-figma`)가 합성되면 description 변종이 무시된다. 자유 형식 시각 자료(html/css/png)가 필요하면 `outputs/design/ui/handoff/` 로 직접 배치하여 코드 잡 멀티모달 채널이 사용한다 (handoff 는 design-job 디컴포즈 입력이 아니라 코드 잡의 추가 컨텍스트). 상세 파이프라인은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
+Figma intent(`gen-ui-figma`)가 합성되면 description 변종이 무시된다. 자유 형식 시각 자료(html/css/png)가 필요하면 `visual/ui/handoff/` 로 직접 배치하여 코드 잡 멀티모달 채널이 사용한다 (handoff 는 design-job 디컴포즈 입력이 아니라 코드 잡의 추가 컨텍스트). 상세 파이프라인은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
 
 ## documentType (System Design)
 

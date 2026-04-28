@@ -81,7 +81,7 @@ Ant 소스 탐색 도구와 워크스페이스 탐색 도구로 구분된다.
 
 ### 접근 제어
 
-Ant 소스 도구는 블랙리스트 패턴으로 민감 경로를 차단한다. 워크스페이스 도구는 `inputs/`, `outputs/`, `sessions/` 디렉토리만 허용(화이트리스트)한다.
+Ant 소스 도구는 블랙리스트 패턴으로 민감 경로를 차단한다. 워크스페이스 도구는 `plan/`, `architecture/`, `visual/`, `assets/`, `meta/`, `sessions/` 디렉토리만 허용(화이트리스트)한다.
 
 **블랙리스트 (FORBIDDEN_PATTERNS)**: `.env`, `secret`, `credentials`, `password`, `private_key`, `api_key`, `infrastructure/auth/`, `infrastructure/networking/`, `node_modules/`, `.git/`, `dist/`
 

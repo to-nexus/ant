@@ -31,8 +31,9 @@ export async function validateWorkspaceAndFeature(params: {
       `Workspace not found: ${workspacePath}\n\n` +
       `Please create workspace first:\n` +
       `  npm run init:workspace ${context.project}\n\n` +
-      `Then prepare your inputs in:\n` +
-      `  ${workspacePath}/${context.featureFolder}/inputs/`,
+      `Then prepare your plan / directives in:\n` +
+      `  ${workspacePath}/${context.featureFolder}/plan/\n` +
+      `  ${workspacePath}/${context.featureFolder}/meta/directives/`,
     );
   }
 
@@ -42,8 +43,9 @@ export async function validateWorkspaceAndFeature(params: {
       `Feature directory not found: ${featurePath}\n\n` +
       `Please create feature first:\n` +
       `  npm run init:feature ${context.project} ${context.featureFolder}\n\n` +
-      `Then prepare your inputs in:\n` +
-      `  ${featurePath}/inputs/`,
+      `Then prepare your plan / directives in:\n` +
+      `  ${featurePath}/plan/\n` +
+      `  ${featurePath}/meta/directives/`,
     );
   }
 

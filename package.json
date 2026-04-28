@@ -56,6 +56,7 @@
 
     "git:sweep": "node scripts/git-sweep.mjs",
     "chat:sweep": "node scripts/check-no-legacy-chat.mjs",
+    "migrate:workspace": "node scripts/migrate-workspace-layout.mjs",
     "typecheck:cli": "pnpm --filter @ant/cli exec tsc --noEmit",
     "typecheck:ui": "pnpm --filter @ant/ui exec tsc --noEmit",
     "typecheck": "pnpm typecheck:cli && pnpm typecheck:ui",

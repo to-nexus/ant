@@ -102,7 +102,7 @@ Atlas-enabled hook (active when `_meta.visualScope === 'atlas-enabled'`):
 - `this.add.particles` with custom textures
 - WebGL shader pipelines
 
-❌ Do NOT reach for `Phaser.GameObjects.Image` with a remote URL — assets MUST come through the `inputs/assets/game/...` pool (I6).
+❌ Do NOT reach for `Phaser.GameObjects.Image` with a remote URL — assets MUST come through the `assets/game/...` pool (I6).
 
 ### 4. Audio API policy
 
@@ -125,7 +125,7 @@ The `AudioContext` is created lazily on the first user gesture (browser autoplay
 
 External-enabled hook (active when `_meta.audioScope === 'external-enabled'`):
 
-- `this.load.audio('shoot', 'inputs/assets/game/sfx/shoot.mp3')` + `this.sound.play('shoot')`
+- `this.load.audio('shoot', 'assets/game/sfx/shoot.mp3')` + `this.sound.play('shoot')`
 - `audioProfile === 'fileBased'` flips the policy; baseline audio scope force-suppresses `external` sfx/bgm regardless of LLM emission.
 
 ### 5. Scene ↔ React communication
@@ -169,7 +169,7 @@ Constraints:
 `BootScene.preload` reads the catalog at module scope:
 
 ```ts
-import catalog from '@/inputs/assets/game/game-art-assets.json';
+import catalog from '@/assets/game/game-art-assets.json';
 
 class BootScene extends Phaser.Scene {
   preload() {
@@ -188,7 +188,7 @@ class BootScene extends Phaser.Scene {
 
 Constraints:
 
-- I6 — `entry.src` MUST start with `inputs/assets/game/`. Reaching into `inputs/assets/service/` from a game-art catalog is a boundary violation.
+- I6 — `entry.src` MUST start with `assets/game/`. Reaching into `assets/service/` from a game-art catalog is a boundary violation.
 - `_meta.audioScope === 'procedural-only'` (default) suppresses external sfx/bgm — the loader skips `kind: 'external'` audio entries until `'external-enabled'`. `_meta.visualScope === 'baseline'` (default) likewise gates atlas / multi-emitter / multi-projectile setups behind `'atlas-enabled'`.
 - Catalog ids are stable inside one design pass — do NOT rename ids in code without re-running the design job, or `game-art-spec.json` cross-references break.
 

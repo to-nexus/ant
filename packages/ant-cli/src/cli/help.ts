@@ -27,7 +27,7 @@ export function showHelp(): void {
   console.error("  npm run init:feature my-app ui-1.0.0");
   console.error("");
   console.error("  # 3. Edit PRD");
-  console.error("  # workspace/my-app/ui-1.0.0/inputs/sources/prd.md");
+  console.error("  # workspace/my-app/ui-1.0.0/plan/prd.md");
   console.error("");
   console.error("  # 4. Generate design");
   console.error("  npm run dev architect design workspace/my-app/ui-1.0.0");
@@ -36,17 +36,18 @@ export function showHelp(): void {
   console.error("  npm run dev architect code workspace/my-app/ui-1.0.0");
   console.error("");
   console.error("  # 6. Apply feedback (add directive)");
-  console.error("  # workspace/my-app/ui-1.0.0/inputs/directives/code/directive.md");
+  console.error("  # workspace/my-app/ui-1.0.0/meta/directives/code/directive.md");
   console.error("  npm run dev architect code workspace/my-app/ui-1.0.0 --eval");
   console.error("");
   console.error("Directory Structure:");
   console.error("  workspace/");
   console.error("  └── {project}/");
   console.error("      ├── {feature}/");
-  console.error("      │   ├── inputs/");
-  console.error("      │   │   ├── sources/      # PRD, Figma, wireframes");
-  console.error("      │   │   └── directives/   # Task-specific instructions");
-  console.error("      │   └── outputs/          # Generated design, code, evals");
+  console.error("      │   ├── plan/             # PRD / GDD (text plan documents)");
+  console.error("      │   ├── architecture/     # system/, spec/ design docs");
+  console.error("      │   ├── visual/           # ui/, game-art/ design artifacts");
+  console.error("      │   ├── assets/           # service/, game/, gen/ runtime assets");
+  console.error("      │   └── meta/             # directives/, evals/");
   console.error("      └── config.json");
 }
 

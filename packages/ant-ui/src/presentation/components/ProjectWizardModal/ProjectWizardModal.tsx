@@ -408,8 +408,8 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
           const entries: UploadFileEntry[] = files.map((f) => ({ file: f, relativePath: f.name }));
           await uploadFiles(projectId, feat, dir, entries);
         };
-        await batch(sourcesFiles, 'inputs/sources');
-        await batch(assetsFiles, 'inputs/assets');
+        await batch(sourcesFiles, 'plan');
+        await batch(assetsFiles, 'assets');
         if (mode === 'code' && uploadableDesignDocs.length > 0) {
           const byDesignDir = new Map<string, File[]>();
           for (const f of uploadableDesignDocs) {

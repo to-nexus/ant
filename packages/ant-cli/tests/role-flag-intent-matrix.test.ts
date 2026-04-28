@@ -112,7 +112,7 @@ describe('role-flag intent matrix — post-RAC Gate guarantees', () => {
       hasSpec: false,
       hasSpecRef: false,
       hasSources: true,
-      hasSourcesRef: false, // context only (inputs/sources as ctx)
+      hasSourcesRef: false, // context only (plan as ctx)
     });
   });
 
@@ -166,7 +166,7 @@ describe('role-flag intent matrix — post-RAC Gate guarantees', () => {
     expect(s.hasUiRef).toBe(true);
     expect(s.hasUiContext).toBe(false);
     expect(s.hasSystemDesign).toBe(false);
-    expect(s.hasSources).toBe(true); // inputs/sources as context
+    expect(s.hasSources).toBe(true); // plan as context
     expect(s.hasSourcesRef).toBe(false);
   });
 
@@ -187,7 +187,7 @@ describe('role-flag intent matrix — post-RAC Gate guarantees', () => {
     // re-stamps role='ref' on the selected artifacts. The Contract
     // flag then fires without any change to the intent matrix.
     const userPromoted: ResolvedArtifact[] = [
-      { path: 'outputs/design/ui/ant/ui-spec.json', content: '{}', role: 'ref' },
+      { path: 'visual/ui/ant/ui-spec.json', content: '{}', role: 'ref' },
     ];
     const view = new ArtifactPoolView(userPromoted);
     expect(view.hasUi()).toBe(true);

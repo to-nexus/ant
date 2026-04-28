@@ -73,7 +73,7 @@ describe('compactContent', () => {
       const result = compactContent(content, {
         threshold: 100,
         label: 'ui-assets.json',
-        filePath: 'outputs/design/ui/ant/ui-assets.json',
+        filePath: 'visual/ui/ant/ui-assets.json',
         contentType: 'json',
       });
 
@@ -93,7 +93,7 @@ describe('compactContent', () => {
       const result = compactContent(content, {
         threshold: 100,
         label: 'spec-main.md',
-        filePath: 'outputs/design/spec/spec-main.md',
+        filePath: 'architecture/spec/spec-main.md',
       });
 
       expect(result.wasCompacted).toBe(true);
@@ -108,7 +108,7 @@ describe('compactContent', () => {
       const result = compactContent(content, {
         threshold: 100,
         label: 'test.json',
-        filePath: 'outputs/design/test.json',
+        filePath: 'architecture/test.json',
       });
       expect(result.content).toContain('_meta');
       expect(result.content).toContain('internal tracking');
@@ -132,7 +132,7 @@ describe('compactContent', () => {
       const result = compactContent(content, {
         threshold: 100,
         label: 'source.md',
-        filePath: 'inputs/sources/prd.md',
+        filePath: 'plan/prd.md',
         toolHint: 'read_source_doc',
         contentType: 'markdown',
       });
@@ -157,7 +157,7 @@ describe('compactContent', () => {
       const result = compactContent(content, {
         threshold: 100,
         label: 'Design Document',
-        filePath: 'outputs/design/system/fe-system-main.md',
+        filePath: 'architecture/system/fe-system-main.md',
       });
       expect(result.wasCompacted).toBe(true);
       expect(result.content).toMatch(/L\d+:.*# Document Title/);
@@ -187,7 +187,7 @@ describe('compactContent', () => {
       const result = compactContent(compact, {
         threshold: 100,
         label: 'compact.json',
-        filePath: 'outputs/design/compact.json',
+        filePath: 'architecture/compact.json',
         contentType: 'json',
       });
 

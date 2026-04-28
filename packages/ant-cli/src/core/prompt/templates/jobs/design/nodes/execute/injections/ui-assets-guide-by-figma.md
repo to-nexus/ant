@@ -48,7 +48,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 #### 2. Accuracy
 - Preserve Figma node names as filenames unless semantic clarity requires change
-- The `src` field in ui-assets.json must point to the actual downloaded file path (e.g., `inputs/assets/icons/logo.svg`)
+- The `src` field in ui-assets.json must point to the actual downloaded file path (e.g., `assets/icons/logo.svg`)
 
 ### JSON Structure
 
@@ -69,7 +69,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
   },
   "<category>": {
     "<asset-id>": {
-      "src": "inputs/assets/<source-path>",
+      "src": "assets/<source-path>",
       "dest": "<see format-based rule above>",
       "format": "svg | png | jpg | webp",
       "themeAdaptation?": "currentColor | static | partial",
@@ -106,14 +106,14 @@ Create a JSON mapping document that connects source assets to their runtime dest
 ### Example Output
 
 ```xml
-<file path="outputs/design/ui/ant/ui-assets.json">
+<file path="visual/ui/ant/ui-assets.json">
 {
   "_meta": {
     "pathPattern": { "icons": "src/assets/icons/", "images": "public/images/" }
   },
   "icons": {
     "icon-id": {
-      "src": "inputs/assets/...",
+      "src": "assets/...",
       "dest": "src/assets/icons/...",
       "format": "svg",
       "themeAdaptation": "currentColor",
@@ -122,7 +122,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
   },
   "images": {
     "image-id": {
-      "src": "inputs/assets/...",
+      "src": "assets/...",
       "dest": "public/images/...",
       "format": "png",
       "usage": "Usage context"
@@ -149,7 +149,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 ```json
 {
   "icon-wallet": {
-    "src": "inputs/assets/icons/wallet.svg",
+    "src": "assets/icons/wallet.svg",
     "dest": "src/assets/icons/icon-wallet.svg",
     "format": "svg",
     "themeAdaptation": "currentColor",
@@ -172,7 +172,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 1. Review nodeSummary in Available Resources → Identify exportable asset nodes
 2. Query specific nodeIds (not root) for asset details and download URLs
-3. Download each asset to `inputs/assets/` before referencing it in ui-assets.json
+3. Download each asset to `assets/` before referencing it in ui-assets.json
 4. Generate ui-assets.json — every `src` path MUST point to a file that exists locally
 
 {{#if pathPattern}}

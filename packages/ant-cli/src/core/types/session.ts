@@ -34,7 +34,7 @@ export type ErrorCategory =
 /** Input metadata for a session run (one BullMQ job execution) */
 export interface SessionRunInput {
   type: 'text' | 'file' | 'directive' | 'design';
-  source?: string;        // File path (e.g., "inputs/sources/prd.md")
+  source?: string;        // File path (e.g., "plan/prd.md")
   summary: string;        // Brief summary (200 chars max)
   hash?: string;          // Content hash for change detection
   size?: number;          // Content size in bytes

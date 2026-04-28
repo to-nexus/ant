@@ -71,7 +71,7 @@ export async function runInlineAsk(params: InlineAskParams): Promise<InlineAskRe
   });
 
   // Chat input always provides a directive
-  workspaceState.hasDirective = true;
+  workspaceState.hasMetaDirectives = true;
 
   const language = AgentRegistry.detectLanguage(message);
   console.log(`🌐 [InlineAsk] Detected language: ${language}`);

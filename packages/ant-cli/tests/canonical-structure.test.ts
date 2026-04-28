@@ -82,11 +82,11 @@ describe('ensureCanonicalStructure', () => {
     expect(CANONICAL_FEATURE_FILE_PATHS).toContain(FIGMA_CONFIG_PATH);
   });
 
-  it('creates the three UiSource sibling dirs under outputs/design/ui', async () => {
+  it('creates the three UiSource sibling dirs under visual/ui', async () => {
     await ensureCanonicalStructure(featurePath);
 
     for (const sibling of ['ant', 'figma', 'handoff'] as const) {
-      const abs = path.join(featurePath, 'outputs/design/ui', sibling);
+      const abs = path.join(featurePath, 'visual/ui', sibling);
       const stat = await fs.promises.stat(abs);
       expect(stat.isDirectory()).toBe(true);
     }
@@ -105,7 +105,7 @@ describe('ensureCanonicalStructure', () => {
 
     // Delete the ant/ subdir and the figma.json file to simulate a
     // partially-corrupt feature (e.g. a user manually removed them).
-    await fs.promises.rm(path.join(featurePath, 'outputs/design/ui/ant'), { recursive: true, force: true });
+    await fs.promises.rm(path.join(featurePath, 'visual/ui/ant'), { recursive: true, force: true });
     await fs.promises.rm(path.join(featurePath, FIGMA_CONFIG_PATH), { force: true });
 
     const { createdDirs, createdFiles } = await ensureCanonicalStructure(featurePath);
@@ -113,7 +113,7 @@ describe('ensureCanonicalStructure', () => {
     expect(createdDirs).toBeGreaterThanOrEqual(1);
     expect(createdFiles).toBe(1);
 
-    const antStat = await fs.promises.stat(path.join(featurePath, 'outputs/design/ui/ant'));
+    const antStat = await fs.promises.stat(path.join(featurePath, 'visual/ui/ant'));
     expect(antStat.isDirectory()).toBe(true);
     const figmaJsonStat = await fs.promises.stat(path.join(featurePath, FIGMA_CONFIG_PATH));
     expect(figmaJsonStat.isFile()).toBe(true);

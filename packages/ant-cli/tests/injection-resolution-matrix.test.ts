@@ -139,7 +139,7 @@ describe('Tier I: Intent policies completeness', () => {
 describe('Tier N: Artifact-conditional policies', () => {
   it('gen-code-sys with UI artifact triggers ui-design-policy', () => {
     const artifacts: ResolvedArtifact[] = [
-      { path: 'outputs/design/ui/ant/ui-spec.json', content: 'mock', role: 'context' },
+      { path: 'visual/ui/ant/ui-spec.json', content: 'mock', role: 'context' },
     ];
     const policies = resolveTierN('gen-code-sys', artifacts);
     expect(policies).toContain('jobs/shared/injections/ui-design-policy');
@@ -147,7 +147,7 @@ describe('Tier N: Artifact-conditional policies', () => {
 
   it('gen-code-sys without UI artifact does NOT trigger ui-design-policy', () => {
     const artifacts: ResolvedArtifact[] = [
-      { path: 'outputs/design/system/fe-system.md', content: 'mock', role: 'ref' },
+      { path: 'architecture/system/fe-system.md', content: 'mock', role: 'ref' },
     ];
     const policies = resolveTierN('gen-code-sys', artifacts);
     expect(policies).not.toContain('jobs/shared/injections/ui-design-policy');
@@ -155,7 +155,7 @@ describe('Tier N: Artifact-conditional policies', () => {
 
   it('gen-code-directive with UI artifact triggers ui-design-policy (new: all code intents accept UI source as context)', () => {
     const artifacts: ResolvedArtifact[] = [
-      { path: 'outputs/design/ui/ant/ui-spec.json', content: 'mock', role: 'context' },
+      { path: 'visual/ui/ant/ui-spec.json', content: 'mock', role: 'context' },
     ];
     const policies = resolveTierN('gen-code-directive', artifacts);
     expect(policies).toContain('jobs/shared/injections/ui-design-policy');
@@ -168,7 +168,7 @@ describe('Tier N: Artifact-conditional policies', () => {
 
   it('rev-code with UI artifact triggers ui-design-policy', () => {
     const artifacts: ResolvedArtifact[] = [
-      { path: 'outputs/design/ui/ant/ui-tokens.json', content: 'mock', role: 'context' },
+      { path: 'visual/ui/ant/ui-tokens.json', content: 'mock', role: 'context' },
     ];
     const policies = resolveTierN('rev-code', artifacts);
     expect(policies).toContain('jobs/shared/injections/ui-design-policy');
@@ -177,7 +177,7 @@ describe('Tier N: Artifact-conditional policies', () => {
   it('design intents have no conditional policies', () => {
     const designIntents: IntentId[] = ['gen-sys-fe', 'gen-sys-be', 'gen-ui-figma', 'gen-spec'];
     for (const id of designIntents) {
-      const policies = resolveTierN(id, [{ path: 'outputs/design/ui/x', content: 'x', role: 'context' }]);
+      const policies = resolveTierN(id, [{ path: 'visual/ui/x', content: 'x', role: 'context' }]);
       expect(policies, id).toHaveLength(0);
     }
   });
