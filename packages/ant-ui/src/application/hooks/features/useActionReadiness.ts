@@ -145,21 +145,21 @@ function computePlan(ctx: TreeContext): ActionReadiness {
   // already authored" — both should mark hasOutput true so the panel
   // hides the empty-slot warning correctly across domains.
   const hasOutput =
-    fileExists(ctx.fileTree, 'inputs/sources/prd.md') ||
-    fileExists(ctx.fileTree, 'inputs/sources/gdd.md');
+    fileExists(ctx.fileTree, 'plan/prd.md') ||
+    fileExists(ctx.fileTree, 'plan/gdd.md');
   return {
     buildReady: true,
     hasOutput,
     hasCodebase: ctx.hasCodebase,
     detectedMode: { id: 'plan', label: { en: 'PRD', ko: '기획서' } },
-    outputDir: 'inputs/sources',
+    outputDir: 'plan',
     namingIssues: [],
   };
 }
 
 function computeSystemDesign(ctx: TreeContext): ActionReadiness {
-  const hasSources = dirHasFilesDeeply(ctx.fileTree, 'inputs/sources');
-  const hasDesign = dirHasFiles(ctx.fileTree, 'outputs/design/system');
+  const hasSources = dirHasFilesDeeply(ctx.fileTree, 'plan');
+  const hasDesign = dirHasFiles(ctx.fileTree, 'architecture/system');
   const canRefactor = ctx.hasCodebase && hasDesign;
   return {
     buildReady: hasSources,
@@ -169,18 +169,18 @@ function computeSystemDesign(ctx: TreeContext): ActionReadiness {
     detectedMode: canRefactor
       ? { id: 'refactor', label: { en: 'Refactoring design', ko: '리팩토링 설계' } }
       : { id: 'generate', label: { en: 'New system design', ko: '신규 시스템 설계' } },
-    outputDir: 'outputs/design/system',
-    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/system', 'system'),
+    outputDir: 'architecture/system',
+    namingIssues: checkNaming(ctx.fileTree, 'architecture/system', 'system'),
   };
 }
 
 function computeUiDesign(ctx: TreeContext): ActionReadiness {
   const figmaConfigured = ctx.figmaPopulated === true;
   const figmaReady = figmaConfigured && ctx.bridgeConnected === true && ctx.figmaDesktopReachable;
-  // Design jobs emit ant-canonical outputs at `outputs/design/ui/ant/`;
+  // Design jobs emit ant-canonical outputs at `visual/ui/ant/`;
   // deep-check the parent so any of the three UiSource subdirectories
   // (ant / figma / handoff) counts as "UI source present".
-  const hasUi = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/ui');
+  const hasUi = dirHasFilesDeeply(ctx.fileTree, 'visual/ui');
   // description mode is always available (chat directive is the design
   // authority), so build is reachable as long as the user is willing to
   // chat. Figma simply enables the figma-based sub-mode.
@@ -197,8 +197,8 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
       { id: 'figma', active: figmaReady, blockReason: !figmaConfigured ? { en: 'Set Figma URL in figma.json', ko: 'figma.json에 Figma URL을 설정하세요' } : !figmaReady ? { en: 'Figma Desktop connection required', ko: 'Figma Desktop 연결이 필요합니다' } : undefined },
       { id: 'description', active: true },
     ],
-    outputDir: 'outputs/design/ui/ant',
-    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/ui/ant', 'ui'),
+    outputDir: 'visual/ui/ant',
+    namingIssues: checkNaming(ctx.fileTree, 'visual/ui/ant', 'ui'),
   };
 }
 
@@ -208,14 +208,14 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
  * The intent group is gated by workspace.domain === 'game' at the
  * ActionsPanel layer (TIER_DOMAIN_MATRIX.gameArtTier). Here we compute the
  * "what's missing for build?" surface the same way as ui-design but
- * targeted at the sub-sourced canonical `outputs/design/game-art/ant/`
- * (mirrors `outputs/design/ui/ant/`). The flat `outputs/design/game-art/`
- * is still scanned for buildReady / hasOutput so legacy workspaces that
- * have not yet run `migrateGameArtToAntSubdir` keep working in transit.
+ * targeted at the sub-sourced canonical `visual/game-art/ant/`
+ * (mirrors `visual/ui/ant/`). The flat `visual/game-art/` is still
+ * scanned for buildReady / hasOutput so legacy workspaces that have
+ * not yet run `migrateGameArtToAntSubdir` keep working in transit.
  */
 function computeGameArtDesign(ctx: TreeContext): ActionReadiness {
-  const hasGameArtAnt = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/game-art/ant');
-  const hasGameArtFlat = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/game-art');
+  const hasGameArtAnt = dirHasFilesDeeply(ctx.fileTree, 'visual/game-art/ant');
+  const hasGameArtFlat = dirHasFilesDeeply(ctx.fileTree, 'visual/game-art');
   const hasGameArt = hasGameArtAnt || hasGameArtFlat;
   // description mode is always available (chat directive is the design
   // authority); figma sub-mode lights up when the workfile reference is
@@ -232,13 +232,13 @@ function computeGameArtDesign(ctx: TreeContext): ActionReadiness {
       { id: 'figma', active: figmaSubReady, blockReason: ctx.figmaPopulated !== true ? { en: 'Set Figma URL in figma.json', ko: 'figma.json에 Figma URL을 설정하세요' } : undefined },
       { id: 'description', active: true },
     ],
-    outputDir: 'outputs/design/game-art/ant',
-    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/game-art/ant', 'gameArtAnt'),
+    outputDir: 'visual/game-art/ant',
+    namingIssues: checkNaming(ctx.fileTree, 'visual/game-art/ant', 'gameArt'),
   };
 }
 
 function computeSpec(ctx: TreeContext): ActionReadiness {
-  const hasSpec = dirHasFiles(ctx.fileTree, 'outputs/design/spec');
+  const hasSpec = dirHasFiles(ctx.fileTree, 'architecture/spec');
   return {
     buildReady: false,
     buildBlockReason: { en: 'Describe the spec scope via chat', ko: '채팅에서 스펙 범위를 설명하세요' },
@@ -247,15 +247,15 @@ function computeSpec(ctx: TreeContext): ActionReadiness {
     detectedMode: ctx.hasCodebase
       ? { id: 'refactor-capable', label: { en: 'Spec (refactor possible)', ko: '스펙 (리팩토링 가능)' } }
       : { id: 'generate', label: { en: 'Feature spec', ko: '기능 스펙' } },
-    outputDir: 'outputs/design/spec',
-    namingIssues: checkNaming(ctx.fileTree, 'outputs/design/spec', 'spec'),
+    outputDir: 'architecture/spec',
+    namingIssues: checkNaming(ctx.fileTree, 'architecture/spec', 'spec'),
   };
 }
 
 function computeCode(ctx: TreeContext): ActionReadiness {
-  const hasSpec = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/spec');
-  const hasSystem = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/system');
-  const hasUi = dirHasFilesDeeply(ctx.fileTree, 'outputs/design/ui');
+  const hasSpec = dirHasFilesDeeply(ctx.fileTree, 'architecture/spec');
+  const hasSystem = dirHasFilesDeeply(ctx.fileTree, 'architecture/system');
+  const hasUi = dirHasFilesDeeply(ctx.fileTree, 'visual/ui');
   const hasDesignDocs = hasSystem || hasUi;
 
   let modeId: string, modeLabel: { en: string; ko: string };
@@ -288,7 +288,7 @@ function computeVisual(ctx: TreeContext): ActionReadiness {
     hasOutput: false,
     hasCodebase: ctx.hasCodebase,
     detectedMode: { id: 'visual', label: { en: 'Image generation', ko: '이미지 생성' } },
-    outputDir: 'inputs/assets/gen',
+    outputDir: 'assets/gen',
     namingIssues: [],
   };
 }

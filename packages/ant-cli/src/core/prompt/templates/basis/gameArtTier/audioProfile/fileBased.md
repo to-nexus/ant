@@ -4,14 +4,14 @@
 
 ### Promise
 
-The `fileBased` audio profile commits to **external audio files placed under `inputs/assets/game/sfx/` and `inputs/assets/game/bgm/`** (`.mp3` / `.ogg` / `.wav`). Every SFX and the BGM track are user-provided (or, in Phase 5+, visual-job-generated) audio clips. The Web Audio OscillatorNode pathway is unused. The project ships with rich, recorded audio that procedural synthesis cannot match.
+The `fileBased` audio profile commits to **external audio files placed under `assets/game/sfx/` and `assets/game/bgm/`** (`.mp3` / `.ogg` / `.wav`). Every SFX and the BGM track are user-provided (or, in Phase 5+, visual-job-generated) audio clips. The Web Audio OscillatorNode pathway is unused. The project ships with rich, recorded audio that procedural synthesis cannot match.
 
 ### What "fileBased" looks like in code
 
 | Surface | Realization |
 |---|---|
 | SFX playback | Phaser's `this.sound.play(id)` after `BootScene.preload` registers each SFX via `this.load.audio(id, src)`. |
-| `sfx` asset entry | `kind: 'external'`, `src` pointing into `inputs/assets/game/sfx/...`. The `format` field is the file extension (`mp3` / `ogg` / `wav`). |
+| `sfx` asset entry | `kind: 'external'`, `src` pointing into `assets/game/sfx/...`. The `format` field is the file extension (`mp3` / `ogg` / `wav`). |
 | BGM | A separate `bgm` category in `game-art-assets.json` with one or more loop tracks; the scene plays one via `this.sound.play(bgmId, { loop: true })`. |
 | Volume / mute | The HUD typically exposes a settings button to toggle sfx / bgm volume; the project must expose `this.sound.volume` and `this.sound.mute` controls. |
 
@@ -19,11 +19,11 @@ The `fileBased` audio profile commits to **external audio files placed under `in
 
 ```jsonc
 "sfx": [
-  { "id": "match-clear", "kind": "external", "src": "inputs/assets/game/sfx/match-clear.ogg", "format": "ogg" },
-  { "id": "fail", "kind": "external", "src": "inputs/assets/game/sfx/fail.ogg", "format": "ogg" }
+  { "id": "match-clear", "kind": "external", "src": "assets/game/sfx/match-clear.ogg", "format": "ogg" },
+  { "id": "fail", "kind": "external", "src": "assets/game/sfx/fail.ogg", "format": "ogg" }
 ],
 "bgm": [
-  { "id": "main-theme", "kind": "external", "src": "inputs/assets/game/bgm/main-theme.mp3", "format": "mp3", "loop": true }
+  { "id": "main-theme", "kind": "external", "src": "assets/game/bgm/main-theme.mp3", "format": "mp3", "loop": true }
 ]
 ```
 

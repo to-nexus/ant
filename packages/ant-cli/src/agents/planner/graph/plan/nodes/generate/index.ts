@@ -585,14 +585,14 @@ export function routeAfterGenerate(state: PlanGraphState): 'tool' | '__end__' {
  *      (`../`, `..\\`, leading `..`).
  *
  * Whitelist prefixes — these mirror the feature-directory canonical layout
- * (`inputs/sources/`, `outputs/`) since the planner only ever writes PRD
- * artifacts into those subtrees.
+ * (`plan/`, `meta/evals/`) since the planner only ever writes PRD/GDD
+ * documents and their evaluation reports.
  */
 export function isSafeStagingPath(rel: string): boolean {
   if (!rel || typeof rel !== 'string') return false;
   if (path.isAbsolute(rel)) return false;
   const normalized = path.normalize(rel).replace(/\\/g, '/');
   if (normalized.startsWith('..') || normalized.includes('/../')) return false;
-  const ALLOWED_PREFIXES = ['inputs/sources/', 'outputs/'] as const;
+  const ALLOWED_PREFIXES = ['plan/', 'meta/evals/'] as const;
   return ALLOWED_PREFIXES.some(prefix => normalized.startsWith(prefix));
 }

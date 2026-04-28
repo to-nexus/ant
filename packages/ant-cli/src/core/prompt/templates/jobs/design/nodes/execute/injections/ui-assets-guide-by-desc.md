@@ -37,13 +37,13 @@ Create a JSON mapping document that connects source assets to their runtime dest
 - **Branding requirements**: Logo variations and icon sets called out by PRD/directive
 
 **When to use `list_assets`**:
-- Inputs already placed under `inputs/assets/` (icons, images, fonts, ...) ground the catalog in real files
-- If `inputs/assets/` is empty, document the asset slots the project needs and use placeholder `src` paths under `inputs/assets/<category>/<file>`
+- Inputs already placed under `assets/` (icons, images, fonts, ...) ground the catalog in real files
+- If `assets/` is empty, document the asset slots the project needs and use placeholder `src` paths under `assets/<category>/<file>`
 
 ### Core Principles
 
 #### 1. Accuracy — Verify Before Documenting
-- Use `list_assets` tool to discover actual files in `inputs/assets/`
+- Use `list_assets` tool to discover actual files in `assets/`
 - Document only files that exist (or clearly mark placeholder slots)
 - Preserve original filenames unless semantic clarity requires change
 
@@ -66,7 +66,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
   },
   "<category>": {
     "<asset-id>": {
-      "src": "inputs/assets/<source-path>",
+      "src": "assets/<source-path>",
       "dest": "<see format-based rule above>",
       "format": "svg | png | jpg | webp",
       "themeAdaptation?": "currentColor | static | partial",
@@ -103,14 +103,14 @@ Create a JSON mapping document that connects source assets to their runtime dest
 ### Example Output
 
 ```xml
-<file path="outputs/design/ui/ant/ui-assets.json">
+<file path="visual/ui/ant/ui-assets.json">
 {
   "_meta": {
     "pathPattern": { "icons": "src/assets/icons/", "images": "public/images/" }
   },
   "icons": {
     "icon-id": {
-      "src": "inputs/assets/...",
+      "src": "assets/...",
       "dest": "src/assets/icons/...",
       "format": "svg",
       "themeAdaptation": "currentColor",
@@ -119,7 +119,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
   },
   "images": {
     "image-id": {
-      "src": "inputs/assets/...",
+      "src": "assets/...",
       "dest": "public/images/...",
       "format": "png",
       "usage": "Usage context"
@@ -146,7 +146,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 ```json
 {
   "icon-wallet": {
-    "src": "inputs/assets/icons/wallet.svg",
+    "src": "assets/icons/wallet.svg",
     "dest": "src/assets/icons/icon-wallet.svg",
     "format": "svg",
     "themeAdaptation": "currentColor",
@@ -159,7 +159,7 @@ Create a JSON mapping document that connects source assets to their runtime dest
 
 ### Quality Criteria
 
-1. **Complete**: All assets present under `inputs/assets/` are documented; missing slots are noted as placeholders if the project needs them
+1. **Complete**: All assets present under `assets/` are documented; missing slots are noted as placeholders if the project needs them
 2. **Accurate**: Paths are correct and verified with `list_assets`
 3. **Valid JSON**: Proper JSON syntax
 4. **Consistent**: Same destination path patterns throughout

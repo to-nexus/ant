@@ -1,11 +1,11 @@
 /**
  * v8 (D24-revised) — `migrateGameArtToAntSubdir`
  *
- * One-shot, idempotent migration that lifts the legacy flat
- * `outputs/design/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json`
+ * One-shot, idempotent migration that lifts the flat
+ * `visual/game-art/{game-art-tokens,game-art-assets,game-art-spec}.json`
  * layout into the canonical sub-sourced layout introduced in D24-revised:
  *
- *   outputs/design/game-art/{X}.json   →  outputs/design/game-art/ant/{X}.json
+ *   visual/game-art/{X}.json   →  visual/game-art/ant/{X}.json
  *
  * Mirrors `migrateAssetsToDomain`'s shape (idempotent / pure FS / silent
  * noop on missing or already-migrated trees). Called from
@@ -24,16 +24,16 @@ import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 
-const GAME_ART_DIR_REL = 'outputs/design/game-art';
+const GAME_ART_DIR_REL = 'visual/game-art';
 const ANT_SUBDIR = 'ant';
 const SUB_SOURCES = new Set(['ant', 'figma', 'handoff']);
 
 export type GameArtMigrationAction = 'moved' | 'collision' | 'failed';
 
 export interface GameArtMigrationItem {
-  /** Source path relative to feature root, e.g. `outputs/design/game-art/game-art-tokens.json`. */
+  /** Source path relative to feature root, e.g. `visual/game-art/game-art-tokens.json`. */
   fromRel: string;
-  /** Destination path relative to feature root, e.g. `outputs/design/game-art/ant/game-art-tokens.json`. */
+  /** Destination path relative to feature root, e.g. `visual/game-art/ant/game-art-tokens.json`. */
   toRel: string;
   action: GameArtMigrationAction;
   reason?: string;

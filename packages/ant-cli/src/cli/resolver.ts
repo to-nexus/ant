@@ -87,7 +87,7 @@ export function findLatestDirective(dirPath: string): string | null {
 
 /**
  * Resolve input file based on task
- * - For design: finds plan document (prd.md for service / gdd.md for game) in inputs/sources/
+ * - For design: finds plan document (prd.md for service / gdd.md for game) in plan/
  * - For code: finds latest design + optional code directive
  * - For learn: finds learn directive
  * 
@@ -153,7 +153,7 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
     
     switch (task) {
       case 'design': {
-        const sourcesDir = path.join(inputPath, "inputs", "sources");
+        const sourcesDir = path.join(inputPath, "plan");
         const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
         
         if (fs.existsSync(sourcesDir)) {
@@ -176,7 +176,7 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
           }
         }
         
-        const designDirPath = path.join(inputPath, "inputs", "directives", "design");
+        const designDirPath = path.join(inputPath, "meta", "directives", "design");
         const directiveFile = findLatestDirective(designDirPath);
         if (directiveFile) {
           console.log(`📄 Using design directive: ${directiveFile}`);
@@ -186,16 +186,16 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
         throw new Error(
           `No input found for design task in: ${inputPath}\n` +
           `Expected:\n` +
-          `  - At least one text file in ${path.join(inputPath, "inputs/sources/")}\n` +
-          `  - OR a directive in ${path.join(inputPath, "inputs/directives/design/")}`
+          `  - At least one text file in ${path.join(inputPath, "plan/")}\n` +
+          `  - OR a directive in ${path.join(inputPath, "meta/directives/design/")}`
         );
       }
       
       case 'code': {
         // Code task: look for design document (preferred) or directive (fallback)
         
-        // 1. Try to find design document
-        const designDir = path.join(inputPath, "outputs", "design");
+        // 1. Try to find latest system-design document
+        const designDir = path.join(inputPath, "architecture", "system");
         if (fs.existsSync(designDir)) {
           const files = fs.readdirSync(designDir);
           const designFiles = files
@@ -208,7 +208,7 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
             console.log(`📄 Using design file: ${latestDesign}`);
             
             // Optional: check for code directive
-            const codeDir = path.join(inputPath, "inputs", "directives", "code");
+            const codeDir = path.join(inputPath, "meta", "directives", "code");
             const directiveFile = findLatestDirective(codeDir);
             if (directiveFile) {
               console.log(`📄 Found code directive: ${directiveFile}`);
@@ -219,7 +219,7 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
         }
         
         // 2. No design found, look for code directive
-        const codeDir = path.join(inputPath, "inputs", "directives", "code");
+        const codeDir = path.join(inputPath, "meta", "directives", "code");
         const directiveFile = findLatestDirective(codeDir);
         if (directiveFile) {
           console.log(`📄 Using code directive: ${directiveFile}`);
@@ -234,13 +234,13 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
           `  OR\n` +
           `  - Directive in ${codeDir}\n\n` +
           `For new features: Run 'architect design' first.\n` +
-          `For modifications: Create directive.md in inputs/directives/code/`
+          `For modifications: Create directive.md in meta/directives/code/`
         );
       }
       
       case 'learn': {
         // Learn task: find learn directive
-        const learnDir = path.join(inputPath, "inputs", "directives", "learn");
+        const learnDir = path.join(inputPath, "meta", "directives", "learn");
         const directiveFile = findLatestDirective(learnDir);
         
         if (!directiveFile) {

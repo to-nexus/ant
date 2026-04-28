@@ -79,15 +79,15 @@ export const ActorNode = memo(({ data }: ActorNodeProps) => {
     if (data.actorId === 'local-storage' && selectedProject && selectedFeature) {
       return {
         ...baseActorInfo,
-        details: getDisplayPath(selectedProject, selectedFeature, 'outputs/session.json')
+        details: getDisplayPath(selectedProject, selectedFeature, 'sessions/')
       };
     }
     
-    // file-system: outputs 디렉토리 경로 (중앙화된 경로 사용)
+    // file-system: 산출물 디렉토리 경로 (architecture/visual/meta/evals 도메인 그룹)
     if (data.actorId === 'file-system' && selectedProject && selectedFeature) {
       return {
         ...baseActorInfo,
-        details: getDisplayPath(selectedProject, selectedFeature, 'outputs/')
+        details: getDisplayPath(selectedProject, selectedFeature, 'architecture/ • visual/ • meta/evals/')
       };
     }
     

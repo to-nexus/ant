@@ -280,9 +280,9 @@ describe('gen-plan domain-aware filename split (Phase E)', () => {
     expect(getCanonicalPlanFilename(undefined)).toBe('prd.md');
   });
 
-  it('getCanonicalPlanPath prefixes inputs/sources/ for either domain', () => {
-    expect(getCanonicalPlanPath('service')).toBe('inputs/sources/prd.md');
-    expect(getCanonicalPlanPath('game')).toBe('inputs/sources/gdd.md');
+  it('getCanonicalPlanPath prefixes plan/ for either domain', () => {
+    expect(getCanonicalPlanPath('service')).toBe('plan/prd.md');
+    expect(getCanonicalPlanPath('game')).toBe('plan/gdd.md');
   });
 
   it('getPlanOutputs returns a single domain-canonical OutputSpec', () => {
@@ -312,13 +312,13 @@ describe('gen-plan domain-aware filename split (Phase E)', () => {
 
   it('getDefaultTargetPaths(gen-plan, domain) collapses to the single canonical path', () => {
     expect(getDefaultTargetPaths('gen-plan', 'service')).toEqual([
-      'inputs/sources/prd.md',
+      'plan/prd.md',
     ]);
     expect(getDefaultTargetPaths('gen-plan', 'game')).toEqual([
-      'inputs/sources/gdd.md',
+      'plan/gdd.md',
     ]);
     expect(getDefaultTargetPaths('gen-plan', undefined)).toEqual([
-      'inputs/sources/prd.md',
+      'plan/prd.md',
     ]);
   });
 

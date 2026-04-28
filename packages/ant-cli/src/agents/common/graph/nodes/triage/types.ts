@@ -114,39 +114,50 @@ export interface TriageResult {
 
 /**
  * WorkspaceState: 워크스페이스 상태
+ *
+ * Path-presence flags use domain labels (`hasPlan`, `hasArchitecture*`,
+ * `hasVisual*`, `hasAssets`, `hasMeta*`) — see Phase B canonical layout.
  */
 export interface WorkspaceState {
-  // Common
-  hasPrd: boolean;               // ⚠️ inputs/sources/ 내 텍스트 파일이 하나라도 있으면 true (prd.md 외 포함)
-  hasDirective: boolean;         // ⚠️ 채팅 입력 시 true
-  prdPath?: string;
-  directivePath?: string;
-  featurePath?: string;          // Feature directory path (for debug logging)
-  sourceFileCount?: number;      // inputs/sources/ 내 텍스트 파일 수
-  sourceFileNames?: string[];    // 파일명 목록 (e.g. ["prd.md", "tech-spec.md"])
-  
-  // Design job - ui-design mode
-  hasAssets: boolean;            // inputs/assets/
-  hasFigmaConfig: boolean;       // outputs/design/ui/figma/figma.json with populated file value (workfile reference only; MCP reachability is NOT included — see code resolve's detectFigmaSource for the combined check)
-  assetCount?: number;
-  
-  // Design job - system-design mode
-  hasSystemDesignDoc: boolean;   // outputs/design/system/*-system-*.md or api-contract-*.md
-  systemDesignFileNames?: string[]; // e.g. ['fe-system-main.md', 'be-system-order.md', 'api-contract-public.md']
-  hasUiDocs: boolean;            // outputs/design/ui/ant/ui-*.json (ant UiSource present)
-  
-  // Evaluations
-  hasEvals: boolean;             // outputs/evals/ has any reports
-  evalCount?: number;            // Total eval report files
-  
-  // Spec documents
-  hasSpecDocs: boolean;          // Any spec-*.md in outputs/design/spec/
-  specDocCount?: number;
-  specDocNames?: string[];       // e.g. ['spec-social-login.md', 'spec-payment.md']
+  // Plan track — `plan/` (text-bearing files such as prd.md / gdd.md / tech-spec.md)
+  hasPlan: boolean;              // any text file in plan/ (prd.md, gdd.md, etc.)
+  planPath?: string;             // path to canonical plan file (prd.md or gdd.md)
+  planFileCount?: number;        // number of text files in plan/
+  planFileNames?: string[];      // e.g. ["prd.md", "tech-spec.md"]
 
-  // Code job
-  hasDesignDoc: boolean;         // Any design doc under outputs/design/system|ui|spec/
-  hasCodebase: boolean;          // Indexed in vector DB
+  // Meta track — directives & evaluation reports
+  hasMetaDirectives: boolean;    // ⚠️ true if meta/directives/{design,code}/directive.md exists OR chat directive supplied
+  directivePath?: string;
+  hasMetaEvals: boolean;         // meta/evals/ has any reports
+  evalCount?: number;
+
+  featurePath?: string;          // Feature directory path (for debug logging)
+
+  // Visual track — `visual/`
+  hasVisualUi: boolean;          // visual/ui/ant/ui-*.json (ant UiSource present)
+  hasVisualGameArt: boolean;     // visual/game-art/ant/game-art-*.json present
+  hasFigmaConfig: boolean;       // visual/ui/figma/figma.json with populated file value (workfile reference only; MCP reachability is NOT included — see code resolve's detectFigmaSource for the combined check)
+
+  // Assets track — `assets/`
+  hasAssets: boolean;
+  assetCount?: number;
+
+  // Architecture track — `architecture/`
+  hasArchitectureSystem: boolean;     // architecture/system/*-system-*.md or api-contract-*.md
+  systemDesignFileNames?: string[];   // e.g. ['fe-system-main.md', 'be-system-order.md', 'api-contract-public.md']
+  hasArchitectureSpec: boolean;       // Any spec-*.md in architecture/spec/
+  specDocCount?: number;
+  specDocNames?: string[];            // e.g. ['spec-social-login.md', 'spec-payment.md']
+
+  /**
+   * Aggregate convenience flag — true when ANY architecture/visual artifact
+   * is present (system / spec / ui / game-art). Derived; consumers may use
+   * the granular flags above when they need finer routing.
+   */
+  hasDesignDoc: boolean;
+
+  // Codebase track — vector index
+  hasCodebase: boolean;
   indexedFileCount?: number;
 }
 

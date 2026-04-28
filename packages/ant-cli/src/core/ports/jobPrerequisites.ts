@@ -19,13 +19,13 @@ import { DecomposableJobType } from '../types/task';
 export interface RequiredMaterial {
   /** Human-readable name (e.g., "Design Directive", "PRD Document") */
   name: string;
-  
-  /** File path relative to feature directory (e.g., "inputs/directives/design/directive.md") */
+
+  /** File path relative to feature directory (e.g., "meta/directives/design/directive.md") */
   path: string;
-  
+
   /** Description of what this material should contain */
   description: string;
-  
+
   /** Whether the file must have content (not just exist as empty file) */
   mustHaveContent: boolean;
 }

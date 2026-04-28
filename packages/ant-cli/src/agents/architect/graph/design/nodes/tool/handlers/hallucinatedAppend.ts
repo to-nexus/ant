@@ -49,9 +49,13 @@ export async function handleAppendFile(
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
       ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
-      if ('addUnseenArtifacts' in ctx.fileTreeUpdate && resolved.displayPath.startsWith('outputs/')) {
+      const dp = resolved.displayPath;
+      if (
+        'addUnseenArtifacts' in ctx.fileTreeUpdate &&
+        (dp.startsWith('architecture/') || dp.startsWith('visual/') || dp.startsWith('meta/evals/'))
+      ) {
         (ctx.fileTreeUpdate as any).addUnseenArtifacts(
-          ctx.project, ctx.featureFolder, [resolved.displayPath]
+          ctx.project, ctx.featureFolder, [dp]
         );
       }
     }

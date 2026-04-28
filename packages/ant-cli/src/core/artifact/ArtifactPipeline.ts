@@ -57,9 +57,9 @@ import { compactContent } from '../utils/contentCompactor';
 
 /**
  * An artifact counts as "UI" if it lives under ANY of the three UiSource
- * subdirectories: `outputs/design/ui/{ant,figma,handoff}/`. The parent
- * `outputs/design/ui/` directory is NOT sufficient on its own — paths must
- * resolve to a specific UiSource.
+ * subdirectories: `visual/ui/{ant,figma,handoff}/`. The parent
+ * `visual/ui/` directory is NOT sufficient on its own — paths must resolve
+ * to a specific UiSource.
  */
 export function isUiArtifactPath(p: string): boolean {
   return p.startsWith(ARTIFACT_PREFIX.UI_ANT)
@@ -69,7 +69,7 @@ export function isUiArtifactPath(p: string): boolean {
 
 /**
  * An artifact counts as "game-art" if it lives under any of the three
- * game-art sub-source subdirectories: `outputs/design/game-art/{ant,figma,handoff}/`.
+ * game-art sub-source subdirectories: `visual/game-art/{ant,figma,handoff}/`.
  * Mirrors `isUiArtifactPath` shape (D24-revised).
  */
 export function isGameArtArtifactPath(p: string): boolean {
@@ -141,7 +141,12 @@ export function selectArtifacts(
 
     default:
       return candidates.filter(
-        a => a.path.startsWith(ARTIFACT_PREFIX.DESIGN) || a.path.startsWith(ARTIFACT_PREFIX.SOURCES),
+        a =>
+          a.path.startsWith(ARTIFACT_PREFIX.SYSTEM_DESIGN) ||
+          a.path.startsWith(ARTIFACT_PREFIX.SPEC) ||
+          isUiArtifactPath(a.path) ||
+          isGameArtArtifactPath(a.path) ||
+          a.path.startsWith(ARTIFACT_PREFIX.SOURCES),
       );
   }
 }
@@ -385,7 +390,7 @@ export class ArtifactPoolView {
   /**
    * Flat name→content map from system-design artifacts.
    * Strips prefix + `.md` suffix.
-   * e.g. `outputs/design/system/fe-system-main.md` → `fe-system-main`
+   * e.g. `architecture/system/fe-system-main.md` → `fe-system-main`
    */
   flattenSystemDesigns(): Record<string, string> {
     const map: Record<string, string> = {};
@@ -426,9 +431,10 @@ export class ArtifactPoolView {
   /** Source artifacts as Record<filename, content> (legacy compat). */
   sourcesAsRecord(): Record<string, string> {
     const map: Record<string, string> = {};
+    const sourcesPrefix = `${ARTIFACT_PREFIX.SOURCES}/`;
     for (const a of this.sources) {
-      const name = a.path.startsWith('inputs/sources/')
-        ? a.path.slice('inputs/sources/'.length)
+      const name = a.path.startsWith(sourcesPrefix)
+        ? a.path.slice(sourcesPrefix.length)
         : a.path;
       if (a.content) map[name] = a.content;
     }
@@ -437,9 +443,10 @@ export class ArtifactPoolView {
 
   /** Source filenames list. */
   sourceFileNames(): string[] {
+    const sourcesPrefix = `${ARTIFACT_PREFIX.SOURCES}/`;
     return this.sources.map(a => {
       const p = a.path;
-      return p.startsWith('inputs/sources/') ? p.slice('inputs/sources/'.length) : p;
+      return p.startsWith(sourcesPrefix) ? p.slice(sourcesPrefix.length) : p;
     });
   }
 
@@ -459,9 +466,10 @@ export class ArtifactPoolView {
    * the gdd.md split keeps that file as authoritative).
    */
   prdContent(): string | undefined {
+    const sourcesPrefix = `${ARTIFACT_PREFIX.SOURCES}/`;
     return (
-      this.pool.find(a => a.path === 'inputs/sources/prd.md')?.content ??
-      this.pool.find(a => a.path === 'inputs/sources/gdd.md')?.content
+      this.pool.find(a => a.path === `${sourcesPrefix}prd.md`)?.content ??
+      this.pool.find(a => a.path === `${sourcesPrefix}gdd.md`)?.content
     );
   }
 
@@ -510,7 +518,7 @@ export function getDesignDocByPackageFromPool(pkg: string, artifacts: ResolvedAr
 
 /**
  * Strip feature-path prefix from a project-root-relative path.
- * e.g. 'features/proj/feat/outputs/design/ui/ant/ui-tokens.json' → 'outputs/design/ui/ant/ui-tokens.json'
+ * e.g. 'features/proj/feat/visual/ui/ant/ui-tokens.json' → 'visual/ui/ant/ui-tokens.json'
  */
 export function toFeatureRelative(filePath: string, featurePath: string): string {
   const featurePrefix = featurePath.replace(/^\//, '').replace(/\/?$/, '/');

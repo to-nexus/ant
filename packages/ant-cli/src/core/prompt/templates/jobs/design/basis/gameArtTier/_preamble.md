@@ -14,7 +14,7 @@ canvas-side methods.
 
 ### 1. Responsibility — what game-art design IS
 
-Game-art design produces three artifacts under `outputs/design/game-art/ant/` (sub-sourced canonical, mirrors `outputs/design/ui/ant/`):
+Game-art design produces three artifacts under `visual/game-art/ant/` (sub-sourced canonical, mirrors `visual/ui/ant/`):
 
 - **`game-art-tokens.json`** — palette / silhouette / lighting / motion-tone
   derived from `gameArtTier.concept`. **D28** — also carries HUD CSS
@@ -29,7 +29,7 @@ Game-art design produces three artifacts under `outputs/design/game-art/ant/` (s
 
 Art design's job is to:
 
-1. **Map** existing user-placed assets at `inputs/assets/game/{category}/`
+1. **Map** existing user-placed assets at `assets/game/{category}/`
    to catalog entries with `kind: 'external'` and the verbatim `src`.
 2. **Generate** simple inline assets (`kind: 'inline'`) for shapes the
    game needs at the css-only scope.
@@ -63,13 +63,13 @@ and let the user place the production asset themselves.
 ### 3. External asset hand-off (production assets)
 
 When the game needs assets above the css-only ceiling, art design
-records `kind: 'external'` entries pointing into `inputs/assets/game/`
+records `kind: 'external'` entries pointing into `assets/game/`
 (service / game pools are domain-1:1 separated, I6).
 The user (or, in Phase 5+, a `visual` job) is responsible for placing
 the actual file at the recorded path:
 
 ```
-inputs/assets/game/
+assets/game/
 ├── entities/    # character / object sprites (.svg, .png)
 ├── particles/   # particle textures (.png, .svg)
 ├── projectiles/ # bullet shapes (.svg, .png)
@@ -97,7 +97,7 @@ If the LLM is unsure, default to `audioScope: 'procedural-only'` and `visualScop
 ### 5. Invariants (recap — I6 / I7-revised)
 
 - **I6 — Asset Surface Boundary**: `kind: 'external'.src` MUST start
-  with `inputs/assets/game/`. Never reach into `inputs/assets/service/`
+  with `assets/game/`. Never reach into `assets/service/`
   from `game-art-assets.json` (and `ui-assets.json` is service-only —
   D28 — so cross-domain reference is structurally impossible).
 - **I7-revised — Domain-Surface Boundary (D28)**: game-art design prompts /
@@ -114,7 +114,7 @@ Production-quality sprite / sfx / 3D model creation is reserved for the
 upcoming `visual` job (Phase 5+). When that job lands, it consumes
 `game-art-assets.json` `kind: 'inline'` entries as **prompts** and
 re-records them as `kind: 'external'` after generating the actual
-assets into `inputs/assets/game/`. Today, `kind: 'inline'` is final;
+assets into `assets/game/`. Today, `kind: 'inline'` is final;
 nothing rewrites it after design completes.
 
 ---
@@ -133,7 +133,7 @@ Every catalog entry carries `kind: 'inline' | 'external'` (D20):
 | `kind`       | Source                                                                  | When                                                              |
 |--------------|-------------------------------------------------------------------------|-------------------------------------------------------------------|
 | `inline`     | LLM-authored within the JSON (`css` / `svg` / `oscillator` payload).    | Simple shapes, css-only scope (D21). Production assets prohibited. |
-| `external`   | User-placed file under `inputs/assets/game/{category}/...`.             | Production sprites / sfx / atlas / 3D models.                     |
+| `external`   | User-placed file under `assets/game/{category}/...`.             | Production sprites / sfx / atlas / 3D models.                     |
 
 Decisions:
 
@@ -174,7 +174,7 @@ Phase 4 axis. Decides whether `sfx` / `bgm` catalog entries can be
 | Variant       | Effect                                                                                |
 |---------------|---------------------------------------------------------------------------------------|
 | `procedural`  | Inline OscillatorNode configs only. Phase 2 default — works without user-placed files. |
-| `fileBased`   | `kind: 'external'` mp3 / ogg / wav under `inputs/assets/game/sfx/` and `bgm/`.        |
+| `fileBased`   | `kind: 'external'` mp3 / ogg / wav under `assets/game/sfx/` and `bgm/`.        |
 | `hybrid`      | Procedural SFX + external BGM. Bridge mode for prototypes that already have a BGM.    |
 
 When `audioScope === 'procedural-only'`, force `audioProfile = 'procedural'`
@@ -183,7 +183,7 @@ regardless of LLM-emitted value (the marker gates external audio).
 ### D. Domain-Surface Boundary (I7-revised — D28)
 
 Game-art design is the SOLE visual SSOT for the game domain (D28). The
-UI design surface (`outputs/design/ui/ant/`) is service-domain-only —
+UI design surface (`visual/ui/ant/`) is service-domain-only —
 it does NOT exist in a game workspace and game-art templates MUST NOT
 borrow from it.
 
@@ -195,11 +195,11 @@ borrow from it.
   category keys in `game-art-spec.json`). DO NOT use UI-surface terms
   like `visualLanguage` / `surfaceSystem` / `spatialSystem` — those are
   service-domain-only.
-- ❌ Do NOT reference `outputs/design/ui/ant/...` from any
-  `game-art-*.json` artifact under `outputs/design/game-art/ant/`. The
+- ❌ Do NOT reference `visual/ui/ant/...` from any
+  `game-art-*.json` artifact under `visual/game-art/ant/`. The
   two surfaces are vertically split by domain (D28), so there is no
   cross-link.
-- ❌ Do NOT reference `inputs/assets/service/...` from
+- ❌ Do NOT reference `assets/service/...` from
   `game-art-assets.json` (I6 — Asset Surface Boundary).
 - ✅ DO reference the same PRD and system-design RAC pool as upstream
   inputs — those are domain-agnostic and feed both domains.

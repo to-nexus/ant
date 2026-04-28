@@ -252,7 +252,7 @@ export function getAllSessionPaths(featurePath: string): Array<{ path: string; a
  * Every path listed there MUST have a corresponding factory here.
  */
 const FILE_CONTENT_FACTORIES: Record<string, () => string> = {
-  'outputs/design/ui/figma/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
+  'visual/ui/figma/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
 };
 
 /**
@@ -367,8 +367,8 @@ export async function ensureCanonicalStructure(featurePath: string): Promise<Ens
   }
 
   // v8 (D24-revised) — game-art flat → ant/ sub-source migration.
-  // Lifts the legacy `outputs/design/game-art/{X}.json` flat layout into
-  // `outputs/design/game-art/ant/{X}.json` (mirrors `outputs/design/ui/ant`).
+  // Lifts a flat `visual/game-art/{X}.json` layout into
+  // `visual/game-art/ant/{X}.json` (mirrors `visual/ui/ant`).
   // Idempotent / silent noop when the workspace already has no flat files.
   try {
     const { migrateGameArtToAntSubdir } = await import('../../infrastructure/workspace/migrateGameArtToAntSubdir');
@@ -418,7 +418,7 @@ export interface ClearCanonicalDirectoryOptions {
  * - Non-canonical subdirectories: fully deleted (rm -rf), including all nested content
  * 
  * @param dirPath - Absolute path to the directory to clear
- * @param relativePath - Path relative to feature root (e.g., 'outputs/evals')
+ * @param relativePath - Path relative to feature root (e.g., 'meta/evals')
  * @param options - Optional behavior configuration
  */
 export async function clearCanonicalDirectory(

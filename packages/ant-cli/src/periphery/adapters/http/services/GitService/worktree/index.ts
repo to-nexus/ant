@@ -56,7 +56,7 @@ export class WorktreeService {
       featureName
     });
 
-    // Ensure canonical feature structure (outputs/design/ui/{ant,figma,handoff}, sessions/*, etc).
+    // Ensure canonical feature structure (visual/ui/{ant,figma,handoff}, sessions/*, etc).
     // Critical for Git-remote operations (Clone/Init/Sync/Pull/Commit/Push) that restore feature
     // branches without routing through FeatureCrudService.createFeature — this is the single
     // guard that keeps canonical directories consistent for every worktree entry point. Idempotent.

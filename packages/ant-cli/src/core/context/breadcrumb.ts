@@ -94,8 +94,9 @@ function collapseToTopLevelPaths(paths: string[], cap: number): string[] {
 /**
  * At the LARGE tier, surface only the spec/document-looking paths and
  * the top-level directory patterns. "Spec" is observed structurally —
- * files under `docs/`, `outputs/design/`, or extension `.md`. We do not
- * hardcode project-specific conventions (FPOP: Universal over Specific).
+ * files under `docs/`, `architecture/`, `visual/`, or extension `.md`. We
+ * do not hardcode project-specific conventions (FPOP: Universal over
+ * Specific).
  */
 function extractSpecs(paths: string[], cap: number): string[] {
   const seen = new Set<string>();
@@ -106,7 +107,10 @@ function extractSpecs(paths: string[], cap: number): string[] {
       lower.endsWith('.md') ||
       lower.startsWith('docs/') ||
       lower.includes('/docs/') ||
-      lower.includes('outputs/design/');
+      lower.startsWith('architecture/') ||
+      lower.includes('/architecture/') ||
+      lower.startsWith('visual/') ||
+      lower.includes('/visual/');
     if (!isSpec) continue;
     if (seen.has(p)) continue;
     seen.add(p);

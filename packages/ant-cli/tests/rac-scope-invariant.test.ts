@@ -2,7 +2,7 @@
  * RAC scope invariant — `state.artifacts ⊆ resolvedAction.refs ∪ context`.
  *
  * Locks the post-RAC SSOT introduced after the `prime-jetting-grate`
- * regression: a wholesale `outputs/design/system/**` load on the resolve
+ * regression: a wholesale `architecture/system/**` load on the resolve
  * node injected `fe-system-main.md` into a `gen-code-directive` job whose
  * RAC explicitly excluded system-design slots. The leak surfaced through
  * three independent channels — decompose `tierRefs`, decompose `documents`,
@@ -65,11 +65,11 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
   beforeAll(() => {
     featurePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-rac-scope-'));
 
-    const sourcesDir = path.join(featurePath, 'inputs/sources');
+    const sourcesDir = path.join(featurePath, 'plan');
     fs.mkdirSync(sourcesDir, { recursive: true });
     fs.writeFileSync(path.join(sourcesDir, 'prd.md'), '# PRD\n\nProduct requirements.');
 
-    const sysDir = path.join(featurePath, 'outputs/design/system');
+    const sysDir = path.join(featurePath, 'architecture/system');
     fs.mkdirSync(sysDir, { recursive: true });
     fs.writeFileSync(
       path.join(sysDir, 'fe-system-main.md'),
@@ -80,7 +80,7 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
       '# api-contract-public\n\nPublic API contract.',
     );
 
-    const specDir = path.join(featurePath, 'outputs/design/spec');
+    const specDir = path.join(featurePath, 'architecture/spec');
     fs.mkdirSync(specDir, { recursive: true });
     fs.writeFileSync(path.join(specDir, 'spec-foo.md'), '# spec-foo\n\nFeature spec.');
   });
@@ -92,13 +92,13 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
   it('gen-code-directive (PRD-only context) does NOT pull in fe-system-main.md from disk', () => {
     // Reproduces the `prime-jetting-grate` scenario: user picks a directive
     // intent with the PRD as sole context, while disk also holds an
-    // unrelated `outputs/design/system/fe-system-main.md`. The pool must
+    // unrelated `architecture/system/fe-system-main.md`. The pool must
     // remain bounded by the RAC.
-    const ra = rac('gen-code-directive', [], ['inputs/sources/prd.md']);
+    const ra = rac('gen-code-directive', [], ['plan/prd.md']);
     const artifacts = loadResolvedArtifacts(ra, featurePath);
 
     const paths = artifacts.map(a => a.path).sort();
-    expect(paths).toEqual(['inputs/sources/prd.md']);
+    expect(paths).toEqual(['plan/prd.md']);
 
     const racPaths = new Set([...(ra.refs ?? []), ...(ra.context ?? [])]);
     for (const a of artifacts) {
@@ -112,16 +112,16 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
     // as ref) must still hydrate the pool.
     const ra = rac(
       'gen-code-sys',
-      ['outputs/design/system/fe-system-main.md', 'outputs/design/system/api-contract-public.md'],
-      ['inputs/sources/prd.md'],
+      ['architecture/system/fe-system-main.md', 'architecture/system/api-contract-public.md'],
+      ['plan/prd.md'],
     );
     const artifacts = loadResolvedArtifacts(ra, featurePath);
 
     const paths = artifacts.map(a => a.path).sort();
     expect(paths).toEqual([
-      'inputs/sources/prd.md',
-      'outputs/design/system/api-contract-public.md',
-      'outputs/design/system/fe-system-main.md',
+      'architecture/system/api-contract-public.md',
+      'architecture/system/fe-system-main.md',
+      'plan/prd.md',
     ]);
 
     const fe = artifacts.find(a => a.path.endsWith('fe-system-main.md'));
@@ -129,21 +129,21 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
     expect(fe?.content).toContain('Cross SDK');
   });
 
-  it('directory slot — `outputs/design/spec/` walks into spec-*.md only when listed', () => {
+  it('directory slot — `architecture/spec/` walks into spec-*.md only when listed', () => {
     // Directory slot semantics: `loadResolvedArtifacts` walks the directory,
     // so design-spec intents that put the `spec/` dir into `refs` get every
     // spec file recursively. Directive intents (no spec slot) must not.
     const directiveOnly = loadResolvedArtifacts(
-      rac('gen-code-directive', [], ['inputs/sources/prd.md']),
+      rac('gen-code-directive', [], ['plan/prd.md']),
       featurePath,
     );
-    expect(directiveOnly.some(a => a.path.startsWith('outputs/design/spec/'))).toBe(false);
+    expect(directiveOnly.some(a => a.path.startsWith('architecture/spec/'))).toBe(false);
 
     const specBased = loadResolvedArtifacts(
-      rac('gen-code-spec', ['outputs/design/spec'], ['inputs/sources/prd.md']),
+      rac('gen-code-spec', ['architecture/spec'], ['plan/prd.md']),
       featurePath,
     );
-    expect(specBased.some(a => a.path === 'outputs/design/spec/spec-foo.md')).toBe(true);
+    expect(specBased.some(a => a.path === 'architecture/spec/spec-foo.md')).toBe(true);
   });
 
   it('empty RAC produces empty pool (no implicit disk pickups)', () => {
@@ -161,15 +161,15 @@ describe('discoveryTools RAC whitelist (Channel A — `mossy-nearing-gleam`)', (
 
   beforeAll(() => {
     featurePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-rac-discovery-'));
-    fs.mkdirSync(path.join(featurePath, 'inputs/sources'), { recursive: true });
-    fs.writeFileSync(path.join(featurePath, 'inputs/sources/prd.md'), '# PRD\n');
-    fs.mkdirSync(path.join(featurePath, 'outputs/design/system'), { recursive: true });
+    fs.mkdirSync(path.join(featurePath, 'plan'), { recursive: true });
+    fs.writeFileSync(path.join(featurePath, 'plan/prd.md'), '# PRD\n');
+    fs.mkdirSync(path.join(featurePath, 'architecture/system'), { recursive: true });
     fs.writeFileSync(
-      path.join(featurePath, 'outputs/design/system/fe-system-main.md'),
+      path.join(featurePath, 'architecture/system/fe-system-main.md'),
       '# fe-system-main — Cross SDK adapter contract',
     );
-    fs.mkdirSync(path.join(featurePath, 'outputs/design/spec'), { recursive: true });
-    fs.writeFileSync(path.join(featurePath, 'outputs/design/spec/spec-foo.md'), '# spec-foo');
+    fs.mkdirSync(path.join(featurePath, 'architecture/spec'), { recursive: true });
+    fs.writeFileSync(path.join(featurePath, 'architecture/spec/spec-foo.md'), '# spec-foo');
   });
 
   afterAll(() => {
@@ -186,8 +186,8 @@ describe('discoveryTools RAC whitelist (Channel A — `mossy-nearing-gleam`)', (
 
   it('explicit RAC blocks read_file on a non-RAC artifact path', () => {
     const result = handleReadFile(
-      { scope: 'artifact', path: 'outputs/design/system/fe-system-main.md' },
-      ctx({ refs: [], context: ['inputs/sources/prd.md'] }),
+      { scope: 'artifact', path: 'architecture/system/fe-system-main.md' },
+      ctx({ refs: [], context: ['plan/prd.md'] }),
     );
     expect(result).toMatch(/outside the RAC selection/);
     expect(result).not.toContain('Cross SDK');
@@ -195,8 +195,8 @@ describe('discoveryTools RAC whitelist (Channel A — `mossy-nearing-gleam`)', (
 
   it('explicit RAC blocks list_files on a non-RAC directory', () => {
     const result = handleListFiles(
-      { scope: 'artifact', directory: 'outputs/design/system' },
-      ctx({ refs: [], context: ['inputs/sources/prd.md'] }),
+      { scope: 'artifact', directory: 'architecture/system' },
+      ctx({ refs: [], context: ['plan/prd.md'] }),
     );
     expect(result).toMatch(/outside the RAC selection/);
     expect(result).not.toContain('fe-system-main');
@@ -204,40 +204,40 @@ describe('discoveryTools RAC whitelist (Channel A — `mossy-nearing-gleam`)', (
 
   it('explicit RAC permits read_file on a RAC member path', () => {
     const result = handleReadFile(
-      { scope: 'artifact', path: 'inputs/sources/prd.md' },
-      ctx({ refs: [], context: ['inputs/sources/prd.md'] }),
+      { scope: 'artifact', path: 'plan/prd.md' },
+      ctx({ refs: [], context: ['plan/prd.md'] }),
     );
     expect(result).toContain('# PRD');
   });
 
   it('directory RAC entry permits read on descendants but rejects siblings', () => {
-    // RAC pins `outputs/design/spec/` as a directory slot.
+    // RAC pins `architecture/spec/` as a directory slot.
     const allowed = handleReadFile(
-      { scope: 'artifact', path: 'outputs/design/spec/spec-foo.md' },
-      ctx({ refs: ['outputs/design/spec'], context: [] }),
+      { scope: 'artifact', path: 'architecture/spec/spec-foo.md' },
+      ctx({ refs: ['architecture/spec'], context: [] }),
     );
     expect(allowed).toContain('# spec-foo');
 
     const denied = handleReadFile(
-      { scope: 'artifact', path: 'outputs/design/system/fe-system-main.md' },
-      ctx({ refs: ['outputs/design/spec'], context: [] }),
+      { scope: 'artifact', path: 'architecture/system/fe-system-main.md' },
+      ctx({ refs: ['architecture/spec'], context: [] }),
     );
     expect(denied).toMatch(/outside the RAC selection/);
   });
 
   it('list_files allowed on a parent of a RAC directory entry', () => {
-    // Listing `outputs/design` is needed when the LLM wants to inspect
-    // siblings of a pinned `outputs/design/spec/` directory slot.
+    // Listing `architecture` is needed when the LLM wants to inspect
+    // siblings of a pinned `architecture/spec/` directory slot.
     const result = handleListFiles(
-      { scope: 'artifact', directory: 'outputs/design' },
-      ctx({ refs: ['outputs/design/spec'], context: [] }),
+      { scope: 'artifact', directory: 'architecture' },
+      ctx({ refs: ['architecture/spec'], context: [] }),
     );
     expect(result).not.toMatch(/outside the RAC selection/);
   });
 
   it('infer pipeline (no racScope) preserves legacy behaviour', () => {
     const result = handleReadFile(
-      { scope: 'artifact', path: 'outputs/design/system/fe-system-main.md' },
+      { scope: 'artifact', path: 'architecture/system/fe-system-main.md' },
       ctx(undefined),
     );
     expect(result).toContain('Cross SDK');
@@ -294,7 +294,7 @@ describe('createTaskQueue mode gate — explicit pipeline produces RAC-only task
   it('Tier 3 explicit pipeline: no fe-system-main.md leaks into task.include', () => {
     // Reproduces `mossy-nearing-gleam` task shape: gen-code-directive
     // with PRD-only RAC, decompose LLM emits `packages: ["fe-main"]`.
-    // Explicit mode must NOT bake `outputs/design/system/fe-system-main.md`
+    // Explicit mode must NOT bake `architecture/system/fe-system-main.md`
     // into the task.
     const tasks = [
       {
@@ -318,8 +318,8 @@ describe('createTaskQueue mode gate — explicit pipeline produces RAC-only task
     const navbar = taskQueue.getAll().find(t => t.id === 'feature-navbar')!;
 
     expect(navbar.artifactPolicy).toBeUndefined();
-    expect(navbar.include ?? []).not.toContain('outputs/design/system/fe-system-main.md');
-    expect(navbar.include ?? []).not.toContain('outputs/design/system/api-contract-*');
+    expect(navbar.include ?? []).not.toContain('architecture/system/fe-system-main.md');
+    expect(navbar.include ?? []).not.toContain('architecture/system/api-contract-*');
     // packages survives as a tech-tier hint.
     expect(navbar.packages).toEqual(['fe-main']);
   });

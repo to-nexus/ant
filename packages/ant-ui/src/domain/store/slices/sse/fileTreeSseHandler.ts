@@ -1,10 +1,9 @@
 import type { FileNode } from '@/infrastructure/http/api';
 
 function findFigmaJsonNode(tree: FileNode[]): FileNode | undefined {
-  // Canonical location: outputs/design/ui/figma/figma.json
-  const outputs = tree?.find(n => n.name === 'outputs');
-  const design = outputs?.children?.find(n => n.name === 'design');
-  const ui = design?.children?.find(n => n.name === 'ui');
+  // Canonical location: visual/ui/figma/figma.json
+  const visual = tree?.find(n => n.name === 'visual');
+  const ui = visual?.children?.find(n => n.name === 'ui');
   const figma = ui?.children?.find(n => n.name === 'figma');
   return figma?.children?.find(n => n.name === 'figma.json');
 }

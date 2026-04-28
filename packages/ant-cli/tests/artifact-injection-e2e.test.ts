@@ -74,19 +74,19 @@ const ART_FP = {
 // ============================================
 
 const refArtifact: ResolvedArtifact = {
-  path: 'outputs/design/system/fe-system-main.md',
+  path: 'architecture/system/fe-system-main.md',
   content: `Frontend design ${ART_FP.REF_MARKER} document`,
   role: 'ref',
 };
 
 const ctxArtifact: ResolvedArtifact = {
-  path: 'inputs/sources/prd.md',
+  path: 'plan/prd.md',
   content: `PRD requirements ${ART_FP.CTX_MARKER} document`,
   role: 'context',
 };
 
 const dirRoleArtifact: ResolvedArtifact = {
-  path: 'inputs/directives/main.md',
+  path: 'meta/directives/main.md',
   content: `Directive content ${ART_FP.DIR_ROLE_MARKER}`,
   role: 'directive',
 };
@@ -135,7 +135,7 @@ function assertNoDuplicateInjectionPaths(injections: string[]) {
 
 function makeCodeExecuteConfig(overrides: Partial<PromptBuildConfig>): PromptBuildConfig {
   const rac = resolveToRAC('gen-code-sys' as IntentId, {
-    refs: ['outputs/design/system/fe-system-main.md'],
+    refs: ['architecture/system/fe-system-main.md'],
   }, 'explicit');
 
   return {
@@ -695,7 +695,7 @@ describe('D1: code execute — directive truthy', () => {
         directive: ART_FP.DIRECTIVE_MARKER,
         currentTask: { id: 't1', type: 'feature', description: 'Test', targetFile: 'src/App.tsx', name: 'task-1', priority: 'high' },
         resolvedAction: resolveToRAC('gen-code-sys' as IntentId, {
-          refs: ['outputs/design/system/fe-system-main.md'],
+          refs: ['architecture/system/fe-system-main.md'],
         }, 'explicit'),
         projectFileTree: 'src/\n  index.ts',
       },
@@ -739,7 +739,7 @@ describe('D2: code execute — directive empty', () => {
         directive: '',
         currentTask: { id: 't1', type: 'feature', description: 'Test', targetFile: 'src/App.tsx', name: 'task-1', priority: 'high' },
         resolvedAction: resolveToRAC('gen-code-sys' as IntentId, {
-          refs: ['outputs/design/system/fe-system-main.md'],
+          refs: ['architecture/system/fe-system-main.md'],
         }, 'explicit'),
         projectFileTree: 'src/\n  index.ts',
       },

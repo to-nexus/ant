@@ -135,18 +135,18 @@ Observe the **intent** of the directive with respect to existing documents:
 
 **Apply ONLY when Step 1 cannot determine intentGroup** (directive has no clear scope indication):
 
-{{#if hasUiDocs}}
+{{#if hasVisualUi}}
 {{#unless hasSystemDocs}}
 
 - UI docs exist, system docs missing → `"system-design"` + `"generate"` (next natural phase)
 {{/unless}}
 {{/if}}
 
-{{#unless hasUiDocs}}
+{{#unless hasVisualUi}}
 - UI docs missing, no Figma config → `"system-design"` + `"generate"` (UI design needs Figma or an explicit description directive)
 {{/unless}}
 
-{{#if hasUiDocs}}
+{{#if hasVisualUi}}
 {{#if hasSystemDocs}}
 
 - All docs exist, directive is vague → `"system-design"` + `"generate"` (default)
@@ -159,7 +159,7 @@ Observe the **intent** of the directive with respect to existing documents:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-{{#if hasUiDocs}}
+{{#if hasVisualUi}}
 UI Design Documents: exist
 {{#if hasUiTokens}}- ui-tokens.json{{/if}}
 {{#if hasUiAssets}}- ui-assets.json{{/if}}

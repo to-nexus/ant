@@ -287,7 +287,7 @@ describe('Phase 3 — Scenario B (3+1 chain: plan → sys-fe → ui+art design �
 //       projectilePolicy: 'none',                                           (Phase 4)
 //       audioProfile: 'fileBased',                                          (Phase 4)
 //     }
-//   + `inputs/assets/game/{entities/hero.svg, sfx/match-clear.mp3}` placed.
+//   + `assets/game/{entities/hero.svg, sfx/match-clear.mp3}` placed.
 //
 //   PromptBuilder MUST be able to layer ALL Scenario A partials PLUS:
 //     1. basis/gameArtTier/entityCatalog/standard.md       — Phase 4 axis
@@ -341,18 +341,18 @@ describe('Phase 4 — Scenario C (external-asset enabled match-3 / fileBased aud
     expect(content).toMatch(/audio loader|load\.audio/);
   });
 
-  it('asset-extension policy admits .mp3 / .ogg / .wav under inputs/assets/game (D-P4)', async () => {
+  it('asset-extension policy admits .mp3 / .ogg / .wav under assets/game (D-P4)', async () => {
     const { ARTIFACT_DIR_POLICIES } = await import('@ant/shared');
-    const gamePolicy = ARTIFACT_DIR_POLICIES['inputs/assets/game'];
+    const gamePolicy = ARTIFACT_DIR_POLICIES['assets/game'];
     expect(gamePolicy).toBeDefined();
     expect(gamePolicy.acceptedExtensions).toEqual(
       expect.arrayContaining(['.mp3', '.ogg', '.wav', '.atlas', '.glb', '.gltf']),
     );
   });
 
-  it('asset-extension policy admits .woff / .woff2 / .ttf / .otf under inputs/assets/service (D-P4)', async () => {
+  it('asset-extension policy admits .woff / .woff2 / .ttf / .otf under assets/service (D-P4)', async () => {
     const { ARTIFACT_DIR_POLICIES } = await import('@ant/shared');
-    const servicePolicy = ARTIFACT_DIR_POLICIES['inputs/assets/service'];
+    const servicePolicy = ARTIFACT_DIR_POLICIES['assets/service'];
     expect(servicePolicy).toBeDefined();
     expect(servicePolicy.acceptedExtensions).toEqual(
       expect.arrayContaining(['.woff', '.woff2', '.ttf', '.otf']),

@@ -53,7 +53,7 @@ export function EvalSaveVariant({ presented, resolved }: VariantProps) {
       theme="emerald"
       icon={<Save className="w-4 h-4" />}
       title={presented.prompt || 'Save evaluation report?'}
-      subtitle={`outputs/evals/${evalType}/`}
+      subtitle={`meta/evals/${evalType}/`}
       isSelected={state.isSelected}
       resolvedLabel={state.resolvedLabel}
       resolvedIcon={state.selectedChoice === 'skip' ? 'dismiss' : null}

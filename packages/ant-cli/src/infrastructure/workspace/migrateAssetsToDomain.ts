@@ -2,14 +2,14 @@
  * Phase 2 (D19-revised) — `migrateAssetsToDomain`
  *
  * One-shot, idempotent migration that lifts the legacy
- * `inputs/assets/{icons,images,misc}/*` layout into the canonical
+ * `assets/{icons,images,misc}/*` flat layout into the canonical
  * domain-1:1 layout introduced in Phase 2:
  *
- *   service workspaces → `inputs/assets/service/{icons,images,misc}/*`
- *   game    workspaces → `inputs/assets/game/{icons,images,misc}/*`
+ *   service workspaces → `assets/service/{icons,images,misc}/*`
+ *   game    workspaces → `assets/game/{icons,images,misc}/*`
  *
- * In addition, any `outputs/design/ui/ant/ui-assets.json` is rewritten so
- * its `src` paths follow the relocated files. This way `code` jobs that
+ * In addition, any `visual/ui/ant/ui-assets.json` is rewritten so its
+ * `src` paths follow the relocated files. This way `code` jobs that
  * import the catalog continue resolving real files after migration.
  *
  * Safety:
@@ -33,9 +33,9 @@ const LEGACY_CATEGORIES: ReadonlyArray<string> = ['icons', 'images', 'misc'];
 export type MigrationAction = 'moved' | 'skipped' | 'collision' | 'failed';
 
 export interface MigrationItem {
-  /** Source path relative to workspace root, e.g. `inputs/assets/icons/foo.svg`. */
+  /** Source path relative to workspace root, e.g. `assets/icons/foo.svg`. */
   fromRel: string;
-  /** Destination path relative to workspace root, e.g. `inputs/assets/service/icons/foo.svg`. */
+  /** Destination path relative to workspace root, e.g. `assets/service/icons/foo.svg`. */
   toRel: string;
   action: MigrationAction;
   reason?: string;
@@ -109,7 +109,7 @@ async function rewriteUiAssetsManifest(
   featurePathAbs: string,
   domain: Domain,
 ): Promise<number> {
-  const manifestRel = 'outputs/design/ui/ant/ui-assets.json';
+  const manifestRel = 'visual/ui/ant/ui-assets.json';
   const manifestAbs = path.join(featurePathAbs, manifestRel);
   if (!(await pathExists(manifestAbs))) return 0;
   let raw: string;
@@ -121,8 +121,8 @@ async function rewriteUiAssetsManifest(
   let replacements = 0;
   let next = raw;
   for (const cat of LEGACY_CATEGORIES) {
-    const fromPrefix = `inputs/assets/${cat}/`;
-    const toPrefix = `inputs/assets/${domain}/${cat}/`;
+    const fromPrefix = `assets/${cat}/`;
+    const toPrefix = `assets/${domain}/${cat}/`;
     // Match the prefix as JSON-string content (not at byte level — avoids
     // stomping unrelated occurrences in inline svg, etc.).
     const re = new RegExp(`("(?:src|path)"\\s*:\\s*")${escapeRegExp(fromPrefix)}`, 'g');
@@ -154,7 +154,7 @@ export async function migrateAssetsToDomain(params: {
   domain: Domain;
 }): Promise<MigrateAssetsToDomainResult> {
   const { featurePathAbs, domain } = params;
-  const assetsRootAbs = path.join(featurePathAbs, 'inputs', 'assets');
+  const assetsRootAbs = path.join(featurePathAbs, 'assets');
   const items: MigrationItem[] = [];
   let alreadyMigrated = true;
   let uiAssetsRewritten = 0;
@@ -182,8 +182,8 @@ export async function migrateAssetsToDomain(params: {
       // rel = `${cat}/<rest>` — verify defensively, skip otherwise.
       if (!rel.startsWith(`${cat}/`)) continue;
       const rest = rel.slice(cat.length + 1);
-      const fromRel = `inputs/assets/${rel}`;
-      const toRel = `inputs/assets/${domain}/${cat}/${rest}`;
+      const fromRel = `assets/${rel}`;
+      const toRel = `assets/${domain}/${cat}/${rest}`;
       const fromAbs = path.join(assetsRootAbs, rel);
       const toAbs = path.join(assetsRootAbs, domain, cat, rest);
 

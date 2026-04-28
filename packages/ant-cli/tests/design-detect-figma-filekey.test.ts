@@ -186,7 +186,7 @@ function makeLoadArtifactsHarness(): LoadArtifactsHarness {
     cleanup: () => fs.rmSync(tmpRoot, { recursive: true, force: true }),
     buildState({ figmaUrl, actionMetadataExplicit, resolvedActionMode }) {
       // Seed the canonical figma.json on disk. `loadArtifacts` reads from
-      // `<feature>/outputs/design/ui/figma/figma.json` — the same path the
+      // `<feature>/visual/ui/figma/figma.json` — the same path the
       // checkout-time figma sync writes to.
       const figmaJsonPath = path.join(featurePath, FIGMA_CONFIG_PATH);
       fs.mkdirSync(path.dirname(figmaJsonPath), { recursive: true });

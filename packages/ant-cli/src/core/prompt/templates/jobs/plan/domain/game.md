@@ -86,9 +86,9 @@ If the directive overlaps multiple sections, **split** rather than merge — dup
 
 **Game-domain external asset kinds and citation locations**:
 
-- Allowed kinds: `concept` (concept art image, path under `inputs/assets/game/concept/...`), `reference` (URL or path to a video / image showing the desired feel), `sprite` (path under `inputs/assets/game/...` to a checked-in sprite), `sound` (path to a checked-in audio clip), `figma` (URL or `<node-id>` for UI-heavy game projects).
+- Allowed kinds: `concept` (concept art image, path under `assets/game/concept/...`), `reference` (URL or path to a video / image showing the desired feel), `sprite` (path under `assets/game/...` to a checked-in sprite), `sound` (path to a checked-in audio clip), `figma` (URL or `<node-id>` for UI-heavy game projects).
 - Citation locations: §4 MDA (per `MC-` for mechanic feedback reference), §6 Reward & Feedback (per `RW-`), §8 Content Scope (per `EN-` / `LV-`), §9 Input & Perspective (rare — viewport reference).
-- Example: `EN-Hero — concept: inputs/assets/game/concept/hero.png` on a separate line inside the §8 entry for `EN-Hero`.
+- Example: `EN-Hero — concept: assets/game/concept/hero.png` on a separate line inside the §8 entry for `EN-Hero`.
 - Citations for a specific entity override the inline-first default in `game-art-design-by-desc` for **that entity only** — design uses the cited asset as `external` `src`. Entities without a citation keep the inline-first default.
 
 ### Section authoring principles (FPOP)

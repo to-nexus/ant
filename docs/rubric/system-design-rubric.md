@@ -1,6 +1,6 @@
 # System Design Evaluation Rubric
 
-> Rubric for evaluating the quality of auto-generated System Design documents (`outputs/design/`) in the Ant CLI pipeline.
+> Rubric for evaluating the quality of auto-generated System Design documents (`architecture/system/`) in the Ant CLI pipeline.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@
 
 **System Design Documents** are auto-generated outputs from the Design Job, serving as the primary input for the Code Job.
 
-**Location**: `outputs/design/`
+**Location**: `architecture/system/`
 
 **Core Principles**:
 - System Design describes **HOW** the system is structured (architecture, boundaries, contracts).
@@ -53,13 +53,13 @@
 ### 2.1 Data Flow
 
 ```
-PRD (inputs/sources/prd.md)
+PRD (plan/prd.md)
     ↓ read by Design Job
 Design Job
     ├─ detect: determines domain/environment from PRD
     ├─ decompose: breaks into document generation tasks
     └─ docGen: generates design documents treating PRD as "ABSOLUTE TRUTH"
-        └─► outputs/design/
+        └─► architecture/system/
             ├─ api-contract-*.md   (Layer 0: WHAT — immutable spec)
             ├─ fe-system-*.md      (Layer 1: HOW — frontend guide)
             └─ be-system-*.md      (Layer 1: HOW — backend guide)
@@ -620,10 +620,10 @@ This category evaluates the practical implementability of the design — the pri
 
 ```
 1. Check document presence
-   └─ outputs/design/ — api-contract-*.md, fe-system-*.md, be-system-*.md
+   └─ architecture/system/ — api-contract-*.md, fe-system-*.md, be-system-*.md
 
 2. Read PRD for baseline
-   └─ inputs/sources/prd.md
+   └─ plan/prd.md
    └─ Extract: FRs, external services, exclusions, constraints
 
 3. Per-document evaluation

@@ -80,7 +80,7 @@ You are decomposing UI documentation work into executable chapter tasks.
 
 | Resource | Count |
 |----------|-------|
-| Asset files (`inputs/assets/`) | {{assetCount}} |
+| Asset files (`assets/`) | {{assetCount}} |
 
 ⚠️ **Blind spot**: When `assetCount` is `0`, ui-assets entries are placeholder slots derived from the directive — `src` paths point to where the user is expected to add the file later.
 

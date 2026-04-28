@@ -239,10 +239,10 @@ export interface ArchitectGraphState extends TriageableState {
   };
 
   // ✅ UI Runtime Assets (opt-in copy/sync)
-  // - inputs/assets/** are runtime assets (NOT injected to LLM).
+  // - assets/** are runtime assets (NOT injected to LLM).
   // - In monorepos/multi-app repos, the correct static root must be chosen by the LLM and copied as a task.
   runtimeAssetsIndex?: {
-    files: string[]; // paths relative to feature root (e.g., inputs/assets/icons/x.svg)
+    files: string[]; // paths relative to feature root (e.g., assets/service/icons/x.svg)
     count: number;
   };
   

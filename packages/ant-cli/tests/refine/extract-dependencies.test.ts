@@ -33,18 +33,18 @@ function task(
 }
 
 const SERVICE_RAC = {
-  refs: ['inputs/sources/prd.md'],
+  refs: ['plan/prd.md'],
   context: [],
 } as DesignSessionCheckpointLike['resolvedAction'] as any;
 
 const GAME_RAC = {
-  refs: ['inputs/sources/gdd.md'],
+  refs: ['plan/gdd.md'],
   context: [],
 } as DesignSessionCheckpointLike['resolvedAction'] as any;
 
 const NO_PLAN_REF_RAC = {
-  refs: ['outputs/design/spec/spec-foo.md'],
-  context: ['inputs/sources/prd.md'],
+  refs: ['architecture/spec/spec-foo.md'],
+  context: ['plan/prd.md'],
 } as DesignSessionCheckpointLike['resolvedAction'] as any;
 
 describe('extractDependencies — service-axis identifiers', () => {

@@ -123,8 +123,9 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     const taskSourceFiles = currentTask?.sourceFiles;
     let sourceArtifacts = selectArtifacts(state.artifacts || [], { include: currentTask?.include || [ARTIFACT_PREFIX.SOURCES] });
     if (taskSourceFiles?.length) {
+      const planPrefix = `${ARTIFACT_PREFIX.SOURCES}/`;
       sourceArtifacts = sourceArtifacts.filter(a =>
-        taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
+        taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === planPrefix + f),
       );
     }
     const combinedSourceContent = sourceArtifacts.map(a => a.content).join('\n\n');
@@ -132,8 +133,9 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     let prdSpec = combinedSourceContent;
     if (combinedSourceContent.length > EXECUTE_SOURCE_THRESHOLD) {
       const filteredDocs: Record<string, string> = {};
+      const planPrefixRe = new RegExp(`^${ARTIFACT_PREFIX.SOURCES}/`);
       for (const a of sourceArtifacts) {
-        const name = a.path.replace(/^inputs\/sources\//, '');
+        const name = a.path.replace(planPrefixRe, '');
         filteredDocs[name] = a.content;
       }
       prdSpec = buildSourceFileIndex(filteredDocs, 8, { includeLineNumbers: true })
@@ -157,7 +159,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     if (!hasExplicitDocs && prdSpec) {
       const docs: ResolvedArtifact[] = sourceArtifacts.length > 0
         ? sourceArtifacts.map(a => ({ ...a, content: prdSpec.length !== combinedSourceContent.length ? prdSpec : a.content }))
-        : [{ path: 'inputs/sources', content: prdSpec, role: 'context' as const, label: 'PRD Specification' }];
+        : [{ path: ARTIFACT_PREFIX.SOURCES, content: prdSpec, role: 'context' as const, label: 'PRD Specification' }];
       resolvedActionWithDocs = {
         ...(state.resolvedAction || { source: 'infer' as const, mode: 'generate' as const, tech: {}, hasExplicitFields: false }),
         artifacts: docs,

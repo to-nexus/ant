@@ -2,13 +2,13 @@
 
 ### Principle (Source-code-like, not schema-like)
 
-The handoff bundle under `outputs/design/ui/handoff/` is a free-form collection of files — any mix of HTML, CSS, Markdown, JSON, and raster/vector assets. There is **no agreed schema**. You are given a **manifest of stub entries** (one per file), not file contents. Treat the bundle the way you treat source code: read what you need on demand.
+The handoff bundle under `visual/ui/handoff/` is a free-form collection of files — any mix of HTML, CSS, Markdown, JSON, and raster/vector assets. There is **no agreed schema**. You are given a **manifest of stub entries** (one per file), not file contents. Treat the bundle the way you treat source code: read what you need on demand.
 
 ### Access contract
 
 - Every text-kind entry carries the canonical relative path. Call `read_file("<path>")` — optionally with `startLine` / `endLine` — to observe the contents when the current task requires them.
-- Every binary-kind entry (png, jpg, woff, …) is a **path-only pointer**. Reference it from the emitted code (e.g. `url("outputs/design/ui/handoff/hero.png")`) but do **NOT** invoke `read_file` on it — utf-8 decoding would produce garbage.
-- Use `list_files("outputs/design/ui/handoff")` if you suspect the manifest is incomplete or want to confirm a sibling file exists.
+- Every binary-kind entry (png, jpg, woff, …) is a **path-only pointer**. Reference it from the emitted code (e.g. `url("visual/ui/handoff/hero.png")`) but do **NOT** invoke `read_file` on it — utf-8 decoding would produce garbage.
+- Use `list_files("visual/ui/handoff")` if you suspect the manifest is incomplete or want to confirm a sibling file exists.
 
 ### Constraint (No cross-file consistency assumption)
 

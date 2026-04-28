@@ -109,9 +109,9 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
   'explain-spec': { policies: [], refMediaHints: ['text'] },
 
   // ── Code ───────────────────────────────────
-  // D28 — code jobs receive ui-design-policy on the `outputs/design/ui`
-  // ui-source slot (service domain) and game-art-design-policy on the
-  // `outputs/design/game-art/ant` game-art slot (game domain — D24-revised v8
+  // D28 — code jobs receive ui-design-policy on the `visual/ui` ui-source
+  // slot (service domain) and game-art-design-policy on the
+  // `visual/game-art/ant` game-art slot (game domain — D24-revised v8
   // sub-source canonical). The slotPath must match a SlotDef.path exactly;
   // domain matrix gates determine which slot is even selectable per
   // workspace, so the same code intent serves both domains through the
@@ -119,32 +119,32 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
   'gen-code-sys': {
     policies: [],
     conditionalPolicies: [
-      { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
-      { slotPath: 'outputs/design/game-art/ant', policy: 'game-art-design-policy' },
+      { slotPath: 'visual/ui', policy: 'ui-design-policy' },
+      { slotPath: 'visual/game-art/ant', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
   'gen-code-spec': {
     policies: [],
     conditionalPolicies: [
-      { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
-      { slotPath: 'outputs/design/game-art/ant', policy: 'game-art-design-policy' },
+      { slotPath: 'visual/ui', policy: 'ui-design-policy' },
+      { slotPath: 'visual/game-art/ant', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
   'gen-code-directive': {
     policies: [],
     conditionalPolicies: [
-      { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
-      { slotPath: 'outputs/design/game-art/ant', policy: 'game-art-design-policy' },
+      { slotPath: 'visual/ui', policy: 'ui-design-policy' },
+      { slotPath: 'visual/game-art/ant', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },
   'rev-code': {
     policies: [],
     conditionalPolicies: [
-      { slotPath: 'outputs/design/ui', policy: 'ui-design-policy' },
-      { slotPath: 'outputs/design/game-art/ant', policy: 'game-art-design-policy' },
+      { slotPath: 'visual/ui', policy: 'ui-design-policy' },
+      { slotPath: 'visual/game-art/ant', policy: 'game-art-design-policy' },
     ],
     refMediaHints: ['text'],
   },

@@ -6,8 +6,8 @@ You are implementing a specific task. Follow the instructions for your task type
 
 **All paths are relative to the feature root.**
 - Code files: `codebase/...` (e.g., `codebase/src/main.ts`, `codebase/package.json`)
-- Design artifacts: `outputs/design/` — subdirectories: `system/` (design docs), `ui/` (UI specs/tokens), `spec/` (feature specs)
-- Assets source: `features/<feature>/inputs/assets/...`
+- Design artifacts: `architecture/system/` (design docs), `visual/ui/` (UI specs/tokens), `architecture/spec/` (feature specs)
+- Assets source: `features/<feature>/assets/...`
 - Assets destination:
   - SVG assets → `codebase/src/assets/` (source tree — required for SVGR import)
   - Raster assets (png, jpg, webp) → `codebase/public/...`
@@ -81,8 +81,8 @@ When error occurs:
 **Before implementing UI elements, check for asset references.**
 {{#if isSpecDriven}}
 - The feature specification contains asset inventory and UI details (self-contained)
-- Check the spec document for `inputs/assets/` path references
-- Copy referenced assets from `inputs/assets/` to the appropriate codebase location BEFORE using them in code
+- Check the spec document for `assets/` path references
+- Copy referenced assets from `assets/` to the appropriate codebase location BEFORE using them in code
 {{else}}
 - If asset mapping exists for this element → MUST use the asset file
 - Asset specified in mapping → NOT a text substitute

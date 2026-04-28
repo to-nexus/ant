@@ -33,7 +33,7 @@
 
 **Constraint**: If Figma tools are available, use them to observe actual design before writing UI specifications. Do NOT assume visual details from the directive alone.
 
-**Constraint**: When Figma provides downloadable asset URLs, download them to `inputs/assets/` using `download_asset`. Record every downloaded asset in the spec document with its path and intended usage.
+**Constraint**: When Figma provides downloadable asset URLs, download them to `assets/` using `download_asset`. Record every downloaded asset in the spec document with its path and intended usage.
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -45,14 +45,14 @@
 
 | Target | What to include |
 |--------|----------------|
-| **Asset inventory** | Every asset file in `inputs/assets/` with path, description, and intended usage location |
+| **Asset inventory** | Every asset file in `assets/` with path, description, and intended usage location |
 | **UI layout** | Component hierarchy and visual properties observed from design source |
 | **Design tokens** | Token values extracted from design variables (if available) |
 | **Component states** | Interactive states observed in the design |
 
 **Constraint**: Do NOT assume the Code Job has access to the design source. Record ALL observed visual details in the spec document itself.
 
-**Constraint**: Asset references MUST use the format `inputs/assets/{category}/{filename}` — the exact path where the file was downloaded.
+**Constraint**: Asset references MUST use the format `assets/{category}/{filename}` — the exact path where the file was downloaded.
 
 ⚠️ **Blind spot**: LLMs tend to reference Figma URLs or tool names in spec documents instead of recording the actual observed values. The Code Job cannot call Figma — only the values you write down will be available.
 

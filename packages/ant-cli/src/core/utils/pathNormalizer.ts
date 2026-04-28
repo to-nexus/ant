@@ -11,8 +11,9 @@
  * 
  * KEY PRINCIPLES:
  * - NEVER strip intermediate directories (src/, lib/, etc.)
- * - Feature workspace structure: codebase/ | inputs/ | outputs/ | sessions/
- *   Any path not under a sibling directory belongs to codebase/.
+ * - Feature workspace structure: codebase/ | plan/ | architecture/ |
+ *   visual/ | assets/ | meta/ | sessions/. Any path not under a sibling
+ *   directory belongs to codebase/.
  */
 
 import { CANONICAL_FEATURE_DIRS } from '@ant/shared';
@@ -35,14 +36,17 @@ export interface PathNormalizationResult {
 
 /**
  * Feature workspace sibling directory prefixes (derived from CANONICAL_FEATURE_DIRS).
- * 
- * Feature workspace structure:
+ *
+ * Feature workspace structure (도메인 트리):
  *   features/{feature}/
- *   ├── codebase/    <- code files (handled by Rule 1)
- *   ├── inputs/      <- input materials, assets
- *   ├── outputs/     <- generated artifacts
- *   └── sessions/    <- session state
- * 
+ *   ├── codebase/      <- code files (handled by Rule 1)
+ *   ├── plan/          <- PRD / GDD (depth -1, 파일 직속)
+ *   ├── architecture/  <- system / spec markdown
+ *   ├── visual/        <- ui / game-art (sub-sourced)
+ *   ├── assets/        <- service / game / gen pools
+ *   ├── meta/          <- directives / evals
+ *   └── sessions/      <- session state
+ *
  * Paths starting with these prefixes are NOT codebase files
  * and must not be auto-corrected.
  */
@@ -57,7 +61,8 @@ const FEATURE_SIBLING_PREFIXES = [
  * 1. Already starts with codebaseRel/ -> no change
  *    1.5. Double-nested codebaseRel/codebaseRel/... -> collapse to codebaseRel/...
  * 2. features/<name>/<codebaseRel>/... -> codebaseRel/... (fix LLM nesting mistake)
- * 3. Starts with a feature sibling directory (inputs/, outputs/, sessions/) -> no change
+ * 3. Starts with a feature sibling directory (plan/, architecture/, visual/,
+ *    assets/, meta/, sessions/) -> no change
  * 4. Everything else -> prepend codebaseRel/ (it's a codebase file missing the prefix)
  * 
  * CRITICAL: This function NEVER strips path components (e.g., src/).
@@ -104,8 +109,9 @@ export function normalizeToCodebasePath(
     };
   }
 
-  // Rule 3: Feature sibling directory (inputs/, outputs/, sessions/) -> no change
-  // These are legitimate non-codebase paths (e.g., inputs/assets/logo.png for copy operations)
+  // Rule 3: Feature sibling directory (plan/, architecture/, visual/,
+  // assets/, meta/, sessions/) -> no change. These are legitimate
+  // non-codebase paths (e.g., assets/service/icons/logo.png for copy ops).
   for (const siblingPrefix of FEATURE_SIBLING_PREFIXES) {
     if (normalized.startsWith(siblingPrefix)) {
       return { normalized, wasFixed: false };

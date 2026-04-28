@@ -54,12 +54,19 @@ vector-memory/chroma-data/
 # Vector memory binaries
 /packages/ant-cli/src/periphery/integrations/vector-memory/chroma-data/
 # New structure (workspaces/)
-# Ignore all workspace content except evaluations (permanent artifacts)
-workspaces/*
+# Ignore all workspace content by default…
+workspaces/**/*
+# …but let git descend into every directory so the !-unignores below
+# can re-include nested paths (gitignore won't list children of an
+# ignored directory).
+!workspaces/**/
 !workspaces/.gitkeep
 
-# Keep evaluation reports (permanent artifacts)
-!workspaces/**/outputs/evals/
+# Keep evaluation reports (permanent artifacts).
+# gitignore 는 부모가 무시되면 자식의 unignore 가 동작하지 않으므로
+# 부모 `meta/` 도 함께 unignore 한 뒤 evals 만 유지한다.
+!workspaces/**/meta/
+!workspaces/**/meta/evals/**
 
 # Ignore session data (temporary/debug)
 workspaces/**/sessions/

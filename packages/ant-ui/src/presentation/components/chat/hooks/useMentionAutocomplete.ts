@@ -54,8 +54,8 @@ function getSuggestedDirs(
   if (!rawSlots) return [];
   // D28 — drop slots whose `applicableDomains` does not include the
   // workspace domain so a service workspace does not surface
-  // `outputs/design/game-art` and a game workspace does not surface
-  // `outputs/design/ui` in mention suggestions.
+  // `visual/game-art` and a game workspace does not surface
+  // `visual/ui` in mention suggestions.
   const slots = filterSlotsByDomain(rawSlots, domain);
   const dirs = new Set<string>();
   if (prefix === '@ref:') {
@@ -81,8 +81,14 @@ function buildGroupedFileSuggestions(
   domain: Domain | undefined,
 ): MentionSuggestion[] {
   const q = query.toLowerCase();
+  // `@target:` should suggest files in writable artifact domains only —
+  // `architecture/`, `visual/`, `meta/evals/` (replaces legacy `outputs/`).
+  const isWritableArtifactPath = (p: string): boolean =>
+    p.startsWith('architecture/') ||
+    p.startsWith('visual/') ||
+    p.startsWith('meta/evals/');
   const baseFilter = prefix === '@target:'
-    ? (p: string) => p.toLowerCase().includes(q) && p.startsWith('outputs/')
+    ? (p: string) => p.toLowerCase().includes(q) && isWritableArtifactPath(p)
     : (p: string) => p.toLowerCase().includes(q);
   const filtered = allFilePaths.filter(baseFilter);
 

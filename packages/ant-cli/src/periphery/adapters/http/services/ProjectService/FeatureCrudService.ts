@@ -130,10 +130,10 @@ export class FeatureCrudService {
     // Canonical directories + files (CANONICAL_FEATURE_DIRS + CANONICAL_FEATURE_FILES)
     await ensureCanonicalStructure(featurePath);
 
-    // Create inputs/sources templates (so users know what to fill)
+    // Create `plan/` templates (so users know what to fill)
     // Skip when wizard will upload source files (prd skeleton would be redundant)
     if (!options?.skipPrdTemplate) {
-      const sourcesDir = path.join(featurePath, 'inputs/sources');
+      const planDir = path.join(featurePath, 'plan');
 
       const locale = (language === 'ko' || language === 'en') ? language : 'en';
       const msg = locale === 'ko'
@@ -151,7 +151,7 @@ export class FeatureCrudService {
 
 <!-- ${msg.prdGuide} -->
 `;
-      await fs.promises.writeFile(path.join(sourcesDir, 'prd.md'), prdTemplate, 'utf-8');
+      await fs.promises.writeFile(path.join(planDir, 'prd.md'), prdTemplate, 'utf-8');
     }
 
     // ✅ Create Git worktree for feature (if WorktreeService is available)
@@ -175,7 +175,7 @@ export class FeatureCrudService {
     // visible immediately (ties into the access-time backfill observability
     // emitted from ensureCanonicalStructure). Best-effort — never throws.
     try {
-      const uiDir = path.join(featurePath, 'outputs/design/ui');
+      const uiDir = path.join(featurePath, 'visual/ui');
       const present = await fs.promises.readdir(uiDir).catch(() => [] as string[]);
       const requiredSiblings = ['ant', 'figma', 'handoff'] as const;
       const missing = requiredSiblings.filter(sib => !present.includes(sib));

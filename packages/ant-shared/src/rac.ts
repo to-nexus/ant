@@ -24,9 +24,10 @@ import type { Mode, IntentGroup, Domain, InferredAction } from './detection';
 
 export interface InferWorkspaceState {
   hasFigmaConfig?: boolean;
-  hasPrd?: boolean;
-  hasDesignDoc?: boolean;
-  hasSpecDocs?: boolean;
+  hasPlan?: boolean;
+  hasArchitectureSystem?: boolean;
+  hasArchitectureSpec?: boolean;
+  hasVisualUi?: boolean;
   targetFiles?: string[];
 }
 

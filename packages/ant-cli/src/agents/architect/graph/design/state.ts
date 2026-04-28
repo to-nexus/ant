@@ -175,10 +175,10 @@ export interface DesignGraphState extends TriageableState {
   
   // ✅ UI document generation context
   // Populated when resolvedAction?.intentGroup === 'design-ui'
-  uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under inputs/assets/
+  uiAssetsList?: Record<string, string[]>;  // Dynamic keys by subdirectory under assets/
   
   // ✅ Figma Integration (All-or-Nothing: Full MCP required)
-  figmaConfig?: FigmaDataConfig;        // Loaded from outputs/design/ui/figma/figma.json at resolve
+  figmaConfig?: FigmaDataConfig;        // Loaded from visual/ui/figma/figma.json at resolve
   figmaExplorationResult?: FigmaExplorationResult;  // Output of figmaExplore node
   figmaAvailable?: boolean;              // MCP reachable — set by detect node
   figmaFileKey?: string;                 // Parsed from figmaConfig.file URL

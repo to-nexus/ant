@@ -85,17 +85,19 @@ export async function handleCreateFile(
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
       await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
-      // Feature-workspace contract: files written under `outputs/` are
-      // generated artifacts the UI should surface with an unseen badge.
-      // The gate is path-prefix only (no job-type branch) so the rule
-      // applies wherever a tool-call write lands inside a workspace —
-      // matching `chat.routes.ts` / `transfer.routes.ts` / FileRenderer.
+      // Feature-workspace contract: files written under generated-artifact
+      // domains (`architecture/`, `visual/`, `meta/evals/`) are surfaced
+      // with an unseen badge. The gate is path-prefix only (no job-type
+      // branch) so the rule applies wherever a tool-call write lands inside
+      // a workspace — matching `chat.routes.ts` / `transfer.routes.ts` /
+      // FileRenderer.
+      const dp = resolved.displayPath;
       if (
         'addUnseenArtifacts' in ctx.fileTreeUpdate &&
-        resolved.displayPath.startsWith('outputs/')
+        (dp.startsWith('architecture/') || dp.startsWith('visual/') || dp.startsWith('meta/evals/'))
       ) {
         (ctx.fileTreeUpdate as any).addUnseenArtifacts(
-          ctx.project, ctx.featureFolder, [resolved.displayPath]
+          ctx.project, ctx.featureFolder, [dp]
         );
       }
     }

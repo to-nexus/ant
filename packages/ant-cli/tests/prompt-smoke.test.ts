@@ -697,7 +697,7 @@ describe('Template Smoke Tests', () => {
     const output = await adapter.render('jobs/visual/nodes/direct/variants/default/context', {
       ...SAMPLE_VARS,
       lastEngineeredPrompt: 'A minimalist blue logo with geometric shapes on white background',
-      lastOutputPath: '/workspace/inputs/assets/gen/gen-123.png',
+      lastOutputPath: '/workspace/assets/gen/gen-123.png',
     });
 
     expect(output).toContain('Previous Generation');
@@ -798,17 +798,17 @@ describe('Template Smoke Tests', () => {
         hasExplicitFields: true,
         intentDescription: 'Generate code from design',
         documents: [
-          { path: 'inputs/sources/prd.md', content: '# PRD\nOverview', role: 'ref' },
-          { path: 'outputs/design/system/fe-system-main.md', content: '# FE Design', role: 'context' },
+          { path: 'plan/prd.md', content: '# PRD\nOverview', role: 'ref' },
+          { path: 'architecture/system/fe-system-main.md', content: '# FE Design', role: 'context' },
         ],
       },
     });
 
     // Unified "Provided Documents" section with 3-axis role-guide partial
     expect(output).toContain('## Provided Documents');
-    expect(output).toContain('### [ref] inputs/sources/prd.md');
+    expect(output).toContain('### [ref] plan/prd.md');
     expect(output).toContain('# PRD');
-    expect(output).toContain('### [context] outputs/design/system/fe-system-main.md');
+    expect(output).toContain('### [context] architecture/system/fe-system-main.md');
     expect(output).toContain('# FE Design');
     // Role-guide partial is rendered
     expect(output).toContain('ref');

@@ -6,7 +6,7 @@
  *   1. **Workspace boot** (`ensureCanonicalStructure`) — every feature
  *      access auto-discovers `<projectPath>/config.json` to resolve
  *      `workspaceConfig.domain`, then runs the migration idempotently
- *      against the feature's `inputs/assets/`. Already-migrated features
+ *      against the feature's `assets/`. Already-migrated features
  *      complete in O(1) (a single `existsSync` per legacy category).
  *
  *   2. **Domain toggle** (`ProjectCrudService.updateProjectConfig`) —

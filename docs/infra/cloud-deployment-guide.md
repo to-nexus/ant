@@ -567,8 +567,11 @@ cp packages/ant-cli/.env.example.cloud packages/ant-cli/.env
 │           ├── codebase/           # Git repository
 │           └── features/
 │               └── {featureId}/
-│                   ├── inputs/
-│                   ├── outputs/
+│                   ├── plan/
+│                   ├── architecture/
+│                   ├── visual/
+│                   ├── assets/
+│                   ├── meta/
 │                   └── sessions/
 ```
 

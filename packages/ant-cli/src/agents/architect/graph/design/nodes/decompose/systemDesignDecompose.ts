@@ -79,13 +79,13 @@ function isSystemDesignFile(fileName: string): boolean {
 }
 
 /**
- * Strip the matrix-injected path prefix (`outputs/design/system/`) so the
+ * Strip the matrix-injected path prefix (`architecture/system/`) so the
  * basename — the only token `validateAndFixTargetFiles` recognises — is left
  * intact. Wildcards (`-*.md`) are preserved; the validator collapses or
  * expands them based on the LLM's MSA decision.
  *
  * Pre-`0f9ee7e4` regression: action-config-matrix's `formatOutputSpec` ships
- * `outputs/design/system/be-system-*.md` into `actionMetadata.target`. Without
+ * `architecture/system/be-system-*.md` into `actionMetadata.target`. Without
  * this strip, downstream strict-equality (`f === 'be-system-main.md'`) sees
  * the full path + wildcard and never matches.
  */
@@ -389,7 +389,7 @@ export async function decomposeSystemDesign(
     : [];
   const jobMode = state.resolvedAction?.mode || 'generate';
   // Matrix wildcard contract (`0f9ee7e4`+): `state.resolvedAction.target` arrives as
-  // `outputs/design/system/be-system-*.md`. Strip the prefix so basename-only
+  // `architecture/system/be-system-*.md`. Strip the prefix so basename-only
   // comparisons in `validateAndFixTargetFiles` work; wildcards stay intact and
   // the validator decides between MSA expansion vs `-main.md` collapse.
   const resolvedTargetFiles = state.resolvedAction?.target?.map(stripDesignTargetPrefix);

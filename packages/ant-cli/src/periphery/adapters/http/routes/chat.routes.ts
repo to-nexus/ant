@@ -273,9 +273,9 @@ export function createChatRoutes(deps: {
           try {
             const featurePath: string = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-            const evalDir = path.join(featurePath, 'outputs', 'evals', evalType);
+            const evalDir = path.join(featurePath, 'meta', 'evals', evalType);
             const evalFilePath = path.join(evalDir, `eval-${timestamp}.md`);
-            const relativePath = `outputs/evals/${evalType}/eval-${timestamp}.md`;
+            const relativePath = `meta/evals/${evalType}/eval-${timestamp}.md`;
 
             await fs.mkdir(evalDir, { recursive: true });
             await fs.writeFile(evalFilePath, evalContent, 'utf-8');

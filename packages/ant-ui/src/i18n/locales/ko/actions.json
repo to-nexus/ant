@@ -66,35 +66,6 @@
     }
   },
 
-  "materials": {
-    "sectionTitle": "재료",
-    "present": "보유",
-    "requiredMissing": "BUILD 실행에 필요합니다",
-    "optionalMissing": "선택 — 있으면 결과가 더 정확해집니다",
-    "namingIssue": "Ant가 인식할 수 없는 파일 형식",
-    "namingHint": "기대 형식: {{pattern}}",
-    "prd": "PRD / 소스 문서",
-    "prdDesc": "기획서 또는 참고 문서",
-    "designDirective": "설계 지시사항",
-    "designDirectiveDesc": "추가 설계 지시사항",
-    "figmaConfig": "Figma 설정",
-    "figmaConfigDesc": "Figma 파일 URL 설정",
-    "designDocs": "설계 문서",
-    "designDocsDesc": "있으면 컨텍스트로 활용됩니다",
-    "specs": "기능 스펙",
-    "specsDesc": "코드 생성을 위한 구현 스펙",
-    "systemDesign": "시스템 설계",
-    "systemDesignDesc": "아키텍처 및 API 설계",
-    "uiDesign": "UI 설계",
-    "uiDesignDesc": "UI 토큰, 에셋, 스펙"
-  },
-
-  "outputs": {
-    "sectionTitle": "산출물",
-    "empty": "아직 생성된 산출물이 없습니다",
-    "directory": "산출물 위치"
-  },
-
   "basis": {
     "title": "기술 프리셋",
     "language": "언어",
@@ -196,13 +167,6 @@
     "refsRequired": "참조 파일이 필요합니다"
   },
 
-  "intent": {
-    "pickTitle": "어떤 작업을 진행하시겠습니까?",
-    "refs": "참조 파일",
-    "context": "추가 컨텍스트",
-    "outputDir": "산출물 위치"
-  },
-
   "emptySlot": {
     "missing": "{{name}} 파일이 없습니다",
     "addFile": "파일 추가...",
@@ -232,12 +196,5 @@
     "explain-spec": "스펙 문서를 설명해주세요",
     "explain-plan": "기획서를 설명해주세요",
     "explain-visual": "이미지 에셋을 설명해주세요"
-  },
-
-  "status": {
-    "buildReady": "BUILD 가능",
-    "hasOutput": "산출물 있음",
-    "materialsMissing": "재료 부족",
-    "namingWarning": "네이밍 문제"
   }
 }

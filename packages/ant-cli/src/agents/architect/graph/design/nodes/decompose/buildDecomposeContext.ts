@@ -108,10 +108,11 @@ function totalContentSize(artifacts: ResolvedArtifact[]): number {
 
 function sourcesAsRecord(artifacts: ResolvedArtifact[]): Record<string, string> {
   const map: Record<string, string> = {};
+  const planPrefix = `${ARTIFACT_PREFIX.SOURCES}/`;
   for (const a of artifacts) {
     if (!a.content) continue;
-    const name = a.path.startsWith('inputs/sources/')
-      ? a.path.slice('inputs/sources/'.length)
+    const name = a.path.startsWith(planPrefix)
+      ? a.path.slice(planPrefix.length)
       : a.path;
     map[name] = a.content;
   }
@@ -151,8 +152,8 @@ function pickFirstContent(artifacts: ResolvedArtifact[]): string | undefined {
  * Partition rules:
  *   1. Split the pool by `role` ('ref' vs 'context').
  *   2. Within each role, classify by path prefix:
- *      - `inputs/sources/...` → `RoleBucket.sources`
- *      - `outputs/design/system/...` → `RoleBucket.previousDesign`
+ *      - `plan/...` → `RoleBucket.sources`
+ *      - `architecture/system/...` → `RoleBucket.previousDesign`
  *        (only when `includePreviousDesign` is true; otherwise falls
  *        through to `other`)
  *      - everything else → `RoleBucket.other` (preserves path)

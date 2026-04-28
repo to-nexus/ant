@@ -12,6 +12,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
+import { UI_VISIBLE_TOP_LEVEL_DIRS } from '@ant/shared';
 import { PathPicker } from '../common/PathPicker';
 import { MemberPicker } from '../common/MemberPicker';
 import {
@@ -120,7 +121,8 @@ export function SendSubTab() {
     }).catch(() => {});
   }, []);
 
-  // Load source file tree (only show artifact dirs: inputs, outputs)
+  // Load source file tree (only show artifact dirs from UI_VISIBLE_TOP_LEVEL_DIRS:
+  // plan / architecture / visual / assets / meta — sessions/codebase 는 제외)
   useEffect(() => {
     if (!srcProjectId || !srcFeatureId) { setSrcFileTree([]); return; }
     fetchFileTree(srcProjectId, srcFeatureId).then(tree => {
@@ -768,11 +770,14 @@ function InlineWarning({ message }: { message: string }) {
 }
 
 /**
- * Filter file tree to only include artifact directories (inputs, outputs).
- * Excludes sessions and any non-canonical top-level entries (e.g., stray project dirs).
- * This matches ArtifactsPanel's filtering logic.
+ * Filter file tree to only include canonical artifact top-level dirs
+ * (`plan` / `architecture` / `visual` / `assets` / `meta`). Excludes
+ * `sessions` / `codebase` / non-canonical entries. The whitelist is pulled
+ * from the canonical SSOT (`UI_VISIBLE_TOP_LEVEL_DIRS`) so adding a new
+ * UI-visible top-level dir auto-propagates here. This matches
+ * `ArtifactsPanel`'s filtering logic.
  */
-const ALLOWED_TOP_LEVEL = new Set(['inputs', 'outputs']);
+const ALLOWED_TOP_LEVEL = new Set(UI_VISIBLE_TOP_LEVEL_DIRS.map(d => d.name));
 
 function filterArtifactDirs(tree: FileNode[]): FileNode[] {
   return tree.filter(node => ALLOWED_TOP_LEVEL.has(node.name));

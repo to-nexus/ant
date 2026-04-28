@@ -88,11 +88,11 @@ export interface WorkspaceConfig {
 
   /**
    * Project domain (Phase 2 — D22). Default `'service'`.
-   * - `'service'` — SaaS / web app domain. UI design via `outputs/design/ui/`,
-   *   asset pool via `inputs/assets/service/`. game-art intents are hidden
+   * - `'service'` — SaaS / web app domain. UI design via `visual/ui/`,
+   *   asset pool via `assets/service/`. game-art intents are hidden
    *   from ActionsPanel (matrix gate: TIER_DOMAIN_MATRIX.gameArtTier=['game']).
    * - `'game'` — game domain. UI design AND game-art design active in
-   *   parallel; asset pool via `inputs/assets/game/`.
+   *   parallel; asset pool via `assets/game/`.
    *
    * The domain is sticky at the workspace level; intents inherit it via
    * `actionMetadata.domain` (which the BE detect node treats as explicit

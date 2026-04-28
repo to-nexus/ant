@@ -220,7 +220,7 @@ export async function orchestrator(params: {
       // ✅ Get FileSystemPort and GitPort (separated responsibilities)
       // Use ANT_CODEBASE_PATH (set by JobWorker for feature-aware worktree paths)
       const codebasePath = process.env.ANT_CODEBASE_PATH || path.join(featurePath, 'codebase');
-      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(featurePath);  // ✅ Use featurePath (feature root: inputs/outputs/sessions/codebase)
+      const fileSystem = AdapterFactory.createFileSystemAdapterWithPath(featurePath);  // ✅ Use featurePath (feature root: plan/architecture/visual/assets/meta/sessions/codebase)
       const git = AdapterFactory.createGitAdapterWithConfig(project || "default", configData, codebasePath);
 
       if (jobType === 'design') {

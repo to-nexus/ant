@@ -111,7 +111,7 @@ assets and spec. Figma component / frame ids scope each category task.
 |-------------------------|--------------------------------------------------------------------------|
 | Figma Exploration Result | Pre-analyzed structure from `figmaExplore` node                          |
 | Figma MCP Tools         | `figma_get_design_context`, `figma_get_metadata`, `figma_get_screenshot`, `figma_get_variable_defs` |
-| External assets         | `inputs/assets/game/` ({{assetCount}} files placed by user)              |
+| External assets         | `assets/game/` ({{assetCount}} files placed by user)              |
 
 {{#if nodeSummary}}
 ### Figma Node Structure (nodeSummary)
@@ -184,12 +184,12 @@ under the 8K cap).
 **Figma → asset mapping policy**:
 
 - A Figma component instance with stable variants → `kind: 'external'`
-  if a sprite export was placed under `inputs/assets/game/...`,
+  if a sprite export was placed under `assets/game/...`,
   otherwise `kind: 'inline'` with simple-shape SVG approximation.
 - A Figma effect / overlay frame → `kind: 'inline'` SVG or CSS only.
 - **GDD asset citation precedence**: When GDD §8 cites a sprite path
   for a specific `EN-XXX` (e.g.,
-  `EN-Hero — sprite: inputs/assets/game/entities/hero.png`), use that
+  `EN-Hero — sprite: assets/game/entities/hero.png`), use that
   cited path as the asset's `external` `src` regardless of Figma
   state — the GDD citation is the planner's explicit commitment.
 

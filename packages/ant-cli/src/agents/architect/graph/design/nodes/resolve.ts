@@ -3,7 +3,7 @@ import { WorkspacePathResolver } from "../../../../../core/config/WorkspacePathR
 import { DesignGraphState } from "../state";
 import * as path from "path";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
-import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, DESIGN_DIR, DESIGN_SUBDIR, extractFigmaUrlParts } from "@ant/shared";
+import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, ARTIFACT_PREFIX, extractFigmaUrlParts } from "@ant/shared";
 import { hydrateFeatureContext } from "../../../../../core/context/featureContextBuilder";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
 import { validateWorkspaceAndFeature, initJobTiming } from '../../../../common/graph/nodes/resolve/utils';
@@ -59,12 +59,12 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     const context = state.context;
     const featurePath = context.featurePath || '';
 
-    // Reload existingDesignDocs from disk (canonical outputs/design/system/ only; not stored in session)
+    // Reload existingDesignDocs from disk (canonical architecture/system/ only; not stored in session)
     let existingDesignDocs: Record<string, string> | undefined;
     if (featurePath) {
       const fs = await import('fs');
       try {
-        const systemDir = path.join(featurePath, DESIGN_DIR, DESIGN_SUBDIR.SYSTEM);
+        const systemDir = path.join(featurePath, ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, ''));
         if (fs.existsSync(systemDir)) {
           const reloaded: Record<string, string> = {};
           const entries = fs.readdirSync(systemDir, { withFileTypes: true });
@@ -176,7 +176,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     // same fix-the-template error.
     if (jobMode === 'generate' && !prd) {
       const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-      const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
+      const sourceDirAbs = path.join(featurePathAbs, ARTIFACT_PREFIX.SOURCES);
       const root = fileSystem.getRootPath?.() || '';
       const sourceDir = root ? path.relative(root, sourceDirAbs) : sourceDirAbs;
       for (const planFilename of ['prd.md', 'gdd.md'] as const) {
@@ -203,11 +203,11 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       directive = await ArtifactService.getDirective(context, 'design', gitPort, fileSystem) || undefined;
     }
 
-    // Scan existing system design documents (canonical outputs/design/system/ only)
+    // Scan existing system design documents (canonical architecture/system/ only)
     let existingDesignDocs: Record<string, string> | undefined;
     try {
       const fs = await import('fs');
-      const systemDir = path.join(featurePath, DESIGN_DIR, DESIGN_SUBDIR.SYSTEM);
+      const systemDir = path.join(featurePath, ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, ''));
       if (fs.existsSync(systemDir)) {
         const docs: Record<string, string> = {};
         const entries = fs.readdirSync(systemDir, { withFileTypes: true });
@@ -280,7 +280,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     // so here we only check whether *some* source-document signal exists
     // for the early-fail path.
     if (jobMode === 'generate' && !prd) {
-      throw new Error("Generate mode requires source documents in inputs/sources/");
+      throw new Error("Generate mode requires source documents in plan/");
     }
 
     return {

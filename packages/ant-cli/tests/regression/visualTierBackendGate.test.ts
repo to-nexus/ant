@@ -71,22 +71,22 @@ describe('pathsContainUiDoc', () => {
 
   it('returns false for paths that are not UI artifacts', () => {
     expect(pathsContainUiDoc([
-      'inputs/sources/prd.md',
-      'outputs/design/spec/core.md',
-      'outputs/design/system/fe-system-app.md',
+      'plan/prd.md',
+      'architecture/spec/core.md',
+      'architecture/system/fe-system-app.md',
     ])).toBe(false);
   });
 
   it('detects ant / figma / handoff UI docs', () => {
-    expect(pathsContainUiDoc(['outputs/design/ui/ant/ui-spec.json'])).toBe(true);
-    expect(pathsContainUiDoc(['outputs/design/ui/figma/figma.json'])).toBe(true);
-    expect(pathsContainUiDoc(['outputs/design/ui/handoff/overview.html'])).toBe(true);
+    expect(pathsContainUiDoc(['visual/ui/ant/ui-spec.json'])).toBe(true);
+    expect(pathsContainUiDoc(['visual/ui/figma/figma.json'])).toBe(true);
+    expect(pathsContainUiDoc(['visual/ui/handoff/overview.html'])).toBe(true);
   });
 
   it('returns true when any item in a mixed list is a UI doc', () => {
     expect(pathsContainUiDoc([
-      'inputs/sources/prd.md',
-      'outputs/design/ui/handoff/overview.html',
+      'plan/prd.md',
+      'visual/ui/handoff/overview.html',
     ])).toBe(true);
   });
 });

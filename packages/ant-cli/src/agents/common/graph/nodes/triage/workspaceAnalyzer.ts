@@ -1,30 +1,53 @@
 /**
  * Workspace Analyzer
- * 
- * 워크스페이스 상태를 분석하여 WorkspaceState 객체 생성
- * Triage 노드에서 Prerequisites 체크에 사용
+ *
+ * 워크스페이스 상태를 분석하여 WorkspaceState 객체 생성.
+ * Triage 노드에서 Prerequisites 체크에 사용.
+ *
+ * Canonical layout (Phase B):
+ *   - plan/                              (sources — prd.md, gdd.md, tech-spec.md, …)
+ *   - meta/directives/{design,code,…}/   (chat-bound or hand-authored directives)
+ *   - meta/evals/{prd,ui-design,…}/      (evaluation reports)
+ *   - architecture/system/               (system design docs)
+ *   - architecture/spec/                 (spec docs)
+ *   - visual/ui/{ant,figma,handoff}/     (UI design surface)
+ *   - visual/game-art/{ant,figma,handoff}/ (game-art design surface)
+ *   - assets/                            (asset pool)
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceState } from './types';
-import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
+import {
+  ARTIFACT_PREFIX,
+  FIGMA_CONFIG_PATH,
+  isFigmaDataPopulated,
+  migrateFigmaConfig,
+} from '@ant/shared';
 import { MemoryPort } from '../../../../../core/ports';
 import { isTemplateContent } from '../../../../../core/utils/templateDetector';
-import { migrateFigmaConfig, isFigmaDataPopulated, FIGMA_CONFIG_PATH } from '@ant/shared';
+
+const PLAN_DIR = ARTIFACT_PREFIX.SOURCES;
+const META_DIRECTIVES_DIR = 'meta/directives';
+const META_EVALS_DIR = 'meta/evals';
+const ASSETS_DIR = 'assets';
+const ARCHITECTURE_SYSTEM_DIR = ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
+const ARCHITECTURE_SPEC_DIR = ARTIFACT_PREFIX.SPEC.replace(/\/$/, '');
+const VISUAL_UI_ANT_DIR = ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, '');
+const VISUAL_GAME_ART_ANT_DIR = ARTIFACT_PREFIX.GAME_ART_ANT.replace(/\/$/, '');
 
 /**
  * Count files in a directory (non-recursive by default)
  */
 function countFilesInDir(dirPath: string, recursive = false): number {
   if (!fs.existsSync(dirPath)) return 0;
-  
+
   let count = 0;
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  
+
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
-    
+
     const fullPath = path.join(dirPath, entry.name);
     if (entry.isFile()) {
       count++;
@@ -32,7 +55,7 @@ function countFilesInDir(dirPath: string, recursive = false): number {
       count += countFilesInDir(fullPath, true);
     }
   }
-  
+
   return count;
 }
 
@@ -45,7 +68,7 @@ function hasFilesInDir(dirPath: string): boolean {
 
 /**
  * Analyze workspace and return WorkspaceState.
- * 
+ *
  * @param featurePath - Absolute path to the feature directory (required).
  *                      This is the single source of truth for workspace location.
  * @param deps        - Optional dependencies for extended checks (e.g., memory/vector DB).
@@ -58,87 +81,87 @@ export async function analyzeWorkspace(
   }
 ): Promise<WorkspaceState> {
   console.log(`📂 [WorkspaceAnalyzer] featurePath: ${featurePath || '(not set)'}`);
-  
+
   if (!featurePath) {
     console.warn('[WorkspaceAnalyzer] featurePath is empty — returning empty state');
     return createEmptyWorkspaceState();
   }
-  
-  // Initialize state
+
   const state: WorkspaceState = {
     featurePath,
-    hasPrd: false,
-    hasDirective: false,
+    hasPlan: false,
+    hasMetaDirectives: false,
     hasAssets: false,
     hasFigmaConfig: false,
-    hasSystemDesignDoc: false,
-    hasUiDocs: false,
-    hasEvals: false,
-    hasSpecDocs: false,
+    hasArchitectureSystem: false,
+    hasVisualUi: false,
+    hasVisualGameArt: false,
+    hasMetaEvals: false,
+    hasArchitectureSpec: false,
     hasDesignDoc: false,
     hasCodebase: false,
   };
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check inputs/sources (all text files, not just prd.md)
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const sourcesDir = path.join(featurePath, 'inputs', 'sources');
-  const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
-  const validSourceFiles: string[] = [];
 
-  if (fs.existsSync(sourcesDir)) {
-    const entries = fs.readdirSync(sourcesDir, { withFileTypes: true });
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // plan/ — text-bearing source files (prd.md, gdd.md, tech-spec.md, …)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const planAbs = path.join(featurePath, PLAN_DIR);
+  const textExtensions = ['.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.xml', '.html'];
+  const validPlanFiles: string[] = [];
+
+  if (fs.existsSync(planAbs)) {
+    const entries = fs.readdirSync(planAbs, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isDirectory()) continue;
       const ext = path.extname(entry.name).toLowerCase();
       if (!textExtensions.includes(ext)) continue;
-      const filePath = path.join(sourcesDir, entry.name);
+      const filePath = path.join(planAbs, entry.name);
       const content = fs.readFileSync(filePath, 'utf-8');
       if (content.trim().length > 0 && !isTemplateContent(content)) {
-        validSourceFiles.push(entry.name);
+        validPlanFiles.push(entry.name);
       }
     }
   }
 
-  state.sourceFileCount = validSourceFiles.length;
-  state.sourceFileNames = validSourceFiles.length > 0 ? validSourceFiles : undefined;
-  state.hasPrd = validSourceFiles.length > 0;
+  state.planFileCount = validPlanFiles.length;
+  state.planFileNames = validPlanFiles.length > 0 ? validPlanFiles : undefined;
+  state.hasPlan = validPlanFiles.length > 0;
 
-  if (state.hasPrd) {
+  if (state.hasPlan) {
     // Plan-job canonical outputs are domain-aware: service → prd.md,
     // game → gdd.md. The analyzer does not know the workspace domain
     // here, so prefer prd.md, then gdd.md, then fall back to the first
     // source file. Either canonical filename is treated as "the plan
     // document"; downstream resolvers use `pickExistingPlanFilename`
     // when domain context is available.
-    const canonical = validSourceFiles.includes('prd.md')
+    const canonical = validPlanFiles.includes('prd.md')
       ? 'prd.md'
-      : validSourceFiles.includes('gdd.md')
+      : validPlanFiles.includes('gdd.md')
         ? 'gdd.md'
-        : validSourceFiles[0];
-    state.prdPath = path.join(sourcesDir, canonical);
+        : validPlanFiles[0];
+    state.planPath = path.join(planAbs, canonical);
   }
-  console.log(`📄 [WorkspaceAnalyzer] Source files: ${validSourceFiles.length} found (${validSourceFiles.join(', ') || 'none'}) → hasPrd=${state.hasPrd}`);
-  
+  console.log(`📄 [WorkspaceAnalyzer] Plan files: ${validPlanFiles.length} found (${validPlanFiles.join(', ') || 'none'}) → hasPlan=${state.hasPlan}`);
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check directives (design or code)
+  // meta/directives/{design,code}/directive.md
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const designDirectivePath = path.join(featurePath, 'inputs', 'directives', 'design', 'directive.md');
-  const codeDirectivePath = path.join(featurePath, 'inputs', 'directives', 'code', 'directive.md');
-  
+  const designDirectivePath = path.join(featurePath, META_DIRECTIVES_DIR, 'design', 'directive.md');
+  const codeDirectivePath = path.join(featurePath, META_DIRECTIVES_DIR, 'code', 'directive.md');
+
   for (const directivePath of [designDirectivePath, codeDirectivePath]) {
     if (fs.existsSync(directivePath)) {
       const content = fs.readFileSync(directivePath, 'utf-8');
       if (!isTemplateContent(content) && content.trim().length > 0) {
-        state.hasDirective = true;
+        state.hasMetaDirectives = true;
         state.directivePath = directivePath;
         break;
       }
     }
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check Figma workfile reference (outputs/design/ui/figma/figma.json).
+  // visual/ui/figma/figma.json — Figma workfile reference.
   // `hasFigmaConfig` reflects workfile presence only — MCP reachability is
   // NOT checked here (that lives in code resolve's `detectFigmaSource`).
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -155,95 +178,103 @@ export async function analyzeWorkspace(
   console.log(`🎨 [WorkspaceAnalyzer] Figma workfile: ${state.hasFigmaConfig ? 'configured' : 'none'}`);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check assets
+  // assets/
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const assetsPath = path.join(featurePath, 'inputs', 'assets');
+  const assetsPath = path.join(featurePath, ASSETS_DIR);
   state.hasAssets = hasFilesInDir(assetsPath);
   if (state.hasAssets) {
     state.assetCount = countFilesInDir(assetsPath, true);
   }
-  
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check design documents
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const designPath = path.join(featurePath, DESIGN_DIR);
-  
-  const listDesignSubdir = (subdir: string) => {
-    const dir = path.join(designPath, subdir);
-    if (!fs.existsSync(dir)) return [] as string[];
-    return fs.readdirSync(dir);
-  };
 
-  // System design — canonical outputs/design/system/ only
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // architecture/system/  — fe-system-*.md / be-system-*.md / api-contract-*.md
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const architectureSystemAbs = path.join(featurePath, ARCHITECTURE_SYSTEM_DIR);
   {
-    const systemFiles = listDesignSubdir('system');
+    const systemFiles = fs.existsSync(architectureSystemAbs)
+      ? fs.readdirSync(architectureSystemAbs)
+      : [];
     const matchedSystemDocs = systemFiles.filter(f =>
       (f.startsWith('fe-system-') || f.startsWith('be-system-') || f.startsWith('api-contract-')) && f.endsWith('.md')
     );
-    state.hasSystemDesignDoc = matchedSystemDocs.length > 0;
+    state.hasArchitectureSystem = matchedSystemDocs.length > 0;
     if (matchedSystemDocs.length > 0) {
       state.systemDesignFileNames = matchedSystemDocs;
     }
   }
 
-  // UI docs — canonical outputs/design/ui/ant/ only (SSOT for ant UiSource)
-  const uiAntDir = path.join(designPath, 'ui', 'ant');
-  const existsInUiAnt = (name: string) => fs.existsSync(path.join(uiAntDir, name));
-  state.hasUiDocs = existsInUiAnt('ui-tokens.json') || existsInUiAnt('ui-assets.json') || existsInUiAnt('ui-spec.json');
-
-  // Spec documents — canonical outputs/design/spec/ only
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // architecture/spec/ — spec-*.md
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const architectureSpecAbs = path.join(featurePath, ARCHITECTURE_SPEC_DIR);
   {
-    const specFiles = listDesignSubdir('spec').filter(f =>
-      f.startsWith('spec-') && f.endsWith('.md')
-    );
-    state.hasSpecDocs = specFiles.length > 0;
-    if (state.hasSpecDocs) {
+    const specFiles = fs.existsSync(architectureSpecAbs)
+      ? fs.readdirSync(architectureSpecAbs).filter(f => f.startsWith('spec-') && f.endsWith('.md'))
+      : [];
+    state.hasArchitectureSpec = specFiles.length > 0;
+    if (state.hasArchitectureSpec) {
       state.specDocCount = specFiles.length;
       state.specDocNames = specFiles;
     }
   }
 
-  // Any design document (across canonical subdirectories)
-  {
-    const allDesignFiles = [
-      ...listDesignSubdir('system'),
-      ...listDesignSubdir('ui/ant'),
-      ...listDesignSubdir('spec'),
-    ].filter(f => f.endsWith('.md') || f.endsWith('.json'));
-    state.hasDesignDoc = allDesignFiles.length > 0;
-  }
-  
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check evaluation reports
+  // visual/ui/ant/ — canonical UI design surface
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const evalsPath = path.join(featurePath, 'outputs', 'evals');
+  const uiAntAbs = path.join(featurePath, VISUAL_UI_ANT_DIR);
+  const existsInUiAnt = (name: string) => fs.existsSync(path.join(uiAntAbs, name));
+  state.hasVisualUi =
+    existsInUiAnt('ui-tokens.json') ||
+    existsInUiAnt('ui-assets.json') ||
+    existsInUiAnt('ui-spec.json');
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // visual/game-art/ant/ — canonical game-art design surface
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const gameArtAntAbs = path.join(featurePath, VISUAL_GAME_ART_ANT_DIR);
+  const existsInGameArtAnt = (name: string) => fs.existsSync(path.join(gameArtAntAbs, name));
+  state.hasVisualGameArt =
+    existsInGameArtAnt('game-art-tokens.json') ||
+    existsInGameArtAnt('game-art-assets.json') ||
+    existsInGameArtAnt('game-art-spec.json');
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Aggregate `hasDesignDoc` — any architecture/visual artifact present.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  state.hasDesignDoc =
+    state.hasArchitectureSystem ||
+    state.hasArchitectureSpec ||
+    state.hasVisualUi ||
+    state.hasVisualGameArt;
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // meta/evals/ — evaluation reports
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const evalsPath = path.join(featurePath, META_EVALS_DIR);
   if (fs.existsSync(evalsPath)) {
     const evalFileCount = countFilesInDir(evalsPath, true);
-    state.hasEvals = evalFileCount > 0;
-    if (state.hasEvals) {
+    state.hasMetaEvals = evalFileCount > 0;
+    if (state.hasMetaEvals) {
       state.evalCount = evalFileCount;
     }
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Check codebase indexing (via memory/vector DB)
+  // codebase indexing (memory / vector DB)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (deps?.memory) {
     try {
-      // Try to query vector DB for codebase content
       const results = await deps.memory.query('', deps.projectId || '', { k: 1 });
       state.hasCodebase = results && results.length > 0;
       if (state.hasCodebase) {
-        // Get approximate indexed file count
         const allResults = await deps.memory.query('', deps.projectId || '', { k: 100 });
         state.indexedFileCount = allResults?.length || 0;
       }
     } catch (error) {
-      // Vector DB not available or not indexed
       state.hasCodebase = false;
     }
   }
-  
+
   return state;
 }
 
@@ -252,14 +283,15 @@ export async function analyzeWorkspace(
  */
 function createEmptyWorkspaceState(): WorkspaceState {
   return {
-    hasPrd: false,
-    hasDirective: false,
+    hasPlan: false,
+    hasMetaDirectives: false,
     hasAssets: false,
     hasFigmaConfig: false,
-    hasSystemDesignDoc: false,
-    hasUiDocs: false,
-    hasEvals: false,
-    hasSpecDocs: false,
+    hasArchitectureSystem: false,
+    hasVisualUi: false,
+    hasVisualGameArt: false,
+    hasMetaEvals: false,
+    hasArchitectureSpec: false,
     hasDesignDoc: false,
     hasCodebase: false,
   };
@@ -270,15 +302,15 @@ function createEmptyWorkspaceState(): WorkspaceState {
  */
 export function formatWorkspaceState(state: WorkspaceState): string {
   const lines: string[] = [];
-  
-  lines.push('### Inputs');
-  lines.push(state.hasPrd 
-    ? `✅ PRD: ${state.prdPath || 'available'}` 
-    : '❌ No PRD');
-  lines.push(state.hasDirective 
-    ? `✅ Directive: ${state.directivePath || 'available'}` 
+
+  lines.push('### Plan');
+  lines.push(state.hasPlan
+    ? `✅ Plan: ${state.planPath || 'available'}`
+    : '❌ No plan');
+  lines.push(state.hasMetaDirectives
+    ? `✅ Directive: ${state.directivePath || 'available'}`
     : 'ℹ️ No directive');
-  
+
   lines.push('');
   lines.push('### Visual Sources (ui-design)');
   lines.push(state.hasFigmaConfig
@@ -287,36 +319,39 @@ export function formatWorkspaceState(state: WorkspaceState): string {
   lines.push(state.hasAssets
     ? `✅ Assets: ${state.assetCount || 'multiple'} files`
     : 'ℹ️ No asset files');
-  
+
   lines.push('');
   lines.push('### Design Documents');
-  lines.push(state.hasUiDocs 
-    ? '✅ UI docs (ui-tokens.json, ui-assets.json, ui-spec.json)' 
+  lines.push(state.hasVisualUi
+    ? '✅ UI docs (ui-tokens.json, ui-assets.json, ui-spec.json)'
     : '❌ No UI docs');
-  lines.push(state.hasSystemDesignDoc 
-    ? '✅ System design docs found' 
+  lines.push(state.hasVisualGameArt
+    ? '✅ Game-art docs (game-art-tokens.json, game-art-assets.json, game-art-spec.json)'
+    : 'ℹ️ No game-art docs');
+  lines.push(state.hasArchitectureSystem
+    ? '✅ System design docs found'
     : '❌ No system design');
-  
+
   lines.push('');
   lines.push('### Evaluations');
-  lines.push(state.hasEvals 
-    ? `✅ Eval reports: ${state.evalCount || 'available'} files (outputs/evals/)` 
+  lines.push(state.hasMetaEvals
+    ? `✅ Eval reports: ${state.evalCount || 'available'} files (meta/evals/)`
     : 'ℹ️ No evaluation reports');
-  
+
   lines.push('');
   lines.push('### Spec Documents');
-  lines.push(state.hasSpecDocs
+  lines.push(state.hasArchitectureSpec
     ? `✅ Spec docs: ${state.specDocCount} files (${state.specDocNames?.join(', ')})`
     : '❌ No spec documents');
 
   lines.push('');
   lines.push('### Codebase');
-  lines.push(state.hasCodebase 
-    ? `✅ Indexed (${state.indexedFileCount || 'unknown'} files)` 
+  lines.push(state.hasCodebase
+    ? `✅ Indexed (${state.indexedFileCount || 'unknown'} files)`
     : '❌ Not indexed');
-  lines.push(state.hasDesignDoc 
-    ? '✅ Has design documents' 
+  lines.push(state.hasDesignDoc
+    ? '✅ Has design documents'
     : '❌ No design documents');
-  
+
   return lines.join('\n');
 }

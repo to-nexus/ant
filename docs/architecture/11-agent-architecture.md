@@ -16,7 +16,7 @@ ANT의 에이전트는 LangGraph StateGraph로 구현된다. 각 에이전트는
 
 ### 에이전트 간 관계
 
-planner의 산출물(`inputs/sources/prd.md`)이 architect의 입력이 된다. creator는 독립적으로 동작하며, PRD나 directive를 참조하여 프로젝트 에셋을 생산한다. 현재 visual job이 구현되어 있으며, audible/animation 등은 향후 추가 예정이다. planner -> architect -> reviewer 순서로 워크플로우가 진행된다.
+planner의 산출물(`plan/prd.md`)이 architect의 입력이 된다. creator는 독립적으로 동작하며, PRD나 directive를 참조하여 프로젝트 에셋을 생산한다. 현재 visual job이 구현되어 있으며, audible/animation 등은 향후 추가 예정이다. planner -> architect -> reviewer 순서로 워크플로우가 진행된다.
 
 ## 디렉토리 규약
 

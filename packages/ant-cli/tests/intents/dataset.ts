@@ -75,10 +75,10 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('rev-plan'),
     metadata: {
       intent: 'rev-plan',
-      refs: ['inputs/sources/prd.md'],
+      refs: ['plan/prd.md'],
     },
     documents: {
-      'inputs/sources/prd.md': { content: LOAD('prd.md'), role: 'ref' },
+      'plan/prd.md': { content: LOAD('prd.md'), role: 'ref' },
     },
     routing: { agent: 'planner', jobType: 'plan', mode: 'refactor' },
     prompt: {
@@ -142,10 +142,10 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('gen-sys-full'),
     metadata: {
       intent: 'gen-sys-full',
-      refs: ['inputs/sources/prd.md'],
+      refs: ['plan/prd.md'],
     },
     documents: {
-      'inputs/sources/prd.md': { content: LOAD('prd.md'), role: 'ref' },
+      'plan/prd.md': { content: LOAD('prd.md'), role: 'ref' },
     },
     routing: {
       agent: 'architect', jobType: 'design', mode: 'generate',
@@ -168,10 +168,10 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('rev-sys'),
     metadata: {
       intent: 'rev-sys',
-      refs: ['outputs/design/system/fe-system-main.md'],
+      refs: ['architecture/system/fe-system-main.md'],
     },
     documents: {
-      'outputs/design/system/fe-system-main.md': { content: LOAD('fe-system-main.md'), role: 'ref' },
+      'architecture/system/fe-system-main.md': { content: LOAD('fe-system-main.md'), role: 'ref' },
     },
     targetFile: 'fe-system-main.md',
     routing: {
@@ -195,7 +195,7 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('gen-ui-figma'),
     metadata: {
       intent: 'gen-ui-figma',
-      refs: ['outputs/design/ui/figma/figma.json'],
+      refs: ['visual/ui/figma/figma.json'],
     },
     documents: {},
     routing: {
@@ -240,10 +240,10 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('rev-ui'),
     metadata: {
       intent: 'rev-ui',
-      refs: ['outputs/design/ui/ant/ui-tokens.json'],
+      refs: ['visual/ui/ant/ui-tokens.json'],
     },
     documents: {
-      'outputs/design/ui/ant/ui-tokens.json': { content: LOAD('ui-tokens.json'), role: 'ref' },
+      'visual/ui/ant/ui-tokens.json': { content: LOAD('ui-tokens.json'), role: 'ref' },
     },
     routing: {
       agent: 'architect', jobType: 'design', mode: 'refactor',
@@ -287,10 +287,10 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('rev-spec'),
     metadata: {
       intent: 'rev-spec',
-      refs: ['outputs/design/spec/spec-search-api.md'],
+      refs: ['architecture/spec/spec-search-api.md'],
     },
     documents: {
-      'outputs/design/spec/spec-search-api.md': { content: LOAD('spec-search-api.md'), role: 'ref' },
+      'architecture/spec/spec-search-api.md': { content: LOAD('spec-search-api.md'), role: 'ref' },
     },
     routing: {
       agent: 'architect', jobType: 'design', mode: 'refactor',
@@ -313,12 +313,12 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('gen-code-sys'),
     metadata: {
       intent: 'gen-code-sys',
-      refs: ['outputs/design/system/fe-system-main.md'],
-      context: ['outputs/design/ui/ant/ui-spec.json'],
+      refs: ['architecture/system/fe-system-main.md'],
+      context: ['visual/ui/ant/ui-spec.json'],
     },
     documents: {
-      'outputs/design/system/fe-system-main.md': { content: LOAD('fe-system-main.md'), role: 'ref' },
-      'outputs/design/ui/ant/ui-spec.json': { content: LOAD('ui-spec.json'), role: 'context' },
+      'architecture/system/fe-system-main.md': { content: LOAD('fe-system-main.md'), role: 'ref' },
+      'visual/ui/ant/ui-spec.json': { content: LOAD('ui-spec.json'), role: 'context' },
     },
     routing: { agent: 'architect', jobType: 'code', mode: 'generate' },
     prompt: {
@@ -334,12 +334,12 @@ export const FIXTURES: IntentFixture[] = [
     directive: D('gen-code-spec'),
     metadata: {
       intent: 'gen-code-spec',
-      refs: ['outputs/design/spec/spec-search-api.md'],
-      context: ['outputs/design/system/be-system-main.md'],
+      refs: ['architecture/spec/spec-search-api.md'],
+      context: ['architecture/system/be-system-main.md'],
     },
     documents: {
-      'outputs/design/spec/spec-search-api.md': { content: LOAD('spec-search-api.md'), role: 'ref' },
-      'outputs/design/system/be-system-main.md': { content: LOAD('be-system-main.md'), role: 'context' },
+      'architecture/spec/spec-search-api.md': { content: LOAD('spec-search-api.md'), role: 'ref' },
+      'architecture/system/be-system-main.md': { content: LOAD('be-system-main.md'), role: 'context' },
     },
     routing: { agent: 'architect', jobType: 'code', mode: 'generate' },
     prompt: {

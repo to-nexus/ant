@@ -125,9 +125,9 @@ export function createDetectNode<T extends DetectableState>(
         // expects the BE to mirror the matrix default. Without this
         // fallback, RAC.target is undefined → buildSystemPrompt drops the
         // "Target Path" section → the LLM hallucinates a path
-        // (e.g. `outputs/documents/prd.md`) → the disk writer is gated on
-        // `targetRelPath` so the artifact is silently dropped. Mirrors
-        // the infer branch's `target: targets ?? ['inputs/sources/prd.md']`
+        // (e.g. `architecture/system/main.md`) → the disk writer is gated
+        // on `targetRelPath` so the artifact is silently dropped. Mirrors
+        // the infer branch's `target: targets ?? ['plan/prd.md']`
         // behaviour through the matrix-defined SSOT instead of an
         // intent-specific hardcode.
         const explicitTarget = metadata.target?.length

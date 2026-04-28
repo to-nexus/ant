@@ -1,6 +1,6 @@
 ### Conflict resolution between PRD/GDD prose and Figma source
 
-When the PRD/GDD prose (planned via `gen-plan`) and the Figma export (`outputs/design/ui/figma/figma.json` or live MCP exploration) disagree about the same surface, **classify the conflict by axis** before resolving. Do not silently pick one side — the partial below is the canonical matrix downstream design follows.
+When the PRD/GDD prose (planned via `gen-plan`) and the Figma export (`visual/ui/figma/figma.json` or live MCP exploration) disagree about the same surface, **classify the conflict by axis** before resolving. Do not silently pick one side — the partial below is the canonical matrix downstream design follows.
 
 #### Axis classification
 

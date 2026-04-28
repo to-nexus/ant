@@ -28,7 +28,7 @@
 
 | Checkpoint | What to observe | primarySources |
 |-----------|----------------|----------------|
-| **Directive names a spec file** | e.g., "implement spec-auth.md" | `["outputs/design/spec/spec-auth.md"]` |
+| **Directive names a spec file** | e.g., "implement spec-auth.md" | `["architecture/spec/spec-auth.md"]` |
 | **Directive references design docs** | e.g., "implement based on system design" or "develop ui changes" | Relevant directories/files from Available Artifacts |
 | **Directive alone** | No document reference, pure instruction | `[]` (empty — directive itself is the source) |
 

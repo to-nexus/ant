@@ -30,7 +30,7 @@ curl -X POST http://localhost:4100/api/jobs \
 ```
 
 - **예상 Triage**: agent=planner, jobType=plan
-- **예상 산출물**: `inputs/sources/prd.md`
+- **예상 산출물**: `plan/prd.md`
 - **PASS 기준**: prd.md 생성되고 "프로젝트 관리" 키워드 포함
 
 ### rev-plan
@@ -42,13 +42,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-plan",
-      "refs": ["inputs/sources/prd.md"]
+      "refs": ["plan/prd.md"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=planner, jobType=plan, mode=refactor
-- **예상 산출물**: `inputs/sources/prd.md` (수정)
+- **예상 산출물**: `plan/prd.md` (수정)
 - **PASS 기준**: 소셜 로그인 관련 내용 추가, 게스트 모드 삭제
 
 ---
@@ -64,13 +64,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-sys-fe",
-      "refs": ["inputs/sources/prd.md"]
+      "refs": ["plan/prd.md"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, workType=system-design, environment=frontend
-- **예상 산출물**: `outputs/design/system/fe-system-*.md`
+- **예상 산출물**: `architecture/system/fe-system-*.md`
 - **PASS 기준**: fe-system-main.md 생성, React/frontend 관련 내용 포함
 
 ### gen-sys-be
@@ -82,13 +82,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-sys-be",
-      "refs": ["inputs/sources/prd.md"]
+      "refs": ["plan/prd.md"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, workType=system-design, environment=backend
-- **예상 산출물**: `outputs/design/system/be-system-*.md`, `outputs/design/system/api-contract-*.md`
+- **예상 산출물**: `architecture/system/be-system-*.md`, `architecture/system/api-contract-*.md`
 - **PASS 기준**: be-system-main.md 및 api-contract-main.md 생성
 
 ### gen-sys-full
@@ -100,13 +100,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-sys-full",
-      "refs": ["inputs/sources/prd.md"]
+      "refs": ["plan/prd.md"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, workType=system-design, environment=fullstack
-- **예상 산출물**: `outputs/design/system/fe-system-*.md`, `outputs/design/system/be-system-*.md`, `outputs/design/system/api-contract-*.md`
+- **예상 산출물**: `architecture/system/fe-system-*.md`, `architecture/system/be-system-*.md`, `architecture/system/api-contract-*.md`
 - **PASS 기준**: 프론트엔드 + 백엔드 + API 계약 문서 모두 생성
 
 ### rev-sys
@@ -118,13 +118,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-sys",
-      "refs": ["outputs/design/system/fe-system-main.md"]
+      "refs": ["architecture/system/fe-system-main.md"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=system-design
-- **예상 산출물**: `outputs/design/system/fe-system-main.md` (수정)
+- **예상 산출물**: `architecture/system/fe-system-main.md` (수정)
 - **PASS 기준**: OAuth 관련 내용으로 수정
 
 ---
@@ -140,13 +140,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-ui-figma",
-      "refs": ["outputs/design/ui/figma/figma.json"]
+      "refs": ["visual/ui/figma/figma.json"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, workType=ui-design
-- **예상 산출물**: `outputs/design/ui/ant/ui-tokens.json`, `outputs/design/ui/ant/ui-assets.json`, `outputs/design/ui/ant/ui-spec.json`
+- **예상 산출물**: `visual/ui/ant/ui-tokens.json`, `visual/ui/ant/ui-assets.json`, `visual/ui/ant/ui-spec.json`
 - **PASS 기준**: 3개 UI 설계 파일 생성
 - **참고**: figma.json은 `{ "file": "<figma-url>" }` 형식의 설정 파일. 프롬프트에 내용 주입 없음.
 
@@ -159,13 +159,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-ui-desc",
-      "refs": ["inputs/sources/prd.md"]
+      "refs": ["plan/prd.md"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, workType=ui-design
-- **예상 산출물**: `outputs/design/ui/ant/ui-tokens.json`, `outputs/design/ui/ant/ui-assets.json`, `outputs/design/ui/ant/ui-spec.json`
+- **예상 산출물**: `visual/ui/ant/ui-tokens.json`, `visual/ui/ant/ui-assets.json`, `visual/ui/ant/ui-spec.json`
 - **PASS 기준**: 3개 UI 설계 파일 생성
 
 ### rev-ui
@@ -177,13 +177,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-ui",
-      "refs": ["outputs/design/ui/ant/ui-tokens.json"]
+      "refs": ["visual/ui/ant/ui-tokens.json"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=ui-design
-- **예상 산출물**: `outputs/design/ui/ant/ui-tokens.json` (수정)
+- **예상 산출물**: `visual/ui/ant/ui-tokens.json` (수정)
 - **PASS 기준**: 다크 테마 색상으로 변경
 
 ---
@@ -199,13 +199,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-spec",
-      "refs": ["outputs/design/system/be-system-main.md"]
+      "refs": ["architecture/system/be-system-main.md"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, workType=spec
-- **예상 산출물**: `outputs/design/spec/spec-*.md`
+- **예상 산출물**: `architecture/spec/spec-*.md`
 - **PASS 기준**: 스펙 파일 생성
 
 ### rev-spec
@@ -217,13 +217,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-spec",
-      "refs": ["outputs/design/spec/spec-search-api.md"]
+      "refs": ["architecture/spec/spec-search-api.md"]
     }
   }'
 ```
 
 - **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=spec
-- **예상 산출물**: `outputs/design/spec/spec-search-api.md` (수정)
+- **예상 산출물**: `architecture/spec/spec-search-api.md` (수정)
 - **PASS 기준**: cursor 기반 페이지네이션으로 변경
 
 ---
@@ -239,8 +239,8 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-code-sys",
-      "refs": ["outputs/design/system/fe-system-main.md"],
-      "context": ["outputs/design/ui/ant/ui-spec.json"]
+      "refs": ["architecture/system/fe-system-main.md"],
+      "context": ["visual/ui/ant/ui-spec.json"]
     }
   }'
 ```
@@ -258,8 +258,8 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-code-spec",
-      "refs": ["outputs/design/spec/spec-search-api.md"],
-      "context": ["outputs/design/system/be-system-main.md"]
+      "refs": ["architecture/spec/spec-search-api.md"],
+      "context": ["architecture/system/be-system-main.md"]
     }
   }'
 ```
@@ -294,7 +294,7 @@ curl -X POST http://localhost:4100/api/jobs \
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-code",
-      "refs": ["outputs/design/spec/spec-search-api.md"]
+      "refs": ["architecture/spec/spec-search-api.md"]
     }
   }'
 ```

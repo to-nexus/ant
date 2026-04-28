@@ -94,9 +94,10 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     : selectArtifacts(state.artifacts || [], { include: currentTask?.include || [ARTIFACT_PREFIX.SOURCES] });
 
   if (taskSourceFiles?.length) {
+    const planPrefix = `${ARTIFACT_PREFIX.SOURCES}/`;
     selectedArtifacts = selectedArtifacts.filter(a =>
       !a.path.startsWith(ARTIFACT_PREFIX.SOURCES) ||
-      taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === 'inputs/sources/' + f),
+      taskSourceFiles.some(f => a.path.endsWith('/' + f) || a.path === planPrefix + f),
     );
   }
 

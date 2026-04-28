@@ -208,7 +208,7 @@ export async function decomposeUiDesign(
       }
 
       // In figma mode, include the canonical figma workfile reference
-      // (outputs/design/ui/figma/figma.json) as context so UI design tasks
+      // (visual/ui/figma/figma.json) as context so UI design tasks
       // can read it via the role-based artifact pool instead of an ad-hoc
       // prompt injection.
       const includePrefixes = isFigmaMode

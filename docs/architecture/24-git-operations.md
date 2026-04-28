@@ -251,8 +251,11 @@ Feature에서 처음 Push할 때 upstream이 설정되지 않은 경우:
     └── {featureName}/
         ├── codebase/     ← git worktree (feature branch)
         │   └── .git      ← worktree 참조 파일 (gitdir 포인터)
-        ├── inputs/
-        ├── outputs/
+        ├── plan/
+        ├── architecture/
+        ├── visual/
+        ├── assets/
+        ├── meta/
         └── sessions/
 ```
 

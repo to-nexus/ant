@@ -25,8 +25,8 @@ describe('extractPlanDiff — single-source layers', () => {
 
   it('git-diff layer only inspects added/removed lines (not file headers)', () => {
     const gitDiff = [
-      '--- a/inputs/sources/prd.md',
-      '+++ b/inputs/sources/prd.md',
+      '--- a/plan/prd.md',
+      '+++ b/plan/prd.md',
       '@@ -10,2 +10,3 @@',
       '-Old prose with PRD §99',
       '+New prose with SC-Search and FR-42',

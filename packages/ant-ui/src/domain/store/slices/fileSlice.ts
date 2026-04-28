@@ -402,9 +402,8 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
       const config = await getFigmaConfig(selectedProject, selectedFeature);
       set({ figmaPopulated: isFigmaDataPopulated(config) });
 
-      const outputs = fileTree?.find((n: any) => n.name === 'outputs');
-      const design = outputs?.children?.find((n: any) => n.name === 'design');
-      const ui = design?.children?.find((n: any) => n.name === 'ui');
+      const visual = fileTree?.find((n: any) => n.name === 'visual');
+      const ui = visual?.children?.find((n: any) => n.name === 'ui');
       const figma = ui?.children?.find((n: any) => n.name === 'figma');
       const hasFigmaInTree = figma?.children?.some((n: any) => n.name === 'figma.json');
       if (!hasFigmaInTree) {

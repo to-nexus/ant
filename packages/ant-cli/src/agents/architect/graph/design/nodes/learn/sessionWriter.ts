@@ -1,6 +1,6 @@
 import { DesignGraphState } from '../../state';
 import { SessionRun } from '../../../../../../core/types';
-import { DESIGN_DIR, DESIGN_SUBDIR, getCanonicalPlanPath } from '@ant/shared';
+import { getCanonicalPlanPath } from '@ant/shared';
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { saveLearnCheckpoint } from '../../session/checkpoint';
 

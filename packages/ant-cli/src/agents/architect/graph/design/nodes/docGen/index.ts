@@ -33,6 +33,7 @@ import { getTools } from './tools';
 import { parseClarifyTags, consumeAwaitingClarify } from '../../../../../common/clarify';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './intent/system';
@@ -438,14 +439,17 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
       } catch { /* continue */ }
     };
 
-    const designDirAbs = path.join(state.context.featurePath, 'outputs/design');
-    const designDirRel = rootPath
-      ? path.relative(rootPath, designDirAbs)
-      : designDirAbs.replace(/^\//, '');
+    const featureRel = rootPath
+      ? path.relative(rootPath, state.context.featurePath)
+      : state.context.featurePath.replace(/^\//, '');
 
-    await scanDir(path.join(designDirRel, 'ui', 'ant'), 'outputs/design/ui/ant');
-    await scanDir(path.join(designDirRel, 'system'), 'outputs/design/system');
-    await scanDir(path.join(designDirRel, 'spec'), 'outputs/design/spec');
+    const visualUiAnt = ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, '');
+    const archSystem = ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
+    const archSpec = ARTIFACT_PREFIX.SPEC.replace(/\/$/, '');
+
+    await scanDir(path.join(featureRel, visualUiAnt), visualUiAnt);
+    await scanDir(path.join(featureRel, archSystem), archSystem);
+    await scanDir(path.join(featureRel, archSpec), archSpec);
   }
   
   return existingFiles;

@@ -102,11 +102,11 @@ describe('E2E: Code execute — default/feature', () => {
 
   beforeAll(async () => {
     const rac = resolveToRAC('gen-code-sys' as IntentId, {
-      refs: ['outputs/design/system/fe-system-main.md'],
+      refs: ['architecture/system/fe-system-main.md'],
     }, 'explicit');
 
     const docs: ResolvedArtifact[] = [
-      { path: 'outputs/design/system/fe-system-main.md', content: '# FE System Design\nReact app', role: 'ref' },
+      { path: 'architecture/system/fe-system-main.md', content: '# FE System Design\nReact app', role: 'ref' },
     ];
     const artifactPolicies = deriveArtifactPolicies('gen-code-sys' as IntentId, docs);
 

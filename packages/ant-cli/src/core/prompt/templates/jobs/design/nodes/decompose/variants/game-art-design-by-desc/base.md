@@ -55,7 +55,7 @@ and flag the gap in the task description.
 assets and spec. Without external references, **prefer `kind: 'inline'`
 for asset entries** — the LLM authors simple-shape primitives that match
 the directive's described concept (D21). External sprites are only valid
-if the user has explicitly placed files under `inputs/assets/game/...`
+if the user has explicitly placed files under `assets/game/...`
 (see "Available Resources" below).
 {{/if}}
 
@@ -85,7 +85,7 @@ if the user has explicitly placed files under `inputs/assets/game/...`
 
 | Resource | Count |
 |----------|-------|
-| External assets (`inputs/assets/game/`) | {{assetCount}} |
+| External assets (`assets/game/`) | {{assetCount}} |
 
 ⚠️ **Blind spot**: When `assetCount` is `0`, every asset entry MUST be
 `kind: 'inline'` — there is nothing to point `external` `src` paths to.
@@ -137,10 +137,10 @@ under the 8K cap).
   default
 - A single `kind: 'external'` entry is allowed only if the directive
   references a specific user-placed file (e.g. "use the hero.svg I put
-  in inputs/assets/game/entities/")
+  in assets/game/entities/")
 - **GDD asset citation override**: When GDD §8 cites a concept art /
   reference path for a specific `EN-XXX` (e.g.,
-  `EN-Hero — concept: inputs/assets/game/concept/hero.png`), the asset
+  `EN-Hero — concept: assets/game/concept/hero.png`), the asset
   task for that entity uses the cited path as `kind: 'external'`
   `src` for that entity **only**. Other entities in the same category
   without a citation keep the inline-first default.

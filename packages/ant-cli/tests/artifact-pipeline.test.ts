@@ -22,25 +22,25 @@ function artifact(path: string, role: 'ref' | 'context' = 'context', content = '
 
 describe('selectArtifactsWithPolicy', () => {
   const pool: ResolvedArtifact[] = [
-    artifact('inputs/sources', 'context', 'prd content'),
-    artifact('outputs/design/system/fe-system-main.md', 'ref', 'fe design'),
-    artifact('outputs/design/system/api-contract-auth.md', 'ref', 'api contract'),
-    artifact('outputs/design/ui/ant/tokens', 'context', 'ui tokens'),
-    artifact('outputs/design/ui/ant/spec/header', 'context', 'header spec'),
+    artifact('plan', 'context', 'prd content'),
+    artifact('architecture/system/fe-system-main.md', 'ref', 'fe design'),
+    artifact('architecture/system/api-contract-auth.md', 'ref', 'api contract'),
+    artifact('visual/ui/ant/tokens', 'context', 'ui tokens'),
+    artifact('visual/ui/ant/spec/header', 'context', 'header spec'),
   ];
 
   it('refs 패턴에 매칭되는 아티팩트를 role=ref로 반환', () => {
     const result = selectArtifactsWithPolicy(pool, {
-      refs: ['inputs/sources'],
+      refs: ['plan'],
     });
     expect(result).toHaveLength(1);
-    expect(result[0].path).toBe('inputs/sources');
+    expect(result[0].path).toBe('plan');
     expect(result[0].role).toBe('ref');
   });
 
   it('context 패턴에 매칭되는 아티팩트를 role=context로 반환', () => {
     const result = selectArtifactsWithPolicy(pool, {
-      context: ['outputs/design/ui/'],
+      context: ['visual/ui/'],
     });
     expect(result.length).toBeGreaterThanOrEqual(2);
     expect(result.every(a => a.role === 'context')).toBe(true);
@@ -48,8 +48,8 @@ describe('selectArtifactsWithPolicy', () => {
 
   it('refs와 context 모두 매칭되면 refs 우선 (seen set)', () => {
     const result = selectArtifactsWithPolicy(pool, {
-      refs: ['inputs/sources'],
-      context: ['inputs/sources'],
+      refs: ['plan'],
+      context: ['plan'],
     });
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe('ref');
@@ -69,19 +69,19 @@ describe('selectArtifactsWithPolicy', () => {
 
   it('pool 원본의 role을 policy의 role로 오버라이드', () => {
     const result = selectArtifactsWithPolicy(pool, {
-      context: ['outputs/design/system/fe-system-'],
+      context: ['architecture/system/fe-system-'],
     });
     expect(result).toHaveLength(1);
-    expect(result[0].path).toBe('outputs/design/system/fe-system-main.md');
+    expect(result[0].path).toBe('architecture/system/fe-system-main.md');
     expect(result[0].role).toBe('context');
   });
 
   it('glob-style trailing * 패턴 지원', () => {
     const result = selectArtifactsWithPolicy(pool, {
-      refs: ['outputs/design/system/api-contract-*'],
+      refs: ['architecture/system/api-contract-*'],
     });
     expect(result).toHaveLength(1);
-    expect(result[0].path).toBe('outputs/design/system/api-contract-auth.md');
+    expect(result[0].path).toBe('architecture/system/api-contract-auth.md');
     expect(result[0].role).toBe('ref');
   });
 });
@@ -93,10 +93,10 @@ describe('selectArtifactsWithPolicy', () => {
 describe('flattenPolicyToInclude', () => {
   it('refs+context를 하나의 string[]로 합침', () => {
     const result = flattenPolicyToInclude({
-      refs: ['outputs/design/spec/'],
-      context: ['outputs/design/ui/ant/'],
+      refs: ['architecture/spec/'],
+      context: ['visual/ui/ant/'],
     });
-    expect(result).toEqual(['outputs/design/spec/', 'outputs/design/ui/ant/']);
+    expect(result).toEqual(['architecture/spec/', 'visual/ui/ant/']);
   });
 
   it('undefined 입력이면 undefined 반환', () => {
@@ -120,14 +120,14 @@ describe('flattenPolicyToInclude', () => {
 describe('appendOrUpdatePool role conflict', () => {
   it('같은 path에 다른 role이면 console.warn 출력', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const pool = [artifact('inputs/sources', 'context')];
-    const newArts = [artifact('inputs/sources', 'ref')];
+    const pool = [artifact('plan', 'context')];
+    const newArts = [artifact('plan', 'ref')];
 
     const result = appendOrUpdatePool(pool, newArts);
 
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0][0]).toContain('Role conflict');
-    expect(warnSpy.mock.calls[0][0]).toContain('inputs/sources');
+    expect(warnSpy.mock.calls[0][0]).toContain('plan');
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe('ref');
 
@@ -136,8 +136,8 @@ describe('appendOrUpdatePool role conflict', () => {
 
   it('같은 path에 같은 role이면 경고 없음', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const pool = [artifact('inputs/sources', 'context')];
-    const newArts = [artifact('inputs/sources', 'context', 'updated content')];
+    const pool = [artifact('plan', 'context')];
+    const newArts = [artifact('plan', 'context', 'updated content')];
 
     appendOrUpdatePool(pool, newArts);
 
@@ -157,10 +157,10 @@ describe('appendOrUpdatePool role conflict', () => {
 // ---------------------------------------------------------------------------
 
 describe('ArtifactPoolView UI detection', () => {
-  it('인정: outputs/design/ui/ant/ 경로 (ant canonical)', () => {
+  it('인정: visual/ui/ant/ 경로 (ant canonical)', () => {
     const pool = [
-      artifact('outputs/design/ui/ant/ui-tokens.json'),
-      artifact('outputs/design/ui/ant/ui-spec.json'),
+      artifact('visual/ui/ant/ui-tokens.json'),
+      artifact('visual/ui/ant/ui-spec.json'),
     ];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(true);
@@ -168,18 +168,18 @@ describe('ArtifactPoolView UI detection', () => {
     expect(view.uiSource()).toBe('ant');
   });
 
-  it('인정: outputs/design/ui/figma/figma.json', () => {
-    const pool = [artifact('outputs/design/ui/figma/figma.json')];
+  it('인정: visual/ui/figma/figma.json', () => {
+    const pool = [artifact('visual/ui/figma/figma.json')];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(true);
     expect(view.uiSource()).toBe('figma');
   });
 
-  it('인정: outputs/design/ui/handoff/** (임의 파일)', () => {
+  it('인정: visual/ui/handoff/** (임의 파일)', () => {
     const pool = [
-      artifact('outputs/design/ui/handoff/page.html'),
-      artifact('outputs/design/ui/handoff/styles.css'),
-      artifact('outputs/design/ui/handoff/notes.md'),
+      artifact('visual/ui/handoff/page.html'),
+      artifact('visual/ui/handoff/styles.css'),
+      artifact('visual/ui/handoff/notes.md'),
     ];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(true);
@@ -187,10 +187,10 @@ describe('ArtifactPoolView UI detection', () => {
     expect(view.uiSource()).toBe('handoff');
   });
 
-  it('거부: outputs/design/system 같은 비-ui 경로', () => {
+  it('거부: architecture/system 같은 비-ui 경로', () => {
     const pool = [
-      artifact('outputs/design/system/fe-system-main.md'),
-      artifact('outputs/design/system/ui-foo.md'), // ui- 가 basename이지만 system/ 아래라 거부
+      artifact('architecture/system/fe-system-main.md'),
+      artifact('architecture/system/ui-foo.md'), // ui- 가 basename이지만 system/ 아래라 거부
     ];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(false);
@@ -199,15 +199,15 @@ describe('ArtifactPoolView UI detection', () => {
   });
 
   it('거부: design 외부에 ui- 접두가 있어도 UI로 분류하지 않음', () => {
-    const pool = [artifact('inputs/sources/ui-brainstorm.md')];
+    const pool = [artifact('plan/ui-brainstorm.md')];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(false);
   });
 
-  it('거부: legacy 평탄 경로 outputs/design/ui-*.json 은 더 이상 UI로 매치되지 않음', () => {
+  it('거부: legacy 평탄 경로 visual/ui-*.json 은 더 이상 UI로 매치되지 않음', () => {
     const pool = [
-      artifact('outputs/design/ui-tokens.json'),
-      artifact('outputs/design/ui-assets.json'),
+      artifact('visual/ui-tokens.json'),
+      artifact('visual/ui-assets.json'),
     ];
     const view = new ArtifactPoolView(pool);
     expect(view.hasUi()).toBe(false);
@@ -215,8 +215,8 @@ describe('ArtifactPoolView UI detection', () => {
 
   it('uiSource(): 두 UiSource 혼합이면 throw (hard-exclusive invariant)', () => {
     const pool = [
-      artifact('outputs/design/ui/ant/ui-tokens.json'),
-      artifact('outputs/design/ui/figma/figma.json'),
+      artifact('visual/ui/ant/ui-tokens.json'),
+      artifact('visual/ui/figma/figma.json'),
     ];
     const view = new ArtifactPoolView(pool);
     expect(() => view.uiSource()).toThrow(/mixed UI sources/);
@@ -230,22 +230,22 @@ describe('ArtifactPoolView UI detection', () => {
 describe('selectArtifacts ui/design-system default', () => {
   it('ant 하위 UI 문서가 ui 태스크 기본 선택에 포함', () => {
     const candidates = [
-      artifact('outputs/design/ui/ant/ui-tokens.json'),
-      artifact('outputs/design/ui/ant/ui-assets.json'),
-      artifact('outputs/design/system/fe-system-main.md'),
+      artifact('visual/ui/ant/ui-tokens.json'),
+      artifact('visual/ui/ant/ui-assets.json'),
+      artifact('architecture/system/fe-system-main.md'),
     ];
     const selected = selectArtifacts(candidates, { taskType: 'ui' });
     const paths = selected.map(a => a.path).sort();
     expect(paths).toEqual([
-      'outputs/design/ui/ant/ui-assets.json',
-      'outputs/design/ui/ant/ui-tokens.json',
+      'visual/ui/ant/ui-assets.json',
+      'visual/ui/ant/ui-tokens.json',
     ]);
   });
 
   it('design-system 태스크도 동일 규칙', () => {
     const candidates = [
-      artifact('outputs/design/ui/ant/ui-spec.json'),
-      artifact('outputs/design/ui/ant/ui-tokens.json'),
+      artifact('visual/ui/ant/ui-spec.json'),
+      artifact('visual/ui/ant/ui-tokens.json'),
     ];
     const selected = selectArtifacts(candidates, { taskType: 'design-system' });
     expect(selected).toHaveLength(2);

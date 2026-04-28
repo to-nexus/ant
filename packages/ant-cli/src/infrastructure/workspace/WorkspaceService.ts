@@ -10,9 +10,12 @@
  *     ├── codebase/        (Git repository)
  *     └── features/
  *         └── <feature>/
- *             ├── inputs/
- *             ├── outputs/
- *             └── sessions/
+ *             ├── plan/             (PRD / GDD source documents, depth -1)
+ *             ├── architecture/     (system / spec design artifacts)
+ *             ├── visual/           (ui / game-art design artifacts, sub-sourced)
+ *             ├── assets/           (service / game / gen asset pools)
+ *             ├── meta/             (directives / evals)
+ *             └── sessions/         (job checkpoints / debug)
  */
 
 import * as fs from 'fs';

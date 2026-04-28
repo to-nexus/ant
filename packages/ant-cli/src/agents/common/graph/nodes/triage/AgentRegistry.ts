@@ -292,43 +292,53 @@ class AgentRegistryClass {
     
     switch (prereq.type) {
       case 'file_with_content':
-        if (prereq.path === 'inputs/prd.md') {
-          satisfied = ws.hasPrd;
+        if (prereq.path === 'plan/prd.md' || prereq.path === 'plan/gdd.md') {
+          satisfied = ws.hasPlan;
         }
         break;
-        
+
       case 'directory_with_files':
-        if (prereq.path === 'inputs/assets') {
+        // 단방향 원칙: 1:1 매핑만. workspaceAnalyzer 가 디스크 스캔으로
+        // granular flag(`hasArchitectureSystem` 등)를 정확히 세팅하고
+        // `hasDesignDoc` 는 그 OR 집계 — `hasDesignDoc` fallback 을 더하면
+        // `architecture/system` 검사가 `visual/ui` 만 있어도 true 가 되는
+        // 누수 채널이 된다.
+        if (prereq.path === 'assets') {
           satisfied = ws.hasAssets;
-        } else if (prereq.path === 'outputs/design') {
-          satisfied = ws.hasDesignDoc;
-        } else if (prereq.path === 'inputs/sources') {
-          // workspaceAnalyzer 가 inputs/sources 의 텍스트 파일을 스캔하여 hasPrd 로 표현
-          satisfied = ws.hasPrd;
+        } else if (prereq.path === 'architecture/system') {
+          satisfied = ws.hasArchitectureSystem;
+        } else if (prereq.path === 'architecture/spec') {
+          satisfied = ws.hasArchitectureSpec;
+        } else if (prereq.path === 'visual/ui') {
+          satisfied = ws.hasVisualUi;
+        } else if (prereq.path === 'visual/game-art') {
+          satisfied = ws.hasVisualGameArt;
+        } else if (prereq.path === 'plan') {
+          satisfied = ws.hasPlan;
         }
         break;
-        
+
       case 'file_exists':
         // Plan-job canonical output is domain-aware: prd.md (service) or
         // gdd.md (game). Both filenames are treated as "the plan
         // document" so a yaml prereq pinned on prd.md still resolves
         // when the workspace authored gdd.md instead.
         if (
-          prereq.path === 'inputs/sources/prd.md' ||
-          prereq.path === 'inputs/sources/gdd.md'
+          prereq.path === 'plan/prd.md' ||
+          prereq.path === 'plan/gdd.md'
         ) {
-          satisfied = ws.hasPrd;
+          satisfied = ws.hasPlan;
         }
         break;
-        
+
       case 'has_directive':
-        satisfied = ws.hasDirective;
+        satisfied = ws.hasMetaDirectives;
         break;
-        
+
       case 'has_git_repository':
         satisfied = true; // Assume git repo exists if workspace exists
         break;
-        
+
       case 'indexed_codebase':
         satisfied = ws.hasCodebase;
         break;
@@ -336,10 +346,10 @@ class AgentRegistryClass {
       case 'figma_config':
         satisfied = ws.hasFigmaConfig;
         break;
-        
+
       case 'any_of':
         if (prereq.items) {
-          satisfied = prereq.items.some(item => 
+          satisfied = prereq.items.some(item =>
             this.checkCondition(item, ws).satisfied
           );
         }
@@ -392,24 +402,27 @@ class AgentRegistryClass {
     const { path, type } = item;
     
     if (type === 'directory_with_files') {
-      if (path === 'inputs/assets') return ws.hasAssets;
-      if (path === 'outputs/design') return ws.hasDesignDoc;
-      if (path === 'inputs/sources') return ws.hasPrd;
+      // 단방향 원칙: 1:1 매핑만 (위 checkCondition 와 동일 invariant).
+      if (path === 'assets') return ws.hasAssets;
+      if (path === 'architecture/system') return ws.hasArchitectureSystem;
+      if (path === 'architecture/spec') return ws.hasArchitectureSpec;
+      if (path === 'visual/ui') return ws.hasVisualUi;
+      if (path === 'visual/game-art') return ws.hasVisualGameArt;
+      if (path === 'plan') return ws.hasPlan;
     }
-    
+
     if (type === 'file_with_content') {
-      if (path === 'inputs/prd.md') return ws.hasPrd;
+      if (path === 'plan/prd.md' || path === 'plan/gdd.md') return ws.hasPlan;
     }
-    
+
     if (type === 'file_exists') {
       // Plan-job canonical filename is domain-aware (prd.md / gdd.md);
       // both map to the same workspace "has plan document" signal.
-      if (path === 'inputs/sources/prd.md') return ws.hasPrd;
-      if (path === 'inputs/sources/gdd.md') return ws.hasPrd;
+      if (path === 'plan/prd.md' || path === 'plan/gdd.md') return ws.hasPlan;
     }
-    
+
     if (type === 'has_directive') {
-      return ws.hasDirective;
+      return ws.hasMetaDirectives;
     }
     
     if (type === 'has_git_repository') {

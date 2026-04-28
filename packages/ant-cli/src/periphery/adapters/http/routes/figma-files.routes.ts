@@ -2,7 +2,7 @@
  * Figma Files Routes
  *
  * API endpoints for reading/writing the figma workfile reference
- * (canonical path: outputs/design/ui/figma/figma.json).
+ * (canonical path: visual/ui/figma/figma.json).
  */
 
 import { Router, Request, Response } from 'express';
@@ -44,7 +44,7 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
    * GET /api/figma/config/:projectId/:featureName
    *
    * Read the canonical figma workfile reference. Canonical structure
-   * (including `outputs/design/ui/{ant,figma,handoff}/` + the figma.json file
+   * (including `visual/ui/{ant,figma,handoff}/` + the figma.json file
    * itself) is guaranteed to exist by `ensureCanonicalFeatureMiddleware` that
    * runs before this handler — no partial self-heal here. Legacy on-disk
    * shapes are migrated in-place.

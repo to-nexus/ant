@@ -96,7 +96,7 @@ derivation MUST cite those IDs:
 
 | kind       | Where data lives | Production scope                                                       |
 |------------|------------------|------------------------------------------------------------------------|
-| `external` | `inputs/assets/game/<subdir>/<file>` | Production-grade — user-placed                |
+| `external` | `assets/game/<subdir>/<file>` | Production-grade — user-placed                |
 | `inline`   | Embedded in JSON (`svg` / `css` / `oscillator`) | Simple-shape / single-tone / short-duration only |
 
 **Inline scope (D21 — Phase 2 css-only policy)**:
@@ -113,8 +113,8 @@ prototype-level inline content, not production-grade artwork.
 
 **External entries**: Allowed only when the directive explicitly
 references a user-placed file (e.g. "use my hero.svg under
-inputs/assets/game/entities/"). The src path MUST start with
-`inputs/assets/game/`.
+assets/game/entities/"). The src path MUST start with
+`assets/game/`.
 
 ---
 
@@ -125,7 +125,7 @@ DO NOT CREATE:
 - ❌ Deployment / Operations / Infrastructure tasks
 - ❌ Single mega-task that writes all three documents
 - ❌ Empty categories
-- ❌ Tasks targeting `outputs/design/ui/...` or `inputs/assets/service/...`
+- ❌ Tasks targeting `visual/ui/...` or `assets/service/...`
   — those belong to UI design intents (I6 surface boundary)
 - ❌ External `kind` entries pointing at files the directive did not
   reference (production sprite manifest is the user's responsibility,

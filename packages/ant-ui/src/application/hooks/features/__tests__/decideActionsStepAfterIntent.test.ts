@@ -71,7 +71,7 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
       const slot = getConfigSlots('gen-ui-desc')?.basis;
       const metadata = empty({
         domain: 'service',
-        refs: ['outputs/design/ui/handoff/spec.md'],
+        refs: ['visual/ui/handoff/spec.md'],
       });
       expect(decideActionsStepAfterIntent(slot, metadata)).toBe('config');
     });

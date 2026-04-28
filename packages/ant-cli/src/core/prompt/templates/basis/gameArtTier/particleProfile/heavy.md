@@ -11,14 +11,14 @@ The `heavy` particle profile commits to **50+ particles per major emit event, am
 - Multiple `Phaser.GameObjects.Particles` instances per scene; emitters are pre-warmed in the Boot scene and spawned via emitter `.emitParticleAt(x, y, count)`.
 - 50+ particles per major event, with multi-emitter coordination (debris + spark layers fire together).
 - Ambient emitters (background dust, neon ambient pulse, falling leaves) run continuously at low rate.
-- Particle textures may be `kind: 'external'` (small PNG / atlas frames under `inputs/assets/game/particles/`).
+- Particle textures may be `kind: 'external'` (small PNG / atlas frames under `assets/game/particles/`).
 
 ### `game-art-assets.json` particles category shape
 
 ```jsonc
 "particles": [
-  { "id": "debris-shard", "kind": "external", "src": "inputs/assets/game/particles/shard.png" },
-  { "id": "explosion-spark", "kind": "external", "src": "inputs/assets/game/particles/spark.png" },
+  { "id": "debris-shard", "kind": "external", "src": "assets/game/particles/shard.png" },
+  { "id": "explosion-spark", "kind": "external", "src": "assets/game/particles/spark.png" },
   { "id": "ambient-dust", "kind": "inline", "format": "svg", "svg": "<circle cx='2' cy='2' r='2' fill='#aaa' opacity='0.4'/>" }
 ]
 ```

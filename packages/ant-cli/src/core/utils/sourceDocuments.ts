@@ -1,11 +1,11 @@
 /**
  * Source Document Combining Utilities
  *
- * Common functions for combining source documents from inputs/sources/.
+ * Common functions for combining source documents from `plan/`.
  * Used by both design and code jobs to build a unified spec (prdSpec)
  * from all source files.
  *
- * Principle: All files in inputs/sources/ are combined into a single spec.
+ * Principle: All files in `plan/` are combined into a single spec.
  * Technology-independent and technology-specific content may coexist.
  * If technology-specific content is present, it represents a deliberate decision.
  */
@@ -58,7 +58,7 @@ function findPlanFile(filenames: string[]): string | undefined {
  *
  * @param sourceFiles - Files assigned to this task (1 or more).
  *                      undefined/empty = inject all (fallback).
- * @param sourceDocuments - All source files from inputs/sources/ (filename -> content).
+ * @param sourceDocuments - All source files from `plan/` (filename -> content).
  */
 export function buildSourceDocsForTask(
   sourceFiles: string[] | undefined,
@@ -290,7 +290,7 @@ export function buildSourceFileIndex(
  * Each file becomes a separate ResolvedArtifact with the given role.
  * Existing functions remain for non-RAC paths (detect, decompose).
  *
- * @param sourceDocuments - Source files from inputs/sources/ (filename -> content)
+ * @param sourceDocuments - Source files from `plan/` (filename -> content)
  * @param role - Role to assign: 'ref' for implementation sources, 'context' for background
  */
 export function buildSourceDocsAsResolved(

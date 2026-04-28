@@ -63,7 +63,7 @@ function HudScore({ game }: { game: Phaser.Game }) {
 **Asset catalog import**:
 
 ```ts
-import catalog from '@/inputs/assets/game/game-art-assets.json' with { type: 'json' };
+import catalog from '@/assets/game/game-art-assets.json' with { type: 'json' };
 // (TS: declare module via vite/webpack JSON loader)
 ```
 

@@ -1,12 +1,13 @@
 /**
  * Artifact Service
- * 
- * Feature 개발 과정의 입출력 artifact 파일 관리
- * - inputs/directives/: 작업 지시사항
- * - inputs/sources/: PRD, Figma 등 입력 자료
- * - outputs/design/{system,ui,spec}/: 설계 문서 (system / UI JSON / spec)
- * - outputs/evals/: 평가 리포트
- * 
+ *
+ * Feature 개발 과정의 입출력 artifact 파일 관리 (도메인 트리)
+ * - meta/directives/: 작업 지시사항
+ * - plan/: PRD / GDD 등 입력 자료 (depth -1, 파일 직속)
+ * - architecture/{system,spec}/: 시스템 설계 문서 (system .md / spec .md)
+ * - visual/{ui,game-art}/{ant,figma,handoff}/: UI / 게임 아트 디자인 산출물
+ * - meta/evals/: 평가 리포트
+ *
  * ✅ Hexagonal Architecture:
  * - FileSystemPort를 통한 파일 I/O (테스트 가능)
  * - WorkspacePathResolver로 경로 계산
@@ -23,7 +24,16 @@ import {
   generateUiSectionsSummary,
 } from "./DesignDocParser";
 import { normalizeTemplateDoc } from "../../core/utils/templateDetector";
-import { DESIGN_SUBDIRS, DESIGN_DIR } from "@ant/shared";
+import { ARTIFACT_PREFIX } from "@ant/shared";
+
+// Trim trailing slashes so the constant is composable with `path.join`.
+const ARCHITECTURE_SYSTEM_DIR = ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
+const ARCHITECTURE_SPEC_DIR = ARTIFACT_PREFIX.SPEC.replace(/\/$/, '');
+const VISUAL_UI_ANT_DIR = ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, '');
+const VISUAL_UI_HANDOFF_DIR = ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, '');
+const VISUAL_GAME_ART_ANT_DIR = ARTIFACT_PREFIX.GAME_ART_ANT.replace(/\/$/, '');
+const PLAN_DIR = ARTIFACT_PREFIX.SOURCES;
+const META_DIRECTIVES_DIR = 'meta/directives';
 
 /**
  * Artifact-specific project context.
@@ -67,11 +77,11 @@ export class ArtifactService {
 
   /**
    * Extract feature folder name from artifact file path
-   * 
+   *
    * Examples:
-   * - /workspaces/org/user/project/features/skeleton/inputs/prd.md → "skeleton"
-   * - /workspaces/local/user/test-app/features/my-feature/inputs/prd.md → "my-feature"
-   * 
+   * - /workspaces/org/user/project/features/skeleton/plan/prd.md → "skeleton"
+   * - /workspaces/local/user/test-app/features/my-feature/plan/prd.md → "my-feature"
+   *
    * @param inputFile Full path to artifact input file
    * @param projectId Project name to help locate the feature
    * @returns Feature folder name
@@ -103,7 +113,7 @@ export class ArtifactService {
     fileSystem: FileSystemPort
   ): Promise<string | null> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const directiveDirAbs = path.join(featurePathAbs, "inputs/directives", job);
+    const directiveDirAbs = path.join(featurePathAbs, META_DIRECTIVES_DIR, job);
     const directiveDir = ArtifactService.toWorkspaceRelative(fileSystem, directiveDirAbs);
 
     const exists = await fileSystem.fileExists(directiveDir);
@@ -141,7 +151,7 @@ export class ArtifactService {
   }
 
   /**
-   * Get source materials from inputs/sources/.
+   * Get source materials from `plan/`.
    * Reads ALL text files as structured sourceDocuments (filename -> content).
    * prd field is kept for backward compatibility (= sourceDocuments["prd.md"]).
    */
@@ -155,9 +165,9 @@ export class ArtifactService {
     wireframes?: string[];
   }> {
     const result: any = {};
-    
+
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const sourceDirAbs = path.join(featurePathAbs, "inputs/sources");
+    const sourceDirAbs = path.join(featurePathAbs, PLAN_DIR);
     const sourceDir = ArtifactService.toWorkspaceRelative(fileSystem, sourceDirAbs);
     
     const sourceDirExists = await fileSystem.fileExists(sourceDir);
@@ -193,7 +203,7 @@ export class ArtifactService {
       console.log(`📄 [Source] Loaded ${fileNames.length} source file(s): ${fileNames.join(', ')}`);
     }
 
-    // 2. Wireframes (images) - legacy: direct images in inputs/sources/
+    // 2. Wireframes (images) - legacy: direct images in `plan/`
     const wireframes = entries
       .filter(e => !e.isDirectory && imageExtensions.some(ext => e.name.toLowerCase().endsWith(ext)))
       .map(e => path.join(sourceDir, e.name));
@@ -221,16 +231,16 @@ export class ArtifactService {
    */
   /**
    * Read a UI document from the canonical ant UiSource location
-   * (`outputs/design/ui/ant/<file>`). Other UiSource kinds (figma / handoff)
+   * (`visual/ui/ant/<file>`). Other UiSource kinds (figma / handoff)
    * are NOT read here — they are handled via the RAC pool or via MCP at
    * execute time.
    */
   private static async readUiFile(
     fileSystem: FileSystemPort,
-    designDir: string,
+    uiAntDir: string,
     fileName: string
   ): Promise<string | undefined> {
-    const subPath = path.join(designDir, 'ui', 'ant', fileName);
+    const subPath = path.join(uiAntDir, fileName);
     if (await fileSystem.fileExists(subPath)) {
       const content = await fileSystem.readFile(subPath);
       return ArtifactService.normalizeUserDoc(content) || undefined;
@@ -244,22 +254,22 @@ export class ArtifactService {
     fileSystem: FileSystemPort
   ): Promise<ParsedDesignDocs | null> {
     const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
-    const designDirAbs = path.join(featurePathAbs, "outputs/design");
-    const designDir = ArtifactService.toWorkspaceRelative(fileSystem, designDirAbs);
+    const uiAntDirAbs = path.join(featurePathAbs, VISUAL_UI_ANT_DIR);
+    const uiAntDir = ArtifactService.toWorkspaceRelative(fileSystem, uiAntDirAbs);
 
-    const designDirExists = await fileSystem.fileExists(designDir);
-    if (!designDirExists) {
-      console.log(`⚠️  [ArtifactService] loadParsedUiContext: designDir not found: ${designDir}`);
+    const uiAntDirExists = await fileSystem.fileExists(uiAntDir);
+    if (!uiAntDirExists) {
+      console.log(`⚠️  [ArtifactService] loadParsedUiContext: ui ant dir not found: ${uiAntDir}`);
       return null;
     }
 
-    const uiSpec = await ArtifactService.readUiFile(fileSystem, designDir, 'ui-spec.json');
+    const uiSpec = await ArtifactService.readUiFile(fileSystem, uiAntDir, 'ui-spec.json');
     if (uiSpec) console.log(`   ✅ [loadParsedUiContext] ui-spec.json: loaded (${uiSpec.length} chars)`);
 
-    const uiTokens = await ArtifactService.readUiFile(fileSystem, designDir, 'ui-tokens.json');
+    const uiTokens = await ArtifactService.readUiFile(fileSystem, uiAntDir, 'ui-tokens.json');
     if (uiTokens) console.log(`   ✅ [loadParsedUiContext] ui-tokens.json: loaded (${uiTokens.length} chars)`);
 
-    const uiAssets = await ArtifactService.readUiFile(fileSystem, designDir, 'ui-assets.json');
+    const uiAssets = await ArtifactService.readUiFile(fileSystem, uiAntDir, 'ui-assets.json');
     if (uiAssets) console.log(`   ✅ [loadParsedUiContext] ui-assets.json: loaded (${uiAssets.length} chars)`);
 
     if (!uiSpec && !uiTokens && !uiAssets) {
@@ -279,27 +289,21 @@ export class ArtifactService {
 
   /**
    * Read a GameArt document from the canonical sub-sourced location
-   * (`outputs/design/game-art/ant/<file>`). D24-revised v8 — game-art now
-   * mirrors UI's sub-source split (`ant/` is the LLM-generated canonical;
-   * `figma/`/`handoff/` are Phase 5+ hooks). The legacy flat path
-   * (`outputs/design/game-art/<file>`) is read as a fallback so workspaces
-   * still in transit (post-flat-write but pre-migration) keep working —
-   * `migrateGameArtToAntSubdir` lifts the file on next workspace boot.
+   * (`visual/game-art/ant/<file>`). D24-revised v8 — game-art mirrors UI's
+   * sub-source split (`ant/` is the LLM-generated canonical;
+   * `figma/`/`handoff/` are Phase 5+ hooks). 단방향 원칙: legacy 트리나
+   * sub-source 미적용 flat 경로에 대한 fallback 분기는 두지 않는다. 디스크
+   * 잔존 데이터는 워크스페이스 마이그레이션 스크립트와 부트 가드
+   * (`migrateGameArtToAntSubdir`)가 책임진다.
    */
   private static async readGameArtFile(
     fileSystem: FileSystemPort,
-    designDir: string,
+    gameArtAntDir: string,
     fileName: string,
   ): Promise<string | undefined> {
-    const antPath = path.join(designDir, 'game-art', 'ant', fileName);
+    const antPath = path.join(gameArtAntDir, fileName);
     if (await fileSystem.fileExists(antPath)) {
       const content = await fileSystem.readFile(antPath);
-      return ArtifactService.normalizeUserDoc(content) || undefined;
-    }
-    // Legacy flat path — tolerated until the migration helper relocates the file.
-    const flatPath = path.join(designDir, 'game-art', fileName);
-    if (await fileSystem.fileExists(flatPath)) {
-      const content = await fileSystem.readFile(flatPath);
       return ArtifactService.normalizeUserDoc(content) || undefined;
     }
     return undefined;
@@ -307,7 +311,7 @@ export class ArtifactService {
 
   /**
    * Load GameArt documents (`game-art-tokens` / `game-art-assets` /
-   * `game-art-spec`) from `outputs/design/game-art/ant/` (D24-revised v8 —
+   * `game-art-spec`) from `visual/game-art/ant/` (D24-revised v8 —
    * sub-sourced canonical) and parse them into the same `ParsedDesignDocs`
    * shape used for UI, with `surface: 'gameArt'` so downstream prompts know
    * to interpret spec sub-sections as category dictionary keys (D25).
@@ -321,22 +325,22 @@ export class ArtifactService {
     fileSystem: FileSystemPort,
   ): Promise<ParsedDesignDocs | null> {
     const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
-    const designDirAbs = path.join(featurePathAbs, "outputs/design");
-    const designDir = ArtifactService.toWorkspaceRelative(fileSystem, designDirAbs);
+    const gameArtAntDirAbs = path.join(featurePathAbs, VISUAL_GAME_ART_ANT_DIR);
+    const gameArtAntDir = ArtifactService.toWorkspaceRelative(fileSystem, gameArtAntDirAbs);
 
-    const designDirExists = await fileSystem.fileExists(designDir);
-    if (!designDirExists) {
-      console.log(`⚠️  [ArtifactService] loadParsedGameArtContext: designDir not found: ${designDir}`);
+    const gameArtAntDirExists = await fileSystem.fileExists(gameArtAntDir);
+    if (!gameArtAntDirExists) {
+      console.log(`⚠️  [ArtifactService] loadParsedGameArtContext: game-art ant dir not found: ${gameArtAntDir}`);
       return null;
     }
 
-    const spec = await ArtifactService.readGameArtFile(fileSystem, designDir, 'game-art-spec.json');
+    const spec = await ArtifactService.readGameArtFile(fileSystem, gameArtAntDir, 'game-art-spec.json');
     if (spec) console.log(`   ✅ [loadParsedGameArtContext] game-art-spec.json: loaded (${spec.length} chars)`);
 
-    const tokens = await ArtifactService.readGameArtFile(fileSystem, designDir, 'game-art-tokens.json');
+    const tokens = await ArtifactService.readGameArtFile(fileSystem, gameArtAntDir, 'game-art-tokens.json');
     if (tokens) console.log(`   ✅ [loadParsedGameArtContext] game-art-tokens.json: loaded (${tokens.length} chars)`);
 
-    const assets = await ArtifactService.readGameArtFile(fileSystem, designDir, 'game-art-assets.json');
+    const assets = await ArtifactService.readGameArtFile(fileSystem, gameArtAntDir, 'game-art-assets.json');
     if (assets) console.log(`   ✅ [loadParsedGameArtContext] game-art-assets.json: loaded (${assets.length} chars)`);
 
     if (!spec && !tokens && !assets) {
@@ -365,7 +369,7 @@ export class ArtifactService {
   /**
    * Inline image candidates for the code job's multimodal channel.
    *
-   * Reads `outputs/design/ui/handoff/**` and returns image paths
+   * Reads `visual/ui/handoff/**` and returns image paths
    * (`.png/.jpg/.jpeg/.webp/.gif/.svg`). Handoff is a free-form file
    * bundle (FPOP — observe only, no schema inference), so any image it
    * contains is a legitimate "what the screen should look like" hint.
@@ -377,7 +381,7 @@ export class ArtifactService {
     fileSystem: FileSystemPort,
   ): Promise<string[] | undefined> {
     const featurePathAbs = context.featurePath || WorkspacePathResolver.resolveFeaturePath(context);
-    const handoffDirAbs = path.join(featurePathAbs, "outputs/design/ui/handoff");
+    const handoffDirAbs = path.join(featurePathAbs, VISUAL_UI_HANDOFF_DIR);
     const handoffDir = ArtifactService.toWorkspaceRelative(fileSystem, handoffDirAbs);
 
     const IMAGE_EXTS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'];
@@ -417,14 +421,14 @@ export class ArtifactService {
     preferredEnvironment?: 'frontend' | 'backend' | 'any'
   ): Promise<{ content: string; filePath: string } | null> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const designPathAbs = path.join(featurePathAbs, "outputs/design");
-    const designPath = ArtifactService.toWorkspaceRelative(fileSystem, designPathAbs);
+    const systemPathAbs = path.join(featurePathAbs, ARCHITECTURE_SYSTEM_DIR);
+    const systemPath = ArtifactService.toWorkspaceRelative(fileSystem, systemPathAbs);
 
-    console.log(`🔍 [ArtifactService.findLatestDesign] designPath: ${designPath}`);
+    console.log(`🔍 [ArtifactService.findLatestDesign] systemPath: ${systemPath}`);
 
     const SYSTEM_PATTERN = /^(api-contract|fe-system|be-system)-.+\.md$/;
     const designFiles = await ArtifactService.listDesignFiles(
-      fileSystem, designPath, 'system', n => SYSTEM_PATTERN.test(n)
+      fileSystem, systemPath, n => SYSTEM_PATTERN.test(n)
     );
 
     const priorityPatterns: RegExp[] = [];
@@ -463,8 +467,8 @@ export class ArtifactService {
 
   /**
    * Load design documents for Code Job.
-   * 
-   * Scans outputs/design/system/ first, then falls back to outputs/design/ (flat).
+   *
+   * Scans `architecture/system/` for system-tier markdown documents.
    * Patterns: api-contract-{name}.md, fe-system-{name}.md, be-system-{name}.md
    */
   static async loadDesignDocuments(
@@ -474,11 +478,11 @@ export class ArtifactService {
     environment?: 'frontend' | 'backend' | 'fullstack' | 'unknown'
   ): Promise<typeof ArtifactService.DesignDocsResultType> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const designPathAbs = path.join(featurePathAbs, "outputs/design");
-    const designPath = ArtifactService.toWorkspaceRelative(fileSystem, designPathAbs);
-    
-    console.log(`🔍 [ArtifactService.loadDesignDocuments] designPath: ${designPath}`);
-    
+    const systemPathAbs = path.join(featurePathAbs, ARCHITECTURE_SYSTEM_DIR);
+    const systemPath = ArtifactService.toWorkspaceRelative(fileSystem, systemPathAbs);
+
+    console.log(`🔍 [ArtifactService.loadDesignDocuments] systemPath: ${systemPath}`);
+
     const result: typeof ArtifactService.DesignDocsResultType = {
       apiContracts: {},
       feDesigns: {},
@@ -487,7 +491,7 @@ export class ArtifactService {
 
     const SYSTEM_PATTERN = /^(api-contract|fe-system|be-system)-.+\.md$/;
     const designFiles = await ArtifactService.listDesignFiles(
-      fileSystem, designPath, 'system', n => SYSTEM_PATTERN.test(n)
+      fileSystem, systemPath, n => SYSTEM_PATTERN.test(n)
     );
     
     const apiContractPattern = /^api-contract-(.+)\.md$/;
@@ -541,11 +545,11 @@ export class ArtifactService {
 
   /**
    * Load spec documents (spec-{slug}.md).
-   * 
-   * Scans outputs/design/spec/ first, then falls back to outputs/design/ (flat).
-   * Spec docs are feature-scoped specifications generated by Design Job (intentGroup: 'design-spec').
-   * Code Job loads all spec docs at resolve, then decompose LLM selects the relevant one.
-   * 
+   *
+   * Scans `architecture/spec/` for feature-scoped specifications generated
+   * by Design Job (intentGroup: 'design-spec'). Code Job loads all spec
+   * docs at resolve, then decompose LLM selects the relevant one.
+   *
    * @returns Record<filename, content> (e.g., { "spec-social-login.md": "# Spec: ..." })
    */
   static async loadSpecDocuments(
@@ -554,15 +558,15 @@ export class ArtifactService {
     fileSystem: FileSystemPort
   ): Promise<Record<string, string>> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const designPathAbs = path.join(featurePathAbs, "outputs/design");
-    const designPath = ArtifactService.toWorkspaceRelative(fileSystem, designPathAbs);
+    const specPathAbs = path.join(featurePathAbs, ARCHITECTURE_SPEC_DIR);
+    const specPath = ArtifactService.toWorkspaceRelative(fileSystem, specPathAbs);
 
     const specDocs: Record<string, string> = {};
     const SPEC_PATTERN = /^spec-.+\.md$/;
 
     try {
       const specFiles = await ArtifactService.listDesignFiles(
-        fileSystem, designPath, 'spec', n => SPEC_PATTERN.test(n)
+        fileSystem, specPath, n => SPEC_PATTERN.test(n)
       );
 
       for (const { name, dir } of specFiles) {
@@ -608,42 +612,26 @@ export class ArtifactService {
   }
 
   /**
-   * List design files in directory (subdirectory-first with flat fallback).
-   * Scans `designPath/{subdir}/` first, then `designPath/` for any remaining matches.
-   * Subdirectory files take precedence on name collision.
+   * List design files in directory.
+   * 단방향 원칙: 단일 디렉토리만 스캔. legacy flat fallback 분기는 두지 않는다.
    */
   private static async listDesignFiles(
     fileSystem: FileSystemPort,
-    designPath: string,
-    subdir?: string,
+    dirPath: string,
     filter?: (name: string) => boolean
   ): Promise<{ name: string; dir: string }[]> {
-    const results = new Map<string, { name: string; dir: string }>();
-
-    if (subdir) {
-      const subPath = path.join(designPath, subdir);
-      const subFiles = await ArtifactService.listFilesIn(fileSystem, subPath, filter);
-      for (const name of subFiles) {
-        results.set(name, { name, dir: subPath });
-      }
-    }
-
-    const flatFiles = await ArtifactService.listFilesIn(
+    const names = await ArtifactService.listFilesIn(
       fileSystem,
-      designPath,
-      filter ?? ((n: string) => n.endsWith('.md'))
+      dirPath,
+      filter ?? ((n: string) => n.endsWith('.md')),
     );
-    for (const name of flatFiles) {
-      if (!results.has(name)) {
-        results.set(name, { name, dir: designPath });
-      }
-    }
-
-    return Array.from(results.values());
+    return names.map(name => ({ name, dir: dirPath }));
   }
 
   /**
-   * Write design document
+   * Write a fallback system-design markdown document.
+   *
+   * 도메인 트리: `architecture/system/` 하위에 timestamped 파일을 작성한다.
    */
   static async writeDesignDocument(
     context: ArtifactProjectContext,
@@ -652,15 +640,15 @@ export class ArtifactService {
     fileSystem: FileSystemPort
   ): Promise<string> {
     const featurePathAbs = WorkspacePathResolver.resolveFeaturePath(context);
-    const designDirAbs = path.join(featurePathAbs, "outputs/design");
-    const designDir = ArtifactService.toWorkspaceRelative(fileSystem, designDirAbs);
-    await fileSystem.createDirectory(designDir);
-    
+    const systemDirAbs = path.join(featurePathAbs, ARCHITECTURE_SYSTEM_DIR);
+    const systemDir = ArtifactService.toWorkspaceRelative(fileSystem, systemDirAbs);
+    await fileSystem.createDirectory(systemDir);
+
     const timestamp = Date.now();
     const fileName = `design-${context.project}-${timestamp}.md`;
-    const designFile = path.join(designDir, fileName);
+    const designFile = path.join(systemDir, fileName);
     await fileSystem.writeFile(designFile, content);
-    
+
     return designFile;
   }
 }

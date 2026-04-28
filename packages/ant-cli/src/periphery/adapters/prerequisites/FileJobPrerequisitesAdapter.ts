@@ -8,6 +8,11 @@ import {
 import { DecomposableJobType } from '../../../core/types/task';
 import { WorkspaceResolver } from '../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../core/types/user';
+import { ARTIFACT_PREFIX } from '@ant/shared';
+
+const META_DIRECTIVES_DIR = 'meta/directives';
+const ARCHITECTURE_SYSTEM_DIR = ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
+const PLAN_DIR = ARTIFACT_PREFIX.SOURCES;
 
 /**
  * File-based Job Prerequisites Adapter
@@ -35,44 +40,44 @@ export class FileJobPrerequisitesAdapter implements JobPrerequisitesPort {
         return [
           {
             name: 'Design Directive',
-            path: 'inputs/directives/design/directive.md',
+            path: `${META_DIRECTIVES_DIR}/design/directive.md`,
             description: 'Specific instructions or requirements for the design phase',
             mustHaveContent: true,
           },
           {
             name: 'Source Documents',
-            path: 'inputs/sources',
-            description: 'Source documents (PRD, specs, requirements, etc.)',
+            path: PLAN_DIR,
+            description: 'Source documents (PRD, GDD, specs, requirements, etc.)',
             mustHaveContent: true,
           },
         ];
-      
+
       case 'code':
         return [
           {
             name: 'Code Directive',
-            path: 'inputs/directives/code/directive.md',
+            path: `${META_DIRECTIVES_DIR}/code/directive.md`,
             description: 'Specific instructions for code generation',
             mustHaveContent: true,
           },
           {
             name: 'System Design Document',
-            path: 'outputs/design',  // Directory - checks for any .md files
+            path: ARCHITECTURE_SYSTEM_DIR, // Directory - checks for any .md files
             description: 'System design document from the design phase',
             mustHaveContent: true,
           },
         ];
-      
+
       case 'learn':
         return [
           {
             name: 'Learn Directive',
-            path: 'inputs/directives/learn/directive.md',
+            path: `${META_DIRECTIVES_DIR}/learn/directive.md`,
             description: 'Questions or topics to learn about',
             mustHaveContent: true,
           },
         ];
-      
+
       default:
         return [];
     }
