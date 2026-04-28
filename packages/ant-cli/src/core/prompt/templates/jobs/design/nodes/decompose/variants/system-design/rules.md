@@ -126,14 +126,14 @@ All document types can be generated in parallel. Tasks targeting the SAME file s
 
 ---
 
-## MSA MULTI-DOCUMENT STRATEGY (if service/package boundaries detected)
+## MSA MULTI-DOCUMENT STRATEGY (if multiple boundaries detected)
 
-**When source documents define multiple backend service boundaries OR multiple frontend package boundaries.**
+**When MSA / MULTI-UNIT DETECTION above produces non-empty `services` and/or `fePackages`.**
 
-MSA applies to BOTH tiers independently:
-- **Backend MSA**: Multiple backend services → `be-system-{service}.md` + `api-contract-{service}.md` per service
-- **Frontend MSA**: Multiple frontend packages/micro-frontends → `fe-system-{package}.md` per package
-- Both can coexist in a fullstack project
+The two tier decisions are independent:
+- **Backend split**: Each entry in `services` → `be-system-{service}.md` + `api-contract-{service}.md`
+- **Frontend split**: Each entry in `fePackages` → `fe-system-{package}.md`
+- Tiers not split keep their `*-main.md` file. Splits can coexist in a fullstack project.
 
 ### Priority Assignment
 
