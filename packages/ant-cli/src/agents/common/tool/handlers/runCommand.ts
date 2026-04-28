@@ -36,6 +36,7 @@ import {
   describeInjection,
 } from '../../../../utils/commandInject';
 import { shouldSkipInstall } from './invalidationScope';
+import { enforceManifestPinPolicyForInstall } from './manifestPinPolicy';
 import { checkOrchestratorPortSafeguard } from '../runCommandSafeguards';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -269,7 +270,21 @@ function detectWritePathViolations(command: string, workingDir: string, projectP
 // Module-level mutex
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const packageManagerMutex = new AsyncMutex();
+/**
+ * Single mutex covering both install commands AND dependency-manifest
+ * writes. Exported so `editFile.ts` / `createFile.ts` can wrap their
+ * manifest-write critical section in `packageManagerMutex.runExclusive`,
+ * making "snapshot scan + violation check + actual write" atomic with
+ * respect to concurrent install commands. Without the shared mutex two
+ * parallel setup workers (different `packageGroup`) could each scan
+ * before the other's write commits, both pass the conflict check, and
+ * land different specs on disk.
+ *
+ * R5 — single instance per process; `editFile` / `createFile` /
+ * `runCommand` MUST import from this module (no parallel mutex
+ * declarations elsewhere).
+ */
+export const packageManagerMutex = new AsyncMutex();
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Main handler
@@ -414,7 +429,21 @@ export async function handleRunCommand(
   const isInstall = PACKAGE_MANAGER_INSTALL_PATTERNS.some(p => p.test(args.command));
   if (isInstall) {
     console.log(`🔒 [RunCommand] Package manager command detected — acquiring mutex: ${args.command}`);
-    return packageManagerMutex.runExclusive(() => executeCommandLogic(ctx, args));
+    return packageManagerMutex.runExclusive(async () => {
+      // Workspace dep-pin guard. Runs INSIDE the mutex so the snapshot
+      // scan reflects every prior install/manifest write that already
+      // landed (either from another runCommand call or from an
+      // editFile/createFile manifest write that takes the same mutex).
+      // Bare installs (no `name@spec`) and add commands without an
+      // explicit version pass through — `extractInstallVersionTargets`
+      // returns an empty list and the policy helper short-circuits.
+      const featureRootPath = ctx.fileSystem.getRootPath();
+      const rejection = await enforceManifestPinPolicyForInstall(args.command, featureRootPath);
+      if (rejection) {
+        return makeRejection(ctx, args.command, rejection.display, undefined, args.verifies);
+      }
+      return executeCommandLogic(ctx, args);
+    });
   }
   return executeCommandLogic(ctx, args);
 }

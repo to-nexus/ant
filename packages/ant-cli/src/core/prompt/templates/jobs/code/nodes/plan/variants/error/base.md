@@ -8,6 +8,8 @@ You are analyzing a user-reported error and creating a structured remediation pl
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/workspace-dep-snapshot}}
+
 {{> jobs/code/base/injections/preview-env-contract}}
 
 {{#if hasFrontend}}

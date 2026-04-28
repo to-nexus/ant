@@ -30,6 +30,7 @@
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
+import { workspaceDepSnapshotVars } from '../../_shared/helpers/workspaceDepSnapshotHook';
 
 export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult> {
   const { state, task, codeContext, violationsText, options, antrulesContent } = ctx;
@@ -37,6 +38,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   if (!promptBuilder) {
     throw new Error('[Plan] PromptBuilder not available');
   }
+  const depSnapshot = await workspaceDepSnapshotVars(ctx);
 
   const techTier = task.techTiers?.length
     ? effectiveTechTier(task.techTiers)
@@ -88,6 +90,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     hasPackageManager: !!packageManager,
     antrulesContent,
     resolvedAction: state.resolvedAction,
+    ...depSnapshot,
   });
 
   const text = basisSection ? `${basisSection}\n\n---\n\n${body}` : body;
@@ -99,6 +102,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       packageManager,
       hasViolationsText: !!violationsText,
       violationsTextLen: violationsText?.length ?? 0,
+      hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
     },
   };
 }

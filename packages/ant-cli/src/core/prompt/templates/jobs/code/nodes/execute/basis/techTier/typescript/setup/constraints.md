@@ -67,18 +67,20 @@ PHASE 2 (Feature):  Application code in codebase/ → Build → Done
 ⚠️ **Blind spot — Styling framework source scan mismatch**:
 If a CSS utility framework's source scan paths don't cover the directories where source files exist, zero utility classes will be generated. The CSS file still loads normally — it just contains only the base reset, making this failure invisible in network/console. Ensure scan paths match the directories where source files will be created.
 
-### Workspace Version Consistency (Multi-Package Projects)
+### Toolchain Version Consistency (Multi-Package Projects)
 
-**Principle**: In multi-package workspaces, all module definition files must declare the same language/runtime version. A mismatch between the workspace root and individual modules causes silent toolchain resolution failures.
+**Principle**: In multi-package workspaces, all module definition files must declare the same TypeScript compiler version and Node engine version. A mismatch between the workspace root and individual modules causes silent toolchain resolution failures.
+
+*Library version pins (e.g. `react`, `next`, `vitest`) are enforced separately at write/install time — see the **Workspace Dependency Pins** section in the prompt for the live snapshot of pinned libraries; do NOT restate or duplicate library version policy here.*
 
 | Checkpoint | Observation Target |
 |-----------|-------------------|
-| **Version alignment** | Does the workspace-level version declaration match every module's version declaration? |
-| **Dependency floor** | Do declared versions satisfy the minimum required by all transitive dependencies? |
+| **TypeScript version** | Does the workspace-level `typescript` declaration match every module's `typescript` declaration? |
+| **Node engine** | Does the `engines.node` (or equivalent runtime version) declaration match the workspace root in every module? |
 
-**Constraint**: Do NOT assume a default version is safe. Observe the highest minimum version required by any dependency, and declare that version consistently across all module files.
+**Constraint**: Do NOT assume a default toolchain version is safe. Observe the highest minimum required by any dependency, and declare that version consistently across all module files.
 
-⚠️ **Blind spot**: Version mismatches between workspace root and module files are invisible until build or toolchain resolution fails. Verify alignment at creation time.
+⚠️ **Blind spot**: TypeScript / Node engine mismatches between workspace root and module files are invisible until build or toolchain resolution fails. Verify alignment at creation time.
 
 ## Infrastructure Services (Observe Design Document)
 
