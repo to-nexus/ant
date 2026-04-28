@@ -263,6 +263,52 @@ describe('parseLLMResponse — per-task XML wrappers (current contract)', () => 
     expect(r.tasks).toHaveLength(1);
     expect(r.tasks[0].id).toBe('t1');
   });
+
+  // Regression — XML element wrappers carry a "document section" prior in
+  // the LLM's training data that the legacy JSON-array contract suppressed
+  // structurally. Per-`<task>` wrappers occasionally allow analytical
+  // prose to leak in alongside the JSON object, which JSON.parse rejects
+  // ("Unexpected non-whitespace character after JSON at position N") and
+  // crashes the job. The brace-balanced extractor in the parser slices
+  // out exactly the first JSON object so prose before/after is harmless.
+  // See `tiny-logging-haven` failure post commit 78413c9c.
+  it('tolerates trailing prose after the JSON inside <task>', () => {
+    const tasks =
+      '<task>{"id":"t1","name":"T1","type":"feature","priority":300,"packages":["shared"]}\n\n' +
+      '**Reasoning**: this task covers the Route Layer per §2.1 of the spec.\n' +
+      '- It depends on the shared boundary set up earlier.\n' +
+      '</task>';
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks>${tasks}</tasks>`,
+    );
+    expect(r.tasks).toHaveLength(1);
+    expect(r.tasks[0].id).toBe('t1');
+  });
+
+  it('tolerates leading prose before the JSON inside <task>', () => {
+    const tasks =
+      '<task>**분석:** Route Layer 작업 단위.\n' +
+      '- §2.1 Route Layer\n\n' +
+      '{"id":"t1","name":"T1","type":"feature","priority":300,"packages":["shared"]}</task>';
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks>${tasks}</tasks>`,
+    );
+    expect(r.tasks).toHaveLength(1);
+    expect(r.tasks[0].id).toBe('t1');
+  });
+
+  it('tolerates prose mixed across multiple <task> wrappers', () => {
+    const tasks = [
+      '<task>**section a**\n{"id":"a","name":"A","type":"setup","priority":100,"packages":["shared"]}\n more prose</task>',
+      'inter-task commentary that the regex skips',
+      '<task>{"id":"b","name":"B with } brace in name","type":"feature","priority":300,"packages":["shared"]}\n\nfollow-up note</task>',
+    ].join('\n');
+    const r = parseLLMResponse(
+      `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\n<tasks>\n${tasks}\n</tasks>`,
+    );
+    expect(r.tasks.map((t: any) => t.id)).toEqual(['a', 'b']);
+    expect(r.tasks[1].name).toBe('B with } brace in name');
+  });
 });
 
 describe('parseLLMResponse — code fence tolerance across tags', () => {
