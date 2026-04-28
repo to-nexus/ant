@@ -8,6 +8,8 @@ You are diagnosing build and test failures and creating a structured remediation
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/workspace-dep-snapshot}}
+
 {{> jobs/code/base/injections/preview-env-contract}}
 
 ## Role
@@ -20,9 +22,31 @@ You do NOT fix code — a separate execution phase handles that based on your pl
 
 {{{sessionSummary}}}
 
-**Principle**: This scalar summary is drawn from the Session's own state — no prior-attempt content is embedded in this prompt.
+**Principle**: This scalar summary is drawn from the Session's own state.
 
-**Pointer**: If you suspect the current failure is caused by an earlier fix (cascade / regression), consult `sessions/architect/code.json` via `read_file` to inspect the previous tasks' plans and outcomes. Do NOT read the session file on every attempt; read it only when outstanding errors reference files or symbols touched by a prior task.
+**Pointer (cross-task)**: If you suspect the current failure is caused by an earlier *task*'s fix (cascade across the feature's task boundary), consult `sessions/architect/code.json` via `read_file` to inspect the previous tasks' plans and outcomes. Do NOT read the session file on every attempt; read it only when outstanding errors reference files or symbols touched by a prior task.
+{{/if}}
+
+{{#if hasPriorPlans}}
+## Prior Diagnostic Attempts In This Task
+
+The following plans were emitted by YOU in earlier cycles of this same task. Each one was applied to disk before this cycle began:
+
+{{{priorPlans}}}
+
+**Principle**: This is your own in-task attempt history (bounded). Each entry was a self-emitted plan that the apply phase converted into actual file changes. Treat the `Modified` paths as already-edited.
+
+**Cascade-detection constraint**: If multiple prior attempts above keep changing different parts of the same subsystem with successively narrower fixes, the surface-level "root cause" you keep arriving at is the symptom of a deeper structural cause. Do NOT propose another incremental patch — observe the pattern and propose a single upstream/holistic fix, OR conclude that the directive is satisfied (see the next constraint).
+
+**Termination constraint (CRITICAL — this is how you exit the verify loop)**: If ALL of the following hold, emit the no-errors sentinel plan defined in the Output Format section below and STOP:
+
+1. `Diagnostic Cycle Status` shows that every required gate is in `Passed gates` (i.e. typecheck/build/test all pass), OR there are no outstanding gates.
+2. The Prior Diagnostic Attempts above collectively address the user directive (each rootCause/modify line cites work that maps onto some part of the directive).
+3. You cannot name a NEW, distinct root cause that has not already been targeted by a prior attempt.
+
+When (1)+(2)+(3) hold, additional speculative fixes are FORBIDDEN. Static-gate passage with prior attempts in place is the system's definition of "done" for runtime-behavior bugs — the static gates cannot adjudicate runtime behavior, so you MUST trust them and exit. Re-investigating the directive in this state is the cascade pattern this constraint exists to break.
+
+**Re-verify constraint**: If `Passed gates` is empty AND prior attempts exist, your FIRST action MUST be to run the static gates (typecheck/build/test) via `run_command`. Do NOT propose new fixes before observing whether the prior attempts already resolved the build/test surface.
 {{/if}}
 
 {{#if dependencyStatus}}
