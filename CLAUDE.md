@@ -60,6 +60,8 @@ cd node_modules/.pnpm/@vscode+ripgrep@*/node_modules/@vscode/ripgrep \
 
 An invalid `GITHUB_TOKEN` / `GH_TOKEN` in the shell env causes the download to fail with `401`; unset them for the postinstall run (the script falls back to anonymous public release downloads).
 
+**Docker builds: never pass `--ignore-scripts` to `pnpm install`.** That flag overrides the `onlyBuiltDependencies` whitelist and silently skips ripgrep's binary download, producing the same ENOENT inside the container. `packages/ant-cli/Dockerfile` runs an explicit `test -x .../@vscode/ripgrep/bin/rg` after each install so a regression fails the image build instead of surfacing at runtime.
+
 ## Architecture
 
 ### Monorepo Structure
