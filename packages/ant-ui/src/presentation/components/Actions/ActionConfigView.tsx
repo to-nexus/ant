@@ -7,9 +7,9 @@ import {
   getIntentsForAction,
   type IntentGroup,
   type IntentId,
-  getConfigSlots,
-  filterSlotsByDomain,
+  getConfigSlotsForDomain,
   getDefaultTargetPaths,
+  getIntentLabel,
 } from '@ant/shared';
 import { IntentTabNav } from './IntentTabNav';
 import { PageTransition } from './PageTransition';
@@ -84,11 +84,12 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   if (!intentDef) return null;
 
   const actionMetadata = useStore(s => s.actionMetadata);
-  // D28 — apply the workspace domain filter so a service workspace never
-  // surfaces game-art-source slots and a game workspace never surfaces
-  // ui-source slots, even though the matrix lists both for `gen-code-*`.
-  const rawSlots = getConfigSlots(intentId);
-  const slots = rawSlots ? filterSlotsByDomain(rawSlots, actionMetadata.domain) : rawSlots;
+  // D28-revised — single domain-aware slot SSOT. Drops wrong-domain
+  // slots (`gen-code-*` ui-source vs game-art-source), collapses
+  // `gen-plan`'s `target.outputs` to the single domain-correct file,
+  // and rewrites plan-dir slot labels / `excludeFiles` so neither
+  // domain ever previews the other domain's plan artifact.
+  const slots = getConfigSlotsForDomain(intentId, actionMetadata.domain ?? 'service');
   // SSOT D27 — surface the BasisSummaryBar / Edit affordance only when at
   // least one tier is actually live for the current domain × runtime.
   // Static `slots.basis.tiers.length` would surface a Section whose Edit
@@ -170,8 +171,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const handleCreateIntent = (targetIntentId: string) => {
     const targetIntentDef = INTENT_DEFINITIONS.find(d => d.id === targetIntentId);
     if (!targetIntentDef) return;
-    const fromLabel = intentDef?.label[lang] || intentDef?.label.en || intentId;
-    const toLabel = targetIntentDef.label[lang] || targetIntentDef.label.en;
+    const fromLabel = intentDef ? getIntentLabel(intentDef, actionMetadata.domain, lang) : intentId;
+    const toLabel = getIntentLabel(targetIntentDef, actionMetadata.domain, lang);
     openActionsPanel(targetIntentDef.intentGroup);
     selectIntent(targetIntentId);
     setActionsStep('config');
@@ -253,6 +254,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
           onSelect={handleIntentChange}
           onBack={onBack}
           lang={lang}
+          domain={actionMetadata.domain}
         />
       </div>
 

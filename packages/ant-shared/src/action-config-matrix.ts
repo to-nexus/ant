@@ -347,7 +347,17 @@ function output(prefix: string, ext: string, label: { en: string; ko: string }, 
 // ============================================
 
 const L = {
-  sources: { en: 'PRD', ko: 'PRD' },
+  /**
+   * @deprecated Domain-biased plan slot label. Use `planLabel(domain)` —
+   * the matrix MATRIX entries still reference `L.sources` for backwards
+   * compatibility, but `getConfigSlotsForDomain` rewrites it to the
+   * domain-correct value at resolution time.
+   */
+  sources: { en: 'PRD', ko: '기획서' },
+  /** Domain-correct plan slot label — service projects. */
+  planSourcesService: { en: 'PRD', ko: '기획서' },
+  /** Domain-correct plan slot label — game projects. */
+  planSourcesGame: { en: 'GDD', ko: '기획서' },
   designAll: { en: 'Design Documents', ko: '설계 문서' },
   systemDesign: { en: 'System Design', ko: '시스템 설계' },
   uiDesign: { en: 'UI Design', ko: 'UI 설계' },
@@ -383,6 +393,23 @@ const HL = {
   assets: { en: 'Asset Files', ko: '에셋 파일' },
   visual: { en: 'Generated Images', ko: '생성 이미지' },
 } as const;
+
+/**
+ * Domain-correct plan slot label SSOT. service → PRD wording, game →
+ * GDD wording. Both Korean strings reuse the domain-neutral '기획서'
+ * because the user-facing label is consistent across domains in Korean.
+ */
+function planLabel(domain: import('./detection').Domain): { en: string; ko: string } {
+  return domain === 'game' ? L.planSourcesGame : L.planSourcesService;
+}
+
+/**
+ * Domain-correct plan slot human-label SSOT (used for empty-slot copy
+ * and tooltip surfaces). service → `HL.prd`, game → `HL.gdd`.
+ */
+function planHumanLabel(domain: import('./detection').Domain): { en: string; ko: string } {
+  return domain === 'game' ? HL.gdd : HL.prd;
+}
 
 // ============================================
 // Matrix Data
@@ -864,6 +891,74 @@ export function filterSlotsByDomain(
 }
 
 /**
+ * Return the canonical plan filename for the OPPOSITE domain — used to
+ * augment plan-slot `excludeFiles` so a service workspace listing hides
+ * `gdd.md` and a game workspace listing hides `prd.md`.
+ */
+function otherDomainPlanFilename(domain: Domain): string {
+  return domain === 'game' ? 'prd.md' : 'gdd.md';
+}
+
+/**
+ * Augment a plan-dir slot (path === SOURCES_DIR) so its listing label,
+ * empty-slot copy, and `excludeFiles` are all domain-correct. For non
+ * plan-dir slots the input is returned untouched.
+ *
+ * The SSOT here is the matrix label `L.sources` / `HL.prd`. Static
+ * matrix entries still reference those for diffability, but the helper
+ * rewrites them to `planLabel(domain)` / `planHumanLabel(domain)` so a
+ * single workspace surface only ever sees its own domain's wording.
+ */
+function rewritePlanSlot(slot: SlotDef, domain: Domain): SlotDef {
+  if (slot.path !== SOURCES_DIR) return slot;
+  const otherFile = otherDomainPlanFilename(domain);
+  const baseExcludes = slot.excludeFiles ?? [];
+  // Preserve any pre-declared excludes (e.g. gen-plan refs already hide
+  // every PLAN_OUTPUT_FILENAME so the planner's own outputs don't surface
+  // as input candidates) and ensure the wrong-domain plan filename is
+  // also hidden, deduped.
+  const excludeFiles = baseExcludes.includes(otherFile)
+    ? baseExcludes
+    : [...baseExcludes, otherFile];
+  return {
+    ...slot,
+    label: planLabel(domain),
+    humanLabel: planHumanLabel(domain),
+    excludeFiles,
+  };
+}
+
+/**
+ * Domain-aware ConfigSlots SSOT — composes `filterSlotsByDomain`,
+ * `rewritePlanSlot`, and `getPlanOutputs` so every FE / BE consumer
+ * that needs a workspace-correct view of an intent's slots / target /
+ * labels obtains it from a single helper.
+ *
+ * `domain` is intentionally non-optional. Workspaces always carry a
+ * default (`'service'`) so callers must surface their fallback at the
+ * call site rather than letting `undefined` quietly pick service.
+ */
+export function getConfigSlotsForDomain(
+  intent: IntentId,
+  domain: Domain,
+): ConfigSlots | null {
+  const raw = getConfigSlots(intent);
+  if (!raw) return null;
+  const filtered = filterSlotsByDomain(raw, domain);
+  const refs = filtered.refs.map(s => rewritePlanSlot(s, domain));
+  const context = filtered.context.map(s => rewritePlanSlot(s, domain));
+  // gen-plan uniquely emits a plan output — collapse the dual-candidate
+  // matrix list to the single domain-correct filename so FE TargetDisplay
+  // and any other `target.outputs` consumer never previews the wrong-
+  // domain artifact. Other 'generate' intents are domain-agnostic.
+  let target = filtered.target;
+  if (intent === 'gen-plan' && target.kind === 'generate') {
+    target = { ...target, outputs: getPlanOutputs(domain) };
+  }
+  return { ...filtered, refs, context, target };
+}
+
+/**
  * Check if a filename matches an OutputSpec pattern.
  * Used by UI to show conflict warnings on gen intents.
  */
@@ -905,7 +1000,12 @@ export function getDefaultTargetPaths(
   // single domain-canonical one — service → prd.md, game → gdd.md,
   // unknown → service semantics.
   if (intent === 'gen-plan') {
-    const planOutputs = getPlanOutputs(domain);
+    // Workspaces always carry a domain default ('service'), but legacy
+    // entry points (chat-driven explicit submits before DomainToggle
+    // exists, mention-path with no `@domain:` mention) may still pass
+    // `undefined`; collapse to service semantics here so the helper
+    // never returns the dual-candidate list.
+    const planOutputs = getPlanOutputs(domain ?? 'service');
     return planOutputs.map(o => `${target.dir}/${formatOutputSpec(o)}`);
   }
 

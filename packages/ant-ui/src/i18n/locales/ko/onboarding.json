@@ -1,9 +1,9 @@
 {
   "welcome": {
     "headline": "아이디어를 스펙으로,\n스펙을 제품으로.",
-    "subheadline": "대화로 PRD와 설계를 만들고, 스펙에 맞춰 구현과 산출물을 쌓아갑니다.",
-    "feature1": "PRD & 설계",
-    "feature1Desc": "아이디어를 PRD로 구체화하고, 시스템 설계까지 연결합니다.",
+    "subheadline": "대화로 기획서와 설계를 만들고, 스펙에 맞춰 구현과 산출물을 쌓아갑니다.",
+    "feature1": "기획서 & 설계",
+    "feature1Desc": "아이디어를 기획서로 구체화하고, 시스템 설계까지 연결합니다.",
     "feature2": "구현 & 검증",
     "feature2Desc": "스펙에 맞춰 코드, 테스트, 문서를 생성하고 품질을 검증합니다.",
     "feature3": "리뷰 & 반복",
@@ -93,7 +93,7 @@
       "gitErrorAbort": "중단",
       "inputFiles": "아티팩트",
       "sources": "기획/요구사항",
-      "sourcesTooltip": "PRD, 기능 스펙, 요구사항 문서 (.md, .txt, .json 등)",
+      "sourcesTooltip": "기획서(PRD/GDD), 기능 스펙, 요구사항 문서 (.md, .txt, .json 등)",
       "assets": "UI 에셋",
       "assetsTooltip": "앱에 포함할 실제 이미지 파일 — 아이콘, 로고, 배경 등 (.svg, .png, .jpg, .webp)",
       "designDocs": "설계 문서",

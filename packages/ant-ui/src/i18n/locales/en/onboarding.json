@@ -1,9 +1,9 @@
 {
   "welcome": {
     "headline": "Ideas to Specs.\nSpecs to Product.",
-    "subheadline": "Draft PRDs and system specs through conversation, then build implementation and deliverables aligned to the spec.",
-    "feature1": "PRD & Specs",
-    "feature1Desc": "Turn an idea into a PRD, and connect it to system design.",
+    "subheadline": "Draft plan documents and system specs through conversation, then build implementation and deliverables aligned to the spec.",
+    "feature1": "Plans & Specs",
+    "feature1Desc": "Turn an idea into a plan document, and connect it to system design.",
     "feature2": "Implement & Validate",
     "feature2Desc": "Generate code, tests, and documentation aligned to your spec.",
     "feature3": "Review & Iterate",
@@ -93,7 +93,7 @@
       "gitErrorAbort": "Abort",
       "inputFiles": "Artifacts",
       "sources": "Spec/Requirements",
-      "sourcesTooltip": "PRD, feature specs, requirements documents (.md, .txt, .json, etc.)",
+      "sourcesTooltip": "Plan document (PRD or GDD), feature specs, requirements documents (.md, .txt, .json, etc.)",
       "assets": "UI Assets",
       "assetsTooltip": "Actual image files for the app — icons, logos, backgrounds (.svg, .png, .jpg, .webp)",
       "designDocs": "Design Docs",

@@ -3,7 +3,13 @@
  *
  * Rule-based + optional LLM intent detection for plan jobs.
  * Returns InferredAction with intentId ('gen-plan' | 'rev-plan' | 'explain-plan').
- * Target is always resolved to the PRD file path.
+ *
+ * Target is resolved domain-aware via `getCanonicalPlanPath(domain)` /
+ * `pickExistingPlanFilename` — `service` projects target `plan/prd.md`
+ * and `game` projects target `plan/gdd.md`. Cross-domain leftover files
+ * (e.g. a game project that already has `plan/prd.md` from before the
+ * `gdd.md` split) are still recognised by `pickExistingPlanFilename` so
+ * existing-target detection survives the migration.
  *
  * Flow:
  *   - no existing target → intentId='gen-plan'

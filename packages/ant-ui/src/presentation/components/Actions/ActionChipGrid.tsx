@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, isActionVisibleForDomain, type IntentGroup, type ActionReadiness } from '@ant/shared';
+import { ACTION_DEFINITIONS, getIntentsForAction, deriveFromIntent, isActionVisibleForDomain, getActionLabel, getActionDescription, type IntentGroup, type ActionReadiness } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { ActionChip } from './ActionChip';
 
@@ -64,8 +64,8 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
           <div key={def.id} className="w-full">
             <ActionChip
               actionId={def.id}
-              label={def.label[lang] || def.label.en}
-              description={def.description[lang] || def.description.en}
+              label={getActionLabel(def, currentDomain, lang)}
+              description={getActionDescription(def, currentDomain, lang)}
               readiness={readiness[def.id] || EMPTY_READINESS}
               variant={variant}
               onClick={() => onSelect(def.id)}
