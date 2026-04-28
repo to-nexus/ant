@@ -87,6 +87,7 @@
   "agent": {
     "architect": "코딩 작업에 최적화",
     "planner": "PRD(제품 요구사항 정의서) 작성 및 개선",
+    "planner_game": "GDD(게임 기획서) 작성 및 개선",
     "reviewer": "코드 리뷰 및 피드백 제공",
     "doc": "문서 생성",
     "creator": "비주얼 및 크리에이티브 에셋 생성"
@@ -106,7 +107,8 @@
     },
     "plan": {
       "label": "📋 Plan",
-      "description": "제품 요구사항 정의 및 개선"
+      "description": "제품 요구사항 정의 및 개선",
+      "description_game": "게임 기획서 정의 및 개선"
     },
     "visual": {
       "label": "🖼️ Visual",
@@ -135,6 +137,7 @@
   "clarify": {
     "freeInput": "직접 입력...",
     "title": "PRD 작성을 위해 {{count}}가지 질문",
+    "title_game": "GDD 작성을 위해 {{count}}가지 질문",
     "submitting": "제출 중...",
     "submitAll": "모든 답변 제출 ({{answered}}/{{total}})",
     "submitPartial": "답변 제출 ({{answered}}/{{total}})",

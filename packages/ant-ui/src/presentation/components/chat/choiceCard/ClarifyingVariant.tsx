@@ -471,6 +471,10 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
   // of the store's selected* values, which may have drifted to 'code' /
   // 'architect' since the card was issued (zonal-dreaming-novel).
   const pausedNonTask = useStore(selectPausedNonTaskJob);
+  // D28-revised — pull workspace domain so the clarify-card title reads
+  // domain-correct copy ("기획서/PRD" for service, "GDD/게임 기획서" for
+  // game). i18next `context: domain` resolves the `_game` variant first.
+  const clarifyDomain = useStore(state => state.actionMetadata.domain);
   const pendingAnswers = useStore(state => state.pendingClarifyAnswers);
   const setPendingClarifyAnswer = useStore(state => state.setPendingClarifyAnswer);
   const setPendingClarifyContext = useStore(state => state.setPendingClarifyContext);
@@ -632,7 +636,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     ? t('draftSelection.title', { count: blocks[0]?.options?.length || 0 })
     : totalTextQuestions === 1
       ? textBlocks[0]?.question
-      : t('clarify.title', { count: totalTextQuestions });
+      : t('clarify.title', { count: totalTextQuestions, context: clarifyDomain });
 
   const resolvedAnswers: Record<number, string> | undefined = answer.resolvedAnswers as
     | Record<number, string>

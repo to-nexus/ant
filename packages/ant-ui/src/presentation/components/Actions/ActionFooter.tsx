@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { deriveFromIntent, INTENT_DEFINITIONS, type IntentGroup } from '@ant/shared';
+import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized, type IntentGroup } from '@ant/shared';
 import { MessageSquare, Zap, Check, X, ArrowRight, CheckCircle } from 'lucide-react';
 import { Spinner } from '@/presentation/components/common/async';
 import { executeCodeJob } from '@/infrastructure/http/cli';
@@ -81,10 +81,13 @@ function IntentVariant(_props: IntentFooterProps) {
     const hasMetadata = Object.keys(metadata).length > 0;
     const intentId = metadata.intent || '';
     const lang = i18n.language as 'en' | 'ko';
-    const i18nDirective = intentId ? t(`buildDirective.${intentId}`, { defaultValue: '' }) : '';
+    // D28-revised — pass the workspace domain through i18next `context`
+    // so plan-related directives (`gen-plan` / `explain-plan`) resolve
+    // their `_game` variant when the workspace is a game project.
+    const i18nDirective = intentId ? t(`buildDirective.${intentId}`, { defaultValue: '', context: metadata.domain }) : '';
+    const intentDef = INTENT_DEFINITIONS.find(d => d.id === intentId);
     const buildDirective = i18nDirective
-      || INTENT_DEFINITIONS.find(d => d.id === intentId)?.description[lang]
-      || INTENT_DEFINITIONS.find(d => d.id === intentId)?.description.en
+      || (intentDef ? getIntentDescriptionLocalized(intentDef, metadata.domain, lang) : '')
       || t('footer.build');
 
     try {

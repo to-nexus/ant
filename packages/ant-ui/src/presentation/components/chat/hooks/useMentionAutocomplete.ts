@@ -4,12 +4,14 @@ import { useStore } from '@/domain/store';
 import {
   INTENT_DEFINITIONS,
   ACTION_DEFINITIONS,
-  getConfigSlots,
-  filterSlotsByDomain,
+  getConfigSlotsForDomain,
   isActionVisibleForDomain,
+  getIntentLabel,
+  type IntentDefinitionShape,
   type IntentId,
   type Domain,
   type IntentGroup,
+  type ConfigSlots,
 } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
@@ -45,27 +47,52 @@ function flattenFilePaths(nodes: FileNode[], prefix = ''): string[] {
   return paths;
 }
 
-function getSuggestedDirs(
+interface SuggestedSlots {
+  /** Slot directory paths matching the mention prefix. */
+  dirs: string[];
+  /**
+   * Domain-aware excluded full paths. Built from `slot.excludeFiles` so
+   * a service workspace's `@ref:plan/` mention listing hides `gdd.md`
+   * and a game workspace hides `prd.md` — mirrors the
+   * `ActionConfigView` listing's `excludeFiles` filter.
+   */
+  excludedPaths: Set<string>;
+}
+
+function collectExcludedPaths(slot: { path: string; excludeFiles?: string[] }, out: Set<string>): void {
+  if (!slot.path || !slot.excludeFiles) return;
+  for (const filename of slot.excludeFiles) {
+    out.add(`${slot.path}/${filename}`);
+  }
+}
+
+function getSuggestedSlots(
   intent: IntentId,
   prefix: FileMentionPrefix,
   domain: Domain | undefined,
-): string[] {
-  const rawSlots = getConfigSlots(intent);
-  if (!rawSlots) return [];
-  // D28 — drop slots whose `applicableDomains` does not include the
-  // workspace domain so a service workspace does not surface
-  // `visual/game-art` and a game workspace does not surface
-  // `visual/ui` in mention suggestions.
-  const slots = filterSlotsByDomain(rawSlots, domain);
+): SuggestedSlots {
+  // D28-revised — single domain-aware slot SSOT. Drops wrong-domain
+  // slots (`gen-code-*` ui-source vs game-art-source) and rewrites
+  // plan-dir slot `excludeFiles` so a workspace mention surface only
+  // ever suggests files for its own domain.
+  const slots: ConfigSlots | null = getConfigSlotsForDomain(intent, domain ?? 'service');
+  if (!slots) return { dirs: [], excludedPaths: new Set() };
   const dirs = new Set<string>();
+  const excludedPaths = new Set<string>();
   if (prefix === '@ref:') {
-    slots.refs.forEach(s => { if (s.path && !s.codebase) dirs.add(s.path); });
+    slots.refs.forEach(s => {
+      if (s.path && !s.codebase) dirs.add(s.path);
+      collectExcludedPaths(s, excludedPaths);
+    });
   } else if (prefix === '@ctx:') {
-    slots.context.forEach(s => { if (s.path && !s.codebase) dirs.add(s.path); });
+    slots.context.forEach(s => {
+      if (s.path && !s.codebase) dirs.add(s.path);
+      collectExcludedPaths(s, excludedPaths);
+    });
   } else if (prefix === '@target:') {
     if (slots.target.kind === 'generate') dirs.add(slots.target.dir);
   }
-  return [...dirs];
+  return { dirs: [...dirs], excludedPaths };
 }
 
 function basename(path: string): string {
@@ -87,12 +114,15 @@ function buildGroupedFileSuggestions(
     p.startsWith('architecture/') ||
     p.startsWith('visual/') ||
     p.startsWith('meta/evals/');
+  const slotInfo = intent
+    ? getSuggestedSlots(intent, prefix, domain)
+    : { dirs: [] as string[], excludedPaths: new Set<string>() };
   const baseFilter = prefix === '@target:'
-    ? (p: string) => p.toLowerCase().includes(q) && isWritableArtifactPath(p)
-    : (p: string) => p.toLowerCase().includes(q);
+    ? (p: string) => p.toLowerCase().includes(q) && isWritableArtifactPath(p) && !slotInfo.excludedPaths.has(p)
+    : (p: string) => p.toLowerCase().includes(q) && !slotInfo.excludedPaths.has(p);
   const filtered = allFilePaths.filter(baseFilter);
 
-  const suggestedDirs = intent ? getSuggestedDirs(intent, prefix, domain) : [];
+  const suggestedDirs = slotInfo.dirs;
   if (suggestedDirs.length === 0) {
     return filtered.slice(0, 10).map(p => ({
       type, id: p, label: basename(p), description: p,
@@ -189,9 +219,26 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
         );
         return INTENT_DEFINITIONS
           .filter(d => !hiddenGroups.has(d.intentGroup))
-          .filter(d => d.id.toLowerCase().includes(q) || d.label.en.toLowerCase().includes(q) || d.label.ko.includes(q))
+          // Match against BOTH the static and the domain-correct labels
+          // so a game-domain user can search for "GDD" and a service user
+          // for "PRD" — without losing matches against the canonical
+          // base label (e.g. legacy mentions, search snippets). The cast
+          // widens the literal-narrowed union element to the SSOT shape
+          // so optional `labelByDomain` access compiles for every entry.
+          .filter(d => {
+            const def = d as IntentDefinitionShape;
+            const labelEnService = (def.labelByDomain?.service?.en ?? def.label.en).toLowerCase();
+            const labelEnGame = (def.labelByDomain?.game?.en ?? def.label.en).toLowerCase();
+            const labelKoService = def.labelByDomain?.service?.ko ?? def.label.ko;
+            const labelKoGame = def.labelByDomain?.game?.ko ?? def.label.ko;
+            return def.id.toLowerCase().includes(q)
+              || labelEnService.includes(q)
+              || labelEnGame.includes(q)
+              || labelKoService.includes(q)
+              || labelKoGame.includes(q);
+          })
           .slice(0, 8)
-          .map(d => ({ type: 'intent', id: d.id, label: d.id, description: d.label.ko }));
+          .map(d => ({ type: 'intent', id: d.id, label: d.id, description: getIntentLabel(d, actionMetadata.domain, 'ko') }));
       }
 
       case '@target:':

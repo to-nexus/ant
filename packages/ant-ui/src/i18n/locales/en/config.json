@@ -126,7 +126,7 @@
     "defaultCodeDesc": "Default model for all code nodes",
     "codeExecuteDesc": "Code generation and editing",
     "defaultLearnDesc": "Default model for learning tasks",
-    "defaultPlanDesc": "Default model for PRD generation (Planner agent)",
+    "defaultPlanDesc": "Default model for plan-document generation (Planner agent)",
     "defaultVisualDesc": "Default model for all visual asset generation nodes",
     "direct": "Art Direction",
     "directDesc": "Prompt engineering and routing decisions",

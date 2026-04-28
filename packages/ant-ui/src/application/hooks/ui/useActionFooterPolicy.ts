@@ -8,7 +8,7 @@
 
 import { useStore } from '@/domain/store';
 import { useGitSnapshot } from '@/domain/git-world';
-import { getConfigSlots, filterSlotsByDomain, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasMixedCodebaseRefs, hasRealRefSlots } from '@ant/shared';
+import { getConfigSlotsForDomain, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasMixedCodebaseRefs, hasRealRefSlots, type IntentId } from '@ant/shared';
 
 export interface ActionFooterPolicy {
   canStartChat: boolean;
@@ -39,13 +39,11 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'metadata-incomplete', buildDisabledReason: 'metadata-incomplete' };
   }
 
-  // D28 — apply the workspace domain filter so policy decisions
-  // (chat / build gates, ref / context requirements) reflect only the
-  // surface that the workspace actually owns. Without this filter a
-  // service workspace with `gen-code-sys` would carry a phantom
-  // game-art-source ref slot affecting `hasRealRefSlots` and friends.
-  const rawSlots = getConfigSlots(actionMetadata.intent);
-  const slots = rawSlots ? filterSlotsByDomain(rawSlots, actionMetadata.domain) : null;
+  // D28-revised — single domain-aware slot SSOT. Drops wrong-domain
+  // slots and collapses plan target.outputs / labels so policy
+  // decisions (chat / build gates, ref / context requirements) reflect
+  // only the surface that the workspace actually owns.
+  const slots = getConfigSlotsForDomain(actionMetadata.intent as IntentId, actionMetadata.domain ?? 'service');
   if (!slots) {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'invalid-config', buildDisabledReason: 'invalid-config' };
   }

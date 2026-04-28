@@ -7,7 +7,9 @@
   "actions": {
     "plan": {
       "label": "Create PRD",
-      "description": "Generate or refine a product requirements document"
+      "label_game": "Create GDD",
+      "description": "Generate or refine a product requirements document",
+      "description_game": "Generate or refine a game design document"
     },
     "system-design": {
       "label": "System Design",
@@ -159,6 +161,7 @@
 
   "buildDirective": {
     "gen-plan": "Please create a product requirements document based on the source materials",
+    "gen-plan_game": "Please create a game design document based on the source materials",
     "gen-sys-fe": "Please design the frontend system architecture based on the source materials",
     "gen-sys-be": "Please design the backend system architecture and API contracts based on the source materials",
     "gen-sys-full": "Please design the full-stack system architecture based on the source materials",
@@ -175,6 +178,7 @@
     "explain-ui": "Please explain the UI design",
     "explain-spec": "Please explain the spec documents",
     "explain-plan": "Please explain the PRD",
+    "explain-plan_game": "Please explain the GDD",
     "explain-visual": "Please explain the visual assets"
   }
 }

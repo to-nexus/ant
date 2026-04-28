@@ -11,6 +11,10 @@ import {
   getIntentsForAction,
   getConfigSlots,
   isActionVisibleForDomain,
+  getActionLabel,
+  getActionDescription,
+  getIntentLabel,
+  getIntentDescriptionLocalized,
   type IntentGroup,
   type IntentId,
 } from '@ant/shared';
@@ -108,8 +112,8 @@ export function ActionsPanel() {
         const visual = ACTION_VISUALS[def.id];
         return {
           id: def.id,
-          label: def.label[lang] || def.label.en,
-          description: def.description[lang] || def.description.en,
+          label: getActionLabel(def, currentDomain, lang),
+          description: getActionDescription(def, currentDomain, lang),
           icon: visual?.icon,
           iconBg: visual?.bg,
           iconColor: visual?.text,
@@ -136,14 +140,14 @@ export function ActionsPanel() {
       const v = getIntentVisual(intent.id, selectedActionId);
       return {
         id: intent.id,
-        label: intent.label[lang] || intent.label.en,
-        description: intent.description[lang] || intent.description.en,
+        label: getIntentLabel(intent, currentDomain, lang),
+        description: getIntentDescriptionLocalized(intent, currentDomain, lang),
         icon: v.icon,
         bg: v.bg,
         text: v.text,
       };
     });
-  }, [selectedActionId, lang]);
+  }, [selectedActionId, lang, currentDomain]);
 
   const renderStep = () => {
     if (step === 'pick-action') {

@@ -7,7 +7,9 @@
   "actions": {
     "plan": {
       "label": "기획서 작성",
+      "label_game": "기획서 작성",
       "description": "PRD를 생성하거나 보강합니다",
+      "description_game": "GDD(게임 기획서)를 생성하거나 보강합니다",
       "modeGenerate": "새 기획서 작성",
       "modeRefine": "기존 기획서 보강"
     },
@@ -179,6 +181,7 @@
 
   "buildDirective": {
     "gen-plan": "소스 문서를 기반으로 기획서를 작성해주세요",
+    "gen-plan_game": "소스 문서를 기반으로 게임 기획서를 작성해주세요",
     "gen-sys-fe": "소스 문서를 기반으로 프론트엔드 시스템 아키텍처를 설계해주세요",
     "gen-sys-be": "소스 문서를 기반으로 백엔드 시스템 아키텍처와 API 계약을 설계해주세요",
     "gen-sys-full": "소스 문서를 기반으로 풀스택 시스템 아키텍처를 설계해주세요",
@@ -195,6 +198,7 @@
     "explain-ui": "UI 설계를 설명해주세요",
     "explain-spec": "스펙 문서를 설명해주세요",
     "explain-plan": "기획서를 설명해주세요",
+    "explain-plan_game": "게임 기획서를 설명해주세요",
     "explain-visual": "이미지 에셋을 설명해주세요"
   }
 }

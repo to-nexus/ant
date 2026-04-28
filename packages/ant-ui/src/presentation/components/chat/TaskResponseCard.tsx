@@ -29,7 +29,12 @@ export const TaskResponseCard = memo(function TaskResponseCard({ line, pending, 
   const textContent = content.content || '';
   const taskName = content.metadata?.taskName;
 
-  const isActive = isStreaming === true && !content.metadata?.completed;
+  // SSOT pattern (matches PlanCard/FileCard/TerminalCard): the durable
+  // line's statusType decides in-flight vs completed. Section-wide
+  // `isStreaming` was unreliable here — it goes true whenever ANY
+  // pendingCard / activeText sits in the same section's TURN_BUFFER
+  // mirror, leaving the spinner stuck after `task_response` finalize.
+  const isActive = content.type === 'task_response_streaming';
   const isCompleted = !isActive;
 
   const [isCollapsed, setIsCollapsed] = useState(false);
