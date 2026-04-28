@@ -146,6 +146,16 @@ All prompt templates are auto-registered as Handlebars partials at server startu
 
 **SBS principle** (complement to FPOP): specificity is bounded by activation scope. Gated templates (techTier / intent / taskType / mode / role / artifact-presence) MUST be specific along the gate's axis; always-on templates MUST stay universal. Citing FPOP's "Universal over Specific" against a gated file to demand its discriminator name be removed is itself an SBS violation. See `.cursorrules` §5 and [docs/architecture/13-prompt-system.md](docs/architecture/13-prompt-system.md) "SBS 원칙".
 
+**Mock-use prompt SSOTs (MECE)** — three orthogonal partials cover the mock surface, do NOT merge them:
+
+| Partial | Scope | Activation |
+|---------|-------|------------|
+| [`mock-adapter-contract`](packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/mock-adapter-contract.md) | Mock data body (text, count, timestamp, IDs) via port/adapter | unconditional in plan/execute |
+| [`mock-content-imagery`](packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/mock-content-imagery.md) | Content imagery (user-uploaded / DB-fetched images: avatar, thumbnail, cover) | gate = `service ∧ hasFrontend ∧ taskType==='feature'`, derived in code by [`isMockContentImageryActive`](packages/ant-cli/src/core/prompt/builder/mockContentImageryGate.ts) (Domain-Branching Locality I1) and surfaced as `mockContentImageryActive` boolean to plan + execute rules.md |
+| `ui-source-*` (`ui-assets.json`) | Design-system assets (logo, icon, decorative illustration) | per-source via `ui-source-dispatch` (ui/design-system tasks) |
+
+Regression guards: [tests/mock-content-imagery.test.ts](packages/ant-cli/tests/mock-content-imagery.test.ts) locks the gate matrix end-to-end (10-row truth table × 2 nodes = 20 render cases + body discipline + wiring checks).
+
 ### Frontend Architecture (ant-ui)
 
 Clean Architecture layers:
