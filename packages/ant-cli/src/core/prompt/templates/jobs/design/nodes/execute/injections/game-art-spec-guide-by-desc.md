@@ -6,8 +6,8 @@ Author one category of behavior / motion / policy spec entries in
 dictionary keys (D25).
 
 ### Surface scope (sub-sourced canonical)
-- Output path: `outputs/design/game-art/ant/game-art-spec.json`
-- `ant/` is the LLM-generated canonical sub-source (mirrors `outputs/design/ui/ant/`); `figma/` / `handoff/` sub-directories are Phase 5+ hooks.
+- Output path: `visual/game-art/ant/game-art-spec.json`
+- `ant/` is the LLM-generated canonical sub-source (mirrors `visual/ui/ant/`); `figma/` / `handoff/` sub-directories are Phase 5+ hooks.
 
 ### Spec vs Assets distinction (CRITICAL)
 
@@ -44,7 +44,7 @@ defaults** — directive-only spec should be playable without polish:
 **🚨 READ YOUR TASK DESCRIPTION — generate ONLY the category it specifies!**
 
 - Each category has its own task
-- Do NOT write `outputs/design/ui/...` paths
+- Do NOT write `visual/ui/...` paths
 
 ### JSON Structure (per task — one category)
 
@@ -78,7 +78,7 @@ assets task is likely producing inline-first entries — use those ids.
 **Parallel category task**: use `<append>` to merge your category.
 
 ```xml
-<append path="outputs/design/game-art/ant/game-art-spec.json">
+<append path="visual/game-art/ant/game-art-spec.json">
 {
   "<your-category>": {
     "<entry-id>": { /* spec */ }
@@ -90,7 +90,7 @@ assets task is likely producing inline-first entries — use those ids.
 **First task**: use `<file>` with `_meta`.
 
 ```xml
-<file path="outputs/design/game-art/ant/game-art-spec.json">
+<file path="visual/game-art/ant/game-art-spec.json">
 {
   "_meta": {
     "gameContentTier": { "genre": "...", "coreLoop": "..." }

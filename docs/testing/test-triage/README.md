@@ -26,38 +26,38 @@ FIXTURES="docs/testing/test-triage/workspace-fixtures"
 FEATURE="<feature-path>"
 
 # PRD 셋업
-mkdir -p "$FEATURE/inputs/sources"
-cp "$FIXTURES/prd.md" "$FEATURE/inputs/sources/prd.md"
+mkdir -p "$FEATURE/plan"
+cp "$FIXTURES/prd.md" "$FEATURE/plan/prd.md"
 
 # 시스템 설계문서 셋업 (system/ 서브디렉토리)
-mkdir -p "$FEATURE/outputs/design/system"
-cp "$FIXTURES/fe-system-main.md" "$FEATURE/outputs/design/system/"
-cp "$FIXTURES/be-system-main.md" "$FEATURE/outputs/design/system/"
-cp "$FIXTURES/api-contract-main.md" "$FEATURE/outputs/design/system/"
+mkdir -p "$FEATURE/architecture/system"
+cp "$FIXTURES/fe-system-main.md" "$FEATURE/architecture/system/"
+cp "$FIXTURES/be-system-main.md" "$FEATURE/architecture/system/"
+cp "$FIXTURES/api-contract-main.md" "$FEATURE/architecture/system/"
 
 # UI 문서 셋업 (ui/ 서브디렉토리)
-mkdir -p "$FEATURE/outputs/design/ui"
-cp "$FIXTURES/ui-tokens.json" "$FEATURE/outputs/design/ui/"
-cp "$FIXTURES/ui-assets.json" "$FEATURE/outputs/design/ui/"
-cp "$FIXTURES/ui-spec.json" "$FEATURE/outputs/design/ui/"
+mkdir -p "$FEATURE/visual/ui"
+cp "$FIXTURES/ui-tokens.json" "$FEATURE/visual/ui/"
+cp "$FIXTURES/ui-assets.json" "$FEATURE/visual/ui/"
+cp "$FIXTURES/ui-spec.json" "$FEATURE/visual/ui/"
 
 # Spec 문서 셋업 (spec/ 서브디렉토리)
-mkdir -p "$FEATURE/outputs/design/spec"
-cp "$FIXTURES/spec-auth.md" "$FEATURE/outputs/design/spec/"
+mkdir -p "$FEATURE/architecture/spec"
+cp "$FIXTURES/spec-auth.md" "$FEATURE/architecture/spec/"
 ```
 
 ## Fixture 파일 목록
 
 | 파일 | 트리거하는 플래그 | 복사 경로 |
 |------|-----------------|----------|
-| `prd.md` | `hasPrd` | `inputs/sources/prd.md` |
-| `fe-system-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
-| `be-system-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
-| `api-contract-main.md` | `hasSystemDesignDoc` | `outputs/design/system/` |
-| `ui-tokens.json` | `hasUiDocs` | `outputs/design/ui/` |
-| `ui-assets.json` | `hasUiDocs` | `outputs/design/ui/` |
-| `ui-spec.json` | `hasUiDocs` | `outputs/design/ui/` |
-| `spec-auth.md` | `hasSpecDocs` | `outputs/design/spec/` |
+| `prd.md` | `hasPrd` | `plan/prd.md` |
+| `fe-system-main.md` | `hasSystemDesignDoc` | `architecture/system/` |
+| `be-system-main.md` | `hasSystemDesignDoc` | `architecture/system/` |
+| `api-contract-main.md` | `hasSystemDesignDoc` | `architecture/system/` |
+| `ui-tokens.json` | `hasUiDocs` | `visual/ui/` |
+| `ui-assets.json` | `hasUiDocs` | `visual/ui/` |
+| `ui-spec.json` | `hasUiDocs` | `visual/ui/` |
+| `spec-auth.md` | `hasSpecDocs` | `architecture/spec/` |
 
 ## 워크스페이스 상태 조합
 
@@ -65,14 +65,14 @@ triage가 확인하는 핵심 상태와 감지 조건 (`workspaceAnalyzer.ts` �
 
 | 상태 플래그 | 감지 조건 |
 |------------|----------|
-| `hasPrd` | `inputs/sources/`에 비어있지 않은 텍스트 파일 존재 (.md, .txt, .json, .yaml 등) |
-| `hasDirective` | `inputs/directives/{design,code}/directive.md` 존재, 또는 채팅 입력 시 `overrideDirective`로 true |
-| `hasSystemDesignDoc` | `outputs/design/system/` 또는 `outputs/design/`에 `fe-system-*.md`, `be-system-*.md`, `api-contract-*.md` 패턴 파일 존재 |
-| `hasUiDocs` | `outputs/design/ui/` 또는 `outputs/design/`에 `ui-tokens.json`, `ui-assets.json`, `ui-spec.json` 중 하나 이상 존재 |
-| `hasSpecDocs` | `outputs/design/spec/` 또는 `outputs/design/`에 `spec-*.md` 패턴 파일 존재 |
-| `hasDesignDoc` | `outputs/design/` 전체(system/, ui/, spec/, flat)에 `.md` 또는 `.json` 파일 하나 이상 존재 |
-| `hasFigmaConfig` | `outputs/design/ui/figma/figma.json` 존재하고 `isFigmaDataPopulated` = true |
-| `hasAssets` | `inputs/assets/`에 파일 존재 |
+| `hasPrd` | `plan/`에 비어있지 않은 텍스트 파일 존재 (.md, .txt, .json, .yaml 등) |
+| `hasDirective` | `meta/directives/{design,code}/directive.md` 존재, 또는 채팅 입력 시 `overrideDirective`로 true |
+| `hasArchitectureSystem` | `architecture/system/`에 `fe-system-*.md`, `be-system-*.md`, `api-contract-*.md` 패턴 파일 존재 |
+| `hasVisualUi` | `visual/ui/ant/`에 `ui-tokens.json`, `ui-assets.json`, `ui-spec.json` 중 하나 이상 존재 |
+| `hasArchitectureSpec` | `architecture/spec/`에 `spec-*.md` 패턴 파일 존재 |
+| `hasDesignDoc` | `architecture/` 또는 `visual/` 전체에 `.md` 또는 `.json` 설계 산출물 파일 존재 (시스템/스펙/UI/게임아트) |
+| `hasFigmaConfig` | `visual/ui/figma/figma.json` 존재하고 `isFigmaDataPopulated` = true |
+| `hasAssets` | `assets/`에 파일 존재 |
 | `hasCodebase` | vector DB에 인덱스된 파일 존재 |
 
 테스트 시나리오별 필요한 조합:
@@ -166,30 +166,30 @@ design job에서 문서 vs 코드 구분을 올바르게 하는지 확인.
 FIXTURES="docs/testing/test-triage/workspace-fixtures"
 
 # === 풀 셋업 (Phase 1: 1-3, Phase 2: 2-5~2-7) ===
-mkdir -p "$FEATURE/inputs/sources" \
-         "$FEATURE/outputs/design/system" \
-         "$FEATURE/outputs/design/ui" \
-         "$FEATURE/outputs/design/spec"
-cp "$FIXTURES/prd.md"                "$FEATURE/inputs/sources/"
-cp "$FIXTURES/fe-system-main.md"     "$FEATURE/outputs/design/system/"
-cp "$FIXTURES/be-system-main.md"     "$FEATURE/outputs/design/system/"
-cp "$FIXTURES/api-contract-main.md"  "$FEATURE/outputs/design/system/"
-cp "$FIXTURES/ui-tokens.json"        "$FEATURE/outputs/design/ui/"
-cp "$FIXTURES/ui-assets.json"        "$FEATURE/outputs/design/ui/"
-cp "$FIXTURES/ui-spec.json"          "$FEATURE/outputs/design/ui/"
-cp "$FIXTURES/spec-auth.md"          "$FEATURE/outputs/design/spec/"
+mkdir -p "$FEATURE/plan" \
+         "$FEATURE/architecture/system" \
+         "$FEATURE/visual/ui" \
+         "$FEATURE/architecture/spec"
+cp "$FIXTURES/prd.md"                "$FEATURE/plan/"
+cp "$FIXTURES/fe-system-main.md"     "$FEATURE/architecture/system/"
+cp "$FIXTURES/be-system-main.md"     "$FEATURE/architecture/system/"
+cp "$FIXTURES/api-contract-main.md"  "$FEATURE/architecture/system/"
+cp "$FIXTURES/ui-tokens.json"        "$FEATURE/visual/ui/"
+cp "$FIXTURES/ui-assets.json"        "$FEATURE/visual/ui/"
+cp "$FIXTURES/ui-spec.json"          "$FEATURE/visual/ui/"
+cp "$FIXTURES/spec-auth.md"          "$FEATURE/architecture/spec/"
 
 # === PRD만 (Phase 1: 1-1~1-2, Phase 2: 2-3~2-4, Phase 3: 3-1, 3-3) ===
-mkdir -p "$FEATURE/inputs/sources"
-cp "$FIXTURES/prd.md" "$FEATURE/inputs/sources/"
+mkdir -p "$FEATURE/plan"
+cp "$FIXTURES/prd.md" "$FEATURE/plan/"
 
 # === PRD+spec (Phase 1: 1-5, Phase 3: 3-2) ===
-mkdir -p "$FEATURE/inputs/sources" "$FEATURE/outputs/design/spec"
-cp "$FIXTURES/prd.md"       "$FEATURE/inputs/sources/"
-cp "$FIXTURES/spec-auth.md" "$FEATURE/outputs/design/spec/"
+mkdir -p "$FEATURE/plan" "$FEATURE/architecture/spec"
+cp "$FIXTURES/prd.md"       "$FEATURE/plan/"
+cp "$FIXTURES/spec-auth.md" "$FEATURE/architecture/spec/"
 
 # === 빈 상태 (Phase 1: 1-4, Phase 2: 2-1~2-2) ===
-# 새 feature 생성하거나 기존 feature의 inputs/outputs 삭제
+# 새 feature 생성하거나 기존 feature의 plan/architecture/visual 등 산출물 삭제
 ```
 
 ### Step 2: Job 시작 및 입력

@@ -222,9 +222,9 @@ Build an API
 
 ## WORKSPACE STATE
 
-### Inputs
-❌ No PRD
-✅ Directive
+### Plan
+❌ No plan
+ℹ️ No directive
 
 ### Visual Sources
 ℹ️ No Figma config
@@ -232,7 +232,9 @@ Build an API
 
 ### Design Documents
 ❌ No UI specification
+ℹ️ No game-art specification
 ❌ No system design
+ℹ️ No spec documents
 
 ❌ No design documents
 
@@ -269,9 +271,9 @@ Analyzes visual design or asset files to extract tokens, components, and layouts
 
 **Prerequisites:**
 - Required:
-  - PRD document (inputs/sources/) OR Figma design files configured (outputs/design/ui/figma/figma.json)
+  - PRD document (plan/) OR Figma design files configured (visual/ui/figma/figma.json)
 - Recommended:
-  - Asset files like icons and images (inputs/assets/)
+  - Asset files like icons and images (assets/)
 
 **Scope:**
 - Design tokens (colors, typography, spacing, shadows)
@@ -287,7 +289,7 @@ Suitable for backend, fullstack, or complex system design.
 
 **Prerequisites:**
 - Required:
-  - PRD document (inputs/prd.md)
+  - PRD document (plan/prd.md)
 - Recommended:
   - Existing codebase (recommended for refactor mode)
 
@@ -317,7 +319,7 @@ Generates components, services, APIs, tests based on specifications.
 
 **Prerequisites:**
 - Required:
-  - Design documents (outputs/design/system/, ui/, spec/)
+  - System design documents (architecture/system/) OR Spec documents (architecture/spec/) OR UI design artifacts (visual/ui/)
 - Recommended:
   - Indexed codebase for consistent code style and patterns
 

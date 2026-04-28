@@ -1,22 +1,23 @@
 # Codebase Meta Document Policy
 
-> 작성 목적: ant 가 워크스페이스 파일 시스템에서 관찰·생성하는 메타 문서의 경계를 정의한다. 컨벤션 / 런타임 산출물 / 에이전트 세션 상태가 같은 트리에 섞이면서 발생했던 파편화 (ex. "export style convention 을 `outputs/design/system/` 아티팩트로 기록하려는 초안") 를 구조적으로 막는다.
+> 작성 목적: ant 가 워크스페이스 파일 시스템에서 관찰·생성하는 메타 문서의 경계를 정의한다. 컨벤션 / 런타임 산출물 / 에이전트 세션 상태가 같은 트리에 섞이면서 발생했던 파편화 (ex. "export style convention 을 `architecture/system/` 아티팩트로 기록하려는 초안") 를 구조적으로 막는다.
 
-## 1. 3층 분리 원칙
+## 1. 도메인 레이어 분리 원칙
 
-피쳐 워크스페이스는 세 개의 최상위 디렉토리만 가진다. 이 셋은 **상호 배타적** 이며, 각 파일은 정확히 하나의 층에 속해야 한다.
+피쳐 워크스페이스의 1차 분류 축은 **I/O 가 아닌 도메인 의미** (`plan` / `architecture` / `visual` / `assets` / `meta` / `sessions` / `codebase`). 각 파일은 정확히 하나의 도메인 디렉토리에 속해야 하며, 코드 vs 산출물 vs 세션 경계는 다음 표가 SSOT 다.
 
 | 디렉토리 | 성격 | 수명 | 읽는 주체 | 쓰는 주체 |
 |---|---|---|---|---|
 | `codebase/` | 코드 + 코드의 메타 문서. git 추적. | 영속 | 사람 개발자 + ant 에이전트 | 코드 생성 태스크 (setup / feature / integration / ...) |
-| `outputs/` | 디자인·생성 **산출물**. RAC 에서 참조. | 영속 (세션 간) | ant 에이전트 (프롬프트 주입 경유) | design / planner / 관련 태스크 |
+| `plan/` · `architecture/` · `visual/` · `assets/` | 디자인·생성 **산출물** 도메인 분류. RAC 에서 참조. | 영속 (세션 간) | ant 에이전트 (프롬프트 주입 경유) | design / planner / 관련 태스크 |
+| `meta/` | 잡 메타 트랙 컨테이너 (`directives/`, `evals/`). | 영속 | ant 에이전트 + 사람 | design / code / 평가 잡 |
 | `sessions/` | 에이전트 **런타임 / 디버그 상태**. | 일시적 (한 job 또는 resume window) | ant 에이전트 (자율 조회) + 사람 (디버그) | 그래프 런타임 / 디버그 로거 |
 
-### 왜 3층 인가
+### 왜 도메인 분류인가
 
-- **코드 vs 산출물 구분**: `outputs/` 는 프롬프트 · 스펙 · 토큰 등 "무엇을 만들지" 를 기술. 실제 소스는 `codebase/` 에만. 컨벤션처럼 "파일을 만들 때 어떻게" 는 코드 작성 규칙이므로 `codebase/` 소속.
+- **코드 vs 산출물 구분**: `plan/` · `architecture/` · `visual/` 는 프롬프트 · 스펙 · 토큰 등 "무엇을 만들지" 를 기술. 실제 소스는 `codebase/` 에만. 컨벤션처럼 "파일을 만들 때 어떻게" 는 코드 작성 규칙이므로 `codebase/` 소속.
 - **코드 vs 세션 구분**: `sessions/` 는 재시작·디버그용. 컨벤션을 여기에 두면 세션이 바뀔 때마다 사라짐.
-- **산출물 vs 세션 구분**: `outputs/` 는 "완성된 문서", `sessions/` 는 "진행 중 상태". 후자는 실패하면 덮어써도 되지만 전자는 축적된다.
+- **산출물 vs 세션 구분**: 도메인 디렉토리는 "완성된 문서", `sessions/` 는 "진행 중 상태". 후자는 실패하면 덮어써도 되지만 전자는 축적된다.
 
 경계가 흐려지면 파편화 리스크가 생긴다. **새 파일을 추가할 때 반드시 위 표에서 1개 층을 지정** 하고 `codebase/` 에 속하면 아래 §2 정책을 따른다.
 
@@ -188,11 +189,11 @@ partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 
 ### 새 파일 / 디렉토리 추가 시 체크리스트
 
 1. 이 파일은 사람 개발자가 `ls codebase/` 에서 보게 해야 하는가? → `codebase/` 층.
-2. 이 파일은 코드 생성의 **입력** 스펙인가 (PRD, 토큰, UI 스펙)? → `outputs/` 층.
+2. 이 파일은 코드 생성의 **입력** 스펙인가? → 도메인 매핑: PRD/GDD → `plan/`, system/spec → `architecture/`, UI/game-art 산출물 → `visual/`, 자산 풀 → `assets/`, directive/평가 리포트 → `meta/`.
 3. 이 파일은 다음 run 에 이어질 에이전트 내부 상태인가? → `sessions/` 층.
 
 혼돈 사례:
-- ❌ "프로젝트 컨벤션" 을 `outputs/design/system/project-conventions.md` 로 만들기 — 1번이 맞는데 2번 선택한 실수. 컨벤션은 `codebase/ANTRULES.md` (단, 3-조건 필터 통과 시).
+- ❌ "프로젝트 컨벤션" 을 `architecture/system/project-conventions.md` 로 만들기 — 1번이 맞는데 2번 선택한 실수. 컨벤션은 `codebase/ANTRULES.md` (단, 3-조건 필터 통과 시).
 - ❌ 런타임 로그를 `codebase/.ant/logs/` 에 기록 — 3번을 1번으로 섞음. `sessions/` 로.
 - ❌ PRD 를 `codebase/docs/PRD.md` 에 영구 저장 — 2번 성격을 1번에 두면 산출물 수명주기 (버전 · 갱신) 가 코드 git 이력과 섞인다.
 
@@ -219,6 +220,6 @@ partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 
 
 ## 5. 변경 이력
 
-- 2026-04-22: 최초 작성 (policy 도입). `attempted-cycle-removal` 작업 중 `outputs/design/system/project-conventions.md` 초안이 경계 위반임을 발견하면서 원칙화.
+- 2026-04-22: 최초 작성 (policy 도입). `attempted-cycle-removal` 작업 중 `architecture/system/project-conventions.md` 초안이 경계 위반임을 발견하면서 원칙화.
 - 2026-04-23: §2 재작성. 원래 의도 (발견 기반 live log) 대비 현 구현 (setup 선제 skeleton, 4섹션 고정, 읽기 전용) 의 drift 가 `plum-molding-bench` 에서 setup 이 `Do not add test files` 같은 허위 금지 문구를 생성 → test-code 태스크 무한 루프로 드러났음. "4섹션 고정" 해제, "모든 태스크가 read+write 가능", "허위 금지 문구 금지", scope 를 광범위 cross-task 불변성으로 명시.
 - 2026-04-23 (dep-self-contained 리팩터): `lapis-bonding-fruit` 에서 setup-project 가 생성한 933자 ANTRULES 중 5/7 섹션이 `package.json` / `tsconfig.json` 재선언으로 밝혀지면서 SSOT drift 위험이 구조화됨. §2 를 3-조건 필터 기반으로 재작성. 파티얼 파일명을 `ant-md.md` → `antrules.md` 로 rename 하여 파일명과 대상이 일치하게 조정. "Treat them as authoritative" 프레이밍을 "stale 가능성을 의심, 실제 code 를 SSOT 로 신뢰" 로 완화. "의존성 자급자족 원칙" 은 별도 partial (`dep-self-contained`) 로 분리 — ANTRULES 의 책임에서 제외.

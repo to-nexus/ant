@@ -28,7 +28,7 @@ export interface AssetsRootInput {
  *   3. `intentGroup === 'design-game-art'` heuristic — `game` (matrix gate).
  *   4. Default `'service'`.
  *
- * Returns relative path string starting with `inputs/assets/`.
+ * Returns relative path string starting with `assets/`.
  */
 export function pickAssetsRoot(input: AssetsRootInput): string {
   const { workspaceDomain, racDomain, intentGroup } = input;
@@ -36,14 +36,14 @@ export function pickAssetsRoot(input: AssetsRootInput): string {
     workspaceDomain
       ?? racDomain
       ?? (intentGroup === 'design-game-art' ? 'game' : 'service');
-  return `inputs/assets/${effective}`;
+  return `assets/${effective}`;
 }
 
 /**
  * Handle download_asset tool (ctx-pure).
  *
  * Downloads a file from a URL and saves it under the workspace's domain-keyed
- * pool — `inputs/assets/{service|game}/{category}/{filename}` (Phase 2 — D22).
+ * pool — `assets/{service|game}/{category}/{filename}` (Phase 2 — D22).
  * Used by LLM to download Figma-exported assets (SVG, PNG, etc.) from CDN URLs
  * returned by get_design_context.
  *
@@ -178,8 +178,8 @@ export async function handleDownloadAsset(
  * Handle list_assets tool (ctx-pure).
  *
  * Lists all runtime asset files under the workspace's domain-keyed pool —
- * `inputs/assets/{service|game}/...` (Phase 2 — D22). Lookup is strictly
- * scoped to the resolved domain root; the parent `inputs/assets/` is a
+ * `assets/{service|game}/...` (Phase 2 — D22). Lookup is strictly
+ * scoped to the resolved domain root; the parent `assets/` is a
  * container only and is never enumerated as a fallback.
  */
 export async function handleListAssets(

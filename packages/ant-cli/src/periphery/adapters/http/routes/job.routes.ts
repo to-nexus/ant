@@ -248,7 +248,7 @@ export function createJobRoutes(deps: {
       }
 
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const inputFile = overrideDirective ? undefined : path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
+      const inputFile = overrideDirective ? undefined : path.join(featurePath, `meta/directives/${jobType}/directive.md`);
       
       const resolvedAgent = agent || resolveAgentForJobType(jobType);
       
@@ -606,7 +606,7 @@ export function createJobRoutes(deps: {
       
       if (!hasTaskQueue) {
         // No tasks: may need directive file for re-execution from triage
-        const directivePath = path.join(featurePath, `inputs/directives/${jobType}/directive.md`);
+        const directivePath = path.join(featurePath, `meta/directives/${jobType}/directive.md`);
         if (fs.existsSync(directivePath)) {
           inputFile = directivePath;
         }

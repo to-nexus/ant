@@ -18,7 +18,7 @@ import { HintBadge } from '@/presentation/components/common/HintBadge';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 import { UploadConflictModal, type ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
 import { findConflicts, getAllExistingNames, applyPerFileResolutions, fileListToEntries } from '@/shared/utils/upload-utils';
-import { UI_VISIBLE_INPUT_DIRS, UI_VISIBLE_OUTPUT_DIRS, UI_VISIBLE_INPUT_FILES } from '@ant/shared';
+import { UI_VISIBLE_TOP_LEVEL_DIRS, UI_VISIBLE_FILES } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
 
@@ -153,7 +153,7 @@ interface DirectoryViewProps {
 
 function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile, onCreateDirectory, onUploadFiles, onDropFiles, onRename, onDelete, onSend, onDownload, onDropError, isSessionSection, unseenArtifacts = [], onMarkSeen, isNarrow, nodeHints, fileIndicators, sectionPrefix, notifyArtifactMutationBlocked }: DirectoryViewProps) {
   const { t } = useTranslation('artifacts');
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['inputs', 'outputs']));
+  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['plan', 'architecture', 'visual', 'assets', 'meta']));
   const [sectionCollapsed, setSectionCollapsed] = useState(false);
   const highlightedDirs = useStore(s => s.highlightedArtifactDirs);
   const spotlightTarget = useStore(s => s.spotlightTarget);
@@ -977,32 +977,29 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     return null;
   }
 
-  const allInputsNodes = fileTree?.find(node => node.name === 'inputs')?.children || [];
-  const inputsNodes = allInputsNodes.filter(node =>
-    UI_VISIBLE_INPUT_DIRS.includes(node.name) ||
-    UI_VISIBLE_INPUT_FILES.includes(node.name)
-  );
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Domain-grouped top-level views.
+  // Each visibility tag (`ui:plan` / `ui:architecture` / `ui:visual` /
+  // `ui:assets` / `ui:meta`) is rendered as its own DirectoryView, plus
+  // a fixed `sessions/` section. The grouping is pulled from the
+  // canonical SSOT (`UI_VISIBLE_TOP_LEVEL_DIRS`) so adding a new
+  // top-level dir auto-renders here once tagged.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const topLevelByName = new Map(fileTree?.map(n => [n.name, n]) ?? []);
+  const visibleTopLevelDirs = UI_VISIBLE_TOP_LEVEL_DIRS;
 
-  const templateFiles = allInputsNodes
-    .find(node => node.name === 'sources')?.children
+  const planNode = topLevelByName.get('plan');
+  const planTemplateFiles = planNode?.children
     ?.filter(n => n.type === 'file' && n.meta?.isTemplate) || [];
 
-  const allOutputsNodes = fileTree?.find(node => node.name === 'outputs')?.children || [];
-  const outputsNodes = allOutputsNodes.filter(node =>
-    UI_VISIBLE_OUTPUT_DIRS.includes(node.name)
-  );
-  
-  // sessions: show all
-  const sessionsNodes = fileTree?.find(node => node.name === 'sessions')?.children || [];
+  const sessionsNodes = topLevelByName.get('sessions')?.children || [];
 
-  const inputNodeHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }> = {
+  const dirHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }> = {
+    plan: { label: t('panel.dirHint.plan'), tooltip: t('panel.dirHintTooltip.plan'), colorScheme: 'amber' },
+    architecture: { label: t('panel.dirHint.architecture'), tooltip: t('panel.dirHintTooltip.architecture'), colorScheme: 'blue' },
+    visual: { label: t('panel.dirHint.visual'), tooltip: t('panel.dirHintTooltip.visual'), colorScheme: 'blue' },
     assets: { label: t('panel.dirHint.assets'), tooltip: t('panel.dirHintTooltip.assets'), colorScheme: 'purple' },
-    sources: { label: t('panel.dirHint.sources'), tooltip: t('panel.dirHintTooltip.sources'), colorScheme: 'amber' },
-  };
-
-  const outputNodeHints: Record<string, { label: string; tooltip: string; colorScheme?: 'gray' | 'purple' | 'amber' | 'blue' }> = {
-    design: { label: t('panel.dirHint.design'), tooltip: t('panel.dirHintTooltip.design'), colorScheme: 'blue' },
-    evals: { label: t('panel.dirHint.evals'), tooltip: t('panel.dirHintTooltip.evals'), colorScheme: 'gray' },
+    meta: { label: t('panel.dirHint.meta'), tooltip: t('panel.dirHintTooltip.meta'), colorScheme: 'gray' },
   };
 
   return (
@@ -1041,67 +1038,73 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
         </span>
       </h3>
       <div className="space-y-3">
-        <DirectoryView
-          title={t('panel.inputs')}
-          nodes={inputsNodes}
-          sectionPrefix="inputs"
-          onFileSelect={handleFileSelect}
-          selectedFile={selectedFile}
-          onCreateFile={handleCreateFile}
-          onCreateDirectory={handleCreateDirectory}
-          onUploadFiles={handleUploadFiles}
-          onDropFiles={handleDropFiles}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onSend={handleSend}
-          onDownload={handleDownload}
-          isNarrow={isNarrow}
-          nodeHints={inputNodeHints}
-          onDropError={showDropError}
-          unseenArtifacts={unseenArtifacts}
-          onMarkSeen={markArtifactsSeen}
-          notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
-          fileIndicators={{
-            ...Object.fromEntries(
-              templateFiles.map(n => [n.name, <TemplateStatusIndicator key={n.name} reason={n.meta?.templateReason ?? undefined} contentLength={n.meta?.templateContentLength} threshold={n.meta?.templateThreshold} t={t} />])
-            ),
-          }}
-        />
-        <DirectoryView
-          title={t('panel.outputs')}
-          nodes={outputsNodes}
-          sectionPrefix="outputs"
-          onFileSelect={handleFileSelect}
-          selectedFile={selectedFile}
-          onCreateFile={handleCreateFile}
-          onCreateDirectory={handleCreateDirectory}
-          onUploadFiles={handleUploadFiles}
-          onDropFiles={handleDropFiles}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onSend={handleSend}
-          onDownload={handleDownload}
-          isNarrow={isNarrow}
-          nodeHints={outputNodeHints}
-          onDropError={showDropError}
-          unseenArtifacts={unseenArtifacts}
-          onMarkSeen={markArtifactsSeen}
-          notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
-          fileIndicators={{
-            'figma.json': (
-              <FigmaStatusIndicator
-                isPopulated={figmaPopulated}
-                bridgeConnected={bridgeConnected === true}
-                figmaDesktopReachable={figmaDesktopReachable}
-                onOpenSettings={() => {
-                  openMainPanelTab('accountConfig');
-                  setAccountConfigScrollTarget('figma');
-                }}
-                t={t}
-              />
-            ),
-          }}
-        />
+        {visibleTopLevelDirs.map(({ name }) => {
+          const dirNode = topLevelByName.get(name);
+          const childNodes = dirNode?.children || [];
+          // figma.json is a top-level UI-visible file at the workspace root —
+          // when present it's surfaced inside its own dir node so panels stay
+          // domain-grouped instead of dropping a loose file into the tree.
+          const visibleFilesUnderRoot = childNodes.filter(
+            c => c.type === 'file' || UI_VISIBLE_FILES.includes(c.name) || true,
+          );
+          // Plan section gets the template-status indicators.
+          const fileIndicators =
+            name === 'plan'
+              ? Object.fromEntries(
+                  planTemplateFiles.map(n => [
+                    n.name,
+                    <TemplateStatusIndicator
+                      key={n.name}
+                      reason={n.meta?.templateReason ?? undefined}
+                      contentLength={n.meta?.templateContentLength}
+                      threshold={n.meta?.templateThreshold}
+                      t={t}
+                    />,
+                  ]),
+                )
+              : name === 'visual'
+                ? {
+                    'figma.json': (
+                      <FigmaStatusIndicator
+                        isPopulated={figmaPopulated}
+                        bridgeConnected={bridgeConnected === true}
+                        figmaDesktopReachable={figmaDesktopReachable}
+                        onOpenSettings={() => {
+                          openMainPanelTab('accountConfig');
+                          setAccountConfigScrollTarget('figma');
+                        }}
+                        t={t}
+                      />
+                    ),
+                  }
+                : undefined;
+
+          return (
+            <DirectoryView
+              key={name}
+              title={name}
+              nodes={visibleFilesUnderRoot}
+              sectionPrefix={name}
+              onFileSelect={handleFileSelect}
+              selectedFile={selectedFile}
+              onCreateFile={handleCreateFile}
+              onCreateDirectory={handleCreateDirectory}
+              onUploadFiles={handleUploadFiles}
+              onDropFiles={handleDropFiles}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              onSend={handleSend}
+              onDownload={handleDownload}
+              isNarrow={isNarrow}
+              nodeHints={dirHints[name] ? { [name]: dirHints[name] } : undefined}
+              onDropError={showDropError}
+              unseenArtifacts={unseenArtifacts}
+              onMarkSeen={markArtifactsSeen}
+              notifyArtifactMutationBlocked={notifyArtifactMutationBlocked}
+              fileIndicators={fileIndicators}
+            />
+          );
+        })}
         <DirectoryView
           title={t('panel.sessions')}
           nodes={sessionsNodes}

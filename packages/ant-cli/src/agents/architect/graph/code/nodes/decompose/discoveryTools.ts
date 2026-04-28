@@ -11,7 +11,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import type { ToolDefinition } from '../../../../../../core/ports/llm';
-import { DESIGN_DIR, DESIGN_SUBDIRS } from '@ant/shared';
 import { CLARIFY_TOOL, handleClarify, ClarifyContext, createClarifyContext } from '../../../../../common/clarify';
 
 export { CLARIFY_TOOL, createClarifyContext };
@@ -25,7 +24,7 @@ export const LIST_FILES_TOOL: ToolDefinition = {
   name: 'list_files',
   description:
     'List files in a directory. Use scope "artifact" for feature workspace ' +
-    '(inputs/sources, outputs/design/ui, outputs/design/system, outputs/design/spec) ' +
+    '(plan/, visual/ui/, architecture/system/, architecture/spec/) ' +
     'or scope "codebase" for the project source code (docs/, src/, etc.).',
   input_schema: {
     type: 'object',
@@ -37,7 +36,7 @@ export const LIST_FILES_TOOL: ToolDefinition = {
       },
       directory: {
         type: 'string',
-        description: 'Relative directory path (e.g., "outputs/design/spec" or "src/auth")',
+        description: 'Relative directory path (e.g., "architecture/spec" or "src/auth")',
       },
     },
     required: ['scope', 'directory'],
@@ -59,7 +58,7 @@ export const READ_FILE_TOOL: ToolDefinition = {
       },
       path: {
         type: 'string',
-        description: 'Relative file path (e.g., "outputs/design/spec/spec-auth.md" or "docs/architecture.md")',
+        description: 'Relative file path (e.g., "architecture/spec/spec-auth.md" or "docs/architecture.md")',
       },
     },
     required: ['scope', 'path'],
@@ -92,7 +91,7 @@ export interface DiscoveryToolContext {
    *
    * The previous `prime-jetting-grate` fix bounded `state.artifacts` to
    * the RAC subset but left this tool surface open, so a decompose LLM
-   * could still side-load `outputs/design/system/fe-system-main.md` from
+   * could still side-load `architecture/system/fe-system-main.md` from
    * disk via `read_file` even when the user excluded it from the RAC.
    */
   racScope?: { refs: string[]; context: string[] };
@@ -127,8 +126,8 @@ function resolveAndValidate(
  *   - the entry equals the requested path (exact file slot), OR
  *   - the requested path starts with `entry + '/'` (directory slot), OR
  *   - the entry starts with `requestedPath + '/'` (listing a parent of a
- *     RAC entry — needed so `list_files('outputs/design')` succeeds when
- *     the RAC carries `outputs/design/spec/` as a directory slot).
+   *     RAC entry — needed so `list_files('architecture')` succeeds when
+   *     the RAC carries `architecture/spec/` as a directory slot).
  *
  * Returns `true` when no `racScope` is configured (= infer pipeline). The
  * caller already gated on `scope === 'artifact'`; the codebase scope is

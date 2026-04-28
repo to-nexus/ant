@@ -64,8 +64,8 @@ If an out-of-matrix pair surfaces in the LLM-emitted basis (a parser bug), surfa
 ### 5. What NOT to commit at design level
 
 - ❌ Engine-specific API names (`Phaser.Scene`, `Graphics.fillRect`, Godot node names) — those belong to the engine partial under `basis/techTier/gameEngine/`.
-- ❌ Pixel-level coordinates, palette hex codes, animation curve specifics — those are `gameArtTier` (palette / silhouette / motion-tone) plus `outputs/design/spec/...` (numeric values).
-- ❌ Score formulas (`score += matched.length * 10`) — that is balancing surface owned by `outputs/design/spec/...`.
+- ❌ Pixel-level coordinates, palette hex codes, animation curve specifics — those are `gameArtTier` (palette / silhouette / motion-tone) plus `architecture/spec/...` (numeric values).
+- ❌ Score formulas (`score += matched.length * 10`) — that is balancing surface owned by `architecture/spec/...`.
 - ❌ `requestAnimationFrame` / `setInterval` mentions or any frame-scheduling implementation — those are code-time decisions, not design.
 - ❌ Out-of-matrix `(genre, coreLoop)` pairing — even hypothetical (`arcadePaddle + solve`, `cardSolitaire + survive`) — the registry is the SSOT.
 

@@ -112,15 +112,15 @@ rules.md의 Classification Protocol 단계:
 ### Job별 Prerequisites
 
 **Design Job (ui-design 모드)**
-- Required: `outputs/design/ui/figma/figma.json` (Figma 모드) 또는 PRD/디렉티브 (description 모드)
-- Recommended: `inputs/assets/` (사용자 제공 에셋)
+- Required: `visual/ui/figma/figma.json` (Figma 모드) 또는 PRD/디렉티브 (description 모드)
+- Recommended: `assets/` (사용자 제공 에셋)
 
 **Design Job (system-design 모드)**
 - Required: PRD 또는 directive
 - Recommended: 기존 코드베이스
 
 **Code Job (신규 개발)**
-- Required: design documents (`outputs/design/`) 또는 directive
+- Required: design documents (`architecture/system/`, `architecture/spec/`, `visual/ui/`) 또는 directive
 - Recommended: indexed codebase
 
 **Code Job (수정)**
@@ -149,14 +149,14 @@ Triage 노드는 `workspaceAnalyzer`를 통해 현재 워크스페이스 상태�
 
 | 상태 필드 | 검사 대상 |
 |-----------|----------|
-| `hasPrd` | `inputs/sources/prd.md` 존재 및 실질 콘텐츠 유무 |
+| `hasPrd` | `plan/prd.md` 존재 및 실질 콘텐츠 유무 |
 | `hasDirective` | directive 또는 채팅 입력 존재 |
-| `hasFigmaConfig` | `outputs/design/ui/figma/figma.json` populated |
-| `hasAssets` | `inputs/assets/` 내 자산 파일 존재 |
-| `hasDesignDoc` | `outputs/design/` 내 설계 문서 존재 |
+| `hasFigmaConfig` | `visual/ui/figma/figma.json` populated |
+| `hasAssets` | `assets/` 내 자산 파일 존재 |
+| `hasDesignDoc` | `architecture/` 또는 `visual/` 내 설계 문서 존재 |
 | `hasCodebase` | 벡터 DB 인덱스 존재 |
-| `hasSpecDocs` | `outputs/design/spec-*.md` 파일 존재 |
-| `hasSystemDesignDoc` | `outputs/design/*system-design*.md` 파일 존재 |
+| `hasArchitectureSpec` | `architecture/spec/spec-*.md` 파일 존재 |
+| `hasArchitectureSystem` | `architecture/system/{fe,be}-system-*.md`, `architecture/system/api-contract-*.md` 파일 존재 |
 
 ### 템플릿 마커 감지
 

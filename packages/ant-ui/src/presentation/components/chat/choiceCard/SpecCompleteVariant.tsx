@@ -17,7 +17,7 @@ export function SpecCompleteVariant({ presented, resolved }: VariantProps) {
 
   const payload = (presented.payload ?? {}) as Record<string, any>;
   const specFile = (payload.specFile as string | undefined) || 'spec.md';
-  const specPath = (payload.specPath as string | undefined) || `outputs/design/spec/${specFile}`;
+  const specPath = (payload.specPath as string | undefined) || `architecture/spec/${specFile}`;
   const sourceFiles = Array.isArray(payload.sourceFiles)
     ? (payload.sourceFiles as unknown[]).filter((n): n is string => typeof n === 'string')
     : [];
@@ -53,7 +53,7 @@ export function SpecCompleteVariant({ presented, resolved }: VariantProps) {
       intent: SPEC_INTENT,
       refs: [specPath],
       ...(sourceFiles.length > 0
-        ? { context: sourceFiles.map((n) => `inputs/sources/${n}`) }
+        ? { context: sourceFiles.map((n) => `plan/${n}`) }
         : {}),
       ...(domain ? { domain } : {}),
       locale: i18n.language,

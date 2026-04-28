@@ -68,13 +68,13 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     console.error(`   ❌ Target missing for explicit intent: ${actionMetadata?.intent}`);
     targets = [];
   } else {
-    const sourceFileNames = state.workspaceState?.sourceFileNames;
-    const existingPlanFile = pickExistingPlanFilename(sourceFileNames, explicitDomain);
+    const planFileNames = state.workspaceState?.planFileNames;
+    const existingPlanFile = pickExistingPlanFilename(planFileNames, explicitDomain);
     if (existingPlanFile) {
-      targets = [`inputs/sources/${existingPlanFile}`];
+      targets = [`plan/${existingPlanFile}`];
       console.log(`   Target (infer): ${existingPlanFile} found`);
-    } else if (sourceFileNames?.length) {
-      targets = sourceFileNames.map(f => `inputs/sources/${f}`);
+    } else if (planFileNames?.length) {
+      targets = planFileNames.map((f: string) => `plan/${f}`);
       console.log(`   Target (infer/clarify): ${targets.length} source files, LLM will clarify`);
     } else {
       targets = [];
@@ -119,7 +119,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
 
   // 5. Load eval reports (skip stale evals)
   let evalReport: string | undefined;
-  const evalDir = path.join(featurePath, 'outputs/evals/prd');
+  const evalDir = path.join(featurePath, 'meta/evals/prd');
   try {
     const evalFiles = fs.readdirSync(evalDir).filter(f => f.endsWith('.md')).sort().reverse();
     if (evalFiles.length > 0) {

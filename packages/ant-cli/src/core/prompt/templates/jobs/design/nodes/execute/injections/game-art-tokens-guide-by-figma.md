@@ -6,8 +6,8 @@ motion tone — derived from the project's `gameArtTier.concept` and the
 Figma file's color / effect / style variables.
 
 ### Surface scope (sub-sourced canonical)
-- Output path: `outputs/design/game-art/ant/game-art-tokens.json`
-- `ant/` is the LLM-generated canonical sub-source (mirrors `outputs/design/ui/ant/`).
+- Output path: `visual/game-art/ant/game-art-tokens.json`
+- `ant/` is the LLM-generated canonical sub-source (mirrors `visual/ui/ant/`).
 - `figma/` / `handoff/` sub-directories are Phase 5+ hooks — parser-only today.
 
 ### Core Principles
@@ -62,7 +62,7 @@ All assets and spec entries reference these tokens by dot notation.
 ### Output Format
 
 ```xml
-<file path="outputs/design/game-art/ant/game-art-tokens.json">
+<file path="visual/game-art/ant/game-art-tokens.json">
 {
   "_meta": { "gameArtTier": { "concept": "...", "perspective": "2d" } },
   "palette": { ... },

@@ -19,7 +19,7 @@ figma_get_variable_defs(fileKey, nodeId)
 ### Option B: If you already have enough Figma data
 Generate the document using `<file>` XML tag:
 ```xml
-<file path="outputs/design/ui/{{targetDoc}}">
+<file path="visual/ui/{{targetDoc}}">
 <!-- START_SECTION: 1 -->
 # Document Title
 ...content...

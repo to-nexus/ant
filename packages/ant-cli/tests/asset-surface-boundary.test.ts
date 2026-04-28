@@ -2,8 +2,8 @@
  * I6 — Asset Surface Boundary (Phase 2 — D19-revised)
  *
  * Asset pools are domain-1:1:
- *   - `inputs/assets/service/` → mapped only by `ui-assets.json`
- *   - `inputs/assets/game/`    → mapped only by `game-art-assets.json`
+ *   - `assets/service/` → mapped only by `ui-assets.json`
+ *   - `assets/game/`    → mapped only by `game-art-assets.json`
  *     (`kind: 'external'` entries; `kind: 'inline'` is skipped — it has
  *      no `src` to validate).
  *
@@ -58,26 +58,26 @@ function lintGameArtAssetCatalog(entries: ReadonlyArray<GameArtAssetEntry>): str
 
 describe('I6 — Asset Surface Boundary', () => {
   it('ARTIFACT_PREFIX exposes service / game asset prefixes (canonical)', () => {
-    expect(ARTIFACT_PREFIX.ASSETS_SERVICE).toBe('inputs/assets/service/');
-    expect(ARTIFACT_PREFIX.ASSETS_GAME).toBe('inputs/assets/game/');
+    expect(ARTIFACT_PREFIX.ASSETS_SERVICE).toBe('assets/service/');
+    expect(ARTIFACT_PREFIX.ASSETS_GAME).toBe('assets/game/');
   });
 
-  it('ui-assets.json src may NOT point into inputs/assets/game/...', () => {
+  it('ui-assets.json src may NOT point into assets/game/...', () => {
     const offending = lintUiAssetCatalog([
-      { id: 'logo', src: 'inputs/assets/service/icons/logo.svg' },        // ok
-      { id: 'hero', src: 'inputs/assets/service/images/hero.png' },       // ok
-      { id: 'sprite', src: 'inputs/assets/game/entities/hero-sprite.svg' }, // I6 violation
+      { id: 'logo', src: 'assets/service/icons/logo.svg' },        // ok
+      { id: 'hero', src: 'assets/service/images/hero.png' },       // ok
+      { id: 'sprite', src: 'assets/game/entities/hero-sprite.svg' }, // I6 violation
     ]);
-    expect(offending).toEqual(['inputs/assets/game/entities/hero-sprite.svg']);
+    expect(offending).toEqual(['assets/game/entities/hero-sprite.svg']);
   });
 
-  it('game-art-assets.json kind:external may NOT point into inputs/assets/service/...', () => {
+  it('game-art-assets.json kind:external may NOT point into assets/service/...', () => {
     const offending = lintGameArtAssetCatalog([
-      { id: 'hero', kind: 'external', src: 'inputs/assets/game/entities/hero.svg' },  // ok
+      { id: 'hero', kind: 'external', src: 'assets/game/entities/hero.svg' },  // ok
       { id: 'coin', kind: 'inline' },                                                // ok (no src)
-      { id: 'logo', kind: 'external', src: 'inputs/assets/service/icons/logo.svg' }, // I6 violation
+      { id: 'logo', kind: 'external', src: 'assets/service/icons/logo.svg' }, // I6 violation
     ]);
-    expect(offending).toEqual(['inputs/assets/service/icons/logo.svg']);
+    expect(offending).toEqual(['assets/service/icons/logo.svg']);
   });
 
   it('kind:inline entries are exempt (no src to lint)', () => {
@@ -91,14 +91,14 @@ describe('I6 — Asset Surface Boundary', () => {
   it('valid same-domain catalogs produce zero offenders', () => {
     expect(
       lintUiAssetCatalog([
-        { id: 'a', src: 'inputs/assets/service/icons/a.svg' },
-        { id: 'b', src: 'inputs/assets/service/images/b.png' },
+        { id: 'a', src: 'assets/service/icons/a.svg' },
+        { id: 'b', src: 'assets/service/images/b.png' },
       ]),
     ).toEqual([]);
     expect(
       lintGameArtAssetCatalog([
-        { id: 'a', kind: 'external', src: 'inputs/assets/game/entities/a.svg' },
-        { id: 'b', kind: 'external', src: 'inputs/assets/game/sfx/b.mp3' },
+        { id: 'a', kind: 'external', src: 'assets/game/entities/a.svg' },
+        { id: 'b', kind: 'external', src: 'assets/game/sfx/b.mp3' },
       ]),
     ).toEqual([]);
   });

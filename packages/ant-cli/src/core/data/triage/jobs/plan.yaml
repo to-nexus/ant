@@ -13,7 +13,7 @@ modes:
       Generates comprehensive product requirements document from scratch.
     detection:
       none_of:
-        - path: inputs/sources/prd.md
+        - path: plan/prd.md
           type: file_exists
     prerequisites:
       required:
@@ -35,13 +35,13 @@ modes:
       Improves quality, adds missing sections, clarifies requirements.
     detection:
       any_of:
-        - path: inputs/sources/prd.md
+        - path: plan/prd.md
           type: file_exists
     prerequisites:
       required:
         - id: existing_prd
           type: file_exists
-          path: inputs/sources/prd.md
+          path: plan/prd.md
           description: Existing PRD document
         - id: directive
           type: has_directive
@@ -62,14 +62,14 @@ modes:
       Read-only exploration — no file writes.
     detection:
       all_of:
-        - path: inputs/sources/prd.md
+        - path: plan/prd.md
           type: file_exists
         - type: has_directive
     prerequisites:
       required:
         - id: existing_prd
           type: file_exists
-          path: inputs/sources/prd.md
+          path: plan/prd.md
           description: Existing PRD document to analyze
       recommended: []
     scope:

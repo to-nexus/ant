@@ -5,7 +5,7 @@
 | 구분 | 폴더 | 질문 |
 |------|------|------|
 | **Testing** | `docs/testing/` | 코드가 정확히 동작하는가? |
-| **Evals** | `outputs/evals/` | AI 출력물의 품질이 좋은가? |
+| **Evals** | `meta/evals/` | AI 출력물의 품질이 좋은가? |
 | **Observability** | `docs/observability/` | 시스템이 어떻게 행동하고 있고, 어떻게 개선할 수 있는가? |
 
 Observability는 Job 실행의 **운영 품질**을 관측하고, 패턴을 식별하여, 시스템을 지속 개선하는 규율이다. 단일 Job 검증에서 시작하여 자동화된 피드백 루프까지 확장한다.
@@ -151,6 +151,6 @@ docs/observability/
 
 - 디버그 데이터 레이어: [29-debug-logging.md](../architecture/29-debug-logging.md)
 - 단건 검증 프로토콜: [29-debug-logging.md § Job 검증 프로토콜](../architecture/29-debug-logging.md#job-검증-프로토콜)
-- 출력물 품질 평가: `outputs/evals/` (Observability와 별개 — Evals는 "결과가 좋은가", Observability는 "과정이 건강한가")
+- 출력물 품질 평가: `meta/evals/` (Observability와 별개 — Evals는 "결과가 좋은가", Observability는 "과정이 건강한가")
 - 벡터 DB 시스템: [28-context-management.md](../architecture/28-context-management.md)
 - 프롬프트 시스템: [13-prompt-system.md](../architecture/13-prompt-system.md)

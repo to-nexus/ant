@@ -3,7 +3,7 @@ import { ArchitectGraphState } from "../../state";
 import { SessionRun } from "../../../../../../core/types";
 import { getChatAPIClient } from "../../../../../../core/adapters/ChatAPIClient";
 import { buildConsumedMeta, writeDocMeta, readDocMeta } from "../../../../../../core/utils/docMetadata";
-import { designDirOf, DESIGN_DIR } from "@ant/shared";
+import { designDirOf } from "@ant/shared";
 
 import { extractCodeLessons, extractTags } from './lessonExtractor';
 import {
@@ -375,7 +375,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       timestamp: new Date().toISOString(),
       input: {
         type: 'design',
-        source: firstDesign ? 'outputs/design/system/[latest]' : 'directive',
+        source: firstDesign ? 'architecture/system/[latest]' : 'directive',
         summary: inputSummary.substring(0, 200),
         size: firstDesign?.length || (state.directive || '').length,
       },

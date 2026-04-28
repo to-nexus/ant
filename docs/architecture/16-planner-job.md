@@ -25,8 +25,8 @@ UI가 `actionMetadata.target`을 세팅한다. resolve에서 추론하지 않는
 
 | 패턴 | target 세팅 시점 | 예시 |
 |------|-----------------|------|
-| `mirrorRefs` (rev-plan) | refs 선택 시 | `['inputs/sources/api-spec.md']` |
-| `dir + expectedFiles` (gen-plan) | intent 선택 시 | `['inputs/sources/prd.md']` |
+| `mirrorRefs` (rev-plan) | refs 선택 시 | `['plan/api-spec.md']` |
+| `dir + expectedFiles` (gen-plan) | intent 선택 시 | `['plan/prd.md']` |
 
 rev-plan은 `refsSingleSelect: true`로 단일 선택만 허용.
 
@@ -38,15 +38,15 @@ resolve가 `workspaceState.sourceFileNames`를 활용하여 추론한다.
 
 | 조건 | targets |
 |------|---------|
-| `prd.md` 있음 | `['inputs/sources/prd.md']` |
+| `prd.md` 있음 | `['plan/prd.md']` |
 | `prd.md` 없고 다른 파일 있음 | 전체 source 파일 (LLM clarify) |
-| 파일 없음 | `['inputs/sources/prd.md']` (gen-plan 기본값) |
+| 파일 없음 | `['plan/prd.md']` (gen-plan 기본값) |
 
 ## 모드
 
 | Mode | 조건 | 행동 |
 |------|------|------|
-| `generate` | 기존 target 문서 없음, 또는 explicit gen-plan | `<file path="{targetPath}">` 태그로 전체 문서를 `inputs/sources/`에 직접 출력 |
+| `generate` | 기존 target 문서 없음, 또는 explicit gen-plan | `<file path="{targetPath}">` 태그로 전체 문서를 `plan/`에 직접 출력 |
 | `refine` | 기존 target 문서 존재 + LLM이 수정 의도 감지 | `edit_file(path="{targetPath}")` 도구로 targeted editing |
 | `explain` | 기존 문서 존재 + LLM이 분석/질의 의도 감지 | 읽기 전용 채팅 응답 |
 
@@ -73,7 +73,7 @@ __start__ -> resolve -> triage -> [router]
 generate -> [router]
     +-> tool_use -> tool -> generate (ReAct 루프)
     +-> <clarify> 감지 -> ChoiceCard 발행 -> __end__
-    +-> <file> 감지 -> inputs/sources/에 직접 저장 -> __end__
+    +-> <file> 감지 -> plan/에 직접 저장 -> __end__
     +-> text only -> 대화 저장 -> __end__
 ```
 

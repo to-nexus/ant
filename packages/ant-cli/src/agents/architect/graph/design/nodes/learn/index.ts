@@ -1,6 +1,7 @@
+import * as path from 'node:path';
 import { DesignGraphState } from "../../state";
 import { saveFigmaMCPDebugLog } from '../../../../../../periphery/adapters/figma/figmaMCPHandler';
-import { DESIGN_DIR, DESIGN_SUBDIR } from '@ant/shared';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 import type { FeatureBoundaryLine } from '@ant/shared';
 
 import { saveSessionRun } from './sessionWriter';
@@ -233,76 +234,75 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       ? path.relative(rootPath, state.context.featurePath)
       : state.context.featurePath.replace(/^\//, '');
     
-    const designDirRel = path.join(featureDirRel, DESIGN_DIR);
-    
     const isUiDesign = state.resolvedAction?.intentGroup === 'design-ui'
       || state.resolvedAction?.intent === 'gen-ui-figma'
       || state.resolvedAction?.intent === 'gen-ui-desc'
       || state.resolvedAction?.intent === 'rev-ui';
     const isSpecDesign = state.resolvedAction?.intentGroup === 'design-spec';
 
-    const targetSubdir = isUiDesign
-      ? DESIGN_SUBDIR.UI
+    // Canonical destination: UI → visual/ui/ant, Spec → architecture/spec,
+    // System → architecture/system. Single directory per intent (no fallback).
+    const targetDirRelToFeature = isUiDesign
+      ? ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, '')
       : isSpecDesign
-        ? DESIGN_SUBDIR.SPEC
-        : DESIGN_SUBDIR.SYSTEM;
-    const subDirRel = path.join(designDirRel, targetSubdir);
+        ? ARTIFACT_PREFIX.SPEC.replace(/\/$/, '')
+        : ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
+    const subDirRel = path.join(featureDirRel, targetDirRelToFeature);
     const label = isUiDesign ? 'UI Design' : isSpecDesign ? 'Spec Design' : 'System Design';
-    console.log(`📂 [Learn] Checking ${label} files in outputs/design/${targetSubdir}/...`);
-    
+    console.log(`📂 [Learn] Checking ${label} files in ${targetDirRelToFeature}/...`);
+
     try {
       const filesToProcess: { filename: string; dir: string }[] = [];
 
-      for (const dir of [subDirRel, designDirRel]) {
-        if (!(await fileSystem.fileExists(dir))) continue;
-        const entries = await fileSystem.readDirectory(dir);
+      if (await fileSystem.fileExists(subDirRel)) {
+        const entries = await fileSystem.readDirectory(subDirRel);
 
         if (isUiDesign) {
           const expectedFiles = ['ui-tokens.json', 'ui-assets.json', 'ui-spec.json'];
           for (const e of entries) {
-            if (!e.isDirectory && expectedFiles.includes(e.name) && !filesToProcess.some(f => f.filename === e.name)) {
-              filesToProcess.push({ filename: e.name, dir });
+            if (!e.isDirectory && expectedFiles.includes(e.name)) {
+              filesToProcess.push({ filename: e.name, dir: subDirRel });
             }
           }
         } else {
           for (const e of entries) {
-            if (!e.isDirectory && e.name.endsWith('.md') && !filesToProcess.some(f => f.filename === e.name)) {
-              filesToProcess.push({ filename: e.name, dir });
+            if (!e.isDirectory && e.name.endsWith('.md')) {
+              filesToProcess.push({ filename: e.name, dir: subDirRel });
             }
           }
         }
       }
-        
+
       console.log(`📂 [Learn] Loading ${filesToProcess.length} design document(s) from disk...`);
-        
+
       for (const { filename, dir } of filesToProcess) {
         const filePath = path.join(dir, filename);
         let content = await fileSystem.readFile(filePath);
-          
+
         if (content && isUiDesign) {
           content = stripMetaFromContent(filename, content);
           await fileSystem.writeFile(filePath, content);
           console.log(`   🧹 Cleaned _meta from: ${filename}`);
         }
-          
-        const relativePath = `${dir === subDirRel ? `${DESIGN_DIR}/${targetSubdir}` : DESIGN_DIR}/${filename}`;
-          
+
+        const relativePath = `${targetDirRelToFeature}/${filename}`;
+
         loadedFiles.push({
           path: relativePath,
           content: content || '',
           actionType: 'create'
         });
-          
+
         console.log(`   ✅ Loaded: ${filename} (${(content || '').length} chars)`);
       }
     } catch (error) {
       console.warn(`⚠️  [Learn] Failed to load design files:`, error);
     }
   }
-  
+
   if (loadedFiles.length === 0 && !hasEarlyTermination) {
     throw new Error(
-      `No design files found under outputs/design/{system,ui,spec}/ — docGen nodes must have run`
+      `No design files found under architecture/{system,spec}/ or visual/ui/ant/ — docGen nodes must have run`
     );
   }
   
@@ -418,8 +418,14 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 
       await chatAPI.finalizeMessage();
       
-      const specFile = state.completedTasksDetails?.[0]?.targetFile 
-        || state.files?.[0]?.path?.replace(/^outputs\/design\/(?:spec\/|system\/|ui\/)?/, '')
+      // Resolve the spec filename in basename form. design-spec intents
+      // write under `architecture/spec/<name>.md`; we strip the directory
+      // segments so the FE choice card shows the bare filename. Use
+      // `path.basename` so the new domain-rooted tree (`architecture/`,
+      // `visual/`) is handled uniformly without per-prefix branches.
+      const firstPath = state.files?.[0]?.path;
+      const specFile = state.completedTasksDetails?.[0]?.targetFile
+        || (firstPath ? path.basename(firstPath) : undefined)
         || 'spec.md';
       
       const isKo = state._uiLocale === 'ko' || state._uiLocale !== 'en';
@@ -430,7 +436,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       // a ref, `sourceFiles` becomes the explicit context (PRD / GDD /
       // user-uploaded originals), and `domain` keeps the resolved
       // domain stable across the design→code hand-off.
-      const sourceFiles = state.workspaceState?.sourceFileNames ?? [];
+      const sourceFiles = state.workspaceState?.planFileNames ?? [];
       const racDomain = state.resolvedAction?.domain;
 
       await chatAPI.sendChoiceCard({
@@ -444,7 +450,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
             data: {
               targetJob: 'code',
               specFile,
-              specPath: `outputs/design/spec/${specFile}`,
+              specPath: `${ARTIFACT_PREFIX.SPEC}${specFile}`,
               sourceFiles,
               ...(racDomain ? { domain: racDomain } : {}),
             },

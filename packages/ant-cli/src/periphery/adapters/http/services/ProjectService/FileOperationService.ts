@@ -185,7 +185,7 @@ export class FileOperationService {
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
 
     let finalContent = content;
-    if (filePath.startsWith('inputs/sources/')) {
+    if (filePath.startsWith('plan/')) {
       const normalized = normalizeTemplateDoc(content);
       if (normalized !== null) {
         finalContent = normalized;

@@ -75,7 +75,12 @@ async function main() {
   
   // ✅ Get physical workspaces path (centralized in WorkspacePathResolver)
   const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
-  
+
+  // 단방향 원칙: 옛 I/O 트리(`inputs/`, `outputs/`)가 디스크에 잔존하면
+  // stderr 안내 한 번 출력 후 break (서버는 시작) — 사용자가 옛 워크스페이스
+  // 상태에서도 부팅하여 `pnpm migrate:workspace --apply` 를 실행할 수 있게 한다.
+  detectLegacyWorkspaceTree(workspacesPath);
+
   // ✅ Initialize WorkspaceService for multi-tenant workspace management
   const workspaceService = new WorkspaceService(workspacesPath);
   
@@ -140,6 +145,51 @@ async function main() {
     console.error(error.stack);
     process.exit(1);
   }
+}
+
+/**
+ * 워크스페이스 디스크 잔존 옛 트리(`inputs/`, `outputs/`) 검출.
+ * 검출 시 stderr 안내만 출력 (마이그레이션 명령) — 부팅을 막지 않는다.
+ * 한 번 경고 후 즉시 break 하여 스캔 비용을 제한한다.
+ */
+function detectLegacyWorkspaceTree(workspacesPath: string): void {
+  if (!fs.existsSync(workspacesPath)) return;
+  try {
+    for (const entry of fs.readdirSync(workspacesPath)) {
+      const orgDir = path.join(workspacesPath, entry);
+      if (!fs.statSync(orgDir).isDirectory()) continue;
+      const found = scanForLegacyTree(orgDir);
+      if (found) {
+        console.error(
+          `\n[ant] Legacy workspace layout detected at ${found}.\n` +
+          `       Run: pnpm migrate:workspace --apply --workspaces-path ${workspacesPath}\n`,
+        );
+        break;
+      }
+    }
+  } catch (err) {
+    console.warn('[ant] legacy workspace scan failed (continuing):', err);
+  }
+}
+
+function scanForLegacyTree(dir: string, depth = 0): string | null {
+  if (depth > 5) return null;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    if (e.name === 'inputs' || e.name === 'outputs') {
+      return path.join(dir, e.name);
+    }
+    if (e.name === 'codebase' || e.name === 'sessions') continue;
+    const sub = scanForLegacyTree(path.join(dir, e.name), depth + 1);
+    if (sub) return sub;
+  }
+  return null;
 }
 
 main();

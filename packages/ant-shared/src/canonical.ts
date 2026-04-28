@@ -5,13 +5,25 @@
  * All derived constants (full path lists, UI-visible subsets, lookup sets)
  * are computed from these arrays — no manual sync needed.
  *
+ * 1차 분류 축은 도메인 의미(`plan` / `architecture` / `visual` / `assets` /
+ * `meta` / `sessions` / `codebase`).
+ *
  * Visibility tags:
- *   'ui:inputs'  — shown under Inputs section in ArtifactsPanel
- *   'ui:outputs' — shown under Outputs section in ArtifactsPanel
- *   'internal'   — system-only, hidden from artifact UI
+ *   'ui:plan'         — `plan/` (PRD / GDD)
+ *   'ui:architecture' — `architecture/` (system / spec)
+ *   'ui:visual'       — `visual/` (ui / game-art sub-sources)
+ *   'ui:assets'       — `assets/` (service / game / gen pools)
+ *   'ui:meta'         — `meta/` (directives / evals)
+ *   'internal'        — system-only, hidden from artifact UI
  */
 
-type Visibility = 'ui:inputs' | 'ui:outputs' | 'internal';
+type Visibility =
+  | 'ui:plan'
+  | 'ui:architecture'
+  | 'ui:visual'
+  | 'ui:assets'
+  | 'ui:meta'
+  | 'internal';
 
 interface CanonicalDirDef {
   readonly path: string;
@@ -28,74 +40,78 @@ interface CanonicalFileDef {
 // ============================================
 
 const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
-  // inputs
-  { path: 'inputs',                            visibility: 'internal' },
-  { path: 'inputs/sources',                    visibility: 'ui:inputs' },
-  { path: 'inputs/directives',                 visibility: 'internal' },
-  { path: 'inputs/directives/design',          visibility: 'internal' },
-  { path: 'inputs/directives/code',            visibility: 'internal' },
-  { path: 'inputs/directives/learn',           visibility: 'internal' },
-  // Phase 2 (D19-revised): assets parent stays UI-visible as the
-  // container for the per-domain pools. workspace.domain decides which
-  // sub-pool is the active routing target (`service/` vs `game/`); the
-  // parent itself is subdir-only (see `artifact-dir-policy.ts`).
-  { path: 'inputs/assets',                     visibility: 'ui:inputs' },
-  { path: 'inputs/assets/service',             visibility: 'internal' },
-  { path: 'inputs/assets/service/icons',       visibility: 'internal' },
-  { path: 'inputs/assets/service/images',      visibility: 'internal' },
-  { path: 'inputs/assets/service/fonts',       visibility: 'internal' },
-  { path: 'inputs/assets/service/misc',        visibility: 'internal' },
-  { path: 'inputs/assets/game',                visibility: 'internal' },
-  { path: 'inputs/assets/game/icons',          visibility: 'internal' },
-  { path: 'inputs/assets/game/images',         visibility: 'internal' },
-  { path: 'inputs/assets/game/entities',       visibility: 'internal' },
-  { path: 'inputs/assets/game/particles',      visibility: 'internal' },
-  { path: 'inputs/assets/game/projectiles',    visibility: 'internal' },
-  { path: 'inputs/assets/game/sfx',            visibility: 'internal' },
-  { path: 'inputs/assets/game/bgm',            visibility: 'internal' },
-  { path: 'inputs/assets/game/tilemaps',       visibility: 'internal' },
-  { path: 'inputs/assets/game/atlas',          visibility: 'internal' },
-  { path: 'inputs/assets/game/models',         visibility: 'internal' },
-  { path: 'inputs/assets/gen',                 visibility: 'internal' },
-  { path: 'inputs/assets/gen/sketches',         visibility: 'internal' },
-  // outputs
-  { path: 'outputs',                           visibility: 'internal' },
-  { path: 'outputs/design',                    visibility: 'ui:outputs' },
-  { path: 'outputs/design/ui',                 visibility: 'internal' },
-  { path: 'outputs/design/ui/ant',             visibility: 'internal' },
-  { path: 'outputs/design/ui/figma',           visibility: 'internal' },
-  { path: 'outputs/design/ui/handoff',         visibility: 'internal' },
-  // v8 (D24-revised): game-art is sub-sourced (mirrors `outputs/design/ui/`).
-  // `ant/` is the LLM-generated canonical source; `figma/` / `handoff/` are
-  // parser hooks for Phase 5+ (visual job) — kept unregistered today so the
-  // canonical structure stays minimal until activation.
-  { path: 'outputs/design/game-art',           visibility: 'internal' },
-  { path: 'outputs/design/game-art/ant',       visibility: 'internal' },
-  { path: 'outputs/design/system',             visibility: 'internal' },
-  { path: 'outputs/design/spec',               visibility: 'internal' },
-  { path: 'outputs/evals',                     visibility: 'ui:outputs' },
-  { path: 'outputs/evals/prd',                 visibility: 'internal' },
-  { path: 'outputs/evals/ui-design',           visibility: 'internal' },
-  { path: 'outputs/evals/system-design',       visibility: 'internal' },
-  { path: 'outputs/evals/code',                visibility: 'internal' },
-  // sessions
+  // plan — depth -1 (sources 폴더 제거, 파일 직속). plan/ 자체가 sources 의미.
+  { path: 'plan',                              visibility: 'ui:plan' },
+
+  // architecture — system / spec 두 트랙
+  { path: 'architecture',                      visibility: 'ui:architecture' },
+  { path: 'architecture/system',               visibility: 'internal' },
+  { path: 'architecture/spec',                 visibility: 'internal' },
+
+  // visual — ui / game-art (sub-sourced; D24-revised v8)
+  { path: 'visual',                            visibility: 'ui:visual' },
+  { path: 'visual/ui',                         visibility: 'internal' },
+  { path: 'visual/ui/ant',                     visibility: 'internal' },
+  { path: 'visual/ui/figma',                   visibility: 'internal' },
+  { path: 'visual/ui/handoff',                 visibility: 'internal' },
+  { path: 'visual/game-art',                   visibility: 'internal' },
+  { path: 'visual/game-art/ant',               visibility: 'internal' },
+  { path: 'visual/game-art/figma',             visibility: 'internal' },
+  { path: 'visual/game-art/handoff',           visibility: 'internal' },
+
+  // assets (parent UI-visible; per-domain pools internal — workspace.domain decides)
+  { path: 'assets',                            visibility: 'ui:assets' },
+  { path: 'assets/service',                    visibility: 'internal' },
+  { path: 'assets/service/icons',              visibility: 'internal' },
+  { path: 'assets/service/images',             visibility: 'internal' },
+  { path: 'assets/service/fonts',              visibility: 'internal' },
+  { path: 'assets/service/misc',               visibility: 'internal' },
+  { path: 'assets/game',                       visibility: 'internal' },
+  { path: 'assets/game/icons',                 visibility: 'internal' },
+  { path: 'assets/game/images',                visibility: 'internal' },
+  { path: 'assets/game/entities',              visibility: 'internal' },
+  { path: 'assets/game/particles',             visibility: 'internal' },
+  { path: 'assets/game/projectiles',           visibility: 'internal' },
+  { path: 'assets/game/sfx',                   visibility: 'internal' },
+  { path: 'assets/game/bgm',                   visibility: 'internal' },
+  { path: 'assets/game/tilemaps',              visibility: 'internal' },
+  { path: 'assets/game/atlas',                 visibility: 'internal' },
+  { path: 'assets/game/models',                visibility: 'internal' },
+  { path: 'assets/gen',                        visibility: 'internal' },
+  { path: 'assets/gen/sketches',               visibility: 'internal' },
+
+  // meta — 잡 메타 트랙 컨테이너 (directives / evals)
+  { path: 'meta',                              visibility: 'ui:meta' },
+  { path: 'meta/directives',                   visibility: 'internal' },
+  { path: 'meta/directives/design',            visibility: 'internal' },
+  { path: 'meta/directives/code',              visibility: 'internal' },
+  { path: 'meta/directives/plan',              visibility: 'internal' },
+  { path: 'meta/directives/visual',            visibility: 'internal' },
+  { path: 'meta/directives/learn',             visibility: 'internal' },
+  { path: 'meta/evals',                        visibility: 'internal' },
+  { path: 'meta/evals/prd',                    visibility: 'internal' },
+  { path: 'meta/evals/ui-design',              visibility: 'internal' },
+  { path: 'meta/evals/system-design',          visibility: 'internal' },
+  { path: 'meta/evals/code',                   visibility: 'internal' },
+
+  // sessions (unchanged)
   { path: 'sessions',                          visibility: 'internal' },
   { path: 'sessions/architect',                visibility: 'internal' },
-  { path: 'sessions/architect/debug',            visibility: 'internal' },
-  { path: 'sessions/architect/debug/prompts',    visibility: 'internal' },
-  { path: 'sessions/architect/debug/plans',      visibility: 'internal' },
-  { path: 'sessions/architect/debug/logs',       visibility: 'internal' },
-  { path: 'sessions/architect/debug/tokens',     visibility: 'internal' },
-  { path: 'sessions/architect/debug/figma',      visibility: 'internal' },
-  { path: 'sessions/architect/runtime',          visibility: 'internal' },
-  { path: 'sessions/architect/runtime/design',   visibility: 'internal' },
-  { path: 'sessions/architect/runtime/code',     visibility: 'internal' },
-  { path: 'sessions/planner',                    visibility: 'internal' },
-  { path: 'sessions/planner/debug',              visibility: 'internal' },
-  { path: 'sessions/planner/debug/prompts',      visibility: 'internal' },
-  { path: 'sessions/creator',                    visibility: 'internal' },
-  { path: 'sessions/creator/debug',              visibility: 'internal' },
-  { path: 'sessions/creator/debug/prompts',      visibility: 'internal' },
+  { path: 'sessions/architect/debug',          visibility: 'internal' },
+  { path: 'sessions/architect/debug/prompts',  visibility: 'internal' },
+  { path: 'sessions/architect/debug/plans',    visibility: 'internal' },
+  { path: 'sessions/architect/debug/logs',     visibility: 'internal' },
+  { path: 'sessions/architect/debug/tokens',   visibility: 'internal' },
+  { path: 'sessions/architect/debug/figma',    visibility: 'internal' },
+  { path: 'sessions/architect/runtime',        visibility: 'internal' },
+  { path: 'sessions/architect/runtime/design', visibility: 'internal' },
+  { path: 'sessions/architect/runtime/code',   visibility: 'internal' },
+  { path: 'sessions/planner',                  visibility: 'internal' },
+  { path: 'sessions/planner/debug',            visibility: 'internal' },
+  { path: 'sessions/planner/debug/prompts',    visibility: 'internal' },
+  { path: 'sessions/creator',                  visibility: 'internal' },
+  { path: 'sessions/creator/debug',            visibility: 'internal' },
+  { path: 'sessions/creator/debug/prompts',    visibility: 'internal' },
 ];
 
 // ============================================
@@ -103,16 +119,16 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
 // ============================================
 
 const CANONICAL_FILE_DEFS: ReadonlyArray<CanonicalFileDef> = [
-  { path: 'outputs/design/ui/figma/figma.json', visibility: 'internal' },
+  { path: 'visual/ui/figma/figma.json', visibility: 'internal' },
 ];
 
 /**
  * Canonical path for the figma workfile reference (URL + fileKey + nodeId metadata).
  * This file holds ONLY the reference to the Figma workfile; it never stores
  * any exploration output. design job consumes it to produce ant-ui artifacts
- * at `outputs/design/ui/ant/`, and code job consumes it at runtime via MCP.
+ * at `visual/ui/ant/`, and code job consumes it at runtime via MCP.
  */
-export const FIGMA_CONFIG_PATH = 'outputs/design/ui/figma/figma.json' as const;
+export const FIGMA_CONFIG_PATH = 'visual/ui/figma/figma.json' as const;
 
 // ============================================
 // Derived: full canonical path lists
@@ -126,25 +142,30 @@ export const CANONICAL_FEATURE_FILE_PATHS: ReadonlyArray<string> =
   CANONICAL_FILE_DEFS.map(f => f.path);
 
 // ============================================
-// Derived: UI-visible child names per section
+// Derived: UI-visible top-level dirs (ArtifactsPanel)
 // ============================================
 
-/** Child dir names shown under Inputs in ArtifactsPanel */
-export const UI_VISIBLE_INPUT_DIRS: ReadonlyArray<string> =
+/**
+ * Top-level dirs shown in ArtifactsPanel, keyed by visibility tag.
+ *
+ * 도메인 1차 분류 축으로 재구성된 후, 1단계 dir 자체가 visibility 단위이므로
+ * I/O 분기 없이 단일 export 로 통합한다. ArtifactsPanel 측이 visibility 태그로
+ * 그룹핑하여 표시한다.
+ */
+export const UI_VISIBLE_TOP_LEVEL_DIRS: ReadonlyArray<{ name: string; visibility: Visibility }> =
   CANONICAL_DIR_DEFS
-    .filter(d => d.visibility === 'ui:inputs')
-    .map(d => d.path.split('/')[1]);
+    .filter(d => d.visibility.startsWith('ui:'))
+    .filter(d => !d.path.includes('/'))
+    .map(d => ({ name: d.path, visibility: d.visibility }));
 
-/** Child dir names shown under Outputs in ArtifactsPanel */
-export const UI_VISIBLE_OUTPUT_DIRS: ReadonlyArray<string> =
-  CANONICAL_DIR_DEFS
-    .filter(d => d.visibility === 'ui:outputs')
-    .map(d => d.path.split('/')[1]);
-
-/** Input-level file names shown under Inputs in ArtifactsPanel */
-export const UI_VISIBLE_INPUT_FILES: ReadonlyArray<string> =
+/**
+ * Top-level file names shown in ArtifactsPanel.
+ *
+ * `CANONICAL_FILE_DEFS` 의 모든 `ui:*` visibility 항목을 일반화하여 포함한다.
+ */
+export const UI_VISIBLE_FILES: ReadonlyArray<string> =
   CANONICAL_FILE_DEFS
-    .filter(f => f.visibility === 'ui:inputs')
+    .filter(f => f.visibility.startsWith('ui:'))
     .map(f => f.path.split('/').pop()!);
 
 // ============================================
@@ -162,34 +183,26 @@ export function isCanonicalDir(relativePath: string): boolean {
 // Design subdirectory helpers (Single Source of Truth)
 // ============================================
 
-export type DesignSubdir = 'ui' | 'art' | 'gameArtAnt' | 'system' | 'spec';
+export type DesignSubdir = 'ui' | 'gameArt' | 'system' | 'spec';
 
 export const DESIGN_SUBDIR = {
   UI: 'ui',
-  ART: 'art',
-  GAME_ART_ANT: 'gameArtAnt',
+  GAME_ART: 'gameArt',
   SYSTEM: 'system',
   SPEC: 'spec',
 } as const satisfies Record<string, DesignSubdir>;
 
 export const DESIGN_SUBDIRS: ReadonlyArray<DesignSubdir> = Object.values(DESIGN_SUBDIR);
 
-export const DESIGN_DIR = 'outputs/design' as const;
-
 /**
  * Determine which design subdirectory a file belongs to based on filename.
- *   ui-*.json         → 'gameArtAnt' is reserved — see below for 'art' transition
- *   ui-*.json         → 'ui'         (will be placed under ui/ant/)
- *   game-art-*.json   → 'gameArtAnt' (will be placed under game-art/ant/ — D24-revised v8)
+ *   ui-*.json         → 'ui'      (will be placed under visual/ui/ant/)
+ *   game-art-*.json   → 'gameArt' (will be placed under visual/game-art/ant/ — D24-revised v8)
  *   spec-*.md         → 'spec'
- *   everything else   → 'system'     (be-system-*, fe-system-*, api-contract-*)
- *
- * D24-revised (v8): game-art-*.json now lands under `game-art/ant/` (mirrors
- * the ui/ant canonical source). The `'art'` token stays in the union for
- * historical compatibility but no filename resolves to it anymore.
+ *   everything else   → 'system'  (be-system-*, fe-system-*, api-contract-*)
  */
 export function designSubdirOf(filename: string): DesignSubdir {
-  if (filename.startsWith('game-art-') && filename.endsWith('.json')) return 'gameArtAnt';
+  if (filename.startsWith('game-art-') && filename.endsWith('.json')) return 'gameArt';
   if (filename.startsWith('ui-') && filename.endsWith('.json')) return 'ui';
   if (filename.startsWith('spec-') && filename.endsWith('.md')) return 'spec';
   return 'system';
@@ -197,17 +210,17 @@ export function designSubdirOf(filename: string): DesignSubdir {
 
 /**
  * Build the design output directory path for a given filename.
- * Returns e.g. 'outputs/design/system' or 'outputs/design/ui/ant' (ui-*.json
- * files live under the ant canonical source) or `outputs/design/game-art/ant`
+ * Returns e.g. `architecture/system` or `visual/ui/ant` (ui-*.json files
+ * live under the ant canonical source) or `visual/game-art/ant`
  * (game-art-*.json files live under the ant canonical source — D24-revised v8;
- * mirrors the ui/ant pattern).
+ * mirrors the ui/ant pattern) or `architecture/spec` (spec-*.md).
  */
 export function designDirOf(filename: string): string {
   const sub = designSubdirOf(filename);
-  if (sub === 'ui') return `${DESIGN_DIR}/ui/ant`;
-  if (sub === 'gameArtAnt') return `${DESIGN_DIR}/game-art/ant`;
-  if (sub === 'art') return `${DESIGN_DIR}/game-art/ant`; // BC alias — no current filename resolves here
-  return `${DESIGN_DIR}/${sub}`;
+  if (sub === 'ui') return 'visual/ui/ant';
+  if (sub === 'gameArt') return 'visual/game-art/ant';
+  if (sub === 'spec') return 'architecture/spec';
+  return 'architecture/system';
 }
 
 // ============================================
@@ -232,24 +245,24 @@ export type UiSource = typeof UI_SOURCES[number];
 // ============================================
 
 export const ARTIFACT_PREFIX = {
-  SYSTEM_DESIGN: `${DESIGN_DIR}/system/` as const,
-  SPEC: `${DESIGN_DIR}/spec/` as const,
+  SYSTEM_DESIGN: 'architecture/system/' as const,
+  SPEC: 'architecture/spec/' as const,
   /**
    * Parent UI directory — union of all three UiSource subdirectories below.
    * `isUiArtifactPath()` should not match on this alone; it must match on one
    * of UI_ANT / UI_FIGMA / UI_HANDOFF.
    */
-  UI: `${DESIGN_DIR}/ui/` as const,
-  UI_ANT: `${DESIGN_DIR}/ui/ant/` as const,
-  UI_FIGMA: `${DESIGN_DIR}/ui/figma/` as const,
-  UI_HANDOFF: `${DESIGN_DIR}/ui/handoff/` as const,
+  UI: 'visual/ui/' as const,
+  UI_ANT: 'visual/ui/ant/' as const,
+  UI_FIGMA: 'visual/ui/figma/' as const,
+  UI_HANDOFF: 'visual/ui/handoff/' as const,
   /**
    * Virtual prefix for ui-spec.json sections: `${UI_ANT_SPEC}header` etc.
-   * The on-disk file is `outputs/design/ui/ant/ui-spec.json` (single file); the
-   * pool exposes each parsed section under this synthetic path so task
+   * The on-disk file is `visual/ui/ant/ui-spec.json` (single file); the pool
+   * exposes each parsed section under this synthetic path so task
    * artifactPolicy can reference specific sections.
    */
-  UI_ANT_SPEC: `${DESIGN_DIR}/ui/ant/spec/` as const,
+  UI_ANT_SPEC: 'visual/ui/ant/spec/' as const,
   /**
    * v8 (D24-revised): game-art surface — sub-sourced (mirrors ui/).
    *   - GAME_ART       — parent prefix (union of ant/figma/handoff).
@@ -262,29 +275,28 @@ export const ARTIFACT_PREFIX = {
    * for parent-level operations (filetree, mount), but new game-art
    * artifacts MUST land under `GAME_ART_ANT`.
    */
-  GAME_ART: `${DESIGN_DIR}/game-art/` as const,
-  GAME_ART_ANT: `${DESIGN_DIR}/game-art/ant/` as const,
-  GAME_ART_FIGMA: `${DESIGN_DIR}/game-art/figma/` as const,
-  GAME_ART_HANDOFF: `${DESIGN_DIR}/game-art/handoff/` as const,
+  GAME_ART: 'visual/game-art/' as const,
+  GAME_ART_ANT: 'visual/game-art/ant/' as const,
+  GAME_ART_FIGMA: 'visual/game-art/figma/' as const,
+  GAME_ART_HANDOFF: 'visual/game-art/handoff/' as const,
   /**
    * Virtual prefix for game-art-spec.json category-keyed sections (D25).
    * Categories (effects/characters/projectiles/npcs/objectives/...) are
    * dynamically chosen by the LLM based on the game context — schema does
    * NOT enforce a fixed enum.
    */
-  GAME_ART_SPEC: `${DESIGN_DIR}/game-art/ant/spec/` as const,
-  DESIGN: `${DESIGN_DIR}/` as const,
-  SOURCES: 'inputs/sources' as const,
-  API_CONTRACT: `${DESIGN_DIR}/system/api-contract-` as const,
-  FE_SYSTEM: `${DESIGN_DIR}/system/fe-system-` as const,
-  BE_SYSTEM: `${DESIGN_DIR}/system/be-system-` as const,
-  ASSETS_SERVICE: 'inputs/assets/service/' as const,
-  ASSETS_GAME: 'inputs/assets/game/' as const,
+  GAME_ART_SPEC: 'visual/game-art/ant/spec/' as const,
+  SOURCES: 'plan' as const,
+  API_CONTRACT: 'architecture/system/api-contract-' as const,
+  FE_SYSTEM: 'architecture/system/fe-system-' as const,
+  BE_SYSTEM: 'architecture/system/be-system-' as const,
+  ASSETS_SERVICE: 'assets/service/' as const,
+  ASSETS_GAME: 'assets/game/' as const,
 } as const;
 
 /**
  * Classify a path into its `UiSource`. Returns null if the path is not under
- * the UI tree. Paths under `outputs/design/ui/ant/spec/...` map to 'ant' too
+ * the UI tree. Paths under `visual/ui/ant/spec/...` map to 'ant' too
  * (the UI_ANT_SPEC virtual prefix is a subset of UI_ANT).
  */
 export function uiSourceOfPath(path: string): UiSource | null {
@@ -326,21 +338,17 @@ export function gameArtSourceOfPath(path: string): UiSource | null {
 /**
  * Whether any path in the list is a game-art design document (D24-revised v8).
  * Matches any of the three sub-source prefixes (`ant/` is active today;
- * `figma/` / `handoff/` are Phase 5+ hooks). The flat `GAME_ART` prefix is
- * still accepted for backward compatibility (workspaces created before the
- * sub-source migration) — `migrateGameArtToAntSubdir` lifts those into
- * `ant/` on next workspace boot.
+ * `figma/` / `handoff/` are Phase 5+ hooks).
+ *
+ * 단방향 원칙: 비-canonical path 에 대한 BC 분기는 두지 않는다. 디스크
+ * 정합성은 워크스페이스 부트 가드가 책임진다.
  */
 export function pathsContainGameArtDoc(paths: readonly string[] | undefined): boolean {
   if (!paths?.length) return false;
   return paths.some(p =>
     p.startsWith(ARTIFACT_PREFIX.GAME_ART_ANT) ||
     p.startsWith(ARTIFACT_PREFIX.GAME_ART_FIGMA) ||
-    p.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF) ||
-    // BC: legacy flat paths (e.g. `outputs/design/game-art/game-art-tokens.json`)
-    // — the migration helper lifts them into ant/ but the predicate must
-    // tolerate them in transit.
-    /^outputs\/design\/game-art\/(?!ant\/|figma\/|handoff\/)[^/]+\.json$/.test(p)
+    p.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF)
   );
 }
 

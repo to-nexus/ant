@@ -30,7 +30,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         path: {
           type: 'string',
-          description: 'File path relative to feature root. Code files use codebase/ prefix (e.g., codebase/src/main.ts). Design artifacts use outputs/design/ prefix with subdirectories: system/, ui/, spec/.',
+          description: 'File path relative to feature root. Code files use codebase/ prefix (e.g., codebase/src/main.ts). System/spec design docs use architecture/ (system/, spec/); UI/game-art docs use visual/ (ui/, game-art/).',
         },
         startLine: {
           type: 'number',
@@ -76,7 +76,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         directory: {
           type: 'string',
-          description: 'Directory path relative to feature root (optional, defaults to "."). Code dirs use codebase/ prefix (e.g., codebase/src). Design artifacts are under outputs/design/ with subdirectories: system/, ui/, spec/.',
+          description: 'Directory path relative to feature root (optional, defaults to "."). Code dirs use codebase/ prefix (e.g., codebase/src). System/spec design docs are under architecture/ (system/, spec/); UI/game-art docs under visual/ (ui/, game-art/).',
         },
         pattern: {
           type: 'string',
@@ -192,7 +192,7 @@ export const ARCHITECT_TOOLS = {
   },
   list_assets: {
     name: 'list_assets',
-    description: 'List all runtime asset files in inputs/assets/. Use this to document asset mappings for ui-assets.json. Optional subdirectory filter.',
+    description: 'List all runtime asset files under assets/. Use this to document asset mappings for ui-assets.json. Optional subdirectory filter.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -280,7 +280,7 @@ export const ARCHITECT_TOOLS = {
 
   download_asset: {
     name: 'download_asset',
-    description: 'Download a file from a URL and save it to inputs/assets/. Use this to download Figma-exported asset images (SVG, PNG, etc.) returned by get_design_context. The file is saved under inputs/assets/{category}/{filename}. If category is omitted, it is inferred from the file extension (svg→icons, png/jpg/webp→images).',
+    description: 'Download a file from a URL and save it to assets/. Use this to download Figma-exported asset images (SVG, PNG, etc.) returned by get_design_context. The file is saved under assets/{service|game}/{category}/{filename}. If category is omitted, it is inferred from the file extension (svg→icons, png/jpg/webp→images).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -294,7 +294,7 @@ export const ARCHITECT_TOOLS = {
         },
         category: {
           type: 'string',
-          description: 'Optional subdirectory under inputs/assets/ (e.g., "icons", "images"). If omitted, inferred from file extension.',
+          description: 'Optional subdirectory under assets/{service|game}/ (e.g., "icons", "images"). If omitted, inferred from file extension.',
         },
       },
       required: ['url', 'filename'],

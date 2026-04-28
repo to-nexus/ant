@@ -113,7 +113,7 @@ async function loadRequirements(
   fileSystem: import('../../../../../../core/ports').FileSystemPort  // ✅ Add fileSystem parameter
 ): Promise<RequirementChecklistItem[] | undefined> {
   try {
-    const testsPath = path.join(featurePath, 'inputs/directives/eval/tests.json');
+    const testsPath = path.join(featurePath, 'meta/directives/eval/tests.json');
 
     const exists = await fileSystem.fileExists(testsPath);
     if (!exists) {
@@ -150,7 +150,7 @@ async function saveReport(
   fileSystem: import('../../../../../../core/ports').FileSystemPort,
   fileTreeUpdate?: import('../../../../../../core/ports').FileTreeUpdatePort
 ): Promise<string> {
-  const outputDir = path.join(featurePath, 'outputs/eval');
+  const outputDir = path.join(featurePath, 'meta/evals/code');
   
   // Create directory if needed
   await fileSystem.createDirectory(outputDir);
@@ -264,7 +264,7 @@ async function checkQualityThresholds(
   fileSystem: import('../../../../../../core/ports').FileSystemPort  // ✅ Add fileSystem parameter
 ): Promise<void> {
   try {
-    const thresholdsPath = path.join(featurePath, 'inputs/directives/eval/quality-thresholds.json');
+    const thresholdsPath = path.join(featurePath, 'meta/directives/eval/quality-thresholds.json');
 
     const exists = await fileSystem.fileExists(thresholdsPath);
     if (!exists) {

@@ -119,7 +119,7 @@ export interface ConfigSlots {
 /**
  * Subgroup descriptor used by `type: 'ui-source'` slots.
  * The three UiSource ids (ant / figma / handoff) map to concrete
- * subdirectories under `outputs/design/ui/`. The slot is hard-exclusive:
+ * subdirectories under `visual/ui/`. The slot is hard-exclusive:
  * exactly one subgroup may be selected at a time.
  */
 export interface UiSourceSubgroup {
@@ -235,19 +235,19 @@ function ctxDir(path: string, label: { en: string; ko: string }, opts?: CtxOpts)
 const UI_SOURCE_SUBGROUPS: UiSourceSubgroup[] = [
   {
     id: 'ant',
-    dir: 'outputs/design/ui/ant',
+    dir: 'visual/ui/ant',
     label: { en: 'Ant Canonical', ko: 'Ant 설계 문서' },
     humanLabel: { en: 'Ant Canonical UI Documents (ui-tokens / ui-assets / ui-spec)', ko: 'Ant 설계 문서 (ui-tokens / ui-assets / ui-spec)' },
   },
   {
     id: 'figma',
-    dir: 'outputs/design/ui/figma',
+    dir: 'visual/ui/figma',
     label: { en: 'Figma', ko: 'Figma' },
     humanLabel: { en: 'Figma Workfile Reference (figma.json, interpreted via MCP)', ko: 'Figma 작업 파일 참조 (figma.json, MCP 로 해석)' },
   },
   {
     id: 'handoff',
-    dir: 'outputs/design/ui/handoff',
+    dir: 'visual/ui/handoff',
     label: { en: 'Handoff', ko: '핸드오프' },
     humanLabel: { en: 'Handoff (CLAUDE DESIGN)', ko: '핸드오프 (CLAUDE DESIGN)' },
   },
@@ -260,7 +260,7 @@ const UI_SOURCE_SUBGROUPS: UiSourceSubgroup[] = [
  */
 function uiSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
   return {
-    path: 'outputs/design/ui',
+    path: 'visual/ui',
     label: L.uiDesign,
     type: 'ui-source',
     required: true,
@@ -277,7 +277,7 @@ function uiSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; 
  */
 function uiSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
   return {
-    path: 'outputs/design/ui',
+    path: 'visual/ui',
     label: L.uiDesign,
     type: 'ui-source',
     required: false,
@@ -388,32 +388,32 @@ const HL = {
 // Matrix Data
 // ============================================
 
-const SYS_DIR = 'outputs/design/system';
+const SYS_DIR = 'architecture/system';
 /**
  * Canonical ant-ui output directory.
  * UI design jobs (gen-ui-figma / gen-ui-desc) emit their tokens/assets/spec
  * JSON bundle here — this is the `UiSource.ant` slot. Figma and handoff UI
- * sources live under `outputs/design/ui/{figma,handoff}/` and are selected
- * via `type: 'ui-source'` slots instead.
+ * sources live under `visual/ui/{figma,handoff}/` and are selected via
+ * `type: 'ui-source'` slots instead.
  */
-const UI_DIR = 'outputs/design/ui/ant';
+const UI_DIR = 'visual/ui/ant';
 /**
  * Canonical game-art output directory (D24-revised v8 — sub-sourced).
  * `gen-game-art-*` / `rev-game-art` design intents emit their tokens/assets/spec
- * JSON bundle under the `ant/` canonical sub-source — mirrors `outputs/design/ui/ant/`.
+ * JSON bundle under the `ant/` canonical sub-source — mirrors `visual/ui/ant/`.
  * `figma/` and `handoff/` sub-sources are Phase 5+ hooks (parser-only today).
  */
-const GAME_ART_DIR = 'outputs/design/game-art/ant';
-const SPEC_DIR = 'outputs/design/spec';
-const SOURCES_DIR = 'inputs/sources';
+const GAME_ART_DIR = 'visual/game-art/ant';
+const SPEC_DIR = 'architecture/spec';
+const SOURCES_DIR = 'plan';
 /**
  * Parent assets directory (Phase 2 — D19-revised). Workspace.domain decides
- * the active sub-pool (`inputs/assets/service/` or `inputs/assets/game/`) at
- * the asset handler layer; the matrix slot here exposes the parent so the FE
+ * the active sub-pool (`assets/service/` or `assets/game/`) at the asset
+ * handler layer; the matrix slot here exposes the parent so the FE
  * Artifacts panel can show whichever pool the workspace owns.
  */
-const ASSETS_DIR = 'inputs/assets';
-const ASSETS_GEN_DIR = 'inputs/assets/gen';
+const ASSETS_DIR = 'assets';
+const ASSETS_GEN_DIR = 'assets/gen';
 
 const FE_OUTPUTS: OutputSpec[] = [output('fe-system-', '.md', L.feSystem)];
 const BE_OUTPUTS: OutputSpec[] = [output('be-system-', '.md', L.beSystem), output('api-contract-', '.md', L.apiContract)];
@@ -482,11 +482,11 @@ export function getCanonicalPlanFilename(domain: Domain | undefined): string {
 /**
  * Workspace-relative path for the canonical plan-job output, by domain.
  *
- * Always returns `inputs/sources/<filename>` where `<filename>` is the
+ * Always returns `plan/<filename>` where `<filename>` is the
  * domain-canonical name from `getCanonicalPlanFilename`.
  */
 export function getCanonicalPlanPath(domain: Domain | undefined): string {
-  return `inputs/sources/${getCanonicalPlanFilename(domain)}`;
+  return `plan/${getCanonicalPlanFilename(domain)}`;
 }
 
 /**
@@ -605,7 +605,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 
   // ── UI Design: Gen ─────────────────────────
   'gen-ui-figma': {
-    refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
+    refs: [refFile('visual/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
     // figma.json (locked ref) is the visual authority — the figma source
@@ -638,7 +638,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   // the entire group when workspace.domain === 'service' via the matrix
   // gate TIER_DOMAIN_MATRIX.gameArtTier === ['game']) ────────────────
   'gen-game-art-figma': {
-    refs: [refFile('outputs/design/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
+    refs: [refFile('visual/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), ctxDir(ASSETS_DIR, L.assets, { humanLabel: HL.assets })],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
     // figma.json (locked ref) is the game-art authority — same reasoning
@@ -886,9 +886,9 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
  * dusk-mounding-pilot regression — the explicit branch of `detect/index.ts`
  * previously trusted `metadata.target` verbatim and produced an empty
  * RAC.target for chat-driven `gen-plan`, which then erased the system
- * prompt's "Target Path" section and let the LLM hallucinate
- * `outputs/documents/prd.md`. Routing the explicit branch through this
- * helper restores parity with the infer branch and the FE.
+ * prompt's "Target Path" section and let the LLM hallucinate a non-canonical
+ * target. Routing the explicit branch through this helper restores parity
+ * with the infer branch and the FE.
  */
 export function getDefaultTargetPaths(
   intent: IntentId,

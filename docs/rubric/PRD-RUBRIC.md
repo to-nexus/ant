@@ -1,6 +1,6 @@
 # PRD Evaluation Rubric
 
-> Rubric for evaluating the quality of externally authored PRDs (`inputs/sources/prd.md`) in the Ant CLI pipeline.
+> Rubric for evaluating the quality of externally authored PRDs (`plan/prd.md`) in the Ant CLI pipeline.
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@
 
 **PRD (Product Requirements Document)** is the **Source of Truth** for all design and implementation decisions in Ant CLI.
 
-**Location**: `inputs/sources/prd.md`
+**Location**: `plan/prd.md`
 
 **Core Principles**:
 - **"PRD = ABSOLUTE TRUTH"** — final authority for all design and implementation decisions.
@@ -57,29 +57,32 @@ The Ant pipeline auto-generates System Design from PRD. This creates a clear res
 
 ### Scope
 
-- **Input**: PRD document (`inputs/sources/prd.md`)
+- **Input**: PRD document (`plan/prd.md`)
 - **Output impact**:
   - Design Job → `ui-spec.json`, `ui-tokens.json`, `ui-assets.json`, system design documents
   - Code Job → source code
 - **Evaluation target**: PRD content sufficiency for correct downstream auto-generation
-- **Evaluation output**: `outputs/evals/prd/evalprd-{timestamp}.md`
+- **Evaluation output**: `meta/evals/prd/evalprd-{timestamp}.md`
 
 ### Workspace Structure
 
 ```
 ant-workspaces/{org}/{group}/{project}/
 └── features/{feature}/
-    ├── inputs/
-    │   └── sources/
-    │       └── prd.md                 # PRD document ★
-    ├── outputs/
-    │   ├── design/                    # Auto-generated from PRD
+    ├── plan/
+    │   └── prd.md                     # PRD document ★
+    ├── architecture/
+    │   ├── system/                    # Auto-generated from PRD
     │   │   ├── fe-system-*.md
     │   │   ├── be-system-*.md
-    │   │   ├── api-contract-*.md
-    │   │   ├── ui-spec.json
-    │   │   ├── ui-tokens.json
-    │   │   └── ui-assets.json
+    │   │   └── api-contract-*.md
+    │   └── spec/
+    ├── visual/
+    │   └── ui/ant/                    # Auto-generated from PRD
+    │       ├── ui-spec.json
+    │       ├── ui-tokens.json
+    │       └── ui-assets.json
+    ├── meta/
     │   └── evals/
     │       └── prd/
     │           └── evalprd-{timestamp}.md
@@ -95,13 +98,13 @@ ant-workspaces/{org}/{group}/{project}/
 ```
 External Author
     ↓ writes
-inputs/sources/prd.md (PRD)
+plan/prd.md (PRD)
     ↓ read by ArtifactService
 Design Job
     ├─ detect: determines domain/environment from PRD alone
     ├─ decompose: breaks down into system design tasks based on PRD
     └─ docGen: generates system design treating PRD as "ABSOLUTE TRUTH"
-        └─► outputs/design/ (system design, UI design documents)
+        └─► architecture/system/, architecture/spec/, visual/ui/ (system design, UI design documents)
             ↓
 Code Job (consumes PRD + system design simultaneously)
     ├─ detect: uses PRD + directive only (no system design)
@@ -352,11 +355,11 @@ This category covers TWO types of unclarity:
 ### 4.6 Reference Files Check
 
 **Visual sources:**
-- [ ] If Figma is used, `outputs/design/ui/figma/figma.json` is configured with the file URL?
-- [ ] If a free-form handoff bundle exists (`outputs/design/ui/handoff/`), each file's purpose is explained?
+- [ ] If Figma is used, `visual/ui/figma/figma.json` is configured with the file URL?
+- [ ] If a free-form handoff bundle exists (`visual/ui/handoff/`), each file's purpose is explained?
 
 **Assets:**
-- [ ] Asset source paths specified? (`inputs/assets/`)
+- [ ] Asset source paths specified? (`assets/`)
 - [ ] Asset destination paths specified? (e.g., `public/images/`)
 - [ ] Asset purpose described? (logo, icon, background, etc.)
 
@@ -597,7 +600,7 @@ This category covers TWO types of unclarity:
 
 ```
 1. Read PRD
-   └─ inputs/sources/prd.md
+   └─ plan/prd.md
 
 2. Required sections check
    └─ Checklist §4.1
@@ -844,9 +847,9 @@ After writing, verify:
 - [Risk factors]
 
 ## 9) References
-- Figma workfile: `outputs/design/ui/figma/figma.json` (URL only)
-- Handoff bundle: `outputs/design/ui/handoff/[path]` (free-form)
-- Assets: `inputs/assets/[path]`
+- Figma workfile: `visual/ui/figma/figma.json` (URL only)
+- Handoff bundle: `visual/ui/handoff/[path]` (free-form)
+- Assets: `assets/[path]`
 ```
 
 ### 10.2 Related Documents

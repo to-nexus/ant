@@ -48,29 +48,29 @@ describe('Game-Art Asset Validation (D20 + I6)', () => {
     expect(issues).toEqual([]);
   });
 
-  it('kind:external src must exist under inputs/assets/game/', () => {
+  it('kind:external src must exist under assets/game/', () => {
     const present = new Set([
-      'inputs/assets/game/entities/hero.svg',
+      'assets/game/entities/hero.svg',
     ]);
     const srcExists = (p: string) => present.has(p);
 
     const ok: GameArtAssetEntry = {
       id: 'hero',
       kind: 'external',
-      src: 'inputs/assets/game/entities/hero.svg',
+      src: 'assets/game/entities/hero.svg',
     };
     expect(validateGameArtAssetEntry(ok, { srcExists })).toEqual([]);
 
     const missing: GameArtAssetEntry = {
       id: 'enemy',
       kind: 'external',
-      src: 'inputs/assets/game/entities/enemy.svg',
+      src: 'assets/game/entities/enemy.svg',
     };
     const issues = validateGameArtAssetEntry(missing, { srcExists });
     expect(issues).toHaveLength(1);
     expect(issues[0].code).toBe('external-src-missing');
     expect(issues[0].id).toBe('enemy');
-    expect(issues[0].src).toBe('inputs/assets/game/entities/enemy.svg');
+    expect(issues[0].src).toBe('assets/game/entities/enemy.svg');
   });
 
   it('kind:external without src yields external-missing-src issue', () => {
@@ -85,23 +85,23 @@ describe('Game-Art Asset Validation (D20 + I6)', () => {
     const stray: GameArtAssetEntry = {
       id: 'stray',
       kind: 'external',
-      src: 'outputs/design/leftovers/stray.svg',
+      src: 'architecture/leftovers/stray.svg',
     };
     const issues = validateGameArtAssetEntry(stray);
     expect(issues).toHaveLength(1);
     expect(issues[0].code).toBe('external-outside-game-pool');
-    expect(issues[0].src).toBe('outputs/design/leftovers/stray.svg');
+    expect(issues[0].src).toBe('architecture/leftovers/stray.svg');
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // I6 — cross-surface boundary
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  it('kind:external src starting with inputs/assets/service/ throws (I6)', () => {
+  it('kind:external src starting with assets/service/ throws (I6)', () => {
     const leak: GameArtAssetEntry = {
       id: 'logo',
       kind: 'external',
-      src: 'inputs/assets/service/icons/logo.svg',
+      src: 'assets/service/icons/logo.svg',
     };
     expect(() => validateGameArtAssetEntry(leak)).toThrowError(/\[I6\]/);
     expect(() => validateGameArtAssetEntry(leak)).toThrowError(/logo/);
@@ -110,7 +110,7 @@ describe('Game-Art Asset Validation (D20 + I6)', () => {
   it('I6 throw bubbles out of validateGameArtAssetCatalog as well', () => {
     const entries: GameArtAssetEntry[] = [
       { id: 'spark', kind: 'inline' },
-      { id: 'logo', kind: 'external', src: 'inputs/assets/service/icons/logo.svg' },
+      { id: 'logo', kind: 'external', src: 'assets/service/icons/logo.svg' },
     ];
     expect(() => validateGameArtAssetCatalog(entries)).toThrowError(/\[I6\]/);
   });
@@ -121,14 +121,14 @@ describe('Game-Art Asset Validation (D20 + I6)', () => {
 
   it('a clean mixed catalog (inline + valid external) produces zero issues', () => {
     const present = new Set([
-      'inputs/assets/game/entities/hero.svg',
-      'inputs/assets/game/sfx/click.mp3',
+      'assets/game/entities/hero.svg',
+      'assets/game/sfx/click.mp3',
     ]);
     const entries: GameArtAssetEntry[] = [
       { id: 'spark', kind: 'inline', format: 'svg' },
       { id: 'click', kind: 'inline', format: 'oscillator' },
-      { id: 'hero', kind: 'external', src: 'inputs/assets/game/entities/hero.svg' },
-      { id: 'click-sfx', kind: 'external', src: 'inputs/assets/game/sfx/click.mp3' },
+      { id: 'hero', kind: 'external', src: 'assets/game/entities/hero.svg' },
+      { id: 'click-sfx', kind: 'external', src: 'assets/game/sfx/click.mp3' },
     ];
     const issues = validateGameArtAssetCatalog(entries, {
       srcExists: p => present.has(p),
@@ -139,7 +139,7 @@ describe('Game-Art Asset Validation (D20 + I6)', () => {
   it('skipping the srcExists predicate disables only the existence leg (D20 hard cases still fire)', () => {
     const entries: GameArtAssetEntry[] = [
       { id: 'orphan', kind: 'external' },
-      { id: 'hero', kind: 'external', src: 'inputs/assets/game/entities/hero.svg' }, // unchecked existence
+      { id: 'hero', kind: 'external', src: 'assets/game/entities/hero.svg' }, // unchecked existence
     ];
     const issues = validateGameArtAssetCatalog(entries);
     expect(issues).toHaveLength(1);

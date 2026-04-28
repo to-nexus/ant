@@ -220,7 +220,7 @@ export interface ToolExecutionContext {
   existingDesignDocs?: Record<string, string>;
   /**
    * Pre-resolved asset pool root for the active workspace, e.g.
-   * `inputs/assets/service` or `inputs/assets/game` (D22 — Asset Surface
+   * `assets/service` or `assets/game` (D22 — Asset Surface
    * Boundary). Computed by design `buildContext` via `pickAssetsRoot`
    * from `state.workspaceConfig.domain` / `state.resolvedAction.domain` /
    * `state.resolvedAction.intentGroup`. `download_asset` / `list_assets`

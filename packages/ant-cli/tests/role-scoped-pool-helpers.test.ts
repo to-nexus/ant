@@ -14,12 +14,12 @@ import { describe, it, expect } from 'vitest';
 import type { ResolvedArtifact } from '@ant/shared';
 import { ArtifactPoolView } from '../src/core/artifact/ArtifactPipeline';
 
-const UI_TOKENS = 'outputs/design/ui/ant/ui-tokens.json';
-const UI_SPEC = 'outputs/design/ui/ant/ui-spec.json';
-const FE_SYSTEM = 'outputs/design/system/fe-system-main.md';
-const BE_SYSTEM = 'outputs/design/system/be-system-main.md';
-const SPEC_LOGIN = 'outputs/design/spec/spec-login.md';
-const PRD = 'inputs/sources/prd.md';
+const UI_TOKENS = 'visual/ui/ant/ui-tokens.json';
+const UI_SPEC = 'visual/ui/ant/ui-spec.json';
+const FE_SYSTEM = 'architecture/system/fe-system-main.md';
+const BE_SYSTEM = 'architecture/system/be-system-main.md';
+const SPEC_LOGIN = 'architecture/spec/spec-login.md';
+const PRD = 'plan/prd.md';
 
 describe('ArtifactPoolView — role-scoped presence checks', () => {
   it('hasUiRef is true only when a UI artifact has role=ref', () => {

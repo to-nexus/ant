@@ -83,7 +83,7 @@ If the directive overlaps multiple sections, **split** rather than merge — dup
 
 **Service-domain external asset kinds and citation locations**:
 
-- Allowed kinds: `figma` (URL or `<node-id>`), `mockup` (path under `inputs/assets/...`), `reference` (URL or path).
+- Allowed kinds: `figma` (URL or `<node-id>`), `mockup` (path under `assets/...`), `reference` (URL or path).
 - Citation locations: §5 IA (page-level Figma frames), §6 Screen Composition (per-screen Figma node-id), §7 Content Policy (rare — only when an external mockup pins down a specific empty-state or sort UI).
 - Example: `SC-ProductDetail — figma: 1234:5678` on a separate line inside the §6 entry for `SC-ProductDetail`.
 

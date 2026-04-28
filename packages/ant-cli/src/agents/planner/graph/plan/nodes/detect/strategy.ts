@@ -77,10 +77,10 @@ async function determinePlanIntent(
 
 function resolveTargets(state: PlanGraphState, domain: Domain | undefined): string[] {
   if (state.actionMetadata?.target?.length) return state.actionMetadata.target;
-  const sourceFileNames = state.workspaceState?.sourceFileNames;
-  const existingPlanFile = pickExistingPlanFilename(sourceFileNames, domain);
-  if (existingPlanFile) return [`inputs/sources/${existingPlanFile}`];
-  if (sourceFileNames?.length) return sourceFileNames.map(f => `inputs/sources/${f}`);
+  const planFileNames = state.workspaceState?.planFileNames;
+  const existingPlanFile = pickExistingPlanFilename(planFileNames, domain);
+  if (existingPlanFile) return [`plan/${existingPlanFile}`];
+  if (planFileNames?.length) return planFileNames.map((f: string) => `plan/${f}`);
   return [];
 }
 

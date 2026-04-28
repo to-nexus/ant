@@ -3,7 +3,7 @@
  *
  * Single entry point for detecting the figma workfile reference + MCP
  * availability from a feature workspace. The workfile reference is read
- * from the canonical `FIGMA_CONFIG_PATH` (`outputs/design/ui/figma/figma.json`)
+ * from the canonical `FIGMA_CONFIG_PATH` (`visual/ui/figma/figma.json`)
  * — every caller shares this same SSOT path, and `migrateFigmaConfig` runs
  * unconditionally so resume / loadArtifacts branches cannot drift on schema.
  *
@@ -40,7 +40,7 @@ export interface DetectFigmaSourceDeps {
 
 /**
  * Read and interpret the figma workfile reference at the canonical location
- * (`outputs/design/ui/figma/figma.json`). All branches are tolerant —
+ * (`visual/ui/figma/figma.json`). All branches are tolerant —
  * missing file / malformed JSON / offline MCP / missing fileKey all return
  * `{ available: false }` rather than throwing; figma is always optional.
  */

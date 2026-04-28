@@ -64,7 +64,7 @@ export interface ExtractPlanDiffInput {
   doc: 'prd.md' | 'gdd.md';
   /** LLM raw response from the rev-plan turn (may contain the `<updated-sections>` tag). */
   llmResponse?: string;
-  /** Git unified-diff string for the plan file (e.g. `git diff <ref> -- inputs/sources/prd.md`). */
+  /** Git unified-diff string for the plan file (e.g. `git diff <ref> -- plan/prd.md`). */
   gitDiff?: string;
   /** User-supplied directive that drove the rev-plan turn. */
   directive?: string;

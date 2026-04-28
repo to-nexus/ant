@@ -153,7 +153,7 @@ async function runArchitect(jobType: 'design' | 'code' | 'learn', inputPath: str
       console.log(`📂 [Command] Using ANT_FEATURE_PATH: ${featureDir}`);
     } else if (resolvedFile) {
       // CLI standalone mode: calculate from file path
-      // resolvedFile is like: workspace/test-app/skeleton/inputs/directives/code/directive.md
+      // resolvedFile is like: workspace/test-app/skeleton/meta/directives/code/directive.md
       // We want: workspace/test-app/skeleton
       featureDir = path.dirname(path.dirname(path.dirname(path.dirname(resolvedFile))));
     } else {

@@ -172,16 +172,16 @@ function renderTargetSection(rac: ResolvedActionContext, isKorean: boolean): str
 function renderDesignUiOutputSection(rac: ResolvedActionContext, isKorean: boolean): string {
   if (rac.intentGroup === 'design-ui') {
     let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
-    out += `   • \`outputs/design/ui/ant/ui-tokens.json\`\n`;
-    out += `   • \`outputs/design/ui/ant/ui-assets.json\`\n`;
-    out += `   • \`outputs/design/ui/ant/ui-spec.json\`\n\n`;
+    out += `   • \`visual/ui/ant/ui-tokens.json\`\n`;
+    out += `   • \`visual/ui/ant/ui-assets.json\`\n`;
+    out += `   • \`visual/ui/ant/ui-spec.json\`\n\n`;
     return out;
   }
   if (rac.intentGroup === 'design-game-art') {
     let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
-    out += `   • \`outputs/design/game-art/ant/game-art-tokens.json\`\n`;
-    out += `   • \`outputs/design/game-art/ant/game-art-assets.json\`\n`;
-    out += `   • \`outputs/design/game-art/ant/game-art-spec.json\`\n\n`;
+    out += `   • \`visual/game-art/ant/game-art-tokens.json\`\n`;
+    out += `   • \`visual/game-art/ant/game-art-assets.json\`\n`;
+    out += `   • \`visual/game-art/ant/game-art-spec.json\`\n\n`;
     return out;
   }
   return '';

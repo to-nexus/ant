@@ -86,11 +86,11 @@
 
 | Directory | Contents |
 |-----------|----------|
-| `inputs/sources/` | PRD documents |
-| `inputs/directives/` | User directives (design/code) |
-| `inputs/assets/` | Icons, images, logos |
-| `outputs/design/{system,ui,spec}/` | Generated design documents (system MD, UI JSON, spec MD) |
-| `outputs/evals/` | Evaluation reports (prd/, ui-design/, system-design/, code/) |
+| `plan/` | PRD documents |
+| `meta/directives/` | User directives (design/code) |
+| `assets/` | Icons, images, logos |
+| `architecture/system/`, `architecture/spec/`, `visual/ui/` | Generated design documents (system MD, spec MD, UI JSON) |
+| `meta/evals/` | Evaluation reports (prd/, ui-design/, system-design/, code/) |
 
 ### Information Sources
 
@@ -103,9 +103,9 @@
 | Evaluation rubrics | `rubric/` (source: docs) |
 | Architecture docs | `architecture/` (source: docs) |
 | Project guides | `guides/` (source: docs) |
-| User's PRD | `inputs/sources/prd.md` (workspace) |
-| User's design docs | `outputs/design/{system,ui,spec}/` (workspace) |
-| User's eval reports | `outputs/evals/{type}/` (workspace) |
+| User's PRD | `plan/prd.md` (workspace) |
+| User's design docs | `architecture/system/`, `architecture/spec/`, `visual/ui/` (workspace) |
+| User's eval reports | `meta/evals/{type}/` (workspace) |
 
 ---
 
@@ -184,9 +184,9 @@ No elaboration. Move on.
 
 | Evaluation Target | Rubric Path (source: docs) | Workspace Target |
 |-------------------|---------------------------|-----------------|
-| PRD | `rubric/PRD-RUBRIC.md` | `inputs/sources/prd.md` |
-| System Design | `rubric/SYSTEM-DESIGN-RUBRIC.md` | `outputs/design/system/api-contract-*.md`, `outputs/design/system/fe-system-*.md`, `outputs/design/system/be-system-*.md` |
-| UI Design | `rubric/UI-DESIGN_RUBRIC.md` | `outputs/design/ui/ant/ui-spec.json`, `outputs/design/ui/ant/ui-tokens.json`, `outputs/design/ui/ant/ui-assets.json` |
+| PRD | `rubric/PRD-RUBRIC.md` | `plan/prd.md` |
+| System Design | `rubric/SYSTEM-DESIGN-RUBRIC.md` | `architecture/system/api-contract-*.md`, `architecture/system/fe-system-*.md`, `architecture/system/be-system-*.md` |
+| UI Design | `rubric/UI-DESIGN_RUBRIC.md` | `visual/ui/ant/ui-spec.json`, `visual/ui/ant/ui-tokens.json`, `visual/ui/ant/ui-assets.json` |
 | Code | `rubric/CODE-RUBRIC.md` | generated codebase |
 
 ### Scope Resolution

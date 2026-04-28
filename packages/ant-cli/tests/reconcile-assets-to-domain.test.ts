@@ -67,11 +67,11 @@ describe('reconcileAssetsToDomain (Phase 2 — D19/D22)', () => {
       JSON.stringify({ projectName: 'demo-project', domain: 'game' }),
     );
     await writeFile(
-      path.join(featurePath, 'inputs/assets/icons/hero.svg'),
+      path.join(featurePath, 'assets/icons/hero.svg'),
       '<svg/>',
     );
     await writeFile(
-      path.join(featurePath, 'inputs/assets/images/bg.png'),
+      path.join(featurePath, 'assets/images/bg.png'),
       'fake-png',
     );
 
@@ -83,30 +83,30 @@ describe('reconcileAssetsToDomain (Phase 2 — D19/D22)', () => {
     expect(result!.stats.failed).toBe(0);
 
     expect(
-      await pathExists(path.join(featurePath, 'inputs/assets/game/icons/hero.svg')),
+      await pathExists(path.join(featurePath, 'assets/game/icons/hero.svg')),
     ).toBe(true);
     expect(
-      await pathExists(path.join(featurePath, 'inputs/assets/game/images/bg.png')),
+      await pathExists(path.join(featurePath, 'assets/game/images/bg.png')),
     ).toBe(true);
     expect(
-      await pathExists(path.join(featurePath, 'inputs/assets/icons/hero.svg')),
+      await pathExists(path.join(featurePath, 'assets/icons/hero.svg')),
     ).toBe(false);
   });
 
-  it('routes service workspaces to inputs/assets/service/', async () => {
+  it('routes service workspaces to assets/service/', async () => {
     await writeFile(
       path.join(projectPath, 'config.json'),
       JSON.stringify({ projectName: 'demo-project', domain: 'service' }),
     );
     await writeFile(
-      path.join(featurePath, 'inputs/assets/icons/logo.svg'),
+      path.join(featurePath, 'assets/icons/logo.svg'),
       '<svg/>',
     );
 
     const result = await reconcileAssetsToDomain(featurePath);
     expect(result!.domain).toBe('service');
     expect(
-      await pathExists(path.join(featurePath, 'inputs/assets/service/icons/logo.svg')),
+      await pathExists(path.join(featurePath, 'assets/service/icons/logo.svg')),
     ).toBe(true);
   });
 
@@ -116,28 +116,28 @@ describe('reconcileAssetsToDomain (Phase 2 — D19/D22)', () => {
       JSON.stringify({ projectName: 'demo-project' }), // no domain
     );
     await writeFile(
-      path.join(featurePath, 'inputs/assets/icons/legacy.svg'),
+      path.join(featurePath, 'assets/icons/legacy.svg'),
       '<svg/>',
     );
 
     const result = await reconcileAssetsToDomain(featurePath);
     expect(result!.domain).toBe('service');
     expect(
-      await pathExists(path.join(featurePath, 'inputs/assets/service/icons/legacy.svg')),
+      await pathExists(path.join(featurePath, 'assets/service/icons/legacy.svg')),
     ).toBe(true);
   });
 
   it('returns null when no config.json is reachable in the parent chain', async () => {
     // No config.json anywhere — workspace boot should NOT block.
     await writeFile(
-      path.join(featurePath, 'inputs/assets/icons/lonely.svg'),
+      path.join(featurePath, 'assets/icons/lonely.svg'),
       '<svg/>',
     );
     const result = await reconcileAssetsToDomain(featurePath);
     expect(result).toBeNull();
     // Legacy file is left untouched (no migration without a known domain).
     expect(
-      await pathExists(path.join(featurePath, 'inputs/assets/icons/lonely.svg')),
+      await pathExists(path.join(featurePath, 'assets/icons/lonely.svg')),
     ).toBe(true);
   });
 
@@ -147,7 +147,7 @@ describe('reconcileAssetsToDomain (Phase 2 — D19/D22)', () => {
       JSON.stringify({ projectName: 'demo-project', domain: 'game' }),
     );
     await writeFile(
-      path.join(featurePath, 'inputs/assets/icons/hero.svg'),
+      path.join(featurePath, 'assets/icons/hero.svg'),
       '<svg/>',
     );
 
@@ -165,15 +165,15 @@ describe('reconcileAssetsToDomain (Phase 2 — D19/D22)', () => {
       JSON.stringify({ projectName: 'demo-project', domain: 'service' }),
     );
     await writeFile(
-      path.join(featurePath, 'inputs/assets/icons/logo.svg'),
+      path.join(featurePath, 'assets/icons/logo.svg'),
       '<svg/>',
     );
-    const manifestPath = path.join(featurePath, 'outputs/design/ui/ant/ui-assets.json');
+    const manifestPath = path.join(featurePath, 'visual/ui/ant/ui-assets.json');
     await writeFile(
       manifestPath,
       JSON.stringify({
         items: [
-          { id: 'logo', src: 'inputs/assets/icons/logo.svg' },
+          { id: 'logo', src: 'assets/icons/logo.svg' },
         ],
       }, null, 2),
     );
@@ -182,7 +182,7 @@ describe('reconcileAssetsToDomain (Phase 2 — D19/D22)', () => {
     expect(result!.uiAssetsRewritten).toBe(1);
 
     const rewritten = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
-    expect(rewritten.items[0].src).toBe('inputs/assets/service/icons/logo.svg');
+    expect(rewritten.items[0].src).toBe('assets/service/icons/logo.svg');
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -192,8 +192,8 @@ describe('reconcileAssetsToDomain (Phase 2 — D19/D22)', () => {
   it('reconcileProjectAssetsToDomain walks every feature with the new domain', async () => {
     const featureA = path.join(projectPath, 'features', 'feature-a');
     const featureB = path.join(projectPath, 'features', 'feature-b');
-    await writeFile(path.join(featureA, 'inputs/assets/icons/a.svg'), '<svg/>');
-    await writeFile(path.join(featureB, 'inputs/assets/images/b.png'), 'png');
+    await writeFile(path.join(featureA, 'assets/icons/a.svg'), '<svg/>');
+    await writeFile(path.join(featureB, 'assets/images/b.png'), 'png');
 
     const result = await reconcileProjectAssetsToDomain({
       projectPathAbs: projectPath,
@@ -210,10 +210,10 @@ describe('reconcileAssetsToDomain (Phase 2 — D19/D22)', () => {
     }
 
     expect(
-      await pathExists(path.join(featureA, 'inputs/assets/game/icons/a.svg')),
+      await pathExists(path.join(featureA, 'assets/game/icons/a.svg')),
     ).toBe(true);
     expect(
-      await pathExists(path.join(featureB, 'inputs/assets/game/images/b.png')),
+      await pathExists(path.join(featureB, 'assets/game/images/b.png')),
     ).toBe(true);
   });
 

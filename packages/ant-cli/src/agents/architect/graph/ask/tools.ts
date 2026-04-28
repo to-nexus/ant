@@ -416,12 +416,16 @@ export function setWorkspaceFeaturePath(featurePath: string | undefined): void {
 }
 
 /**
- * Allowed workspace directories for reading (security whitelist)
+ * Allowed workspace directories for reading (security whitelist).
+ * Domain-grouped: plan/architecture/visual/assets/meta + sessions.
  */
 const ALLOWED_WORKSPACE_DIRS = [
-  'inputs/',    // PRD, directives, references, assets
-  'outputs/',   // Design docs, generated code
-  'sessions/',  // Session state (chat history etc.)
+  'plan/',          // PRD, GDD, source documents
+  'architecture/',  // system / spec design docs
+  'visual/',        // ui / game-art design docs
+  'assets/',        // service / game / gen asset pools
+  'meta/',          // directives / evals
+  'sessions/',      // Session state (chat history etc.)
 ];
 
 /**
@@ -559,7 +563,7 @@ export const WORKSPACE_TOOLS = [
       properties: {
         path: {
           type: 'string',
-          description: 'Relative path within the feature directory (e.g., "inputs/sources/prd.md", "outputs/design/system/be-system-main.md")',
+          description: 'Relative path within the feature directory (e.g., "plan/prd.md", "architecture/system/be-system-main.md")',
         },
       },
       required: ['path'],
@@ -573,7 +577,7 @@ export const WORKSPACE_TOOLS = [
       properties: {
         path: {
           type: 'string',
-          description: 'Relative path to the directory (e.g., "inputs/sources", "outputs/design/system")',
+          description: 'Relative path to the directory (e.g., "plan", "architecture/system")',
         },
       },
       required: ['path'],

@@ -77,7 +77,7 @@ export async function execute(
   //
   // Pool SSOT (`.cursorrules` "state.artifacts Post-RAC SSOT"): the pool is
   // the RAC subset. If `resolvedAction.refs ∪ context` does NOT carry a
-  // `outputs/design/ui/...` slot, the user did not opt into UI doc
+  // `visual/ui/...` slot, the user did not opt into UI doc
   // injection — silently augmenting the pool here would re-introduce
   // exactly the leak the SSOT closes. When a UI slot IS present but the
   // ant subgroup is materially incomplete (file present on disk but not
@@ -85,7 +85,8 @@ export async function execute(
   // the missing entries.
   if (isUiTask(state.currentTask)) {
     const racPaths = [...(state.resolvedAction?.refs ?? []), ...(state.resolvedAction?.context ?? [])];
-    const racHasUiAntSlot = racPaths.some(p => p.startsWith('outputs/design/ui/ant'));
+    const { ARTIFACT_PREFIX } = await import('@ant/shared');
+    const racHasUiAntSlot = racPaths.some(p => p.startsWith(ARTIFACT_PREFIX.UI_ANT));
     if (racHasUiAntSlot) {
       const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
       const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');

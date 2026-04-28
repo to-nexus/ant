@@ -35,7 +35,7 @@ function rac(overrides?: Partial<ResolvedActionContext>): ResolvedActionContext 
 describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', () => {
   it('feature task with design artifacts → selected by default', () => {
     const pool: ResolvedArtifact[] = [
-      { path: 'outputs/design/system/fe-system-main.md', content: '# Frontend System Design\nNext.js app', role: 'ref' },
+      { path: 'architecture/system/fe-system-main.md', content: '# Frontend System Design\nNext.js app', role: 'ref' },
     ];
     expect(pool.some(a => a.path.includes('fe-system-main'))).toBe(true);
 
@@ -45,7 +45,7 @@ describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', ()
 
   it('verification task → empty selection regardless of pool', () => {
     const pool: ResolvedArtifact[] = [
-      { path: 'outputs/design/system/fe-system-main.md', content: 'Design', role: 'ref' },
+      { path: 'architecture/system/fe-system-main.md', content: 'Design', role: 'ref' },
     ];
     expect(pool.length).toBeGreaterThan(0);
 
@@ -55,7 +55,7 @@ describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', ()
 
   it('error task without spec → empty selection', () => {
     const pool: ResolvedArtifact[] = [
-      { path: 'outputs/design/system/fe-system-main.md', content: 'Design', role: 'ref' },
+      { path: 'architecture/system/fe-system-main.md', content: 'Design', role: 'ref' },
     ];
     const selected = selectArtifacts(pool, { taskType: 'error' });
     expect(selected).toHaveLength(0);
@@ -63,8 +63,8 @@ describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', ()
 
   it('error task with specDocs in pool → spec selected', () => {
     const pool: ResolvedArtifact[] = [
-      { path: 'outputs/design/system/api-contract-main.md', content: 'API contract', role: 'ref' },
-      { path: 'outputs/design/spec/spec-login', content: 'Login feature spec', role: 'ref' },
+      { path: 'architecture/system/api-contract-main.md', content: 'API contract', role: 'ref' },
+      { path: 'architecture/spec/spec-login', content: 'Login feature spec', role: 'ref' },
     ];
     const selected = selectArtifacts(pool, { taskType: 'error' });
     expect(selected.some(a => a.path.includes('spec-login'))).toBe(true);
@@ -73,25 +73,25 @@ describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', ()
 
   it('ui task → only UI docs selected', () => {
     const pool: ResolvedArtifact[] = [
-      { path: 'outputs/design/system/fe-system-main.md', content: 'FE design', role: 'ref' },
-      { path: 'outputs/design/ui/ant/tokens', content: '{ "colors": {} }', role: 'context' },
-      { path: 'outputs/design/ui/ant/spec/header', content: 'Header spec', role: 'context' },
+      { path: 'architecture/system/fe-system-main.md', content: 'FE design', role: 'ref' },
+      { path: 'visual/ui/ant/tokens', content: '{ "colors": {} }', role: 'context' },
+      { path: 'visual/ui/ant/spec/header', content: 'Header spec', role: 'context' },
     ];
     const selected = selectArtifacts(pool, { taskType: 'ui' });
-    expect(selected.every(a => a.path.startsWith('outputs/design/ui/ant/'))).toBe(true);
+    expect(selected.every(a => a.path.startsWith('visual/ui/ant/'))).toBe(true);
     expect(selected.length).toBeGreaterThan(0);
   });
 
   it('include patterns → exact path matching', () => {
     const pool: ResolvedArtifact[] = [
-      { path: 'outputs/design/system/fe-system-main.md', content: 'FE design', role: 'ref' },
-      { path: 'outputs/design/system/api-contract-auth.md', content: 'Auth contract', role: 'ref' },
-      { path: 'outputs/design/system/be-system-auth.md', content: 'BE auth design', role: 'ref' },
-      { path: 'outputs/design/spec/spec-auth', content: 'Auth specification', role: 'ref' },
+      { path: 'architecture/system/fe-system-main.md', content: 'FE design', role: 'ref' },
+      { path: 'architecture/system/api-contract-auth.md', content: 'Auth contract', role: 'ref' },
+      { path: 'architecture/system/be-system-auth.md', content: 'BE auth design', role: 'ref' },
+      { path: 'architecture/spec/spec-auth', content: 'Auth specification', role: 'ref' },
     ];
     const selected = selectArtifacts(pool, {
       taskType: 'feature',
-      include: ['outputs/design/spec/spec-auth', 'outputs/design/system/api-contract-'],
+      include: ['architecture/spec/spec-auth', 'architecture/system/api-contract-'],
     });
     expect(selected.some(a => a.path.includes('spec-auth'))).toBe(true);
     expect(selected.some(a => a.path.includes('api-contract-auth'))).toBe(true);
@@ -123,7 +123,7 @@ describe('Integration B: Document assembly logic', () => {
 
   it('Scenario 2: explicit + documents → bypass infer assembly', () => {
     const explicitDocs: ResolvedArtifact[] = [
-      { path: 'inputs/sources/spec.md', content: 'User provided spec', role: 'ref', label: 'Spec' },
+      { path: 'plan/spec.md', content: 'User provided spec', role: 'ref', label: 'Spec' },
     ];
     const resolvedAction = rac({
       source: 'explicit',
@@ -165,7 +165,7 @@ describe('Integration B: Document assembly logic', () => {
       parts.push(`# API Contract: ${name} (Reference)\n\n${content}`);
     }
     const combined = parts.join('\n\n────────────────────────────────────────\n\n');
-    const compacted = compactContent(combined, { threshold: 30_000, label: 'Spec Document: login', filePath: 'outputs/design/spec/login' });
+    const compacted = compactContent(combined, { threshold: 30_000, label: 'Spec Document: login', filePath: 'architecture/spec/login' });
 
     expect(compacted.wasCompacted).toBe(false);
     expect(compacted.content).toContain('Login feature specification');

@@ -2,7 +2,7 @@
  * Regression pin — `validateAndFixTargetFiles` wildcard placeholder semantics.
  *
  * Bug: action-config-matrix's `formatOutputSpec` ships
- * `outputs/design/system/be-system-*.md` into `actionMetadata.target` (FE)
+ * `architecture/system/be-system-*.md` into `actionMetadata.target` (FE)
  * since `0f9ee7e4`. The strict equality (`f === 'be-system-main.md'`) in
  * `validateAndFixTargetFiles` Step 1 never matched the wildcard form, so
  * every LLM-emitted task was dropped → `generateMinimumTasks` re-injected

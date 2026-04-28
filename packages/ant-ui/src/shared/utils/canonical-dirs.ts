@@ -33,7 +33,7 @@ const STRUCTURAL_CANONICAL_DIRS: ReadonlySet<string> = (() => {
 /**
  * Returns true for canonical directories that have canonical subdirectories.
  * File/folder creation and uploads should be blocked in these — they only hold canonical children.
- * e.g. `inputs`, `outputs`, `outputs/evals`, `sessions/architect`.
+ * e.g. `architecture`, `visual`, `visual/ui`, `meta`, `meta/evals`, `sessions/architect`.
  */
 export function isStructuralCanonicalDir(relativePath: string): boolean {
   const normalized = relativePath.replace(/\\/g, '/').replace(/\/$/, '');

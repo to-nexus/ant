@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 export type RuntimeAssetSyncAction = 'copied' | 'updated' | 'skipped' | 'failed';
 
 export interface RuntimeAssetSyncItem {
-  sourceRel: string; // relative to inputs/assets
+  sourceRel: string; // relative to assets
   destRel: string;   // relative to codebase root
   action: RuntimeAssetSyncAction;
   reason?: string;
@@ -70,7 +70,7 @@ export function syncRuntimeAssetsFolder(params: {
 }): RuntimeAssetSyncResult {
   const { featurePathAbs, codebaseRootAbs } = params;
 
-  const assetsRootAbs = path.join(featurePathAbs, 'inputs', 'assets');
+  const assetsRootAbs = path.join(featurePathAbs, 'assets');
   const items: RuntimeAssetSyncItem[] = [];
   const destRoot = detectRuntimeAssetRoot(codebaseRootAbs);
   // Ensure destination root exists if we picked a subdirectory.

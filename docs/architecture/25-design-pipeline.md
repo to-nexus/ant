@@ -6,19 +6,19 @@ Design Job 의 두 surface — **UI Design** (서비스 도메인 전용) 과 **
 
 ### Surface 분리 (D17 / D18 / D28)
 
-- **UI Design** (`intentGroup === 'design-ui'`) — `outputs/design/ui/{ant,figma,handoff}/...` 산출 (3-source canonical). LLM 결정 태그 `<visualTier>`. basis tier `[visualTier, gameContentTier]`. **도메인=`service` 만 활성** (D28 — `TIER_DOMAIN_MATRIX.visualTier === ['service']`, ActionDefinition.domainGate=['service']). `gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui` intent.
-- **Game-Art Design** (`intentGroup === 'design-game-art'`) — `outputs/design/game-art/ant/{game-art-tokens,game-art-assets,game-art-spec}.json` 산출 (D24-revised v8 — sub-sourced canonical, `outputs/design/ui/ant/` 와 동형. `figma/`/`handoff/` 는 Phase 5+ hook). LLM 결정 태그 `<gameArtTier>`. basis tier `[gameArtTier, gameContentTier]`. **도메인=`game` 만 활성** (D22/D28 — `TIER_DOMAIN_MATRIX.gameArtTier === ['game']`, ActionDefinition.domainGate=['game']). `gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art` intent.
+- **UI Design** (`intentGroup === 'design-ui'`) — `visual/ui/{ant,figma,handoff}/...` 산출 (3-source canonical). LLM 결정 태그 `<visualTier>`. basis tier `[visualTier, gameContentTier]`. **도메인=`service` 만 활성** (D28 — `TIER_DOMAIN_MATRIX.visualTier === ['service']`, ActionDefinition.domainGate=['service']). `gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui` intent.
+- **Game-Art Design** (`intentGroup === 'design-game-art'`) — `visual/game-art/ant/{game-art-tokens,game-art-assets,game-art-spec}.json` 산출 (D24-revised v8 — sub-sourced canonical, `visual/ui/ant/` 와 동형. `figma/`/`handoff/` 는 Phase 5+ hook). LLM 결정 태그 `<gameArtTier>`. basis tier `[gameArtTier, gameContentTier]`. **도메인=`game` 만 활성** (D22/D28 — `TIER_DOMAIN_MATRIX.gameArtTier === ['game']`, ActionDefinition.domainGate=['game']). `gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art` intent.
 
-두 surface 는 **수직 도메인 분리** (D28) — 게임 워크스페이스는 game-art surface 만 활성, 서비스 워크스페이스는 UI surface 만 활성. 게임의 HUD / 메뉴 / 컨트롤은 별도 산출물 (`outputs/design/ui/...`) 이 아니라 `game-art-tokens.json` 의 HUD CSS 토큰 + `game-art-spec.json` 의 `hud` / `menu` / `dialog` 카테고리 안에 통합 카탈로그화된다 (D25 의 dictionary 형식이 자연스럽게 흡수).
+두 surface 는 **수직 도메인 분리** (D28) — 게임 워크스페이스는 game-art surface 만 활성, 서비스 워크스페이스는 UI surface 만 활성. 게임의 HUD / 메뉴 / 컨트롤은 별도 산출물 (`visual/ui/...`) 이 아니라 `game-art-tokens.json` 의 HUD CSS 토큰 + `game-art-spec.json` 의 `hud` / `menu` / `dialog` 카테고리 안에 통합 카탈로그화된다 (D25 의 dictionary 형식이 자연스럽게 흡수).
 
 ### Asset Surface Boundary (I6)
 
 자산 풀은 도메인 1:1 분리:
 
-- `inputs/assets/service/{icons,images,fonts,misc}` — `ui-assets.json` (도메인=service 전용)
-- `inputs/assets/game/{icons,images,entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` — `game-art-assets.json` (도메인=game 전용, HUD 자산 + 게임 자산 통합)
+- `assets/service/{icons,images,fonts,misc}` — `ui-assets.json` (도메인=service 전용)
+- `assets/game/{icons,images,entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` — `game-art-assets.json` (도메인=game 전용, HUD 자산 + 게임 자산 통합)
 
-Cross-pollution 금지: `ui-assets.json` 의 src 가 `inputs/assets/game/...` 시작이거나, `game-art-assets.json` 의 `kind: 'external'` src 가 `inputs/assets/service/...` 시작이면 lint 실패. 회귀 가드 — `tests/asset-surface-boundary.test.ts` + production validator `infrastructure/workspace/gameArtAssetValidator.ts` (Phase 2).
+Cross-pollution 금지: `ui-assets.json` 의 src 가 `assets/game/...` 시작이거나, `game-art-assets.json` 의 `kind: 'external'` src 가 `assets/service/...` 시작이면 lint 실패. 회귀 가드 — `tests/asset-surface-boundary.test.ts` + production validator `infrastructure/workspace/gameArtAssetValidator.ts` (Phase 2).
 
 ### Domain-Surface Boundary (I7-revised — D28)
 
@@ -30,7 +30,7 @@ Game-Art design template 본문에 `visualLanguage` / `surfaceSystem` / `spatial
 
 ### 자산 풀 부팅 마이그레이션 (D19-revised + D22)
 
-기존 `inputs/assets/{icons,images,misc}/` 자산은 워크스페이스 부팅 시 `migrateAssetsToDomain` 가 한 번 idempotent 실행되어 `inputs/assets/{service|game}/{icons,images,misc}/` 로 이동한다. `outputs/design/ui/ant/ui-assets.json` 의 `src` 도 함께 갱신된다. 두 호출 트리거 (Phase 2 — D22):
+기존 `assets/{icons,images,misc}/` 자산은 워크스페이스 부팅 시 `migrateAssetsToDomain` 가 한 번 idempotent 실행되어 `assets/{service|game}/{icons,images,misc}/` 로 이동한다. `visual/ui/ant/ui-assets.json` 의 `src` 도 함께 갱신된다. 두 호출 트리거 (Phase 2 — D22):
 
 - **워크스페이스 부팅** — `ensureCanonicalStructure(featurePath)` 끝에서 `reconcileAssetsToDomain(featurePath)` 가 sibling `config.json` 의 `domain` 을 자동 발견해 호출 (canonical 구조 invariant 와 동일한 entry point).
 - **도메인 토글** — `ProjectCrudService.updateProjectConfig` 가 이전/새 `domain` 을 비교, 변경 시 `reconcileProjectAssetsToDomain({ projectPathAbs, domain })` 로 모든 feature 일괄 마이그레이션.
@@ -58,15 +58,15 @@ isFigmaPipeline(resolvedAction.intent, isFigmaDataPopulated(figmaConfig))
 
 Figma 파이프라인이 우선한다. `gen-ui-figma` intent이거나, `rev-ui`에서 figma.json이 populated이면 Figma 모드로 진입한다.
 
-`outputs/design/ui/handoff/` (자유 형식 시각 자료) 는 design-job 디컴포즈 입력이 아니라 코드 잡 멀티모달 채널의 추가 컨텍스트로만 쓰인다. design-job 자체는 directive + PRD 만으로 by-desc 모드를 진행한다.
+`visual/ui/handoff/` (자유 형식 시각 자료) 는 design-job 디컴포즈 입력이 아니라 코드 잡 멀티모달 채널의 추가 컨텍스트로만 쓰인다. design-job 자체는 directive + PRD 만으로 by-desc 모드를 진행한다.
 
 ### 입출력 요약
 
 | 항목 | by-desc | by-figma |
 |------|---------|----------|
-| 입력 소스 | 디렉티브 + PRD (`inputs/sources/`) | `outputs/design/ui/figma/figma.json` 설정 |
-| 보조 입력 | `inputs/assets/` (사용자 제공) | `inputs/assets/` (사용자 제공) |
-| 출력 | `outputs/design/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` | 동일 |
+| 입력 소스 | 디렉티브 + PRD (`plan/`) | `visual/ui/figma/figma.json` 설정 |
+| 보조 입력 | `assets/` (사용자 제공) | `assets/` (사용자 제공) |
+| 출력 | `visual/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` | 동일 |
 | 문서 의존 체인 | tokens ∥ assets → spec | 동일 |
 
 ## 공통 구조
@@ -125,7 +125,7 @@ LLM이 디렉티브 + PRD / source documents 만으로 디자인 토큰, 에셋 
 ### 데이터 플로우
 
 ```
-inputs/sources/ + directive (+ visualTier)
+plan/ + directive (+ visualTier)
   → detect: 디렉티브 + PRD / 자산 카운트만 워크스페이스 스캔
   → decompose: PRD 분량 + visualTier 기반 복잡도 평가 → taskQueue
   → docGen: buildResourcesSummary(directive/PRD/assets) → LLM 프롬프트 주입
@@ -136,7 +136,7 @@ inputs/sources/ + directive (+ visualTier)
 
 | 도구 | 역할 |
 |------|------|
-| `list_assets` | inputs/assets/ 파일 목록 |
+| `list_assets` | assets/ 파일 목록 |
 | `read_file` | 기존 문서, PRD 읽기 |
 | `edit_file` | 문서 수정 |
 | `list_files`, `delete_file`, `mkdir` | 파일 조작 |
@@ -219,7 +219,7 @@ detect (isFigmaPipeline → true)
 
 ### Phase 2: ui-assets.json 생성
 
-- 사용자 제공 inputs/assets/ 기반 에셋 분류
+- 사용자 제공 assets/ 기반 에셋 분류
 - 에셋 분류: iconLibrary, icons, images, dynamicAssets
 - figmaNodeId 필수 기록 (재 export 용)
 - rendering 필드, SVG themeAdaptation 포함
@@ -234,7 +234,7 @@ detect (isFigmaPipeline → true)
 ### 데이터 플로우
 
 ```
-outputs/design/ui/figma/figma.json
+visual/ui/figma/figma.json
   → resolve: state.figmaConfig 로드
   → detect: isFigmaPipeline(intent, figmaPopulated) → true
   → figmaExplore: MCP 어댑터 직접 호출 → state.figmaExplorationResult
@@ -251,7 +251,7 @@ outputs/design/ui/figma/figma.json
 | `figma_get_design_context` | 상세 디자인 데이터 (코드 + 스크린샷 + 힌트) |
 | `figma_get_screenshot` | 노드 스크린샷 |
 | `figma_get_variable_defs` | Figma Variables 정의 |
-| `list_assets` | inputs/assets/ 파일 목록 |
+| `list_assets` | assets/ 파일 목록 |
 | `download_asset` | 에셋 다운로드 |
 | `read_file` | 기존 문서, PRD 읽기 |
 | `edit_file` | 문서 수정 |
@@ -317,7 +317,7 @@ figma_get_metadata 등 도구 결과가 클 때, `buildFigmaChildOutline`이 자
 
 → 상세: [26-figma-integration-infra.md](26-figma-integration-infra.md) (감지·인증·연결 흐름, MCP 전송 경로, 프론트엔드 상태 판정)
 
-### outputs/design/ui/figma/figma.json (canonical)
+### visual/ui/figma/figma.json (canonical)
 
 Figma 연동의 유일한 정규 참조 파일 (`FIGMA_CONFIG_PATH`). 피처 생성 시 빈 문서로 자동 생성되며, URL/fileKey/nodeId 메타 외에 어떤 탐색 결과도 저장하지 않는다.
 
@@ -359,7 +359,7 @@ interface FigmaExplorationResult {
 
 ### 알려진 제약
 
-- `downloadedAssets`는 현재 항상 빈 배열. 에셋 자동 다운로드 기능은 미구현 상태이며, 사용자가 `inputs/assets/`에 수동 배치한다
+- `downloadedAssets`는 현재 항상 빈 배열. 에셋 자동 다운로드 기능은 미구현 상태이며, 사용자가 `assets/`에 수동 배치한다
 - figmaExplore는 프롬프트 템플릿 없이 순수 코드 노드로 동작 (`templates/design/phases/explore/` 디렉터리 없음)
 
 ## Code Job에서의 소비
@@ -382,8 +382,8 @@ UI Design 과의 직접 비교:
 |------|-----------|-----------------|
 | intent | `gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui` | `gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art` |
 | 활성 도메인 (D28) | service 만 | game 만 |
-| 산출물 | `outputs/design/ui/{ant,figma,handoff}/...` (3-source canonical) | `outputs/design/game-art/ant/{game-art-tokens,game-art-assets,game-art-spec}.json` (D24-revised v8 — sub-sourced canonical, `figma/`/`handoff/` 는 Phase 5+ hook) |
-| 활성 자산 풀 | `inputs/assets/service/{icons,images,fonts,misc}` | `inputs/assets/game/{icons,images,entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` (HUD 자산 + 게임 자산 통합) |
+| 산출물 | `visual/ui/{ant,figma,handoff}/...` (3-source canonical) | `visual/game-art/ant/{game-art-tokens,game-art-assets,game-art-spec}.json` (D24-revised v8 — sub-sourced canonical, `figma/`/`handoff/` 는 Phase 5+ hook) |
+| 활성 자산 풀 | `assets/service/{icons,images,fonts,misc}` | `assets/game/{icons,images,entities,particles,projectiles,sfx,bgm,tilemaps,atlas,models}` (HUD 자산 + 게임 자산 통합) |
 | LLM 결정 태그 | `<visualTier>` | `<gameArtTier>` (visualTier 미발행, D18) |
 | basis tier | `[visualTier, gameContentTier]` | `[gameArtTier, gameContentTier]` |
 
@@ -393,7 +393,7 @@ UI Design 과의 직접 비교:
 
 - **카테고리 dictionary 분해 (D25)**: `game-art-spec.json` / `game-art-assets.json` 의 sub-section 이 chapter (페이지 영역) 가 아니라 카테고리 키 dictionary (`effects` / `characters` / `projectiles` / `npcs` / `objectives` / `hud` / `menu` / `dialog` 등 — D28 으로 HUD 영역도 동일 dictionary 안). 표준 카테고리 가이드는 prompt overlay 에서만 제공하고 schema 가 강제하지 않는다.
 - **task 분해**: `game-art-tokens` 단일 task + `game-art-assets-{category}` parallel + `game-art-spec-{category}` parallel. 카테고리 종류는 LLM 이 게임 컨텍스트 (`gameContentTier.genre` + `gameArtTier.entityCatalog`) 에 따라 동적으로 결정한다.
-- **RAC pool**: `inputs/sources/` + `outputs/design/game-art/ant/` (D28 — UI ant docs cross-surface context 폐기, game 도메인은 game-art 단일 surface).
+- **RAC pool**: `plan/` + `visual/game-art/ant/` (D28 — UI ant docs cross-surface context 폐기, game 도메인은 game-art 단일 surface).
 - **decision tag**: 응답에서 `<gameArtTier>` 를 `parseDecisionTags` 로 흡수해 `state.resolvedAction.basis.gameArtTier` 에 적용 (explicit 선행, LLM 채움이 후행).
 
 ## 모드 (`game-art-design-by-desc` / `game-art-design-by-figma`)
@@ -412,7 +412,7 @@ UI Design 의 두 모드 (by-desc / by-figma) 와 1:1 대응. 모드 결정은 `
 | `kind`     | 출처                                                   | Design-time inline-payload ceiling (D21) |
 |------------|--------------------------------------------------------|------------------------|
 | `inline`   | LLM 이 JSON 안에 직접 작성 (`css` / `svg` / `oscillator`) | ✅ 단순 도형 / 단순 사운드 한정 (D21) — 디자인이 inline 으로 저작 가능한 복잡도 한계 |
-| `external` | 사용자가 `inputs/assets/game/{cat}/` 에 배치한 파일      | 모든 production 자산 (mp3 / png / 3D 모델 등) |
+| `external` | 사용자가 `assets/game/{cat}/` 에 배치한 파일      | 모든 production 자산 (mp3 / png / 3D 모델 등) |
 
 D21 의 "css-only" 표현은 디자인-시점 inline 페이로드의 복잡도 ceiling 을 가리키며, 코드잡의 캔버스 렌더링 정책과는 별개다 (엔진 캔버스는 CSS 로 자산을 만들 수 없으므로 코드잡은 별도의 "available canvas methods" 카탈로그를 commit — `templates/jobs/code/basis/gameArtTier/_preamble.md` §7 참조).
 

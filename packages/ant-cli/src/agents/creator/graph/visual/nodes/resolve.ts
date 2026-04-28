@@ -104,7 +104,7 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
 
   // Fallback: scan sketches directory
   if (!availableSketchPaths) {
-    const sketchesDir = path.join(featurePath, 'inputs/assets/gen/sketches');
+    const sketchesDir = path.join(featurePath, 'assets/gen/sketches');
     try {
       if (fs.existsSync(sketchesDir)) {
         const files = fs.readdirSync(sketchesDir)

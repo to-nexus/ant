@@ -33,7 +33,7 @@ Naturally readable concepts: `pixelRetro` (NES-era Sokoban tile aesthetic), `fla
 
 ### What NOT to commit at PRD level
 
-- ❌ Specific level layouts — those live as data files (`inputs/sources/levels.json` or similar), not in the PRD.
+- ❌ Specific level layouts — those live as data files (`plan/levels.json` or similar), not in the PRD.
 - ❌ Exact undo cost numbers, hint cost numbers — balancing surface.
 - ❌ Tile sprite shapes / colors — `gameArtTier`.
 

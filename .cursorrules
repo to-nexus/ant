@@ -415,20 +415,20 @@ rg -n "isTierActive\(" --type ts
 
 ## Asset Surface Boundary SSOT — service vs game pool (Phase 2, I6)
 
-**`inputs/assets/` 는 도메인 1:1 로 분리된다 (D19-revised).** `inputs/assets/service/` 는 `outputs/design/ui/ant/ui-assets.json` 만 참조하고, `inputs/assets/game/` 은 `outputs/design/game-art/ant/game-art-assets.json` (D24-revised v8 — sub-sourced canonical) 의 `kind: 'external'` 항목만 참조한다. `kind: 'inline'` 항목은 `src` 가 없으므로 lint 대상에서 제외된다 (D20).
+**`assets/` 는 도메인 1:1 로 분리된다 (D19-revised).** `assets/service/` 는 `visual/ui/ant/ui-assets.json` 만 참조하고, `assets/game/` 은 `visual/game-art/ant/game-art-assets.json` (D24-revised v8 — sub-sourced canonical) 의 `kind: 'external'` 항목만 참조한다. `kind: 'inline'` 항목은 `src` 가 없으므로 lint 대상에서 제외된다 (D20).
 
-워크스페이스의 도메인 (D22 — `WorkspaceConfig.domain`) 이 `service` 면 `inputs/assets/game/` 트리는 `download_asset` / `list_assets` 핸들러에서 라우팅되지 않으며, 도메인이 `game` 이면 그 반대다. 게임 프로젝트도 HUD 자산은 `inputs/assets/game/icons/`, sprite 자산은 `inputs/assets/game/entities/` 처럼 한 풀 안에서 카테고리만 다르게 잡는다 — 두 풀을 동시에 쓰지 않는다.
+워크스페이스의 도메인 (D22 — `WorkspaceConfig.domain`) 이 `service` 면 `assets/game/` 트리는 `download_asset` / `list_assets` 핸들러에서 라우팅되지 않으며, 도메인이 `game` 이면 그 반대다. 게임 프로젝트도 HUD 자산은 `assets/game/icons/`, sprite 자산은 `assets/game/entities/` 처럼 한 풀 안에서 카테고리만 다르게 잡는다 — 두 풀을 동시에 쓰지 않는다.
 
 ### ❌ 금지
 
-- `ui-assets.json` 의 `src` 가 `inputs/assets/game/...` 로 시작
-- `game-art-assets.json` 의 `kind: 'external'` 항목의 `src` 가 `inputs/assets/service/...` 로 시작
+- `ui-assets.json` 의 `src` 가 `assets/game/...` 로 시작
+- `game-art-assets.json` 의 `kind: 'external'` 항목의 `src` 가 `assets/service/...` 로 시작
 - `download_asset` / `list_assets` 가 `intentGroup` 을 무시하고 단일 풀만 가리키도록 하드코딩
 
 ### ✅ 정책
 
 - 풀 라우팅은 `state.workspaceConfig.domain` 한 곳에서 결정 — handler 는 그 결과만 소비
-- 마이그레이션이 필요할 때 (`inputs/assets/{icons,images,misc}` 잔재) `migrateAssetsToDomain(workspaceDomain)` 한 번 실행 — idempotent
+- 마이그레이션이 필요할 때 (`assets/{icons,images,misc}` 잔재) `migrateAssetsToDomain(workspaceDomain)` 한 번 실행 — idempotent
 - 도메인 전환 시 자산은 사용자 책임으로 이동 — 시스템은 조용히 한 쪽만 활성화한다
 
 회귀 가드: `tests/asset-surface-boundary.test.ts` + `tests/assets-dir-canonical.test.ts`.
@@ -439,25 +439,25 @@ rg -n "isTierActive\(" --type ts
 
 **`visualTier` is service-domain-only and `gameArtTier` is game-domain-only — vertical split (D28).** The two surfaces never coexist in the same workspace:
 
-- **service domain** → `visualTier` (6 layers) + `outputs/design/ui/` artifacts + `design-ui` intents (`gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui`).
-- **game domain** → `gameArtTier` (7 axes, including HUD CSS tokens) + `outputs/design/game-art/ant/` artifacts (D24-revised v8 — sub-sourced canonical, mirrors `outputs/design/ui/ant/`) + `design-game-art` intents (`gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art`).
+- **service domain** → `visualTier` (6 layers) + `visual/ui/` artifacts + `design-ui` intents (`gen-ui-figma` / `gen-ui-desc` / `rev-ui` / `explain-ui`).
+- **game domain** → `gameArtTier` (7 axes, including HUD CSS tokens) + `visual/game-art/ant/` artifacts (D24-revised v8 — sub-sourced canonical, mirrors `visual/ui/ant/`) + `design-game-art` intents (`gen-game-art-figma` / `gen-game-art-desc` / `rev-game-art` / `explain-game-art`).
 
 The matrix layer (`TIER_DOMAIN_MATRIX.visualTier=['service']` and `TIER_DOMAIN_MATRIX.gameArtTier=['game']`) and the `domainGate` on each action card mirror each other so a domain switch in `WorkspaceConfig.domain` is the single source of truth that decides which surface is active.
 
 For the game domain, `gameArtTier` is the **single visual SSOT** — both the in-canvas surface (sprites / particles / projectiles / audio) and the React HUD overlay (menus / score / dialog) pull from the same `game-art-tokens.json` palette / silhouette / lighting / motion-tone + HUD CSS tokens. There is no separate `visualTier` for a game project; HUD layout decisions (spacing rhythm / surface treatment / typography / radius / focus ring) come from concept-derived defaults in `basis/gameArtTier/concept/{name}.md`.
 
-game-art design's responsibility limit is **css-only inline + external mapping** (D21). LLM authors inline `kind: 'inline'` payloads (single-color shapes, ≤5 svg primitives, OscillatorNode configs); production-quality sprites / mp3 / 3D models go through user placement (`kind: 'external'`) under `inputs/assets/game/` or the future `visual` job (Phase 5+).
+game-art design's responsibility limit is **css-only inline + external mapping** (D21). LLM authors inline `kind: 'inline'` payloads (single-color shapes, ≤5 svg primitives, OscillatorNode configs); production-quality sprites / mp3 / 3D models go through user placement (`kind: 'external'`) under `assets/game/` or the future `visual` job (Phase 5+).
 
 ### ❌ 금지 (cross-pollination)
 
 - game-art design template body uses `visualLanguage` / `surfaceSystem` / `spatialSystem` / `interactionGrammar` / `componentSemantics` / `visualHierarchy` — those belong to service-domain `visualTier`. Backticked boundary disclaimers (`` `visualLanguage` is service-only ``) are allowed.
 - UI design template body uses `sprite tween` / `OscillatorNode` / `particle system` / `projectile spawn` — those belong to game-domain `gameArtTier`.
-- A code job in a game workspace consumes `outputs/design/ui/ant/ui-*.json` (or vice versa for service) — `filterSlotsByDomain` drops the wrong-domain slot before any prompt sees it.
+- A code job in a game workspace consumes `visual/ui/ant/ui-*.json` (or vice versa for service) — `filterSlotsByDomain` drops the wrong-domain slot before any prompt sees it.
 - Game-art design's LLM response emits `<visualTier>`, UI design emits `<gameArtTier>` — the matrix gate (D18) closes automatically.
 
 ### ✅ 정책
 
-- The two surfaces share the same upstream RAC pool (PRD + system design) but live in different output directories with different asset pools (`inputs/assets/{service,game}/`).
+- The two surfaces share the same upstream RAC pool (PRD + system design) but live in different output directories with different asset pools (`assets/{service,game}/`).
 - HUD CSS tokens (spacing / typography / radius / shadow) for game projects are emitted into `game-art-tokens.json`, NOT into a parallel `ui-tokens.json`. game-art-spec.json carries `hud` / `menu` / `dialog` categories alongside the in-canvas categories.
 - game-art design emits `<gameArtTier>` only; decompose absorbs the response via `parseDecisionTags` and applies it to `state.resolvedAction.basis.gameArtTier`.
 - Inline payloads exceeding the css-only ceiling (svg path 5+ primitives, css 100 chars+) auto-escalate to `kind: 'external'` candidates.
@@ -504,24 +504,24 @@ export function coreLoopCandidatesFor(genre): readonly GameCoreLoopVariant[];
 
 ## Design Sub-Source Symmetry SSOT — I10 (D24-revised v8)
 
-**`outputs/design/ui/` 와 `outputs/design/game-art/` 는 동형 sub-source 구조 (`ant/` + Phase 5+ hook `figma/` / `handoff/`) 를 갖는다.** 한쪽은 sub 분리, 다른 쪽은 flat 인 비대칭 도입 금지.
+**`visual/ui/` 와 `visual/game-art/` 는 동형 sub-source 구조 (`ant/` + Phase 5+ hook `figma/` / `handoff/`) 를 갖는다.** 한쪽은 sub 분리, 다른 쪽은 flat 인 비대칭 도입 금지.
 
 `packages/ant-shared/src/canonical.ts`:
 
 - 두 surface 모두 `ant/` 가 LLM-generated canonical sub-source (필수 등록).
 - `figma/` / `handoff/` 는 parser-only Phase 5+ hook (canonical-dirs 등록은 ui/ 에만; game-art/ 는 prefix 만 `ARTIFACT_PREFIX.GAME_ART_FIGMA` / `GAME_ART_HANDOFF` 미리 등록).
-- `pathsContainGameArtDoc` / `gameArtSourceOfPath` 가 ui 의 `pathsContainUiDoc` / `uiSourceOfPath` 와 1:1 동형. 단, `pathsContainGameArtDoc` 는 `migrateGameArtToAntSubdir` 가 처리 중인 in-flight 워크스페이스를 위해 legacy flat path (`outputs/design/game-art/<file>.json` 직접) 도 허용.
-- `designSubdirOf('game-art-X.json') === 'gameArtAnt'`, `designDirOf` 가 `'outputs/design/game-art/ant'` 반환.
+- `pathsContainGameArtDoc` / `gameArtSourceOfPath` 가 ui 의 `pathsContainUiDoc` / `uiSourceOfPath` 와 1:1 동형 (sub-source prefix 매칭만; non-canonical path BC 분기는 두지 않는다 — 단방향 원칙).
+- `designSubdirOf('game-art-X.json') === 'gameArt'`, `designDirOf` 가 `'visual/game-art/ant'` 반환.
 
 ### ❌ 금지
 
-- `game-art-*.json` 파일을 `outputs/design/game-art/` 에 직접 생성 (flat 회귀). LLM 산출물은 반드시 `ant/` 안.
+- `game-art-*.json` 파일을 `visual/game-art/` 에 직접 생성 (flat 회귀). LLM 산출물은 반드시 `ant/` 안.
 - `ARTIFACT_PREFIX.GAME_ART` 한 prefix 만으로 `pathsContainGameArtDoc` 체크 (sub-source 누적 매칭이 SSOT).
 - ui surface 만 sub-sourced 이고 game-art 는 flat (또는 그 역) 이 되는 비대칭 변경.
 
 ### ✅ 정책
 
-- 새 game-art 파일은 `designDirOf` 헬퍼를 통해 자동으로 `outputs/design/game-art/ant/` 로 라우팅. 모든 prompt template (`game-art-*-guide-by-{figma,desc}.md`) 의 output path 도 동일.
+- 새 game-art 파일은 `designDirOf` 헬퍼를 통해 자동으로 `visual/game-art/ant/` 로 라우팅. 모든 prompt template (`game-art-*-guide-by-{figma,desc}.md`) 의 output path 도 동일.
 - `migrateGameArtToAntSubdir` 가 `ensureCanonicalStructure` 에서 호출 — 기존 flat 산출물은 워크스페이스 부팅 시 자동 이동 (idempotent).
 - Phase 5+ visual job 활성 시 `figma/` / `handoff/` 도 canonical-dirs 등록 한 줄 추가만으로 활성.
 
@@ -696,7 +696,7 @@ The intent-matrix integration test ([packages/ant-cli/tests/role-flag-intent-mat
 
 - 요청 path === RAC entry (exact match — file slot)
 - 요청 path 가 RAC entry 의 자식 (`entry/...`) — directory slot
-- RAC entry 가 요청 path 의 자식 (`requestedPath/...`) — RAC 디렉토리의 부모 listing 허용 (예: RAC 가 `outputs/design/spec/` 일 때 `list_files('outputs/design')` 은 OK)
+- RAC entry 가 요청 path 의 자식 (`requestedPath/...`) — RAC 디렉토리의 부모 listing 허용 (예: RAC 가 `architecture/spec/` 일 때 `list_files('architecture')` 은 OK)
 
 매칭 실패 시 tool 은 `Error: Path is outside the RAC selection (refs/context). ...` 반환. infer 파이프라인 (`source !== 'explicit'` 또는 RAC 비어있음) 은 racScope=undefined 로 전달되어 기존 동작 유지 (LLM 이 anchor 를 발견할 자유도가 필요).
 
@@ -725,7 +725,7 @@ pre-RAC presence 신호는 [`state.workspaceState`](packages/ant-cli/src/agents/
 
 ### ❌ ABSOLUTELY FORBIDDEN
 
-- resolve 에서 `outputs/design/**` 또는 `inputs/sources/**` 를 RAC 와 무관하게 읽어 `state.artifacts` 에 적재
+- resolve 에서 `architecture/**` / `visual/**` 또는 `plan/**` 을 RAC 와 무관하게 읽어 `state.artifacts` 에 적재
 - `scanDesignOutputs(featurePath)` 같은 전체 디렉토리 walk 결과를 풀에 합산 — 정당한 self-output 은 `task.files` 만
 - `state.workspaceState` 와 의미 중복인 새 path-presence 채널 / availability 헬퍼 신설
 - detect strategy 가 `state.artifacts[].content` 본문을 LLM 프롬프트에 주입 (path-only flag / 파일명 list 만 허용)
@@ -740,9 +740,9 @@ pre-RAC presence 신호는 [`state.workspaceState`](packages/ant-cli/src/agents/
 
 ### Why This Matters
 
-`prime-jetting-grate` 회귀 (`gen-code-directive` 인텐트가 RAC 에 system-design 슬롯을 갖지 않음에도 `outputs/design/system/fe-system-main.md` 본문이 decompose 프롬프트에 주입되고 task.artifactPolicy.refs 에 박혀 워커가 Cross SDK 레지스트리 코드를 그대로 옮긴 사건) 에서 입증된 것처럼, RAC 검증을 하지 않는 단일 wholesale-load 는 4 개 이상의 누수 채널 (resolve 풀 적재 → decompose tierRefs → decompose `documents` → deriveArtifactPolicy packages 매핑) 에 동시에 영향을 준다. 풀 자체를 RAC 부분집합으로 강제하면 모든 누수 채널이 *셀렉터 패턴* 으로 격하되어 RAC 외부 데이터를 끌어올 수 없게 된다.
+`prime-jetting-grate` 회귀 (`gen-code-directive` 인텐트가 RAC 에 system-design 슬롯을 갖지 않음에도 `architecture/system/fe-system-main.md` 본문이 decompose 프롬프트에 주입되고 task.artifactPolicy.refs 에 박혀 워커가 Cross SDK 레지스트리 코드를 그대로 옮긴 사건) 에서 입증된 것처럼, RAC 검증을 하지 않는 단일 wholesale-load 는 4 개 이상의 누수 채널 (resolve 풀 적재 → decompose tierRefs → decompose `documents` → deriveArtifactPolicy packages 매핑) 에 동시에 영향을 준다. 풀 자체를 RAC 부분집합으로 강제하면 모든 누수 채널이 *셀렉터 패턴* 으로 격하되어 RAC 외부 데이터를 끌어올 수 없게 된다.
 
-`mossy-nearing-gleam` 후속 회귀 (Apr 26 2026) 는 풀-바운드 만으로는 부족함을 보였다 — 두 가지 보완 채널이 살아있었다: (1) decompose discovery tool 이 `scope='artifact'` 일 때 path-traversal 만 검사하고 RAC 화이트리스트를 적용하지 않아 LLM 이 `read_file('outputs/design/system/fe-system-main.md')` 로 디스크 직접 우회 가능 (Channel A); (2) `deriveArtifactPolicy` 가 `packages` 만 보고 RAC 외부 path 를 task `refs` 로 합성 (Channel B). 두 채널을 동시에 닫지 않으면 prompt 자체의 `fe-main → fe-system-main.md` 매핑 표가 LLM 에게 "이 파일이 분명히 권위" 라고 가르쳐 우회를 유발한다.
+`mossy-nearing-gleam` 후속 회귀 (Apr 26 2026) 는 풀-바운드 만으로는 부족함을 보였다 — 두 가지 보완 채널이 살아있었다: (1) decompose discovery tool 이 `scope='artifact'` 일 때 path-traversal 만 검사하고 RAC 화이트리스트를 적용하지 않아 LLM 이 `read_file('architecture/system/fe-system-main.md')` 로 디스크 직접 우회 가능 (Channel A); (2) `deriveArtifactPolicy` 가 `packages` 만 보고 RAC 외부 path 를 task `refs` 로 합성 (Channel B). 두 채널을 동시에 닫지 않으면 prompt 자체의 `fe-main → fe-system-main.md` 매핑 표가 LLM 에게 "이 파일이 분명히 권위" 라고 가르쳐 우회를 유발한다.
 
 ### Enforcement
 
@@ -785,17 +785,17 @@ rg "isExplicitPipeline" packages/ant-cli/src/agents/architect/graph/code/nodes/d
 
 | UiSource | 물리 경로 | 의미 | 해석 |
 |---|---|---|---|
-| `ant` | `outputs/design/ui/ant/` | design job 산출물 (`ui-tokens/assets/spec.json`) | 스키마 기반 직접 해석 — 기존 파이프 |
-| `figma` | `outputs/design/ui/figma/figma.json` | figma 작업 파일 **참조** (URL 만) | MCP tool 로 실시간 탐색 — 저장된 탐색 결과는 없음 |
-| `handoff` | `outputs/design/ui/handoff/**` | 자유 형식 파일 번들 (html/css/md/json/png) | FPOP — 관찰만, 스키마 추론 금지 |
+| `ant` | `visual/ui/ant/` | design job 산출물 (`ui-tokens/assets/spec.json`) | 스키마 기반 직접 해석 — 기존 파이프 |
+| `figma` | `visual/ui/figma/figma.json` | figma 작업 파일 **참조** (URL 만) | MCP tool 로 실시간 탐색 — 저장된 탐색 결과는 없음 |
+| `handoff` | `visual/ui/handoff/**` | 자유 형식 파일 번들 (html/css/md/json/png) | FPOP — 관찰만, 스키마 추론 금지 |
 
 ### ❌ ABSOLUTELY FORBIDDEN
 
-- 한 RAC 안에 `outputs/design/ui/ant/**` 와 `outputs/design/ui/figma/**` (또는 handoff) 를 섞어 넣는 코드
+- 한 RAC 안에 `visual/ui/ant/**` 와 `visual/ui/figma/**` (또는 handoff) 를 섞어 넣는 코드
 - `figma.json` 에 탐색 결과 (variable dumps / frame JSON / screenshots) 를 persist 하려는 시도 — 이 파일은 **항상 URL+nodeId 메타만** 담는다
 - `state.figmaAvailable` 같은 파생 scalar 를 state channel 로 부활시키기 — `resolvedAction.mcpSources.figma != null` 이 SSOT
-- `ARTIFACT_PREFIX.UI_SPEC` (옛 `outputs/design/ui/spec/`) 같은 legacy prefix 부활시키기 — 새 SSOT 는 `ARTIFACT_PREFIX.UI_ANT_SPEC` (`outputs/design/ui/ant/spec/`)
-- legacy 평탄 경로 `outputs/design/ui-*.json` 지원을 되살리는 fallback (FLAT_UI_DOC_REGEX 는 영구 제거)
+- `ARTIFACT_PREFIX.UI_SPEC` 같은 legacy prefix 부활시키기 — 새 SSOT 는 `ARTIFACT_PREFIX.UI_ANT_SPEC` (`visual/ui/ant/spec/`)
+- legacy 평탄 / 옛 트리 경로 지원을 되살리는 fallback (FLAT_UI_DOC_REGEX 는 영구 제거)
 
 ### ✅ CORRECT
 

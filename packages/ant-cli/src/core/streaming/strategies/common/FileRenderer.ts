@@ -106,7 +106,8 @@ export class FileRenderer {
    *
    * ✅ PROJECT ROOT based - all paths are relative to project root.
    * - Code files: LLM should use "codebase/..." paths
-   * - Design files: LLM should use "features/<feature>/outputs/..." paths
+   * - Design files: LLM should use feature-relative domain roots
+   *   ("architecture/...", "visual/...") — never absolute or escaped.
    */
   private resolveFileSystemPath(originalPath: string): string {
     if (!this.fileSystem) return originalPath;
@@ -153,7 +154,8 @@ export class FileRenderer {
    * ✅ PROJECT ROOT based - paths are used as-is (just normalize separators).
    * LLM should use consistent paths:
    * - "codebase/package.json" for code files
-   * - "features/<feature>/outputs/..." for design files
+   * - "architecture/system/...", "architecture/spec/...", "visual/ui/...",
+   *   "visual/game-art/..." for design / visual files (feature-relative).
    */
   private canonicalizePath(originalPath: string): string {
     return originalPath.replace(/\\/g, '/').replace(/^\.?\//, '');
@@ -378,11 +380,12 @@ export class FileRenderer {
         }
       }
 
-      // Guard: code jobs must write only under codebase/. Reject sibling dirs
-      // (inputs/, outputs/, sessions/) which are legitimate for design jobs but not code.
-      // resolveFileSystemPath already normalized the path, so if it still doesn't
-      // start with codebase/, it means the normalizer intentionally left it unchanged
-      // (Rule 3: sibling dir) — which is wrong for code jobs.
+      // Guard: code jobs must write only under codebase/. Reject sibling
+      // domain dirs (architecture/, visual/, assets/, plan/, meta/, sessions/)
+      // — those are legitimate destinations for design / planner / visual
+      // jobs but not for code. resolveFileSystemPath already normalized the
+      // path, so if it still doesn't start with codebase/, the normalizer
+      // intentionally left it unchanged (Rule 3: sibling dir) — wrong for code.
       if (this.jobType === 'code' && this.codebasePath) {
         const rootPath = this.fileSystem?.getRootPath?.();
         const codebaseRel = rootPath
@@ -417,7 +420,11 @@ export class FileRenderer {
           }
         });
 
-        if (filePath.startsWith('outputs/')) {
+        if (
+          filePath.startsWith('architecture/') ||
+          filePath.startsWith('visual/') ||
+          filePath.startsWith('meta/evals/')
+        ) {
           this.pendingUnseenPaths.add(filePath);
         }
         this.scheduleFileTreeNotification();
@@ -490,8 +497,13 @@ export class FileRenderer {
       // ✅ Schedule debounced file tree notification after disk write
       this.scheduleFileTreeNotification();
       
-      // ✅ Track output files as unseen artifacts for badge notification
-      if (filePath.startsWith('outputs/')) {
+      // ✅ Track generated-artifact files as unseen for badge notification.
+      // Domains: architecture/, visual/, meta/evals/.
+      if (
+        filePath.startsWith('architecture/') ||
+        filePath.startsWith('visual/') ||
+        filePath.startsWith('meta/evals/')
+      ) {
         this.pendingUnseenPaths.add(filePath);
       }
     }

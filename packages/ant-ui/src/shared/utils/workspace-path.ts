@@ -10,7 +10,7 @@
  * ## 경로 범위
  * 이 유틸리티는 `workspaces/` 디렉토리 내의 모든 경로를 다룹니다:
  * - ✅ 프로젝트 레벨: config.json, codebase/ (프로젝트 설정 및 코드베이스)
- * - ✅ 피처 레벨: inputs/, outputs/, sessions/ (작업용 파일)
+ * - ✅ 피처 레벨: plan/, architecture/, visual/, assets/, meta/, sessions/ (도메인별 작업 파일)
  * 
  * ⚠️ **Local 모드 실제 코드베이스 경로는 별도!**
  * - Local Mode에서 config.repoType='local'인 경우
@@ -27,8 +27,11 @@
  *       ├── codebase/             # 코드베이스 (Cloud에서 사용)
  *       └── features/             # 피처들
  *           └── {feature}/
- *               ├── inputs/
- *               ├── outputs/
+ *               ├── plan/
+ *               ├── architecture/
+ *               ├── visual/
+ *               ├── assets/
+ *               ├── meta/
  *               └── sessions/
  * ```
  * 
@@ -40,8 +43,11 @@
  *       ├── codebase/             # 코드베이스 (실제 코드 저장)
  *       └── features/             # 피처들
  *           └── {feature}/
- *               ├── inputs/
- *               ├── outputs/
+ *               ├── plan/
+ *               ├── architecture/
+ *               ├── visual/
+ *               ├── assets/
+ *               ├── meta/
  *               └── sessions/
  * ```
  */
@@ -124,8 +130,8 @@ export function getProjectPath(projectId: string): string {
  * 
  * @example
  * const featurePath = getFeaturePath('my-project', 'auth');
- * const inputsPath = `${featurePath}/inputs`;
- * const outputsPath = `${featurePath}/outputs`;
+ * const planPath = `${featurePath}/plan`;
+ * const architecturePath = `${featurePath}/architecture`;
  */
 export function getFeaturePath(projectId: string, featureId: string): string {
   const projectPath = getProjectPath(projectId);
@@ -182,17 +188,17 @@ export function getCodebasePath(
  * 
  * Feature 레벨 경로의 UI 표시용 버전
  * 
- * Local: `./workspace/{project}/{feature}/outputs/session.json`
- * Cloud: `./workspaces/{org}/{user}/{project}/{feature}/outputs/session.json`
+ * Local: `./workspaces/local/{project}/features/{feature}/{subPath}`
+ * Cloud: `./workspaces/{org}/{user}/{project}/features/{feature}/{subPath}`
  * 
  * @example
- * getDisplayPath('my-project', 'auth', 'outputs/session.json')
- * // Local: ./workspace/my-project/auth/outputs/session.json
+ * getDisplayPath('my-project', 'auth', 'sessions/architect/code.json')
+ * // Local: ./workspaces/local/my-project/features/auth/sessions/architect/code.json
  */
 export function getDisplayPath(
   projectId: string, 
   featureId: string, 
-  subPath: string = 'outputs/session.json'
+  subPath: string = 'sessions/architect/code.json'
 ): string {
   const mode = getBackendMode();
   

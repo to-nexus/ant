@@ -13,7 +13,7 @@ The implementation surface is partitioned into 7 sections. The partition is **mu
 | 1 | Loop ownership | Who advances time | A single boundary (Engine / Runtime) hosts the frame loop; Domain consumes `dt` only |
 | 2 | Scene separation | How play modes split | Scene boundaries (`BootScene` / `MainScene` / `UIScene` or equivalent) and which boundary holds cross-scene data |
 | 3 | State separation | What each layer may mutate | Domain (rule-bound) ↔ Render (sprite / animation cache) ↔ HUD (player-facing readouts) — three owners, one direction of writes |
-| 4 | Asset import policy | How catalog entries become runtime values | `kind: 'inline'` mapped in code, `kind: 'external'` loaded from `inputs/assets/game/...`; wiring per `audioProfile` and `entityCatalog` axes |
+| 4 | Asset import policy | How catalog entries become runtime values | `kind: 'inline'` mapped in code, `kind: 'external'` loaded from `assets/game/...`; wiring per `audioProfile` and `entityCatalog` axes |
 | 5 | Determinism boundary | What is repeatable, what is approximate | Rule application is deterministic; particle / interpolation may approximate; this boundary is named in code, not implicit |
 | 6 | What NOT to write | Constraints that bound the build | Pixel-perfect coordinates, frame-dependent formulas, DOM access from Domain, `setInterval` for game logic |
 | 7 | Render boundary & viewport | Which surface owns which UI; how the playable surface fills the viewport | Screen-space UI vs world-space UI partition; viewport-fill policy is the React container's responsibility; canvas aspect adaptation belongs to the engine scale policy |
@@ -55,10 +55,10 @@ Three layers, three owners, write direction is one-way:
 Asset import is driven by `game-art-assets.json` (D20). The code job consumes the catalog according to each entry's `kind`:
 
 - `kind: 'inline'` — translate the inline payload into a runtime value at module scope: `css` becomes a `style` / template literal, `svg` becomes an inline element or `Image` blob, `oscillator` becomes a Web Audio config object. NO file I/O.
-- `kind: 'external'` — load from the verbatim `src` path under `inputs/assets/game/...`. The loading boundary depends on the engine partial's preload API; Domain does NOT load assets directly.
+- `kind: 'external'` — load from the verbatim `src` path under `assets/game/...`. The loading boundary depends on the engine partial's preload API; Domain does NOT load assets directly.
 - `_meta.audioScope === 'procedural-only'` (default) forces all `sfx` / `bgm` to procedural OscillatorNode configs; `'external-enabled'` activates file-based audio. Always honor the marker.
 - `_meta.visualScope === 'baseline'` (default) keeps the canvas on catalog entries + the engine's procedural API + build-time static assets; `'atlas-enabled'` lifts atlas / multi-emitter / multi-projectile setups. The five canvas-side method categories are committed by `jobs/code/basis/gameArtTier/_preamble.md` §7; concrete API names live in the engine partial.
-- Cross-pool reach is forbidden (I6): `game-art-assets.json` MUST NOT reference `inputs/assets/service/`, and `ui-assets.json` MUST NOT reference `inputs/assets/game/`. The two surfaces share workspace.domain but their pools are 1:1 separated.
+- Cross-pool reach is forbidden (I6): `game-art-assets.json` MUST NOT reference `assets/service/`, and `ui-assets.json` MUST NOT reference `assets/game/`. The two surfaces share workspace.domain but their pools are 1:1 separated.
 
 ### 5. Determinism boundary
 
@@ -145,7 +145,7 @@ This file is gated on `domain === 'game'`. It is REQUIRED to use game implementa
 
 - Specify service-domain implementation concerns (`RBAC`, `SLA`, `audit`, `persona`, `retention`, `non-functional`) — those live in `jobs/code/domain/service.md`. The matrix gate already excluded them; surfacing them here is a category error.
 - Specify engine-specific APIs (`Phaser.Scene`, `GameObjects.Graphics.fillRect`, Godot node names) — those belong to the engine partial under `basis/techTier/gameEngine/`.
-- Specify exact pixel coordinates, balance numbers, or asset filenames — those live in `outputs/design/spec/...` or the asset catalogs.
+- Specify exact pixel coordinates, balance numbers, or asset filenames — those live in `architecture/spec/...` or the asset catalogs.
 
 ### Blind-spot reminders
 

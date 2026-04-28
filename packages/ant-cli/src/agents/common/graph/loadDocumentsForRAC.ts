@@ -12,7 +12,7 @@
  *     in general.
  *
  * Handoff special case:
- *   - Paths under `outputs/design/ui/handoff/` are NEVER eager-loaded. Each
+ *   - Paths under `visual/ui/handoff/` are NEVER eager-loaded. Each
  *     file becomes a STUB artifact (path + size + kind + read_file hint).
  *     The downstream LLM is expected to invoke `read_file` on the text
  *     entries it actually needs and reference binaries by path only. This
@@ -115,7 +115,8 @@ function appendPath(
  * tagged path-only (utf-8 reads would be garbage).
  */
 function isHandoffPath(rel: string): boolean {
-  return rel === 'outputs/design/ui/handoff' || rel.startsWith(ARTIFACT_PREFIX.UI_HANDOFF);
+  const handoffRoot = ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, '');
+  return rel === handoffRoot || rel.startsWith(ARTIFACT_PREFIX.UI_HANDOFF);
 }
 
 function formatSize(bytes: number): string {

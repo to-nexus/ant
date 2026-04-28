@@ -34,7 +34,7 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
 
   beforeAll(() => {
     featurePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-handoff-'));
-    const handoffDir = path.join(featurePath, 'outputs/design/ui/handoff');
+    const handoffDir = path.join(featurePath, 'visual/ui/handoff');
     fs.mkdirSync(handoffDir, { recursive: true });
     fs.writeFileSync(
       path.join(handoffDir, 'page.html'),
@@ -56,7 +56,7 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
     fs.writeFileSync(path.join(nested, 'icon.svg'), '<svg></svg>');
 
     // Ant subtree — verify it is NOT affected by handoff stubbing.
-    const antDir = path.join(featurePath, 'outputs/design/ui/ant');
+    const antDir = path.join(featurePath, 'visual/ui/ant');
     fs.mkdirSync(antDir, { recursive: true });
     fs.writeFileSync(
       path.join(antDir, 'ui-tokens.json'),
@@ -70,7 +70,7 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
 
   it('emits a stub (not content) for every handoff file when the directory is selected', () => {
     const artifacts = loadResolvedArtifacts(
-      rac([], ['outputs/design/ui/handoff']),
+      rac([], ['visual/ui/handoff']),
       featurePath,
     );
 
@@ -80,24 +80,24 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
     const byPath = Object.fromEntries(artifacts.map(a => [a.path, a]));
 
     // Text file — stub, not the original html
-    const html = byPath['outputs/design/ui/handoff/page.html'];
+    const html = byPath['visual/ui/handoff/page.html'];
     expect(html).toBeDefined();
     expect(html.role).toBe('context');
-    expect(html.content).toMatch(/\[handoff file\] outputs\/design\/ui\/handoff\/page\.html/);
+    expect(html.content).toMatch(/\[handoff file\] visual\/ui\/handoff\/page\.html/);
     expect(html.content).toMatch(/kind: text/);
-    expect(html.content).toMatch(/read_file\("outputs\/design\/ui\/handoff\/page\.html"\)/);
+    expect(html.content).toMatch(/read_file\("visual\/ui\/handoff\/page\.html"\)/);
     expect(html.content).not.toContain('<h1>Hello</h1>');
 
     // Binary file — stub flags as binary and forbids read_file
-    const png = byPath['outputs/design/ui/handoff/hero.png'];
+    const png = byPath['visual/ui/handoff/hero.png'];
     expect(png).toBeDefined();
-    expect(png.content).toMatch(/\[handoff asset\] outputs\/design\/ui\/handoff\/hero\.png/);
+    expect(png.content).toMatch(/\[handoff asset\] visual\/ui\/handoff\/hero\.png/);
     expect(png.content).toMatch(/kind: binary/);
     expect(png.content).toMatch(/do NOT call read_file/);
 
     // Nested svg — still stubbed (walkDir recurses), classified as text per
     // the readFile.ts policy (SVG is XML).
-    const svg = byPath['outputs/design/ui/handoff/assets/icon.svg'];
+    const svg = byPath['visual/ui/handoff/assets/icon.svg'];
     expect(svg).toBeDefined();
     expect(svg.content).toMatch(/kind: text/);
     expect(svg.content).not.toContain('<svg></svg>');
@@ -105,22 +105,22 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
 
   it('stubs a single handoff file path as well (not only directory-scoped input)', () => {
     const artifacts = loadResolvedArtifacts(
-      rac([], ['outputs/design/ui/handoff/styles.css']),
+      rac([], ['visual/ui/handoff/styles.css']),
       featurePath,
     );
     expect(artifacts).toHaveLength(1);
-    expect(artifacts[0].path).toBe('outputs/design/ui/handoff/styles.css');
+    expect(artifacts[0].path).toBe('visual/ui/handoff/styles.css');
     expect(artifacts[0].content).toMatch(/\[handoff file\]/);
     expect(artifacts[0].content).not.toContain('#1a1a2e');
   });
 
   it('leaves ant UiSource entries unaffected — real content is still injected', () => {
     const artifacts = loadResolvedArtifacts(
-      rac([], ['outputs/design/ui/ant/ui-tokens.json']),
+      rac([], ['visual/ui/ant/ui-tokens.json']),
       featurePath,
     );
     expect(artifacts).toHaveLength(1);
-    expect(artifacts[0].path).toBe('outputs/design/ui/ant/ui-tokens.json');
+    expect(artifacts[0].path).toBe('visual/ui/ant/ui-tokens.json');
     expect(artifacts[0].content).toContain('"bg":"#000"');
     expect(artifacts[0].content).not.toMatch(/\[handoff/);
   });

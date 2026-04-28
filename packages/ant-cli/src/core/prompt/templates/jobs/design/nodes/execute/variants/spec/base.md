@@ -25,7 +25,7 @@ Available tools:
 - `figma_get_design_context` — inspect node layout and properties (includes screenshot)
 - `figma_get_screenshot` — capture visual reference for a specific node
 - `figma_get_variable_defs` — extract design tokens and variables
-- `download_asset` — save asset files to `inputs/assets/`
+- `download_asset` — save asset files to `assets/`
 
 **Include all Figma-derived information directly in this spec document.**
 
@@ -41,7 +41,7 @@ Available tools:
 This is the **first section** of the spec document. Create the document using a `<file>` tag:
 
 ```xml
-<file path="outputs/design/spec/{{targetFile}}">
+<file path="architecture/spec/{{targetFile}}">
 # Spec: {{title}}
 
 [Write content for this section only — see CURRENT SECTION SCOPE below]
@@ -52,7 +52,7 @@ This is the **first section** of the spec document. Create the document using a 
 This is a **continuation section**. The document already exists. Use `<append>` tag to add this section:
 
 ```xml
-<append path="outputs/design/spec/{{targetFile}}">
+<append path="architecture/spec/{{targetFile}}">
 
 [Write content for this section only — see CURRENT SECTION SCOPE below]
 </append>

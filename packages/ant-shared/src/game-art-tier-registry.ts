@@ -163,6 +163,6 @@ export const GAME_ART_PROJECTILE_POLICY_OPTIONS: BasisOption[] = [
 
 export const GAME_ART_AUDIO_PROFILE_OPTIONS: BasisOption[] = [
   { id: 'procedural', label: { en: 'Procedural', ko: '프로시저럴' }, description: { en: 'Web Audio OscillatorNode SFX, no external files — Phase 3 default', ko: 'Web Audio 오실레이터 SFX, 외부 파일 없음 — Phase 3 기본값' }, accentColor: 'sky' },
-  { id: 'fileBased', label: { en: 'File-Based', ko: '파일 기반' }, description: { en: 'External .mp3/.ogg/.wav under inputs/assets/game/{sfx,bgm}/ (requires audioScope=external-enabled)', ko: '외부 .mp3/.ogg/.wav (audioScope=external-enabled 필요)' }, accentColor: 'green' },
+  { id: 'fileBased', label: { en: 'File-Based', ko: '파일 기반' }, description: { en: 'External .mp3/.ogg/.wav under assets/game/{sfx,bgm}/ (requires audioScope=external-enabled)', ko: '외부 .mp3/.ogg/.wav (audioScope=external-enabled 필요)' }, accentColor: 'green' },
   { id: 'hybrid', label: { en: 'Hybrid', ko: '하이브리드' }, description: { en: 'Procedural SFX + external BGM — bridge mode', ko: '프로시저럴 SFX + 외부 BGM — 브릿지 모드' }, accentColor: 'amber' },
 ];

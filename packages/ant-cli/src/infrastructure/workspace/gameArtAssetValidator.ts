@@ -6,11 +6,11 @@
  *
  *  - **D20 (kind discipline)** — every entry is either `kind: 'inline'`
  *    (no `src`, payload lives in the catalog itself) or `kind: 'external'`
- *    (carries a `src` pointing at a file under `inputs/assets/game/...`).
+ *    (carries a `src` pointing at a file under `assets/game/...`).
  *    `kind: 'inline'` entries are EXEMPT from the src-existence check.
  *  - **I6 (asset surface boundary)** — `kind: 'external'` srcs MUST live
- *    inside the game pool (`inputs/assets/game/...`). A src that points
- *    into the service pool (`inputs/assets/service/...`) is a cross-surface
+ *    inside the game pool (`assets/game/...`). A src that points
+ *    into the service pool (`assets/service/...`) is a cross-surface
  *    leak and MUST throw.
  *
  * The validator is intentionally pure — file existence is supplied by an
@@ -90,7 +90,7 @@ export function validateGameArtAssetEntry(
     issues.push({
       id: entry.id,
       code: 'external-missing-src',
-      reason: 'kind:external entries require a `src` pointing at inputs/assets/game/...',
+      reason: 'kind:external entries require a `src` pointing at assets/game/...',
     });
     return issues;
   }

@@ -126,7 +126,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   
   // Check if chat input provides directive
   if (state.overrideDirective) {
-    workspaceState.hasDirective = true;
+    workspaceState.hasMetaDirectives = true;
   }
   
   console.log(formatWorkspaceState(workspaceState));
@@ -366,14 +366,16 @@ export function buildTriagePrompt(params: {
     currentJob,
     userInput,
     jobCapabilities,
-    hasPrd: workspaceState.hasPrd,
-    prdPath: workspaceState.prdPath || 'available',
-    hasDirective: workspaceState.hasDirective,
+    hasPlan: workspaceState.hasPlan,
+    planPath: workspaceState.planPath || 'available',
+    hasMetaDirectives: workspaceState.hasMetaDirectives,
     hasAssets: workspaceState.hasAssets,
     assetCount: workspaceState.assetCount || 0,
     hasFigmaConfig: workspaceState.hasFigmaConfig,
-    hasUiDocs: workspaceState.hasUiDocs,
-    hasSystemDesignDoc: workspaceState.hasSystemDesignDoc,
+    hasVisualUi: workspaceState.hasVisualUi,
+    hasVisualGameArt: workspaceState.hasVisualGameArt,
+    hasArchitectureSystem: workspaceState.hasArchitectureSystem,
+    hasArchitectureSpec: workspaceState.hasArchitectureSpec,
     hasCodebase: workspaceState.hasCodebase,
     indexedFileCount: workspaceState.indexedFileCount || 'unknown',
     hasDesignDoc: workspaceState.hasDesignDoc,

@@ -243,7 +243,7 @@ export interface DesignTask extends BaseTask {
   forceAppend?: boolean;
 
   /**
-   * Source files from inputs/sources/ relevant to this task (set by decompose).
+   * Source files from `plan/` relevant to this task (set by decompose).
    * MUST be set when multiple source files exist.
    * Can contain 1 or more filenames. e.g. ["prd.md", "tech-constraints.md"]
    * If not set (single file case), all sourceDocuments are injected.
@@ -255,7 +255,7 @@ export interface DesignTask extends BaseTask {
    * Path-prefix patterns matching ARTIFACT_PREFIX values.
    * When set, docGen uses `selectArtifacts(pool, { include: task.include })`
    * instead of hardcoded per-intent defaults.
-   * e.g. ["inputs/sources", "outputs/design/system/api-contract-"]
+   * e.g. ["plan", "architecture/system/api-contract-"]
    */
   include?: string[];
 
