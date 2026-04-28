@@ -29,6 +29,8 @@ import { cleanFileContentFromResponse } from "../../utils/responseCleaners";
 import { selectArtifacts, selectArtifactsWithPolicy, compactArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { effectiveTechTier, getTechTier, getRACDocuments, type ResolvedArtifact } from "@ant/shared";
 import { deriveArtifactPolicies } from "../../../../../../core/prompt/builder/ArtifactRoleResolver";
+import { AutoInjectionResolver } from "../../../../../../core/prompt/builder/AutoInjectionResolver";
+import { isMockContentImageryActive } from "../../../../../../core/prompt/builder/mockContentImageryGate";
 import type { PromptBuildConfig } from "../../../../../../core/prompt/builder/PromptBuildConfig";
 import { buildCacheableBlocks } from "../../../../../../core/prompt/builder/CacheBlockMapper";
 import { composeMessages } from "../../../../../../core/utils/messageComposer";
@@ -244,6 +246,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
   const intent = state.resolvedAction?.intent;
   const effectiveTier = effectiveTechTier(taskTechTiers);
+  const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(taskTechTiers);
 
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Execute] PromptBuilder is required but not available in state.deps');
@@ -334,6 +337,18 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       hasUi: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).hasUi(),
       uiSource: new ArtifactPoolView(getRACDocuments(resolvedActionWithDocs)).uiSource(),
       isSpecDriven: new ArtifactPoolView(state.artifacts || []).activeSpecRefFilename() !== null,
+      // Stack flags — mirror plan/planGeneration.ts (single SSOT via
+      // AutoInjectionResolver.computeStackFlags). Required by Handlebars
+      // gates such as `mock-content-imagery` partial inclusion.
+      hasFrontend,
+      hasBackend,
+      // Derived gate (SBS) — service domain × FE stack × feature task.
+      // Domain comparison happens in code (Domain-Branching Locality I1).
+      mockContentImageryActive: isMockContentImageryActive({
+        hasFrontend,
+        domain: state.resolvedAction?.domain,
+        taskType,
+      }),
       // figmaAvailable is strictly derived from uiSource === 'figma'.
       // The previous AND-with-!hasUi() gate is obsolete; hard-exclusive UiSource
       // means figma and ant/handoff never coexist in the same pool.

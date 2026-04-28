@@ -33,7 +33,8 @@
     "preview-env-contract": [],
     "behavioral-debugging": [],
     "secure-coding": [],
-    "mock-adapter-contract": []
+    "mock-adapter-contract": [],
+    "mock-content-imagery": []
   },
   "jobs/code/nodes/execute/injections": {
     "lessons": ["lessons"],

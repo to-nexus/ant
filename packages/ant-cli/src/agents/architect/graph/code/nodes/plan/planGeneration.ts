@@ -16,6 +16,7 @@ import { logPrompt } from "../../../../../../core/utils/promptLogger";
 import { getTechTier, type ResolvedArtifact } from "@ant/shared";
 import { collectResolvedPartials } from "../../../../../../periphery/adapters/prompt/FilePromptAdapter";
 import { AutoInjectionResolver } from "../../../../../../core/prompt/builder/AutoInjectionResolver";
+import { isMockContentImageryActive } from "../../../../../../core/prompt/builder/mockContentImageryGate";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokens, applyEstimatedInputTokensFromMessages } from "../../../../../common/graph/llmHelpers";
 import { resolveArtifacts, ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
@@ -222,6 +223,13 @@ async function buildPlanPrompt(
     featureContext: state.featureContext,
     antrulesContent,
     hasFrontend, hasBackend,
+    // Derived gate (SBS) — service domain × FE stack × feature task.
+    // Domain comparison happens in code (Domain-Branching Locality I1).
+    mockContentImageryActive: isMockContentImageryActive({
+      hasFrontend,
+      domain: state.resolvedAction?.domain,
+      taskType: task.type,
+    }),
     ...typeVars,
   });
 
