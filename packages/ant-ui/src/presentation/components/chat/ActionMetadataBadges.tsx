@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
-import { INTENT_DEFINITIONS, getConfigSlots, filterSlotsByDomain, type ActionMetadata } from '@ant/shared';
+import { INTENT_DEFINITIONS, getConfigSlotsForDomain, getIntentLabel, type ActionMetadata, type IntentId } from '@ant/shared';
 import { X, Target, Crosshair, FileText, BookOpen, Zap, Lock } from 'lucide-react';
 
 interface BadgeProps {
@@ -52,8 +52,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
   // never matches a phantom game-art slot (and vice versa).
   const slots = useMemo(() => {
     if (!meta.intent) return null;
-    const raw = getConfigSlots(meta.intent as any);
-    return raw ? filterSlotsByDomain(raw, meta.domain) : null;
+    return getConfigSlotsForDomain(meta.intent as IntentId, meta.domain ?? 'service');
   }, [meta.intent, meta.domain]);
 
   const isRefLocked = useCallback((refPath: string): boolean => {
@@ -71,7 +70,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false }: ActionMetad
   if (!hasAnything) return null;
 
   const intentDef = meta.intent ? INTENT_DEFINITIONS.find(d => d.id === meta.intent) : null;
-  const intentLabel = intentDef ? (intentDef.label[lang] || intentDef.label.en) : meta.intent;
+  const intentLabel = intentDef ? getIntentLabel(intentDef, meta.domain, lang) : meta.intent;
 
   const handleRemoveExplicit = () => {
     if (readOnly) return;

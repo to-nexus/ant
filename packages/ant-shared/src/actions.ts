@@ -47,6 +47,16 @@ export interface ActionDefinition {
    * is gated by `visualTier=['service']` (D28), mirroring the dual.
    */
   readonly domainGate?: ReadonlyArray<Domain>;
+  /**
+   * Per-domain label / description overrides. When `actionMetadata.domain`
+   * matches a key, the override wins; otherwise the static `label` /
+   * `description` is used. Currently used by the `plan` action card so
+   * service projects render "PRD" / "Create or revise product
+   * requirements" while game projects render "GDD" / "Create or revise
+   * game design document".
+   */
+  readonly labelByDomain?: Partial<Record<Domain, { en: string; ko: string }>>;
+  readonly descriptionByDomain?: Partial<Record<Domain, { en: string; ko: string }>>;
 }
 
 export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
@@ -55,6 +65,18 @@ export const ACTION_DEFINITIONS: ReadonlyArray<ActionDefinition> = [
     label: { en: 'PRD', ko: '기획서' },
     description: { en: 'Create or revise product requirements', ko: '기획서를 작성하거나 보강합니다' },
     status: 'active',
+    // D28-revised — service workspaces still see "PRD"; game workspaces
+    // see "GDD" so the action card mirrors the canonical artifact name
+    // (`plan/prd.md` vs `plan/gdd.md`). Korean is domain-neutral
+    // ('기획서') because both surfaces translate to the same noun.
+    labelByDomain: {
+      service: { en: 'PRD', ko: '기획서' },
+      game: { en: 'GDD', ko: '기획서' },
+    },
+    descriptionByDomain: {
+      service: { en: 'Create or revise product requirements', ko: '기획서를 작성하거나 보강합니다' },
+      game: { en: 'Create or revise the game design document', ko: '게임 기획서를 작성하거나 보강합니다' },
+    },
   },
   {
     id: 'design-system',
@@ -124,13 +146,62 @@ export interface IntentDefinitionShape {
   readonly intentGroup: IntentGroup;
   readonly label: { en: string; ko: string };
   readonly description: { en: string; ko: string };
+  /**
+   * Per-domain label / description overrides. Same semantics as
+   * `ActionDefinition.labelByDomain` (D28-revised). Only the plan
+   * intents (`gen-plan` / `rev-plan` / `explain-plan`) carry overrides
+   * today — every other intent is domain-agnostic in copy.
+   */
+  readonly labelByDomain?: Partial<Record<Domain, { en: string; ko: string }>>;
+  readonly descriptionByDomain?: Partial<Record<Domain, { en: string; ko: string }>>;
 }
 
 const INTENT_DEFINITIONS_INTERNAL = [
-  // Plan
-  { id: 'gen-plan', intentGroup: 'plan', label: { en: 'Create PRD', ko: '기획서 작성' }, description: { en: 'Generate a new product requirements document', ko: '새 기획서를 작성합니다' } },
-  { id: 'rev-plan', intentGroup: 'plan', label: { en: 'Update PRD', ko: '기획서 업데이트' }, description: { en: 'Revise existing PRD document', ko: '기존 기획서를 업데이트합니다' } },
-  { id: 'explain-plan', intentGroup: 'plan', label: { en: 'Explain PRD', ko: '기획서 설명' }, description: { en: 'Explain PRD content and requirements', ko: '기획서 내용과 요구사항을 설명합니다' } },
+  // Plan — D28-revised: domain-aware labels (service → PRD, game → GDD).
+  // Korean labels stay domain-neutral ('기획서') because the same noun
+  // covers both surfaces.
+  {
+    id: 'gen-plan',
+    intentGroup: 'plan',
+    label: { en: 'Create PRD', ko: '기획서 작성' },
+    description: { en: 'Generate a new product requirements document', ko: '새 기획서를 작성합니다' },
+    labelByDomain: {
+      service: { en: 'Create PRD', ko: '기획서 작성' },
+      game: { en: 'Create GDD', ko: '기획서 작성' },
+    },
+    descriptionByDomain: {
+      service: { en: 'Generate a new product requirements document', ko: '새 기획서를 작성합니다' },
+      game: { en: 'Generate a new game design document', ko: '새 게임 기획서를 작성합니다' },
+    },
+  },
+  {
+    id: 'rev-plan',
+    intentGroup: 'plan',
+    label: { en: 'Update PRD', ko: '기획서 업데이트' },
+    description: { en: 'Revise existing PRD document', ko: '기존 기획서를 업데이트합니다' },
+    labelByDomain: {
+      service: { en: 'Update PRD', ko: '기획서 업데이트' },
+      game: { en: 'Update GDD', ko: '기획서 업데이트' },
+    },
+    descriptionByDomain: {
+      service: { en: 'Revise existing PRD document', ko: '기존 기획서를 업데이트합니다' },
+      game: { en: 'Revise existing GDD document', ko: '기존 게임 기획서를 업데이트합니다' },
+    },
+  },
+  {
+    id: 'explain-plan',
+    intentGroup: 'plan',
+    label: { en: 'Explain PRD', ko: '기획서 설명' },
+    description: { en: 'Explain PRD content and requirements', ko: '기획서 내용과 요구사항을 설명합니다' },
+    labelByDomain: {
+      service: { en: 'Explain PRD', ko: '기획서 설명' },
+      game: { en: 'Explain GDD', ko: '기획서 설명' },
+    },
+    descriptionByDomain: {
+      service: { en: 'Explain PRD content and requirements', ko: '기획서 내용과 요구사항을 설명합니다' },
+      game: { en: 'Explain GDD content and requirements', ko: '게임 기획서 내용과 요구사항을 설명합니다' },
+    },
+  },
 
   // Design — System
   { id: 'gen-sys-fe', intentGroup: 'design-system', label: { en: 'Frontend System', ko: '프론트엔드 시스템' }, description: { en: 'Design frontend architecture', ko: '프론트엔드 아키텍처를 설계합니다' } },
@@ -207,6 +278,83 @@ export function isActionVisibleForDomain(
 ): boolean {
   if (!def.domainGate || def.domainGate.length === 0) return true;
   return def.domainGate.includes(domain ?? 'service');
+}
+
+// ============================================
+// Domain-aware label SSOT
+// ============================================
+//
+// Single accessors for action / intent labels and descriptions so every
+// consumer (cards grid, IntentTabNav, ActionMetadataBadges, toast text)
+// renders the workspace-correct copy without inlining
+// `domain === 'game' ? ... : ...` branches. When the override is absent
+// the static `label` / `description` is returned, preserving backwards
+// compatibility for every domain-agnostic action.
+
+type DomainAwareDef = {
+  readonly label: { en: string; ko: string };
+  readonly description: { en: string; ko: string };
+  readonly labelByDomain?: Partial<Record<Domain, { en: string; ko: string }>>;
+  readonly descriptionByDomain?: Partial<Record<Domain, { en: string; ko: string }>>;
+};
+
+/**
+ * Resolve the domain-correct localised label for an Action / Intent def.
+ * Falls back to `def.label[lang]` (then `def.label.en`) when no override
+ * exists for the given domain. Unknown domains collapse to `'service'`
+ * to match the workspace default seed.
+ */
+export function getActionLabel(
+  def: DomainAwareDef,
+  domain: Domain | undefined,
+  lang: 'en' | 'ko',
+): string {
+  const effective = domain ?? 'service';
+  const override = def.labelByDomain?.[effective];
+  if (override) return override[lang] || override.en;
+  return def.label[lang] || def.label.en;
+}
+
+/**
+ * Resolve the domain-correct localised description for an Action /
+ * Intent def. Same fallback semantics as `getActionLabel`.
+ */
+export function getActionDescription(
+  def: DomainAwareDef,
+  domain: Domain | undefined,
+  lang: 'en' | 'ko',
+): string {
+  const effective = domain ?? 'service';
+  const override = def.descriptionByDomain?.[effective];
+  if (override) return override[lang] || override.en;
+  return def.description[lang] || def.description.en;
+}
+
+/**
+ * Identical to `getActionLabel` but typed for IntentDefinition usage —
+ * exposed as a separate name so call sites read self-documenting.
+ */
+export function getIntentLabel(
+  def: DomainAwareDef,
+  domain: Domain | undefined,
+  lang: 'en' | 'ko',
+): string {
+  return getActionLabel(def, domain, lang);
+}
+
+/**
+ * Domain-aware description accessor for IntentDefinition. Named with
+ * an explicit `Localized` suffix to avoid colliding with the legacy
+ * `getIntentDescription(intent: IntentId)` exported from `rac.ts`,
+ * which returns just the static EN description and is consumed by
+ * tier / tag-resolution callers.
+ */
+export function getIntentDescriptionLocalized(
+  def: DomainAwareDef,
+  domain: Domain | undefined,
+  lang: 'en' | 'ko',
+): string {
+  return getActionDescription(def, domain, lang);
 }
 
 /** Type guard: check if a string is a valid IntentId from INTENT_DEFINITIONS. */
