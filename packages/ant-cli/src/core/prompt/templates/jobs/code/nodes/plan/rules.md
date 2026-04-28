@@ -194,6 +194,18 @@ what YOU own; depend on interfaces for what others own.
 
 {{> jobs/code/base/injections/mock-adapter-contract}}
 
+{{!--
+  mock-content-imagery — companion to mock-adapter-contract for image
+  slots fed by user-uploaded / DB-fetched content. Gate axis (SBS):
+  service domain × frontend stack × feature task — derived in code by
+  `isMockContentImageryActive` (core/prompt/builder/mockContentImageryGate)
+  to satisfy Domain-Branching Locality I1. plan node injects the boolean
+  via `mockContentImageryActive`.
+--}}
+{{#if mockContentImageryActive}}
+{{> jobs/code/base/injections/mock-content-imagery}}
+{{/if}}
+
 ────────────────────────────────────────────────────────────────────────────────
 ## 🧠 REASONING CHECKPOINTS
 ────────────────────────────────────────────────────────────────────────────────

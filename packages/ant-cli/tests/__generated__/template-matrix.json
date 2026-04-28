@@ -511,6 +511,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/mock-content-imagery": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/persistence-schema-rule": {
     "sources": [
       "partial-ref",
