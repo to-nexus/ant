@@ -235,44 +235,33 @@ Observe the project's tier structure to determine which documents are needed:
 
 ## MSA / MULTI-UNIT DETECTION
 
-**Principle**: After document structure detection, observe whether source documents define multiple independent units within either tier. Each tier's granularity is decided independently.
+**Principle**: Decide each tier's granularity from the source. Backend and frontend decisions are independent.
 
-⚠️ **Blind spot**: Source documents containing service decomposition, bounded context maps, or domain boundary definitions ARE explicit evidence of service boundaries. Do NOT disregard them.
+### Authority Order
 
-### Observation Target
+1. **Directive** — if it expresses any opinion about package or service boundaries (in any language, in any wording), that opinion is authoritative.
+2. **Source documents (PRD/GDD)** — otherwise, the requirements determine the granularity.
 
-| Tier | What to observe in source documents |
-|------|-------------------------------------|
-| BE | Service decomposition defining separate services with distinct responsibilities? |
-| BE | Multiple bounded contexts or independent domains with separate data ownership? |
-| BE | Inter-service communication patterns (sync or async) described? |
-| FE | Multiple independent frontend applications or deployable packages? |
+### Observable (per tier)
 
-### Decision Principle
+| Outcome | What you observe in the source |
+|---------|--------------------------------|
+| Single (`*-main.md`) | The tier reads as one cohesive boundary: unified responsibilities, unified data ownership, unified audience, unified operational characteristics. |
+| Multiple (`*-{name}.md`) | The tier reads as separable boundaries: distinct responsibilities, distinct data ownership, distinct audiences, or distinct operational characteristics. |
 
-**If ANY backend observation is positive → MSA detected for backend. Set `services` array.**
-**If ANY frontend observation is positive → MSA detected for frontend. Set `fePackages` array.**
+### Constraints
 
-| Observation Result | Action |
-|-------------------|--------|
-| No unit boundaries observed in source documents | Keep `*-main.md`, `services: []`, `fePackages: []` |
-| **Backend service boundaries observed** | Set `services`, expand to `be-system-{service}.md` + `api-contract-{service}.md` |
-| **Frontend package boundaries observed** | Set `fePackages`, expand to `fe-system-{package}.md` |
+- Splits must be necessary, not theoretical — prefer one boundary unless the source justifies why the units cannot share responsibilities, ownership, audience, or operational rhythm.
+- Do NOT default to single without observing the source.
+- Do NOT default to multiple without observing distinct separations.
+- Do NOT invent identifiers — extract names from the source exactly as written.
+- Do NOT match surface keywords (specific language, framework, runtime, or vocabulary terms) — judge by what the description means.
+- Backend and frontend granularities are independent: a fullstack project may have one backend with multiple frontends, multiple backends with one frontend, or any combination.
 
-**Constraint**: Do NOT invent service/package names. Extract exact identifiers from source documents.
+### Encoding
 
-### When MSA Detected
-
-**MUST extract from source documents:**
-
-1. **Names** — exact service/package identifiers (do NOT invent)
-2. **Responsibilities** — what each unit owns
-3. **Communication patterns** — sync vs async between units
-
-**Structural mapping** (how names map to files):
-- Each backend service in `services` → `be-system-{service}.md` + `api-contract-{service}.md`
-- Each frontend package in `fePackages` → `fe-system-{package}.md`
-- Unaffected tiers keep their `*-main.md` file
+- Single → `services: []` / `fePackages: []`, keep `*-main.md`.
+- Multiple → `services: [<id>, ...]` / `fePackages: [<id>, ...]`. The validator expands them into per-boundary files: each service identifier produces `be-system-{id}.md` + `api-contract-{id}.md`; each frontend package produces `fe-system-{id}.md`. Tiers not split keep `*-main.md`.
 
 ---
 
