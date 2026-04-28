@@ -417,29 +417,11 @@ Do NOT embed token setup in setup or ui tasks.
 **Preferred:** Include all known dependencies in Setup Task (priority 100).
 **Allowed:** Feature tasks CAN add dependencies if absolutely necessary.
 
-**Dependency Version Consistency (Monorepo/MSA):**
-
-**Principle**: When multiple packages share the same dependency, the version MUST be
-decided once and referenced consistently.
-
-**Observation target**: Does the project have multiple packages/services that use
-overlapping dependencies?
-
-| Checkpoint | What to observe |
-|-----------|----------------|
-| **Shared libraries** | Are there libraries used by 2+ packages? |
-| **Version source** | Which Setup task defines the canonical version? |
-
-**Constraint**: If a library appears in multiple packages, its version MUST be specified
-in the root Setup task description. Subsequent package-level Setup tasks MUST reference
-the same version -- do NOT independently select versions.
-
-**Constraint**: Do NOT mix deprecated and current versions of the same library
-across packages.
-
-**Blind spot**: Package-level Setup tasks are generated independently.
-Without explicit version specification in root Setup, each may pick different versions
-of the same dependency.
+**Note**: Cross-package version consistency (same library declared with the
+same spec across multiple packages) is enforced downstream — the plan and
+execute prompts inject a workspace-wide pin snapshot at runtime, and the
+write-/install-time policy guard rejects conflicting specs. Decompose does
+NOT need to embed version numbers in task descriptions for this purpose.
 
 ### Design-Document-Prescribed Package Paths
 

@@ -548,6 +548,13 @@ describe('Template Smoke Tests', () => {
       // .cursorrules "Post-RAC Template Condition SSOT").
       'jobs/code/base/injections/ui-source-dispatch',
       'jobs/code/nodes/plan/injections/ui-source-inventory',
+      // workspace-dep-snapshot wraps its entire body in
+      // {{#if hasWorkspaceDepSnapshot}}; with no pins observed at smoke
+      // time the partial renders empty. The activation gate is data-
+      // driven (the workspace dep scanner) rather than role-scoped, so
+      // adding it to the allow-list mirrors how ui-source-dispatch is
+      // treated above.
+      'jobs/code/base/injections/workspace-dep-snapshot',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

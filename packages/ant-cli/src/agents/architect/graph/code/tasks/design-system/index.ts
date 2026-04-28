@@ -53,9 +53,18 @@
 import type { TaskHooks } from '../_shared/types';
 
 import { convKey } from './hooks/conversations';
+import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
 
+// `plan.extraTemplateVars` publishes the workspace-dep-snapshot template
+// variables so design-system tasks see existing pins for libraries they
+// commonly add (`tailwindcss`, `@radix-ui/*`, `@emotion/*`,
+// `class-variance-authority`, etc.) before declaring a different
+// version. The policy guard in `manifestPinPolicy.ts` enforces the
+// constraint at write/install time; this hook is the read-only
+// visibility surface.
 export const hooks: TaskHooks = {
   conversations: { convKey },
+  plan: { extraTemplateVars: planExtraTemplateVars },
 };
 
 export { isDesignSystemTask } from './model/is';

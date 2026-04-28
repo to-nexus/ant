@@ -12,6 +12,8 @@ import {
   isDepManifestPath,
   DEP_MANIFEST_INSTALL_HINT,
 } from './invalidationScope';
+import { enforceManifestPinPolicyForWrite } from './manifestPinPolicy';
+import { packageManagerMutex } from './runCommand';
 
 export async function handleCreateFile(
   ctx: ToolExecutionContext,
@@ -33,18 +35,47 @@ export async function handleCreateFile(
   try {
     const resolved = await resolveToolPath(ctx, filePath);
 
-    const workerFS = fileSystem as any;
-    if (typeof workerFS.writeNewFile === 'function') {
-      const result = await workerFS.writeNewFile(resolved.fsPath, content);
-      if (!result.success) {
-        console.log(`⚠️ [CreateFile] Conflict: ${result.error}`);
-        const msg = result.error || `File "${resolved.displayPath}" was already created by another task. Use read_file + edit_file to merge your changes.`;
-        await ctx.chatStatus.failFileCreation(filePath, msg);
-        return { content: msg, error: msg };
+    // Manifest creates share `packageManagerMutex` with the run_command
+    // install guards so the snapshot scan + policy check + actual write
+    // are atomic vs. concurrent installs and concurrent manifest writes
+    // from sibling workers. Non-manifest creates take the fast path
+    // (no mutex, no scan).
+    const isManifestCreate = isDepManifestPath(resolved.displayPath);
+
+    const performCreate = async (): Promise<ToolResult | null> => {
+      if (isManifestCreate) {
+        const rejection = await enforceManifestPinPolicyForWrite(
+          resolved.displayPath,
+          content,
+          fileSystem.getRootPath(),
+          resolved.displayPath,
+        );
+        if (rejection) {
+          const policyMsg = `[Policy] ${rejection.display}`;
+          await ctx.chatStatus.failFileCreation(filePath, policyMsg);
+          return { content: policyMsg, error: policyMsg };
+        }
       }
-    } else {
-      await fileSystem.writeFile(resolved.fsPath, content);
-    }
+
+      const workerFS = fileSystem as any;
+      if (typeof workerFS.writeNewFile === 'function') {
+        const result = await workerFS.writeNewFile(resolved.fsPath, content);
+        if (!result.success) {
+          console.log(`⚠️ [CreateFile] Conflict: ${result.error}`);
+          const msg = result.error || `File "${resolved.displayPath}" was already created by another task. Use read_file + edit_file to merge your changes.`;
+          await ctx.chatStatus.failFileCreation(filePath, msg);
+          return { content: msg, error: msg };
+        }
+      } else {
+        await fileSystem.writeFile(resolved.fsPath, content);
+      }
+      return null;
+    };
+
+    const earlyReturn = isManifestCreate
+      ? await packageManagerMutex.runExclusive(performCreate)
+      : await performCreate();
+    if (earlyReturn) return earlyReturn;
 
     console.log(`✅ [CreateFile] Created ${resolved.displayPath} (${content.length} chars)`);
     console.log(`   ⚠️  Shadow tool used - LLM should use <file> XML tag instead`);

@@ -24,6 +24,7 @@
     "game-art-source": [],
     "antrules": ["antrulesContent"],
     "dep-self-contained": [],
+    "workspace-dep-snapshot": ["hasWorkspaceDepSnapshot", "workspaceDepSnapshot"],
     "batch-execution": [],
     "batch-gather": [],
     "plan-tools-batch": [],
