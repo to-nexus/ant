@@ -587,6 +587,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/workspace-dep-snapshot": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/system": {
     "sources": [
       "build-callsite",

@@ -154,7 +154,11 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
     expect(renderCalls[0].template).toContain('/techTier/go/setup/constraints');
   });
 
-  it('returns empty object when techTier.language is missing', async () => {
+  it('returns inert constraints + empty workspace dep snapshot when techTier.language is missing', async () => {
+    // The hook always merges workspace-dep-snapshot vars (empty here
+    // because no codebase/ exists in the test fixture) — this is by
+    // design so the partial's `{{#if hasWorkspaceDepSnapshot}}` gate
+    // sees a deterministic falsy value rather than an undefined one.
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
     const vars = await planHook.extraTemplateVars({
       state: { deps: { promptBuilder } } as any,
@@ -164,7 +168,10 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
       uiDoc: undefined,
       remainingTasks: undefined,
     });
-    expect(vars).toEqual({});
+    expect(vars.hasSetupConstraints).toBe(false);
+    expect(vars.setupConstraints).toBe('');
+    expect(vars.hasWorkspaceDepSnapshot).toBe(false);
+    expect(vars.workspaceDepSnapshot).toBe('');
     expect(renderCalls).toHaveLength(0);
   });
 
@@ -186,7 +193,11 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
     expect(vars.setupConstraints).toBe('');
   });
 
-  it('returns empty object when promptBuilder is unavailable (defensive)', async () => {
+  it('returns just the workspace-dep-snapshot vars when promptBuilder is unavailable (defensive)', async () => {
+    // Without a promptBuilder the constraint render path is unavailable,
+    // but the workspace-dep-snapshot vars still flow through (they only
+    // need the disk SSOT, no template rendering). The fixture has no
+    // codebase/, so both vars are inert.
     const vars = await planHook.extraTemplateVars({
       state: { deps: {} } as any,
       task: task('s5', { techTiers: [{ language: 'typescript' }] } as any),
@@ -195,6 +206,8 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
       uiDoc: undefined,
       remainingTasks: undefined,
     });
-    expect(vars).toEqual({});
+    expect(vars.hasWorkspaceDepSnapshot).toBe(false);
+    expect(vars.workspaceDepSnapshot).toBe('');
+    expect((vars as Record<string, unknown>).hasSetupConstraints).toBeUndefined();
   });
 });

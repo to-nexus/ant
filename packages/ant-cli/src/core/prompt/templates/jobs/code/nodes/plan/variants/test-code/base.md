@@ -10,6 +10,8 @@ You are the **parent test-code task** for this job. Your responsibilities in thi
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/workspace-dep-snapshot}}
+
 {{#if hasPackageManager}}
 ## Package Manager
 

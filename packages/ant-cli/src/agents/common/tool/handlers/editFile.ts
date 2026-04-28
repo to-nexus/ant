@@ -12,6 +12,8 @@ import {
   isDepManifestPath,
   DEP_MANIFEST_INSTALL_HINT,
 } from './invalidationScope';
+import { enforceManifestPinPolicyForWrite } from './manifestPinPolicy';
+import { packageManagerMutex } from './runCommand';
 
 const MAX_IO_RETRIES = 3;
 
@@ -43,47 +45,76 @@ export async function handleEditFile(
     let modifiedContent = '';
     let originalContentForCompare = '';
 
-    for (let attempt = 0; attempt < MAX_IO_RETRIES; attempt++) {
-      const originalContent = await fileSystem.readFile(resolved.fsPath);
-      if (!originalContent) {
-        const msg = `Failed to read file: ${resolved.displayPath}`;
-        await ctx.chatStatus.failFileEdit(filePath, msg);
-        return { content: msg, error: msg };
-      }
-      originalContentForCompare = originalContent;
+    // Manifest writes share `packageManagerMutex` with `run_command` install
+    // guards so the snapshot scan + violation check + actual write are
+    // atomic vs. concurrent installs and concurrent manifest writes from
+    // sibling workers. Non-manifest writes take the fast path (no mutex,
+    // no scan).
+    const isManifestEdit = isDepManifestPath(resolved.displayPath);
 
-      try {
-        modifiedContent = applySearchReplace(
-          originalContent,
-          old_str,
-          new_str,
-          resolved.displayPath,
-        );
-      } catch (searchError) {
-        const msg =
-          `${(searchError as Error).message}\n\n` +
-          `⚠️ Your old_str does not match the current file.\n` +
-          `Action: Call read_file("${resolved.displayPath}") to get current content, then retry edit_file with exact old_str from the read result.`;
-        await ctx.chatStatus.failFileEdit(filePath, msg);
-        return { content: msg, error: msg };
-      }
-
-      try {
-        await fileSystem.writeFile(resolved.fsPath, modifiedContent);
-        break;
-      } catch (e) {
-        if (e instanceof FileConflictError && (e as any).stale && attempt < MAX_IO_RETRIES - 1) {
-          console.log(`⚠️ [EditFile] Stale content detected for ${resolved.displayPath}, retrying (attempt ${attempt + 1}/${MAX_IO_RETRIES})`);
-          await ctx.chatStatus.showStatus('file_conflict_retry', {
-            filePath: resolved.displayPath,
-            attempt: attempt + 1,
-            maxRetries: MAX_IO_RETRIES,
-          });
-          continue;
+    const performEditAttempts = async (): Promise<ToolResult | null> => {
+      for (let attempt = 0; attempt < MAX_IO_RETRIES; attempt++) {
+        const originalContent = await fileSystem.readFile(resolved.fsPath);
+        if (!originalContent) {
+          const msg = `Failed to read file: ${resolved.displayPath}`;
+          await ctx.chatStatus.failFileEdit(filePath, msg);
+          return { content: msg, error: msg };
         }
-        throw e;
+        originalContentForCompare = originalContent;
+
+        try {
+          modifiedContent = applySearchReplace(
+            originalContent,
+            old_str,
+            new_str,
+            resolved.displayPath,
+          );
+        } catch (searchError) {
+          const msg =
+            `${(searchError as Error).message}\n\n` +
+            `⚠️ Your old_str does not match the current file.\n` +
+            `Action: Call read_file("${resolved.displayPath}") to get current content, then retry edit_file with exact old_str from the read result.`;
+          await ctx.chatStatus.failFileEdit(filePath, msg);
+          return { content: msg, error: msg };
+        }
+
+        if (isManifestEdit) {
+          const rejection = await enforceManifestPinPolicyForWrite(
+            resolved.displayPath,
+            modifiedContent,
+            fileSystem.getRootPath(),
+            resolved.displayPath,
+          );
+          if (rejection) {
+            const policyMsg = `[Policy] ${rejection.display}`;
+            await ctx.chatStatus.failFileEdit(filePath, policyMsg);
+            return { content: policyMsg, error: policyMsg };
+          }
+        }
+
+        try {
+          await fileSystem.writeFile(resolved.fsPath, modifiedContent);
+          return null;
+        } catch (e) {
+          if (e instanceof FileConflictError && (e as any).stale && attempt < MAX_IO_RETRIES - 1) {
+            console.log(`⚠️ [EditFile] Stale content detected for ${resolved.displayPath}, retrying (attempt ${attempt + 1}/${MAX_IO_RETRIES})`);
+            await ctx.chatStatus.showStatus('file_conflict_retry', {
+              filePath: resolved.displayPath,
+              attempt: attempt + 1,
+              maxRetries: MAX_IO_RETRIES,
+            });
+            continue;
+          }
+          throw e;
+        }
       }
-    }
+      return null;
+    };
+
+    const earlyReturn = isManifestEdit
+      ? await packageManagerMutex.runExclusive(performEditAttempts)
+      : await performEditAttempts();
+    if (earlyReturn) return earlyReturn;
 
     console.log(`✅ [EditFile] Successfully edited ${resolved.displayPath}`);
     console.log(`   Replaced ${old_str.length} chars with ${new_str.length} chars`);

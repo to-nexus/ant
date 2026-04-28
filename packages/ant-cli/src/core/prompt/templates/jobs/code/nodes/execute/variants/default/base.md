@@ -20,6 +20,8 @@ When writing files, use `codebase/` prefix for all code files.
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/workspace-dep-snapshot}}
+
 ## 🎯 CORE PRINCIPLES (ALWAYS APPLY)
 
 ### 1. LAYER-AWARE FIX PRINCIPLE

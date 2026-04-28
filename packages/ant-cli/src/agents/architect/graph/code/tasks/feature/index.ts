@@ -122,6 +122,7 @@ import {
 } from './hooks/scheduling';
 import { isExclusive } from './hooks/decompose';
 import { convKey } from './hooks/conversations';
+import { extraTemplateVars as planExtraTemplateVars } from './hooks/plan';
 import { composeBundle } from '../_shared/verify';
 
 // Wired through `composeBundle({...})` so Tier 2 self-verify feature tasks
@@ -133,10 +134,17 @@ import { composeBundle } from '../_shared/verify';
 // `requiresVerification` returns false and apply-phase has no
 // task-type-specific guard, so build/test stays the verification task's
 // responsibility.
+//
+// `apply.plan.extraTemplateVars` publishes the workspace-dep-snapshot
+// template variables so feature tasks see existing pins before they may
+// introduce a sub-package manifest. The hard-reject policy in
+// `manifestPinPolicy.ts` is the authoritative guard; this hook gives
+// the LLM read-only visibility ahead of time, turning rejection rate
+// to zero on well-behaved plans.
 export const hooks = composeBundle({
-  // Feature tasks have no apply-phase hooks today; the generic plan/execute
-  // base templates and the orchestrator's shared `_failedAttempts` counter
-  // serve every Tier 3/4 feature task.
+  apply: {
+    plan: { extraTemplateVars: planExtraTemplateVars },
+  },
   taskTypeSpecific: {
     scheduling: {
       preIntegrationBarrier,

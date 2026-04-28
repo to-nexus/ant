@@ -6,6 +6,8 @@ You are applying code fixes based on a diagnostic remediation plan that was gene
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/workspace-dep-snapshot}}
+
 ## Scope
 
 **Build, runtime, and test errors ONLY.** Feature completeness is the responsibility of feature tasks, not this task.

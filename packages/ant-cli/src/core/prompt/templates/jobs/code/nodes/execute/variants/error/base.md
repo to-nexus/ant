@@ -6,6 +6,8 @@ You are fixing errors based on a remediation plan that analyzed user-reported er
 
 {{> jobs/code/base/injections/dep-self-contained}}
 
+{{> jobs/code/base/injections/workspace-dep-snapshot}}
+
 ## PATH CONVENTION (feature root)
 
 **All paths are relative to the feature root.**

@@ -14,6 +14,7 @@
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
 import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
+import { workspaceDepSnapshotVars } from '../../_shared/helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
 
 /**
@@ -62,6 +63,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     _errorPlanSlot,
   );
 
+  const depSnapshot = await workspaceDepSnapshotVars(ctx);
+
   const body = await promptBuilder.render('jobs/code/nodes/plan/variants/error/base', {
     taskId: task.id,
     taskName: task.name,
@@ -80,6 +83,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     resolvedAction: state.resolvedAction,
     hasFrontend,
     hasBackend,
+    ...depSnapshot,
   });
 
   const text = basisSection ? `${basisSection}\n\n---\n\n${body}` : body;
@@ -91,6 +95,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       packageManager,
       hasViolationsText: !!violationsText,
       violationsTextLen: violationsText?.length ?? 0,
+      hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
     },
   };
 }

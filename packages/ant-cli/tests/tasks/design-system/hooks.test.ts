@@ -53,12 +53,25 @@ describe('tasks/_shared/registry — design-system entry', () => {
     expect(hooks?.conversations?.convKey).toBe(convHook.convKey);
   });
 
-  it('bundle publishes only the conversations slot — all other slots undefined', () => {
+  it('bundle publishes only conversations + plan.extraTemplateVars slots — all other slots undefined', () => {
     // Slot-level absence — mirrors the ui / doc / test-code precedents
     // so a future drive-by hook addition forces an explicit test update
     // (and forces the author to justify it in index.ts).
+    //
+    // `plan.extraTemplateVars` is the workspace-dep-snapshot reader
+    // shared across setup / feature / ui / design-system / test-code:
+    // design-system tasks routinely add `tailwindcss` / `radix-ui` /
+    // `@emotion/*`, so they need read-only visibility into existing
+    // pins before the policy guard rejects a conflicting spec at write
+    // time. The bundle MUST NOT publish any other plan slot — buildPrompt,
+    // toolLoopLogTemplate, finalizeNudge, etc. all stay absent.
     expect(dsBundle.scheduling).toBeUndefined();
-    expect(dsBundle.plan).toBeUndefined();
+    expect(dsBundle.plan?.buildPrompt).toBeUndefined();
+    expect(dsBundle.plan?.toolLoopLogTemplate).toBeUndefined();
+    expect(dsBundle.plan?.finalizeNudge).toBeUndefined();
+    expect(dsBundle.plan?.checkRetryTermination).toBeUndefined();
+    expect(dsBundle.plan?.initSession).toBeUndefined();
+    expect(typeof dsBundle.plan?.extraTemplateVars).toBe('function');
     expect(dsBundle.decompose).toBeUndefined();
     expect(dsBundle.check).toBeUndefined();
     expect(dsBundle.tool).toBeUndefined();
