@@ -32,7 +32,13 @@ interface DomainToggleProps {
  * service → game wipes `gameContentTier` / `gameArtTier`; the reverse
  * additionally clears the `gameEngine` 5th slot.
  */
-const ALL_DOMAINS: ReadonlyArray<Domain> = ['service', 'game'];
+// TEMP: `game` 도메인은 아직 개발 중이라 UI에서만 숨긴다 (contract /
+// store / matrix / mention 자동완성 등 도메인 분기 로직은 그대로 유지).
+// 추후 `game` UI 복원 시 이 배열에 `'game'`을 다시 추가하면 된다.
+// 기본 domain이 `'service'`이고 mention 자동완성에 `@domain:`이 빠져 있어
+// (D22) 사용자가 `game`을 고를 수 있는 경로 자체가 없으므로 chip 모드까지
+// 같은 목록으로 통일해도 안전하다.
+const VISIBLE_DOMAINS: ReadonlyArray<Domain> = ['service'];
 
 export function DomainToggle({ className, topLevel = false }: DomainToggleProps) {
   const { t } = useTranslation('actions');
@@ -44,7 +50,7 @@ export function DomainToggle({ className, topLevel = false }: DomainToggleProps)
   // branch — `BasisSummaryBar` / `ActionConfigView` show the current
   // domain inline so users can verify it without leaving their wizard.
   const current = actionMetadata.domain;
-  const domains = ALL_DOMAINS;
+  const domains = VISIBLE_DOMAINS;
 
   const handleSelect = useCallback((next: Domain) => {
     if (!topLevel) return; // chip mode is read-only
