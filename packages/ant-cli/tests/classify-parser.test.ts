@@ -126,6 +126,24 @@ describe('parseClassifyResponse', () => {
     expect(result.jobMode).toBe('generate');
   });
 
+  // SSOT consolidation guard — `<classify>` body inherits the same prose-tolerance
+  // class as the per-`<task>` decompose contract (`tiny-logging-haven` regression).
+  // Pre-SSOT this would silently fall through to FALLBACK because `JSON.parse`
+  // rejects "Unexpected non-whitespace character after JSON" once prose follows.
+  it('tolerates trailing prose inside <classify> (regression: prose-leak class)', () => {
+    const input = [
+      '<classify>',
+      '{"assetType":"logo","jobMode":"generate","reasoning":"User asked for a logo"}',
+      '',
+      '**Reasoning**: this classification covers the brand mark request.',
+      '</classify>',
+    ].join('\n');
+    const result = parseClassifyResponse(input);
+    expect(result.assetType).toBe('logo');
+    expect(result.jobMode).toBe('generate');
+    expect(result.reasoning).toContain('logo');
+  });
+
   describe('executionTier', () => {
     it('parses <executionTier> tag emitted alongside <classify>', () => {
       const input = `<executionTier>1</executionTier>

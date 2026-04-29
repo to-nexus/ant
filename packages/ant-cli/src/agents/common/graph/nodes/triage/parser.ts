@@ -6,6 +6,7 @@
 
 import { TriageResult, ChoiceOptions, WorkspaceState } from './types';
 import { AgentRegistry } from './AgentRegistry';
+import { extractJsonFromLlmResponse } from '../../../../../core/utils/llmResponseParser';
 
 /**
  * Parse triage response from LLM output
@@ -15,26 +16,21 @@ import { AgentRegistry } from './AgentRegistry';
  * @param workspaceState - Workspace state (for design mode detection)
  */
 export function parseTriageResponse(llmOutput: string, currentJob?: string, currentAgent?: string, workspaceState?: WorkspaceState): TriageResult | null {
-  // Extract <triage>...</triage> block
-  const triageMatch = llmOutput.match(/<triage>([\s\S]*?)<\/triage>/);
-  if (!triageMatch) {
-    console.warn('[TriageParser] No <triage> block found in response');
+  const parsed = extractJsonFromLlmResponse<any>(llmOutput, {
+    tag: 'triage',
+    sanitize: true,
+  });
+  if (!parsed) {
+    console.warn('[TriageParser] Failed to extract triage JSON from response');
     return null;
   }
-  
-  const triageContent = triageMatch[1].trim();
-  
+
   try {
-    // Parse JSON
-    const parsed = JSON.parse(triageContent);
-    
-    // Validate required fields
     if (!parsed.intent) {
       console.warn('[TriageParser] Missing required field: intent');
       return null;
     }
-    
-    // Build TriageResult
+
     const result: TriageResult = {
       intent: parsed.intent
     };
@@ -121,8 +117,7 @@ export function parseTriageResponse(llmOutput: string, currentJob?: string, curr
     
     return result;
   } catch (error) {
-    console.error('[TriageParser] Failed to parse triage JSON:', error);
-    console.error('[TriageParser] Raw content:', triageContent);
+    console.error('[TriageParser] Failed to build TriageResult from parsed payload:', error);
     return null;
   }
 }

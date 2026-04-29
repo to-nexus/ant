@@ -21,6 +21,7 @@ import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
+import { extractJsonFromLlmResponse } from "../../../../../../core/utils/llmResponseParser";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -110,10 +111,8 @@ async function decomposeSpecSections(
 
     applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'spec', promptChars: prompt.length });
 
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON found in LLM response');
-
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = extractJsonFromLlmResponse<any>(response, { sanitize: true });
+    if (!parsed) throw new Error('No JSON found in LLM response');
 
     // Validate
     const slug = (parsed.slug || '').replace(/[^a-z0-9-]/g, '').slice(0, 40) || `feature-${Date.now()}`;

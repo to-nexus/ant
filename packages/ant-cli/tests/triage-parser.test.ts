@@ -46,6 +46,25 @@ describe('parseTriageResponse', () => {
       expect(parseTriageResponse(wrap({ workStatus: 'proceed' }))).toBeNull();
       spy.mockRestore();
     });
+
+    // SSOT consolidation guard — `<triage>` body inherits prose-tolerance from
+    // the shared LLM response parser. Pre-SSOT, trailing analytical prose
+    // inside the tag would surface as a SyntaxError caught by the silent
+    // `null` branch — the exact silent-failure surface §3.4 of the SSOT
+    // handoff calls out.
+    it('tolerates trailing prose inside <triage> (regression: prose-leak class)', () => {
+      const input = [
+        '<triage>',
+        '{"intent":"work","workStatus":"proceed"}',
+        '',
+        '**Reasoning**: user requested code work, no redirect needed.',
+        '</triage>',
+      ].join('\n');
+      const result = parseTriageResponse(input, 'code', 'architect');
+      expect(result).not.toBeNull();
+      expect(result!.intent).toBe('work');
+      expect(result!.workStatus).toBe('proceed');
+    });
   });
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
