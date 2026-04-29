@@ -342,6 +342,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     ...decomposeVars,
     hasExistingCode, fileList, fileCount: decomposeVars.codebaseFilePaths?.length || 0,
     hasErrorInDirective: decomposeVars.hasErrorInDirective || false,
+    // Codebase Channel SSOT — surface workspace state to the codebase-channel
+    // partial (PromptBuilder.render auto-derives codebaseRole from this).
+    workspaceState: state.workspaceState,
     // RAC-source gate — templates suppress `packages → fe-system-X.md`
     // mapping and design-doc cross-cutting guidance when the user has
     // explicitly pinned the RAC. See `.cursorrules` "state.artifacts

@@ -1382,6 +1382,13 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/codebase-channel": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/directive": {
     "sources": [
       "auto-injection",

@@ -90,7 +90,15 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   // `gen-plan`'s `target.outputs` to the single domain-correct file,
   // and rewrites plan-dir slot labels / `excludeFiles` so neither
   // domain ever previews the other domain's plan artifact.
-  const slots = getConfigSlotsForDomain(intentId, actionMetadata.domain ?? 'service');
+  //
+  // Codebase Channel SSOT — pass `hasCodebase` so plan/design intents
+  // pick up the auto codebase context slot when the workspace contains
+  // existing code. Greenfield workspaces are unaffected.
+  const slots = getConfigSlotsForDomain(
+    intentId,
+    actionMetadata.domain ?? 'service',
+    { hasCodebase: gitSnapshot?.hasCodebase ?? false },
+  );
   // SSOT D27 — surface the BasisSummaryBar / Edit affordance only when at
   // least one tier is actually live for the current domain × runtime.
   // Static `slots.basis.tiers.length` would surface a Section whose Edit

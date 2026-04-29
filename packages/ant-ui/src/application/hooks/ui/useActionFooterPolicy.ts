@@ -43,7 +43,13 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   // slots and collapses plan target.outputs / labels so policy
   // decisions (chat / build gates, ref / context requirements) reflect
   // only the surface that the workspace actually owns.
-  const slots = getConfigSlotsForDomain(actionMetadata.intent as IntentId, actionMetadata.domain ?? 'service');
+  // Codebase Channel SSOT — pass `hasCodebase` so plan/design intents
+  // see the auto context slot (does not affect ref-required gates).
+  const slots = getConfigSlotsForDomain(
+    actionMetadata.intent as IntentId,
+    actionMetadata.domain ?? 'service',
+    { hasCodebase: snapshot?.hasCodebase ?? false },
+  );
   if (!slots) {
     return { canStartChat: false, canBuild: false, isBuilding: false, chatDisabledReason: 'invalid-config', buildDisabledReason: 'invalid-config' };
   }

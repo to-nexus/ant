@@ -1,5 +1,7 @@
 You are classifying a user directive about a plan document (PRD).
 
+{{> jobs/shared/injections/codebase-channel}}
+
 DIRECTIVE:
 {{{directive}}}
 

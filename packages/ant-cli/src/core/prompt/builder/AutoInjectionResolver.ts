@@ -10,6 +10,7 @@
  */
 
 import type { ResolvedActionContext, TechTier, Mode } from '@ant/shared';
+import { deriveCodebaseRole } from '@ant/shared';
 
 // ============================================
 // Input Types
@@ -35,6 +36,13 @@ export interface AutoInjectionInput {
     hasSessionContext?: boolean;
     hasMissingDependency?: boolean;
     hasRuntimeError?: boolean;
+    /**
+     * Codebase Channel SSOT — workspace contains an existing codebase
+     * (disk walk OR memory index). Combined with the intent it derives
+     * `codebaseRole` ('ref' / 'context') and conditionally injects the
+     * `codebase-channel` partial.
+     */
+    hasCodebase?: boolean;
   };
 }
 
@@ -207,6 +215,20 @@ export class AutoInjectionResolver {
       if (job === 'code' && taskType === 'setup' && language) {
         injections.push(`jobs/${job}/nodes/execute/basis/techTier/${language}/setup/config`);
       }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Codebase Channel SSOT — single partial gates on `codebaseRole`
+    // ('ref' for code-anchored intents, 'context' for plan/design in
+    // existing-project workspaces). Injected once across all jobs/nodes
+    // — partial self-gates so greenfield workspaces emit nothing.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const codebaseRole = deriveCodebaseRole(
+      resolvedAction?.intent,
+      { hasCodebase: data.hasCodebase },
+    );
+    if (codebaseRole) {
+      injections.push(`${commonPrefix}/codebase-channel`);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

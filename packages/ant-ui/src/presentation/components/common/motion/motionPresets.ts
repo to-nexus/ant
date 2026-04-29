@@ -1,5 +1,3 @@
-import type { Transition } from 'framer-motion';
-
 /**
  * Shared motion presets for ant-ui.
  *
@@ -8,14 +6,12 @@ import type { Transition } from 'framer-motion';
  * inline `transition={{ ... }}` literals.
  */
 
-export const POP_SPRING: Transition = {
-  type: 'spring',
-  stiffness: 380,
-  damping: 16,
-  mass: 0.6,
-};
-
 export const QUIET_FADE_DURATION = 0.18;
 
-export const POP_RING_DURATION_MS = 520;
-export const NEWLY_ADDED_AUTO_CLEAR_MS = 700;
+/**
+ * Default time (ms) the {@link useNewlyAdded} hook keeps an item flagged as
+ * "newly added" so a one-shot entrance can run. Sized to outlast the
+ * {@link TaskCardShineSweep} sweep (0.7s + 0.2s delay) with a small margin —
+ * the kanban completed column passes the same value explicitly for clarity.
+ */
+export const NEWLY_ADDED_AUTO_CLEAR_MS = 1200;

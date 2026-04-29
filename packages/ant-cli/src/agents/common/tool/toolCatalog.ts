@@ -258,18 +258,23 @@ export const TOOL_SETS = {
     ToolName.RUN_COMMAND,
   ] as ToolName[],
 
+  // SEARCH_CODE included so existing-project workspaces can satisfy the
+  // Codebase Channel SSOT "MUST inspect" directive even in UI design jobs.
   uiDesignBase: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
   ] as ToolName[],
 
   uiDesign: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
   ] as ToolName[],
 
   uiDesignFigma: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,

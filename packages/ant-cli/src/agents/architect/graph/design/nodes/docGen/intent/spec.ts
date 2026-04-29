@@ -127,6 +127,9 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       figmaStartNodeId: state.figmaStartNodeId,
       resolvedAction: state.resolvedAction,
       runtimeContext: runtimeLines.join('\n'),
+      // Codebase Channel SSOT — flow workspace state to the
+      // codebase-channel partial / AutoInjectionResolver gate.
+      workspaceState: state.workspaceState,
     },
   };
 

@@ -25,6 +25,7 @@ import {
   isTierActive,
   getEffectiveDomain,
   getConfigSlots,
+  deriveCodebaseRole,
   type SupportedLanguage,
   type SupportedStack,
 } from '@ant/shared';
@@ -48,9 +49,46 @@ export class PromptBuilder implements PromptPort {
   /**
    * Simple render — direct template rendering without injection resolution.
    * Use for nodes that just need a rendered template (detect, revise, keyword, etc.).
+   *
+   * Auto-enriches `vars` with the Codebase Channel SSOT triplet
+   * (`codebaseRole`, `codebaseEntryPoints`, `hasCodebase`) so any template
+   * that includes the `codebase-channel` partial activates correctly even
+   * outside the `build()` flow. Greenfield workspaces become a no-op.
    */
   async render(templatePath: string, vars: Record<string, any>): Promise<string> {
-    return await this.promptPort.render(templatePath, vars);
+    const enriched = this.enrichCodebaseVars(vars);
+    return await this.promptPort.render(templatePath, enriched);
+  }
+
+  /**
+   * Codebase Channel SSOT — derive `codebaseRole` from intent + hasCodebase
+   * and surface `codebaseEntryPoints` from `workspaceState`. Idempotent —
+   * caller-provided values win, so an explicit override (e.g. tests) is
+   * preserved. Returns a new vars object only when there is something to
+   * add; otherwise the input is returned untouched (zero allocation hot
+   * path for greenfield).
+   */
+  private enrichCodebaseVars(vars: Record<string, any>): Record<string, any> {
+    if (!vars) return vars;
+    const intent = vars['intent'] ?? (vars['resolvedAction'] as any)?.intent;
+    const hasCodebase = Boolean(
+      vars['hasCodebase'] || (vars['workspaceState'] as any)?.hasCodebase,
+    );
+    const role =
+      vars['codebaseRole'] ?? deriveCodebaseRole(intent, { hasCodebase });
+    const entryPoints =
+      vars['codebaseEntryPoints']
+      ?? (vars['workspaceState'] as any)?.codebaseEntryPoints;
+    if (role === undefined && !entryPoints) return vars;
+    return {
+      ...vars,
+      ...(role !== undefined && vars['codebaseRole'] === undefined
+        ? { codebaseRole: role }
+        : {}),
+      ...(entryPoints && vars['codebaseEntryPoints'] === undefined
+        ? { codebaseEntryPoints: entryPoints }
+        : {}),
+    };
   }
 
   /**
@@ -124,6 +162,17 @@ export class PromptBuilder implements PromptPort {
     if (config.pipeline?.sanitizeInput) {
       vars = sanitizeInjectionVars(vars);
     }
+
+    // Codebase Channel SSOT — auto-inject template vars (mirrors render()).
+    // `codebaseRole` is derived once (from intent + hasCodebase) and
+    // `codebaseEntryPoints` is hoisted from workspaceState. Idempotent.
+    // Allows the `codebase-channel` partial (gated on `codebaseRole`) to
+    // activate without each node manually populating these vars.
+    // Use config.intent as a fallback intent source (techContext path).
+    if (!vars['intent'] && config.intent) {
+      vars = { ...vars, intent: config.intent };
+    }
+    vars = this.enrichCodebaseVars(vars);
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Step 3: Render all sections
@@ -621,6 +670,12 @@ export class PromptBuilder implements PromptPort {
       hasSessionContext: Boolean((v['sessionContext'] as any)?.totalRuns > 0),
       hasMissingDependency: Boolean(v['hasMissingDependency']),
       hasRuntimeError: Boolean(v['hasRuntimeError']),
+      // Codebase Channel SSOT — accept either a direct `hasCodebase`
+      // var (lean wiring) or a nested `workspaceState.hasCodebase`
+      // (when callers spread the full WorkspaceState).
+      hasCodebase: Boolean(
+        v['hasCodebase'] || (v['workspaceState'] as any)?.hasCodebase,
+      ),
     };
   }
 

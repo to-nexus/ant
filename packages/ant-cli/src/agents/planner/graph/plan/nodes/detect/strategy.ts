@@ -120,7 +120,16 @@ async function detectPlanIntentViaLLM(
   // `explicitDomain` flips the prompt's `<domain>` instruction off via
   // Handlebars `{{#unless explicitDomain}}` — when the user has already
   // committed a domain, the LLM should not re-infer it.
-  const vars = { directive, hasExistingTarget, refs, explicitDomain };
+  // `workspaceState` flows through to PromptBuilder.render so the
+  // codebase-channel partial activates when an existing codebase is
+  // present (Codebase Channel SSOT).
+  const vars = {
+    directive,
+    hasExistingTarget,
+    refs,
+    explicitDomain,
+    workspaceState: state.workspaceState,
+  };
 
   let systemPrompt = '';
   let userPrompt = '';
