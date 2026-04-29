@@ -7,6 +7,7 @@ import type { ActiveWorkerNode } from '@/domain/models/workflow';
 import { useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
+import { PopAppear, useAutoScrollOnGrowth } from '../common/motion';
 
 /**
  * Inline node status shown directly below each in-progress task card.
@@ -38,11 +39,11 @@ interface KanbanColumnsProps {
   todoTasks: UnifiedTask[];
   inProgressTasks: UnifiedTask[];
   completedTasks: UnifiedTask[];
+  newlyAddedTodoIds: Set<string>;
   newlyCompletedIds: Set<string>;
   newlyInProgressId: string | null;
   splitLayout: 'horizontal' | 'vertical';
   workflowDisplayedState: WorkflowRealtimeState | null;
-  onShineComplete: (taskId: string) => void;
   onInProgressAnimationComplete: () => void;
 }
 
@@ -59,11 +60,11 @@ export function KanbanColumns({
   todoTasks,
   inProgressTasks,
   completedTasks,
+  newlyAddedTodoIds,
   newlyCompletedIds,
   newlyInProgressId,
   splitLayout,
   workflowDisplayedState,
-  onShineComplete,
   onInProgressAnimationComplete
 }: KanbanColumnsProps) {
   const { t } = useTranslation('kanban');
@@ -77,7 +78,14 @@ export function KanbanColumns({
       return priorityA - priorityB;
     });
   }, [todoTasks]);
-  
+
+  // Follow-tail: when the todo column grows (decompose streaming a new
+  // <task>), smooth-scroll the nearest scrollable ancestor to its bottom.
+  // findScrollParent in the hook handles both layouts (per-column scroll
+  // vs. board-level scroll under horizontal split).
+  const todoListRef = useRef<HTMLDivElement>(null);
+  useAutoScrollOnGrowth(todoListRef, sortedTodoTasks.length);
+
   // ✅ Auto-clear in-progress animation flag
   const inProgressTimerRef = useRef<number | null>(null);
   useEffect(() => {
@@ -98,25 +106,9 @@ export function KanbanColumns({
       }
     };
   }, [newlyInProgressId, onInProgressAnimationComplete]);
-  
-  // ✅ Auto-clear completed animation flags
-  const completedTimersRef = useRef<Map<string, number>>(new Map());
-  useEffect(() => {
-    newlyCompletedIds.forEach(taskId => {
-      if (!completedTimersRef.current.has(taskId)) {
-        const timerId = setTimeout(() => {
-          onShineComplete(taskId);
-          completedTimersRef.current.delete(taskId);
-        }, 1200) as unknown as number;
-        completedTimersRef.current.set(taskId, timerId);
-      }
-    });
-    
-    return () => {
-      completedTimersRef.current.forEach(timerId => clearTimeout(timerId));
-      completedTimersRef.current.clear();
-    };
-  }, [newlyCompletedIds, onShineComplete]);
+
+  // Newly-completed shine cleanup is owned by `useNewlyAdded` in the parent
+  // (autoClearMs: 1200); no per-id timers live in this component anymore.
   
   return (
     <LayoutGroup>
@@ -138,33 +130,23 @@ export function KanbanColumns({
           </div>
           
           {/* Content - No scroll in horizontal (board scrolls), scroll in vertical (column scrolls) */}
-          <div className={isHorizontalSplit ? 
-            "space-y-2 pr-2" : 
-            "space-y-2 overflow-y-auto pr-2 scrollbar-hide"
-          }>
+          <div
+            ref={todoListRef}
+            className={isHorizontalSplit ?
+              "space-y-2 pr-2" :
+              "space-y-2 overflow-y-auto pr-2 scrollbar-hide"
+            }
+          >
             {sortedTodoTasks.map((task) => {
               const taskId = task.id || task.name;
               return (
-                <motion.div
+                <PopAppear
                   key={taskId}
-                  className="min-w-0"
+                  fresh={newlyAddedTodoIds.has(taskId)}
                   layoutId={`task-${taskId}`}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ 
-                    layout: {
-                      type: "spring",
-                      stiffness: 500,
-                      damping: 35
-                    },
-                    opacity: { duration: 0.2 },
-                    scale: { duration: 0.2 }
-                  }}
                 >
                   <TaskCard task={task} status="todo" />
-                </motion.div>
+                </PopAppear>
               );
             })}
             {sortedTodoTasks.length === 0 && !isHorizontalSplit && (
