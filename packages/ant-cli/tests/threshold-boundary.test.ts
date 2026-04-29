@@ -95,7 +95,7 @@ describe('compactContent boundary', () => {
   const opts = (threshold: number) => ({
     threshold,
     label: 'Test Doc',
-    filePath: 'outputs/test.md',
+    filePath: 'architecture/test.md',
   });
 
   it('at threshold → original preserved', () => {
