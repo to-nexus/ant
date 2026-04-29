@@ -3,7 +3,7 @@
  *
  * `visual/ui/` and `visual/game-art/` MUST be sub-sourced
  * by the same shape: an `ant/` LLM-generated canonical sub-source plus
- * `figma/` / `handoff/` Phase 5+ hooks. Three guards:
+ * `figma/` / `handoff/` Phase 5+ hooks. Four guards:
  *
  *   1. The canonical-dirs registry exposes `ant/` for both surfaces.
  *
@@ -12,16 +12,12 @@
  *      stays symmetric.
  *
  *   3. `pathsContainGameArtDoc` matches the same sub-source structure as
- *      `pathsContainUiDoc` (ant/ + figma/ + handoff/). The legacy flat
- *      layout BC was removed in Phase A — disk-level migration is owned
- *      by the workspace boot guard, not by classification helpers.
+ *      `pathsContainUiDoc` (ant/ + figma/ + handoff/). Flat layout
+ *      classification was removed in Phase A — only the three sub-source
+ *      prefixes qualify.
  *
  *   4. `designSubdirOf` and `designDirOf` route `game-art-*.json`
  *      filenames into the sub-sourced canonical (`visual/game-art/ant`).
- *
- *   5. `migrateGameArtToAntSubdir` is wired into `ensureCanonicalStructure`
- *      so existing flat-layout workspaces auto-migrate on next boot
- *      (idempotent invariant).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -122,11 +118,10 @@ describe('I10 — pathsContainXDoc symmetry', () => {
     expect(pathsContainGameArtDoc(['visual/ui/ant/ui-tokens.json'])).toBe(false);
   });
 
-  it('pathsContainGameArtDoc rejects legacy flat paths (single-direction; no BC)', () => {
+  it('pathsContainGameArtDoc rejects flat paths (single-direction; no BC)', () => {
     // Phase A removed the BC regex — only the three sub-source prefixes
     // (`ant/` / `figma/` / `handoff/`) qualify. Flat paths under the
-    // game-art parent are NOT recognized; the workspace boot guard owns
-    // disk-level migration in the unlikely event a flat file appears.
+    // game-art parent are NOT recognized as game-art docs.
     expect(pathsContainGameArtDoc(['visual/game-art/game-art-tokens.json'])).toBe(false);
     expect(pathsContainGameArtDoc(['visual/game-art/game-art-assets.json'])).toBe(false);
   });
@@ -155,22 +150,6 @@ describe('I10 — designSubdirOf / designDirOf route to ant/ sub-source', () => 
   it('non-namespaced files route to system / spec', () => {
     expect(designDirOf('fe-system-main.md')).toBe('architecture/system');
     expect(designDirOf('spec-feature.md')).toBe('architecture/spec');
-  });
-});
-
-describe('I10 — Migration helper wired into ensureCanonicalStructure', () => {
-  it('ensureCanonicalStructure imports migrateGameArtToAntSubdir for boot-time reconciliation', async () => {
-    const fs = await import('node:fs');
-    const path = await import('node:path');
-    const sessionPaths = path.resolve(__dirname, '../src/core/utils/sessionPaths.ts');
-    const src = fs.readFileSync(sessionPaths, 'utf8');
-    expect(src).toMatch(/migrateGameArtToAntSubdir/);
-    expect(src).toMatch(/ensureCanonicalStructure/);
-  });
-
-  it('migrateGameArtToAntSubdir module exports the helper + result types', async () => {
-    const mod = await import('../src/infrastructure/workspace/migrateGameArtToAntSubdir');
-    expect(typeof mod.migrateGameArtToAntSubdir).toBe('function');
   });
 });
 

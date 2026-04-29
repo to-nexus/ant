@@ -215,11 +215,9 @@ const applyTheme = (theme: 'light' | 'dark') => {
 };
 
 /**
- * Phase 2 (D22) — fire-and-forget write of `WorkspaceConfig.domain` to
- * `config.json` (BE artifact). This is the SSOT for project-level domain
- * persistence; localStorage / sessionStorage are intentionally not used
- * for this slot. The BE additionally runs `reconcileProjectAssetsToDomain`
- * on the toggle, so callers don't need a follow-up migration step.
+ * Fire-and-forget write of `WorkspaceConfig.domain` to `config.json`
+ * (BE artifact). This is the SSOT for project-level domain persistence;
+ * localStorage / sessionStorage are intentionally not used for this slot.
  *
  * Guard: skip the PUT when `cfg.domain === nextDomain` so the inverse
  * sync path (`fetchProjectConfig` → `updateActionMetadata({ domain })`)

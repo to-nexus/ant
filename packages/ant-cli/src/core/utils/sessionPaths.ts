@@ -338,58 +338,6 @@ export async function ensureCanonicalStructure(featurePath: string): Promise<Ens
     }, { featurePath, createdDirs, createdFiles });
   }
 
-  // Phase 2 (D19/D22) — domain-keyed asset pool reconciliation.
-  // Lazy-loaded to avoid pulling fs/promises into modules that only need
-  // canonical-dir assertion (and to keep the cycle graph simple).
-  // Best-effort: any failure inside the migration MUST NOT block feature
-  // boot (the canonical structure invariants are higher priority than
-  // legacy-asset relocation).
-  try {
-    const { reconcileAssetsToDomain } = await import('../../infrastructure/workspace/reconcileAssetsToDomain');
-    const migrated = await reconcileAssetsToDomain(featurePath);
-    if (migrated && !migrated.alreadyMigrated) {
-      logger.info('[ensureCanonicalStructure] reconciled asset pool to domain', {
-        component: 'ensureCanonicalStructure',
-      }, {
-        featurePath,
-        domain: migrated.domain,
-        moved: migrated.stats.moved,
-        collisions: migrated.stats.collision,
-        failed: migrated.stats.failed,
-        uiAssetsRewritten: migrated.uiAssetsRewritten,
-      });
-    }
-  } catch (err: unknown) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.warn('[ensureCanonicalStructure] asset domain reconcile skipped', {
-      component: 'ensureCanonicalStructure',
-    }, { featurePath, reason });
-  }
-
-  // v8 (D24-revised) — game-art flat → ant/ sub-source migration.
-  // Lifts a flat `visual/game-art/{X}.json` layout into
-  // `visual/game-art/ant/{X}.json` (mirrors `visual/ui/ant`).
-  // Idempotent / silent noop when the workspace already has no flat files.
-  try {
-    const { migrateGameArtToAntSubdir } = await import('../../infrastructure/workspace/migrateGameArtToAntSubdir');
-    const migrated = await migrateGameArtToAntSubdir({ featurePathAbs: featurePath });
-    if (!migrated.alreadyMigrated) {
-      logger.info('[ensureCanonicalStructure] migrated game-art to ant sub-source', {
-        component: 'ensureCanonicalStructure',
-      }, {
-        featurePath,
-        moved: migrated.stats.moved,
-        collisions: migrated.stats.collision,
-        failed: migrated.stats.failed,
-      });
-    }
-  } catch (err: unknown) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.warn('[ensureCanonicalStructure] game-art ant migration skipped', {
-      component: 'ensureCanonicalStructure',
-    }, { featurePath, reason });
-  }
-
   return { createdDirs, createdFiles };
 }
 
