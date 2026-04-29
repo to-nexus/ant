@@ -209,14 +209,10 @@ function computeUiDesign(ctx: TreeContext): ActionReadiness {
  * ActionsPanel layer (TIER_DOMAIN_MATRIX.gameArtTier). Here we compute the
  * "what's missing for build?" surface the same way as ui-design but
  * targeted at the sub-sourced canonical `visual/game-art/ant/`
- * (mirrors `visual/ui/ant/`). The flat `visual/game-art/` is still
- * scanned for buildReady / hasOutput so legacy workspaces that have
- * not yet run `migrateGameArtToAntSubdir` keep working in transit.
+ * (mirrors `visual/ui/ant/`). 단방향 원칙 — `ant/` canonical 만 인식한다.
  */
 function computeGameArtDesign(ctx: TreeContext): ActionReadiness {
-  const hasGameArtAnt = dirHasFilesDeeply(ctx.fileTree, 'visual/game-art/ant');
-  const hasGameArtFlat = dirHasFilesDeeply(ctx.fileTree, 'visual/game-art');
-  const hasGameArt = hasGameArtAnt || hasGameArtFlat;
+  const hasGameArt = dirHasFilesDeeply(ctx.fileTree, 'visual/game-art/ant');
   // description mode is always available (chat directive is the design
   // authority); figma sub-mode lights up when the workfile reference is
   // configured and the MCP bridge is reachable.

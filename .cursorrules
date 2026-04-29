@@ -225,14 +225,11 @@ rg "outputs/design|inputs/sources|inputs/assets|inputs/references|inputs/directi
   packages/ant-cli/src/core/prompt/templates docs \
   --type ts --type md \
   --glob '!**/changelog/**' \
-  --glob '!**/migrate-workspace-layout.mjs' \
   --glob '!**/docs/tmp/**'
 # Expected: 0 matches
 ```
 
-위 명령으로 수동 sweep 한다.
-
-디스크 마이그레이션은 1회성: `pnpm migrate:workspace --apply --workspaces-path <ANT_WORKSPACE_BASE_PATH>`.
+위 명령으로 수동 sweep 한다. 디스크 잔존 옛 트리는 더 이상 자동 마이그레이션되지 않으므로, 발견 시 수동으로 정리한다.
 
 ---
 
@@ -669,8 +666,7 @@ rg -n "isTierActive\(" --type ts
 ### ✅ 정책
 
 - 풀 라우팅은 `state.workspaceConfig.domain` 한 곳에서 결정 — handler 는 그 결과만 소비
-- 마이그레이션이 필요할 때 (`assets/{icons,images,misc}` 잔재) `migrateAssetsToDomain(workspaceDomain)` 한 번 실행 — idempotent
-- 도메인 전환 시 자산은 사용자 책임으로 이동 — 시스템은 조용히 한 쪽만 활성화한다
+- 도메인 전환 시 자산은 사용자 책임으로 이동 — 시스템은 조용히 한 쪽만 활성화한다 (자동 재배치 없음)
 
 회귀 가드: `tests/asset-surface-boundary.test.ts` + `tests/assets-dir-canonical.test.ts`.
 
@@ -763,7 +759,6 @@ export function coreLoopCandidatesFor(genre): readonly GameCoreLoopVariant[];
 ### ✅ 정책
 
 - 새 game-art 파일은 `designDirOf` 헬퍼를 통해 자동으로 `visual/game-art/ant/` 로 라우팅. 모든 prompt template (`game-art-*-guide-by-{figma,desc}.md`) 의 output path 도 동일.
-- `migrateGameArtToAntSubdir` 가 `ensureCanonicalStructure` 에서 호출 — 기존 flat 산출물은 워크스페이스 부팅 시 자동 이동 (idempotent).
 - Phase 5+ visual job 활성 시 `figma/` / `handoff/` 도 canonical-dirs 등록 한 줄 추가만으로 활성.
 
 회귀 가드: `tests/design-subsource-symmetry.test.ts` + `tests/assets-dir-canonical.test.ts`.
