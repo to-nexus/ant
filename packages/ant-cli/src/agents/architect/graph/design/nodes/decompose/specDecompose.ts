@@ -13,15 +13,15 @@
 import { DesignGraphState } from "../../state";
 import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../../types/task";
-import { LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
-import { updateKanban } from "./kanbanUpdate";
+import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
+import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
-import { extractJsonFromLlmResponse } from "../../../../../../core/utils/llmResponseParser";
+import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -31,9 +31,15 @@ interface DecomposeContext {
 
 // ─────────────────────────────────────────────────────────────
 // LLM response shape
+//
+// Each task is one chapter of the same spec-{slug}.md document; the
+// `tasks` name aligns with the project-wide decompose contract (vs.
+// the legacy `sections` alias) so the design jsonResponseParser v2
+// surfaces them via the same `<tasks><task>{json}</task></tasks>`
+// path the ui / system / game-art variants use.
 // ─────────────────────────────────────────────────────────────
 
-interface SpecSection {
+interface SpecTask {
   id: string;       // e.g. "spec-social-login-1"
   name: string;     // e.g. "Overview & Requirements"
   scope: string;    // Description of what this section covers
@@ -42,7 +48,7 @@ interface SpecSection {
 interface SpecDecomposeResponse {
   slug: string;
   title: string;
-  sections: SpecSection[];
+  tasks: SpecTask[];
   executionTier: ExecutionTierId;
 }
 
@@ -59,7 +65,7 @@ async function decomposeSpecSections(
   const fallback = (): SpecDecomposeResponse => ({
     slug: `feature-${Date.now()}`,
     title: directive.slice(0, 60),
-    sections: [
+    tasks: [
       {
         id: `spec-feature-${Date.now()}-1`,
         name: 'Full Spec',
@@ -71,18 +77,25 @@ async function decomposeSpecSections(
 
   if (!llm) return fallback();
 
+  // Streaming Kanban hook — surfaces each `<task>` body (chapter) as it
+  // streams so the todo column populates chapter-by-chapter rather than
+  // all-at-once after the full response. The final updateKanban below
+  // overwrites the partial buffer with the richer per-chapter
+  // DesignTask shape.
+  const streamingHook = createDesignTaskStreamingHook(state);
+
   const prompt = [
     `You are a software architect. Analyze the following directive and decide how to structure a spec document.`,
     ``,
     `Rules:`,
-    `- If the directive covers a SINGLE topic, return exactly 1 section.`,
-    `- If the directive covers MULTIPLE distinct topics or subsystems, split into one section per topic (max 5).`,
-    `  Each section becomes a chapter appended to the same document.`,
-    `- Each section MUST be a self-contained writing unit that explores AND writes its chapter.`,
-    `  NEVER create "analysis-only" or "writing-only" sections — every section must produce document content.`,
-    `- Sections are ordered: earlier sections are written first and provide context for later ones.`,
+    `- If the directive covers a SINGLE topic, return exactly 1 chapter.`,
+    `- If the directive covers MULTIPLE distinct topics or subsystems, split into one chapter per topic (max 5).`,
+    `  Each chapter becomes a section appended to the same document.`,
+    `- Each chapter MUST be a self-contained writing unit that explores AND writes its content.`,
+    `  NEVER create "analysis-only" or "writing-only" chapters — every chapter must produce document content.`,
+    `- Chapters are ordered: earlier chapters are written first and provide context for later ones.`,
     ``,
-    `ExecutionTier (BEFORE the JSON output, emit exactly one \`<executionTier>N</executionTier>\` tag where N is 0..4):`,
+    `ExecutionTier (BEFORE the meta tags, emit exactly one \`<executionTier>N</executionTier>\` tag where N is 0..4):`,
     `  0 Reflex        — read-only, no spec document produced.`,
     `  1 OneShot       — single concrete edit to one spec chapter.`,
     `  2 Exploratory   — requires observing sources before writing; still a single cohesive edit.`,
@@ -91,37 +104,50 @@ async function decomposeSpecSections(
     ``,
     `Directive: "${directive}"`,
     ``,
-    `Respond with the tier tag first, then ONLY a JSON object (no markdown):`,
+    `Output format — emit the meta tags first (one tag per line), then a \`<tasks>\` block with one \`<task>{json}</task>\` element per chapter. Each \`<task>\` body is a single JSON object. NO markdown fences anywhere. NO \`<decompose>\` wrapper.`,
+    ``,
+    `Example:`,
     `<executionTier>3</executionTier>`,
-    `{`,
-    `  "slug": "short-url-safe-slug",`,
-    `  "title": "Human Readable Title",`,
-    `  "sections": [`,
-    `    { "id": "spec-{slug}-1", "name": "Chapter Name", "scope": "What this chapter covers" }`,
-    `  ]`,
-    `}`,
+    `<slug>short-url-safe-slug</slug>`,
+    `<title>Human Readable Title</title>`,
+    `<tasks>`,
+    `  <task>{"id":"spec-{slug}-1","name":"Chapter Name","scope":"What this chapter covers"}</task>`,
+    `</tasks>`,
   ].join('\n');
 
   try {
-    const result = await (llm as any).invokeWithUsage?.(
+    // Stream through `decomposeWithToolLoop` (no tools, single round) so
+    // the new contract's `<task>` wrappers surface `task_added` actions
+    // and the streaming Kanban hook fills task-by-task during spec
+    // decompose too. Previously `invokeWithUsage` was single-shot and
+    // gave `XMLStreamParser` nothing to scan mid-stream.
+    const { decomposeWithToolLoop } = await import('../docGen/sourceSelector');
+    const { response, usage } = await decomposeWithToolLoop(
+      llm,
       [{ role: 'user', content: prompt }],
-      { temperature: LLM_TEMPERATURE.DETECT, maxTokens: 512 }
+      [],
+      () => `Error: tools are not available in spec decompose`,
+      {
+        temperature: LLM_TEMPERATURE.DETECT,
+        maxTokens: LLM_MAX_TOKENS.DEFAULT,
+        state: state as any,
+        onTaskParsed: streamingHook.onTaskParsed,
+      },
     );
-    const response: string = result?.content || await llm.invoke([{ role: 'user', content: prompt }]);
+    applyEstimatingUsage(state, 'decompose', usage, { subNode: 'spec', promptChars: prompt.length });
 
-    applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'spec', promptChars: prompt.length });
+    const parsed = parseLLMJsonResponse(response);
 
-    const parsed = extractJsonFromLlmResponse<any>(response, { sanitize: true });
-    if (!parsed) throw new Error('No JSON found in LLM response');
-
-    // Validate
-    const slug = (parsed.slug || '').replace(/[^a-z0-9-]/g, '').slice(0, 40) || `feature-${Date.now()}`;
-    const title = parsed.title || directive.slice(0, 60);
-    const sections: SpecSection[] = Array.isArray(parsed.sections) && parsed.sections.length > 0
-      ? parsed.sections.map((s: SpecSection, i: number) => ({
-          id: s.id || `spec-${slug}-${i + 1}`,
-          name: s.name || `Section ${i + 1}`,
-          scope: s.scope || '',
+    const rawSlug = typeof parsed.slug === 'string' ? parsed.slug : '';
+    const slug = rawSlug.replace(/[^a-z0-9-]/g, '').slice(0, 40) || `feature-${Date.now()}`;
+    const title = (typeof parsed.title === 'string' && parsed.title.length > 0)
+      ? parsed.title
+      : directive.slice(0, 60);
+    const tasks: SpecTask[] = Array.isArray(parsed.tasks) && parsed.tasks.length > 0
+      ? parsed.tasks.map((t: any, i: number) => ({
+          id: typeof t.id === 'string' && t.id.length > 0 ? t.id : `spec-${slug}-${i + 1}`,
+          name: typeof t.name === 'string' && t.name.length > 0 ? t.name : `Section ${i + 1}`,
+          scope: typeof t.scope === 'string' ? t.scope : '',
         }))
       : [{ id: `spec-${slug}-1`, name: 'Full Spec', scope: directive }];
 
@@ -130,7 +156,7 @@ async function decomposeSpecSections(
       'SpecDecompose',
     );
 
-    return { slug, title, sections, executionTier };
+    return { slug, title, tasks, executionTier };
   } catch (error) {
     console.warn('⚠️  [specDecompose] Failed to decompose via LLM, using fallback:', error);
     return fallback();
@@ -156,27 +182,27 @@ export async function decomposeSpec(
 
   await showChatPlaceholder();
 
-  const { slug, title, sections, executionTier } = await decomposeSpecSections(state);
+  const { slug, title, tasks, executionTier } = await decomposeSpecSections(state);
   console.log(`🧭 [SpecDecompose] executionTier=${executionTier}`);
   const targetFile = `spec-${slug}.md`;
 
-  console.log(`📋 [specDecompose] Target: ${targetFile} ("${title}") — ${sections.length} section(s)`);
-  sections.forEach((s, i) => console.log(`   ${i + 1}. ${s.name}: ${s.scope.slice(0, 80)}`));
+  console.log(`📋 [specDecompose] Target: ${targetFile} ("${title}") — ${tasks.length} chapter(s)`);
+  tasks.forEach((t, i) => console.log(`   ${i + 1}. ${t.name}: ${t.scope.slice(0, 80)}`));
 
-  // Build one DesignTask per section
+  // Build one DesignTask per chapter
   const taskQueue = new TaskQueue<DesignTask>();
 
-  sections.forEach((section, index) => {
+  tasks.forEach((chapter, index) => {
     const task: DesignTask = {
-      id: section.id,
-      name: `Spec: ${title} — ${section.name}`,
+      id: chapter.id,
+      name: `Spec: ${title} — ${chapter.name}`,
       type: 'doc',
       priority: 200 + index * 10,
       targetFile,
       description: directive,
       sectionIndex: index,
-      totalSections: sections.length,
-      sectionScope: section.scope,
+      totalSections: tasks.length,
+      sectionScope: chapter.scope,
       include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
       artifactPolicy: {
         refs: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
@@ -194,7 +220,7 @@ export async function decomposeSpec(
     ctx.newJobId,
     'decompose-spec',
     directive.length,
-    { targetFile, slug, title, sectionCount: sections.length, jobMode }
+    { targetFile, slug, title, sectionCount: tasks.length, jobMode }
   );
 
   // Spec uses project-level profile; stack inferred from intent
