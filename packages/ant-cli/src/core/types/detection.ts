@@ -19,6 +19,7 @@ export type {
 
 import type { Mode, IntentGroup, Domain, InferredAction, ResolvedActionContext } from '@ant/shared';
 import { isValidIntentId } from '@ant/shared';
+import { extractJsonFromLlmResponse } from '../utils/llmResponseParser';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Target Files Resolution — intentId → target files (no intermediate environment)
@@ -285,39 +286,29 @@ export function parseInferredActionFromLLM(
   response: string,
   sourceJob: string,
 ): InferredAction | null {
-  try {
-    const detectMatch = response.match(/<detect>\s*([\s\S]*?)\s*<\/detect>/);
-
-    let jsonStr: string;
-    if (detectMatch) {
-      jsonStr = detectMatch[1];
-    } else {
-      const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) ||
-                        response.match(/{[\s\S]*}/);
-      if (!jsonMatch) return null;
-      jsonStr = jsonMatch[1] || jsonMatch[0];
-    }
-
-    const parsed = JSON.parse(jsonStr);
-
-    const intentId = parsed.intentId;
-    if (!intentId || !isValidIntentId(intentId)) {
-      console.error(`[parseInferredAction] Invalid or missing intentId: "${intentId}"`);
-      return null;
-    }
-
-    return {
-      intentId,
-      domain: parsed.domain,
-      reasoning: {
-        intent: parsed.reasoning || parsed.jobModeReasoning || parsed.intentGroupReasoning,
-        domain: parsed.domainReasoning,
-      },
-      sourceJob,
-    };
-  } catch (error) {
-    console.error('[parseInferredAction] Failed to parse LLM response:', error);
+  const parsed = extractJsonFromLlmResponse<any>(response, {
+    tag: 'detect',
+    sanitize: true,
+  });
+  if (!parsed) {
+    console.error('[parseInferredAction] Failed to extract JSON from LLM response');
     return null;
   }
+
+  const intentId = parsed.intentId;
+  if (!intentId || !isValidIntentId(intentId)) {
+    console.error(`[parseInferredAction] Invalid or missing intentId: "${intentId}"`);
+    return null;
+  }
+
+  return {
+    intentId,
+    domain: parsed.domain,
+    reasoning: {
+      intent: parsed.reasoning || parsed.jobModeReasoning || parsed.intentGroupReasoning,
+      domain: parsed.domainReasoning,
+    },
+    sourceJob,
+  };
 }
 
