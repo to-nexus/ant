@@ -321,6 +321,90 @@ export function pathsContainUiDoc(paths: readonly string[] | undefined): boolean
   return paths.some(p => uiSourceOfPath(p) !== null);
 }
 
+// ============================================
+// UiSource hard-exclusive SSOT (domain rule funnel)
+// ============================================
+
+/**
+ * Hard-exclusive UiSource priority order — `ant` wins over `figma` wins over
+ * `handoff`. This order encodes the domain rule "the project's authored
+ * canonical (ant) is the preferred input; figma is the bridged authority;
+ * handoff is the free-form fallback."
+ *
+ * `UI_SOURCE_SUBGROUPS` (action-config-matrix.ts) MUST register subgroups in
+ * this exact order; the symmetry test `tests/uiSourceExclusivity.test.ts`
+ * locks the relationship.
+ */
+export const UI_SOURCE_PRIORITY: readonly UiSource[] = ['ant', 'figma', 'handoff'];
+
+/**
+ * Pick the single UiSource a path list should be normalized to. Returns the
+ * highest-priority source present, or `null` if no UI paths are involved.
+ *
+ * Used internally by `normalizeUiSourceRefs`; exposed for callers that need
+ * to reason about the chosen source without filtering paths.
+ */
+export function pickUiSource(paths: readonly string[] | undefined): UiSource | null {
+  if (!paths?.length) return null;
+  const present = new Set<UiSource>();
+  for (const p of paths) {
+    const src = uiSourceOfPath(p);
+    if (src !== null) present.add(src);
+  }
+  if (present.size === 0) return null;
+  for (const id of UI_SOURCE_PRIORITY) {
+    if (present.has(id)) return id;
+  }
+  return null;
+}
+
+/**
+ * Enforce the hard-exclusive UiSource invariant on a path list. Non-UI paths
+ * pass through unchanged; UI paths are filtered down to the single
+ * highest-priority source present (ant > figma > handoff).
+ *
+ * **This is the SSOT for "exactly one UiSource"** — every funnel that
+ * produces or merges path lists destined for a RAC (FE store setter, FE
+ * auto-fill, BE `resolveToRAC` / `mergeWithMetadata`) MUST route through
+ * here. `validateUiSourceExclusivity` (loadDocumentsForRAC.ts) and
+ * `ArtifactPoolView.uiSource()` are downstream safety nets that throw if
+ * any caller bypasses this funnel — they must never throw on the happy
+ * path.
+ *
+ * Order is preserved: a path's index in the input is preserved in the
+ * output (the function is a positional filter).
+ */
+export function normalizeUiSourceRefs(paths: readonly string[] | undefined): string[] {
+  if (!paths?.length) return [];
+  const winner = pickUiSource(paths);
+  if (winner === null) return [...paths];
+  return paths.filter(p => {
+    const src = uiSourceOfPath(p);
+    return src === null || src === winner;
+  });
+}
+
+/**
+ * Auto-fill picker for `type: 'ui-source'` slots. Selects exactly one
+ * subgroup's files — the highest-priority subgroup with `hasValidFiles`
+ * (per `UI_SOURCE_PRIORITY`). Returns an empty array when no subgroup is
+ * valid. Generic over the FE-side `SlotFileEntry` shape so this stays in
+ * `@ant/shared` without coupling to UI types.
+ *
+ * Mirrors `normalizeUiSourceRefs`: both prefer `ant`, then `figma`, then
+ * `handoff`. Co-located so a future priority change touches one symbol.
+ */
+export function pickDefaultUiSourceRefs<F>(
+  subgroups: readonly { id: UiSource; hasValidFiles: boolean; files: readonly F[] }[] | undefined,
+): F[] {
+  if (!subgroups?.length) return [];
+  for (const id of UI_SOURCE_PRIORITY) {
+    const sg = subgroups.find(s => s.id === id && s.hasValidFiles);
+    if (sg) return [...sg.files];
+  }
+  return [];
+}
+
 /**
  * Classify a path into its game-art sub-source. Returns null if the path is
  * not under the game-art tree. Mirrors `uiSourceOfPath` shape (D24-revised).

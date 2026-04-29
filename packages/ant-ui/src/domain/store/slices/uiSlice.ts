@@ -7,6 +7,7 @@ import {
   deriveFromIntent,
   getConfigSlots,
   isActionVisibleForDomain,
+  normalizeUiSourceRefs,
   type IntentGroup,
   type Basis,
   type TechTierConfig,
@@ -563,6 +564,23 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       const next = { ...s.actionMetadata, ...patch };
       const updates: any = {};
 
+      // Hard-exclusive UiSource invariant — the SSOT funnel
+      // (`normalizeUiSourceRefs`, canonical.ts) drops any mixed-UiSource
+      // input down to the highest-priority source present (ant > figma >
+      // handoff). Applied here, every entry point — auto-fill,
+      // toggleFile / toggleFiles, mention-driven assigns — produces a
+      // store that satisfies the invariant by construction. Downstream
+      // surfaces (SlotEntryList card lock, BE detect, validateUiSourceExclusivity)
+      // can then assume a single-source state without re-checking.
+      if (next.refs && next.refs.length > 0) {
+        next.refs = normalizeUiSourceRefs(next.refs);
+        if (next.refs.length === 0) next.refs = undefined;
+      }
+      if (next.context && next.context.length > 0) {
+        next.context = normalizeUiSourceRefs(next.context);
+        if (next.context.length === 0) next.context = undefined;
+      }
+
       if (patch.intent !== undefined && patch.intent !== s.actionMetadata.intent) {
         next.refs = undefined;
         next.context = undefined;
@@ -581,7 +599,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       if ('refs' in patch && next.intent) {
         const slots = getConfigSlots(next.intent);
         if (slots?.target.kind === 'revise') {
-          next.target = patch.refs;
+          next.target = next.refs;
         }
       }
 
