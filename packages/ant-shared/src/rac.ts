@@ -17,6 +17,7 @@
 import type { ActionMetadata, IntentId } from './actions';
 import { deriveFromIntent, INTENT_DEFINITIONS } from './actions';
 import type { Mode, IntentGroup, Domain, InferredAction } from './detection';
+import { normalizeUiSourceRefs } from './canonical';
 
 // ============================================
 // Workspace State (minimal, for infer path)
@@ -541,6 +542,13 @@ export function getIntentDescription(intent: IntentId): string | undefined {
 /**
  * Single entry point for RAC creation. Both explicit and infer paths converge here.
  * mode and intentGroup are ALWAYS derived from intentId — never provided as raw input.
+ *
+ * Hard-exclusive UiSource invariant is enforced here via `normalizeUiSourceRefs`
+ * (canonical.ts SSOT) — refs / context are filtered down to a single
+ * UiSource (ant > figma > handoff) before being attached to the RAC. This
+ * makes the downstream `validateUiSourceExclusivity` (loadDocumentsForRAC)
+ * a safety net rather than the primary enforcer; if it ever throws, a
+ * caller has bypassed this funnel.
  */
 export function resolveToRAC(
   intentId: IntentId,
@@ -555,19 +563,22 @@ export function resolveToRAC(
 ): ResolvedActionContext {
   const derived = deriveFromIntent(intentId);
 
+  const refs = slots?.refs?.length ? normalizeUiSourceRefs(slots.refs) : slots?.refs;
+  const context = slots?.context?.length ? normalizeUiSourceRefs(slots.context) : slots?.context;
+
   return {
     intent: intentId,
     intentGroup: derived.intentGroup,
     mode: derived.mode,
     intentDescription: getIntentDescription(intentId),
     target: slots?.target,
-    refs: slots?.refs,
-    context: slots?.context,
+    refs,
+    context,
     domain: slots?.domain,
     basis,
     source: source ?? 'infer',
     hasExplicitFields: !!(
-      slots?.target?.length || slots?.refs?.length || slots?.context?.length
+      slots?.target?.length || refs?.length || context?.length
     ),
   };
 }
@@ -588,17 +599,25 @@ function dedup(arr: string[]): string[] {
  * Rules:
  *   intentId: metadata.intent replaces inferred (if present)
  *   target:   metadata.target replaces inferred (if present)
- *   refs:     additive (dedup)
- *   context:  additive (dedup)
+ *   refs:     additive (dedup) → normalized to single UiSource
+ *   context:  additive (dedup) → normalized to single UiSource
  *   domain:   from inferred only
  *   basis:    from metadata only (explicit preset from UI)
+ *
+ * The dedup'd ref/context sets are passed through `normalizeUiSourceRefs`
+ * so the merge cannot produce a mixed-UiSource list — the same SSOT funnel
+ * `resolveToRAC` uses on its direct inputs.
  */
 export function mergeWithMetadata(
   inferred: InferredAction,
   metadata?: ActionMetadata,
 ): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: Domain; basis?: Basis } {
-  const mergedRefs = dedup([...(inferred.refs || []), ...(metadata?.refs || [])]);
-  const mergedCtx = dedup([...(inferred.context || []), ...(metadata?.context || [])]);
+  const mergedRefs = normalizeUiSourceRefs(
+    dedup([...(inferred.refs || []), ...(metadata?.refs || [])]),
+  );
+  const mergedCtx = normalizeUiSourceRefs(
+    dedup([...(inferred.context || []), ...(metadata?.context || [])]),
+  );
 
   // Explicit > infer (10.2 invariant): ActionMetadata.domain wins when present.
   const domain = metadata?.domain ?? inferred.domain;
