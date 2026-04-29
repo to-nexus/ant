@@ -13,7 +13,9 @@ import { ChunkPort } from '../../core/ports';
 import { SimpleGitAdapter } from '../../periphery/adapters/git/SimpleGitAdapter';
 import { FileSystemAdapter } from '../../periphery/adapters/filesystem/FileSystemAdapter';
 import { ChromaMemoryAdapter } from '../../periphery/adapters/memory/ChromaMemoryAdapter';
+import { NoopMemoryAdapter } from '../../periphery/adapters/memory/NoopMemoryAdapter';
 import { ChunkAdapter } from '../../periphery/adapters/chunk/ChunkingAdapter';
+import { isVectorDbEnabled } from '../../core/config/vectorDbCapability';
 
 export class AdapterFactory {
   /**
@@ -49,9 +51,16 @@ export class AdapterFactory {
   }
 
   /**
-   * Create Memory (Vector DB) adapter
+   * Create Memory (Vector DB) adapter.
+   *
+   * Returns a `NoopMemoryAdapter` when `ANT_VECTOR_DB_ENABLED` is not set
+   * to a truthy value (the default). See
+   * [`vectorDbCapability.ts`](../../core/config/vectorDbCapability.ts).
    */
   static createMemoryAdapter(): MemoryPort {
+    if (!isVectorDbEnabled()) {
+      return new NoopMemoryAdapter();
+    }
     return new ChromaMemoryAdapter();
   }
 

@@ -1,6 +1,6 @@
 import { MemoryPort, QueryOptions, QueryResult } from "../../../core/ports";
 import { CollectionType, getCollectionName } from "../../../core/types";
-import { ChromaClient } from "chromadb";
+import type { ChromaClient as ChromaClientType } from "chromadb";
 
 class CustomEmbeddingFunction {
   private embedUrl: string;
@@ -41,14 +41,32 @@ class CustomEmbeddingFunction {
   }
 }
 
-const CHROMA_URL = process.env.CHROMA_URL || "http://localhost:8000";
-const url = new URL(CHROMA_URL);
-const client = new ChromaClient({
-  host: url.hostname,
-  port: parseInt(url.port || "8000"),
-  ssl: url.protocol === "https:"
-});
-const embedder = new CustomEmbeddingFunction();
+// ✅ Lazy: importing this module must NOT construct a ChromaClient.
+// Operators may have ANT_VECTOR_DB_ENABLED=false and no Chroma container
+// running; module-top side effects break that path. The client and embedder
+// are created on first use via `getClient()` / `getEmbedder()`.
+let cachedClient: ChromaClientType | null = null;
+let cachedEmbedder: CustomEmbeddingFunction | null = null;
+
+async function getClient(): Promise<ChromaClientType> {
+  if (cachedClient) return cachedClient;
+  const { ChromaClient } = await import("chromadb");
+  const chromaUrl = process.env.CHROMA_URL || "http://localhost:8000";
+  const url = new URL(chromaUrl);
+  cachedClient = new ChromaClient({
+    host: url.hostname,
+    port: parseInt(url.port || "8000"),
+    ssl: url.protocol === "https:"
+  });
+  return cachedClient;
+}
+
+function getEmbedder(): CustomEmbeddingFunction {
+  if (!cachedEmbedder) {
+    cachedEmbedder = new CustomEmbeddingFunction();
+  }
+  return cachedEmbedder;
+}
 
 export class ChromaMemoryAdapter implements MemoryPort {
   
@@ -100,6 +118,8 @@ export class ChromaMemoryAdapter implements MemoryPort {
     }
     
     // Store to each collection
+    const client = await getClient();
+    const embedder = getEmbedder();
     for (const [type, docs] of grouped.entries()) {
       const collectionName = getCollectionName(type, project);
       
@@ -151,6 +171,8 @@ export class ChromaMemoryAdapter implements MemoryPort {
     try {
       // ⏱️ Collection access timing
       const collectionStart = Date.now();
+      const client = await getClient();
+      const embedder = getEmbedder();
       const collection = await client.getOrCreateCollection({ 
         name: collectionName, 
         embeddingFunction: embedder 
@@ -217,6 +239,8 @@ export class ChromaMemoryAdapter implements MemoryPort {
     const collectionName = getCollectionName(type, project);
     
     try {
+      const client = await getClient();
+      const embedder = getEmbedder();
       const collection = await client.getOrCreateCollection({ 
         name: collectionName, 
         embeddingFunction: embedder 
@@ -236,6 +260,7 @@ export class ChromaMemoryAdapter implements MemoryPort {
    */
   async clear(project: string): Promise<void> {
     const collectionTypes: CollectionType[] = ['codebase', 'lessons'];
+    const client = await getClient();
     
     for (const type of collectionTypes) {
       const collectionName = getCollectionName(type, project);
