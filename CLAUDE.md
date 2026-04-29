@@ -1017,6 +1017,60 @@ rg "isExplicitPipeline" packages/ant-cli/src/agents/architect/graph/code/nodes/d
 
 ---
 
+## Codebase Channel SSOT — existing-project awareness for plan/design
+
+**`codebase` 는 워크스페이스 1급 자원이다. 단일 RAC 슬롯 헬퍼 (`codebaseSlot(role, opts)`) + 단일 partial (`templates/jobs/shared/injections/codebase-channel.md`) + 단일 UI 슬롯 컴포넌트로 두 잡 그룹 (code-anchored, plan/design) 이 수렴한다. 차이는 Authority 축 (ref / context) 만으로 표현되며, `intent` + `WorkspaceState.hasCodebase` 로 자동 결정된다.**
+
+| 잡 그룹 × 워크스페이스 | RAC 슬롯 (codebase) | 풀 적재 | partial 톤 | UI 슬롯 |
+|---|---|---|---|---|
+| code-anchored (`rev-code` / `explain-code` / `gen-learn`) × any | `codebaseSlot('ref')` (정적, 매트릭스) | yes (`loadResolvedArtifacts` 가 `path: ''` 를 walk 하지 않음 — code-anchored 잡은 자체 채널 사용) | "primary authority — MUST inspect" | ref 영역 lock |
+| plan/design × existing (`hasCodebase=true`) | `codebaseSlot('context', { auto:true })` (동적) | no (`path: ''` ⇒ walk 0) | "binding context — MUST verify consistency" | ctx 영역 lock |
+| plan/design × greenfield | 없음 | n/a | partial fire 안 함 | 표시 없음 |
+
+`codebaseRole` 게이트의 단일 소스는 `deriveCodebaseRole(intent, { hasCodebase })` (`@ant/shared/action-config-matrix.ts`). RAC / 풀이 아닌 **intent + WorkspaceState** 로 직접 derive 한다 — `codebase` 슬롯의 `path: ''` 가 풀에 본문을 가져오지 않기 때문이다.
+
+### ❌ ABSOLUTELY FORBIDDEN
+
+- `codebase` 본문 주입을 위한 새 채널 (`codebase-channel` partial 외) 을 신설
+- plan/design 인텐트 매트릭스에 `codebaseSlot` 을 정적 선언 — 동적 주입은 `getConfigSlots(intent, { hasCodebase })` 한 곳에서만
+- `codebaseRole` 을 풀 / RAC.refs[] 에서 직접 derive — `deriveCodebaseRole` helper 가 SSOT
+- `WorkspaceState.hasCodebase` 를 memory-only 로 set — 디스크 walk 와 OR 가 SSOT (`workspaceAnalyzer.ts`)
+- `codebase-channel` partial 을 노드별로 산발 wiring — `PromptBuilder.render()` / `AutoInjectionResolver` 가 `codebaseRole` 자동 주입을 보장하므로 호출 site 에서 vars 에 `workspaceState` 만 흘리면 충분
+- code-anchored 잡 (rev-code / explain-code / gen-learn) 에 새 `codebaseSlot('context', ...)` 동적 주입 (이미 ref 슬롯이 정적 선언되어 있어 중복)
+
+### ✅ CORRECT
+
+- 새 헬퍼: `codebaseSlot(role, opts)` 만 사용. 매트릭스 본체의 기존 `codebaseRef()` 는 의미-동등 alias 로 유지 (하위 호환).
+- 동적 주입: `getConfigSlots(intent, { hasCodebase })` — plan/design 인텐트면 context 슬롯에 `codebaseSlot('context', { auto: true })` spread. greenfield 면 무영향.
+- partial 게이트: `{{#if codebaseRole}}` 로 self-gate, ref/context 톤 분기는 partial 안에서 (`{{#if (eq codebaseRole "ref")}}`).
+- 풀 보존: `loadResolvedArtifacts` 는 `codebaseSlot.path === ''` 를 자연 스킵 (path-join 결과가 featurePath 자체가 되므로 walk 호출 없음). `state.artifacts Post-RAC SSOT` 와 정합 — 풀에 `codebase/**` 본문 0.
+- 도구 보강: `uiDesign* TOOL_SETS` 에 `SEARCH_CODE`, `planner.plan` 은 `read_workspace_file` 로 `codebase/...` 도달 가능 (partial 어조는 도구 이름 비종속).
+- UI: `getConfigSlotsForDomain(intent, domain, { hasCodebase })` 호출 — `ActionConfigView` / `useActionFooterPolicy` 등 FE 호출 site 가 `gitSnapshot.hasCodebase` 흘림.
+
+### Why This Matters
+
+기존 동작은 plan/design 잡이 `codebase/` 의 존재조차 인지하지 않았다 (`hasCodebase` 가 memory 인덱스 의존이라 `gen-learn` 안 돌리면 false, RAC 슬롯도 없음). 따라서 existing project 워크스페이스에서 PRD / 시스템 설계 / 스펙을 새로 만들면 LLM 이 그린필드처럼 작성해 기존 코드 구조와 어긋났다. 이 채널은 (a) 디스크-기반 hasCodebase 로 진실 보강, (b) 동적 RAC 주입으로 UI 노출, (c) 단일 partial 로 prompt 강제 ("MUST inspect") — 풀 적재는 하지 않아 token cost 증가 0.
+
+### Enforcement
+
+```bash
+# 1. codebaseSlot 헬퍼 외에 다른 codebase ref/ctx 정의가 있는지 확인 (대체 헬퍼 신설 차단)
+rg -n "codebase: true" packages/ant-shared/src/action-config-matrix.ts
+# Expected: codebaseSlot() 정의 한 곳만
+
+# 2. partial 이 잡-leaf base.md 에서 직접 include 되는지 (잡-level 한 곳 정렬)
+rg -l "jobs/shared/injections/codebase-channel" packages/ant-cli/src/core/prompt/templates
+# Expected: 핵심 wiring 지점만 (code/decompose, plan/detect+plan, design/docGen)
+
+# 3. 회귀 가드 (15 cases — walker, dynamic injection, deriveCodebaseRole, partial render)
+pnpm vitest run tests/codebase-channel.test.ts --reporter=dot
+# Expected: 15 passed
+```
+
+회귀 테스트: [`packages/ant-cli/tests/codebase-channel.test.ts`](packages/ant-cli/tests/codebase-channel.test.ts).
+
+---
+
 ## UiSource — three hard-exclusive UI inputs (code & design jobs)
 
 **UI 설계 입력은 정확히 하나의 `UiSource` 만 선택된다. 세 값(`ant` / `figma` / `handoff`)은 RAC 슬롯 레벨에서 hard-exclusive 하게 강제되며, 혼합된 RAC 는 `validateUiSourceExclusivity` 가 throw 로 거부한다.**

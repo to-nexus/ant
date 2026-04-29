@@ -98,6 +98,9 @@ export async function buildSystemPrompt(
       conversationSummary: compaction.summary || '',
       hasConversationSummary: !!compaction.summary,
       resolvedAction: state.resolvedAction,
+      // Codebase Channel SSOT — flow workspace state to the
+      // codebase-channel partial / AutoInjectionResolver gate.
+      workspaceState: state.workspaceState,
     },
   });
 

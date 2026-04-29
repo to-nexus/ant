@@ -103,6 +103,7 @@ exports[`Intent Acceptance > rev-code > prompt build: injection list snapshot 1`
   "jobs/code/base/injections/preview-setup",
   "jobs/code/base/injections/preview-env-contract",
   "jobs/code/nodes/execute/injections/port-management",
+  "jobs/shared/injections/codebase-channel",
   "jobs/shared/injections/action-context",
   "jobs/shared/injections/refactor-guidance",
 ]

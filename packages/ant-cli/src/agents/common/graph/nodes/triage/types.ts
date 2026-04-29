@@ -156,9 +156,18 @@ export interface WorkspaceState {
    */
   hasDesignDoc: boolean;
 
-  // Codebase track — vector index
+  // Codebase track — disk presence OR vector index (Codebase Channel SSOT)
   hasCodebase: boolean;
   indexedFileCount?: number;
+  /**
+   * Path-only manifest of recognised entry points under `codebase/`
+   * (e.g. `package.json`, `tsconfig.json`, `pyproject.toml`, `src/`,
+   * `app/`, `README.md`). Populated when `hasCodebase=true` is reached
+   * via disk walk. Surfaces in the codebase-channel partial so the LLM
+   * has cheap orientation cues without reading any file body.
+   * Empty / undefined when only the memory index detected the codebase.
+   */
+  codebaseEntryPoints?: string[];
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

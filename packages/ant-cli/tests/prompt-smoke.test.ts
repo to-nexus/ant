@@ -50,6 +50,10 @@ const SAMPLE_VARS: Record<string, any> = {
   hasSystemDesignContext: false,
   hasSpecRef: false,
   hasSpecContext: false,
+  // Codebase Channel SSOT — exercise the partial in 'context' mode at smoke
+  // time so it produces a non-empty body (greenfield = no body, by design).
+  codebaseRole: 'context',
+  codebaseEntryPoints: ['package.json', 'src'],
   errorText: 'Build error: missing module',
   targetDoc: 'ui-tokens.json',
   sessionContext: 'This is the first turn of the session.',

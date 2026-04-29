@@ -231,6 +231,9 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         userLanguage: state.context?.userLanguage || 'en',
         designDomain: state.resolvedAction?.domain,
         runtimeContext,
+        // Codebase Channel SSOT — flow workspace state to the
+        // codebase-channel partial / AutoInjectionResolver gate.
+        workspaceState: state.workspaceState,
       },
     };
 
