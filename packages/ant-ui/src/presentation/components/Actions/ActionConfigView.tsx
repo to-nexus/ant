@@ -10,6 +10,7 @@ import {
   getConfigSlotsForDomain,
   getDefaultTargetPaths,
   getIntentLabel,
+  pickDefaultUiSourceRefs,
 } from '@ant/shared';
 import { IntentTabNav } from './IntentTabNav';
 import { PageTransition } from './PageTransition';
@@ -107,9 +108,19 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     }
 
     const refEntries = resolveSlotEntries(slots.refs, fileTree, undefined, warningCtx);
+    // ui-source slots are hard-exclusive — feed them through the SSOT picker
+    // (`pickDefaultUiSourceRefs`, canonical.ts) so the auto-fill never seeds
+    // mixed UiSource paths into `actionMetadata.refs`. Without this funnel a
+    // workspace with both `visual/ui/ant/*` and `visual/ui/figma/figma.json`
+    // would auto-select both, producing a RAC that BE detect's
+    // `validateUiSourceExclusivity` rejects mid-run.
     let defaultRefPaths = refEntries
       .filter(e => e.def.required)
-      .flatMap(e => e.files)
+      .flatMap(e =>
+        e.def.type === 'ui-source' && e.subgroups
+          ? pickDefaultUiSourceRefs(e.subgroups)
+          : e.files,
+      )
       .filter(f => f.warnings.length === 0)
       .map(f => f.path);
     if (slots.refsSingleSelect && defaultRefPaths.length > 1) {

@@ -15,7 +15,7 @@
  *   - workflow.ts           : WorkflowRealtimeState, NodeHistoryEntry, TaskInfo
  *   - figma.ts              : FigmaDataConfig, FigmaExplorationResult
  *   - bridge.ts             : BridgeMessage, BridgeSession
- *   - canonical.ts          : CANONICAL_FEATURE_DIRS, isCanonicalDir
+ *   - canonical.ts          : CANONICAL_FEATURE_DIRS, isCanonicalDir, uiSourceOfPath, normalizeUiSourceRefs, pickDefaultUiSourceRefs
  *   - artifact-dir-policy.ts: ARTIFACT_DIR_POLICIES, getArtifactDirPolicy, validateFileForDir
  *   - file-descriptions.ts  : FILE_DESCRIPTIONS
  *   - deploy.ts             : DeployConfig

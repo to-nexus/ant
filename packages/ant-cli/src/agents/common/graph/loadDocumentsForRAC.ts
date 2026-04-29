@@ -52,8 +52,18 @@ export function loadResolvedArtifacts(
 }
 
 /**
- * Throws if RAC refs ∪ context contains paths from more than one UiSource.
- * Exported for tests and direct callers that want to check before load.
+ * Safety net for the hard-exclusive UiSource invariant.
+ *
+ * The invariant is enforced upstream by `normalizeUiSourceRefs`
+ * (`@ant/shared/canonical.ts`) — every funnel that produces a RAC
+ * (`resolveToRAC` / `mergeWithMetadata`) and every funnel that mutates the
+ * FE pre-RAC state (`useStore.updateActionMetadata`, `ActionConfigView`
+ * auto-fill via `pickDefaultUiSourceRefs`) routes through it. On the happy
+ * path this function therefore NEVER throws.
+ *
+ * If it does throw, a caller has bypassed the SSOT funnel and produced a
+ * mixed-UiSource RAC. That is the canonical regression signal for this
+ * domain rule — fix the bypassing caller, do not relax this guard.
  */
 export function validateUiSourceExclusivity(resolvedAction: ResolvedActionContext): void {
   const present = new Set<UiSource>();
