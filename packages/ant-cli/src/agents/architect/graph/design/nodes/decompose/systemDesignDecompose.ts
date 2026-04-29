@@ -12,7 +12,7 @@ import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingMa
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { ARTIFACT_PREFIX } from '@ant/shared';
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
-import { updateKanban } from "./kanbanUpdate";
+import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
@@ -453,42 +453,46 @@ export async function decomposeSystemDesign(
   // token debug log entries are ordered 0 → 1 → 2 ... within one job.)
   let callIdx = 0;
 
+  // Streaming Kanban hook — surfaces each `<task>` JSON as it streams
+  // out of the tool loop. The repair-call path below clears the
+  // accumulator before re-streaming so failed-attempt leftovers do not
+  // stack on top of the repaired response.
+  const streamingHook = createDesignTaskStreamingHook(state);
+
   /**
    * Call LLM to get raw text response.
-   * Small projects: single-turn invokeWithUsage (fast)
-   * Large projects: multi-turn stream with read_source_doc tool (RAG)
+   *
+   * Both tool-mode (RAG) and inline-mode go through `decomposeWithToolLoop`.
+   * In inline-mode the tool list is empty so the loop terminates after a
+   * single streamed round. The shared path guarantees the streaming Kanban
+   * hook fires regardless of source size — previously the inline branch
+   * used `invokeWithUsage` (single-shot) and `<task>` wrappers never
+   * reached `XMLStreamParser`, so the todo column always landed in one
+   * burst at the end.
    */
   async function callLLM(): Promise<string> {
-    if (useToolMode && pool.hasSources()) {
-      const { response, usage } = await decomposeWithToolLoop(
-        llmToUse,
-        [{ role: 'user', content: prompt }],
-        [READ_SOURCE_DOC_TOOL],
-        (name, args) => {
-          if (name === 'read_source_doc') {
-            return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
-          }
-          return `Error: Unknown tool "${name}"`;
-        },
-        {
-          temperature: LLM_TEMPERATURE.DECOMPOSE,
-          maxTokens: LLM_MAX_TOKENS.DEFAULT,
-          enableThinking: true,
-          thinkingBudget: 10000,
-          state: state as any,
-        },
-      );
-      applyEstimatingUsage(state, 'decompose', usage, { subNode: 'system', callIndex: callIdx++, promptChars: prompt.length });
-      return response;
-    } else {
-      const result = await llmToUse.invokeWithUsage?.(
-        [{ role: 'user', content: prompt }],
-        { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
-      );
-      const textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: prompt }]);
-      applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'system', callIndex: callIdx++, promptChars: prompt.length });
-      return textResponse;
-    }
+    const tools = useToolMode && pool.hasSources() ? [READ_SOURCE_DOC_TOOL] : [];
+    const { response, usage } = await decomposeWithToolLoop(
+      llmToUse,
+      [{ role: 'user', content: prompt }],
+      tools,
+      (name, args) => {
+        if (name === 'read_source_doc') {
+          return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
+        }
+        return `Error: Unknown tool "${name}"`;
+      },
+      {
+        temperature: LLM_TEMPERATURE.DECOMPOSE,
+        maxTokens: LLM_MAX_TOKENS.DEFAULT,
+        enableThinking: true,
+        thinkingBudget: 10000,
+        state: state as any,
+        onTaskParsed: streamingHook.onTaskParsed,
+      },
+    );
+    applyEstimatingUsage(state, 'decompose', usage, { subNode: 'system', callIndex: callIdx++, promptChars: prompt.length });
+    return response;
   }
 
   /**
@@ -528,7 +532,10 @@ export async function decomposeSystemDesign(
   }
 
   /**
-   * Repair call: send raw response + error feedback back to LLM for JSON correction.
+   * Repair call: send raw response + error feedback back to LLM for
+   * contract correction. Streams through `decomposeWithToolLoop` (no
+   * tools) so the Kanban hook fills task-by-task during the repaired
+   * pass too.
    */
   async function repairCall(rawResponse: string, errorMessage: string): Promise<string> {
     const truncated = rawResponse.length > 4000
@@ -539,19 +546,33 @@ export async function decomposeSystemDesign(
       { role: 'user' as const, content: prompt },
       { role: 'assistant' as const, content: truncated },
       { role: 'user' as const, content:
-        `Your previous response could not be parsed as valid JSON.\n\n` +
+        `Your previous response did not match the required contract.\n\n` +
         `Error: ${errorMessage}\n\n` +
-        `Please output ONLY the corrected JSON wrapped in <decompose> tags. No markdown fences, no explanations.`
+        `Re-emit the response strictly in the contract from the original prompt:\n` +
+        `  1. Meta tags first, one per line, JSON-encoded body\n` +
+        `     (\`<executionTier>\`, \`<documentType>\`, \`<services>\`, \`<fePackages>\`,\n` +
+        `      \`<techTier>\`, \`<packageTiers>\`, \`<targetFiles>\`).\n` +
+        `  2. Then a \`<tasks>\` block with one \`<task>{json}</task>\` per task.\n` +
+        `NO markdown fences. NO \`<decompose>\` wrapper. Output the contract only — no other prose.`
       },
     ];
 
-    const result = await llmToUse.invokeWithUsage?.(
+    const { response, usage } = await decomposeWithToolLoop(
+      llmToUse,
       repairMessages,
-      { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT }
+      [],
+      () => `Error: tools are not available in repair mode`,
+      {
+        temperature: LLM_TEMPERATURE.DECOMPOSE,
+        maxTokens: LLM_MAX_TOKENS.DEFAULT,
+        enableThinking: true,
+        thinkingBudget: 10000,
+        state: state as any,
+        onTaskParsed: streamingHook.onTaskParsed,
+      },
     );
-    const textResponse = result?.content || await llmToUse.invoke(repairMessages);
-    applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'system-repair', callIndex: callIdx++, promptChars: prompt.length });
-    return textResponse;
+    applyEstimatingUsage(state, 'decompose', usage, { subNode: 'system-repair', callIndex: callIdx++, promptChars: prompt.length });
+    return response;
   }
 
   // ━━━ Main flow: LLM call → parse → repair if needed → fail if all fail ━━━
@@ -573,6 +594,13 @@ export async function decomposeSystemDesign(
       lastError = parseError as Error;
       console.warn(`⚠️  [SystemDecompose] Parse failed: ${lastError.message}. Sending repair call...`);
 
+      // Drop any partial tasks streamed from the failed attempt so the
+      // repaired response builds the Kanban from a clean slate. The
+      // repair path itself is single-shot (invokeWithUsage) and does
+      // not stream, but `parseAndValidate(repairedRaw)` will broadcast
+      // the final task list synchronously via the regular pipeline.
+      streamingHook.reset();
+
       try {
         const repairedRaw = await repairCall(rawResponse, lastError.message);
         response = parseAndValidate(repairedRaw);
@@ -592,8 +620,9 @@ export async function decomposeSystemDesign(
   console.log(`✅ System decompose: ${response.documentType}, ${response.tasks.length} tasks → [${response.targetFiles.join(', ')}]`);
 
   // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
-  // outside the `<decompose>` JSON. Missing tag degrades to Tier 0 Reflex
-  // (safe default — see core/executionTier/parseExecutionTierTag.ts).
+  // as one of the external meta tags (before `<tasks>`). Missing tag
+  // degrades to Tier 0 Reflex (safe default — see
+  // core/executionTier/parseExecutionTierTag.ts).
   const executionTier = coerceExecutionTier(
     parseExecutionTierTag(rawResponse),
     'SystemDecompose',

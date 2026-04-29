@@ -20,7 +20,7 @@ import { TaskQueue } from "../../../../types/task";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
 import { logErrorHeader } from "../../../code/nodes/_common/errorHandler";
-import { updateKanban } from "./kanbanUpdate";
+import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
@@ -149,35 +149,39 @@ export async function decomposeGameArtDesign(
 
     let textResponse: string;
 
-    if (useToolMode && pool.hasSources()) {
-      const { response, usage } = await decomposeWithToolLoop(
-        llmToUse,
-        [{ role: 'user', content: artDecomposePrompt }],
-        [READ_SOURCE_DOC_TOOL],
-        (name, args) => {
-          if (name === 'read_source_doc') {
-            return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
-          }
-          return `Error: Unknown tool "${name}"`;
-        },
-        {
-          temperature: LLM_TEMPERATURE.DECOMPOSE,
-          maxTokens: LLM_MAX_TOKENS.DEFAULT,
-          enableThinking: true,
-          thinkingBudget: 10000,
-          state: state as any,
-        },
-      );
-      textResponse = response;
-      applyEstimatingUsage(state, 'decompose', usage, { subNode: 'gameArt', promptChars: artDecomposePrompt.length });
-    } else {
-      const result = await llmToUse.invokeWithUsage?.(
-        [{ role: 'user', content: artDecomposePrompt }],
-        { temperature: LLM_TEMPERATURE.DECOMPOSE, maxTokens: LLM_MAX_TOKENS.DEFAULT },
-      );
-      textResponse = result?.content || await llmToUse.invoke([{ role: 'user', content: artDecomposePrompt }]);
-      applyEstimatingUsage(state, 'decompose', result?.usage, { subNode: 'gameArt', promptChars: artDecomposePrompt.length });
-    }
+    // Streaming Kanban hook — surfaces each `<task>` JSON as it streams
+    // out of the tool loop. See kanbanUpdate.ts for the accumulator
+    // contract; mirrors the ui / system / code-decompose pattern.
+    const streamingHook = createDesignTaskStreamingHook(state);
+
+    // Both tool-mode (RAG) and inline-mode go through `decomposeWithToolLoop`
+    // — tools is empty in inline-mode so the loop terminates after a single
+    // streamed round. The shared path guarantees the streaming Kanban hook
+    // fires regardless of source size; the previous `invokeWithUsage` inline
+    // branch never gave `XMLStreamParser` any text to scan, so the todo
+    // column landed in one burst at stream end.
+    const tools = useToolMode && pool.hasSources() ? [READ_SOURCE_DOC_TOOL] : [];
+    const { response: streamedResponse, usage } = await decomposeWithToolLoop(
+      llmToUse,
+      [{ role: 'user', content: artDecomposePrompt }],
+      tools,
+      (name, args) => {
+        if (name === 'read_source_doc') {
+          return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
+        }
+        return `Error: Unknown tool "${name}"`;
+      },
+      {
+        temperature: LLM_TEMPERATURE.DECOMPOSE,
+        maxTokens: LLM_MAX_TOKENS.DEFAULT,
+        enableThinking: true,
+        thinkingBudget: 10000,
+        state: state as any,
+        onTaskParsed: streamingHook.onTaskParsed,
+      },
+    );
+    textResponse = streamedResponse;
+    applyEstimatingUsage(state, 'decompose', usage, { subNode: 'gameArt', promptChars: artDecomposePrompt.length });
 
     // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
     // BEFORE the JSON output. Missing tag degrades to Tier 0 Reflex.

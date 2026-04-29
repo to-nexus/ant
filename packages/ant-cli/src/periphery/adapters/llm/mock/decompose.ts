@@ -35,20 +35,19 @@ ${techTier}
 }
 
 export function decomposeDesignResponse(): string {
-  const tasks = JSON.stringify({
-    tasks: [
-      {
-        id: 'mock-design-main',
-        name: 'System Design Document',
-        type: 'design-system',
-        priority: 100,
-        description: 'Generate the main system design document.',
-        targetFile: 'fe-system-main.md',
-      },
-    ],
+  const taskBody = JSON.stringify({
+    id: 'mock-design-main',
+    name: 'System Design Document',
+    type: 'design-system',
+    priority: 100,
+    description: 'Generate the main system design document.',
+    targetFile: 'fe-system-main.md',
   });
 
-  return `<decompose>
-${tasks}
-</decompose>`;
+  return `<executionTier>3</executionTier>
+<documentType>unified</documentType>
+<targetFiles>["fe-system-main.md"]</targetFiles>
+<tasks>
+  <task>${taskBody}</task>
+</tasks>`;
 }

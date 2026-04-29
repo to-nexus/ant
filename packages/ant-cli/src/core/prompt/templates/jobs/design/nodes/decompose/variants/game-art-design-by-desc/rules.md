@@ -139,23 +139,17 @@ DO NOT CREATE:
 {{#if (eq detectedMode "refactor")}}
 ## 📤 OUTPUT FORMAT (REFACTOR MODE)
 
-Emit `<executionTier>N</executionTier>` BEFORE the JSON output.
+Emit the meta tags first, then a `<tasks>` block with **one** `<task>{json}</task>` element. Each `<task>` body is a single JSON object. NO markdown fences anywhere. NO `<decompose>` wrapper.
 
-```json
-{
-  "jobMode": "refactor",
-  "targetFiles": ["{target}.json"],
-  "tasks": [
-    {
-      "id": "refactor-{document}-{category}",
-      "name": "Refactor: {brief description}",
-      "targetFile": "{target}.json",
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "{modification scope}. Keep all other content unchanged.",
-      "priority": 300
-    }
-  ]
-}
+Example:
+
+```
+<executionTier>1</executionTier>
+<jobMode>refactor</jobMode>
+<targetFiles>["{target}.json"]</targetFiles>
+<tasks>
+  <task>{"id":"refactor-{document}-{category}","name":"Refactor: {brief description}","targetFile":"{target}.json"{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"{modification scope}. Keep all other content unchanged.","priority":300,"parallelGroup":"refactor-{document}-{category}"}</task>
+</tasks>
 ```
 
 | Constraint | Requirement |
@@ -167,43 +161,21 @@ Emit `<executionTier>N</executionTier>` BEFORE the JSON output.
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)
 
-Emit `<executionTier>N</executionTier>` BEFORE the JSON output. For
-directive-only generation, `N` is typically `3` (multi-category) or `2`
-(single cohesive prototype).
+Emit the meta tags first, then a `<tasks>` block with one `<task>{json}</task>` element per task. Each `<task>` body is a single JSON object. NO markdown fences anywhere. NO `<decompose>` wrapper.
 
-```json
-{
-  "targetFiles": ["game-art-tokens.json", "game-art-assets.json", "game-art-spec.json"],
-  "tasks": [
-    {
-      "id": "game-art-tokens",
-      "name": "Game-Art Tokens",
-      "targetFile": "game-art-tokens.json",
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "Palette, silhouette, lighting, motion tone derived from gameArtTier.concept.",
-      "priority": 100,
-      "parallelGroup": "game-art-tokens"
-    },
-    {
-      "id": "game-art-assets-entities",
-      "name": "Assets: Entities",
-      "targetFile": "game-art-assets.json",
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "Entity asset entries (hero, enemies, collectibles). Without references, default to kind:inline using simple SVG / CSS primitives.",
-      "priority": 200,
-      "parallelGroup": "game-art-assets-entities"
-    },
-    {
-      "id": "game-art-spec-effects",
-      "name": "Spec: Effects",
-      "targetFile": "game-art-spec.json",
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "Effect spec entries (match-clear, hover, hit-feedback). Reference particle / entity asset ids from game-art-assets.json.",
-      "priority": 300,
-      "parallelGroup": "game-art-spec-effects"
-    }
-  ]
-}
+For directive-only generation, the `<executionTier>` is typically `3`
+(multi-category) or `2` (single cohesive prototype).
+
+Example:
+
+```
+<executionTier>3</executionTier>
+<targetFiles>["game-art-tokens.json", "game-art-assets.json", "game-art-spec.json"]</targetFiles>
+<tasks>
+  <task>{"id":"game-art-tokens","name":"Game-Art Tokens","targetFile":"game-art-tokens.json"{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"Palette, silhouette, lighting, motion tone derived from gameArtTier.concept.","priority":100,"parallelGroup":"game-art-tokens"}</task>
+  <task>{"id":"game-art-assets-entities","name":"Assets: Entities","targetFile":"game-art-assets.json"{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"Entity asset entries (hero, enemies, collectibles). Without references, default to kind:inline using simple SVG / CSS primitives.","priority":200,"parallelGroup":"game-art-assets-entities"}</task>
+  <task>{"id":"game-art-spec-effects","name":"Spec: Effects","targetFile":"game-art-spec.json"{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"Effect spec entries (match-clear, hover, hit-feedback). Reference particle / entity asset ids from game-art-assets.json.","priority":300,"parallelGroup":"game-art-spec-effects"}</task>
+</tasks>
 ```
 
 ### Task Properties
@@ -246,10 +218,16 @@ directive-only generation, `N` is typically `3` (multi-category) or `2`
 
 Before outputting, verify:
 
-### JSON Structure
+### Output Structure
+- ✅ `<executionTier>` tag emitted FIRST, BEFORE any other meta tag
+- ✅ `<targetFiles>` body is a JSON-encoded array of filenames
+- ✅ One `<task>{json}</task>` element per task inside `<tasks>...</tasks>`
+- ✅ NO markdown fences anywhere in the output
+- ✅ NO `<decompose>` wrapper
+
+### JSON Structure (per `<task>` body)
 - ✅ Valid JSON syntax
-- ✅ `targetFiles` contains only requested documents
-- ✅ Every task's `targetFile` is in `targetFiles` array
+- ✅ Every task's `targetFile` is in the `<targetFiles>` array
 - ✅ All fields present
 - ✅ Priority in correct range
 
