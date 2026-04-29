@@ -41,9 +41,10 @@ Ant is an AI-powered development assistant that defines product requirements, ge
 ### Feature
 
 An isolated unit of work with:
-- Own inputs folder
-- Own outputs folder
-- Own session state
+- Own design artifacts (`plan/`, `architecture/`, `visual/`, `assets/`)
+- Own metadata track (`meta/`)
+- Own session state (`sessions/`)
+- Own codebase (`codebase/`)
 - Independent work context
 
 ### Session States

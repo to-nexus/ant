@@ -242,7 +242,7 @@ rg "outputs/design|inputs/sources|inputs/assets|inputs/references|inputs/directi
 
 ## Codebase Meta Document Policy
 
-**워크스페이스는 3층으로 배타 분리: `codebase/` (코드 + 코드의 메타, git 추적), `outputs/` (디자인·생성 산출물, 세션 간 영속), `sessions/` (에이전트 런타임/디버그, 일시).** 새 파일을 추가할 때 반드시 이 중 하나를 고르고, 경계를 넘지 않는다.
+**워크스페이스는 도메인 축으로 배타 분리: `codebase/` (코드 + 코드의 메타, git 추적), `plan/` · `architecture/` · `visual/` · `assets/` (디자인·생성 산출물, 세션 간 영속), `meta/` (잡 메타 트랙: directives / evals), `sessions/` (에이전트 런타임/디버그, 일시).** 새 파일을 추가할 때 반드시 이 중 하나를 고르고, 경계를 넘지 않는다.
 
 **`codebase/ANTRULES.md` 는 3-조건 필터를 통과한 codebase-local deviation 만 담는 ledger.** 기록 자격: (1) codebase-local (techTier / framework 기본값 아님), (2) not auto-derivable (`package.json` / `tsconfig.json` / config 파일 / 기존 파일에서 유추 불가능), (3) cross-task invariant (후속 task 가 같은 선택을 반복해야 함). 세 조건을 **모두** 만족할 때만 적는다. 정당한 예: 파일 네이밍 케이스, hooks 파일명 prefix, export 스타일 선호, `lucide` vs `heroicons` 아이콘 라이브러리 선호 같은 **코드가 기록 안 하는 프로젝트 고유 컨벤션**; 또는 시점-국지 패키지 pinning rationale (`shadcn X v0.4` incompatible with `react@19` → pinned 18). **금지**: Framework / Test runner / Source root / Alias / Config file location 재선언 — 이들은 `package.json` / `tsconfig.json` / 파일시스템이 이미 SSOT. decompose (무엇을 할지) / prompt (일반 원칙) / config 파일 (기계가 읽는 사실) 의 책임을 침범 금지. 1500자 상한. **허위 금지 문구 금지** (`Do not add test files` 같은 선제적 prohibition). 모든 code-job 태스크가 read + write 가능; 3-조건 필터 통과 사실이 없으면 파일 생성 자체를 하지 않는다. 매 plan/execute 프롬프트에 자동 주입되며 LLM 은 stale 의심 시 `read_file codebase/ANTRULES.md` 로 확인 후 **실제 code 를 SSOT 로 신뢰**.
 

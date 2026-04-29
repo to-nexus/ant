@@ -80,7 +80,7 @@ Details not specified by Plan are your decision:
 
 **⚠️ IMPORTANT: Design tokens are INJECTED into this prompt, NOT in the file system.**
 - If you see a `# DESIGN TOKENS` section below, use those values directly
-- DO NOT attempt to read `ui-tokens.json` from `inputs/` or any other directory
+- DO NOT attempt to read `ui-tokens.json` from disk (e.g., `visual/ui/ant/`) — use the injected tokens directly
 - The tokens are loaded from `visual/ui/ant/ui-tokens.json` and provided here
 
 When design tokens are provided in this prompt:
