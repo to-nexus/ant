@@ -8,6 +8,10 @@ import { ElapsedTimeBadge, TokenUsageBadge, GaugesGroup } from './KanbanHeader';
 import { KanbanEstimatingSkeleton } from './KanbanEstimating';
 import { KanbanColumns } from './KanbanColumns';
 import { NodeActivityBanner } from './NodeActivityBanner';
+import { useNewlyAdded } from '../common/motion';
+import type { BaseTask } from '@ant/shared';
+
+const taskKey = (task: BaseTask): string => task.id || task.name;
 
 interface KanbanBoardProps {
   kanbanData: KanbanData;  // ✅ App에서 전달받음 (project/feature 단위 SSE)
@@ -26,38 +30,21 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const { t } = useTranslation('kanban');
   const splitLayout = useStore((state) => state.splitLayout);
   const systemRecursionLimit = useStore((state) => state.recursionLimit);  // ✅ Get system recursion limit
-  const [newlyCompletedIds, setNewlyCompletedIds] = useState<Set<string>>(new Set());
-  const [previousCompletedIds, setPreviousCompletedIds] = useState<Set<string>>(new Set());
   const [newlyInProgressId, setNewlyInProgressId] = useState<string | null>(null);
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);  // ✅ Track initial load
-  
-  // ✅ Remove unused interruption UI logic (now handled in chat only)
 
-  // ✅ Detect newly completed tasks (skip animation on initial load)
-  useEffect(() => {
-    const currentCompletedIds = new Set((kanbanData.completed ?? []).map(task => task.id || task.name));
-    
-    // ✅ On initial load, just set previous IDs without triggering animation
-    if (isInitialLoad) {
-      setPreviousCompletedIds(currentCompletedIds);
-      setIsInitialLoad(false);
-      return;
-    }
-    
-    const newIds = new Set<string>();
-    
-    currentCompletedIds.forEach(id => {
-      if (!previousCompletedIds.has(id)) {
-        newIds.add(id);
-      }
-    });
-    
-    if (newIds.size > 0) {
-      setNewlyCompletedIds(newIds);
-      setPreviousCompletedIds(currentCompletedIds);
-    }
-  }, [kanbanData.completed, previousCompletedIds, isInitialLoad]);
+  // Newly added / completed task tracking — shared hook drives both columns'
+  // entrance animations. The completed column auto-clear runs longer because
+  // the golden shine takes ~1.2s to play out fully.
+  const { newlyAddedIds: newlyAddedTodoIds } = useNewlyAdded(
+    kanbanData.todo,
+    taskKey,
+  );
+  const { newlyAddedIds: newlyCompletedIds } = useNewlyAdded(
+    kanbanData.completed,
+    taskKey,
+    { autoClearMs: 1200 },
+  );
 
   // ✅ Detect newly in-progress tasks
   useEffect(() => {
@@ -188,17 +175,11 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
           todoTasks={kanbanData.todo || []}
           inProgressTasks={kanbanData.inProgress || []}
           completedTasks={kanbanData.completed || []}
+          newlyAddedTodoIds={newlyAddedTodoIds}
           newlyCompletedIds={newlyCompletedIds}
           newlyInProgressId={newlyInProgressId}
           splitLayout={splitLayout}
           workflowDisplayedState={workflowState}
-          onShineComplete={(taskId: string) => {
-            setNewlyCompletedIds(prev => {
-              const next = new Set(prev);
-              next.delete(taskId);
-              return next;
-            });
-          }}
           onInProgressAnimationComplete={() => setNewlyInProgressId(null)}
         />
       </div>
