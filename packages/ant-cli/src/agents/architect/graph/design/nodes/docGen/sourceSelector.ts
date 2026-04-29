@@ -96,18 +96,18 @@ export interface DecomposeToolLoopOptions {
   /**
    * Optional per-task callback. Called once for every `<task>...</task>`
    * element observed in the streaming text of any round. The argument is
-   * the raw JSON body (without the wrapper tags). Used by code-job
-   * decompose to push partial Kanban broadcasts so the todo column fills
-   * one task at a time during tool-use (RAG) decompose runs.
+   * the raw JSON body (without the wrapper tags).
+   *
+   * Used by both code- and design-job decompose to push partial Kanban
+   * broadcasts so the todo column fills one task at a time during
+   * streaming (tool-use RAG mode and inline mode alike, since both go
+   * through this loop with the tool list possibly empty).
    *
    * The tool loop runs an XMLStreamParser over `event.text` chunks and
    * filters `task_added` actions. A network retry inside a round resets
-   * the parser; a duplicate emission across rounds (extremely rare under
-   * the prompt contract — `<tasks>` only appears once) is the caller's
-   * responsibility to dedupe.
-   *
-   * Design-job decompose does not emit `<task>` elements and therefore
-   * never passes this callback.
+   * the parser; a duplicate emission across rounds (extremely rare
+   * under the prompt contract — `<tasks>` only appears once) is the
+   * caller's responsibility to dedupe.
    */
   onTaskParsed?: (rawJson: string) => void | Promise<void>;
 }

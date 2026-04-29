@@ -19,10 +19,8 @@
  *   - classifyParser.ts (<classify>)
  *   - triage/parser.ts (<triage>)
  *   - detection.ts (<detect>)
- *   - decompose/helpers.ts (<decompose>)
- *   - decompose/responseParser.ts (per-`<task>` JSON)
- *   - design/utils/jsonResponseParser.ts (<decompose>)
- *   - design/.../specDecompose.ts (raw JSON only)
+ *   - code/.../decompose/responseParser.ts (per-`<task>` JSON + meta tags)
+ *   - design/utils/jsonResponseParser.ts (per-`<task>` JSON + meta tags)
  *   - direct.ts (raw JSON only — original motivation)
  */
 
@@ -99,8 +97,8 @@ export function stripCodeFence(body: string): string {
  * ("Unexpected non-whitespace character after JSON at position N"),
  * which turns a benign prose leak into a job-killing SyntaxError. The
  * symptom appears whenever an LLM uses an XML element as a "document
- * section" (e.g. per-`<task>` wrappers in decompose, `<decompose>`
- * around design JSON) and slips reasoning text alongside the JSON.
+ * section" (e.g. per-`<task>` wrappers in decompose, `<classify>` /
+ * `<triage>` payload tags) and slips reasoning text alongside the JSON.
  *
  * Strategy: locate the first `{`, then scan forward tracking string
  * state (with escape handling) and brace depth until the matching `}`.

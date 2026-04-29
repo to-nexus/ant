@@ -120,25 +120,17 @@ DO NOT CREATE:
 
 **Principle**: Single focused task for modification. No multi-chapter decomposition.
 
-Emit `<executionTier>N</executionTier>` BEFORE the JSON output. Example:
+Emit the meta tags first, then a `<tasks>` block with **one** `<task>{json}</task>` element. Each `<task>` body is a single JSON object. NO markdown fences anywhere. NO `<decompose>` wrapper.
 
-`<executionTier>1</executionTier>`
+Example:
 
-```json
-{
-  "jobMode": "refactor",
-  "targetFiles": ["{target}.json"],
-  "tasks": [
-    {
-      "id": "refactor-{document}-{section}",
-      "name": "Refactor: {brief description}",
-      "targetFile": "{target}.json",
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "{modification scope}. Keep all other content unchanged.",
-      "priority": 300
-    }
-  ]
-}
+```
+<executionTier>1</executionTier>
+<jobMode>refactor</jobMode>
+<targetFiles>["{target}.json"]</targetFiles>
+<tasks>
+  <task>{"id":"refactor-{document}-{section}","name":"Refactor: {brief description}","targetFile":"{target}.json"{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"{modification scope}. Keep all other content unchanged.","priority":300,"parallelGroup":"refactor-{document}-{section}"}</task>
+</tasks>
 ```
 
 ### Constraints
@@ -153,32 +145,17 @@ Emit `<executionTier>N</executionTier>` BEFORE the JSON output. Example:
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)
 
-Emit `<executionTier>N</executionTier>` BEFORE the JSON output. Example:
+Emit the meta tags first, then a `<tasks>` block with one `<task>{json}</task>` element per task. Each `<task>` body is a single JSON object. NO markdown fences anywhere. NO `<decompose>` wrapper.
 
-`<executionTier>4</executionTier>`
+Example:
 
-```json
-{
-  "targetFiles": ["ui-tokens.json", "ui-assets.json", "ui-spec.json"],
-  "tasks": [
-    {
-      "id": "ui-tokens-ch1",
-      "name": "Design Tokens: Colors",
-      "targetFile": "ui-tokens.json",
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "Color palette and backgrounds in JSON format.",
-      "priority": 100
-    },
-    {
-      "id": "ui-spec-ch1",
-      "name": "UI Spec: Global Settings",
-      "targetFile": "ui-spec.json",
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "Establish outline, breakpoints, layout rules in JSON format.",
-      "priority": 300
-    }
-  ]
-}
+```
+<executionTier>4</executionTier>
+<targetFiles>["ui-tokens.json", "ui-assets.json", "ui-spec.json"]</targetFiles>
+<tasks>
+  <task>{"id":"ui-tokens-ch1","name":"Design Tokens: Colors","targetFile":"ui-tokens.json"{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"Color palette and backgrounds in JSON format.","priority":100,"parallelGroup":"ui-tokens-ch1"}</task>
+  <task>{"id":"ui-spec-ch1","name":"UI Spec: Global Settings","targetFile":"ui-spec.json"{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"Establish outline, breakpoints, layout rules in JSON format.","priority":300,"parallelGroup":"ui-spec-ch1"}</task>
+</tasks>
 ```
 
 ### targetFiles Selection
@@ -235,10 +212,16 @@ The system uses per-file mutex + deep merge for concurrent writes. Cross-documen
 
 Before outputting, verify:
 
-### JSON Structure
+### Output Structure
+- ✅ `<executionTier>` tag emitted FIRST, BEFORE any other meta tag
+- ✅ `<targetFiles>` body is a JSON-encoded array of filenames
+- ✅ One `<task>{json}</task>` element per task inside `<tasks>...</tasks>`
+- ✅ NO markdown fences anywhere in the output
+- ✅ NO `<decompose>` wrapper
+
+### JSON Structure (per `<task>` body)
 - ✅ Valid JSON syntax
-- ✅ `targetFiles` contains only requested documents (check directive!)
-- ✅ Every task's `targetFile` is in `targetFiles` array
+- ✅ Every task's `targetFile` is in the `<targetFiles>` array
 - ✅ All fields present (id, name, targetFile, description, priority, parallelGroup)
 - ✅ Priority in correct range (100-149, 200-249, 300-349)
 - ✅ No forbidden tasks (verification, deployment, operations)

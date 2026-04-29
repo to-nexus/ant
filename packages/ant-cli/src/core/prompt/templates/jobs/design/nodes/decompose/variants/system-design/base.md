@@ -34,24 +34,14 @@ You are analyzing requirements to break them into design tasks.
 
 ### Task Output Format (Refactor Mode)
 
-<decompose>
-{
-  "documentType": "unified",
-  "jobMode": "refactor",
-  "targetFiles": ["{affected-file-1}", "{affected-file-2-if-needed}"],
-  "tasks": [
-    {
-      "id": "refactor-{file-scope}",
-      "name": "Refactor: {brief description}",
-      "targetFile": "{affected-file}",
-      "parallelGroup": "{affected-file-without-ext}",
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "{modification scope}. Keep all other content unchanged.",
-      "priority": 200
-    }
-  ]
-}
-</decompose>
+```
+<documentType>unified</documentType>
+<jobMode>refactor</jobMode>
+<targetFiles>["{affected-file-1}", "{affected-file-2-if-needed}"]</targetFiles>
+<tasks>
+  <task>{"id":"refactor-{file-scope}","name":"Refactor: {brief description}","targetFile":"{affected-file}","parallelGroup":"{affected-file-without-ext}"{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"{modification scope}. Keep all other content unchanged.","priority":200}</task>
+</tasks>
+```
 
 **⚠️ Choose `targetFile`(s) based on the directive.** Analyze which existing document(s) the requested change belongs to, and target ONLY those files. Most refactors affect a single file — only add additional tasks when the change genuinely requires consistent modifications across multiple documents.
 

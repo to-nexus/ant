@@ -10,7 +10,7 @@
 | `3` | Task          | Multiple independent design documents or chapters, scope driven by the directive alone. |
 | `4` | RefsGrounded  | Multiple documents/chapters systematically derived from supplied reference documents (PRD / source docs / prior design). |
 
-**Constraint**: Emit exactly one `<executionTier>N</executionTier>` tag OUTSIDE the `<decompose>` JSON, BEFORE the `<decompose>` block. `N` is a single digit `0`–`4`.
+**Constraint**: Emit exactly one `<executionTier>N</executionTier>` tag FIRST, BEFORE any other meta tag or the `<tasks>` block. `N` is a single digit `0`–`4`.
 
 **Constraint**: The presence of reference documents alone does NOT imply Tier 4. Only when the design breakdown is systematically grounded in them does the tier become `4`. If refs exist but the directive asks for something unrelated, prefer `3`.
 
@@ -165,11 +165,7 @@ Each per-service document uses the **same catalog sections** but organizes conte
 {{#if (eq detectedMode "refactor")}}
 ## 📤 OUTPUT FORMAT (REFACTOR MODE)
 
-Emit `<executionTier>N</executionTier>` first, then the JSON wrapped in `<decompose>` tags. No markdown fences.
-
-Example prefix (literal digit only):
-
-`<executionTier>3</executionTier>`
+Emit the meta tags first (one tag per line, JSON-encoded body), then a `<tasks>` block with one `<task>{json}</task>` element per affected file. NO markdown fences anywhere. NO `<decompose>` wrapper.
 
 **Create one task per affected file.** Most refactors need only one task (one file). If the change genuinely spans multiple documents (e.g., auth change affecting both `be-system-main.md` and `api-contract-main.md`), create one task per affected file — tasks targeting different files run in parallel.
 
@@ -180,22 +176,16 @@ Example prefix (literal digit only):
 {{/each}}
 {{/if}}
 
-```json
-{
-  "documentType": "unified",
-  "jobMode": "refactor",
-  "targetFiles": ["{affected-file-1}", "{affected-file-2-if-needed}"],
-  "tasks": [
-    {
-      "id": "refactor-{file-scope}",
-      "name": "Refactor: {brief description}",
-      "targetFile": "{affected-file}",
-      "parallelGroup": "{affected-file-without-ext}",
-      "description": "{modification scope}. Keep all other content unchanged.",
-      "priority": 200
-    }
-  ]
-}
+Example:
+
+```
+<executionTier>3</executionTier>
+<documentType>unified</documentType>
+<jobMode>refactor</jobMode>
+<targetFiles>["{affected-file-1}", "{affected-file-2-if-needed}"]</targetFiles>
+<tasks>
+  <task>{"id":"refactor-{file-scope}","name":"Refactor: {brief description}","targetFile":"{affected-file}","parallelGroup":"{affected-file-without-ext}","description":"{modification scope}. Keep all other content unchanged.","priority":200}</task>
+</tasks>
 ```
 
 ### Constraints (Refactor Mode)
@@ -214,23 +204,24 @@ Example prefix (literal digit only):
 {{else}}
 ## 📤 OUTPUT FORMAT (GENERATE MODE)
 
-Emit `<executionTier>N</executionTier>` first, then the JSON wrapped in `<decompose>` tags. No markdown fences.
+Emit the meta tags first (one tag per line, JSON-encoded body), then a `<tasks>` block with one `<task>{json}</task>` element per task. Each `<task>` body is a single JSON object. NO markdown fences anywhere. NO `<decompose>` wrapper.
 
 Example prefix (literal digit only):
 
 `<executionTier>4</executionTier>`
 
-<decompose>
-{
-  "documentType": "unified" | "contract-first" | "msa-contract-first",
-  "services": [],
-  "fePackages": [],
-  "techTier": { "stack": "<frontend | backend | fullstack>", "language": "<language>", "framework": "<framework or omit>" },
-  "packageTiers": {},
-  "targetFiles": ["..."],
-  "tasks": [...]
-}
-</decompose>
+```
+<executionTier>4</executionTier>
+<documentType>unified | contract-first | msa-contract-first</documentType>
+<services>[]</services>
+<fePackages>[]</fePackages>
+<techTier>{"stack":"<frontend | backend | fullstack>","language":"<language>","framework":"<framework or omit>"}</techTier>
+<packageTiers>{}</packageTiers>
+<targetFiles>["..."]</targetFiles>
+<tasks>
+  <task>{...}</task>
+</tasks>
+```
 
 ### Technology Tiers
 
@@ -305,30 +296,20 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
 
 ## 📋 OUTPUT STRUCTURE
 
-**Principle**: The JSON structure below defines the required output shape. Field values are placeholders — derive actual values from the requirements and the rules above.
+**Principle**: The structure below defines the required output shape. Field values are placeholders — derive actual values from the requirements and the rules above. Meta tags carry top-level scalars / arrays / objects; `<tasks>` carries the per-task JSON array as one `<task>{...}</task>` element per task.
 
-<decompose>
-{
-  "documentType": "<unified | contract-first | msa-contract-first>",
-  "services": [],
-  "fePackages": [],
-  "techTier": { "stack": "<stack>", "language": "<language>", "framework": "<framework or omit>" },
-  "packageTiers": {},
-  "targetFiles": ["<target-file>.md"],
-  "tasks": [
-    {
-      "id": "<unique-kebab-case-id>",
-      "name": "<concise task name>",
-      "targetFile": "<must match one of targetFiles>",
-      "parallelGroup": "<group-id: same file = same group>",
-      "assignedSections": ["§ <exact catalog section name>", "§ <exact catalog section name>"],
-{{#if sourceFileNames}}      "sourceFiles": ["<source filename>"],
-{{/if}}      "description": "<abstract topic areas; section assignments are authoritative>",
-      "priority": 200
-    }
-  ]
-}
-</decompose>
+```
+<executionTier>4</executionTier>
+<documentType><unified | contract-first | msa-contract-first></documentType>
+<services>[]</services>
+<fePackages>[]</fePackages>
+<techTier>{"stack":"<stack>","language":"<language>","framework":"<framework or omit>"}</techTier>
+<packageTiers>{}</packageTiers>
+<targetFiles>["<target-file>.md"]</targetFiles>
+<tasks>
+  <task>{"id":"<unique-kebab-case-id>","name":"<concise task name>","targetFile":"<must match one of targetFiles>","parallelGroup":"<group-id: same file = same group>","assignedSections":["§ <exact catalog section name>", "§ <exact catalog section name>"]{{#if sourceFileNames}},"sourceFiles":["<source filename>"]{{/if}},"description":"<abstract topic areas; section assignments are authoritative>","priority":200}</task>
+</tasks>
+```
 
 **Constraints:**
 - `assignedSections` values MUST use exact names from the document-type catalog (e.g., `"§ API Endpoints"`, NOT abbreviated forms like `"§ Endpoints"`)
@@ -350,18 +331,13 @@ If directive mentions an external codebase to reference for design → extract a
 
 ### Output Format
 
-Include `references` array when reference project is observed:
+Include a `<references>` meta tag when a reference project is observed:
 
-<decompose>
-{
-  "documentType": "...",
-  "targetFiles": [...],
-  "references": [
-    { "project": "<project-name>", "reason": "<why-needed>" }
-  ],
-  "tasks": [...]
-}
-</decompose>
+```
+<references>[{"project":"<project-name>","reason":"<why-needed>"}]</references>
+```
+
+Place it alongside the other meta tags, before `<tasks>`. The body is a JSON-encoded array.
 
 ### Constraint
 
@@ -372,7 +348,15 @@ Only include projects **explicitly mentioned** in directive. Do NOT infer or ass
 ## ✅ VALIDATION CHECKLIST (GENERATE MODE)
 
 Before outputting, verify:
-- ✅ Output wrapped in `<decompose>` tags (no markdown fences)
+
+### Output Structure
+- ✅ `<executionTier>` tag emitted FIRST, BEFORE any other meta tag
+- ✅ Each meta tag (`<documentType>`, `<services>`, `<fePackages>`, `<techTier>`, `<packageTiers>`, `<targetFiles>`, `<references>`) on its own line with a JSON-encoded body
+- ✅ One `<task>{json}</task>` element per task inside `<tasks>...</tasks>`
+- ✅ NO markdown fences anywhere in the output
+- ✅ NO `<decompose>` wrapper
+
+### JSON Structure (per `<task>` body and meta-tag bodies)
 - ✅ Valid JSON syntax
 - ✅ `documentType` is "unified", "contract-first", or "msa-contract-first"
 - ✅ `services` array present (empty `[]` for non-MSA)
@@ -386,10 +370,10 @@ Before outputting, verify:
 - ✅ Priority in 200-299 range
 - ✅ No forbidden tasks (deployment, ops, verification)
 {{#if sourceFileNames}}- ✅ Every task has `sourceFiles` with relevant source filenames
-{{/if}}- ✅ `techTier` present with `stack`, `language` (and `framework` if applicable)
-- ✅ `packageTiers` keys use `{tier}-main` or `{tier}-{name}` format (e.g., `be-main`, `fe-main`, `be-auth`) — only when fullstack/monorepo
-- ✅ `packageTiers` contains only explicitly mentioned technologies — no assumptions
-- ✅ If reference project mentioned → `references` array included
+{{/if}}- ✅ `<techTier>` present with `stack`, `language` (and `framework` if applicable)
+- ✅ `<packageTiers>` keys use `{tier}-main` or `{tier}-{name}` format (e.g., `be-main`, `fe-main`, `be-auth`) — only when fullstack/monorepo
+- ✅ `<packageTiers>` contains only explicitly mentioned technologies — no assumptions
+- ✅ If reference project mentioned → `<references>` meta tag included
 - ✅ Every task has `parallelGroup: "<id>"`
 - ✅ Tasks targeting the same file share the same `parallelGroup`
 - ✅ All filenames use `{type}-{identifier}.md` format (no bare `api-contract.md` or `system-design.md`)
