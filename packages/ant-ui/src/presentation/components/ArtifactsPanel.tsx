@@ -311,6 +311,81 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     return unseenArtifacts.filter(p => p.startsWith(dirPath + '/') || p === dirPath).length;
   };
 
+  // ───────── Domain-root (section-level) policy ─────────
+  // sectionPrefix 가 'plan' / 'architecture' 같은 도메인 루트를 가리킨다.
+  // 헤더 액션 메뉴와 컨테이너 fallback drop 둘 다 이 정책으로 분기한다.
+  const rootIsStructural = sectionPrefix ? isStructuralCanonicalDir(sectionPrefix) : false;
+  const rootIsClearable = sectionPrefix ? isCanonicalDir(sectionPrefix) : false;
+  const rootAllowSubdirs = sectionPrefix
+    ? getArtifactDirPolicy(sectionPrefix)?.allowSubdirs !== false
+    : false;
+  const isRootCreating = sectionPrefix !== undefined && showCreateForm === sectionPrefix;
+
+  // Inline create-form renderer — shared between child rows and domain-root header.
+  // paddingLeft is the only thing that differs (child rows indent by depth;
+  // domain-root form sits flush at the container top).
+  const renderInlineCreateForm = (dirPath: string, paddingLeft: number) => (
+    <div className="mt-1 mb-2" style={{ paddingLeft: `${paddingLeft}px` }}>
+      <div className="flex items-center gap-2">
+        <span className={cn('text-xs', textColors.tertiary)}>
+          {createType === 'directory' ? '📁' : '📄'}
+        </span>
+        <input
+          type="text"
+          placeholder={createType === 'directory' ? "folder-name" : "filename.md"}
+          value={newFileName}
+          onChange={(e) => setNewFileName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && newFileName.trim()) {
+              if (createType === 'directory') {
+                onCreateDirectory?.(dirPath, newFileName.trim());
+              } else {
+                onCreateFile?.(dirPath, newFileName.trim());
+              }
+              setNewFileName('');
+              setShowCreateForm(null);
+            }
+            if (e.key === 'Escape') {
+              setShowCreateForm(null);
+              setNewFileName('');
+            }
+          }}
+          className="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+          autoFocus
+        />
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 w-6 p-0 text-green-600 dark:text-green-400"
+          onClick={() => {
+            if (newFileName.trim()) {
+              if (createType === 'directory') {
+                onCreateDirectory?.(dirPath, newFileName.trim());
+              } else {
+                onCreateFile?.(dirPath, newFileName.trim());
+              }
+              setNewFileName('');
+              setShowCreateForm(null);
+            }
+          }}
+        >
+          ✓
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 w-6 p-0 text-red-600 dark:text-red-400"
+          onClick={() => {
+            setShowCreateForm(null);
+            setNewFileName('');
+          }}
+        >
+          ✕
+        </Button>
+      </div>
+    </div>
+  );
+
   const renderNode = (node: FileNode, currentLevel: number) => {
     const isExpanded = expandedDirs.has(node.path);
     const isSelected = node.type === 'file' && selectedFile === node.path;
@@ -506,68 +581,8 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
           </div>
         </div>
         
-        {isCreatingInThisDir && (
-          <div className="mt-1 mb-2" style={{ paddingLeft: `${(currentLevel + 1) * 12 + 8}px` }}>
-            <div className="flex items-center gap-2">
-              <span className={cn('text-xs', textColors.tertiary)}>
-                {createType === 'directory' ? '📁' : '📄'}
-              </span>
-              <input
-                type="text"
-                placeholder={createType === 'directory' ? "folder-name" : "filename.md"}
-                value={newFileName}
-                onChange={(e) => setNewFileName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newFileName.trim()) {
-                    if (createType === 'directory') {
-                      onCreateDirectory?.(node.path, newFileName.trim());
-                    } else {
-                      onCreateFile?.(node.path, newFileName.trim());
-                    }
-                    setNewFileName('');
-                    setShowCreateForm(null);
-                  }
-                  if (e.key === 'Escape') {
-                    setShowCreateForm(null);
-                    setNewFileName('');
-                  }
-                }}
-                className="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                autoFocus
-              />
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0 text-green-600 dark:text-green-400"
-                onClick={() => {
-                  if (newFileName.trim()) {
-                    if (createType === 'directory') {
-                      onCreateDirectory?.(node.path, newFileName.trim());
-                    } else {
-                      onCreateFile?.(node.path, newFileName.trim());
-                    }
-                    setNewFileName('');
-                    setShowCreateForm(null);
-                  }
-                }}
-              >
-                ✓
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0 text-red-600 dark:text-red-400"
-                onClick={() => {
-                  setShowCreateForm(null);
-                  setNewFileName('');
-                }}
-              >
-                ✕
-              </Button>
-            </div>
-          </div>
-        )}
-        
+        {isCreatingInThisDir && renderInlineCreateForm(node.path, (currentLevel + 1) * 12 + 8)}
+
         {node.type === 'directory' && isExpanded && node.children && (
           <div>
             {node.children.length > 0
@@ -587,20 +602,84 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
     );
   };
 
+  const rootDropEnabled = !!(sectionPrefix && onDropFiles);
+  const rootIsDragTarget = rootDropEnabled && dragOverPath === sectionPrefix;
+
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => setSectionCollapsed(prev => !prev)}
-        className="w-full flex items-center justify-center gap-1.5 py-1.5 mb-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-      >
-        {sectionCollapsed
-          ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-          : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
-        <span className="font-medium text-sm text-gray-700 dark:text-gray-300">{title}</span>
-      </button>
+      <div className="flex items-center mb-2 gap-1">
+        <button
+          type="button"
+          onClick={() => setSectionCollapsed(prev => !prev)}
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        >
+          {sectionCollapsed
+            ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+            : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+          <span className="font-medium text-sm text-gray-700 dark:text-gray-300">{title}</span>
+        </button>
+        {/* Hidden upload input for the domain-root header menu */}
+        {sectionPrefix && onUploadFiles && !rootIsStructural && (
+          <input
+            type="file"
+            multiple
+            className="hidden"
+            id={`upload-${sectionPrefix}`}
+            accept={getArtifactDirPolicy(sectionPrefix)?.acceptedExtensions?.join(',') || undefined}
+            onChange={(e) => {
+              if (e.target.files && onUploadFiles) {
+                onUploadFiles(sectionPrefix, e.target.files);
+                e.target.value = '';
+              }
+            }}
+          />
+        )}
+        {/* sessions/ is system-internal — never expose section-level mutation menu */}
+        {!sectionCollapsed && sectionPrefix && !isSessionSection && (
+          <FileActionMenu
+            nodePath={sectionPrefix}
+            nodeType="directory"
+            nodeName={sectionPrefix}
+            isSessionPath={false}
+            isClearableDir={rootIsClearable}
+            onUpload={onUploadFiles && !rootIsStructural ? () => {
+              document.getElementById(`upload-${sectionPrefix}`)?.click();
+            } : undefined}
+            onCreateFile={onCreateFile && !rootIsStructural ? () => {
+              setCreateType('file');
+              setShowCreateForm(showCreateForm === sectionPrefix ? null : sectionPrefix);
+              setNewFileName('');
+            } : undefined}
+            onCreateDirectory={onCreateDirectory && !rootIsStructural && rootAllowSubdirs ? () => {
+              setCreateType('directory');
+              setShowCreateForm(showCreateForm === sectionPrefix ? null : sectionPrefix);
+              setNewFileName('');
+            } : undefined}
+            onClearContents={rootIsClearable && onDelete ? () => {
+              if (notifyArtifactMutationBlocked?.()) return;
+              showConfirm(t('confirm.clearContentsDetail', { name: sectionPrefix }), {
+                type: 'warning',
+                title: t('confirm.clearContentsTitle'),
+                confirmText: t('confirm.clearAll'),
+                cancelText: t('common:button.cancel'),
+                onConfirm: () => onDelete(sectionPrefix)
+              });
+            } : undefined}
+            onOpenChange={(open) => setActiveMenuPath(open ? sectionPrefix : null)}
+          />
+        )}
+      </div>
       {sectionCollapsed ? null : <div
-        className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide"
+        className={cn(
+          'rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50 max-h-96 overflow-y-auto scrollbar-hide border-2 transition-colors',
+          rootIsDragTarget
+            ? rootIsStructural
+              ? 'border-dashed border-red-400 dark:border-red-500'
+              : 'border-dashed border-blue-400 dark:border-blue-500 bg-blue-50/50 dark:bg-blue-900/20'
+            : 'border-transparent ring-1 ring-gray-200 dark:ring-gray-700',
+        )}
+        data-drop-dir={rootDropEnabled ? sectionPrefix : undefined}
+        data-drop-blocked={rootDropEnabled && rootIsStructural ? '' : undefined}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
@@ -665,6 +744,8 @@ function DirectoryView({ title, nodes, onFileSelect, selectedFile, onCreateFile,
           }
         }}
       >
+        {/* Domain-root inline create form (shown when "..." menu's Create File/Folder is clicked on the section header) */}
+        {isRootCreating && sectionPrefix && renderInlineCreateForm(sectionPrefix, 8)}
         {nodes.length === 0 ? (
           <div className={cn('text-sm p-2 text-center', textColors.tertiary)}>
             No files in {title.toLowerCase()}
