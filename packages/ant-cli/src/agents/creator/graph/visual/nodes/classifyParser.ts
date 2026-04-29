@@ -9,6 +9,7 @@ import { VISUAL_ASSET_TYPES } from '../types.js';
 import type { VisualAssetType } from '../types.js';
 import type { Mode, ExecutionTierId } from '@ant/shared';
 import { parseExecutionTierTag, coerceExecutionTier } from '../../../../../core/executionTier/index.js';
+import { extractJsonFromLlmResponse } from '../../../../../core/utils/llmResponseParser.js';
 
 const VALID_JOB_MODES: readonly string[] = ['generate', 'explain'] as const;
 
@@ -33,22 +34,15 @@ const FALLBACK: ClassifyResponse = {
 
 export function parseClassifyResponse(response: string): ClassifyResponse {
   try {
-    const xmlMatch = response.match(/<classify>\s*([\s\S]*?)\s*<\/classify>/);
-
-    let jsonStr: string;
-    if (xmlMatch) {
-      jsonStr = xmlMatch[1];
-    } else {
-      const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/) ||
-                        response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.warn('⚠️ [ClassifyParser] No JSON found in response');
-        return FALLBACK;
-      }
-      jsonStr = jsonMatch[1] || jsonMatch[0];
+    const parsed = extractJsonFromLlmResponse<any>(response, {
+      tag: 'classify',
+      sanitize: true,
+    });
+    if (!parsed) {
+      console.warn('⚠️ [ClassifyParser] No JSON found in response');
+      return FALLBACK;
     }
 
-    const parsed = JSON.parse(jsonStr);
     const rawType = (parsed.assetType || '').toLowerCase().trim();
     const rawMode = (parsed.jobMode || '').toLowerCase().trim();
 
