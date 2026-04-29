@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-This file mirrors [`.cursorrules`](.cursorrules) body verbatim. Both files share an identical body so that Cursor (`.cursorrules`) and Claude Code (`CLAUDE.md`) see the same SSOT. Edit one, sync the other (regression guard: [`packages/ant-cli/tests/cursorrules-claude-md-mirror.test.ts`](packages/ant-cli/tests/cursorrules-claude-md-mirror.test.ts)).
+This file mirrors [`.cursorrules`](.cursorrules) body verbatim. Both files share an identical body so that Cursor (`.cursorrules`) and Claude Code (`CLAUDE.md`) see the same SSOT. Edit one, sync the other.
 
 ---
 
@@ -228,13 +228,11 @@ rg "outputs/design|inputs/sources|inputs/assets|inputs/references|inputs/directi
   --type ts --type md \
   --glob '!**/changelog/**' \
   --glob '!**/migrate-workspace-layout.mjs' \
-  --glob '!**/legacy-path-residue.test.ts' \
-  --glob '!**/no-legacy-references.test.ts' \
   --glob '!**/docs/tmp/**'
 # Expected: 0 matches
 ```
 
-자동 회귀 가드는 [packages/ant-cli/tests/legacy-path-residue.test.ts](packages/ant-cli/tests/legacy-path-residue.test.ts) 가 담당; 위 명령은 수동 sweep.
+위 명령으로 수동 sweep 한다.
 
 디스크 마이그레이션은 1회성: `pnpm migrate:workspace --apply --workspaces-path <ANT_WORKSPACE_BASE_PATH>`.
 
