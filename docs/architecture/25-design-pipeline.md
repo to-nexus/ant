@@ -28,15 +28,6 @@ Game-Art design template 본문에 `visualLanguage` / `surfaceSystem` / `spatial
 
 산출물 디렉토리 / 파일 / canonical / ARTIFACT_PREFIX / tier 이름 (`gameArtTier`) 모두 `game-art-*` SSOT 인데 v7 이전엔 인텐트 / IntentGroup / prompt 디렉토리 / 인젝션 / 코드 파일이 `art-*` 잔재였다. D28 이 hard rename 으로 정합 — 자세한 매핑 표는 [domain-and-game-tier-system-handoff.md §2.4 D28](../tmp/domain-and-game-tier-system-handoff.md) 참조.
 
-### 자산 풀 부팅 마이그레이션 (D19-revised + D22)
-
-기존 `assets/{icons,images,misc}/` 자산은 워크스페이스 부팅 시 `migrateAssetsToDomain` 가 한 번 idempotent 실행되어 `assets/{service|game}/{icons,images,misc}/` 로 이동한다. `visual/ui/ant/ui-assets.json` 의 `src` 도 함께 갱신된다. 두 호출 트리거 (Phase 2 — D22):
-
-- **워크스페이스 부팅** — `ensureCanonicalStructure(featurePath)` 끝에서 `reconcileAssetsToDomain(featurePath)` 가 sibling `config.json` 의 `domain` 을 자동 발견해 호출 (canonical 구조 invariant 와 동일한 entry point).
-- **도메인 토글** — `ProjectCrudService.updateProjectConfig` 가 이전/새 `domain` 을 비교, 변경 시 `reconcileProjectAssetsToDomain({ projectPathAbs, domain })` 로 모든 feature 일괄 마이그레이션.
-
-회귀 가드 — `tests/reconcile-assets-to-domain.test.ts` (9 케이스).
-
 ---
 
 # UI Design Pipeline

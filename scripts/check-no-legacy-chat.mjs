@@ -218,11 +218,6 @@ function isSkippedFile(rel) {
   // Test files
   if (/\.test\.(ts|tsx|js|jsx|mjs|cjs)$/.test(rel)) return true;
   if (/\.stories\.(ts|tsx|js|jsx)$/.test(rel)) return true;
-  // The discard-legacy script intentionally references the old shape so
-  // boot-time migration can collapse pre-§5 chat.jsonl into the new
-  // contract. Excluded here because the constants exist solely to read
-  // and erase the historical artifact — there is no live emission.
-  if (rel === 'packages/ant-cli/scripts/discard-legacy-chat-jsonl.ts') return true;
   return false;
 }
 

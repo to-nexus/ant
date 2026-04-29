@@ -291,10 +291,9 @@ export class ArtifactService {
    * Read a GameArt document from the canonical sub-sourced location
    * (`visual/game-art/ant/<file>`). D24-revised v8 — game-art mirrors UI's
    * sub-source split (`ant/` is the LLM-generated canonical;
-   * `figma/`/`handoff/` are Phase 5+ hooks). 단방향 원칙: legacy 트리나
-   * sub-source 미적용 flat 경로에 대한 fallback 분기는 두지 않는다. 디스크
-   * 잔존 데이터는 워크스페이스 마이그레이션 스크립트와 부트 가드
-   * (`migrateGameArtToAntSubdir`)가 책임진다.
+   * `figma/`/`handoff/` are Phase 5+ hooks). 단방향 원칙: `ant/` canonical
+   * 만 읽으며, sub-source 미적용 flat 경로에 대한 fallback 분기는 두지
+   * 않는다.
    */
   private static async readGameArtFile(
     fileSystem: FileSystemPort,
