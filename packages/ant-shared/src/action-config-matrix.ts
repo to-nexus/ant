@@ -157,6 +157,13 @@ export interface SlotDef {
   humanLabel?: { en: string; ko: string };
   /** When true, this slot represents the project codebase rather than feature-relative files */
   codebase?: boolean;
+  /**
+   * Auto-included slot — UI marks it as readonly with an "auto" hint.
+   * Used by `codebaseSlot('context', { auto: true })` injected dynamically
+   * for plan/design intents in workspaces with an existing codebase
+   * (Codebase Channel SSOT). Static matrix entries should never set this.
+   */
+  auto?: boolean;
   /** Filenames to exclude from this slot's file listing (e.g. ['prd.md'] to hide canonical output) */
   excludeFiles?: string[];
   /** Populated only for `type: 'ui-source'`: the three hard-exclusive UiSource subgroups. */
@@ -326,14 +333,25 @@ function emptyRef(): SlotDef {
   return { path: '', label: CHAT_HINT, type: 'file', required: false, emptyHint: CHAT_HINT };
 }
 
-function codebaseRef(): SlotDef {
+/**
+ * Codebase slot SSOT — single helper for both code-anchored jobs (ref)
+ * and plan/design jobs in existing-project workspaces (context, auto).
+ *
+ * The two roles share UI/lock semantics; only Authority axis differs.
+ * Pool-load behaviour: codebase path is `''` so `loadResolvedArtifacts`
+ * naturally never walks it into the pool (token cost 0). The
+ * `codebase-channel` partial gate is derived from `deriveCodebaseRole`,
+ * not from pool inspection.
+ */
+function codebaseSlot(role: 'ref' | 'context', opts?: { auto?: boolean }): SlotDef {
   return {
     path: '',
     label: { en: 'Codebase', ko: '코드베이스' },
     type: 'dir',
-    required: true,
+    required: role === 'ref',
     locked: true,
     codebase: true,
+    auto: opts?.auto ?? false,
     humanLabel: { en: 'Codebase', ko: '코드베이스' },
   };
 }
@@ -758,7 +776,7 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 
   // ── Code: Rev (codebase required; spec docs as opt-in ref, design docs as context) ──
   'rev-code': {
-    refs: [codebaseRef(), refDir(SPEC_DIR, L.specDocs, { required: false, createIntent: 'gen-spec', humanLabel: HL.specDocs })],
+    refs: [codebaseSlot('ref'), refDir(SPEC_DIR, L.specDocs, { required: false, createIntent: 'gen-spec', humanLabel: HL.specDocs })],
     context: [
       ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
       uiSourceCtx({ createIntent: 'gen-ui-desc' }),
@@ -801,14 +819,14 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 
   // ── Learn ─────────────────────────────────
   'gen-learn': {
-    refs: [codebaseRef()],
+    refs: [codebaseSlot('ref')],
     context: [],
     target: { kind: 'codebase' },
   },
 
   // ── Explain (cross-domain) ────────────────
   'explain-code': {
-    refs: [codebaseRef()],
+    refs: [codebaseSlot('ref')],
     context: [],
     target: { kind: 'chat-only', hint: EXPLAIN_TARGET_HINT },
   },
@@ -856,15 +874,104 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
 // ============================================
 
 /**
+ * Workspace context affecting RAC slot composition.
+ *
+ * Codebase Channel SSOT — when `hasCodebase` is true, plan/design intents
+ * receive an auto-injected `codebaseSlot('context', { auto: true })` so
+ * the workspace's existing code is recognised as binding context. This
+ * channel is dynamic (workspace-state-driven) and lives outside the
+ * static MATRIX so the matrix body remains observable as a pure SSOT.
+ */
+export interface WorkspaceSlotContext {
+  /** Workspace contains an existing codebase (disk walk OR memory index). */
+  hasCodebase?: boolean;
+}
+
+/**
+ * plan / design (system / spec / ui / game-art) intents that receive the
+ * auto codebase context slot when `hasCodebase` is true. code-anchored
+ * intents (rev-code / explain-code / gen-learn) already declare a static
+ * `codebaseSlot('ref')` and are excluded.
+ */
+const PLAN_DESIGN_INTENTS_FOR_CODEBASE_CONTEXT = new Set<IntentId>([
+  'gen-plan',
+  'rev-plan',
+  'explain-plan',
+  'gen-sys-fe',
+  'gen-sys-be',
+  'gen-sys-full',
+  'rev-sys',
+  'explain-sys',
+  'gen-ui-figma',
+  'gen-ui-desc',
+  'rev-ui',
+  'explain-ui',
+  'gen-game-art-figma',
+  'gen-game-art-desc',
+  'rev-game-art',
+  'explain-game-art',
+  'gen-spec',
+  'rev-spec',
+  'explain-spec',
+]);
+
+function isCodebaseContextEligibleIntent(intent: IntentId): boolean {
+  return PLAN_DESIGN_INTENTS_FOR_CODEBASE_CONTEXT.has(intent);
+}
+
+/**
  * Get the refs/context/target configuration for a given intent.
  * Returns null if the intent is not defined in the matrix.
  *
  * Note — the returned `ConfigSlots` is the FULL definition (all slots).
  * Use `filterSlotsByDomain` to drop slots whose `applicableDomains` does
  * not include the active workspace domain (D28).
+ *
+ * `workspaceContext.hasCodebase=true` causes plan/design intents to
+ * receive an auto codebase context slot (Codebase Channel SSOT).
  */
-export function getConfigSlots(intent: IntentId): ConfigSlots | null {
-  return MATRIX[intent] ?? null;
+export function getConfigSlots(
+  intent: IntentId,
+  workspaceContext?: WorkspaceSlotContext,
+): ConfigSlots | null {
+  const raw = MATRIX[intent] ?? null;
+  if (!raw) return null;
+  if (!workspaceContext?.hasCodebase) return raw;
+  if (!isCodebaseContextEligibleIntent(intent)) return raw;
+  // Dynamic injection: prepend the auto codebase context slot. Prepend
+  // (not append) so consumers iterating contexts encounter the codebase
+  // hint first — UI slot ordering and prompt enumeration both benefit.
+  return {
+    ...raw,
+    context: [codebaseSlot('context', { auto: true }), ...raw.context],
+  };
+}
+
+/**
+ * Codebase Channel SSOT — single source for the partial-gate variable.
+ *
+ * Returns the role this intent assigns to the codebase, or `undefined`
+ * when the codebase is not in scope for this intent / workspace pair.
+ * Derived independently of the artifact pool because the codebase slot's
+ * `path: ''` means `loadResolvedArtifacts` never walks code body into the
+ * pool — partial activation must therefore be intent + workspace driven.
+ *
+ *   - 'ref'      → code-anchored intents (rev-code / explain-code / gen-learn)
+ *   - 'context'  → plan/design intents in an existing-project workspace
+ *   - undefined  → greenfield workspace OR non-eligible intent
+ */
+export function deriveCodebaseRole(
+  intent: IntentId | undefined,
+  workspaceContext?: WorkspaceSlotContext,
+): 'ref' | 'context' | undefined {
+  if (!intent) return undefined;
+  const raw = MATRIX[intent];
+  if (!raw) return undefined;
+  if (raw.refs.some(s => s.codebase === true)) return 'ref';
+  if (workspaceContext?.hasCodebase && isCodebaseContextEligibleIntent(intent)) {
+    return 'context';
+  }
+  return undefined;
 }
 
 /**
@@ -937,12 +1044,16 @@ function rewritePlanSlot(slot: SlotDef, domain: Domain): SlotDef {
  * `domain` is intentionally non-optional. Workspaces always carry a
  * default (`'service'`) so callers must surface their fallback at the
  * call site rather than letting `undefined` quietly pick service.
+ *
+ * `workspaceContext.hasCodebase=true` forwards into `getConfigSlots` to
+ * activate the auto codebase context slot for plan/design intents.
  */
 export function getConfigSlotsForDomain(
   intent: IntentId,
   domain: Domain,
+  workspaceContext?: WorkspaceSlotContext,
 ): ConfigSlots | null {
-  const raw = getConfigSlots(intent);
+  const raw = getConfigSlots(intent, workspaceContext);
   if (!raw) return null;
   const filtered = filterSlotsByDomain(raw, domain);
   const refs = filtered.refs.map(s => rewritePlanSlot(s, domain));

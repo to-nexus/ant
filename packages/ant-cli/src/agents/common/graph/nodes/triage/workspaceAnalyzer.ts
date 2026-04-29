@@ -31,10 +31,25 @@ const PLAN_DIR = ARTIFACT_PREFIX.SOURCES;
 const META_DIRECTIVES_DIR = 'meta/directives';
 const META_EVALS_DIR = 'meta/evals';
 const ASSETS_DIR = 'assets';
+const CODEBASE_DIR = 'codebase';
 const ARCHITECTURE_SYSTEM_DIR = ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
 const ARCHITECTURE_SPEC_DIR = ARTIFACT_PREFIX.SPEC.replace(/\/$/, '');
 const VISUAL_UI_ANT_DIR = ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, '');
 const VISUAL_GAME_ART_ANT_DIR = ARTIFACT_PREFIX.GAME_ART_ANT.replace(/\/$/, '');
+
+/**
+ * Recognised entry-point names for codebase orientation. Path-only —
+ * the analyzer never reads file body (35-codebase-meta-policy /
+ * state.artifacts Post-RAC SSOT compatibility). The codebase-channel
+ * partial surfaces these to the LLM so existing-project work has cheap
+ * structural cues without inflating prompt tokens.
+ */
+const CODEBASE_ENTRY_POINT_NAMES: readonly string[] = [
+  'package.json', 'tsconfig.json', 'pyproject.toml', 'Cargo.toml',
+  'go.mod', 'pom.xml', 'build.gradle', 'composer.json', 'Gemfile',
+  'README.md', 'README.MD', 'README',
+  'src', 'app', 'lib', 'pages', 'components', 'public', 'tests', 'test',
+];
 
 /**
  * Count files in a directory (non-recursive by default)
@@ -260,22 +275,58 @@ export async function analyzeWorkspace(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // codebase indexing (memory / vector DB)
+  // codebase — disk walk (depth-1, path-only) OR memory / vector index
+  // (Codebase Channel SSOT). Either signal flips hasCodebase=true so
+  // existing-project workspaces always activate the codebase-channel
+  // partial in plan/design jobs even before gen-learn runs.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const codebaseAbs = path.join(featurePath, CODEBASE_DIR);
+  const entryPoints = scanCodebaseEntryPoints(codebaseAbs);
+  if (entryPoints.length > 0) {
+    state.hasCodebase = true;
+    state.codebaseEntryPoints = entryPoints;
+  }
+
   if (deps?.memory) {
     try {
       const results = await deps.memory.query('', deps.projectId || '', { k: 1 });
-      state.hasCodebase = results && results.length > 0;
-      if (state.hasCodebase) {
+      const indexed = results && results.length > 0;
+      if (indexed) {
+        state.hasCodebase = true;
         const allResults = await deps.memory.query('', deps.projectId || '', { k: 100 });
         state.indexedFileCount = allResults?.length || 0;
       }
-    } catch (error) {
-      state.hasCodebase = false;
+    } catch {
+      // Memory probe failure leaves disk-derived hasCodebase intact.
     }
   }
 
   return state;
+}
+
+/**
+ * Path-only entry-point scan under `codebase/`. Returns the subset of
+ * `CODEBASE_ENTRY_POINT_NAMES` that actually exists at depth 1. No file
+ * bodies are read. Returns [] when the directory is missing or empty.
+ */
+function scanCodebaseEntryPoints(codebaseAbs: string): string[] {
+  if (!fs.existsSync(codebaseAbs)) return [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(codebaseAbs, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  if (entries.length === 0) return [];
+  const present = new Set(
+    entries.filter(e => !e.name.startsWith('.')).map(e => e.name),
+  );
+  const matched = CODEBASE_ENTRY_POINT_NAMES.filter(n => present.has(n));
+  // Even with zero canonical entry points, a non-empty codebase/ tree is
+  // still an "existing project" signal — fall back to a single sentinel
+  // so `hasCodebase` flips and the partial activates.
+  if (matched.length === 0 && present.size > 0) return ['codebase/'];
+  return matched;
 }
 
 /**

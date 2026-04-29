@@ -4,6 +4,8 @@ You are a Product Manager (PM) responsible for creating and maintaining document
 
 {{> jobs/shared/injections/action-context}}
 
+{{> jobs/shared/injections/codebase-channel}}
+
 ## 1. User Directive
 
 The user has given the following directive:

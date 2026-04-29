@@ -11,7 +11,8 @@
     "explain-guidance": ["resolvedAction"],
     "visual-tier-detection": ["availableVisualLanguagesWithModes", "availableSurfaceSystems", "availableSpatialSystems", "resolvedAction"],
     "game-art-tier-detection": ["gameArtConceptCandidates", "resolvedAction"],
-    "game-art-design-policy": []
+    "game-art-design-policy": [],
+    "codebase-channel": ["codebaseRole", "codebaseEntryPoints"]
   },
   "jobs/code/base/injections": {
     "text-format-compact": [],

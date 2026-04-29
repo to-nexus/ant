@@ -7,7 +7,7 @@ import type { ActiveWorkerNode } from '@/domain/models/workflow';
 import { useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { PopAppear, useAutoScrollOnGrowth } from '../common/motion';
+import { PopAppear, TaskCardShineSweep, useAutoScrollOnGrowth } from '../common/motion';
 
 /**
  * Inline node status shown directly below each in-progress task card.
@@ -236,69 +236,24 @@ export function KanbanColumns({
             {completedTasks.slice().reverse().map((task) => {
               const taskId = task.id || task.name;
               const isNewlyCompleted = newlyCompletedIds.has(taskId);
-              
+
               return (
                 <motion.div
                   key={taskId}
                   layoutId={`task-${taskId}`}
                   layout
-                  transition={{ 
+                  transition={{
                     layout: {
                       type: "spring",
                       stiffness: 500,
                       damping: 35
                     }
                   }}
-                  className="relative min-w-0"
-                  style={{ isolation: 'isolate' }}
+                  className="min-w-0"
                 >
-                  {/* ✅ Golden shine effect for newly completed tasks */}
-                  {isNewlyCompleted && (
-                    <>
-                      {/* Background glow pulse */}
-                      <motion.div
-                        className="absolute inset-0 rounded-lg pointer-events-none"
-                        style={{ zIndex: 99 }}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: [0, 1, 0.5, 0] }}
-                        transition={{
-                          duration: 1,
-                          times: [0, 0.2, 0.5, 1],
-                          ease: "easeInOut"
-                        }}
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-r from-yellow-200/60 via-yellow-100/80 to-yellow-200/60 dark:from-yellow-600/40 dark:via-yellow-400/60 dark:to-yellow-600/40 blur-sm" />
-                      </motion.div>
-                      
-                      {/* Main shine effect */}
-                      <motion.div
-                        className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden"
-                        style={{ zIndex: 100 }}
-                      >
-                        <motion.div
-                          className="absolute inset-0"
-                          initial={{ x: '-100%' }}
-                          animate={{ x: '200%' }}
-                          transition={{
-                            duration: 0.7,
-                            ease: [0.4, 0, 0.2, 1],
-                            delay: 0.2
-                          }}
-                          style={{
-                            background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 20%, rgba(255,255,200,0.95) 40%, rgba(255,255,255,1) 50%, rgba(255,255,200,0.95) 60%, rgba(255,255,255,0.3) 80%, transparent 100%)',
-                            boxShadow: '0 0 30px 10px rgba(255,255,150,0.8), inset 0 0 20px rgba(255,255,255,0.5)',
-                            filter: 'blur(1px)'
-                          }}
-                        />
-                      </motion.div>
-                    </>
-                  )}
-                  <div className="relative z-10">
-                    <TaskCard 
-                      task={task} 
-                      status="completed"
-                    />
-                  </div>
+                  <TaskCardShineSweep variant="completed" active={isNewlyCompleted}>
+                    <TaskCard task={task} status="completed" />
+                  </TaskCardShineSweep>
                 </motion.div>
               );
             })}

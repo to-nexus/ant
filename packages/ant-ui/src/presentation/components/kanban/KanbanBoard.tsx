@@ -34,8 +34,9 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const [previousInProgressId, setPreviousInProgressId] = useState<string | null>(null);
 
   // Newly added / completed task tracking — shared hook drives both columns'
-  // entrance animations. The completed column auto-clear runs longer because
-  // the golden shine takes ~1.2s to play out fully.
+  // entrance animations. Auto-clear is sized to outlast the
+  // `TaskCardShineSweep` sweep (~0.7s + 0.2s delay) for both variants, so we
+  // rely on the hook's default (`NEWLY_ADDED_AUTO_CLEAR_MS`) here.
   const { newlyAddedIds: newlyAddedTodoIds } = useNewlyAdded(
     kanbanData.todo,
     taskKey,
@@ -43,7 +44,6 @@ export function KanbanBoard({ kanbanData, workflowState }: KanbanBoardProps) {
   const { newlyAddedIds: newlyCompletedIds } = useNewlyAdded(
     kanbanData.completed,
     taskKey,
-    { autoClearMs: 1200 },
   );
 
   // ✅ Detect newly in-progress tasks
