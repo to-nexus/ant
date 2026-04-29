@@ -2,6 +2,7 @@ import { architectAgent } from "../agents/architect/index";
 import { runPlanGraph } from "../agents/planner";
 import { runInlineAsk } from "../agents/architect/graph/ask/inlineAskRunner";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
+import { isVectorDbEnabled } from "../core/config/vectorDbCapability";
 import { createLLMClient, createImageGenerationClient } from "../periphery/adapters/llm/LLMClientFactory";
 import { FilePromptAdapter } from "../periphery/adapters/prompt/FilePromptAdapter";
 import { CodebaseAnalyzer } from "../periphery/adapters/analyzer/CodebaseAnalyzer";
@@ -83,6 +84,33 @@ export async function orchestrator(params: {
       const llm = createLLMClient('architect', undefined, { jobType: jobType as 'design' | 'code' | 'learn' }, configData);
 
       if (jobType === 'learn') {
+        // ✅ Vector DB capability gate (SSOT: core/config/vectorDbCapability.ts).
+        // Learn job's only product is a vector index — short-circuit when
+        // ANT_VECTOR_DB_ENABLED is false so we don't wire up Chroma adapters
+        // or hit the indexer's `vectorDB.store()` (which throws without
+        // a running ChromaDB container).
+        if (!isVectorDbEnabled()) {
+          console.log("ℹ️  [Orchestrator:Learn] Vector DB disabled — skipping learn job.");
+          try {
+            const chatAPI = getChatAPIClient();
+            await chatAPI.showChatStatus('indexed', {
+              filesIndexed: 0,
+              chunks: 0,
+              tokens: 0,
+              duration: 0,
+              error: "Vector DB is disabled (ANT_VECTOR_DB_ENABLED=false). Set the env var to true and start ChromaDB to enable indexing.",
+            });
+          } catch {
+            // Chat status emit is best-effort; non-chat invocations (CLI / tests) ignore.
+          }
+          return {
+            success: true,
+            status: 'success',
+            job: 'learn',
+            message: "Vector DB disabled — learn job skipped.",
+          };
+        }
+
         // Learn task: requires Git and Chunk for indexing
         const chunk = AdapterFactory.createChunkAdapter();
         const git = projectPath ? AdapterFactory.createGitAdapterWithConfig(project || "default", configData, projectPath) : undefined;
