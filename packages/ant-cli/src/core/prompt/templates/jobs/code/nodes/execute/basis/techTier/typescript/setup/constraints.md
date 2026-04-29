@@ -6,7 +6,7 @@
 
 **If you see a `# DESIGN TOKENS` section in this prompt:**
 - The tokens are ALREADY LOADED from `visual/ui/ant/ui-tokens.json`
-- DO NOT attempt to read `ui-tokens.json` from `inputs/` or any other directory
+- DO NOT attempt to read `ui-tokens.json` from disk (e.g., `visual/ui/ant/`) — use the injected tokens directly
 - Use the token values from the prompt directly to configure the styling framework's theme
 
 **If NO `# DESIGN TOKENS` section but visual tier policies exist in the basis:**

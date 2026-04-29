@@ -1,7 +1,7 @@
 Execute a shell command. Long-running server commands are tested for startup then cleaned up.
 
 📁 WORKING DIRECTORY:
-- Default cwd = **feature root** (the directory containing `codebase/`, `inputs/`, `outputs/`)
+- Default cwd = **feature root** (the directory containing `codebase/`, `plan/`, `architecture/`, `visual/`, `meta/`, `sessions/`)
 - For language/build tools (`go`, `npm`, `pnpm`, `cargo`, `python`, etc.): set `working_directory` to `"codebase"`
 - Do NOT use `cd codebase &&` inside the command — use the `working_directory` parameter instead
 - Do NOT run `pwd` to discover the path — the working directory is always deterministic
