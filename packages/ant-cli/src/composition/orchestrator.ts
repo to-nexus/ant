@@ -68,8 +68,17 @@ export async function orchestrator(params: {
         throw new Error(`Architect agent requires jobType: 'design', 'code', 'learn', or 'inline-ask'`);
       }
 
-      // Common dependencies for architect
-      const memory = AdapterFactory.createMemoryAdapter();
+      // ✅ Common dependencies for architect.
+      // `memory` is gated by `isVectorDbEnabled()` so design/code/inline-ask
+      // jobs receive `undefined` instead of a NoopMemoryAdapter when vector
+      // DB is disabled. Every consumer (`memory/index.ts:retrieve`, design
+      // `lessonExtractor`, code `learn` node, `inlineAskRunner`) already
+      // guards on truthy `deps?.memory`, so undefined fully short-circuits
+      // every chunk.process / memory.store call site — no NoOp imposters
+      // sneak into the normal flow. The learn branch above has its own
+      // capability gate before `architectAgent` is called, so by the time
+      // we wire `memory` into the learn deps below, it is guaranteed truthy.
+      const memory = isVectorDbEnabled() ? AdapterFactory.createMemoryAdapter() : undefined;
       const config = new FileConfigAdapter();
       
       // Load project config for git/repo and LLM settings

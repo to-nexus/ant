@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
+import { isVectorDbEnabled } from '../../../../../../core/config/vectorDbCapability';
 import { UserContext } from '../../../../../../core/types/user';
 import { ChatService } from '../../ChatService';
 import { GitHelper } from '../helper/GitHelper';
@@ -57,6 +58,14 @@ export class IndexService {
     userContext: UserContext,
     featureName?: string
   ): Promise<void> {
+    if (!isVectorDbEnabled()) {
+      logger.info(
+        `Skipping codebase indexing (ANT_VECTOR_DB_ENABLED=false)`,
+        { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId }
+      );
+      return;
+    }
+
     try {
       logger.info(`Starting codebase indexing`, { component: 'GitIndexService', organizationId: userContext.organizationId, userId: userContext.userId, projectId });
 

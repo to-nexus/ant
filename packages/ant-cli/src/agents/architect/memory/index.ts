@@ -2,6 +2,7 @@ import { AgentJob } from "../types";
 import { MemoryPort } from "../../../core/ports";
 import { getDesignQueries, getCodeQueries, getFeatureQueries, CategoryKey } from "./queries";
 import { MMRReranker } from "../../../core/chunk/rerank";
+import { isVectorDbEnabled } from "../../../core/config/vectorDbCapability";
 
 type SectionKey = 
   | "📚 Previous Learnings"
@@ -26,6 +27,14 @@ export async function retrieve(
   feature?: string,
   deps?: { memory: MemoryPort }
 ): Promise<string> {
+  // ✅ Capability gate (SSOT: core/config/vectorDbCapability.ts).
+  // When vector DB is disabled, every category-query below would issue a
+  // no-op query against the NoopMemoryAdapter (or the upstream caller
+  // omits memory entirely). Skip the whole retrieval pipeline so phases
+  // that depend on `context.memory` see a deterministic empty string
+  // without spinning through MMR reranking on empty result sets.
+  if (!isVectorDbEnabled()) return "";
+
   const memory = deps?.memory;
   if (!memory) return "";
 

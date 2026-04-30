@@ -10,6 +10,7 @@
 
 import { CodebaseIndexer } from '../core/codebase/CodebaseIndexer';
 import { AdapterFactory } from '../infrastructure/adapters/AdapterFactory';
+import { isVectorDbEnabled } from '../core/config/vectorDbCapability';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../core/config/WorkspacePathResolver';
 import { UserContext } from '../core/types/user';
 import * as path from 'path';
@@ -24,6 +25,15 @@ export async function indexCommand(
   console.log(`\n📇 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   console.log(`📇 Indexing codebase: ${project}`);
   console.log(`📇 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+  if (!isVectorDbEnabled()) {
+    console.log(
+      `ℹ️  Vector DB is disabled (ANT_VECTOR_DB_ENABLED=false).\n` +
+      `   Set ANT_VECTOR_DB_ENABLED=true and start ChromaDB ` +
+      `(\`pnpm dev:infra:vector\`) to enable indexing.\n`
+    );
+    return;
+  }
 
   try {
     // 1. Resolve workspace path
