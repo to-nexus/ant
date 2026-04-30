@@ -3,11 +3,15 @@ import { useStore } from '@/domain/store';
 import { fetchAgents, type Agent } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
 
+// ✅ Conservative fallback used only when /agents fetch fails.
+// `learn` is gated by the BE's vector-DB capability (`/system/config`
+// .capabilities.vectorDb) and the canonical list comes from
+// fetchAgents(); we omit it from the fallback so the picker never
+// surfaces a workflow the BE may have disabled.
 const DEFAULT_AGENTS: Agent[] = [
   { value: 'architect', label: 'Architect', enabled: true, jobs: [
     { value: 'code', label: 'Code' },
     { value: 'design', label: 'Design' },
-    { value: 'learn', label: 'Learn' }
   ]},
   { value: 'creator', label: 'Creator', enabled: true, jobs: [
     { value: 'visual', label: 'Visual' }
