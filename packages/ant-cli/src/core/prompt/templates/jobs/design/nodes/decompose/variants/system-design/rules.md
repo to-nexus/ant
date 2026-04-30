@@ -215,6 +215,7 @@ Example prefix (literal digit only):
 <documentType>unified | contract-first | msa-contract-first</documentType>
 <services>[]</services>
 <fePackages>[]</fePackages>
+<consumedApis>[]</consumedApis>
 <techTier>{"stack":"<frontend | backend | fullstack>","language":"<language>","framework":"<framework or omit>"}</techTier>
 <packageTiers>{}</packageTiers>
 <targetFiles>["..."]</targetFiles>
@@ -222,6 +223,16 @@ Example prefix (literal digit only):
   <task>{...}</task>
 </tasks>
 ```
+
+### Provider vs Consumer fields
+
+| Field | Meaning | Files produced | Allowed intent(s) |
+|---|---|---|---|
+| `services` | Provider — backend service boundaries THIS project owns | `be-system-{s}.md` + `api-contract-{s}.md` per entry | `gen-sys-be`, `gen-sys-full` only (ignored for `gen-sys-fe`) |
+| `fePackages` | Frontend package boundaries | `fe-system-{p}.md` per entry | `gen-sys-fe`, `gen-sys-full` |
+| `consumedApis` | Consumer — EXTERNAL API hosts this project consumes (snapshot reference) | `api-contract-{c}.md` per entry (no co-creation) | All system-design intents |
+
+**Constraint**: `services` and `consumedApis` MUST NOT share names. Provider authorship of a name and consumer snapshot of the same name conflict; the validator drops the consumer entry on overlap and warns.
 
 ### Technology Tiers
 
@@ -248,24 +259,28 @@ The `techTier` object describes the job-level technology stack (singular). When 
 ### Document Type Rules
 
 **"unified"**:
-- Use for: Frontend-only projects, CLI tools, or projects without externally-consumed API
+- Use for: Frontend-only projects (with no consumer hint), CLI tools, or projects without ANY api-contract surface
 - targetFiles (frontend-only): `["fe-system-main.md"]`
 - targetFiles (backend without external API): `["be-system-main.md"]`
-- services: `[]`, fePackages: `[]`
+- services: `[]`, fePackages: `[]`, consumedApis: `[]`
 
 **"contract-first"**:
-- Use for: Projects that expose external API (fullstack or backend-only)
-- targetFiles (fullstack): `["api-contract-main.md", "fe-system-main.md", "be-system-main.md"]`
-- targetFiles (backend-only): `["api-contract-main.md", "be-system-main.md"]`
+- Use for: Any project with an `api-contract-*.md` surface — provider OR consumer
+  - PROVIDER (this project exposes its own API): backend-only / fullstack with `services: []` (single boundary)
+  - CONSUMER (this project consumes external APIs): any intent with `consumedApis: [...]` non-empty
+- targetFiles (fullstack provider): `["api-contract-main.md", "fe-system-main.md", "be-system-main.md"]`
+- targetFiles (backend-only provider): `["api-contract-main.md", "be-system-main.md"]`
+- targetFiles (frontend-only consumer): `["fe-system-main.md", "api-contract-{c}.md", ...]`
 - services: `[]`, fePackages: `[]`
 
 **"msa-contract-first"**:
-- Use for: Projects with **multiple backend service boundaries** and/or **multiple frontend package boundaries**
+- Use for: Projects with **multiple OWNED service boundaries** and/or **multiple frontend package boundaries**
 - services: `["<service1>", "<service2>", ...]` (backend services from source documents, empty if single backend)
 - fePackages: `["<package1>", "<package2>", ...]` (frontend packages from source documents, empty if single frontend)
 - targetFiles: computed from services and fePackages
+- `consumedApis` may also coexist with msa-contract-first when this project both owns multiple services AND consumes external APIs.
 
-**⚠️ Constraint**: Only use `msa-contract-first` when service or package boundaries are observed in source documents.
+**⚠️ Constraint**: Only use `msa-contract-first` when OWNED service or package boundaries are observed. Multiple `consumedApis` entries alone do NOT make this project an MSA — they describe external systems.
 
 ### Task Properties
 
@@ -303,6 +318,7 @@ Each task MUST include `"parallelGroup": "<group-id>"`.
 <documentType><unified | contract-first | msa-contract-first></documentType>
 <services>[]</services>
 <fePackages>[]</fePackages>
+<consumedApis>[]</consumedApis>
 <techTier>{"stack":"<stack>","language":"<language>","framework":"<framework or omit>"}</techTier>
 <packageTiers>{}</packageTiers>
 <targetFiles>["<target-file>.md"]</targetFiles>

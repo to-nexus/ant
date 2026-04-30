@@ -1,7 +1,10 @@
 ## 📋 API CONTRACT DOCUMENT GUIDE
 
 **Document Type**: `api-contract-{name}.md` (e.g., `api-contract-main.md`, `api-contract-auth.md`)
-**Role**: BINDING SPECIFICATION - Single Source of Truth for Frontend/Backend integration
+**Role**: BINDING SPECIFICATION
+- **Provider perspective** (this project owns the boundary — derived from `services` in decompose): the SSOT this project exposes; written independently from PRD.
+- **Consumer perspective** (this project consumes an external boundary — derived from `consumedApis` in decompose): a captured snapshot of an EXTERNAL contract. Retrieve via the **External Contract Discovery** section below before describing shapes; do NOT fabricate.
+
 **Phase**: Written independently from PRD
 
 ---
