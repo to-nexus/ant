@@ -1,16 +1,18 @@
 /**
  * L1 — `resolvePlanEntry` dispatcher invariants.
  *
- * Covers verification scenario matrix entries:
+ * Post verification fix-책임 제거 리팩토링:
  *   - C14: verification fresh entry initialises `state.verification`
  *          (VerificationSession) via the plan hook.
- *   - C15: retry entry preserves already-passed gates and the required
- *          set while bumping `session.attempts()`. The retired
- *          `attemptedThisCycle` field is no longer a concern — `passed`
- *          is the single source for every command-policy guard.
- *
- * The dispatcher is a pure state transformer for these branches; this suite
- * exercises it directly without the full LangGraph harness.
+ *   - Retry entry is uniform across all task types — bump `state.retries`,
+ *     clear NODE_EXECUTE, preserve NODE_PLAN. Verification used to take a
+ *     dedicated branch that reset NODE_PLAN and bumped `Session.attempts`;
+ *     that branch was removed because verification never enters retry under
+ *     always-fan-out (every cycle ends in done:true via batch-split, the
+ *     empty-impl shortcut, or `MAX_BATCH_SPLIT_CYCLES`).
+ *   - Reverify entry retains its `isFirstVerifyEntry` NODE_PLAN reset for
+ *     self-verify Tier 2's apply→verify transition (apply-phase plan
+ *     messages would mix with the verify-mode prompt format otherwise).
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -59,15 +61,9 @@ describe('resolvePlanEntry — fresh verification task (C14)', () => {
     expect(ctx.skipKeywordAndRAG).toBe(false);
 
     expect(state.verification).toBeInstanceOf(VerificationSession);
-    // Env probe in the test harness has no feature path → hasTests=false
-    // and techTier is absent → isTs=false. Required therefore reduces to
-    // the always-on `build` gate.
     expect(state.verification.required()).toEqual(['build']);
     expect(state.verification.passed()).toEqual([]);
     expect(state.verification.attempts()).toBe(0);
-    // Session must surface in the delta so plan() return paths can commit
-    // it via `mergeDelta` — without this, the channel keeps the pre-entry
-    // (undefined) value when plan returns through tool_use / planText.
     expect(delta.verification).toBe(state.verification);
   });
 
@@ -76,19 +72,13 @@ describe('resolvePlanEntry — fresh verification task (C14)', () => {
     state._planSearchWebCount = 42;
 
     const { delta } = await resolvePlanEntry(state);
-    // Counter resets are carried via:
-    //   - delta: surfaces in plan()'s return-object via `mergeDelta` so
-    //     the LangGraph reducer commits the reset to the channel.
-    //   - state mutation: same-turn `plan()` body reads (RAG, LLM prompt
-    //     composition, gate predicates) see the reset value before the
-    //     reducer commit happens.
     expect(delta._planSearchWebCount).toBe(0);
     expect(state._planSearchWebCount).toBe(0);
   });
 });
 
-describe('resolvePlanEntry — verification retry (C15)', () => {
-  it('preserves passed + required gates and bumps session attempts', async () => {
+describe('resolvePlanEntry — uniform retry path (verification + non-verification share one branch)', () => {
+  it('verification + retry: bumps state.retries (no Session.attempts increment, no NODE_PLAN reset)', async () => {
     const state = makeFreshVerificationState();
     state.currentTask = {
       id: 't1',
@@ -98,11 +88,6 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
       priority: 1000,
     };
     state._nextPlanEntry = 'retry';
-    // Seed a rehydrated session with two gates already passed — the retry
-    // branch must preserve `passed` (gate cache is authoritative across
-    // retry / reverify / batch-split boundaries). The retired
-    // `attemptedThisCycle` field is intentionally absent from the seed;
-    // rehydrate silently drops any legacy value.
     state.verification = VerificationSession.rehydrate({
       required: ['typecheck', 'build', 'test'],
       passed: ['typecheck', 'build'],
@@ -112,49 +97,6 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     state.retries = 1;
     state.violations = [{ type: 'type_error' as any, severity: 'critical', message: 'x' }];
     state.planText = '{"task":{"id":"t1"},"diagnostics":{"totalErrors":1}}';
-
-    const { context: ctx, delta } = await resolvePlanEntry(state);
-
-    expect(ctx.isRetry).toBe(true);
-
-    // Verification delegates retry accounting to the Session via the
-    // `checkRetryTermination` hook; the phase layer does NOT bump
-    // `state.retries` for verification task types. The pre-entry value
-    // (1) is preserved unchanged — the authoritative retry counter is
-    // `session.attempts()`.
-    expect(state.retries).toBe(1);
-
-    const snap = state.verification.snapshot();
-    // passed / required preserved
-    expect(snap.passed.sort()).toEqual(['build', 'typecheck'].sort());
-    expect(snap.required.sort()).toEqual(['build', 'test', 'typecheck'].sort());
-    // attempts bumped via session.onPlanEntry('retry')
-    expect(snap.attempts).toBe(1);
-
-    // Violation clear flows through both surfaces:
-    //   - delta.violations → mergeDelta → reducer commit
-    //   - state.violations mutation → same-turn read by composeViolations
-    //     Text / generatePlanText / runPlanRAG.extractFilesFromViolations.
-    expect(delta.violations).toEqual([]);
-    expect(state.violations).toEqual([]);
-  });
-
-  it('resets both node:plan and node:execute at verification retry entry', async () => {
-    const state = makeFreshVerificationState();
-    state.currentTask = {
-      id: 't1',
-      name: 'verify',
-      description: 'Verification task',
-      type: 'verification',
-      priority: 1000,
-    };
-    state._nextPlanEntry = 'retry';
-    state.verification = VerificationSession.rehydrate({
-      required: ['build'],
-      passed: [],
-      attempts: 0,
-      planHistoryHashes: [],
-    });
     state.conversations = {
       [CONV_KEYS.NODE_PLAN]: [
         { role: 'user', content: 'prior plan round 1' },
@@ -165,68 +107,71 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
       ],
     };
 
-    const { delta } = await resolvePlanEntry(state);
+    const { context: ctx, delta } = await resolvePlanEntry(state);
 
-    // R2-P1: NODE_PLAN is reset at retry entry. The preserved-across-retry
-    // policy documented earlier was never actually exercised — the retry
-    // path's first plan-LLM call rebuilds the user message from scratch
-    // and overwrites NODE_PLAN on the first round. Prior-attempt reasoning
-    // now flows via (a) the Session-summary banner rendered in the
-    // verification-variant plan template, and (b) LLM self-service
-    // `read_file sessions/architect/code.json` when cascading failure
-    // is suspected (see postmortem §4.1 / verification/rules.md).
-    //
-    // Mutation + delta contract:
-    //   - delta carries the clears so `mergeDelta` propagates them to the
-    //     LangGraph reducer (urban-fronting-faith Anthropic-400 fix).
-    //   - mutation also clears `state.conversations` so the same plan()
-    //     turn reads the reset value when running RAG / composing the
-    //     plan-LLM prompt / gating tool-loop via `nodePlan.length`.
-    //     Without the mutation, runMainPlanLLM would see a stale
-    //     NODE_PLAN length ≥ PLAN_TOOL_LOOP_MAX and skip the diagnostic
-    //     tool-loop entirely on the first retry plan-LLM call.
-    expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toEqual([]);
+    expect(ctx.isRetry).toBe(true);
+
+    // Verification now follows the uniform retry path: state.retries bumped.
+    expect(state.retries).toBe(2);
+
+    // Session preserved — attempts NOT bumped at retry entry (verification
+    // doesn't reach retry under always-fan-out, but if it did the counter
+    // semantics are state.retries not Session.attempts).
+    const snap = state.verification.snapshot();
+    expect(snap.passed.sort()).toEqual(['build', 'typecheck'].sort());
+    expect(snap.required.sort()).toEqual(['build', 'test', 'typecheck'].sort());
+    expect(snap.attempts).toBe(0);
+
+    // NODE_EXECUTE cleared, NODE_PLAN PRESERVED (uniform branch behaviour).
     expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
-    expect(state.conversations[CONV_KEYS.NODE_PLAN]).toEqual([]);
+    expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toBeUndefined();
     expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(2);
+
+    // Violation clear flows through both surfaces.
+    expect(delta.violations).toEqual([]);
     expect(state.violations).toEqual([]);
-    expect(state._executeCallIndex).toBe(0);
   });
 
-  it('resets _finalTaskLoopCount at verification retry entry (regression: urban-fronting-faith p2 ping-pong)', async () => {
-    // Pre-`urban-fronting-faith` the verification retry branch reset
-    // `_executeCallIndex` and conversations but NOT `_finalTaskLoopCount`,
-    // so a Safety Net C trip (executeRouter `finalTaskLoopCount >=
-    // threshold`) → checkTaskStatus → retry → plan → execute would
-    // re-enter execute with the counter still at threshold and trip
-    // again on the very first turn — plan ↔ checkTaskStatus ping-pong
-    // until recursion budget exhausted.
-    //
-    // The reset must propagate through BOTH surfaces:
-    //   - `state._finalTaskLoopCount = 0` for same-turn reads (RAG /
-    //     plan-LLM prompt composition / runMainPlanLLM tool-loop gate
-    //     don't consult this counter, but the symmetry with the non-
-    //     verification retry branch and reverify entry keeps the
-    //     mutation-and-delta pattern consistent).
-    //   - `delta._finalTaskLoopCount = 0` for the LangGraph reducer
-    //     commit via `mergeDelta` (the actual source of truth that
-    //     `routeAfterExecute` reads).
+  it('non-verification + retry: same uniform behaviour (NODE_PLAN preserved, NODE_EXECUTE cleared)', async () => {
     const state = makeFreshVerificationState();
     state.currentTask = {
-      id: 't1',
-      name: 'verify',
-      description: 'Verification task',
-      type: 'verification',
-      priority: 1000,
+      id: 'err1',
+      name: 'fix',
+      description: 'Error task',
+      type: 'error',
+      priority: 100,
     };
     state._nextPlanEntry = 'retry';
-    state.verification = VerificationSession.rehydrate({
-      required: ['build'],
-      passed: [],
-      attempts: 0,
-      planHistoryHashes: [],
-    });
-    state._finalTaskLoopCount = 2; // Safety Net C just tripped at threshold=2
+    state.retries = 0;
+    state.conversations = {
+      [CONV_KEYS.NODE_PLAN]: [{ role: 'user', content: 'plan history' }],
+      [CONV_KEYS.NODE_EXECUTE]: [{ role: 'user', content: 'execute history' }],
+    };
+
+    const { delta } = await resolvePlanEntry(state);
+
+    expect(state.retries).toBe(1);
+    expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toBeUndefined();
+    expect(state.conversations[CONV_KEYS.NODE_PLAN]).toHaveLength(1);
+  });
+
+  it('resets _finalTaskLoopCount at retry entry (regression: urban-fronting-faith p2 ping-pong)', async () => {
+    // Pre-`urban-fronting-faith` the verification retry branch reset
+    // `_executeCallIndex` and conversations but NOT `_finalTaskLoopCount`.
+    // Post-refactor every retry path is the same uniform branch, so the
+    // reset must propagate through the unified path.
+    const state = makeFreshVerificationState();
+    state.currentTask = {
+      id: 'err1',
+      name: 'fix',
+      description: 'Error task',
+      type: 'error',
+      priority: 100,
+    };
+    state._nextPlanEntry = 'retry';
+    state._finalTaskLoopCount = 2;
 
     const { delta } = await resolvePlanEntry(state);
 
@@ -236,9 +181,7 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
 
   it('resets _finalTaskLoopCount at reverify entry', async () => {
     // Reverify is the verification cycle's "post-execute re-diagnosis"
-    // path. Same rationale as the retry branch above — a Safety Net C
-    // trip in the apply-phase execute must not haunt the first reverify
-    // execute turn.
+    // path. Tier 2 self-verify task at apply→verify transition.
     const state = makeFreshVerificationState();
     state.currentTask = {
       id: 't1',
@@ -262,9 +205,41 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     expect(state._finalTaskLoopCount).toBe(0);
   });
 
+  it('reverify entry: isFirstVerifyEntry=true (no Session yet) resets BOTH NODE_PLAN and NODE_EXECUTE', async () => {
+    // Self-verify Tier 2 apply→verify boundary protection. Apply-phase
+    // plan messages are in non-verify prompt format and would mix with
+    // the verify-mode template if not reset on first verify entry.
+    const state = makeFreshVerificationState();
+    state.currentTask = {
+      id: 'sv1',
+      name: 'self-verify task',
+      description: 'tier 2 self-verify',
+      type: 'error', // self-verify tasks can be any type
+      priority: 100,
+      selfVerifyOnDone: true,
+    } as any;
+    state._nextPlanEntry = 'reverify';
+    state.verification = undefined; // first verify entry — Session not yet created
+    state.conversations = {
+      [CONV_KEYS.NODE_PLAN]: [
+        { role: 'user', content: 'apply-phase plan round 1' },
+        { role: 'assistant', content: 'apply-phase tool result' },
+      ],
+      [CONV_KEYS.NODE_EXECUTE]: [
+        { role: 'user', content: 'apply-phase execute' },
+      ],
+    };
+
+    const { delta } = await resolvePlanEntry(state);
+
+    expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toEqual([]);
+    expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+    expect(state.conversations[CONV_KEYS.NODE_PLAN]).toEqual([]);
+    expect(state.conversations[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
+  });
+
   it('clears node:plan at fresh task entry (task boundary)', async () => {
     const state = makeFreshVerificationState();
-    // Seed a prior conversation as if a previous task left chatter.
     state.conversations = {
       [CONV_KEYS.NODE_PLAN]: [{ role: 'user', content: 'stale from prior task' }],
       [CONV_KEYS.NODE_EXECUTE]: [{ role: 'user', content: 'stale' }],
@@ -272,9 +247,6 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
 
     const { delta } = await resolvePlanEntry(state);
 
-    // Fresh task entry must wipe both conversation slots to isolate tasks.
-    // Both `delta` (LangGraph reducer commit) and `state.conversations`
-    // (same-turn read by plan() body) must reflect the clear.
     expect(delta.conversations?.[CONV_KEYS.NODE_PLAN]).toEqual([]);
     expect(delta.conversations?.[CONV_KEYS.NODE_EXECUTE]).toEqual([]);
     expect(state.conversations[CONV_KEYS.NODE_PLAN]).toEqual([]);

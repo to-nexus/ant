@@ -8,7 +8,7 @@
  *
  * Renders against `jobs/code/nodes/plan/variants/verification/base` with
  * tech-tier-aware language hints, dependency-status injection, deep-
- * diagnostic config snapshot, and cached-passed-step block. The
+ * diagnostic mode signal, and cached-passed-step block. The
  * verification-specific `isErrorTask: false` template var is preserved
  * (the template branches on it for header copy).
  *
@@ -18,7 +18,6 @@
 
 import type { PlanPromptCtx, PlanPromptResult } from '../types';
 import { effectiveTechTier, getTechTier } from '@ant/shared';
-import { collectConfigSnapshot, renderConfigBlock } from './configSnapshot';
 import { formatCodeContext, mapLang } from '../helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
@@ -47,15 +46,16 @@ function renderPassedSteps(passed: readonly string[]): string | undefined {
 
 /**
  * Compact session-state banner rendered at the top of the verification
- * plan prompt when the task has already attempted remediation or
- * batch-split at least once. Replaces the verbose
- * `buildDiagnosticRetryContext` narrative that used to embed completed
- * error sub-tasks' prePlanText and the full planHistoryBodies buffer
- * (removed per postmortem §4.1). Three principles drive the copy:
+ * plan prompt when the task has already attempted at least one cycle.
+ * Replaces the verbose `buildDiagnosticRetryContext` narrative that used
+ * to embed completed error sub-tasks' prePlanText (removed per
+ * postmortem §4.1) and the body-buffer prior-plans block (removed per
+ * verification fix-책임 제거 리팩토링).
  *
- *   1. Scalar summary only — attempts / passed / missing gates /
- *      batch-split count. Details live on disk (`sessions/architect/code.json`)
- *      and are fetched on demand by the LLM.
+ * Three principles drive the copy:
+ *   1. Scalar summary only — verification cycle counter / passed / missing
+ *      gates / batch-split count. Details live on disk
+ *      (`sessions/architect/code.json`) and are fetched on demand.
  *   2. Points the LLM at self-service lookup when it suspects cascading
  *      failure — the rules-level Prior-Attempt Lookup principle tells
  *      it HOW to call `read_file`.
@@ -76,102 +76,11 @@ function renderSessionSummary(
   const passed = session.passed();
   const missing = session.missing();
   const parts: string[] = [];
-  parts.push(`- Diagnostic attempts so far: ${attempts}`);
+  parts.push(`- Verification cycle: ${attempts}`);
   parts.push(`- Passed gates: ${passed.length > 0 ? passed.join(', ') : 'none'}`);
   parts.push(`- Outstanding gates: ${missing.length > 0 ? missing.join(', ') : 'none'}`);
   if (batchSplits > 0) parts.push(`- Prior batch-split cycles: ${batchSplits}`);
   return parts.join('\n');
-}
-
-/**
- * Compress a single plan body into a 2~5 line summary for the verify-mode
- * plan prompt. Used to surface in-task plan history (the carrier the
- * cycle-N+1 plan LLM otherwise lacks — `Session.planHistoryBodies()` is
- * non-empty but not previously rendered into the prompt).
- *
- * Extracts only `task.goal`, `diagnostics.rootCauses[].cause`, and the
- * `implementation.modify[].target` (plus `batches[].modify[].target` for
- * Format B plans) — full bodies are excluded to keep the surface bounded.
- *
- * Returns a parse-failure stub when the body is not valid JSON; the
- * prompt explicitly tells the LLM that an unparseable attempt should
- * still be treated as "previously tried" rather than a clean slate.
- *
- * Exported for unit tests (`tests/tasks/verification/priorPlans.test.ts`).
- * Not part of the public API.
- */
-export function summarizePlanBody(body: string, attemptIndex: number): string | null {
-  if (!body) return null;
-  let parsed: any;
-  try {
-    const stripped = body.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
-    parsed = JSON.parse(stripped);
-  } catch {
-    return `- **Attempt ${attemptIndex}**: (plan body could not be parsed as JSON; ${body.length} chars in history — treat as a prior attempt with unknown specifics)`;
-  }
-
-  const goal: string = parsed?.task?.goal ?? '(no goal)';
-  const rootCauses: string[] = Array.isArray(parsed?.diagnostics?.rootCauses)
-    ? parsed.diagnostics.rootCauses
-        .map((rc: any) => rc?.cause)
-        .filter((c: unknown): c is string => typeof c === 'string' && c.length > 0)
-        .map((c: string) => (c.length > 240 ? c.slice(0, 240) + '…' : c))
-    : [];
-
-  const modifyTargets = new Set<string>();
-  if (Array.isArray(parsed?.implementation?.modify)) {
-    for (const m of parsed.implementation.modify) {
-      if (typeof m?.target === 'string') modifyTargets.add(m.target);
-    }
-  }
-  if (Array.isArray(parsed?.batches)) {
-    for (const b of parsed.batches) {
-      if (Array.isArray(b?.modify)) {
-        for (const m of b.modify) {
-          if (typeof m?.target === 'string') modifyTargets.add(m.target);
-        }
-      }
-    }
-  }
-
-  const lines: string[] = [`- **Attempt ${attemptIndex}** — goal: ${goal}`];
-  for (const cause of rootCauses) {
-    lines.push(`  - Root cause: ${cause}`);
-  }
-  if (modifyTargets.size > 0) {
-    lines.push(`  - Modified: ${[...modifyTargets].join(', ')}`);
-  }
-  return lines.join('\n');
-}
-
-/**
- * Render the prior-plan attempts block. Receives the bounded buffer
- * `Session.planHistoryBodies()` (newest last, capped at
- * `PLAN_HISTORY_BODY_LIMIT = 3`) and returns a markdown bullet list with
- * one entry per prior plan body.
- *
- * SSOT for the cycle-N+1 plan LLM's view of "what I already tried" —
- * deliberately complements (not replaces) `renderSessionSummary` (which
- * carries scalar attempt counters). Without this carrier the LLM sees
- * only `attempts: N` and re-discovers the same fix space from scratch
- * each cycle — the cascade pattern observed in `misty-filling-rivet`.
- *
- * Returns `undefined` when the buffer is empty or every body fails the
- * summarizer — the template `{{#if hasPriorPlans}}` block then stays
- * silent on the first cycle.
- *
- * Exported for unit tests (`tests/tasks/verification/priorPlans.test.ts`).
- * Not part of the public API.
- */
-export function renderPriorPlans(bodies: readonly string[]): string | undefined {
-  if (!bodies || bodies.length === 0) return undefined;
-  const lines: string[] = [];
-  bodies.forEach((body, idx) => {
-    const summary = summarizePlanBody(body, idx + 1);
-    if (summary) lines.push(summary);
-  });
-  if (lines.length === 0) return undefined;
-  return lines.join('\n\n');
 }
 
 
@@ -184,7 +93,7 @@ export function renderPriorPlans(bodies: readonly string[]): string | undefined 
  *   - tech-tier resolution + language-hint lookup (silent fallback when the
  *     hint partial does not exist for the detected language);
  *   - dependency-status hint driven by `Session.dependencyStatus()`;
- *   - deep-diagnostic config-snapshot injection on re-entry ≥ threshold;
+ *   - deep-diagnostic mode signal on re-entry ≥ threshold;
  *   - cached-passed-step block so the LLM does not re-run gates the
  *     session already considers passed.
  */
@@ -219,21 +128,13 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
 
   const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
 
-  // Deep-diagnostic mode activates on the 2nd re-entry. We inject config
-  // files + a dedicated prompt signal so the LLM breaks out of "same
-  // category of fix" loops. Session is the sole authority — the hook
-  // never runs without a populated session because `initSession` is
-  // called from plan/parts/entry.ts before any hook fires.
+  // Deep-diagnostic mode activates on the 2nd re-entry and is surfaced as
+  // a template signal only — the prior config-snapshot strong-injection
+  // was removed (LLM uses `read_file` on demand). Session is the sole
+  // authority — the hook never runs without a populated session because
+  // `initSession` is called from plan/parts/entry.ts before any hook fires.
   const isDeepDiagnostic = session?.inDeepMode() ?? false;
-  let fmtCtx = formatCodeContext(codeContext);
-  if (isDeepDiagnostic) {
-    const configs = await collectConfigSnapshot(state.context?.featurePath);
-    const block = renderConfigBlock(configs);
-    if (block) {
-      fmtCtx = `${fmtCtx || ''}\n\n${block}`.trim();
-      console.log(`🧭 [Plan] Deep-diagnostic injected ${configs.length} config file(s)`);
-    }
-  }
+  const fmtCtx = formatCodeContext(codeContext);
 
   let languageHints = '';
   if (techTier?.language) {
@@ -250,21 +151,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   // is the SSOT once hydrated; legacy tracker is the coexistence bridge.
   const cachedPassedSteps = renderPassedSteps(session?.passed() ?? []);
 
-  // Scalar retry-banner: one-line status drawn from Session. Replaces the
-  // removed `buildDiagnosticRetryContext` narrative (postmortem §4.1).
+  // Scalar verification-cycle banner drawn from Session.
   const sessionSummary = renderSessionSummary(session);
-
-  // Prior-plan attempts in this same task — the carrier the cycle-N+1
-  // plan LLM otherwise lacks. `Session.planHistoryBodies()` already
-  // accumulates the bounded buffer; this exposes a compressed (root
-  // cause + modify targets) view to the prompt so the LLM can detect
-  // its own cascade pattern. Distinct from postmortem §4.1's removed
-  // narrative — that channel embedded *prior tasks'* prePlanText into
-  // the prompt (cross-task leak); this one is *same-task* attempt
-  // history bounded by `PLAN_HISTORY_BODY_LIMIT` and is the only
-  // signal the cycle-N+1 LLM has when static gates produce no new
-  // violations (runtime-bug scenario, e.g. `misty-filling-rivet`).
-  const priorPlans = renderPriorPlans(session?.planHistoryBodies() ?? []);
 
   const taskTechTiers = task.techTiers?.length
     ? task.techTiers
@@ -306,9 +194,6 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     cachedPassedSteps,
     sessionSummary,
     hasSessionSummary: !!sessionSummary,
-    priorPlans,
-    hasPriorPlans: !!priorPlans,
-    priorPlanCount: session?.planHistoryBodies().length ?? 0,
     antrulesContent,
     resolvedAction: state.resolvedAction,
     hasFrontend,
@@ -332,8 +217,6 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       hasViolationsText: !!violationsText,
       violationsTextLen: violationsText?.length ?? 0,
       hasSessionSummary: !!sessionSummary,
-      hasPriorPlans: !!priorPlans,
-      priorPlanCount: session?.planHistoryBodies().length ?? 0,
       batchSplitCount: session?.batchSplitCount() ?? 0,
       hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
     },

@@ -11,6 +11,11 @@
  * the only consumer. All fields are optional so partial snapshots (e.g.
  * a fresh verification task with no history) remain valid.
  *
+ * The retired `planHistoryBodies` and `previousBatchDiagnostics` channels
+ * (verification fix-책임 제거 리팩토링) are intentionally absent from this
+ * shape. Old snapshots carrying those fields are silently ignored at
+ * rehydrate time — `Session.rehydrate` only reads the fields it knows.
+ *
  * R2 — model-only module; does not import from `nodes/`, `routers/`, or
  * `parallel/`. `Gate` is the single external name used.
  */
@@ -23,8 +28,8 @@ export interface VerificationSnapshot {
   /** Gates that have passed in the current diagnostic cycle. */
   passed: Gate[];
   /**
-   * Monotonic count of plan re-entries (retry + reverify + orchestrator
-   * re-queue). Drives budget / deep-diagnostic / terminal decisions.
+   * Monotonic count of plan re-entries (reverify + batch-split fan-outs).
+   * Drives deep-diagnostic / terminal decisions.
    */
   attempts: number;
   /**
@@ -32,12 +37,6 @@ export interface VerificationSnapshot {
    * Used for cheap repeated-plan detection without storing bodies.
    */
   planHistoryHashes: string[];
-  /**
-   * Most recent plan bodies (bounded, keeps the last 3). Injected into the
-   * plan prompt so the LLM can see what it already tried and avoid
-   * verbatim repetition.
-   */
-  planHistoryBodies?: string[];
   /**
    * Last observed install status (from `areDepsInstalled`). Lives on the
    * snapshot so a batch-split re-queue starts with the pre-split observation
@@ -47,11 +46,6 @@ export interface VerificationSnapshot {
   installNeeded?: boolean;
   /** Total batch-split cycles this verification task has triggered. */
   batchSplitCount?: number;
-  /**
-   * JSON summary of the previous batch-split diagnostics. Injected into
-   * the follow-up LLM prompt so it can avoid re-triggering the same split.
-   */
-  previousBatchDiagnostics?: string;
 }
 
 /** Empty snapshot used as the rehydration target for fresh sessions. */

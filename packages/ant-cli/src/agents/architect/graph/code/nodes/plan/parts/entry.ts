@@ -2,24 +2,24 @@
  * plan/parts/entry.ts — STEP 0 entry dispatcher for the plan node.
  *
  * Conversation retention policy:
- *   - NODE_PLAN is preserved ONLY within a single attempt's plan↔tool loop
- *     (plan→tool→plan re-entries). At retry / reverify entry it is reset to
- *     `[]` because the subsequent plan-LLM call rebuilds the initial
- *     `user` message from scratch via `buildPlanPromptBlocks` and any
- *     preserved history would be overwritten on the first round anyway.
- *     Prior-attempt reasoning continuity now flows through two channels:
- *       (a) the verification Session's summary surface rendered in the
- *           verification-variant plan template (attempts counter, passed
- *           / missing gates, `isDeepDiagnostic` flag, etc.), and
- *       (b) LLM-self-service `read_file sessions/architect/code.json`
- *           when the rules-level hint prompts it. The prior "embed every
- *           completed error sub-task's prePlanText into the system prompt"
- *           narrative channel was removed in the verification-loop
- *           postmortem (§4.1) — it violated task-boundary isolation,
- *           R1 phase-blindness, and the "state lives on disk" principle.
+ *   - NODE_PLAN is preserved across retry entries (the LLM benefits from
+ *     seeing the prior diagnostic round within the same task) and at
+ *     plan↔tool loop re-entries within one attempt.
+ *   - NODE_PLAN is reset at fresh task entry (task boundary) and at the
+ *     FIRST verify-mode entry of a self-verify Tier 2 task (apply→verify
+ *     transition — the apply phase's plan tool-loop messages are framed
+ *     in a non-verification prompt format and would mix with the
+ *     verification template if carried into the first verify-mode
+ *     plan-LLM call).
  *   - NODE_EXECUTE is cleared at every plan entry so each execute tool-loop
  *     starts fresh.
- *   - Both slots are cleared at fresh task entry (task boundary).
+ *   - Verification task type itself never enters the retry path under the
+ *     always-fan-out policy (plan returns `done:true` via batch-split,
+ *     empty-impl shortcut, or pass-without-codegen — execute is never
+ *     invoked, so `executeRouter` cannot route into retry). The
+ *     `handleRetryEntry` path therefore behaves uniformly across all
+ *     task types: bump `state.retries`, clear NODE_EXECUTE, preserve
+ *     NODE_PLAN.
  *
  * R1: task-type discrimination uses `isVerificationTask` / `hooksForTaskType`.
  */
@@ -256,17 +256,14 @@ async function handleRetryEntry(
 ): Promise<PlanEntryResult> {
   const nextTask = state.currentTask!;
 
-  // Termination dispatch (R1). Verification responsibility holders' plan
-  // hook decides termination via Session attempts (no_progress detection);
-  // non-verification tasks fall through to the generic
-  // `state.retries / state.maxRetries` counter.
-  //
-  // Note: composeBundle wraps every bundle's `checkRetryTermination` with
-  // a phase-mode dispatcher, so the function's mere presence is no longer
-  // a reliable signal of "owns its own retry counter". The discriminator
-  // is the verification task type itself (the only type whose retry path
-  // ever runs while a Session exists — self-verify tasks enter retry only
-  // during apply phase, when no Session exists yet).
+  // Termination dispatch (R1). Plan hooks may decide to terminate based on
+  // task-type specific signals; verification's `checkRetryTermination` is
+  // currently a no-op when the call site is reached because verification
+  // tasks never enter the retry path post fix-책임 제거 리팩토링 (every
+  // verification cycle ends in `done:true` via batch-split fan-out, the
+  // empty-impl shortcut, or the `MAX_BATCH_SPLIT_CYCLES` terminal). The
+  // hook lookup stays for any future task type that wants to plug in
+  // its own termination policy.
   const planHook = hooksForTaskType(nextTask.type)?.plan;
   const hookTerminal = planHook?.checkRetryTermination?.(state);
   if (hookTerminal) {
@@ -274,127 +271,55 @@ async function handleRetryEntry(
     throw hookTerminal;
   }
 
-  // Retry counter remains a state mutation — `mergeDelta` is base-wins for
+  // Retry counter is a state mutation — `mergeDelta` is delta-wins for
   // top-level keys, and plan() return objects spread `...state` (which
   // includes the bumped `retries`) so downstream LangGraph state already
-  // sees the increment without a delta carrier. Single-writer contract is
-  // preserved (bc1e45b9 / plan-retry-counter.test.ts).
-  if (!isVerificationTask(nextTask)) {
-    state.retries = (state.retries || 0) + 1;
-    if (state.retries >= state.maxRetries) {
-      throw new VerificationTerminalError(
-        'max_retries_exceeded',
-        `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). Cannot proceed with automatic fixes.`,
-        snapshotFromState(state)?.verification,
-      );
-    }
+  // sees the increment. Single-writer contract is preserved (bc1e45b9 /
+  // plan-retry-counter.test.ts). Verification used to bypass this counter
+  // and read `Session.attempts()` instead, but the verification retry
+  // branch was removed; verification now follows the same `state.retries`
+  // counter as every other task type when (rarely) a transient retry fires.
+  state.retries = (state.retries || 0) + 1;
+  if (state.retries >= state.maxRetries) {
+    throw new VerificationTerminalError(
+      'max_retries_exceeded',
+      `Task "${nextTask.name}" failed after ${state.retries} attempts (max: ${state.maxRetries}). Cannot proceed with automatic fixes.`,
+      snapshotFromState(state)?.verification,
+    );
   }
 
-  const prevCallIndex = state._executeCallIndex || 0;
-  const isVerificationRetry = isVerificationTask(nextTask);
-  const delta: Partial<ArchitectGraphState> = {};
-
-  if (isVerificationRetry) {
-    const prevViolationCount = state.violations?.length ?? 0;
-    const priorPlanMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
-    state.verification?.onPlanEntry('retry');
-    const sessionAttempts = state.verification?.attempts() ?? 0;
-    // R2-P1: reset NODE_PLAN at retry entry. Prior attempts' plan↔tool
-    // conversation is never actually consumed by the retry path
-    // (`runPlanToolLoopPhase` falls through because `_activePhase` is
-    // `'execute'` at retry entry, and the first plan-LLM call of the new
-    // attempt overwrites NODE_PLAN anyway). Retry reasoning continuity
-    // now flows through the verification Session's summary surface in
-    // the variant template (attempts, gates, deep-diagnostic flag) and
-    // LLM-self-service `read_file sessions/architect/code.json`; the
-    // previous `buildDiagnosticRetryContext` narrative channel was
-    // removed (postmortem §4.1).
-    //
-    // ❶ Mutation — same-turn `plan()` body read consistency. `runMainPlanLLM`
-    //   reads `state.conversations.NODE_PLAN` to gate `tryToolsFirst`
-    //   (planToolRounds < PLAN_TOOL_LOOP_MAX), `composeViolationsText` /
-    //   `generatePlanText` / `runPlanRAG` read `state.violations`. Without
-    //   the mutation, the same plan() invocation that should re-run the
-    //   diagnostic tool-loop would see a stale 26-message NODE_PLAN
-    //   (planToolRounds=13 ≥ MAX) and skip the tool-loop entirely.
-    // ❷ Delta — LangGraph reducer commit via `mergeDelta`. The shallow-
-    //   merge `conversationsReducer` would otherwise silently drop the
-    //   NODE_EXECUTE clear when plan() returns through the tool_use
-    //   branch (which only declares `conversations: { NODE_PLAN: [...] }`).
-    //   This is the `urban-fronting-faith` Anthropic-400 trigger.
-    //
-    // `_finalTaskLoopCount = 0` mirror of the non-verification retry
-    // branch — without it, a Safety Net C trip
-    // (`executeRouter` `finalTaskLoopCount >= threshold`) that routes
-    // through checkTaskStatus → retry → plan would re-enter execute with
-    // a stale counter and trip again on the very first turn, ping-ponging
-    // through plan→execute→checkTaskStatus indefinitely.
-    state._executeCallIndex = 0;
-    state._finalTaskLoopCount = 0;
-    state.violations = [];
-    state.conversations = {
-      ...state.conversations,
+  // Mutation + delta pattern — see `mergeDelta.ts` jsdoc and the
+  // `urban-fronting-faith` Anthropic-400 regression note.
+  //   ❶ Mutation — same-turn `plan()` body read consistency
+  //     (`composeViolationsText` / `generatePlanText` / `runPlanRAG`).
+  //   ❷ Delta — LangGraph reducer commit. The shallow-merge
+  //     `conversationsReducer` would otherwise silently drop the
+  //     NODE_EXECUTE clear when plan() returns through the tool_use
+  //     branch (which only declares `conversations: { NODE_PLAN: [...] }`).
+  //
+  // NODE_PLAN is intentionally PRESERVED (the LLM benefits from seeing
+  // the prior diagnostic round within the same task); only NODE_EXECUTE
+  // is cleared. `_finalTaskLoopCount = 0` resets the Safety Net C
+  // counter so a stuck-loop trip in the prior attempt does not haunt
+  // the first execute turn of the new attempt.
+  const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
+  state._executeCallIndex = 0;
+  state._finalTaskLoopCount = 0;
+  state.violations = [];
+  state.conversations = {
+    ...state.conversations,
+    [CONV_KEYS.NODE_EXECUTE]: [],
+  };
+  const delta: Partial<ArchitectGraphState> = {
+    _executeCallIndex: 0,
+    _finalTaskLoopCount: 0,
+    violations: [],
+    conversations: {
       [CONV_KEYS.NODE_EXECUTE]: [],
-      [CONV_KEYS.NODE_PLAN]: [],
-    };
-    delta._executeCallIndex = 0;
-    delta._finalTaskLoopCount = 0;
-    delta.violations = [];
-    delta.conversations = {
-      [CONV_KEYS.NODE_EXECUTE]: [],
-      [CONV_KEYS.NODE_PLAN]: [],
-    };
-    await recomputeInstallNeeded(state);
-    delta.verification = state.verification;
-    console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (verificationAttempts=${sessionAttempts})`);
-    console.log(`   ♻️  node:execute cleared, _executeCallIndex ${prevCallIndex}→0`);
-    console.log(`   ♻️  node:plan reset (had ${priorPlanMsgCount} msgs; retry context via Session summary + sessions/architect/code.json)\n`);
-    if (nextTask && state.context?.featurePath && state._httpJobId) {
-      const _taskRef = nextTask;
-      const _planHashes = state.verification?.snapshot().planHistoryHashes;
-      const _prevPlanHash = _planHashes?.[_planHashes.length - 1];
-      const _carryOverBytes = JSON.stringify(snapshotFromState(state) || {}).length;
-      const _planHistoryCount = state.verification?.planHistoryBodies().length ?? 0;
-      import('../../../../../../../core/utils/executionLogger').then(({ getExecutionLogger }) => {
-        getExecutionLogger({
-          featurePath: state.context!.featurePath!,
-          jobId: state._httpJobId!,
-          jobType: 'code',
-        }).logVerificationRetry(_taskRef.id, {
-          taskName: _taskRef.name,
-          attempt: sessionAttempts,
-          violationsFromPrevAttempt: prevViolationCount,
-          priorPlanMessagesDiscarded: priorPlanMsgCount,
-          planHistoryCount: _planHistoryCount,
-          verificationAttempts: sessionAttempts,
-          prevPlanHash: _prevPlanHash,
-          carryOverSize: _carryOverBytes,
-        }).catch(() => {});
-      }).catch(() => {});
-    }
-  } else {
-    // Mutation + delta — see verification branch above for the read /
-    // commit responsibilities split. Non-verification retry preserves
-    // NODE_PLAN (the LLM benefits from seeing the prior diagnostic round
-    // within the same task), so only NODE_EXECUTE is cleared on both
-    // sides.
-    const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
-    state._executeCallIndex = 0;
-    state._finalTaskLoopCount = 0;
-    state.violations = [];
-    state.conversations = {
-      ...state.conversations,
-      [CONV_KEYS.NODE_EXECUTE]: [],
-    };
-    delta._executeCallIndex = 0;
-    delta._finalTaskLoopCount = 0;
-    delta.violations = [];
-    delta.conversations = {
-      [CONV_KEYS.NODE_EXECUTE]: [],
-    };
-    console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-    console.log(`   ♻️  node:execute cleared, node:plan preserved (${preservedMsgCount} messages)\n`);
-  }
+    },
+  };
+  console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
+  console.log(`   ♻️  node:execute cleared, node:plan preserved (${preservedMsgCount} messages)\n`);
 
   return {
     context: {

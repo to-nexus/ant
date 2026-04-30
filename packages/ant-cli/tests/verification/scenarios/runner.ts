@@ -232,8 +232,6 @@ export async function runScenario(
   // broadcasters, or auth bypass flags.
   const ENV_ALLOW_LIST = new Set([
     'RECURSION_LIMIT',
-    'ANT_VERIFICATION_SPLIT_ERRORS',
-    'ANT_VERIFICATION_SPLIT_FILES',
   ]);
   for (const [k, v] of Object.entries(descriptor.config.env ?? {})) {
     if (ENV_ALLOW_LIST.has(k) && typeof v === 'string') {

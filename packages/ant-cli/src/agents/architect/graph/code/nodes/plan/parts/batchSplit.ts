@@ -209,6 +209,48 @@ export function hasEmptyImplementation(planText: string | undefined): boolean {
 }
 
 /**
+ * Invariant: after `processDiagnosticBatchSplit` runs, a verification task
+ * MUST NOT carry a non-empty `planText` with surviving top-level
+ * `implementation.{modify,create,delete}` entries. The auto-conversion in
+ * the always-fan-out policy normalises top-level entries into batches and
+ * returns `''` once the fan-out fires, so any post-call planText that still
+ * has top-level entries indicates a defect in the conversion path itself
+ * (or a caller that bypassed it).
+ *
+ * Behaviour: throws when the invariant is violated. Empty / parse-failure
+ * planText paths are no-ops because the empty-impl shortcut + JSON-parse
+ * catch in batchSplit already cover them.
+ *
+ * Scope: development assist only. Production behaviour is identical with
+ * or without this guard — the orchestrator's TerminalError path would
+ * eventually mark the task failed if a malformed plan slipped through, but
+ * the throw here surfaces the bug at the producing call site instead of
+ * downstream.
+ */
+export function assertVerificationPlanIsFanoutOnly(
+  planText: string,
+  task: CodeTask,
+): void {
+  if (!isVerificationTask(task)) return;
+  if (!planText) return;
+  let parsed: any;
+  try {
+    parsed = JSON.parse(stripMarkdownFences(planText));
+  } catch {
+    return;
+  }
+  const impl = parsed?.implementation || {};
+  const topLevelCount =
+    (Array.isArray(impl.modify) ? impl.modify.length : 0) +
+    (Array.isArray(impl.create) ? impl.create.length : 0) +
+    (Array.isArray(impl.delete) ? impl.delete.length : 0);
+  if (topLevelCount === 0) return;
+  throw new Error(
+    `[BatchSplit invariant] Verification task "${task.name}" produced a planText with ${topLevelCount} top-level implementation entries that survived processDiagnosticBatchSplit. This indicates a fan-out conversion regression — every entry should have been auto-converted to a per-target batch and the planText should be empty.`,
+  );
+}
+
+/**
  * Check whether any two batches share files in their modify/create/delete lists.
  * When overlap exists, sub-tasks must run exclusively (sequential).
  * When no overlap, they can safely run in parallel.
@@ -282,18 +324,26 @@ export function isVerificationPassWithoutCodeGen(
 }
 
 /**
- * Detect batched diagnostic plan and split into sub-tasks.
+ * Detect a diagnostic / remediation plan and fan it out into sub-tasks.
  * Called from every path that produces a planText for diagnostic tasks.
  *
- * When the plan JSON contains a `batches` array with >1 entries,
- * each batch becomes an independent error sub-task with prePlanText.
- * The original task is re-enqueued (not completed) so it re-runs after all error fixes.
+ * Always-fan-out semantics (post verification fix-책임 제거 리팩토링):
+ *   - Any plan with 1+ implementation entries (modify/create/delete) or
+ *     1+ batches[] entries produces sub-tasks. No thresholds, no env gates,
+ *     no "same plan hash" escalation.
+ *   - Top-level `implementation.{modify,create,delete}` with no `batches[]`
+ *     is auto-converted to per-target batches so every entry becomes its
+ *     own fix-apply sub-task. Verification's responsibility is per-error
+ *     fan-out; the LLM's "I'll batch later" hint is normalised here.
+ *   - Existing `batches[]` are respected (LLM-grouped by dependency) and
+ *     each batch becomes one sub-task.
  *
- * Hard limit: after MAX_BATCH_SPLIT_CYCLES cycles, batch splitting is aborted and
- * planText is returned as-is (single consolidated task). This prevents infinite loops
- * from cascading compiler errors that reveal new layers after each fix cycle.
+ * Hard limit: after `MAX_BATCH_SPLIT_CYCLES` cycles, batch splitting is
+ * aborted by throwing `VerificationTerminalError('batch_cycle_limit')`.
+ * This prevents infinite loops from cascading compiler errors that reveal
+ * new layers after each fix cycle.
  *
- * @returns updated planText (empty string if split occurred, original otherwise)
+ * @returns updated planText (empty string if fan-out occurred, original otherwise)
  */
 export function processDiagnosticBatchSplit(
   state: ArchitectGraphState,
@@ -308,17 +358,18 @@ export function processDiagnosticBatchSplit(
   //      maybePrePlannedFastPath`); decompose-emitted error tasks fall
   //      through normal planning and may produce a multi-batch plan.
   //   3. Tier 2 escalate — any task type (feature/ui/error/setup/explain is
-  //      filtered out by `selfVerifyOnDone`) whose plan exceeds the split
-  //      thresholds. On escalate the original task is DROPPED and a
-  //      verification task is enqueued in its place, morphing the queue
-  //      into the Tier 3 shape (N sub-tasks + 1 verification).
-  //      `executionTier` channel stays at 2 — this is queue-structure
-  //      escalation, not a tier-channel promotion. See `.cursorrules`
-  //      "Tier-Verification Alignment SSOT → Tier 2 runtime escalate".
-  //   4. Test-code parent tasks (Path B). The parent's plan tool-loop installs
-  //      test-runner deps and emits feature-slice `batches[]`. batchSplit
-  //      drops the parent and spawns N test-code sub-tasks (one per slice),
-  //      each fast-pathing through the plan phase via `prePlanText`.
+  //      filtered out by `selfVerifyOnDone`). On escalate the original task
+  //      is DROPPED and a verification task is enqueued in its place,
+  //      morphing the queue into the Tier 3 shape (N sub-tasks + 1
+  //      verification). `executionTier` channel stays at 2 — this is
+  //      queue-structure escalation, not a tier-channel promotion. See
+  //      `.cursorrules` "Tier-Verification Alignment SSOT → Tier 2 runtime
+  //      escalate".
+  //   4. Test-code parent tasks (Path B). The parent's plan tool-loop
+  //      installs test-runner deps and emits feature-slice `batches[]`.
+  //      batchSplit drops the parent and spawns N test-code sub-tasks
+  //      (one per slice), each fast-pathing through the plan phase via
+  //      `prePlanText`.
   // Cascading splits are bounded by `MAX_BATCH_SPLIT_CYCLES` on the Session.
   const isTier2EscalateCandidate =
     state.executionTier === 2 && (nextTask as CodeTask).selfVerifyOnDone === true;
@@ -379,54 +430,70 @@ export function processDiagnosticBatchSplit(
     const jsonStr = stripMarkdownFences(planText);
     const parsed = JSON.parse(jsonStr);
 
-    // Force split-by-file when the error volume or file fan-out crosses the
-    // escalation threshold, or when the LLM keeps emitting the same plan.
-    const thresholdErrors = parseInt(process.env.ANT_VERIFICATION_SPLIT_ERRORS || '6', 10);
-    const thresholdFiles = parseInt(process.env.ANT_VERIFICATION_SPLIT_FILES || '4', 10);
+    // Always-fan-out policy. Any plan with 1+ implementation entries is
+    // converted into 1-entry-per-target batches and fanned out — no
+    // thresholds, no env gates, no "same plan hash" escalation. The
+    // threshold/forceByRepeat machinery existed to soften the LLM's
+    // tendency to fix multiple unrelated errors in one batch; with
+    // verification's fix responsibility removed entirely (verification =
+    // diagnose + fan-out only, error sub-tasks own fix), every implementation
+    // entry SHOULD become a sub-task by definition.
     const totalErrors: number = parsed.diagnostics?.totalErrors ?? 0;
-    const modifyArr: any[] = parsed.implementation?.modify ?? [];
-    const overErrorBudget = totalErrors >= thresholdErrors;
-    const overFileBudget = modifyArr.length >= thresholdFiles;
-    const shouldForceSplit = (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1)
-      && (overErrorBudget || overFileBudget);
+    const modifyArr: any[] = Array.isArray(parsed.implementation?.modify) ? parsed.implementation.modify : [];
+    const createArr: any[] = Array.isArray(parsed.implementation?.create) ? parsed.implementation.create : [];
+    const deleteArr: any[] = Array.isArray(parsed.implementation?.delete) ? parsed.implementation.delete : [];
+    const hasExistingBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
+    const topLevelImplCount = modifyArr.length + createArr.length + deleteArr.length;
 
-    const repeatedDetection = planText
-      ? state.verification?.isPlanRepeated(planText) ?? { repeated: false, count: 0 }
-      : { repeated: false, count: 0 };
-    if (repeatedDetection.repeated) {
-      console.warn(`🔁 [BatchSplit] Same plan hash as previous attempt (count=${repeatedDetection.count}) — escalating`);
-    }
-    const forceByRepeat = repeatedDetection.repeated
-      && (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1)
-      && modifyArr.length > 0;
-
-    if ((shouldForceSplit || forceByRepeat) && modifyArr.length >= 2) {
+    // Top-level → batches auto-conversion. Verification/error/Tier 2 plans
+    // with implementation.{modify,create,delete} but no batches[] are
+    // expanded into per-target batches so every entry becomes its own
+    // fix-apply sub-task.
+    if (!hasExistingBatches && topLevelImplCount > 0) {
       logBatchSplit({
-        action: 'force_split_escalate',
-        reason: forceByRepeat
-          ? 'repeated_plan_hash'
-          : overErrorBudget
-            ? 'over_error_threshold'
-            : 'over_file_threshold',
-        totalErrors,
+        action: 'auto_convert_top_level',
         modifyCount: modifyArr.length,
+        createCount: createArr.length,
+        deleteCount: deleteArr.length,
+        totalErrors,
         taskName: nextTask.name,
       });
-      console.warn(`🚨 [BatchSplit] Forcing splitByFile escalate (totalErrors=${totalErrors}, modifyCount=${modifyArr.length})`);
-      parsed.batches = modifyArr.map((m: any, i: number) => {
-        const target = typeof m === 'string' ? m : (m.target || m.file || `file-${i}`);
-        return {
+      const batchesAcc: any[] = [];
+      for (const m of modifyArr) {
+        const target = typeof m === 'string' ? m : (m.target || m.file || `modify-${batchesAcc.length}`);
+        batchesAcc.push({
           name: `Fix ${target}`,
           rationale: (m && m.action) || `Apply modifications to ${target}`,
           modify: [m],
           create: [],
           delete: [],
-        };
-      });
+        });
+      }
+      for (const c of createArr) {
+        const target = typeof c === 'string' ? c : (c.target || c.file || `create-${batchesAcc.length}`);
+        batchesAcc.push({
+          name: `Create ${target}`,
+          rationale: (c && c.purpose) || `Create ${target}`,
+          modify: [],
+          create: [c],
+          delete: [],
+        });
+      }
+      for (const d of deleteArr) {
+        const target = typeof d === 'string' ? d : (d.target || d.file || `delete-${batchesAcc.length}`);
+        batchesAcc.push({
+          name: `Delete ${target}`,
+          rationale: (d && d.reason) || `Delete ${target}`,
+          modify: [],
+          create: [],
+          delete: [d],
+        });
+      }
+      parsed.batches = batchesAcc;
     }
 
-    if (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length <= 1) {
-      logBatchSplit({ action: 'skipped', reason: 'no_batches', batchCount: parsed.batches?.length ?? 0, taskName: nextTask.name });
+    if (!parsed.batches || !Array.isArray(parsed.batches) || parsed.batches.length === 0) {
+      logBatchSplit({ action: 'skipped', reason: 'no_implementation_entries', batchCount: 0, taskName: nextTask.name });
       return planText;
     }
 

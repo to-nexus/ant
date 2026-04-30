@@ -10,8 +10,8 @@
  * invariant at L1 by wiring the three carry-over boundaries through the
  * public orchestrator + worker surface:
  *
- *   1. phase-layer plan retry     — session.onPlanEntry('retry')
- *   2. phase-layer reverify       — session.onPlanEntry('reverify')
+ *   1. phase-layer reverify boundary 1 — session.onPlanEntry('reverify')
+ *   2. phase-layer reverify boundary 2 — session.onPlanEntry('reverify')
  *   3. orchestrator transient re-queue:
  *        `snapshotFromState` writes the full `WorkerSnapshot` onto
  *        `task.resumeState` (task-type-blind capture), then
@@ -101,8 +101,8 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
       verification: firstSession,
     };
 
-    // Boundary #1 — phase-layer retry inside worker 1's plan node.
-    firstSession.onPlanEntry('retry');
+    // Boundary #1 — phase-layer reverify inside worker 1's plan node.
+    firstSession.onPlanEntry('reverify');
     // Boundary #2 — phase-layer reverify after execute.done.
     firstSession.onPlanEntry('reverify');
     // Plan was applied twice inside worker 1 so the history is populated.
@@ -112,7 +112,7 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
     firstSession.markInstallNeeded(false);
 
     const firstFinalAttempts = firstSession.attempts();
-    const firstFinalPlanHistory = firstSession.snapshot().planHistoryBodies?.length ?? 0;
+    const firstFinalPlanHistory = firstSession.snapshot().planHistoryHashes.length;
     expect(firstFinalAttempts).toBeGreaterThan(0);
     expect(firstFinalPlanHistory).toBeGreaterThan(0);
 
@@ -145,10 +145,7 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
     expect((task as any).resumeState.verification).toBeDefined();
     expect((task as any).resumeState.verification.attempts).toBe(firstFinalAttempts);
     expect((task as any).resumeState.verification.installNeeded).toBe(false);
-    expect((task as any).resumeState.verification.planHistoryBodies).toEqual([
-      '{"plan":1}',
-      '{"plan":2}',
-    ]);
+    expect((task as any).resumeState.verification.planHistoryHashes.length).toBe(2);
 
     // ─── Worker 2 — orchestrator spawns a fresh worker for the re-queued task ──
     const secondWorkerState = simulateWorkerSpawn(task);
@@ -159,8 +156,8 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
     // Carry-over invariants (handoff §14.4 expected):
     expect(secondSession.attempts()).toBe(firstFinalAttempts);
     expect(secondSession.attempts()).toBeGreaterThan(0);
-    expect(secondSession.snapshot().planHistoryBodies?.length ?? 0).toBe(firstFinalPlanHistory);
-    expect((secondSession.snapshot().planHistoryBodies?.length ?? 0)).toBeGreaterThan(0);
+    expect(secondSession.snapshot().planHistoryHashes.length).toBe(firstFinalPlanHistory);
+    expect(secondSession.snapshot().planHistoryHashes.length).toBeGreaterThan(0);
     expect(secondSession.installNeeded()).toBe(false);
 
     // `restoreIntoWorkerState` must clear the resume artefacts on the task so
@@ -178,7 +175,7 @@ describe('S11 — orchestrator requeue carry-over (parallel boundary)', () => {
     // worker spawn will silently drop the session even though the task
     // has a populated `resumeState`.
     const session = VerificationSession.createFresh({ isTs: true, hasTests: true });
-    session.onPlanEntry('retry');
+    session.onPlanEntry('reverify');
     const ws: Record<string, unknown> = {
       planText: '',
       conversations: {},

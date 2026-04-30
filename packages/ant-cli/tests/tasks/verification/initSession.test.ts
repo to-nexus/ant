@@ -68,7 +68,7 @@ describe('verification.plan.initSession', () => {
     planHook.initSession(state, { isTs: true, hasTests: true });
     const first = state.verification;
 
-    state.verification!.onPlanEntry('retry');
+    state.verification!.onPlanEntry('reverify');
     expect(state.verification!.attempts()).toBe(1);
 
     // Second call with a DIFFERENT env must not stomp the session: required

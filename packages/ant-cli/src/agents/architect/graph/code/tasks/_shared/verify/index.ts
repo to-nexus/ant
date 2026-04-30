@@ -47,11 +47,6 @@ export {
 } from './errors';
 export type { VerificationTerminalKind, TerminalClassification } from './errors';
 export { normalizePlanForHash, countRepeatedHash } from './planHash';
-export {
-  collectConfigSnapshot,
-  renderConfigBlock,
-} from './configSnapshot';
-export type { CollectedConfig } from './configSnapshot';
 
 // Hook implementations
 export { initSession } from './initSession';

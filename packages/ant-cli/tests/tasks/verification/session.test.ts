@@ -77,7 +77,7 @@ describe('VerificationSession.createFresh', () => {
     const s = freshTs();
     expect(s.attempts()).toBe(0);
     expect(s.passed()).toEqual([]);
-    expect(s.planHistoryBodies()).toEqual([]);
+    expect(s.snapshot().planHistoryHashes).toEqual([]);
     expect(s.batchSplitCount()).toBe(0);
   });
 
@@ -89,7 +89,7 @@ describe('VerificationSession.createFresh', () => {
 describe('VerificationSession.rehydrate', () => {
   it('restores from snapshot round-trip', () => {
     const s = freshTs();
-    s.onPlanEntry('retry');
+    s.onPlanEntry('reverify');
     s.onCommand('typecheck', true);
     s.onPlanApplied(plan({ modify: 1, seed: 'a' }));
     const snap = s.snapshot();
@@ -97,7 +97,7 @@ describe('VerificationSession.rehydrate', () => {
 
     expect(restored.attempts()).toBe(1);
     expect(restored.passed()).toEqual(['typecheck']);
-    expect(restored.planHistoryBodies().length).toBe(1);
+    expect(restored.snapshot().planHistoryHashes.length).toBe(1);
     expect(restored.snapshot()).toEqual(snap);
   });
 
@@ -190,29 +190,33 @@ describe('gate mutations', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('onPlanEntry', () => {
-  it('retry/reverify bump attempts; fresh/resumed/toolLoop do not', () => {
+  it('only reverify bumps attempts; fresh/resumed/toolLoop/retry are no-ops', () => {
+    // `retry` was a verification-only call site that disappeared with the
+    // verification fix-책임 제거 리팩토링. The case stays for type safety
+    // but does not bump the counter.
     const s = freshTs();
     s.onPlanEntry('fresh');
     s.onPlanEntry('resumed');
     s.onPlanEntry('toolLoop');
-    expect(s.attempts()).toBe(0);
     s.onPlanEntry('retry');
+    expect(s.attempts()).toBe(0);
+    s.onPlanEntry('reverify');
     expect(s.attempts()).toBe(1);
     s.onPlanEntry('reverify');
     expect(s.attempts()).toBe(2);
   });
 
-  it('retry/reverify do NOT clear passed gates, only the attempted-this-cycle set', () => {
+  it('reverify does NOT clear passed gates', () => {
     const s = freshTs();
     s.onCommand('typecheck', true);
-    s.onPlanEntry('retry');
+    s.onPlanEntry('reverify');
     expect(s.passed()).toEqual(['typecheck']);
   });
 
-  it('inDeepMode flips at DEEP_DIAGNOSTIC_THRESHOLD', () => {
+  it('inDeepMode flips at DEEP_DIAGNOSTIC_THRESHOLD via reverify entries', () => {
     const s = freshTs();
     expect(s.inDeepMode()).toBe(false);
-    for (let i = 0; i < DEEP_DIAGNOSTIC_THRESHOLD; i++) s.onPlanEntry('retry');
+    for (let i = 0; i < DEEP_DIAGNOSTIC_THRESHOLD; i++) s.onPlanEntry('reverify');
     expect(s.inDeepMode()).toBe(true);
   });
 });
@@ -222,19 +226,15 @@ describe('onPlanEntry', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('plan history', () => {
-  it('onPlanApplied appends body (bounded) + hash (unbounded)', () => {
-    // Push enough plans to overflow the body cap regardless of its
-    // configured value. The cap (PLAN_HISTORY_BODY_LIMIT) is module-private
-    // and env-tunable (default 12, aligned with MAX_BATCH_SPLIT_CYCLES + 2),
-    // so the assertion contract is "bodies are bounded BELOW hash count,
-    // hashes grow unbounded" rather than a literal magic number.
+  it('onPlanApplied appends to the unbounded hash list (body buffer was retired)', () => {
+    // Body buffer + previousBatchDiagnostics narrative channels were
+    // retired when verification stopped owning fix responsibility. Hash
+    // list remains for repeated-plan detection (e.g. silent give-up
+    // streaks) and any future safety-net consumer.
     const s = freshTs();
     const pushCount = 60;
     for (let i = 0; i < pushCount; i++) s.onPlanApplied(plan({ modify: 1, seed: `s${i}` }));
-    const bodies = s.planHistoryBodies().length;
     const hashes = s.snapshot().planHistoryHashes.length;
-    expect(bodies).toBeGreaterThan(0);
-    expect(bodies).toBeLessThan(pushCount);
     expect(hashes).toBe(pushCount);
   });
 
@@ -263,17 +263,15 @@ describe('plan history', () => {
     ).toEqual({ repeated: true, count: 1 });
   });
 
-  it('records empty plans as stable hashes and skips the body buffer', () => {
+  it('records empty plans as stable hashes for repeated-plan detection', () => {
     // Empty planText is the "silent give-up" signal: the LLM ended the
-    // plan cycle without emitting a `<plan>` block. We still want the
-    // repetition detector to see it (so the hash list IS appended) but
-    // the bounded body buffer is for prompt-injection display and has
-    // no meaningful empty rendering.
+    // plan cycle without emitting a `<plan>` block. The hash list still
+    // accepts empty strings (with stable SHA) so consumers can detect
+    // repetition / give-up streaks via `isPlanRepeated`.
     const s = freshTs();
     s.onPlanApplied('');
     s.onPlanApplied('');
     expect(s.snapshot().planHistoryHashes.length).toBe(2);
-    expect(s.planHistoryBodies()).toEqual([]);
     expect(s.isPlanRepeated('')).toEqual({ repeated: true, count: 2 });
   });
 
@@ -291,12 +289,11 @@ describe('plan history', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('batch split + install', () => {
-  it('onBatchSplit bumps counter and stores diagnostics', () => {
+  it('onBatchSplit bumps the cycle counter (diagnostics narrative channel was retired)', () => {
     const s = freshTs();
     expect(s.batchSplitCount()).toBe(0);
     s.onBatchSplit('{"totalErrors":3}');
     expect(s.batchSplitCount()).toBe(1);
-    expect(s.previousBatchDiagnostics()).toBe('{"totalErrors":3}');
   });
 
   it('onBatchSplit also bumps the generic attempt counter so deep-mode can engage', () => {
@@ -322,7 +319,7 @@ describe('batch split + install', () => {
 describe('snapshot round-trip', () => {
   it('is idempotent: rehydrate(snapshot()) equals the original snapshot', () => {
     const s = freshTs();
-    s.onPlanEntry('retry');
+    s.onPlanEntry('reverify');
     s.onCommand('typecheck', true);
     s.onPlanApplied(plan({ modify: 1, seed: 'x' }));
     s.onBatchSplit('{}');

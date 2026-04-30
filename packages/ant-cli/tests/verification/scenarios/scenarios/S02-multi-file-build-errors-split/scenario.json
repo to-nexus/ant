@@ -1,12 +1,9 @@
 {
   "name": "multi-file-build-errors-split",
-  "description": "Overlay mode: build command emits stderr with 2 file errors, plan returns modify×2 — force-split via overFile threshold. Covers C6.",
+  "description": "Overlay mode: build command emits stderr with 2 file errors, plan returns modify×2 — auto-converted to per-target batches under always-fan-out. Covers C6.",
   "mode": "overlay",
   "timeoutMs": 30000,
   "expectedChildExitCode": "any",
-  "env": {
-    "ANT_VERIFICATION_SPLIT_FILES": "2"
-  },
   "expected": {
     "routeSequence": ["plan", "*", "plan"],
     "flagSet": ["_batchSplitRequeued"]

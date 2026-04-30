@@ -215,16 +215,15 @@ scenarios/S02-multi-file-build-errors-split/
 | ID | Mode | 트리거 | 주 assertion |
 |---|---|---|---|
 | S01 | stub | tracker 불완전 | route plan→execute→check→enforce→plan, violation: verification_incomplete |
-| S02 | overlay | 2파일 tsc stderr + env `ANT_VERIFICATION_SPLIT_FILES=2` | flagSet `_batchSplitRequeued` |
+| S02 | overlay | 2파일 tsc stderr — always-fan-out 으로 modify×2 가 per-target batches 로 자동 변환 | flagSet `_batchSplitRequeued` |
 | S03 | stub | typecheck+test 둘 다 미통과 | route 동일, violation `verification_incomplete` |
-| S04 | overlay | plan hash 반복 (plan1 설정 → plan2 매치) | flagSet `_batchSplitRequeued` (forceByRepeat) |
+| S04 | overlay | plan hash 반복 (plan1 설정 → plan2 매치) — always-fan-out 정책에서 동일 plan 도 동일하게 fan-out | flagSet `_batchSplitRequeued` |
 | S06 | stub | tracker 초기부터 complete | route plan→execute→check→learn |
 | S07 | stub | error 태스크 prePlanText 1개 | flagSet `finalVerificationAutoAdded` |
 | S08 | stub | tracker=null + 골든 done | violation `verification_incomplete` + enforce→plan |
 | S09 | stub | `retries=3, maxRetries=3` | route check→learn (C4 — routeAfterCheckTaskStatus가 learn 반환) |
 
-**시나리오별 env 오버라이드**: `ScenarioConfig.env`로 `RECURSION_LIMIT` /
-`ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES`를 선별 주입 (allow-list 방식).
+**시나리오별 env 오버라이드**: `ScenarioConfig.env`로 `RECURSION_LIMIT` 등을 선별 주입 (allow-list 방식). always-fan-out 리팩토링 후 verification 분할 임계 환경변수(`ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES`) 와 plan-history body 한도(`ANT_PLAN_HISTORY_LIMIT`) 는 모두 폐기.
 
 **공용 골든 응답 디렉터리**: `tests/verification/scenarios/fixtures/golden/execute-verification-done.md`.
 
