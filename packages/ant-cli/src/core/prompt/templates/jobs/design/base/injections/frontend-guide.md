@@ -70,6 +70,8 @@ Architecture is not a single label — it is the combination of independent desi
 - Describe expected API consumption patterns based on PRD requirements
 - External services: List only if PRD explicitly requires (with PRD reference)
 
+**Constraint (Wire-internal mapping boundary)**: Wire-format DTO field identifiers come from the api-contract document and are preserved verbatim by the coding phase. If frontend display models / view-models use a different identifier style, mapping between wire DTOs and display models MUST happen at a designated adapter / mapper boundary (e.g., infrastructure ↔ application edge) — NOT by silently renaming wire fields. Identify the boundary that owns this mapping; do NOT let the renaming leak into wire-facing types.
+
 ---
 
 ### 4. Infrastructure Independence

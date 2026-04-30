@@ -120,14 +120,42 @@ For each per-service document, observe:
 
 ## External Contract Discovery
 
+**Scope**: This section governs CONSUMER-perspective tasks only (per the Role declaration above — `consumedApis`-derived). Provider-perspective tasks (`services`-derived) author DTO shapes from PRD and architectural decisions; this section (Observation Target / Constraints C1-C4 / Retrieve Toolset / gap statement) does NOT apply, and authoring DTO field lists from PRD-grounded design IS NOT fabrication when no upstream contract exists — that is the provider's job.
+
 **Observation Target**
 - The reference, context, or directive materials provided for this task may name an external API contract by a reachable source (a URL, a repository path, a command that emits it, or another addressable handle). Observe those injected materials; do NOT rely on a particular source file name.
 
 **Constraints**
 - C1 — When a reachable contract source is observable in the injected materials, retrieve it with the available tools before describing endpoints, payloads, or status codes.
+
+  **Retrieve Toolset (handle type → tool)**:
+
+  | Handle type | Tool | Example invocation |
+  |-------------|------|-------------------|
+  | HTTP/HTTPS URL (e.g. `*/swagger-json`, `*/openapi.json`, `*/v3/api-docs`) | `run_command` | `curl --max-time 30 --fail-with-body -sL "<url>" \| head -c 500000` |
+  | Local file in codebase | `read_file` | `read_file({ path: "apis/openapi.yaml" })` |
+  | File in source documents | `read_source_doc` | `read_source_doc({ path: "swagger.json", startLine, endLine })` |
+  | Shell-emitting handle | `run_command` | `run_command({ command: "<cmd>" })` |
+
+  `search_web` is for handle DISCOVERY (when no source provides a handle) — NOT for retrieving a known handle. C4 already prohibits overlap.
+
 - C2 — Retrieved content is evidence, not output. NEVER paste it verbatim.
   - **Carve-out (identifier surface)**: Field IDENTIFIERS are NOT subject to C2 — they are the contract. Preserve verbatim: DTO field names, endpoint paths, query / path parameter names, header names, status codes, event names, enum literals. C2 forbids copying retrieved DESCRIPTIONS, examples, vendor commentary, narrative text — NOT the identifier surface. Per the "Field Identifier Convention" priority (1) above, identifier-level transformation (`snake_case` → `camelCase`, prefix removal, etc.) is FORBIDDEN when an external source exists.
-- C3 — If retrieval fails, state the gap; do NOT fabricate shapes.
+- C3 — If retrieval fails (no handle observable, network error, HTTP 4xx/5xx, content not parseable), the document MUST emit a gap statement matching this template, and MUST omit DTO field shapes from § Shared Type Definitions:
+
+  (Translate the prose to the document's detected language; preserve placeholder tokens like `<reason>` / `<handle>` and the warning sigil verbatim.)
+
+  > ⚠️ Contract source unreachable: <reason — e.g., 'no handle observable in PRD/refs', 'network timeout against <handle>', 'HTTP 401 from <handle>'>.
+  > § Shared Type Definitions deferred until contract becomes retrievable (e.g., service brought online, codegen output committed, contract document obtained). Payload field shapes are NOT specified in this document.
+
+  - Allowed under gap (PRD-derivable, not contract-derivable):
+    - Endpoint paths and HTTP methods cited verbatim in PRD
+    - Enum values explicitly enumerated in PRD
+    - Status code → FE error boundary policy (FE-side, not server-side)
+  - Forbidden under gap:
+    - Inventing DTO type names with field lists (i.e., declaring any `<TypeName>` with arbitrary field set when the contract was never retrieved — regardless of how plausible the field names look)
+    - Guessing field identifiers from PRD wording in ANY case style — turning "company name" into `companyName`, `company_name`, `CompanyName`, or any variant is equally fabrication if not contract-derived
+    - Type annotations on never-observed fields
 - C4 — `search_web` only when source is unknown; retrieval tools only when source is identified. Do NOT overlap.
 
 **Blind Spots**

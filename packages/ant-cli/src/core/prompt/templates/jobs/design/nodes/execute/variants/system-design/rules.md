@@ -13,6 +13,8 @@ The prompt contains the PRD — either as **full content** or as a **source file
 
 ### Source Document Reading
 
+**Scope clarification**: This entire subsection (Principle, Observation Target, Constraints, blind-spot) governs reading of *injected source documents* — PRD, system-design, prior design — through `read_source_doc`. It does NOT apply to External Contract Discovery: contract retrieval is a separate trace governed by the "External Contract Discovery" section in `api-contract-guide.md` and is exempt from the call-budget heuristic below. Skipping contract retrieval to honour this budget is a misapplication of scope.
+
 When the prompt contains a **source file index** (table with filenames, sizes, and line-numbered outlines) instead of full content:
 
 #### Principle
