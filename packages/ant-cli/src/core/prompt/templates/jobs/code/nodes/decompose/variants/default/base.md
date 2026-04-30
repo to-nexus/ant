@@ -37,7 +37,10 @@ validator.
 
 {{#if refArtifacts.length}}
 {{#each refArtifacts}}
-### [ref] {{this.path}}
+### [ref{{#if this.wasCompacted}} · compacted{{/if}}] {{this.path}}
+{{#if this.wasCompacted}}
+> Content compacted to a line-numbered outline. Use `read_file("{{this.path}}", startLine, endLine)` to fetch full sections.
+{{/if}}
 
 {{{this.content}}}
 
@@ -46,7 +49,10 @@ validator.
 {{/if}}
 {{#if contextArtifacts.length}}
 {{#each contextArtifacts}}
-### [context] {{this.path}}
+### [context{{#if this.wasCompacted}} · compacted{{/if}}] {{this.path}}
+{{#if this.wasCompacted}}
+> Content compacted to a line-numbered outline. Use `read_file("{{this.path}}", startLine, endLine)` to fetch full sections.
+{{/if}}
 
 {{{this.content}}}
 

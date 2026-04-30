@@ -772,6 +772,38 @@ Each task MUST include either `"exclusive": true` OR `"parallelGroup": "<group-i
 
 ---
 
+{{#if hasCompactedArtifacts}}
+## Compacted Documents — Reading Strategy
+
+The marker `· compacted` next to a document header indicates the body is a
+line-numbered outline (TOC), not full content. The full body is NOT injected
+to keep the prompt within budget.
+
+**Constraint**: Tasks emitted without observing a `· compacted` ref's relevant
+sections will silently drop enumerated work units the document describes.
+Refs ground task enumeration — observe before emitting.
+
+**Constraint**: Outline line numbers (`L{N}: <heading>`) are 1-based and map
+directly to the source file. Pass them as `startLine` / `endLine` to
+`read_file` without offset.
+
+**Principle**: Refs are the Development Source. Context is supplementary —
+read context only when classification or task naming actually depends on it.
+
+**Principle**: Prefer fewer broad reads over many narrow ones. Your call
+budget is bounded; the runtime injects a remaining-call notice when the
+budget is near exhaustion.
+
+⚠️ **Blind spot**: Do NOT read context exhaustively "to be safe" — the
+`· compacted` marker on a context document already signals supplementary role.
+
+⚠️ **Blind spot**: Do NOT keep reading after the outline already covers
+the section the directive needs — re-reading neighboring sections does
+not improve task enumeration.
+
+---
+
+{{/if}}
 {{#if needsBoundaryClassification}}
 ## Boundary Classification
 

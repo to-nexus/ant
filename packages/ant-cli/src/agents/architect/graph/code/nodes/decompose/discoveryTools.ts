@@ -47,7 +47,10 @@ export const READ_FILE_TOOL: ToolDefinition = {
   name: 'read_file',
   description:
     'Read file content. Use scope "artifact" for feature workspace files ' +
-    'or scope "codebase" for project source files.',
+    'or scope "codebase" for project source files. ' +
+    'Optionally pass startLine/endLine (1-based, inclusive) to read a range — ' +
+    'compacted documents include line-numbered outlines (`L{N}: <heading>`); ' +
+    'pass those line numbers to fetch the matching section.',
   input_schema: {
     type: 'object',
     properties: {
@@ -59,6 +62,14 @@ export const READ_FILE_TOOL: ToolDefinition = {
       path: {
         type: 'string',
         description: 'Relative file path (e.g., "architecture/spec/spec-auth.md" or "docs/architecture.md")',
+      },
+      startLine: {
+        type: 'number',
+        description: 'Optional. Start line number (1-based, inclusive). Required for files >100K chars; pair with endLine.',
+      },
+      endLine: {
+        type: 'number',
+        description: 'Optional. End line number (1-based, inclusive). Use broad ranges (300-500+ lines per call).',
       },
     },
     required: ['scope', 'path'],
@@ -195,8 +206,16 @@ export function handleListFiles(
   }
 }
 
+/**
+ * Threshold above which a `read_file` call without `startLine`/`endLine`
+ * is rejected. The LLM is expected to consult the compacted outline in
+ * the prompt (or run a paged read) instead of pulling the entire file.
+ * Files within this size return the full content unchanged.
+ */
+const READ_FILE_FULL_READ_LIMIT = 100_000;
+
 export function handleReadFile(
-  args: { scope: string; path: string },
+  args: { scope: string; path: string; startLine?: number; endLine?: number },
   ctx: DiscoveryToolContext
 ): string {
   const root = args.scope === 'codebase' ? ctx.codebasePath : ctx.featurePath;
@@ -218,12 +237,36 @@ export function handleReadFile(
     if (stat.isDirectory()) {
       return `Error: ${args.path} is a directory. Use list_files instead.`;
     }
-    const MAX_SIZE = 100_000;
-    if (stat.size > MAX_SIZE) {
-      const content = fs.readFileSync(result.resolved, 'utf-8').substring(0, MAX_SIZE);
-      return `${content}\n\n--- TRUNCATED (file is ${stat.size} bytes, showing first ${MAX_SIZE}) ---`;
+
+    const hasRange =
+      typeof args.startLine === 'number' || typeof args.endLine === 'number';
+
+    // Reject full reads of oversized files. Truncating silently would hide
+    // material from the LLM (the user explicitly forbids automatic
+    // truncation); refusing forces the LLM to re-issue with a range
+    // sourced from the compacted outline. Mirrors the approach in
+    // `core/utils/sourceDocuments.ts#handleReadSourceFile`.
+    if (!hasRange && stat.size > READ_FILE_FULL_READ_LIMIT) {
+      return (
+        `Error: File too large for full read (${stat.size.toLocaleString()} bytes). ` +
+        `Use \`read_file("${args.path}", startLine, endLine)\` to read a specific range. ` +
+        `Compacted documents in the prompt include line-numbered outlines ` +
+        `(\`L{N}: <heading>\`) — pass those line numbers as startLine.`
+      );
     }
-    return fs.readFileSync(result.resolved, 'utf-8');
+
+    const fullContent = fs.readFileSync(result.resolved, 'utf-8');
+    if (!hasRange) return fullContent;
+
+    const lines = fullContent.split('\n');
+    const totalLines = lines.length;
+    const start = Math.max(1, args.startLine ?? 1);
+    const end = Math.min(totalLines, args.endLine ?? totalLines);
+    if (start > end) {
+      return `Error: startLine (${args.startLine}) > endLine (${args.endLine}) for ${args.path}.`;
+    }
+    const slice = lines.slice(start - 1, end).join('\n');
+    return `[Lines ${start}-${end} of ${totalLines}]\n\n${slice}`;
   } catch (err: any) {
     return `Error reading ${args.path}: ${err.message}`;
   }
@@ -239,7 +282,7 @@ export function createDiscoveryToolHandler(ctx: DiscoveryToolContext) {
       case 'list_files':
         return handleListFiles(args as { scope: string; directory: string }, ctx);
       case 'read_file':
-        return handleReadFile(args as { scope: string; path: string }, ctx);
+        return handleReadFile(args as { scope: string; path: string; startLine?: number; endLine?: number }, ctx);
       case 'clarify':
         return handleClarify(args as { question: string; options?: string[] }, ctx.clarify);
       default:

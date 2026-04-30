@@ -115,9 +115,11 @@ export interface DecomposeToolLoopOptions {
 /**
  * Run a decompose LLM call with tool-use loop.
  *
- * The LLM can call read_source_doc (or read_design_doc) to fetch documents
- * on-demand. Loop continues until the LLM produces a final text response
- * without tool calls, or maxRounds is reached.
+ * The LLM can call the supplied tools (e.g. `read_source_doc` for the
+ * design job, or the code job's discovery tools including the
+ * range-aware `read_file`) to fetch documents on-demand. Loop continues
+ * until the LLM produces a final text response without tool calls, or
+ * maxRounds is reached.
  *
  * @param llm - LLM client (must support stream with tools)
  * @param messages - Initial messages (system + user)
@@ -242,8 +244,36 @@ export async function decomposeWithToolLoop(
       assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
     }
 
+    // Lazily acquire the chat API once per round so each tool call can
+    // emit a "reading…" card before the handler runs and a matching
+    // completion card afterwards. The merged cardId keeps both updates
+    // anchored to the same UI slot. ChatAPIClient self-disables when
+    // worker env vars are missing, so unit tests / non-streaming runs
+    // skip the emissions silently.
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
+
     const toolResults: MessageContentBlock[] = [];
     for (const tc of toolCalls) {
+      let cardId: string | undefined;
+      try {
+        if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
+          cardId = await chatAPI.addReadingFile(tc.input.path);
+        } else if (tc.name === 'read_source_doc' && typeof tc.input?.filename === 'string') {
+          cardId = await chatAPI.addReadingSource(
+            tc.input.filename,
+            tc.input.startLine,
+            tc.input.endLine,
+          );
+        } else if (tc.name === 'list_files' && typeof tc.input?.directory === 'string') {
+          cardId = await chatAPI.showChatStatus('exploring', { directory: tc.input.directory });
+        }
+      } catch (err) {
+        // Status emission must never break the tool loop. Keep cardId
+        // undefined so the completion path simply skips the merge.
+        console.warn(`⚠️ [Decompose RAG] chat status start failed:`, err);
+      }
+
       let result = await toolHandler(tc.name, tc.input);
       cumulativeToolResultChars += result.length;
 
@@ -254,6 +284,29 @@ export async function decomposeWithToolLoop(
             + `\n\n[... truncated — cumulative tool result budget (${TOOL_RESULT_BUDGET.toLocaleString()} chars) reached]`;
         }
         console.warn(`⚠️ [Decompose RAG] Tool result budget reached (${cumulativeToolResultChars.toLocaleString()} chars)`);
+      }
+
+      try {
+        const isErr = result.startsWith('Error:');
+        if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
+          await chatAPI.addReadComplete(tc.input.path, cardId, isErr ? result : undefined);
+        } else if (tc.name === 'read_source_doc' && typeof tc.input?.filename === 'string') {
+          await chatAPI.addReadSourceComplete(
+            tc.input.filename,
+            cardId,
+            isErr
+              ? { error: result }
+              : { startLine: tc.input.startLine, endLine: tc.input.endLine },
+          );
+        } else if (tc.name === 'list_files' && typeof tc.input?.directory === 'string') {
+          await chatAPI.showChatStatus('explored', {
+            directory: tc.input.directory,
+            ...(cardId ? { _mergeIndex: cardId } : {}),
+            ...(isErr ? { error: true } : {}),
+          });
+        }
+      } catch (err) {
+        console.warn(`⚠️ [Decompose RAG] chat status complete failed:`, err);
       }
 
       console.log(`   📄 ${tc.name}(${JSON.stringify(tc.input)}) → ${result.length.toLocaleString()} chars`);
