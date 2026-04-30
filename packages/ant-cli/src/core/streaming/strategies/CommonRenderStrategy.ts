@@ -214,6 +214,15 @@ export class CommonRenderStrategy implements IRenderStrategy {
   }
   
   /**
+   * Pin the design-job target filename guard for the current task.
+   * Delegates to the underlying `FileRenderer` so callers don't have to
+   * reach into `getFileRenderer()`.
+   */
+  setExpectedTargetFile(expectedTargetFile: string | undefined): void {
+    this.fileRenderer.setExpectedTargetFile(expectedTargetFile);
+  }
+
+  /**
    * Set task title for plan card header display
    */
   setPlanTaskTitle(title: string): void {
