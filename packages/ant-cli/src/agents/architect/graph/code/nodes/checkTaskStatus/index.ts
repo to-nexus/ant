@@ -370,10 +370,22 @@ export async function checkTaskStatus(
   // `state.retries += 1` happens inside `plan/handleRetryEntry` (single
   // writer). `_nextPlanEntry: 'retry'` tells `resolvePlanEntry` which
   // branch to take.
+  //
+  // `_finalTaskLoopCount: 0` and `_executeCallIndex: 0` reset mirror the
+  // success path (L298-299) and batch-split path (L116-117). Without these,
+  // a violation return after a Safety Net C trip would re-enter execute
+  // with the counter already past the threshold, immediately re-tripping
+  // → plan ↔ checkTaskStatus ping-pong (the `urban-fronting-faith` p2
+  // postmortem).  `handleRetryEntry` (verification branch) also resets
+  // these on the plan side, but emitting them here is defence-in-depth so
+  // a non-verification retry path (which doesn't go through the verify
+  // entry handler) doesn't carry stale counters either.
   return {
     violations: retryableViolations,
     enforcementHistory,
     _nextPlanEntry: 'retry' as const,
+    _executeCallIndex: 0,
+    _finalTaskLoopCount: 0,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   };

@@ -203,8 +203,9 @@ scenarios/S02-multi-file-build-errors-split/
 3. **B2 — child exit 정책**: `ScenarioConfig.expectedChildExitCode: 0 | 'nonzero' | 'any'`.
    runner가 실제 exit code와 대조해 "의도한 throw" vs "우연한 크래시" 구분.
 4. **B3 — execute mock 골든 응답**: `tests/verification/scenarios/fixtures/golden/execute-verification-done.md`
-   (`<done>` 뿐, `<file>` 태그 없음 → `_executeModifiedFiles=false` 고정 → 라우팅 결정성 확보). 각 시나리오는 이 파일을
-   `llm-mock/execute.md`로 복사.
+   (`<done>` 뿐, `<file>` 태그 없음 → `Session.isComplete()` 체크가 라우팅 결정자 → 결정성 확보). 각 시나리오는 이 파일을
+   `llm-mock/execute.md`로 복사. 과거에는 `_executeModifiedFiles=false` 단축경로가 라우팅을 결정했으나
+   `urban-fronting-faith` postmortem 이후 해당 채널은 폐기되었다.
 5. **B4 — `appendTrace extra` 로깅**: `plan` 노드의 `_batchSplitRequeued` 분기와 `checkTaskStatus`의 violations push,
    `checkTaskStatus`의 Final Verification auto-add 시점에 `extra.flagSet` / `extra.violations`를 추가 기록.
    diff 엔진이 휘발성 플래그도 평가 가능.

@@ -36,10 +36,14 @@
  * but broke once paired with plan() return objects of shape
  * `{ ...state, conversations: { NODE_PLAN: [...] }, _activePhase: ... }`
  * — the `...state` spread populated `base.{_executeCallIndex,violations,
- * _executeModifiedFiles,_planSearchWebCount,_finalTaskLoopCount}` with
- * the prior turn's values, which then beat the entry handler's resets.
- * Conversations was the only field that survived because of its explicit
- * inner merge.
+ * _planSearchWebCount,_finalTaskLoopCount}` with the prior turn's values,
+ * which then beat the entry handler's resets. Conversations was the only
+ * field that survived because of its explicit inner merge.
+ *
+ * (Field list trimmed: `_executeModifiedFiles` was retired post-
+ * `urban-fronting-faith` p2 — see `tasks/_shared/verify/router.ts` and
+ * `nodes/tool/index.ts` for the replacement turn-scoped signal
+ * `_lastToolBatchMutatedFiles`.)
  */
 
 import type { Conversations } from '../../../../../../common/graph/conversations';

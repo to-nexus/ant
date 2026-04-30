@@ -173,6 +173,21 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   const loopThreshold = isVerification
     ? (state.planText ? 2 : 1)
     : 3;
+
+  // Diagnostic: pair with the `[diag] execute return:` line so the
+  // counter axis is visible from both the writer (execute) and the
+  // reader (router) perspective. Cheap, JSON-friendly, fires on every
+  // route decision regardless of task type.
+  console.log(
+    `[diag] routeAfterExecute: _finalTaskLoopCount=${finalTaskLoopCount} ` +
+    `threshold=${loopThreshold} ` +
+    `planText.len=${state.planText?.length ?? 0} ` +
+    `isVerification=${isVerification} ` +
+    `done=${response.done} ` +
+    `tools=${response.toolCalls?.length ?? 0} ` +
+    `_executeCallIndex=${state._executeCallIndex ?? 0}`,
+  );
+
   if (finalTaskLoopCount >= loopThreshold) {
     console.warn(`⚠️  [Router] Task stuck in loop (${finalTaskLoopCount}/${loopThreshold} iterations, no tools, no done)`);
     console.warn(`   🚨 Forcing checkTaskStatus to break the loop`);
@@ -195,14 +210,18 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // R1 — the router is blind to task.type. `hooksIfActive?.router.routeAfterDone`
   // returns the next node name; the shared verify-mode router (used by both
   // verification task type AND self-verify Tier 2 tasks via composeBundle)
-  // chooses 'plan' for reverify when fixes were applied + gates not complete.
+  // chooses 'plan' for reverify whenever the verification cycle is not
+  // complete (Session.isComplete() === false). The retired
+  // `madeFileChanges` short-circuit is documented in
+  // `tasks/_shared/verify/router.ts`.
+  //
   // The router mutates two channels on the apply→reverify transition:
   //   - `_nextPlanEntry = 'reverify'` for the plan node entry path
   //   - `markVerifyEntered(state)` for self-verify tasks crossing the
   //     phase boundary (verification tasks are already in verify-mode
   //     from initSession; the helper is idempotent).
-  // All downstream resets (`violations`, `_executeModifiedFiles`,
-  // conversations, tracker) live in `handleReverifyEntry` per R1.
+  // All downstream resets (`violations`, conversations, counters) live
+  // in `handleReverifyEntry` per R1.
   if (response.done) {
     const hookNext = hooksIfActive(state)?.router?.routeAfterDone?.(state);
     if (hookNext === 'plan') {
