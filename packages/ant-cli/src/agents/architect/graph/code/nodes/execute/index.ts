@@ -730,9 +730,24 @@ export async function execute(
     // `_finalTaskLoopCount` state name predates T6b-θ and is preserved to
     // keep save / restore compatibility; semantically it tracks
     // verification-only loops without progress.
+    //
+    // "Progress" = a file was actually written this turn. The previous
+    // condition `toolCalls.length === 0` missed the `urban-fronting-faith`
+    // pattern: the LLM kept calling `read_file` / `list_files` for the
+    // entire turn budget without ever writing a fix, so `toolCalls.length`
+    // was always > 0 and the stuck counter never advanced. With the file-
+    // write criterion, a verification turn that consumes tool calls
+    // (read/list/edit-file no-ops) but commits zero file changes is
+    // correctly classified as no-progress and feeds the safety-net
+    // counter that downstream routers consult.
+    //
+    // `streamedInThisCall` is per-iteration (defined a few lines above);
+    // `_executeModifiedFiles` is intentionally not used here because it
+    // persists across iterations and would mask a stuck turn after any
+    // prior productive turn.
     const isVerification = state.currentTask ? isVerificationTask(state.currentTask) : false;
     const prevLoopCount = state._finalTaskLoopCount || 0;
-    const isStuckLooping = isVerification && !explicitDone && toolCalls.length === 0;
+    const isStuckLooping = isVerification && !explicitDone && streamedInThisCall.length === 0;
     const newFinalTaskLoopCount = isStuckLooping ? prevLoopCount + 1 : 0;
     
     // Thinking-only detection: log when LLM produces thinking but no text/tools

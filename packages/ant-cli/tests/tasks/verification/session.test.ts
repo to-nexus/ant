@@ -223,10 +223,19 @@ describe('onPlanEntry', () => {
 
 describe('plan history', () => {
   it('onPlanApplied appends body (bounded) + hash (unbounded)', () => {
+    // Push enough plans to overflow the body cap regardless of its
+    // configured value. The cap (PLAN_HISTORY_BODY_LIMIT) is module-private
+    // and env-tunable (default 12, aligned with MAX_BATCH_SPLIT_CYCLES + 2),
+    // so the assertion contract is "bodies are bounded BELOW hash count,
+    // hashes grow unbounded" rather than a literal magic number.
     const s = freshTs();
-    for (let i = 0; i < 5; i++) s.onPlanApplied(plan({ modify: 1, seed: `s${i}` }));
-    expect(s.planHistoryBodies().length).toBe(3); // bounded
-    expect(s.snapshot().planHistoryHashes.length).toBe(5);
+    const pushCount = 60;
+    for (let i = 0; i < pushCount; i++) s.onPlanApplied(plan({ modify: 1, seed: `s${i}` }));
+    const bodies = s.planHistoryBodies().length;
+    const hashes = s.snapshot().planHistoryHashes.length;
+    expect(bodies).toBeGreaterThan(0);
+    expect(bodies).toBeLessThan(pushCount);
+    expect(hashes).toBe(pushCount);
   });
 
   it('isPlanRepeated returns false for brand-new plan', () => {
