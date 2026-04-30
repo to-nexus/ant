@@ -1,7 +1,9 @@
 /**
- * Safety Net C — verification stuck-loop detection.
+ * Safety Net C — execute-node stuck-loop detection.
  *
- * Locks the contract repaired in the `urban-fronting-faith` p2 postmortem:
+ * Locks the contract repaired in the `urban-fronting-faith` p2 postmortem
+ * (originally observed against verification, which no longer enters retry
+ * under always-fan-out — the reducer/mergeDelta invariant is task-type-blind):
  *
  *   1. The execute-node `isStuckLooping` signal must NOT classify a turn
  *      as stuck when the immediately preceding tool batch mutated files

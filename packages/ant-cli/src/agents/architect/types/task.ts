@@ -201,9 +201,8 @@ export interface CodeTask extends BaseTask {
    *
    * Narrowed to `CodeTaskResumeState` so the verification snapshot is
    * visible only on code tasks — design tasks consume `DesignTaskResumeState`.
-   * Batch-split cycle tracking that used to live on `_batchSplitCount` /
-   * `_previousBatchDiagnostics` task fields now rides in
-   * `resumeState.verification.batchSplitCount` / `.previousBatchDiagnostics`.
+   * Batch-split cycle tracking that used to live on `_batchSplitCount`
+   * task fields now rides in `resumeState.verification.batchSplitCount`.
    */
   resumeState?: CodeTaskResumeState;
 }

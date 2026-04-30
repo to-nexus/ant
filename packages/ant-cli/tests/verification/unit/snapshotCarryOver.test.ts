@@ -19,9 +19,9 @@ import { VerificationSession } from '../../../src/agents/architect/graph/code/ta
 describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
   it('captures the VerificationSession snapshot alongside per-worker fields', () => {
     const session = VerificationSession.createFresh({ isTs: true, hasTests: true });
-    session.onPlanEntry('retry');
-    session.onPlanEntry('retry');
-    session.onPlanEntry('retry');
+    session.onPlanEntry('reverify');
+    session.onPlanEntry('reverify');
+    session.onPlanEntry('reverify');
     session.onCommand('typecheck', true);
     session.onCommand('build', true);
     session.markInstallNeeded(false);
@@ -51,7 +51,7 @@ describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
     expect(snap!.verification!.attempts).toBe(3);
     expect(snap!.verification!.installNeeded).toBe(false);
     expect(snap!.verification!.passed.sort()).toEqual(['build', 'typecheck'].sort());
-    expect(snap!.verification!.planHistoryBodies).toEqual(['{"plan":1}', '{"plan":2}']);
+    expect(snap!.verification!.planHistoryHashes.length).toBe(2);
   });
 
   it('returns null when state itself is null/undefined', () => {
@@ -77,6 +77,6 @@ describe('snapshotFromState — produces a complete WorkerSnapshot', () => {
     // Simulate the orchestrator.restoreIntoWorkerState round-trip.
     const restored = VerificationSession.rehydrate(snap!.verification);
     expect(restored.attempts()).toBe(2);
-    expect(restored.snapshot().planHistoryBodies).toEqual(['p1']);
+    expect(restored.snapshot().planHistoryHashes.length).toBe(1);
   });
 });

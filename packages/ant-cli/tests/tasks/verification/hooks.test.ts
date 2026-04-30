@@ -221,7 +221,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
   it('forwards Session.installNeeded=true into dependencyStatus and includes deep-diagnostic injections', async () => {
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-    for (let i = 0; i < 3; i++) session.onPlanEntry('retry'); // attempts=3 → deep mode
+    for (let i = 0; i < 3; i++) session.onPlanEntry('reverify'); // attempts=3 → deep mode
     session.markInstallNeeded(true);
     const out = await planHook.buildPrompt({
       state: stateWith(session, {
@@ -282,7 +282,7 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     // checks the resulting prompt vars all come from those Session
     // observations.
     const session = VerificationSession.createFresh({ isTs: true, hasTests: true });
-    for (let i = 0; i < 4; i++) session.onPlanEntry('retry'); // attempts=4, deep mode
+    for (let i = 0; i < 4; i++) session.onPlanEntry('reverify'); // attempts=4, deep mode
     session.onFileChanged('all');                              // clears gates
     session.markInstallNeeded(true);                           // observation: deps missing
     session.onCommand('typecheck', true);                     // typecheck re-passes

@@ -7,6 +7,39 @@
 
 ---
 
+## 0-α. verification fix-책임 제거 리팩토링 (2026-05-01 추가)
+
+> **선행 계획서**: `/Users/probe/.cursor/plans/verification-always-fanout-refactor_1be72a90.plan.md`
+
+**책임 양극화**:
+- `verification` 태스크 = **진단 + fan-out** 전담. plan tool-loop 가 build/test 를 직접 실행해 root cause 를 분리하고, 1+ 수정 항목이 있으면 무조건 per-target error sub-task 로 fan-out 하고 즉시 `done:true` 로 종료. verification 자신은 fix 를 시도하지 않는다(execute phase 가 사실상 호출되지 않음).
+- `error` 태스크 = **fix** 전담. fan-out spawn 된 1-entry sub-task 는 `prePlanText` fast-path 로 단일 파일을 고친다.
+
+**이로써 사라진 코드/채널**:
+
+| 제거 대상 | 위치 | 비고 |
+|---|---|---|
+| `handleRetryEntry` 의 `isVerificationRetry` 분기 | `nodes/plan/parts/entry.ts` | verification 은 retry 경로로 진입하지 않음(execute 미호출) |
+| `Session._planHistoryBodies` / `planHistoryBodies()` getter | `tasks/_shared/verify/Session.ts` | hash 채널만 유지 |
+| `Session._previousBatchDiagnostics` / getter | `tasks/_shared/verify/Session.ts` | follow-up prompt carry 가 사라져 무용 |
+| `summarizePlanBody` / `renderPriorPlans` + `priorPlans` 템플릿 변수 | `tasks/_shared/verify/buildPlanPrompt.ts`, `verification/base.md` | "Prior Diagnostic Attempts In This Task" 블록 통째 삭제 |
+| `inDeepMode` 강제 `collectConfigSnapshot` 주입 | `buildPlanPrompt.ts` + `tasks/_shared/verify/configSnapshot.ts` 폐파일 | LLM 이 `read_file` 로 자기 가져오게 위임 |
+| `processDiagnosticBatchSplit` 의 `forceByRepeat` / `overErrorBudget` / `overFileBudget` / `length>=2` 게이트 | `nodes/plan/parts/batchSplit.ts` | always-fan-out 로 통일 |
+| 환경변수 `ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES` / `ANT_PLAN_HISTORY_LIMIT` | env allow-list, scenario.json | 모두 폐기 |
+| `executionLogger.logVerificationRetry` 메서드 | `core/utils/executionLogger.ts` | 호출 사이트 부재 |
+| `nodes/plan/parts/planHistory.ts` (`maybeApplyPlanHistory` 헬퍼) | 삭제 | 호출 사이트 3 곳에 1줄 인라인 |
+| `Session.onPlanEntry('retry')` case | 명시적 no-op 으로 환원 | `'reverify'` 만 attempts 증분 |
+| verification template `{{#if isRetry}}` / `{{#if hasPriorPlans}}` 블록 | `verification/base.md` | dead 분기 삭제 |
+
+**의도적 비-탐지**: `checkRetryTermination` 의 `no_progress` 안전망은 verification context 에서 호출 사이트가 사라지면서 효과가 소멸한다. silent give-up (`session.isComplete()=false` 인데 빈 plan + done) 패턴은 LLM 비결정성으로 받아들이고 별도 탐지하지 않는다(클라이언트 측 LLM-출력 검증의 무의미성). 종단 보장은 `MAX_BATCH_SPLIT_CYCLES = 10` 하드캡 + 오케스트레이터 `_failedAttempts >= 2` + `state.recursionLimit` 만 남긴다.
+
+**유지된 안전장치**:
+- `handleReverifyEntry` 의 `isFirstVerifyEntry` NODE_PLAN reset — Tier 2 self-verify 의 apply→verify 경계 conversation 포맷 mixing 방지(always-fan-out 정책과 직교적)
+- `Session._planHistoryHashes` + `isPlanRepeated` API — 향후 도구·디버깅·잠재적 안전망 재도입 여지 보존
+- `inDeepMode()` cycle 카운터 시그널 — config-snapshot 강제 주입은 사라졌지만 LLM 가이드용 시그널은 유지
+
+---
+
 ## 1. 배경 한 줄
 
 > 2026-02-11 `0be5a6b0` refactor 에서 `worker.captureState() → task.resumeState = ...` 연결 블록 6줄이 삭제되어 worker invocation 경계 건너 verification 진단 상태가 전부 휘발되었고, 이후 3개의 "axis 강화" 커밋이 끊어진 파이프라인에 데이터만 더 꽂았다. 이 번 작업은 (a) 끊어진 연결선 복구, (b) 16개 state 필드 → 11개, 19개 Axis → 0개로 통합이다.

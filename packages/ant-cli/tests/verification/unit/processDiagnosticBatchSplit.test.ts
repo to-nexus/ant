@@ -1,23 +1,29 @@
 /**
  * L1 unit — processDiagnosticBatchSplit (plan node).
  *
- *   C6  batches >= 2 → split into error sub-tasks, re-enqueue original
- *   C7  forceByRepeat (Session.isPlanRepeated) → force split
- *   C9  overErrorBudget / overFileBudget → force split
- *   Edge: non-verification/error task → noop
- *   Edge: short planText (<= 50 chars) → noop
- *   Edge: unparseable JSON → noop (returns original)
- *   Hard limit: MAX_BATCH_SPLIT_CYCLES exceeded → throw VerificationTerminalError('batch_cycle_limit')
+ * Always-fan-out semantics (post verification fix-책임 제거):
+ *   - top-level implementation entries → auto-converted to per-target batches
+ *   - existing batches (any count, including 1) → fan-out as-is
+ *   - 0 implementation entries (no top-level, no batches) → noop
+ *   - non-verification / non-error / non-test-code task → noop
+ *   - short planText (<= 50 chars) → noop
+ *   - unparseable JSON → noop (returns original)
+ *   - hard limit: MAX_BATCH_SPLIT_CYCLES exceeded → throw VerificationTerminalError
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { __testing__ } from '../../../src/agents/architect/graph/code/nodes/plan/index';
 import { VerificationSession } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/Session';
 import { VerificationTerminalError } from '../../../src/agents/architect/graph/code/tasks/_shared/verify/errors';
 import { TaskQueue } from '../../../src/agents/architect/types/task';
 import type { CodeTask } from '../../../src/agents/architect/types/task';
 
-const { processDiagnosticBatchSplit, normalizePlanForHash, MAX_BATCH_SPLIT_CYCLES } = __testing__;
+const {
+  processDiagnosticBatchSplit,
+  assertVerificationPlanIsFanoutOnly,
+  normalizePlanForHash,
+  MAX_BATCH_SPLIT_CYCLES,
+} = __testing__;
 
 interface StateOverrides {
   verification?: VerificationSession;
@@ -44,23 +50,15 @@ function makeTask(overrides: Partial<CodeTask> = {}): CodeTask {
   };
 }
 
-describe('processDiagnosticBatchSplit — batch split decisions', () => {
-  beforeEach(() => {
-    delete process.env.ANT_VERIFICATION_SPLIT_ERRORS;
-    delete process.env.ANT_VERIFICATION_SPLIT_FILES;
-  });
-
+describe('processDiagnosticBatchSplit — always-fan-out', () => {
   describe('task type gating', () => {
-    it('non-verification / non-error task → noop (returns original)', () => {
+    it('non-verification / non-error / non-test-code task → noop (returns original)', () => {
       const state = makeState();
-      // Realistic feature task — priority in the feature band and a
-      // non-verification-keyword name so neither the priority fallback nor
-      // the name fallback on `isVerificationTask` fires. The gate is
-      // `isVerificationTask(t) || isErrorTask(t)`; the predicate layer
-      // uses the richer verification discriminator, so this test must use
-      // unambiguous inputs.
       const task = makeTask({ type: 'feature', priority: 50, name: 'implement login form' });
-      const planText = JSON.stringify({ batches: [{ name: 'a' }, { name: 'b' }], implementation: { modify: ['f1.ts', 'f2.ts'] } });
+      const planText = JSON.stringify({
+        batches: [{ name: 'a', modify: ['f1.ts'] }, { name: 'b', modify: ['f2.ts'] }],
+        implementation: { modify: ['f1.ts', 'f2.ts'] },
+      });
       const out = processDiagnosticBatchSplit(state, planText, task);
       expect(out).toBe(planText);
       expect(state.taskQueue.size()).toBe(0);
@@ -69,10 +67,6 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
 
     it('error task is a valid split target (decompose-emitted error without prePlanText)', () => {
       const state = makeState();
-      // Error-band priority + unambiguous name — batch-split-spawned error
-      // tasks use `prePlanText` fast-path and never reach this function,
-      // so the realistic split-target scenario is a decompose-emitted
-      // error task without prePlanText.
       const task = makeTask({ type: 'error', priority: 50, name: 'fix ts2307 import errors' });
       const planText = JSON.stringify({
         diagnostics: { totalErrors: 2 },
@@ -102,15 +96,15 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(out).toBe(plan);
     });
 
-    it('batches array of length 1 and no force conditions → noop', () => {
+    it('plan with 0 implementation entries (no top-level, no batches) → noop', () => {
       const state = makeState();
       const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: { modify: ['a.ts'] },
-        batches: [{ name: 'single', modify: ['a.ts'] }],
+        diagnostics: { totalErrors: 0 },
+        implementation: { modify: [], create: [], delete: [] },
       });
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe(plan);
+      expect(state._batchSplitRequeued).toBe(false);
     });
 
     it('strips markdown code fence before JSON parse', () => {
@@ -130,8 +124,8 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
     });
   });
 
-  describe('C6: batches >= 2 → split', () => {
-    it('verification parent: re-enqueues original (retry-budget preserved), produces error sub-tasks, bumps Session.batchSplitCount', () => {
+  describe('always-fan-out: existing batches', () => {
+    it('verification parent + 2 batches: re-enqueues original (Path A) + spawns 2 error sub-tasks + bumps batchSplitCount', () => {
       const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
       const state = makeState({ verification: session });
       const task = makeTask();
@@ -150,17 +144,11 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(state._batchSplitRequeued).toBe(true);
       const all = state.taskQueue.getAll();
 
-      // Parent=verification path (A): original task is re-queued (same
-      // identity) to preserve `_failedAttempts` retry budget — see
-      // still-lacing-north comment. Sub-tasks apply fixes and therefore
-      // use type='error' regardless of the parent's type.
       const errors = all.filter((t: any) => t.type === 'error');
       const verifications = all.filter((t: any) => t.type === 'verification');
       expect(errors.length).toBe(2);
       expect(verifications.length).toBe(1);
 
-      // The Session now owns the cycle counter — the re-queued task's
-      // resumeState carries the snapshot with batchSplitCount=1.
       expect(session.batchSplitCount()).toBe(1);
       const requeued = verifications[0] as any;
       expect(requeued.resumeState?.verification?.batchSplitCount).toBe(1);
@@ -169,10 +157,23 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       }
     });
 
+    it('verification parent + single batch: still fans out (no length>=2 gate)', () => {
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      const state = makeState({ verification: session });
+      const task = makeTask();
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 1 },
+        implementation: { modify: [] },
+        batches: [{ name: 'fix a', modify: ['a.ts'] }],
+      });
+      const out = processDiagnosticBatchSplit(state, plan, task);
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+      const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+      expect(errors.length).toBe(1);
+    });
+
     it('error parent (Tier 3/4): drops original, enqueues Final Verification, sub-tasks inherit error type', () => {
-      // Error-task parents take path B (drop-and-replace). Since the
-      // gate fires on `isErrorTask(nextTask)` regardless of verification
-      // context, we use an explicit error-band priority + name.
       const state = makeState();
       const task = makeTask({ type: 'error', priority: 100, name: 'fix compile errors' });
       const plan = JSON.stringify({
@@ -190,7 +191,6 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(state._batchSplitRequeued).toBe(true);
       const all = state.taskQueue.getAll();
 
-      // Original MUST be dropped.
       expect(all.some((t: any) => t.id === task.id)).toBe(false);
       const subTasks = all.filter((t: any) => t.priority === (task.priority! - 1));
       const finalVerifications = all.filter((t: any) => t.priority === 1000);
@@ -204,12 +204,8 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
     });
 
     it('test-code parent: drops original, spawns test-code sub-tasks with minimal shape, enqueues Final Verification', () => {
-      // test-code parents take path B (drop-and-replace). The policy map
-      // says sub-tasks inherit 'test-code' type (NOT 'error'), the
-      // batchPlanText uses the minimal shape without diagnostics/
-      // rootCauseSelfCheck, and `remediationMode` is NOT stamped.
       const state = makeState({ verification: undefined as any });
-      state.verification = undefined; // test-code parent owns no session
+      state.verification = undefined;
       const task = makeTask({
         type: 'test-code',
         priority: 700,
@@ -239,7 +235,6 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(state._batchSplitRequeued).toBe(true);
 
       const all = state.taskQueue.getAll();
-      // Parent must be dropped.
       expect(all.some((t: any) => t.id === task.id)).toBe(false);
 
       const subTasks = all.filter((t: any) => t.priority === (task.priority! - 1));
@@ -250,34 +245,26 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
 
       for (const s of subTasks) {
         const sub = s as any;
-        // Sub type must be 'test-code', not 'error'.
         expect(sub.type).toBe('test-code');
-        // prePlanText must be a minimal shape with create/modify only.
         expect(sub.prePlanText).toBeTruthy();
         const parsed = JSON.parse(sub.prePlanText);
         expect(parsed.implementation).toBeTruthy();
         expect(Array.isArray(parsed.implementation.create)).toBe(true);
         expect(Array.isArray(parsed.implementation.modify)).toBe(true);
-        // Minimal shape: no diagnostics / rootCauseSelfCheck leakage.
         expect(parsed.diagnostics).toBeUndefined();
         expect(parsed.rootCauseSelfCheck).toBeUndefined();
-        // Slice hint carries the batch rationale.
         expect(parsed.slice).toBeTruthy();
-        // remediationMode MUST NOT be stamped on test-code sub-tasks.
         expect(sub.remediationMode).toBeUndefined();
-        // Distinct parallelGroup (no file overlap between batches).
         expect(sub.parallelGroup).toBeTruthy();
         expect(sub.exclusive).toBe(false);
-        // Sub name uses 'Tests:' prefix (not 'Fix:').
         expect(sub.name.startsWith('Tests:')).toBe(true);
       }
 
-      // Distinct parallelGroups across the two sub-tasks.
       const groups = subTasks.map((t: any) => t.parallelGroup);
       expect(new Set(groups).size).toBe(2);
     });
 
-    it('test-code parent: single batch → noop (parent writes tests itself)', () => {
+    it('test-code parent: single batch → also fans out under always-fan-out', () => {
       const state = makeState({ verification: undefined as any });
       state.verification = undefined;
       const task = makeTask({ type: 'test-code', priority: 700, name: 'tests' });
@@ -288,14 +275,15 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
         ],
       });
       const out = processDiagnosticBatchSplit(state, plan, task);
-      expect(out).toBe(plan);
-      expect(state._batchSplitRequeued).toBe(false);
+      expect(out).toBe('');
+      expect(state._batchSplitRequeued).toBe(true);
+      const subs = state.taskQueue.getAll().filter((t: any) => t.type === 'test-code');
+      expect(subs.length).toBe(1);
     });
 
     it('test-code parent: Final Verification already queued → dedup skips adding another', () => {
       const state = makeState({ verification: undefined as any });
       state.verification = undefined;
-      // Pre-seed the queue with a Final Verification.
       state.taskQueue.push({
         id: 'pre-existing-fv',
         name: 'Pre-existing FV',
@@ -317,7 +305,6 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       const finalVerifications = state.taskQueue
         .getAll()
         .filter((t: any) => t.priority === 1000);
-      // Dedup: only the pre-existing FV remains; no second one was added.
       expect(finalVerifications.length).toBe(1);
       expect(finalVerifications[0].id).toBe('pre-existing-fv');
     });
@@ -348,98 +335,95 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(subs.length).toBe(2);
       for (const s of subs) {
         expect((s as any).exclusive).toBe(true);
-        // When overlap forces exclusive, no parallelGroup is assigned.
         expect((s as any).parallelGroup).toBeUndefined();
       }
     });
   });
 
-  describe('C7: forceByRepeat (Session.isPlanRepeated)', () => {
-    it('same plan previously applied + single batch + modify present → force split', () => {
+  describe('always-fan-out: top-level → batches auto-conversion', () => {
+    it('verification parent + 1 top-level modify → auto-converted into 1 per-target batch + fan-out', () => {
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      const state = makeState({ verification: session });
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 1 },
-        implementation: { modify: ['a.ts', 'b.ts'] },
+        implementation: { modify: [{ target: 'a.ts', action: 'fix import' }] },
       });
-      // Session records the plan as applied so the next identical plan
-      // fires the repeated-plan detector.
-      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-      session.onPlanApplied(plan);
-      const state = makeState({ verification: session });
-      const task = makeTask();
-
-      const out = processDiagnosticBatchSplit(state, plan, task);
-
+      const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe('');
       expect(state._batchSplitRequeued).toBe(true);
-      // Parent=verification (default makeTask) → path A: original re-queued
-      // + 2 error sub-tasks (sub type is always 'error' for verification
-      // parents, regardless of modify count / force trigger).
       const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
-      expect(errors.length).toBe(2);
+      expect(errors.length).toBe(1);
+      const sub = errors[0] as any;
+      const parsed = JSON.parse(sub.prePlanText);
+      expect(parsed.implementation.modify).toHaveLength(1);
+      expect(parsed.implementation.modify[0].target).toBe('a.ts');
     });
 
-    it('different plan in history → does not force by repeat', () => {
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: { modify: ['a.ts'] },
-      });
-      const otherPlan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: { modify: ['different.ts'] },
-      });
+    it('verification parent + multiple top-level modify entries → one sub-task per target', () => {
       const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
-      session.onPlanApplied(otherPlan);
       const state = makeState({ verification: session });
-      const task = makeTask();
-
-      const out = processDiagnosticBatchSplit(state, plan, task);
-      expect(out).toBe(plan);
-    });
-  });
-
-  describe('C9: overErrorBudget / overFileBudget', () => {
-    it('totalErrors >= threshold (default 6) → force split', () => {
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 7 },
-        implementation: { modify: ['a.ts', 'b.ts'] },
-      });
-      const state = makeState();
-      const out = processDiagnosticBatchSplit(state, plan, makeTask());
-      expect(out).toBe('');
-      expect(state._batchSplitRequeued).toBe(true);
-    });
-
-    it('modify files >= threshold (default 4) → force split', () => {
-      const plan = JSON.stringify({
-        diagnostics: { totalErrors: 1 },
-        implementation: { modify: ['a.ts', 'b.ts', 'c.ts', 'd.ts'] },
-      });
-      const state = makeState();
-      const out = processDiagnosticBatchSplit(state, plan, makeTask());
-      expect(out).toBe('');
-      expect(state._batchSplitRequeued).toBe(true);
-    });
-
-    it('env override ANT_VERIFICATION_SPLIT_ERRORS honored', () => {
-      process.env.ANT_VERIFICATION_SPLIT_ERRORS = '2';
       const plan = JSON.stringify({
         diagnostics: { totalErrors: 3 },
-        implementation: { modify: ['a.ts', 'b.ts'] },
+        implementation: {
+          modify: [
+            { target: 'a.ts', action: 'edit' },
+            { target: 'b.ts', action: 'edit' },
+            { target: 'c.ts', action: 'edit' },
+          ],
+        },
       });
-      const state = makeState();
       const out = processDiagnosticBatchSplit(state, plan, makeTask());
       expect(out).toBe('');
-      expect(state._batchSplitRequeued).toBe(true);
+      const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+      expect(errors.length).toBe(3);
+      const targets = errors.map((e: any) => {
+        const p = JSON.parse(e.prePlanText);
+        return p.implementation.modify[0].target;
+      });
+      expect(targets.sort()).toEqual(['a.ts', 'b.ts', 'c.ts']);
+    });
+
+    it('verification parent + top-level mixed modify+create+delete → one sub-task per entry across all 3 buckets', () => {
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      const state = makeState({ verification: session });
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 3 },
+        implementation: {
+          modify: [{ target: 'a.ts', action: 'edit' }],
+          create: [{ target: 'b.ts', purpose: 'new file' }],
+          delete: [{ target: 'c.ts', reason: 'obsolete' }],
+        },
+      });
+      const out = processDiagnosticBatchSplit(state, plan, makeTask());
+      expect(out).toBe('');
+      const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+      expect(errors.length).toBe(3);
+    });
+
+    it('plan with both batches[] and top-level entries: existing batches respected (no re-conversion)', () => {
+      const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+      const state = makeState({ verification: session });
+      const plan = JSON.stringify({
+        diagnostics: { totalErrors: 5 },
+        implementation: {
+          modify: [{ target: 'top-level.ts', action: 'should be ignored' }],
+        },
+        batches: [
+          { name: 'batch a', modify: [{ target: 'a.ts' }, { target: 'b.ts' }] },
+          { name: 'batch b', modify: [{ target: 'c.ts' }] },
+        ],
+      });
+      const out = processDiagnosticBatchSplit(state, plan, makeTask());
+      expect(out).toBe('');
+      const errors = state.taskQueue.getAll().filter((t: any) => t.type === 'error');
+      expect(errors.length).toBe(2);
+      // batch a stays grouped (2 modify entries), batch b stays grouped (1 modify entry).
+      // top-level modify is ignored when batches are already provided.
     });
   });
 
   describe('Hard limit: MAX_BATCH_SPLIT_CYCLES', () => {
-    // T8 — throw typed terminal error instead of mutating `task._failed`.
-    // Orchestrator classifyTerminalError handles it at `reportFailure`, so
-    // the plan node no longer side-effects permanent-fail state.
     it(`Session.batchSplitCount at ceiling throws VerificationTerminalError('batch_cycle_limit')`, () => {
-      // Drive the Session to one-less-than the cycle limit so the next
-      // would-be split produces splitCount > MAX and throws.
       const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
       for (let i = 0; i < MAX_BATCH_SPLIT_CYCLES; i++) {
         session.onBatchSplit(JSON.stringify({ cycle: i + 1 }));
@@ -463,8 +447,6 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       expect(thrown).toBeInstanceOf(VerificationTerminalError);
       expect((thrown as VerificationTerminalError).kind).toBe('batch_cycle_limit');
       expect((thrown as VerificationTerminalError).message).toMatch(/cycle limit/i);
-      // The throw path no longer mutates `_failed` / `_batchSplitRequeued`
-      // — the orchestrator's permanent-fail branch owns that transition.
       expect((task as any)._failed).toBeUndefined();
       expect(state._batchSplitRequeued).toBe(false);
     });
@@ -495,5 +477,52 @@ describe('processDiagnosticBatchSplit — batch split decisions', () => {
       const h2 = normalizePlanForHash('not json');
       expect(h1).toBe(h2);
     });
+  });
+});
+
+describe('assertVerificationPlanIsFanoutOnly invariant guard', () => {
+  it('non-verification task is never inspected (noop)', () => {
+    const task = { id: 't', name: 't', type: 'feature', priority: 50 } as CodeTask;
+    const plan = JSON.stringify({
+      implementation: { modify: [{ target: 'a.ts' }] },
+    });
+    expect(() => assertVerificationPlanIsFanoutOnly(plan, task)).not.toThrow();
+  });
+
+  it('empty / parse-failed plan is a noop', () => {
+    const task = { id: 't', name: 't', type: 'verification', priority: 1000 } as CodeTask;
+    expect(() => assertVerificationPlanIsFanoutOnly('', task)).not.toThrow();
+    expect(() => assertVerificationPlanIsFanoutOnly('not json', task)).not.toThrow();
+  });
+
+  it('verification plan with batches but no top-level entries → ok', () => {
+    const task = { id: 't', name: 't', type: 'verification', priority: 1000 } as CodeTask;
+    const plan = JSON.stringify({
+      batches: [{ name: 'a', modify: [{ target: 'x.ts' }] }],
+      implementation: { modify: [], create: [], delete: [] },
+    });
+    expect(() => assertVerificationPlanIsFanoutOnly(plan, task)).not.toThrow();
+  });
+
+  it('verification plan with surviving top-level modify → throws', () => {
+    const task = { id: 't', name: 'verify-final', type: 'verification', priority: 1000 } as CodeTask;
+    const plan = JSON.stringify({
+      implementation: { modify: [{ target: 'leaked.ts' }] },
+    });
+    expect(() => assertVerificationPlanIsFanoutOnly(plan, task)).toThrow(
+      /BatchSplit invariant.*verify-final.*1 top-level/,
+    );
+  });
+
+  it('verification plan with surviving top-level mixed entries → throws with combined count', () => {
+    const task = { id: 't', name: 'verify-final', type: 'verification', priority: 1000 } as CodeTask;
+    const plan = JSON.stringify({
+      implementation: {
+        modify: [{ target: 'a.ts' }],
+        create: [{ target: 'b.ts' }],
+        delete: [{ target: 'c.ts' }],
+      },
+    });
+    expect(() => assertVerificationPlanIsFanoutOnly(plan, task)).toThrow(/3 top-level/);
   });
 });

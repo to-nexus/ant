@@ -3,9 +3,9 @@
  * LangGraph reducer so that NODE_EXECUTE is actually emptied at retry entry.
  *
  * Background (job `urban-fronting-faith`, 2026-04-30):
- *   - Verification task hit a retry. `handleRetryEntry` mutated state.conversations
- *     to clear NODE_EXECUTE / NODE_PLAN, but the surrounding plan-node return paths
- *     only included `conversations: { [NODE_PLAN]: ... }` — the shallow-merge
+ *   - A retry fired. `handleRetryEntry` mutated state.conversations to clear
+ *     NODE_EXECUTE, but the surrounding plan-node return paths only included
+ *     `conversations: { [NODE_PLAN]: ... }` — the shallow-merge
  *     `conversationsReducer` preserved the OLD NODE_EXECUTE in the channel.
  *   - The next execute call composed messages from that stale NODE_EXECUTE,
  *     producing a 5-message payload whose messages[3].assistant.tool_use had no
@@ -15,11 +15,16 @@
  *
  * Fix locks in:
  *   1. `handleRetryEntry` returns a delta (Partial<State>) whose conversations
- *      field carries explicit `[]` for NODE_EXECUTE and NODE_PLAN.
+ *      field carries explicit `[]` for NODE_EXECUTE.
  *   2. `mergeDelta(planReturn, entryDelta)` ensures the delta's conversations
  *      keys reach the reducer alongside the plan node's intended NODE_PLAN write.
  *   3. The reducer's resulting NODE_EXECUTE is empty after the merge, so
  *      `composeMessages` never produces an orphan tool_use.
+ *
+ * Post verification fix-책임 제거 리팩토링: the original incident reproduced
+ * inside the verification task type, but the reducer / mergeDelta invariant
+ * is task-type-blind. This suite exercises the contract via an error task
+ * fixture (verification no longer enters retry under always-fan-out).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -58,11 +63,11 @@ describe('retry orphan tool_use — handleRetryEntry conversation clear must rea
       [NODE_PLAN]: Array(27).fill({ role: 'user', content: 'old plan turn' } as ConversationMessage),
     };
 
-    // What handleRetryEntry's delta must contribute (Phase 1a contract):
+    // What handleRetryEntry's delta must contribute (uniform retry path —
+    // NODE_EXECUTE cleared, NODE_PLAN preserved across retry entries):
     const retryDelta = {
       conversations: {
         [NODE_EXECUTE]: [] as ConversationMessage[],
-        [NODE_PLAN]: [] as ConversationMessage[],
       },
     };
 
@@ -150,7 +155,7 @@ describe('mergeDelta semantics — delta wins for top-level, conversations is in
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
       violations: [],
-      conversations: { [NODE_EXECUTE]: [] as ConversationMessage[], [NODE_PLAN]: [] as ConversationMessage[] },
+      conversations: { [NODE_EXECUTE]: [] as ConversationMessage[] },
     };
     const merged = mergeDelta(planReturn as any, retryDelta as any);
     expect((merged as any)._executeCallIndex).toBe(0);
