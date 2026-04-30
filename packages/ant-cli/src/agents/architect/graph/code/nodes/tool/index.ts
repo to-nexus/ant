@@ -105,11 +105,6 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
 
   hooks: {
     afterExecution(state, event) {
-      // Phase 3-15 — count successful plan-phase search_web executions so
-      // subsequent rounds see the bumped counter via buildContext.
-      if (state._activePhase === 'plan' && event.toolName === 'search_web' && !event.result.error) {
-        state._planSearchWebCount = (state._planSearchWebCount ?? 0) + 1;
-      }
       // NOTE: chat.jsonl `chat_status` lines (statusType=file_create /
       // file_edit / file_delete + failed variants) are emitted by
       // `FileOperationHandler.addFileOperation` (SSOT) when tool handlers
@@ -124,7 +119,10 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // update so LangGraph's `LastValue` reducer commits it to the
       // graph state — direct `state._executeModifiedFiles = true`
       // mutation was a latent bug (mutations outside the return object
-      // never propagate via the Annotation channel).
+      // never propagate via the Annotation channel). The same applies to
+      // `_planSearchWebCount` (Phase 3a): the counter is now bumped via
+      // `afterBatch` → `hookUpdates` → `buildReturn` so the reducer
+      // actually commits it.
       hooksIfActive(state)?.tool?.onEvent(state, event);
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
@@ -142,6 +140,21 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
           }
         }
       }
+    },
+
+    afterBatch(state, events): Partial<ArchitectGraphState> {
+      // Phase 3-15 / Phase 3a — count successful plan-phase search_web
+      // invocations and emit the bumped counter via hookUpdates so
+      // LangGraph commits it through the channel reducer. Mutating
+      // `state._planSearchWebCount` from `afterExecution` did not
+      // propagate (same latent-bug pattern as `_executeModifiedFiles`).
+      if (state._activePhase !== 'plan') return {};
+      let bumps = 0;
+      for (const e of events) {
+        if (e.toolName === 'search_web' && !e.result.error) bumps += 1;
+      }
+      if (bumps === 0) return {};
+      return { _planSearchWebCount: (state._planSearchWebCount ?? 0) + bumps };
     },
 
     buildExtraUserContent(state) {

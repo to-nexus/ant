@@ -174,12 +174,11 @@ export async function checkTaskStatus(
       nextTask: state.taskQueue?.peek() ? { id: state.taskQueue.peek()!.id } : undefined,
       nodeHistory: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     });
-    state._executeCallIndex = 0;
-    state._finalTaskLoopCount = 0;
-
-    // ✅ CRITICAL: Clear violations for next task
-    // Previous task's violations should not carry over to new task
-    state.violations = [];
+    // Phase 3c: `state._executeCallIndex = 0` / `state._finalTaskLoopCount = 0`
+    // / `state.violations = []` mutations removed — the success-path return
+    // object below (and `updatedState` consumed by `saveCheckpoint`) declare
+    // these fields explicitly so the LangGraph reducer commits them. Direct
+    // mutation did not propagate beyond this function.
     console.log(`🧹 [checkTaskStatus] Cleared violations for next task`);
 
     // Update completedTasks (IDs only)
@@ -240,6 +239,8 @@ export async function checkTaskStatus(
     }
 
     // ✅ CRITICAL: Update state with completedTasksDetails
+    // Explicit zeroed counters / cleared violations mirror the return object
+    // below so the saved checkpoint matches the reducer-committed state.
     const updatedState = {
       ...state,
       completedTasks,
@@ -247,6 +248,8 @@ export async function checkTaskStatus(
       currentTask: undefined,
       retries: 0,
       violations: [],
+      _executeCallIndex: 0,
+      _finalTaskLoopCount: 0,
     };
 
     // ✅ CRITICAL: Save checkpoint with updated completedTasksDetails
