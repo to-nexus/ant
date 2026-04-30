@@ -12,6 +12,7 @@
 
 import * as path from "path";
 import { LearnGraphState } from "../state";
+import { isVectorDbEnabled } from "../../../../../core/config/vectorDbCapability";
 
 export async function processCommand(state: LearnGraphState): Promise<Partial<LearnGraphState>> {
   const command = state.command;
@@ -45,7 +46,27 @@ async function executeIndexing(
   command: { action: string; branch?: string; mode?: string }
 ): Promise<Partial<LearnGraphState>> {
   const chatAPI = (await import('../../../../../core/adapters/ChatAPIClient')).getChatAPIClient();
-  
+
+  // ✅ Capability gate (SSOT: core/config/vectorDbCapability.ts).
+  // Defense-in-depth — orchestrator.ts already short-circuits the learn job
+  // upstream. This second gate guarantees `indexer.index()` (git walk +
+  // chunking — the only meaningful time cost on this path) is never reached
+  // when vector DB is disabled, even if a non-orchestrator caller (test,
+  // future entry point) ends up here.
+  if (!isVectorDbEnabled()) {
+    await chatAPI.showChatStatus('indexed', {
+      filesIndexed: 0,
+      chunks: 0,
+      tokens: 0,
+      duration: 0,
+      error: "Vector DB is disabled (ANT_VECTOR_DB_ENABLED=false). Set the env var to true and start ChromaDB to enable indexing.",
+    });
+    return {
+      targets: [],
+      texts: ["Vector DB disabled — indexing skipped."],
+    };
+  }
+
   const git = state.deps?.git;
   if (!git) {
     // ✅ Git is required for codebase indexing
@@ -85,11 +106,20 @@ async function executeIndexing(
 
     // Import CodebaseIndexer
     const { CodebaseIndexer } = await import('../../../../../core/codebase/CodebaseIndexer');
-    const { ChromaMemoryAdapter } = await import('../../../../../periphery/adapters/memory/ChromaMemoryAdapter');
-    const { ChunkAdapter } = await import('../../../../../periphery/adapters/chunk/ChunkingAdapter');
 
-    const vectorDB = new ChromaMemoryAdapter();
-    const chunk = new ChunkAdapter();
+    // ✅ Past the capability gate, deps.memory + deps.chunk are guaranteed
+    // to be the real implementations wired by orchestrator.ts. Missing deps
+    // here means the caller forgot to wire them — fail loudly, do NOT fall
+    // back to a NoOp adapter (NoOp on this path would silently complete a
+    // chunking pipeline whose store output is discarded).
+    const vectorDB = state.deps?.memory;
+    const chunk = state.deps?.chunk;
+    if (!vectorDB || !chunk) {
+      throw new Error(
+        "MemoryPort and ChunkPort are required for codebase indexing. " +
+          "Caller must wire `deps.memory` and `deps.chunk` (DI bug)."
+      );
+    }
 
   // Run indexer
   const indexer = new CodebaseIndexer();

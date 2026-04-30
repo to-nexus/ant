@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePathResolver';
+import { isVectorDbEnabled } from '../../../../../../../core/config/vectorDbCapability';
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
@@ -184,6 +185,11 @@ export abstract class BaseGitSetupOperation {
   }
 
   protected async triggerIndexing(projectId: string, codebasePath: string, userContext: UserContext): Promise<void> {
+    if (!isVectorDbEnabled()) {
+      console.log(`[${this.operationName}] ℹ️  Vector DB disabled (ANT_VECTOR_DB_ENABLED=false) — skipping clear + indexing.`);
+      return;
+    }
+
     console.log(`[${this.operationName}] 🗑️  Clearing Vector DB for fresh start...`);
     try {
       const { AdapterFactory } = await import('../../../../../../../infrastructure/adapters/AdapterFactory');
