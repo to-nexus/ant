@@ -21,6 +21,7 @@ import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
 import { BOUNDARY, type Mode, buildTechTier, type Stack, type TechTierConfig, resolveTaskTechTiersFromMap, applyExplicitTechTierOverrides, type PackageTierEntry } from "@ant/shared";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
+import { assignedNotInCatalog, resolveCatalogEntry } from "./catalogLookup";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -318,6 +319,88 @@ function validateTaskCoverage(response: SystemDesignResponse): { valid: boolean;
 }
 
 /**
+ * A single task's assignedSections-vs-catalog mismatch.
+ *
+ * The catalog is selected by `targetFile` prefix
+ * (`fe-system-` / `be-system-` / `api-contract-`); when the prefix is
+ * unknown or the catalog template can't be loaded, validation is skipped
+ * (the task is treated as conforming) — see `assignedNotInCatalog`.
+ */
+export interface AssignedSectionsViolation {
+  taskId: string;
+  targetFile: string;
+  mismatched: string[];
+}
+
+/**
+ * Cross-check every task's `assignedSections` against the catalog implied
+ * by its `targetFile` prefix. Tasks without `assignedSections` are skipped
+ * (the field is optional in legacy responses); tasks whose `targetFile`
+ * doesn't match a known prefix are also skipped (no catalog to compare
+ * against).
+ *
+ * The returned list is empty when every task is consistent. Callers in
+ * `parseAndValidate` throw on a non-empty list so the existing repair-call
+ * loop kicks in with a precise error message naming the offending task(s)
+ * and the bad section names.
+ *
+ * Without this validator, decompose can hand a task like
+ * `targetFile: "api-contract-main.md"` together with `assignedSections`
+ * drawn from the frontend catalog. The execute LLM then receives a
+ * prompt where ASSIGNED sections, FORBIDDEN sections, and the filtered
+ * catalog all disagree, producing a hallucinated output filename
+ * (e.g. `fe-system-main.md`) and the actual contract document goes
+ * missing — the exact regression this guard exists to prevent.
+ */
+export async function validateAssignedSectionsAgainstCatalogs(
+  response: SystemDesignResponse,
+): Promise<AssignedSectionsViolation[]> {
+  const violations: AssignedSectionsViolation[] = [];
+
+  for (const task of response.tasks) {
+    const sections = task.assignedSections;
+    if (!sections || sections.length === 0) continue;
+    if (!resolveCatalogEntry(task.targetFile)) continue;
+
+    const mismatched = await assignedNotInCatalog(task.targetFile, sections);
+    if (mismatched.length > 0) {
+      violations.push({
+        taskId: task.id,
+        targetFile: task.targetFile,
+        mismatched,
+      });
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Format an `AssignedSectionsViolation[]` into a single error message
+ * suitable for the repair-call feedback loop. The message is parsed by
+ * humans only — the LLM repair prompt re-emits the contract from the
+ * original prompt, not from this string.
+ */
+export function formatAssignedSectionsViolations(
+  violations: AssignedSectionsViolation[],
+): string {
+  return (
+    `assignedSections do not match the catalog implied by targetFile: ` +
+    violations
+      .map(
+        v =>
+          `${v.taskId}(targetFile=${v.targetFile}) has sections [${v.mismatched.join(
+            ', ',
+          )}] which are NOT in the ${v.targetFile.split('-').slice(0, 2).join('-')} catalog`,
+      )
+      .join('; ') +
+    `. Each task's assignedSections MUST come from the catalog whose prefix matches its targetFile ` +
+    `(api-contract-* uses api-contract-catalog-names.md; fe-system-* uses frontend-catalog-names.md; ` +
+    `be-system-* uses backend-catalog-names.md).`
+  );
+}
+
+/**
  * Generate minimum viable tasks from targetFiles.
  * Each targetFile gets exactly one task with parallelGroup set to baseName.
  */
@@ -598,8 +681,13 @@ export async function decomposeSystemDesign(
 
   /**
    * Parse raw LLM response → normalize against resolved targets → validate coverage.
+   *
+   * Async because `validateAssignedSectionsAgainstCatalogs` reads catalog
+   * template files. Throwing here funnels the error into the existing
+   * repair-call branch (`repairCall` below) so the LLM gets a precise
+   * mismatch description to correct on its second attempt.
    */
-  function parseAndValidate(textResponse: string): SystemDesignResponse {
+  async function parseAndValidate(textResponse: string): Promise<SystemDesignResponse> {
     const parsedResponse = parseLLMJsonResponse(textResponse);
     let response: SystemDesignResponse;
 
@@ -627,6 +715,16 @@ export async function decomposeSystemDesign(
     const { valid, uncovered } = validateTaskCoverage(response);
     if (!valid) {
       throw new Error(`Task coverage incomplete: no tasks for [${uncovered.join(', ')}]`);
+    }
+
+    // Step 2.5 (post-coverage): assignedSections × targetFile-catalog match.
+    // Has to run AFTER `validateAndFixTargetFiles` because that step may
+    // remap/expand `targetFile`s (MSA, consumedApis) — only the final
+    // post-normalization filename has a canonical catalog to validate
+    // against.
+    const sectionViolations = await validateAssignedSectionsAgainstCatalogs(response);
+    if (sectionViolations.length > 0) {
+      throw new Error(formatAssignedSectionsViolations(sectionViolations));
     }
 
     return response;
@@ -690,7 +788,7 @@ export async function decomposeSystemDesign(
 
   if (rawResponse) {
     try {
-      response = parseAndValidate(rawResponse);
+      response = await parseAndValidate(rawResponse);
     } catch (parseError) {
       lastError = parseError as Error;
       console.warn(`⚠️  [SystemDecompose] Parse failed: ${lastError.message}. Sending repair call...`);
@@ -704,7 +802,7 @@ export async function decomposeSystemDesign(
 
       try {
         const repairedRaw = await repairCall(rawResponse, lastError.message);
-        response = parseAndValidate(repairedRaw);
+        response = await parseAndValidate(repairedRaw);
       } catch (repairError) {
         lastError = repairError as Error;
         console.error(`❌ [SystemDecompose] Repair call also failed: ${lastError.message}`);
