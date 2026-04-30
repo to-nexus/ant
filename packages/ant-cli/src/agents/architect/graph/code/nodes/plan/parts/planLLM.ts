@@ -64,7 +64,11 @@ export async function runPlanToolLoopPhase(
       const isRemediationTask = isVerificationTask(nextTask) || isErrorTask(nextTask);
       const emptyImplShortCircuit = isRemediationTask && hasEmptyImplementation(finalizedPlan);
       maybeApplyPlanHistory(state, finalizedPlan, batchSplitOccurred, nextTask);
-      state._activePhase = 'execute';
+      // `_activePhase` mutation removed — every return path below this
+      // function explicitly commits `_activePhase: 'execute' as const`.
+      // Mutating it here was redundant and a latent regression for the
+      // dual to `wild-flying-scout` (plan→tool direction). See
+      // `tests/retry-orphan-toolresult.test.ts` audit (Phase 1c).
       if (state.deps?.workflowUpdate && state._httpJobId) {
         await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
       }
@@ -89,7 +93,8 @@ export async function runPlanToolLoopPhase(
       return { kind: 'return', state: returned };
     }
     console.log(`⚠️ [Plan] finalizePlanFromExploration failed; falling back to generatePlanText`);
-    state._activePhase = 'execute';
+    // `_activePhase` mutation removed — caller `plan()` continues into
+    // `runMainPlanLLM` which always returns with explicit `_activePhase`.
     return { kind: 'fallthrough', forceNoTools: true };
   }
 
@@ -137,6 +142,8 @@ export async function runPlanToolLoopPhase(
     return { kind: 'return', state: updatedState };
   }
 
-  state._activePhase = 'execute';
+  // `_activePhase` mutation removed — fallthrough hands control back to
+  // `plan()` whose subsequent return paths all commit `_activePhase`
+  // explicitly.
   return { kind: 'fallthrough' };
 }

@@ -103,10 +103,12 @@ describe('tool-loop re-entry (inToolLoop=true) — retries is untouched', () => 
       _nextPlanEntry: undefined,
       _activePhase: 'plan',
     });
-    const ctx = await resolvePlanEntry(state);
+    const { context: ctx, delta } = await resolvePlanEntry(state);
     expect(ctx.inToolLoop).toBe(true);
     expect(ctx.isRetry).toBe(false);
     expect(state.retries).toBe(2);
+    // Tool-loop re-entry has no pending state writes.
+    expect(delta).toEqual({});
   });
 });
 
