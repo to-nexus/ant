@@ -185,6 +185,7 @@ export class TaskWorker<T extends BaseTask> {
       conversations: {},
       _executeCallIndex: 0,
       _finalTaskLoopCount: 0,
+      _lastToolBatchMutatedFiles: false,
       toolResults: [],
       violations: [],
       retries: 0,

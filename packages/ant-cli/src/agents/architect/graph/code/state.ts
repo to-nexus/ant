@@ -171,21 +171,6 @@ export interface ArchitectGraphState extends TriageableState {
   resolvedAction?: ResolvedActionContext;
   resolvedArtifacts?: ResolvedArtifact[];
 
-  selectedDesignFiles?: string[];
-  
-  // ✅ Design Documents — unified map-only structure
-  // All docs use {type}-{name}.md pattern (single="main", MSA=service name)
-  designDocs?: {
-    apiContracts: { [name: string]: string };
-    feDesigns: { [name: string]: string };
-    beDesigns: { [name: string]: string };
-  };
-  
-  // ✅ Spec Documents (loaded in resolve, injected per-role via artifact pool)
-  // The active spec is derived at runtime from `role='ref'` artifacts via
-  // `ArtifactPoolView.activeSpecRefFilename()`; no state field is needed.
-  specDocs?: Record<string, string>;   // All spec-*.md files (filename → content)
-
   // Decompose clarify: LLM needs user clarification before completing decomposition
   awaitingDecomposeClarify?: boolean;
 
@@ -310,8 +295,28 @@ export interface ArchitectGraphState extends TriageableState {
    * landing alongside T5/T6.
    */
   _nextPlanEntry?: PlanEntry;
-  /** Tracks whether execute phase modified any files (for executeRouter re-verify decision) */
-  _executeModifiedFiles?: boolean;
+  /**
+   * Turn-scoped signal: did the most recent tool batch (the one that ran
+   * just before the current execute turn) mutate any files?
+   *
+   * SSOT writer: `nodes/tool/index.ts buildReturn` — sets to the result of
+   * `executionEvents.some(... 'verificationInvalidated' ...)` on every
+   * execute-phase tool batch return.
+   *
+   * Reader: `nodes/execute/index.ts` `isStuckLooping` — combined with
+   * `streamedInThisCall.length === 0` to suppress "stuck" classification on
+   * a turn that immediately followed a tool-based file mutation
+   * (`edit_file` / `create_file` / `delete_file`). The earlier
+   * `streamedFiles`-only check missed these because the XML `<file>` tag
+   * registry is not populated by tool handlers.
+   *
+   * Reset: every execute return path writes `false` so a tool batch that
+   * mutated files only counts for ONE subsequent execute turn. Replaces the
+   * retired `_executeModifiedFiles` sticky flag (whose dual roles —
+   * cross-cycle file change tracking AND turn-progress signal — caused the
+   * `urban-fronting-faith` p2 reverify-branch lockout).
+   */
+  _lastToolBatchMutatedFiles?: boolean;
   /**
    * Package manager (npm / pnpm / yarn / bun) detected from lockfile at the
    * verification plan entry, cached for the rest of the job.

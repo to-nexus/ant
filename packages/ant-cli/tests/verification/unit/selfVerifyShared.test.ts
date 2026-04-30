@@ -236,11 +236,18 @@ describe('routeAfterDone — apply→reverify transition for Tier 2 self-verify'
   // entry MUST always route to plan even when the apply phase claimed "no
   // fix needed". The runtime then runs gates against the Session before
   // letting the task complete.
+  //
+  // The retired `_executeModifiedFiles` short-circuit (`madeFileChanges`)
+  // — which used to route the LLM's "fix already applied → done" cycle to
+  // checkTaskStatus — was removed in the `urban-fronting-faith` p2
+  // postmortem. The same scenario is now covered by `Session.isComplete()`
+  // (cycle 3) plus `checkRetryTermination`'s plan-hash repeat detection
+  // (terminates after 2 consecutive identical plans, including empty
+  // plans via stable SHA hashing).
 
-  it('returns "plan" when files were modified + no Session yet (first reverify entry)', () => {
+  it('returns "plan" when no Session yet (first reverify entry, post-apply with files modified)', () => {
     const state = {
       planText: 'remediation plan body',
-      _executeModifiedFiles: true,
       verification: undefined,
       currentTask: { id: 't', type: 'error', selfVerifyOnDone: true } as any,
     } as ArchitectGraphState;
@@ -250,20 +257,20 @@ describe('routeAfterDone — apply→reverify transition for Tier 2 self-verify'
   it('returns "plan" when apply phase emits empty plan (silent-bug guard — self-verify must verify gates)', () => {
     const state = {
       planText: '',
-      _executeModifiedFiles: false,
       verification: undefined,
       currentTask: { id: 't', type: 'error', selfVerifyOnDone: true } as any,
     } as ArchitectGraphState;
-    // Even though apply phase had no plan + no file changes, the self-verify
-    // task must still enter verify-mode at least once. Otherwise the LLM's
-    // "no fix needed" claim ships unverified.
+    // Even though apply phase had no plan, the self-verify task must
+    // still enter verify-mode at least once. Otherwise the LLM's "no fix
+    // needed" claim ships unverified. Case 1 (no Session + requiresVerification
+    // returning true via selfVerifyOnDone) takes precedence over the
+    // empty-planText case 2.
     expect(verifyRouteAfterDone(state)).toBe('plan');
   });
 
   it('returns "plan" when apply phase planned but did not modify files (still must verify)', () => {
     const state = {
       planText: 'remediation plan',
-      _executeModifiedFiles: false,
       verification: undefined,
       currentTask: { id: 't', type: 'error', selfVerifyOnDone: true } as any,
     } as ArchitectGraphState;
@@ -277,7 +284,6 @@ describe('routeAfterDone — apply→reverify transition for Tier 2 self-verify'
     session.onCommand('test', true);
     const state = {
       planText: 'reverify plan',
-      _executeModifiedFiles: true,
       verification: session,
       currentTask: { id: 't', type: 'error', selfVerifyOnDone: true } as any,
     } as ArchitectGraphState;
@@ -290,24 +296,27 @@ describe('routeAfterDone — apply→reverify transition for Tier 2 self-verify'
     session.onCommand('build', true);
     const state = {
       planText: '',
-      _executeModifiedFiles: false,
       verification: session,
       currentTask: { id: 'v1', type: 'verification', priority: 1000 } as any,
     } as ArchitectGraphState;
     // Verification task with active Session whose verify-mode plan came
-    // back empty — gates already complete, route to checkTaskStatus.
+    // back empty — case 2 (no plan) routes to checkTaskStatus regardless
+    // of session completeness.
     expect(verifyRouteAfterDone(state)).toBe('checkTaskStatus');
   });
 
-  it('returns "checkTaskStatus" when subsequent verify cycle plan exists but no files changed', () => {
+  it('returns "plan" when subsequent verify cycle plan exists and gates not complete (regardless of file changes)', () => {
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
     const state = {
       planText: 'reverify plan',
-      _executeModifiedFiles: false,
       verification: session,
       currentTask: { id: 'v1', type: 'verification', priority: 1000 } as any,
     } as ArchitectGraphState;
-    expect(verifyRouteAfterDone(state)).toBe('checkTaskStatus');
+    // Pre-`urban-fronting-faith` this returned 'checkTaskStatus' via the
+    // `madeFileChanges === false` short-circuit. Now plan re-fires; if
+    // the LLM produces the same plan twice the plan-hash repeat
+    // terminator fires `no_progress` and the cycle terminates cleanly.
+    expect(verifyRouteAfterDone(state)).toBe('plan');
   });
 });
 

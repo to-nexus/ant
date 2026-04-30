@@ -176,11 +176,19 @@ export async function workerCheckTaskStatus(
 
   // Task has retryable violations — propagate to plan for retry.
   // `state.retries += 1` is owned by `plan/handleRetryEntry`.
+  //
+  // Counter resets (mirror of main-graph `checkTaskStatus`): without these,
+  // a Safety Net C trip on the worker subgraph would re-enter execute with
+  // a stale `_finalTaskLoopCount` and immediately re-trip — ping-pong
+  // through plan ↔ checkTaskStatus until recursion limit. The success path
+  // (L139-144) and batch-split path (L86-95) already reset these.
   return {
     violations: retryableViolations,
     enforcementHistory,
     _nextPlanEntry: 'retry' as const,
     _taskCompleted: false,
+    _executeCallIndex: 0,
+    _finalTaskLoopCount: 0,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
   } as any;
