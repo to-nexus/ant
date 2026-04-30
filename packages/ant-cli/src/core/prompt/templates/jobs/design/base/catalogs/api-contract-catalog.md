@@ -24,7 +24,8 @@
 ### § Shared Type Definitions
 - This section is the ONLY place where DTO field definitions appear — all other sections reference DTOs by name only
 - Define common DTOs ONCE (language-neutral): headings + bullet lists, NOT code syntax
-- For each DTO: name, fields (fieldName: type + validation), notes
+- For each DTO: name, fields (`<field>: <type>` + validation), notes
+- Field identifier convention: see the "Field Identifier Convention" rule in api-contract-guide — do NOT default to a particular case style
 
 ### § Error Handling Conventions
 - Standard error format (DTO shape for error responses)

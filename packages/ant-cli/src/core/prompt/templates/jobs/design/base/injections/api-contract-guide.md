@@ -39,9 +39,13 @@
 - This document may include exact URL paths, status codes, and field names; they are part of the contract.
 - Do not write "TBD", "etc.", "…", or leave any shape implicit.
 
-**Naming Consistency**:
-- Pick ONE: camelCase OR snake_case
-- NEVER mix!
+**Field Identifier Convention (Priority Order)**:
+1. **External contract source observable** (consumer perspective; swagger / OpenAPI / Protobuf / GraphQL SDL / etc.) → Use the source's field identifiers VERBATIM. Identifier-level transformation (e.g., `snake_case` → `camelCase`, dropping prefixes, pluralization changes) is FORBIDDEN.
+2. **Directive / refs / context specifies a DTO convention** → Follow that convention exactly.
+3. **Neither (1) nor (2) applies** → Pick ONE convention (camelCase OR snake_case) and apply it consistently. Do NOT default to a particular case style based on language or framework — the choice is the document's, not the implementation's.
+- NEVER mix conventions within the same document.
+- The convention applies to ALL wire-facing identifiers: DTO field names, query parameter names, event payload keys, header names.
+- Identifier preservation is independent of the C2 "no verbatim" rule under the "External Contract Discovery" section below (which targets retrieved descriptions / examples, not identifiers).
 
 **Completeness (scoped to your assigned sections)**:
 - ✅ All endpoints documented
@@ -122,6 +126,7 @@ For each per-service document, observe:
 **Constraints**
 - C1 — When a reachable contract source is observable in the injected materials, retrieve it with the available tools before describing endpoints, payloads, or status codes.
 - C2 — Retrieved content is evidence, not output. NEVER paste it verbatim.
+  - **Carve-out (identifier surface)**: Field IDENTIFIERS are NOT subject to C2 — they are the contract. Preserve verbatim: DTO field names, endpoint paths, query / path parameter names, header names, status codes, event names, enum literals. C2 forbids copying retrieved DESCRIPTIONS, examples, vendor commentary, narrative text — NOT the identifier surface. Per the "Field Identifier Convention" priority (1) above, identifier-level transformation (`snake_case` → `camelCase`, prefix removal, etc.) is FORBIDDEN when an external source exists.
 - C3 — If retrieval fails, state the gap; do NOT fabricate shapes.
 - C4 — `search_web` only when source is unknown; retrieval tools only when source is identified. Do NOT overlap.
 
