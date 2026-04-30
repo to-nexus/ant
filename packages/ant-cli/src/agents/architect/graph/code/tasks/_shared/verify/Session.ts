@@ -34,7 +34,26 @@ function envInt(name: string, fallback: number): number {
 
 export const DEEP_DIAGNOSTIC_THRESHOLD = envInt('ANT_DEEP_DIAGNOSTIC_THRESHOLD', 2);
 
-const PLAN_HISTORY_BODY_LIMIT = 3;
+/**
+ * Cap on the per-task plan-history body buffer surfaced by `renderPriorPlans`.
+ *
+ * Aligned with `MAX_BATCH_SPLIT_CYCLES = 10` in
+ * `nodes/plan/parts/batchSplit.ts` (the system's hard limit on cascading
+ * batch-split cycles) plus a small headroom of 2 — verification can also
+ * retry without batch-splitting, so the plan-history axis is slightly
+ * longer than the batch-split axis. Direct import of
+ * `MAX_BATCH_SPLIT_CYCLES` would create a circular dependency through
+ * `tasks/_shared/verify/errors`, so the value is defined here as an env-
+ * tunable constant following the `DEEP_DIAGNOSTIC_THRESHOLD` precedent.
+ *
+ * Token impact: each summarized cycle ≈ 200 chars (goal + rootCauses +
+ * modifyTargets dedupe), so a full buffer of 12 entries adds ≈ 600
+ * tokens — under 0.3% of a 200K context window. The previous default of
+ * 3 silently dropped 9 cycles' worth of fix history in cascade scenarios
+ * (the `urban-fronting-faith` postmortem), causing the cycle-N+1 plan
+ * LLM to re-discover the same fix space from scratch.
+ */
+const PLAN_HISTORY_BODY_LIMIT = envInt('ANT_PLAN_HISTORY_LIMIT', 12);
 
 // ────────────────────────────────────────────────────────────────────────────
 // Plan-entry vocabulary
