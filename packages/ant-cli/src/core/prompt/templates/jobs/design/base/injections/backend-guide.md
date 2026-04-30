@@ -58,6 +58,8 @@ Architecture is not a single label — it is the combination of independent desi
 
 **Constraint**: Do NOT define or reproduce endpoint specifications, DTO schemas, or request/response formats. These belong in the api-contract document (separate concern).
 
+**Constraint (Wire-internal mapping boundary)**: Wire-format DTO field identifiers come from the api-contract document and are preserved verbatim by the coding phase. If internal domain models use a different identifier style, mapping between wire DTOs and domain models MUST happen at a designated adapter / mapper boundary (e.g., handler ↔ service edge, repository ↔ entity edge) — NOT by silently renaming wire fields. Identify the boundary that owns this mapping; do NOT let the renaming leak into wire-facing types.
+
 ---
 
 ### 3. Infrastructure Independence
