@@ -460,6 +460,16 @@ const SOURCES_DIR = 'plan';
 const ASSETS_DIR = 'assets';
 const ASSETS_GEN_DIR = 'assets/gen';
 
+// `gen-sys-fe` matrix-default target stays `fe-system-*.md` only.
+// Consumer-perspective `api-contract-{name}.md` is NOT a matrix default —
+// `validateAndFixTargetFiles` seeds an `api-contract-*.md` placeholder and
+// expands it ONLY when the LLM populates `consumedApis`. Adding the entry
+// to `FE_OUTPUTS` would leak into `getDefaultTargetPaths` and force an
+// empty `api-contract-main.md` artifact for every FE explicit submit
+// without a consumer hint (Step 1c single-package collapse + Step 5
+// coverage push). Revisit when a UI requirement to manually attach
+// consumer snapshots emerges — that needs a dedicated `excludeFromDefault`
+// flag, not a matrix-default expansion.
 const FE_OUTPUTS: OutputSpec[] = [output('fe-system-', '.md', L.feSystem)];
 const BE_OUTPUTS: OutputSpec[] = [output('be-system-', '.md', L.beSystem), output('api-contract-', '.md', L.apiContract)];
 const FULLSTACK_OUTPUTS: OutputSpec[] = [...FE_OUTPUTS, ...BE_OUTPUTS];

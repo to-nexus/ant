@@ -35,8 +35,29 @@ interface DecomposeContext {
 
 export interface SystemDesignResponse {
   documentType: 'unified' | 'contract-first' | 'msa-contract-first';
+  /**
+   * Provider — this project's BE service boundaries. Each entry produces
+   * BOTH `api-contract-{name}.md` AND `be-system-{name}.md`. Meaningful
+   * only for `gen-sys-be` / `gen-sys-full`; ignored for `gen-sys-fe`.
+   */
   services?: string[];
+  /** Frontend package boundaries. Each entry produces `fe-system-{name}.md`. */
   fePackages?: string[];
+  /**
+   * Consumer — external API hosts this project consumes (snapshot
+   * reference). Each entry produces `api-contract-{name}.md` ONLY; no
+   * `be-system-*.md` co-creation. Meaningful in any system-design intent
+   * — `gen-sys-fe` expresses pure consumer; `gen-sys-full` /
+   * `gen-sys-be` may mix provider and consumer.
+   *
+   * The downstream code job consumes every `api-contract-*.md` via
+   * wildcard inclusion, so provider-vs-consumer authorship is a
+   * decompose-prompt concern (See `api-contract-guide.md` "Role"
+   * section + "External Contract Discovery"); the schema-level
+   * distinction here only drives co-creation rules in
+   * `validateAndFixTargetFiles`.
+   */
+  consumedApis?: string[];
   targetFiles: string[];
   techTier?: { stack: string; language: string; framework?: string };
   packageTiers?: Record<string, PackageTierEntry>;
@@ -101,32 +122,67 @@ function stripDesignTargetPrefix(file: string): string {
  * Validate and fix LLM response against resolvedTargetFiles.
  * Single normalization path for ALL environments and architectures.
  *
- * Flow: MSA expansion → task remap → documentType inference → coverage check.
+ * Flow: MSA expansion → consumedApis expansion → task remap →
+ * documentType inference → coverage check.
  *
  * Placeholder semantics (matrix wildcard contract since 0f9ee7e4):
  *   - `*` is a postfix placeholder ("filled by LLM's MSA decision")
  *   - multi-package: response.services / fePackages → per-package postfix
  *   - single-package: collapse to `main`
  *
+ * Provider vs Consumer expansion:
+ *   - `services` (provider) — BE/Full intent only. Each entry produces
+ *     `be-system-{s}.md` AND `api-contract-{s}.md`. Ignored for
+ *     `gen-sys-fe` (FE-only projects have no provider boundary).
+ *   - `consumedApis` (consumer) — any intent. Each entry produces
+ *     `api-contract-{c}.md` ONLY. Seeds an `api-contract-*.md` placeholder
+ *     into `resolvedTargetFiles` when the FE-only intent didn't include
+ *     one (matrix default for `gen-sys-fe` is `['fe-system-main.md']`).
+ *   - `fePackages` — unchanged, expands `fe-system-*.md` per package.
+ *
  * MSA expansion accepts both `-main.md` (legacy detect path) and `-*.md`
  * (matrix path) as expansion keys:
  *   be-system-{main,*}.md → be-system-{service}.md  (when response.services exists)
  *   fe-system-{main,*}.md → fe-system-{package}.md  (when response.fePackages exists)
- *   api-contract-{main,*}.md → api-contract-{service}.md  (when response.services exists)
+ *   api-contract-{main,*}.md → api-contract-{service-or-consumer}.md
  *
  * Single-package fallback: any wildcard surviving Step 1 collapses to `-main.md`.
+ *
+ * FE intent defense: `be-system-*.md` survivors stripped after expansion —
+ * frontend-only projects never produce backend system docs even if the LLM
+ * mistakenly emits them.
+ *
+ * Provider/Consumer name conflict: when `services` ∩ `consumedApis` is
+ * non-empty, the consumer entries are dropped silently with a warning —
+ * provider authorship takes precedence (the project owns that name).
  */
 export function validateAndFixTargetFiles(
   response: SystemDesignResponse,
   resolvedTargetFiles: string[],
   _detectedEnv: string | undefined,
-  jobMode: Mode = 'generate'
+  jobMode: Mode = 'generate',
+  intentId?: string
 ): SystemDesignResponse {
-  // Step 1: MSA expansion FIRST (before any task validation)
-  // Replaces `-main.md` / `-*.md` placeholders with per-service/package files when MSA is detected
+  const isFE = intentId === 'gen-sys-fe';
+
+  // Step 0: services ∩ consumedApis conflict — provider wins.
+  if (response.services?.length && response.consumedApis?.length) {
+    const providerSet = new Set(response.services);
+    const overlap = response.consumedApis.filter(c => providerSet.has(c));
+    if (overlap.length > 0) {
+      console.warn(
+        `⚠️  [validateAndFixTargetFiles] services ∩ consumedApis = ` +
+        `[${overlap.join(', ')}] — consumer entries dropped (provider takes precedence).`
+      );
+      response.consumedApis = response.consumedApis.filter(c => !providerSet.has(c));
+    }
+  }
+
+  // Step 1a: services expansion (provider) — BE/Full intent only.
+  // Replaces `-main.md` / `-*.md` placeholders with per-service files.
   let effectiveTargetFiles = [...resolvedTargetFiles];
 
-  if (response.services?.length) {
+  if (response.services?.length && !isFE) {
     effectiveTargetFiles = effectiveTargetFiles.flatMap(f =>
       f === 'be-system-main.md' || f === 'be-system-*.md'
         ? response.services!.map(s => `be-system-${s}.md`)
@@ -134,6 +190,29 @@ export function validateAndFixTargetFiles(
           ? response.services!.map(s => `api-contract-${s}.md`)
           : [f]
     );
+  }
+
+  // Step 1b: consumedApis expansion (consumer) — any intent.
+  //
+  // Two paths:
+  //   - Placeholder present (FE matrix default OR services-less BE matrix
+  //     default): replace placeholder with per-consumer concrete files.
+  //   - No placeholder (services already expanded the api-contract slot
+  //     into concrete files OR FE intent without any api-contract entry):
+  //     append each per-consumer concrete file. De-duplicate against
+  //     services-derived names to keep provider authorship intact.
+  if (response.consumedApis?.length) {
+    const placeholderIdx = effectiveTargetFiles.findIndex(f =>
+      f === 'api-contract-main.md' || f === 'api-contract-*.md'
+    );
+    const consumerFiles = response.consumedApis.map(c => `api-contract-${c}.md`);
+    if (placeholderIdx >= 0) {
+      effectiveTargetFiles.splice(placeholderIdx, 1, ...consumerFiles);
+    } else {
+      for (const f of consumerFiles) {
+        if (!effectiveTargetFiles.includes(f)) effectiveTargetFiles.push(f);
+      }
+    }
   }
 
   if (response.fePackages?.length) {
@@ -144,12 +223,24 @@ export function validateAndFixTargetFiles(
     );
   }
 
-  // Single-package fallback: wildcards not consumed by MSA expansion collapse
-  // to `-main.md`. The downstream strict-equality (Step 2 task filter, Step 5
-  // coverage check) is concrete-filename only.
+  // Step 1c: Single-package fallback — wildcards not consumed by expansion
+  // collapse to `-main.md`. The downstream strict-equality (Step 2 task
+  // filter, Step 5 coverage check) is concrete-filename only.
   effectiveTargetFiles = effectiveTargetFiles.map(f =>
     f.endsWith('-*.md') ? f.replace(/-\*\.md$/, '-main.md') : f
   );
+
+  // Step 1d: FE intent defense — strip any be-system survivors. Frontend
+  // projects never own provider boundaries; LLM emissions to the contrary
+  // are silently dropped here (matches the frontend prompt guard).
+  if (isFE) {
+    effectiveTargetFiles = effectiveTargetFiles.filter(f => !f.startsWith('be-system-'));
+  }
+
+  // Step 1e: Deduplicate (services and consumedApis can coexist with
+  // different names but the api-contract placeholder may have been
+  // seeded redundantly).
+  effectiveTargetFiles = [...new Set(effectiveTargetFiles)];
 
   response.targetFiles = effectiveTargetFiles;
 
@@ -284,7 +375,16 @@ function buildTaskQueue(
     const sorted = [...tasks].sort((a, b) => (a.priority || 250) - (b.priority || 250));
     if (sorted.length > 0) lastTaskIdPerFile.add(sorted[sorted.length - 1].id);
   }
-  
+
+  // consumedApis-derived api-contract files capture an EXTERNAL contract
+  // — they are not authored by this project and must NOT contribute to
+  // this project's techTier resolution. The `targetFileToTag` mapping
+  // (`api-contract-{s}.md → be-{s}`) would otherwise inject a phantom
+  // backend tier hint into `resolveTaskTechTiersFromMap`.
+  const consumerApiContractFiles = new Set(
+    (response.consumedApis ?? []).map(c => `api-contract-${c}.md`)
+  );
+
   for (const taskData of response.tasks) {
     if (!response.targetFiles.includes(taskData.targetFile)) {
       taskData.targetFile = response.targetFiles[0];
@@ -295,7 +395,8 @@ function buildTaskQueue(
       ? taskData.parallelGroup
       : undefined;
     
-    const tag = targetFileToTag(taskData.targetFile);
+    const isConsumerContract = consumerApiContractFiles.has(taskData.targetFile);
+    const tag = isConsumerContract ? undefined : targetFileToTag(taskData.targetFile);
     const packages = tag ? [tag] : undefined;
     const resolvedTiers = resolveTaskTechTiersFromMap(packages, basisTechTierConfig, response.packageTiers);
     const taskTechTiers = applyExplicitTechTierOverrides(resolvedTiers, explicitTechTier);
@@ -521,7 +622,7 @@ export async function decomposeSystemDesign(
     const intentId = state.resolvedAction?.intent || 'gen-sys-full';
     const effectiveResolvedFiles = resolvedTargetFiles
       || resolveDesignTargetFiles(intentId, jobMode as Mode, existingDesignFiles).targetFiles;
-    response = validateAndFixTargetFiles(response, effectiveResolvedFiles, detectedEnv, jobMode as Mode);
+    response = validateAndFixTargetFiles(response, effectiveResolvedFiles, detectedEnv, jobMode as Mode, intentId);
 
     const { valid, uncovered } = validateTaskCoverage(response);
     if (!valid) {
@@ -551,7 +652,7 @@ export async function decomposeSystemDesign(
         `Re-emit the response strictly in the contract from the original prompt:\n` +
         `  1. Meta tags first, one per line, JSON-encoded body\n` +
         `     (\`<executionTier>\`, \`<documentType>\`, \`<services>\`, \`<fePackages>\`,\n` +
-        `      \`<techTier>\`, \`<packageTiers>\`, \`<targetFiles>\`).\n` +
+        `      \`<consumedApis>\`, \`<techTier>\`, \`<packageTiers>\`, \`<targetFiles>\`).\n` +
         `  2. Then a \`<tasks>\` block with one \`<task>{json}</task>\` per task.\n` +
         `NO markdown fences. NO \`<decompose>\` wrapper. Output the contract only — no other prose.`
       },

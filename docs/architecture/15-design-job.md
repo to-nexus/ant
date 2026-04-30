@@ -39,13 +39,23 @@ Figma intent(`gen-ui-figma`)가 합성되면 description 변종이 무시된다.
 
 ## documentType (System Design)
 
-decompose가 프로젝트 환경에 따라 문서 구조를 결정한다.
+decompose가 프로젝트 환경 + LLM이 emit한 두 직교 필드 (`services` provider, `consumedApis` consumer)에 따라 문서 구조를 결정한다.
 
-| environment | documentType | 출력 구조 |
-|-------------|-------------|----------|
-| frontend / backend | unified | `system-design.md` (단일) |
-| fullstack | contract-first | `api-contract.md` + `fe-system-design.md` + `be-system-design.md` |
-| fullstack + MSA | msa-contract-first | `api-contract.md` + `fe-system-design.md` + `be-system-design-{service}.md` (서비스별) |
+| environment | services | consumedApis | documentType | 출력 |
+|---|---|---|---|---|
+| frontend | empty | empty | `unified` | `fe-system-main.md` |
+| frontend | empty | non-empty | `contract-first` | `fe-system-main.md` + `api-contract-{c}.md` per consumer |
+| backend | empty | empty | `unified` | `be-system-main.md` |
+| backend | non-empty | any | `contract-first` / `msa-contract-first` | `be-system-{s}.md` + `api-contract-{s}.md` per service (+ `api-contract-{c}.md` per consumer) |
+| fullstack | empty | empty | `contract-first` | `api-contract-main.md` + `fe-system-main.md` + `be-system-main.md` |
+| fullstack | non-empty | any | `msa-contract-first` | `fe-system-main.md` + `api-contract-{s}.md` + `be-system-{s}.md` per service (+ `api-contract-{c}.md` per consumer) |
+
+**필드 의미 (provider ⊥ consumer)**:
+
+- `services` (provider) — 본 프로젝트가 owning하는 백엔드 서비스 경계. 각 entry당 `be-system-{s}.md` + `api-contract-{s}.md` 페어 생성. `gen-sys-fe`에서는 무시.
+- `consumedApis` (consumer) — 본 프로젝트가 외부에서 소비하는 API 호스트 (CONSUMER snapshot). 각 entry당 `api-contract-{c}.md`만 생성 (be-system 동반 안 함). 모든 system-design intent에서 의미 있음.
+- `services ∩ consumedApis` — 동명 충돌 시 provider 우세, consumer entry drop + 경고.
+- 다운스트림 코드 잡은 `api-contract-*.md`를 와일드카드로 모두 ref에 포함하므로 provider/consumer 구분은 디컴포즈 단계의 prompt-side 의미에 한정 (`api-contract-guide.md`의 `External Contract Discovery` 가 두 케이스 모두를 다룸).
 
 ## 그래프 노드 흐름
 
