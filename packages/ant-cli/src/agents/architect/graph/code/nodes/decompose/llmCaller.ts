@@ -4,7 +4,9 @@
  * Handles LLM streaming for task decomposition with XML tag parsing.
  * Supports two modes:
  *   - Inline (no tools): single-turn stream with XML parsing (fast)
- *   - Tool-use (RAG): multi-turn stream with read_design_doc tool (large projects)
+ *   - Tool-use (RAG): multi-turn stream with the discovery toolset
+ *     (`read_file` / `list_files` / `clarify`) — `read_file` doubles as
+ *     the on-demand re-expansion path for compacted artifacts.
  */
 
 import { LLMClient, ToolDefinition } from "../../../../../../core/ports";

@@ -200,6 +200,13 @@ export function flattenPolicyToInclude(
 /**
  * Compact artifacts whose content exceeds `threshold`.
  * Small artifacts pass through unchanged.
+ *
+ * When an artifact is compacted the result carries `wasCompacted=true` plus
+ * `originalChars` / `compactedChars` so prompt templates can render a
+ * `· compacted` marker + `read_file` access hint and downstream code can
+ * compute aggregate compaction stats. The metadata fields are optional on
+ * `ResolvedArtifact`, so artifacts that pass through unchanged remain
+ * structurally identical to the input.
  */
 export function compactArtifacts(
   artifacts: ResolvedArtifact[],
@@ -214,7 +221,13 @@ export function compactArtifacts(
       filePath: a.path,
       toolHint,
     });
-    return { ...a, content: result.content };
+    return {
+      ...a,
+      content: result.content,
+      wasCompacted: result.wasCompacted,
+      originalChars: result.originalChars,
+      compactedChars: result.compactedChars,
+    };
   });
 }
 

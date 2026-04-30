@@ -25,7 +25,7 @@ import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatin
 // Import submodules
 import { validateTasks } from "./validation";
 import { checkSessionRestore, restoreFromSession } from "./sessionManager";
-import { prepareDesignDocument } from "./designSelector";
+import { prepareRacInjection } from "./designSelector";
 import { callLLMForDecompose } from "./llmCaller";
 import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary } from "./responseParser";
 import type { BaseTask, TaskType } from "@ant/shared";
@@ -125,9 +125,25 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // STEP 3: Prepare design documents (environment-aware)
+  // STEP 3: Prepare RAC artifact injection (compact ↔ decompact)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const { documents, hasDocuments, useToolMode } = prepareDesignDocument(state);
+  // Single SSOT for decompose's artifact-derived template variables. Refs
+  // and context flow through `compactArtifacts` (role-scoped thresholds +
+  // grand-total demotion), then split into:
+  //   - `documents` / `hasDocuments`           — design-doc-guide partial
+  //   - `refArtifacts` / `contextArtifacts`    — base.md "Provided Documents"
+  //   - `hasCompactedArtifacts`                — gates rules.md reading-strategy
+  // No artifact content is ever truncated; oversized docs become outlines
+  // the LLM can re-expand via `read_file(path, startLine, endLine)`.
+  const racInjection = prepareRacInjection(state);
+  const {
+    documents,
+    hasDocuments,
+    refArtifacts,
+    contextArtifacts,
+    hasGenericArtifacts,
+    hasCompactedArtifacts,
+  } = racInjection;
 
   // Inter-Job Context Bridge: pre-determine boundary classification
   const { ArtifactPoolView } = await import('../../../../../../core/prompt/builder/ArtifactPipeline');
@@ -207,22 +223,20 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // uiHint) were removed — the pool already injects those documents
   // via role-annotated sections in the prompt, so re-listing paths
   // was duplicate context.
-  const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
-
-  // Generic role-based artifact injection:
-  // System designs, specs, and UI have decompose-specific handling above.
-  // Everything else is injected generically by role so new categories
-  // never require code changes.
-  const specialPrefixes = [AP.SYSTEM_DESIGN, AP.SPEC, AP.UI];
-  const genericArtifacts = pool.all.filter(a =>
-    a.content?.trim() && !specialPrefixes.some(p => a.path.startsWith(p))
-  );
-  const refArtifacts = genericArtifacts.filter(a => a.role === 'ref');
-  const contextArtifacts = genericArtifacts.filter(a => a.role === 'context');
-  const hasGenericArtifacts = refArtifacts.length > 0 || contextArtifacts.length > 0;
+  //
+  // Generic ref/context artifact filtering (system-design / spec / ui
+  // exclusion) and per-role compaction are owned by `prepareRacInjection`
+  // above — we consume the result directly to avoid a second filter pass.
   if (hasGenericArtifacts) {
-    const totalChars = genericArtifacts.reduce((s, a) => s + (a.content?.length || 0), 0);
-    console.log(`📄 [Decompose] Generic artifacts: ${refArtifacts.length} ref(s) + ${contextArtifacts.length} context(s), ${totalChars.toLocaleString()} chars`);
+    const totalChars = [...refArtifacts, ...contextArtifacts].reduce(
+      (s, a) => s + (a.content?.length || 0),
+      0,
+    );
+    console.log(
+      `📄 [Decompose] Generic artifacts: ${refArtifacts.length} ref(s) + ` +
+      `${contextArtifacts.length} context(s), ${totalChars.toLocaleString()} chars` +
+      (hasCompactedArtifacts ? ' (some compacted)' : ''),
+    );
   }
 
   // Tier-classification signal: a compact summary of every ref (not just
@@ -274,6 +288,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     refArtifacts,
     contextArtifacts,
     hasGenericArtifacts,
+    hasCompactedArtifacts,
     tierRefs,
     mode: state.resolvedAction?.mode || 'unknown',
     techTier: getTechTier(state),
@@ -468,6 +483,17 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             refArtifacts: refArtifacts.length > 0 ? `[${refArtifacts.length} file(s)]` : undefined,
             contextArtifacts: contextArtifacts.length > 0 ? `[${contextArtifacts.length} file(s)]` : undefined,
             documents: documents.length > 0 ? `[${documents.length} docs]` : undefined,
+            hasCompactedArtifacts,
+            racCompactionMeta: hasCompactedArtifacts
+              ? {
+                  refsCompactedCount: racInjection.meta.refsCompactedCount,
+                  contextCompactedCount: racInjection.meta.contextCompactedCount,
+                  grandTotalCharsBefore: racInjection.meta.grandTotalCharsBefore,
+                  grandTotalCharsAfter: racInjection.meta.grandTotalCharsAfter,
+                  artifactBudgetChars: racInjection.meta.artifactBudgetChars,
+                  forcedZeroCount: racInjection.meta.forcedZeroThresholdPaths.length,
+                }
+              : undefined,
             hasUi,
             hasUiRef: pool.hasUiRef(),
             hasSystemDesignRef: pool.hasSystemDesignRef(),
@@ -607,7 +633,6 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     resetAccumulated();
 
     try {
-      const { READ_DESIGN_DOC_TOOL, handleReadDesignDoc } = await import('./designSelector');
       const { DISCOVERY_TOOLS, createDiscoveryToolHandler } = await import('./discoveryTools');
 
       const discoveryCtx = {
@@ -625,11 +650,15 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       };
       const discoveryHandler = createDiscoveryToolHandler(discoveryCtx);
 
-      const allTools = [...DISCOVERY_TOOLS, ...(useToolMode ? [READ_DESIGN_DOC_TOOL] : [])];
+      // `read_file` (with optional startLine/endLine) is the SSOT for
+      // re-expanding any compacted document — there is no
+      // separate `read_design_doc` channel anymore. The RAC whitelist
+      // inside `discoveryHandler` keeps explicit pipelines from
+      // side-loading documents the user did not include.
+      const allTools = [...DISCOVERY_TOOLS];
       const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, {
         tools: allTools,
         toolHandler: async (name, args) => {
-          if (name === 'read_design_doc') return handleReadDesignDoc(args.name, state);
           const discoveryResult = await discoveryHandler(name, args);
           if (!discoveryResult.startsWith('Error: Unknown tool')) return discoveryResult;
           return `Error: Unknown tool "${name}"`;
