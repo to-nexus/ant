@@ -31,6 +31,7 @@
 - **UPPER_SNAKE_CASE**: Constants and Enum values
   - `MAX_RETRY_COUNT`, `API_BASE_URL`
 - **Prefix interfaces with `I` only if necessary** (modern convention: no prefix)
+- **Wire-format DTO exception**: Properties on types backing API contract DTOs / event payloads / query params follow the api-contract document's identifiers VERBATIM — NOT the camelCase rule above. If wire identifiers are `snake_case`, the property names are `snake_case`. Do NOT rename to satisfy this profile. See execute rules § "Wire-format Identifier Preservation".
 
 ## Import Organization
 ```typescript

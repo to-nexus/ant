@@ -13,6 +13,7 @@
   - `MaxRetryCount` or `maxRetryCount`
 - **Acronyms**: Keep uppercase in names
   - `HTTPServer`, `URLParser`, `IDGenerator`
+- **Wire-format DTO exception**: For structs serialized over a network boundary (request/response bodies, event payloads, query params), keep the Go field name idiomatic but use `json:"<wire_name>"` (and `query:`, `form:`, etc.) struct tags whose values match the api-contract document VERBATIM. Do NOT rename the wire identifier to fit Go casing. See execute rules § "Wire-format Identifier Preservation".
 
 ## Package Structure
 ```go

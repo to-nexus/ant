@@ -426,6 +426,35 @@ const speed = PADDLE_SPEED;
 
 ⚠️ **Blind spot**: Parallel tasks independently choose file names. Without observing existing conventions via `list_files`, two workers may create `UserCard.tsx` and `user-card.tsx` for the same concept. Always observe before creating.
 
+────────────────────────────────────────────────────────────────────────────────
+### 5. Wire-format Identifier Preservation (DTO / API contract)
+
+**Principle**: Identifiers that cross a network boundary — DTO field names, JSON keys, query parameters, path parameters, event payload keys, header names, enum literals on the wire — are part of the WIRE CONTRACT. They MUST follow the api-contract document VERBATIM.
+
+**Observation target**: Before declaring any type whose values are serialized over the network, locate the corresponding DTO definition in `architecture/system/api-contract-*.md` and copy field identifiers exactly.
+
+| Checkpoint | What to observe |
+|-----------|----------------|
+| **Wire-facing surface** | Is this type sent / received over a network boundary (HTTP, WebSocket, message queue, IPC)? |
+| **Source of truth** | Does an api-contract document define the field set for this DTO? |
+| **Identifier match** | Do property names in the type EXACTLY equal the api-contract field names (case, separators, abbreviations)? |
+
+**Constraint**: Language naming conventions (e.g., TypeScript `camelCase` for properties, Go `PascalCase` for exported fields) apply to INTERNAL identifiers ONLY. They DO NOT override wire-format identifiers.
+
+**Resolution rule (when language convention conflicts with wire format)**:
+- The DTO type's property name MUST equal the wire field name verbatim.
+- If the language idiom requires a different on-the-record spelling, use a **serialization layer** to bridge — NOT a rename:
+  - TypeScript: keep the property name as-is; if a transform layer exists, it maps wire ↔ internal at the adapter boundary, not in the DTO type itself.
+  - Go: use `json:"wire_field_name"` struct tags (and `db:` etc. as applicable) — keep the Go field name idiomatic, but the tag preserves the wire identifier.
+  - Python / Java / C#: use the framework's serialization annotation (`@SerializedName`, `@JsonProperty`, `Field(alias=...)`).
+- Internal domain models (entities, value objects, view-models) MAY use the language's idiomatic naming. Mapping between wire DTO and internal model belongs at the adapter / mapper boundary.
+
+**Constraint**: NEVER silently transform `snake_case` ↔ `camelCase` (or any other identifier reshape) at the type level. Such transformation is a contract change and is FORBIDDEN unless the api-contract document itself was updated.
+
+**Constraint**: If the api-contract is silent on a field that the implementation needs, surface the gap (request a contract update) — do NOT invent a name that contradicts the existing convention of nearby fields.
+
+⚠️ **Blind spot**: When a language profile says "Properties: camelCase" and the api-contract uses `snake_case`, LLMs default to language convention and silently rename fields. The wire contract loses fidelity, breaking real consumers. Always check the api-contract FIRST for any wire-facing type.
+
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚫 Common Mistakes
 ════════════════════════════════════════════════════════════════════════════════
@@ -440,6 +469,7 @@ const speed = PADDLE_SPEED;
 | Markdown in content (` ```code``` `) | Raw code only |
 | Code placeholders (`// ... logic ...`) | Complete implementation |
 | Placeholder paths (`path/to/file.ext`) | Actual paths (`codebase/src/utils.ts`) |
+| Renaming wire DTO field to language convention (e.g. api-contract `user_id` → TS `userId`) | Keep wire identifier verbatim; bridge via serializer / adapter if needed (§ Wire-format Identifier Preservation) |
 
 ════════════════════════════════════════════════════════════════════════════════
 ## 🚨 TASK COMPLETION SIGNAL (CRITICAL)

@@ -91,6 +91,14 @@ These are initial defaults for this tier. **MSA DETECTION below may expand them*
 {{/if}}
 {{/if}}
 
+**Consumer task description format (when `consumedApis` is non-empty)**:
+- For each entry in `consumedApis`, the corresponding `api-contract-{host}` task's `description` MUST include the contract handle VERBATIM as the first sentence. Use one of the following forms based on what the source materials provide:
+  - URL: `Source contract: <full URL>` (e.g., `Source contract: https://api.example.com/openapi.json`)
+  - File: `Source contract: file <path>` (e.g., `Source contract: file apis/openapi.yaml`)
+  - Command: `Source contract: command <command>`
+- Do NOT replace the handle with abstract phrases like "derivable from the codegen source" or "shapes inferred from PRD" — execute LLM relies on this handle to invoke retrieve via the "External Contract Discovery" workflow in `api-contract-guide.md`.
+- Provider tasks (`services`-derived) have NO equivalent requirement — they author DTO shapes from PRD and architectural decisions, not from an upstream contract.
+
 ---
 
 ## 📥 INPUT CONTEXT
