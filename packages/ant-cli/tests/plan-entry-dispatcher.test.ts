@@ -193,6 +193,75 @@ describe('resolvePlanEntry — verification retry (C15)', () => {
     expect(state._executeCallIndex).toBe(0);
   });
 
+  it('resets _finalTaskLoopCount at verification retry entry (regression: urban-fronting-faith p2 ping-pong)', async () => {
+    // Pre-`urban-fronting-faith` the verification retry branch reset
+    // `_executeCallIndex` and conversations but NOT `_finalTaskLoopCount`,
+    // so a Safety Net C trip (executeRouter `finalTaskLoopCount >=
+    // threshold`) → checkTaskStatus → retry → plan → execute would
+    // re-enter execute with the counter still at threshold and trip
+    // again on the very first turn — plan ↔ checkTaskStatus ping-pong
+    // until recursion budget exhausted.
+    //
+    // The reset must propagate through BOTH surfaces:
+    //   - `state._finalTaskLoopCount = 0` for same-turn reads (RAG /
+    //     plan-LLM prompt composition / runMainPlanLLM tool-loop gate
+    //     don't consult this counter, but the symmetry with the non-
+    //     verification retry branch and reverify entry keeps the
+    //     mutation-and-delta pattern consistent).
+    //   - `delta._finalTaskLoopCount = 0` for the LangGraph reducer
+    //     commit via `mergeDelta` (the actual source of truth that
+    //     `routeAfterExecute` reads).
+    const state = makeFreshVerificationState();
+    state.currentTask = {
+      id: 't1',
+      name: 'verify',
+      description: 'Verification task',
+      type: 'verification',
+      priority: 1000,
+    };
+    state._nextPlanEntry = 'retry';
+    state.verification = VerificationSession.rehydrate({
+      required: ['build'],
+      passed: [],
+      attempts: 0,
+      planHistoryHashes: [],
+    });
+    state._finalTaskLoopCount = 2; // Safety Net C just tripped at threshold=2
+
+    const { delta } = await resolvePlanEntry(state);
+
+    expect(delta._finalTaskLoopCount).toBe(0);
+    expect(state._finalTaskLoopCount).toBe(0);
+  });
+
+  it('resets _finalTaskLoopCount at reverify entry', async () => {
+    // Reverify is the verification cycle's "post-execute re-diagnosis"
+    // path. Same rationale as the retry branch above — a Safety Net C
+    // trip in the apply-phase execute must not haunt the first reverify
+    // execute turn.
+    const state = makeFreshVerificationState();
+    state.currentTask = {
+      id: 't1',
+      name: 'verify',
+      description: 'Verification task',
+      type: 'verification',
+      priority: 1000,
+    };
+    state._nextPlanEntry = 'reverify';
+    state.verification = VerificationSession.rehydrate({
+      required: ['build'],
+      passed: [],
+      attempts: 0,
+      planHistoryHashes: [],
+    });
+    state._finalTaskLoopCount = 2;
+
+    const { delta } = await resolvePlanEntry(state);
+
+    expect(delta._finalTaskLoopCount).toBe(0);
+    expect(state._finalTaskLoopCount).toBe(0);
+  });
+
   it('clears node:plan at fresh task entry (task boundary)', async () => {
     const state = makeFreshVerificationState();
     // Seed a prior conversation as if a previous task left chatter.

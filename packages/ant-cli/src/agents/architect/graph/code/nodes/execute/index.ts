@@ -483,16 +483,20 @@ export async function execute(
       }
     }
 
-    // Detect files written in this call. The paths list is only used to
-    // (a) flag `_executeModifiedFiles` for the downstream router and (b)
-    // invalidate verification gates on the Session. Files newly written in
-    // this turn surface to the LLM via conversation tool_results (edit_file /
-    // create_file / delete_file) and via streamed `<file>` tag markers in
-    // the assistant message — no state channel carries file snapshots.
+    // Detect files written in this call via the `<file>` XML streaming
+    // pipeline. Used purely to invalidate verification gates on the
+    // Session — the historical `_executeModifiedFiles` flag was retired
+    // (verification cycle-progress is now adjudicated by
+    // `session.isComplete()` + `checkRetryTermination`, see
+    // `tasks/_shared/verify/router.ts`).
+    //
+    // Files newly written this turn surface to the LLM via conversation
+    // tool_results (edit_file / create_file / delete_file) and via streamed
+    // `<file>` tag markers in the assistant message — no state channel
+    // carries file snapshots.
     const earlyStreamedPaths = (finalizeResult?.streamedFiles || [])
       .map((fp: string) => normalizeToCodebasePath(fp, codebaseRel).normalized);
-    const touchedInThisCall = earlyStreamedPaths.length > 0;
-    if (touchedInThisCall) {
+    if (earlyStreamedPaths.length > 0) {
       // Session is an instance whose mutations propagate by reference
       // across node boundaries — invalidating gates here is safe.
       state.verification?.onFileChanged('all');
@@ -670,7 +674,9 @@ export async function execute(
         fileErrors: undefined,
         _executeCallIndex: newCallIndex,
         _finalTaskLoopCount: 0,
-        ...(touchedInThisCall ? { _executeModifiedFiles: true } : {}),
+        // Reset turn-scoped signal so the next execute turn (which won't
+        // immediately follow another tool batch) starts with a clean slate.
+        _lastToolBatchMutatedFiles: false,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         profile: state.profile,
@@ -716,8 +722,8 @@ export async function execute(
     // AUTO-COMPLETE: verification/error tasks that created files via <file> tag
     // without tool calls or <done> tag. Without this, the router sees no tools
     // and no done → routes back to execute → infinite file_create loop.
-    // Uses streamedFiles (scoped to THIS iteration) instead of _executeModifiedFiles
-    // (which persists across iterations and causes false positives from prior tool calls).
+    // Uses `streamedFiles` (scoped to THIS iteration) so prior turns'
+    // mutations cannot mistakenly auto-complete an empty turn.
     const streamedInThisCall = finalizeResult?.streamedFiles || [];
     if (!explicitDone && toolCalls.length === 0 && streamedInThisCall.length > 0
         && isRemediationTask) {
@@ -731,24 +737,56 @@ export async function execute(
     // keep save / restore compatibility; semantically it tracks
     // verification-only loops without progress.
     //
-    // "Progress" = a file was actually written this turn. The previous
-    // condition `toolCalls.length === 0` missed the `urban-fronting-faith`
-    // pattern: the LLM kept calling `read_file` / `list_files` for the
-    // entire turn budget without ever writing a fix, so `toolCalls.length`
-    // was always > 0 and the stuck counter never advanced. With the file-
-    // write criterion, a verification turn that consumes tool calls
-    // (read/list/edit-file no-ops) but commits zero file changes is
-    // correctly classified as no-progress and feeds the safety-net
-    // counter that downstream routers consult.
+    // "Progress" = a file was actually written this turn — via either:
+    //   (a) `<file>` XML streaming → `streamedInThisCall` (FileRegistry), or
+    //   (b) `edit_file` / `create_file` / `delete_file` tool call →
+    //       `_lastToolBatchMutatedFiles` set true by `nodes/tool/index.ts`
+    //       on the immediately preceding tool batch.
     //
-    // `streamedInThisCall` is per-iteration (defined a few lines above);
-    // `_executeModifiedFiles` is intentionally not used here because it
-    // persists across iterations and would mask a stuck turn after any
-    // prior productive turn.
+    // Earlier history of this signal:
+    //   - Original: `toolCalls.length === 0` — missed the
+    //     `urban-fronting-faith` p1 pattern (LLM calling read_file /
+    //     list_files for the entire budget without writing a fix).
+    //   - 03ab4b0a: `streamedInThisCall.length === 0` — caught read-only
+    //     churn but ALSO falsely flagged tool-based file mutations as
+    //     stuck (FileRegistry only tracks `<file>` tags), advancing the
+    //     counter on the very first edit_file turn.
+    //   - Current: combined check — read-only churn still counts as stuck,
+    //     but a turn that immediately followed a tool-based file mutation
+    //     resets the counter via the turn-scoped
+    //     `_lastToolBatchMutatedFiles` signal.
+    //
+    // Cross-turn semantics: `_lastToolBatchMutatedFiles` is reset to
+    // `false` on every execute return so it counts for exactly ONE
+    // subsequent execute turn. Sticky cross-cycle file change tracking is
+    // owned by `Session.passed()` / `session.isComplete()` —
+    // `_executeModifiedFiles` was retired alongside this fix.
     const isVerification = state.currentTask ? isVerificationTask(state.currentTask) : false;
     const prevLoopCount = state._finalTaskLoopCount || 0;
-    const isStuckLooping = isVerification && !explicitDone && streamedInThisCall.length === 0;
+    const toolMutatedThisTurn = state._lastToolBatchMutatedFiles === true;
+    const isStuckLooping =
+      isVerification &&
+      !explicitDone &&
+      streamedInThisCall.length === 0 &&
+      !toolMutatedThisTurn;
     const newFinalTaskLoopCount = isStuckLooping ? prevLoopCount + 1 : 0;
+
+    // Diagnostic: surface counter axis for the verification stuck-loop
+    // safety net so the post-`urban-fronting-faith` regression hunt has
+    // direct evidence per turn. Cheap (one line, JSON-friendly), printed
+    // on every execute return regardless of task type so the format stays
+    // uniform across task types.
+    console.log(
+      `[diag] execute return: _finalTaskLoopCount=${prevLoopCount}->${newFinalTaskLoopCount} ` +
+      `streamed=${streamedInThisCall.length} ` +
+      `toolMut=${toolMutatedThisTurn} ` +
+      `planText.len=${state.planText?.length ?? 0} ` +
+      `nodeExec.len=${nodeExecute.length} ` +
+      `_activePhase=${state._activePhase} ` +
+      `isVerification=${isVerification} ` +
+      `explicitDone=${explicitDone} ` +
+      `tools=${toolCalls.length}`,
+    );
     
     // Thinking-only detection: log when LLM produces thinking but no text/tools
     if (toolCalls.length === 0 && !textResponse.trim() && thinking) {
@@ -840,7 +878,10 @@ export async function execute(
           fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
           _executeCallIndex: newCallIndex,
           _finalTaskLoopCount: newFinalTaskLoopCount,
-          ...(touchedInThisCall ? { _executeModifiedFiles: true } : {}),
+          // Reset the turn-scoped tool-mutation signal — execute consumed
+          // it; the next turn's stuck-loop check starts fresh and only
+          // re-flips when another tool batch mutates files.
+          _lastToolBatchMutatedFiles: false,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           profile: state.profile,
@@ -871,7 +912,9 @@ export async function execute(
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _executeCallIndex: newCallIndex,
       _finalTaskLoopCount: newFinalTaskLoopCount,
-      ...(touchedInThisCall ? { _executeModifiedFiles: true } : {}),
+      // Reset turn-scoped tool-mutation signal (see top of execute return
+      // section for rationale).
+      _lastToolBatchMutatedFiles: false,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       profile: state.profile,

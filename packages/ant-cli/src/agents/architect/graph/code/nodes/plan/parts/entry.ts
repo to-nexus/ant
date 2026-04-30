@@ -322,21 +322,28 @@ async function handleRetryEntry(
     //   NODE_EXECUTE clear when plan() returns through the tool_use
     //   branch (which only declares `conversations: { NODE_PLAN: [...] }`).
     //   This is the `urban-fronting-faith` Anthropic-400 trigger.
+    //
+    // `_finalTaskLoopCount = 0` mirror of the non-verification retry
+    // branch — without it, a Safety Net C trip
+    // (`executeRouter` `finalTaskLoopCount >= threshold`) that routes
+    // through checkTaskStatus → retry → plan would re-enter execute with
+    // a stale counter and trip again on the very first turn, ping-ponging
+    // through plan→execute→checkTaskStatus indefinitely.
     state._executeCallIndex = 0;
+    state._finalTaskLoopCount = 0;
     state.violations = [];
     state.conversations = {
       ...state.conversations,
       [CONV_KEYS.NODE_EXECUTE]: [],
       [CONV_KEYS.NODE_PLAN]: [],
     };
-    state._executeModifiedFiles = false;
     delta._executeCallIndex = 0;
+    delta._finalTaskLoopCount = 0;
     delta.violations = [];
     delta.conversations = {
       [CONV_KEYS.NODE_EXECUTE]: [],
       [CONV_KEYS.NODE_PLAN]: [],
     };
-    delta._executeModifiedFiles = false;
     await recomputeInstallNeeded(state);
     delta.verification = state.verification;
     console.log(`\n🔄 [Plan] Verification retry: ${nextTask.name} (verificationAttempts=${sessionAttempts})`);
@@ -446,16 +453,22 @@ async function handleReverifyEntry(
   // for same-turn `plan()` body read consistency (runMainPlanLLM tool-loop
   // gate, composeViolationsText, RAG); delta for LangGraph reducer commit
   // via `mergeDelta`.
+  //
+  // `_finalTaskLoopCount = 0` mirror of `handleRetryEntry` — reverify is
+  // the verification cycle's "post-execute re-diagnosis" path, so the
+  // Safety Net C counter must start fresh per cycle. Without this, a
+  // counter that crossed the threshold in the apply-phase execute would
+  // immediately re-trip on the first reverify execute turn.
   const newConvs = isFirstVerifyEntry
     ? { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] }
     : { ...state.conversations, [CONV_KEYS.NODE_EXECUTE]: [] };
   state._executeCallIndex = 0;
-  state._executeModifiedFiles = false;
+  state._finalTaskLoopCount = 0;
   state.violations = [];
   state.conversations = newConvs;
   const delta: Partial<ArchitectGraphState> = {
     _executeCallIndex: 0,
-    _executeModifiedFiles: false,
+    _finalTaskLoopCount: 0,
     violations: [],
     conversations: isFirstVerifyEntry
       ? { [CONV_KEYS.NODE_EXECUTE]: [], [CONV_KEYS.NODE_PLAN]: [] }

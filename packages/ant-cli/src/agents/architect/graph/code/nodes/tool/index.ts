@@ -114,15 +114,13 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // tool hook (verification: gate invalidation / install status / deep-
       // diagnostic marking via the Session API). The inline switch below
       // owns only phase-blind bookkeeping (command history) that the hook
-      // layer does not mediate. `_executeModifiedFiles` is computed in
+      // layer does not mediate. `_lastToolBatchMutatedFiles` is computed in
       // `buildReturn` from `executionEvents` and returned as a state
-      // update so LangGraph's `LastValue` reducer commits it to the
-      // graph state — direct `state._executeModifiedFiles = true`
-      // mutation was a latent bug (mutations outside the return object
-      // never propagate via the Annotation channel). The same applies to
-      // `_planSearchWebCount` (Phase 3a): the counter is now bumped via
-      // `afterBatch` → `hookUpdates` → `buildReturn` so the reducer
-      // actually commits it.
+      // update so LangGraph's `LastValue` reducer commits it to the graph
+      // state — direct `state.X = true` mutation never propagates via the
+      // Annotation channel. The same applies to `_planSearchWebCount`
+      // (Phase 3a): bumped via `afterBatch` → `hookUpdates` → `buildReturn`
+      // so the reducer actually commits it.
       hooksIfActive(state)?.tool?.onEvent(state, event);
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
@@ -147,7 +145,7 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // invocations and emit the bumped counter via hookUpdates so
       // LangGraph commits it through the channel reducer. Mutating
       // `state._planSearchWebCount` from `afterExecution` did not
-      // propagate (same latent-bug pattern as `_executeModifiedFiles`).
+      // propagate (same latent-bug pattern as `_lastToolBatchMutatedFiles`).
       if (state._activePhase !== 'plan') return {};
       let bumps = 0;
       for (const e of events) {
@@ -176,11 +174,25 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       };
     });
 
-    // SSOT for `_executeModifiedFiles`: any execute-phase tool invocation
-    // whose side effects include `verificationInvalidated` (emitted by
-    // file-mutating handlers: edit_file / create_file / delete_file) flips
-    // the flag so `routeAfterDone` can reach the reverify branch. Returned
-    // from the node so LangGraph actually commits it to graph state.
+    // SSOT for `_lastToolBatchMutatedFiles` (turn-scoped): any execute-phase
+    // tool invocation whose side effects include `verificationInvalidated`
+    // (emitted by file-mutating handlers: edit_file / create_file /
+    // delete_file) flips the flag for the *single* execute turn that
+    // immediately follows. Execute reads it in its `isStuckLooping`
+    // computation and resets it to `false` on every return so a tool batch
+    // that mutated files only counts once. Plan-phase tool batches never
+    // set this signal — file mutations during plan-tool-loop are not
+    // execute-turn progress.
+    //
+    // Replaces the retired `_executeModifiedFiles` sticky flag whose dual
+    // role (cross-cycle file change tracking AND turn-progress signal)
+    // caused the `urban-fronting-faith` p2 reverify-branch lockout: the
+    // retry/reverify entry handlers reset it to `false`, which then made
+    // `routeAfterDone`'s `madeFileChanges` always read `false` and routed
+    // to checkTaskStatus instead of plan(reverify). The sticky cross-cycle
+    // semantics are now handled exclusively by `Session.passed()` /
+    // `session.isComplete()` plus `checkRetryTermination`'s plan-hash
+    // repeat detection.
     const touchedFiles = state._activePhase !== 'plan' && executionEvents.some(e =>
       (e.result.sideEffects || []).some(ef => ef.type === 'verificationInvalidated'),
     );
@@ -191,7 +203,11 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       planText: state.planText,
       recursionCount: (state.recursionCount || 0) + 1,
       recursionLimit: state.recursionLimit,
-      ...(touchedFiles ? { _executeModifiedFiles: true } : {}),
+      // Execute-phase tool batch only — plan-phase batches never touch this
+      // signal, so a plan-tool-loop edit_file (which is rare but legal in
+      // diagnostic exploration) does not mistakenly suppress a downstream
+      // execute stuck-loop counter.
+      ...(state._activePhase !== 'plan' ? { _lastToolBatchMutatedFiles: touchedFiles } : {}),
       ...hookUpdates,
     };
 

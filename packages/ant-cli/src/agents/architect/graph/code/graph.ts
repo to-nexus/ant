@@ -74,7 +74,6 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     artifacts: state.artifacts,
     resolvedArtifacts: state.resolvedArtifacts,
     resolvedAction: state.resolvedAction,
-    selectedDesignFiles: state.selectedDesignFiles,
     directive: state.directive,
     code: state.code,
     codeHead: state.codeHead,
@@ -546,7 +545,6 @@ export const CodeGraphChannels = {
       workspaceConfig: Annotation<any>,
       gitPort: Annotation<any>,
       artifacts: Annotation<any>,
-      selectedDesignFiles: Annotation<any>,
       code: Annotation<any>,
       codeHead: Annotation<any>,
       profile: Annotation<any>({
@@ -607,7 +605,10 @@ export const CodeGraphChannels = {
       interruption: Annotation<any>,
       _activePhase: Annotation<any>,
       _nextPlanEntry: Annotation<any>,
-      _executeModifiedFiles: Annotation<any>,
+      _lastToolBatchMutatedFiles: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => false,
+      }),
       _detectedPackageManager: Annotation<any>,
       _otherWorkerFiles: Annotation<any>,
       _existingCodebaseFiles: Annotation<any>,

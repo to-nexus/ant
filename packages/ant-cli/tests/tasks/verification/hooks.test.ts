@@ -583,33 +583,59 @@ describe('hooks/router', () => {
   // its own short-circuit paths (batch split, diagnostic pass, empty
   // implementation) so `routeAfterPlan` reads the flag directly and
   // never consults a task-type hook.
+  //
+  // Routing decision tree (post-`urban-fronting-faith` simplification —
+  // `madeFileChanges`/`_executeModifiedFiles` retired; redundant with
+  // session.isComplete() + checkRetryTermination's plan-hash repeat):
+  //   1. Tier-2 self-verify first verify (no Session, requiresVerification) → plan
+  //   2. Empty planText → checkTaskStatus
+  //   3. Session.isComplete() → checkTaskStatus
+  //   4. Otherwise → plan (reverify; plan-hash repeat will terminate
+  //      give-up cycles via no_progress)
 
-  it('routeAfterDone — checkTaskStatus when plan is empty', () => {
-    expect(routerHook.routeAfterDone(stateWith(undefined, { planText: '' }))).toBe('checkTaskStatus');
+  it('routeAfterDone — checkTaskStatus when plan is empty (case 2)', () => {
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    expect(routerHook.routeAfterDone(stateWith(session, { planText: '' }))).toBe('checkTaskStatus');
   });
 
-  it('routeAfterDone — checkTaskStatus when no file changes were made', () => {
-    expect(routerHook.routeAfterDone(stateWith(undefined, {
-      planText: 'something',
-      _executeModifiedFiles: false,
-    }))).toBe('checkTaskStatus');
-  });
-
-  it('routeAfterDone — reverify path when changes applied and gates still missing', () => {
+  it('routeAfterDone — plan reverify when planText set and gates still missing (case 4)', () => {
     const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
     expect(routerHook.routeAfterDone(stateWith(session, {
       planText: 'something',
-      _executeModifiedFiles: true,
     }))).toBe('plan');
   });
 
-  it('routeAfterDone — checkTaskStatus when gates complete after execute', () => {
+  it('routeAfterDone — plan reverify regardless of whether files were touched (case 4)', () => {
+    // The retired `_executeModifiedFiles` short-circuit used to flip this
+    // to checkTaskStatus when the LLM emitted `<done>` without applying
+    // any file changes. Now plan re-fires; if the LLM keeps emitting the
+    // same plan, `checkRetryTermination`'s `isPlanRepeated` →
+    // `no_progress` terminates the cycle after 2 consecutive identical
+    // hashes (empty-plan included via stable SHA).
+    const session = VerificationSession.createFresh({ isTs: true, hasTests: false });
+    expect(routerHook.routeAfterDone(stateWith(session, {
+      planText: 'something',
+    }))).toBe('plan');
+  });
+
+  it('routeAfterDone — checkTaskStatus when gates complete after execute (case 3)', () => {
     const session = VerificationSession.createFresh({ isTs: false, hasTests: false });
     session.onCommand('build', true);
     expect(routerHook.routeAfterDone(stateWith(session, {
       planText: 'something',
-      _executeModifiedFiles: true,
     }))).toBe('checkTaskStatus');
+  });
+
+  it('routeAfterDone — plan when no Session and task requires verification (case 1)', () => {
+    // Tier-2 self-verify task's first verify entry: Session not yet
+    // created. Always route to plan so the reverify entry fires
+    // `initSession` and the gate sweep runs at least once
+    // (`onyx-building-fence` silent-bug guard).
+    const verificationTask = task('verification', { type: 'verification' });
+    expect(routerHook.routeAfterDone(stateWith(undefined, {
+      planText: 'something',
+      currentTask: verificationTask,
+    } as Partial<ArchitectGraphState>))).toBe('plan');
   });
 });
 
